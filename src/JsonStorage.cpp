@@ -27,8 +27,10 @@ QJsonObject JsonStorage::categoryToJson(const TagCategory& cat) {
     QJsonObject obj;
     obj["id"]           = cat.id;
     obj["name"]         = cat.name;
-    obj["uniformColor"] = cat.uniformColor;
-    obj["color"]        = cat.color.name();
+    obj["uniformColor"]          = cat.uniformColor;
+    obj["color"]                 = cat.color.name();
+    if (cat.inheritColorToChildren)
+        obj["inheritColorToChildren"] = true;
 
     // Always write tags array (even if empty) so membership is never silently lost
     QJsonArray tags;
@@ -52,8 +54,9 @@ TagCategory JsonStorage::categoryFromJson(const QJsonObject& obj) {
     TagCategory cat;
     cat.id           = obj["id"].toString();
     cat.name         = obj["name"].toString();
-    cat.uniformColor = obj["uniformColor"].toBool(false);
-    cat.color        = QColor(obj["color"].toString("#00b4a0"));
+    cat.uniformColor             = obj["uniformColor"].toBool(false);
+    cat.color                    = QColor(obj["color"].toString("#00b4a0"));
+    cat.inheritColorToChildren   = obj["inheritColorToChildren"].toBool(false);
 
     QJsonArray tags = obj["tags"].toArray();
     for (const auto& t : tags) cat.tags.append(t.toString());

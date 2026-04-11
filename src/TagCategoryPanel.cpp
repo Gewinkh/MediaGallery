@@ -392,9 +392,31 @@ void CategoryNode::onSetUniformColor() {
     const QString catId = m_cat.id;
     const QColor  cur   = m_cat.color;
     TagManager*   mgr   = m_panel->m_mgr;
-    QColor c = QColorDialog::getColor(cur, this, "Einheitsfarbe");
+
+    QColor c = QColorDialog::getColor(cur, this, "Einheitsfarbe wählen");
     if (!c.isValid()) return;
-    mgr->setCategoryUniformColor(catId, true, c);
+
+    // Ask whether subcategories should inherit the color
+    bool inherit = false;
+    if (!m_cat.children.isEmpty() || true) {
+        // Always offer the option so it can be pre-set for future subcategories
+        QMessageBox msgBox(this);
+        msgBox.setWindowTitle("Farbe vererben");
+        msgBox.setText("Sollen alle Unterkategorien (jetzt und neue) dieselbe Farbe übernehmen?");
+        msgBox.setIcon(QMessageBox::Question);
+        msgBox.setStyleSheet(
+            "QMessageBox { background: #1a2830; color: white; }"
+            "QMessageBox QLabel { color: white; }"
+            "QPushButton { background: rgba(0,180,160,0.25); border: 1px solid rgba(0,180,160,0.5);"
+            "  border-radius: 5px; color: #00c8b4; padding: 5px 14px; }"
+            "QPushButton:hover { background: rgba(0,180,160,0.45); }");
+        QPushButton* yesBtn = msgBox.addButton("Ja, vererben", QMessageBox::YesRole);
+        msgBox.addButton("Nein", QMessageBox::NoRole);
+        msgBox.exec();
+        inherit = (msgBox.clickedButton() == yesBtn);
+    }
+
+    mgr->setCategoryUniformColor(catId, true, c, inherit);
 }
 
 void CategoryNode::onClearUniformColor() {
@@ -403,12 +425,21 @@ void CategoryNode::onClearUniformColor() {
 }
 
 void CategoryNode::onAddSubcategory() {
-    const QString catId = m_cat.id;
-    TagManager*   mgr   = m_panel->m_mgr;
+    const QString catId           = m_cat.id;
+    const bool    inheritActive   = m_cat.inheritColorToChildren;
+    const QColor  inheritedColor  = m_cat.color;
+    TagManager*   mgr             = m_panel->m_mgr;
     bool ok;
     QString n = QInputDialog::getText(this, "Neue Unterkategorie", "Name:", QLineEdit::Normal, "", &ok);
     if (!ok || n.trimmed().isEmpty()) return;
-    mgr->addSubcategory(catId, TagCategory::create(n.trimmed()));
+
+    TagCategory sub = TagCategory::create(n.trimmed());
+    // If the parent has color-inheritance active, pre-set the new subcategory's color
+    if (inheritActive) {
+        sub.uniformColor = true;
+        sub.color        = inheritedColor;
+    }
+    mgr->addSubcategory(catId, sub);
 }
 
 void CategoryNode::onAddTag() {

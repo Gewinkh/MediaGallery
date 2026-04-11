@@ -102,13 +102,29 @@ void TagManager::deleteCategory(const QString& id) {
     emit categoriesChanged();
 }
 
-void TagManager::setCategoryUniformColor(const QString& id, bool uniform, const QColor& color) {
+void TagManager::setCategoryUniformColor(const QString& id, bool uniform, const QColor& color,
+                                         bool inheritToChildren) {
     TagCategory* cat = findById(m_storage->categoriesRef(), id);
     if (!cat) return;
     cat->uniformColor = uniform;
-    if (uniform) cat->color = color;
+    cat->inheritColorToChildren = uniform && inheritToChildren;
+    if (uniform) {
+        cat->color = color;
+        if (inheritToChildren)
+            applyColorToChildren(cat->children, color);
+    }
     m_storage->saveCurrentFolder();
     emit categoriesChanged();
+}
+
+void TagManager::applyColorToChildren(QList<TagCategory>& children, const QColor& color) {
+    for (auto& child : children) {
+        child.uniformColor = true;
+        child.color = color;
+        // Keep or reset inheritColorToChildren on child — children inherit but
+        // don't automatically re-propagate unless explicitly set.
+        applyColorToChildren(child.children, color);
+    }
 }
 
 void TagManager::addTagToCategory(const QString& catId, const QString& tag) {
@@ -198,6 +214,10 @@ QColor TagManager::categoryColor(const QString& id) const {
     const TagCategory* cat = findById(m_storage->categoriesRef(), id);
     if (cat && cat->uniformColor) return cat->color;
     return QColor(0, 180, 160); // default teal
+}
+
+const TagCategory* TagManager::categoryById(const QString& id) const {
+    return findById(m_storage->categoriesRef(), id);
 }
 
 bool TagManager::removeById(QList<TagCategory>& list, const QString& id) {

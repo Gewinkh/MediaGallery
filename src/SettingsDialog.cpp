@@ -424,16 +424,79 @@ void SettingsDialog::addCategoryBlock(QVBoxLayout* lay, TagCategory& cat, int de
         hLay->addWidget(badge);
     }
 
-    // Color button
+    // Color button + uniformColor toggle
     auto* colorBtn = new ColorPickerButton(c, headerRow);
     colorBtn->setFixedSize(22, 22);
     colorBtn->setToolTip("Farbe ändern");
     QString catId = cat.id;
     bool uni = cat.uniformColor;
-    connect(colorBtn, &ColorPickerButton::colorChanged, this, [this, catId](const QColor& nc){
-        // Immer uniformColor=true setzen — der Nutzer wählt bewusst eine Einheitsfarbe
-        m_tagMgr->setCategoryUniformColor(catId, true, nc);
+    bool inh = cat.inheritColorToChildren;
+
+    // Toggle: "Einheitliche Farbe"
+    auto* uniToggle = new QToolButton(headerRow);
+    uniToggle->setText("⬤");
+    uniToggle->setFixedSize(22, 22);
+    uniToggle->setCheckable(true);
+    uniToggle->setChecked(uni);
+    uniToggle->setToolTip(uni ? "Einheitliche Farbe aktiv – klicken zum Deaktivieren"
+                               : "Einheitliche Farbe aktivieren");
+    auto uniToggleStyle = [uniToggle](bool active) {
+        uniToggle->setToolTip(active ? "Einheitliche Farbe aktiv – klicken zum Deaktivieren"
+                                     : "Einheitliche Farbe aktivieren");
+        uniToggle->setStyleSheet(active
+            ? "QToolButton { background: rgba(0,180,160,0.35); border: 1px solid rgba(0,180,160,0.7);"
+              "border-radius: 5px; color: #00c8b4; font-size: 9px; }"
+              "QToolButton:hover { background: rgba(0,180,160,0.55); }"
+            : "QToolButton { background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.15);"
+              "border-radius: 5px; color: rgba(150,180,175,0.5); font-size: 9px; }"
+              "QToolButton:hover { background: rgba(255,255,255,0.12); color: #00c8b4; }");
+    };
+    uniToggleStyle(uni);
+
+    connect(uniToggle, &QToolButton::toggled, this, [this, catId, uniToggle, colorBtn, uniToggleStyle](bool on) {
+        uniToggleStyle(on);
+        if (on) {
+            // Activate: pick color and ask about inheritance
+            QColor cur = colorBtn->color().isValid() ? colorBtn->color() : QColor(0, 180, 160);
+            QColor c2 = QColorDialog::getColor(cur, this, "Einheitsfarbe wählen");
+            if (!c2.isValid()) { uniToggle->setChecked(false); return; }
+            colorBtn->setColor(c2);
+
+            // Ask about inheritance
+            QMessageBox msgBox(this);
+            msgBox.setWindowTitle("Farbe vererben");
+            msgBox.setText("Sollen alle Unterkategorien (jetzt und neue) dieselbe Farbe übernehmen?");
+            msgBox.setIcon(QMessageBox::Question);
+            msgBox.setStyleSheet(
+                "QMessageBox { background: #1a2830; color: white; }"
+                "QMessageBox QLabel { color: white; }"
+                "QPushButton { background: rgba(0,180,160,0.25); border: 1px solid rgba(0,180,160,0.5);"
+                "  border-radius: 5px; color: #00c8b4; padding: 5px 14px; }"
+                "QPushButton:hover { background: rgba(0,180,160,0.45); }");
+            QPushButton* yesBtn = msgBox.addButton("Ja, vererben", QMessageBox::YesRole);
+            msgBox.addButton("Nein", QMessageBox::NoRole);
+            msgBox.exec();
+            bool inherit = (msgBox.clickedButton() == yesBtn);
+            m_tagMgr->setCategoryUniformColor(catId, true, c2, inherit);
+        } else {
+            m_tagMgr->setCategoryUniformColor(catId, false, {});
+        }
     });
+
+    connect(colorBtn, &ColorPickerButton::colorChanged, this, [this, catId, uniToggle](const QColor& nc){
+        // Color changed via picker: apply with current uniformColor + inherit state
+        const bool currentUni = uniToggle->isChecked();
+        if (!currentUni) {
+            // Activate uniformColor implicitly when user picks a color
+            uniToggle->setChecked(true); // triggers toggled → will open inherit dialog
+            return;
+        }
+        // uniformColor already on: just update color, preserve inherit flag
+        const TagCategory* cat2 = m_tagMgr->categoryById(catId);
+        bool currentInherit = cat2 ? cat2->inheritColorToChildren : false;
+        m_tagMgr->setCategoryUniformColor(catId, true, nc, currentInherit);
+    });
+    hLay->addWidget(uniToggle);
     hLay->addWidget(colorBtn);
 
     // Rename button
@@ -473,9 +536,16 @@ void SettingsDialog::addCategoryBlock(QVBoxLayout* lay, TagCategory& cat, int de
             QLineEdit::Normal, "", &ok);
         if (!ok || n.trimmed().isEmpty()) return;
         TagCategory sub = TagCategory::create(n.trimmed());
-        QColor col = QColorDialog::getColor(QColor(0, 180, 160), this,
-            Strings::get(StringKey::SettingsSubColorTitle));
-        if (col.isValid()) sub.color = col;
+        // If parent has color-inheritance active, skip color dialog and inherit
+        const TagCategory* parentCat = m_tagMgr->categoryById(catId);
+        if (parentCat && parentCat->inheritColorToChildren) {
+            sub.uniformColor = true;
+            sub.color        = parentCat->color;
+        } else {
+            QColor col = QColorDialog::getColor(QColor(0, 180, 160), this,
+                Strings::get(StringKey::SettingsSubColorTitle));
+            if (col.isValid()) sub.color = col;
+        }
         m_tagMgr->addSubcategory(catId, sub);
     });
     hLay->addWidget(subBtn);

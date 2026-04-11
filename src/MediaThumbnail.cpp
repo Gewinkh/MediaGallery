@@ -12,6 +12,7 @@
 #include <QPushButton>
 #include <QApplication>
 #include <QScreen>
+#include <QCursor>
 
 MediaThumbnail::MediaThumbnail(TagManager* tagMgr, QWidget* parent)
     : QWidget(parent), m_tagMgr(tagMgr)
@@ -122,23 +123,44 @@ void MediaThumbnail::setupUi() {
     );
 }
 
+// Returns true if the mouse cursor is currently over the tooltip panel or any of its children.
+bool MediaThumbnail::mouseOverPanel() const {
+    if (!m_tagTooltipPanel) return false;
+    QRect panelRect = QRect(m_tagTooltipPanel->mapToGlobal(QPoint(0, 0)),
+                            m_tagTooltipPanel->size());
+    return panelRect.contains(QCursor::pos());
+}
+
+void MediaThumbnail::scheduleHide() {
+    if (!m_tagTooltipHideTimer) {
+        m_tagTooltipHideTimer = new QTimer(this);
+        m_tagTooltipHideTimer->setSingleShot(true);
+        m_tagTooltipHideTimer->setInterval(300);
+        connect(m_tagTooltipHideTimer, &QTimer::timeout, this, [this]() {
+            // Only hide if mouse is truly outside both label and panel
+            QPoint gp = QCursor::pos();
+            QRect labelRect = QRect(m_tagsHoverLabel->mapToGlobal(QPoint(0, 0)),
+                                    m_tagsHoverLabel->size());
+            if (!mouseOverPanel() && !labelRect.contains(gp))
+                hideTagTooltip();
+            else
+                scheduleHide(); // keep polling until mouse truly leaves
+        });
+    }
+    m_tagTooltipHideTimer->start();
+}
+
 bool MediaThumbnail::eventFilter(QObject* obj, QEvent* ev) {
     if (obj == m_tagsHoverLabel) {
         if (ev->type() == QEvent::Enter) {
-            // Show tag tooltip panel
             if (!m_tagTooltipPanel) showTagTooltip();
+            if (m_tagTooltipHideTimer) m_tagTooltipHideTimer->stop();
         }
         if (ev->type() == QEvent::Leave) {
-            // Delay close so user can move to panel
-            if (!m_tagTooltipHideTimer) {
-                m_tagTooltipHideTimer = new QTimer(this);
-                m_tagTooltipHideTimer->setSingleShot(true);
-                m_tagTooltipHideTimer->setInterval(350);
-                connect(m_tagTooltipHideTimer, &QTimer::timeout, this, &MediaThumbnail::hideTagTooltip);
-            }
-            m_tagTooltipHideTimer->start();
+            scheduleHide();
         }
     }
+
     // Click on tag row → remove tag
     if (ev->type() == QEvent::MouseButtonRelease) {
         QVariant fileName = obj->property("tagRemoveFileName");
@@ -150,23 +172,22 @@ bool MediaThumbnail::eventFilter(QObject* obj, QEvent* ev) {
             return true;
         }
     }
-    // Hover over "+ Tag hinzufügen" opens the tag dropdown
+
+    // Hover over "+ Tag hinzufügen" — stop hide timer, open dropdown
     if (m_addHoverBtn && obj == m_addHoverBtn && ev->type() == QEvent::Enter) {
-        hideTagTooltip();
+        if (m_tagTooltipHideTimer) m_tagTooltipHideTimer->stop();
         m_tagBar->showTagDropdownAnchoredAt(m_tagsHoverLabel);
     }
+
+    // Panel: stop timer on enter; schedule hide on leave.
+    // (Leave feuert auch beim Wechsel zu Child-Widgets, daher kein direktes hide.)
     if (m_tagTooltipPanel && obj == m_tagTooltipPanel) {
-        if (ev->type() == QEvent::Enter  && m_tagTooltipHideTimer) m_tagTooltipHideTimer->stop();
-        if (ev->type() == QEvent::Leave) {
-            if (!m_tagTooltipHideTimer) {
-                m_tagTooltipHideTimer = new QTimer(this);
-                m_tagTooltipHideTimer->setSingleShot(true);
-                m_tagTooltipHideTimer->setInterval(200);
-                connect(m_tagTooltipHideTimer, &QTimer::timeout, this, &MediaThumbnail::hideTagTooltip);
-            }
-            m_tagTooltipHideTimer->start();
-        }
+        if (ev->type() == QEvent::Enter && m_tagTooltipHideTimer)
+            m_tagTooltipHideTimer->stop();
+        if (ev->type() == QEvent::Leave)
+            scheduleHide();
     }
+
     return QWidget::eventFilter(obj, ev);
 }
 

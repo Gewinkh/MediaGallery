@@ -10,6 +10,7 @@ struct TagCategory {
     QString id;          // UUID, stable across renames
     QString name;
     bool uniformColor = false;
+    bool inheritColorToChildren = false;  // propagate color to all subcategories
     QColor color { 100, 180, 160 };
     QStringList tags;                  // tags directly in this category
     QStringList files;                 // file names (media) directly in this category

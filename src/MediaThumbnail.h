@@ -71,5 +71,7 @@ private:
     void updateCompactMode();
     void showTagTooltip();
     void hideTagTooltip();
+    void scheduleHide();
+    bool mouseOverPanel() const;
     static QString formatSize(qint64 bytes);
 };

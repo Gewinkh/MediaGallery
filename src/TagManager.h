@@ -33,10 +33,12 @@ public:
     void addSubcategory(const QString& parentId, const TagCategory& sub);
     void renameCategory(const QString& id, const QString& newName);
     void deleteCategory(const QString& id);
-    void setCategoryUniformColor(const QString& id, bool uniform, const QColor& color);
+    void setCategoryUniformColor(const QString& id, bool uniform, const QColor& color,
+                                 bool inheritToChildren = false);
     // Returns the effective display color for a category (uniform color if set,
     // or the default teal). Useful for dropdowns that need a live color lookup.
     QColor categoryColor(const QString& id) const;
+    const TagCategory* categoryById(const QString& id) const;
 
     // Tag <-> category membership
     void addTagToCategory(const QString& catId, const QString& tag);
@@ -65,4 +67,5 @@ private:
     static const TagCategory* findById(const QList<TagCategory>& list, const QString& id);
     static bool         removeById(QList<TagCategory>& list, const QString& id);
     static QStringList  allTagsInTree(const QList<TagCategory>& list);
+    static void         applyColorToChildren(QList<TagCategory>& children, const QColor& color);
 };
