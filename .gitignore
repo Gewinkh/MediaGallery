@@ -17,6 +17,7 @@ _deps/
 *.so
 *.dylib
 *.app/
+*.zip
 
 *.o
 *.obj
