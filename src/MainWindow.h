@@ -19,9 +19,9 @@ class ISettings;
 class MainWindow : public QMainWindow {
     Q_OBJECT
 public:
-    // ISettings and FolderService are owned externally (by main); injected here.
+    // ISettings, FolderService and JsonStorage are owned externally (by main); injected here.
     explicit MainWindow(ISettings& settings, FolderService& folderService,
-                        QWidget* parent = nullptr);
+                        JsonStorage& storage, QWidget* parent = nullptr);
     ~MainWindow();
 
 protected:
@@ -50,9 +50,9 @@ private:
     ISettings&     m_settings;
     FolderService& m_folderService;
 
-    // Owned storage / logic (lifetime tied to MainWindow)
+    // Non-owning pointer to the shared JsonStorage (lifetime managed by main())
     JsonStorage* m_storage;
-    TagManager*  m_tagMgr;
+    TagManager*  m_tagMgr;  // owned by MainWindow
 
     // UI
     QStackedWidget* m_stack;

@@ -127,6 +127,18 @@ void JsonStorage::loadFolder(const QString& folderPath) {
                 m_tagColors[it.key()] = QColor(it.value().toString());
     }
 
+    // ── Custom dates ──────────────────────────────────────────────────────────
+    if (root.contains("dates")) {
+        QJsonObject dates = root["dates"].toObject();
+        for (auto it = dates.begin(); it != dates.end(); ++it) {
+            QDateTime dt = QDateTime::fromString(it.value().toString(), Qt::ISODate);
+            if (dt.isValid()) {
+                m_fileMeta[it.key()].customDate    = dt;
+                m_fileMeta[it.key()].hasCustomDate = true;
+            }
+        }
+    }
+
     // ── Categories ────────────────────────────────────────────────────────────
     QJsonArray cats = root["categories"].toArray();
     for (const auto& c : cats) m_categories.append(categoryFromJson(c.toObject()));
@@ -169,6 +181,15 @@ void JsonStorage::saveFolder(const QString& folderPath) {
         tagsObj[tag] = tagObj;
     }
     root["tags"] = tagsObj;
+
+    // ── Custom dates: { "filename": "ISO8601" } ───────────────────────────────
+    QJsonObject datesObj;
+    for (auto it = m_fileMeta.cbegin(); it != m_fileMeta.cend(); ++it) {
+        if (it.value().hasCustomDate)
+            datesObj[it.key()] = it.value().customDate.toString(Qt::ISODate);
+    }
+    if (!datesObj.isEmpty())
+        root["dates"] = datesObj;
 
     // ── Categories ────────────────────────────────────────────────────────────
     QJsonArray cats;

@@ -17,7 +17,7 @@ find_package(Qt6 6.4 REQUIRED COMPONENTS
 )
 
 set(SOURCES
-    src/main.cpp
+    main.cpp
     src/MainWindow.cpp
     src/MainWindow.h
     src/ISettings.h

@@ -23,12 +23,12 @@
 #include "AppSettings.h"
 
 MainWindow::MainWindow(ISettings& settings, FolderService& folderService,
-                       QWidget* parent)
+                       JsonStorage& storage, QWidget* parent)
     : QMainWindow(parent)
     , m_settings(settings)
     , m_folderService(folderService)
 {
-    m_storage = new JsonStorage(this);
+    m_storage = &storage;  // use the shared instance from main()
     m_tagMgr  = new TagManager(m_storage, this);
 
     setupUi();
