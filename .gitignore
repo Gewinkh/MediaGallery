@@ -1,4 +1,5 @@
 build/
+py/
 out/
 cmake-build-*/
 
