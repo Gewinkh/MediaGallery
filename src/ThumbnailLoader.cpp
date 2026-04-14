@@ -24,8 +24,11 @@ static QString cacheDir() {
 }
 
 static QString cacheKey(const QString& path, const QSize& size) {
+    // Include last-modified timestamp so edited/replaced files get fresh thumbnails
+    qint64 mtime = QFileInfo(path).lastModified().toMSecsSinceEpoch();
     QByteArray raw = (path + QChar('|') + QString::number(size.width())
-                      + QChar('x') + QString::number(size.height())).toUtf8();
+                      + QChar('x') + QString::number(size.height())
+                      + QChar('|') + QString::number(mtime)).toUtf8();
     return cacheDir() + "/" +
            QCryptographicHash::hash(raw, QCryptographicHash::Md5).toHex() + ".jpg";
 }
@@ -36,7 +39,8 @@ ThumbnailLoader::ThumbnailLoader(QObject* parent)
     : QObject(parent)
     , m_pool(new QThreadPool(this))
 {
-    int threads = qMax(4, QThread::idealThreadCount());
+    // Use all available cores but cap at 8 to avoid thrashing on large folders
+    int threads = qMin(8, qMax(2, QThread::idealThreadCount()));
     m_pool->setMaxThreadCount(threads);
     m_pool->setExpiryTimeout(30000);
 }
@@ -46,27 +50,34 @@ ThumbnailLoader::~ThumbnailLoader() {
 }
 
 void ThumbnailLoader::requestThumbnail(const QString& filePath, const QSize& size, int index) {
-    // Check disk cache synchronously (just a stat + pixmap load - very fast)
-    QString cached = cacheKey(filePath, size);
-    if (QFileInfo::exists(cached)) {
-        QPixmap pix(cached);
-        if (!pix.isNull()) {
-            emit thumbnailReady(index, filePath, pix);
+    // ── In-memory cache: instant delivery for recently viewed thumbnails ──────
+    {
+        QMutexLocker lk(&m_mutex);
+        auto it = m_memCache.find(filePath);
+        if (it != m_memCache.end()) {
+            emit thumbnailReady(index, filePath, it.value());
             return;
         }
+        // Already queued – don't double-submit
+        if (m_pending.contains(filePath)) return;
+        m_pending.insert(filePath);
     }
 
-    QMutexLocker lock(&m_mutex);
-    if (m_pending.contains(filePath)) return;
-    m_pending.insert(filePath);
-    lock.unlock();
-
+    // Disk cache check + actual decode happen on the thread pool (non-blocking UI)
     auto* task = new ThumbnailTask(filePath, size, index);
     task->setAutoDelete(true);
-    connect(task, &ThumbnailTask::done, this, [this](int idx, const QString& path, const QPixmap& pix) {
-        QMutexLocker lk(&m_mutex);
-        m_pending.remove(path);
-        lk.unlock();
+    connect(task, &ThumbnailTask::done, this,
+            [this](int idx, const QString& path, const QPixmap& pix) {
+        {
+            QMutexLocker lk(&m_mutex);
+            m_pending.remove(path);
+            if (!pix.isNull()) {
+                // Keep at most 200 entries in memory cache (LRU-lite: just cap size)
+                if (m_memCache.size() >= 200)
+                    m_memCache.erase(m_memCache.begin());
+                m_memCache.insert(path, pix);
+            }
+        }
         if (pix.isNull())
             emit thumbnailFailed(idx, path);
         else
@@ -79,6 +90,7 @@ void ThumbnailLoader::cancelAll() {
     m_pool->clear();
     QMutexLocker lock(&m_mutex);
     m_pending.clear();
+    // Keep mem cache — still valid for re-display after filter changes
 }
 
 // ---- ThumbnailTask ----
@@ -86,10 +98,20 @@ void ThumbnailLoader::cancelAll() {
 ThumbnailTask::ThumbnailTask(const QString& path, const QSize& size, int index)
     : m_path(path), m_size(size), m_index(index)
 {
-    setAutoDelete(false);
+    setAutoDelete(true);   // pool owns lifetime (consistent with requestThumbnail)
 }
 
 void ThumbnailTask::run() {
+    // ── Disk cache hit: skip decode entirely ─────────────────────────────────
+    QString cachePath = cacheKey(m_path, m_size);
+    if (QFileInfo::exists(cachePath)) {
+        QPixmap cached(cachePath);
+        if (!cached.isNull()) {
+            emit done(m_index, m_path, cached);
+            return;
+        }
+    }
+
     MediaType t = MediaItem::detectType(m_path);
     QPixmap pix;
 
@@ -100,9 +122,8 @@ void ThumbnailTask::run() {
     else if (t == MediaType::Audio)
         pix = generateAudioThumbnail(m_path, m_size);
 
-    if (!pix.isNull()) {
-        pix.save(cacheKey(m_path, m_size), "JPG", 85);
-    }
+    if (!pix.isNull())
+        pix.save(cachePath, "JPG", 85);
 
     emit done(m_index, m_path, pix);  // null pixmap signals failure
 }

@@ -32,6 +32,7 @@ private:
     QThreadPool* m_pool;
     QMutex m_mutex;
     QSet<QString> m_pending;
+    QHash<QString, QPixmap> m_memCache;  // in-memory cache (path → pixmap)
 };
 
 class ThumbnailTask : public QObject, public QRunnable {

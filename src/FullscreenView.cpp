@@ -62,6 +62,18 @@ FullscreenView::FullscreenView(TagManager* tagMgr, QWidget* parent)
     });
     topLay->addWidget(m_dateEditBtn);
 
+    m_deleteBtn = new QToolButton(m_topBar);
+    m_deleteBtn->setText("🗑");
+    m_deleteBtn->setStyleSheet(
+        "QToolButton { background: rgba(180,40,40,0.35); border: 1px solid rgba(200,60,60,0.5);"
+        "border-radius: 6px; font-size: 16px; padding: 3px 6px; }"
+        "QToolButton:hover { background: rgba(220,50,50,0.65); }");
+    m_deleteBtn->setToolTip(tr("Medium löschen"));
+    connect(m_deleteBtn, &QToolButton::clicked, this, [this]() {
+        emit deleteMediaRequested(m_currentGlobalIndex);
+    });
+    topLay->addWidget(m_deleteBtn);
+
     // --- Image label ---
     m_imageLabel = new QLabel(this);
     m_imageLabel->setAlignment(Qt::AlignCenter);
@@ -494,6 +506,7 @@ void FullscreenView::retranslate() {
     m_backBtn->setText(Strings::get(StringKey::FullscreenBack));
     m_nameEdit->setPlaceholderText(Strings::get(StringKey::FullscreenFilenamePlaceholder));
     m_dateEditBtn->setToolTip(Strings::get(StringKey::FullscreenEditDate));
+    m_deleteBtn->setToolTip(tr("Medium löschen"));
     m_prevBtn->setText(Strings::get(StringKey::FullscreenPrev));
     m_randomBtn->setText(Strings::get(StringKey::FullscreenRandom));
     m_nextBtn->setText(Strings::get(StringKey::FullscreenNext));

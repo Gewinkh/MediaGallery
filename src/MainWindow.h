@@ -40,6 +40,7 @@ private slots:
     void onNameChanged(int globalIndex, const QString& name);
     void onTagsModified(int globalIndex, const QStringList& tags);
     void onEditDateRequested(int globalIndex, bool focusDaySection = false);
+    void onDeleteMediaRequested(int globalIndex);
     void applyFilter();
     void showSettings();
     void applyTheme();

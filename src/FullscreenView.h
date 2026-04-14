@@ -36,6 +36,7 @@ signals:
     void applyLastTagsRequested(int globalIndex);
     void applyLastCategoriesRequested(int globalIndex);
     void editDateWithDayFocusRequested(int globalIndex);
+    void deleteMediaRequested(int globalIndex);
 
 protected:
     void wheelEvent(QWheelEvent* e) override;
@@ -90,6 +91,7 @@ private:
     TagBar* m_tagBar;
     QLabel* m_infoLabel;
     QToolButton* m_dateEditBtn;
+    QToolButton* m_deleteBtn;
     TagManager* m_tagMgr;
 
     QTimer* m_barHideTimer;

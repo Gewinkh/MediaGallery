@@ -7,20 +7,60 @@ Gebaut mit **C++20** und **Qt 6.4+**.
 
 ## Funktionen
 
-- **Bildformate**: JPG, PNG, GIF, BMP, WebP, TIFF, HEIC, AVIF, RAW (CR2, NEF, ARW, DNG), SVG, …
-- **Videoformate**: MP4, MKV, AVI, MOV, WMV, WebM, M4V, MPEG, 3GP, …
+### Medienformate
+- **Bilder**: JPG, PNG, GIF, BMP, WebP, TIFF, HEIC, HEIF, AVIF, SVG, ICO, RAW (CR2, NEF, ARW, DNG)
+- **Videos**: MP4, MKV, AVI, MOV, WMV, WebM, M4V, MPEG, 3GP, OGV, TS, M2TS, VOB, RMVB, ASF, DIVX
+- **Audio**: MP3, FLAC, WAV, OGG, AAC, M4A, WMA, Opus, AIFF, APE, ALAC, MIDI u. v. m.
+
+### Galerie & Ansicht
 - **Rasteransicht**: 1–25 Spalten, per `Shift+Scroll` zoomen
-- **Vollbild-Galerie**: Vor/Zurück, Zufalls-Modus, Zoom bis 10×
-- **Tags**: Pro-Ordner, beliebig viele, Farben, kombinierbar (UND/ODER)
-- **Sortierung**: Datum, Name, Tags, Dateigröße (auf-/absteigend)
-- **Filter**: Nur Bilder, nur Videos, nach Tags
-- **Video-Wiedergabe**: Nativ (Qt Multimedia) oder externer Player
-- **Datum-Editor**: Benutzerdefiniertes Datum pro Datei (wird in JSON gespeichert)
-- **JSON-Speicherung**: `<Ordnername>.json` direkt im Zielordner
+- **Vollbild-Galerie**: Vor/Zurück, Zufalls-Modus, Zoom bis 10×, Pan per Maus
+- **Kompaktmodus**: Optionsleiste ein-/ausblendbar (`S`)
+- **Cover-Modus**: Galerie abdecken/aufdecken (`B`)
+- **Live-Ordner-Überwachung**: Neue oder gelöschte Dateien werden automatisch erkannt
+
+### Tags & Kategorien
+- **Tags**: Pro-Ordner, beliebig viele, frei benennbar, farblich kodierbar
+- **Kategorien**: Hierarchische Tag-Kategorien mit optionaler Farbvererbung
+- **Filter-Modi**: ODER, UND, NUR, INKLUSIV – kombinierbar mit Medientyp-Filter
+- **Sortierung**: Datum, Name, Dateigröße (auf-/absteigend)
+
+### Metadaten & Verwaltung
+- **Datum-Editor**: Benutzerdefiniertes Datum pro Datei, wird in JSON persistiert  
+  (Ändert auch den Dateisystem-Timestamp via `utime`)
+- **Medium löschen**: Roter Löschen-Button (🗑) neben dem Datum-Button in der Vollbildansicht —  
+  fragt per Bestätigungsdialog nach (OK-Button oder `Enter`), löscht dann die Datei von der  
+  Festplatte **und** bereinigt alle zugehörigen Metadaten (Tags, Datum, Kategoriezugehörigkeiten) sauber aus der JSON
 - **Umbenennen**: Ändert auch den Dateinamen auf der Festplatte
-- **Sprache**: Deutsch (Standard) / Englisch
-- **Tastenkürzel**: `S` = Optionen ein/aus, `F5` = Neu laden, `Esc` = Zurück
-- **Drag & Drop**: Ordner auf das Fenster ziehen
+- **Drag & Drop**: Ordner oder Mediendateien auf das Fenster ziehen
+- **JSON-Speicherung**: `<Ordnername>.json` direkt im Zielordner (datei-zentriertes Format v2)
+
+### Wiedergabe & UI
+- **Video-Wiedergabe**: Nativ (Qt Multimedia) oder externer Player
+- **Audio-Thumbnails**: Stilisierte Vorschau mit Wellenform-Dekoration und Formatanzeige
+- **Sprache**: Deutsch (Standard) / Englisch (umschaltbar zur Laufzeit)
+- **Themes**: Anpassbare Hintergrund- und Akzentfarbe
+
+---
+
+## Tastenkürzel
+
+| Aktion | Kürzel |
+|--------|--------|
+| Ordner öffnen | `Ctrl+O` |
+| Neu laden / Thumbnails aktualisieren | `F5` / `R` |
+| Optionen ein/aus | `S` |
+| Cover-Modus ein/aus | `B` |
+| Vollbild-Ansicht öffnen | Doppelklick |
+| Nächstes Medium | `→` |
+| Vorheriges Medium | `←` |
+| Zurück zur Galerie | `Esc` |
+| Datum bearbeiten | `D` (Vollbild) |
+| Datum-Editor öffnen | Kalender-Button 📅 (Vollbild) |
+| Medium löschen | Löschen-Button 🗑 (Vollbild) |
+| Grid vergrößern | `Shift + Scroll ↑` |
+| Grid verkleinern | `Shift + Scroll ↓` |
+| Bild zoomen | `Shift + Scroll` (Vollbild) |
 
 ---
 
@@ -67,6 +107,12 @@ Für ältere Ubuntu-Versionen (< 22.04) ohne Qt 6 in den Standardrepos:
 sudo add-apt-repository ppa:ubuntuhandbook1/ppa
 sudo apt update
 sudo apt install qt6-base-dev qt6-multimedia-dev qt6-tools-dev cmake build-essential
+```
+
+Für Videowiedergabe und Video-Thumbnails werden GStreamer-Plugins benötigt:
+
+```bash
+sudo apt install gstreamer1.0-plugins-good gstreamer1.0-plugins-bad gstreamer1.0-libav
 ```
 
 **Fedora / RHEL**
@@ -121,7 +167,7 @@ cmake --build . --parallel
 
 ### Windows – MSVC (Visual Studio 2022)
 
-In der **"x64 Native Tools Command Prompt for VS 2022"**:
+In der **„x64 Native Tools Command Prompt for VS 2022"**:
 
 ```cmd
 mkdir build && cd build
@@ -205,19 +251,35 @@ macdeployqt MediaGallery.app -dmg
 
 ---
 
-## Bedienung
+## JSON-Format
 
-| Aktion | Tastenkürzel |
-|--------|-------------|
-| Optionen ein/aus | `S` |
-| Grid vergrößern | `Shift + Scroll ↑` |
-| Grid verkleinern | `Shift + Scroll ↓` |
-| Bild zoomen | `Shift + Scroll` (Vollbild) |
-| Nächstes Bild | `→` oder Schaltfläche |
-| Vorheriges Bild | `←` oder Schaltfläche |
-| Zurück zur Galerie | `Esc` |
-| Ordner öffnen | `Ctrl+O` |
-| Neu laden | `F5` |
+Metadaten werden als `<Ordnername>.json` direkt im geöffneten Ordner gespeichert.  
+Das aktuelle Format (v2) ist datei-zentrisch und minimalistisch:
+
+```json
+{
+  "v": 2,
+  "files": {
+    "foto.jpg": { "t": ["Urlaub", "Kind"], "d": "2024-06-15T14:30:00" },
+    "clip.mp4": { "t": ["Familie"] }
+  },
+  "tagColors": {
+    "Urlaub": "#dc5050",
+    "Kind":   "#50c878"
+  },
+  "categories": [
+    {
+      "id": "...",
+      "name": "Boys",
+      "tags": [],
+      "files": ["foto.jpg"],
+      "children": []
+    }
+  ]
+}
+```
+
+Ältere Dateien im tag-zentrischen Format (v1) werden beim Öffnen automatisch migriert.
 
 ---
 
@@ -227,31 +289,29 @@ macdeployqt MediaGallery.app -dmg
 MediaGallery/
 ├── CMakeLists.txt
 ├── main.cpp
-├── Main.qml
-├── src/
-│   ├── main.cpp
-│   ├── MainWindow.{h,cpp}          # Hauptfenster
-│   ├── GalleryView.{h,cpp}         # Rasteransicht
-│   ├── FullscreenView.{h,cpp}      # Vollbild-Galerie
-│   ├── MediaItem.{h,cpp}           # Datenstruktur
-│   ├── MediaThumbnail.{h,cpp}      # Einzelne Kachel
-│   ├── ThumbnailLoader.{h,cpp}     # Async Thumbnail-Laden
-│   ├── VideoPlayer.{h,cpp}         # Eingebetteter Videoplayer
-│   ├── TagWidget.{h,cpp}           # Tag-Bar / Pill-Widget
-│   ├── TagManager.{h,cpp}          # Tag-Logik
-│   ├── TagCategory.h               # Tag-Kategorien
-│   ├── TagCategoryPanel.{h,cpp}    # Tag-Kategorie-Panel
-│   ├── FilterBar.{h,cpp}           # Filter-/Sortier-Leiste
-│   ├── JsonStorage.{h,cpp}         # JSON-Persistenz
-│   ├── MetadataEditor.{h,cpp}      # Datum-Dialog
-│   ├── SettingsDialog.{h,cpp}      # Einstellungen
-│   ├── ColorPickerButton.{h,cpp}   # Farbwähler-Knopf
-│   ├── AppSettings.{h,cpp}         # Globale Einstellungen
-│   ├── Strings.{h,cpp}             # Übersetzbare Strings
-│   └── Style.{h,cpp}               # Zentrales Stylesheet
-└── translations/
-    ├── mediagallery_de.ts           # Deutsch
-    └── mediagallery_en.ts           # Englisch
+├── README.md
+└── src/
+    ├── MainWindow.{h,cpp}          # Hauptfenster, Ordner-Handling, Löschen-Logik
+    ├── GalleryView.{h,cpp}         # Rasteransicht mit virtuellem Scroll & Live-Watcher
+    ├── FullscreenView.{h,cpp}      # Vollbild-Galerie (Zoom, Pan, Datum, Löschen)
+    ├── MediaItem.{h,cpp}           # Datenstruktur für ein Medium (Pfad, Tags, Datum, Typ)
+    ├── MediaThumbnail.{h,cpp}      # Einzelne Kachel (Thumbnail, Tag-Overlay, Tooltip)
+    ├── ThumbnailLoader.{h,cpp}     # Async Thumbnail-Laden mit Disk- und Memory-Cache
+    ├── VideoPlayer.{h,cpp}         # Eingebetteter Qt-Multimedia-Videoplayer
+    ├── TagWidget.{h,cpp}           # Tag-Bar / Pill-Widget (anzeigen & bearbeiten)
+    ├── TagManager.{h,cpp}          # Tag- und Kategorie-Logik (CRUD, Farben)
+    ├── TagCategory.h               # Rekursive Kategorie-Datenstruktur
+    ├── TagCategoryPanel.{h,cpp}    # Seitenleiste zur Kategorie-Verwaltung
+    ├── FilterBar.{h,cpp}           # Filter- und Sortierleiste
+    ├── JsonStorage.{h,cpp}         # JSON-Persistenz (datei-zentrisch, v2)
+    ├── MetadataEditor.{h,cpp}      # Datum-Dialog (Bearbeiten / Zurücksetzen)
+    ├── FolderService.{h,cpp}       # Ordner öffnen, speichern, letzten Ordner merken
+    ├── SettingsDialog.{h,cpp}      # Einstellungen (Tags, Kategorien, Theme, Sprache)
+    ├── ColorPickerButton.{h,cpp}   # Kompakter Farbwähler-Button
+    ├── AppSettings.{h,cpp}         # Persistente globale Einstellungen (QSettings)
+    ├── ISettings.h                 # Interface für Einstellungen (testbar/mockbar)
+    ├── Strings.{h,cpp}             # Alle UI-Strings (DE/EN, zur Laufzeit umschaltbar)
+    └── Style.{h,cpp}               # Zentrales Stylesheet / Theme-Farben
 ```
 
 ---
@@ -259,9 +319,7 @@ MediaGallery/
 ## Bekannte Einschränkungen
 
 - **RAW-Formate** (CR2, NEF, ARW) benötigen ggf. systemseitige Codec-Unterstützung
-- **HEIC** auf Windows erfordert den HEVC-Codec (Microsoft Store)
-- **Video-Thumbnails** werden über `QMediaPlayer` generiert – kann je nach System variieren
-- Auf **Linux** müssen GStreamer-Plugins für Videowiedergabe installiert sein:
-  ```bash
-  sudo apt install gstreamer1.0-plugins-good gstreamer1.0-plugins-bad gstreamer1.0-libav
-  ```
+- **HEIC/HEIF** auf Windows erfordert den HEVC-Codec (Microsoft Store)
+- **Video-Thumbnails** werden über `QMediaPlayer` generiert – Geschwindigkeit und Unterstützung hängen vom installierten Multimedia-Backend ab
+- Auf **Linux** müssen GStreamer-Plugins für Videowiedergabe installiert sein (siehe oben)
+- Der **Löschen-Vorgang ist unwiderruflich** – die Datei wird direkt von der Festplatte entfernt (kein Papierkorb)

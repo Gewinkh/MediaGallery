@@ -16,6 +16,7 @@
 #include <QDir>
 #include <QFileInfo>
 #include <QApplication>
+#include <QMessageBox>
 #include <utime.h>
 
 // AppSettings is accessed only for signal connections (languageChanged, etc.)
@@ -94,6 +95,8 @@ void MainWindow::setupUi() {
             this, [this](int idx) { onEditDateRequested(idx, false); });
     connect(m_fullscreenView, &FullscreenView::editDateWithDayFocusRequested,
             this, [this](int idx) { onEditDateRequested(idx, true); });
+    connect(m_fullscreenView, &FullscreenView::deleteMediaRequested,
+            this, &MainWindow::onDeleteMediaRequested);
     connect(m_fullscreenView, &FullscreenView::applyLastTagsRequested,
             this, [this](int globalIndex) {
         if (!m_hasLastEditedTags) return;
@@ -381,6 +384,67 @@ void MainWindow::onEditDateRequested(int globalIndex, bool focusDaySection) {
     });
 
     m_metaDialog->open();
+}
+
+void MainWindow::onDeleteMediaRequested(int globalIndex) {
+    auto& items = m_galleryView->allItems();
+    if (globalIndex < 0 || globalIndex >= items.size()) return;
+    const MediaItem& item = items[globalIndex];
+
+    // Confirmation dialog — Enter key accepts (OK is the default button)
+    QMessageBox msgBox(this);
+    msgBox.setWindowTitle(tr("Medium löschen"));
+    msgBox.setText(tr("Möchten Sie \"%1\" wirklich löschen?").arg(item.fileName()));
+    msgBox.setInformativeText(tr("Die Datei wird von der Festplatte entfernt und alle zugehörigen Metadaten werden bereinigt."));
+    msgBox.setIcon(QMessageBox::Warning);
+    QPushButton* okBtn     = msgBox.addButton(tr("Löschen"), QMessageBox::AcceptRole);
+    QPushButton* cancelBtn = msgBox.addButton(tr("Abbrechen"), QMessageBox::RejectRole);
+    msgBox.setDefaultButton(okBtn);
+    Q_UNUSED(cancelBtn);
+    msgBox.setStyleSheet(
+        "QMessageBox { background: #111e24; color: #c8dbd5; }"
+        "QLabel { color: #c8dbd5; }"
+        "QPushButton { background: rgba(0,180,160,0.2); border: 1px solid rgba(0,180,160,0.4);"
+        "border-radius: 6px; color: #00c8b4; padding: 5px 18px; min-width: 80px; }"
+        "QPushButton:hover { background: rgba(0,180,160,0.4); }"
+        "QPushButton[text=\"Löschen\"] { background: rgba(180,40,40,0.3);"
+        "border-color: rgba(200,60,60,0.5); color: #e07878; }"
+        "QPushButton[text=\"Löschen\"]:hover { background: rgba(220,50,50,0.55); }");
+    msgBox.exec();
+
+    if (msgBox.clickedButton() != okBtn) return;
+
+    // ── 1. Remove file from disk ──────────────────────────────────────────────
+    const QString filePath = item.filePath;
+    const QString fileName = item.fileName();
+    if (!QFile::remove(filePath)) {
+        statusBar()->showMessage(tr("Fehler: Datei konnte nicht gelöscht werden."), 4000);
+        return;
+    }
+
+    // ── 2. Clean up JSON metadata ─────────────────────────────────────────────
+    // Remove tags
+    m_storage->setTags(fileName, {});
+    // Remove custom date
+    m_storage->clearCustomDate(fileName);
+    // Remove from all categories
+    const QStringList catIds = m_tagMgr->categoriesForFile(fileName);
+    for (const QString& catId : catIds)
+        m_tagMgr->removeFileFromCategory(catId, fileName);
+
+    // ── 3. Save & refresh ────────────────────────────────────────────────────
+    m_folderService.saveCurrentFolder();
+
+    // Navigate back to gallery before reloading (item is gone)
+    backFromFullscreen();
+
+    const QString currentFolder = m_folderService.currentFolder();
+    m_galleryView->loadFolder(currentFolder);
+    m_storage->applyToItems(m_galleryView->allItems());
+    m_galleryView->refresh();
+    m_filterBar->refreshTagList();
+
+    statusBar()->showMessage(tr("Datei gelöscht: %1").arg(fileName), 3000);
 }
 
 void MainWindow::applyFilter() {
