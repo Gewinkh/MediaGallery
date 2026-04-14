@@ -80,6 +80,16 @@ void MainWindow::setupUi() {
             this, &MainWindow::onNameChanged);
     connect(m_fullscreenView, &FullscreenView::tagsModified,
             this, &MainWindow::onTagsModified);
+    // Track category changes made while in fullscreen view
+    connect(m_tagMgr, &TagManager::categoriesChanged, this, [this]() {
+        if (m_stack->currentWidget() != m_fullscreenView) return;
+        int gi = m_fullscreenView->currentGlobalIndex();
+        if (gi < 0) return;
+        auto& items = m_galleryView->allItems();
+        if (gi >= items.size()) return;
+        m_lastEditedCategories    = m_tagMgr->categoriesForFile(items[gi].fileName());
+        m_hasLastEditedCategories = true;
+    });
     connect(m_fullscreenView, &FullscreenView::editDateRequested,
             this, [this](int idx) { onEditDateRequested(idx, false); });
     connect(m_fullscreenView, &FullscreenView::editDateWithDayFocusRequested,
@@ -94,6 +104,21 @@ void MainWindow::setupUi() {
         m_filterBar->refreshTagList();
         applyFilter();
         m_fullscreenView->refreshTagBar();
+    });
+    connect(m_fullscreenView, &FullscreenView::applyLastCategoriesRequested,
+            this, [this](int globalIndex) {
+        if (!m_hasLastEditedCategories) return;
+        auto& items = m_galleryView->allItems();
+        if (globalIndex < 0 || globalIndex >= items.size()) return;
+        const QString& fileName = items[globalIndex].fileName();
+        // Remove from all existing categories first, then add last ones
+        for (const QString& catId : m_tagMgr->categoriesForFile(fileName))
+            m_tagMgr->removeFileFromCategory(catId, fileName);
+        for (const QString& catId : m_lastEditedCategories)
+            m_tagMgr->addFileToCategory(catId, fileName);
+        m_folderService.saveCurrentFolder();
+        m_fullscreenView->refreshTagBar();
+        statusBar()->showMessage(tr("Kategorien übernommen"), 2000);
     });
 
     m_stack->addWidget(m_galleryPage);
@@ -128,6 +153,29 @@ void MainWindow::setupGalleryPage() {
             this, &MainWindow::onTagsModified);
     connect(m_galleryView, &GalleryView::folderDropped,
             this, [this](const QString& path) { m_folderService.openFolder(path); });
+    connect(m_galleryView, &GalleryView::mediaFilesDropped,
+            this, [this](const QStringList& filePaths) {
+        const QString& currentFolder = m_folderService.currentFolder();
+        if (currentFolder.isEmpty()) {
+            statusBar()->showMessage(tr("Kein Ordner geöffnet – Dateien können nicht hinzugefügt werden."), 4000);
+            return;
+        }
+        int copied = 0, skipped = 0;
+        for (const QString& src : filePaths) {
+            QString destPath = QDir(currentFolder).filePath(QFileInfo(src).fileName());
+            if (QFileInfo::exists(destPath)) { ++skipped; continue; }
+            if (QFile::copy(src, destPath)) ++copied;
+        }
+        if (copied > 0) {
+            statusBar()->showMessage(tr("%1 Datei(en) hinzugefügt.").arg(copied), 3000);
+            m_galleryView->loadFolder(currentFolder);
+            m_storage->applyToItems(m_galleryView->allItems());
+            m_galleryView->refresh();
+            m_filterBar->refreshTagList();
+        }
+        if (skipped > 0)
+            statusBar()->showMessage(tr("%1 Datei(en) übersprungen (bereits vorhanden).").arg(skipped), 3000);
+    });
     connect(m_galleryView, &GalleryView::statusMessage,
             this, [this](const QString& msg) { statusBar()->showMessage(msg, 3000); });
     connect(m_galleryView, &GalleryView::folderChanged,
@@ -284,6 +332,9 @@ void MainWindow::onTagsModified(int globalIndex, const QStringList& tags) {
     m_storage->setTags(item.fileName(), tags);
     m_folderService.saveCurrentFolder();
     m_filterBar->refreshTagList();
+    // Also record categories of this item as "last edited categories"
+    m_lastEditedCategories    = m_tagMgr->categoriesForFile(item.fileName());
+    m_hasLastEditedCategories = true;
     applyFilter();
 }
 
@@ -412,11 +463,54 @@ void MainWindow::dragEnterEvent(QDragEnterEvent* e) {
 }
 
 void MainWindow::dropEvent(QDropEvent* e) {
+    const QString& currentFolder = m_folderService.currentFolder();
+    QStringList copiedFiles;
+    QStringList skippedFiles;
+
     for (const QUrl& url : e->mimeData()->urls()) {
         QString path = url.toLocalFile();
-        if (QFileInfo(path).isDir()) {
+        QFileInfo fi(path);
+
+        if (fi.isDir()) {
+            // Folder drop: open as gallery folder (existing behaviour)
             m_folderService.openFolder(path);
-            break;
+            return;
         }
+
+        // Media file drop: copy into current folder
+        if (!fi.exists()) continue;
+        MediaType t = MediaItem::detectType(path);
+        if (t == MediaType::Unknown) continue;
+
+        if (currentFolder.isEmpty()) {
+            statusBar()->showMessage(tr("Kein Ordner geöffnet – Datei kann nicht hinzugefügt werden."), 4000);
+            continue;
+        }
+
+        QString destPath = QDir(currentFolder).filePath(fi.fileName());
+        if (QFileInfo::exists(destPath)) {
+            skippedFiles << fi.fileName();
+            continue;
+        }
+
+        if (QFile::copy(path, destPath))
+            copiedFiles << fi.fileName();
+        else
+            statusBar()->showMessage(tr("Fehler beim Kopieren: ") + fi.fileName(), 4000);
+    }
+
+    if (!copiedFiles.isEmpty()) {
+        statusBar()->showMessage(
+            tr("%1 Datei(en) hinzugefügt.").arg(copiedFiles.size()), 3000);
+        // Gallery watcher will pick up the new files automatically,
+        // but trigger an immediate refresh to be safe
+        m_galleryView->loadFolder(currentFolder);
+        m_storage->applyToItems(m_galleryView->allItems());
+        m_galleryView->refresh();
+        m_filterBar->refreshTagList();
+    }
+    if (!skippedFiles.isEmpty()) {
+        statusBar()->showMessage(
+            tr("%1 Datei(en) bereits vorhanden, übersprungen.").arg(skippedFiles.size()), 3000);
     }
 }

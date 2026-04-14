@@ -33,6 +33,7 @@ public:
 
     QStringList   activeTagFilter()         const;  // explicitly selected tag chips
     QStringList   activeCategoryTagFilter() const;  // all tags from active categories
+    QStringList   activeCategoryIds()       const;  // IDs of all active category nodes
     bool          hasCategoryFilter()       const;  // any category active?
     bool          tagFilterAnd()            const;
     TagFilterMode tagFilterMode()           const { return m_filterMode; }

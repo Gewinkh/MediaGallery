@@ -309,6 +309,10 @@ QStringList FilterBar::activeCategoryTagFilter() const {
     return QStringList(result.begin(), result.end());
 }
 
+QStringList FilterBar::activeCategoryIds() const {
+    return QStringList(m_activeCategories.begin(), m_activeCategories.end());
+}
+
 bool FilterBar::hasCategoryFilter() const {
     return !m_activeCategories.isEmpty();
 }

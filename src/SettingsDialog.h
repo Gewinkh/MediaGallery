@@ -40,7 +40,15 @@ private:
     QWidget* buildGeneralTab();
     QWidget* buildTagTab();
     QWidget* buildCategoryTab();
+    QWidget* buildConverterTab();
     QWidget* buildDesignTab();
+
+    // Converter - ready for cleanup
+    void convertTagToSubcategory(const QString& tag,
+                                  const QString& parentCatId,
+                                  const QString& newSubcatName);
+    // Converter - ready for cleanup
+    void convertSubcategoryToTag(const QString& subcatId);
 
     // Recursive helper: builds one category block with all edit controls
     void addCategoryBlock(QVBoxLayout* lay, TagCategory& cat, int depth);

@@ -138,6 +138,10 @@ static const QMap<StringKey, QString> s_de = {
     { StringKey::SettingsSubColorTitle,  "Farbe der Unterkategorie" },
     { StringKey::SettingsTagRenameTitle, "Tag umbenennen" },
     { StringKey::SettingsTagRenameLabel, "Neuer Name:" },
+    { StringKey::SettingsTagAdd,         "+ Tag" },
+    { StringKey::SettingsTagNewTitle,    "Neuer Tag" },
+    { StringKey::SettingsTagNewLabel,    "Tag-Name:" },
+    { StringKey::SettingsTagColorTitle,  "Tag-Farbe" },
 
     { StringKey::SettingsDesignProfileGroup,    "Design-Profile" },
     { StringKey::SettingsCustomThemeEditor,     "Eigener Theme-Editor" },
@@ -198,6 +202,25 @@ static const QMap<StringKey, QString> s_de = {
     { StringKey::SettingsDesignProfileSimpleDesc,   "Neutrales Grau, minimalistisch" },
     { StringKey::SettingsDesignProfileCustom,       "Eigenes" },
     { StringKey::SettingsDesignProfileCustomDesc,   "Deine eigenen Farben" },
+
+    // Converter
+    { StringKey::ConverterTabTitle,       "Konverter" },
+    { StringKey::ConverterTagToSubcat,    "Tag → Unterkategorie" },
+    { StringKey::ConverterSubcatToTag,    "Unterkategorie → Tag" },
+    { StringKey::ConverterSelectTag,      "Tag auswählen:" },
+    { StringKey::ConverterSelectParentCat,"Eltern-Kategorie:" },
+    { StringKey::ConverterSelectSubcat,   "Unterkategorie auswählen:" },
+    { StringKey::ConverterNewSubcatName,  "Name der neuen Unterkategorie:" },
+    { StringKey::ConverterConvert,        "Konvertieren" },
+    { StringKey::ConverterSuccess,        "Konvertierung erfolgreich." },
+    { StringKey::ConverterErrorNoTag,     "Bitte einen Tag auswählen." },
+    { StringKey::ConverterErrorNoCat,     "Bitte eine Eltern-Kategorie auswählen." },
+    { StringKey::ConverterErrorNoSubcat,  "Bitte eine Unterkategorie auswählen." },
+    { StringKey::ConverterErrorNoName,    "Bitte einen Namen eingeben." },
+    { StringKey::ConverterMigrateJson,    "JSON-Daten ins neue Format migrieren" },
+    { StringKey::ConverterMigrateSuccess, "Migration erfolgreich abgeschlossen." },
+    { StringKey::ConverterMigrateError,   "Migration fehlgeschlagen." },
+    { StringKey::ConverterMigrateConfirm, "JSON-Daten neu schreiben? (Backup empfohlen)" },
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -337,6 +360,10 @@ static const QMap<StringKey, QString> s_en = {
     { StringKey::SettingsSubColorTitle,  "Subcategory Color" },
     { StringKey::SettingsTagRenameTitle, "Rename Tag" },
     { StringKey::SettingsTagRenameLabel, "New name:" },
+    { StringKey::SettingsTagAdd,         "+ Tag" },
+    { StringKey::SettingsTagNewTitle,    "New Tag" },
+    { StringKey::SettingsTagNewLabel,    "Tag name:" },
+    { StringKey::SettingsTagColorTitle,  "Tag Color" },
 
     { StringKey::SettingsDesignProfileGroup,    "Design Profiles" },
     { StringKey::SettingsCustomThemeEditor,     "Custom Theme Editor" },
@@ -397,6 +424,25 @@ static const QMap<StringKey, QString> s_en = {
     { StringKey::SettingsDesignProfileSimpleDesc,   "Neutral grey, minimal" },
     { StringKey::SettingsDesignProfileCustom,       "Custom" },
     { StringKey::SettingsDesignProfileCustomDesc,   "Your own colors" },
+
+    // Converter
+    { StringKey::ConverterTabTitle,       "Converter" },
+    { StringKey::ConverterTagToSubcat,    "Tag → Subcategory" },
+    { StringKey::ConverterSubcatToTag,    "Subcategory → Tag" },
+    { StringKey::ConverterSelectTag,      "Select tag:" },
+    { StringKey::ConverterSelectParentCat,"Parent category:" },
+    { StringKey::ConverterSelectSubcat,   "Select subcategory:" },
+    { StringKey::ConverterNewSubcatName,  "New subcategory name:" },
+    { StringKey::ConverterConvert,        "Convert" },
+    { StringKey::ConverterSuccess,        "Conversion successful." },
+    { StringKey::ConverterErrorNoTag,     "Please select a tag." },
+    { StringKey::ConverterErrorNoCat,     "Please select a parent category." },
+    { StringKey::ConverterErrorNoSubcat,  "Please select a subcategory." },
+    { StringKey::ConverterErrorNoName,    "Please enter a name." },
+    { StringKey::ConverterMigrateJson,    "Migrate JSON data to new format" },
+    { StringKey::ConverterMigrateSuccess, "Migration completed successfully." },
+    { StringKey::ConverterMigrateError,   "Migration failed." },
+    { StringKey::ConverterMigrateConfirm, "Rewrite JSON data? (Backup recommended)" },
 };
 
 // ─────────────────────────────────────────────────────────────────────────────

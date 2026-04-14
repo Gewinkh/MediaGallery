@@ -22,6 +22,7 @@ public:
     void setTagsForFile(const QString& fileName, const QStringList& tags);
     QStringList tagsForFile(const QString& fileName) const;
 
+    void createTag(const QString& name, const QColor& color); // create a global tag with a specific color
     void deleteTag(const QString& tag);
     void renameTag(const QString& oldName, const QString& newName);
 

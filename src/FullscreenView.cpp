@@ -83,6 +83,7 @@ FullscreenView::FullscreenView(TagManager* tagMgr, QWidget* parent)
     botLay->setSpacing(10);
 
     m_prevBtn = new QToolButton(m_bottomBar);
+    m_prevBtn->setFocusPolicy(Qt::NoFocus);
     m_prevBtn->setStyleSheet(
         "QToolButton { background: rgba(0,0,0,0.5); border: 1px solid rgba(255,255,255,0.15);"
         "border-radius: 8px; color: #c8dbd5; font-size: 13px; padding: 5px 14px; }"
@@ -91,6 +92,7 @@ FullscreenView::FullscreenView(TagManager* tagMgr, QWidget* parent)
     botLay->addWidget(m_prevBtn);
 
     m_randomBtn = new QToolButton(m_bottomBar);
+    m_randomBtn->setFocusPolicy(Qt::NoFocus);
     m_randomBtn->setCheckable(true);
     m_randomBtn->setStyleSheet(
         "QToolButton { background: rgba(0,0,0,0.5); border: 1px solid rgba(255,255,255,0.15);"
@@ -108,6 +110,7 @@ FullscreenView::FullscreenView(TagManager* tagMgr, QWidget* parent)
     botLay->addWidget(m_tagBar, 1);
 
     m_nextBtn = new QToolButton(m_bottomBar);
+    m_nextBtn->setFocusPolicy(Qt::NoFocus);
     m_nextBtn->setStyleSheet(m_prevBtn->styleSheet());
     connect(m_nextBtn, &QToolButton::clicked, this, &FullscreenView::showNext);
     botLay->addWidget(m_nextBtn);
@@ -275,6 +278,17 @@ void FullscreenView::wheelEvent(QWheelEvent* e) {
 }
 
 void FullscreenView::keyPressEvent(QKeyEvent* e) {
+    // Space: always toggle play/pause – never delegate to focused buttons
+    if (e->key() == Qt::Key_Space) {
+        if (m_videoPlayer->isVisible()) {
+            if (m_videoPlayer->isPlaying())
+                m_videoPlayer->pause();
+            else
+                m_videoPlayer->play();
+        }
+        e->accept();
+        return;
+    }
     // Don't intercept keys when the name editor has focus
     if (m_nameEdit->hasFocus()) {
         QWidget::keyPressEvent(e);
@@ -287,16 +301,6 @@ void FullscreenView::keyPressEvent(QKeyEvent* e) {
         m_videoPlayer->stop();
         emit backRequested();
         break;
-    case Qt::Key_Space:
-        // Toggle play/pause for video/audio
-        if (m_videoPlayer->isVisible()) {
-            if (m_videoPlayer->isPlaying())
-                m_videoPlayer->pause();
-            else
-                m_videoPlayer->play();
-        }
-        e->accept();
-        break;
     case Qt::Key_T:
         // Erstes T: Dropdown öffnen. Zweites T (wenn Dropdown offen): Tags vom letzten übernehmen.
         showBars();
@@ -305,6 +309,17 @@ void FullscreenView::keyPressEvent(QKeyEvent* e) {
             emit applyLastTagsRequested(m_currentGlobalIndex);
         } else {
             m_tagBar->showTagDropdownAnchoredAt(m_dateEditBtn);
+        }
+        e->accept();
+        break;
+    case Qt::Key_K:
+        // Erstes K: Kategorie-Dropdown öffnen. Zweites K (wenn Dropdown offen): Kategorien vom letzten übernehmen.
+        showBars();
+        if (m_tagBar->isDropdownOpen()) {
+            m_tagBar->closeDropdown();
+            emit applyLastCategoriesRequested(m_currentGlobalIndex);
+        } else {
+            m_tagBar->showCategoryDropdownAnchoredAt(m_dateEditBtn);
         }
         e->accept();
         break;
@@ -318,6 +333,53 @@ void FullscreenView::keyPressEvent(QKeyEvent* e) {
 }
 
 void FullscreenView::mousePressEvent(QMouseEvent* e) {
+    // Determine whether any input widget currently has focus
+    bool nameActive = m_nameEdit->hasFocus();
+    // Check if any child of the bottom bar (tag input) has focus
+    QWidget* fw = QApplication::focusWidget();
+    bool tagActive  = fw && m_bottomBar->isAncestorOf(fw);
+    bool inputActive = nameActive || tagActive;
+
+    QPoint globalPos = e->globalPosition().toPoint();
+
+    // ── Click-away for nameEdit ───────────────────────────────────────────────
+    if (nameActive) {
+        QRect editRect(m_nameEdit->mapToGlobal(QPoint(0,0)), m_nameEdit->size());
+        if (!editRect.contains(globalPos)) {
+            onNameEdited();
+            m_nameEdit->clearFocus();
+            setFocus();
+        }
+    }
+
+    // ── Click-away for tag bar ────────────────────────────────────────────────
+    QRect bottomBarRect(m_bottomBar->mapToGlobal(QPoint(0,0)), m_bottomBar->size());
+    if (!bottomBarRect.contains(globalPos)) {
+        if (m_tagBar->isDropdownOpen())
+            m_tagBar->closeDropdown();
+        QWidget* focused = QApplication::focusWidget();
+        if (focused && m_bottomBar->isAncestorOf(focused)) {
+            focused->clearFocus();
+            setFocus();
+        }
+    }
+
+    // ── Video area: click commits any active input AND toggles play/pause ────
+    if (e->button() == Qt::LeftButton && m_videoPlayer->isVisible()) {
+        QRect videoRect = m_videoPlayer->geometry();
+        if (videoRect.contains(e->pos())) {
+            // Always toggle play/pause — input cleanup already happened above
+            if (m_videoPlayer->isPlaying())
+                m_videoPlayer->pause();
+            else
+                m_videoPlayer->play();
+            e->accept();
+            return;
+        }
+    }
+
+    m_inputWasActive = false;
+
     if (e->button() == Qt::LeftButton && m_zoom > 1.01) {
         m_panning = true;
         m_panStart = e->pos();

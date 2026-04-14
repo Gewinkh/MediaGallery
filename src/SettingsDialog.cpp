@@ -66,10 +66,11 @@ SettingsDialog::SettingsDialog(TagManager* tagMgr, QWidget* parent)
     mainLay->setContentsMargins(16, 16, 16, 16);
 
     m_tabs = new QTabWidget(this);
-    m_tabs->addTab(buildGeneralTab(),  Strings::get(StringKey::SettingsTabGeneral));
-    m_tabs->addTab(buildTagTab(),      Strings::get(StringKey::SettingsTabTags));
-    m_tabs->addTab(buildCategoryTab(), Strings::get(StringKey::SettingsTabCategories));
-    m_tabs->addTab(buildDesignTab(),   Strings::get(StringKey::SettingsTabDesign));
+    m_tabs->addTab(buildGeneralTab(),   Strings::get(StringKey::SettingsTabGeneral));
+    m_tabs->addTab(buildTagTab(),       Strings::get(StringKey::SettingsTabTags));
+    m_tabs->addTab(buildCategoryTab(),  Strings::get(StringKey::SettingsTabCategories));
+    m_tabs->addTab(buildConverterTab(), Strings::get(StringKey::ConverterTabTitle));
+    m_tabs->addTab(buildDesignTab(),    Strings::get(StringKey::SettingsTabDesign));
     mainLay->addWidget(m_tabs, 1);
 
     auto* btnBox = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, this);
@@ -139,10 +140,46 @@ QWidget* SettingsDialog::buildTagTab() {
     outerLay->setContentsMargins(8, 8, 8, 8);
     outerLay->setSpacing(6);
 
+    // Hint + "Neuer Tag" button in a row (same pattern as category tab)
+    auto* topRow = new QHBoxLayout;
     auto* hint = new QLabel(Strings::get(StringKey::SettingsTagsHint), m_tagTab);
     hint->setStyleSheet("color: rgba(150,180,175,0.7); font-size: 11px;");
     hint->setWordWrap(true);
-    outerLay->addWidget(hint);
+    topRow->addWidget(hint, 1);
+
+    auto* addTagBtn = new QPushButton(Strings::get(StringKey::SettingsTagAdd), m_tagTab);
+    addTagBtn->setFixedHeight(28);
+    addTagBtn->setStyleSheet(
+        "QPushButton { background: rgba(0,180,160,0.2); border: 1px solid rgba(0,180,160,0.5);"
+        "border-radius: 6px; color: #00c8b4; font-size: 12px; font-weight: bold; padding: 2px 12px; }"
+        "QPushButton:hover { background: rgba(0,180,160,0.4); }");
+    connect(addTagBtn, &QPushButton::clicked, this, [this] {
+        // Step 1: ask for tag name
+        bool ok;
+        QString name = QInputDialog::getText(this,
+            Strings::get(StringKey::SettingsTagNewTitle),
+            Strings::get(StringKey::SettingsTagNewLabel),
+            QLineEdit::Normal, QString(), &ok);
+        if (!ok || name.trimmed().isEmpty()) return;
+        name = name.trimmed();
+
+        // Check for duplicate
+        if (m_tagMgr->allTags().contains(name)) {
+            QMessageBox::warning(this,
+                Strings::get(StringKey::SettingsTagNewTitle),
+                QString("\"%1\" existiert bereits.").arg(name));
+            return;
+        }
+
+        // Step 2: pick color (pre-seeded with a pleasant teal)
+        QColor color = QColorDialog::getColor(QColor(0, 180, 160), this,
+            Strings::get(StringKey::SettingsTagColorTitle));
+        if (!color.isValid()) color = QColor(0, 180, 160);
+
+        m_tagMgr->createTag(name, color);
+    });
+    topRow->addWidget(addTagBtn);
+    outerLay->addLayout(topRow);
 
     auto* sep = new QFrame(m_tagTab);
     sep->setFrameShape(QFrame::HLine);
@@ -653,6 +690,294 @@ void SettingsDialog::addCategoryBlock(QVBoxLayout* lay, TagCategory& cat, int de
         sep->setStyleSheet("color: rgba(40,60,70,0.4);");
         lay->addWidget(sep);
     }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  Converter tab  (Tag ↔ Unterkategorie)
+// ─────────────────────────────────────────────────────────────────────────────
+// Converter - ready for cleanup
+QWidget* SettingsDialog::buildConverterTab() {
+    auto* page = new QWidget(this);
+    auto* outerLay = new QVBoxLayout(page);
+    outerLay->setContentsMargins(10, 10, 10, 10);
+    outerLay->setSpacing(12);
+
+    auto* scroll = new QScrollArea(page);
+    scroll->setWidgetResizable(true);
+    scroll->setFrameShape(QFrame::NoFrame);
+    scroll->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+    auto* inner = new QWidget(scroll);
+    scroll->setWidget(inner);
+    auto* lay = new QVBoxLayout(inner);
+    lay->setSpacing(14);
+    lay->setContentsMargins(2, 2, 2, 8);
+    outerLay->addWidget(scroll, 1);
+
+    // ── Section: Tag → Unterkategorie ────────────────────────────────────────
+    auto* t2sGroup = new QGroupBox(Strings::get(StringKey::ConverterTagToSubcat), inner);
+    auto* t2sLay   = new QVBoxLayout(t2sGroup);
+    t2sLay->setSpacing(8);
+
+    auto* t2sHint = new QLabel(
+        "Wählt einen bestehenden Tag und eine Eltern-Kategorie.\n"
+        "Der Tag wird als neue Unterkategorie angelegt, alle Dateien\n"
+        "die diesen Tag haben werden der Unterkategorie zugeordnet\n"
+        "und der Tag aus der globalen Registry entfernt.", t2sGroup);
+    t2sHint->setStyleSheet("color: rgba(150,180,175,0.7); font-size: 11px;");
+    t2sHint->setWordWrap(true);
+    t2sLay->addWidget(t2sHint);
+
+    // Tag selector
+    auto* t2sTagRow = new QHBoxLayout;
+    auto* t2sTagLbl = new QLabel(Strings::get(StringKey::ConverterSelectTag), t2sGroup);
+    t2sTagLbl->setFixedWidth(180);
+    auto* t2sTagBox = new QComboBox(t2sGroup);
+    t2sTagBox->setStyleSheet(
+        "QComboBox { background: rgba(255,255,255,0.07); border: 1px solid rgba(255,255,255,0.2);"
+        "border-radius: 6px; color: white; padding: 3px 8px; }"
+        "QComboBox QAbstractItemView { background: #1a2830; color: white; selection-background-color: #00b4a0; }");
+    for (const QString& t : m_tagMgr->allTags())
+        t2sTagBox->addItem(t, t);
+    t2sTagRow->addWidget(t2sTagLbl);
+    t2sTagRow->addWidget(t2sTagBox, 1);
+    t2sLay->addLayout(t2sTagRow);
+
+    // Parent category selector
+    auto* t2sCatRow = new QHBoxLayout;
+    auto* t2sCatLbl = new QLabel(Strings::get(StringKey::ConverterSelectParentCat), t2sGroup);
+    t2sCatLbl->setFixedWidth(180);
+    auto* t2sCatBox = new QComboBox(t2sGroup);
+    t2sCatBox->setStyleSheet(t2sTagBox->styleSheet());
+
+    // Populate flat list of all categories (recursive)
+    std::function<void(const QList<TagCategory>&, int)> populateCatBox;
+    populateCatBox = [&](const QList<TagCategory>& cats, int depth) {
+        for (const TagCategory& cat : cats) {
+            QString indent = QString("  ").repeated(depth);
+            t2sCatBox->addItem(indent + cat.name, cat.id);
+            populateCatBox(cat.children, depth + 1);
+        }
+    };
+    populateCatBox(m_tagMgr->categories(), 0);
+
+    t2sCatRow->addWidget(t2sCatLbl);
+    t2sCatRow->addWidget(t2sCatBox, 1);
+    t2sLay->addLayout(t2sCatRow);
+
+    // New subcategory name
+    auto* t2sNameRow = new QHBoxLayout;
+    auto* t2sNameLbl = new QLabel(Strings::get(StringKey::ConverterNewSubcatName), t2sGroup);
+    t2sNameLbl->setFixedWidth(180);
+    auto* t2sNameEdit = new QLineEdit(t2sGroup);
+    t2sNameEdit->setPlaceholderText("(leer = Tag-Name übernehmen)");
+    t2sNameEdit->setStyleSheet(
+        "QLineEdit { background: rgba(255,255,255,0.07); border: 1px solid rgba(255,255,255,0.2);"
+        "border-radius: 6px; color: white; padding: 3px 8px; }");
+    // Auto-fill name from selected tag
+    connect(t2sTagBox, QOverload<int>::of(&QComboBox::currentIndexChanged), this,
+            [t2sTagBox, t2sNameEdit](int) {
+        if (t2sNameEdit->text().isEmpty())
+            t2sNameEdit->setPlaceholderText(t2sTagBox->currentText());
+    });
+    t2sNameRow->addWidget(t2sNameLbl);
+    t2sNameRow->addWidget(t2sNameEdit, 1);
+    t2sLay->addLayout(t2sNameRow);
+
+    auto* t2sConvertBtn = new QPushButton(Strings::get(StringKey::ConverterConvert), t2sGroup);
+    t2sConvertBtn->setFixedHeight(32);
+    t2sConvertBtn->setStyleSheet(
+        "QPushButton { background: rgba(0,180,160,0.25); border: 1px solid rgba(0,180,160,0.5);"
+        "border-radius: 6px; color: #00c8b4; font-weight: bold; padding: 4px 16px; }"
+        "QPushButton:hover { background: rgba(0,180,160,0.45); }");
+    connect(t2sConvertBtn, &QPushButton::clicked, this, [=, this] {
+        QString tag    = t2sTagBox->currentData().toString();
+        QString catId  = t2sCatBox->currentData().toString();
+        QString name   = t2sNameEdit->text().trimmed();
+        if (name.isEmpty()) name = tag;
+
+        if (tag.isEmpty()) {
+            QMessageBox::warning(this, Strings::get(StringKey::ConverterTagToSubcat),
+                                 Strings::get(StringKey::ConverterErrorNoTag));
+            return;
+        }
+        if (catId.isEmpty()) {
+            QMessageBox::warning(this, Strings::get(StringKey::ConverterTagToSubcat),
+                                 Strings::get(StringKey::ConverterErrorNoCat));
+            return;
+        }
+        convertTagToSubcategory(tag, catId, name);
+        QMessageBox::information(this, Strings::get(StringKey::ConverterTagToSubcat),
+                                 Strings::get(StringKey::ConverterSuccess));
+        // Refresh converter combos
+        t2sTagBox->clear();
+        for (const QString& t : m_tagMgr->allTags()) t2sTagBox->addItem(t, t);
+        t2sNameEdit->clear();
+    });
+    t2sLay->addWidget(t2sConvertBtn);
+    lay->addWidget(t2sGroup);
+
+    // ── Section: Unterkategorie → Tag ─────────────────────────────────────────
+    auto* s2tGroup = new QGroupBox(Strings::get(StringKey::ConverterSubcatToTag), inner);
+    auto* s2tLay   = new QVBoxLayout(s2tGroup);
+    s2tLay->setSpacing(8);
+
+    auto* s2tHint = new QLabel(
+        "Wählt eine Unterkategorie.\n"
+        "Deren Name wird als neuer Tag angelegt, alle Dateien\n"
+        "in der Unterkategorie erhalten diesen Tag, und die\n"
+        "Unterkategorie wird anschließend gelöscht.", s2tGroup);
+    s2tHint->setStyleSheet("color: rgba(150,180,175,0.7); font-size: 11px;");
+    s2tHint->setWordWrap(true);
+    s2tLay->addWidget(s2tHint);
+
+    auto* s2tSubRow = new QHBoxLayout;
+    auto* s2tSubLbl = new QLabel(Strings::get(StringKey::ConverterSelectSubcat), s2tGroup);
+    s2tSubLbl->setFixedWidth(180);
+    auto* s2tSubBox = new QComboBox(s2tGroup);
+    s2tSubBox->setStyleSheet(t2sTagBox->styleSheet());
+
+    // Populate only subcategories (depth > 0)
+    std::function<void(const QList<TagCategory>&, int)> populateSubBox;
+    populateSubBox = [&](const QList<TagCategory>& cats, int depth) {
+        for (const TagCategory& cat : cats) {
+            if (depth > 0) {
+                QString indent = QString("  ").repeated(depth - 1);
+                s2tSubBox->addItem(indent + "↳ " + cat.name, cat.id);
+            }
+            populateSubBox(cat.children, depth + 1);
+        }
+    };
+    populateSubBox(m_tagMgr->categories(), 0);
+
+    s2tSubRow->addWidget(s2tSubLbl);
+    s2tSubRow->addWidget(s2tSubBox, 1);
+    s2tLay->addLayout(s2tSubRow);
+
+    auto* s2tConvertBtn = new QPushButton(Strings::get(StringKey::ConverterConvert), s2tGroup);
+    s2tConvertBtn->setFixedHeight(32);
+    s2tConvertBtn->setStyleSheet(t2sConvertBtn->styleSheet());
+    connect(s2tConvertBtn, &QPushButton::clicked, this, [=, this] {
+        QString subcatId = s2tSubBox->currentData().toString();
+        if (subcatId.isEmpty()) {
+            QMessageBox::warning(this, Strings::get(StringKey::ConverterSubcatToTag),
+                                 Strings::get(StringKey::ConverterErrorNoSubcat));
+            return;
+        }
+        convertSubcategoryToTag(subcatId);
+        QMessageBox::information(this, Strings::get(StringKey::ConverterSubcatToTag),
+                                 Strings::get(StringKey::ConverterSuccess));
+        // Rebuild subcat combo inline (populateSubBox is out of scope)
+        s2tSubBox->clear();
+        std::function<void(const QList<TagCategory>&, int)> refill;
+        refill = [&](const QList<TagCategory>& cats, int depth) {
+            for (const TagCategory& cat : cats) {
+                if (depth > 0) {
+                    QString ind = QString("  ").repeated(depth - 1);
+                    s2tSubBox->addItem(ind + "↳ " + cat.name, cat.id);
+                }
+                refill(cat.children, depth + 1);
+            }
+        };
+        refill(m_tagMgr->categories(), 0);
+    });
+    s2tLay->addWidget(s2tConvertBtn);
+    lay->addWidget(s2tGroup);
+
+    // ── Section: JSON-Migration ───────────────────────────────────────────────
+    auto* migrGroup = new QGroupBox(Strings::get(StringKey::ConverterMigrateJson), inner);
+    auto* migrLay   = new QVBoxLayout(migrGroup);
+
+    auto* migrHint = new QLabel(
+        "Ältere JSON-Dateien nutzen ein Tag-zentriertes Format.\n"
+        "Diese Funktion schreibt die aktuelle Ordner-JSON ins\n"
+        "kompaktere datei-zentrierte Format (v2) um.\n"
+        "Bitte vorher ein Backup anlegen.", migrGroup);
+    migrHint->setStyleSheet("color: rgba(150,180,175,0.7); font-size: 11px;");
+    migrHint->setWordWrap(true);
+    migrLay->addWidget(migrHint);
+
+    auto* migrBtn = new QPushButton(Strings::get(StringKey::ConverterMigrateJson), migrGroup);
+    migrBtn->setFixedHeight(32);
+    migrBtn->setStyleSheet(
+        "QPushButton { background: rgba(200,160,40,0.2); border: 1px solid rgba(200,160,40,0.5);"
+        "border-radius: 6px; color: #e0b840; font-weight: bold; padding: 4px 16px; }"
+        "QPushButton:hover { background: rgba(200,160,40,0.4); }");
+    connect(migrBtn, &QPushButton::clicked, this, [this] {
+        auto reply = QMessageBox::question(this,
+            Strings::get(StringKey::ConverterMigrateJson),
+            Strings::get(StringKey::ConverterMigrateConfirm),
+            QMessageBox::Yes | QMessageBox::No, QMessageBox::No);
+        if (reply != QMessageBox::Yes) return;
+
+        // Converter - ready for cleanup
+        // Trigger a save via settingsChanged → MainWindow calls saveCurrentFolder().
+        // JsonStorage::saveFolder() always writes v=2 (new compact format),
+        // so emitting settingsChanged is sufficient to migrate the file on disk.
+        emit settingsChanged();
+        QMessageBox::information(this,
+            Strings::get(StringKey::ConverterMigrateJson),
+            Strings::get(StringKey::ConverterMigrateSuccess));
+    });
+    migrLay->addWidget(migrBtn);
+    lay->addWidget(migrGroup);
+
+    lay->addStretch();
+    return page;
+}
+
+// Converter - ready for cleanup
+void SettingsDialog::convertTagToSubcategory(const QString& tag,
+                                              const QString& parentCatId,
+                                              const QString& newSubcatName) {
+    // 1. Create subcategory under parentCatId with the tag's color
+    TagCategory sub = TagCategory::create(newSubcatName);
+    sub.color        = m_tagMgr->tagColor(tag);
+    sub.uniformColor = true;
+
+    // 2. Find all files that currently have this tag and add them to the new subcat.
+    //    We'll do this after addSubcategory so we have the ID.
+    m_tagMgr->addSubcategory(parentCatId, sub);
+
+    // 3. Find the newly created subcategory (last child of parentCatId)
+    //    and record its files.
+    const TagCategory* parent = m_tagMgr->categoryById(parentCatId);
+    if (!parent || parent->children.isEmpty()) return;
+    QString newSubId = parent->children.last().id;
+
+    // 4. Add the tag as a tag member of the new subcategory
+    m_tagMgr->addTagToCategory(newSubId, tag);
+
+    // 5. Remove the tag from the global registry (it now lives as subcategory)
+    //    This also removes the tag from all files.
+    m_tagMgr->deleteTag(tag);
+
+    emit settingsChanged();
+}
+
+// Converter - ready for cleanup
+void SettingsDialog::convertSubcategoryToTag(const QString& subcatId) {
+    // 1. Find the subcategory
+    const TagCategory* subcat = m_tagMgr->categoryById(subcatId);
+    if (!subcat) return;
+
+    QString tagName = subcat->name;
+    QColor  tagColor = subcat->color;
+
+    // 2. Register the new tag with the subcategory's color
+    m_tagMgr->setTagColor(tagName, tagColor);
+
+    // 3. All files in the subcategory get this tag
+    for (const QString& fileName : subcat->files)
+        m_tagMgr->addTagToFile(fileName, tagName);
+
+    // 4. All tags that were in the subcategory get added to the files too
+    //    (the subcategory itself had tags listed → these remain as regular tags)
+    // (tags listed inside the subcat stay in their files unchanged)
+
+    // 5. Delete the subcategory
+    m_tagMgr->deleteCategory(subcatId);
+
+    emit settingsChanged();
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

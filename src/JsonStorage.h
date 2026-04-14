@@ -53,9 +53,21 @@ public:
     QList<TagCategory>&       categoriesRef()       { return m_categories; }
     const QList<TagCategory>& categoriesRef() const { return m_categories; }
 
+    // Converter - ready for cleanup
+    // Returns true if the current JSON on disk uses the old format (tag-centric).
+    // The new format is file-centric: files section holds per-file tags+date.
+    bool isLegacyFormat() const { return m_isLegacyFormat; }
+
+    // Converter - ready for cleanup
+    // Force-save in new format (call after loading legacy data to migrate).
+    void migrateToNewFormat();
+
 private:
     QString m_folderPath;
     QString m_jsonPath;
+
+    // Converter - ready for cleanup
+    bool m_isLegacyFormat = false;
 
     struct FileMeta {
         QStringList tags;
@@ -72,4 +84,11 @@ private:
     // Category JSON helpers
     static QJsonObject categoryToJson(const TagCategory& cat);
     static TagCategory categoryFromJson(const QJsonObject& obj);
+
+    // Converter - ready for cleanup
+    // Load old tag-centric format: { "tags": { "TagName": { "color":"#...", "files":[...] } } }
+    void loadLegacyFormat(const QJsonObject& root);
+
+    // Load new file-centric format: { "files": { "f.jpg": { "tags":[...], "date":"..." } }, "tagColors":{...} }
+    void loadNewFormat(const QJsonObject& root);
 };

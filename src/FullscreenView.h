@@ -26,6 +26,7 @@ public:
     bool randomNext() const { return m_randomNext; }
     void setRandomNext(bool r) { m_randomNext = r; updateRandomBtn(); }
     void retranslate();
+    int  currentGlobalIndex() const { return m_currentGlobalIndex; }
 
 signals:
     void backRequested();
@@ -33,6 +34,7 @@ signals:
     void tagsModified(int globalIndex, const QStringList& tags);
     void editDateRequested(int globalIndex);
     void applyLastTagsRequested(int globalIndex);
+    void applyLastCategoriesRequested(int globalIndex);
     void editDateWithDayFocusRequested(int globalIndex);
 
 protected:
@@ -71,6 +73,9 @@ private:
     QPointF m_panOffset = {0.0, 0.0};
     QPoint m_panStart;
     bool m_panning = false;
+
+    // Input-active guard: first click on video cancels input, second click pauses
+    bool m_inputWasActive = false;
 
     // UI elements
     QLabel* m_imageLabel;

@@ -107,8 +107,6 @@ void GalleryView::setItems(const QVector<MediaItem>& items) {
 void GalleryView::applyFilter(FilterBar* fb) {
     m_visibleIndices.clear();
 
-    // Categories expand their tags directly into m_activeTags (see onCategoryToggled),
-    // so we only need the unified tag list here.
     QStringList tagFilter = fb->activeTagFilter();
     TagFilterMode mode    = fb->tagFilterMode();
 
@@ -118,9 +116,19 @@ void GalleryView::applyFilter(FilterBar* fb) {
     SortField sf = fb->sortField();
     SortOrder so = fb->sortOrder();
 
-    bool hasAnyFilter = !tagFilter.isEmpty() || fb->hasCategoryFilter();
+    bool hasTagFilter      = !tagFilter.isEmpty();
+    bool hasCategoryFilter = fb->hasCategoryFilter();
+    bool hasAnyFilter      = hasTagFilter || hasCategoryFilter;
 
     QSet<QString> workingSet(tagFilter.begin(), tagFilter.end());
+
+    // Collect the set of active category IDs (and their descendants) so we can
+    // check direct file membership (cat.files) in addition to tag membership.
+    QSet<QString> activeCatIds;
+    if (hasCategoryFilter) {
+        const QStringList ids = fb->activeCategoryIds();
+        activeCatIds = QSet<QString>(ids.begin(), ids.end());
+    }
 
     for (int i = 0; i < m_allItems.size(); ++i) {
         const MediaItem& item = m_allItems[i];
@@ -130,11 +138,30 @@ void GalleryView::applyFilter(FilterBar* fb) {
         if (item.isVideo() && !showVid) continue;
         if (item.isAudio() && !showAud) continue;
 
-        if (!hasAnyFilter || tagFilter.isEmpty()) {
+        // No filter active: show everything
+        if (!hasAnyFilter) {
             m_visibleIndices.append(i);
             continue;
         }
 
+        // Check direct file↔category membership first.
+        // An item assigned directly to an active category always passes,
+        // regardless of its tags — this is the main fix for the category filter.
+        if (hasCategoryFilter) {
+            QStringList itemCats = m_tagMgr->categoriesForFile(item.fileName());
+            for (const QString& cid : itemCats) {
+                if (activeCatIds.contains(cid)) {
+                    m_visibleIndices.append(i);
+                    goto nextItem;
+                }
+            }
+        }
+
+        // If a category filter is active but resolved to no tags (empty
+        // category, no direct file membership above), skip this item.
+        if (!hasTagFilter) continue;
+
+        {
         bool passes = false;
         const QStringList& itemTags = item.tags;
 
@@ -171,6 +198,8 @@ void GalleryView::applyFilter(FilterBar* fb) {
         }
 
         if (passes) m_visibleIndices.append(i);
+        } // end tag-filter block
+        nextItem:;
     }
 
     // Sort
@@ -282,6 +311,10 @@ void GalleryView::rebuildGrid() {
         tile->setFixedSize(ts);
         tile->show();
 
+        // Restore cached thumbnail immediately so tiles don't go black on filter/tag changes
+        if (m_allItems[gi].thumbnailLoaded && !m_allItems[gi].thumbnail.isNull())
+            tile->setThumbnail(m_allItems[gi].thumbnail);
+
         int row = vi / m_columns;
         int col = vi % m_columns;
         m_grid->addWidget(tile, row, col);
@@ -321,6 +354,7 @@ void GalleryView::requestVisibleThumbnails() {
 void GalleryView::onThumbnailReady(int index, const QString& path, const QPixmap& pix) {
     if (index < 0 || index >= m_allItems.size()) return;
     m_allItems[index].thumbnailLoaded = true;
+    m_allItems[index].thumbnail = pix;  // cache for rebuildGrid reuse
     if (m_indexToTile.contains(index)) {
         m_indexToTile[index]->setThumbnail(pix);
         // If gallery is in covered mode, immediately re-cover this tile
@@ -395,8 +429,27 @@ void GalleryView::updateVisibleThumbnails() {
 void GalleryView::wheelEvent(QWheelEvent* e) {
     if (e->modifiers() & Qt::ShiftModifier) {
         int delta = e->angleDelta().y();
-        if (delta > 0 && m_columns > 1) setColumns(m_columns - 1);
-        else if (delta < 0 && m_columns < 25) setColumns(m_columns + 1);
+        // Accumulate the target column count without rebuilding the grid yet
+        int current = (m_pendingColumns >= 1) ? m_pendingColumns : m_columns;
+        if (delta > 0 && current > 1)  m_pendingColumns = current - 1;
+        else if (delta < 0 && current < 25) m_pendingColumns = current + 1;
+        else { e->accept(); return; }
+
+        // Lazy-create the debounce timer (100 ms feels instant, no stutter)
+        if (!m_wheelTimer) {
+            m_wheelTimer = new QTimer(this);
+            m_wheelTimer->setSingleShot(true);
+            m_wheelTimer->setInterval(80);
+            connect(m_wheelTimer, &QTimer::timeout, this, [this]() {
+                if (m_pendingColumns >= 1) {
+                    m_columns = qBound(1, m_pendingColumns, 25);
+                    AppSettings::instance().setGridColumns(m_columns);
+                    m_pendingColumns = -1;
+                    rebuildGrid();
+                }
+            });
+        }
+        m_wheelTimer->start(); // restart on every tick → fires once after burst ends
         e->accept();
         return;
     }
@@ -408,13 +461,19 @@ void GalleryView::dragEnterEvent(QDragEnterEvent* e) {
 }
 
 void GalleryView::dropEvent(QDropEvent* e) {
+    QStringList mediaFiles;
     for (const QUrl& url : e->mimeData()->urls()) {
         QString path = url.toLocalFile();
-        if (QFileInfo(path).isDir()) {
+        QFileInfo fi(path);
+        if (fi.isDir()) {
             emit folderDropped(path);
-            break;
+            return;  // folder drop: open folder, ignore any files
         }
+        if (fi.exists() && MediaItem::detectType(path) != MediaType::Unknown)
+            mediaFiles << path;
     }
+    if (!mediaFiles.isEmpty())
+        emit mediaFilesDropped(mediaFiles);
 }
 
 void GalleryView::resizeEvent(QResizeEvent* e) {

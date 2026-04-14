@@ -151,6 +151,10 @@ enum class StringKey {
     SettingsSubColorTitle,
     SettingsTagRenameTitle,
     SettingsTagRenameLabel,
+    SettingsTagAdd,
+    SettingsTagNewTitle,
+    SettingsTagNewLabel,
+    SettingsTagColorTitle,
 
     // SettingsDialog – Design tab
     SettingsDesignProfileGroup,
@@ -212,6 +216,25 @@ enum class StringKey {
     SettingsDesignProfileSimpleDesc,
     SettingsDesignProfileCustom,
     SettingsDesignProfileCustomDesc,
+
+    // Converter (Tag <-> Unterkategorie)
+    ConverterTabTitle,
+    ConverterTagToSubcat,
+    ConverterSubcatToTag,
+    ConverterSelectTag,
+    ConverterSelectParentCat,
+    ConverterSelectSubcat,
+    ConverterNewSubcatName,
+    ConverterConvert,
+    ConverterSuccess,
+    ConverterErrorNoTag,
+    ConverterErrorNoCat,
+    ConverterErrorNoSubcat,
+    ConverterErrorNoName,
+    ConverterMigrateJson,
+    ConverterMigrateSuccess,
+    ConverterMigrateError,
+    ConverterMigrateConfirm,
 };
 
 class Strings {

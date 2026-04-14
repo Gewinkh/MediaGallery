@@ -42,6 +42,7 @@ signals:
     void nameChanged(int globalIndex, const QString& name);
     void tagsModified(int globalIndex, const QStringList& tags);
     void folderDropped(const QString& folderPath);
+    void mediaFilesDropped(const QStringList& filePaths);
     void statusMessage(const QString& msg);
     void folderChanged(); // emitted when files are added/removed by OS
 
@@ -99,6 +100,8 @@ private:
 
     QTimer* m_visibilityTimer;
     QTimer* m_resizeTimer = nullptr;
+    QTimer* m_wheelTimer  = nullptr;   // debounce for Shift+Wheel column changes
+    int     m_pendingColumns = -1;     // column target queued by wheel
 
     // Live folder watching
     QFileSystemWatcher* m_watcher = nullptr;

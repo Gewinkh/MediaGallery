@@ -23,6 +23,15 @@ void TagManager::addTagToFile(const QString& fileName, const QString& tag) {
     }
 }
 
+void TagManager::createTag(const QString& name, const QColor& color) {
+    if (name.trimmed().isEmpty()) return;
+    m_storage->ensureTagRegistered(name.trimmed());
+    if (color.isValid())
+        m_storage->setTagColor(name.trimmed(), color);
+    m_storage->saveCurrentFolder();
+    emit tagsChanged();
+}
+
 void TagManager::removeTagFromFile(const QString& fileName, const QString& tag) {
     QStringList tags = m_storage->getTags(fileName);
     if (tags.removeAll(tag) > 0) {

@@ -37,7 +37,13 @@ void MediaThumbnail::setupUi() {
         "QLineEdit:focus { border-color: rgba(0,200,180,0.7); }");
     connect(m_nameEdit, &QLineEdit::editingFinished, this, [this]() {
         emit nameChanged(m_index, m_nameEdit->text().trimmed());
+        removeClickAwayFilter();
     });
+    connect(m_nameEdit, &QLineEdit::returnPressed, this, [this]() {
+        removeClickAwayFilter();
+    });
+    // Install click-away filter when name edit gets focus
+    m_nameEdit->installEventFilter(this);
     m_layout->addWidget(m_nameEdit);
 
     // Image/thumbnail area
@@ -104,13 +110,30 @@ void MediaThumbnail::setupUi() {
     m_tagsHoverLabel->installEventFilter(this);
     m_tagsHoverLabel->hide();
     tagRowLay->addWidget(m_tagsHoverLabel);
-    tagRowLay->addStretch(1);  // push label to left, don't let it expand
+
+    // "Kategorien" hover label
+    m_catsHoverLabel = new QLabel(tr("Kategorien"), m_tagBarRow);
+    m_catsHoverLabel->setFixedHeight(22);
+    m_catsHoverLabel->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
+    m_catsHoverLabel->setStyleSheet(
+        "QLabel { color: rgba(0,180,220,0.7); font-size: 10px; font-weight: 600;"
+        "background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.1);"
+        "border-radius: 8px; padding: 0 6px; }");
+    m_catsHoverLabel->setCursor(Qt::PointingHandCursor);
+    m_catsHoverLabel->installEventFilter(this);
+    m_catsHoverLabel->hide();
+    tagRowLay->addWidget(m_catsHoverLabel);
+
+    tagRowLay->addStretch(1);  // push labels to left, don't let them expand
 
     m_tagBar = new TagBar(m_tagMgr, m_tagBarRow);
     m_tagBar->setFixedHeight(28);
     m_tagBar->setEditable(true);
     connect(m_tagBar, &TagBar::tagsModified, this, [this](const QString&, const QStringList& tags) {
         emit tagsModified(m_index, tags);
+    });
+    connect(m_tagBar, &TagBar::inputFocused, this, [this]() {
+        installClickAwayFilter();
     });
     tagRowLay->addWidget(m_tagBar, 1);
 
@@ -150,7 +173,64 @@ void MediaThumbnail::scheduleHide() {
     m_tagTooltipHideTimer->start();
 }
 
+void MediaThumbnail::installClickAwayFilter() {
+    if (!m_appFilterInstalled) {
+        qApp->installEventFilter(this);
+        m_appFilterInstalled = true;
+    }
+}
+
+void MediaThumbnail::removeClickAwayFilter() {
+    if (m_appFilterInstalled) {
+        qApp->removeEventFilter(this);
+        m_appFilterInstalled = false;
+    }
+}
+
 bool MediaThumbnail::eventFilter(QObject* obj, QEvent* ev) {
+    // Click-away: if app-level filter is active and user clicks outside this tile,
+    // clear focus from nameEdit and close tag dropdowns
+    if (m_appFilterInstalled && ev->type() == QEvent::MouseButtonPress) {
+        QMouseEvent* me = static_cast<QMouseEvent*>(ev);
+        QPoint globalPos = me->globalPosition().toPoint();
+        // Check if click is inside this tile
+        QRect tileGlobal(mapToGlobal(QPoint(0, 0)), size());
+        bool inTile = tileGlobal.contains(globalPos);
+        // Check if click is in an open dropdown panel
+        bool inDropdown = false;
+        if (m_tagBar->isDropdownOpen()) {
+            // The panels are top-level windows; we just check if click is not in tile
+            inDropdown = false; // panels handle their own events
+        }
+        if (!inTile && !inDropdown) {
+            // Commit name edit and clear focus
+            if (m_nameEdit->hasFocus()) {
+                emit nameChanged(m_index, m_nameEdit->text().trimmed());
+                m_nameEdit->clearFocus();
+            }
+            // Close tag dropdowns
+            if (m_tagBar->isDropdownOpen()) {
+                m_tagBar->closeDropdown();
+            }
+            // Remove filter so we don't keep intercepting
+            removeClickAwayFilter();
+        }
+    }
+
+    // Install click-away filter when nameEdit gains focus
+    if (obj == m_nameEdit) {
+        if (ev->type() == QEvent::FocusIn) {
+            installClickAwayFilter();
+        }
+        if (ev->type() == QEvent::FocusOut) {
+            // Only remove if not due to a click inside this tile
+            QTimer::singleShot(0, this, [this]() {
+                if (!m_nameEdit->hasFocus() && !m_tagBar->isDropdownOpen())
+                    removeClickAwayFilter();
+            });
+        }
+    }
+
     if (obj == m_tagsHoverLabel) {
         if (ev->type() == QEvent::Enter) {
             if (!m_tagTooltipPanel) showTagTooltip();
@@ -158,6 +238,35 @@ bool MediaThumbnail::eventFilter(QObject* obj, QEvent* ev) {
         }
         if (ev->type() == QEvent::Leave) {
             scheduleHide();
+        }
+        if (ev->type() == QEvent::MouseButtonPress) {
+            if (!m_tagTooltipPanel) showTagTooltip();
+            else hideTagTooltip();
+        }
+    }
+
+    if (obj == m_catsHoverLabel) {
+        if (ev->type() == QEvent::Enter) {
+            if (!m_catTooltipPanel) showCategoryTooltip();
+            if (m_catTooltipHideTimer) m_catTooltipHideTimer->stop();
+        }
+        if (ev->type() == QEvent::Leave) {
+            scheduleCatHide();
+        }
+        if (ev->type() == QEvent::MouseButtonPress) {
+            if (!m_catTooltipPanel) showCategoryTooltip();
+            else hideCategoryTooltip();
+        }
+    }
+
+    // Click on category row → remove from category
+    if (ev->type() == QEvent::MouseButtonRelease) {
+        QVariant catFileName = obj->property("catRemoveFileName");
+        QVariant catIdVar    = obj->property("catRemoveCatId");
+        if (catFileName.isValid() && catIdVar.isValid()) {
+            m_tagMgr->removeFileFromCategory(catIdVar.toString(), catFileName.toString());
+            hideCategoryTooltip();
+            return true;
         }
     }
 
@@ -179,13 +288,25 @@ bool MediaThumbnail::eventFilter(QObject* obj, QEvent* ev) {
         m_tagBar->showTagDropdownAnchoredAt(m_tagsHoverLabel);
     }
 
-    // Panel: stop timer on enter; schedule hide on leave.
-    // (Leave feuert auch beim Wechsel zu Child-Widgets, daher kein direktes hide.)
+    // Hover over "+ Kategorie hinzufügen" — stop cat hide timer
+    if (m_addCatHoverBtn && obj == m_addCatHoverBtn && ev->type() == QEvent::Enter) {
+        if (m_catTooltipHideTimer) m_catTooltipHideTimer->stop();
+    }
+
+    // Tag panel: stop timer on enter; schedule hide on leave
     if (m_tagTooltipPanel && obj == m_tagTooltipPanel) {
         if (ev->type() == QEvent::Enter && m_tagTooltipHideTimer)
             m_tagTooltipHideTimer->stop();
         if (ev->type() == QEvent::Leave)
             scheduleHide();
+    }
+
+    // Category panel: stop timer on enter; schedule hide on leave
+    if (m_catTooltipPanel && obj == m_catTooltipPanel) {
+        if (ev->type() == QEvent::Enter && m_catTooltipHideTimer)
+            m_catTooltipHideTimer->stop();
+        if (ev->type() == QEvent::Leave)
+            scheduleCatHide();
     }
 
     return QWidget::eventFilter(obj, ev);
@@ -277,9 +398,121 @@ void MediaThumbnail::hideTagTooltip() {
     m_addHoverBtn = nullptr;
 }
 
+// ─── Category tooltip (compact mode) ────────────────────────────────────────
+
+bool MediaThumbnail::mouseOverCatPanel() const {
+    if (!m_catTooltipPanel) return false;
+    QRect r(m_catTooltipPanel->mapToGlobal(QPoint(0,0)), m_catTooltipPanel->size());
+    return r.contains(QCursor::pos());
+}
+
+void MediaThumbnail::scheduleCatHide() {
+    if (!m_catTooltipHideTimer) {
+        m_catTooltipHideTimer = new QTimer(this);
+        m_catTooltipHideTimer->setSingleShot(true);
+        m_catTooltipHideTimer->setInterval(300);
+        connect(m_catTooltipHideTimer, &QTimer::timeout, this, [this]() {
+            QPoint gp = QCursor::pos();
+            QRect labelRect(m_catsHoverLabel->mapToGlobal(QPoint(0,0)), m_catsHoverLabel->size());
+            if (!mouseOverCatPanel() && !labelRect.contains(gp))
+                hideCategoryTooltip();
+            else
+                scheduleCatHide();
+        });
+    }
+    m_catTooltipHideTimer->start();
+}
+
+void MediaThumbnail::showCategoryTooltip() {
+    hideCategoryTooltip();
+    QStringList catIds = m_tagMgr->categoriesForFile(m_item.fileName());
+
+    m_catTooltipPanel = new QFrame(nullptr, Qt::ToolTip | Qt::FramelessWindowHint);
+    m_catTooltipPanel->setStyleSheet(
+        "QFrame { background: #1a2830; border: 1px solid rgba(0,160,220,0.45); border-radius: 8px; }");
+    m_catTooltipPanel->installEventFilter(this);
+
+    auto* lay = new QVBoxLayout(m_catTooltipPanel);
+    lay->setContentsMargins(8, 6, 8, 6);
+    lay->setSpacing(3);
+
+    if (catIds.isEmpty()) {
+        auto* lbl = new QLabel(tr("(Keine Kategorien)"), m_catTooltipPanel);
+        lbl->setStyleSheet("color: rgba(200,220,215,0.4); font-size: 11px; background: transparent;");
+        lay->addWidget(lbl);
+    } else {
+        for (const QString& catId : catIds) {
+            const TagCategory* cat = m_tagMgr->categoryById(catId);
+            if (!cat) continue;
+            QColor cc = m_tagMgr->categoryColor(catId);
+            auto* row = new QWidget(m_catTooltipPanel);
+            row->setAttribute(Qt::WA_StyledBackground, true);
+            row->setStyleSheet("QWidget { background: transparent; border-radius: 4px; }"
+                               "QWidget:hover { background: rgba(255,255,255,0.06); }");
+            row->setFixedHeight(20);
+            auto* rowLay = new QHBoxLayout(row);
+            rowLay->setContentsMargins(4, 0, 4, 0);
+            rowLay->setSpacing(6);
+
+            auto* dot = new QLabel(row);
+            dot->setFixedSize(8, 8);
+            dot->setAttribute(Qt::WA_StyledBackground, true);
+            dot->setStyleSheet(QString("background: %1; border-radius: 4px;").arg(cc.name()));
+
+            QString txtCol = (cc.lightness() > 160) ? cc.darker(160).name() : cc.name();
+            auto* lbl = new QLabel(cat->name, row);
+            lbl->setAttribute(Qt::WA_TransparentForMouseEvents, true);
+            lbl->setStyleSheet(QString("color: %1; font-size: 10px; font-weight: 700;"
+                                       " background: transparent; border: none;").arg(txtCol));
+            rowLay->addWidget(dot);
+            rowLay->addWidget(lbl);
+            rowLay->addStretch();
+
+            // Click on row → remove from category
+            row->setCursor(Qt::PointingHandCursor);
+            row->installEventFilter(this);
+            row->setProperty("catRemoveFileName", m_item.fileName());
+            row->setProperty("catRemoveCatId", catId);
+            lay->addWidget(row);
+        }
+    }
+
+    // "Kategorie hinzufügen" button → opens the category dropdown
+    auto* addBtn = new QPushButton(tr("+ Kategorie hinzufügen"), m_catTooltipPanel);
+    addBtn->setFixedHeight(22);
+    addBtn->setStyleSheet(
+        "QPushButton { background: rgba(0,160,220,0.15); border: 1px solid rgba(0,160,220,0.4);"
+        "border-radius: 9px; color: #00b4e0; font-size: 10px; font-weight: 600; padding: 0 8px; }"
+        "QPushButton:hover { background: rgba(0,160,220,0.35); }");
+    connect(addBtn, &QPushButton::clicked, this, [this]() {
+        hideCategoryTooltip();
+        m_tagBar->showCategoryDropdownAnchoredAt(m_catsHoverLabel);
+    });
+    addBtn->installEventFilter(this);
+    m_addCatHoverBtn = addBtn;
+    lay->addWidget(addBtn);
+
+    m_catTooltipPanel->adjustSize();
+    QPoint gp = m_catsHoverLabel->mapToGlobal(QPoint(0, m_catsHoverLabel->height() + 3));
+    m_catTooltipPanel->move(gp);
+    m_catTooltipPanel->show();
+}
+
+void MediaThumbnail::hideCategoryTooltip() {
+    if (m_catTooltipPanel) {
+        m_catTooltipPanel->deleteLater();
+        m_catTooltipPanel = nullptr;
+    }
+    m_addCatHoverBtn = nullptr;
+}
+
 void MediaThumbnail::setItem(const MediaItem& item, int index) {
     m_item = item;
     m_index = index;
+
+    // Close any open tooltip panels from previous item
+    hideTagTooltip();
+    hideCategoryTooltip();
 
     m_nameEdit->setText(item.displayName.isEmpty() ? item.baseName() : item.displayName);
     m_typeOverlay->setVisible(item.isVideo());
@@ -355,8 +588,9 @@ void MediaThumbnail::setCovered(bool covered) {
 }
 
 void MediaThumbnail::updateCompactMode() {
-    // Always show the "Tags" hover button instead of the full pill bar
+    // Always show the "Tags" and "Kategorien" hover buttons instead of the full pill bar
     m_tagsHoverLabel->setVisible(m_optionsVisible);
+    m_catsHoverLabel->setVisible(m_optionsVisible);
     m_tagBar->setVisible(false);
     m_tagBar->setCompact(true);
 }

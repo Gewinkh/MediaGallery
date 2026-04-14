@@ -54,6 +54,7 @@ public:
 
 signals:
     void tagsModified(const QString& fileName, const QStringList& tags);
+    void inputFocused();  // emitted when the tag input field gains focus
 
 private slots:
     void addTagFromInput();

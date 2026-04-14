@@ -90,6 +90,9 @@ TagBar::TagBar(TagManager* mgr, QWidget* parent)
     m_input->setCompleter(m_completer);
 
     connect(m_input, &QLineEdit::returnPressed, this, &TagBar::addTagFromInput);
+    // Notify parent when input field gains focus (for click-away handling)
+    connect(m_input, &QLineEdit::selectionChanged, this, [](){});  // keep m_input alive
+    m_input->installEventFilter(this);
     connect(mgr, &TagManager::tagsChanged, this, [this]() {
         m_completer->setModel(new QStringListModel(m_tagMgr->allTags(), m_completer));
         refresh();
@@ -538,6 +541,11 @@ void TagBar::showCategoryDropdownAnchoredAt(QWidget* anchor) {
 // ─────────────────────────────────────────────────────────────────────────────
 
 bool TagBar::eventFilter(QObject* obj, QEvent* ev) {
+    // Emit signal when tag input gains focus
+    if (obj == m_input && ev->type() == QEvent::FocusIn) {
+        emit inputFocused();
+    }
+
     // Helper: reagiert auf Leave/Enter/Wheel für ein bestimmtes Panel
     auto handle = [&](QFrame*& panel, QTimer*& timer) {
         if (!panel || obj != panel) return;

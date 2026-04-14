@@ -64,6 +64,14 @@ private:
     QTimer*      m_tagTooltipHideTimer = nullptr;
     QPushButton* m_addHoverBtn        = nullptr;
 
+    // Category hover label (compact mode)
+    QLabel*      m_catsHoverLabel     = nullptr;
+
+    // Category tooltip panel (compact mode)
+    QFrame*      m_catTooltipPanel       = nullptr;
+    QTimer*      m_catTooltipHideTimer   = nullptr;
+    QPushButton* m_addCatHoverBtn        = nullptr;
+
     QVBoxLayout* m_layout;
     TagManager*  m_tagMgr;
 
@@ -72,6 +80,14 @@ private:
     void showTagTooltip();
     void hideTagTooltip();
     void scheduleHide();
+    void showCategoryTooltip();
+    void hideCategoryTooltip();
+    void scheduleCatHide();
     bool mouseOverPanel() const;
+    bool mouseOverCatPanel() const;
     static QString formatSize(qint64 bytes);
+
+    bool m_appFilterInstalled = false;
+    void installClickAwayFilter();
+    void removeClickAwayFilter();
 };
