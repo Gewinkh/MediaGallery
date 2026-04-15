@@ -83,6 +83,9 @@ void MainWindow::setupUi() {
             this, &MainWindow::onTagsModified);
     // Track category changes made while in fullscreen view
     connect(m_tagMgr, &TagManager::categoriesChanged, this, [this]() {
+        // Do NOT update m_lastEditedCategories while we are applying them –
+        // that would overwrite the saved list with the just-applied values.
+        if (m_applyingLastCategories) return;
         if (m_stack->currentWidget() != m_fullscreenView) return;
         int gi = m_fullscreenView->currentGlobalIndex();
         if (gi < 0) return;
@@ -114,11 +117,15 @@ void MainWindow::setupUi() {
         auto& items = m_galleryView->allItems();
         if (globalIndex < 0 || globalIndex >= items.size()) return;
         const QString& fileName = items[globalIndex].fileName();
+        // Guard: prevent categoriesChanged from overwriting m_lastEditedCategories
+        // while we are in the middle of applying them to the new file.
+        m_applyingLastCategories = true;
         // Remove from all existing categories first, then add last ones
         for (const QString& catId : m_tagMgr->categoriesForFile(fileName))
             m_tagMgr->removeFileFromCategory(catId, fileName);
         for (const QString& catId : m_lastEditedCategories)
             m_tagMgr->addFileToCategory(catId, fileName);
+        m_applyingLastCategories = false;
         m_folderService.saveCurrentFolder();
         m_fullscreenView->refreshTagBar();
         statusBar()->showMessage(tr("Kategorien übernommen"), 2000);
@@ -335,9 +342,6 @@ void MainWindow::onTagsModified(int globalIndex, const QStringList& tags) {
     m_storage->setTags(item.fileName(), tags);
     m_folderService.saveCurrentFolder();
     m_filterBar->refreshTagList();
-    // Also record categories of this item as "last edited categories"
-    m_lastEditedCategories    = m_tagMgr->categoriesForFile(item.fileName());
-    m_hasLastEditedCategories = true;
     applyFilter();
 }
 

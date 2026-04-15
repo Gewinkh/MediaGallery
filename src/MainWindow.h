@@ -70,8 +70,9 @@ private:
     MetadataEditor* m_metaDialog       = nullptr;
     QStringList    m_lastEditedTags;
     bool           m_hasLastEditedTags = false;
-    QStringList    m_lastEditedCategories;   // category IDs of last modified medium
+    QStringList    m_lastEditedCategories;        // category IDs of last modified medium
     bool           m_hasLastEditedCategories = false;
+    bool           m_applyingLastCategories  = false; // guard: suppress categoriesChanged during apply
 
     // Menu / actions
     QMenu*   m_fileMenu     = nullptr;
