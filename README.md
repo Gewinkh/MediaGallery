@@ -171,7 +171,7 @@ In der **„x64 Native Tools Command Prompt for VS 2022"**:
 
 ```cmd
 mkdir build && cd build
-cmake .. -G "Visual Studio 17 2022" -A x64 -DCMAKE_PREFIX_PATH="C:/Qt/6.x.x/msvc2022_64"
+cmake .. -G "Visual Studio 17 2022" -A x64 -DCMAKE_PREFIX_PATH="C:/Qt/6.11.0/msvc2022_64"
 cmake --build . --config Release --parallel
 ```
 
@@ -194,7 +194,7 @@ In der **Qt MinGW-Shell** (wird mit Qt mitgeliefert):
 
 ```cmd
 mkdir build && cd build
-cmake .. -G "MinGW Makefiles" -DCMAKE_BUILD_TYPE=Release -DCMAKE_PREFIX_PATH="C:/Qt/6.x.x/mingw_64"
+cmake .. -G "MinGW Makefiles" -DCMAKE_BUILD_TYPE=Release -DCMAKE_PREFIX_PATH="C:/Qt/6.11.0/mingw_64"
 cmake --build . --parallel
 ```
 

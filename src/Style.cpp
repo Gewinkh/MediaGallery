@@ -94,6 +94,7 @@ QString Style::mainStyleSheet(const QColor& /*bg*/, const QColor& /*accent*/) {
 "QMenuBar::item:selected { background: %6; border-radius: 4px; }\n"
 // Menu
 "QMenu { background: %2; border: 1px solid %5; border-radius: 8px; padding: 4px; color: %3; }\n"
+"QMenu::item { padding: 5px 20px 5px 12px; }\n"
 "QMenu::item:selected { background: %6; border-radius: 4px; }\n"
 "QMenu::separator { height: 1px; background: %5; margin: 4px 8px; }\n"
 // ToolTip

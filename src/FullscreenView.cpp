@@ -1,4 +1,5 @@
 #include "FullscreenView.h"
+#include "Icons.h"
 #include "Strings.h"
 #include <QLineEdit>
 #include <QTimer>
@@ -52,10 +53,11 @@ FullscreenView::FullscreenView(TagManager* tagMgr, QWidget* parent)
     topLay->addWidget(m_infoLabel);
 
     m_dateEditBtn = new QToolButton(m_topBar);
-    m_dateEditBtn->setText("📅");
+    m_dateEditBtn->setIcon(Icons::calendar());
+    m_dateEditBtn->setIconSize(QSize(18, 18));
     m_dateEditBtn->setStyleSheet(
         "QToolButton { background: rgba(0,0,0,0.4); border: 1px solid rgba(255,255,255,0.1);"
-        "border-radius: 6px; font-size: 16px; padding: 3px 6px; }"
+        "border-radius: 6px; padding: 3px 6px; }"
         "QToolButton:hover { background: rgba(0,180,160,0.3); }");
     connect(m_dateEditBtn, &QToolButton::clicked, this, [this]() {
         emit editDateRequested(m_currentGlobalIndex);
@@ -63,10 +65,11 @@ FullscreenView::FullscreenView(TagManager* tagMgr, QWidget* parent)
     topLay->addWidget(m_dateEditBtn);
 
     m_deleteBtn = new QToolButton(m_topBar);
-    m_deleteBtn->setText("🗑");
+    m_deleteBtn->setIcon(Icons::trash());
+    m_deleteBtn->setIconSize(QSize(18, 18));
     m_deleteBtn->setStyleSheet(
         "QToolButton { background: rgba(180,40,40,0.35); border: 1px solid rgba(200,60,60,0.5);"
-        "border-radius: 6px; font-size: 16px; padding: 3px 6px; }"
+        "border-radius: 6px; padding: 3px 6px; }"
         "QToolButton:hover { background: rgba(220,50,50,0.65); }");
     m_deleteBtn->setToolTip(tr("Medium löschen"));
     connect(m_deleteBtn, &QToolButton::clicked, this, [this]() {
@@ -106,6 +109,10 @@ FullscreenView::FullscreenView(TagManager* tagMgr, QWidget* parent)
     m_randomBtn = new QToolButton(m_bottomBar);
     m_randomBtn->setFocusPolicy(Qt::NoFocus);
     m_randomBtn->setCheckable(true);
+    m_randomBtn->setToolButtonStyle(Qt::ToolButtonIconOnly);
+    m_randomBtn->setIcon(Icons::shuffle());
+    m_randomBtn->setIconSize(QSize(16, 16));
+    m_randomBtn->setToolTip(Strings::get(StringKey::FullscreenRandom));
     m_randomBtn->setStyleSheet(
         "QToolButton { background: rgba(0,0,0,0.5); border: 1px solid rgba(255,255,255,0.15);"
         "border-radius: 8px; color: #c8dbd5; font-size: 13px; padding: 5px 14px; }"
@@ -508,7 +515,7 @@ void FullscreenView::retranslate() {
     m_dateEditBtn->setToolTip(Strings::get(StringKey::FullscreenEditDate));
     m_deleteBtn->setToolTip(tr("Medium löschen"));
     m_prevBtn->setText(Strings::get(StringKey::FullscreenPrev));
-    m_randomBtn->setText(Strings::get(StringKey::FullscreenRandom));
+    m_randomBtn->setToolTip(Strings::get(StringKey::FullscreenRandom));
     m_nextBtn->setText(Strings::get(StringKey::FullscreenNext));
     m_tagBar->retranslate();
 }

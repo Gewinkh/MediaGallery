@@ -1,4 +1,5 @@
 #include "VideoPlayer.h"
+#include "Icons.h"
 #include <QMouseEvent>
 #include <QTime>
 
@@ -23,12 +24,14 @@ VideoPlayer::VideoPlayer(QWidget* parent) : QWidget(parent) {
     ctrlLay->setSpacing(8);
 
     m_playPauseBtn = new QToolButton(m_controlBar);
-    m_playPauseBtn->setText("▶");
+    m_playPauseBtn->setToolButtonStyle(Qt::ToolButtonIconOnly);
+    m_playPauseBtn->setIcon(Icons::playBare());
+    m_playPauseBtn->setIconSize(QSize(22, 22));
     m_playPauseBtn->setFixedSize(32, 32);
     m_playPauseBtn->setStyleSheet(
-        "QToolButton { background: rgba(0,200,180,0.3); border: 1px solid rgba(0,200,180,0.5);"
-        "border-radius: 16px; color: #00c8b4; font-size: 14px; }"
-        "QToolButton:hover { background: rgba(0,200,180,0.5); }");
+        "QToolButton { background: rgba(255,255,255,0.15); border: 1px solid rgba(255,255,255,0.25);"
+        "border-radius: 16px; padding: 0px; }"
+        "QToolButton:hover { background: rgba(255,255,255,0.28); }");
     ctrlLay->addWidget(m_playPauseBtn);
 
     m_seekSlider = new QSlider(Qt::Horizontal, m_controlBar);
@@ -46,11 +49,13 @@ VideoPlayer::VideoPlayer(QWidget* parent) : QWidget(parent) {
     ctrlLay->addWidget(m_timeLabel);
 
     m_muteBtn = new QToolButton(m_controlBar);
-    m_muteBtn->setText("🔊");
+    m_muteBtn->setToolButtonStyle(Qt::ToolButtonIconOnly);
+    m_muteBtn->setIcon(Icons::volumeOn());
+    m_muteBtn->setIconSize(QSize(16, 16));
     m_muteBtn->setFixedSize(28, 28);
     m_muteBtn->setStyleSheet(
-        "QToolButton { background: transparent; border: none; color: white; font-size: 14px; }"
-        "QToolButton:hover { color: #00c8b4; }");
+        "QToolButton { background: transparent; border: none; }"
+        "QToolButton:hover { background: rgba(0,200,180,0.15); }");
     ctrlLay->addWidget(m_muteBtn);
 
     m_volumeSlider = new QSlider(Qt::Horizontal, m_controlBar);
@@ -99,7 +104,7 @@ VideoPlayer::VideoPlayer(QWidget* parent) : QWidget(parent) {
     connect(m_muteBtn, &QToolButton::clicked, this, [this]() {
         bool muted = m_audio->isMuted();
         m_audio->setMuted(!muted);
-        m_muteBtn->setText(muted ? "🔊" : "🔇");
+        m_muteBtn->setIcon(muted ? Icons::volumeOn() : Icons::volumeOff());
     });
     connect(m_volumeSlider, &QSlider::valueChanged, this, [this](int v) {
         m_audio->setVolume(v / 100.0f);
@@ -148,7 +153,7 @@ void VideoPlayer::onPlayPauseClicked() {
 
 void VideoPlayer::onPlayerStateChanged() {
     bool playing = m_player->playbackState() == QMediaPlayer::PlayingState;
-    m_playPauseBtn->setText(playing ? "⏸" : "▶");
+    m_playPauseBtn->setIcon(playing ? Icons::pause() : Icons::playBare());
     if (playing) { m_hideTimer->start(); }
     else { m_hideTimer->stop(); showControls(); }
 }

@@ -13,6 +13,7 @@ find_package(Qt6 6.4 REQUIRED COMPONENTS
     Widgets
     Multimedia
     MultimediaWidgets
+    Svg
     LinguistTools
 )
 
@@ -58,6 +59,7 @@ set(SOURCES
     src/Style.h
     src/Strings.cpp
     src/Strings.h
+    src/Icons.h
 )
 
 qt_add_executable(MediaGallery ${SOURCES})
@@ -74,6 +76,7 @@ target_link_libraries(MediaGallery PRIVATE
     Qt6::Widgets
     Qt6::Multimedia
     Qt6::MultimediaWidgets
+    Qt6::Svg
 )
 
 if(WIN32)

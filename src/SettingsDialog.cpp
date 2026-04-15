@@ -1,4 +1,5 @@
 #include "SettingsDialog.h"
+#include "Icons.h"
 #include "Strings.h"
 #include <QVBoxLayout>
 #include <QHBoxLayout>
@@ -58,7 +59,8 @@ SettingsDialog::SettingsDialog(TagManager* tagMgr, QWidget* parent)
     : QDialog(parent), m_tagMgr(tagMgr)
 {
     setWindowTitle(Strings::get(StringKey::SettingsTitle));
-    setMinimumSize(520, 520);
+    setMinimumSize(936, 520);
+    resize(936, 520);
     setStyleSheet(DIALOG_STYLE);
 
     auto* mainLay = new QVBoxLayout(this);
@@ -98,35 +100,57 @@ SettingsDialog::SettingsDialog(TagManager* tagMgr, QWidget* parent)
 QWidget* SettingsDialog::buildGeneralTab() {
     auto* page = new QWidget(this);
     auto* lay = new QVBoxLayout(page);
-    lay->setSpacing(10);
-    lay->setContentsMargins(8, 8, 8, 8);
+    lay->setSpacing(16);
+    lay->setContentsMargins(20, 16, 20, 16);
 
+    // ── Language ──────────────────────────────────────────────────────────────
     auto* langGroup = new QGroupBox(Strings::get(StringKey::SettingsLanguageGroup), page);
     auto* langLay = new QHBoxLayout(langGroup);
+    langLay->setContentsMargins(16, 12, 16, 12);
+    langLay->setSpacing(12);
+
+    auto* langLabel = new QLabel(Strings::get(StringKey::SettingsLanguageLabel), langGroup);
+    langLabel->setStyleSheet("color: #c8ddd8; font-size: 12px;");
+
     m_langBox = new QComboBox(langGroup);
     m_langBox->addItem("Deutsch", (int)Language::German);
     m_langBox->addItem("English", (int)Language::English);
     m_langBox->setCurrentIndex((int)AppSettings::instance().language());
+    m_langBox->setFixedWidth(160);
     m_langBox->setStyleSheet(
         "QComboBox { background: rgba(255,255,255,0.07); border: 1px solid rgba(40,60,70,0.9);"
         "border-radius: 6px; color: #dcebd8; padding: 3px 8px; min-width: 120px; }"
         "QComboBox QAbstractItemView { background: #111e24; color: #dcebd8;"
         "selection-background-color: #00b4a0; }");
-    langLay->addWidget(new QLabel(Strings::get(StringKey::SettingsLanguageLabel), langGroup));
+
+    langLay->addWidget(langLabel);
     langLay->addWidget(m_langBox);
     langLay->addStretch();
     lay->addWidget(langGroup);
 
+    // ── Video playback ────────────────────────────────────────────────────────
     auto* vidGroup = new QGroupBox(Strings::get(StringKey::SettingsVideoGroup), page);
     auto* vidLay = new QVBoxLayout(vidGroup);
+    vidLay->setContentsMargins(16, 12, 16, 12);
+    vidLay->setSpacing(8);
+
     m_videoNative   = new QRadioButton(Strings::get(StringKey::SettingsVideoNative), vidGroup);
     m_videoExternal = new QRadioButton(Strings::get(StringKey::SettingsVideoExternal), vidGroup);
+    const QString radioCss =
+        "QRadioButton { color: #c8ddd8; font-size: 12px; spacing: 8px; }"
+        "QRadioButton::indicator { width: 14px; height: 14px; border-radius: 7px;"
+        "  border: 1px solid rgba(0,200,180,0.5); background: rgba(255,255,255,0.05); }"
+        "QRadioButton::indicator:checked { background: #00c8b4; border-color: #00c8b4; }";
+    m_videoNative->setStyleSheet(radioCss);
+    m_videoExternal->setStyleSheet(radioCss);
+
     bool isNative = AppSettings::instance().videoPlayback() == VideoPlayback::Native;
     m_videoNative->setChecked(isNative);
     m_videoExternal->setChecked(!isNative);
     vidLay->addWidget(m_videoNative);
     vidLay->addWidget(m_videoExternal);
     lay->addWidget(vidGroup);
+
     lay->addStretch();
     return page;
 }
@@ -249,7 +273,9 @@ void SettingsDialog::buildTagList() {
         rowLay->addWidget(nameLabel, 1);
 
         // Rename button
-        auto* renBtn = new QPushButton("✏", row);
+        auto* renBtn = new QPushButton(row);
+        renBtn->setIcon(Icons::pencil());
+        renBtn->setIconSize(QSize(16, 16));
         renBtn->setFixedSize(26, 26);
         renBtn->setToolTip(Strings::get(StringKey::SettingsTagRenameTitle));
         renBtn->setStyleSheet(
@@ -270,7 +296,9 @@ void SettingsDialog::buildTagList() {
         rowLay->addWidget(renBtn);
 
         // "Zu Kategorie" button
-        auto* catBtn = new QPushButton("📂", row);
+        auto* catBtn = new QPushButton(row);
+        catBtn->setIcon(Icons::folder());
+        catBtn->setIconSize(QSize(16, 16));
         catBtn->setFixedSize(26, 26);
         catBtn->setToolTip(Strings::get(StringKey::CatPanelAddTag));
         catBtn->setStyleSheet(
@@ -318,7 +346,9 @@ void SettingsDialog::buildTagList() {
         rowLay->addWidget(catBtn);
 
         // Delete button
-        auto* delBtn = new QPushButton("✕", row);
+        auto* delBtn = new QPushButton(row);
+        delBtn->setIcon(Icons::xMark());
+        delBtn->setIconSize(QSize(16, 16));
         delBtn->setFixedSize(26, 26);
         delBtn->setToolTip(Strings::get(StringKey::SettingsTagDelete));
         delBtn->setStyleSheet(
@@ -471,7 +501,8 @@ void SettingsDialog::addCategoryBlock(QVBoxLayout* lay, TagCategory& cat, int de
 
     // Toggle: "Einheitliche Farbe"
     auto* uniToggle = new QToolButton(headerRow);
-    uniToggle->setText("⬤");
+    uniToggle->setIcon(Icons::circle());
+    uniToggle->setIconSize(QSize(16, 16));
     uniToggle->setFixedSize(22, 22);
     uniToggle->setCheckable(true);
     uniToggle->setChecked(uni);
@@ -538,7 +569,8 @@ void SettingsDialog::addCategoryBlock(QVBoxLayout* lay, TagCategory& cat, int de
 
     // Rename button
     auto* renBtn = new QToolButton(headerRow);
-    renBtn->setText("✏");
+    renBtn->setIcon(Icons::pencil());
+    renBtn->setIconSize(QSize(14, 14));
     renBtn->setFixedSize(22, 22);
     renBtn->setToolTip(Strings::get(StringKey::CatPanelRename));
     renBtn->setStyleSheet(
@@ -589,7 +621,8 @@ void SettingsDialog::addCategoryBlock(QVBoxLayout* lay, TagCategory& cat, int de
 
     // Delete button
     auto* delBtn = new QToolButton(headerRow);
-    delBtn->setText("🗑");
+    delBtn->setIcon(Icons::trash());
+    delBtn->setIconSize(QSize(14, 14));
     delBtn->setFixedSize(22, 22);
     delBtn->setToolTip(Strings::get(StringKey::CatPanelDelete));
     delBtn->setStyleSheet(
@@ -639,7 +672,8 @@ void SettingsDialog::addCategoryBlock(QVBoxLayout* lay, TagCategory& cat, int de
 
             // Rename tag
             auto* renTagBtn = new QToolButton(tagRow);
-            renTagBtn->setText("✏");
+            renTagBtn->setIcon(Icons::pencil());
+            renTagBtn->setIconSize(QSize(12, 12));
             renTagBtn->setFixedSize(18, 18);
             renTagBtn->setStyleSheet(
                 "QToolButton { background: rgba(100,160,255,0.1); border: 1px solid rgba(100,160,255,0.25);"
@@ -658,7 +692,8 @@ void SettingsDialog::addCategoryBlock(QVBoxLayout* lay, TagCategory& cat, int de
 
             // Remove from category
             auto* remTagBtn = new QToolButton(tagRow);
-            remTagBtn->setText("✕");
+            remTagBtn->setIcon(Icons::xMark());
+            remTagBtn->setIconSize(QSize(12, 12));
             remTagBtn->setFixedSize(18, 18);
             remTagBtn->setToolTip(Strings::get(StringKey::CatPanelRename));
             remTagBtn->setStyleSheet(

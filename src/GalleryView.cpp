@@ -1,4 +1,5 @@
 #include "GalleryView.h"
+#include "Icons.h"
 #include "Strings.h"
 #include <QDir>
 #include <QFileInfo>
@@ -376,7 +377,11 @@ void GalleryView::onThumbnailFailed(int index, const QString& /*path*/) {
         QPainter p(&ph);
         p.setPen(QColor(120, 140, 150));
         p.setFont(QFont("Arial", 10));
-        p.drawText(ph.rect(), Qt::AlignCenter, "⚠ Ladefehler");
+        {
+        QPixmap warnPix = Icons::warning().pixmap(QSize(24, 24));
+        p.drawPixmap(ph.rect().center() - QPoint(warnPix.width()/2, warnPix.height()/2 + 8), warnPix);
+        p.drawText(ph.rect().adjusted(0, 20, 0, 0), Qt::AlignCenter, "Ladefehler");
+    }
         p.end();
         m_indexToTile[index]->setThumbnail(ph);
     }
@@ -513,11 +518,13 @@ void GalleryView::enterGroupMode(const QString& tag) {
 
         auto* lbl = new QLabel(QString(), m_groupModeBanner);
         lbl->setObjectName("groupModeLbl");
-        lbl->setText(QString("🗂  Group mode: Tag \"%1\"  —  Right-click items to toggle tag membership").arg(tag));
+        lbl->setText(QString("Group mode: Tag \"%1\"  —  Right-click items to toggle tag membership").arg(tag));
         lbl->setStyleSheet("color: #d0a0ff; font-size: 12px; font-weight: 600; background: transparent;");
         bannerLay->addWidget(lbl, 1);
 
-        auto* cancelBtn = new QPushButton("✕  Cancel", m_groupModeBanner);
+        auto* cancelBtn = new QPushButton("Cancel", m_groupModeBanner);
+    cancelBtn->setIcon(Icons::xMark());
+    cancelBtn->setIconSize(QSize(14, 14));
         cancelBtn->setStyleSheet(
             "QPushButton { background: rgba(200,100,100,0.25); border: 1px solid rgba(200,100,100,0.5);"
             "border-radius: 6px; color: #ff9090; padding: 3px 12px; font-size: 11px; }"
@@ -593,7 +600,9 @@ void GalleryView::enterAddToTagMode(const QString& tag) {
         lbl->setStyleSheet("color: #00e8d0; font-size: 12px; font-weight: 600; background: transparent;");
         bannerLay->addWidget(lbl, 1);
 
-        auto* cancelBtn = new QPushButton("✕  Beenden", m_addToTagBanner);
+        auto* cancelBtn = new QPushButton("Beenden", m_addToTagBanner);
+    cancelBtn->setIcon(Icons::xMark());
+    cancelBtn->setIconSize(QSize(14, 14));
         cancelBtn->setStyleSheet(
             "QPushButton { background: rgba(200,100,100,0.25); border: 1px solid rgba(200,100,100,0.5);"
             "border-radius: 6px; color: #ff9090; padding: 3px 12px; font-size: 11px; }"
@@ -604,7 +613,7 @@ void GalleryView::enterAddToTagMode(const QString& tag) {
 
     // Update label text
     if (auto* lbl = m_addToTagBanner->findChild<QLabel*>("addToTagLabel"))
-        lbl->setText(QString("🏷  Add-to-Tag Modus: \"%1\"  —  Linksklick zum Hinzufügen/Entfernen").arg(tag));
+        lbl->setText(QString("Add-to-Tag Modus: \"%1\"  —  Linksklick zum Hinzufügen/Entfernen").arg(tag));
 
     m_addToTagBanner->setGeometry(0, 0, viewport()->width(), 38);
     m_addToTagBanner->setVisible(true);

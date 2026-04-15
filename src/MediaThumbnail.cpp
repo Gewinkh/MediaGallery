@@ -1,4 +1,5 @@
 #include "MediaThumbnail.h"
+#include "Icons.h"
 #include "Style.h"
 #include "AppSettings.h"
 #include <QPainter>
@@ -34,7 +35,7 @@ void MediaThumbnail::setupUi() {
     m_nameEdit->setStyleSheet(
         "QLineEdit { background: rgba(0,0,0,0.5); border: 1px solid rgba(0,180,160,0.3);"
         "border-radius: 5px; color: #dcebd8; font-size: 11px; padding: 0 6px; }"
-        "QLineEdit:focus { border-color: rgba(0,200,180,0.7); }");
+        "QLineEdit:focus { border-color: rgba(0,0,0,0.7); }");
     connect(m_nameEdit, &QLineEdit::editingFinished, this, [this]() {
         emit nameChanged(m_index, m_nameEdit->text().trimmed());
         removeClickAwayFilter();
@@ -54,11 +55,13 @@ void MediaThumbnail::setupUi() {
 
     // Video overlay label
     m_typeOverlay = new QLabel(m_imageLabel);
-    m_typeOverlay->setText("▶");
+    {
+        QPixmap pix = Icons::play().pixmap(QSize(44, 44));
+        m_typeOverlay->setPixmap(pix);
+    }
     m_typeOverlay->setStyleSheet(
-        "background: rgba(0,0,0,0.55); color: white; font-size: 22px;"
-        "border-radius: 20px; padding: 4px 8px;");
-    m_typeOverlay->setFixedSize(44, 40);
+        "background: transparent; color: white; font-size: 44px;");
+    m_typeOverlay->setFixedSize(44, 44);
     m_typeOverlay->setAlignment(Qt::AlignCenter);
     m_typeOverlay->hide();
 
@@ -143,7 +146,7 @@ void MediaThumbnail::setupUi() {
     setStyleSheet(
         "MediaThumbnail { background: rgb(18,28,34); border-radius: 8px;"
         "border: 1px solid rgba(40,60,70,0.7); }"
-    );
+        );
 }
 
 // Returns true if the mouse cursor is currently over the tooltip panel or any of its children.
@@ -662,7 +665,10 @@ void MediaThumbnail::paintEvent(QPaintEvent* e) {
         p.drawRect(imgRect);
         p.setPen(QColor(60, 80, 85));
         p.setFont(QFont(font().family(), 22));
-        p.drawText(imgRect, Qt::AlignCenter, "🔒");
+        {
+            QPixmap lockPix = Icons::lock().pixmap(QSize(32, 32));
+            p.drawPixmap(imgRect.center() - QPoint(lockPix.width()/2, lockPix.height()/2), lockPix);
+        }
     }
 }
 

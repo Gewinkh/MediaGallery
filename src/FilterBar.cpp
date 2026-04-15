@@ -1,4 +1,5 @@
 #include "FilterBar.h"
+#include "Icons.h"
 #include "Strings.h"
 #include <QScrollArea>
 #include <QFrame>
@@ -87,7 +88,8 @@ FilterBar::FilterBar(TagManager* mgr, QWidget* parent)
 
     m_sortOrder = new QToolButton(this);
     m_sortOrder->setToolTip(Strings::get(StringKey::FilterReverseOrder));
-    m_sortOrder->setText(currentFieldOrder() == SortOrder::Ascending ? "↑" : "↓");
+    m_sortOrder->setIcon(currentFieldOrder() == SortOrder::Ascending ? Icons::arrowUp() : Icons::arrowDown());
+    m_sortOrder->setIconSize(QSize(14, 14));
     m_sortOrder->setStyleSheet(
         "QToolButton { background: rgba(255,255,255,0.07); border: 1px solid rgba(255,255,255,0.15);"
         "border-radius: 6px; color: white; font-size: 14px; padding: 1px 6px; }"
@@ -114,11 +116,11 @@ FilterBar::FilterBar(TagManager* mgr, QWidget* parent)
     mainLay->addWidget(sep3);
 
     // ── Tags hover-dropdown ───────────────────────────────────────────────────
-    m_tagsDropdown = new HoverDropdown("🏷 Tags", HoverDropdown::Mode::Tags, this, this);
+    m_tagsDropdown = new HoverDropdown("Tags", HoverDropdown::Mode::Tags, this, this);
     mainLay->addWidget(m_tagsDropdown);
 
     // ── Kategorien hover-dropdown (+ button is shown INSIDE the panel header) ─
-    m_catsDropdown = new HoverDropdown("📂 Kategorien", HoverDropdown::Mode::Categories, this, this);
+    m_catsDropdown = new HoverDropdown("Kategorien", HoverDropdown::Mode::Categories, this, this);
     mainLay->addWidget(m_catsDropdown);
 
     auto* sep5 = new QFrame(this);
@@ -177,7 +179,9 @@ void FilterBar::buildActiveChips() {
         for (const TagCategory& cat : cats) {
             if (m_activeCategories.contains(cat.id)) {
                 QColor c = cat.color;
-                auto* btn = new QPushButton(QString("📂 %1").arg(cat.name), m_activeArea);
+                auto* btn = new QPushButton(cat.name, m_activeArea);
+    btn->setIcon(Icons::folder());
+    btn->setIconSize(QSize(14, 14));
                 btn->setFixedHeight(24);
                 btn->setStyleSheet(QString(
                     "QPushButton { background: rgba(%1,%2,%3,0.35); border: 1px solid rgba(%1,%2,%3,0.8);"
@@ -389,14 +393,16 @@ void FilterBar::saveCurrentFieldOrder(SortOrder o) {
     m_fieldOrder[m_sortField->currentIndex()] = o;
 }
 void FilterBar::onSortFieldChanged(int) {
-    m_sortOrder->setText(currentFieldOrder() == SortOrder::Ascending ? "↑" : "↓");
+    m_sortOrder->setIcon(currentFieldOrder() == SortOrder::Ascending ? Icons::arrowUp() : Icons::arrowDown());
+    m_sortOrder->setIconSize(QSize(14, 14));
     emit sortChanged();
 }
 void FilterBar::onSortOrderToggled() {
     SortOrder next = (currentFieldOrder() == SortOrder::Ascending)
                      ? SortOrder::Descending : SortOrder::Ascending;
     saveCurrentFieldOrder(next);
-    m_sortOrder->setText(next == SortOrder::Ascending ? "↑" : "↓");
+    m_sortOrder->setIcon(next == SortOrder::Ascending ? Icons::arrowUp() : Icons::arrowDown());
+    m_sortOrder->setIconSize(QSize(14, 14));
     emit sortChanged();
 }
 void FilterBar::onTypeFilterChanged() { emit filterChanged(); }
@@ -436,9 +442,9 @@ void MediaHoverButton::updateLabel() {
     bool vid = AppSettings::instance().showVideos();
     bool aud = AppSettings::instance().showAudio();
     QStringList active;
-    if (img) active << "🖼";
-    if (vid) active << "▶";
-    if (aud) active << "🎵";
+    if (img) active << "IMG";
+    if (vid) active << "VID";
+    if (aud) active << "AUD";
     setText(QString("Medien %1").arg(active.isEmpty() ? "—" : active.join("")));
 }
 
@@ -479,16 +485,18 @@ void MediaHoverButton::buildPanel() {
     line->setStyleSheet("color: rgba(255,255,255,0.1);");
     lay->addWidget(line);
 
-    struct MediaToggle { QString icon; StringKey labelKey; bool (AppSettings::*getter)() const; void (AppSettings::*setter)(bool); };
+    struct MediaToggle { QIcon icon; StringKey labelKey; bool (AppSettings::*getter)() const; void (AppSettings::*setter)(bool); };
     QList<MediaToggle> toggles = {
-        { "🖼", StringKey::FilterImages, &AppSettings::showImages, &AppSettings::setShowImages },
-        { "▶",  StringKey::FilterVideos, &AppSettings::showVideos, &AppSettings::setShowVideos },
-        { "🎵", StringKey::FilterAudio,  &AppSettings::showAudio,  &AppSettings::setShowAudio  },
+        { Icons::image(),  StringKey::FilterImages, &AppSettings::showImages, &AppSettings::setShowImages },
+        { Icons::play(),   StringKey::FilterVideos, &AppSettings::showVideos, &AppSettings::setShowVideos },
+        { Icons::music(),  StringKey::FilterAudio,  &AppSettings::showAudio,  &AppSettings::setShowAudio  },
     };
 
     for (const MediaToggle& t : toggles) {
         bool active = (AppSettings::instance().*t.getter)();
-        auto* btn = new QPushButton(QString("%1  %2").arg(t.icon, Strings::get(t.labelKey)), m_panel);
+        auto* btn = new QPushButton(Strings::get(t.labelKey), m_panel);
+        btn->setIcon(t.icon);
+        btn->setIconSize(QSize(16, 16));
         btn->setCheckable(true);
         btn->setChecked(active);
         btn->setFixedHeight(28);
@@ -912,7 +920,7 @@ void HoverDropdown::addCatSection(QVBoxLayout* lay, const TagCategory& cat, int 
         // ── Add Tag to this category ──────────────────────────────────────────
         menu.addSeparator();
         // Sub-menu: existing uncategorized tags first, then "New tag..."
-        QMenu* addTagMenu = menu.addMenu(QString("🏷  %1").arg(Strings::get(StringKey::CatPanelAddTag)));
+        QMenu* addTagMenu = menu.addMenu(Strings::get(StringKey::CatPanelAddTag));
         addTagMenu->setStyleSheet(menuStyle());
         {
             // Offer all existing tags that are not yet in this category
@@ -935,7 +943,7 @@ void HoverDropdown::addCatSection(QVBoxLayout* lay, const TagCategory& cat, int 
             }
             if (addedAny) addTagMenu->addSeparator();
             // "New tag..." option
-            QAction* newTagAct = addTagMenu->addAction(QString("✚  %1").arg(Strings::get(StringKey::FilterNewTag)));
+            QAction* newTagAct = addTagMenu->addAction(Strings::get(StringKey::FilterNewTag));
             connect(newTagAct, &QAction::triggered, this, [this, catId]{
                 bool ok;
                 QString n = QInputDialog::getText(this,
@@ -1101,7 +1109,7 @@ void FilterTagChip::showInfoPanel() {
         hdr->setStyleSheet("color: rgba(0,200,180,0.7); font-size: 10px; font-weight: bold;");
         lay->addWidget(hdr);
         for (const QString& catName : memberOf) {
-            auto* cl = new QLabel(QString("  📂 %1").arg(catName), m_infoPanel);
+            auto* cl = new QLabel(QString("  %1").arg(catName), m_infoPanel);
             cl->setStyleSheet("color: rgba(200,220,215,0.85); font-size: 11px;");
             lay->addWidget(cl);
         }
@@ -1187,7 +1195,7 @@ void FilterTagChip::contextMenuEvent(QContextMenuEvent*) {
     TagManager*    mgr = m_bar->m_tagMgr;
 
     // ── Color ────────────────────────────────────────────────────────────────
-    menu.addAction(QString("🎨  %1 \"%2\"").arg(Strings::get(StringKey::FilterCatChangeColor), tag), [guard, tag, mgr]{
+    menu.addAction(QString("%1 \"%2\"").arg(Strings::get(StringKey::FilterCatChangeColor), tag), [guard, tag, mgr]{
         if (!guard) return;
         QColor c = QColorDialog::getColor(mgr->tagColor(tag), nullptr,
             Strings::get(StringKey::FilterCatChangeColor));
@@ -1219,7 +1227,7 @@ void FilterTagChip::contextMenuEvent(QContextMenuEvent*) {
                 anyRemove = true;
                 QString catId   = cat.id;
                 QString catName = cat.name;
-                menu.addAction(QString("✖  %1 \"%2\"").arg(
+                menu.addAction(QString("%1 \"%2\"").arg(
                     Strings::get(StringKey::CatPanelDelete), catName),
                                [guard, catId, tag, mgr]{
                     if (!guard) return;
@@ -1233,7 +1241,7 @@ void FilterTagChip::contextMenuEvent(QContextMenuEvent*) {
     if (anyRemove) menu.addSeparator();
 
     // ── Add to category / subcategory ─────────────────────────────────────────
-    QMenu* addMenu = menu.addMenu(QString("📂  %1").arg(Strings::get(StringKey::CatPanelAddCategory)));
+    QMenu* addMenu = menu.addMenu(Strings::get(StringKey::CatPanelAddCategory));
     addMenu->setStyleSheet(menuStyle());
 
     std::function<void(QMenu*, const QList<TagCategory>&)> populate;
@@ -1272,7 +1280,7 @@ void FilterTagChip::contextMenuEvent(QContextMenuEvent*) {
         addMenu->addAction(Strings::get(StringKey::FilterNoCategories))->setEnabled(false);
 
     menu.addSeparator();
-    menu.addAction(QString("🗑  %1").arg(Strings::get(StringKey::SettingsTagDelete)), [guard, tag, mgr]{
+    menu.addAction(Strings::get(StringKey::SettingsTagDelete), [guard, tag, mgr]{
         if (!guard) return;
         mgr->deleteTag(tag);
     });
