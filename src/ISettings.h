@@ -99,6 +99,7 @@ public:
     virtual bool showImages() const = 0; virtual void setShowImages(bool v) = 0;
     virtual bool showVideos() const = 0; virtual void setShowVideos(bool v) = 0;
     virtual bool showAudio()  const = 0; virtual void setShowAudio(bool v) = 0;
+    virtual bool showPdfs()   const = 0; virtual void setShowPdfs(bool v)  = 0;
 
     virtual DesignProfile designProfile() const = 0;
     virtual void          setDesignProfile(DesignProfile p) = 0;

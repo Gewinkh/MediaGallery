@@ -1,4 +1,5 @@
 #include "FullscreenView.h"
+#include "PdfViewer.h"
 #include "Icons.h"
 #include "Strings.h"
 #include <QLineEdit>
@@ -34,6 +35,7 @@ FullscreenView::FullscreenView(TagManager* tagMgr, QWidget* parent)
         "QToolButton:hover { background: rgba(0,180,160,0.3); color: #00c8b4; }");
     connect(m_backBtn, &QToolButton::clicked, this, [this]() {
         m_videoPlayer->stop();
+        m_pdfViewer->closeDocument();
         emit backRequested();
     });
     topLay->addWidget(m_backBtn);
@@ -87,6 +89,10 @@ FullscreenView::FullscreenView(TagManager* tagMgr, QWidget* parent)
     m_videoPlayer = new VideoPlayer(this);
     m_videoPlayer->hide();
     connect(m_videoPlayer, &VideoPlayer::mediaFinished, this, &FullscreenView::showNext);
+
+    // --- PDF viewer ---
+    m_pdfViewer = new PdfViewer(this);
+    m_pdfViewer->hide();
 
     // --- Bottom bar ---
     m_bottomBar = new QWidget(this);
@@ -196,11 +202,17 @@ void FullscreenView::applyCurrentItem() {
     bool isVid   = item.isVideo();
     bool isAudio = item.isAudio();
     bool isImg   = item.isImage();
+    bool isPdf   = item.isPdf();
 
-    m_imageLabel->setVisible(!isVid);
+    m_imageLabel->setVisible(!isVid && !isPdf);
     m_videoPlayer->setVisible(isVid || isAudio);
+    m_pdfViewer->setVisible(isPdf);
 
-    if (isVid) {
+    if (isPdf) {
+        m_videoPlayer->stop();
+        m_pdfViewer->loadFile(item.filePath);
+    } else if (isVid) {
+        m_pdfViewer->closeDocument();
         if (AppSettings::instance().videoPlayback() == VideoPlayback::Native) {
             m_videoPlayer->loadFile(item.filePath);
         } else {
@@ -208,6 +220,7 @@ void FullscreenView::applyCurrentItem() {
             m_videoPlayer->stop();
         }
     } else if (isAudio) {
+        m_pdfViewer->closeDocument();
         // Use video player for audio (Qt Multimedia handles audio-only files)
         m_videoPlayer->loadFile(item.filePath);
         // Show a stylized audio background in imageLabel (hidden behind player widget)
@@ -238,6 +251,7 @@ void FullscreenView::updateDisplay() {
     m_bottomBar->setGeometry(0, height() - m_bottomBar->height(), width(), m_bottomBar->height());
     int contentH = height() - m_topBar->height() - m_bottomBar->height();
     m_videoPlayer->setGeometry(0, m_topBar->height(), width(), contentH);
+    m_pdfViewer->setGeometry(0, m_topBar->height(), width(), contentH);
     updateZoom();
 }
 

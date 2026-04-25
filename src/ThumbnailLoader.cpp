@@ -1,4 +1,7 @@
 #include "ThumbnailLoader.h"
+#include <QPdfDocument>
+#include <QPainter>
+#include <QLinearGradient>
 #include "MediaItem.h"
 #include <QImageReader>
 #include <QPainter>
@@ -121,6 +124,8 @@ void ThumbnailTask::run() {
         pix = generateVideoThumbnail(m_path, m_size);
     else if (t == MediaType::Audio)
         pix = generateAudioThumbnail(m_path, m_size);
+    else if (t == MediaType::Pdf)
+        pix = generatePdfThumbnail(m_path, m_size);
 
     if (!pix.isNull())
         pix.save(cachePath, "JPG", 85);
@@ -219,4 +224,72 @@ QPixmap ThumbnailTask::generateVideoThumbnail(const QString& path, const QSize& 
     player.stop();
 
     return result;
+}
+
+QPixmap ThumbnailTask::generatePdfThumbnail(const QString& path, const QSize& size)
+{
+    QPdfDocument doc;
+    if (doc.load(path) != QPdfDocument::Error::None)
+        return fallbackPdfThumbnail(size);
+
+    // Render first page at thumbnail resolution
+    QSizeF pageSize = doc.pagePointSize(0);
+    if (pageSize.isEmpty())
+        return fallbackPdfThumbnail(size);
+
+    // Scale to fit thumbnail keeping aspect ratio
+    double scaleX = size.width()  / pageSize.width();
+    double scaleY = size.height() / pageSize.height();
+    double scale  = qMin(scaleX, scaleY);
+    QSize  renderSize(static_cast<int>(pageSize.width()  * scale),
+                      static_cast<int>(pageSize.height() * scale));
+
+    QImage img = doc.render(0, renderSize);
+    if (img.isNull())
+        return fallbackPdfThumbnail(size);
+
+    // Center on a background canvas
+    QPixmap canvas(size);
+    canvas.fill(QColor(35, 45, 50));
+    QPainter p(&canvas);
+    QPixmap page = QPixmap::fromImage(std::move(img));
+    int ox = (size.width()  - page.width())  / 2;
+    int oy = (size.height() - page.height()) / 2;
+    p.drawPixmap(ox, oy, page);
+
+    // Subtle PDF badge
+    QFont f = p.font();
+    f.setPixelSize(11);
+    f.setBold(true);
+    p.setFont(f);
+    p.setPen(Qt::NoPen);
+    p.setBrush(QColor(200, 50, 50, 200));
+    QRect badge(4, size.height() - 22, 36, 18);
+    p.drawRoundedRect(badge, 4, 4);
+    p.setPen(Qt::white);
+    p.drawText(badge, Qt::AlignCenter, "PDF");
+    p.end();
+    return canvas;
+}
+
+QPixmap ThumbnailTask::fallbackPdfThumbnail(const QSize& size)
+{
+    QPixmap pix(size);
+    pix.fill(Qt::transparent);
+    QPainter p(&pix);
+    p.setRenderHint(QPainter::Antialiasing);
+
+    QLinearGradient grad(0, 0, 0, size.height());
+    grad.setColorAt(0, QColor(90, 20, 20));
+    grad.setColorAt(1, QColor(40,  8,  8));
+    p.fillRect(pix.rect(), grad);
+
+    QFont f = p.font();
+    f.setPixelSize(qMax(18, size.width() / 4));
+    f.setBold(true);
+    p.setFont(f);
+    p.setPen(QColor(255, 180, 160, 200));
+    p.drawText(pix.rect(), Qt::AlignCenter, "PDF");
+    p.end();
+    return pix;
 }

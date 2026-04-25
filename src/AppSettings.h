@@ -49,6 +49,7 @@ public:
     bool showImages() const override; void setShowImages(bool v) override;
     bool showVideos() const override; void setShowVideos(bool v) override;
     bool showAudio()  const override; void setShowAudio(bool v) override;
+    bool showPdfs()   const override; void setShowPdfs(bool v)  override;
 
     DesignProfile designProfile() const override;
     void          setDesignProfile(DesignProfile p) override;

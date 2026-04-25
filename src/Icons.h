@@ -1,4 +1,6 @@
-#pragma once
+// ICONS_H
+#ifndef MEDIAGALLERY_ICONS_H
+#define MEDIAGALLERY_ICONS_H
 #include <QIcon>
 #include <QIconEngine>
 #include <QPixmap>
@@ -41,6 +43,7 @@ public:
     static QIcon arrowDown();     // ↓  sort descending
     static QIcon arrowIndent();   // ↳  depth indent
     static QIcon shuffle();       // 🔀  random / shuffle
+    static QIcon pdf();           // PDF document
 
     // ── Convenience: render SVG data to a QIcon at given pixel size ─────────
     static QIcon fromSvg(const QByteArray& svgData, int size = 32);
@@ -363,3 +366,15 @@ inline QIcon Icons::shuffle()
 </svg>)svg", 24);
     return icon;
 }
+
+// pdf icon
+inline QIcon Icons::pdf() {
+    static const char svg[] =
+        "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'>"
+        "<rect x='3' y='1' width='14' height='19' rx='2' fill='#c0392b'/>"
+        "<text x='5' y='16' font-size='6' fill='white' font-weight='bold'>PDF</text>"
+        "</svg>";
+    return fromSvg(QByteArray(svg));
+}
+
+#endif // MEDIAGALLERY_ICONS_H

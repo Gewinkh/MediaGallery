@@ -28,6 +28,7 @@ enum class StringKey {
     FilterImages,
     FilterVideos,
     FilterAudio,
+    FilterPdf,
     FilterMedia,
     FilterSortBy,
     FilterDate,

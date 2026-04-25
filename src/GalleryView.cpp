@@ -114,6 +114,7 @@ void GalleryView::applyFilter(FilterBar* fb) {
     bool showImg = fb->showImages();
     bool showVid = fb->showVideos();
     bool showAud = fb->showAudio();
+    bool showPdf = fb->showPdfs();
     SortField sf = fb->sortField();
     SortOrder so = fb->sortOrder();
 
@@ -138,6 +139,7 @@ void GalleryView::applyFilter(FilterBar* fb) {
         if (item.isImage() && !showImg) continue;
         if (item.isVideo() && !showVid) continue;
         if (item.isAudio() && !showAud) continue;
+        if (item.isPdf()   && !showPdf) continue;
 
         // No filter active: show everything
         if (!hasAnyFilter) {

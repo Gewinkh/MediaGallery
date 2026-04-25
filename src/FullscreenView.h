@@ -10,6 +10,7 @@
 #include <QLineEdit>
 #include "MediaItem.h"
 #include "VideoPlayer.h"
+#include "PdfViewer.h"
 #include "TagWidget.h"
 #include "TagManager.h"
 #include "AppSettings.h"
@@ -81,6 +82,7 @@ private:
     // UI elements
     QLabel* m_imageLabel;
     VideoPlayer* m_videoPlayer;
+    PdfViewer*   m_pdfViewer = nullptr;
     QWidget* m_topBar;
     QWidget* m_bottomBar;
     QToolButton* m_backBtn;

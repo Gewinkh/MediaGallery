@@ -385,6 +385,7 @@ SortOrder FilterBar::sortOrder()  const { return currentFieldOrder(); }
 bool FilterBar::showImages() const { return AppSettings::instance().showImages(); }
 bool FilterBar::showVideos() const { return AppSettings::instance().showVideos(); }
 bool FilterBar::showAudio()  const { return AppSettings::instance().showAudio(); }
+bool FilterBar::showPdfs()   const { return AppSettings::instance().showPdfs(); }
 
 SortOrder FilterBar::currentFieldOrder() const {
     return m_fieldOrder.value(m_sortField->currentIndex(), SortOrder::Descending);
@@ -441,10 +442,12 @@ void MediaHoverButton::updateLabel() {
     bool img = AppSettings::instance().showImages();
     bool vid = AppSettings::instance().showVideos();
     bool aud = AppSettings::instance().showAudio();
+    bool pdf = AppSettings::instance().showPdfs();
     QStringList active;
     if (img) active << "IMG";
     if (vid) active << "VID";
     if (aud) active << "AUD";
+    if (pdf) active << "PDF";
     setText(QString("Medien %1").arg(active.isEmpty() ? "—" : active.join("")));
 }
 
@@ -490,6 +493,7 @@ void MediaHoverButton::buildPanel() {
         { Icons::image(),  StringKey::FilterImages, &AppSettings::showImages, &AppSettings::setShowImages },
         { Icons::play(),   StringKey::FilterVideos, &AppSettings::showVideos, &AppSettings::setShowVideos },
         { Icons::music(),  StringKey::FilterAudio,  &AppSettings::showAudio,  &AppSettings::setShowAudio  },
+        { Icons::pdf(),    StringKey::FilterPdf,    &AppSettings::showPdfs,   &AppSettings::setShowPdfs   },
     };
 
     for (const MediaToggle& t : toggles) {

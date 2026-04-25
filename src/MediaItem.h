@@ -6,7 +6,7 @@
 #include <QFileInfo>
 #include <QSet>
 
-enum class MediaType { Image, Video, Audio, Unknown };
+enum class MediaType { Image, Video, Audio, Pdf, Unknown };
 
 struct MediaItem {
     QString filePath;       // Full path on disk
@@ -47,12 +47,14 @@ struct MediaItem {
         if (imgExts.contains(ext)) return MediaType::Image;
         if (vidExts.contains(ext)) return MediaType::Video;
         if (audExts.contains(ext)) return MediaType::Audio;
+        if (ext == "pdf") return MediaType::Pdf;
         return MediaType::Unknown;
     }
 
     bool isImage() const { return type == MediaType::Image; }
     bool isVideo() const { return type == MediaType::Video; }
     bool isAudio() const { return type == MediaType::Audio; }
+    bool isPdf()   const { return type == MediaType::Pdf; }
 
     bool matchesTagFilter(const QStringList& filterTags, bool andMode) const {
         if (filterTags.isEmpty()) return true;

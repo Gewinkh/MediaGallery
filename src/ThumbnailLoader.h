@@ -52,4 +52,6 @@ private:
     static QPixmap generateVideoThumbnail(const QString& path, const QSize& size);
     static QPixmap generateImageThumbnail(const QString& path, const QSize& size);
     static QPixmap generateAudioThumbnail(const QString& path, const QSize& size);
+    static QPixmap generatePdfThumbnail(const QString& path, const QSize& size);
+    static QPixmap fallbackPdfThumbnail(const QSize& size);
 };

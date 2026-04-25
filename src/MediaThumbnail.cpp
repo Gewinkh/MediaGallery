@@ -520,11 +520,17 @@ void MediaThumbnail::setItem(const MediaItem& item, int index) {
     m_nameEdit->setText(item.displayName.isEmpty() ? item.baseName() : item.displayName);
     m_typeOverlay->setVisible(item.isVideo());
 
+    // PDF badge overlay reuses audioOverlay label
+    bool isPdf = item.isPdf();
+
     // Audio overlay
     bool isAudio = item.isAudio();
-    m_audioOverlay->setVisible(isAudio);
+    m_audioOverlay->setVisible(isAudio || isPdf);
     if (isAudio) {
         m_audioOverlay->setText(item.audioFormatLabel());
+        m_audioOverlay->adjustSize();
+    } else if (isPdf) {
+        m_audioOverlay->setText("PDF");
         m_audioOverlay->adjustSize();
     }
 
@@ -585,7 +591,7 @@ void MediaThumbnail::setCovered(bool covered) {
     } else {
         // Restore overlays
         m_typeOverlay->setVisible(m_item.isVideo());
-        m_audioOverlay->setVisible(m_item.isAudio());
+        m_audioOverlay->setVisible(m_item.isAudio() || m_item.isPdf());
     }
     update();
 }

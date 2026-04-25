@@ -313,6 +313,8 @@ bool AppSettings::showVideos() const { return m_settings.value("filter/showVideo
 void AppSettings::setShowVideos(bool v) { m_settings.setValue("filter/showVideos", v); }
 bool AppSettings::showAudio()  const { return m_settings.value("filter/showAudio",  true).toBool(); }
 void AppSettings::setShowAudio(bool v) { m_settings.setValue("filter/showAudio", v); }
+bool AppSettings::showPdfs()   const { return m_settings.value("filter/showPdfs",   true).toBool(); }
+void AppSettings::setShowPdfs(bool v)  { m_settings.setValue("filter/showPdfs",  v); }
 
 // ─── Design / Theme ───────────────────────────────────────────────────────────
 DesignProfile AppSettings::designProfile() const {

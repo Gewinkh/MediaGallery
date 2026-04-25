@@ -13,6 +13,8 @@ find_package(Qt6 6.4 REQUIRED COMPONENTS
     Widgets
     Multimedia
     MultimediaWidgets
+    Pdf
+    PdfWidgets
     Svg
     LinguistTools
 )
@@ -55,6 +57,11 @@ set(SOURCES
     src/VideoPlayer.h
     src/ThumbnailLoader.cpp
     src/ThumbnailLoader.h
+    src/PdfViewer.cpp
+    src/PdfMediaHandler.cpp
+    src/PdfMediaHandler.h
+    src/MediaOverlayWidget.cpp
+    src/MediaOverlayWidget.h
     src/Style.cpp
     src/Style.h
     src/Strings.cpp
@@ -76,6 +83,8 @@ target_link_libraries(MediaGallery PRIVATE
     Qt6::Widgets
     Qt6::Multimedia
     Qt6::MultimediaWidgets
+    Qt6::Pdf
+    Qt6::PdfWidgets
     Qt6::Svg
 )
 
