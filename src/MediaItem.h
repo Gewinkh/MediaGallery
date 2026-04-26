@@ -68,33 +68,4 @@ struct MediaItem {
             return false;
         }
     }
-
-    // Extended filter with TagFilterMode enum values
-    // mode: 0=OR, 1=AND, 2=ONLY, 3=INCLUSIVE
-    bool matchesTagFilterMode(const QStringList& filterTags, int mode) const {
-        if (filterTags.isEmpty()) return true;
-        switch (mode) {
-        case 0: // OR
-            for (const auto& t : filterTags)
-                if (tags.contains(t)) return true;
-            return false;
-        case 1: // AND
-            for (const auto& t : filterTags)
-                if (!tags.contains(t)) return false;
-            return true;
-        case 2: // ONLY – item must contain ALL filterTags and NO other tags
-            // All filterTags must be present
-            for (const auto& t : filterTags)
-                if (!tags.contains(t)) return false;
-            // No extra tags allowed outside the filterTags set
-            for (const auto& t : tags)
-                if (!filterTags.contains(t)) return false;
-            return true;
-        case 3: // INCLUSIVE – item contains the tag (+ anything else is fine)
-            for (const auto& t : filterTags)
-                if (tags.contains(t)) return true;
-            return false;
-        default: return true;
-        }
-    }
 };

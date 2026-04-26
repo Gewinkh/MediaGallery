@@ -16,7 +16,7 @@ void ColorPickerButton::setColor(const QColor& c) {
 }
 
 void ColorPickerButton::pickColor() {
-    QColor c = QColorDialog::getColor(m_color, this, tr("Farbe wählen"),
+    QColor c = QColorDialog::getColor(m_color, this, tr("Pick Color"),
                                       QColorDialog::ShowAlphaChannel);
     if (c.isValid()) {
         setColor(c);

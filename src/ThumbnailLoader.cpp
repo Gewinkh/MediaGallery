@@ -4,29 +4,29 @@
 #include <QLinearGradient>
 #include "MediaItem.h"
 #include <QImageReader>
-#include <QPainter>
-#include <QLinearGradient>
 #include <QFont>
 #include <QFileInfo>
 #include <QStandardPaths>
 #include <QDir>
 #include <QCryptographicHash>
+#include <QMutex>
 #include <QMutexLocker>
+#include <QWaitCondition>
 #include <QThread>
 #include <QVideoFrame>
 #include <QMediaPlayer>
 #include <QVideoSink>
-#include <QEventLoop>
-#include <QTimer>
 
 // ---- Disk cache helpers ----
-static QString cacheDir() {
+namespace {
+
+QString cacheDir() {
     QString base = QStandardPaths::writableLocation(QStandardPaths::CacheLocation);
     QDir().mkpath(base + "/thumbs");
     return base + "/thumbs";
 }
 
-static QString cacheKey(const QString& path, const QSize& size) {
+QString cacheKey(const QString& path, const QSize& size) {
     // Include last-modified timestamp so edited/replaced files get fresh thumbnails
     qint64 mtime = QFileInfo(path).lastModified().toMSecsSinceEpoch();
     QByteArray raw = (path + QChar('|') + QString::number(size.width())
@@ -35,6 +35,8 @@ static QString cacheKey(const QString& path, const QSize& size) {
     return cacheDir() + "/" +
            QCryptographicHash::hash(raw, QCryptographicHash::Md5).toHex() + ".jpg";
 }
+
+} // namespace
 
 // ---- ThumbnailLoader ----
 
@@ -58,6 +60,9 @@ void ThumbnailLoader::requestThumbnail(const QString& filePath, const QSize& siz
         QMutexLocker lk(&m_mutex);
         auto it = m_memCache.find(filePath);
         if (it != m_memCache.end()) {
+            // Move to back of LRU list (most recently used)
+            m_cacheOrder.removeOne(filePath);
+            m_cacheOrder.append(filePath);
             emit thumbnailReady(index, filePath, it.value());
             return;
         }
@@ -66,18 +71,26 @@ void ThumbnailLoader::requestThumbnail(const QString& filePath, const QSize& siz
         m_pending.insert(filePath);
     }
 
+    // Snapshot the current generation under the lock so the task carries it
+    uint64_t gen = m_generation.load(std::memory_order_relaxed);
+
     // Disk cache check + actual decode happen on the thread pool (non-blocking UI)
-    auto* task = new ThumbnailTask(filePath, size, index);
+    auto* task = new ThumbnailTask(filePath, size, index, gen);
     task->setAutoDelete(true);
     connect(task, &ThumbnailTask::done, this,
-            [this](int idx, const QString& path, const QPixmap& pix) {
+            [this](int idx, const QString& path, const QPixmap& pix, uint64_t taskGen) {
+        // Discard result if cancelAll() was called after this task was queued
+        if (taskGen != m_generation.load(std::memory_order_relaxed)) return;
         {
             QMutexLocker lk(&m_mutex);
             m_pending.remove(path);
             if (!pix.isNull()) {
-                // Keep at most 200 entries in memory cache (LRU-lite: just cap size)
-                if (m_memCache.size() >= 200)
-                    m_memCache.erase(m_memCache.begin());
+                // Real LRU eviction: remove the least-recently-used entry
+                if (m_memCache.size() >= 200) {
+                    const QString lruKey = m_cacheOrder.takeFirst();
+                    m_memCache.remove(lruKey);
+                }
+                m_cacheOrder.append(path);
                 m_memCache.insert(path, pix);
             }
         }
@@ -91,6 +104,8 @@ void ThumbnailLoader::requestThumbnail(const QString& filePath, const QSize& siz
 
 void ThumbnailLoader::cancelAll() {
     m_pool->clear();
+    // Increment generation so any in-flight task results are silently discarded
+    m_generation.fetch_add(1, std::memory_order_relaxed);
     QMutexLocker lock(&m_mutex);
     m_pending.clear();
     // Keep mem cache — still valid for re-display after filter changes
@@ -98,10 +113,10 @@ void ThumbnailLoader::cancelAll() {
 
 // ---- ThumbnailTask ----
 
-ThumbnailTask::ThumbnailTask(const QString& path, const QSize& size, int index)
-    : m_path(path), m_size(size), m_index(index)
+ThumbnailTask::ThumbnailTask(const QString& path, const QSize& size, int index, uint64_t generation)
+    : m_path(path), m_size(size), m_index(index), m_generation(generation)
 {
-    setAutoDelete(true);   // pool owns lifetime (consistent with requestThumbnail)
+    setAutoDelete(true);
 }
 
 void ThumbnailTask::run() {
@@ -110,7 +125,7 @@ void ThumbnailTask::run() {
     if (QFileInfo::exists(cachePath)) {
         QPixmap cached(cachePath);
         if (!cached.isNull()) {
-            emit done(m_index, m_path, cached);
+            emit done(m_index, m_path, cached, m_generation);
             return;
         }
     }
@@ -130,7 +145,7 @@ void ThumbnailTask::run() {
     if (!pix.isNull())
         pix.save(cachePath, "JPG", 85);
 
-    emit done(m_index, m_path, pix);  // null pixmap signals failure
+    emit done(m_index, m_path, pix, m_generation);
 }
 
 QPixmap ThumbnailTask::generateAudioThumbnail(const QString& path, const QSize& size) {
@@ -198,30 +213,62 @@ QPixmap ThumbnailTask::generateImageThumbnail(const QString& path, const QSize& 
 }
 
 QPixmap ThumbnailTask::generateVideoThumbnail(const QString& path, const QSize& size) {
-    QMediaPlayer player;
-    QVideoSink sink;
-    player.setVideoSink(&sink);
-    player.setSource(QUrl::fromLocalFile(path));
-
+    // QMediaPlayer requires its own event loop and must NOT run in a generic
+    // QThreadPool worker (which has no event loop). We spin up a dedicated
+    // QThread so the player's internal machinery works correctly on all platforms.
     QPixmap result;
-    QEventLoop loop;
-    bool gotFrame = false;
 
-    QObject::connect(&sink, &QVideoSink::videoFrameChanged, &loop,
-                     [&](const QVideoFrame& frame) {
+    QThread thread;
+    QObject context; // lives on this (pool) thread – used only for the connection
+    QMediaPlayer* player = nullptr;
+    QVideoSink*   sink   = nullptr;
+    bool          gotFrame = false;
+    QMutex        mutex;
+    QWaitCondition cond;
+
+    // Move the media objects into the worker thread
+    player = new QMediaPlayer;
+    sink   = new QVideoSink;
+    player->moveToThread(&thread);
+    sink->moveToThread(&thread);
+
+    // Frame capture: runs in the dedicated thread
+    QObject::connect(sink, &QVideoSink::videoFrameChanged,
+                     &context, [&](const QVideoFrame& frame) {
+        QMutexLocker lk(&mutex);
         if (gotFrame || !frame.isValid()) return;
         gotFrame = true;
         QImage img = frame.toImage();
         if (!img.isNull())
             result = QPixmap::fromImage(
                 img.scaled(size, Qt::KeepAspectRatio, Qt::SmoothTransformation));
-        loop.quit();
+        cond.wakeAll();
+    }, Qt::DirectConnection);
+
+    // Start player once the thread is running
+    QObject::connect(&thread, &QThread::started, player, [&]() {
+        player->setVideoSink(sink);
+        player->setSource(QUrl::fromLocalFile(path));
+        player->play();
     });
 
-    QTimer::singleShot(4000, &loop, &QEventLoop::quit);
-    player.play();
-    loop.exec();
-    player.stop();
+    thread.start();
+
+    // Wait for a frame or timeout (4 s)
+    {
+        QMutexLocker lk(&mutex);
+        cond.wait(&mutex, 4000);
+    }
+
+    // Teardown in the thread so Qt's ownership rules are respected
+    QMetaObject::invokeMethod(player, [&]() {
+        player->stop();
+        player->deleteLater();
+        sink->deleteLater();
+        thread.quit();
+    }, Qt::QueuedConnection);
+
+    thread.wait(5000);
 
     return result;
 }

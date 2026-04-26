@@ -39,6 +39,7 @@
 #include <QFileInfo>
 #include <QStandardPaths>
 #include <QDebug>
+#include <QSet>
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Construction / destruction
@@ -83,6 +84,27 @@ QVector<MediaAnnotation> PdfMediaHandler::annotationsForPage(int page) const {
     return result;
 }
 
+QVector<MediaAnnotation> PdfMediaHandler::allLinks() const {
+    QVector<MediaAnnotation> result;
+    for (const auto& ann : m_annotations)
+        if (ann.type == MediaAnnotation::Type::Link) result.append(ann);
+    return result;
+}
+
+bool PdfMediaHandler::hasMedia() const {
+    for (const auto& ann : m_annotations)
+        if (ann.type == MediaAnnotation::Type::Audio ||
+            ann.type == MediaAnnotation::Type::Video)
+            return true;
+    return false;
+}
+
+bool PdfMediaHandler::hasLinks() const {
+    for (const auto& ann : m_annotations)
+        if (ann.type == MediaAnnotation::Type::Link) return true;
+    return false;
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Core raw-PDF scan
 // ─────────────────────────────────────────────────────────────────────────────
@@ -106,6 +128,177 @@ void PdfMediaHandler::parseAnnotations(const QByteArray& data) {
         const QVector<qsizetype> hits = findAll(data, spec.tag);
         for (qsizetype hit : hits)
             parseOneAnnotation(data, hit, spec.tag);
+    }
+
+    // Also scan for hyperlink annotations (/Subtype /Link)
+    parseLinkAnnotations(data);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Link annotation parsing  (/Subtype /Link)
+// ─────────────────────────────────────────────────────────────────────────────
+void PdfMediaHandler::parseLinkAnnotations(const QByteArray& data) {
+    // PDF link annotations: /Subtype /Link  with  /A << /S /URI  /URI (url) >>
+    // The /A value can be:
+    //   (a) inline dict:   /A << /S /URI /URI (https://...) >>
+    //   (b) indirect ref:  /A 14 0 R   →  object 14 contains the action dict
+    // We handle both.
+
+    const QByteArray tags[] = { "/Subtype /Link", "/Subtype/Link" };
+
+    // Helper lambda: extract URI string from an action dict byte block
+    auto extractUri = [](const QByteArray& block) -> QString {
+        // Find /URI key — value is a PDF string: (url) or <hex>
+        qsizetype uriKey = block.indexOf("/URI");
+        if (uriKey < 0) return {};
+        // Skip the key name itself (4 chars "/URI") + optional whitespace
+        qsizetype valStart = uriKey + 4;
+        while (valStart < block.size() && (block[valStart] == ' ' || block[valStart] == '\n' || block[valStart] == '\r'))
+            ++valStart;
+        if (valStart >= block.size()) return {};
+        // PDF string literal: (...)
+        if (block[valStart] == '(') {
+            qsizetype end = block.indexOf(')', valStart + 1);
+            if (end < 0) return {};
+            return QString::fromUtf8(block.mid(valStart + 1, end - valStart - 1)).trimmed();
+        }
+        // PDF hex string: <...>
+        if (block[valStart] == '<') {
+            qsizetype end = block.indexOf('>', valStart + 1);
+            if (end < 0) return {};
+            const QByteArray hex = block.mid(valStart + 1, end - valStart - 1).trimmed();
+            return QString::fromUtf8(QByteArray::fromHex(hex)).trimmed();
+        }
+        return {};
+    };
+
+    // Helper lambda: resolve an indirect PDF object reference "N G R" → object body
+    auto resolveIndirect = [&](const QByteArray& ref) -> QByteArray {
+        // ref looks like "14 0 R" — extract object number
+        bool ok = false;
+        const int objNum = ref.trimmed().split(' ').first().toInt(&ok);
+        if (!ok || objNum <= 0) return {};
+        // Find "N 0 obj" or "N G obj" in the file
+        // Search for "<objNum> " followed by a digit and " obj"
+        const QByteArray marker = QByteArray::number(objNum) + " ";
+        qsizetype pos = 0;
+        while (pos < data.size()) {
+            pos = data.indexOf(marker, pos);
+            if (pos < 0) break;
+            // Make sure it's at a word boundary (preceded by newline or space)
+            if (pos > 0 && data[pos-1] != '\n' && data[pos-1] != '\r' && data[pos-1] != ' ') {
+                pos += marker.size();
+                continue;
+            }
+            // After "N G " must come "obj"
+            qsizetype afterRef = pos + marker.size();
+            // skip generation number
+            while (afterRef < data.size() && data[afterRef] >= '0' && data[afterRef] <= '9') ++afterRef;
+            while (afterRef < data.size() && (data[afterRef] == ' ')) ++afterRef;
+            if (data.mid(afterRef, 3) != "obj") { pos += marker.size(); continue; }
+            // Found the object — return its body (between "obj\n" and "endobj")
+            qsizetype bodyStart = afterRef + 3;
+            qsizetype bodyEnd   = data.indexOf("endobj", bodyStart);
+            if (bodyEnd < 0) bodyEnd = qMin(bodyStart + 4096, static_cast<qsizetype>(data.size()));
+            return data.mid(bodyStart, bodyEnd - bodyStart);
+        }
+        return {};
+    };
+
+    QSet<qsizetype> seen; // avoid duplicates when both tag variants hit the same annotation
+
+    for (const QByteArray& tag : tags) {
+        const QVector<qsizetype> hits = findAll(data, tag);
+        for (qsizetype hitPos : hits) {
+            // Locate surrounding annotation dict (search backward for "<<")
+            qsizetype dictStart = data.lastIndexOf("<<", hitPos);
+            if (dictStart < 0) continue;
+            // Find a reasonable end: look for "endobj" or ">>" well past the subtype
+            qsizetype dictEnd = data.indexOf("endobj", hitPos);
+            if (dictEnd < 0 || dictEnd > hitPos + 4096)
+                dictEnd = hitPos + 2048;
+            dictEnd = qMin(dictEnd, static_cast<qsizetype>(data.size()));
+
+            if (seen.contains(dictStart)) continue;
+            seen.insert(dictStart);
+
+            const QByteArray dict = data.mid(dictStart, dictEnd - dictStart);
+
+            // ── /Rect ──────────────────────────────────────────────────────
+            const QByteArray rectVal = dictValue(dict, "/Rect");
+            if (rectVal.isEmpty()) continue;
+
+            // ── /P (page reference) ────────────────────────────────────────
+            const QByteArray pageRef = dictValue(dict, "/P");
+
+            // ── /A (action) — inline dict or indirect reference ────────────
+            QString url;
+
+            // Find "/A" key in the annotation dict
+            // Could be "/A <<...>>" or "/A N G R"
+            qsizetype aKeyPos = dict.indexOf("/A ");
+            if (aKeyPos < 0) aKeyPos = dict.indexOf("/A\n");
+            if (aKeyPos < 0) aKeyPos = dict.indexOf("/A\r");
+            if (aKeyPos >= 0) {
+                qsizetype valPos = aKeyPos + 2;
+                while (valPos < dict.size() && (dict[valPos]==' '||dict[valPos]=='\n'||dict[valPos]=='\r'))
+                    ++valPos;
+
+                if (valPos < dict.size() && dict[valPos] == '<' &&
+                    valPos+1 < dict.size() && dict[valPos+1] == '<') {
+                    // Inline action dict
+                    qsizetype aEnd = dict.indexOf(">>", valPos + 2);
+                    if (aEnd > valPos) {
+                        const QByteArray aBlock = dict.mid(valPos, aEnd - valPos + 2);
+                        // Only handle URI actions (/S /URI)
+                        if (aBlock.contains("/URI"))
+                            url = extractUri(aBlock);
+                    }
+                } else {
+                    // Likely an indirect reference: "14 0 R"
+                    qsizetype refEnd = dict.indexOf('R', valPos);
+                    if (refEnd > valPos && refEnd - valPos < 20) {
+                        const QByteArray ref = dict.mid(valPos, refEnd - valPos + 1);
+                        if (ref.contains(' ') && ref.endsWith('R')) {
+                            const QByteArray objBody = resolveIndirect(ref.trimmed());
+                            if (!objBody.isEmpty() && objBody.contains("/URI"))
+                                url = extractUri(objBody);
+                        }
+                    }
+                }
+            }
+
+            if (url.isEmpty()) continue;
+            // Sanity: must look like a URL
+            if (!url.startsWith("http") && !url.startsWith("mailto") && !url.startsWith("ftp"))
+                continue;
+
+            // ── Page resolution ────────────────────────────────────────────
+            int page = 0;
+            if (!pageRef.isEmpty())
+                page = resolvePageIndex(data, pageRef);
+            if (page < 0) page = 0;
+
+            // ── Rect ───────────────────────────────────────────────────────
+            const QSizeF ps = m_doc->pagePointSize(page);
+            if (ps.isEmpty()) continue;
+            const QRectF r = parseNormalisedRect(rectVal, ps);
+            if (!r.isValid() || r.isEmpty()) continue;
+
+            // ── Label ──────────────────────────────────────────────────────
+            QByteArray labelVal = dictValue(dict, "/Contents");
+            if (labelVal.isEmpty()) labelVal = dictValue(dict, "/NM");
+            QString label = QString::fromLatin1(labelVal).remove('(').remove(')').trimmed();
+            if (label.isEmpty()) label = url;
+
+            MediaAnnotation ann;
+            ann.page      = page;
+            ann.rect      = r;
+            ann.sourceUrl = url;
+            ann.type      = MediaAnnotation::Type::Link;
+            ann.label     = label;
+            m_annotations.append(ann);
+        }
     }
 }
 

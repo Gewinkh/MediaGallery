@@ -3,9 +3,12 @@
 // ══════════════════════════════════════════════════════════════════════════════
 #include "PdfViewer.h"
 #include "Icons.h"
+#include "Style.h"
+#include "Strings.h"
 
 #include <QKeyEvent>
 #include <QResizeEvent>
+#include <QShowEvent>
 #include <QMouseEvent>
 #include <QWheelEvent>
 #include <QFileInfo>
@@ -20,11 +23,15 @@
 #include <QEvent>
 #include <QScrollBar>
 #include <QApplication>
+#include <QClipboard>
+#include <QMenu>
 #include <QPdfPageNavigator>
 #include <QStandardPaths>
 #include <QCursor>
 #include <QFrame>
 #include <QUrl>
+#include <QDesktopServices>
+#include <QPalette>
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Helpers
@@ -100,6 +107,7 @@ PdfViewer::~PdfViewer() {
 // UI Setup
 // ─────────────────────────────────────────────────────────────────────────────
 void PdfViewer::setupUi() {
+    // background set via applyTheme(); initial fallback only
     setStyleSheet("background: #0d1518;");
     auto* mainLay = new QVBoxLayout(this);
     mainLay->setContentsMargins(0, 0, 0, 0);
@@ -115,11 +123,25 @@ void PdfViewer::setupUi() {
         "QSplitter::handle:hover { background: rgba(0,180,160,0.45); }");
 
     m_view = new QPdfView(m_splitter);
-    m_view->setDocument(m_doc);
     m_view->setPageMode(QPdfView::PageMode::MultiPage);
     m_view->setZoomMode(QPdfView::ZoomMode::FitInView);
     m_view->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
-    m_view->setStyleSheet("background: #1a2226; border: none;");
+    m_view->setStyleSheet("background: transparent; border: none;");
+
+    // ── Blue text-selection highlight ─────────────────────────────────────────
+    // QPdfView (Qt 6.4+) renders the text selection using QPalette::Highlight.
+    // Set it on the view AND the viewport so whichever internal widget does the
+    // painting picks it up. Must be done before first show().
+    {
+        QPalette pal = m_view->palette();
+        pal.setColor(QPalette::Active,   QPalette::Highlight, QColor(60, 130, 255, 160));
+        pal.setColor(QPalette::Inactive, QPalette::Highlight, QColor(60, 130, 255, 120));
+        pal.setColor(QPalette::Active,   QPalette::HighlightedText, Qt::white);
+        pal.setColor(QPalette::Inactive, QPalette::HighlightedText, Qt::white);
+        m_view->setPalette(pal);
+        if (m_view->viewport())
+            m_view->viewport()->setPalette(pal);
+    }
 
     // Overlay sits inside the viewport, z-order on top
     m_overlay = new MediaOverlayWidget(m_view, m_doc, m_view->viewport());
@@ -147,14 +169,7 @@ void PdfViewer::setupUi() {
     m_thumbPanel->setMovement(QListView::Static);
     m_thumbPanel->setSpacing(6);
     m_thumbPanel->setFixedWidth(178);
-    m_thumbPanel->setStyleSheet(
-        "QListWidget { background: #111c20; border: none;"
-        "  border-left: 1px solid rgba(0,180,160,0.18); }"
-        "QListWidget::item { background: transparent; color: rgba(180,210,205,0.85);"
-        "  border-radius: 5px; padding: 4px; }"
-        "QListWidget::item:selected { background: rgba(0,180,160,0.32);"
-        "  border: 1px solid rgba(0,200,180,0.6); color: #00e8d0; }"
-        "QListWidget::item:hover:!selected { background: rgba(0,180,160,0.13); }");
+    m_thumbPanel->setStyleSheet(Style::pdfViewerStyle());
     m_thumbPanel->setVerticalScrollBarPolicy(Qt::ScrollBarAsNeeded);
     m_thumbPanel->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
     connect(m_thumbPanel, &QListWidget::currentRowChanged,
@@ -195,7 +210,7 @@ void PdfViewer::setupToolbar() {
 
     m_prevBtn = new QToolButton(m_toolbar);
     m_prevBtn->setText("◀");
-    m_prevBtn->setToolTip(tr("Vorherige Seite  (←)"));
+    m_prevBtn->setToolTip(Strings::get(StringKey::PdfPrevPageTooltip));
     m_prevBtn->setStyleSheet(btnStyle);
     connect(m_prevBtn, &QToolButton::clicked, this, &PdfViewer::goToPrevPage);
     lay->addWidget(m_prevBtn);
@@ -218,7 +233,7 @@ void PdfViewer::setupToolbar() {
 
     m_nextBtn = new QToolButton(m_toolbar);
     m_nextBtn->setText("▶");
-    m_nextBtn->setToolTip(tr("Nächste Seite  (→)"));
+    m_nextBtn->setToolTip(Strings::get(StringKey::PdfNextPageTooltip));
     m_nextBtn->setStyleSheet(btnStyle);
     connect(m_nextBtn, &QToolButton::clicked, this, &PdfViewer::goToNextPage);
     lay->addWidget(m_nextBtn);
@@ -228,32 +243,24 @@ void PdfViewer::setupToolbar() {
     sep1->setStyleSheet("color: rgba(255,255,255,0.12);");
     lay->addWidget(sep1);
 
-    m_zoomCombo = new QComboBox(m_toolbar);
-    m_zoomCombo->addItems({"50 %","75 %","100 %","125 %","150 %","200 %","300 %",
-                           tr("Seite einpassen"), tr("Breite anpassen")});
-    m_zoomCombo->setCurrentIndex(7);
-    m_zoomCombo->setFixedWidth(130);
-    m_zoomCombo->setStyleSheet(
-        "QComboBox { background: rgba(0,0,0,0.45); border: 1px solid rgba(255,255,255,0.15);"
-        "  border-radius: 6px; color: #c8dbd5; font-size: 12px; padding: 3px 8px; }"
-        "QComboBox::drop-down { border:none; width:18px; }"
-        "QComboBox QAbstractItemView { background: #0d1a1f; color: #c8dbd5;"
-        "  selection-background-color: rgba(0,180,160,0.4);"
-        "  border: 1px solid rgba(0,180,160,0.3); }");
-    connect(m_zoomCombo, QOverload<int>::of(&QComboBox::currentIndexChanged),
-            this, &PdfViewer::onZoomComboChanged);
-    lay->addWidget(m_zoomCombo);
-
     m_zoomOutBtn = new QToolButton(m_toolbar);
     m_zoomOutBtn->setText("–");
-    m_zoomOutBtn->setToolTip(tr("Verkleinern  (-)"));
+    m_zoomOutBtn->setToolTip(Strings::get(StringKey::PdfZoomOutTooltip));
     m_zoomOutBtn->setStyleSheet(btnStyle);
     connect(m_zoomOutBtn, &QToolButton::clicked, this, &PdfViewer::zoomOut);
     lay->addWidget(m_zoomOutBtn);
 
+    m_zoomLabel = new QLabel("100 %", m_toolbar);
+    m_zoomLabel->setFixedWidth(52);
+    m_zoomLabel->setAlignment(Qt::AlignCenter);
+    m_zoomLabel->setStyleSheet(
+        "QLabel { background: rgba(0,0,0,0.45); border: 1px solid rgba(255,255,255,0.15);"
+        "  border-radius: 6px; color: #c8dbd5; font-size: 12px; padding: 3px 4px; }");
+    lay->addWidget(m_zoomLabel);
+
     m_zoomInBtn = new QToolButton(m_toolbar);
     m_zoomInBtn->setText("+");
-    m_zoomInBtn->setToolTip(tr("Vergrößern  (+)"));
+    m_zoomInBtn->setToolTip(Strings::get(StringKey::PdfZoomInTooltip));
     m_zoomInBtn->setStyleSheet(btnStyle);
     connect(m_zoomInBtn, &QToolButton::clicked, this, &PdfViewer::zoomIn);
     lay->addWidget(m_zoomInBtn);
@@ -264,10 +271,10 @@ void PdfViewer::setupToolbar() {
     lay->addWidget(sep2);
 
     m_scrollModeBtn = new QToolButton(m_toolbar);
-    m_scrollModeBtn->setText(tr("Mehrseiten"));
+    m_scrollModeBtn->setText(Strings::get(StringKey::PdfScrollModeMulti));
     m_scrollModeBtn->setCheckable(true);
     m_scrollModeBtn->setChecked(true);
-    m_scrollModeBtn->setToolTip(tr("Zwischen Einzelseite und Mehrseitenansicht wechseln"));
+    m_scrollModeBtn->setToolTip(Strings::get(StringKey::PdfScrollModeTooltip));
     m_scrollModeBtn->setStyleSheet(btnStyle);
     connect(m_scrollModeBtn, &QToolButton::clicked, this, &PdfViewer::toggleScrollMode);
     lay->addWidget(m_scrollModeBtn);
@@ -279,7 +286,7 @@ void PdfViewer::setupToolbar() {
 
     m_thumbToggleBtn = new QToolButton(m_toolbar);
     m_thumbToggleBtn->setText("⊟");
-    m_thumbToggleBtn->setToolTip(tr("Seitenleiste ein-/ausblenden"));
+    m_thumbToggleBtn->setToolTip(Strings::get(StringKey::PdfSidebarTooltip));
     m_thumbToggleBtn->setCheckable(true);
     m_thumbToggleBtn->setChecked(true);
     m_thumbToggleBtn->setStyleSheet(btnStyle);
@@ -301,7 +308,7 @@ void PdfViewer::setupAudioPanel() {
     lay->setContentsMargins(10, 6, 10, 6);
     lay->setSpacing(8);
 
-    m_audioLabel = new QLabel(tr("🔊  Audio"), m_audioPanel);
+    m_audioLabel = new QLabel(Strings::get(StringKey::PdfAudioLabel), m_audioPanel);
     m_audioLabel->setStyleSheet("color: rgba(0,200,180,0.9); font-size: 12px;");
     lay->addWidget(m_audioLabel);
 
@@ -363,7 +370,7 @@ void PdfViewer::setupAudioPanel() {
 void PdfViewer::setupVideoDialog() {
     m_videoDialog = new QDialog(this,
         Qt::Tool | Qt::WindowTitleHint | Qt::WindowCloseButtonHint);
-    m_videoDialog->setWindowTitle(tr("Video"));
+    m_videoDialog->setWindowTitle(Strings::get(StringKey::PdfVideoTitle));
     m_videoDialog->setMinimumSize(480, 360);
     m_videoDialog->resize(640, 420);
     m_videoDialog->setStyleSheet("background: #080f12;");
@@ -451,8 +458,18 @@ void PdfViewer::loadFile(const QString& path) {
     m_currentPath = path;
     m_thumbPanel->clear();
     m_currentPage = 0;
-    if (m_overlay) m_overlay->setAnnotations({});
+    m_activeAudioAnnIdx = -1;
+    if (m_overlay) {
+        m_overlay->setAnnotations({});
+        m_overlay->setActiveAudioIndex(-1);
+    }
+
+    // Detach the view before closing/reloading so QPdfView does not try to
+    // render stale page data during the load.  Reattach before load() so the
+    // internal renderer is wired up when the Ready signal fires.
+    m_view->setDocument(nullptr);
     m_doc->close();
+    m_view->setDocument(m_doc);
     m_doc->load(path);
 }
 
@@ -464,7 +481,26 @@ void PdfViewer::closeDocument() {
     m_audioPanel->hide();
     m_thumbPanel->clear();
     m_mediaHandler->cleanup();
-    if (m_overlay) m_overlay->setAnnotations({});
+    m_activeAudioAnnIdx = -1;
+    if (m_overlay) {
+        m_overlay->setAnnotations({});
+        m_overlay->setActiveAudioIndex(-1);
+    }
+}
+
+void PdfViewer::retranslate() {
+    m_prevBtn->setToolTip(Strings::get(StringKey::PdfPrevPageTooltip));
+    m_nextBtn->setToolTip(Strings::get(StringKey::PdfNextPageTooltip));
+    m_zoomOutBtn->setToolTip(Strings::get(StringKey::PdfZoomOutTooltip));
+    m_zoomInBtn->setToolTip(Strings::get(StringKey::PdfZoomInTooltip));
+    m_scrollModeBtn->setToolTip(Strings::get(StringKey::PdfScrollModeTooltip));
+    m_thumbToggleBtn->setToolTip(Strings::get(StringKey::PdfSidebarTooltip));
+    // ScrollModeBtn-Text hängt vom aktuellen Modus ab
+    m_scrollModeBtn->setText(m_continuousMode
+        ? Strings::get(StringKey::PdfScrollModeMulti)
+        : Strings::get(StringKey::PdfScrollModeSingle));
+    m_videoDialog->setWindowTitle(Strings::get(StringKey::PdfVideoTitle));
+    m_audioLabel->setText(Strings::get(StringKey::PdfAudioLabel));
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -472,6 +508,10 @@ void PdfViewer::closeDocument() {
 // ─────────────────────────────────────────────────────────────────────────────
 void PdfViewer::onDocumentStatusChanged(QPdfDocument::Status status) {
     if (status != QPdfDocument::Status::Ready) return;
+
+    // setDocument(m_doc) was already called before load() in loadFile(),
+    // so the internal renderer is connected and will have rendered by now.
+    // Do NOT call setDocument again here — it resets the renderer state.
 
     const int total = m_doc->pageCount();
     m_pageSpin->setMaximum(qMax(1, total));
@@ -484,7 +524,23 @@ void PdfViewer::onDocumentStatusChanged(QPdfDocument::Status status) {
     if (title.isEmpty()) title = QFileInfo(m_currentPath).fileName();
     m_docTitleLabel->setText(title);
 
-    onZoomComboChanged(m_zoomCombo->currentIndex());
+    // Defer setZoomMode until the event loop has fully processed the Ready
+    // signal, the pending show/resize events from setVisible(), and the
+    // geometry assignment in updateDisplay().  50 ms is enough on every
+    // platform tested; 0 ms is not reliable when the widget was just made
+    // visible for the first time.
+    QTimer::singleShot(50, this, [this]() {
+        if (!m_view || m_doc->status() != QPdfDocument::Status::Ready) return;
+        // Re-send a genuine resize with the now-correct viewport size so
+        // QPdfView recomputes its page layout before we switch zoom mode.
+        QResizeEvent re(m_view->viewport()->size(), m_view->viewport()->size());
+        QApplication::sendEvent(m_view, &re);
+        m_view->setZoomMode(QPdfView::ZoomMode::FitInView);
+        updateZoomLabel();
+        if (m_view->viewport())
+            m_view->viewport()->update();
+    });
+
     emit pageChanged(1, total);
 
     QTimer::singleShot(120, this, &PdfViewer::buildThumbnails);
@@ -493,18 +549,22 @@ void PdfViewer::onDocumentStatusChanged(QPdfDocument::Status status) {
     // PdfMediaHandler works around this by parsing the raw PDF byte stream.
     m_mediaHandler->scanDocument(m_currentPath);
 
-    if (m_mediaHandler->hasMedia()) {
+    if (m_mediaHandler->hasMedia() || m_mediaHandler->hasLinks()) {
         m_overlay->setAnnotations(m_mediaHandler->allAnnotations());
-        int nAudio = 0, nVideo = 0;
+        int nAudio = 0, nVideo = 0, nLink = 0;
         for (const auto& a : m_mediaHandler->allAnnotations()) {
             if (a.type == MediaAnnotation::Type::Video) ++nVideo;
-            else ++nAudio;
+            else if (a.type == MediaAnnotation::Type::Audio) ++nAudio;
+            else if (a.type == MediaAnnotation::Type::Link)  ++nLink;
         }
         QStringList parts;
-        if (nAudio > 0) parts << tr("%1 Audio").arg(nAudio);
-        if (nVideo > 0) parts << tr("%1 Video").arg(nVideo);
-        m_audioLabel->setText(tr("🎬  %1 – in PDF anklicken").arg(parts.join(", ")));
-        m_audioPanel->show();
+        if (nAudio > 0) parts << Strings::get(StringKey::PdfAudioCount).arg(nAudio);
+        if (nVideo > 0) parts << Strings::get(StringKey::PdfVideoCount).arg(nVideo);
+        if (nLink  > 0) parts << tr("%1 Link(s)").arg(nLink);
+        if (m_mediaHandler->hasMedia()) {
+            m_audioLabel->setText(Strings::get(StringKey::PdfMediaClickHint).arg(parts.join(", ")));
+            m_audioPanel->show();
+        }
     } else {
         extractAndPrepareAudio();
     }
@@ -517,10 +577,35 @@ void PdfViewer::onAnnotationClicked(int index) {
     const auto& anns = m_mediaHandler->allAnnotations();
     if (index < 0 || index >= anns.size()) return;
     const MediaAnnotation& ann = anns[index];
-    if (ann.type == MediaAnnotation::Type::Video)
+
+    if (ann.type == MediaAnnotation::Type::Link) {
+        // Open hyperlink in default browser
+        const QString url = ann.sourceUrl;
+        if (!url.isEmpty())
+            QDesktopServices::openUrl(QUrl(url));
+        return;
+    }
+
+    if (ann.type == MediaAnnotation::Type::Video) {
         playVideoAnnotation(ann);
-    else
+        return;
+    }
+
+    // Audio: toggle play/stop if clicking the same badge that is active
+    if (ann.type == MediaAnnotation::Type::Audio ||
+        ann.type == MediaAnnotation::Type::Unknown) {
+        if (m_activeAudioAnnIdx == index &&
+            m_audioPlayer->playbackState() == QMediaPlayer::PlayingState) {
+            // Same badge clicked while playing → stop
+            m_audioPlayer->stop();
+            m_activeAudioAnnIdx = -1;
+            if (m_overlay) m_overlay->setActiveAudioIndex(-1);
+            return;
+        }
+        m_activeAudioAnnIdx = index;
+        if (m_overlay) m_overlay->setActiveAudioIndex(index);
         playAudioAnnotation(ann);
+    }
 }
 
 void PdfViewer::playAudioAnnotation(const MediaAnnotation& ann) {
@@ -534,11 +619,11 @@ void PdfViewer::playAudioAnnotation(const MediaAnnotation& ann) {
         }
     }
     if (src.isEmpty()) {
-        m_audioLabel->setText(tr("🔊  %1 – Kein Audio gefunden").arg(ann.label));
+        m_audioLabel->setText(Strings::get(StringKey::PdfAudioNotFound).arg(ann.label));
         m_audioPanel->show();
         return;
     }
-    loadAudioSource(src, tr("🔊  %1").arg(ann.label));
+    loadAudioSource(src, QString("🔊  %1").arg(ann.label));
     m_audioPlayer->play();
 }
 
@@ -553,15 +638,16 @@ void PdfViewer::playVideoAnnotation(const MediaAnnotation& ann) {
         }
     }
     if (src.isEmpty()) {
-        m_audioLabel->setText(tr("🎬  %1 – Kein Video gefunden").arg(ann.label));
+        m_audioLabel->setText(Strings::get(StringKey::PdfVideoNotFound).arg(ann.label));
         m_audioPanel->show();
         return;
     }
     m_videoPlayer->stop();
     const QUrl url = src.startsWith("http") ? QUrl(src) : QUrl::fromLocalFile(src);
     m_videoPlayer->setSource(url);
-    m_videoLabel->setText(tr("🎬  %1").arg(ann.label));
-    m_videoDialog->setWindowTitle(ann.label.isEmpty() ? tr("Video") : ann.label);
+    m_videoLabel->setText(QString("🎬  %1").arg(ann.label));
+    m_videoDialog->setWindowTitle(ann.label.isEmpty()
+        ? Strings::get(StringKey::PdfVideoTitle) : ann.label);
     m_videoDialog->show();
     m_videoDialog->raise();
     m_videoPlayer->play();
@@ -670,7 +756,7 @@ void PdfViewer::extractAndPrepareAudio() {
         if (!cands.isEmpty()) found = dir.filePath(cands.first());
     }
     if (!found.isEmpty())
-        loadAudioSource(found, tr("🎧  %1").arg(QFileInfo(found).fileName()));
+        loadAudioSource(found, QString("🎧  %1").arg(QFileInfo(found).fileName()));
 }
 
 void PdfViewer::loadAudioSource(const QString& path, const QString& label) {
@@ -707,9 +793,57 @@ bool PdfViewer::eventFilter(QObject* obj, QEvent* e) {
         case QEvent::MouseMove: {
             if (m_overlay) {
                 auto* me = static_cast<QMouseEvent*>(e);
+                const int idx = m_overlay->hitTest(me->pos());
                 m_overlay->updateHover(me->pos());
+                m_overlay->update();
+                // Only force PointingHand when over a badge/link.
+                // For everything else: unsetCursor() so QPdfView manages its own
+                // cursor (IBeam over text, Arrow over margins) — do NOT hardcode IBeam,
+                // that would permanently override QPdfView's cursor logic.
+                if (auto* vp = m_view->viewport()) {
+                    if (idx >= 0)
+                        vp->setCursor(Qt::PointingHandCursor);
+                    else
+                        vp->unsetCursor();
+                }
             }
             break;
+        }
+        case QEvent::MouseButtonPress: {
+            if (m_overlay) {
+                auto* me = static_cast<QMouseEvent*>(e);
+                if (me->button() == Qt::LeftButton) {
+                    const int idx = m_overlay->hitTest(me->pos());
+                    if (idx >= 0) {
+                        // Badge/link click: handle in PdfViewer, block QPdfView.
+                        emit m_overlay->annotationClicked(idx);
+                        return true; // consumed — QPdfView won't start a selection
+                    }
+                }
+            }
+            break;
+        }
+        case QEvent::ContextMenu: {
+            // Show a minimal context menu with Copy so the user can copy
+            // selected text even without knowing the Ctrl+C shortcut.
+            auto* ce = static_cast<QContextMenuEvent*>(e);
+            const QString selected = QApplication::clipboard()->text(QClipboard::Selection);
+            // Qt on Linux puts the selected text into the X11 selection buffer;
+            // on all platforms we also try to trigger QPdfView's own copy action.
+            QMenu menu(m_view);
+            QAction* copyAct = menu.addAction(tr("Kopieren"));
+            copyAct->setShortcut(QKeySequence::Copy);
+            // Only enable if there is something in the selection buffer or clipboard
+            const bool hasSelection = !selected.isEmpty()
+                || !QApplication::clipboard()->text().isEmpty();
+            copyAct->setEnabled(true); // always show; user knows best
+            connect(copyAct, &QAction::triggered, this, [this]() {
+                // Send Ctrl+C to QPdfView so its internal handler copies the selection
+                QKeyEvent ke(QEvent::KeyPress, Qt::Key_C, Qt::ControlModifier);
+                QApplication::sendEvent(m_view, &ke);
+            });
+            menu.exec(ce->globalPos());
+            return true;
         }
         case QEvent::Leave:
             if (m_overlay) m_overlay->update();
@@ -728,22 +862,21 @@ void PdfViewer::toggleScrollMode() {
     m_view->setPageMode(m_continuousMode
                         ? QPdfView::PageMode::MultiPage
                         : QPdfView::PageMode::SinglePage);
-    m_scrollModeBtn->setText(m_continuousMode ? tr("Mehrseiten") : tr("Einzelseite"));
+    m_scrollModeBtn->setText(m_continuousMode
+        ? Strings::get(StringKey::PdfScrollModeMulti)
+        : Strings::get(StringKey::PdfScrollModeSingle));
     m_scrollModeBtn->setChecked(m_continuousMode);
     if (m_overlay) m_overlay->update();
 }
 
-void PdfViewer::onZoomComboChanged(int index) {
-    const double pcts[] = {0.5, 0.75, 1.0, 1.25, 1.5, 2.0, 3.0};
-    if (index >= 0 && index <= 6) {
-        m_view->setZoomMode(QPdfView::ZoomMode::Custom);
-        applyZoom(pcts[index]);
-    } else if (index == 7) {
-        m_view->setZoomMode(QPdfView::ZoomMode::FitInView);
-    } else if (index == 8) {
-        m_view->setZoomMode(QPdfView::ZoomMode::FitToWidth);
-    }
-    if (m_overlay) m_overlay->update();
+void PdfViewer::updateZoomLabel() {
+    int pct;
+    if (m_view->zoomMode() == QPdfView::ZoomMode::Custom)
+        pct = qRound(m_zoomFactor * 100.0);
+    else
+        pct = qRound(qMax(0.1, m_view->zoomFactor()) * 100.0);
+    if (m_zoomLabel)
+        m_zoomLabel->setText(QString("%1 %").arg(pct));
 }
 
 void PdfViewer::applyZoom(double factor) {
@@ -757,7 +890,7 @@ void PdfViewer::zoomIn() {
     for (double s : steps)
         if (s > m_zoomFactor + 0.01) {
             m_view->setZoomMode(QPdfView::ZoomMode::Custom);
-            applyZoom(s); updateZoomCombo(); return;
+            applyZoom(s); updateZoomLabel(); return;
         }
 }
 
@@ -766,38 +899,23 @@ void PdfViewer::zoomOut() {
     for (double s : steps)
         if (s < m_zoomFactor - 0.01) {
             m_view->setZoomMode(QPdfView::ZoomMode::Custom);
-            applyZoom(s); updateZoomCombo(); return;
+            applyZoom(s); updateZoomLabel(); return;
         }
 }
 
 void PdfViewer::fitPage() {
     m_view->setZoomMode(QPdfView::ZoomMode::FitInView);
-    m_zoomCombo->blockSignals(true);
-    m_zoomCombo->setCurrentIndex(7);
-    m_zoomCombo->blockSignals(false);
+    updateZoomLabel();
     if (m_overlay) m_overlay->update();
 }
 
 void PdfViewer::fitWidth() {
     m_view->setZoomMode(QPdfView::ZoomMode::FitToWidth);
-    m_zoomCombo->blockSignals(true);
-    m_zoomCombo->setCurrentIndex(8);
-    m_zoomCombo->blockSignals(false);
+    updateZoomLabel();
     if (m_overlay) m_overlay->update();
 }
 
-void PdfViewer::updateZoomCombo() {
-    const QPair<double,int> presets[] = {
-        {0.5,0},{0.75,1},{1.0,2},{1.25,3},{1.5,4},{2.0,5},{3.0,6}};
-    m_zoomCombo->blockSignals(true);
-    bool matched = false;
-    for (auto& [val,idx] : presets)
-        if (qAbs(m_zoomFactor - val) < 0.02) {
-            m_zoomCombo->setCurrentIndex(idx); matched = true; break;
-        }
-    if (!matched) m_zoomCombo->setCurrentIndex(-1);
-    m_zoomCombo->blockSignals(false);
-}
+// updateZoomCombo removed – replaced by updateZoomLabel()
 
 void PdfViewer::handleWheelZoom(QWheelEvent* we) {
     double base = (m_view->zoomMode() == QPdfView::ZoomMode::Custom)
@@ -806,7 +924,7 @@ void PdfViewer::handleWheelZoom(QWheelEvent* we) {
     double newFact = qBound(0.1, base * qPow(1.12, steps), 8.0);
     m_view->setZoomMode(QPdfView::ZoomMode::Custom);
     applyZoom(newFact);
-    updateZoomCombo();
+    updateZoomLabel();
     we->accept();
 }
 
@@ -835,15 +953,26 @@ void PdfViewer::onPageSpinChanged(int page) {
 // Audio playback slots
 // ─────────────────────────────────────────────────────────────────────────────
 void PdfViewer::onPlayAudioClicked() {
-    if (m_audioPlayer->playbackState() == QMediaPlayer::PlayingState)
+    if (m_audioPlayer->playbackState() == QMediaPlayer::PlayingState) {
         m_audioPlayer->pause();
-    else
+        if (m_overlay) m_overlay->setActiveAudioIndex(-1);
+    } else {
         m_audioPlayer->play();
+        if (m_overlay) m_overlay->setActiveAudioIndex(m_activeAudioAnnIdx);
+    }
 }
 
 void PdfViewer::onAudioPlayerStateChanged() {
-    bool playing = (m_audioPlayer->playbackState() == QMediaPlayer::PlayingState);
+    const bool playing = (m_audioPlayer->playbackState() == QMediaPlayer::PlayingState);
     m_audioPlayBtn->setIcon(playing ? Icons::pause() : Icons::playBare());
+    if (m_overlay) {
+        m_overlay->setActiveAudioIndex(playing ? m_activeAudioAnnIdx : -1);
+    }
+    if (!playing) {
+        // If audio finished naturally reset so next badge click starts fresh
+        if (m_audioPlayer->playbackState() == QMediaPlayer::StoppedState)
+            m_activeAudioAnnIdx = -1;
+    }
 }
 
 void PdfViewer::onAudioPositionChanged(qint64 pos) {
@@ -908,9 +1037,29 @@ void PdfViewer::keyPressEvent(QKeyEvent* e) {
     }
 }
 
+void PdfViewer::showEvent(QShowEvent* e) {
+    QWidget::showEvent(e);
+    // QPdfView initialises its internal page renderer lazily.  If a document
+    // is already loaded (Ready) when the widget becomes visible for the first
+    // time we must kick a relayout, because the viewport was 0×0 before show.
+    // Use a small delay (10 ms) rather than 0 ms to let the geometry manager
+    // finish positioning the widget before we ask QPdfView to fit the page.
+    if (m_doc && m_doc->status() == QPdfDocument::Status::Ready) {
+        QTimer::singleShot(10, this, [this]() {
+            if (!m_view || m_doc->status() != QPdfDocument::Status::Ready) return;
+            QResizeEvent re(m_view->viewport()->size(), m_view->viewport()->size());
+            QApplication::sendEvent(m_view, &re);
+            m_view->setZoomMode(QPdfView::ZoomMode::FitInView);
+            updateZoomLabel();
+            if (m_view->viewport())
+                m_view->viewport()->update();
+        });
+    }
+}
+
 void PdfViewer::resizeEvent(QResizeEvent* e) {
     QWidget::resizeEvent(e);
     repositionOverlay();
 }
 
-#include "moc_PdfViewer.cpp"
+

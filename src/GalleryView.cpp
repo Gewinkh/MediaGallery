@@ -48,6 +48,11 @@ GalleryView::GalleryView(TagManager* tagMgr, QWidget* parent)
     m_visibilityTimer->setInterval(100);
     connect(m_visibilityTimer, &QTimer::timeout, this, &GalleryView::updateVisibleThumbnails);
 
+    m_resizeTimer = new QTimer(this);
+    m_resizeTimer->setSingleShot(true);
+    m_resizeTimer->setInterval(120);
+    connect(m_resizeTimer, &QTimer::timeout, this, [this]() { rebuildGrid(); });
+
     connect(m_loader, &ThumbnailLoader::thumbnailReady,
             this, &GalleryView::onThumbnailReady);
     connect(m_loader, &ThumbnailLoader::thumbnailFailed,
@@ -83,7 +88,8 @@ void GalleryView::loadFolder(const QString& folderPath) {
     QDir dir(folderPath);
     QFileInfoList entries = dir.entryInfoList(QDir::Files, QDir::Name);
 
-    for (const QFileInfo& fi : entries) {
+    m_allItems.reserve(entries.size());
+    for (const QFileInfo& fi : std::as_const(entries)) {
         MediaType t = MediaItem::detectType(fi.filePath());
         if (t == MediaType::Unknown) continue;
 
@@ -122,6 +128,7 @@ void GalleryView::applyFilter(FilterBar* fb) {
     bool hasCategoryFilter = fb->hasCategoryFilter();
     bool hasAnyFilter      = hasTagFilter || hasCategoryFilter;
 
+    m_visibleIndices.reserve(m_allItems.size());
     QSet<QString> workingSet(tagFilter.begin(), tagFilter.end());
 
     // Collect the set of active category IDs (and their descendants) so we can
@@ -152,7 +159,7 @@ void GalleryView::applyFilter(FilterBar* fb) {
         // regardless of its tags — this is the main fix for the category filter.
         if (hasCategoryFilter) {
             QStringList itemCats = m_tagMgr->categoriesForFile(item.fileName());
-            for (const QString& cid : itemCats) {
+            for (const QString& cid : std::as_const(itemCats)) {
                 if (activeCatIds.contains(cid)) {
                     m_visibleIndices.append(i);
                     goto nextItem;
@@ -179,7 +186,7 @@ void GalleryView::applyFilter(FilterBar* fb) {
         case TagFilterMode::AND:
             if (itemTags.isEmpty()) { passes = false; break; }
             passes = true;
-            for (const auto& t : tagFilter) {
+            for (const auto& t : std::as_const(tagFilter)) {
                 if (!itemTags.contains(t)) { passes = false; break; }
             }
             break;
@@ -235,6 +242,7 @@ void GalleryView::applyFilter(FilterBar* fb) {
 void GalleryView::refresh() {
     // Default: show all, sorted by date descending
     m_visibleIndices.clear();
+    m_visibleIndices.reserve(m_allItems.size());
     for (int i = 0; i < m_allItems.size(); ++i)
         m_visibleIndices.append(i);
 
@@ -254,7 +262,7 @@ void GalleryView::setColumns(int c) {
 
 void GalleryView::setOptionsVisible(bool v) {
     m_optionsVisible = v;
-    for (auto* tile : m_tiles)
+    for (auto* tile : std::as_const(m_tiles))
         tile->setOptionsVisible(v);
     // Resize tiles
     rebuildGrid();
@@ -262,7 +270,7 @@ void GalleryView::setOptionsVisible(bool v) {
 
 void GalleryView::setCovered(bool covered) {
     m_covered = covered;
-    for (auto* tile : m_tiles)
+    for (auto* tile : std::as_const(m_tiles))
         tile->setCovered(covered);
 }
 
@@ -382,7 +390,7 @@ void GalleryView::onThumbnailFailed(int index, const QString& /*path*/) {
         {
         QPixmap warnPix = Icons::warning().pixmap(QSize(24, 24));
         p.drawPixmap(ph.rect().center() - QPoint(warnPix.width()/2, warnPix.height()/2 + 8), warnPix);
-        p.drawText(ph.rect().adjusted(0, 20, 0, 0), Qt::AlignCenter, "Ladefehler");
+        p.drawText(ph.rect().adjusted(0, 20, 0, 0), Qt::AlignCenter, "Load error");
     }
         p.end();
         m_indexToTile[index]->setThumbnail(ph);
@@ -485,15 +493,6 @@ void GalleryView::dropEvent(QDropEvent* e) {
 
 void GalleryView::resizeEvent(QResizeEvent* e) {
     QScrollArea::resizeEvent(e);
-    // Use a debounce timer so rapid resize events don't hammer rebuildGrid
-    if (!m_resizeTimer) {
-        m_resizeTimer = new QTimer(this);
-        m_resizeTimer->setSingleShot(true);
-        m_resizeTimer->setInterval(120);
-        connect(m_resizeTimer, &QTimer::timeout, this, [this]() {
-            rebuildGrid();
-        });
-    }
     m_resizeTimer->start();
 }
 
@@ -569,7 +568,7 @@ void GalleryView::exitGroupMode() {
     }
 
     // Reset tile styles
-    for (auto* tile : m_tiles) {
+    for (auto* tile : std::as_const(m_tiles)) {
         tile->setProperty("groupMode", false);
         tile->setSelected(false);
         tile->setStyleSheet(""); // restore default
@@ -615,7 +614,7 @@ void GalleryView::enterAddToTagMode(const QString& tag) {
 
     // Update label text
     if (auto* lbl = m_addToTagBanner->findChild<QLabel*>("addToTagLabel"))
-        lbl->setText(QString("Add-to-Tag Modus: \"%1\"  —  Linksklick zum Hinzufügen/Entfernen").arg(tag));
+        lbl->setText(QString("Add-to-Tag Mode: \"%1\"  —  Left-click to add / remove").arg(tag));
 
     m_addToTagBanner->setGeometry(0, 0, viewport()->width(), 38);
     m_addToTagBanner->setVisible(true);
@@ -649,7 +648,7 @@ void GalleryView::exitAddToTagMode() {
     if (m_addToTagBanner)
         m_addToTagBanner->setVisible(false);
 
-    for (auto* tile : m_tiles) {
+    for (auto* tile : std::as_const(m_tiles)) {
         tile->setProperty("addToTagMode", false);
         tile->setSelected(false);
         tile->setStyleSheet("");
@@ -664,14 +663,14 @@ void GalleryView::onDirectoryChanged() {
     QDir dir(m_currentFolder);
     QFileInfoList entries = dir.entryInfoList(QDir::Files, QDir::Name);
     QSet<QString> onDisk;
-    for (const QFileInfo& fi : entries) {
+    for (const QFileInfo& fi : std::as_const(entries)) {
         if (MediaItem::detectType(fi.filePath()) != MediaType::Unknown)
             onDisk.insert(fi.filePath());
     }
 
     // Build set of currently loaded files
     QSet<QString> loaded;
-    for (const MediaItem& item : m_allItems)
+    for (const MediaItem& item : std::as_const(m_allItems))
         loaded.insert(item.filePath);
 
     bool changed = false;
@@ -685,7 +684,7 @@ void GalleryView::onDirectoryChanged() {
     }
 
     // Add new items found on disk
-    for (const QFileInfo& fi : entries) {
+    for (const QFileInfo& fi : std::as_const(entries)) {
         if (loaded.contains(fi.filePath())) continue;
         MediaType t = MediaItem::detectType(fi.filePath());
         if (t == MediaType::Unknown) continue;

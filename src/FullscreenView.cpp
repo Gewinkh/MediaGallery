@@ -73,7 +73,7 @@ FullscreenView::FullscreenView(TagManager* tagMgr, QWidget* parent)
         "QToolButton { background: rgba(180,40,40,0.35); border: 1px solid rgba(200,60,60,0.5);"
         "border-radius: 6px; padding: 3px 6px; }"
         "QToolButton:hover { background: rgba(220,50,50,0.65); }");
-    m_deleteBtn->setToolTip(tr("Medium löschen"));
+    m_deleteBtn->setToolTip(Strings::get(StringKey::FullscreenDeleteFile));
     connect(m_deleteBtn, &QToolButton::clicked, this, [this]() {
         emit deleteMediaRequested(m_currentGlobalIndex);
     });
@@ -210,7 +210,15 @@ void FullscreenView::applyCurrentItem() {
 
     if (isPdf) {
         m_videoPlayer->stop();
-        m_pdfViewer->loadFile(item.filePath);
+        // Primary fix is in MainWindow::showFullscreen() which now calls
+        // setCurrentWidget() before showItem() so the viewport is already
+        // sized here.  The singleShot(0) is kept as a safety net for any
+        // other call-site that might invoke showItem() before the widget
+        // is visible (e.g. tests, future callers).
+        const QString pathCopy = item.filePath;
+        QTimer::singleShot(0, this, [this, pathCopy]() {
+            m_pdfViewer->loadFile(pathCopy);
+        });
     } else if (isVid) {
         m_pdfViewer->closeDocument();
         if (AppSettings::instance().videoPlayback() == VideoPlayback::Native) {
@@ -527,9 +535,10 @@ void FullscreenView::retranslate() {
     m_backBtn->setText(Strings::get(StringKey::FullscreenBack));
     m_nameEdit->setPlaceholderText(Strings::get(StringKey::FullscreenFilenamePlaceholder));
     m_dateEditBtn->setToolTip(Strings::get(StringKey::FullscreenEditDate));
-    m_deleteBtn->setToolTip(tr("Medium löschen"));
+    m_deleteBtn->setToolTip(Strings::get(StringKey::FullscreenDeleteFile));
     m_prevBtn->setText(Strings::get(StringKey::FullscreenPrev));
     m_randomBtn->setToolTip(Strings::get(StringKey::FullscreenRandom));
     m_nextBtn->setText(Strings::get(StringKey::FullscreenNext));
     m_tagBar->retranslate();
+    m_pdfViewer->retranslate();
 }

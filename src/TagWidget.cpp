@@ -53,7 +53,7 @@ TagPill::TagPill(const QString& tag, const QColor& color, bool editable, QWidget
     setContextMenuPolicy(Qt::CustomContextMenu);
     connect(this, &QWidget::customContextMenuRequested, this, [this](const QPoint& pos) {
         QMenu menu(this);
-        menu.addAction(tr("Farbe ändern"), this, [this]() {
+        menu.addAction(tr("Change color"), this, [this]() {
             emit colorChangeRequested(m_tag);
         });
         menu.exec(mapToGlobal(pos));
@@ -77,7 +77,7 @@ TagBar::TagBar(TagManager* mgr, QWidget* parent)
     m_layout->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
 
     m_input = new QLineEdit(this);
-    m_input->setPlaceholderText(tr("Tag hinzufügen…"));
+    m_input->setPlaceholderText(tr("Add tag…"));
     m_input->setFixedWidth(130);
     m_input->setFixedHeight(22);
     m_input->setStyleSheet(
@@ -114,7 +114,7 @@ TagBar::TagBar(TagManager* mgr, QWidget* parent)
         "QToolButton { background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.15);"
         "border-radius: 8px; color: rgba(180,210,205,0.8); font-size: 11px; }"
         "QToolButton:hover { background: rgba(0,180,160,0.25); color: #00c8b4; }");
-    m_dropBtn->setToolTip(tr("Tags auswählen"));
+    m_dropBtn->setToolTip(tr("Select tags"));
     connect(m_dropBtn, &QToolButton::clicked, this, &TagBar::showTagDropdown);
     m_layout->addWidget(m_dropBtn);
 
@@ -126,7 +126,7 @@ TagBar::TagBar(TagManager* mgr, QWidget* parent)
         "QToolButton { background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.15);"
         "border-radius: 8px; color: rgba(180,210,205,0.8); font-size: 11px; }"
         "QToolButton:hover { background: rgba(0,180,160,0.25); color: #00c8b4; }");
-    m_catBtn->setToolTip(tr("Nach Kategorie auswählen"));
+    m_catBtn->setToolTip(tr("Select by category"));
     connect(m_catBtn, &QToolButton::clicked, this, &TagBar::showCategoryDropdown);
     m_layout->addWidget(m_catBtn);
 
@@ -144,7 +144,7 @@ void TagBar::setEditable(bool e) {
 }
 
 void TagBar::refresh() { rebuildPills(); }
-void TagBar::retranslate() { m_input->setPlaceholderText(tr("Tag hinzufügen…")); }
+void TagBar::retranslate() { m_input->setPlaceholderText(tr("Add tag…")); }
 
 void TagBar::rebuildPills() {
     for (auto* p : std::as_const(m_pills)) { m_layout->removeWidget(p); p->deleteLater(); }
@@ -176,7 +176,7 @@ void TagBar::removeTag(const QString& tag) {
 }
 
 void TagBar::onTagColorRequested(const QString& tag) {
-    QColor c = QColorDialog::getColor(m_tagMgr->tagColor(tag), this, tr("Tag-Farbe wählen"));
+    QColor c = QColorDialog::getColor(m_tagMgr->tagColor(tag), this, tr("Tag Color"));
     if (c.isValid()) m_tagMgr->setTagColor(tag, c);
 }
 
@@ -190,8 +190,8 @@ void TagBar::setCompact(bool compact) {
         btn->setToolTip(tip);
         btn->setFixedSize(compact ? 18 : 20, compact ? 18 : 22);
     };
-    styleBtn(m_dropBtn, compact, "▾", tr("Tags auswählen"));
-    styleBtn(m_catBtn,  compact, "☰", tr("Nach Kategorie auswählen"));
+    styleBtn(m_dropBtn, compact, "▾", tr("Select tags"));
+    styleBtn(m_catBtn,  compact, "☰", tr("Select by category"));
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

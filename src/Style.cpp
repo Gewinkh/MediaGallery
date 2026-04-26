@@ -69,7 +69,8 @@ QString Style::mainStyleSheet(const QColor& /*bg*/, const QColor& /*accent*/) {
     QString accDim    = rgba(t.accent, 0.25f);
     QString accMid    = rgba(t.accent, 0.4f);
     QString accFull   = rgba(t.accent, 0.85f);
-    QString menuBg    = t.card.name();
+    QString menuBg    = t.menuBarBg.name();
+    QString statusBg  = t.statusBarBg.name();
     QString textCol   = t.textPrimary.name();
     QString mutedCol  = t.textMuted.name();
     QString borderCol = t.border.name();
@@ -90,7 +91,7 @@ QString Style::mainStyleSheet(const QColor& /*bg*/, const QColor& /*accent*/) {
 "  font-family: 'Segoe UI','SF Pro Display','Helvetica Neue',sans-serif; font-size: 13px; }\n"
 "QScrollArea { background: transparent; border: none; }\n"
 // MenuBar
-"QMenuBar { background: %2; color: %4; border-bottom: 1px solid %5; padding: 2px; }\n"
+"QMenuBar { background: %10; color: %4; border-bottom: 1px solid %5; padding: 2px; }\n"
 "QMenuBar::item:selected { background: %6; border-radius: 4px; }\n"
 // Menu
 "QMenu { background: %2; border: 1px solid %5; border-radius: 8px; padding: 4px; color: %3; }\n"
@@ -100,7 +101,7 @@ QString Style::mainStyleSheet(const QColor& /*bg*/, const QColor& /*accent*/) {
 // ToolTip
 "QToolTip { background: %2; color: %3; border: 1px solid %5; border-radius: 4px; padding: 4px 8px; }\n"
 // StatusBar
-"QStatusBar { background: %2; color: %4; border-top: 1px solid %5; font-size: 11px; }\n"
+"QStatusBar { background: %11; color: %4; border-top: 1px solid %5; font-size: 11px; }\n"
 // LineEdit
 "QLineEdit { background: rgba(255,255,255,0.06); border: 1px solid %5; border-radius: 6px;"
 "  color: %3; padding: 4px 10px; selection-background-color: %7; }\n"
@@ -139,14 +140,16 @@ QString Style::mainStyleSheet(const QColor& /*bg*/, const QColor& /*accent*/) {
 "QRadioButton::indicator:checked { background: %7; border-color: %7; }\n"
 )
     .arg(bgCss,       // %1 main bg
-         menuBg,      // %2 card/panel bg
+         menuBg,      // %2 card/panel bg (menus, dialogs)
          textCol,     // %3 text primary
          mutedCol,    // %4 text muted
          borderCol,   // %5 border
          accDim,      // %6 hover bg dim
          accSolid,    // %7 accent solid
          focusBorder, // %8 focus border rule
-         accMid       // %9 pressed bg
+         accMid,      // %9 pressed bg
+         t.menuBarBg.name(),   // %10 menu bar
+         t.statusBarBg.name()  // %11 status bar
     );
 
     qss += scrl;
@@ -224,6 +227,45 @@ void Style::paintTileBackground(QPainter& p, const QRect& rect) {
         p.fillPath(path, t.tileBgColor);
     }
     p.setClipping(false);
+}
+
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  PDF viewer stylesheet (sidebar thumbnail panel + toolbar)
+// ─────────────────────────────────────────────────────────────────────────────
+QString Style::pdfViewerStyle() {
+    ThemeColors t = AppSettings::instance().currentTheme();
+    QString scrollBg  = t.pdfScrollbarBg.name();
+    QString sidebarBg = t.pdfSidebarBg.name();
+    QString toolbarBg = t.pdfToolbarBg.name();
+    QString accDim    = QString("rgba(%1,%2,%3,0.35)").arg(t.accent.red()).arg(t.accent.green()).arg(t.accent.blue());
+    QString accHov    = QString("rgba(%1,%2,%3,0.70)").arg(t.accent.red()).arg(t.accent.green()).arg(t.accent.blue());
+    QString text      = t.textPrimary.name();
+    QString border    = t.border.name();
+
+    return QString(
+        "QListWidget { background: %1; border: none; }"
+        "QListWidget::item { background: transparent; border-radius: 4px; margin: 2px; }"
+        "QListWidget::item:selected { background: rgba(%5,%6,%7,0.25); border: 1px solid %8; }"
+        "QScrollBar:vertical { background: %2; width: 8px; border-radius: 4px; margin: 0; }"
+        "QScrollBar::handle:vertical { background: %3; border-radius: 4px; min-height: 30px; }"
+        "QScrollBar::handle:vertical:hover { background: %4; }"
+        "QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical { height: 0; }"
+        "QScrollBar:horizontal { background: %2; height: 8px; border-radius: 4px; }"
+        "QScrollBar::handle:horizontal { background: %3; border-radius: 4px; min-width: 30px; }"
+        "QScrollBar::handle:horizontal:hover { background: %4; }"
+        "QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal { width: 0; }"
+    ).arg(sidebarBg, scrollBg, accDim, accHov)
+     .arg(t.accent.red()).arg(t.accent.green()).arg(t.accent.blue())
+     .arg(t.accent.name());
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  Sidebar / tag-panel background
+// ─────────────────────────────────────────────────────────────────────────────
+QString Style::sidebarStyle() {
+    ThemeColors t = AppSettings::instance().currentTheme();
+    return QString("background: %1; border: none;").arg(t.sidebarBg.name());
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

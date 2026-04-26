@@ -33,7 +33,7 @@
 // MediaAnnotation  –  one clickable media region
 // ─────────────────────────────────────────────────────
 struct MediaAnnotation {
-    enum class Type { Audio, Video, Unknown };
+    enum class Type { Audio, Video, Link, Unknown };
 
     int     page      = 0;          // 0-based
     QRectF  rect;                   // normalised [0..1], y=0 top
@@ -74,8 +74,14 @@ public:
     // Cleans up temp files created during this session
     void cleanup();
 
-    // Returns true if any annotation was found
-    bool hasMedia() const { return !m_annotations.isEmpty(); }
+    // All link annotations (Type::Link) across all pages
+    QVector<MediaAnnotation> allLinks() const;
+
+    // Returns true if any media annotation (audio/video) was found
+    bool hasMedia() const;
+
+    // Returns true if any link annotation was found
+    bool hasLinks() const;
 
 private:
     QPdfDocument*            m_doc = nullptr;
@@ -87,6 +93,7 @@ private:
     void parseAnnotations(const QByteArray& data);
     void parseOneAnnotation(const QByteArray& data, qsizetype hitPos,
                             const QByteArray& subtypeTag);
+    void parseLinkAnnotations(const QByteArray& data);
     bool extractEmbeddedStream(const QByteArray& data, qsizetype searchFrom,
                                MediaAnnotation& ann);
     void resolveRichMediaUrl(const QByteArray& data, qsizetype searchFrom,

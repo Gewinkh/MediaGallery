@@ -191,7 +191,7 @@ QWidget* SettingsDialog::buildTagTab() {
         if (m_tagMgr->allTags().contains(name)) {
             QMessageBox::warning(this,
                 Strings::get(StringKey::SettingsTagNewTitle),
-                QString("\"%1\" existiert bereits.").arg(name));
+                Strings::get(StringKey::SettingsTagDuplicate, name));
             return;
         }
 
@@ -340,7 +340,7 @@ void SettingsDialog::buildTagList() {
             };
             populate(&menu, m_tagMgr->categories());
             if (menu.isEmpty())
-                menu.addAction("(keine Kategorien vorhanden)")->setEnabled(false);
+                menu.addAction(Strings::get(StringKey::FilterNoCategories))->setEnabled(false);
             menu.exec(catBtn->mapToGlobal(QPoint(0, catBtn->height())));
         });
         rowLay->addWidget(catBtn);
@@ -494,7 +494,7 @@ void SettingsDialog::addCategoryBlock(QVBoxLayout* lay, TagCategory& cat, int de
     // Color button + uniformColor toggle
     auto* colorBtn = new ColorPickerButton(c, headerRow);
     colorBtn->setFixedSize(22, 22);
-    colorBtn->setToolTip("Farbe ändern");
+    colorBtn->setToolTip(Strings::get(StringKey::CatPanelSetColor));
     QString catId = cat.id;
     bool uni = cat.uniformColor;
     bool inh = cat.inheritColorToChildren;
@@ -506,11 +506,11 @@ void SettingsDialog::addCategoryBlock(QVBoxLayout* lay, TagCategory& cat, int de
     uniToggle->setFixedSize(22, 22);
     uniToggle->setCheckable(true);
     uniToggle->setChecked(uni);
-    uniToggle->setToolTip(uni ? "Einheitliche Farbe aktiv – klicken zum Deaktivieren"
-                               : "Einheitliche Farbe aktivieren");
+    uniToggle->setToolTip(uni ? Strings::get(StringKey::DesignUniformColorActive)
+                               : Strings::get(StringKey::DesignUniformColorInactive));
     auto uniToggleStyle = [uniToggle](bool active) {
-        uniToggle->setToolTip(active ? "Einheitliche Farbe aktiv – klicken zum Deaktivieren"
-                                     : "Einheitliche Farbe aktivieren");
+        uniToggle->setToolTip(active ? Strings::get(StringKey::DesignUniformColorActive)
+                                     : Strings::get(StringKey::DesignUniformColorInactive));
         uniToggle->setStyleSheet(active
             ? "QToolButton { background: rgba(0,180,160,0.35); border: 1px solid rgba(0,180,160,0.7);"
               "border-radius: 5px; color: #00c8b4; font-size: 9px; }"
@@ -526,14 +526,14 @@ void SettingsDialog::addCategoryBlock(QVBoxLayout* lay, TagCategory& cat, int de
         if (on) {
             // Activate: pick color and ask about inheritance
             QColor cur = colorBtn->color().isValid() ? colorBtn->color() : QColor(0, 180, 160);
-            QColor c2 = QColorDialog::getColor(cur, this, "Einheitsfarbe wählen");
+            QColor c2 = QColorDialog::getColor(cur, this, Strings::get(StringKey::DesignPickUniformColor));
             if (!c2.isValid()) { uniToggle->setChecked(false); return; }
             colorBtn->setColor(c2);
 
             // Ask about inheritance
             QMessageBox msgBox(this);
-            msgBox.setWindowTitle("Farbe vererben");
-            msgBox.setText("Sollen alle Unterkategorien (jetzt und neue) dieselbe Farbe übernehmen?");
+            msgBox.setWindowTitle(Strings::get(StringKey::DesignInheritTitle));
+            msgBox.setText(Strings::get(StringKey::DesignInheritMsg));
             msgBox.setIcon(QMessageBox::Question);
             msgBox.setStyleSheet(
                 "QMessageBox { background: #1a2830; color: white; }"
@@ -541,8 +541,8 @@ void SettingsDialog::addCategoryBlock(QVBoxLayout* lay, TagCategory& cat, int de
                 "QPushButton { background: rgba(0,180,160,0.25); border: 1px solid rgba(0,180,160,0.5);"
                 "  border-radius: 5px; color: #00c8b4; padding: 5px 14px; }"
                 "QPushButton:hover { background: rgba(0,180,160,0.45); }");
-            QPushButton* yesBtn = msgBox.addButton("Ja, vererben", QMessageBox::YesRole);
-            msgBox.addButton("Nein", QMessageBox::NoRole);
+            QPushButton* yesBtn = msgBox.addButton(Strings::get(StringKey::DesignInheritYes), QMessageBox::YesRole);
+            msgBox.addButton(Strings::get(StringKey::DesignInheritNo), QMessageBox::NoRole);
             msgBox.exec();
             bool inherit = (msgBox.clickedButton() == yesBtn);
             m_tagMgr->setCategoryUniformColor(catId, true, c2, inherit);
@@ -754,10 +754,7 @@ QWidget* SettingsDialog::buildConverterTab() {
     t2sLay->setSpacing(8);
 
     auto* t2sHint = new QLabel(
-        "Wählt einen bestehenden Tag und eine Eltern-Kategorie.\n"
-        "Der Tag wird als neue Unterkategorie angelegt, alle Dateien\n"
-        "die diesen Tag haben werden der Unterkategorie zugeordnet\n"
-        "und der Tag aus der globalen Registry entfernt.", t2sGroup);
+        Strings::get(StringKey::ConverterTagToSubcatHint), t2sGroup);
     t2sHint->setStyleSheet("color: rgba(150,180,175,0.7); font-size: 11px;");
     t2sHint->setWordWrap(true);
     t2sLay->addWidget(t2sHint);
@@ -804,7 +801,7 @@ QWidget* SettingsDialog::buildConverterTab() {
     auto* t2sNameLbl = new QLabel(Strings::get(StringKey::ConverterNewSubcatName), t2sGroup);
     t2sNameLbl->setFixedWidth(180);
     auto* t2sNameEdit = new QLineEdit(t2sGroup);
-    t2sNameEdit->setPlaceholderText("(leer = Tag-Name übernehmen)");
+    t2sNameEdit->setPlaceholderText(Strings::get(StringKey::ConverterPlaceholderEmptyName));
     t2sNameEdit->setStyleSheet(
         "QLineEdit { background: rgba(255,255,255,0.07); border: 1px solid rgba(255,255,255,0.2);"
         "border-radius: 6px; color: white; padding: 3px 8px; }");
@@ -857,10 +854,7 @@ QWidget* SettingsDialog::buildConverterTab() {
     s2tLay->setSpacing(8);
 
     auto* s2tHint = new QLabel(
-        "Wählt eine Unterkategorie.\n"
-        "Deren Name wird als neuer Tag angelegt, alle Dateien\n"
-        "in der Unterkategorie erhalten diesen Tag, und die\n"
-        "Unterkategorie wird anschließend gelöscht.", s2tGroup);
+        Strings::get(StringKey::ConverterSubcatToTagHint), s2tGroup);
     s2tHint->setStyleSheet("color: rgba(150,180,175,0.7); font-size: 11px;");
     s2tHint->setWordWrap(true);
     s2tLay->addWidget(s2tHint);
@@ -923,10 +917,7 @@ QWidget* SettingsDialog::buildConverterTab() {
     auto* migrLay   = new QVBoxLayout(migrGroup);
 
     auto* migrHint = new QLabel(
-        "Ältere JSON-Dateien nutzen ein Tag-zentriertes Format.\n"
-        "Diese Funktion schreibt die aktuelle Ordner-JSON ins\n"
-        "kompaktere datei-zentrierte Format (v2) um.\n"
-        "Bitte vorher ein Backup anlegen.", migrGroup);
+        Strings::get(StringKey::ConverterMigrateHint), migrGroup);
     migrHint->setStyleSheet("color: rgba(150,180,175,0.7); font-size: 11px;");
     migrHint->setWordWrap(true);
     migrLay->addWidget(migrHint);
@@ -1227,6 +1218,24 @@ QWidget* SettingsDialog::buildDesignTab() {
     tileLay->addRow(Strings::get(StringKey::SettingsDesignTileGlowRadius), tileGlowRadius);
     cgLay->addWidget(tileGroup);
 
+    // ── PDF viewer / sidebar color section ───────────────────────────────
+    auto* pdfGroup  = new QGroupBox(Strings::get(StringKey::SettingsDesignPdfGroup), customGroup);
+    auto* pdfForm   = new QFormLayout(pdfGroup);
+    auto* pdfSidebarBtn   = colorRow(pdfForm, Strings::get(StringKey::SettingsDesignPdfSidebarBg),   cust.pdfSidebarBg);
+    auto* pdfToolbarBtn   = colorRow(pdfForm, Strings::get(StringKey::SettingsDesignPdfToolbarBg),   cust.pdfToolbarBg);
+    auto* pdfScrollbarBtn = colorRow(pdfForm, Strings::get(StringKey::SettingsDesignPdfScrollbarBg), cust.pdfScrollbarBg);
+    auto* sidebarBgBtn    = colorRow(pdfForm, Strings::get(StringKey::SettingsDesignSidebarBg),       cust.sidebarBg);
+    cgLay->addWidget(pdfGroup);
+
+    // ── Hauptfenster-Leisten Farben ────────────────────────────────────
+    auto* chromeGroup  = new QGroupBox(Strings::get(StringKey::SettingsDesignChromeGroup), customGroup);
+    auto* chromeForm   = new QFormLayout(chromeGroup);
+    auto* menuBarBgBtn    = colorRow(chromeForm, Strings::get(StringKey::SettingsDesignMenuBarBg),    cust.menuBarBg);
+    auto* toolbarBgBtn    = colorRow(chromeForm, Strings::get(StringKey::SettingsDesignToolbarBg),    cust.toolbarBg);
+    auto* filterBarBgBtn  = colorRow(chromeForm, Strings::get(StringKey::SettingsDesignFilterBarBg),  cust.filterBarBg);
+    auto* statusBarBgBtn  = colorRow(chromeForm, Strings::get(StringKey::SettingsDesignStatusBarBg),  cust.statusBarBg);
+    cgLay->addWidget(chromeGroup);
+
     // ── Theme name ────────────────────────────────────────────────────────
     auto* nameEdit = new QLineEdit(cust.name, customGroup);
     nameEdit->setPlaceholderText(Strings::get(StringKey::SettingsDesignThemeName));
@@ -1269,6 +1278,14 @@ QWidget* SettingsDialog::buildDesignTab() {
         t.tileBgGradAngle  = tileAngleSpin->value();
         t.tileGlowOnHover  = tileGlowChk->isChecked();
         t.tileGlowRadius   = (float)tileGlowRadius->value();
+        t.pdfSidebarBg     = pdfSidebarBtn->color();
+        t.pdfToolbarBg     = pdfToolbarBtn->color();
+        t.pdfScrollbarBg   = pdfScrollbarBtn->color();
+        t.sidebarBg        = sidebarBgBtn->color();
+        t.menuBarBg        = menuBarBgBtn->color();
+        t.toolbarBg        = toolbarBgBtn->color();
+        t.filterBarBg      = filterBarBgBtn->color();
+        t.statusBarBg      = statusBarBgBtn->color();
         return t;
     };
 
@@ -1336,6 +1353,14 @@ QWidget* SettingsDialog::buildDesignTab() {
             tileAngleSpin->setValue(loaded.tileBgGradAngle);
             tileGlowChk->setChecked(loaded.tileGlowOnHover);
             tileGlowRadius->setValue((int)loaded.tileGlowRadius);
+            pdfSidebarBtn->setColor(loaded.pdfSidebarBg);
+            pdfToolbarBtn->setColor(loaded.pdfToolbarBg);
+            pdfScrollbarBtn->setColor(loaded.pdfScrollbarBg);
+            sidebarBgBtn->setColor(loaded.sidebarBg);
+            menuBarBgBtn->setColor(loaded.menuBarBg);
+            toolbarBgBtn->setColor(loaded.toolbarBg);
+            filterBarBgBtn->setColor(loaded.filterBarBg);
+            statusBarBgBtn->setColor(loaded.statusBarBg);
             nameEdit->setText(loaded.name);
             QMessageBox::information(this, Strings::get(StringKey::SettingsDesignImportTitle),
                 Strings::get(StringKey::SettingsDesignImportOk) + loaded.name);
@@ -1372,6 +1397,14 @@ QWidget* SettingsDialog::buildDesignTab() {
     connect(tileAngleSpin,    QOverload<int>::of(&QSpinBox::valueChanged), this, [liveApply](int){ liveApply(); });
     connect(tileGlowChk,      &QCheckBox::toggled,              this, [liveApply](bool){ liveApply(); });
     connect(tileGlowRadius,   &QSlider::valueChanged,           this, [liveApply](int){ liveApply(); });
+    connect(pdfSidebarBtn,    &ColorPickerButton::colorChanged, this, [liveApply](const QColor&){ liveApply(); });
+    connect(pdfToolbarBtn,    &ColorPickerButton::colorChanged, this, [liveApply](const QColor&){ liveApply(); });
+    connect(pdfScrollbarBtn,  &ColorPickerButton::colorChanged, this, [liveApply](const QColor&){ liveApply(); });
+    connect(sidebarBgBtn,     &ColorPickerButton::colorChanged, this, [liveApply](const QColor&){ liveApply(); });
+    connect(menuBarBgBtn,     &ColorPickerButton::colorChanged, this, [liveApply](const QColor&){ liveApply(); });
+    connect(toolbarBgBtn,     &ColorPickerButton::colorChanged, this, [liveApply](const QColor&){ liveApply(); });
+    connect(filterBarBgBtn,   &ColorPickerButton::colorChanged, this, [liveApply](const QColor&){ liveApply(); });
+    connect(statusBarBgBtn,   &ColorPickerButton::colorChanged, this, [liveApply](const QColor&){ liveApply(); });
 
     cgLay->addLayout(btnRow);
     lay->addWidget(customGroup);

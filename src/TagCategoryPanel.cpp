@@ -55,7 +55,7 @@ TagCategoryPanel::TagCategoryPanel(TagManager* mgr, QWidget* parent)
     m_andOrBtn->setCheckable(true);
     m_andOrBtn->setChecked(m_andMode);
     m_andOrBtn->setText(m_andMode ? "AND" : "OR");
-    m_andOrBtn->setToolTip("Filter: AND = alle Tags müssen passen, OR = mindestens einer");
+    m_andOrBtn->setToolTip("Filter: AND = all tags must match, OR = at least one must match");
     m_andOrBtn->setStyleSheet(
         "QToolButton { background: rgba(0,180,160,0.2); border: 1px solid rgba(0,180,160,0.5);"
         "border-radius: 5px; color: #00c8b4; font-size: 10px; font-weight: bold; padding: 2px 8px; }"
@@ -304,7 +304,7 @@ void CategoryNode::buildChips() {
     // "+tag" add button
     auto* addTag = new QToolButton(m_chipArea);
     addTag->setText("+");
-    addTag->setToolTip("Tag hinzufügen");
+    addTag->setToolTip(tr("Add tag"));
     addTag->setFixedSize(22, 22);
     addTag->setStyleSheet(
         "QToolButton { background: rgba(255,255,255,0.07); border: 1px solid rgba(255,255,255,0.15);"
@@ -382,8 +382,8 @@ void CategoryNode::onDeleteCategory() {
     const QString catId   = m_cat.id;
     const QString catName = m_cat.name;
     TagManager*   mgr     = m_panel->m_mgr;
-    if (QMessageBox::question(this, "Kategorie löschen",
-                              QString("Kategorie \"%1\" wirklich löschen?\nEnthaltene Tags bleiben erhalten.").arg(catName),
+    if (QMessageBox::question(this, tr("Delete Category"),
+                              tr("Really delete category \"%1\"?\nContained tags will be kept.").arg(catName),
                               QMessageBox::Yes | QMessageBox::No) == QMessageBox::Yes)
         mgr->deleteCategory(catId);
 }
@@ -393,7 +393,7 @@ void CategoryNode::onSetUniformColor() {
     const QColor  cur   = m_cat.color;
     TagManager*   mgr   = m_panel->m_mgr;
 
-    QColor c = QColorDialog::getColor(cur, this, "Einheitsfarbe wählen");
+    QColor c = QColorDialog::getColor(cur, this, tr("Pick uniform color"));
     if (!c.isValid()) return;
 
     // Ask whether subcategories should inherit the color
@@ -401,8 +401,8 @@ void CategoryNode::onSetUniformColor() {
     if (!m_cat.children.isEmpty() || true) {
         // Always offer the option so it can be pre-set for future subcategories
         QMessageBox msgBox(this);
-        msgBox.setWindowTitle("Farbe vererben");
-        msgBox.setText("Sollen alle Unterkategorien (jetzt und neue) dieselbe Farbe übernehmen?");
+        msgBox.setWindowTitle(tr("Inherit Color"));
+        msgBox.setText(tr("Should all subcategories (now and future) inherit this color?"));
         msgBox.setIcon(QMessageBox::Question);
         msgBox.setStyleSheet(
             "QMessageBox { background: #1a2830; color: white; }"
@@ -410,8 +410,8 @@ void CategoryNode::onSetUniformColor() {
             "QPushButton { background: rgba(0,180,160,0.25); border: 1px solid rgba(0,180,160,0.5);"
             "  border-radius: 5px; color: #00c8b4; padding: 5px 14px; }"
             "QPushButton:hover { background: rgba(0,180,160,0.45); }");
-        QPushButton* yesBtn = msgBox.addButton("Ja, vererben", QMessageBox::YesRole);
-        msgBox.addButton("Nein", QMessageBox::NoRole);
+        QPushButton* yesBtn = msgBox.addButton(tr("Yes, inherit"), QMessageBox::YesRole);
+        msgBox.addButton(tr("No"), QMessageBox::NoRole);
         msgBox.exec();
         inherit = (msgBox.clickedButton() == yesBtn);
     }
@@ -467,8 +467,8 @@ void CategoryNode::onAddTag() {
     // Let user pick from existing or create new
     available.prepend("<Neuen Tag erstellen…>");
     bool ok;
-    QString chosen = QInputDialog::getItem(this, "Tag hinzufügen",
-                                           "Tag auswählen:", available, 0, false, &ok);
+    QString chosen = QInputDialog::getItem(this, tr("Add Tag"),
+                                           tr("Select tag:"), available, 0, false, &ok);
     if (!ok) return;
 
     if (chosen == available.first()) {

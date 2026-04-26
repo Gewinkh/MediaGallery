@@ -40,6 +40,7 @@ static const QMap<StringKey, QString> s_de = {
     { StringKey::FullscreenBack,               "← Zurück" },
     { StringKey::FullscreenFilenamePlaceholder,"Dateiname…" },
     { StringKey::FullscreenEditDate,           "Datum bearbeiten (D)" },
+    { StringKey::FullscreenDeleteFile,         "Datei löschen" },
     { StringKey::FullscreenPrev,               "◀ Vorherige" },
     { StringKey::FullscreenNext,               "Nächste ▶" },
     { StringKey::FullscreenRandom,             "🔀 Zufall" },
@@ -222,6 +223,65 @@ static const QMap<StringKey, QString> s_de = {
     { StringKey::ConverterMigrateSuccess, "Migration erfolgreich abgeschlossen." },
     { StringKey::ConverterMigrateError,   "Migration fehlgeschlagen." },
     { StringKey::ConverterMigrateConfirm, "JSON-Daten neu schreiben? (Backup empfohlen)" },
+
+    // Design – PDF viewer / sidebar / button colors
+    { StringKey::SettingsDesignPdfGroup,       "PDF-Viewer Farben" },
+    { StringKey::SettingsDesignPdfSidebarBg,   "Seitenleiste:" },
+    { StringKey::SettingsDesignPdfToolbarBg,   "Toolbar:" },
+    { StringKey::SettingsDesignPdfScrollbarBg, "Scrollleiste:" },
+    { StringKey::SettingsDesignButtonBg,        "Button-Hintergrund:" },
+    { StringKey::SettingsDesignSidebarBg,       "Sidebar-Hintergrund:" },
+
+    // Uniform-color UI (replaces hardcoded German strings)
+    { StringKey::DesignUniformColorActive,  "Einheitliche Farbe aktiv – klicken zum Deaktivieren" },
+    { StringKey::DesignUniformColorInactive,"Einheitliche Farbe aktivieren" },
+    { StringKey::DesignPickUniformColor,    "Einheitsfarbe wählen" },
+    { StringKey::DesignInheritTitle,        "Farbe vererben" },
+    { StringKey::DesignInheritMsg,          "Sollen alle Unterkategorien (jetzt und neue) dieselbe Farbe übernehmen?" },
+    { StringKey::DesignInheritYes,          "Ja, vererben" },
+    { StringKey::DesignInheritNo,           "Nein" },
+    { StringKey::SettingsTagDuplicate,      "\"%1\" existiert bereits." },
+
+    // Hauptfenster-Leisten
+    { StringKey::SettingsDesignChromeGroup,  "Hauptfenster-Leisten" },
+    { StringKey::SettingsDesignMenuBarBg,    "Menüleiste:" },
+    { StringKey::SettingsDesignToolbarBg,    "Symbolleiste:" },
+    { StringKey::SettingsDesignFilterBarBg,  "Filterleiste:" },
+    { StringKey::SettingsDesignStatusBarBg,  "Statusleiste:" },
+
+    // Converter – lokalisierte Hinweistexte
+    { StringKey::ConverterTagToSubcatHint,
+      "Wähle einen vorhandenen Tag und eine Eltern-Kategorie.\n"
+      "Der Tag wird als neue Unterkategorie angelegt; alle Dateien\n"
+      "mit diesem Tag werden der Unterkategorie zugewiesen,\n"
+      "und der Tag wird aus der globalen Liste entfernt." },
+    { StringKey::ConverterSubcatToTagHint,
+      "Wähle eine Unterkategorie.\n"
+      "Ihr Name wird zu einem neuen Tag; alle Dateien der Unterkategorie\n"
+      "erhalten diesen Tag, und die Unterkategorie wird gelöscht." },
+    { StringKey::ConverterMigrateHint,
+      "Ältere JSON-Dateien verwenden ein tag-zentriertes Format.\n"
+      "Diese Funktion schreibt die aktuelle Ordner-JSON in das\n"
+      "kompaktere dateizentrierte Format (v2) um.\n"
+      "Bitte vorher ein Backup erstellen." },
+    { StringKey::ConverterPlaceholderEmptyName, "(leer = Tag-Name verwenden)" },
+
+    // PdfViewer – lokalisierte Texte
+    { StringKey::PdfPrevPageTooltip,    "Vorherige Seite  (←)" },
+    { StringKey::PdfNextPageTooltip,    "Nächste Seite  (→)" },
+    { StringKey::PdfZoomOutTooltip,     "Verkleinern  (-)" },
+    { StringKey::PdfZoomInTooltip,      "Vergrößern  (+)" },
+    { StringKey::PdfScrollModeMulti,    "Mehrseitig" },
+    { StringKey::PdfScrollModeSingle,   "Einzelseite" },
+    { StringKey::PdfScrollModeTooltip,  "Zwischen Einzel- und Mehrseitenansicht wechseln" },
+    { StringKey::PdfSidebarTooltip,     "Seitenleiste ein-/ausblenden" },
+    { StringKey::PdfAudioLabel,         "🔊  Audio" },
+    { StringKey::PdfVideoTitle,         "Video" },
+    { StringKey::PdfAudioCount,         "%1 Audio" },
+    { StringKey::PdfVideoCount,         "%1 Video" },
+    { StringKey::PdfMediaClickHint,     "🎬  %1 – In PDF klicken zum Abspielen" },
+    { StringKey::PdfAudioNotFound,      "🔊  %1 – Keine Audiodatei gefunden" },
+    { StringKey::PdfVideoNotFound,      "🎬  %1 – Keine Videodatei gefunden" },
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -263,6 +323,7 @@ static const QMap<StringKey, QString> s_en = {
     { StringKey::FullscreenBack,               "← Back" },
     { StringKey::FullscreenFilenamePlaceholder,"File name…" },
     { StringKey::FullscreenEditDate,           "Edit Date (D)" },
+    { StringKey::FullscreenDeleteFile,         "Delete File" },
     { StringKey::FullscreenPrev,               "◀ Previous" },
     { StringKey::FullscreenNext,               "Next ▶" },
     { StringKey::FullscreenRandom,             "🔀 Random" },
@@ -445,6 +506,65 @@ static const QMap<StringKey, QString> s_en = {
     { StringKey::ConverterMigrateSuccess, "Migration completed successfully." },
     { StringKey::ConverterMigrateError,   "Migration failed." },
     { StringKey::ConverterMigrateConfirm, "Rewrite JSON data? (Backup recommended)" },
+
+    // Design – PDF viewer / sidebar / button colors
+    { StringKey::SettingsDesignPdfGroup,       "PDF Viewer Colors" },
+    { StringKey::SettingsDesignPdfSidebarBg,   "Sidebar:" },
+    { StringKey::SettingsDesignPdfToolbarBg,   "Toolbar:" },
+    { StringKey::SettingsDesignPdfScrollbarBg, "Scrollbar:" },
+    { StringKey::SettingsDesignButtonBg,        "Button background:" },
+    { StringKey::SettingsDesignSidebarBg,       "Sidebar background:" },
+
+    // Uniform-color UI
+    { StringKey::DesignUniformColorActive,  "Uniform color active – click to disable" },
+    { StringKey::DesignUniformColorInactive,"Enable uniform color" },
+    { StringKey::DesignPickUniformColor,    "Pick uniform color" },
+    { StringKey::DesignInheritTitle,        "Inherit color" },
+    { StringKey::DesignInheritMsg,          "Should all subcategories (now and future) inherit this color?" },
+    { StringKey::DesignInheritYes,          "Yes, inherit" },
+    { StringKey::DesignInheritNo,           "No" },
+    { StringKey::SettingsTagDuplicate,      "\"%1\" already exists." },
+
+    // Main-window chrome bars
+    { StringKey::SettingsDesignChromeGroup,  "Main Window Bars" },
+    { StringKey::SettingsDesignMenuBarBg,    "Menu bar:" },
+    { StringKey::SettingsDesignToolbarBg,    "Toolbar:" },
+    { StringKey::SettingsDesignFilterBarBg,  "Filter bar:" },
+    { StringKey::SettingsDesignStatusBarBg,  "Status bar:" },
+
+    // Converter – localized hint texts
+    { StringKey::ConverterTagToSubcatHint,
+      "Select an existing tag and a parent category.\n"
+      "The tag will be created as a new subcategory; all files\n"
+      "carrying this tag will be assigned to the subcategory,\n"
+      "and the tag will be removed from the global registry." },
+    { StringKey::ConverterSubcatToTagHint,
+      "Select a subcategory.\n"
+      "Its name becomes a new tag; all files in the subcategory\n"
+      "receive this tag, and the subcategory is then deleted." },
+    { StringKey::ConverterMigrateHint,
+      "Older JSON files use a tag-centric format.\n"
+      "This function rewrites the current folder JSON to the\n"
+      "more compact file-centric format (v2).\n"
+      "Please create a backup first." },
+    { StringKey::ConverterPlaceholderEmptyName, "(empty = use tag name)" },
+
+    // PdfViewer – localized texts
+    { StringKey::PdfPrevPageTooltip,    "Previous Page  (←)" },
+    { StringKey::PdfNextPageTooltip,    "Next Page  (→)" },
+    { StringKey::PdfZoomOutTooltip,     "Zoom Out  (-)" },
+    { StringKey::PdfZoomInTooltip,      "Zoom In  (+)" },
+    { StringKey::PdfScrollModeMulti,    "Multi-Page" },
+    { StringKey::PdfScrollModeSingle,   "Single Page" },
+    { StringKey::PdfScrollModeTooltip,  "Toggle between single-page and multi-page view" },
+    { StringKey::PdfSidebarTooltip,     "Show/hide sidebar" },
+    { StringKey::PdfAudioLabel,         "🔊  Audio" },
+    { StringKey::PdfVideoTitle,         "Video" },
+    { StringKey::PdfAudioCount,         "%1 Audio" },
+    { StringKey::PdfVideoCount,         "%1 Video" },
+    { StringKey::PdfMediaClickHint,     "🎬  %1 – click in PDF to play" },
+    { StringKey::PdfAudioNotFound,      "🔊  %1 – No audio found" },
+    { StringKey::PdfVideoNotFound,      "🎬  %1 – No video found" },
 };
 
 // ─────────────────────────────────────────────────────────────────────────────

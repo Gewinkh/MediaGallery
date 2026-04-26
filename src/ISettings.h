@@ -48,6 +48,21 @@ struct ThemeColors {
     bool   tileGlowOnHover = false;
     float  tileGlowRadius  = 6.0f;
 
+    // PDF viewer colors
+    QColor pdfSidebarBg   = QColor(10, 18, 22);
+    QColor pdfToolbarBg   = QColor(18, 28, 34);
+    QColor pdfScrollbarBg = QColor(18, 28, 34);
+
+    // Extra UI overrides
+    QColor buttonBg       = QColor(0, 0, 0, 0);  // transparent = derive from accent
+    QColor sidebarBg      = QColor(18, 28, 34);
+
+    // Main-window chrome colors
+    QColor menuBarBg      = QColor(12, 20, 26);
+    QColor toolbarBg      = QColor(12, 20, 26);
+    QColor filterBarBg    = QColor(12, 20, 26);
+    QColor statusBarBg    = QColor(8, 14, 18);
+
     QString name = "Dark";
 
     QJsonObject toJson() const;

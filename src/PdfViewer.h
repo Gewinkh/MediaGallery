@@ -1,6 +1,6 @@
 #pragma once
 // ══════════════════════════════════════════════════════════════════════════════
-// PdfViewer.h  –  extended with unified Audio/Video annotation support
+// PdfViewer.h  –  extended with text selection, link hover, audio toggle
 // ══════════════════════════════════════════════════════════════════════════════
 #include <QWidget>
 #include <QPdfDocument>
@@ -9,7 +9,6 @@
 #include <QLabel>
 #include <QSlider>
 #include <QSpinBox>
-#include <QComboBox>
 #include <QHBoxLayout>
 #include <QVBoxLayout>
 #include <QMediaPlayer>
@@ -45,6 +44,7 @@ public:
 
     void loadFile(const QString& path);
     void closeDocument();
+    void retranslate();
 
 signals:
     void pageChanged(int page, int total);
@@ -52,13 +52,13 @@ signals:
 protected:
     void keyPressEvent(QKeyEvent* e) override;
     void resizeEvent(QResizeEvent* e) override;
+    void showEvent(QShowEvent* e) override;
     bool eventFilter(QObject* obj, QEvent* e) override;
 
 private slots:
     void goToPrevPage();
     void goToNextPage();
     void onPageSpinChanged(int page);
-    void onZoomComboChanged(int index);
     void zoomIn();
     void zoomOut();
     void fitPage();
@@ -103,7 +103,7 @@ private:
     QToolButton* m_nextBtn         = nullptr;
     QSpinBox*    m_pageSpin        = nullptr;
     QLabel*      m_totalPagesLabel = nullptr;
-    QComboBox*   m_zoomCombo       = nullptr;
+    QLabel*      m_zoomLabel       = nullptr;  // shows live "67 %" etc.
     QToolButton* m_zoomInBtn       = nullptr;
     QToolButton* m_zoomOutBtn      = nullptr;
     QToolButton* m_fitPageBtn      = nullptr;
@@ -142,6 +142,7 @@ private:
     bool    m_continuousMode = true;
     bool    m_updatingThumbs = false;
     int     m_currentPage    = 0;
+    int     m_activeAudioAnnIdx = -1; // index of currently playing audio annotation (-1 = none)
 
     // Setup helpers
     void setupUi();
@@ -155,7 +156,7 @@ private:
     void repositionOverlay();
 
     // Zoom helpers
-    void updateZoomCombo();
+    void updateZoomLabel();
     void applyZoom(double factor);
     void handleWheelZoom(QWheelEvent* we);
 

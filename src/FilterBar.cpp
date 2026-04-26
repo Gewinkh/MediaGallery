@@ -120,7 +120,7 @@ FilterBar::FilterBar(TagManager* mgr, QWidget* parent)
     mainLay->addWidget(m_tagsDropdown);
 
     // ── Kategorien hover-dropdown (+ button is shown INSIDE the panel header) ─
-    m_catsDropdown = new HoverDropdown("Kategorien", HoverDropdown::Mode::Categories, this, this);
+    m_catsDropdown = new HoverDropdown(tr("Categories"), HoverDropdown::Mode::Categories, this, this);
     mainLay->addWidget(m_catsDropdown);
 
     auto* sep5 = new QFrame(this);
@@ -439,16 +439,7 @@ MediaHoverButton::MediaHoverButton(FilterBar* bar, QWidget* parent)
 }
 
 void MediaHoverButton::updateLabel() {
-    bool img = AppSettings::instance().showImages();
-    bool vid = AppSettings::instance().showVideos();
-    bool aud = AppSettings::instance().showAudio();
-    bool pdf = AppSettings::instance().showPdfs();
-    QStringList active;
-    if (img) active << "IMG";
-    if (vid) active << "VID";
-    if (aud) active << "AUD";
-    if (pdf) active << "PDF";
-    setText(QString("Medien %1").arg(active.isEmpty() ? "—" : active.join("")));
+    setText(tr("Media"));
 }
 
 void MediaHoverButton::enterEvent(QEnterEvent*) {
@@ -479,7 +470,7 @@ void MediaHoverButton::buildPanel() {
     lay->setContentsMargins(10, 8, 10, 8);
     lay->setSpacing(6);
 
-    auto* hdr = new QLabel("Medien", m_panel);
+    auto* hdr = new QLabel(tr("Media"), m_panel);
     hdr->setStyleSheet("color: rgba(0,200,180,0.9); font-size: 11px; font-weight: bold;");
     lay->addWidget(hdr);
 

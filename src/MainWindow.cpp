@@ -17,7 +17,6 @@
 #include <QFileInfo>
 #include <QApplication>
 #include <QMessageBox>
-#include <utime.h>
 
 // AppSettings is accessed only for signal connections (languageChanged, etc.)
 // All reads/writes go through m_settings (ISettings&).
@@ -128,7 +127,7 @@ void MainWindow::setupUi() {
         m_applyingLastCategories = false;
         m_folderService.saveCurrentFolder();
         m_fullscreenView->refreshTagBar();
-        statusBar()->showMessage(tr("Kategorien übernommen"), 2000);
+        statusBar()->showMessage(tr("Categories applied"), 2000);
     });
 
     m_stack->addWidget(m_galleryPage);
@@ -167,7 +166,7 @@ void MainWindow::setupGalleryPage() {
             this, [this](const QStringList& filePaths) {
         const QString& currentFolder = m_folderService.currentFolder();
         if (currentFolder.isEmpty()) {
-            statusBar()->showMessage(tr("Kein Ordner geöffnet – Dateien können nicht hinzugefügt werden."), 4000);
+            statusBar()->showMessage(tr("No folder open – files cannot be added."), 4000);
             return;
         }
         int copied = 0, skipped = 0;
@@ -177,14 +176,14 @@ void MainWindow::setupGalleryPage() {
             if (QFile::copy(src, destPath)) ++copied;
         }
         if (copied > 0) {
-            statusBar()->showMessage(tr("%1 Datei(en) hinzugefügt.").arg(copied), 3000);
+            statusBar()->showMessage(tr("%1 file(s) added.").arg(copied), 3000);
             m_galleryView->loadFolder(currentFolder);
             m_storage->applyToItems(m_galleryView->allItems());
             m_galleryView->refresh();
             m_filterBar->refreshTagList();
         }
         if (skipped > 0)
-            statusBar()->showMessage(tr("%1 Datei(en) übersprungen (bereits vorhanden).").arg(skipped), 3000);
+            statusBar()->showMessage(tr("%1 file(s) skipped (already present).").arg(skipped), 3000);
     });
     connect(m_galleryView, &GalleryView::statusMessage,
             this, [this](const QString& msg) { statusBar()->showMessage(msg, 3000); });
@@ -193,7 +192,7 @@ void MainWindow::setupGalleryPage() {
         m_storage->applyToItems(m_galleryView->allItems());
         applyFilter();
         m_filterBar->refreshTagList();
-        statusBar()->showMessage(tr("Ordner aktualisiert"), 2000);
+        statusBar()->showMessage(tr("Folder refreshed"), 2000);
     });
     connect(m_filterBar, &FilterBar::enterAddToTagModeRequested,
             m_galleryView, &GalleryView::enterAddToTagMode);
@@ -301,8 +300,13 @@ void MainWindow::updateToggleAction() {
 void MainWindow::showFullscreen(int globalIndex) {
     m_fullscreenView->setItems(&m_galleryView->allItems(),
                                &m_galleryView->visibleIndices());
-    m_fullscreenView->showItem(globalIndex);
+    // Switch the stack BEFORE calling showItem() so that QStackedWidget
+    // assigns the correct geometry to m_fullscreenView first.
+    // Previously showItem() ran while the widget still had size 0×0 (hidden
+    // in the stack), which meant QPdfView's viewport was unsized when the
+    // document became Ready → blank first render on every PDF first-open.
     m_stack->setCurrentWidget(m_fullscreenView);
+    m_fullscreenView->showItem(globalIndex);
     m_fullscreenView->setFocus();
 }
 
@@ -370,11 +374,12 @@ void MainWindow::onEditDateRequested(int globalIndex, bool focusDaySection) {
                 item2.dateTime      = m_metaDialog->selectedDateTime();
                 item2.hasCustomDate = true;
 
-                struct utimbuf times;
-                time_t t = static_cast<time_t>(item2.dateTime.toSecsSinceEpoch());
-                times.actime  = t;
-                times.modtime = t;
-                utime(item2.filePath.toLocal8Bit().constData(), &times);
+                // Cross-platform: update file modification time (no utime.h needed)
+                QFile f(item2.filePath);
+                if (f.open(QIODevice::ReadWrite)) {
+                    f.setFileTime(item2.dateTime, QFileDevice::FileModificationTime);
+                    f.close();
+                }
 
                 m_lastEditedDateTime = m_metaDialog->selectedDateTime();
                 m_hasLastEditedDate  = true;
@@ -397,12 +402,12 @@ void MainWindow::onDeleteMediaRequested(int globalIndex) {
 
     // Confirmation dialog — Enter key accepts (OK is the default button)
     QMessageBox msgBox(this);
-    msgBox.setWindowTitle(tr("Medium löschen"));
-    msgBox.setText(tr("Möchten Sie \"%1\" wirklich löschen?").arg(item.fileName()));
-    msgBox.setInformativeText(tr("Die Datei wird von der Festplatte entfernt und alle zugehörigen Metadaten werden bereinigt."));
+    msgBox.setWindowTitle(tr("Delete File"));
+    msgBox.setText(tr("Really delete \"%1\"?").arg(item.fileName()));
+    msgBox.setInformativeText(tr("The file will be removed from disk and all associated metadata will be cleared."));
     msgBox.setIcon(QMessageBox::Warning);
-    QPushButton* okBtn     = msgBox.addButton(tr("Löschen"), QMessageBox::AcceptRole);
-    QPushButton* cancelBtn = msgBox.addButton(tr("Abbrechen"), QMessageBox::RejectRole);
+    QPushButton* okBtn     = msgBox.addButton(tr("Delete"), QMessageBox::AcceptRole);
+    QPushButton* cancelBtn = msgBox.addButton(tr("Cancel"), QMessageBox::RejectRole);
     msgBox.setDefaultButton(okBtn);
     Q_UNUSED(cancelBtn);
     msgBox.setStyleSheet(
@@ -411,9 +416,9 @@ void MainWindow::onDeleteMediaRequested(int globalIndex) {
         "QPushButton { background: rgba(0,180,160,0.2); border: 1px solid rgba(0,180,160,0.4);"
         "border-radius: 6px; color: #00c8b4; padding: 5px 18px; min-width: 80px; }"
         "QPushButton:hover { background: rgba(0,180,160,0.4); }"
-        "QPushButton[text=\"Löschen\"] { background: rgba(180,40,40,0.3);"
+        "QPushButton[text=\"Delete\"] { background: rgba(180,40,40,0.3);"
         "border-color: rgba(200,60,60,0.5); color: #e07878; }"
-        "QPushButton[text=\"Löschen\"]:hover { background: rgba(220,50,50,0.55); }");
+        "QPushButton[text=\"Delete\"]:hover { background: rgba(220,50,50,0.55); }");
     msgBox.exec();
 
     if (msgBox.clickedButton() != okBtn) return;
@@ -422,7 +427,7 @@ void MainWindow::onDeleteMediaRequested(int globalIndex) {
     const QString filePath = item.filePath;
     const QString fileName = item.fileName();
     if (!QFile::remove(filePath)) {
-        statusBar()->showMessage(tr("Fehler: Datei konnte nicht gelöscht werden."), 4000);
+        statusBar()->showMessage(tr("Error: File could not be deleted."), 4000);
         return;
     }
 
@@ -448,7 +453,7 @@ void MainWindow::onDeleteMediaRequested(int globalIndex) {
     m_galleryView->refresh();
     m_filterBar->refreshTagList();
 
-    statusBar()->showMessage(tr("Datei gelöscht: %1").arg(fileName), 3000);
+    statusBar()->showMessage(tr("File deleted: %1").arg(fileName), 3000);
 }
 
 void MainWindow::applyFilter() {
@@ -472,6 +477,24 @@ void MainWindow::showSettings() {
 void MainWindow::applyTheme() {
     ThemeColors theme = m_settings.currentTheme();
     qApp->setStyleSheet(Style::mainStyleSheet(theme.background, theme.accent));
+
+    // FilterBar bekommt eigene Hintergrundfarbe aus dem Theme
+    if (m_filterBar) {
+        m_filterBar->setStyleSheet(
+            QString("FilterBar { background: %1; border-bottom: 1px solid %2; }")
+                .arg(theme.filterBarBg.name())
+                .arg(theme.border.name()));
+    }
+
+    // StatusBar Farbe aus Theme
+    if (statusBar()) {
+        statusBar()->setStyleSheet(
+            QString("QStatusBar { background: %1; color: %2; "
+                    "border-top: 1px solid %3; font-size: 11px; }")
+                .arg(theme.statusBarBg.name())
+                .arg(theme.textMuted.name())
+                .arg(theme.border.name()));
+    }
 }
 
 void MainWindow::retranslateUi() {
@@ -551,7 +574,7 @@ void MainWindow::dropEvent(QDropEvent* e) {
         if (t == MediaType::Unknown) continue;
 
         if (currentFolder.isEmpty()) {
-            statusBar()->showMessage(tr("Kein Ordner geöffnet – Datei kann nicht hinzugefügt werden."), 4000);
+            statusBar()->showMessage(tr("No folder open – file cannot be added."), 4000);
             continue;
         }
 
@@ -564,12 +587,12 @@ void MainWindow::dropEvent(QDropEvent* e) {
         if (QFile::copy(path, destPath))
             copiedFiles << fi.fileName();
         else
-            statusBar()->showMessage(tr("Fehler beim Kopieren: ") + fi.fileName(), 4000);
+            statusBar()->showMessage(tr("Copy error: ") + fi.fileName(), 4000);
     }
 
     if (!copiedFiles.isEmpty()) {
         statusBar()->showMessage(
-            tr("%1 Datei(en) hinzugefügt.").arg(copiedFiles.size()), 3000);
+            tr("%1 file(s) added.").arg(copiedFiles.size()), 3000);
         // Gallery watcher will pick up the new files automatically,
         // but trigger an immediate refresh to be safe
         m_galleryView->loadFolder(currentFolder);
@@ -579,6 +602,6 @@ void MainWindow::dropEvent(QDropEvent* e) {
     }
     if (!skippedFiles.isEmpty()) {
         statusBar()->showMessage(
-            tr("%1 Datei(en) bereits vorhanden, übersprungen.").arg(skippedFiles.size()), 3000);
+            tr("%1 file(s) already present, skipped.").arg(skippedFiles.size()), 3000);
     }
 }

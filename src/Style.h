@@ -15,6 +15,12 @@ public:
     // Scrollbar stylesheet
     static QString scrollBarStyle();
 
+    // PDF viewer stylesheet (sidebar, scrollbars, toolbar)
+    static QString pdfViewerStyle();
+
+    // Sidebar/tag-panel background
+    static QString sidebarStyle();
+
     // Thumbnail card stylesheet
     static QString thumbnailStyle();
 

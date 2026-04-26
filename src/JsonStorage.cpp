@@ -7,7 +7,6 @@
 #include <QFileInfo>
 #include <QRandomGenerator>
 #include <QSet>
-#include <functional>
 
 JsonStorage::JsonStorage(QObject* parent) : QObject(parent) {}
 
@@ -251,13 +250,17 @@ void JsonStorage::saveFolder(const QString& folderPath) {
     QSet<QString> usedTags;
     for (auto it = m_fileMeta.cbegin(); it != m_fileMeta.cend(); ++it)
         for (const QString& t : it.value().tags) usedTags.insert(t);
-    std::function<void(const QList<TagCategory>&)> collectCatTags = [&](const QList<TagCategory>& cats) {
-        for (const TagCategory& cat : cats) {
-            for (const QString& t : cat.tags) usedTags.insert(t);
-            collectCatTags(cat.children);
+
+    // Collect tags from category tree without std::function overhead
+    struct CatTagCollector {
+        static void collect(const QList<TagCategory>& cats, QSet<QString>& out) {
+            for (const TagCategory& cat : cats) {
+                for (const QString& t : cat.tags) out.insert(t);
+                collect(cat.children, out);
+            }
         }
     };
-    collectCatTags(m_categories);
+    CatTagCollector::collect(m_categories, usedTags);
 
     QJsonObject tagColorsObj;
     for (const QString& tag : usedTags)

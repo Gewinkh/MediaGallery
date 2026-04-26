@@ -46,6 +46,7 @@ enum class StringKey {
     FullscreenBack,
     FullscreenFilenamePlaceholder,
     FullscreenEditDate,
+    FullscreenDeleteFile,
     FullscreenPrev,
     FullscreenNext,
     FullscreenRandom,
@@ -236,6 +237,54 @@ enum class StringKey {
     ConverterMigrateSuccess,
     ConverterMigrateError,
     ConverterMigrateConfirm,
+
+    // Design – extra color rows (PDF viewer, sidebar, buttons)
+    SettingsDesignPdfGroup,
+    SettingsDesignPdfSidebarBg,
+    SettingsDesignPdfToolbarBg,
+    SettingsDesignPdfScrollbarBg,
+    SettingsDesignButtonBg,
+    SettingsDesignSidebarBg,
+
+    // Uniform-color toggle tooltips (replaces hardcoded German)
+    DesignUniformColorActive,
+    DesignUniformColorInactive,
+    DesignPickUniformColor,
+    DesignInheritTitle,
+    DesignInheritMsg,
+    DesignInheritYes,
+    DesignInheritNo,
+    SettingsTagDuplicate,
+
+    // Hauptfenster-Leisten Farben (menubar, toolbar, filterbar, statusbar)
+    SettingsDesignChromeGroup,
+    SettingsDesignMenuBarBg,
+    SettingsDesignToolbarBg,
+    SettingsDesignFilterBarBg,
+    SettingsDesignStatusBarBg,
+
+    // Converter – Texte die bisher nur mit tr() auf Englisch waren
+    ConverterTagToSubcatHint,
+    ConverterSubcatToTagHint,
+    ConverterMigrateHint,
+    ConverterPlaceholderEmptyName,
+
+    // PDF viewer
+    PdfPrevPageTooltip,
+    PdfNextPageTooltip,
+    PdfZoomOutTooltip,
+    PdfZoomInTooltip,
+    PdfScrollModeMulti,
+    PdfScrollModeSingle,
+    PdfScrollModeTooltip,
+    PdfSidebarTooltip,
+    PdfAudioLabel,
+    PdfVideoTitle,
+    PdfAudioCount,
+    PdfVideoCount,
+    PdfMediaClickHint,
+    PdfAudioNotFound,
+    PdfVideoNotFound,
 };
 
 class Strings {

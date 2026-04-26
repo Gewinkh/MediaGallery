@@ -7,17 +7,12 @@
 //
 // Responsibilities:
 //   • Receives hover/click events forwarded from the PdfViewer event filter
-//   • Paints clickable media badges (speaker / film icon) at the annotation
+//   • Paints clickable media badges (speaker / film / link icon) at annotation
 //     positions derived from PdfMediaHandler
-//   • Emits annotationClicked(index) so PdfViewer can start playback
+//   • Shows a URL tooltip on hover for Link annotations
+//   • Emits annotationClicked(index) so PdfViewer can start/stop playback
+//     or open links
 //
-// Design:
-//   The widget has WA_TransparentForMouseEvents = false so it can accept
-//   mouse events, and WA_NoSystemBackground + setAttribute(WA_TranslucentBackground)
-//   so QPdfView renders through it wherever there is no badge.
-//
-//   It is resized in lockstep with the viewport via a QResizeEvent on the
-//   viewport (handled in PdfViewer::eventFilter).
 // ══════════════════════════════════════════════════════════════════════════════
 
 #include "PdfMediaHandler.h"
@@ -28,6 +23,7 @@
 #include <QVector>
 
 class QPdfView;
+class QLabel;
 
 class MediaOverlayWidget : public QWidget {
     Q_OBJECT
@@ -43,16 +39,17 @@ public:
     // Returns annotation index, or -1 if none.
     int hitTest(const QPoint& viewportPos) const;
 
-    // Update cursor based on hover position
+    // Update cursor and link tooltip based on hover position
     void updateHover(const QPoint& viewportPos);
+
+    // Mark which annotation index is currently playing audio (for toggle badge)
+    void setActiveAudioIndex(int idx);
 
 signals:
     void annotationClicked(int index);
 
 protected:
     void paintEvent(QPaintEvent* e) override;
-    void mouseMoveEvent(QMouseEvent* e) override;
-    void mousePressEvent(QMouseEvent* e) override;
     void leaveEvent(QEvent* e) override;
 
 private:
@@ -60,12 +57,25 @@ private:
     QPdfDocument* m_doc  = nullptr;
 
     QVector<MediaAnnotation> m_annotations;
-    int m_hoveredIdx = -1;
+    int  m_hoveredIdx    = -1;
+    int  m_activeAudioIdx = -1;   // which audio annotation is currently playing
+
+    // Floating link-URL tooltip label
+    QLabel* m_linkTooltip = nullptr;
 
     // Map a normalised annotation rect to viewport pixel coordinates.
     QRect annotationViewportRect(const MediaAnnotation& ann) const;
 
-    // Draw a single badge (speaker or film strip icon)
+    // Compute the actual rendered zoom factor QPdfView is currently using.
+    // QPdfView::zoomFactor() only returns a meaningful value in Custom mode;
+    // in FitInView/FitToWidth we must derive it from viewport + page geometry.
+    double effectiveZoom() const;
+
+    // Draw a single badge (speaker / film strip / link icon)
     void drawBadge(QPainter& painter, const QRect& rect,
-                   MediaAnnotation::Type type, bool hovered) const;
+                   MediaAnnotation::Type type, bool hovered,
+                   bool activePlaying) const;
+
+    void updateLinkTooltip(const QPoint& viewportPos, int annIdx);
 };
+

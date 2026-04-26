@@ -285,13 +285,13 @@ bool MediaThumbnail::eventFilter(QObject* obj, QEvent* ev) {
         }
     }
 
-    // Hover over "+ Tag hinzufügen" — stop hide timer, open dropdown
+    // Hover over tr("+ Add Tag") — stop hide timer, open dropdown
     if (m_addHoverBtn && obj == m_addHoverBtn && ev->type() == QEvent::Enter) {
         if (m_tagTooltipHideTimer) m_tagTooltipHideTimer->stop();
         m_tagBar->showTagDropdownAnchoredAt(m_tagsHoverLabel);
     }
 
-    // Hover over "+ Kategorie hinzufügen" — stop cat hide timer
+    // Hover over "+ Add Category" — stop cat hide timer
     if (m_addCatHoverBtn && obj == m_addCatHoverBtn && ev->type() == QEvent::Enter) {
         if (m_catTooltipHideTimer) m_catTooltipHideTimer->stop();
     }
@@ -369,9 +369,9 @@ void MediaThumbnail::showTagTooltip() {
         }
     }
 
-    // "+ Tag hinzufügen" — opens tag dropdown on hover
+    // tr("+ Add Tag") — opens tag dropdown on hover
     m_tagBar->setCompact(true);
-    auto* addBtn = new QPushButton("+ Tag hinzufügen", m_tagTooltipPanel);
+    auto* addBtn = new QPushButton(tr("+ Add Tag"), m_tagTooltipPanel);
     addBtn->setFixedHeight(22);
     addBtn->setStyleSheet(
         "QPushButton { background: rgba(0,180,160,0.15); border: 1px solid rgba(0,180,160,0.4);"
@@ -480,8 +480,8 @@ void MediaThumbnail::showCategoryTooltip() {
         }
     }
 
-    // "Kategorie hinzufügen" button → opens the category dropdown
-    auto* addBtn = new QPushButton(tr("+ Kategorie hinzufügen"), m_catTooltipPanel);
+    // "Add Category" button → opens the category dropdown
+    auto* addBtn = new QPushButton(tr("+ Add Category"), m_catTooltipPanel);
     addBtn->setFixedHeight(22);
     addBtn->setStyleSheet(
         "QPushButton { background: rgba(0,160,220,0.15); border: 1px solid rgba(0,160,220,0.4);"
@@ -525,12 +525,9 @@ void MediaThumbnail::setItem(const MediaItem& item, int index) {
 
     // Audio overlay
     bool isAudio = item.isAudio();
-    m_audioOverlay->setVisible(isAudio || isPdf);
+    m_audioOverlay->setVisible(isAudio);
     if (isAudio) {
         m_audioOverlay->setText(item.audioFormatLabel());
-        m_audioOverlay->adjustSize();
-    } else if (isPdf) {
-        m_audioOverlay->setText("PDF");
         m_audioOverlay->adjustSize();
     }
 
@@ -591,7 +588,7 @@ void MediaThumbnail::setCovered(bool covered) {
     } else {
         // Restore overlays
         m_typeOverlay->setVisible(m_item.isVideo());
-        m_audioOverlay->setVisible(m_item.isAudio() || m_item.isPdf());
+        m_audioOverlay->setVisible(m_item.isAudio());
     }
     update();
 }
