@@ -285,6 +285,22 @@ enum class StringKey {
     PdfMediaClickHint,
     PdfAudioNotFound,
     PdfVideoNotFound,
+
+    // Saved Folders / Bookmarks
+    MenuBookmarks,
+    MenuBookmarksEmpty,
+    BookmarkSettingsTitle,
+    BookmarkAdd,
+    BookmarkEdit,
+    BookmarkDelete,
+    BookmarkDeleteConfirm,
+    BookmarkPathLabel,
+    BookmarkNameLabel,
+    BookmarkNamePlaceholder,
+    BookmarkPathPlaceholder,
+    BookmarkBrowse,
+    BookmarkNoName,
+    BookmarkTabTitle,
 };
 
 class Strings {

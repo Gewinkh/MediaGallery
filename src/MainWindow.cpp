@@ -14,6 +14,9 @@
 #include <QUrl>
 #include <QFile>
 #include <QDir>
+#include <QLineEdit>
+#include <QFormLayout>
+#include <QDialogButtonBox>
 #include <QFileInfo>
 #include <QApplication>
 #include <QMessageBox>
@@ -234,6 +237,10 @@ void MainWindow::setupMenus() {
     m_settingsMenu->addSeparator();
     m_vidMenu = m_settingsMenu->addMenu(QString());
 
+    // ─── Saved-folders / Bookmarks menu ───────────────────────────────────────
+    m_bookmarksMenu = menuBar()->addMenu(QString());
+    rebuildBookmarksMenu();
+
     m_videoNativeAct = m_vidMenu->addAction(QString(), this, [this]() {
         m_settings.setVideoPlayback(VideoPlayback::Native);
         m_videoNativeAct->setChecked(true);
@@ -295,6 +302,103 @@ void MainWindow::toggleOptions() {
 void MainWindow::updateToggleAction() {
     if (m_toggleOptionsAct)
         m_toggleOptionsAct->setChecked(m_optionsVisible);
+}
+
+// ─── Saved-folders menu ───────────────────────────────────────────────────────
+
+void MainWindow::rebuildBookmarksMenu() {
+    if (!m_bookmarksMenu) return;
+    m_bookmarksMenu->clear();
+
+    // ── "+" action: add a new bookmark directly from the menu ─────────────────
+    QAction* addAct = m_bookmarksMenu->addAction(
+        Strings::get(StringKey::BookmarkAdd), this, [this]() {
+        // Reuse the same mini-dialog logic as the settings tab.
+        // We instantiate a local QDialog here so we don't depend on SettingsDialog.
+        QDialog dlg(this);
+        dlg.setWindowTitle(Strings::get(StringKey::BookmarkAdd));
+        auto* lay = new QVBoxLayout(&dlg);
+        lay->setSpacing(8);
+        lay->setContentsMargins(16, 16, 16, 16);
+
+        auto* nameEdit = new QLineEdit(&dlg);
+        nameEdit->setPlaceholderText(Strings::get(StringKey::BookmarkNamePlaceholder));
+
+        auto* pathEdit = new QLineEdit(&dlg);
+        pathEdit->setPlaceholderText(Strings::get(StringKey::BookmarkPathPlaceholder));
+        // Pre-fill with the currently open folder (convenience)
+        const QString& cur = m_folderService.currentFolder();
+        if (!cur.isEmpty()) pathEdit->setText(cur);
+
+        auto* browseBtn = new QPushButton(Strings::get(StringKey::BookmarkBrowse), &dlg);
+
+        auto* formLay = new QFormLayout;
+        formLay->addRow(Strings::get(StringKey::BookmarkNameLabel), nameEdit);
+        formLay->addRow(Strings::get(StringKey::BookmarkPathLabel), pathEdit);
+        formLay->addRow(QString(), browseBtn);
+        lay->addLayout(formLay);
+
+        auto* buttons = new QDialogButtonBox(
+            QDialogButtonBox::Ok | QDialogButtonBox::Cancel, &dlg);
+        lay->addWidget(buttons);
+
+        connect(browseBtn, &QPushButton::clicked, this, [&dlg, pathEdit]() {
+            QString dir = QFileDialog::getExistingDirectory(
+                &dlg, QString(),
+                pathEdit->text().isEmpty() ? QDir::homePath() : pathEdit->text(),
+                QFileDialog::ShowDirsOnly | QFileDialog::DontResolveSymlinks);
+            if (!dir.isEmpty()) pathEdit->setText(dir);
+        });
+        connect(buttons, &QDialogButtonBox::accepted, &dlg, &QDialog::accept);
+        connect(buttons, &QDialogButtonBox::rejected, &dlg, &QDialog::reject);
+
+        if (dlg.exec() != QDialog::Accepted) return;
+        const QString path = pathEdit->text().trimmed();
+        if (path.isEmpty()) return;
+        const QString name  = nameEdit->text().trimmed();
+        const QString entry = name.isEmpty() ? path : (name + QLatin1Char('\t') + path);
+
+        QStringList entries = m_settings.savedFolders();
+        entries.append(entry);
+        m_settings.setSavedFolders(entries);
+        m_settings.sync();
+        rebuildBookmarksMenu();
+    });
+    addAct->setIcon(QIcon::fromTheme("list-add"));
+
+    // Each saved entry is stored as "<displayName>\t<path>" or just "<path>"
+    const QStringList entries = m_settings.savedFolders();
+
+    if (entries.isEmpty()) {
+        m_bookmarksMenu->addSeparator();
+        QAction* empty = m_bookmarksMenu->addAction(
+            Strings::get(StringKey::MenuBookmarksEmpty));
+        empty->setEnabled(false);
+        return;
+    }
+
+    m_bookmarksMenu->addSeparator();
+
+    for (const QString& entry : entries) {
+        // Split on the first tab to get an optional display name
+        const int tab = entry.indexOf(QLatin1Char('\t'));
+        QString displayName, path;
+        if (tab >= 0) {
+            displayName = entry.left(tab).trimmed();
+            path        = entry.mid(tab + 1).trimmed();
+        } else {
+            path = entry.trimmed();
+        }
+
+        const QString label = displayName.isEmpty()
+                              ? QFileInfo(path).fileName()
+                              : displayName;
+
+        QAction* act = m_bookmarksMenu->addAction(label, this, [this, path]() {
+            m_folderService.openFolder(path);
+        });
+        act->setToolTip(path);
+    }
 }
 
 void MainWindow::showFullscreen(int globalIndex) {
@@ -470,6 +574,9 @@ void MainWindow::showSettings() {
         m_folderService.saveCurrentFolder();
         m_filterBar->refreshTagList();
     });
+    // Rebuild the bookmarks menu whenever saved folders change in the dialog
+    connect(dlg, &SettingsDialog::bookmarksChanged,
+            this, &MainWindow::rebuildBookmarksMenu);
     dlg->exec();
     dlg->deleteLater();
 }
@@ -510,6 +617,9 @@ void MainWindow::retranslateUi() {
     if (m_vidMenu)          m_vidMenu->setTitle(Strings::get(StringKey::MenuVideoPlayback));
     if (m_videoNativeAct)   m_videoNativeAct->setText(Strings::get(StringKey::MenuVideoNative));
     if (m_videoExternalAct) m_videoExternalAct->setText(Strings::get(StringKey::MenuVideoExternal));
+    if (m_bookmarksMenu)    m_bookmarksMenu->setTitle(Strings::get(StringKey::MenuBookmarks));
+    // Rebuild entries so that the "(no saved folders)" placeholder is also re-translated
+    rebuildBookmarksMenu();
 
     m_filterBar->retranslate();
     m_fullscreenView->retranslate();

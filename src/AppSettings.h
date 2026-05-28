@@ -60,6 +60,9 @@ public:
     bool exportCustomTheme(const QString& filePath) const override;
     bool importCustomTheme(const QString& filePath) override;
 
+    QStringList savedFolders() const override;
+    void        setSavedFolders(const QStringList& paths) override;
+
     static ThemeColors themeForProfile(DesignProfile p);
 
     void sync() override;

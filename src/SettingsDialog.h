@@ -16,6 +16,7 @@ public:
 
 signals:
     void settingsChanged();
+    void bookmarksChanged();   // ← emitted when the saved-folder list is modified
 
 private:
     TagManager* m_tagMgr;
@@ -33,15 +34,21 @@ private:
     QWidget*     m_catTab;
     QVBoxLayout* m_catTreeLayout;
 
+    // Bookmarks tab
+    QWidget*     m_bookmarkTab      = nullptr;
+    QVBoxLayout* m_bookmarkListLay  = nullptr;
+
     void applySettings();
     void buildTagList();
     void buildCategoryTree();
+    void buildBookmarkList();          // ← repopulates the bookmark rows
 
     QWidget* buildGeneralTab();
     QWidget* buildTagTab();
     QWidget* buildCategoryTab();
     QWidget* buildConverterTab();
     QWidget* buildDesignTab();
+    QWidget* buildBookmarkTab();       // ← new tab factory
 
     // Converter - ready for cleanup
     void convertTagToSubcategory(const QString& tag,

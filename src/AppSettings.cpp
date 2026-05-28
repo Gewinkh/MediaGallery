@@ -471,3 +471,12 @@ bool AppSettings::importCustomTheme(const QString& filePath) {
 }
 
 void AppSettings::sync() { m_settings.sync(); }
+
+// ─── Saved / bookmarked folders ───────────────────────────────────────────────
+QStringList AppSettings::savedFolders() const {
+    return m_settings.value("bookmarks/folders").toStringList();
+}
+
+void AppSettings::setSavedFolders(const QStringList& paths) {
+    m_settings.setValue("bookmarks/folders", paths);
+}

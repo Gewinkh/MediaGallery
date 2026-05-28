@@ -282,6 +282,22 @@ static const QMap<StringKey, QString> s_de = {
     { StringKey::PdfMediaClickHint,     "🎬  %1 – In PDF klicken zum Abspielen" },
     { StringKey::PdfAudioNotFound,      "🔊  %1 – Keine Audiodatei gefunden" },
     { StringKey::PdfVideoNotFound,      "🎬  %1 – Keine Videodatei gefunden" },
+
+    // Saved Folders / Bookmarks
+    { StringKey::MenuBookmarks,          "&Ordner" },
+    { StringKey::MenuBookmarksEmpty,     "(keine gespeicherten Ordner)" },
+    { StringKey::BookmarkSettingsTitle,  "Gespeicherte Ordner" },
+    { StringKey::BookmarkAdd,            "Ordner hinzufügen" },
+    { StringKey::BookmarkEdit,           "Bearbeiten" },
+    { StringKey::BookmarkDelete,         "Löschen" },
+    { StringKey::BookmarkDeleteConfirm,  "Eintrag \"%1\" wirklich entfernen?" },
+    { StringKey::BookmarkPathLabel,      "Pfad:" },
+    { StringKey::BookmarkNameLabel,      "Anzeigename (optional):" },
+    { StringKey::BookmarkNamePlaceholder,"z. B. Projekt Alpha" },
+    { StringKey::BookmarkPathPlaceholder,"Ordnerpfad …" },
+    { StringKey::BookmarkBrowse,         "Durchsuchen…" },
+    { StringKey::BookmarkNoName,         "(kein Name)" },
+    { StringKey::BookmarkTabTitle,       "Gespeicherte Ordner" },
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -565,6 +581,22 @@ static const QMap<StringKey, QString> s_en = {
     { StringKey::PdfMediaClickHint,     "🎬  %1 – click in PDF to play" },
     { StringKey::PdfAudioNotFound,      "🔊  %1 – No audio found" },
     { StringKey::PdfVideoNotFound,      "🎬  %1 – No video found" },
+
+    // Saved Folders / Bookmarks
+    { StringKey::MenuBookmarks,          "&Folders" },
+    { StringKey::MenuBookmarksEmpty,     "(no saved folders)" },
+    { StringKey::BookmarkSettingsTitle,  "Saved Folders" },
+    { StringKey::BookmarkAdd,            "Add Folder" },
+    { StringKey::BookmarkEdit,           "Edit" },
+    { StringKey::BookmarkDelete,         "Delete" },
+    { StringKey::BookmarkDeleteConfirm,  "Remove \"%1\" from the list?" },
+    { StringKey::BookmarkPathLabel,      "Path:" },
+    { StringKey::BookmarkNameLabel,      "Display name (optional):" },
+    { StringKey::BookmarkNamePlaceholder,"e.g. Project Alpha" },
+    { StringKey::BookmarkPathPlaceholder,"Folder path…" },
+    { StringKey::BookmarkBrowse,         "Browse…" },
+    { StringKey::BookmarkNoName,         "(no name)" },
+    { StringKey::BookmarkTabTitle,       "Saved Folders" },
 };
 
 // ─────────────────────────────────────────────────────────────────────────────

@@ -6,6 +6,7 @@
 #include <QFormLayout>
 #include <QGroupBox>
 #include <QLabel>
+#include <QLineEdit>
 #include <QPushButton>
 #include <QToolButton>
 #include <QDialogButtonBox>
@@ -18,6 +19,8 @@
 #include <QInputDialog>
 #include <QMenu>
 #include <QFileDialog>
+#include <QDir>
+#include <QFileInfo>
 #include <QSpinBox>
 #include <QDoubleSpinBox>
 #include <QSlider>
@@ -73,6 +76,7 @@ SettingsDialog::SettingsDialog(TagManager* tagMgr, QWidget* parent)
     m_tabs->addTab(buildCategoryTab(),  Strings::get(StringKey::SettingsTabCategories));
     m_tabs->addTab(buildConverterTab(), Strings::get(StringKey::ConverterTabTitle));
     m_tabs->addTab(buildDesignTab(),    Strings::get(StringKey::SettingsTabDesign));
+    m_tabs->addTab(buildBookmarkTab(),  Strings::get(StringKey::BookmarkTabTitle));
     mainLay->addWidget(m_tabs, 1);
 
     auto* btnBox = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, this);
@@ -1417,4 +1421,226 @@ QWidget* SettingsDialog::buildDesignTab() {
 
     lay->addStretch();
     return page;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Bookmark Tab
+// ─────────────────────────────────────────────────────────────────────────────
+
+QWidget* SettingsDialog::buildBookmarkTab()
+{
+    m_bookmarkTab = new QWidget(this);
+    auto* outerLay = new QVBoxLayout(m_bookmarkTab);
+    outerLay->setContentsMargins(16, 16, 16, 16);
+    outerLay->setSpacing(10);
+
+    // ── "Add folder" button at top ────────────────────────────────────────────
+    auto* addBtn = new QPushButton(Strings::get(StringKey::BookmarkAdd), m_bookmarkTab);
+    addBtn->setIcon(QIcon::fromTheme("folder-new"));
+    outerLay->addWidget(addBtn, 0, Qt::AlignLeft);
+
+    // ── Scrollable list area ──────────────────────────────────────────────────
+    auto* scroll = new QScrollArea(m_bookmarkTab);
+    scroll->setWidgetResizable(true);
+    scroll->setFrameShape(QFrame::NoFrame);
+
+    auto* container = new QWidget;
+    m_bookmarkListLay = new QVBoxLayout(container);
+    m_bookmarkListLay->setContentsMargins(0, 0, 0, 0);
+    m_bookmarkListLay->setSpacing(6);
+    m_bookmarkListLay->addStretch();
+    scroll->setWidget(container);
+    outerLay->addWidget(scroll, 1);
+
+    buildBookmarkList();
+
+    // ── "Add" triggers an inline editor row ──────────────────────────────────
+    connect(addBtn, &QPushButton::clicked, this, [this]() {
+        AppSettings& s = AppSettings::instance();
+        QStringList entries = s.savedFolders();
+
+        // -- mini dialog: path + optional display name -----------------------
+        QDialog dlg(this);
+        dlg.setWindowTitle(Strings::get(StringKey::BookmarkAdd));
+        dlg.setStyleSheet(styleSheet());
+        auto* lay = new QVBoxLayout(&dlg);
+        lay->setSpacing(8);
+        lay->setContentsMargins(16, 16, 16, 16);
+
+        auto* nameEdit = new QLineEdit(&dlg);
+        nameEdit->setPlaceholderText(Strings::get(StringKey::BookmarkNamePlaceholder));
+
+        auto* pathEdit = new QLineEdit(&dlg);
+        pathEdit->setPlaceholderText(Strings::get(StringKey::BookmarkPathPlaceholder));
+
+        auto* browseBtn = new QPushButton(Strings::get(StringKey::BookmarkBrowse), &dlg);
+
+        auto* formLay = new QFormLayout;
+        formLay->addRow(Strings::get(StringKey::BookmarkNameLabel), nameEdit);
+        formLay->addRow(Strings::get(StringKey::BookmarkPathLabel), pathEdit);
+        formLay->addRow(QString(), browseBtn);
+        lay->addLayout(formLay);
+
+        auto* buttons = new QDialogButtonBox(
+            QDialogButtonBox::Ok | QDialogButtonBox::Cancel, &dlg);
+        lay->addWidget(buttons);
+
+        connect(browseBtn, &QPushButton::clicked, this, [&dlg, pathEdit]() {
+            QString dir = QFileDialog::getExistingDirectory(
+                &dlg, QString(), pathEdit->text().isEmpty()
+                    ? QDir::homePath() : pathEdit->text(),
+                QFileDialog::ShowDirsOnly | QFileDialog::DontResolveSymlinks);
+            if (!dir.isEmpty()) pathEdit->setText(dir);
+        });
+        connect(buttons, &QDialogButtonBox::accepted, &dlg, &QDialog::accept);
+        connect(buttons, &QDialogButtonBox::rejected, &dlg, &QDialog::reject);
+
+        if (dlg.exec() != QDialog::Accepted) return;
+
+        const QString path = pathEdit->text().trimmed();
+        if (path.isEmpty()) return;
+        const QString name = nameEdit->text().trimmed();
+        const QString entry = name.isEmpty() ? path : (name + QLatin1Char('\t') + path);
+
+        entries.append(entry);
+        s.setSavedFolders(entries);
+        s.sync();
+        buildBookmarkList();
+        emit bookmarksChanged();
+    });
+
+    return m_bookmarkTab;
+}
+
+void SettingsDialog::buildBookmarkList()
+{
+    if (!m_bookmarkListLay) return;
+
+    // Remove all existing rows (keep the trailing stretch)
+    while (m_bookmarkListLay->count() > 1) {
+        QLayoutItem* item = m_bookmarkListLay->takeAt(0);
+        if (item->widget()) item->widget()->deleteLater();
+        delete item;
+    }
+
+    AppSettings& s = AppSettings::instance();
+    const QStringList entries = s.savedFolders();
+
+    for (int i = 0; i < entries.size(); ++i) {
+        const QString& entry = entries[i];
+        const int tab = entry.indexOf(QLatin1Char('\t'));
+        const QString name = (tab >= 0) ? entry.left(tab).trimmed() : QString();
+        const QString path = (tab >= 0) ? entry.mid(tab + 1).trimmed() : entry.trimmed();
+
+        // ── Row frame ─────────────────────────────────────────────────────────
+        auto* row = new QFrame(m_bookmarkTab);
+        row->setFrameShape(QFrame::StyledPanel);
+        row->setStyleSheet(
+            "QFrame { background: rgba(255,255,255,0.04); "
+            "border: 1px solid rgba(40,60,70,0.6); border-radius: 6px; }");
+
+        auto* rowLay = new QHBoxLayout(row);
+        rowLay->setContentsMargins(10, 6, 10, 6);
+        rowLay->setSpacing(8);
+
+        // Labels
+        auto* info = new QVBoxLayout;
+        auto* nameLabel = new QLabel(
+            name.isEmpty() ? QString("<i>%1</i>").arg(QFileInfo(path).fileName()) : name,
+            row);
+        nameLabel->setStyleSheet("color: #c8dbd5; font-size: 13px;");
+        auto* pathLabel = new QLabel(path, row);
+        pathLabel->setStyleSheet("color: #789891; font-size: 11px;");
+        pathLabel->setWordWrap(true);
+        info->addWidget(nameLabel);
+        info->addWidget(pathLabel);
+        rowLay->addLayout(info, 1);
+
+        // Edit button
+        auto* editBtn = new QPushButton(Strings::get(StringKey::BookmarkEdit), row);
+        editBtn->setMinimumWidth(90);
+        rowLay->addWidget(editBtn);
+
+        // Delete button
+        auto* delBtn = new QPushButton(Strings::get(StringKey::BookmarkDelete), row);
+        delBtn->setMinimumWidth(90);
+        delBtn->setStyleSheet(
+            "QPushButton { background: rgba(180,40,40,0.25); "
+            "border: 1px solid rgba(200,60,60,0.4); color: #e07878; }"
+            "QPushButton:hover { background: rgba(220,50,50,0.45); }");
+        rowLay->addWidget(delBtn);
+
+        m_bookmarkListLay->insertWidget(m_bookmarkListLay->count() - 1, row);
+
+        // ── Edit slot ─────────────────────────────────────────────────────────
+        connect(editBtn, &QPushButton::clicked, this, [this, i, name, path]() {
+            QDialog dlg(this);
+            dlg.setWindowTitle(Strings::get(StringKey::BookmarkEdit));
+            dlg.setStyleSheet(styleSheet());
+            auto* lay = new QVBoxLayout(&dlg);
+            lay->setSpacing(8);
+            lay->setContentsMargins(16, 16, 16, 16);
+
+            auto* nameEdit = new QLineEdit(name, &dlg);
+            nameEdit->setPlaceholderText(Strings::get(StringKey::BookmarkNamePlaceholder));
+            auto* pathEdit = new QLineEdit(path, &dlg);
+            auto* browseBtn = new QPushButton(Strings::get(StringKey::BookmarkBrowse), &dlg);
+
+            auto* formLay = new QFormLayout;
+            formLay->addRow(Strings::get(StringKey::BookmarkNameLabel), nameEdit);
+            formLay->addRow(Strings::get(StringKey::BookmarkPathLabel), pathEdit);
+            formLay->addRow(QString(), browseBtn);
+            lay->addLayout(formLay);
+
+            auto* buttons = new QDialogButtonBox(
+                QDialogButtonBox::Ok | QDialogButtonBox::Cancel, &dlg);
+            lay->addWidget(buttons);
+
+            connect(browseBtn, &QPushButton::clicked, this, [&dlg, pathEdit]() {
+                QString dir = QFileDialog::getExistingDirectory(
+                    &dlg, QString(), pathEdit->text().isEmpty()
+                        ? QDir::homePath() : pathEdit->text(),
+                    QFileDialog::ShowDirsOnly | QFileDialog::DontResolveSymlinks);
+                if (!dir.isEmpty()) pathEdit->setText(dir);
+            });
+            connect(buttons, &QDialogButtonBox::accepted, &dlg, &QDialog::accept);
+            connect(buttons, &QDialogButtonBox::rejected, &dlg, &QDialog::reject);
+
+            if (dlg.exec() != QDialog::Accepted) return;
+
+            const QString newPath = pathEdit->text().trimmed();
+            if (newPath.isEmpty()) return;
+            const QString newName = nameEdit->text().trimmed();
+            const QString newEntry = newName.isEmpty()
+                                     ? newPath
+                                     : (newName + QLatin1Char('\t') + newPath);
+
+            AppSettings& s = AppSettings::instance();
+            QStringList entries = s.savedFolders();
+            if (i >= 0 && i < entries.size()) entries[i] = newEntry;
+            s.setSavedFolders(entries);
+            s.sync();
+            buildBookmarkList();
+            emit bookmarksChanged();
+        });
+
+        // ── Delete slot ───────────────────────────────────────────────────────
+        connect(delBtn, &QPushButton::clicked, this, [this, i, name, path]() {
+            const QString label = name.isEmpty() ? QFileInfo(path).fileName() : name;
+            QMessageBox::StandardButton ret = QMessageBox::question(
+                this,
+                Strings::get(StringKey::BookmarkDelete),
+                Strings::get(StringKey::BookmarkDeleteConfirm, label),
+                QMessageBox::Yes | QMessageBox::Cancel);
+            if (ret != QMessageBox::Yes) return;
+
+            AppSettings& s = AppSettings::instance();
+            QStringList entries = s.savedFolders();
+            if (i >= 0 && i < entries.size()) entries.removeAt(i);
+            s.setSavedFolders(entries);
+            s.sync();
+            buildBookmarkList();
+            emit bookmarksChanged();
+        });
+    }
 }

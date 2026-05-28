@@ -125,5 +125,9 @@ public:
     virtual bool exportCustomTheme(const QString& filePath) const = 0;
     virtual bool importCustomTheme(const QString& filePath) = 0;
 
+    // Saved / bookmarked folders (persistent quick-access list)
+    virtual QStringList savedFolders() const = 0;
+    virtual void        setSavedFolders(const QStringList& paths) = 0;
+
     virtual void sync() = 0;
 };

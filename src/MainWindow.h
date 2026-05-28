@@ -78,6 +78,7 @@ private:
     QMenu*   m_fileMenu     = nullptr;
     QMenu*   m_viewMenu     = nullptr;
     QMenu*   m_settingsMenu = nullptr;
+    QMenu*   m_bookmarksMenu = nullptr;   // ← saved-folders quick-access menu
     QMenu*   m_langMenu     = nullptr;
     QMenu*   m_vidMenu      = nullptr;
     QAction* m_openAct          = nullptr;
@@ -95,4 +96,5 @@ private:
     void setupGalleryPage();
     void saveCurrentState();
     void updateToggleAction();
+    void rebuildBookmarksMenu();   // ← repopulates the saved-folders dropdown
 };
