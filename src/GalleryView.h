@@ -8,6 +8,7 @@
 #include <QDragEnterEvent>
 #include <QDropEvent>
 #include <QFileSystemWatcher>
+#include "ISettings.h"
 #include "MediaItem.h"
 #include "MediaThumbnail.h"
 #include "ThumbnailLoader.h"
@@ -34,6 +35,25 @@ public:
 
     int columns() const { return m_columns; }
     void setColumns(int c);
+
+    // Dynamic tile size — driven by TileSizeDialog / settings
+    void setTileSize(int w, int h);   // saves to AppSettings + rebuilds
+
+    // Arrangement / alignment mode (Centered / Left / Right / Manual)
+    void setTileArrangement(TileArrangement a);
+    TileArrangement tileArrangement() const { return m_arrangement; }
+
+    // Manual-mode area width (px) — only relevant when m_arrangement == Manual
+    void setManualAreaWidth(int w);
+    int  manualAreaWidth() const { return m_manualAreaWidth; }
+
+    // Manual-mode area height (px) — 0 means "use tile height as-is"
+    void setManualAreaHeight(int h);
+    int  manualAreaHeight() const { return m_manualAreaHeight; }
+
+    // Zoom: adjust tile size by delta (positive = larger, negative = smaller)
+    void zoomIn(int stepPx = 16);
+    void zoomOut(int stepPx = 16);
 
     QVector<MediaItem>& allItems() { return m_allItems; }
     const QVector<int>& visibleIndices() const { return m_visibleIndices; }
@@ -88,6 +108,14 @@ private:
     bool m_covered        = false;
     int m_selectedIndex = -1;
     QSize m_lastTileSize;
+
+    // Override tile size (0,0 = auto-calculate from columns)
+    QSize m_customTileSize;   // set by setTileSize(); (0,0) means "auto"
+
+    // Arrangement / alignment
+    TileArrangement m_arrangement     = TileArrangement::Centered;
+    int             m_manualAreaWidth  = 800;  // px, used only in Manual mode
+    int             m_manualAreaHeight = 0;    // px, 0 = use tile height from settings
 
     // Group mode
     bool    m_groupMode    = false;

@@ -20,7 +20,7 @@
 #include <QFont>
 #include <QFileSystemWatcher>
 
-static const int TILE_MIN_WIDTH = 120;
+static const int TILE_MIN_WIDTH = 40;   // absolute floor — no artificial cap
 static const int TILE_BASE_HEIGHT_OPTIONS = 260;
 static const int TILE_BASE_HEIGHT_PLAIN = 180;
 
@@ -28,6 +28,19 @@ GalleryView::GalleryView(TagManager* tagMgr, QWidget* parent)
     : QScrollArea(parent), m_tagMgr(tagMgr)
 {
     m_loader = new ThumbnailLoader(this);
+
+    // Restore custom tile size from settings (0,0 means "use column mode")
+    {
+        int tw = AppSettings::instance().tileWidth();
+        int th = AppSettings::instance().tileHeight();
+        if (tw > 0 && th > 0)
+            m_customTileSize = QSize(tw, th);
+    }
+
+    // Restore arrangement + manual area width/height
+    m_arrangement      = AppSettings::instance().tileArrangement();
+    m_manualAreaWidth  = AppSettings::instance().manualAreaWidth();
+    m_manualAreaHeight = AppSettings::instance().manualAreaHeight();
 
     m_container = new QWidget(this);
     m_container->setObjectName("galleryContainer");
@@ -174,69 +187,69 @@ void GalleryView::applyFilter(FilterBar* fb) {
         if (!hasTagFilter) continue;
 
         {
-        bool passes = false;
-        const QStringList& itemTags = item.tags;
+            bool passes = false;
+            const QStringList& itemTags = item.tags;
 
-        switch (mode) {
-        case TagFilterMode::OR:
-        case TagFilterMode::INKLUSIV:
-            for (const auto& t : itemTags) {
-                if (workingSet.contains(t)) { passes = true; break; }
-            }
-            break;
-
-        case TagFilterMode::AND:
-            if (itemTags.isEmpty()) { passes = false; break; }
-            passes = true;
-            for (const auto& t : std::as_const(tagFilter)) {
-                if (!itemTags.contains(t)) { passes = false; break; }
-            }
-            break;
-
-        case TagFilterMode::NUR:
-            if (itemTags.isEmpty()) { passes = false; break; }
-            {
-                bool hasOne = false;
+            switch (mode) {
+            case TagFilterMode::OR:
+            case TagFilterMode::INKLUSIV:
                 for (const auto& t : itemTags) {
-                    if (workingSet.contains(t)) { hasOne = true; break; }
+                    if (workingSet.contains(t)) { passes = true; break; }
                 }
-                if (!hasOne) { passes = false; break; }
+                break;
+
+            case TagFilterMode::AND:
+                if (itemTags.isEmpty()) { passes = false; break; }
                 passes = true;
-                for (const auto& t : itemTags) {
-                    if (!workingSet.contains(t)) { passes = false; break; }
+                for (const auto& t : std::as_const(tagFilter)) {
+                    if (!itemTags.contains(t)) { passes = false; break; }
                 }
-            }
-            break;
-        }
+                break;
 
-        if (passes) m_visibleIndices.append(i);
+            case TagFilterMode::NUR:
+                if (itemTags.isEmpty()) { passes = false; break; }
+                {
+                    bool hasOne = false;
+                    for (const auto& t : itemTags) {
+                        if (workingSet.contains(t)) { hasOne = true; break; }
+                    }
+                    if (!hasOne) { passes = false; break; }
+                    passes = true;
+                    for (const auto& t : itemTags) {
+                        if (!workingSet.contains(t)) { passes = false; break; }
+                    }
+                }
+                break;
+            }
+
+            if (passes) m_visibleIndices.append(i);
         } // end tag-filter block
-        nextItem:;
+    nextItem:;
     }
 
     // Sort
     std::stable_sort(m_visibleIndices.begin(), m_visibleIndices.end(),
                      [&](int a, int b) {
-        const MediaItem& ia = m_allItems[a];
-        const MediaItem& ib = m_allItems[b];
-        bool asc = (so == SortOrder::Ascending);
-        int cmp = 0;
-        switch (sf) {
-        case SortField::Date:
-            cmp = ia.dateTime < ib.dateTime ? -1 : ia.dateTime > ib.dateTime ? 1 : 0;
-            break;
-        case SortField::Name:
-            cmp = ia.displayName.compare(ib.displayName, Qt::CaseInsensitive);
-            break;
-        case SortField::Tags:
-            cmp = ia.tags.size() < ib.tags.size() ? -1 : ia.tags.size() > ib.tags.size() ? 1 : 0;
-            break;
-        case SortField::FileSize:
-            cmp = ia.fileSize < ib.fileSize ? -1 : ia.fileSize > ib.fileSize ? 1 : 0;
-            break;
-        }
-        return asc ? cmp < 0 : cmp > 0;
-    });
+                         const MediaItem& ia = m_allItems[a];
+                         const MediaItem& ib = m_allItems[b];
+                         bool asc = (so == SortOrder::Ascending);
+                         int cmp = 0;
+                         switch (sf) {
+                         case SortField::Date:
+                             cmp = ia.dateTime < ib.dateTime ? -1 : ia.dateTime > ib.dateTime ? 1 : 0;
+                             break;
+                         case SortField::Name:
+                             cmp = ia.displayName.compare(ib.displayName, Qt::CaseInsensitive);
+                             break;
+                         case SortField::Tags:
+                             cmp = ia.tags.size() < ib.tags.size() ? -1 : ia.tags.size() > ib.tags.size() ? 1 : 0;
+                             break;
+                         case SortField::FileSize:
+                             cmp = ia.fileSize < ib.fileSize ? -1 : ia.fileSize > ib.fileSize ? 1 : 0;
+                             break;
+                         }
+                         return asc ? cmp < 0 : cmp > 0;
+                     });
 
     rebuildGrid();
 }
@@ -250,8 +263,8 @@ void GalleryView::refresh() {
 
     std::stable_sort(m_visibleIndices.begin(), m_visibleIndices.end(),
                      [&](int a, int b) {
-        return m_allItems[a].dateTime > m_allItems[b].dateTime;
-    });
+                         return m_allItems[a].dateTime > m_allItems[b].dateTime;
+                     });
 
     rebuildGrid();
 }
@@ -261,6 +274,65 @@ void GalleryView::setColumns(int c) {
     AppSettings::instance().setGridColumns(m_columns);
     rebuildGrid();
 }
+
+void GalleryView::setTileSize(int w, int h) {
+    m_customTileSize = QSize(qMax(40, w), qMax(40, h));
+    // Use the atomic setter so tileSizeChanged is emitted exactly once.
+    // We blockSignals on AppSettings to prevent the MainWindow signal handler
+    // from calling setTileSize() again while we are already inside it.
+    auto& settings = AppSettings::instance();
+    settings.blockSignals(true);
+    settings.setTileSize(m_customTileSize.width(), m_customTileSize.height());
+    settings.blockSignals(false);
+    rebuildGrid();
+}
+
+void GalleryView::zoomIn(int stepPx) {
+    QSize cur = tileSize();
+    // Maintain aspect ratio
+    double ratio = cur.height() > 0 ? static_cast<double>(cur.height()) / cur.width() : 1.25;
+    int newW = cur.width() + stepPx;
+    int newH = qRound(newW * ratio);
+    setTileSize(newW, newH);
+}
+
+void GalleryView::zoomOut(int stepPx) {
+    QSize cur = tileSize();
+    double ratio = cur.height() > 0 ? static_cast<double>(cur.height()) / cur.width() : 1.25;
+    int newW = qMax(40, cur.width() - stepPx);
+    int newH = qRound(newW * ratio);
+    setTileSize(newW, newH);
+}
+
+void GalleryView::setTileArrangement(TileArrangement a) {
+    m_arrangement = a;
+    auto& settings = AppSettings::instance();
+    settings.blockSignals(true);
+    settings.setTileArrangement(a);
+    settings.blockSignals(false);
+    rebuildGrid();
+}
+
+void GalleryView::setManualAreaWidth(int w) {
+    m_manualAreaWidth = qMax(40, w);
+    auto& settings = AppSettings::instance();
+    settings.blockSignals(true);
+    settings.setManualAreaWidth(m_manualAreaWidth);
+    settings.blockSignals(false);
+    if (m_arrangement == TileArrangement::Manual)
+        rebuildGrid();
+}
+
+void GalleryView::setManualAreaHeight(int h) {
+    m_manualAreaHeight = qMax(0, h);
+    auto& settings = AppSettings::instance();
+    settings.blockSignals(true);
+    settings.setManualAreaHeight(m_manualAreaHeight);
+    settings.blockSignals(false);
+    if (m_arrangement == TileArrangement::Manual)
+        rebuildGrid();
+}
+
 
 void GalleryView::setOptionsVisible(bool v) {
     m_optionsVisible = v;
@@ -277,12 +349,22 @@ void GalleryView::setCovered(bool covered) {
 }
 
 QSize GalleryView::tileSize() const {
-    int availW = viewport()->width() - m_grid->contentsMargins().left()
+    // If the user set an explicit tile size via TileSizeDialog, use it directly.
+    // The grid will calculate how many columns fit, so m_columns is ignored in this mode.
+    if (m_customTileSize.isValid() && !m_customTileSize.isEmpty())
+        return m_customTileSize;
+
+    // Classic column-based mode: divide available width evenly.
+    int containerW = (m_arrangement == TileArrangement::Manual)
+                         ? m_manualAreaWidth
+                         : viewport()->width();
+    int availW = containerW - m_grid->contentsMargins().left()
                  - m_grid->contentsMargins().right()
                  - (m_columns - 1) * m_grid->spacing();
     int w = qMax(TILE_MIN_WIDTH, availW / m_columns);
-    int h = m_optionsVisible ? TILE_BASE_HEIGHT_OPTIONS : TILE_BASE_HEIGHT_PLAIN;
-    // Scale height proportionally for wider tiles
+    int h = (m_arrangement == TileArrangement::Manual && m_manualAreaHeight > 0)
+                ? m_manualAreaHeight
+                : (m_optionsVisible ? TILE_BASE_HEIGHT_OPTIONS : TILE_BASE_HEIGHT_PLAIN);
     if (m_columns == 1) h = qMin(600, h + w / 2);
     return QSize(w, h);
 }
@@ -296,6 +378,23 @@ void GalleryView::rebuildGrid() {
     m_indexToTile.clear();
 
     QSize ts = tileSize();
+
+    // ── Determine available width based on arrangement mode ───────────────────
+    int containerW = viewport()->width();
+    if (m_arrangement == TileArrangement::Manual)
+        containerW = m_manualAreaWidth;
+
+    // ── Dynamic column calculation when a custom tile size is active ──────────
+    // In custom-tile-size mode m_columns is ignored; we pack as many tiles as
+    // fit in the container width with equal spacing.
+    int effectiveCols = m_columns;
+    if (m_customTileSize.isValid() && !m_customTileSize.isEmpty()) {
+        int availW = containerW
+                     - m_grid->contentsMargins().left()
+                     - m_grid->contentsMargins().right();
+        effectiveCols = qMax(1, (availW + m_grid->spacing()) / (ts.width() + m_grid->spacing()));
+    }
+
     int count = m_visibleIndices.size();
 
     // If tile size changed, cancel pending loads and reset thumbnail cache
@@ -315,6 +414,25 @@ void GalleryView::rebuildGrid() {
         m_tiles.append(tile);
     }
 
+    // ── Set layout alignment based on arrangement mode ────────────────────────
+    // QGridLayout alignment controls how the grid block sits inside the container
+    // when it is narrower than the viewport (custom tile size mode / Manual mode).
+    Qt::Alignment gridAlign = Qt::AlignTop;
+    switch (m_arrangement) {
+    case TileArrangement::Left:
+        gridAlign = Qt::AlignTop | Qt::AlignLeft;
+        break;
+    case TileArrangement::Right:
+        gridAlign = Qt::AlignTop | Qt::AlignRight;
+        break;
+    case TileArrangement::Centered:
+    case TileArrangement::Manual:
+    default:
+        gridAlign = Qt::AlignTop | Qt::AlignHCenter;
+        break;
+    }
+    m_grid->setAlignment(gridAlign);
+
     for (int vi = 0; vi < count; ++vi) {
         int gi = m_visibleIndices[vi];
         MediaThumbnail* tile = m_tiles[vi];
@@ -328,8 +446,8 @@ void GalleryView::rebuildGrid() {
         if (m_allItems[gi].thumbnailLoaded && !m_allItems[gi].thumbnail.isNull())
             tile->setThumbnail(m_allItems[gi].thumbnail);
 
-        int row = vi / m_columns;
-        int col = vi % m_columns;
+        int row = vi / effectiveCols;
+        int col = vi % effectiveCols;
         m_grid->addWidget(tile, row, col);
         m_indexToTile[gi] = tile;
     }
@@ -337,6 +455,19 @@ void GalleryView::rebuildGrid() {
     // Hide unused tiles
     for (int i = count; i < m_tiles.size(); ++i)
         m_tiles[i]->hide();
+
+    // ── Manual mode: enforce fixed container width so tiles don't overflow ────
+    if (m_arrangement == TileArrangement::Manual) {
+        int totalW = effectiveCols * (ts.width() + m_grid->spacing())
+        - m_grid->spacing()
+            + m_grid->contentsMargins().left()
+            + m_grid->contentsMargins().right();
+        m_container->setMinimumWidth(qMin(totalW, m_manualAreaWidth));
+        m_container->setMaximumWidth(m_manualAreaWidth);
+    } else {
+        m_container->setMinimumWidth(0);
+        m_container->setMaximumWidth(QWIDGETSIZE_MAX);
+    }
 
     scheduleVisibilityUpdate();
 }
@@ -390,10 +521,10 @@ void GalleryView::onThumbnailFailed(int index, const QString& /*path*/) {
         p.setPen(QColor(120, 140, 150));
         p.setFont(QFont("Arial", 10));
         {
-        QPixmap warnPix = Icons::warning().pixmap(QSize(24, 24));
-        p.drawPixmap(ph.rect().center() - QPoint(warnPix.width()/2, warnPix.height()/2 + 8), warnPix);
-        p.drawText(ph.rect().adjusted(0, 20, 0, 0), Qt::AlignCenter, "Load error");
-    }
+            QPixmap warnPix = Icons::warning().pixmap(QSize(24, 24));
+            p.drawPixmap(ph.rect().center() - QPoint(warnPix.width()/2, warnPix.height()/2 + 8), warnPix);
+            p.drawText(ph.rect().adjusted(0, 20, 0, 0), Qt::AlignCenter, "Load error");
+        }
         p.end();
         m_indexToTile[index]->setThumbnail(ph);
     }
@@ -449,6 +580,15 @@ void GalleryView::updateVisibleThumbnails() {
 }
 
 void GalleryView::wheelEvent(QWheelEvent* e) {
+    // ── Ctrl + Wheel → zoom (tile size) ───────────────────────────────────────
+    if (e->modifiers() & Qt::ControlModifier) {
+        int delta = e->angleDelta().y();
+        if (delta > 0)  zoomIn(16);
+        else if (delta < 0) zoomOut(16);
+        e->accept();
+        return;
+    }
+
     if (e->modifiers() & Qt::ShiftModifier) {
         int delta = e->angleDelta().y();
         // Accumulate the target column count without rebuilding the grid yet
@@ -531,8 +671,8 @@ void GalleryView::enterGroupMode(const QString& tag) {
         bannerLay->addWidget(lbl, 1);
 
         auto* cancelBtn = new QPushButton("Cancel", m_groupModeBanner);
-    cancelBtn->setIcon(Icons::xMark());
-    cancelBtn->setIconSize(QSize(14, 14));
+        cancelBtn->setIcon(Icons::xMark());
+        cancelBtn->setIconSize(QSize(14, 14));
         cancelBtn->setStyleSheet(
             "QPushButton { background: rgba(200,100,100,0.25); border: 1px solid rgba(200,100,100,0.5);"
             "border-radius: 6px; color: #ff9090; padding: 3px 12px; font-size: 11px; }"
@@ -612,8 +752,8 @@ void GalleryView::enterAddToTagMode(const QString& tag) {
         bannerLay->addWidget(lbl, 1);
 
         auto* cancelBtn = new QPushButton("Beenden", m_addToTagBanner);
-    cancelBtn->setIcon(Icons::xMark());
-    cancelBtn->setIconSize(QSize(14, 14));
+        cancelBtn->setIcon(Icons::xMark());
+        cancelBtn->setIconSize(QSize(14, 14));
         cancelBtn->setStyleSheet(
             "QPushButton { background: rgba(200,100,100,0.25); border: 1px solid rgba(200,100,100,0.5);"
             "border-radius: 6px; color: #ff9090; padding: 3px 12px; font-size: 11px; }"

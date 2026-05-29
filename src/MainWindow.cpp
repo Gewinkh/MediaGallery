@@ -45,6 +45,10 @@ MainWindow::MainWindow(ISettings& settings, FolderService& folderService,
     m_optionsVisible = m_settings.optionsVisible();
     updateToggleAction();
 
+    // Install application-wide event filter so Ctrl+Plus/Minus zoom works
+    // regardless of which child widget currently holds keyboard focus.
+    qApp->installEventFilter(this);
+
     // React to folder-open events from FolderService
     connect(&m_folderService, &FolderService::folderOpened,
             this, &MainWindow::onFolderOpened);
@@ -58,6 +62,15 @@ MainWindow::MainWindow(ISettings& settings, FolderService& folderService,
             this, &MainWindow::applyTheme);
     connect(appSettings, &AppSettings::themeChanged,
             this, &MainWindow::applyTheme);
+    connect(appSettings, &AppSettings::tileSizeChanged, this, [this]() {
+        int w = AppSettings::instance().tileWidth();
+        int h = AppSettings::instance().tileHeight();
+        m_galleryView->setTileSize(w, h);
+    });
+    connect(appSettings, &AppSettings::tileArrangementChanged, this, [this]() {
+        m_galleryView->setTileArrangement(AppSettings::instance().tileArrangement());
+        m_galleryView->setManualAreaWidth(AppSettings::instance().manualAreaWidth());
+    });
 
     setAcceptDrops(true);
     retranslateUi();
@@ -216,6 +229,9 @@ void MainWindow::setupMenus() {
     m_toggleOptionsAct->setShortcut(Qt::Key_S);
     m_toggleOptionsAct->setCheckable(true);
     m_toggleOptionsAct->setChecked(m_optionsVisible);
+    m_viewMenu->addSeparator();
+    m_tileSizeAct = m_viewMenu->addAction(tr("Tile Size…"), this, &MainWindow::showTileSizeDialog);
+    m_tileSizeAct->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_T));
 
     m_settingsMenu = menuBar()->addMenu(QString());
     m_settingsAct  = m_settingsMenu->addAction(QString(), this, &MainWindow::showSettings);
@@ -573,11 +589,28 @@ void MainWindow::showSettings() {
     connect(dlg, &SettingsDialog::settingsChanged, this, [this]() {
         m_folderService.saveCurrentFolder();
         m_filterBar->refreshTagList();
+        // Sync arrangement + manual-area geometry from AppSettings into GalleryView
+        auto& s = AppSettings::instance();
+        m_galleryView->setTileArrangement(s.tileArrangement());
+        if (s.tileArrangement() == TileArrangement::Manual) {
+            m_galleryView->setManualAreaWidth(s.manualAreaWidth());
+            m_galleryView->setManualAreaHeight(s.manualAreaHeight());
+        }
     });
     // Rebuild the bookmarks menu whenever saved folders change in the dialog
     connect(dlg, &SettingsDialog::bookmarksChanged,
             this, &MainWindow::rebuildBookmarksMenu);
     dlg->exec();
+    dlg->deleteLater();
+}
+
+void MainWindow::showTileSizeDialog() {
+    int curW = AppSettings::instance().tileWidth();
+    int curH = AppSettings::instance().tileHeight();
+    auto* dlg = new TileSizeDialog(curW, curH, this);
+    if (dlg->exec() == QDialog::Accepted) {
+        m_galleryView->setTileSize(dlg->tileWidth(), dlg->tileHeight());
+    }
     dlg->deleteLater();
 }
 
@@ -639,7 +672,32 @@ void MainWindow::onLanguageChanged(Language l) {
     m_langEnAct->setChecked(l == Language::English);
 }
 
+bool MainWindow::eventFilter(QObject* watched, QEvent* e) {
+    // Global Ctrl + '+' / '-' zoom — intercept before any focused child
+    // widget consumes the key event (e.g. QSpinBox in FilterBar).
+    // Only active when the gallery page is visible and no modal dialog is open.
+    if (e->type() == QEvent::KeyPress
+        && m_stack->currentWidget() == m_galleryPage
+        && QApplication::activeModalWidget() == nullptr)
+    {
+        auto* ke = static_cast<QKeyEvent*>(e);
+        if (ke->modifiers() & Qt::ControlModifier) {
+            const int k = ke->key();
+            if (k == Qt::Key_Plus || k == Qt::Key_Equal) {
+                m_galleryView->zoomIn(16);
+                return true;   // eat event — do not forward to focused widget
+            }
+            if (k == Qt::Key_Minus) {
+                m_galleryView->zoomOut(16);
+                return true;
+            }
+        }
+    }
+    return QMainWindow::eventFilter(watched, e);
+}
+
 void MainWindow::keyPressEvent(QKeyEvent* e) {
+    // Ctrl+Plus/Ctrl+Minus zoom is handled globally in eventFilter() above.
     if (e->key() == Qt::Key_S && m_stack->currentWidget() == m_galleryPage) {
         toggleOptions();
         return;

@@ -10,6 +10,14 @@ enum class VideoPlayback { Native, External };
 enum class SortField     { Date, Name, Tags, FileSize };
 enum class SortOrder     { Ascending, Descending };
 
+// ─── Tile arrangement / alignment mode ───────────────────────────────────────
+enum class TileArrangement {
+    Centered,       // tiles centred in viewport (current default)
+    Left,           // flush left
+    Right,          // flush right
+    Manual          // user-defined fixed-width area
+};
+
 enum class DesignProfile {
     Dark, DarkOLED, OceanDepth, InfernoBlaze,
     NeonPurple, MidnightRose, Elegant, Simple, Custom
@@ -103,6 +111,19 @@ public:
 
     virtual int  gridColumns() const = 0;
     virtual void setGridColumns(int c) = 0;
+
+    // Tile arrangement / alignment
+    virtual TileArrangement tileArrangement() const = 0;
+    virtual void            setTileArrangement(TileArrangement a) = 0;
+    virtual int             manualAreaWidth()  const = 0;   // px; only used in Manual mode
+    virtual void            setManualAreaWidth(int w) = 0;
+    virtual int             manualAreaHeight() const = 0;   // px; only used in Manual mode (0 = use tile height)
+    virtual void            setManualAreaHeight(int h) = 0;
+
+    virtual int  tileWidth()  const = 0;
+    virtual void setTileWidth(int w) = 0;
+    virtual int  tileHeight() const = 0;
+    virtual void setTileHeight(int h) = 0;
 
     virtual bool tagFilterAnd() const = 0;
     virtual void setTagFilterAnd(bool v) = 0;

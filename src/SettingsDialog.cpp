@@ -1,6 +1,7 @@
 #include "SettingsDialog.h"
 #include "Icons.h"
 #include "Strings.h"
+#include "ManualZonePreview.h"
 #include <QVBoxLayout>
 #include <QHBoxLayout>
 #include <QFormLayout>
@@ -72,6 +73,7 @@ SettingsDialog::SettingsDialog(TagManager* tagMgr, QWidget* parent)
 
     m_tabs = new QTabWidget(this);
     m_tabs->addTab(buildGeneralTab(),   Strings::get(StringKey::SettingsTabGeneral));
+    m_tabs->addTab(buildViewTab(),      tr("Ansicht / Layout"));
     m_tabs->addTab(buildTagTab(),       Strings::get(StringKey::SettingsTabTags));
     m_tabs->addTab(buildCategoryTab(),  Strings::get(StringKey::SettingsTabCategories));
     m_tabs->addTab(buildConverterTab(), Strings::get(StringKey::ConverterTabTitle));
@@ -1027,6 +1029,251 @@ void SettingsDialog::applySettings() {
 // ─────────────────────────────────────────────────────────────────────────────
 //  Design tab  (full rewrite with 8 profiles + gradient / glow / tile editor)
 // ─────────────────────────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────────────
+//  View / Layout tab  (tile arrangement, tile size, zoom hints)
+// ─────────────────────────────────────────────────────────────────────────────
+QWidget* SettingsDialog::buildViewTab() {
+    // ── Outer page wraps a QScrollArea so content never gets clipped ──────────
+    auto* page     = new QWidget(this);
+    auto* pageLay  = new QVBoxLayout(page);
+    pageLay->setContentsMargins(0, 0, 0, 0);
+    pageLay->setSpacing(0);
+
+    auto* scroll = new QScrollArea(page);
+    scroll->setFrameShape(QFrame::NoFrame);
+    scroll->setWidgetResizable(true);
+    scroll->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+    auto* inner = new QWidget(scroll);
+    scroll->setWidget(inner);
+    pageLay->addWidget(scroll, 1);
+
+    auto* lay = new QVBoxLayout(inner);
+    lay->setSpacing(14);
+    lay->setContentsMargins(20, 16, 20, 16);
+
+    static const char* radioStyle =
+        "QRadioButton { color: #c8ddd8; font-size: 12px; spacing: 8px; }"
+        "QRadioButton::indicator { width: 14px; height: 14px; border-radius: 7px;"
+        "  border: 1px solid rgba(0,200,180,0.5); background: rgba(255,255,255,0.05); }"
+        "QRadioButton::indicator:checked { background: #00c8b4; border-color: #00c8b4; }";
+    static const char* spinStyle =
+        "QSpinBox { background: #182028; color: #c8dbd5; border: 1px solid #284040;"
+        "  border-radius: 4px; padding: 3px 6px; min-width: 88px; }"
+        "QSpinBox::up-button, QSpinBox::down-button { background: #1e2e38; border: none; width: 18px; }";
+    static const char* sliderStyle =
+        "QSlider::groove:horizontal { height: 4px; background: #1e2e38; border-radius: 2px; }"
+        "QSlider::handle:horizontal { width: 14px; height: 14px; margin: -5px 0;"
+        "  background: #00b4a0; border-radius: 7px; }"
+        "QSlider::sub-page:horizontal { background: #00806e; border-radius: 2px; }";
+    static const char* applyBtnStyle =
+        "QPushButton { background: rgba(0,180,160,0.25); border: 1px solid rgba(0,180,160,0.6);"
+        "  border-radius: 6px; color: #00e8d0; font-size: 13px; font-weight: bold;"
+        "  padding: 6px 20px; min-height: 32px; min-width: 130px; }"
+        "QPushButton:hover    { background: rgba(0,200,180,0.45); }"
+        "QPushButton:pressed  { background: rgba(0,160,140,0.55); }";
+
+    // ── Arrangement / Alignment ───────────────────────────────────────────────
+    auto* arrGroup = new QGroupBox(tr("Kachel-Anordnung"), inner);
+    auto* arrLay   = new QVBoxLayout(arrGroup);
+    arrLay->setContentsMargins(16, 12, 16, 14);
+    arrLay->setSpacing(8);
+
+    auto* arrDesc = new QLabel(
+        tr("Bestimmt, wie Kacheln innerhalb des sichtbaren Bereichs ausgerichtet werden."), arrGroup);
+    arrDesc->setStyleSheet("color: #789891; font-size: 11px;");
+    arrDesc->setWordWrap(true);
+    arrLay->addWidget(arrDesc);
+
+    auto* btnGroup = new QButtonGroup(arrGroup);
+    auto* rCenter  = new QRadioButton(tr("Zentriert"),    arrGroup);
+    auto* rLeft    = new QRadioButton(tr("Linksbündig"),  arrGroup);
+    auto* rRight   = new QRadioButton(tr("Rechtsbündig"), arrGroup);
+    auto* rManual  = new QRadioButton(tr("Manuell (freier Bereich)"), arrGroup);
+    for (auto* rb : {rCenter, rLeft, rRight, rManual}) {
+        rb->setStyleSheet(radioStyle);
+        btnGroup->addButton(rb);
+        arrLay->addWidget(rb);
+    }
+
+    TileArrangement cur = AppSettings::instance().tileArrangement();
+    rCenter->setChecked(cur == TileArrangement::Centered);
+    rLeft->setChecked(cur == TileArrangement::Left);
+    rRight->setChecked(cur == TileArrangement::Right);
+    rManual->setChecked(cur == TileArrangement::Manual);
+
+    // ── Manual sub-panel (hidden unless Manual is selected) ───────────────────
+    auto* manualPanel = new QWidget(arrGroup);
+    manualPanel->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
+    auto* manualPanelLay = new QVBoxLayout(manualPanel);
+    manualPanelLay->setContentsMargins(12, 8, 0, 4);
+    manualPanelLay->setSpacing(10);
+
+    // Preview widget — sized to parent window so scale is accurate
+    QSize mainWinSize = parentWidget() ? parentWidget()->size() : QSize(1280, 800);
+    auto* preview = new ManualZonePreview(mainWinSize, manualPanel);
+    preview->setMinimumHeight(200);
+    preview->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
+    preview->setZone(AppSettings::instance().manualAreaWidth(),
+                     AppSettings::instance().manualAreaHeight());
+    manualPanelLay->addWidget(preview, 1);
+
+    // ── Width spinner row ──────────────────────────────────────────────────
+    auto* wRow2 = new QHBoxLayout;
+    wRow2->setSpacing(8);
+    auto* wLbl2 = new QLabel(tr("Breite:"), manualPanel);
+    wLbl2->setStyleSheet("color: #c8ddd8; font-size: 12px;");
+    wLbl2->setMinimumWidth(90);
+    auto* wSlider = new QSlider(Qt::Horizontal, manualPanel);
+    wSlider->setRange(80, 8000);
+    wSlider->setValue(AppSettings::instance().manualAreaWidth());
+    wSlider->setStyleSheet(sliderStyle);
+    auto* wSpin2 = new QSpinBox(manualPanel);
+    wSpin2->setRange(80, 8000);
+    wSpin2->setValue(AppSettings::instance().manualAreaWidth());
+    wSpin2->setSuffix(" px");
+    wSpin2->setStyleSheet(spinStyle);
+    wRow2->addWidget(wLbl2);
+    wRow2->addWidget(wSlider, 1);
+    wRow2->addWidget(wSpin2);
+    manualPanelLay->addLayout(wRow2);
+
+    // ── Height spinner row ─────────────────────────────────────────────────
+    auto* hRow2 = new QHBoxLayout;
+    hRow2->setSpacing(8);
+    auto* hLbl2 = new QLabel(tr("Höhe:"), manualPanel);
+    hLbl2->setStyleSheet("color: #c8ddd8; font-size: 12px;");
+    hLbl2->setMinimumWidth(90);
+    auto* hSlider = new QSlider(Qt::Horizontal, manualPanel);
+    hSlider->setRange(0, 2000);
+    hSlider->setValue(AppSettings::instance().manualAreaHeight());
+    hSlider->setStyleSheet(sliderStyle);
+    auto* hSpin2 = new QSpinBox(manualPanel);
+    hSpin2->setRange(0, 2000);
+    hSpin2->setValue(AppSettings::instance().manualAreaHeight());
+    hSpin2->setSpecialValueText(tr("Auto"));
+    hSpin2->setSuffix(" px");
+    hSpin2->setStyleSheet(spinStyle);
+    hRow2->addWidget(hLbl2);
+    hRow2->addWidget(hSlider, 1);
+    hRow2->addWidget(hSpin2);
+    manualPanelLay->addLayout(hRow2);
+
+    // ── Apply button ───────────────────────────────────────────────────────
+    auto* manualApplyBtn = new QPushButton(tr("Übernehmen"), manualPanel);
+    manualApplyBtn->setStyleSheet(applyBtnStyle);
+    auto* applyRowM = new QHBoxLayout;
+    applyRowM->addStretch(1);
+    applyRowM->addWidget(manualApplyBtn);
+    manualPanelLay->addLayout(applyRowM);
+
+    manualPanel->setVisible(cur == TileArrangement::Manual);
+    arrLay->addWidget(manualPanel);
+    lay->addWidget(arrGroup);
+
+    // ── Sync: slider ↔ spinbox ─────────────────────────────────────────────
+    connect(wSlider, &QSlider::valueChanged, wSpin2, &QSpinBox::setValue);
+    connect(wSpin2, QOverload<int>::of(&QSpinBox::valueChanged), wSlider, &QSlider::setValue);
+    connect(hSlider, &QSlider::valueChanged, hSpin2, &QSpinBox::setValue);
+    connect(hSpin2, QOverload<int>::of(&QSpinBox::valueChanged), hSlider, &QSlider::setValue);
+
+    // ── Sync: preview drag → spinboxes ────────────────────────────────────
+    connect(preview, &ManualZonePreview::zoneChanged, this, [=](int rw, int rh) {
+        // Block to avoid re-entrancy between preview ↔ spinboxes
+        const QSignalBlocker bw(wSpin2), bws(wSlider),
+                              bh(hSpin2), bhs(hSlider);
+        wSpin2->setValue(rw);
+        wSlider->setValue(rw);
+        hSpin2->setValue(rh);
+        hSlider->setValue(rh);
+        AppSettings::instance().setManualAreaWidth(rw);
+        AppSettings::instance().setManualAreaHeight(rh);
+        emit settingsChanged();
+    });
+
+    // ── Sync: spinboxes → preview ─────────────────────────────────────────
+    auto syncPreview = [=]() {
+        preview->setZone(wSpin2->value(), hSpin2->value());
+    };
+    connect(wSpin2, QOverload<int>::of(&QSpinBox::valueChanged), this, [=](int){ syncPreview(); });
+    connect(hSpin2, QOverload<int>::of(&QSpinBox::valueChanged), this, [=](int){ syncPreview(); });
+
+    // ── Wire arrangement radio buttons ─────────────────────────────────────
+    auto applyArrangement = [=]() {
+        TileArrangement a = TileArrangement::Centered;
+        if (rLeft->isChecked())   a = TileArrangement::Left;
+        if (rRight->isChecked())  a = TileArrangement::Right;
+        if (rManual->isChecked()) a = TileArrangement::Manual;
+        AppSettings::instance().setTileArrangement(a);
+        manualPanel->setVisible(a == TileArrangement::Manual);
+        // Force immediate layout recalc so the panel is visible before paint
+        inner->adjustSize();
+        emit settingsChanged();
+    };
+    connect(rCenter, &QRadioButton::toggled, this, [=](bool c){ if(c) applyArrangement(); });
+    connect(rLeft,   &QRadioButton::toggled, this, [=](bool c){ if(c) applyArrangement(); });
+    connect(rRight,  &QRadioButton::toggled, this, [=](bool c){ if(c) applyArrangement(); });
+    connect(rManual, &QRadioButton::toggled, this, [=](bool c){ if(c) applyArrangement(); });
+
+    connect(manualApplyBtn, &QPushButton::clicked, this, [=]() {
+        AppSettings::instance().setManualAreaWidth(wSpin2->value());
+        AppSettings::instance().setManualAreaHeight(hSpin2->value());
+        emit settingsChanged();
+    });
+
+    // ── Tile size quick-set ───────────────────────────────────────────────────
+    auto* sizeGroup = new QGroupBox(tr("Kachelgröße"), inner);
+    auto* sizeLay   = new QHBoxLayout(sizeGroup);
+    sizeLay->setContentsMargins(16, 12, 16, 12);
+    sizeLay->setSpacing(12);
+
+    auto* wLbl  = new QLabel(tr("Breite:"), sizeGroup);
+    wLbl->setStyleSheet("color: #c8ddd8; font-size: 12px;");
+    auto* wSpin = new QSpinBox(sizeGroup);
+    wSpin->setRange(40, 4096);
+    wSpin->setValue(AppSettings::instance().tileWidth());
+    wSpin->setSuffix(" px");
+    wSpin->setStyleSheet(spinStyle);
+
+    auto* hLbl  = new QLabel(tr("Höhe:"), sizeGroup);
+    hLbl->setStyleSheet("color: #c8ddd8; font-size: 12px;");
+    auto* hSpin = new QSpinBox(sizeGroup);
+    hSpin->setRange(40, 4096);
+    hSpin->setValue(AppSettings::instance().tileHeight());
+    hSpin->setSuffix(" px");
+    hSpin->setStyleSheet(spinStyle);
+
+    auto* applyBtn = new QPushButton(tr("Übernehmen"), sizeGroup);
+    applyBtn->setStyleSheet(applyBtnStyle);
+
+    sizeLay->addWidget(wLbl);
+    sizeLay->addWidget(wSpin);
+    sizeLay->addSpacing(8);
+    sizeLay->addWidget(hLbl);
+    sizeLay->addWidget(hSpin);
+    sizeLay->addStretch(1);
+    sizeLay->addWidget(applyBtn);
+
+    connect(applyBtn, &QPushButton::clicked, this, [=]() {
+        AppSettings::instance().setTileSize(wSpin->value(), hSpin->value());
+        emit settingsChanged();
+    });
+
+    lay->addWidget(sizeGroup);
+
+    // ── Zoom keyboard hint ────────────────────────────────────────────────────
+    auto* hintLbl = new QLabel(
+        tr("<b>Zoom-Shortcuts:</b><br>"
+           "Strg + Mausrad &nbsp;→ Kachelgröße ändern<br>"
+           "Strg + &nbsp;+&nbsp; / &nbsp;Strg + &nbsp;−&nbsp; → Kachelgröße stufenweise"),
+        inner);
+    hintLbl->setStyleSheet("color: #789891; font-size: 11px;");
+    hintLbl->setWordWrap(true);
+    lay->addWidget(hintLbl);
+
+    lay->addStretch(1);
+    return page;
+}
+
 QWidget* SettingsDialog::buildDesignTab() {
     auto* page = new QWidget(this);
     auto* outerLay = new QVBoxLayout(page);

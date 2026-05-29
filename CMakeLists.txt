@@ -34,6 +34,8 @@ set(SOURCES
     src/MediaItem.h
     src/MediaThumbnail.cpp
     src/MediaThumbnail.h
+    src/ManualZonePreview.cpp
+    src/ManualZonePreview.h
     src/FullscreenView.cpp
     src/FullscreenView.h
     src/TagManager.cpp
@@ -67,6 +69,8 @@ set(SOURCES
     src/Strings.cpp
     src/Strings.h
     src/Icons.h
+    src/TileSizeDialog.cpp
+    src/TileSizeDialog.h
 )
 
 qt_add_executable(MediaGallery ${SOURCES})

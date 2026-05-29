@@ -37,6 +37,19 @@ public:
     int  gridColumns() const override;
     void setGridColumns(int c) override;
 
+    TileArrangement tileArrangement() const override;
+    void            setTileArrangement(TileArrangement a) override;
+    int             manualAreaWidth()  const override;
+    void            setManualAreaWidth(int w) override;
+    int             manualAreaHeight() const override;
+    void            setManualAreaHeight(int h) override;
+
+    int  tileWidth()  const override;
+    void setTileWidth(int w) override;
+    int  tileHeight() const override;
+    void setTileHeight(int h) override;
+    void setTileSize(int w, int h);   // atomic: saves both + emits tileSizeChanged once
+
     bool tagFilterAnd() const override;
     void setTagFilterAnd(bool v) override;
 
@@ -71,6 +84,8 @@ signals:
     void languageChanged(Language l);
     void colorSchemeChanged();
     void themeChanged();
+    void tileSizeChanged();
+    void tileArrangementChanged();
 
 private:
     explicit AppSettings(QObject* parent = nullptr);

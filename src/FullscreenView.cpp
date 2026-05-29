@@ -313,16 +313,21 @@ void FullscreenView::resizeEvent(QResizeEvent* e) {
 }
 
 void FullscreenView::wheelEvent(QWheelEvent* e) {
-    double factor = e->angleDelta().y() > 0 ? 1.15 : 1.0 / 1.15;
-    m_zoom = qBound(MIN_ZOOM, m_zoom * factor, MAX_ZOOM);
-    if (m_zoom <= 1.0) {
-        m_panOffset = {0.0, 0.0};
-        setCursor(Qt::ArrowCursor);
-    } else {
-        setCursor(Qt::OpenHandCursor);
+    // Zoom only with Ctrl+Wheel — plain wheel is not consumed here (falls through)
+    if (e->modifiers() & Qt::ControlModifier) {
+        double factor = e->angleDelta().y() > 0 ? 1.15 : 1.0 / 1.15;
+        m_zoom = qBound(MIN_ZOOM, m_zoom * factor, MAX_ZOOM);
+        if (m_zoom <= 1.0) {
+            m_panOffset = {0.0, 0.0};
+            setCursor(Qt::ArrowCursor);
+        } else {
+            setCursor(Qt::OpenHandCursor);
+        }
+        updateZoom();
+        e->accept();
+        return;
     }
-    updateZoom();
-    e->accept();
+    QWidget::wheelEvent(e);
 }
 
 void FullscreenView::keyPressEvent(QKeyEvent* e) {
@@ -343,6 +348,28 @@ void FullscreenView::keyPressEvent(QKeyEvent* e) {
         return;
     }
     switch (e->key()) {
+    // ── Zoom: Ctrl++ / Ctrl+= → zoom in,  Ctrl+- → zoom out ─────────────────
+    case Qt::Key_Plus:
+    case Qt::Key_Equal:   // unshifted '+' on most keyboards
+        if (e->modifiers() & Qt::ControlModifier) {
+            m_zoom = qBound(MIN_ZOOM, m_zoom * 1.15, MAX_ZOOM);
+            if (m_zoom > 1.0) setCursor(Qt::OpenHandCursor);
+            updateZoom();
+            e->accept();
+            break;
+        }
+        QWidget::keyPressEvent(e);
+        break;
+    case Qt::Key_Minus:
+        if (e->modifiers() & Qt::ControlModifier) {
+            m_zoom = qBound(MIN_ZOOM, m_zoom / 1.15, MAX_ZOOM);
+            if (m_zoom <= 1.0) { m_panOffset = {0.0, 0.0}; setCursor(Qt::ArrowCursor); }
+            updateZoom();
+            e->accept();
+            break;
+        }
+        QWidget::keyPressEvent(e);
+        break;
     case Qt::Key_Left:  showPrev(); break;
     case Qt::Key_Right: showNext(); break;
     case Qt::Key_Escape:

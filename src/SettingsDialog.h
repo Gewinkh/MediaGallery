@@ -49,6 +49,7 @@ private:
     QWidget* buildConverterTab();
     QWidget* buildDesignTab();
     QWidget* buildBookmarkTab();       // ← new tab factory
+    QWidget* buildViewTab();           // ← tile arrangement / layout options
 
     // Converter - ready for cleanup
     void convertTagToSubcategory(const QString& tag,

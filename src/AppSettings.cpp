@@ -406,6 +406,37 @@ void AppSettings::setAccentColor(const QColor& c) {
 int AppSettings::gridColumns() const { return m_settings.value("grid/columns", 1).toInt(); }
 void AppSettings::setGridColumns(int c) { m_settings.setValue("grid/columns", qBound(1, c, 25)); }
 
+int  AppSettings::tileWidth()  const { return m_settings.value("grid/tileWidth",  160).toInt(); }
+void AppSettings::setTileWidth(int w) {
+    m_settings.setValue("grid/tileWidth", qMax(40, w));
+    // No signal here — use setTileSize(w,h) to avoid double-emit
+}
+int  AppSettings::tileHeight() const { return m_settings.value("grid/tileHeight", 200).toInt(); }
+void AppSettings::setTileHeight(int h) {
+    m_settings.setValue("grid/tileHeight", qMax(40, h));
+    // No signal here — use setTileSize(w,h) to avoid double-emit
+}
+void AppSettings::setTileSize(int w, int h) {
+    m_settings.setValue("grid/tileWidth",  qMax(40, w));
+    m_settings.setValue("grid/tileHeight", qMax(40, h));
+    emit tileSizeChanged();
+}
+
+TileArrangement AppSettings::tileArrangement() const {
+    int v = m_settings.value("grid/arrangement", 0).toInt();
+    if (v < 0 || v > static_cast<int>(TileArrangement::Manual))
+        return TileArrangement::Centered;
+    return static_cast<TileArrangement>(v);
+}
+void AppSettings::setTileArrangement(TileArrangement a) {
+    m_settings.setValue("grid/arrangement", static_cast<int>(a));
+    emit tileArrangementChanged();
+}
+int  AppSettings::manualAreaWidth()  const { return m_settings.value("grid/manualAreaWidth", 800).toInt(); }
+void AppSettings::setManualAreaWidth(int w) { m_settings.setValue("grid/manualAreaWidth", qMax(40, w)); }
+int  AppSettings::manualAreaHeight() const { return m_settings.value("grid/manualAreaHeight", 0).toInt(); }
+void AppSettings::setManualAreaHeight(int h) { m_settings.setValue("grid/manualAreaHeight", qMax(0, h)); }
+
 bool AppSettings::tagFilterAnd() const { return m_settings.value("filter/tagAnd", true).toBool(); }
 void AppSettings::setTagFilterAnd(bool v) { m_settings.setValue("filter/tagAnd", v); }
 

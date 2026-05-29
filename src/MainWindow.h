@@ -13,6 +13,7 @@
 #include "TagManager.h"
 #include "FolderService.h"
 #include "MetadataEditor.h"
+#include "TileSizeDialog.h"
 
 class ISettings;
 
@@ -29,6 +30,7 @@ protected:
     void closeEvent(QCloseEvent* e) override;
     void dragEnterEvent(QDragEnterEvent* e) override;
     void dropEvent(QDropEvent* e) override;
+    bool eventFilter(QObject* watched, QEvent* e) override;
 
 private slots:
     void openFolder();
@@ -43,6 +45,7 @@ private slots:
     void onDeleteMediaRequested(int globalIndex);
     void applyFilter();
     void showSettings();
+    void showTileSizeDialog();
     void applyTheme();
     void retranslateUi();
     void onLanguageChanged(Language l);
@@ -86,6 +89,7 @@ private:
     QAction* m_quitAct          = nullptr;
     QAction* m_toggleOptionsAct = nullptr;
     QAction* m_settingsAct      = nullptr;
+    QAction* m_tileSizeAct      = nullptr;   // ← opens TileSizeDialog
     QAction* m_langDeAct        = nullptr;
     QAction* m_langEnAct        = nullptr;
     QAction* m_videoNativeAct   = nullptr;
