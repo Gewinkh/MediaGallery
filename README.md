@@ -137,10 +137,8 @@ Custom themes can be exported to JSON and shared:
 ## Changelog
 
 ### Latest
-- **PDF first-load fix**: Document renders immediately on the very first open (no second click needed)
-- **Full color theming**: PDF sidebar, toolbar, scrollbar, and app sidebar backgrounds are individually customizable under Settings → Design → Custom Theme Editor
-- **Full English UI**: All buttons, tooltips, status messages, and dialogs are now consistently in English; German remains available via Settings → General → Language
-- **Updated README**
+- **resizable tiles**: Tiles in the Main-Window are nor configurable
+- **LICENSE**: added LICENSE
 
 ---
 
