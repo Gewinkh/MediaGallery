@@ -22,6 +22,7 @@ public:
     void setOptionsVisible(bool v);
     void setSelected(bool s);
     void setCovered(bool covered);
+    void applyTheme();
     int  itemIndex() const { return m_index; }
     QString filePath() const { return m_item.filePath; }
 

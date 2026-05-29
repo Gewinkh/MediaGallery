@@ -1,4 +1,6 @@
 #include "GalleryView.h"
+#include "AppSettings.h"
+#include "Style.h"
 #include "Icons.h"
 #include "Strings.h"
 #include <QDir>
@@ -419,6 +421,11 @@ void GalleryView::reloadAllThumbnails() {
     requestVisibleThumbnails();
 }
 
+void GalleryView::applyTheme() {
+    for (MediaThumbnail* tile : m_tiles)
+        tile->applyTheme();
+}
+
 void GalleryView::onNameChanged(int index, const QString& name) {
     if (index >= 0 && index < m_allItems.size()) {
         m_allItems[index].displayName = name;
@@ -550,10 +557,13 @@ void GalleryView::enterGroupMode(const QString& tag) {
         tile->setProperty("groupTagged",  hasTag);
         tile->setSelected(hasTag);
         // Style dimming
-        if (!hasTag)
-            tile->setStyleSheet("MediaThumbnail { background: rgb(18,28,34); border-radius: 8px;"
-                                "border: 1px solid rgba(40,60,70,0.4); opacity: 0.5; }");
-        else
+        if (!hasTag) {
+            const QColor bg = AppSettings::instance().currentTheme().tileBgColor;
+            tile->setStyleSheet(
+                QString("MediaThumbnail { background: rgb(%1,%2,%3); border-radius: 8px;"
+                        "border: 1px solid rgba(%1,%2,%3,0.4); opacity: 0.5; }")
+                    .arg(bg.red()).arg(bg.green()).arg(bg.blue()));
+        } else
             tile->setStyleSheet("MediaThumbnail { background: rgb(30,22,48); border-radius: 8px;"
                                 "border: 2px solid rgba(180,120,255,0.7); }");
     }
@@ -634,10 +644,13 @@ void GalleryView::enterAddToTagMode(const QString& tag) {
             tile->setStyleSheet(
                 "MediaThumbnail { background: rgba(0,200,160,0.13); border-radius: 8px;"
                 "border: 3px solid #00ffdd; }");
-        else
+        else {
+            const QColor bg = AppSettings::instance().currentTheme().tileBgColor;
             tile->setStyleSheet(
-                "MediaThumbnail { background: rgba(10,18,22,0.6); border-radius: 8px;"
-                "border: 1px solid rgba(40,60,70,0.4); opacity: 0.7; }");
+                QString("MediaThumbnail { background: rgba(%1,%2,%3,0.6); border-radius: 8px;"
+                        "border: 1px solid rgba(%1,%2,%3,0.4); opacity: 0.7; }")
+                    .arg(bg.red()).arg(bg.green()).arg(bg.blue()));
+        }
     }
 }
 

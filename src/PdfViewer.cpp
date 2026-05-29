@@ -107,8 +107,8 @@ PdfViewer::~PdfViewer() {
 // UI Setup
 // ─────────────────────────────────────────────────────────────────────────────
 void PdfViewer::setupUi() {
-    // background set via applyTheme(); initial fallback only
-    setStyleSheet("background: #0d1518;");
+    // background set from current theme (see applyTheme())
+    setStyleSheet("background: #0d1518;");  // initial fallback, overwritten below
     auto* mainLay = new QVBoxLayout(this);
     mainLay->setContentsMargins(0, 0, 0, 0);
     mainLay->setSpacing(0);
@@ -126,7 +126,20 @@ void PdfViewer::setupUi() {
     m_view->setPageMode(QPdfView::PageMode::MultiPage);
     m_view->setZoomMode(QPdfView::ZoomMode::FitInView);
     m_view->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
-    m_view->setStyleSheet("background: transparent; border: none;");
+    m_view->setStyleSheet("border: none;");
+    // QPdfView inherits QAbstractScrollArea which defaults to
+    // QFrame::StyledPanel|QFrame::Sunken — that paints the gray left/right
+    // border strips visible in the gallery thumbnail and the viewer itself.
+    // Removing the frame completely eliminates those strips.
+    m_view->setFrameStyle(QFrame::NoFrame);
+    // Never show a horizontal scrollbar — it leaves a dead gray strip on the
+    // right side because QAbstractScrollArea reserves the space even when the
+    // bar is hidden.  FitInView / FitToWidth never need horizontal scrolling.
+    m_view->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+    m_view->setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOn);
+    // Remove the QAbstractScrollArea corner widget (the square where the two
+    // scrollbars would meet) — it contributes to the gray strip as well.
+    m_view->setCornerWidget(nullptr);
 
     // ── Blue text-selection highlight ─────────────────────────────────────────
     // QPdfView (Qt 6.4+) renders the text selection using QPalette::Highlight.
@@ -164,10 +177,13 @@ void PdfViewer::setupUi() {
     m_thumbPanel = new QListWidget(m_splitter);
     m_thumbPanel->setViewMode(QListView::IconMode);
     m_thumbPanel->setIconSize(QSize(130, 170));
-    m_thumbPanel->setGridSize(QSize(154, 200));
+    // fixedWidth(178) - scrollbar(8 px QSS) = 170 px viewport.
+    // gridSize.width == 170 → IconMode centers the 130 px icon with exactly 20 px each side.
+    // spacing(0) removes the outer margin that would shift the cell off-center.
+    m_thumbPanel->setGridSize(QSize(170, 200));
     m_thumbPanel->setResizeMode(QListView::Adjust);
     m_thumbPanel->setMovement(QListView::Static);
-    m_thumbPanel->setSpacing(6);
+    m_thumbPanel->setSpacing(0);
     m_thumbPanel->setFixedWidth(178);
     m_thumbPanel->setStyleSheet(Style::pdfViewerStyle());
     m_thumbPanel->setVerticalScrollBarPolicy(Qt::ScrollBarAsNeeded);
@@ -177,8 +193,21 @@ void PdfViewer::setupUi() {
 
     m_splitter->addWidget(m_view);
     m_splitter->addWidget(m_thumbPanel);
-    m_splitter->setStretchFactor(0, 1);
-    m_splitter->setStretchFactor(1, 0);
+    m_splitter->setStretchFactor(0, 1);  // view takes all extra space
+    m_splitter->setStretchFactor(1, 0);  // sidebar doesn't grow on resize
+
+    // Set explicit initial sizes so the view always fills its container on
+    // first open.  Without this, QListWidget's sizeHint() claims ~150 px even
+    // when the splitter hasn't been interacted with, creating the empty gray
+    // strip the user sees on every cold start.  We defer one event-loop tick
+    // so the splitter knows its own width before we distribute it.
+    // sideWidth must match m_thumbPanel->setFixedWidth() above (178 px).
+    QTimer::singleShot(0, this, [this]() {
+        const int total     = m_splitter->width();
+        const int sideWidth = 178;
+        m_splitter->setSizes({ qMax(0, total - sideWidth), sideWidth });
+    });
+
     mainLay->addWidget(m_splitter, 1);
 
     setupAudioPanel();
@@ -186,6 +215,9 @@ void PdfViewer::setupUi() {
     m_audioPanel->hide();
 
     setupVideoDialog();
+
+    // Apply current theme colors (viewer background, etc.)
+    applyTheme();
 }
 
 void PdfViewer::setupToolbar() {
@@ -293,6 +325,15 @@ void PdfViewer::setupToolbar() {
     connect(m_thumbToggleBtn, &QToolButton::clicked, [this](bool checked){
         m_thumbPanel->setVisible(checked);
         m_thumbToggleBtn->setText(checked ? "⊟" : "⊞");
+        // Re-distribute splitter so the view fills the full width when sidebar
+        // is hidden, and restores to 160 px sidebar when shown again.
+        QTimer::singleShot(0, this, [this, checked]() {
+            const int total = m_splitter->width();
+            if (checked)
+                m_splitter->setSizes({ qMax(0, total - 160), 160 });
+            else
+                m_splitter->setSizes({ total, 0 });
+        });
     });
     lay->addWidget(m_thumbToggleBtn);
 }
@@ -369,7 +410,7 @@ void PdfViewer::setupAudioPanel() {
 
 void PdfViewer::setupVideoDialog() {
     m_videoDialog = new QDialog(this,
-        Qt::Tool | Qt::WindowTitleHint | Qt::WindowCloseButtonHint);
+                                Qt::Tool | Qt::WindowTitleHint | Qt::WindowCloseButtonHint);
     m_videoDialog->setWindowTitle(Strings::get(StringKey::PdfVideoTitle));
     m_videoDialog->setMinimumSize(480, 360);
     m_videoDialog->resize(640, 420);
@@ -497,10 +538,65 @@ void PdfViewer::retranslate() {
     m_thumbToggleBtn->setToolTip(Strings::get(StringKey::PdfSidebarTooltip));
     // ScrollModeBtn-Text hängt vom aktuellen Modus ab
     m_scrollModeBtn->setText(m_continuousMode
-        ? Strings::get(StringKey::PdfScrollModeMulti)
-        : Strings::get(StringKey::PdfScrollModeSingle));
+                                 ? Strings::get(StringKey::PdfScrollModeMulti)
+                                 : Strings::get(StringKey::PdfScrollModeSingle));
     m_videoDialog->setWindowTitle(Strings::get(StringKey::PdfVideoTitle));
     m_audioLabel->setText(Strings::get(StringKey::PdfAudioLabel));
+}
+
+void PdfViewer::applyTheme() {
+    const ThemeColors t = AppSettings::instance().currentTheme();
+    const QColor viewBg = t.pdfViewerBg;
+    const QString bgName = viewBg.name();
+
+    // Outer PdfViewer widget (class selector beats the global "QWidget{}" rule)
+    setStyleSheet(QString("PdfViewer { background: %1; }").arg(bgName));
+
+    // ── QPdfView frame ────────────────────────────────────────────────────────
+    // Do NOT set "background: transparent" here — that cascades into the
+    // viewport and fights against the colour we want.  Just clear the border.
+    m_view->setStyleSheet("QPdfView { border: none; }");
+
+    // ── Viewport (where pages are actually rendered) ──────────────────────────
+    // The global app stylesheet contains "QWidget { background: transparent }"
+    // which would normally win over setPalette().  Setting the stylesheet
+    // *directly on the viewport widget* gives us higher specificity and
+    // overrides the app-level rule.  QPdfView's page-layout renderer also reads
+    // QPalette::Base for the "paper margin" colour, so we patch the palette too.
+    if (QWidget* vp = m_view ? m_view->viewport() : nullptr) {
+        // Widget-level stylesheet: highest possible QSS priority for this widget
+        vp->setStyleSheet(QString("background: %1;").arg(bgName));
+
+        // Palette: used by QPdfView's internal page renderer to fill the
+        // area around/between pages (the "paper margin" background).
+        QPalette pal = vp->palette();
+        pal.setColor(QPalette::Active,   QPalette::Base,   viewBg);
+        pal.setColor(QPalette::Inactive, QPalette::Base,   viewBg);
+        pal.setColor(QPalette::Active,   QPalette::Window, viewBg);
+        pal.setColor(QPalette::Inactive, QPalette::Window, viewBg);
+        pal.setColor(QPalette::Active,   QPalette::Dark,   viewBg);
+        pal.setColor(QPalette::Inactive, QPalette::Dark,   viewBg);
+        vp->setPalette(pal);
+        vp->setAutoFillBackground(true);
+        vp->update();
+    }
+
+    // Also patch the QPdfView's own palette (for any painting it does outside
+    // the viewport, e.g. the scroll-area "corner" region).
+    {
+        QPalette pal = m_view->palette();
+        pal.setColor(QPalette::Active,   QPalette::Base,   viewBg);
+        pal.setColor(QPalette::Inactive, QPalette::Base,   viewBg);
+        pal.setColor(QPalette::Active,   QPalette::Window, viewBg);
+        pal.setColor(QPalette::Inactive, QPalette::Window, viewBg);
+        pal.setColor(QPalette::Active,   QPalette::Dark,   viewBg);
+        pal.setColor(QPalette::Inactive, QPalette::Dark,   viewBg);
+        m_view->setPalette(pal);
+    }
+
+    // Thumbnail panel
+    if (m_thumbPanel)
+        m_thumbPanel->setStyleSheet(Style::pdfViewerStyle());
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -525,18 +621,26 @@ void PdfViewer::onDocumentStatusChanged(QPdfDocument::Status status) {
     m_docTitleLabel->setText(title);
 
     // Defer setZoomMode until the event loop has fully processed the Ready
-    // signal, the pending show/resize events from setVisible(), and the
-    // geometry assignment in updateDisplay().  50 ms is enough on every
-    // platform tested; 0 ms is not reliable when the widget was just made
-    // visible for the first time.
-    QTimer::singleShot(50, this, [this]() {
+    // signal and the geometry assignment from resizeEvent.  0 ms is sufficient
+    // now that resizeEvent always sizes the pdfViewer correctly before loadFile
+    // is called (the previous 50 ms was a workaround for the missing geometry).
+    QTimer::singleShot(0, this, [this]() {
         if (!m_view || m_doc->status() != QPdfDocument::Status::Ready) return;
+        // Ensure splitter sizes are correct — a resize that happened while the
+        // document was loading might have distributed widths wrongly.
+        const int total     = m_splitter->width();
+        const int sideWidth = m_thumbPanel->isVisible() ? 178 : 0;
+        if (total > sideWidth)
+            m_splitter->setSizes({ total - sideWidth, sideWidth });
         // Re-send a genuine resize with the now-correct viewport size so
         // QPdfView recomputes its page layout before we switch zoom mode.
         QResizeEvent re(m_view->viewport()->size(), m_view->viewport()->size());
         QApplication::sendEvent(m_view, &re);
         m_view->setZoomMode(QPdfView::ZoomMode::FitInView);
         updateZoomLabel();
+        // Re-apply viewport background: QPdfView can reset internal style state
+        // when a new document is attached / the viewport is resized for the first time.
+        applyTheme();
         if (m_view->viewport())
             m_view->viewport()->update();
     });
@@ -647,7 +751,7 @@ void PdfViewer::playVideoAnnotation(const MediaAnnotation& ann) {
     m_videoPlayer->setSource(url);
     m_videoLabel->setText(QString("🎬  %1").arg(ann.label));
     m_videoDialog->setWindowTitle(ann.label.isEmpty()
-        ? Strings::get(StringKey::PdfVideoTitle) : ann.label);
+                                      ? Strings::get(StringKey::PdfVideoTitle) : ann.label);
     m_videoDialog->show();
     m_videoDialog->raise();
     m_videoPlayer->play();
@@ -743,7 +847,7 @@ void PdfViewer::extractAndPrepareAudio() {
     QDir dir = fi.absoluteDir();
     const QString base = fi.completeBaseName();
     static const QStringList exts = {
-        "mp3","wav","ogg","flac","aac","m4a","opus","wma","aiff","aif"};
+                                      "mp3","wav","ogg","flac","aac","m4a","opus","wma","aiff","aif"};
     QString found;
     for (const QString& e : exts) {
         QString c = dir.filePath(base + "." + e);
@@ -761,7 +865,7 @@ void PdfViewer::extractAndPrepareAudio() {
 
 void PdfViewer::loadAudioSource(const QString& path, const QString& label) {
     const QUrl url = path.startsWith("http")
-                     ? QUrl(path) : QUrl::fromLocalFile(path);
+    ? QUrl(path) : QUrl::fromLocalFile(path);
     m_audioPlayer->setSource(url);
     m_audioLabel->setText(label);
     m_audioPanel->show();
@@ -835,7 +939,7 @@ bool PdfViewer::eventFilter(QObject* obj, QEvent* e) {
             copyAct->setShortcut(QKeySequence::Copy);
             // Only enable if there is something in the selection buffer or clipboard
             const bool hasSelection = !selected.isEmpty()
-                || !QApplication::clipboard()->text().isEmpty();
+                                      || !QApplication::clipboard()->text().isEmpty();
             copyAct->setEnabled(true); // always show; user knows best
             connect(copyAct, &QAction::triggered, this, [this]() {
                 // Send Ctrl+C to QPdfView so its internal handler copies the selection
@@ -860,11 +964,11 @@ bool PdfViewer::eventFilter(QObject* obj, QEvent* e) {
 void PdfViewer::toggleScrollMode() {
     m_continuousMode = !m_continuousMode;
     m_view->setPageMode(m_continuousMode
-                        ? QPdfView::PageMode::MultiPage
-                        : QPdfView::PageMode::SinglePage);
+                            ? QPdfView::PageMode::MultiPage
+                            : QPdfView::PageMode::SinglePage);
     m_scrollModeBtn->setText(m_continuousMode
-        ? Strings::get(StringKey::PdfScrollModeMulti)
-        : Strings::get(StringKey::PdfScrollModeSingle));
+                                 ? Strings::get(StringKey::PdfScrollModeMulti)
+                                 : Strings::get(StringKey::PdfScrollModeSingle));
     m_scrollModeBtn->setChecked(m_continuousMode);
     if (m_overlay) m_overlay->update();
 }
@@ -919,7 +1023,7 @@ void PdfViewer::fitWidth() {
 
 void PdfViewer::handleWheelZoom(QWheelEvent* we) {
     double base = (m_view->zoomMode() == QPdfView::ZoomMode::Custom)
-                  ? m_zoomFactor : qMax(0.1, m_view->zoomFactor());
+    ? m_zoomFactor : qMax(0.1, m_view->zoomFactor());
     double steps   = we->angleDelta().y() / 120.0;
     double newFact = qBound(0.1, base * qPow(1.12, steps), 8.0);
     m_view->setZoomMode(QPdfView::ZoomMode::Custom);
@@ -1042,15 +1146,17 @@ void PdfViewer::showEvent(QShowEvent* e) {
     // QPdfView initialises its internal page renderer lazily.  If a document
     // is already loaded (Ready) when the widget becomes visible for the first
     // time we must kick a relayout, because the viewport was 0×0 before show.
-    // Use a small delay (10 ms) rather than 0 ms to let the geometry manager
-    // finish positioning the widget before we ask QPdfView to fit the page.
+    // 0 ms is sufficient now that resizeEvent() in FullscreenView always sets
+    // the correct geometry before loadFile() is called; the previous 10 ms
+    // delay was a workaround for the geometry race condition there.
     if (m_doc && m_doc->status() == QPdfDocument::Status::Ready) {
-        QTimer::singleShot(10, this, [this]() {
+        QTimer::singleShot(0, this, [this]() {
             if (!m_view || m_doc->status() != QPdfDocument::Status::Ready) return;
             QResizeEvent re(m_view->viewport()->size(), m_view->viewport()->size());
             QApplication::sendEvent(m_view, &re);
             m_view->setZoomMode(QPdfView::ZoomMode::FitInView);
             updateZoomLabel();
+            applyTheme();  // re-stamp viewport background after lazy init
             if (m_view->viewport())
                 m_view->viewport()->update();
         });
@@ -1061,5 +1167,3 @@ void PdfViewer::resizeEvent(QResizeEvent* e) {
     QWidget::resizeEvent(e);
     repositionOverlay();
 }
-
-

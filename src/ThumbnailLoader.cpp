@@ -27,11 +27,16 @@ QString cacheDir() {
 }
 
 QString cacheKey(const QString& path, const QSize& size) {
-    // Include last-modified timestamp so edited/replaced files get fresh thumbnails
+    // Include last-modified timestamp so edited/replaced files get fresh thumbnails.
+    // v2: bumped when PDF thumbnail generation changed from letterbox to fill-crop
+    // v3: bumped when PDF thumbnail generation changed back to fit-in (no crop) so
+    //     the complete first page is always shown inside the tile without clipping.
+    static const int kCacheVersion = 3;
     qint64 mtime = QFileInfo(path).lastModified().toMSecsSinceEpoch();
     QByteArray raw = (path + QChar('|') + QString::number(size.width())
                       + QChar('x') + QString::number(size.height())
-                      + QChar('|') + QString::number(mtime)).toUtf8();
+                      + QChar('|') + QString::number(mtime)
+                      + QChar('|') + QString::number(kCacheVersion)).toUtf8();
     return cacheDir() + "/" +
            QCryptographicHash::hash(raw, QCryptographicHash::Md5).toHex() + ".jpg";
 }
@@ -279,44 +284,48 @@ QPixmap ThumbnailTask::generatePdfThumbnail(const QString& path, const QSize& si
     if (doc.load(path) != QPdfDocument::Error::None)
         return fallbackPdfThumbnail(size);
 
-    // Render first page at thumbnail resolution
     QSizeF pageSize = doc.pagePointSize(0);
     if (pageSize.isEmpty())
         return fallbackPdfThumbnail(size);
 
-    // Scale to fit thumbnail keeping aspect ratio
-    double scaleX = size.width()  / pageSize.width();
-    double scaleY = size.height() / pageSize.height();
-    double scale  = qMin(scaleX, scaleY);
-    QSize  renderSize(static_cast<int>(pageSize.width()  * scale),
-                      static_cast<int>(pageSize.height() * scale));
+    // Fit the entire first page inside `size` with the correct aspect ratio.
+    // Using qMin (fit-in, not fill-crop) guarantees the complete page is always
+    // visible — no content is clipped.  The thumbnail consumer (setThumbnail)
+    // also uses KeepAspectRatio so there is no second scaling step that would
+    // expand the image beyond the label bounds.
+    double scaleByW = size.width()  / pageSize.width();
+    double scaleByH = size.height() / pageSize.height();
+    double scale    = qMin(scaleByW, scaleByH);
+    QSize  renderSize(qMax(1, static_cast<int>(pageSize.width()  * scale)),
+                      qMax(1, static_cast<int>(pageSize.height() * scale)));
 
     QImage img = doc.render(0, renderSize);
     if (img.isNull())
         return fallbackPdfThumbnail(size);
 
-    // Center on a background canvas
-    QPixmap canvas(size);
-    canvas.fill(QColor(35, 45, 50));
-    QPainter p(&canvas);
+    // Return the rendered page directly — exact pixel size matches renderSize
+    // which is <= size on both axes.  setThumbnail will place it inside the
+    // label using KeepAspectRatio, centering it.  No background canvas needed:
+    // the label's own background color (tileBgColor) fills any remaining area.
     QPixmap page = QPixmap::fromImage(std::move(img));
-    int ox = (size.width()  - page.width())  / 2;
-    int oy = (size.height() - page.height()) / 2;
-    p.drawPixmap(ox, oy, page);
 
-    // Subtle PDF badge
-    QFont f = p.font();
-    f.setPixelSize(11);
-    f.setBold(true);
-    p.setFont(f);
-    p.setPen(Qt::NoPen);
-    p.setBrush(QColor(200, 50, 50, 200));
-    QRect badge(4, size.height() - 22, 36, 18);
-    p.drawRoundedRect(badge, 4, 4);
-    p.setPen(Qt::white);
-    p.drawText(badge, Qt::AlignCenter, "PDF");
-    p.end();
-    return canvas;
+    // Subtle PDF badge (bottom-left corner of the rendered page)
+    {
+        QPainter p(&page);
+        QFont f = p.font();
+        f.setPixelSize(qMax(9, renderSize.height() / 20));
+        f.setBold(true);
+        p.setFont(f);
+        p.setPen(Qt::NoPen);
+        p.setBrush(QColor(200, 50, 50, 200));
+        int bh = qMax(14, renderSize.height() / 18);
+        int bw = bh * 2;
+        QRect badge(3, renderSize.height() - bh - 3, bw, bh);
+        p.drawRoundedRect(badge, 3, 3);
+        p.setPen(Qt::white);
+        p.drawText(badge, Qt::AlignCenter, "PDF");
+    }
+    return page;
 }
 
 QPixmap ThumbnailTask::fallbackPdfThumbnail(const QSize& size)

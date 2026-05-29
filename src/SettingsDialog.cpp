@@ -1228,6 +1228,8 @@ QWidget* SettingsDialog::buildDesignTab() {
     auto* pdfSidebarBtn   = colorRow(pdfForm, Strings::get(StringKey::SettingsDesignPdfSidebarBg),   cust.pdfSidebarBg);
     auto* pdfToolbarBtn   = colorRow(pdfForm, Strings::get(StringKey::SettingsDesignPdfToolbarBg),   cust.pdfToolbarBg);
     auto* pdfScrollbarBtn = colorRow(pdfForm, Strings::get(StringKey::SettingsDesignPdfScrollbarBg), cust.pdfScrollbarBg);
+    auto* pdfViewerBgBtn  = colorRow(pdfForm, Strings::get(StringKey::SettingsDesignPdfViewerBg),    cust.pdfViewerBg);
+    auto* pdfThumbBgBtn   = colorRow(pdfForm, Strings::get(StringKey::SettingsDesignPdfThumbBg),     cust.pdfThumbBg);
     auto* sidebarBgBtn    = colorRow(pdfForm, Strings::get(StringKey::SettingsDesignSidebarBg),       cust.sidebarBg);
     cgLay->addWidget(pdfGroup);
 
@@ -1285,6 +1287,8 @@ QWidget* SettingsDialog::buildDesignTab() {
         t.pdfSidebarBg     = pdfSidebarBtn->color();
         t.pdfToolbarBg     = pdfToolbarBtn->color();
         t.pdfScrollbarBg   = pdfScrollbarBtn->color();
+        t.pdfViewerBg      = pdfViewerBgBtn->color();
+        t.pdfThumbBg       = pdfThumbBgBtn->color();
         t.sidebarBg        = sidebarBgBtn->color();
         t.menuBarBg        = menuBarBgBtn->color();
         t.toolbarBg        = toolbarBgBtn->color();
@@ -1404,6 +1408,8 @@ QWidget* SettingsDialog::buildDesignTab() {
     connect(pdfSidebarBtn,    &ColorPickerButton::colorChanged, this, [liveApply](const QColor&){ liveApply(); });
     connect(pdfToolbarBtn,    &ColorPickerButton::colorChanged, this, [liveApply](const QColor&){ liveApply(); });
     connect(pdfScrollbarBtn,  &ColorPickerButton::colorChanged, this, [liveApply](const QColor&){ liveApply(); });
+    connect(pdfViewerBgBtn,   &ColorPickerButton::colorChanged, this, [liveApply](const QColor&){ liveApply(); });
+    connect(pdfThumbBgBtn,    &ColorPickerButton::colorChanged, this, [liveApply](const QColor&){ liveApply(); });
     connect(sidebarBgBtn,     &ColorPickerButton::colorChanged, this, [liveApply](const QColor&){ liveApply(); });
     connect(menuBarBgBtn,     &ColorPickerButton::colorChanged, this, [liveApply](const QColor&){ liveApply(); });
     connect(toolbarBgBtn,     &ColorPickerButton::colorChanged, this, [liveApply](const QColor&){ liveApply(); });

@@ -229,6 +229,8 @@ static const QMap<StringKey, QString> s_de = {
     { StringKey::SettingsDesignPdfSidebarBg,   "Seitenleiste:" },
     { StringKey::SettingsDesignPdfToolbarBg,   "Toolbar:" },
     { StringKey::SettingsDesignPdfScrollbarBg, "Scrollleiste:" },
+    { StringKey::SettingsDesignPdfViewerBg,    "Viewer-Hintergrund:" },
+    { StringKey::SettingsDesignPdfThumbBg,     "Vorschau-Hintergrund:" },
     { StringKey::SettingsDesignButtonBg,        "Button-Hintergrund:" },
     { StringKey::SettingsDesignSidebarBg,       "Sidebar-Hintergrund:" },
 
@@ -528,6 +530,8 @@ static const QMap<StringKey, QString> s_en = {
     { StringKey::SettingsDesignPdfSidebarBg,   "Sidebar:" },
     { StringKey::SettingsDesignPdfToolbarBg,   "Toolbar:" },
     { StringKey::SettingsDesignPdfScrollbarBg, "Scrollbar:" },
+    { StringKey::SettingsDesignPdfViewerBg,    "Viewer Background:" },
+    { StringKey::SettingsDesignPdfThumbBg,     "Thumbnail Background:" },
     { StringKey::SettingsDesignButtonBg,        "Button background:" },
     { StringKey::SettingsDesignSidebarBg,       "Sidebar background:" },
 

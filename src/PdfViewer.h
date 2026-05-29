@@ -45,6 +45,7 @@ public:
     void loadFile(const QString& path);
     void closeDocument();
     void retranslate();
+    void applyTheme();
 
 signals:
     void pageChanged(int page, int total);

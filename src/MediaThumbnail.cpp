@@ -52,6 +52,11 @@ void MediaThumbnail::setupUi() {
     m_imageLabel->setAlignment(Qt::AlignCenter);
     m_imageLabel->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
     m_imageLabel->setStyleSheet("background: transparent;");
+    // Clip the pixmap to the label bounds: required so that
+    // KeepAspectRatioByExpanding-scaled pixmaps (which are intentionally larger
+    // than the label) don't overflow into adjacent widgets.
+    m_imageLabel->setScaledContents(false);  // we scale manually in setThumbnail
+    m_imageLabel->setMinimumSize(1, 1);      // prevent zero-size on first layout pass
 
     // Video overlay label
     m_typeOverlay = new QLabel(m_imageLabel);
@@ -143,10 +148,8 @@ void MediaThumbnail::setupUi() {
     m_layout->addWidget(m_tagBarRow);
 
     setOptionsVisible(true);
-    setStyleSheet(
-        "MediaThumbnail { background: rgb(18,28,34); border-radius: 8px;"
-        "border: 1px solid rgba(40,60,70,0.7); }"
-        );
+    // Apply theme-aware tile background (reads tileBgColor / gradient from current theme)
+    setStyleSheet(Style::thumbnailStyle());
 }
 
 // Returns true if the mouse cursor is currently over the tooltip panel or any of its children.
@@ -509,6 +512,20 @@ void MediaThumbnail::hideCategoryTooltip() {
     m_addCatHoverBtn = nullptr;
 }
 
+void MediaThumbnail::applyTheme() {
+    // Re-apply the tile stylesheet from the current theme
+    setStyleSheet(Style::thumbnailStyle());
+
+    // Update image-label background if no thumbnail is loaded yet
+    if (!m_item.filePath.isEmpty() && !m_item.isAudio()) {
+        const QColor bg = AppSettings::instance().currentTheme().tileBgColor;
+        m_imageLabel->setStyleSheet(
+            QString("background: rgba(%1,%2,%3,1); border-radius: 5px;")
+                .arg(bg.red()).arg(bg.green()).arg(bg.blue()));
+    }
+    update();
+}
+
 void MediaThumbnail::setItem(const MediaItem& item, int index) {
     m_item = item;
     m_index = index;
@@ -544,8 +561,11 @@ void MediaThumbnail::setItem(const MediaItem& item, int index) {
             "background: qlineargradient(x1:0,y1:0,x2:0,y2:1,"
             "stop:0 rgba(60,40,90,1), stop:1 rgba(30,20,50,1)); border-radius: 5px;");
     } else {
+        // Use the same tileBgColor as the tile itself so the empty-image area matches
+        const QColor bg = AppSettings::instance().currentTheme().tileBgColor;
         m_imageLabel->setStyleSheet(
-            "background: rgba(20,32,40,1); border-radius: 5px;");
+            QString("background: rgba(%1,%2,%3,1); border-radius: 5px;")
+                .arg(bg.red()).arg(bg.green()).arg(bg.blue()));
     }
     updateCompactMode();
 }
@@ -553,6 +573,17 @@ void MediaThumbnail::setItem(const MediaItem& item, int index) {
 void MediaThumbnail::setThumbnail(const QPixmap& pix) {
     if (pix.isNull()) return;
     QSize sz = m_imageLabel->size();
+    if (sz.isEmpty()) return;
+
+    // Scale the pixmap to fit entirely within the label (KeepAspectRatio).
+    // This is correct for both images and PDFs:
+    // - The thumbnail generator already produced a pixmap sized to fit `tileSize`
+    //   with the correct aspect ratio (fit-in semantics, no crop).
+    // - Re-scaling here to the actual label size (which is smaller than tileSize
+    //   by the fixed-height UI rows) ensures the complete page remains visible.
+    // KeepAspectRatioByExpanding must NOT be used: the pixmap is already
+    // sized for tileSize, so expanding to fill the smaller label would zoom in
+    // and clip the content — exactly the "1/6 visible" bug.
     m_imageLabel->setPixmap(pix.scaled(sz, Qt::KeepAspectRatio, Qt::SmoothTransformation));
 
     // Reposition video overlay
@@ -693,11 +724,14 @@ void MediaThumbnail::mousePressEvent(QMouseEvent* e) {
                 setStyleSheet(
                     "MediaThumbnail { background: rgba(0,200,160,0.13); border-radius: 8px;"
                     "border: 3px solid #00ffdd; }");
-            else
-                // Gerade ENTFERNT → gedimmt
+            else {
+                // Gerade ENTFERNT → zurück zum Theme-Hintergrund
+                const QColor bg = AppSettings::instance().currentTheme().tileBgColor;
                 setStyleSheet(
-                    "MediaThumbnail { background: rgba(10,18,22,0.6); border-radius: 8px;"
-                    "border: 1px solid rgba(40,60,70,0.4); }");
+                    QString("MediaThumbnail { background: rgba(%1,%2,%3,0.6); border-radius: 8px;"
+                            "border: 1px solid rgba(%1,%2,%3,0.4); }")
+                        .arg(bg.red()).arg(bg.green()).arg(bg.blue()));
+            }
             update();
             return;
         }
@@ -717,10 +751,13 @@ void MediaThumbnail::mousePressEvent(QMouseEvent* e) {
             // Update visual state
             setProperty("groupTagged", !tagged);
             setSelected(!tagged);
-            if (tagged)
-                setStyleSheet("MediaThumbnail { background: rgb(18,28,34); border-radius: 8px;"
-                              "border: 1px solid rgba(40,60,70,0.4); }");
-            else
+            if (tagged) {
+                const QColor bg = AppSettings::instance().currentTheme().tileBgColor;
+                setStyleSheet(
+                    QString("MediaThumbnail { background: rgb(%1,%2,%3); border-radius: 8px;"
+                            "border: 1px solid rgba(%1,%2,%3,0.4); }")
+                        .arg(bg.red()).arg(bg.green()).arg(bg.blue()));
+            } else
                 setStyleSheet("MediaThumbnail { background: rgb(30,22,48); border-radius: 8px;"
                               "border: 2px solid rgba(180,120,255,0.7); }");
             update();

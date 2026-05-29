@@ -243,6 +243,8 @@ enum class StringKey {
     SettingsDesignPdfSidebarBg,
     SettingsDesignPdfToolbarBg,
     SettingsDesignPdfScrollbarBg,
+    SettingsDesignPdfViewerBg,
+    SettingsDesignPdfThumbBg,
     SettingsDesignButtonBg,
     SettingsDesignSidebarBg,
 

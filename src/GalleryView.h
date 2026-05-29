@@ -30,6 +30,7 @@ public:
     void refresh();
     void retryFailedThumbnails();
     void reloadAllThumbnails();   // Force-reload every thumbnail (fixes black previews)
+    void applyTheme();            // Re-apply theme colors to all tiles
 
     int columns() const { return m_columns; }
     void setColumns(int c);

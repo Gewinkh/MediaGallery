@@ -602,6 +602,14 @@ void MainWindow::applyTheme() {
                 .arg(theme.textMuted.name())
                 .arg(theme.border.name()));
     }
+
+    // Propagate viewer background (pdfViewerBg) to fullscreen / PDF widgets
+    if (m_fullscreenView)
+        m_fullscreenView->applyTheme();
+
+    // Propagate tile background (tileBgColor) to all gallery tiles
+    if (m_galleryView)
+        m_galleryView->applyTheme();
 }
 
 void MainWindow::retranslateUi() {

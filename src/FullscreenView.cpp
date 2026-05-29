@@ -1,5 +1,7 @@
 #include "FullscreenView.h"
 #include "PdfViewer.h"
+#include "AppSettings.h"
+#include "Style.h"
 #include "Icons.h"
 #include "Strings.h"
 #include <QLineEdit>
@@ -17,7 +19,8 @@ FullscreenView::FullscreenView(TagManager* tagMgr, QWidget* parent)
     : QWidget(parent), m_tagMgr(tagMgr)
 {
     setMouseTracking(true);
-    setStyleSheet("background: #0a1216;");
+    // Background set from current theme — see applyTheme()
+    applyTheme();
 
     // --- Top bar ---
     m_topBar = new QWidget(this);
@@ -302,6 +305,10 @@ void FullscreenView::resizeEvent(QResizeEvent* e) {
     m_bottomBar->setGeometry(0, height() - m_bottomBar->height(), width(), m_bottomBar->height());
     int contentH = height() - m_topBar->height() - m_bottomBar->height();
     m_videoPlayer->setGeometry(0, m_topBar->height(), width(), contentH);
+    // PdfViewer must be explicitly repositioned on every resize — without this
+    // the widget keeps its previous geometry when the splitter/stack changes
+    // size on first show, which causes the broken first-render layout.
+    m_pdfViewer->setGeometry(0, m_topBar->height(), width(), contentH);
     updateZoom();
 }
 
@@ -541,4 +548,14 @@ void FullscreenView::retranslate() {
     m_nextBtn->setText(Strings::get(StringKey::FullscreenNext));
     m_tagBar->retranslate();
     m_pdfViewer->retranslate();
+}
+
+void FullscreenView::applyTheme() {
+    const ThemeColors t = AppSettings::instance().currentTheme();
+    // Class selector beats the global "QWidget { background: transparent }" rule.
+    // Using FullscreenView {} means only THIS widget's background changes, not all children.
+    setStyleSheet(QString("FullscreenView { background: %1; }").arg(t.pdfViewerBg.name()));
+    // Forward to embedded PDF viewer so it also updates its QPdfView palette.
+    if (m_pdfViewer)
+        m_pdfViewer->applyTheme();
 }

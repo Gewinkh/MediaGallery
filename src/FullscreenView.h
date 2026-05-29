@@ -27,6 +27,7 @@ public:
     bool randomNext() const { return m_randomNext; }
     void setRandomNext(bool r) { m_randomNext = r; updateRandomBtn(); }
     void retranslate();
+    void applyTheme();
     int  currentGlobalIndex() const { return m_currentGlobalIndex; }
 
 signals:

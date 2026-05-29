@@ -29,6 +29,8 @@ QJsonObject ThemeColors::toJson() const {
     o["tileBgGradAngle"] = tileBgGradAngle;
     o["tileGlowOnHover"] = tileGlowOnHover;
     o["tileGlowRadius"]  = tileGlowRadius;
+    o["pdfViewerBg"]    = pdfViewerBg.name();
+    o["pdfThumbBg"]     = pdfThumbBg.name();
     o["pdfSidebarBg"]   = pdfSidebarBg.name();
     o["pdfToolbarBg"]   = pdfToolbarBg.name();
     o["pdfScrollbarBg"] = pdfScrollbarBg.name();
@@ -72,6 +74,8 @@ ThemeColors ThemeColors::fromJson(const QJsonObject& o) {
     t.tileBgGradAngle = o["tileBgGradAngle"].toInt(180);
     t.tileGlowOnHover = o["tileGlowOnHover"].toBool(false);
     t.tileGlowRadius  = static_cast<float>(o["tileGlowRadius"].toDouble(6.0));
+    t.pdfViewerBg    = QColor(o["pdfViewerBg"].toString("#0d1518"));
+    t.pdfThumbBg     = QColor(o["pdfThumbBg"].toString("#ffffff"));
     t.pdfSidebarBg   = QColor(o["pdfSidebarBg"].toString("#0a1216"));
     t.pdfToolbarBg   = QColor(o["pdfToolbarBg"].toString("#121c22"));
     t.pdfScrollbarBg = QColor(o["pdfScrollbarBg"].toString("#121c22"));
@@ -110,6 +114,8 @@ ThemeColors AppSettings::themeForProfile(DesignProfile p) {
         t.filterBarBg   = QColor(12, 20, 26);
         t.statusBarBg   = QColor(8, 14, 18);
         t.sidebarBg     = QColor(18, 28, 34);
+        t.pdfViewerBg   = QColor(13, 21, 24);
+        t.pdfThumbBg    = QColor(255, 255, 255);
         t.pdfSidebarBg  = QColor(10, 18, 22);
         t.pdfToolbarBg  = QColor(18, 28, 34);
         t.pdfScrollbarBg= QColor(18, 28, 34);
@@ -136,6 +142,8 @@ ThemeColors AppSettings::themeForProfile(DesignProfile p) {
         t.filterBarBg      = QColor(4, 4, 4);
         t.statusBarBg      = QColor(0, 0, 0);
         t.sidebarBg        = QColor(8, 8, 8);
+        t.pdfViewerBg      = QColor(0, 0, 0);
+        t.pdfThumbBg       = QColor(255, 255, 255);
         t.pdfSidebarBg     = QColor(0, 0, 0);
         t.pdfToolbarBg     = QColor(8, 8, 8);
         t.pdfScrollbarBg   = QColor(8, 8, 8);
@@ -165,6 +173,8 @@ ThemeColors AppSettings::themeForProfile(DesignProfile p) {
         t.filterBarBg      = QColor(0, 8, 24);
         t.statusBarBg      = QColor(0, 3, 12);
         t.sidebarBg        = QColor(5, 12, 28);
+        t.pdfViewerBg      = QColor(0, 3, 12);
+        t.pdfThumbBg       = QColor(255, 255, 255);
         t.pdfSidebarBg     = QColor(0, 5, 18);
         t.pdfToolbarBg     = QColor(5, 12, 28);
         t.pdfScrollbarBg   = QColor(5, 12, 28);
@@ -194,6 +204,8 @@ ThemeColors AppSettings::themeForProfile(DesignProfile p) {
         t.filterBarBg      = QColor(12, 4, 0);
         t.statusBarBg      = QColor(4, 1, 0);
         t.sidebarBg        = QColor(20, 8, 0);
+        t.pdfViewerBg      = QColor(4, 1, 0);
+        t.pdfThumbBg       = QColor(255, 255, 255);
         t.pdfSidebarBg     = QColor(8, 3, 0);
         t.pdfToolbarBg     = QColor(20, 8, 0);
         t.pdfScrollbarBg   = QColor(20, 8, 0);
@@ -225,6 +237,8 @@ ThemeColors AppSettings::themeForProfile(DesignProfile p) {
         t.filterBarBg      = QColor(5, 0, 12);
         t.statusBarBg      = QColor(2, 0, 5);
         t.sidebarBg        = QColor(12, 5, 25);
+        t.pdfViewerBg      = QColor(2, 0, 5);
+        t.pdfThumbBg       = QColor(255, 255, 255);
         t.pdfSidebarBg     = QColor(4, 0, 10);
         t.pdfToolbarBg     = QColor(12, 5, 25);
         t.pdfScrollbarBg   = QColor(12, 5, 25);
@@ -254,6 +268,8 @@ ThemeColors AppSettings::themeForProfile(DesignProfile p) {
         t.filterBarBg      = QColor(6, 1, 4);
         t.statusBarBg      = QColor(2, 0, 1);
         t.sidebarBg        = QColor(18, 6, 12);
+        t.pdfViewerBg      = QColor(2, 0, 1);
+        t.pdfThumbBg       = QColor(255, 255, 255);
         t.pdfSidebarBg     = QColor(6, 0, 4);
         t.pdfToolbarBg     = QColor(18, 6, 12);
         t.pdfScrollbarBg   = QColor(18, 6, 12);
@@ -279,6 +295,8 @@ ThemeColors AppSettings::themeForProfile(DesignProfile p) {
         t.filterBarBg   = QColor(12, 10, 18);
         t.statusBarBg   = QColor(7, 5, 12);
         t.sidebarBg     = QColor(25, 20, 35);
+        t.pdfViewerBg   = QColor(7, 5, 12);
+        t.pdfThumbBg    = QColor(255, 255, 255);
         t.pdfSidebarBg  = QColor(15, 12, 20);
         t.pdfToolbarBg  = QColor(25, 20, 35);
         t.pdfScrollbarBg= QColor(25, 20, 35);
@@ -300,6 +318,8 @@ ThemeColors AppSettings::themeForProfile(DesignProfile p) {
         t.filterBarBg   = QColor(25, 25, 25);
         t.statusBarBg   = QColor(18, 18, 18);
         t.sidebarBg     = QColor(45, 45, 45);
+        t.pdfViewerBg   = QColor(22, 22, 22);
+        t.pdfThumbBg    = QColor(255, 255, 255);
         t.pdfSidebarBg  = QColor(30, 30, 30);
         t.pdfToolbarBg  = QColor(45, 45, 45);
         t.pdfScrollbarBg= QColor(45, 45, 45);

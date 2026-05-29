@@ -49,6 +49,8 @@ struct ThemeColors {
     float  tileGlowRadius  = 6.0f;
 
     // PDF viewer colors
+    QColor pdfViewerBg    = QColor(13, 21, 24);   // background behind PDF pages / media
+    QColor pdfThumbBg     = QColor(255, 255, 255); // background canvas in PDF tile thumbnails
     QColor pdfSidebarBg   = QColor(10, 18, 22);
     QColor pdfToolbarBg   = QColor(18, 28, 34);
     QColor pdfScrollbarBg = QColor(18, 28, 34);
