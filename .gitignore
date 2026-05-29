@@ -19,6 +19,8 @@ _deps/
 *.dylib
 *.app/
 *.zip
+*.autosave
+*.md.autosave
 
 *.o
 *.obj
