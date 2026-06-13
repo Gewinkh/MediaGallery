@@ -43,6 +43,7 @@ public:
     bool          showVideos()        const;
     bool          showAudio()         const;
     bool          showPdfs()          const;
+    bool          showTexts()         const;
 
     void refreshTagList();
     void retranslate();

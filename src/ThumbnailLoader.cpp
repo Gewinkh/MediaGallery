@@ -16,6 +16,9 @@
 #include <QVideoFrame>
 #include <QMediaPlayer>
 #include <QVideoSink>
+#include <QFile>
+#include <QTextStream>
+#include <QPainterPath>
 
 // ---- Disk cache helpers ----
 namespace {
@@ -146,6 +149,8 @@ void ThumbnailTask::run() {
         pix = generateAudioThumbnail(m_path, m_size);
     else if (t == MediaType::Pdf)
         pix = generatePdfThumbnail(m_path, m_size);
+    else if (t == MediaType::Text)
+        pix = generateTextThumbnail(m_path, m_size);
 
     if (!pix.isNull())
         pix.save(cachePath, "JPG", 85);
@@ -346,6 +351,128 @@ QPixmap ThumbnailTask::fallbackPdfThumbnail(const QSize& size)
     p.setFont(f);
     p.setPen(QColor(255, 180, 160, 200));
     p.drawText(pix.rect(), Qt::AlignCenter, "PDF");
+    p.end();
+    return pix;
+}
+
+// Draw the small extension badge in the top-right corner (same idea as PDF badge).
+static void drawExtensionBadge(QPainter& p, const QSize& size, const QString& ext)
+{
+    if (ext.isEmpty()) return;
+    QFont bf("Monospace");
+    bf.setStyleHint(QFont::Monospace);
+    bf.setBold(true);
+    bf.setPixelSize(qMax(9, size.height() / 22));
+    p.setFont(bf);
+
+    const QString label = ext.toUpper();
+    QFontMetrics fm(bf);
+    int textW = fm.horizontalAdvance(label);
+    int bh = qMax(14, size.height() / 18);
+    int bw = textW + bh;
+    int margin = qMax(3, size.width() / 60);
+    QRect badge(size.width() - bw - margin, margin, bw, bh);
+
+    p.setPen(Qt::NoPen);
+    p.setBrush(QColor(0, 150, 136, 210));
+    p.drawRoundedRect(badge, 3, 3);
+    p.setPen(Qt::white);
+    p.drawText(badge, Qt::AlignCenter, label);
+}
+
+QPixmap ThumbnailTask::generateTextThumbnail(const QString& path, const QSize& size)
+{
+    QFile file(path);
+    if (!file.open(QIODevice::ReadOnly | QIODevice::Text))
+        return fallbackTextThumbnail(path, size);
+
+    // Read only the first few lines — never slurp huge files into memory.
+    QTextStream in(&file);
+    QStringList lines;
+    const int kMaxLines = 5;
+    for (int i = 0; i < kMaxLines && !in.atEnd(); ++i)
+        lines << in.readLine();
+    file.close();
+
+    QPixmap pix(size);
+    pix.fill(Qt::transparent);
+    QPainter p(&pix);
+    p.setRenderHint(QPainter::Antialiasing);
+
+    // Dark background (theme-neutral, slightly bluish like the app chrome)
+    QLinearGradient grad(0, 0, 0, size.height());
+    grad.setColorAt(0, QColor(26, 34, 42));
+    grad.setColorAt(1, QColor(16, 22, 28));
+    p.fillRect(pix.rect(), grad);
+
+    // Monospace preview text
+    QFont mono("Monospace");
+    mono.setStyleHint(QFont::Monospace);
+    mono.setPixelSize(qMax(8, size.height() / 16));
+    p.setFont(mono);
+    p.setPen(QColor(180, 205, 200));
+
+    QFontMetrics fm(mono);
+    int lineH  = fm.height();
+    int margin = qMax(6, size.width() / 18);
+    int y      = margin + fm.ascent();
+    const int avail = size.width() - 2 * margin;
+
+    for (const QString& raw : std::as_const(lines)) {
+        if (y > size.height() - margin) break;
+        QString line = raw;
+        line.replace('\t', QStringLiteral("    "));
+        QString elided = fm.elidedText(line, Qt::ElideRight, avail);
+        p.drawText(margin, y, elided);
+        y += lineH;
+    }
+
+    // Extension badge (top-right)
+    drawExtensionBadge(p, size, QFileInfo(path).suffix());
+    p.end();
+    return pix;
+}
+
+QPixmap ThumbnailTask::fallbackTextThumbnail(const QString& path, const QSize& size)
+{
+    QPixmap pix(size);
+    pix.fill(Qt::transparent);
+    QPainter p(&pix);
+    p.setRenderHint(QPainter::Antialiasing);
+
+    QLinearGradient grad(0, 0, 0, size.height());
+    grad.setColorAt(0, QColor(26, 34, 42));
+    grad.setColorAt(1, QColor(16, 22, 28));
+    p.fillRect(pix.rect(), grad);
+
+    // Generic document glyph
+    int w = size.width(), h = size.height();
+    int dw = qMax(24, w / 3);
+    int dh = qMax(30, h / 3);
+    int fold = dw / 3;
+    QRect doc((w - dw) / 2, (h - dh) / 2, dw, dh);
+
+    QPainterPath path2;
+    path2.moveTo(doc.left(), doc.top());
+    path2.lineTo(doc.right() - fold, doc.top());
+    path2.lineTo(doc.right(), doc.top() + fold);
+    path2.lineTo(doc.right(), doc.bottom());
+    path2.lineTo(doc.left(), doc.bottom());
+    path2.closeSubpath();
+
+    p.setPen(QPen(QColor(150, 175, 170), 2));
+    p.setBrush(QColor(40, 52, 60));
+    p.drawPath(path2);
+
+    p.setPen(QPen(QColor(120, 145, 140), 2));
+    int lx0 = doc.left() + dw / 6;
+    int lx1 = doc.right() - dw / 6;
+    for (int i = 1; i <= 3; ++i) {
+        int ly = doc.top() + fold + i * (dh - fold) / 4;
+        p.drawLine(lx0, ly, lx1, ly);
+    }
+
+    drawExtensionBadge(p, size, QFileInfo(path).suffix());
     p.end();
     return pix;
 }

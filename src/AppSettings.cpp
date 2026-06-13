@@ -459,6 +459,24 @@ bool AppSettings::showAudio()  const { return m_settings.value("filter/showAudio
 void AppSettings::setShowAudio(bool v) { m_settings.setValue("filter/showAudio", v); }
 bool AppSettings::showPdfs()   const { return m_settings.value("filter/showPdfs",   true).toBool(); }
 void AppSettings::setShowPdfs(bool v)  { m_settings.setValue("filter/showPdfs",  v); }
+bool AppSettings::showTexts()  const { return m_settings.value("filter/showTexts",  true).toBool(); }
+void AppSettings::setShowTexts(bool v) { m_settings.setValue("filter/showTexts", v); }
+
+// ─── Text editor / auto-save ──────────────────────────────────────────────────
+bool AppSettings::autoSaveEnabled() const {
+    return m_settings.value("editor/autoSaveEnabled", false).toBool();
+}
+void AppSettings::setAutoSaveEnabled(bool v) {
+    m_settings.setValue("editor/autoSaveEnabled", v);
+    emit autoSaveSettingsChanged();
+}
+int AppSettings::autoSaveIntervalSeconds() const {
+    return qBound(5, m_settings.value("editor/autoSaveIntervalSeconds", 30).toInt(), 3600);
+}
+void AppSettings::setAutoSaveIntervalSeconds(int s) {
+    m_settings.setValue("editor/autoSaveIntervalSeconds", qBound(5, s, 3600));
+    emit autoSaveSettingsChanged();
+}
 
 // ─── Design / Theme ───────────────────────────────────────────────────────────
 DesignProfile AppSettings::designProfile() const {

@@ -73,6 +73,7 @@ SettingsDialog::SettingsDialog(TagManager* tagMgr, QWidget* parent)
 
     m_tabs = new QTabWidget(this);
     m_tabs->addTab(buildGeneralTab(),   Strings::get(StringKey::SettingsTabGeneral));
+    m_tabs->addTab(buildEditorTab(),    Strings::get(StringKey::SettingsTabEditor));
     m_tabs->addTab(buildViewTab(),      tr("Ansicht / Layout"));
     m_tabs->addTab(buildTagTab(),       Strings::get(StringKey::SettingsTabTags));
     m_tabs->addTab(buildCategoryTab(),  Strings::get(StringKey::SettingsTabCategories));
@@ -157,6 +158,67 @@ QWidget* SettingsDialog::buildGeneralTab() {
     vidLay->addWidget(m_videoExternal);
     lay->addWidget(vidGroup);
 
+    lay->addStretch();
+    return page;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  Text editor tab (auto-save)
+// ─────────────────────────────────────────────────────────────────────────────
+QWidget* SettingsDialog::buildEditorTab() {
+    auto* page = new QWidget(this);
+    auto* lay = new QVBoxLayout(page);
+    lay->setSpacing(16);
+    lay->setContentsMargins(20, 16, 20, 16);
+
+    static const char* spinStyle =
+        "QSpinBox { background: #182028; color: #c8dbd5; border: 1px solid #284040;"
+        "  border-radius: 4px; padding: 3px 6px; min-width: 96px; }"
+        "QSpinBox:disabled { color: #5a6a68; border-color: #1c2a2a; }"
+        "QSpinBox::up-button, QSpinBox::down-button { background: #1e2e38; border: none; width: 18px; }";
+    static const char* checkStyle =
+        "QCheckBox { color: #c8ddd8; font-size: 12px; spacing: 8px; }"
+        "QCheckBox::indicator { width: 16px; height: 16px; border-radius: 4px;"
+        "  border: 1px solid rgba(0,200,180,0.5); background: rgba(255,255,255,0.05); }"
+        "QCheckBox::indicator:checked { background: #00c8b4; border-color: #00c8b4; }";
+
+    // ── Auto-Save group ───────────────────────────────────────────────────────
+    auto* asGroup = new QGroupBox(Strings::get(StringKey::EditorAutoSaveGroup), page);
+    auto* asLay   = new QVBoxLayout(asGroup);
+    asLay->setContentsMargins(16, 12, 16, 14);
+    asLay->setSpacing(10);
+
+    auto* enableChk = new QCheckBox(Strings::get(StringKey::EditorAutoSave), asGroup);
+    enableChk->setStyleSheet(checkStyle);
+    enableChk->setChecked(AppSettings::instance().autoSaveEnabled());
+    asLay->addWidget(enableChk);
+
+    auto* intervalRow = new QHBoxLayout;
+    intervalRow->setContentsMargins(24, 0, 0, 0);
+    intervalRow->setSpacing(10);
+    auto* intervalLbl = new QLabel(Strings::get(StringKey::EditorAutoSaveInterval), asGroup);
+    intervalLbl->setStyleSheet("color: #c8ddd8; font-size: 12px;");
+    auto* intervalSpin = new QSpinBox(asGroup);
+    intervalSpin->setStyleSheet(spinStyle);
+    intervalSpin->setRange(5, 3600);
+    intervalSpin->setValue(AppSettings::instance().autoSaveIntervalSeconds());
+    intervalSpin->setSuffix(" s");
+    intervalSpin->setEnabled(enableChk->isChecked());
+    intervalRow->addWidget(intervalLbl);
+    intervalRow->addWidget(intervalSpin);
+    intervalRow->addStretch();
+    asLay->addLayout(intervalRow);
+
+    // ── Live-apply ────────────────────────────────────────────────────────────
+    connect(enableChk, &QCheckBox::toggled, this, [intervalSpin](bool on) {
+        AppSettings::instance().setAutoSaveEnabled(on);
+        intervalSpin->setEnabled(on);
+    });
+    connect(intervalSpin, QOverload<int>::of(&QSpinBox::valueChanged), this, [](int v) {
+        AppSettings::instance().setAutoSaveIntervalSeconds(v);
+    });
+
+    lay->addWidget(asGroup);
     lay->addStretch();
     return page;
 }

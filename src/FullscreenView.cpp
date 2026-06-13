@@ -1,5 +1,7 @@
 #include "FullscreenView.h"
 #include "PdfViewer.h"
+#include "TextViewer.h"
+#include "ImageViewerWindow.h"
 #include "AppSettings.h"
 #include "Style.h"
 #include "Icons.h"
@@ -14,6 +16,7 @@
 #include <QDesktopServices>
 #include <QImageReader>
 #include <QStringListModel>
+#include <QMessageBox>
 
 FullscreenView::FullscreenView(TagManager* tagMgr, QWidget* parent)
     : QWidget(parent), m_tagMgr(tagMgr)
@@ -37,9 +40,7 @@ FullscreenView::FullscreenView(TagManager* tagMgr, QWidget* parent)
         "border-radius: 8px; color: #c8dbd5; font-size: 13px; padding: 4px 12px; }"
         "QToolButton:hover { background: rgba(0,180,160,0.3); color: #00c8b4; }");
     connect(m_backBtn, &QToolButton::clicked, this, [this]() {
-        m_videoPlayer->stop();
-        m_pdfViewer->closeDocument();
-        emit backRequested();
+        requestBack();
     });
     topLay->addWidget(m_backBtn);
 
@@ -96,6 +97,10 @@ FullscreenView::FullscreenView(TagManager* tagMgr, QWidget* parent)
     // --- PDF viewer ---
     m_pdfViewer = new PdfViewer(this);
     m_pdfViewer->hide();
+
+    // --- Text viewer ---
+    m_textViewer = new TextViewer(this);
+    m_textViewer->hide();
 
     // --- Bottom bar ---
     m_bottomBar = new QWidget(this);
@@ -206,10 +211,17 @@ void FullscreenView::applyCurrentItem() {
     bool isAudio = item.isAudio();
     bool isImg   = item.isImage();
     bool isPdf   = item.isPdf();
+    bool isText  = item.isText();
 
-    m_imageLabel->setVisible(!isVid && !isPdf);
+    // Images are now rendered in a separate QML window — never via m_imageLabel.
+    m_imageLabel->setVisible(false);
     m_videoPlayer->setVisible(isVid || isAudio);
     m_pdfViewer->setVisible(isPdf);
+    m_textViewer->setVisible(isText);
+
+    // Hide the QML image window whenever the current item is not an image.
+    if (m_imageWindow && !isImg)
+        m_imageWindow->hide();
 
     if (isPdf) {
         m_videoPlayer->stop();
@@ -234,27 +246,49 @@ void FullscreenView::applyCurrentItem() {
         m_pdfViewer->closeDocument();
         // Use video player for audio (Qt Multimedia handles audio-only files)
         m_videoPlayer->loadFile(item.filePath);
-        // Show a stylized audio background in imageLabel (hidden behind player widget)
-        m_imageLabel->setVisible(false);
-    } else {
-        // Image
+    } else if (isText) {
         m_videoPlayer->stop();
+        m_pdfViewer->closeDocument();
+        m_textViewer->loadFile(item.filePath);
+    } else {
+        // Image → dedicated QML viewer window (lazy-created)
+        m_videoPlayer->stop();
+        m_pdfViewer->closeDocument();
+        m_originalPixmap = QPixmap();   // zoom/pan now handled in QML
 
-        QImageReader reader(item.filePath);
-        reader.setAutoTransform(true);
-        QImage img = reader.read();
-        if (!img.isNull()) {
-            m_originalPixmap = QPixmap::fromImage(std::move(img));
-        } else {
-            m_originalPixmap = QPixmap();
-            m_imageLabel->clear();
-            m_imageLabel->setText(Strings::get(StringKey::FullscreenImageLoadError));
+        if (!m_imageWindow) {
+            m_imageWindow = new ImageViewerWindow(this, this);
+            connect(m_imageWindow, &ImageViewerWindow::closeRequested,
+                    this, &FullscreenView::backRequested);
+            connect(m_imageWindow, &ImageViewerWindow::nextRequested,
+                    this, &FullscreenView::showNext);
+            connect(m_imageWindow, &ImageViewerWindow::prevRequested,
+                    this, &FullscreenView::showPrev);
         }
-        updateZoom();
+        m_imageWindow->showImage(item.filePath);
     }
 
     updateDisplay();
     showBars();
+}
+
+void FullscreenView::requestBack() {
+    // Unsaved-changes guard for the text editor
+    if (m_textViewer && m_textViewer->isVisible() && m_textViewer->hasUnsavedChanges()) {
+        QMessageBox box(this);
+        box.setIcon(QMessageBox::Question);
+        box.setWindowTitle(Strings::get(StringKey::EditorUnsavedTitle));
+        box.setText(Strings::get(StringKey::EditorUnsavedMsg));
+        box.setStandardButtons(QMessageBox::Save | QMessageBox::Discard | QMessageBox::Cancel);
+        box.setDefaultButton(QMessageBox::Save);
+        const int res = box.exec();
+        if (res == QMessageBox::Cancel) return;
+        if (res == QMessageBox::Save) m_textViewer->saveFile();
+    }
+    m_videoPlayer->stop();
+    if (m_pdfViewer) m_pdfViewer->closeDocument();
+    if (m_imageWindow) m_imageWindow->hide();
+    emit backRequested();
 }
 
 void FullscreenView::updateDisplay() {
@@ -263,6 +297,7 @@ void FullscreenView::updateDisplay() {
     int contentH = height() - m_topBar->height() - m_bottomBar->height();
     m_videoPlayer->setGeometry(0, m_topBar->height(), width(), contentH);
     m_pdfViewer->setGeometry(0, m_topBar->height(), width(), contentH);
+    m_textViewer->setGeometry(0, m_topBar->height(), width(), contentH);
     updateZoom();
 }
 
@@ -309,6 +344,7 @@ void FullscreenView::resizeEvent(QResizeEvent* e) {
     // the widget keeps its previous geometry when the splitter/stack changes
     // size on first show, which causes the broken first-render layout.
     m_pdfViewer->setGeometry(0, m_topBar->height(), width(), contentH);
+    m_textViewer->setGeometry(0, m_topBar->height(), width(), contentH);
     updateZoom();
 }
 
@@ -331,6 +367,13 @@ void FullscreenView::wheelEvent(QWheelEvent* e) {
 }
 
 void FullscreenView::keyPressEvent(QKeyEvent* e) {
+    // Alt+Left: go back from ANY viewer (image, video, audio, pdf, text).
+    // Checked first so it always wins over the plain Left-arrow (showPrev).
+    if (e->key() == Qt::Key_Left && (e->modifiers() & Qt::AltModifier)) {
+        requestBack();
+        e->accept();
+        return;
+    }
     // Space: always toggle play/pause – never delegate to focused buttons
     if (e->key() == Qt::Key_Space) {
         if (m_videoPlayer->isVisible()) {
@@ -373,8 +416,7 @@ void FullscreenView::keyPressEvent(QKeyEvent* e) {
     case Qt::Key_Left:  showPrev(); break;
     case Qt::Key_Right: showNext(); break;
     case Qt::Key_Escape:
-        m_videoPlayer->stop();
-        emit backRequested();
+        requestBack();
         break;
     case Qt::Key_T:
         // Erstes T: Dropdown öffnen. Zweites T (wenn Dropdown offen): Tags vom letzten übernehmen.
@@ -575,6 +617,7 @@ void FullscreenView::retranslate() {
     m_nextBtn->setText(Strings::get(StringKey::FullscreenNext));
     m_tagBar->retranslate();
     m_pdfViewer->retranslate();
+    if (m_textViewer) m_textViewer->retranslate();
 }
 
 void FullscreenView::applyTheme() {
@@ -585,4 +628,6 @@ void FullscreenView::applyTheme() {
     // Forward to embedded PDF viewer so it also updates its QPdfView palette.
     if (m_pdfViewer)
         m_pdfViewer->applyTheme();
+    if (m_textViewer)
+        m_textViewer->applyTheme();
 }

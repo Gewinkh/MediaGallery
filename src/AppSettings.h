@@ -63,6 +63,12 @@ public:
     bool showVideos() const override; void setShowVideos(bool v) override;
     bool showAudio()  const override; void setShowAudio(bool v) override;
     bool showPdfs()   const override; void setShowPdfs(bool v)  override;
+    bool showTexts()  const override; void setShowTexts(bool v) override;
+
+    bool autoSaveEnabled() const override;
+    void setAutoSaveEnabled(bool v) override;
+    int  autoSaveIntervalSeconds() const override;
+    void setAutoSaveIntervalSeconds(int s) override;
 
     DesignProfile designProfile() const override;
     void          setDesignProfile(DesignProfile p) override;
@@ -86,6 +92,7 @@ signals:
     void themeChanged();
     void tileSizeChanged();
     void tileArrangementChanged();
+    void autoSaveSettingsChanged();
 
 private:
     explicit AppSettings(QObject* parent = nullptr);

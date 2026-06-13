@@ -6,7 +6,7 @@
 #include <QFileInfo>
 #include <QSet>
 
-enum class MediaType { Image, Video, Audio, Pdf, Unknown };
+enum class MediaType { Image, Video, Audio, Pdf, Text, Unknown };
 
 struct MediaItem {
     QString filePath;       // Full path on disk
@@ -43,11 +43,22 @@ struct MediaItem {
             "ape","mka","alac","dsf","dff","wv","tta","spx","amr","ac3",
             "dts","mpc","ra","rm","mid","midi","xm","mod","s3m","it"
         };
+        static const QSet<QString> txtExts = {
+            "txt","md","sql","cpp","c","h","hpp","hxx","cxx","cc","py","js","ts",
+            "jsx","tsx","json","xml","html","htm","css","scss","less","yaml","yml",
+            "toml","ini","cfg","conf","sh","bash","zsh","bat","cmd","ps1","java",
+            "cs","go","rs","rb","php","swift","kt","lua","r","m","f90","cmake","mk",
+            "log","csv","tsv","gitignore","gitattributes","env","dockerfile","makefile"
+        };
         QString ext = QFileInfo(path).suffix().toLower();
         if (imgExts.contains(ext)) return MediaType::Image;
         if (vidExts.contains(ext)) return MediaType::Video;
         if (audExts.contains(ext)) return MediaType::Audio;
         if (ext == "pdf") return MediaType::Pdf;
+        if (txtExts.contains(ext)) return MediaType::Text;
+        // Extension-less text files (e.g. "Makefile", "Dockerfile")
+        const QString name = QFileInfo(path).fileName().toLower();
+        if (name == "makefile" || name == "dockerfile") return MediaType::Text;
         return MediaType::Unknown;
     }
 
@@ -55,6 +66,7 @@ struct MediaItem {
     bool isVideo() const { return type == MediaType::Video; }
     bool isAudio() const { return type == MediaType::Audio; }
     bool isPdf()   const { return type == MediaType::Pdf; }
+    bool isText()  const { return type == MediaType::Text; }
 
     bool matchesTagFilter(const QStringList& filterTags, bool andMode) const {
         if (filterTags.isEmpty()) return true;

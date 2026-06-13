@@ -386,6 +386,7 @@ bool FilterBar::showImages() const { return AppSettings::instance().showImages()
 bool FilterBar::showVideos() const { return AppSettings::instance().showVideos(); }
 bool FilterBar::showAudio()  const { return AppSettings::instance().showAudio(); }
 bool FilterBar::showPdfs()   const { return AppSettings::instance().showPdfs(); }
+bool FilterBar::showTexts()  const { return AppSettings::instance().showTexts(); }
 
 SortOrder FilterBar::currentFieldOrder() const {
     return m_fieldOrder.value(m_sortField->currentIndex(), SortOrder::Descending);
@@ -485,6 +486,7 @@ void MediaHoverButton::buildPanel() {
         { Icons::play(),   StringKey::FilterVideos, &AppSettings::showVideos, &AppSettings::setShowVideos },
         { Icons::music(),  StringKey::FilterAudio,  &AppSettings::showAudio,  &AppSettings::setShowAudio  },
         { Icons::pdf(),    StringKey::FilterPdf,    &AppSettings::showPdfs,   &AppSettings::setShowPdfs   },
+        { Icons::text(),   StringKey::FilterText,   &AppSettings::showTexts,  &AppSettings::setShowTexts  },
     };
 
     for (const MediaToggle& t : toggles) {

@@ -15,6 +15,9 @@
 #include "TagManager.h"
 #include "AppSettings.h"
 
+class TextViewer;
+class ImageViewerWindow;
+
 class FullscreenView : public QWidget {
     Q_OBJECT
 public:
@@ -84,6 +87,8 @@ private:
     QLabel* m_imageLabel;
     VideoPlayer* m_videoPlayer;
     PdfViewer*   m_pdfViewer = nullptr;
+    TextViewer*  m_textViewer = nullptr;
+    ImageViewerWindow* m_imageWindow = nullptr;
     QWidget* m_topBar;
     QWidget* m_bottomBar;
     QToolButton* m_backBtn;
@@ -103,6 +108,7 @@ private:
     void updateZoom();
     void updateRandomBtn();
     void applyCurrentItem();
+    void requestBack();   // unified ESC / Alt+Left / back-button handling
     void showBars();
     void hideBars();
     int nextVisiblePos() const;

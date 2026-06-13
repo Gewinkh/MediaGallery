@@ -60,5 +60,7 @@ private:
     static QPixmap generateImageThumbnail(const QString& path, const QSize& size);
     static QPixmap generateAudioThumbnail(const QString& path, const QSize& size);
     static QPixmap generatePdfThumbnail(const QString& path, const QSize& size);
+    static QPixmap generateTextThumbnail(const QString& path, const QSize& size);
     static QPixmap fallbackPdfThumbnail(const QSize& size);
+    static QPixmap fallbackTextThumbnail(const QString& path, const QSize& size);
 };

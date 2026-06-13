@@ -138,6 +138,13 @@ public:
     virtual bool showVideos() const = 0; virtual void setShowVideos(bool v) = 0;
     virtual bool showAudio()  const = 0; virtual void setShowAudio(bool v) = 0;
     virtual bool showPdfs()   const = 0; virtual void setShowPdfs(bool v)  = 0;
+    virtual bool showTexts()  const = 0; virtual void setShowTexts(bool v) = 0;
+
+    // Text editor / auto-save
+    virtual bool autoSaveEnabled() const = 0;
+    virtual void setAutoSaveEnabled(bool v) = 0;
+    virtual int  autoSaveIntervalSeconds() const = 0;
+    virtual void setAutoSaveIntervalSeconds(int s) = 0;
 
     virtual DesignProfile designProfile() const = 0;
     virtual void          setDesignProfile(DesignProfile p) = 0;

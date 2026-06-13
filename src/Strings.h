@@ -303,6 +303,17 @@ enum class StringKey {
     BookmarkBrowse,
     BookmarkNoName,
     BookmarkTabTitle,
+
+    // Text editor / filter
+    FilterText,
+    SettingsTabEditor,
+    EditorAutoSave,
+    EditorAutoSaveInterval,
+    EditorSave,
+    EditorUnsavedTitle,
+    EditorUnsavedMsg,
+    EditorLoadError,
+    EditorAutoSaveGroup,
 };
 
 class Strings {

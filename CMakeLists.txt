@@ -16,6 +16,8 @@ find_package(Qt6 6.4 REQUIRED COMPONENTS
     Pdf
     PdfWidgets
     Svg
+    Qml
+    Quick
     LinguistTools
 )
 
@@ -71,6 +73,11 @@ set(SOURCES
     src/Icons.h
     src/TileSizeDialog.cpp
     src/TileSizeDialog.h
+    src/TextViewer.cpp
+    src/TextViewer.h
+    src/ImageViewerWindow.cpp
+    src/ImageViewerWindow.h
+    qml.qrc
 )
 
 qt_add_executable(MediaGallery ${SOURCES})
@@ -90,6 +97,8 @@ target_link_libraries(MediaGallery PRIVATE
     Qt6::Pdf
     Qt6::PdfWidgets
     Qt6::Svg
+    Qt6::Qml
+    Qt6::Quick
 )
 
 if(WIN32)

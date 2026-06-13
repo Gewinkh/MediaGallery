@@ -44,6 +44,7 @@ private:
     void buildBookmarkList();          // ← repopulates the bookmark rows
 
     QWidget* buildGeneralTab();
+    QWidget* buildEditorTab();         // ← text editor / auto-save options
     QWidget* buildTagTab();
     QWidget* buildCategoryTab();
     QWidget* buildConverterTab();

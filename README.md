@@ -12,13 +12,22 @@ Built with **C++20** and **Qt 6.4+**.
 - **Videos**: MP4, MKV, AVI, MOV, WMV, WebM, M4V, MPEG, 3GP, OGV, TS, M2TS, VOB, RMVB, ASF, DIVX
 - **Audio**: MP3, FLAC, WAV, OGG, AAC, M4A, WMA, Opus, AIFF, APE, ALAC, MIDI and more
 - **PDFs**: Full page rendering with thumbnail sidebar and media annotation support
+- **Text files**: TXT, Markdown, source code (C++, Python, Rust, Go, JS/TS, …), configs, scripts, logs, CSV and more — editable directly in the app
 
 ### Gallery & View
-- **Grid view**: 1–25 columns, zoom with `Shift+Scroll`
+- **Grid view**: 1–25 columns, zoom with `Ctrl+Scroll` or `Shift+Scroll`
 - **Fullscreen gallery**: Prev/Next, Random mode, up to 10× zoom, pan with mouse
+- **Image viewer**: Hardware-accelerated QML viewer with pinch-zoom, wheel-zoom and mouse pan
 - **Compact mode**: Option bar toggle with `S`
 - **Cover mode**: Cover/uncover gallery with `B`
 - **Live folder watch**: New or deleted files are detected automatically
+
+### Text Editor
+- Opens any supported text/source file in a monospace editor inside the fullscreen view
+- **Save** button and `Ctrl+S` shortcut
+- Unsaved-changes indicator (`*` in the filename label)
+- **Auto-Save**: optional timer-based auto-save (configurable interval, Settings → Text Editor)
+- Confirmation dialog on navigation away from unsaved changes (Save / Discard / Cancel)
 
 ### Tags & Categories
 - **Tags**: Per-folder, unlimited, freely named, color-coded
@@ -60,6 +69,7 @@ Built with **C++20** and **Qt 6.4+**.
 ### Playback & UI
 - **Video playback**: Native (Qt Multimedia) or external player
 - **Audio thumbnails**: Styled previews with waveform decoration and format badge
+- **Text thumbnails**: First few lines of the file rendered in monospace with extension badge
 - **Language**: English / German — switchable at runtime (Settings → General)
 - **Themes**: Fully customizable — every color, every surface (Settings → Design)
 
@@ -77,9 +87,13 @@ Built with **C++20** and **Qt 6.4+**.
 | Next item | `→` |
 | Previous item | `←` |
 | Back to gallery | `Esc` |
+| Back to gallery (from any viewer) | `Alt+←` |
+| Save text file | `Ctrl+S` |
 | Edit date (fullscreen) | `D` |
 | Open date editor | Calendar button (fullscreen) |
 | Delete file | Delete button (fullscreen) |
+| Image: zoom in | `Ctrl++` |
+| Image: zoom out | `Ctrl+-` |
 | PDF: zoom in | `+` |
 | PDF: zoom out | `-` |
 | PDF: previous page | `←` |
@@ -90,8 +104,8 @@ Built with **C++20** and **Qt 6.4+**.
 ## Build Instructions
 
 ### Requirements
-- Qt 6.4+ with modules: `Widgets`, `Multimedia`, `MultimediaWidgets`, `Pdf`, `PdfWidgets`, `Concurrent`
-- CMake 3.19+
+- Qt 6.4+ with modules: `Widgets`, `Multimedia`, `MultimediaWidgets`, `Pdf`, `PdfWidgets`, `Qml`, `Quick`
+- CMake 3.21+
 - C++20-capable compiler (MSVC 2022, GCC 12+, Clang 15+)
 
 ### Build
@@ -137,8 +151,11 @@ Custom themes can be exported to JSON and shared:
 ## Changelog
 
 ### Latest
-- **costum tiles**: Tiles in the main window are configurable
-- **added LICENSE**
+- **Text file support**: View and edit source code, Markdown, configs, logs and more — 50+ file extensions, monospace editor with auto-save, unsaved-changes guard
+- **QML image viewer**: Hardware-accelerated fullscreen image viewer with pinch-zoom, wheel-zoom, pan and keyboard navigation
+- **Alt+←**: Universal back shortcut — works from every viewer (image, video, audio, PDF, text)
+- **Text Editor settings**: New Settings tab with auto-save toggle and configurable interval
+- **Custom tile sizes**: Tiles in the main window are configurable
 
 ---
 

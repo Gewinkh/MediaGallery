@@ -300,6 +300,16 @@ static const QMap<StringKey, QString> s_de = {
     { StringKey::BookmarkBrowse,         "Durchsuchen…" },
     { StringKey::BookmarkNoName,         "(kein Name)" },
     { StringKey::BookmarkTabTitle,       "Gespeicherte Ordner" },
+
+    { StringKey::FilterText,             "Text" },
+    { StringKey::SettingsTabEditor,      "Texteditor" },
+    { StringKey::EditorAutoSave,         "Auto-Speichern aktivieren" },
+    { StringKey::EditorAutoSaveInterval, "Intervall (Sekunden)" },
+    { StringKey::EditorSave,             "Speichern" },
+    { StringKey::EditorUnsavedTitle,     "Ungespeicherte Änderungen" },
+    { StringKey::EditorUnsavedMsg,       "Es gibt ungespeicherte Änderungen. Speichern?" },
+    { StringKey::EditorLoadError,        "Datei konnte nicht geladen werden" },
+    { StringKey::EditorAutoSaveGroup,    "Auto-Speichern" },
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -601,6 +611,16 @@ static const QMap<StringKey, QString> s_en = {
     { StringKey::BookmarkBrowse,         "Browse…" },
     { StringKey::BookmarkNoName,         "(no name)" },
     { StringKey::BookmarkTabTitle,       "Saved Folders" },
+
+    { StringKey::FilterText,             "Text" },
+    { StringKey::SettingsTabEditor,      "Text Editor" },
+    { StringKey::EditorAutoSave,         "Enable Auto-Save" },
+    { StringKey::EditorAutoSaveInterval, "Interval (seconds)" },
+    { StringKey::EditorSave,             "Save" },
+    { StringKey::EditorUnsavedTitle,     "Unsaved Changes" },
+    { StringKey::EditorUnsavedMsg,       "There are unsaved changes. Save?" },
+    { StringKey::EditorLoadError,        "Could not load file" },
+    { StringKey::EditorAutoSaveGroup,    "Auto-Save" },
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
