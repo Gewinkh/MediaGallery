@@ -5,78 +5,53 @@ set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_AUTOMOC ON)
 set(CMAKE_AUTORCC ON)
-set(CMAKE_AUTOUIC ON)
+# AUTOUIC entfernt: keine .ui-Dateien mehr (UI = 100% QML).
 
+# Phase 5: Widgets / MultimediaWidgets / PdfWidgets vollstaendig entfernt.
+# UI ist 100% Qt Quick/QML, Backend 100% C++ (QGuiApplication).
 find_package(Qt6 6.4 REQUIRED COMPONENTS
     Core
     Gui
-    Widgets
-    Multimedia
-    MultimediaWidgets
-    Pdf
-    PdfWidgets
-    Svg
     Qml
     Quick
+    QuickControls2
+    Multimedia
+    Pdf
+    Svg
     LinguistTools
 )
 
 set(SOURCES
     main.cpp
-    src/MainWindow.cpp
-    src/MainWindow.h
     src/ISettings.h
     src/AppSettings.cpp
     src/AppSettings.h
+    src/AppController.cpp
+    src/AppController.h
+    src/TagController.cpp
+    src/TagController.h
+    src/ViewerController.cpp
+    src/ViewerController.h
     src/FolderService.cpp
     src/FolderService.h
-    src/GalleryView.cpp
-    src/GalleryView.h
     src/MediaItem.cpp
     src/MediaItem.h
-    src/MediaThumbnail.cpp
-    src/MediaThumbnail.h
-    src/ManualZonePreview.cpp
-    src/ManualZonePreview.h
-    src/FullscreenView.cpp
-    src/FullscreenView.h
+    src/MediaModel.cpp
+    src/MediaModel.h
+    src/MediaProxyModel.cpp
+    src/MediaProxyModel.h
     src/TagManager.cpp
     src/TagManager.h
     src/TagCategory.h
-    src/TagCategoryPanel.cpp
-    src/TagCategoryPanel.h
-    src/TagWidget.cpp
-    src/TagWidget.h
-    src/FilterBar.cpp
-    src/FilterBar.h
     src/JsonStorage.cpp
     src/JsonStorage.h
-    src/MetadataEditor.cpp
-    src/MetadataEditor.h
-    src/SettingsDialog.cpp
-    src/SettingsDialog.h
-    src/ColorPickerButton.cpp
-    src/ColorPickerButton.h
-    src/VideoPlayer.cpp
-    src/VideoPlayer.h
     src/ThumbnailLoader.cpp
     src/ThumbnailLoader.h
-    src/PdfViewer.cpp
     src/PdfMediaHandler.cpp
     src/PdfMediaHandler.h
-    src/MediaOverlayWidget.cpp
-    src/MediaOverlayWidget.h
-    src/Style.cpp
-    src/Style.h
     src/Strings.cpp
     src/Strings.h
     src/Icons.h
-    src/TileSizeDialog.cpp
-    src/TileSizeDialog.h
-    src/TextViewer.cpp
-    src/TextViewer.h
-    src/ImageViewerWindow.cpp
-    src/ImageViewerWindow.h
     qml.qrc
 )
 
@@ -91,14 +66,12 @@ qt_add_translations(MediaGallery
 target_link_libraries(MediaGallery PRIVATE
     Qt6::Core
     Qt6::Gui
-    Qt6::Widgets
-    Qt6::Multimedia
-    Qt6::MultimediaWidgets
-    Qt6::Pdf
-    Qt6::PdfWidgets
-    Qt6::Svg
     Qt6::Qml
     Qt6::Quick
+    Qt6::QuickControls2
+    Qt6::Multimedia
+    Qt6::Pdf
+    Qt6::Svg
 )
 
 if(WIN32)

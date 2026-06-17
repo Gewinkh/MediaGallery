@@ -1,5 +1,31 @@
 <RCC>
     <qresource prefix="/">
-        <file>qml/ImageViewer.qml</file>
+        <file>qml/ApplicationShell.qml</file>
+        <file>qml/GalleryView.qml</file>
+        <file>qml/MediaTile.qml</file>
+        <file>qml/MediaOverlay.qml</file>
+        <file>qml/FilterBar.qml</file>
+        <file>qml/FullscreenViewer.qml</file>
+        <file>qml/VideoSurface.qml</file>
+        <file>qml/TextSurface.qml</file>
+        <file>qml/PdfSurface.qml</file>
+        <file>qml/TagCategoryPanel.qml</file>
+        <file>qml/CategoryNode.qml</file>
+        <file>qml/TagBar.qml</file>
+        <file>qml/MetadataDateEditor.qml</file>
+        <!-- Phase 4: QML-Migration der Dialoge (SettingsDialog/TileSize/ColorPicker) -->
+        <file>qml/ColorPicker.qml</file>
+        <file>qml/TileSizeDialog.qml</file>
+        <file>qml/SettingsDialog.qml</file>
+        <file>qml/SettingsGroup.qml</file>
+        <file>qml/SettingsGeneralTab.qml</file>
+        <file>qml/SettingsEditorTab.qml</file>
+        <file>qml/SettingsViewTab.qml</file>
+        <file>qml/SettingsTagsTab.qml</file>
+        <file>qml/SettingsCategoriesTab.qml</file>
+        <file>qml/SettingsCategoryNode.qml</file>
+        <file>qml/SettingsConverterTab.qml</file>
+        <file>qml/SettingsDesignTab.qml</file>
+        <file>qml/SettingsBookmarksTab.qml</file>
     </qresource>
 </RCC>

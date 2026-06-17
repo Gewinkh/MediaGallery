@@ -71,6 +71,10 @@ public:
     // All annotations across all pages
     const QVector<MediaAnnotation>& allAnnotations() const { return m_annotations; }
 
+    // In scanDocument() angelegte Temp-Dateien (extrahierte Medienstreams).
+    // Erlaubt dem Aufrufer das Aufraeumen, OHNE den Handler am Leben zu halten.
+    const QStringList& tempFiles() const { return m_tempFiles; }
+
     // Cleans up temp files created during this session
     void cleanup();
 
