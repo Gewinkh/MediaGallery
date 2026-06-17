@@ -159,5 +159,7 @@ public:
     virtual QStringList savedFolders() const = 0;
     virtual void        setSavedFolders(const QStringList& paths) = 0;
 
+    virtual QString rhiBackend() const = 0;   // liest "rhi/detectedBackend" aus QSettings
+
     virtual void sync() = 0;
 };

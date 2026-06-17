@@ -541,6 +541,12 @@ bool AppSettings::importCustomTheme(const QString& filePath) {
 
 void AppSettings::sync() { m_settings.sync(); }
 
+// ─── RHI-Backend (schreibgeschützt, vom RhiProber gesetzt) ───────────────────
+QString AppSettings::rhiBackend() const {
+    return m_settings.value(QStringLiteral("rhi/backend"),
+                             QStringLiteral("opengl")).toString();
+}
+
 // ─── Saved / bookmarked folders ───────────────────────────────────────────────
 QStringList AppSettings::savedFolders() const {
     return m_settings.value("bookmarks/folders").toStringList();

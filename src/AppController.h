@@ -167,6 +167,12 @@ public:
     Q_INVOKABLE void setAccentColor(const QColor& c);
     Q_INVOKABLE void setLanguage(const QString& code);       // "de" | "en"
     Q_INVOKABLE void setVideoPlayback(const QString& mode);  // "native" | "external"
+
+    // Versucht das RHI-Backend zu wechseln. Gibt true zurück, wenn der Probe
+    // erfolgreich war (Cache aktualisiert, Neustart nötig). Bei Fehler bleibt
+    // der alte Wert erhalten.
+    Q_INVOKABLE bool trySetRhiBackend(const QString& backend);
+
     Q_INVOKABLE void toggleOptions();
 
     // ── Fensterzustand (Delegation an ISettings) ────────────────────────────
@@ -236,6 +242,7 @@ signals:
     void tileArrangementChanged();
     void tagsChanged();
     void categoriesChanged();
+    void rhiBackendChanged();   // nach erfolgreichem trySetRhiBackend()
 
 private:
     // Theme-Lese-Helfer

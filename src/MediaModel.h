@@ -5,6 +5,7 @@
 #include <QString>
 #include <QStringList>
 #include <QTimer>
+#include <QFileInfo>
 #include "MediaItem.h"
 
 class JsonStorage;
@@ -13,13 +14,22 @@ class ThumbnailLoader;
 class QFileSystemWatcher;
 
 // ─────────────────────────────────────────────────────────────────────────────
-//  MediaModel — QAbstractListModel (Phase 2, RAM-kritisch).
+//  MediaModel — QAbstractListModel (Phase 2/3, RAM-kritisch).
 //
 //  Hält reine MediaItem-DATEN (KEINE QPixmaps, KEINE Widgets, 1 Struct/Datei).
 //  QML liest über Rollen; es werden keine Datenkopien nach QML geschoben.
-//  Thumbnails kommen als "file:///..."-URL aus dem Disk-Cache des ThumbnailLoader
+//  Thumbnails kommen als "file:///...".URL aus dem Disk-Cache des ThumbnailLoader
 //  und werden pro Zeile lazy (sichtbarkeitsgesteuert via ensureThumbnail) gefüllt;
 //  Updates laufen über dataChanged(ThumbUrlRole).
+//
+//  Performance (Ordner öffnen):
+//   Statt eines einzigen beginResetModel/endResetModel über den GESAMTEN Ordner
+//   wird INKREMENTELL befüllt: ein leeres Modell wird sofort publiziert, danach
+//   werden Zeilen in Chargen (beginInsertRows) eingespeist — die erste Charge
+//   synchron (Viewport sofort sichtbar), der Rest gechunkt über einen 0-ms-Timer,
+//   der zwischen den Chargen an die Event-Loop zurückgibt. Dadurch erscheinen die
+//   ersten Kacheln nahezu sofort, auch bei 10–50k Dateien, statt erst nach der
+//   kompletten Enumeration.
 //
 //  Mutationen werden per Dateipfad adressiert (robust gegen Proxy-Sortierung/
 //  Filterung): renameItem / toggleTag suchen die Zeile über einen Pfad→Row-Hash.
@@ -65,6 +75,7 @@ public:
 
     // ── QML-Invokables (per Dateipfad) ───────────────────────────────────────
     Q_INVOKABLE void ensureThumbnail(const QString& filePath);
+    Q_INVOKABLE void cancelThumbnail(const QString& filePath);   // weggescrollte Kachel
     Q_INVOKABLE void renameItem(const QString& filePath, const QString& newBaseName);
     Q_INVOKABLE void toggleTag(const QString& filePath, const QString& tag);
 
@@ -79,8 +90,10 @@ private slots:
     void onDirectoryChanged();
 
 private:
-    void rebuild(const QString& folderPath);   // gemeinsame Enumerationslogik
-    void rebuildIndex();                         // Pfad→Row neu aufbauen
+    void rebuild(const QString& folderPath);   // startet inkrementelle Befüllung
+    void feedChunk(bool firstChunk);           // eine Charge Zeilen einspeisen
+    void finishFill();                         // Aufräumen nach letzter Charge
+    void rebuildIndex();                       // Pfad→Row neu aufbauen (Mutationen)
     int  rowForPath(const QString& filePath) const;
     void emitRow(int row, const QVector<int>& roles);
 
@@ -94,6 +107,12 @@ private:
     QVector<QString>       m_thumbUrls;   // parallel: Cache-URL je Zeile ("" = none)
     QVector<int>           m_thumbState;  // parallel: 0/1/2
     QHash<QString, int>    m_pathToRow;   // schnelle Adressierung für Updates
+
+    // ── Inkrementelle Befüllung ──────────────────────────────────────────────
+    QFileInfoList m_pendingEntries;   // noch nicht eingespeiste Verzeichniseinträge
+    int           m_pendingIndex = 0; // nächster Index in m_pendingEntries
+    QString       m_pendingSidecar;   // "<Ordner>.json" → überspringen
+    QTimer        m_fillTimer;        // 0-ms-Timer: speist Chargen, gibt dazwischen ab
 
     QString             m_folder;
     QFileSystemWatcher* m_watcher;

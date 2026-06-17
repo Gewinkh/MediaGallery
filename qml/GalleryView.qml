@@ -3,7 +3,7 @@ import QtQuick.Controls
 import MediaGallery 1.0
 
 // ─────────────────────────────────────────────────────────────────────────────
-//  GalleryView.qml — Model/View-Galerie (Phase 2, Kernkomponente).
+//  GalleryView.qml — Model/View-Galerie (Phase 2/3, Kernkomponente).
 //
 //  Ersetzt GalleryView(QScrollArea+QGridLayout). KEIN 1:1-Port: statt 1 Widget je
 //  Datei recycelt ein GridView seine Delegates (reuseItems) und hält nur sichtbare
@@ -11,6 +11,14 @@ import MediaGallery 1.0
 //
 //  Daten kommen aus galleryModel (MediaProxyModel → MediaModel). Mutationen/
 //  Thumbnail-Anforderungen laufen über mediaModel (per Dateipfad).
+//
+//  Performance (Scrollen):
+//   • Jede Kachel fordert ihr Thumbnail nur einmal an (Pfad-getaktet) und BRICHT
+//     die Anforderung der zuvor angezeigten Datei AB, sobald sie recycelt wird
+//     oder verschwindet (mediaModel.cancelThumbnail) → der Loader verschwendet
+//     keinen Decode für weggescrollte Kacheln, sichtbare laufen mit Vorrang.
+//   • cacheBuffer ≈ 2 Zeilen: glättet schnelles Scrollen (weniger Delegate-Auf-/
+//     Abbau an den Rändern) bei weiterhin beschränktem RAM.
 //
 //  Erhaltene Features: dynamische Kachelgröße, Ctrl+Mausrad-Zoom, Anordnung
 //  (Centered/Left/Right/Manual) inkl. Manual-Area-Breite, Doppelklick→Vollbild,
@@ -89,9 +97,9 @@ Rectangle {
 
         model: galleryModel
 
-        // RAM-Priorität: kleiner Cache-Puffer (≈ eine Extrazeile je Richtung).
+        // RAM-Priorität bei zugleich glattem Scrollen: ~2 Zeilen Vorhalt.
         reuseItems: true
-        cacheBuffer: root.cellH
+        cacheBuffer: root.cellH * 2
         boundsBehavior: Flickable.StopAtBounds
 
         ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
@@ -110,14 +118,31 @@ Rectangle {
             required property string thumbUrl
             required property int    thumbState
 
-            // Sichtbarkeitsgesteuerte Thumbnail-Anforderung (auch bei Recycling).
-            function requestThumb() {
+            // Pfad, für den aktuell ein Thumbnail angefordert ist (Abbruch-Tracking).
+            property string requestedPath: ""
+
+            // Sichtbarkeitsgesteuerte Thumbnail-Anforderung mit Abbruch der zuvor
+            // angezeigten Datei (greift auch bei Delegate-Recycling).
+            function syncThumb() {
+                if (requestedPath === filePath)
+                    return
+                if (requestedPath.length > 0)
+                    mediaModel.cancelThumbnail(requestedPath)   // weggescrollte Kachel
+                requestedPath = filePath
                 if (filePath.length > 0)
                     mediaModel.ensureThumbnail(filePath)
             }
-            Component.onCompleted: requestThumb()
-            onFilePathChanged: requestThumb()
-            GridView.onReused: requestThumb()
+
+            Component.onCompleted: syncThumb()
+            onFilePathChanged: syncThumb()
+            GridView.onReused: syncThumb()
+
+            // Wird die Kachel zerstört (Ordner schrumpft o. Ä.), laufende
+            // Anforderung abbrechen.
+            Component.onDestruction: {
+                if (requestedPath.length > 0)
+                    mediaModel.cancelThumbnail(requestedPath)
+            }
 
             MediaTile {
                 anchors.centerIn: parent

@@ -5,8 +5,17 @@
 
 class AppSettings : public QObject, public ISettings {
     Q_OBJECT
+
+    // Schreibgeschützte Eigenschaft: aktives RHI-Backend (z. B. „vulkan").
+    // Wird von SettingsGeneralTab.qml nur zur Anzeige verwendet.
+    Q_PROPERTY(QString rhiBackend READ rhiBackend CONSTANT)
+
 public:
     static AppSettings& instance();
+
+    // Gibt das vom RhiProber erkannte und in QSettings gespeicherte
+    // RHI-Backend zurück. Leer, wenn noch kein Probe gelaufen ist.
+    QString rhiBackend() const;
 
     QSize  windowSize() const override;
     void   setWindowSize(const QSize& s) override;

@@ -2,6 +2,7 @@
 #include "MediaModel.h"
 #include "MediaItem.h"
 #include "TagManager.h"
+#include "TagCategory.h"
 
 #include <QDateTime>
 #include <QRandomGenerator>
@@ -26,17 +27,17 @@ void MediaProxyModel::setTagManager(TagManager* mgr) {
     m_tagMgr = mgr;
     if (m_tagMgr) {
         connect(m_tagMgr, &TagManager::categoriesChanged, this, [this] {
-            recomputeEffectiveTags();
-            invalidateFilter();
+            recomputeFilterCaches();
+            invalidateRowsFilter();
             emit filterChanged();
         });
         connect(m_tagMgr, &TagManager::tagsChanged, this, [this] {
-            recomputeEffectiveTags();
-            invalidateFilter();
+            recomputeFilterCaches();
+            invalidateRowsFilter();
         });
     }
-    recomputeEffectiveTags();
-    invalidateFilter();
+    recomputeFilterCaches();
+    invalidateRowsFilter();
 }
 
 void MediaProxyModel::reapplySort() {
@@ -47,6 +48,7 @@ void MediaProxyModel::setSortFieldInt(int f) {
     const Field nf = static_cast<Field>(f);
     if (nf == m_field) return;
     m_field = nf;
+    // Nur neu sortieren — der Zeilenfilter bleibt unberührt (kein Full-Reset).
     invalidate();
     reapplySort();
     emit sortChanged();
@@ -59,11 +61,13 @@ void MediaProxyModel::setSortDescending(bool d) {
     emit sortChanged();
 }
 
+// Typ-Umschalter berühren nur den Zeilenfilter → invalidateRowsFilter() statt
+// invalidate() (kein Re-Sort, keine Spalten-Neubewertung).
 #define PROXY_BOOL_SETTER(Setter, Member)            \
     void MediaProxyModel::Setter(bool v) {           \
         if (v == Member) return;                     \
         Member = v;                                  \
-        invalidateFilter();                          \
+        invalidateRowsFilter();                      \
         emit filterChanged();                        \
     }
 PROXY_BOOL_SETTER(setShowImages, m_showImages)
@@ -76,8 +80,8 @@ PROXY_BOOL_SETTER(setShowTexts,  m_showTexts)
 void MediaProxyModel::setTagFilter(const QStringList& t) {
     if (t == m_tagFilter) return;
     m_tagFilter = t;
-    recomputeEffectiveTags();
-    invalidateFilter();
+    recomputeFilterCaches();
+    invalidateRowsFilter();
     emit filterChanged();
 }
 
@@ -85,7 +89,7 @@ void MediaProxyModel::setTagFilterModeInt(int m) {
     const TagMode nm = static_cast<TagMode>(m);
     if (nm == m_mode) return;
     m_mode = nm;
-    invalidateFilter();
+    invalidateRowsFilter();
     emit filterChanged();
 }
 
@@ -93,8 +97,8 @@ void MediaProxyModel::setCategoryFilter(const QStringList& ids) {
     if (ids == m_categoryFilter) return;
     m_categoryFilter = ids;
     m_activeCatIds = QSet<QString>(ids.begin(), ids.end());
-    recomputeEffectiveTags();
-    invalidateFilter();
+    recomputeFilterCaches();
+    invalidateRowsFilter();
     emit filterChanged();
 }
 
@@ -102,16 +106,32 @@ void MediaProxyModel::setTagFilterAnd(bool v) {
     const TagMode nm = v ? TagMode::And : TagMode::Or;
     if (nm == m_mode) return;
     m_mode = nm;
-    invalidateFilter();
+    invalidateRowsFilter();
     emit filterChanged();
 }
 
-// ── Effektive Tag-Menge: manuelle Tags ∪ Tags aller aktiven Kategorien ───────
-void MediaProxyModel::recomputeEffectiveTags() {
+// ── Filter-Caches einmalig pro Änderung vorberechnen ─────────────────────────
+//  m_effectiveTags  : manuelle Tags ∪ Tags aller aktiven Kategorien (rekursiv)
+//  m_activeCatFiles : Dateinamen, die DIREKT einer aktiven Kategorie angehören
+//                     (entspricht dem alten categoriesForFile ∩ activeCatIds,
+//                      jedoch ohne Pro-Zeile-Baumdurchlauf).
+void MediaProxyModel::recomputeFilterCaches() {
+    // Effektive Tags
     m_effectiveTags = QSet<QString>(m_tagFilter.begin(), m_tagFilter.end());
     if (m_tagMgr) {
         for (const QString& id : std::as_const(m_categoryFilter))
             collectTagsForCategory(id, m_effectiveTags);
+    }
+
+    // Direkt-Dateien aktiver Kategorien
+    m_activeCatFiles.clear();
+    if (m_tagMgr) {
+        for (const QString& id : std::as_const(m_categoryFilter)) {
+            const TagCategory* cat = m_tagMgr->categoryById(id);
+            if (!cat) continue;
+            for (const QString& f : std::as_const(cat->files))
+                m_activeCatFiles.insert(f);
+        }
     }
 }
 
@@ -152,12 +172,11 @@ bool MediaProxyModel::filterAcceptsRow(int sourceRow, const QModelIndex& sourceP
         return true;
 
     // ── Direkte Datei↔Kategorie-Mitgliedschaft: passiert immer ───────────────
-    if (hasCategoryFilter && m_tagMgr) {
+    //  O(1)-Lookup im vorberechneten Cache statt rekursivem Baum-Scan pro Zeile.
+    if (hasCategoryFilter && !m_activeCatFiles.isEmpty()) {
         const QString fileName = idx.data(MediaModel::FileNameRole).toString();
-        const QStringList itemCats = m_tagMgr->categoriesForFile(fileName);
-        for (const QString& cid : itemCats)
-            if (m_activeCatIds.contains(cid))
-                return true;
+        if (m_activeCatFiles.contains(fileName))
+            return true;
     }
 
     // Kategorie aktiv, aber keine (effektiven) Tags → kein weiterer Pfad.

@@ -81,7 +81,10 @@ Dialog {
             Layout.margins: 12
             currentIndex: tabBar.currentIndex
 
-            SettingsGeneralTab    {}
+            SettingsGeneralTab    {
+                id: generalTab
+                onRhiSwitchSucceeded: dlg.accept()
+            }
             SettingsEditorTab     {}
             SettingsViewTab       {}
             SettingsTagsTab       {}
@@ -105,4 +108,6 @@ Dialog {
             }
         }
     }
+
 }
+

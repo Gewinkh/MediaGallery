@@ -64,6 +64,13 @@ ThumbnailLoader::ThumbnailLoader(QObject* parent)
 }
 
 ThumbnailLoader::~ThumbnailLoader() {
+    // Alle laufenden Tasks kooperativ stoppen, dann auf den Pool warten.
+    {
+        QMutexLocker lk(&m_mutex);
+        for (auto& f : m_flags)
+            if (f) f->store(true, std::memory_order_relaxed);
+    }
+    m_pool->clear();
     m_pool->waitForDone(2000);
 }
 
@@ -72,54 +79,131 @@ void ThumbnailLoader::requestThumbnail(const QString& filePath) {
     {
         QMutexLocker lk(&m_mutex);
         if (m_pending.contains(filePath)) return;   // bereits in Arbeit
-        m_pending.insert(filePath);
     }
 
-    const uint64_t gen = m_generation.load(std::memory_order_relaxed);
+    // ── Schneller Pfad: Cache-Datei existiert bereits ────────────────────────
+    //  Kein Pool-Dispatch, kein Decode — nur eine Existenzprüfung und ein
+    //  queued Signal. Das ist der Normalfall beim Scrollen über bereits
+    //  generierte Thumbnails und hält den Pool für echte Misses frei.
+    const QString cachePath = cacheKeyFor(filePath);
+    if (QFileInfo::exists(cachePath)) {
+        const QString url = QUrl::fromLocalFile(cachePath).toString();
+        QMetaObject::invokeMethod(this, [this, filePath, url]() {
+            emit thumbnailReady(filePath, url);
+        }, Qt::QueuedConnection);
+        return;
+    }
 
-    auto* task = new ThumbnailTask(filePath, QSize(kThumbDim, kThumbDim), gen);
+    // ── Miss: Task mit Abbruch-Flag + Priorität einreihen ────────────────────
+    const uint64_t gen = m_generation.load(std::memory_order_relaxed);
+    auto flag = std::make_shared<std::atomic<bool>>(false);
+    auto* task = new ThumbnailTask(filePath, QSize(kThumbDim, kThumbDim), gen, flag);
     task->setAutoDelete(true);
+
+    {
+        QMutexLocker lk(&m_mutex);
+        m_pending.insert(filePath);
+        m_queued.insert(filePath, task);
+        m_flags.insert(filePath, flag);
+    }
+
     connect(task, &ThumbnailTask::done, this,
             [this](const QString& path, const QString& thumbPath, bool ok, uint64_t taskGen) {
-        // Ergebnis verwerfen, falls nach dem Einreihen cancelAll() lief.
-        if (taskGen != m_generation.load(std::memory_order_relaxed)) {
-            QMutexLocker lk(&m_mutex);
-            m_pending.remove(path);
-            return;
-        }
+        bool stale, cancelled;
         {
             QMutexLocker lk(&m_mutex);
+            const auto it = m_flags.constFind(path);
+            cancelled = (it != m_flags.constEnd()) && it.value()
+                        && it.value()->load(std::memory_order_relaxed);
             m_pending.remove(path);
+            m_queued.remove(path);
+            m_flags.remove(path);
+            stale = (taskGen != m_generation.load(std::memory_order_relaxed));
         }
+        // Nach cancelAll() (stale) oder gezieltem Abbruch: still verwerfen,
+        // damit die Modell-Zeile NICHT als „failed“ markiert wird.
+        if (stale || cancelled) return;
+
         if (ok)
             emit thumbnailReady(path, QUrl::fromLocalFile(thumbPath).toString());
         else
             emit thumbnailFailed(path);
     }, Qt::QueuedConnection);
 
-    m_pool->start(task);
+    // Neuere Anforderung = höhere Priorität → gerade sichtbare Kacheln zuerst.
+    m_pool->start(task, ++m_priority);
+}
+
+void ThumbnailLoader::cancelThumbnail(const QString& filePath) {
+    if (filePath.isEmpty()) return;
+
+    ThumbnailTask* task = nullptr;
+    CancelFlag flag;
+    {
+        QMutexLocker lk(&m_mutex);
+        if (const auto fit = m_flags.constFind(filePath); fit != m_flags.constEnd())
+            flag = fit.value();
+        if (const auto qit = m_queued.constFind(filePath); qit != m_queued.constEnd())
+            task = qit.value();
+    }
+
+    // Laufende Tasks kooperativ abbrechen.
+    if (flag) flag->store(true, std::memory_order_relaxed);
+
+    // Noch nicht gestartete Tasks direkt aus der Queue nehmen → sie laufen nie.
+    if (task && m_pool->tryTake(task)) {
+        {
+            QMutexLocker lk(&m_mutex);
+            m_pending.remove(filePath);
+            m_queued.remove(filePath);
+            m_flags.remove(filePath);
+        }
+        delete task;   // autoDelete greift nicht, da aus dem Pool entnommen
+    }
+    // Falls bereits gestartet: Flag sorgt für frühen Abbruch; done() räumt auf.
 }
 
 void ThumbnailLoader::cancelAll() {
+    // Noch nicht gestartete Tasks entfernen & löschen (autoDelete).
     m_pool->clear();
+    // Laufende Ergebnisse über Generationswechsel verwerfen …
     m_generation.fetch_add(1, std::memory_order_relaxed);
+
     QMutexLocker lock(&m_mutex);
+    // … und laufende Tasks zusätzlich kooperativ abbrechen.
+    for (auto& f : m_flags)
+        if (f) f->store(true, std::memory_order_relaxed);
+    m_flags.clear();
+    m_queued.clear();   // Zeiger gehören nun dem Pool (gelöscht) bzw. laufen aus
     m_pending.clear();
 }
 
 // ─── ThumbnailTask ───────────────────────────────────────────────────────────
-ThumbnailTask::ThumbnailTask(const QString& path, const QSize& size, uint64_t generation)
-    : m_path(path), m_size(size), m_generation(generation)
+ThumbnailTask::ThumbnailTask(const QString& path, const QSize& size, uint64_t generation,
+                             std::shared_ptr<std::atomic<bool>> cancel)
+    : m_path(path), m_size(size), m_generation(generation), m_cancel(std::move(cancel))
 {
     setAutoDelete(true);
 }
 
 void ThumbnailTask::run() {
+    // Früher Ausstieg, falls bereits vor dem Start abgebrochen.
+    if (cancelled()) {
+        emit done(m_path, QString(), false, m_generation);
+        return;
+    }
+
     const QString cachePath = cacheKeyFor(m_path);
 
     // Disk-Cache-Treffer: keine Dekodierung nötig (nur Existenzprüfung im Pool).
     if (QFileInfo::exists(cachePath)) {
         emit done(m_path, cachePath, true, m_generation);
+        return;
+    }
+
+    // Vor dem teuren Decode erneut prüfen (Kachel evtl. schon weggescrollt).
+    if (cancelled()) {
+        emit done(m_path, QString(), false, m_generation);
         return;
     }
 
@@ -132,6 +216,12 @@ void ThumbnailTask::run() {
     else if (t == MediaType::Text)  pix = generateTextThumbnail(m_path, m_size);
 
     if (pix.isNull()) {
+        emit done(m_path, QString(), false, m_generation);
+        return;
+    }
+
+    // Nach dem Decode, vor dem Speichern: abgebrochene Ergebnisse verwerfen.
+    if (cancelled()) {
         emit done(m_path, QString(), false, m_generation);
         return;
     }

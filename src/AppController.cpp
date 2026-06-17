@@ -7,6 +7,7 @@
 #include "Strings.h"
 #include "Icons.h"
 #include "MediaItem.h"     // MediaItem::detectType für Drop-Behandlung
+#include "RhiProber.h"
 
 #include <QBuffer>
 #include <QByteArray>
@@ -16,6 +17,7 @@
 #include <QFileInfo>
 #include <QDir>
 #include <QFile>
+#include <QSettings>
 #include <QVariant>
 #include <QVariantMap>
 
@@ -291,6 +293,19 @@ void AppController::setVideoPlayback(const QString& mode) {
     m_settings.setVideoPlayback(v);
     m_settings.sync();
     emit videoPlaybackChanged();        // AppSettings sendet hierfür kein Signal
+}
+
+// ─── RHI-Backend-Wechsel ──────────────────────────────────────────────────────
+bool AppController::trySetRhiBackend(const QString& backend) {
+    if (backend.compare(m_settings.rhiBackend(), Qt::CaseInsensitive) == 0)
+        return true;
+
+    // Einfach speichern — wirkt beim nächsten Start.
+    // Kein Probe-Prozess, kein Test. Der Crash-Guard in RhiProber fängt
+    // einen fehlerhaften Start beim nächsten Mal automatisch ab.
+    RhiProber::setDesiredBackend(backend);
+    emit rhiBackendChanged();
+    return true;
 }
 
 void AppController::toggleOptions() {

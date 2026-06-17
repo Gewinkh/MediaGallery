@@ -21,6 +21,17 @@ class TagManager;
 //                    lässt ein Item IMMER passieren; zusätzlich werden die Tags
 //                    aktiver Kategorien in die effektive Filtermenge injiziert.
 //
+//  Performance (Filter/Tab wechseln):
+//   Die Filter-Hotpath-Funktion filterAcceptsRow() läuft pro Zeile. Sämtliche
+//   filterabhängigen Mengen werden daher EINMAL pro Filteränderung in Caches
+//   vorberechnet (recomputeFilterCaches):
+//     • m_effectiveTags  : manuelle Tags ∪ Tags aller aktiven Kategorien
+//     • m_activeCatFiles : Dateinamen, die direkt einer aktiven Kategorie
+//                          angehören.
+//   Damit entfällt der frühere, pro Zeile ausgeführte rekursive Kategoriebaum-
+//   Scan (TagManager::categoriesForFile) inkl. QStringList-Allokation; je Zeile
+//   bleiben nur noch O(1)-Set-Lookups.
+//
 //  Filtern/Sortieren bleibt serverseitig; QML setzt nur die Properties/Slots.
 //  Es werden keine Datenkopien nach QML geschoben.
 // ─────────────────────────────────────────────────────────────────────────────
@@ -99,7 +110,7 @@ protected:
 
 private:
     void reapplySort();
-    void recomputeEffectiveTags();
+    void recomputeFilterCaches();        // effektive Tags + aktive Kategorie-Dateien
     void collectTagsForCategory(const QString& id, QSet<QString>& out) const;
     QVariant roleAt(int proxyRow, int role) const;
 
@@ -117,6 +128,7 @@ private:
 
     QStringList   m_tagFilter;        // manuell gewählte Tags
     QStringList   m_categoryFilter;   // aktive Kategorie-IDs
-    QSet<QString> m_effectiveTags;    // manuell ∪ Tags aktiver Kategorien
+    QSet<QString> m_effectiveTags;    // manuell ∪ Tags aktiver Kategorien (Cache)
     QSet<QString> m_activeCatIds;     // == m_categoryFilter als Set
+    QSet<QString> m_activeCatFiles;   // Dateien direkt in aktiven Kategorien (Cache)
 };

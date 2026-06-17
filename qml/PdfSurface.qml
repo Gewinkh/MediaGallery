@@ -39,12 +39,41 @@ Item {
     property real   wheelPageFraction: 0.5   // Anteil der Viewporthöhe je Rad-Raststufe
 
     // ── Tunbare Cache-Deckel ──────────────────────────────────────────────────
-    //  Scroll-Vorhalte/-Cache in Viewporthoehen je Richtung. 2.5 ≈ ein paar Seiten
-    //  ober- und unterhalb bleiben gerendert (Scroll-zurueck ohne Reload). Hoeher
-    //  = mehr RAM. RAM ≈ (1 + 2·pageCacheScreens) sichtbare Seitenbitmaps.
-    property real   pageCacheScreens: 2.5
+    //  Scroll-Vorhalte/-Cache in Viewporthoehen je Richtung. 1.5 ≈ eine Seite
+    //  ober- und unterhalb bleibt gerendert (Scroll-zurueck ohne Reload). Hoeher
+    //  = mehr RAM, ABER auch mehr KONKURRIERENDE Renderings: PDFium serialisiert
+    //  alle render()-Aufrufe EINER Dokument-Instanz ueber einen Mutex, d. h. jede
+    //  vorab gerenderte Nachbarseite verzoegert die gerade sichtbar werdende.
+    //  1.5 ist die Balance aus „naechste Seite ist schon da“ und „sichtbare Seite
+    //  rendert zuerst“. RAM ≈ (1 + 2·pageCacheScreens) sichtbare Seitenbitmaps.
+    property real   pageCacheScreens: 1.5
     //  Anzahl GEPARSTER PDFs, die fuer schnelles Zurueckwechseln warm bleiben.
     property int    pdfPoolSize: 3
+
+    // ── Gestaffeltes Laden (das Kern-Performance-Muster) ──────────────────────
+    //  Problem: Wuerden Hauptseiten UND Thumbnail-Leiste beim Oeffnen gleichzeitig
+    //  rendern, konkurrierten ~8 Thumbnails + mehrere Vorab-Hauptseiten mit der
+    //  einen sichtbaren Seite um denselben PDFium-Render-Mutex → spuerbare
+    //  Oeffnen-Latenz, besonders bei schweren Seiten (Vektorgrafik/Bilder), wo
+    //  jedes render() unabhaengig von der Zielgroesse teuer ist.
+    //
+    //  Loesung (wie die bewaehrte QPdfView-Version): zuerst NUR die sichtbare
+    //  Seite rendern; Vorhalte-Puffer und Thumbnail-Leiste erst nach einer kurzen
+    //  Verzoegerung freischalten — dann ist die erste Seite schon auf dem Schirm.
+    property bool   _warm: false                 // false → nur sichtbare Seite rendern
+    property int    warmupDelayMs: 160           // Verzoegerung bis Puffer+Thumbnails
+
+    // Warmlauf nach jedem (Neu-)Laden anstossen: erst sichtbare Seite, dann Rest.
+    function _beginWarmup() {
+        root._warm = false
+        warmupTimer.restart()
+    }
+    Timer {
+        id: warmupTimer
+        interval: root.warmupDelayMs
+        repeat: false
+        onTriggered: root._warm = true
+    }
 
     // ── Dokument-Pool (LRU) ───────────────────────────────────────────────────
     property var    doc: null                // aktuell aktives PdfDocument
@@ -113,8 +142,11 @@ Item {
             annotations = []                 // bis der asynchrone Scan zurueckkommt
             _activateDoc(root.source)
             // Bei einem bereits warmen (Ready) Dokument feuert kein statusChanged →
-            // Scrollposition hier zuruecksetzen.
-            if (root.docReady) { pages.contentY = 0; root.currentPage = 0 }
+            // Scrollposition hier zuruecksetzen und den Warmlauf direkt starten.
+            if (root.docReady) {
+                pages.contentY = 0; root.currentPage = 0
+                _beginWarmup()
+            }
             // Annotationen NICHT blockierend holen → der PDF-Wechsel laggt nicht
             // mehr. Die Badges erscheinen, sobald pdfAnnotationsReady feuert.
             Viewer.requestPdfAnnotations(root.source)
@@ -130,6 +162,8 @@ Item {
             if (root.doc && root.doc.status === PdfDocument.Ready) {
                 pages.contentY = 0
                 root.currentPage = 0
+                // Erst die sichtbare Seite rendern lassen, dann Puffer+Thumbnails.
+                root._beginWarmup()
             }
         }
     }
@@ -309,7 +343,13 @@ Item {
             // gerendert → Hoch-/Runterscrollen innerhalb des Fensters laedt nicht
             // neu. cache:false an den PdfPageImage → ausserhalb dieses Fensters
             // wird wieder freigegeben (deterministischer RAM-Deckel).
-            cacheBuffer: Math.round(pages.height * root.pageCacheScreens)
+            //
+            // GESTAFFELT: Bis der Warmlauf greift, ist der Puffer fast 0 → beim
+            // Oeffnen rendert NUR die sichtbare Seite (kein Vorab-Rendern von
+            // Nachbarseiten, die sie sonst hinter dem Render-Mutex blockierten).
+            // Danach klappt der volle Vorhalte-Puffer fuer fluessiges Scrollen auf.
+            cacheBuffer: Math.round(pages.height *
+                                    (root._warm ? root.pageCacheScreens : 0.1))
             boundsBehavior: Flickable.StopAtBounds
             onContentYChanged: root.updateCurrentPage()
             onCountChanged: root.updateCurrentPage()
@@ -415,11 +455,16 @@ Item {
                 anchors.fill: parent
                 anchors.margins: 8
                 clip: true
-                model: root.docReady ? root.doc.pageCount : 0
+                // Erst NACH dem Warmlauf befuellen → die Thumbnail-Renderings
+                // konkurrieren nicht mehr mit der ersten sichtbaren Hauptseite um
+                // den PDFium-Render-Mutex (entspricht dem 120-ms-Deferral der
+                // alten QPdfView-Version).
+                model: (root.docReady && root._warm) ? root.doc.pageCount : 0
                 spacing: 10
-                // Thumbnails sind winzig (RAM-guenstig) → eine Bildschirmhoehe
-                // vorausladen fuer fluessiges Scrollen der Seitenleiste.
-                cacheBuffer: Math.round(thumbs.height)
+                // Thumbnails sind winzig (RAM-guenstig). Eine halbe Bildschirmhoehe
+                // Vorhalt genuegt fuer fluessiges Scrollen der Seitenleiste und
+                // haelt die Zahl gleichzeitiger Renderings klein.
+                cacheBuffer: Math.round(thumbs.height * 0.5)
                 boundsBehavior: Flickable.StopAtBounds
                 ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
 

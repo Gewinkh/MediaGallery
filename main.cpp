@@ -6,6 +6,7 @@
 #include <QQuickStyle>
 #include <QUrl>
 
+#include "src/RhiProber.h"
 #include "src/AppSettings.h"
 #include "src/FolderService.h"
 #include "src/JsonStorage.h"
@@ -18,13 +19,18 @@
 #include "src/MediaProxyModel.h"
 
 int main(int argc, char* argv[]) {
+    // ── RHI-Backend setzen ────────────────────────────────────────────────────
+    // Muss VOR allen Qt-Klassen aufgerufen werden.
+    // Liest das gewählte Backend aus QSettings, prüft den Crash-Guard
+    // (→ automatischer Software-Fallback nach Crash) und ruft
+    // QQuickWindow::setGraphicsApi() auf.
+    RhiProber::applyStoredBackend();
+
     QGuiApplication::setHighDpiScaleFactorRoundingPolicy(
         Qt::HighDpiScaleFactorRoundingPolicy::PassThrough);
 
-    // Qt Quick Controls Stil; muss vor dem Laden der QML-Wurzel gesetzt werden.
     QQuickStyle::setStyle(QStringLiteral("Fusion"));
 
-    // Reine QML-Oberflaeche -> QGuiApplication (kein QtWidgets mehr).
     QGuiApplication app(argc, argv);
     app.setApplicationName("MediaGallery");
     app.setOrganizationName("MediaGallery");
@@ -51,19 +57,18 @@ int main(int argc, char* argv[]) {
     TagController    tagController(tagManager);
     ViewerController viewerController;
 
-    // ── Galerie-Backend (Phase 2) ────────────────────────────────────────────
+    // ── Galerie-Backend ──────────────────────────────────────────────────────
     ThumbnailLoader  thumbLoader;
     MediaModel       mediaModel(storage, tagManager, thumbLoader);
     MediaProxyModel  galleryModel;
     galleryModel.setSourceModel(&mediaModel);
-    galleryModel.setTagManager(&tagManager);   // Phase 3: Kategorie-Filter im Proxy
+    galleryModel.setTagManager(&tagManager);
 
     QObject::connect(&appController, &AppController::folderOpened,
                      &mediaModel, &MediaModel::loadFolder);
     QObject::connect(&appController, &AppController::folderContentsChanged,
                      &mediaModel, &MediaModel::reload);
 
-    // Manuelle Registrierung (KEINE QML_ELEMENT/QML_SINGLETON-Makros).
     qmlRegisterSingletonInstance("MediaGallery", 1, 0, "App",      &appController);
     qmlRegisterSingletonInstance("MediaGallery", 1, 0, "Settings", &settings);
     qmlRegisterSingletonInstance("MediaGallery", 1, 0, "Tags",     &tagController);
@@ -78,5 +83,9 @@ int main(int argc, char* argv[]) {
     if (engine.rootObjects().isEmpty())
         return -1;
 
-    return app.exec();
+    const int ret = app.exec();
+
+    // ── Sauberes Ende: Crash-Guard löschen ───────────────────────────────────
+    RhiProber::markCleanShutdown();
+    return ret;
 }

@@ -24,6 +24,8 @@ find_package(Qt6 6.4 REQUIRED COMPONENTS
 set(SOURCES
     main.cpp
     src/ISettings.h
+    src/RhiProber.cpp
+    src/RhiProber.h
     src/AppSettings.cpp
     src/AppSettings.h
     src/AppController.cpp
