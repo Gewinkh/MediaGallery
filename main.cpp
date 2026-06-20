@@ -4,6 +4,7 @@
 #include <QQmlContext>
 #include <QQmlEngine>
 #include <QQuickStyle>
+#include <QQuickImageProvider>
 #include <QUrl>
 
 #include "src/RhiProber.h"
@@ -15,6 +16,7 @@
 #include "src/TagController.h"
 #include "src/ViewerController.h"
 #include "src/ThumbnailLoader.h"
+#include "src/PdfThumbnailProvider.h"
 #include "src/MediaModel.h"
 #include "src/MediaProxyModel.h"
 
@@ -53,9 +55,10 @@ int main(int argc, char* argv[]) {
     TagManager    tagManager(&storage);
 
     // QML-Bridges
-    AppController    appController(settings, folderService, storage, tagManager);
-    TagController    tagController(tagManager);
-    ViewerController viewerController;
+    AppController       appController(settings, folderService, storage, tagManager);
+    TagController       tagController(tagManager);
+    ViewerController    viewerController;
+    PdfThumbnailProvider pdfThumbs;
 
     // ── Galerie-Backend ──────────────────────────────────────────────────────
     ThumbnailLoader  thumbLoader;
@@ -69,15 +72,20 @@ int main(int argc, char* argv[]) {
     QObject::connect(&appController, &AppController::folderContentsChanged,
                      &mediaModel, &MediaModel::reload);
 
-    qmlRegisterSingletonInstance("MediaGallery", 1, 0, "App",      &appController);
-    qmlRegisterSingletonInstance("MediaGallery", 1, 0, "Settings", &settings);
-    qmlRegisterSingletonInstance("MediaGallery", 1, 0, "Tags",     &tagController);
-    qmlRegisterSingletonInstance("MediaGallery", 1, 0, "Viewer",   &viewerController);
+    qmlRegisterSingletonInstance("MediaGallery", 1, 0, "App",       &appController);
+    qmlRegisterSingletonInstance("MediaGallery", 1, 0, "Settings",  &settings);
+    qmlRegisterSingletonInstance("MediaGallery", 1, 0, "Tags",      &tagController);
+    qmlRegisterSingletonInstance("MediaGallery", 1, 0, "Viewer",    &viewerController);
+    qmlRegisterSingletonInstance("MediaGallery", 1, 0, "PdfThumbs", &pdfThumbs);
 
     // ── QML-Wurzel ───────────────────────────────────────────────────────────
     QQmlApplicationEngine engine;
     engine.rootContext()->setContextProperty("galleryModel", &galleryModel);
     engine.rootContext()->setContextProperty("mediaModel",   &mediaModel);
+
+    // RAM-Vorschauen der PDF-Seitenleiste: "image://pdfthumb/<docId>/<page>".
+    // Eigentum des Providers geht an die Engine ueber.
+    engine.addImageProvider(QStringLiteral("pdfthumb"), pdfThumbs.createImageProvider());
 
     engine.load(QUrl(QStringLiteral("qrc:/qml/ApplicationShell.qml")));
     if (engine.rootObjects().isEmpty())

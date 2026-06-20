@@ -63,6 +63,10 @@ Item {
     property bool   _warm: false                 // false → nur sichtbare Seite rendern
     property int    warmupDelayMs: 160           // Verzoegerung bis Puffer+Thumbnails
 
+    // docId des aktiven PDFs im RAM-Thumbnail-Provider (0 = noch keine).
+    // Baut die image://pdfthumb/<docId>/<page>-URLs der Seitenleiste.
+    property int    _thumbDocId: 0
+
     // Warmlauf nach jedem (Neu-)Laden anstossen: erst sichtbare Seite, dann Rest.
     function _beginWarmup() {
         root._warm = false
@@ -72,7 +76,14 @@ Item {
         id: warmupTimer
         interval: root.warmupDelayMs
         repeat: false
-        onTriggered: root._warm = true
+        onTriggered: {
+            // Vorrendern der Seitenleiste anstossen, BEVOR die Delegates ueber
+            // _warm entstehen → sie binden sofort die korrekte docId. Sichtbare
+            // Seite (currentPage) wird im Provider zuerst gerendert.
+            if (root.source.length > 0)
+                root._thumbDocId = PdfThumbs.ensureDocument(root.source, root.currentPage)
+            root._warm = true
+        }
     }
 
     // ── Dokument-Pool (LRU) ───────────────────────────────────────────────────
@@ -461,21 +472,35 @@ Item {
                 // alten QPdfView-Version).
                 model: (root.docReady && root._warm) ? root.doc.pageCount : 0
                 spacing: 10
-                // Thumbnails sind winzig (RAM-guenstig). Eine halbe Bildschirmhoehe
-                // Vorhalt genuegt fuer fluessiges Scrollen der Seitenleiste und
-                // haelt die Zahl gleichzeitiger Renderings klein.
-                cacheBuffer: Math.round(thumbs.height * 0.5)
+                // Vorschauen kommen jetzt JPEG-komprimiert aus dem RAM-Provider —
+                // Scrollen kostet nur einen winzigen Dekode, kein PDFium-Render.
+                // Etwas mehr Vorhalt haelt die Leiste auch bei schnellem Scrollen
+                // luecken­frei, ohne nennenswerten RAM (wenige KB je Vorschau).
+                cacheBuffer: Math.round(thumbs.height * 1.5)
                 boundsBehavior: Flickable.StopAtBounds
                 ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
 
                 delegate: Item {
                     id: thumbCell
                     required property int index
+                    // Cache-Buster: hochzaehlen, sobald die Vorschau gerendert ist
+                    // → die Image-source wird neu angefordert und aus dem RAM-Store
+                    //   geliefert.
+                    property int rev: 0
                     readonly property size pts: root.doc.pagePointSize(index)
                     readonly property real thumbW: thumbs.width - 8
                     readonly property real thumbH: pts.width > 0 ? thumbW * (pts.height / pts.width) : thumbW * 1.414
                     width: thumbs.width
                     height: thumbH + 18
+
+                    // Meldung des Providers: genau diese Seite liegt jetzt im Store.
+                    Connections {
+                        target: PdfThumbs
+                        function onPageReady(docId, page) {
+                            if (docId === root._thumbDocId && page === thumbCell.index)
+                                thumbCell.rev++
+                        }
+                    }
 
                     Rectangle {
                         id: thumbFrame
@@ -486,14 +511,20 @@ Item {
                         border.color: thumbCell.index === root.currentPage ? App.themeAccent
                                                                            : App.themeBorder
                         border.width: thumbCell.index === root.currentPage ? 2 : 1
-                        PdfPageImage {
+                        // Vorschau kommt JPEG-komprimiert aus dem RAM-Provider:
+                        // KEIN PdfPageImage mehr → kein PDFium-Render am Haupt-Mutex,
+                        // Scrollen dekodiert nur winzige JPEGs (asynchron, < 1 ms).
+                        Image {
+                            id: thumbImg
                             anchors.fill: parent
                             anchors.margins: thumbFrame.border.width
-                            document: root.doc
-                            currentFrame: thumbCell.index
                             asynchronous: true
                             cache: false
                             fillMode: Image.PreserveAspectFit
+                            source: root._thumbDocId > 0
+                                    ? "image://pdfthumb/" + root._thumbDocId + "/"
+                                      + thumbCell.index + "?r=" + thumbCell.rev
+                                    : ""
                             sourceSize.width: thumbCell.thumbW * Screen.devicePixelRatio
                         }
                         TapHandler { onTapped: root.goToPage(thumbCell.index) }
@@ -505,6 +536,33 @@ Item {
                         color: thumbCell.index === root.currentPage ? App.themeAccent : App.themeTextMuted
                         font.pixelSize: 10
                     }
+                }
+            }
+
+            // Web-artiges, animiertes Wheel-Scrollen der Seitenleiste (wie die
+            // Hauptansicht). Liegt als NoButton-MouseArea ueber der Liste: faengt
+            // nur das Mausrad, laesst Klicks (Thumbnail-Tap, ScrollBar) hindurch.
+            NumberAnimation {
+                id: thumbsScroll
+                target: thumbs; property: "contentY"
+                duration: 180; easing.type: Easing.OutCubic
+            }
+            MouseArea {
+                anchors.fill: thumbs
+                acceptedButtons: Qt.NoButton
+                z: 1
+                onWheel: (wheel) => {
+                    var maxY = Math.max(0, thumbs.contentHeight - thumbs.height)
+                    if (maxY <= 0) { wheel.accepted = true; return }
+                    var raw = (wheel.angleDelta.y !== 0)
+                              ? (wheel.angleDelta.y / 120) * (thumbs.height * 0.55)
+                              : wheel.pixelDelta.y * 1.6
+                    var base = thumbsScroll.running ? thumbsScroll.to : thumbs.contentY
+                    var tgt = Math.max(0, Math.min(base - raw, maxY))
+                    thumbsScroll.from = thumbs.contentY
+                    thumbsScroll.to = tgt
+                    thumbsScroll.restart()
+                    wheel.accepted = true
                 }
             }
         }

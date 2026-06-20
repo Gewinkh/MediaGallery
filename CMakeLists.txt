@@ -49,6 +49,8 @@ set(SOURCES
     src/JsonStorage.h
     src/ThumbnailLoader.cpp
     src/ThumbnailLoader.h
+    src/PdfThumbnailProvider.cpp
+    src/PdfThumbnailProvider.h
     src/PdfMediaHandler.cpp
     src/PdfMediaHandler.h
     src/Strings.cpp
