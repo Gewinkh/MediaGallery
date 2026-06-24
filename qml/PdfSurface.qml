@@ -38,6 +38,15 @@ Item {
     property bool   thumbsVisible: true
     property real   wheelPageFraction: 0.5   // Anteil der Viewporthöhe je Rad-Raststufe
 
+    // ── Textauswahl-Zustand (recycling-sicher im Root gehalten) ───────────────
+    //  Die Highlights leben hier (nicht im wiederverwendeten Delegate); nur die
+    //  Seite mit selPage zeichnet selRects → Recycling verliert nichts.
+    property int    selPage: -1              // Seite mit aktiver Auswahl (-1 = keine)
+    property var    selRects: []             // normalisierte Highlight-Rechtecke {x,y,w,h}
+    property bool   _selecting: false        // gerade am Ziehen?
+    property var    _lastSel: null           // letzte Drag-Brüche (für Re-Query bei Ready)
+    property bool   _pendingSelectAll: false // Strg+A vor Abschluss des Lazy-Loads → nachziehen
+
     // ── Tunbare Cache-Deckel ──────────────────────────────────────────────────
     //  Scroll-Vorhalte/-Cache in Viewporthoehen je Richtung. 1.5 ≈ eine Seite
     //  ober- und unterhalb bleibt gerendert (Scroll-zurueck ohne Reload). Hoeher
@@ -135,14 +144,18 @@ Item {
         root.doc = null
     }
 
-    Component.onDestruction: _clearPool()
+    Component.onDestruction: { _clearPool(); PdfText.releaseDocument() }
 
     function release() {
-        // Leichtgewichtig: nur Overlays stoppen. Das Dokument bleibt im Pool warm
-        // (kein doc.source="" mehr) → Zurueckwechseln muss nicht neu parsen.
+        // Leichtgewichtig: nur Overlays stoppen. Das RENDER-Dokument bleibt im Pool
+        // warm (kein doc.source="" mehr) → Zurueckwechseln muss nicht neu parsen.
         mediaLoader.active = false
         audioPlayer.stop()
         annotations = []
+        // Das separate AUSWAHL-Dokument dagegen freigeben (RAM-Prio 1): es wird beim
+        // naechsten Markieren ohnehin wieder lazy geladen.
+        clearSelection()
+        PdfText.releaseDocument()
     }
 
     onSourceChanged: {
@@ -151,6 +164,7 @@ Item {
             fitMode = "page"
             currentPage = 0
             annotations = []                 // bis der asynchrone Scan zurueckkommt
+            clearSelection()                 // evtl. Auswahl des vorherigen PDFs verwerfen
             _activateDoc(root.source)
             // Bei einem bereits warmen (Ready) Dokument feuert kein statusChanged →
             // Scrollposition hier zuruecksetzen und den Warmlauf direkt starten.
@@ -195,6 +209,41 @@ Item {
         }
     }
 
+    // Auswahl-Dokument wurde (asynchron) fertig geladen → eine evtl. noch laufende
+    // Drag-Auswahl nachholen, deren fruehe Abfragen mangels Dokument leer blieben
+    // (relevant nur bei grossen PDFs, deren Laden laenger als der erste Drag dauert).
+    Connections {
+        target: PdfText
+        function onReadyChanged() {
+            if (!PdfText.ready)
+                return
+            if (root._selecting && root._lastSel) {
+                var s = root._lastSel
+                root.selRects = PdfText.selectionBetween(s.page, s.a0, s.b0, s.a1, s.b1)
+            } else if (root._pendingSelectAll) {
+                root._pendingSelectAll = false
+                root.selPage = root.currentPage
+                root.selRects = PdfText.selectAllOnPage(root.currentPage)
+            }
+        }
+    }
+
+    // ── Tastenkuerzel: Kopieren / Seite komplett markieren ─────────────────────
+    //  WindowShortcut-Kontext (Standard) → feuert, solange dieses PDF im Vollbild
+    //  aktiv ist. Copy ist nur scharf, wenn wirklich Text markiert ist (kein
+    //  mehrdeutiger Konflikt). Explizite Sequenzen statt StandardKey, damit keine
+    //  Zweitbindung den Shortcut mehrdeutig macht.
+    Shortcut {
+        sequence: "Ctrl+C"
+        enabled: root.docReady && PdfText.selectedText.length > 0
+        onActivated: PdfText.copyToClipboard()
+    }
+    Shortcut {
+        sequence: "Ctrl+A"
+        enabled: root.docReady
+        onActivated: root.selectAllCurrentPage()
+    }
+
     onCurrentPageChanged: if (thumbs.count > 0) thumbs.positionViewAtIndex(currentPage, ListView.Contain)
 
     // ── Zoom mit Erhaltung der relativen Scrollposition ───────────────────────
@@ -220,6 +269,53 @@ Item {
         if (pages.count <= 0) { root.currentPage = 0; return }
         var idx = pages.indexAt(pages.width / 2, pages.contentY + pages.height / 2)
         if (idx >= 0) root.currentPage = idx
+    }
+
+    // ── Textauswahl-Steuerung ─────────────────────────────────────────────────
+    //  beginSelection lädt das Auswahl-Dokument LAZY (erst bei echtem Markieren →
+    //  reines Ansehen kostet kein zusätzliches QPdfDocument). Bei großen PDFs ist
+    //  der asynchrone Ladevorgang ggf. erst während des Ziehens fertig — dann holt
+    //  der PdfText.onReadyChanged-Handler die Auswahl nach (Catch-up).
+    function beginSelection(page) {
+        root._selecting = true
+        root.selPage = page
+        root.selRects = []
+        root._lastSel = null
+        root._pendingSelectAll = false
+        PdfText.clearSelection()
+        PdfText.prepare(root.source)
+    }
+    function updateSelection(page, a0, b0, a1, b1) {
+        // Auf [0..1] klemmen (Ziehen über den Seitenrand hinaus).
+        a0 = Math.max(0, Math.min(1, a0)); b0 = Math.max(0, Math.min(1, b0))
+        a1 = Math.max(0, Math.min(1, a1)); b1 = Math.max(0, Math.min(1, b1))
+        root._lastSel = { page: page, a0: a0, b0: b0, a1: a1, b1: b1 }
+        root.selPage = page
+        root.selRects = PdfText.selectionBetween(page, a0, b0, a1, b1)
+    }
+    function endSelection(wasDrag) {
+        root._selecting = false
+        if (!wasDrag) root.clearSelection()   // reiner Klick → Auswahl aufheben
+    }
+    function clearSelection() {
+        root.selPage = -1
+        root.selRects = []
+        root._lastSel = null
+        root._pendingSelectAll = false
+        PdfText.clearSelection()
+    }
+    function selectAllCurrentPage() {
+        if (!root.docReady) return
+        root._lastSel = null
+        PdfText.prepare(root.source)
+        if (PdfText.ready) {
+            root.selPage = root.currentPage
+            root.selRects = PdfText.selectAllOnPage(root.currentPage)
+            root._pendingSelectAll = false
+        } else {
+            // Auswahl-Dokument laedt noch (lazy) → nach dem Laden nachholen.
+            root._pendingSelectAll = true
+        }
     }
 
     // Web-artiges, animiertes Scrollen der Seiten (von der Wheel-MouseArea genutzt).
@@ -275,9 +371,13 @@ Item {
             anchors.verticalCenter: parent.verticalCenter
             spacing: 6
             PdfToolButton {
-                glyph: "\u2637"
+                // ← = einklappen (Panel offen), → = ausklappen (Panel zu).
+                // Bewusst Pfeile (\u2190/\u2192) statt der soliden Seiten-Nav-
+                // Dreiecke (\u25C0/\u25B6) → optisch klar unterscheidbar.
+                glyph: root.thumbsVisible ? "\u2190" : "\u2192"
                 active: root.thumbsVisible
-                tip: "Seitenvorschau ein-/ausblenden"
+                tip: root.thumbsVisible ? "Seitenvorschau einklappen"
+                                        : "Seitenvorschau ausklappen"
                 onActivated: root.thumbsVisible = !root.thumbsVisible
             }
             Item { width: 4; height: 1 }
@@ -348,6 +448,13 @@ Item {
             id: pages
             anchors.fill: parent
             clip: true
+            // Browser-artige Textauswahl ist IMMER aktiv: Linksziehen markiert.
+            // Damit der Flickable das Ziehen nicht als Schwenken stiehlt, ist das
+            // eigene Dragging der Liste deaktiviert. Gescrollt wird ueber das
+            // Mausrad (NoButton-Wheel-MouseArea) und die ScrollBar — beide
+            // funktionieren bei interactive:false unveraendert (sie setzen contentY
+            // direkt). Programmatische contentY/positionViewAtIndex bleiben gueltig.
+            interactive: false
             model: root.docReady ? root.doc.pageCount : 0
             spacing: 10
             // Scroll-Cache: pageCacheScreens Viewporthoehen je Richtung bleiben
@@ -401,6 +508,41 @@ Item {
                     width: pageCell.pageW; height: pageCell.pageH
                     color: "white"
 
+                    // ── Textauswahl-Fänger (UNTERSTE Ebene der Seite) ──────────
+                    //  Das PdfPageImage darueber faengt keine Maus → ein Linkspress
+                    //  faellt hierher durch. Ausnahme: ein Badge (eigene MouseArea,
+                    //  liegt oben) verbraucht den Press → Annotation-Klicks bleiben
+                    //  erhalten und starten KEINE Markierung.
+                    //  Ziehen markiert; reiner Klick hebt die Auswahl auf.
+                    MouseArea {
+                        id: selArea
+                        anchors.fill: parent
+                        acceptedButtons: Qt.LeftButton
+                        cursorShape: Qt.IBeamCursor
+                        preventStealing: true
+                        property real sx: 0
+                        property real sy: 0
+                        property bool dragging: false
+                        onPressed: (m) => {
+                            selArea.sx = m.x; selArea.sy = m.y
+                            selArea.dragging = false
+                            root.beginSelection(pageCell.index)
+                        }
+                        onPositionChanged: (m) => {
+                            // Erst ab kleiner Schwelle als Ziehen werten (verhindert
+                            // Mikro-Drags, die einen Klick als Auswahl missdeuten).
+                            if (!selArea.dragging) {
+                                if (Math.abs(m.x - selArea.sx) + Math.abs(m.y - selArea.sy) < 3)
+                                    return
+                                selArea.dragging = true
+                            }
+                            root.updateSelection(pageCell.index,
+                                selArea.sx / pageImg.width, selArea.sy / pageImg.height,
+                                m.x        / pageImg.width, m.y        / pageImg.height)
+                        }
+                        onReleased: root.endSelection(selArea.dragging)
+                    }
+
                     PdfPageImage {
                         id: pageImg
                         anchors.fill: parent
@@ -411,6 +553,21 @@ Item {
                         fillMode: Image.PreserveAspectFit
                         sourceSize.width: pageCell.pageW * Screen.devicePixelRatio
                         sourceSize.height: pageCell.pageH * Screen.devicePixelRatio
+
+                        // ── Auswahl-Highlights (nur auf der Seite mit aktiver
+                        //    Auswahl; normalisierte Rechtecke vom PdfText-Singleton) ─
+                        Repeater {
+                            model: pageCell.index === root.selPage ? root.selRects : []
+                            delegate: Rectangle {
+                                required property var modelData
+                                x: modelData.x * pageImg.width
+                                y: modelData.y * pageImg.height
+                                width:  Math.max(1, modelData.w * pageImg.width)
+                                height: Math.max(1, modelData.h * pageImg.height)
+                                color: Qt.rgba(App.themeAccent.r, App.themeAccent.g,
+                                               App.themeAccent.b, 0.32)
+                            }
+                        }
 
                         Repeater {
                             model: root.annotations
@@ -435,7 +592,14 @@ Item {
                                 HoverHandler { id: badgeHover }
                                 ToolTip.visible: badgeHover.hovered && badge.modelData.label.length > 0
                                 ToolTip.text: badge.modelData.label
-                                TapHandler { onTapped: root.activateAnnotation(badge.modelData) }
+                                // MouseArea (statt TapHandler): verbraucht den Press,
+                                // sodass der darunterliegende Auswahl-Fänger bei einem
+                                // Badge-Klick KEINE Markierung startet. Annotation wird
+                                // wie gehabt aktiviert.
+                                MouseArea {
+                                    anchors.fill: parent
+                                    onClicked: root.activateAnnotation(badge.modelData)
+                                }
                             }
                         }
                     }

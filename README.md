@@ -150,17 +150,8 @@ Custom themes can be exported to JSON and shared:
 
 ## Changelog
 
-### Performance
-A major optimization pass targeting the three most user-visible bottlenecks: opening a folder, switching filters/tabs, and scrolling large galleries.
-
-- **Faster PDF open (staged rendering)**: Opening a large PDF no longer stalls. Previously the page list and the thumbnail sidebar both started rendering the moment the document became ready, and since PDFium serializes all `render()` calls per document instance through a single mutex, the first visible page had to wait behind ~8 thumbnail renders plus several pre-rendered neighbour pages. Now the first visible page renders alone; the look-ahead buffer and the thumbnail strip are unlocked a fraction of a second later (mirroring the proven `QPdfView` version, which deferred thumbnails by 120 ms). The page look-ahead buffer was also reduced from 2.5 to 1.5 viewport-heights so scrolling stays responsive — fewer pre-renders competing with the page actually coming into view.
-
-- **Incremental folder loading**: Folders no longer block the UI with a single full model reset. The first batch of tiles (256 items) is inserted synchronously so the viewport fills instantly, and the remaining entries stream in chunked (512 per tick) via a zero-delay timer that yields to the event loop between batches. The window stays responsive even with tens of thousands of files, and the first tiles appear almost immediately.
-- **O(1) filter caches**: `MediaProxyModel` no longer walks the category tree per row. The effective tag set and the set of files in active categories are pre-computed once per filter change and looked up in constant time inside the hot path. Toggling boolean filters, tags or filter modes now uses a rows-only invalidation (no re-sort), so changing a tab or filter is near-instant instead of triggering a full re-sort/reset.
-- **Smarter thumbnail loading**: Cache hits take a synchronous fast path and skip the thread pool entirely. Visible tiles are prioritized (newest request first), and thumbnails for tiles that scrolled out of view — or got recycled by the `GridView` — are actively cancelled, both for not-yet-started tasks (removed from the queue) and running ones (cooperative abort flag). This keeps the worker pool free for what's actually on screen. The gallery cache buffer was also widened to pre-render one extra row above and below the viewport for smoother scrolling.
-
 ### Latest
-- **Performance**: Faster loading for PDF-files (tested for 100MB files)
+- **Utility**: added PDF text detection and text selection
 
 ---
 

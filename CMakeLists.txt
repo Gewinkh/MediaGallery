@@ -51,6 +51,8 @@ set(SOURCES
     src/ThumbnailLoader.h
     src/PdfThumbnailProvider.cpp
     src/PdfThumbnailProvider.h
+    src/PdfTextController.cpp
+    src/PdfTextController.h
     src/PdfMediaHandler.cpp
     src/PdfMediaHandler.h
     src/Strings.cpp

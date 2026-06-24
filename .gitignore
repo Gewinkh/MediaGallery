@@ -21,6 +21,7 @@ _deps/
 *.zip
 *.autosave
 *.md.autosave
+MediaGallery_Projektueberblick.md
 
 *.o
 *.obj
