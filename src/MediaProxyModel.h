@@ -89,13 +89,10 @@ public:
 
     // ── Navigations-Accessoren (für FullscreenViewer; in Proxy-Reihenfolge) ──
     Q_INVOKABLE QString   filePathAt(int proxyRow) const;
-    Q_INVOKABLE QString   fileNameAt(int proxyRow) const;
     Q_INVOKABLE QString   displayNameAt(int proxyRow) const;
     Q_INVOKABLE int       mediaTypeAt(int proxyRow) const;
-    Q_INVOKABLE QString   typeLabelAt(int proxyRow) const;
     Q_INVOKABLE QStringList tagsAt(int proxyRow) const;
     Q_INVOKABLE QDateTime dateTimeAt(int proxyRow) const;
-    Q_INVOKABLE qint64    fileSizeAt(int proxyRow) const;
     Q_INVOKABLE int       rowForPath(const QString& filePath) const;
     Q_INVOKABLE int       randomRow(int exceptRow = -1) const;
 

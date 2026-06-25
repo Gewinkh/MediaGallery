@@ -96,8 +96,6 @@ signals:
     void selectedTextChanged();
 
 private:
-    static QString toLocalPath(const QString& s);
-
     // Baut aus einer QPdfSelection die normalisierte Rechteckliste und merkt den
     // Text. pageSize ist die Seitengroesse in Punkten (zum Normalisieren).
     QVariantList applySelection(const QPdfSelection& sel, int page,

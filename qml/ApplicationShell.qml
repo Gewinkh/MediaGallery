@@ -135,6 +135,40 @@ ApplicationWindow {
         id: stack
         anchors.fill: parent
         initialItem: galleryComponent
+
+        // Übergangsstil aus den Einstellungen. Bewusst nur GPU-günstige Transforms
+        // (x/scale/opacity) → kein Relayout/Neu-Rendern während der Animation. Die
+        // schwere PDF-Last lädt FullscreenViewer erst NACH dem Übergang (StackView.
+        // Active) → das Öffnen ruckelt nicht mehr.
+        readonly property bool _txSlide: App.pageTransition === "slide"
+        readonly property int  _txDur:   240
+
+        pushEnter: Transition {
+            ParallelAnimation {
+                NumberAnimation { property: "opacity"; from: stack._txSlide ? 1 : 0;          to: 1; duration: stack._txDur; easing.type: Easing.OutCubic }
+                NumberAnimation { property: "x";       from: stack._txSlide ? stack.width : 0; to: 0; duration: stack._txDur; easing.type: Easing.OutCubic }
+                NumberAnimation { property: "scale";   from: stack._txSlide ? 1 : 0.97;        to: 1; duration: stack._txDur; easing.type: Easing.OutCubic }
+            }
+        }
+        pushExit: Transition {
+            ParallelAnimation {
+                NumberAnimation { property: "x";       from: 0; to: stack._txSlide ? -stack.width * 0.22 : 0; duration: stack._txDur; easing.type: Easing.OutCubic }
+                NumberAnimation { property: "opacity"; from: 1; to: stack._txSlide ? 1 : 0;                    duration: stack._txDur; easing.type: Easing.InCubic }
+            }
+        }
+        popEnter: Transition {
+            ParallelAnimation {
+                NumberAnimation { property: "x";       from: stack._txSlide ? -stack.width * 0.22 : 0; to: 0; duration: stack._txDur; easing.type: Easing.OutCubic }
+                NumberAnimation { property: "opacity"; from: stack._txSlide ? 1 : 0;                    to: 1; duration: stack._txDur; easing.type: Easing.OutCubic }
+            }
+        }
+        popExit: Transition {
+            ParallelAnimation {
+                NumberAnimation { property: "x";       from: 0; to: stack._txSlide ? stack.width : 0; duration: stack._txDur; easing.type: Easing.InCubic }
+                NumberAnimation { property: "opacity"; from: 1; to: stack._txSlide ? 1 : 0;            duration: stack._txDur; easing.type: Easing.InCubic }
+                NumberAnimation { property: "scale";   from: 1; to: stack._txSlide ? 1 : 0.97;         duration: stack._txDur; easing.type: Easing.InCubic }
+            }
+        }
     }
 
     Component {

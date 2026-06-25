@@ -5,15 +5,12 @@
 #include "TagManager.h"
 #include "AppSettings.h"   // konkrete Settings-Signale für NOTIFY-Weiterleitung
 #include "Strings.h"
-#include "Icons.h"
 #include "MediaItem.h"     // MediaItem::detectType für Drop-Behandlung
 #include "RhiProber.h"
 
-#include <QBuffer>
 #include <QByteArray>
 #include <QHash>
 #include <QImage>
-#include <QPixmap>
 #include <QFileInfo>
 #include <QDir>
 #include <QFile>
@@ -265,6 +262,14 @@ QString AppController::videoPlayback() const {
                : QStringLiteral("native");
 }
 
+QString AppController::pageTransition() const {
+    return m_settings.pageTransition() == PageTransition::Fade
+               ? QStringLiteral("fade")
+               : QStringLiteral("slide");
+}
+
+bool AppController::audioAccentApple() const { return m_settings.audioAccentApple(); }
+
 bool AppController::optionsVisible() const { return m_settings.optionsVisible(); }
 
 void AppController::setBackgroundColor(const QColor& c) {
@@ -293,6 +298,23 @@ void AppController::setVideoPlayback(const QString& mode) {
     m_settings.setVideoPlayback(v);
     m_settings.sync();
     emit videoPlaybackChanged();        // AppSettings sendet hierfür kein Signal
+}
+
+void AppController::setPageTransition(const QString& mode) {
+    const PageTransition t = (mode.compare(QLatin1String("fade"), Qt::CaseInsensitive) == 0)
+                                 ? PageTransition::Fade
+                                 : PageTransition::Slide;
+    if (m_settings.pageTransition() == t) return;
+    m_settings.setPageTransition(t);
+    m_settings.sync();
+    emit pageTransitionChanged();
+}
+
+void AppController::setAudioAccentApple(bool apple) {
+    if (m_settings.audioAccentApple() == apple) return;
+    m_settings.setAudioAccentApple(apple);
+    m_settings.sync();
+    emit audioAccentChanged();
 }
 
 // ─── RHI-Backend-Wechsel ──────────────────────────────────────────────────────
@@ -371,48 +393,6 @@ QString AppController::menuBookmarksText()      const { return Strings::get(Stri
 QString AppController::menuBookmarksEmptyText() const { return Strings::get(StringKey::MenuBookmarksEmpty); }
 QString AppController::bookmarkAddText()        const { return Strings::get(StringKey::BookmarkAdd); }
 
-// ── Icons ────────────────────────────────────────────────────────────────────
-QString AppController::iconUri(const QString& name, int size) const {
-    static const QHash<QString, QIcon (*)()> table = {
-        { QStringLiteral("calendar"),  &Icons::calendar  },
-        { QStringLiteral("trash"),     &Icons::trash     },
-        { QStringLiteral("pencil"),    &Icons::pencil    },
-        { QStringLiteral("folder"),    &Icons::folder    },
-        { QStringLiteral("tag"),       &Icons::tag       },
-        { QStringLiteral("palette"),   &Icons::palette   },
-        { QStringLiteral("image"),     &Icons::image     },
-        { QStringLiteral("play"),      &Icons::play      },
-        { QStringLiteral("pause"),     &Icons::pause     },
-        { QStringLiteral("music"),     &Icons::music     },
-        { QStringLiteral("pdf"),       &Icons::pdf       },
-        { QStringLiteral("text"),      &Icons::text      },
-        { QStringLiteral("shuffle"),   &Icons::shuffle   },
-        { QStringLiteral("xMark"),     &Icons::xMark     },
-        { QStringLiteral("plusMark"),  &Icons::plusMark  },
-        { QStringLiteral("warning"),   &Icons::warning   },
-        { QStringLiteral("lock"),      &Icons::lock      },
-        { QStringLiteral("arrowUp"),   &Icons::arrowUp   },
-        { QStringLiteral("arrowDown"), &Icons::arrowDown },
-    };
-
-    const auto it = table.constFind(name);
-    if (it == table.constEnd() || size <= 0)
-        return QString();
-
-    const QIcon icon = (it.value())();
-    const QPixmap pix = icon.pixmap(QSize(size, size));
-    if (pix.isNull())
-        return QString();
-
-    QByteArray png;
-    QBuffer buffer(&png);
-    if (!buffer.open(QIODevice::WriteOnly))
-        return QString();
-    if (!pix.toImage().save(&buffer, "PNG"))
-        return QString();
-
-    return QStringLiteral("data:image/png;base64,") + QString::fromLatin1(png.toBase64());
-}
 
 // ── Theme-Farben ─────────────────────────────────────────────────────────────
 QColor AppController::themeBackground()  const { return m_settings.currentTheme().background; }

@@ -32,8 +32,24 @@ FocusScope {
     property var    dateTime
     property bool   randomNext: false
 
-    Component.onCompleted: { loadPath(startPath); root.forceActiveFocus() }
+    // Lade-Gating: Die schwere Medien-/PDF-Last erst NACH dem StackView-Übergang
+    // anstoßen (Status Active) → die Öffnen-Animation läuft flüssig über einen
+    // leichten Platzhalter statt gegen das synchrone PDF-Laden/Erstrendern.
+    property bool   _loaded: false
+
+    function _maybeLoad() {
+        if (root._loaded) return
+        // In einem StackView erst bei Active laden; ohne StackView sofort.
+        if (StackView.status === StackView.Active || StackView.view === null) {
+            loadPath(startPath)       // setzt type/path …; surface noch inaktiv
+            root._loaded = true       // aktiviert den Surface-Loader (onItemChanged setzt source)
+            root.forceActiveFocus()
+        }
+    }
+
+    Component.onCompleted: { root.forceActiveFocus(); _maybeLoad() }
     Component.onDestruction: releaseCurrent()
+    StackView.onStatusChanged: _maybeLoad()
 
     // ── Laden / Navigation ────────────────────────────────────────────────────
     function loadPath(p) {
@@ -82,10 +98,20 @@ FocusScope {
 
     Rectangle { anchors.fill: parent; color: "#0a0a0a" }
 
+    // Leichter Lade-Indikator während des Übergangs (vor _loaded). Kein schweres
+    // Item → die Animation bleibt flüssig.
+    BusyIndicator {
+        anchors.centerIn: parent
+        running: !root._loaded
+        visible: running
+        z: 50
+    }
+
     // ── Medien-Loader (genau ein aktives Medium) ──────────────────────────────
     Loader {
         id: surface
         anchors.fill: parent
+        active: root._loaded
         sourceComponent: {
             switch (root.type) {
             case 0:  return imageComponent

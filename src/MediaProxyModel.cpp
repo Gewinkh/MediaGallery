@@ -253,13 +253,10 @@ QVariant MediaProxyModel::roleAt(int proxyRow, int role) const {
 }
 
 QString MediaProxyModel::filePathAt(int r)    const { return roleAt(r, MediaModel::FilePathRole).toString(); }
-QString MediaProxyModel::fileNameAt(int r)    const { return roleAt(r, MediaModel::FileNameRole).toString(); }
 QString MediaProxyModel::displayNameAt(int r) const { return roleAt(r, MediaModel::DisplayNameRole).toString(); }
 int     MediaProxyModel::mediaTypeAt(int r)   const { return roleAt(r, MediaModel::MediaTypeRole).toInt(); }
-QString MediaProxyModel::typeLabelAt(int r)   const { return roleAt(r, MediaModel::TypeLabelRole).toString(); }
 QStringList MediaProxyModel::tagsAt(int r)    const { return roleAt(r, MediaModel::TagsRole).toStringList(); }
 QDateTime MediaProxyModel::dateTimeAt(int r)  const { return roleAt(r, MediaModel::DateTimeRole).toDateTime(); }
-qint64  MediaProxyModel::fileSizeAt(int r)    const { return roleAt(r, MediaModel::FileSizeRole).toLongLong(); }
 
 int MediaProxyModel::rowForPath(const QString& filePath) const {
     const int n = rowCount();

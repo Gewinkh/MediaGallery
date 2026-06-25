@@ -2,7 +2,6 @@
 #include <QString>
 #include <QStringList>
 #include <QDateTime>
-#include <QPixmap>
 #include <QFileInfo>
 #include <QSet>
 
@@ -16,16 +15,8 @@ struct MediaItem {
     bool hasCustomDate = false;
     qint64 fileSize = 0;
     MediaType type = MediaType::Unknown;
-    int width = 0;
-    int height = 0;
-    double duration = 0.0; // seconds, for videos
-
-    // Thumbnail (loaded lazily)
-    QPixmap thumbnail;
-    bool thumbnailLoaded = false;
 
     QString fileName() const { return QFileInfo(filePath).fileName(); }
-    QString baseName() const { return QFileInfo(filePath).completeBaseName(); }
     QString extension() const { return QFileInfo(filePath).suffix().toLower(); }
     QString audioFormatLabel() const { return QFileInfo(filePath).suffix().toUpper(); }
 
@@ -60,24 +51,5 @@ struct MediaItem {
         const QString name = QFileInfo(path).fileName().toLower();
         if (name == "makefile" || name == "dockerfile") return MediaType::Text;
         return MediaType::Unknown;
-    }
-
-    bool isImage() const { return type == MediaType::Image; }
-    bool isVideo() const { return type == MediaType::Video; }
-    bool isAudio() const { return type == MediaType::Audio; }
-    bool isPdf()   const { return type == MediaType::Pdf; }
-    bool isText()  const { return type == MediaType::Text; }
-
-    bool matchesTagFilter(const QStringList& filterTags, bool andMode) const {
-        if (filterTags.isEmpty()) return true;
-        if (andMode) {
-            for (const auto& t : filterTags)
-                if (!tags.contains(t)) return false;
-            return true;
-        } else {
-            for (const auto& t : filterTags)
-                if (tags.contains(t)) return true;
-            return false;
-        }
     }
 };

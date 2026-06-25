@@ -40,6 +40,8 @@ class AppController : public QObject {
     Q_PROPERTY(QColor  accentColor     READ accentColor     NOTIFY accentColorChanged)
     Q_PROPERTY(QString language        READ language        NOTIFY languageChanged)
     Q_PROPERTY(QString videoPlayback   READ videoPlayback   NOTIFY videoPlaybackChanged)
+    Q_PROPERTY(QString pageTransition  READ pageTransition  NOTIFY pageTransitionChanged)
+    Q_PROPERTY(bool    audioAccentApple READ audioAccentApple NOTIFY audioAccentChanged)
     Q_PROPERTY(bool    optionsVisible  READ optionsVisible  NOTIFY optionsVisibleChanged)
 
     // ── Editor / Auto-Save (Phase 4) ────────────────────────────────────────
@@ -162,11 +164,15 @@ public:
     QColor  accentColor()     const;
     QString language()        const;   // "de" | "en"
     QString videoPlayback()   const;   // "native" | "external"
+    QString pageTransition()  const;   // "slide" | "fade"
+    bool    audioAccentApple() const;  // true = Apple-Blau, false = Theme-Akzent
     bool    optionsVisible()  const;
     Q_INVOKABLE void setBackgroundColor(const QColor& c);
     Q_INVOKABLE void setAccentColor(const QColor& c);
     Q_INVOKABLE void setLanguage(const QString& code);       // "de" | "en"
     Q_INVOKABLE void setVideoPlayback(const QString& mode);  // "native" | "external"
+    Q_INVOKABLE void setPageTransition(const QString& mode); // "slide" | "fade"
+    Q_INVOKABLE void setAudioAccentApple(bool apple);
 
     // Versucht das RHI-Backend zu wechseln. Gibt true zurück, wenn der Probe
     // erfolgreich war (Cache aktualisiert, Neustart nötig). Bei Fehler bleibt
@@ -220,10 +226,6 @@ public:
     QString menuBookmarksEmptyText() const;
     QString bookmarkAddText()        const;
 
-    // ── Icons (Delegation an Icons) ─────────────────────────────────────────
-    // Liefert ein "data:image/png;base64,..."-URI, direkt als Image.source
-    // nutzbar — KEIN QQuickImageProvider (siehe Performance-Vorgaben).
-    Q_INVOKABLE QString iconUri(const QString& name, int size = 16) const;
 
 signals:
     void folderOpened(const QString& path);
@@ -234,6 +236,8 @@ signals:
     void accentColorChanged();
     void languageChanged();
     void videoPlaybackChanged();
+    void pageTransitionChanged();
+    void audioAccentChanged();
     void optionsVisibleChanged();
     void savedFoldersChanged();
     void themeChanged();

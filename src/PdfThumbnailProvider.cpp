@@ -1,11 +1,11 @@
 #include "PdfThumbnailProvider.h"
+#include "PathUtils.h"
 
 #include <QQuickImageProvider>
 #include <QPdfDocument>
 #include <QImage>
 #include <QPainter>
 #include <QBuffer>
-#include <QUrl>
 #include <QThread>
 #include <QMutexLocker>
 #include <QMetaObject>
@@ -218,12 +218,6 @@ PdfThumbnailProvider::~PdfThumbnailProvider() {
     m_pool.waitForDone(3000);
 }
 
-QString PdfThumbnailProvider::toLocalPath(const QString& s) {
-    if (s.startsWith(QLatin1String("file:")))
-        return QUrl(s).toLocalFile();
-    return s;
-}
-
 QQuickImageProvider* PdfThumbnailProvider::createImageProvider() {
     return new PdfThumbImageProvider(m_store);
 }
@@ -248,7 +242,7 @@ void PdfThumbnailProvider::enforceBudget() {
 }
 
 int PdfThumbnailProvider::ensureDocument(const QString& pathOrUrl, int startPage) {
-    const QString key = toLocalPath(pathOrUrl);
+    const QString key = mg::toLocalPath(pathOrUrl);
     if (key.isEmpty()) return 0;
 
     int docId = m_pathToId.value(key, 0);

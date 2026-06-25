@@ -176,8 +176,6 @@ signals:
 private:
     using CancelFlag = std::shared_ptr<std::atomic<bool>>;
 
-    static QString toLocalPath(const QString& s);
-
     // LRU-Pflege: docId ans Ende (juengster) ruecken.
     void touchLru(int docId);
     // Aelteste Dokumente verdraengen, bis kMaxDocs UND kMaxBytes eingehalten sind.

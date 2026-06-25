@@ -23,8 +23,6 @@ struct MediaAnnotation;
 //                           Ergebnis kommt per pdfAnnotationsReady(path, list)
 //                           zurueck auf den GUI-Thread. Dadurch blockiert das
 //                           Umschalten zwischen PDFs NICHT mehr.
-//   • pdfAnnotations(path)→ Synchrone Variante (Kompatibilitaet); nutzt denselben
-//                           LRU-Resultcache.
 //
 //  RAM: Es werden keine QPdfDocument-Objekte resident gehalten. Nur die fertige
 //  Annotation-Liste je Pfad landet in einem kleinen LRU (kMaxCachedPdfs). Das zum
@@ -51,12 +49,6 @@ public:
     // Bei Cache-Treffer wird das Signal sofort (queued) gefeuert.
     Q_INVOKABLE void requestPdfAnnotations(const QString& filePathOrUrl);
 
-    // Synchrone Variante (Kompatibilitaet). Liste von Maps:
-    //   { page:int, x:real, y:real, w:real, h:real,  // normalisiert [0..1], y=0 oben
-    //     type:int,    // 0=Audio,1=Video,2=Link,3=Unknown
-    //     uri:string,  // lokaler Temp-Pfad oder externe URL
-    //     label:string }
-    Q_INVOKABLE QVariantList pdfAnnotations(const QString& filePathOrUrl);
 
     // ── Intern (vom Worker-Thread per QueuedConnection aufgerufen) ────────────
     //  Nimmt das Scan-Ergebnis auf dem GUI-Thread entgegen: Cache pflegen,
@@ -69,8 +61,6 @@ signals:
     void pdfAnnotationsReady(const QString& path, const QVariantList& annotations);
 
 private:
-    static QString toLocalPath(const QString& filePathOrUrl);
-
     // LRU-Pflege fuer den Resultcache.
     void touchCache(const QString& path);
     void insertIntoCache(const QString& path, const QVariantList& anns);

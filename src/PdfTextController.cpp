@@ -1,10 +1,10 @@
 #include "PdfTextController.h"
+#include "PathUtils.h"
 
 #include <QPdfDocument>
 #include <QPdfSelection>
 #include <QGuiApplication>
 #include <QClipboard>
-#include <QUrl>
 #include <QFileInfo>
 #include <QCoreApplication>
 #include <QThread>
@@ -78,17 +78,11 @@ PdfTextController::~PdfTextController() {
     // m_doc ist als Kind von 'this' geparented → wird automatisch geloescht.
 }
 
-QString PdfTextController::toLocalPath(const QString& s) {
-    if (s.startsWith(QLatin1String("file:")))
-        return QUrl(s).toLocalFile();
-    return s;
-}
-
 // ─────────────────────────────────────────────────────────────────────────────
 //  Lazy, asynchron: stoesst (nur falls noetig) das Laden des Auswahl-Dokuments an.
 // ─────────────────────────────────────────────────────────────────────────────
 void PdfTextController::prepare(const QString& pathOrUrl) {
-    const QString local = toLocalPath(pathOrUrl);
+    const QString local = mg::toLocalPath(pathOrUrl);
     if (local.isEmpty() || !QFileInfo::exists(local))
         return;
 

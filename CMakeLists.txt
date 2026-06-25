@@ -21,6 +21,9 @@ find_package(Qt6 6.4 REQUIRED COMPONENTS
     LinguistTools
 )
 
+# Fuer FlateDecode-Inflate der eingebetteten PDF-Audio-Streams (PdfAudioController).
+find_package(ZLIB REQUIRED)
+
 set(SOURCES
     main.cpp
     src/ISettings.h
@@ -55,9 +58,12 @@ set(SOURCES
     src/PdfTextController.h
     src/PdfMediaHandler.cpp
     src/PdfMediaHandler.h
+    src/PdfAudioController.cpp
+    src/PdfAudioController.h
     src/Strings.cpp
     src/Strings.h
     src/Icons.h
+    src/PathUtils.h
     qml.qrc
 )
 
@@ -78,6 +84,7 @@ target_link_libraries(MediaGallery PRIVATE
     Qt6::Multimedia
     Qt6::Pdf
     Qt6::Svg
+    ZLIB::ZLIB
 )
 
 if(WIN32)

@@ -151,7 +151,7 @@ Custom themes can be exported to JSON and shared:
 ## Changelog
 
 ### Latest
-- **Utility**: added PDF text detection and text selection
+- **Utility**: added PDF audio support
 
 ---
 

@@ -7,6 +7,7 @@
 
 enum class Language      { German, English };
 enum class VideoPlayback { Native, External };
+enum class PageTransition { Slide, Fade };   // Vollbild-Öffnen/Schließen-Animation
 enum class SortField     { Date, Name, Tags, FileSize };
 enum class SortOrder     { Ascending, Descending };
 
@@ -98,6 +99,12 @@ public:
 
     virtual VideoPlayback videoPlayback() const = 0;
     virtual void          setVideoPlayback(VideoPlayback v) = 0;
+
+    // Vollbild-Übergangsstil (Slide/Fade) + Audio-Player-Akzent (Theme/Apple-Blau)
+    virtual PageTransition pageTransition() const = 0;
+    virtual void           setPageTransition(PageTransition t) = 0;
+    virtual bool           audioAccentApple() const = 0;
+    virtual void           setAudioAccentApple(bool v) = 0;
 
     virtual SortField sortField() const = 0;
     virtual void      setSortField(SortField f) = 0;

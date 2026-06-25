@@ -33,6 +33,11 @@ public:
     VideoPlayback videoPlayback() const override;
     void          setVideoPlayback(VideoPlayback v) override;
 
+    PageTransition pageTransition() const override;
+    void           setPageTransition(PageTransition t) override;
+    bool           audioAccentApple() const override;
+    void           setAudioAccentApple(bool v) override;
+
     SortField sortField() const override;
     void      setSortField(SortField f) override;
     SortOrder sortOrder() const override;

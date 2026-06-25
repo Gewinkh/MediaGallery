@@ -379,6 +379,19 @@ void AppSettings::setVideoPlayback(VideoPlayback v) {
     m_settings.setValue("video/playback", static_cast<int>(v));
 }
 
+PageTransition AppSettings::pageTransition() const {
+    return static_cast<PageTransition>(m_settings.value("ui/pageTransition", 0).toInt());
+}
+void AppSettings::setPageTransition(PageTransition t) {
+    m_settings.setValue("ui/pageTransition", static_cast<int>(t));
+}
+bool AppSettings::audioAccentApple() const {
+    return m_settings.value("ui/audioAccentApple", false).toBool();
+}
+void AppSettings::setAudioAccentApple(bool v) {
+    m_settings.setValue("ui/audioAccentApple", v);
+}
+
 // ─── Sort ─────────────────────────────────────────────────────────────────────
 SortField AppSettings::sortField() const {
     return static_cast<SortField>(m_settings.value("sort/field", 0).toInt());

@@ -85,6 +85,60 @@ Item {
                 }
             }
 
+            // ── Vollbild-Animation (Öffnen/Schließen) ─────────────────────────
+            SettingsGroup {
+                title: qsTr("Vollbild-Animation")
+                Layout.fillWidth: true
+
+                RadioButton {
+                    text: qsTr("Verschieben (seitlich)")
+                    checked: App.pageTransition === "slide"
+                    onToggled: if (checked) App.setPageTransition("slide")
+                    contentItem: Text {
+                        text: parent.text; color: App.themeTextPrimary
+                        leftPadding: parent.indicator.width + 6
+                        verticalAlignment: Text.AlignVCenter
+                    }
+                }
+                RadioButton {
+                    text: qsTr("Überblenden (weicher Zoom)")
+                    checked: App.pageTransition === "fade"
+                    onToggled: if (checked) App.setPageTransition("fade")
+                    contentItem: Text {
+                        text: parent.text; color: App.themeTextPrimary
+                        leftPadding: parent.indicator.width + 6
+                        verticalAlignment: Text.AlignVCenter
+                    }
+                }
+            }
+
+            // ── Audio-Player-Akzent (PDF-Audioleiste) ─────────────────────────
+            SettingsGroup {
+                title: qsTr("Audio-Player")
+                Layout.fillWidth: true
+
+                RadioButton {
+                    text: qsTr("Theme-Akzentfarbe")
+                    checked: !App.audioAccentApple
+                    onToggled: if (checked) App.setAudioAccentApple(false)
+                    contentItem: Text {
+                        text: parent.text; color: App.themeTextPrimary
+                        leftPadding: parent.indicator.width + 6
+                        verticalAlignment: Text.AlignVCenter
+                    }
+                }
+                RadioButton {
+                    text: qsTr("Apple-Blau")
+                    checked: App.audioAccentApple
+                    onToggled: if (checked) App.setAudioAccentApple(true)
+                    contentItem: Text {
+                        text: parent.text; color: App.themeTextPrimary
+                        leftPadding: parent.indicator.width + 6
+                        verticalAlignment: Text.AlignVCenter
+                    }
+                }
+            }
+
             // ── Render-Backend ────────────────────────────────────────────────
             SettingsGroup {
                 title: qsTr("Render-Backend")

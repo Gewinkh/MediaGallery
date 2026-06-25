@@ -1,5 +1,6 @@
 #include "ViewerController.h"
 #include "PdfMediaHandler.h"
+#include "PathUtils.h"
 
 #include <QPdfDocument>
 #include <QFile>
@@ -87,14 +88,8 @@ ViewerController::~ViewerController() {
         QFile::remove(p);
 }
 
-QString ViewerController::toLocalPath(const QString& s) {
-    if (s.startsWith(QLatin1String("file:")))
-        return QUrl(s).toLocalFile();
-    return s;
-}
-
 QString ViewerController::readTextFile(const QString& filePathOrUrl) const {
-    const QString path = toLocalPath(filePathOrUrl);
+    const QString path = mg::toLocalPath(filePathOrUrl);
     QFile f(path);
     if (!f.open(QIODevice::ReadOnly))
         return {};
@@ -115,7 +110,7 @@ QString ViewerController::readTextFile(const QString& filePathOrUrl) const {
 }
 
 bool ViewerController::writeTextFile(const QString& filePathOrUrl, const QString& content) const {
-    const QString path = toLocalPath(filePathOrUrl);
+    const QString path = mg::toLocalPath(filePathOrUrl);
     if (path.isEmpty())
         return false;
 
@@ -135,7 +130,7 @@ bool ViewerController::writeTextFile(const QString& filePathOrUrl, const QString
 }
 
 bool ViewerController::openExternally(const QString& filePathOrUrl) const {
-    const QString path = toLocalPath(filePathOrUrl);
+    const QString path = mg::toLocalPath(filePathOrUrl);
     return QDesktopServices::openUrl(QUrl::fromLocalFile(path));
 }
 
@@ -160,7 +155,7 @@ void ViewerController::insertIntoCache(const QString& path, const QVariantList& 
 //  Asynchrone Anforderung (aus QML). Blockiert nie den GUI-Thread.
 // ─────────────────────────────────────────────────────────────────────────────
 void ViewerController::requestPdfAnnotations(const QString& filePathOrUrl) {
-    const QString path = toLocalPath(filePathOrUrl);
+    const QString path = mg::toLocalPath(filePathOrUrl);
     if (path.isEmpty() || !QFileInfo::exists(path)) {
         // Defensiv: leeres Ergebnis (queued) → QML kann Badges einheitlich leeren.
         QMetaObject::invokeMethod(this, [this, path]() {
@@ -203,27 +198,3 @@ void ViewerController::applyScanResult(const QString& path, const QVariantList& 
 // ─────────────────────────────────────────────────────────────────────────────
 //  Synchrone Variante (Kompatibilitaet). Nutzt denselben Resultcache.
 // ─────────────────────────────────────────────────────────────────────────────
-QVariantList ViewerController::pdfAnnotations(const QString& filePathOrUrl) {
-    const QString path = toLocalPath(filePathOrUrl);
-    if (path.isEmpty() || !QFileInfo::exists(path))
-        return {};
-
-    if (m_annCache.contains(path)) {
-        touchCache(path);
-        return m_annCache.value(path);
-    }
-
-    QPdfDocument doc;
-    if (doc.load(path) != QPdfDocument::Error::None
-        || doc.status() != QPdfDocument::Status::Ready)
-        return {};
-
-    PdfMediaHandler handler(&doc);
-    handler.scanDocument(path);
-    const QVariantList out = annotationsToVariant(handler.allAnnotations());
-    for (const QString& t : handler.tempFiles())
-        if (!t.isEmpty())
-            m_sessionTempFiles.append(t);
-    insertIntoCache(path, out);
-    return out;
-}

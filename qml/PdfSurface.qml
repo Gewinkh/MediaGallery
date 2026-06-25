@@ -47,6 +47,31 @@ Item {
     property var    _lastSel: null           // letzte Drag-Brüche (für Re-Query bei Ready)
     property bool   _pendingSelectAll: false // Strg+A vor Abschluss des Lazy-Loads → nachziehen
 
+    // ── Audio (PdfAudio-Singleton) ────────────────────────────────────────────
+    //  Eingebettete PDF-Audios in einer seitenbezogenen Leiste rechts + Mini-Player.
+    //  audioClips = ALLE Clips des Dokuments [{id,page,x,y,w,h,label}]; die Leiste
+    //  zeigt nur die der AKTUELLEN Seite, die Hotspots erscheinen je Seite.
+    property bool   audioPanelVisible: false
+    property var    audioClips: []
+    property bool   documentHasAudio: false
+    property var    _audioMeta: ({})         // id -> { url, durMs } (extrahiert/gecached)
+    property var    _audioPos:  ({})         // id -> zuletzt gehoerte Position (ms, Resume)
+    property int    activeClipId: -1         // aktuell geladener/spielender Clip
+    property string _activeTitle: ""         // Anzeigetitel des Mini-Players
+    property int    _audioRev: 0             // Counter → erzwingt Binding-Refresh (Dauer/Resume)
+    property int    _pendingSeekMs: -1       // Seek nach Medienladen anwenden
+    property bool   _pendingPlay: false
+    // Akzentfarbe der Audio-UI: Theme-Akzent oder Apple-Systemblau (Einstellung).
+    readonly property color audioAccent: App.audioAccentApple ? "#0A84FF" : App.themeAccent
+
+    function _clipsOnPage(p) {
+        var r = []
+        for (var i = 0; i < audioClips.length; i++)
+            if (audioClips[i].page === p) r.push(audioClips[i])
+        return r
+    }
+    function _audioLabel(clip, idxOnPage) { return "Audio " + (idxOnPage + 1) }
+
     // ── Tunbare Cache-Deckel ──────────────────────────────────────────────────
     //  Scroll-Vorhalte/-Cache in Viewporthoehen je Richtung. 1.5 ≈ eine Seite
     //  ober- und unterhalb bleibt gerendert (Scroll-zurueck ohne Reload). Hoeher
@@ -144,13 +169,16 @@ Item {
         root.doc = null
     }
 
-    Component.onDestruction: { _clearPool(); PdfText.releaseDocument() }
+    Component.onDestruction: { _clearPool(); PdfText.releaseDocument(); PdfAudio.releaseDocument() }
 
     function release() {
         // Leichtgewichtig: nur Overlays stoppen. Das RENDER-Dokument bleibt im Pool
         // warm (kein doc.source="" mehr) → Zurueckwechseln muss nicht neu parsen.
         mediaLoader.active = false
+        _saveActivePos()
         audioPlayer.stop()
+        root.activeClipId = -1
+        root._activeTitle = ""
         annotations = []
         // Das separate AUSWAHL-Dokument dagegen freigeben (RAM-Prio 1): es wird beim
         // naechsten Markieren ohnehin wieder lazy geladen.
@@ -165,6 +193,16 @@ Item {
             currentPage = 0
             annotations = []                 // bis der asynchrone Scan zurueckkommt
             clearSelection()                 // evtl. Auswahl des vorherigen PDFs verwerfen
+            // Audio-Zustand des vorherigen PDFs verwerfen + neuen Scan anstoßen (lazy).
+            audioPlayer.stop()
+            root.audioClips = []
+            root.documentHasAudio = false
+            root.activeClipId = -1
+            root._activeTitle = ""
+            root._audioMeta = ({})
+            root._audioPos = ({})
+            root.audioPanelVisible = false
+            PdfAudio.prepare(root.source)
             _activateDoc(root.source)
             // Bei einem bereits warmen (Ready) Dokument feuert kein statusChanged →
             // Scrollposition hier zuruecksetzen und den Warmlauf direkt starten.
@@ -228,6 +266,104 @@ Item {
         }
     }
 
+    // ── Audio-Wiedergabe (EIN Player; Mini-Player + seitenbezogene Leiste) ─────
+    function playClip(id) {
+        if (id < 0) return
+        if (root.activeClipId === id) {                 // gleicher Clip → Play/Pause
+            if (audioPlayer.playbackState === MediaPlayer.PlayingState) audioPlayer.pause()
+            else audioPlayer.play()
+            return
+        }
+        _saveActivePos()
+        root.activeClipId = id
+        var clip = null
+        for (var i = 0; i < audioClips.length; i++) if (audioClips[i].id === id) { clip = audioClips[i]; break }
+        if (clip) {
+            var onPage = _clipsOnPage(clip.page); var k = 0
+            for (var j = 0; j < onPage.length; j++) if (onPage[j].id === id) { k = j; break }
+            root._activeTitle = "Audio " + (k + 1) + " \u00B7 S. " + (clip.page + 1)
+        }
+        var meta = root._audioMeta[id]
+        if (meta && meta.url) _startActive(meta.url)
+        else { root._pendingPlay = true; PdfAudio.requestClip(id) }   // async → onClipReady startet
+    }
+
+    function _startActive(url) {
+        root._pendingSeekMs = root._audioPos[root.activeClipId] || 0
+        root._pendingPlay = true
+        audioPlayer.source = url           // Seek+Play erst bei LoadedMedia
+    }
+
+    function _saveActivePos() {
+        if (root.activeClipId >= 0) {
+            var m = root._audioPos; m[root.activeClipId] = audioPlayer.position; root._audioPos = m
+            root._audioRev++
+        }
+    }
+
+    // Bei offener Leiste die Clips der aktuellen Seite extrahieren (Dauer + bereit).
+    function _ensurePageClipsExtracted() {
+        if (!root.audioPanelVisible) return
+        var cs = _clipsOnPage(root.currentPage)
+        for (var i = 0; i < cs.length; i++)
+            if (!root._audioMeta[cs[i].id]) PdfAudio.requestClip(cs[i].id)
+    }
+
+    function _savedPos(id) { return root._audioPos[id] || 0 }
+    function _clipDurMs(id) { var m = root._audioMeta[id]; return m ? m.durMs : 0 }
+    function _fmtTime(ms) {
+        if (!ms || ms < 0) ms = 0
+        var s = Math.floor(ms / 1000); var mm = Math.floor(s / 60); var ss = s % 60
+        return mm + ":" + (ss < 10 ? "0" + ss : ss)
+    }
+
+    onAudioPanelVisibleChanged: if (audioPanelVisible) _ensurePageClipsExtracted()
+
+    MediaPlayer {
+        id: audioPlayer
+        audioOutput: AudioOutput { id: audioOut }
+        // Robust gegen das FFmpeg-Backend (Linux): play() wird bei LoadedMedia teils
+        // VERWORFEN (zu früh) → nicht "verbrauchen", sondern bei LoadedMedia UND
+        // BufferedMedia erneut versuchen, bis tatsächlich gespielt wird. Es wird NIE
+        // auf 0 gesucht (ein redundanter Seek-auf-0 ließ die erste Wiedergabe hängen);
+        // ein echter Resume-Sprung (>0) erfolgt erst, NACHDEM die Wiedergabe läuft.
+        onMediaStatusChanged: {
+            if ((mediaStatus === MediaPlayer.LoadedMedia || mediaStatus === MediaPlayer.BufferedMedia)
+                    && root._pendingPlay && playbackState !== MediaPlayer.PlayingState)
+                play()
+        }
+        onPlaybackStateChanged: {
+            if (playbackState === MediaPlayer.PlayingState) {
+                root._pendingPlay = false
+                if (root._pendingSeekMs > 0) { position = root._pendingSeekMs; root._pendingSeekMs = -1 }
+            }
+        }
+        // Nur in das einfache Objekt schreiben (Resume) — KEIN Reassign → keine
+        // Binding-Last je Tick. Der aktive Slider liest audioPlayer.position direkt.
+        onPositionChanged: if (root.activeClipId >= 0) root._audioPos[root.activeClipId] = position
+    }
+
+    Connections {
+        target: PdfAudio
+        function onReadyChanged() {
+            if (PdfAudio.ready) {
+                root.audioClips = PdfAudio.clips()
+                root.documentHasAudio = PdfAudio.documentHasAudio
+                root._ensurePageClipsExtracted()
+            } else {
+                root.audioClips = []
+                root.documentHasAudio = false
+            }
+        }
+        function onClipReady(id, url, durMs) {
+            if (url.length > 0) {
+                var m = root._audioMeta; m[id] = { url: url, durMs: durMs }; root._audioMeta = m
+                root._audioRev++
+                if (id === root.activeClipId && root._pendingPlay) root._startActive(url)
+            }
+        }
+    }
+
     // ── Tastenkuerzel: Kopieren / Seite komplett markieren ─────────────────────
     //  WindowShortcut-Kontext (Standard) → feuert, solange dieses PDF im Vollbild
     //  aktiv ist. Copy ist nur scharf, wenn wirklich Text markiert ist (kein
@@ -244,7 +380,10 @@ Item {
         onActivated: root.selectAllCurrentPage()
     }
 
-    onCurrentPageChanged: if (thumbs.count > 0) thumbs.positionViewAtIndex(currentPage, ListView.Contain)
+    onCurrentPageChanged: {
+        if (thumbs.count > 0) thumbs.positionViewAtIndex(currentPage, ListView.Contain)
+        _ensurePageClipsExtracted()
+    }
 
     // ── Zoom mit Erhaltung der relativen Scrollposition ───────────────────────
     function setZoom(z) {
@@ -403,6 +542,15 @@ Item {
             anchors.right: parent.right; anchors.rightMargin: 12
             anchors.verticalCenter: parent.verticalCenter
             spacing: 6
+            // Audio-Leiste umschalten — nur sichtbar, wenn das PDF Audio enthält.
+            PdfToolButton {
+                glyph: "\u266A"
+                visible: PdfAudio.documentHasAudio
+                active: root.audioPanelVisible
+                tip: root.audioPanelVisible ? "Audioleiste ausblenden" : "Audioleiste einblenden"
+                onActivated: root.audioPanelVisible = !root.audioPanelVisible
+            }
+            Item { width: PdfAudio.documentHasAudio ? 4 : 0; height: 1 }
             Rectangle {
                 anchors.verticalCenter: parent.verticalCenter
                 width: fitLabel.implicitWidth + 22; height: 26; radius: 6
@@ -440,7 +588,7 @@ Item {
             left: parent.left; right: parent.right
             top: toolbar.visible ? toolbar.bottom : parent.top
             bottom: parent.bottom
-            bottomMargin: root.bottomInset + (audioBar.visible ? audioBar.height : 0)
+            bottomMargin: root.bottomInset
         }
 
         // ── Seiten (volle Breite; Thumbnail-Panel liegt als Overlay darüber) ──
@@ -574,7 +722,9 @@ Item {
                             delegate: Rectangle {
                                 id: badge
                                 required property var modelData
-                                visible: modelData.page === pageCell.index
+                                // Audio (type 0) NICHT hier — das übernimmt PdfAudio
+                                // (eigene Hotspots + Leiste). Hier nur Video/Link.
+                                visible: modelData.page === pageCell.index && modelData.type !== 0
                                 x: modelData.x * pageImg.width
                                 y: modelData.y * pageImg.height
                                 width:  Math.max(18, modelData.w * pageImg.width)
@@ -585,8 +735,7 @@ Item {
                                 border.color: "#00c8b4"; border.width: 1
                                 Text {
                                     anchors.centerIn: parent
-                                    text: badge.modelData.type === 0 ? "\u266A"
-                                        : badge.modelData.type === 1 ? "\u25B6" : "\u2197"
+                                    text: badge.modelData.type === 1 ? "\u25B6" : "\u2197"
                                     color: "#e0fffb"; font.pixelSize: 13
                                 }
                                 HoverHandler { id: badgeHover }
@@ -599,6 +748,42 @@ Item {
                                 MouseArea {
                                     anchors.fill: parent
                                     onClicked: root.activateAnnotation(badge.modelData)
+                                }
+                            }
+                        }
+
+                        // ── Audio-Hotspots (PdfAudio; je Seite) ──────────────────
+                        //  Klickbare Marker über den Audio-Buttons: Klick spielt den
+                        //  Clip ab und öffnet die Audioleiste. Aktiver Clip pulsiert.
+                        Repeater {
+                            model: root.audioClips
+                            delegate: Rectangle {
+                                id: aspot
+                                required property var modelData
+                                readonly property bool isActive: root.activeClipId === aspot.modelData.id
+                                visible: aspot.modelData.page === pageCell.index
+                                x: aspot.modelData.x * pageImg.width
+                                y: aspot.modelData.y * pageImg.height
+                                width:  Math.max(18, aspot.modelData.w * pageImg.width)
+                                height: Math.max(18, aspot.modelData.h * pageImg.height)
+                                radius: 4
+                                color: aspot.isActive
+                                       ? Qt.rgba(root.audioAccent.r, root.audioAccent.g, root.audioAccent.b, 0.30)
+                                       : (aspotHover.hovered
+                                          ? Qt.rgba(root.audioAccent.r, root.audioAccent.g, root.audioAccent.b, 0.26)
+                                          : Qt.rgba(root.audioAccent.r, root.audioAccent.g, root.audioAccent.b, 0.12))
+                                border.color: root.audioAccent
+                                border.width: aspot.isActive ? 2 : 1
+                                Text {
+                                    anchors.centerIn: parent
+                                    text: (aspot.isActive && audioPlayer.playbackState === MediaPlayer.PlayingState)
+                                          ? "\u23F8" : "\u266A"
+                                    color: "#ffffff"; font.pixelSize: 12
+                                }
+                                HoverHandler { id: aspotHover }
+                                MouseArea {
+                                    anchors.fill: parent
+                                    onClicked: { root.audioPanelVisible = true; root.playClip(aspot.modelData.id) }
                                 }
                             }
                         }
@@ -730,6 +915,214 @@ Item {
                 }
             }
         }
+
+        // ── Audio-Panel (rechts; Overlay über den Seiten, KEIN Reflow) ─────────
+        //  Symmetrisch zur Thumbnail-Leiste links. 14px Lücke rechts lässt die
+        //  Dokument-Scrollleiste sichtbar. Zeigt NUR die Audios der aktuellen Seite
+        //  („Audios nur da, wo sie herkommen"); der Mini-Player unten spielt
+        //  unabhängig vom gerade angezeigten Seitenausschnitt weiter.
+        Rectangle {
+            id: audioPanel
+            anchors { right: parent.right; rightMargin: 14; top: parent.top; bottom: parent.bottom }
+            width: 300
+            visible: root.audioPanelVisible && PdfAudio.documentHasAudio
+            z: 4
+            color: App.themeSidebarBg
+
+            // Clips der aktuellen Seite (hängt an audioClips + currentPage, NICHT an
+            // _audioRev → kein Delegate-Neuaufbau bei Positions-/Dauer-Updates).
+            readonly property var pageClips: root._clipsOnPage(root.currentPage)
+
+            Rectangle { anchors.left: parent.left; width: 1; height: parent.height; color: App.themeBorder }
+
+            // Klicks/Wheel auf leeren Panel-Flächen abfangen (sonst Durchgriff auf
+            // die Seiten-Textauswahl darunter). Kinder darüber behandeln ihre Events.
+            MouseArea { anchors.fill: parent; onWheel: (wheel) => { wheel.accepted = true } }
+
+            // Kopf
+            Item {
+                id: audioHeader
+                anchors { left: parent.left; right: parent.right; top: parent.top }
+                height: 44
+                Text {
+                    anchors { left: parent.left; leftMargin: 14; verticalCenter: parent.verticalCenter }
+                    text: "Audio \u00B7 Seite " + (root.currentPage + 1)
+                    color: App.themeTextPrimary; font.pixelSize: 13; font.bold: true
+                }
+                Rectangle {
+                    anchors { right: parent.right; rightMargin: 10; verticalCenter: parent.verticalCenter }
+                    width: 26; height: 26; radius: 13
+                    color: closeHover.hovered ? Qt.rgba(App.themeTextPrimary.r, App.themeTextPrimary.g, App.themeTextPrimary.b, 0.14) : "transparent"
+                    Text { anchors.centerIn: parent; text: "\u2715"; color: App.themeTextMuted; font.pixelSize: 13 }
+                    HoverHandler { id: closeHover }
+                    TapHandler { onTapped: root.audioPanelVisible = false }
+                }
+                Rectangle { anchors.bottom: parent.bottom; width: parent.width; height: 1; color: App.themeBorder }
+            }
+
+            // Leerzustand (Seite ohne Audio)
+            Text {
+                anchors.centerIn: parent
+                visible: audioPanel.pageClips.length === 0
+                text: "Keine Audios auf dieser Seite."
+                color: App.themeTextMuted; font.pixelSize: 12
+            }
+
+            // Liste der Clips dieser Seite
+            ListView {
+                id: audioList
+                anchors {
+                    left: parent.left; right: parent.right
+                    top: audioHeader.bottom
+                    bottom: miniPlayer.visible ? miniPlayer.top : parent.bottom
+                    margins: 8
+                }
+                clip: true
+                spacing: 6
+                model: audioPanel.pageClips
+                boundsBehavior: Flickable.StopAtBounds
+                ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
+
+                delegate: Rectangle {
+                    id: arow
+                    required property var modelData
+                    required property int index
+                    readonly property int  cid: arow.modelData.id
+                    readonly property bool isActive: root.activeClipId === arow.cid
+                    readonly property int  durMs: (root._audioRev, root._clipDurMs(arow.cid))
+                    width: audioList.width
+                    height: 56
+                    radius: 10
+                    color: arow.isActive ? Qt.rgba(root.audioAccent.r, root.audioAccent.g, root.audioAccent.b, 0.12)
+                                         : Qt.rgba(App.themeTextPrimary.r, App.themeTextPrimary.g, App.themeTextPrimary.b, 0.04)
+                    border.color: arow.isActive ? root.audioAccent : "transparent"
+                    border.width: 1
+
+                    // Runder Play/Pause-Knopf
+                    Rectangle {
+                        id: arowBtn
+                        anchors { left: parent.left; leftMargin: 8; verticalCenter: parent.verticalCenter }
+                        width: 36; height: 36; radius: 18
+                        color: root.audioAccent
+                        opacity: arowBtnHover.hovered ? 0.85 : 1.0
+                        Text {
+                            anchors.centerIn: parent
+                            text: (arow.isActive && audioPlayer.playbackState === MediaPlayer.PlayingState) ? "\u23F8" : "\u25B6"
+                            color: "white"; font.pixelSize: 14
+                        }
+                        HoverHandler { id: arowBtnHover }
+                        TapHandler { onTapped: root.playClip(arow.cid) }
+                    }
+
+                    Text {
+                        id: arowTitle
+                        anchors { left: arowBtn.right; leftMargin: 10; top: parent.top; topMargin: 9 }
+                        text: "Audio " + (arow.index + 1)
+                        color: App.themeTextPrimary; font.pixelSize: 13; font.bold: arow.isActive
+                    }
+                    Text {
+                        anchors { right: parent.right; rightMargin: 12; verticalCenter: arowTitle.verticalCenter }
+                        text: arow.durMs > 0 ? root._fmtTime(arow.durMs) : "\u2013:\u2013\u2013"
+                        color: App.themeTextMuted; font.pixelSize: 11
+                    }
+
+                    // Fortschritts-/Seek-Slider (wie YouTube/Spotify): zeigt Gehörtes,
+                    // an beliebige Stelle ziehbar → ab dort weiter/starten.
+                    Slider {
+                        id: arowSlider
+                        anchors { left: arowBtn.right; leftMargin: 10; right: parent.right; rightMargin: 12; bottom: parent.bottom; bottomMargin: 8 }
+                        height: 16
+                        from: 0
+                        to: Math.max(1, arow.durMs)
+                        // pressed?value:… hält die Bindung beim Ziehen intakt.
+                        value: pressed ? value
+                                       : (arow.isActive ? audioPlayer.position
+                                                        : (root._audioRev, root._savedPos(arow.cid)))
+                        onMoved: if (arow.isActive) audioPlayer.position = value
+                        onPressedChanged: {
+                            if (!pressed && !arow.isActive) {
+                                var m = root._audioPos; m[arow.cid] = value; root._audioPos = m; root._audioRev++
+                                root.playClip(arow.cid)     // ab gewählter Stelle starten
+                            }
+                        }
+                        background: Rectangle {
+                            x: arowSlider.leftPadding; y: arowSlider.topPadding + arowSlider.availableHeight / 2 - height / 2
+                            width: arowSlider.availableWidth; height: 4; radius: 2
+                            color: Qt.rgba(App.themeTextMuted.r, App.themeTextMuted.g, App.themeTextMuted.b, 0.35)
+                            Rectangle { width: arowSlider.visualPosition * parent.width; height: parent.height; radius: 2; color: root.audioAccent }
+                        }
+                        handle: Rectangle {
+                            x: arowSlider.leftPadding + arowSlider.visualPosition * (arowSlider.availableWidth - width)
+                            y: arowSlider.topPadding + arowSlider.availableHeight / 2 - height / 2
+                            width: 12; height: 12; radius: 6
+                            color: root.audioAccent; border.color: "white"; border.width: 1
+                        }
+                    }
+                }
+            }
+
+            // ── Mini-Player (Now-Playing; unten angedockt) ─────────────────────
+            Rectangle {
+                id: miniPlayer
+                anchors { left: parent.left; right: parent.right; bottom: parent.bottom }
+                height: 84
+                visible: root.activeClipId >= 0
+                color: App.themeToolbarBg
+                Rectangle { anchors.top: parent.top; width: parent.width; height: 1; color: App.themeBorder }
+
+                Rectangle {
+                    id: miniBtn
+                    anchors { left: parent.left; leftMargin: 14; top: parent.top; topMargin: 12 }
+                    width: 44; height: 44; radius: 22
+                    color: root.audioAccent
+                    opacity: miniBtnHover.hovered ? 0.85 : 1.0
+                    Text {
+                        anchors.centerIn: parent
+                        text: audioPlayer.playbackState === MediaPlayer.PlayingState ? "\u23F8" : "\u25B6"
+                        color: "white"; font.pixelSize: 17
+                    }
+                    HoverHandler { id: miniBtnHover }
+                    TapHandler { onTapped: root.playClip(root.activeClipId) }
+                }
+                Text {
+                    id: miniTitle
+                    anchors { left: miniBtn.right; leftMargin: 12; right: parent.right; rightMargin: 14; top: parent.top; topMargin: 13 }
+                    text: root._activeTitle.length > 0 ? root._activeTitle : "Audio"
+                    color: App.themeTextPrimary; font.pixelSize: 13; font.bold: true
+                    elide: Text.ElideRight
+                }
+                Slider {
+                    id: miniSlider
+                    anchors { left: miniBtn.right; leftMargin: 12; right: parent.right; rightMargin: 14; top: miniTitle.bottom; topMargin: 6 }
+                    height: 18
+                    from: 0; to: Math.max(1, audioPlayer.duration)
+                    value: pressed ? value : audioPlayer.position
+                    onMoved: audioPlayer.position = value
+                    background: Rectangle {
+                        x: miniSlider.leftPadding; y: miniSlider.topPadding + miniSlider.availableHeight / 2 - height / 2
+                        width: miniSlider.availableWidth; height: 4; radius: 2
+                        color: Qt.rgba(App.themeTextMuted.r, App.themeTextMuted.g, App.themeTextMuted.b, 0.35)
+                        Rectangle { width: miniSlider.visualPosition * parent.width; height: parent.height; radius: 2; color: root.audioAccent }
+                    }
+                    handle: Rectangle {
+                        x: miniSlider.leftPadding + miniSlider.visualPosition * (miniSlider.availableWidth - width)
+                        y: miniSlider.topPadding + miniSlider.availableHeight / 2 - height / 2
+                        width: 14; height: 14; radius: 7
+                        color: root.audioAccent; border.color: "white"; border.width: 1
+                    }
+                }
+                Text {
+                    anchors { left: miniBtn.right; leftMargin: 12; bottom: parent.bottom; bottomMargin: 7 }
+                    text: root._fmtTime(audioPlayer.position)
+                    color: App.themeTextMuted; font.pixelSize: 10
+                }
+                Text {
+                    anchors { right: parent.right; rightMargin: 14; bottom: parent.bottom; bottomMargin: 7 }
+                    text: root._fmtTime(audioPlayer.duration)
+                    color: App.themeTextMuted; font.pixelSize: 10
+                }
+            }
+        }
     }
 
     function activateAnnotation(a) {
@@ -738,11 +1131,8 @@ Item {
         } else if (a.type === 1) {                                // Video
             mediaLoader.uri = a.uri
             mediaLoader.active = true
-        } else if (a.type === 0) {                                // Audio
-            audioPlayer.source = a.uri.indexOf("file:") === 0 ? a.uri : "file://" + a.uri
-            audioBar.label = a.label.length > 0 ? a.label : "Audio"
-            audioPlayer.play()
         }
+        // Audio (type 0) wird über PdfAudio/Audioleiste abgespielt (eigene Hotspots).
     }
 
     // ── Video-Overlay (Annotation) ─────────────────────────────────────────────
@@ -760,42 +1150,6 @@ Item {
                 width: 40; height: 40; radius: 20; color: Qt.rgba(1,1,1,0.12)
                 Text { anchors.centerIn: parent; text: "\u2715"; color: "white"; font.pixelSize: 18 }
                 TapHandler { onTapped: mediaLoader.active = false }
-            }
-        }
-    }
-
-    // ── Audio-Leiste (Annotation) ──────────────────────────────────────────────
-    MediaPlayer { id: audioPlayer; audioOutput: AudioOutput { id: audioOut } }
-    Rectangle {
-        id: audioBar
-        property string label: ""
-        anchors { left: parent.left; right: parent.right; bottom: parent.bottom; bottomMargin: root.bottomInset }
-        height: 46; z: 5
-        visible: audioPlayer.playbackState !== MediaPlayer.StoppedState
-        color: App.themeToolbarBg
-        Row {
-            anchors.fill: parent; anchors.leftMargin: 12; anchors.rightMargin: 12; spacing: 10
-            ToolButton {
-                anchors.verticalCenter: parent.verticalCenter
-                text: audioPlayer.playbackState === MediaPlayer.PlayingState ? "\u23F8" : "\u25B6"
-                onClicked: audioPlayer.playbackState === MediaPlayer.PlayingState
-                           ? audioPlayer.pause() : audioPlayer.play()
-            }
-            Text {
-                anchors.verticalCenter: parent.verticalCenter
-                text: audioBar.label; color: App.themeTextPrimary; font.pixelSize: 12
-                elide: Text.ElideRight; width: 160
-            }
-            Slider {
-                anchors.verticalCenter: parent.verticalCenter
-                width: parent.width - 280
-                from: 0; to: Math.max(1, audioPlayer.duration)
-                value: pressed ? value : audioPlayer.position
-                onMoved: audioPlayer.position = value
-            }
-            ToolButton {
-                anchors.verticalCenter: parent.verticalCenter
-                text: "\u2715"; onClicked: audioPlayer.stop()
             }
         }
     }

@@ -18,6 +18,7 @@
 #include "src/ThumbnailLoader.h"
 #include "src/PdfThumbnailProvider.h"
 #include "src/PdfTextController.h"
+#include "src/PdfAudioController.h"
 #include "src/MediaModel.h"
 #include "src/MediaProxyModel.h"
 
@@ -61,6 +62,7 @@ int main(int argc, char* argv[]) {
     ViewerController    viewerController;
     PdfThumbnailProvider pdfThumbs;
     PdfTextController    pdfText;
+    PdfAudioController   pdfAudio;
 
     // ── Galerie-Backend ──────────────────────────────────────────────────────
     ThumbnailLoader  thumbLoader;
@@ -80,6 +82,7 @@ int main(int argc, char* argv[]) {
     qmlRegisterSingletonInstance("MediaGallery", 1, 0, "Viewer",    &viewerController);
     qmlRegisterSingletonInstance("MediaGallery", 1, 0, "PdfThumbs", &pdfThumbs);
     qmlRegisterSingletonInstance("MediaGallery", 1, 0, "PdfText",   &pdfText);
+    qmlRegisterSingletonInstance("MediaGallery", 1, 0, "PdfAudio",  &pdfAudio);
 
     // ── QML-Wurzel ───────────────────────────────────────────────────────────
     QQmlApplicationEngine engine;
