@@ -151,7 +151,7 @@ Custom themes can be exported to JSON and shared:
 ## Changelog
 
 ### Latest
-- **Utility**: added PDF audio support
+- **UI**: added skeleton loader
 
 ---
 

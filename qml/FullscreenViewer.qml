@@ -36,6 +36,22 @@ FocusScope {
     // anstoßen (Status Active) → die Öffnen-Animation läuft flüssig über einen
     // leichten Platzhalter statt gegen das synchrone PDF-Laden/Erstrendern.
     property bool   _loaded: false
+    property int    _startType: -1   // Medientyp des Einstiegspfads (schon VOR _loaded bekannt)
+
+    // PDF gilt als geladen, sobald das Dokument „Ready" ist (erste Seite kann rendern).
+    readonly property bool _pdfReady: root._loaded && surface.item !== null && surface.item.docReady === true
+    // Ein PDF wird gerade geladen: deckt Öffnen-Animation (Typ aus _startType),
+    // Dokument-Parsing (Typ aus root.type) UND Blättern zur nächsten PDF ab.
+    readonly property bool pdfLoading: (root._loaded ? root.type : root._startType) === 3 && !root._pdfReady
+
+    // Skeleton ERST nach 300 ms zeigen: lädt das PDF schneller, blitzt nichts auf.
+    property bool _skelVisible: false
+    Timer { id: skelDelay; interval: 300; repeat: false
+            onTriggered: root._skelVisible = root.pdfLoading }
+    onPdfLoadingChanged: {
+        if (root.pdfLoading) { root._skelVisible = false; skelDelay.restart() }   // (neu) am Laden → 300ms warten
+        else { skelDelay.stop(); root._skelVisible = false }                       // fertig / kein PDF → weg
+    }
 
     function _maybeLoad() {
         if (root._loaded) return
@@ -47,7 +63,11 @@ FocusScope {
         }
     }
 
-    Component.onCompleted: { root.forceActiveFocus(); _maybeLoad() }
+    Component.onCompleted: {
+        var r = galleryModel.rowForPath(startPath)
+        root._startType = (r >= 0) ? galleryModel.mediaTypeAt(r) : -1
+        root.forceActiveFocus(); _maybeLoad()
+    }
     Component.onDestruction: releaseCurrent()
     StackView.onStatusChanged: _maybeLoad()
 
@@ -98,13 +118,108 @@ FocusScope {
 
     Rectangle { anchors.fill: parent; color: "#0a0a0a" }
 
-    // Leichter Lade-Indikator während des Übergangs (vor _loaded). Kein schweres
-    // Item → die Animation bleibt flüssig.
+    // Leichter Lade-Indikator (Nicht-PDF-Medien) während des Übergangs. Für PDFs
+    // übernimmt das seitenförmige Skeleton (unten) die gesamte Ladephase.
     BusyIndicator {
         anchors.centerIn: parent
-        running: !root._loaded
+        running: !root._loaded && root._startType !== 3
         visible: running
         z: 50
+    }
+
+    // ── PDF-Ladeanzeige: zuerst leere (weiße) Seite, ab 300 ms das Skeleton ──────
+    //  Beim Öffnen erscheint SOFORT eine leere PDF-Seite (kein Blackscreen). Dauert
+    //  das Laden länger als 300 ms, blenden Inhalts-Balken + Shimmer darüber ein
+    //  (Skeleton). Größe/Position UND das Seitenweiß spiegeln die spätere PDF-Seite →
+    //  nahtloser Übergang. Leicht genug, dass die Öffnen-Animation flüssig bleibt.
+    Item {
+        id: pdfSkeleton
+        anchors.fill: parent
+        z: 50
+        visible: opacity > 0.01
+        opacity: root.pdfLoading ? 1 : 0          // leere Seite SOFORT beim Laden; weg, sobald fertig
+
+        // Viewport, in dem die PDF-Seite NACH dem Laden erscheint — spiegelt die
+        // PdfSurface-Geometrie: unter Metadaten-Leiste + PdfSurface-Toolbar (40 px,
+        // erscheint mit docReady), oberhalb der unteren Navigation (74 px). Seiten-Fit
+        // wie fitMode "page": min(wFit,hFit) gegen (Viewport − 24); Standardmaß A4
+        // (595×842 pt) als Annahme, bis das echte Seitenmaß bekannt ist.
+        readonly property real _vpTop:    (topBar.visible ? topBar.height : 0) + 40
+        readonly property real _vpBottom: root.height - (bottomNav.visible ? 74 : 0)
+        readonly property real _vpW:      root.width
+        readonly property real _vpH:      Math.max(0, _vpBottom - _vpTop)
+        readonly property real _fit:      Math.max(0, Math.min((_vpW - 24) / 595, (_vpH - 24) / 842))
+
+        // Leere PDF-Seite (Seitenweiß) — Größe/Position wie die spätere A4-Seite.
+        Rectangle {
+            id: skelPage
+            width:  595 * pdfSkeleton._fit
+            height: 842 * pdfSkeleton._fit
+            x: (parent.width - width) / 2
+            y: pdfSkeleton._vpTop
+            color: "#fbfbfa"
+            clip: true
+
+            // Skeleton-Schicht (Inhalts-Balken + Shimmer) — ERST nach 300 ms, weich ein.
+            Item {
+                id: skelContent
+                anchors.fill: parent
+                opacity: root._skelVisible ? 1 : 0
+                Behavior on opacity { NumberAnimation { duration: 220; easing.type: Easing.OutQuad } }
+
+                // Platzhalter-Inhalt: Titelbalken + Absatzzeilen mit variabler Breite.
+                Column {
+                    id: skelLines
+                    anchors {
+                        left: parent.left;  leftMargin:  skelPage.width * 0.11
+                        right: parent.right; rightMargin: skelPage.width * 0.11
+                        top: parent.top;     topMargin:   skelPage.height * 0.11
+                    }
+                    spacing: skelPage.height * 0.0265
+
+                    // Titel (breiter, etwas dunkler)
+                    Rectangle { width: parent.width * 0.58; height: skelPage.height * 0.040
+                                radius: 4; color: "#d9d9d4" }
+                    Item { width: 1; height: skelPage.height * 0.028 }   // Absatzabstand
+
+                    Repeater {
+                        model: [0.99, 0.95, 0.98, 0.72,
+                                0.97, 0.93, 0.99, 0.90, 0.58,
+                                0.96, 0.99, 0.91, 0.66,
+                                0.98, 0.94, 0.80]
+                        Rectangle {
+                            width: parent.width * modelData
+                            height: skelPage.height * 0.0215
+                            radius: 3
+                            color: "#e5e5e1"
+                        }
+                    }
+                }
+
+                // Shimmer: heller, leicht geneigter Streifen — sichtbar auf den Balken.
+                Rectangle {
+                    id: skelSheen
+                    height: skelPage.height * 1.5
+                    width:  skelPage.width * 0.42
+                    y: -skelPage.height * 0.25
+                    rotation: 14
+                    opacity: 0.9
+                    gradient: Gradient {
+                        orientation: Gradient.Horizontal
+                        GradientStop { position: 0.0; color: "transparent" }
+                        GradientStop { position: 0.5; color: Qt.rgba(1, 1, 1, 0.55) }
+                        GradientStop { position: 1.0; color: "transparent" }
+                    }
+                    SequentialAnimation on x {
+                        running: root._skelVisible
+                        loops: Animation.Infinite
+                        NumberAnimation { from: -skelPage.width * 0.6; to: skelPage.width * 1.15
+                                          duration: 1150; easing.type: Easing.InOutQuad }
+                        PauseAnimation { duration: 360 }
+                    }
+                }
+            }
+        }
     }
 
     // ── Medien-Loader (genau ein aktives Medium) ──────────────────────────────

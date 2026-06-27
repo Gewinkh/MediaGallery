@@ -289,9 +289,20 @@ Item {
     }
 
     function _startActive(url) {
+        // Resume-Position ZUERST sichern (vor stop(): stop() setzt position=0 und
+        // loest onPositionChanged(0) aus, das _audioPos[activeClipId] sonst transient
+        // auf 0 ueberschriebe).
         root._pendingSeekMs = root._audioPos[root.activeClipId] || 0
         root._pendingPlay = true
-        audioPlayer.source = url           // Seek+Play erst bei LoadedMedia
+        audioPlayer.stop()           // alte Wiedergabe sauber beenden
+        audioPlayer.source = url     // neue Quelle laden
+        // FFmpeg-Backend (Linux): das erste play() direkt bei LoadedMedia wird auf
+        // jedem zweiten Quellenwechsel VERWORFEN (Player bleibt Stopped, kein Ton) —
+        // exakt das, was ein zweiter manueller Klick heilt. playRetry ruft play()
+        // wiederholt auf, bis playbackState wirklich Playing ist → automatisiert den
+        // zweiten Klick und beseitigt das "jede zweite stumm"-Muster.
+        playRetry.tries = 0
+        playRetry.start()
     }
 
     function _saveActivePos() {
@@ -323,13 +334,15 @@ Item {
         id: audioPlayer
         audioOutput: AudioOutput { id: audioOut }
         // Robust gegen das FFmpeg-Backend (Linux): play() wird bei LoadedMedia teils
-        // VERWORFEN (zu früh) → nicht "verbrauchen", sondern bei LoadedMedia UND
-        // BufferedMedia erneut versuchen, bis tatsächlich gespielt wird. Es wird NIE
-        // auf 0 gesucht (ein redundanter Seek-auf-0 ließ die erste Wiedergabe hängen);
-        // ein echter Resume-Sprung (>0) erfolgt erst, NACHDEM die Wiedergabe läuft.
+        // VERWORFEN (zu früh). Erstversuch hier (schneller Pfad), die eigentliche
+        // Absicherung uebernimmt playRetry (wiederholt play(), bis Playing). KEIN
+        // playbackState-Guard mehr — play() soll frei feuern duerfen; auf einem
+        // laufenden Player ist es ohnehin ein No-Op. Es wird NIE auf 0 gesucht (ein
+        // redundanter Seek-auf-0 ließ die erste Wiedergabe hängen); ein echter
+        // Resume-Sprung (>0) erfolgt erst, NACHDEM die Wiedergabe läuft.
         onMediaStatusChanged: {
             if ((mediaStatus === MediaPlayer.LoadedMedia || mediaStatus === MediaPlayer.BufferedMedia)
-                    && root._pendingPlay && playbackState !== MediaPlayer.PlayingState)
+                    && root._pendingPlay)
                 play()
         }
         onPlaybackStateChanged: {
@@ -338,9 +351,33 @@ Item {
                 if (root._pendingSeekMs > 0) { position = root._pendingSeekMs; root._pendingSeekMs = -1 }
             }
         }
+        onErrorOccurred: function(err, errStr) {
+            if (err !== MediaPlayer.NoError) console.log("MediaGallery Audio-Fehler:", err, errStr)
+        }
         // Nur in das einfache Objekt schreiben (Resume) — KEIN Reassign → keine
         // Binding-Last je Tick. Der aktive Slider liest audioPlayer.position direkt.
         onPositionChanged: if (root.activeClipId >= 0) root._audioPos[root.activeClipId] = position
+    }
+
+    // Wiederholt play(), bis die Wiedergabe wirklich laeuft. Notwendig, weil das
+    // FFmpeg-Backend das erste play() (direkt bei LoadedMedia) auf jedem zweiten
+    // Quellenwechsel verwirft und der Player dann in Stopped haengt. Stoppt sich
+    // selbst, sobald Playing erreicht ist, _pendingPlay zurueckgesetzt wurde, oder
+    // nach einer Sicherheitsgrenze (Schutz vor Endlos-Retry bei InvalidMedia).
+    Timer {
+        id: playRetry
+        interval: 80
+        repeat: true
+        property int tries: 0
+        onTriggered: {
+            if (!root._pendingPlay || audioPlayer.playbackState === MediaPlayer.PlayingState) {
+                stop(); tries = 0; return
+            }
+            if (++tries > 25) { stop(); tries = 0; return }   // ~2 s, dann aufgeben
+            var ms = audioPlayer.mediaStatus
+            if (ms === MediaPlayer.LoadedMedia || ms === MediaPlayer.BufferedMedia)
+                audioPlayer.play()
+        }
     }
 
     Connections {
