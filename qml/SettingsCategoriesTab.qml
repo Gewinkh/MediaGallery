@@ -37,12 +37,12 @@ Item {
             Text {
                 Layout.fillWidth: true
                 wrapMode: Text.WordWrap
-                text: qsTr("Kategorien und Unterkategorien verwalten. Tags lassen sich Kategorien zuordnen.")
+                text: App.uiText(App.language, "SettingsCatHintNew")
                 color: App.themeTextMuted
                 font.pixelSize: 11
             }
             Button {
-                text: qsTr("+ Neue Kategorie")
+                text: App.uiText(App.language, "SettingsCatBtnNew")
                 highlighted: true
                 onClicked: tab.promptNewRoot()
             }
@@ -79,7 +79,7 @@ Item {
                     visible: tab.treeModel.length === 0
                     width: parent.width
                     horizontalAlignment: Text.AlignHCenter
-                    text: qsTr("Noch keine Kategorien vorhanden.")
+                    text: App.uiText(App.language, "SettingsCatEmptyNew")
                     color: App.themeTextMuted
                     padding: 16
                 }
@@ -90,7 +90,7 @@ Item {
     // ── Dialoge ──────────────────────────────────────────────────────────────
     Dialog {
         id: newCatDialog
-        title: qsTr("Neue Kategorie")
+        title: App.uiText(App.language, "CatPanelAddCategory")
         modal: true
         anchors.centerIn: Overlay.overlay
         standardButtons: Dialog.Ok | Dialog.Cancel
@@ -99,14 +99,14 @@ Item {
         background: Rectangle { color: App.themeCard; border.color: App.themeBorder; radius: 8 }
         contentItem: RowLayout {
             spacing: 10
-            TextField { id: npName; Layout.preferredWidth: 220; placeholderText: qsTr("Name"); color: App.themeTextPrimary }
+            TextField { id: npName; Layout.preferredWidth: 220; placeholderText: App.uiText(App.language, "FilterName"); color: App.themeTextPrimary }
             ColorPicker { id: npColor; width: 34; height: 24; showAlpha: false; selectedColor: App.themeAccent }
         }
     }
 
     Dialog {
         id: subCatDialog
-        title: qsTr("Neue Unterkategorie")
+        title: App.uiText(App.language, "CatPanelNewSubcategory")
         modal: true
         anchors.centerIn: Overlay.overlay
         standardButtons: Dialog.Ok | Dialog.Cancel
@@ -115,14 +115,14 @@ Item {
         background: Rectangle { color: App.themeCard; border.color: App.themeBorder; radius: 8 }
         contentItem: RowLayout {
             spacing: 10
-            TextField { id: spName; Layout.preferredWidth: 220; placeholderText: qsTr("Name"); color: App.themeTextPrimary }
+            TextField { id: spName; Layout.preferredWidth: 220; placeholderText: App.uiText(App.language, "FilterName"); color: App.themeTextPrimary }
             ColorPicker { id: spColor; width: 34; height: 24; showAlpha: false; selectedColor: App.themeAccent }
         }
     }
 
     Dialog {
         id: renameDialog
-        title: qsTr("Kategorie umbenennen")
+        title: App.uiText(App.language, "SettingsCatRenameTitle")
         modal: true
         anchors.centerIn: Overlay.overlay
         standardButtons: Dialog.Ok | Dialog.Cancel
@@ -134,21 +134,21 @@ Item {
 
     Dialog {
         id: deleteDialog
-        title: qsTr("Kategorie löschen")
+        title: App.uiText(App.language, "CatPanelDelete")
         modal: true
         anchors.centerIn: Overlay.overlay
         standardButtons: Dialog.Yes | Dialog.No
         onAccepted: Tags.deleteCategory(tab.pId)
         background: Rectangle { color: App.themeCard; border.color: App.themeBorder; radius: 8 }
         contentItem: Text {
-            text: qsTr("Kategorie „%1\" und alle Unterkategorien löschen?").arg(tab.pName)
+            text: App.uiText(App.language, "SettingsCatDeleteConfirm").arg(tab.pName)
             color: App.themeTextPrimary; wrapMode: Text.WordWrap; width: 300
         }
     }
 
     Dialog {
         id: uniformDialog
-        title: qsTr("Einheitsfarbe setzen")
+        title: App.uiText(App.language, "CatPanelSetColor")
         modal: true
         anchors.centerIn: Overlay.overlay
         standardButtons: Dialog.Ok | Dialog.Cancel
@@ -158,12 +158,12 @@ Item {
             spacing: 10
             RowLayout {
                 spacing: 10
-                Label { text: qsTr("Farbe:"); color: App.themeTextPrimary }
+                Label { text: App.uiText(App.language, "SettingsCatColorLabel"); color: App.themeTextPrimary }
                 ColorPicker { id: uColor; width: 34; height: 24; showAlpha: false; selectedColor: App.themeAccent }
             }
             CheckBox {
                 id: uInherit
-                text: qsTr("An Unterkategorien vererben")
+                text: App.uiText(App.language, "SettingsCatInheritSub")
                 contentItem: Text {
                     text: parent.text; color: App.themeTextPrimary
                     leftPadding: parent.indicator.width + 6

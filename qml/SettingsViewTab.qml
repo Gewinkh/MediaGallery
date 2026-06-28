@@ -22,13 +22,13 @@ Item {
 
             // ── Kachel-Anordnung ──────────────────────────────────────────────
             SettingsGroup {
-                title: qsTr("Kachel-Anordnung")
+                title: App.uiText(App.language, "SettingsViewTileArrangement")
                 Layout.fillWidth: true
 
                 Text {
                     Layout.fillWidth: true
                     wrapMode: Text.WordWrap
-                    text: qsTr("Bestimmt, wie Kacheln innerhalb des sichtbaren Bereichs ausgerichtet werden.")
+                    text: App.uiText(App.language, "SettingsViewArrangementHint")
                     color: App.themeTextMuted
                     font.pixelSize: 11
                 }
@@ -37,10 +37,10 @@ Item {
 
                 Repeater {
                     model: [
-                        { label: qsTr("Zentriert"),               value: 0 },
-                        { label: qsTr("Linksbündig"),             value: 1 },
-                        { label: qsTr("Rechtsbündig"),            value: 2 },
-                        { label: qsTr("Manuell (freier Bereich)"), value: 3 }
+                        { label: App.uiText(App.language, "SettingsViewAlignCenter"),               value: 0 },
+                        { label: App.uiText(App.language, "SettingsViewAlignLeft"),             value: 1 },
+                        { label: App.uiText(App.language, "SettingsViewAlignRight"),            value: 2 },
+                        { label: App.uiText(App.language, "SettingsViewAlignManual"), value: 3 }
                     ]
                     delegate: RadioButton {
                         required property var modelData
@@ -146,7 +146,7 @@ Item {
                     RowLayout {
                         Layout.fillWidth: true
                         spacing: 8
-                        Label { text: qsTr("Breite:"); color: App.themeTextPrimary; Layout.preferredWidth: 70 }
+                        Label { text: App.uiText(App.language, "SettingsViewWidth"); color: App.themeTextPrimary; Layout.preferredWidth: 70 }
                         Slider {
                             id: wSlider
                             Layout.fillWidth: true
@@ -168,7 +168,7 @@ Item {
                     RowLayout {
                         Layout.fillWidth: true
                         spacing: 8
-                        Label { text: qsTr("Höhe:"); color: App.themeTextPrimary; Layout.preferredWidth: 70 }
+                        Label { text: App.uiText(App.language, "SettingsViewHeight"); color: App.themeTextPrimary; Layout.preferredWidth: 70 }
                         Slider {
                             id: hSlider
                             Layout.fillWidth: true
@@ -180,8 +180,8 @@ Item {
                             from: 0; to: 2000; stepSize: 10
                             value: App.manualAreaHeight
                             editable: true
-                            textFromValue: function(v){ return v === 0 ? qsTr("Auto") : (v + " px") }
-                            valueFromText: function(t){ return t === qsTr("Auto") ? 0 : parseInt(t) }
+                            textFromValue: function(v){ return v === 0 ? App.uiText(App.language, "SettingsGenBackendAuto") : (v + " px") }
+                            valueFromText: function(t){ return t === App.uiText(App.language, "SettingsGenBackendAuto") ? 0 : parseInt(t) }
                             onValueModified: App.setManualAreaHeight(value)
                         }
                     }
@@ -190,13 +190,13 @@ Item {
 
             // ── Kachelgröße ───────────────────────────────────────────────────
             SettingsGroup {
-                title: qsTr("Kachelgröße")
+                title: App.uiText(App.language, "SettingsViewTileSize")
                 Layout.fillWidth: true
 
                 RowLayout {
                     Layout.fillWidth: true
                     spacing: 12
-                    Label { text: qsTr("Breite:"); color: App.themeTextPrimary }
+                    Label { text: App.uiText(App.language, "SettingsViewWidth"); color: App.themeTextPrimary }
                     SpinBox {
                         id: tileW
                         from: 40; to: 4096; stepSize: 8
@@ -205,7 +205,7 @@ Item {
                         textFromValue: function(v){ return v + " px" }
                         valueFromText: function(t){ return parseInt(t) }
                     }
-                    Label { text: qsTr("Höhe:"); color: App.themeTextPrimary }
+                    Label { text: App.uiText(App.language, "SettingsViewHeight"); color: App.themeTextPrimary }
                     SpinBox {
                         id: tileH
                         from: 40; to: 4096; stepSize: 8
@@ -216,7 +216,7 @@ Item {
                     }
                     Item { Layout.fillWidth: true }
                     Button {
-                        text: qsTr("Übernehmen")
+                        text: App.uiText(App.language, "SettingsDesignApplyBtn")
                         highlighted: true
                         onClicked: App.setTileSize(tileW.value, tileH.value)
                     }
@@ -230,7 +230,7 @@ Item {
                 textFormat: Text.RichText
                 color: App.themeTextMuted
                 font.pixelSize: 11
-                text: qsTr("<b>Zoom-Shortcuts:</b><br>Strg + Mausrad → Kachelgröße ändern<br>Strg + + / Strg + − → Kachelgröße stufenweise")
+                text: App.uiText(App.language, "SettingsViewZoomHint")
             }
 
             Item { Layout.fillHeight: true }

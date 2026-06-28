@@ -19,14 +19,14 @@ Item {
         editIndex = -1
         nameField.text = ""
         pathField.text = ""
-        editDialog.title = qsTr("Lesezeichen hinzufügen")
+        editDialog.title = App.uiText(App.language, "SettingsBookAddTitle")
         editDialog.open()
     }
     function openEdit(index, name, path) {
         editIndex = index
         nameField.text = name
         pathField.text = path
-        editDialog.title = qsTr("Lesezeichen bearbeiten")
+        editDialog.title = App.uiText(App.language, "SettingsBookEditTitle")
         editDialog.open()
     }
 
@@ -38,11 +38,11 @@ Item {
             Layout.fillWidth: true
             Text {
                 Layout.fillWidth: true; wrapMode: Text.WordWrap
-                text: qsTr("Schnellzugriff auf häufig genutzte Ordner.")
+                text: App.uiText(App.language, "SettingsBookHint")
                 color: App.themeTextMuted; font.pixelSize: 11
             }
             Button {
-                text: qsTr("+ Ordner hinzufügen")
+                text: App.uiText(App.language, "SettingsBookBtnAdd")
                 highlighted: true
                 onClicked: root.openAdd()
             }
@@ -98,11 +98,11 @@ Item {
                             }
 
                             Button {
-                                text: qsTr("Bearbeiten")
+                                text: App.uiText(App.language, "BookmarkEdit")
                                 onClicked: root.openEdit(bmRow.index, bmRow.modelData.name, bmRow.modelData.path)
                             }
                             Button {
-                                text: qsTr("Löschen")
+                                text: App.uiText(App.language, "BookmarkDelete")
                                 onClicked: { root.editIndex = bmRow.index; deleteDialog.open() }
                             }
                         }
@@ -113,7 +113,7 @@ Item {
                     visible: root.folders.length === 0
                     Layout.fillWidth: true
                     horizontalAlignment: Text.AlignHCenter
-                    text: qsTr("Noch keine Lesezeichen vorhanden.")
+                    text: App.uiText(App.language, "SettingsBookEmpty")
                     color: App.themeTextMuted
                     padding: 16
                 }
@@ -140,25 +140,25 @@ Item {
             spacing: 10
             RowLayout {
                 Layout.fillWidth: true; spacing: 8
-                Label { text: qsTr("Name:"); color: App.themeTextPrimary; Layout.preferredWidth: 60 }
+                Label { text: App.uiText(App.language, "SettingsCatNewLabel"); color: App.themeTextPrimary; Layout.preferredWidth: 60 }
                 TextField {
                     id: nameField
                     Layout.fillWidth: true
-                    placeholderText: qsTr("Anzeigename (optional)")
+                    placeholderText: App.uiText(App.language, "SettingsBookDisplayName")
                     color: App.themeTextPrimary
                 }
             }
             RowLayout {
                 Layout.fillWidth: true; spacing: 8
-                Label { text: qsTr("Pfad:"); color: App.themeTextPrimary; Layout.preferredWidth: 60 }
+                Label { text: App.uiText(App.language, "BookmarkPathLabel"); color: App.themeTextPrimary; Layout.preferredWidth: 60 }
                 TextField {
                     id: pathField
                     Layout.fillWidth: true
-                    placeholderText: qsTr("Ordnerpfad")
+                    placeholderText: App.uiText(App.language, "SettingsBookFolderPath")
                     color: App.themeTextPrimary
                 }
                 Button {
-                    text: qsTr("Durchsuchen…")
+                    text: App.uiText(App.language, "BookmarkBrowse")
                     onClicked: folderDialog.open()
                 }
             }
@@ -167,7 +167,7 @@ Item {
 
     FolderDialog {
         id: folderDialog
-        title: qsTr("Ordner wählen")
+        title: App.uiText(App.language, "SettingsBookChooseFolder")
         onAccepted: {
             var p = selectedFolder.toString()
             if (p.startsWith("file://")) p = decodeURIComponent(p.substring(7))
@@ -177,14 +177,14 @@ Item {
 
     Dialog {
         id: deleteDialog
-        title: qsTr("Lesezeichen löschen")
+        title: App.uiText(App.language, "SettingsBookDeleteTitle")
         modal: true
         anchors.centerIn: Overlay.overlay
         standardButtons: Dialog.Yes | Dialog.No
         background: Rectangle { color: App.themeCard; border.color: App.themeBorder; radius: 8 }
         onAccepted: App.removeBookmark(root.editIndex)
         contentItem: Text {
-            text: qsTr("Dieses Lesezeichen wirklich entfernen?")
+            text: App.uiText(App.language, "SettingsBookDeleteConfirm")
             color: App.themeTextPrimary; wrapMode: Text.WordWrap; width: 280
         }
     }

@@ -81,7 +81,7 @@ Column {
                 anchors.verticalCenter: parent.verticalCenter
                 visible: nodeRoot.node.uniform
                 width: 28; height: 20
-                title: qsTr("Kategorie-Farbe")
+                title: App.uiText(App.language, "SettingsCatNodeColorTitle")
                 showAlpha: false
                 selectedColor: nodeRoot.node.color
                 onColorPicked: (c) => Tags.setCategoryUniformColor(nodeRoot.node.id, true, c, nodeRoot.node.inherit)
@@ -94,21 +94,21 @@ Column {
                 onClicked: ctxMenu.open()
                 Menu {
                     id: ctxMenu
-                    MenuItem { text: qsTr("Unterkategorie…"); onTriggered: nodeRoot.tab.promptAddSub(nodeRoot.node.id) }
-                    MenuItem { text: qsTr("Umbenennen…");     onTriggered: nodeRoot.tab.promptRename(nodeRoot.node.id, nodeRoot.node.name) }
+                    MenuItem { text: App.uiText(App.language, "SettingsCatNodeAddSub"); onTriggered: nodeRoot.tab.promptAddSub(nodeRoot.node.id) }
+                    MenuItem { text: App.uiText(App.language, "SettingsCatNodeRename");     onTriggered: nodeRoot.tab.promptRename(nodeRoot.node.id, nodeRoot.node.name) }
                     MenuSeparator {}
                     MenuItem {
-                        text: qsTr("Einheitsfarbe setzen…")
+                        text: App.uiText(App.language, "SettingsCatNodeSetUniform")
                         enabled: !nodeRoot.node.uniform
                         onTriggered: nodeRoot.tab.promptUniform(nodeRoot.node.id, nodeRoot.node.color)
                     }
                     MenuItem {
-                        text: qsTr("Einheitsfarbe entfernen")
+                        text: App.uiText(App.language, "SettingsCatNodeClearUniform")
                         enabled: nodeRoot.node.uniform
                         onTriggered: Tags.setCategoryUniformColor(nodeRoot.node.id, false, nodeRoot.node.color, false)
                     }
                     MenuSeparator {}
-                    MenuItem { text: qsTr("Löschen"); onTriggered: nodeRoot.tab.promptDelete(nodeRoot.node.id, nodeRoot.node.name) }
+                    MenuItem { text: App.uiText(App.language, "BookmarkDelete"); onTriggered: nodeRoot.tab.promptDelete(nodeRoot.node.id, nodeRoot.node.name) }
                 }
             }
         }

@@ -23,7 +23,7 @@ Item {
             case "d3d11":    return "Direct3D 11"
             case "metal":    return "Metal"
             case "opengl":   return "OpenGL"
-            case "software": return qsTr("Software (kein GPU)")
+            case "software": return App.uiText(App.language, "SettingsGenBackendSoftware")
             default:         return b !== "" ? b : "OpenGL"
         }
     }
@@ -38,14 +38,14 @@ Item {
             spacing: 16
 
             SettingsGroup {
-                title: qsTr("Sprache")
+                title: App.uiText(App.language, "MenuLanguage")
                 Layout.fillWidth: true
 
                 RowLayout {
                     Layout.fillWidth: true
                     spacing: 12
                     Label {
-                        text: qsTr("Sprache:")
+                        text: App.uiText(App.language, "SettingsLanguageLabel")
                         color: App.themeTextPrimary
                     }
                     ComboBox {
@@ -60,11 +60,11 @@ Item {
             }
 
             SettingsGroup {
-                title: qsTr("Video-Wiedergabe")
+                title: App.uiText(App.language, "MenuVideoPlayback")
                 Layout.fillWidth: true
 
                 RadioButton {
-                    text: qsTr("Intern (eingebauter Player)")
+                    text: App.uiText(App.language, "SettingsGenVideoInternal")
                     checked: App.videoPlayback === "native"
                     onToggled: if (checked) App.setVideoPlayback("native")
                     contentItem: Text {
@@ -74,7 +74,7 @@ Item {
                     }
                 }
                 RadioButton {
-                    text: qsTr("Extern (System-Player)")
+                    text: App.uiText(App.language, "SettingsGenVideoExternal")
                     checked: App.videoPlayback === "external"
                     onToggled: if (checked) App.setVideoPlayback("external")
                     contentItem: Text {
@@ -87,11 +87,11 @@ Item {
 
             // ── Vollbild-Animation (Öffnen/Schließen) ─────────────────────────
             SettingsGroup {
-                title: qsTr("Vollbild-Animation")
+                title: App.uiText(App.language, "SettingsGenFullscreenAnim")
                 Layout.fillWidth: true
 
                 RadioButton {
-                    text: qsTr("Verschieben (seitlich)")
+                    text: App.uiText(App.language, "SettingsGenAnimSlide")
                     checked: App.pageTransition === "slide"
                     onToggled: if (checked) App.setPageTransition("slide")
                     contentItem: Text {
@@ -101,7 +101,7 @@ Item {
                     }
                 }
                 RadioButton {
-                    text: qsTr("Überblenden (weicher Zoom)")
+                    text: App.uiText(App.language, "SettingsGenAnimFade")
                     checked: App.pageTransition === "fade"
                     onToggled: if (checked) App.setPageTransition("fade")
                     contentItem: Text {
@@ -114,11 +114,11 @@ Item {
 
             // ── Audio-Player-Akzent (PDF-Audioleiste) ─────────────────────────
             SettingsGroup {
-                title: qsTr("Audio-Player")
+                title: App.uiText(App.language, "SettingsGenAudioPlayer")
                 Layout.fillWidth: true
 
                 RadioButton {
-                    text: qsTr("Theme-Akzentfarbe")
+                    text: App.uiText(App.language, "SettingsGenAudioAccentTheme")
                     checked: !App.audioAccentApple
                     onToggled: if (checked) App.setAudioAccentApple(false)
                     contentItem: Text {
@@ -128,7 +128,7 @@ Item {
                     }
                 }
                 RadioButton {
-                    text: qsTr("Apple-Blau")
+                    text: App.uiText(App.language, "SettingsGenAudioAccentApple")
                     checked: App.audioAccentApple
                     onToggled: if (checked) App.setAudioAccentApple(true)
                     contentItem: Text {
@@ -141,7 +141,7 @@ Item {
 
             // ── Render-Backend ────────────────────────────────────────────────
             SettingsGroup {
-                title: qsTr("Render-Backend")
+                title: App.uiText(App.language, "SettingsGenRenderBackend")
                 Layout.fillWidth: true
 
                 ColumnLayout {
@@ -153,7 +153,7 @@ Item {
                         spacing: 12
 
                         Label {
-                            text: qsTr("Backend:")
+                            text: App.uiText(App.language, "SettingsGenBackendLabel")
                             color: App.themeTextPrimary
                         }
 
@@ -170,7 +170,7 @@ Item {
                         }
 
                         Button {
-                            text: qsTr("Speichern & Schließen")
+                            text: App.uiText(App.language, "SettingsGenSaveClose")
                             enabled: root.backendOptions[rhiCombo.currentIndex]
                                      !== Settings.rhiBackend.toLowerCase()
 
@@ -185,7 +185,7 @@ Item {
                     }
 
                     Label {
-                        text: qsTr("Aktuell aktiv: %1  —  Änderungen werden beim nächsten Start wirksam.")
+                        text: App.uiText(App.language, "SettingsGenActiveBackend")
                               .arg(root.backendLabel(Settings.rhiBackend))
                         color: App.themeTextMuted
                         font.pixelSize: 11
@@ -196,7 +196,7 @@ Item {
                     // Hinweis wenn Software-Fallback automatisch aktiviert wurde
                     Label {
                         visible: Settings.rhiBackend === "software"
-                        text: qsTr("⚠  Software-Renderer aktiv. Möglicherweise wurde beim letzten Start ein inkompatibles Backend erkannt und automatisch zurückgesetzt.")
+                        text: App.uiText(App.language, "SettingsGenSoftwareWarning")
                         color: "#e8a000"
                         font.pixelSize: 11
                         wrapMode: Text.WordWrap

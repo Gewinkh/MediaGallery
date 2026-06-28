@@ -79,7 +79,7 @@ ApplicationWindow {
             }
             MenuSeparator {}
             MenuItem {
-                text: "Kachelgröße…"
+                text: App.uiText(App.language, "MenuTileSize")
                 onTriggered: tileSizeDialog.openDialog()
             }
         }
@@ -87,7 +87,7 @@ ApplicationWindow {
         Menu {
             title: App.menuSettingsText
             MenuItem {
-                text: qsTr("Einstellungen…")
+                text: App.uiText(App.language, "MenuSettingsItem")
                 onTriggered: shell.openSettings()
             }
             MenuSeparator {}
@@ -251,7 +251,7 @@ ApplicationWindow {
                     anchors.fill: parent; anchors.leftMargin: 12; anchors.rightMargin: 12; spacing: 10
                     Text {
                         anchors.verticalCenter: parent.verticalCenter
-                        text: (galleryView.tagMode === 1 ? "Gruppen-Modus" : "Add-to-Tag-Modus")
+                        text: (galleryView.tagMode === 1 ? App.uiText(App.language, "ModeGroup") : App.uiText(App.language, "ModeAddToTag"))
                               + ": " + galleryView.modeTag
                         color: App.themeBackground; font.pixelSize: 12; font.bold: true
                     }

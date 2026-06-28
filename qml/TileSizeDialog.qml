@@ -19,7 +19,7 @@ import MediaGallery 1.0
 // ─────────────────────────────────────────────────────────────────────────────
 Dialog {
     id: dlg
-    title: "Kachelgröße"
+    title: App.uiText(App.language, "SettingsViewTileSize")
     modal: true
     width: 600
     height: 540
@@ -60,7 +60,7 @@ Dialog {
         Text {
             Layout.fillWidth: true
             wrapMode: Text.WordWrap
-            text: "Ziehe den Eck-Griff der ersten Kachel, um die bevorzugte Kachelgröße einzustellen."
+            text: App.uiText(App.language, "TileSizeHint")
             color: App.themeTextMuted
             font.pixelSize: 12
         }
@@ -242,7 +242,7 @@ Dialog {
             Layout.fillWidth: true
             spacing: 12
 
-            Label { text: "Breite:"; color: App.themeTextPrimary }
+            Label { text: App.uiText(App.language, "SettingsViewWidth"); color: App.themeTextPrimary }
             SpinBox {
                 id: wSpin
                 from: dlg.minDim; to: dlg.maxDim; stepSize: 8
@@ -251,7 +251,7 @@ Dialog {
                 onValueModified: dlg.setWork(value, dlg.workH)
             }
 
-            Label { text: "Höhe:"; color: App.themeTextPrimary }
+            Label { text: App.uiText(App.language, "SettingsViewHeight"); color: App.themeTextPrimary }
             SpinBox {
                 id: hSpin
                 from: dlg.minDim; to: dlg.maxDim; stepSize: 8
@@ -274,11 +274,11 @@ Dialog {
             Layout.fillWidth: true
             Item { Layout.fillWidth: true }
             Button {
-                text: "Abbrechen"
+                text: App.uiText(App.language, "SettingsCancel")
                 onClicked: dlg.reject()
             }
             Button {
-                text: "Übernehmen"
+                text: App.uiText(App.language, "SettingsDesignApplyBtn")
                 highlighted: true
                 onClicked: {
                     App.setTileSize(dlg.workW, dlg.workH)

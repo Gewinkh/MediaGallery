@@ -54,12 +54,12 @@ Item {
 
             // ── Tag → Unterkategorie ──────────────────────────────────────────
             SettingsGroup {
-                title: qsTr("Tag → Unterkategorie")
+                title: App.uiText(App.language, "ConverterTagToSubcat")
                 Layout.fillWidth: true
 
                 Text {
                     Layout.fillWidth: true; wrapMode: Text.WordWrap
-                    text: qsTr("Wandelt einen globalen Tag in eine Unterkategorie um. Der Tag wird danach aus der globalen Liste entfernt.")
+                    text: App.uiText(App.language, "SettingsConvTagToSubHint")
                     color: App.themeTextMuted; font.pixelSize: 11
                 }
 
@@ -67,7 +67,7 @@ Item {
                     Layout.fillWidth: true
                     columns: 2; columnSpacing: 12; rowSpacing: 8
 
-                    Label { text: qsTr("Tag:"); color: App.themeTextPrimary }
+                    Label { text: App.uiText(App.language, "SettingsConvTagLabel"); color: App.themeTextPrimary }
                     ComboBox {
                         id: t2sTag
                         Layout.fillWidth: true
@@ -75,7 +75,7 @@ Item {
                         textRole: "text"; valueRole: "value"
                     }
 
-                    Label { text: qsTr("Ziel-Kategorie:"); color: App.themeTextPrimary }
+                    Label { text: App.uiText(App.language, "SettingsConvTargetCat"); color: App.themeTextPrimary }
                     ComboBox {
                         id: t2sParent
                         Layout.fillWidth: true
@@ -83,7 +83,7 @@ Item {
                         textRole: "text"; valueRole: "value"
                     }
 
-                    Label { text: qsTr("Neuer Name:"); color: App.themeTextPrimary }
+                    Label { text: App.uiText(App.language, "FilterCatNewName"); color: App.themeTextPrimary }
                     TextField {
                         id: t2sName
                         Layout.fillWidth: true
@@ -94,7 +94,7 @@ Item {
 
                 Button {
                     Layout.alignment: Qt.AlignRight
-                    text: qsTr("Umwandeln")
+                    text: App.uiText(App.language, "SettingsConvConvertBtn")
                     highlighted: true
                     enabled: root.tagModel.length > 0 && root.catModel.length > 0
                     onClicked: {
@@ -108,18 +108,18 @@ Item {
 
             // ── Unterkategorie → Tag ──────────────────────────────────────────
             SettingsGroup {
-                title: qsTr("Unterkategorie → Tag")
+                title: App.uiText(App.language, "ConverterSubcatToTag")
                 Layout.fillWidth: true
 
                 Text {
                     Layout.fillWidth: true; wrapMode: Text.WordWrap
-                    text: qsTr("Wandelt eine Unterkategorie zurück in einen globalen Tag. Alle Dateien der Unterkategorie erhalten diesen Tag.")
+                    text: App.uiText(App.language, "SettingsConvSubToTagHint")
                     color: App.themeTextMuted; font.pixelSize: 11
                 }
 
                 RowLayout {
                     Layout.fillWidth: true; spacing: 12
-                    Label { text: qsTr("Unterkategorie:"); color: App.themeTextPrimary }
+                    Label { text: App.uiText(App.language, "SettingsConvSubcatLabel"); color: App.themeTextPrimary }
                     ComboBox {
                         id: s2tSub
                         Layout.fillWidth: true
@@ -130,7 +130,7 @@ Item {
 
                 Button {
                     Layout.alignment: Qt.AlignRight
-                    text: qsTr("Umwandeln")
+                    text: App.uiText(App.language, "SettingsConvConvertBtn")
                     highlighted: true
                     enabled: root.subModel.length > 0
                     onClicked: Tags.convertSubcategoryToTag(s2tSub.currentValue)
@@ -139,17 +139,17 @@ Item {
 
             // ── JSON-Migration ────────────────────────────────────────────────
             SettingsGroup {
-                title: qsTr("JSON-Migration")
+                title: App.uiText(App.language, "SettingsConvJsonMigration")
                 Layout.fillWidth: true
 
                 Text {
                     Layout.fillWidth: true; wrapMode: Text.WordWrap
-                    text: qsTr("Speichert den aktuellen Ordner im neuen kompakten JSON-Format (v2). Bestehende Metadaten bleiben erhalten.")
+                    text: App.uiText(App.language, "SettingsConvMigrateHint")
                     color: App.themeTextMuted; font.pixelSize: 11
                 }
 
                 Button {
-                    text: qsTr("Jetzt migrieren")
+                    text: App.uiText(App.language, "SettingsConvMigrateNow")
                     onClicked: migrateDialog.open()
                 }
             }
@@ -160,14 +160,14 @@ Item {
 
     Dialog {
         id: migrateDialog
-        title: qsTr("JSON-Migration")
+        title: App.uiText(App.language, "SettingsConvJsonMigration")
         modal: true
         anchors.centerIn: Overlay.overlay
         standardButtons: Dialog.Yes | Dialog.No
         onAccepted: App.saveCurrentFolder()
         background: Rectangle { color: App.themeCard; border.color: App.themeBorder; radius: 8 }
         contentItem: Text {
-            text: qsTr("Aktuellen Ordner jetzt im v2-Format speichern?")
+            text: App.uiText(App.language, "SettingsConvSaveV2Confirm")
             color: App.themeTextPrimary; wrapMode: Text.WordWrap; width: 300
         }
     }

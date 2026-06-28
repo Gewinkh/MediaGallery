@@ -1,5 +1,5 @@
 #include <QGuiApplication>
-#include <QTranslator>
+#include <QFont>
 #include <QQmlApplicationEngine>
 #include <QQmlContext>
 #include <QQmlEngine>
@@ -40,16 +40,36 @@ int main(int argc, char* argv[]) {
     app.setOrganizationName("MediaGallery");
     app.setApplicationVersion("1.0.0");
 
+    // ── Schriftart mit CJK-Fallback ───────────────────────────────────────────
+    // Hängt eine Familien-Fallbackkette an die Standardschrift, damit Zeichen
+    // ohne Glyphe in der Standardfamilie (z.B. japanische/chinesische Zeichen in
+    // Dateinamen) aus einer installierten Fallback-Familie gerendert werden statt
+    // als Tofu (□). Qt wählt pro Glyphe die erste Familie, die sie besitzt.
+    // Plattformübergreifend: Linux (Noto/Source Han), Windows (YaHei/Yu Gothic/
+    // Meiryo), macOS (Hiragino). Voraussetzung: mind. eine CJK-Familie installiert
+    // (Arch: `noto-fonts-cjk`).
+    {
+        QFont appFont = app.font();
+        const QString primary = appFont.family();
+        appFont.setFamilies({
+            primary,
+            QStringLiteral("Noto Sans"),
+            QStringLiteral("Noto Sans CJK JP"),
+            QStringLiteral("Noto Sans CJK SC"),
+            QStringLiteral("Noto Sans CJK KR"),
+            QStringLiteral("Source Han Sans"),
+            QStringLiteral("Microsoft YaHei"),
+            QStringLiteral("Yu Gothic"),
+            QStringLiteral("Meiryo"),
+            QStringLiteral("Hiragino Sans"),
+            QStringLiteral("Hiragino Kaku Gothic ProN"),
+            QStringLiteral("sans-serif")
+        });
+        app.setFont(appFont);
+    }
+
     // Settings — einzige konkrete Instanz, als ISettings& weitergereicht
     AppSettings& settings = AppSettings::instance();
-
-    QTranslator translator;
-    const Language lang = settings.language();
-    const QString qmPath = (lang == Language::German)
-                         ? QStringLiteral(":/translations/mediagallery_de")
-                         : QStringLiteral(":/translations/mediagallery_en");
-    if (translator.load(qmPath))
-        app.installTranslator(&translator);
 
     // Persistenz- und Service-Schicht
     JsonStorage   storage;

@@ -26,12 +26,12 @@ Item {
             Text {
                 Layout.fillWidth: true
                 wrapMode: Text.WordWrap
-                text: qsTr("Tags umbenennen, einfärben oder löschen. Änderungen wirken global.")
+                text: App.uiText(App.language, "SettingsTagsHintNew")
                 color: App.themeTextMuted
                 font.pixelSize: 11
             }
             Button {
-                text: qsTr("+ Neuer Tag")
+                text: App.uiText(App.language, "SettingsTagsBtnNew")
                 highlighted: true
                 onClicked: { newTagName.text = ""; newTagColor.selectedColor = App.themeAccent; newTagDialog.open() }
             }
@@ -80,20 +80,20 @@ Item {
 
                             ColorPicker {
                                 width: 30; height: 22
-                                title: qsTr("Tag-Farbe")
+                                title: App.uiText(App.language, "SettingsTagColorTitle")
                                 showAlpha: false
                                 selectedColor: App.tagColor(tagRow.modelData)
                                 onColorPicked: (c) => Tags.setTagColor(tagRow.modelData, c)
                             }
                             ToolButton {
                                 text: "\u270E"   // Stift
-                                ToolTip.text: qsTr("Umbenennen")
+                                ToolTip.text: App.uiText(App.language, "CatPanelRename")
                                 ToolTip.visible: hovered
                                 onClicked: { root.renameTarget = tagRow.modelData; renameField.text = tagRow.modelData; renameDialog.open() }
                             }
                             ToolButton {
                                 text: "\u2715"   // ✕
-                                ToolTip.text: qsTr("Löschen")
+                                ToolTip.text: App.uiText(App.language, "BookmarkDelete")
                                 ToolTip.visible: hovered
                                 onClicked: { root.deleteTarget = tagRow.modelData; deleteDialog.open() }
                             }
@@ -105,7 +105,7 @@ Item {
                     visible: root.tagList.length === 0
                     Layout.fillWidth: true
                     horizontalAlignment: Text.AlignHCenter
-                    text: qsTr("Noch keine Tags vorhanden.")
+                    text: App.uiText(App.language, "SettingsTagsEmpty")
                     color: App.themeTextMuted
                     padding: 16
                 }
@@ -119,7 +119,7 @@ Item {
 
     Dialog {
         id: newTagDialog
-        title: qsTr("Neuer Tag")
+        title: App.uiText(App.language, "CatPanelNewTag")
         modal: true
         anchors.centerIn: Overlay.overlay
         standardButtons: Dialog.Ok | Dialog.Cancel
@@ -132,7 +132,7 @@ Item {
             TextField {
                 id: newTagName
                 Layout.preferredWidth: 220
-                placeholderText: qsTr("Tag-Name")
+                placeholderText: App.uiText(App.language, "SettingsTagsName")
                 color: App.themeTextPrimary
             }
             ColorPicker { id: newTagColor; width: 34; height: 24; showAlpha: false; selectedColor: App.themeAccent }
@@ -141,7 +141,7 @@ Item {
 
     Dialog {
         id: renameDialog
-        title: qsTr("Tag umbenennen")
+        title: App.uiText(App.language, "FilterTagRenamePrompt")
         modal: true
         anchors.centerIn: Overlay.overlay
         standardButtons: Dialog.Ok | Dialog.Cancel
@@ -158,7 +158,7 @@ Item {
 
     Dialog {
         id: deleteDialog
-        title: qsTr("Tag löschen")
+        title: App.uiText(App.language, "SettingsTagDelete")
         modal: true
         anchors.centerIn: Overlay.overlay
         standardButtons: Dialog.Yes | Dialog.No
@@ -166,7 +166,7 @@ Item {
         background: Rectangle { color: App.themeCard; border.color: App.themeBorder; radius: 8 }
 
         contentItem: Text {
-            text: qsTr("Tag „%1\" wirklich löschen? Er wird aus allen Dateien entfernt.").arg(root.deleteTarget)
+            text: App.uiText(App.language, "SettingsTagsDeleteConfirm").arg(root.deleteTarget)
             color: App.themeTextPrimary
             wrapMode: Text.WordWrap
             width: 300

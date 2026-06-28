@@ -84,18 +84,18 @@ Column {
                 onClicked: ctxMenu.open()
                 Menu {
                     id: ctxMenu
-                    MenuItem { text: "Unterkategorie…"; onTriggered: nodeRoot.panel.promptAddSubcategory(nodeRoot.node.id) }
-                    MenuItem { text: "Tag hinzufügen…"; onTriggered: nodeRoot.panel.promptAddTag(nodeRoot.node.id) }
-                    MenuItem { text: "Umbenennen…";     onTriggered: nodeRoot.panel.promptRename(nodeRoot.node.id, nodeRoot.node.name) }
+                    MenuItem { text: App.uiText(App.language, "SettingsCatNodeAddSub"); onTriggered: nodeRoot.panel.promptAddSubcategory(nodeRoot.node.id) }
+                    MenuItem { text: App.uiText(App.language, "TagBarPlaceholder"); onTriggered: nodeRoot.panel.promptAddTag(nodeRoot.node.id) }
+                    MenuItem { text: App.uiText(App.language, "SettingsCatNodeRename");     onTriggered: nodeRoot.panel.promptRename(nodeRoot.node.id, nodeRoot.node.name) }
                     MenuSeparator {}
-                    MenuItem { text: "Einheitsfarbe setzen…"; onTriggered: nodeRoot.panel.promptUniformColor(nodeRoot.node.id) }
+                    MenuItem { text: App.uiText(App.language, "SettingsCatNodeSetUniform"); onTriggered: nodeRoot.panel.promptUniformColor(nodeRoot.node.id) }
                     MenuItem {
-                        text: "Einheitsfarbe entfernen"
+                        text: App.uiText(App.language, "SettingsCatNodeClearUniform")
                         enabled: nodeRoot.node.uniform
                         onTriggered: Tags.setCategoryUniformColor(nodeRoot.node.id, false, nodeRoot.node.color, false)
                     }
                     MenuSeparator {}
-                    MenuItem { text: "Löschen"; onTriggered: nodeRoot.panel.promptDelete(nodeRoot.node.id) }
+                    MenuItem { text: App.uiText(App.language, "BookmarkDelete"); onTriggered: nodeRoot.panel.promptDelete(nodeRoot.node.id) }
                 }
             }
         }
@@ -159,11 +159,11 @@ Column {
                 }
                 Menu {
                     id: chipMenu
-                    MenuItem { text: "Add-to-Tag-Modus"; onTriggered: nodeRoot.panel.requestAddToTagMode(chip.modelData) }
-                    MenuItem { text: "Gruppen-Modus";    onTriggered: nodeRoot.panel.requestGroupMode(chip.modelData) }
+                    MenuItem { text: App.uiText(App.language, "ModeAddToTag"); onTriggered: nodeRoot.panel.requestAddToTagMode(chip.modelData) }
+                    MenuItem { text: App.uiText(App.language, "ModeGroup");    onTriggered: nodeRoot.panel.requestGroupMode(chip.modelData) }
                     MenuSeparator {}
                     MenuItem {
-                        text: "Aus Kategorie entfernen"
+                        text: App.uiText(App.language, "CatNodeRemoveFromCat")
                         onTriggered: Tags.removeTagFromCategory(nodeRoot.node.id, chip.modelData)
                     }
                 }

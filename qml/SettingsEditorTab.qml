@@ -17,12 +17,12 @@ Item {
             spacing: 16
 
             SettingsGroup {
-                title: qsTr("Automatisches Speichern")
+                title: App.uiText(App.language, "SettingsEditorAutoSaveGroup")
                 Layout.fillWidth: true
 
                 CheckBox {
                     id: autoChk
-                    text: qsTr("Auto-Speichern aktivieren")
+                    text: App.uiText(App.language, "EditorAutoSave")
                     checked: App.autoSaveEnabled
                     onToggled: App.autoSaveEnabled = checked
                     contentItem: Text {
@@ -39,7 +39,7 @@ Item {
                     opacity: enabled ? 1.0 : 0.5
 
                     Label {
-                        text: qsTr("Intervall:")
+                        text: App.uiText(App.language, "SettingsEditorIntervalLabel")
                         color: App.themeTextPrimary
                     }
                     SpinBox {

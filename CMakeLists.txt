@@ -18,7 +18,6 @@ find_package(Qt6 6.4 REQUIRED COMPONENTS
     Multimedia
     Pdf
     Svg
-    LinguistTools
 )
 
 # Fuer FlateDecode-Inflate der eingebetteten PDF-Audio-Streams (PdfAudioController).
@@ -68,12 +67,6 @@ set(SOURCES
 )
 
 qt_add_executable(MediaGallery ${SOURCES})
-
-qt_add_translations(MediaGallery
-    TS_FILES
-    translations/mediagallery_de.ts
-    translations/mediagallery_en.ts
-)
 
 target_link_libraries(MediaGallery PRIVATE
     Qt6::Core

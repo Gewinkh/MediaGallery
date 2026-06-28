@@ -209,6 +209,12 @@ public:
     // für QML folgt in einer späteren Phase; hier nur das Fundament.
     Q_INVOKABLE QString text(int key) const;
     Q_INVOKABLE QString text(int key, const QString& arg1) const;
+    // Reaktiver, namensbasierter Zugriff für QML: App.uiText(App.language, "KeyName").
+    // Der lang-Parameter (= App.language) macht das Binding reaktiv bei Sprachwechsel.
+    Q_INVOKABLE QString uiText(const QString& lang, const QString& key) const;
+    // Lokalen Dateipfad in eine korrekt prozent-kodierte file://-URL umwandeln
+    // (für Image.source u.ä.; behandelt Sonderzeichen, Leerzeichen, CJK korrekt).
+    Q_INVOKABLE QString fileUrl(const QString& path) const;
 
     // Shell-Beschriftungen (reaktiv über languageChanged)
     QString menuFileText()           const;

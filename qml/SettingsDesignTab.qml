@@ -123,7 +123,7 @@ Item {
 
             // ── Profil-Auswahl ────────────────────────────────────────────────
             SettingsGroup {
-                title: qsTr("Design-Profil")
+                title: App.uiText(App.language, "SettingsDesignProfileLabel")
                 Layout.fillWidth: true
 
                 GridLayout {
@@ -207,44 +207,44 @@ Item {
                 Text {
                     visible: !root.customActive
                     Layout.fillWidth: true
-                    text: qsTr("Wähle das Profil „Custom“, um eigene Farben zu bearbeiten.")
+                    text: App.uiText(App.language, "SettingsDesignCustomHint")
                     color: App.themeTextMuted; font.pixelSize: 11
                 }
 
                 SettingsGroup {
-                    title: qsTr("Grundfarben")
+                    title: App.uiText(App.language, "SettingsDesignBaseColors")
                     Layout.fillWidth: true
-                    ColorRow { label: qsTr("Hintergrund");      value: root.twBackground;  onPicked: (c) => { root.twBackground = c;  root.applyLive() } }
-                    ColorRow { label: qsTr("Karte / Kachel");   value: root.twCard;        onPicked: (c) => { root.twCard = c;        root.applyLive() } }
-                    ColorRow { label: qsTr("Text primär");      value: root.twTextPrimary; onPicked: (c) => { root.twTextPrimary = c; root.applyLive() } }
-                    ColorRow { label: qsTr("Text gedämpft");    value: root.twTextMuted;   onPicked: (c) => { root.twTextMuted = c;   root.applyLive() } }
-                    ColorRow { label: qsTr("Rahmen");           value: root.twBorder;      onPicked: (c) => { root.twBorder = c;      root.applyLive() } }
+                    ColorRow { label: App.uiText(App.language, "SettingsDesignBackground");      value: root.twBackground;  onPicked: (c) => { root.twBackground = c;  root.applyLive() } }
+                    ColorRow { label: App.uiText(App.language, "SettingsDesignCardTile");   value: root.twCard;        onPicked: (c) => { root.twCard = c;        root.applyLive() } }
+                    ColorRow { label: App.uiText(App.language, "SettingsDesignTextPrimary");      value: root.twTextPrimary; onPicked: (c) => { root.twTextPrimary = c; root.applyLive() } }
+                    ColorRow { label: App.uiText(App.language, "SettingsDesignTextMuted");    value: root.twTextMuted;   onPicked: (c) => { root.twTextMuted = c;   root.applyLive() } }
+                    ColorRow { label: App.uiText(App.language, "SettingsDesignFrame");           value: root.twBorder;      onPicked: (c) => { root.twBorder = c;      root.applyLive() } }
                 }
 
                 SettingsGroup {
-                    title: qsTr("Akzent")
+                    title: App.uiText(App.language, "SettingsDesignAccent")
                     Layout.fillWidth: true
                     RowLayout {
                         Layout.fillWidth: true; spacing: 8
-                        Label { text: qsTr("Akzent-Typ"); color: App.themeTextPrimary; Layout.preferredWidth: 160 }
+                        Label { text: App.uiText(App.language, "SettingsDesignAccentType"); color: App.themeTextPrimary; Layout.preferredWidth: 160 }
                         ComboBox {
                             Layout.preferredWidth: 200
-                            model: [qsTr("Einfarbig"), qsTr("Verlauf"), qsTr("Glow")]
+                            model: [App.uiText(App.language, "SettingsDesignAccentSolid"), App.uiText(App.language, "SettingsDesignAccentGradient"), App.uiText(App.language, "SettingsDesignGlow")]
                             currentIndex: root.twAccentType
                             onActivated: { root.twAccentType = currentIndex; root.applyLive() }
                         }
                         Item { Layout.fillWidth: true }
                     }
-                    ColorRow { label: qsTr("Akzentfarbe"); value: root.twAccent; onPicked: (c) => { root.twAccent = c; root.applyLive() } }
+                    ColorRow { label: App.uiText(App.language, "SettingsDesignAccentColorLabel"); value: root.twAccent; onPicked: (c) => { root.twAccent = c; root.applyLive() } }
                     ColorRow {
-                        label: qsTr("Akzent Verlauf-Ende"); value: root.twAccentGradEnd
+                        label: App.uiText(App.language, "SettingsDesignAccentGradEnd"); value: root.twAccentGradEnd
                         visible: root.twAccentType !== 0
                         onPicked: (c) => { root.twAccentGradEnd = c; root.applyLive() }
                     }
                     RowLayout {
                         Layout.fillWidth: true; spacing: 8
                         visible: root.twAccentType === 2
-                        Label { text: qsTr("Glow-Radius"); color: App.themeTextPrimary; Layout.preferredWidth: 160 }
+                        Label { text: App.uiText(App.language, "SettingsDesignGlowRadiusLabel"); color: App.themeTextPrimary; Layout.preferredWidth: 160 }
                         Slider {
                             Layout.fillWidth: true; from: 0; to: 40
                             value: root.twGlowRadius
@@ -255,7 +255,7 @@ Item {
                     RowLayout {
                         Layout.fillWidth: true; spacing: 8
                         visible: root.twAccentType === 2
-                        Label { text: qsTr("Glow-Intensität"); color: App.themeTextPrimary; Layout.preferredWidth: 160 }
+                        Label { text: App.uiText(App.language, "SettingsDesignGlowIntensityLabel"); color: App.themeTextPrimary; Layout.preferredWidth: 160 }
                         Slider {
                             Layout.fillWidth: true; from: 0; to: 1
                             value: root.twGlowIntensity
@@ -266,10 +266,10 @@ Item {
                 }
 
                 SettingsGroup {
-                    title: qsTr("Hintergrund-Verlauf")
+                    title: App.uiText(App.language, "SettingsDesignBgGradient")
                     Layout.fillWidth: true
                     CheckBox {
-                        text: qsTr("Verlauf statt Einfarbig")
+                        text: App.uiText(App.language, "SettingsDesignGradInsteadSolid")
                         checked: root.twBgIsGradient
                         onToggled: { root.twBgIsGradient = checked; root.applyLive() }
                         contentItem: Text {
@@ -277,12 +277,12 @@ Item {
                             leftPadding: parent.indicator.width + 6; verticalAlignment: Text.AlignVCenter
                         }
                     }
-                    ColorRow { label: qsTr("Verlauf Start"); value: root.twBgGradStart; visible: root.twBgIsGradient; onPicked: (c) => { root.twBgGradStart = c; root.applyLive() } }
-                    ColorRow { label: qsTr("Verlauf Ende");  value: root.twBgGradEnd;   visible: root.twBgIsGradient; onPicked: (c) => { root.twBgGradEnd = c;   root.applyLive() } }
+                    ColorRow { label: App.uiText(App.language, "SettingsDesignGradStartLabel"); value: root.twBgGradStart; visible: root.twBgIsGradient; onPicked: (c) => { root.twBgGradStart = c; root.applyLive() } }
+                    ColorRow { label: App.uiText(App.language, "SettingsDesignGradEndLabel");  value: root.twBgGradEnd;   visible: root.twBgIsGradient; onPicked: (c) => { root.twBgGradEnd = c;   root.applyLive() } }
                     RowLayout {
                         Layout.fillWidth: true; spacing: 8
                         visible: root.twBgIsGradient
-                        Label { text: qsTr("Winkel"); color: App.themeTextPrimary; Layout.preferredWidth: 160 }
+                        Label { text: App.uiText(App.language, "SettingsDesignAngleLabel"); color: App.themeTextPrimary; Layout.preferredWidth: 160 }
                         SpinBox {
                             from: 0; to: 360; stepSize: 5
                             value: root.twBgGradAngle
@@ -293,25 +293,25 @@ Item {
                 }
 
                 SettingsGroup {
-                    title: qsTr("Kachel-Hintergrund")
+                    title: App.uiText(App.language, "SettingsDesignTileBgLabel")
                     Layout.fillWidth: true
                     RowLayout {
                         Layout.fillWidth: true; spacing: 8
-                        Label { text: qsTr("Typ"); color: App.themeTextPrimary; Layout.preferredWidth: 160 }
+                        Label { text: App.uiText(App.language, "SettingsDesignTypeLabel"); color: App.themeTextPrimary; Layout.preferredWidth: 160 }
                         ComboBox {
                             Layout.preferredWidth: 200
-                            model: [qsTr("Einfarbig"), qsTr("Verlauf"), qsTr("Transparent")]
+                            model: [App.uiText(App.language, "SettingsDesignAccentSolid"), App.uiText(App.language, "SettingsDesignAccentGradient"), App.uiText(App.language, "SettingsDesignTileTransparent")]
                             currentIndex: root.twTileBgType
                             onActivated: { root.twTileBgType = currentIndex; root.applyLive() }
                         }
                         Item { Layout.fillWidth: true }
                     }
-                    ColorRow { label: qsTr("Kachel-Farbe");  value: root.twTileBgColor;  visible: root.twTileBgType !== 2; onPicked: (c) => { root.twTileBgColor = c;  root.applyLive() } }
-                    ColorRow { label: qsTr("Kachel Verlauf-Ende"); value: root.twTileBgGradEnd; visible: root.twTileBgType === 1; onPicked: (c) => { root.twTileBgGradEnd = c; root.applyLive() } }
+                    ColorRow { label: App.uiText(App.language, "SettingsDesignTileColorLabel");  value: root.twTileBgColor;  visible: root.twTileBgType !== 2; onPicked: (c) => { root.twTileBgColor = c;  root.applyLive() } }
+                    ColorRow { label: App.uiText(App.language, "SettingsDesignTileGradEndLabel"); value: root.twTileBgGradEnd; visible: root.twTileBgType === 1; onPicked: (c) => { root.twTileBgGradEnd = c; root.applyLive() } }
                     RowLayout {
                         Layout.fillWidth: true; spacing: 8
                         visible: root.twTileBgType === 1
-                        Label { text: qsTr("Verlauf-Winkel"); color: App.themeTextPrimary; Layout.preferredWidth: 160 }
+                        Label { text: App.uiText(App.language, "SettingsDesignGradAngle"); color: App.themeTextPrimary; Layout.preferredWidth: 160 }
                         SpinBox {
                             from: 0; to: 360; stepSize: 5
                             value: root.twTileBgGradAngle
@@ -320,7 +320,7 @@ Item {
                         Item { Layout.fillWidth: true }
                     }
                     CheckBox {
-                        text: qsTr("Glow beim Überfahren")
+                        text: App.uiText(App.language, "SettingsDesignGlowHover")
                         checked: root.twTileGlowOnHover
                         onToggled: { root.twTileGlowOnHover = checked; root.applyLive() }
                         contentItem: Text {
@@ -331,7 +331,7 @@ Item {
                     RowLayout {
                         Layout.fillWidth: true; spacing: 8
                         visible: root.twTileGlowOnHover
-                        Label { text: qsTr("Glow-Radius"); color: App.themeTextPrimary; Layout.preferredWidth: 160 }
+                        Label { text: App.uiText(App.language, "SettingsDesignGlowRadiusLabel"); color: App.themeTextPrimary; Layout.preferredWidth: 160 }
                         Slider {
                             Layout.fillWidth: true; from: 0; to: 40
                             value: root.twTileGlowRadius
@@ -342,31 +342,31 @@ Item {
                 }
 
                 SettingsGroup {
-                    title: qsTr("Leisten")
+                    title: App.uiText(App.language, "SettingsDesignBars")
                     Layout.fillWidth: true
-                    ColorRow { label: qsTr("Menüleiste");   value: root.twMenuBarBg;   onPicked: (c) => { root.twMenuBarBg = c;   root.applyLive() } }
-                    ColorRow { label: qsTr("Werkzeugleiste"); value: root.twToolbarBg; onPicked: (c) => { root.twToolbarBg = c;   root.applyLive() } }
-                    ColorRow { label: qsTr("Filterleiste");  value: root.twFilterBarBg; onPicked: (c) => { root.twFilterBarBg = c; root.applyLive() } }
-                    ColorRow { label: qsTr("Statusleiste");  value: root.twStatusBarBg; onPicked: (c) => { root.twStatusBarBg = c; root.applyLive() } }
-                    ColorRow { label: qsTr("Seitenleiste");  value: root.twSidebarBg;   onPicked: (c) => { root.twSidebarBg = c;   root.applyLive() } }
+                    ColorRow { label: App.uiText(App.language, "SettingsDesignMenuBar");   value: root.twMenuBarBg;   onPicked: (c) => { root.twMenuBarBg = c;   root.applyLive() } }
+                    ColorRow { label: App.uiText(App.language, "SettingsDesignToolbar"); value: root.twToolbarBg; onPicked: (c) => { root.twToolbarBg = c;   root.applyLive() } }
+                    ColorRow { label: App.uiText(App.language, "SettingsDesignFilterBar");  value: root.twFilterBarBg; onPicked: (c) => { root.twFilterBarBg = c; root.applyLive() } }
+                    ColorRow { label: App.uiText(App.language, "SettingsDesignStatusBar");  value: root.twStatusBarBg; onPicked: (c) => { root.twStatusBarBg = c; root.applyLive() } }
+                    ColorRow { label: App.uiText(App.language, "SettingsDesignSidebar");  value: root.twSidebarBg;   onPicked: (c) => { root.twSidebarBg = c;   root.applyLive() } }
                 }
 
                 SettingsGroup {
-                    title: qsTr("PDF-Betrachter")
+                    title: App.uiText(App.language, "SettingsDesignPdfViewer")
                     Layout.fillWidth: true
-                    ColorRow { label: qsTr("Betrachter-Hintergrund"); value: root.twPdfViewerBg;    onPicked: (c) => { root.twPdfViewerBg = c;    root.applyLive() } }
-                    ColorRow { label: qsTr("Thumbnail-Hintergrund");  value: root.twPdfThumbBg;     onPicked: (c) => { root.twPdfThumbBg = c;     root.applyLive() } }
-                    ColorRow { label: qsTr("Seitenleiste");           value: root.twPdfSidebarBg;   onPicked: (c) => { root.twPdfSidebarBg = c;   root.applyLive() } }
-                    ColorRow { label: qsTr("Werkzeugleiste");         value: root.twPdfToolbarBg;   onPicked: (c) => { root.twPdfToolbarBg = c;   root.applyLive() } }
-                    ColorRow { label: qsTr("Scrollleiste");           value: root.twPdfScrollbarBg; onPicked: (c) => { root.twPdfScrollbarBg = c; root.applyLive() } }
+                    ColorRow { label: App.uiText(App.language, "SettingsDesignViewerBg"); value: root.twPdfViewerBg;    onPicked: (c) => { root.twPdfViewerBg = c;    root.applyLive() } }
+                    ColorRow { label: App.uiText(App.language, "SettingsDesignThumbBg");  value: root.twPdfThumbBg;     onPicked: (c) => { root.twPdfThumbBg = c;     root.applyLive() } }
+                    ColorRow { label: App.uiText(App.language, "SettingsDesignSidebar");           value: root.twPdfSidebarBg;   onPicked: (c) => { root.twPdfSidebarBg = c;   root.applyLive() } }
+                    ColorRow { label: App.uiText(App.language, "SettingsDesignToolbar");         value: root.twPdfToolbarBg;   onPicked: (c) => { root.twPdfToolbarBg = c;   root.applyLive() } }
+                    ColorRow { label: App.uiText(App.language, "SettingsDesignScrollbar");           value: root.twPdfScrollbarBg; onPicked: (c) => { root.twPdfScrollbarBg = c; root.applyLive() } }
                 }
 
                 SettingsGroup {
-                    title: qsTr("Theme-Name & Export")
+                    title: App.uiText(App.language, "SettingsDesignThemeNameExport")
                     Layout.fillWidth: true
                     RowLayout {
                         Layout.fillWidth: true; spacing: 8
-                        Label { text: qsTr("Name"); color: App.themeTextPrimary; Layout.preferredWidth: 160 }
+                        Label { text: App.uiText(App.language, "FilterName"); color: App.themeTextPrimary; Layout.preferredWidth: 160 }
                         TextField {
                             Layout.fillWidth: true
                             text: root.twName
@@ -377,17 +377,17 @@ Item {
                     RowLayout {
                         Layout.fillWidth: true; spacing: 8
                         Button {
-                            text: qsTr("Übernehmen")
+                            text: App.uiText(App.language, "SettingsDesignApplyBtn")
                             highlighted: true
                             onClicked: { App.setDesignProfile(root.customIndex); App.setCustomThemeFromMap(root.buildMap()) }
                         }
                         Item { Layout.fillWidth: true }
                         Button {
-                            text: qsTr("Exportieren…")
+                            text: App.uiText(App.language, "SettingsDesignExportBtn")
                             onClicked: { App.setCustomThemeFromMap(root.buildMap()); exportDialog.open() }
                         }
                         Button {
-                            text: qsTr("Importieren…")
+                            text: App.uiText(App.language, "SettingsDesignImportBtn")
                             onClicked: importDialog.open()
                         }
                     }
@@ -400,18 +400,18 @@ Item {
 
     FileDialog {
         id: exportDialog
-        title: qsTr("Theme exportieren")
+        title: App.uiText(App.language, "SettingsDesignExportTitle")
         fileMode: FileDialog.SaveFile
-        nameFilters: [qsTr("Theme-Dateien (*.json)"), qsTr("Alle Dateien (*)")]
+        nameFilters: [App.uiText(App.language, "SettingsDesignThemeFileFilter"), App.uiText(App.language, "SettingsDesignAllFilesFilter")]
         defaultSuffix: "json"
         onAccepted: App.exportCustomTheme(selectedFile)
     }
 
     FileDialog {
         id: importDialog
-        title: qsTr("Theme importieren")
+        title: App.uiText(App.language, "SettingsDesignImportTitle")
         fileMode: FileDialog.OpenFile
-        nameFilters: [qsTr("Theme-Dateien (*.json)"), qsTr("Alle Dateien (*)")]
+        nameFilters: [App.uiText(App.language, "SettingsDesignThemeFileFilter"), App.uiText(App.language, "SettingsDesignAllFilesFilter")]
         onAccepted: { if (App.importCustomTheme(selectedFile)) root.loadTheme() }
     }
 }

@@ -77,8 +77,8 @@ Rectangle {
         horizontalAlignment: Text.AlignHCenter
         wrapMode: Text.WordWrap
         text: App.currentFolder.length > 0
-              ? "Keine anzeigbaren Medien in diesem Ordner."
-              : "Kein Ordner geöffnet — Datei \u25B8 Ordner öffnen oder hierher ziehen."
+              ? App.uiText(App.language, "GalleryNoMedia")
+              : App.uiText(App.language, "GalleryNoFolder")
         color: App.themeTextMuted
         font.pixelSize: 14
     }

@@ -76,7 +76,7 @@ Item {
                     anchors.centerIn: parent; spacing: 6
                     Text { anchors.verticalCenter: parent.verticalCenter; text: "\u2913"
                            color: App.themeAccent; font.pixelSize: 13 }
-                    Text { anchors.verticalCenter: parent.verticalCenter; text: "Speichern"
+                    Text { anchors.verticalCenter: parent.verticalCenter; text: App.uiText(App.language, "EditorSave")
                            color: App.themeAccent; font.pixelSize: 12 }
                 }
                 HoverHandler { id: saveHover; enabled: root.dirty }

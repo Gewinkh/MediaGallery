@@ -27,19 +27,19 @@ Rectangle {
 
     property var activeTags: []
 
-    readonly property var modeNames:  ["ODER", "UND", "NUR", "INKLUSIV"]
+    readonly property var modeNames:  [App.uiText(App.language, "FilterTagModeOr"), App.uiText(App.language, "FilterTagModeAnd"), App.uiText(App.language, "FilterTagModeNur"), App.uiText(App.language, "FilterTagModeInklusiv")]
     readonly property var modeColors: ["#6ab0ff", "#00c8b4", "#ff9060", "#c090ff"]
     readonly property var modeTips: [
-        "Mindestens einer der gewählten Tags",
-        "Alle gewählten Tags müssen vorhanden sein",
-        "Ausschließlich die gewählten Tags",
-        "Enthält die gewählten Tags (inklusiv)"
+        App.uiText(App.language, "FilterModeAnyDesc"),
+        App.uiText(App.language, "FilterModeAllDesc"),
+        App.uiText(App.language, "FilterModeExclusiveDesc"),
+        App.uiText(App.language, "FilterModeInclusiveDesc")
     ]
 
     readonly property var mediaTypes: [
         { label: "Bilder", key: 0 },
         { label: "Videos", key: 1 },
-        { label: "Audio",  key: 2 },
+        { label: App.uiText(App.language, "FilterAudio"),  key: 2 },
         { label: "PDF",    key: 3 },
         { label: "Text",   key: 4 }
     ]
@@ -95,20 +95,20 @@ Rectangle {
         // ── Sortierfeld (INLINE) ──────────────────────────────────────────────
         Text {
             anchors.verticalCenter: parent.verticalCenter
-            text: "Sortieren:"; color: App.themeTextMuted; font.pixelSize: 12
+            text: App.uiText(App.language, "FilterSortLabel"); color: App.themeTextMuted; font.pixelSize: 12
         }
         ComboBox {
             id: sortField
             anchors.verticalCenter: parent.verticalCenter
             width: 130
-            model: ["Datum", "Name", "Tags", "Dateigröße"]
+            model: [App.uiText(App.language, "FilterDate"), App.uiText(App.language, "FilterName"), App.uiText(App.language, "FilterTags"), App.uiText(App.language, "FilterFileSize")]
             currentIndex: galleryModel.sortRole
             onActivated: galleryModel.sortRole = currentIndex
         }
         ToolButton {
             anchors.verticalCenter: parent.verticalCenter
             text: galleryModel.sortDescending ? "\u2193" : "\u2191"
-            ToolTip.text: galleryModel.sortDescending ? "Absteigend" : "Aufsteigend"
+            ToolTip.text: galleryModel.sortDescending ? App.uiText(App.language, "FilterSortDesc") : App.uiText(App.language, "FilterSortAsc")
             ToolTip.visible: hovered
             onClicked: galleryModel.sortDescending = !galleryModel.sortDescending
         }
@@ -140,10 +140,10 @@ Rectangle {
                 onAboutToShow: popupTags = App.allTags()
 
                 readonly property var cats: [
-                    { label: "Medien",          hint: bar.mediaActiveCount + "/" + bar.mediaTypes.length },
-                    { label: "Tag-Filtermodus", hint: bar.modeNames[galleryModel.tagFilterMode] },
-                    { label: "Tags",            hint: bar.activeTags.length > 0 ? bar.activeTags.length + " aktiv" : "—" },
-                    { label: "Kategorien",      hint: "Panel" }
+                    { label: App.uiText(App.language, "FilterMedia"),          hint: bar.mediaActiveCount + "/" + bar.mediaTypes.length },
+                    { label: App.uiText(App.language, "FilterTagModeLabel"), hint: bar.modeNames[galleryModel.tagFilterMode] },
+                    { label: "Tags",            hint: bar.activeTags.length > 0 ? bar.activeTags.length + App.uiText(App.language, "FilterActiveSuffix") : "—" },
+                    { label: App.uiText(App.language, "SettingsTabCategories"),      hint: App.uiText(App.language, "FilterCatPanelHint") }
                 ]
 
                 background: Rectangle {
@@ -235,7 +235,7 @@ Rectangle {
                     Column {
                         spacing: 4
                         Text {
-                            text: "Medientypen anzeigen"; color: App.themeAccent
+                            text: App.uiText(App.language, "FilterShowMediaTypes"); color: App.themeAccent
                             font.pixelSize: 11; font.bold: true; bottomPadding: 4
                         }
                         Repeater {
@@ -281,7 +281,7 @@ Rectangle {
                     Column {
                         spacing: 4
                         Text {
-                            text: "Tag-Filtermodus"; color: App.themeAccent
+                            text: App.uiText(App.language, "FilterTagModeLabel"); color: App.themeAccent
                             font.pixelSize: 11; font.bold: true; bottomPadding: 4
                         }
                         Repeater {
@@ -340,7 +340,7 @@ Rectangle {
                                 id: tagsHdr
                                 anchors.left: parent.left
                                 anchors.verticalCenter: parent.verticalCenter
-                                text: "Tags zum Filtern"; color: App.themeAccent
+                                text: App.uiText(App.language, "FilterTagsToFilter"); color: App.themeAccent
                                 font.pixelSize: 11; font.bold: true
                             }
                             Text {
@@ -353,7 +353,7 @@ Rectangle {
                         }
                         Text {
                             visible: filterPopup.popupTags.length === 0
-                            text: "Keine Tags vorhanden"
+                            text: App.uiText(App.language, "FilterNoTagsShort")
                             color: App.themeTextMuted; font.pixelSize: 11
                         }
                         ScrollView {
@@ -416,12 +416,12 @@ Rectangle {
                     Column {
                         spacing: 8
                         Text {
-                            text: "Kategorien"; color: App.themeAccent
+                            text: App.uiText(App.language, "SettingsTabCategories"); color: App.themeAccent
                             font.pixelSize: 11; font.bold: true
                         }
                         Text {
                             width: 236
-                            text: "Blendet das Kategorie-Seitenpanel (Tag-Baum) links neben der Galerie ein oder aus."
+                            text: App.uiText(App.language, "FilterCatPanelTooltip")
                             color: App.themeTextMuted; font.pixelSize: 11; wrapMode: Text.WordWrap
                         }
                         Rectangle {
@@ -430,7 +430,7 @@ Rectangle {
                             border.color: App.themeBorder; border.width: 1
                             Text {
                                 anchors.centerIn: parent
-                                text: "Kategorie-Panel ein-/ausblenden"
+                                text: App.uiText(App.language, "FilterCatPanelToggle")
                                 color: App.themeTextPrimary; font.pixelSize: 12
                             }
                             HoverHandler { id: katHover }

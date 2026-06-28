@@ -265,7 +265,13 @@ FocusScope {
         Item {
             property string source: ""
             function release() { img.source = "" }
-            onSourceChanged: { img.scale = 1.0; img.x = 0; img.y = 0; img.source = source }
+            // Rohen Dateipfad in eine korrekt kodierte file://-URL wandeln.
+            // Direkte Zuweisung des rohen Pfades an Image.source schlägt fehl, da
+            // die Basis-URL der Komponente "qrc:" ist → relative Auflösung zu
+            // "qrc:/home/…" ("Cannot open" → Blackscreen). Betrifft ALLE Bilder;
+            // App.fileUrl() (QUrl::fromLocalFile) kodiert zudem Sonderzeichen
+            // (Leerzeichen, CJK, …) korrekt.
+            onSourceChanged: { img.scale = 1.0; img.x = 0; img.y = 0; img.source = source ? App.fileUrl(source) : "" }
 
             Image {
                 id: img
@@ -314,7 +320,7 @@ FocusScope {
             function release() {}
             Text {
                 anchors.centerIn: parent
-                text: "Im externen Player geöffnet."
+                text: App.uiText(App.language, "ViewerOpenedExternal")
                 color: "#c8dbd5"; font.pixelSize: 16
             }
         }
@@ -326,7 +332,7 @@ FocusScope {
             function release() {}
             Text {
                 anchors.centerIn: parent
-                text: "Kein Vorschau-Renderer für diesen Typ."
+                text: App.uiText(App.language, "ViewerNoRenderer")
                 color: "#888"; font.pixelSize: 15
             }
         }
@@ -366,7 +372,7 @@ FocusScope {
                     anchors.right: parent.right
                     anchors.verticalCenter: parent.verticalCenter
                     kind: "dice"
-                    tip: "Zufällig"
+                    tip: App.uiText(App.language, "ViewerRandom")
                     active: root.randomNext
                     onActivated: root.randomNext = !root.randomNext
                 }
@@ -375,7 +381,7 @@ FocusScope {
                     anchors.right: diceBtn.left; anchors.rightMargin: 8
                     anchors.verticalCenter: parent.verticalCenter
                     kind: "calendar"
-                    tip: "Datum bearbeiten"
+                    tip: App.uiText(App.language, "MetaTitle")
                     onActivated: dateEditor.openWith(root.dateTime)
                 }
 

@@ -18,7 +18,7 @@ import MediaGallery 1.0
 // ─────────────────────────────────────────────────────────────────────────────
 Dialog {
     id: dlg
-    title: qsTr("Einstellungen")
+    title: App.uiText(App.language, "SettingsTitle")
     modal: true
     width: 940
     height: 580
@@ -63,14 +63,14 @@ Dialog {
                 }
             }
 
-            SettingsTab { text: qsTr("Allgemein") }
-            SettingsTab { text: qsTr("Editor") }
-            SettingsTab { text: qsTr("Ansicht / Layout") }
-            SettingsTab { text: qsTr("Tags") }
-            SettingsTab { text: qsTr("Kategorien") }
-            SettingsTab { text: qsTr("Converter") }
-            SettingsTab { text: qsTr("Design") }
-            SettingsTab { text: qsTr("Lesezeichen") }
+            SettingsTab { text: App.uiText(App.language, "SettingsTabGeneral") }
+            SettingsTab { text: App.uiText(App.language, "SettingsTabEditorShort") }
+            SettingsTab { text: App.uiText(App.language, "SettingsTabViewLayout") }
+            SettingsTab { text: App.uiText(App.language, "FilterTags") }
+            SettingsTab { text: App.uiText(App.language, "SettingsTabCategories") }
+            SettingsTab { text: App.uiText(App.language, "SettingsTabConverter") }
+            SettingsTab { text: App.uiText(App.language, "SettingsTabDesign") }
+            SettingsTab { text: App.uiText(App.language, "SettingsTabBookmarks") }
         }
 
         // ── Tab-Inhalte ──────────────────────────────────────────────────────
@@ -102,7 +102,7 @@ Dialog {
 
             Item { Layout.fillWidth: true }
             Button {
-                text: qsTr("Schließen")
+                text: App.uiText(App.language, "SettingsClose")
                 highlighted: true
                 onClicked: dlg.accept()
             }

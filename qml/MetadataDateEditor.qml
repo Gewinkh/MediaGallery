@@ -39,7 +39,7 @@ Popup {
         spacing: 12
 
         Text {
-            text: "Datum bearbeiten"
+            text: App.uiText(App.language, "MetaTitle")
             color: App.themeTextPrimary
             font.pixelSize: 15; font.bold: true
         }
@@ -49,22 +49,22 @@ Popup {
             rowSpacing: 8
             columnSpacing: 10
 
-            Text { text: "Jahr";   color: App.themeTextMuted }
+            Text { text: App.uiText(App.language, "DateYear");   color: App.themeTextMuted }
             SpinBox { id: ySpin;  from: 1970; to: 2100; editable: true }
-            Text { text: "Monat";  color: App.themeTextMuted }
+            Text { text: App.uiText(App.language, "DateMonth");  color: App.themeTextMuted }
             SpinBox { id: moSpin; from: 1; to: 12; editable: true }
-            Text { text: "Tag";    color: App.themeTextMuted }
+            Text { text: App.uiText(App.language, "DateDay");    color: App.themeTextMuted }
             SpinBox { id: dSpin;  from: 1; to: 31; editable: true }
-            Text { text: "Stunde"; color: App.themeTextMuted }
+            Text { text: App.uiText(App.language, "DateHour"); color: App.themeTextMuted }
             SpinBox { id: hSpin;  from: 0; to: 23; editable: true }
-            Text { text: "Minute"; color: App.themeTextMuted }
+            Text { text: App.uiText(App.language, "DateMinute"); color: App.themeTextMuted }
             SpinBox { id: miSpin; from: 0; to: 59; editable: true }
         }
 
         Row {
             spacing: 8
             Button {
-                text: "Speichern"
+                text: App.uiText(App.language, "EditorSave")
                 onClicked: {
                     var dt = new Date(ySpin.value, moSpin.value - 1, dSpin.value,
                                       hSpin.value, miSpin.value, 0)
@@ -73,11 +73,11 @@ Popup {
                 }
             }
             Button {
-                text: "Zurücksetzen"
+                text: App.uiText(App.language, "MetaReset")
                 onClicked: { editor.cleared(); editor.close() }
             }
             Button {
-                text: "Abbrechen"
+                text: App.uiText(App.language, "SettingsCancel")
                 onClicked: editor.close()
             }
         }

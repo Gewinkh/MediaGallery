@@ -378,6 +378,23 @@ QString AppController::text(int key, const QString& arg1) const {
     return Strings::get(static_cast<StringKey>(key), arg1);
 }
 
+QString AppController::uiText(const QString& lang, const QString& key) const {
+    const Language l = (lang == QStringLiteral("en")) ? Language::English
+                                                       : Language::German;
+    return Strings::byName(key, l);
+}
+
+QString AppController::fileUrl(const QString& path) const {
+    if (path.isEmpty())
+        return QString();
+    // Bereits eine URL? Unverändert zurückgeben.
+    if (path.startsWith(QStringLiteral("file:")) ||
+        path.startsWith(QStringLiteral("qrc:"))  ||
+        path.startsWith(QStringLiteral("image://")))
+        return path;
+    return QUrl::fromLocalFile(path).toString();
+}
+
 QString AppController::menuFileText()           const { return Strings::get(StringKey::MenuFile); }
 QString AppController::menuViewText()           const { return Strings::get(StringKey::MenuView); }
 QString AppController::menuSettingsText()       const { return Strings::get(StringKey::MenuSettings); }

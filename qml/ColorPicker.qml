@@ -26,7 +26,7 @@ Item {
     // ── Öffentliche API ───────────────────────────────────────────────────────
     property color  selectedColor: "#00b4a0"
     property bool   showAlpha: true
-    property string title: "Farbe wählen"
+    property string title: App.uiText(App.language, "ColorPickerTitle")
     signal colorPicked(color color)
 
     implicitWidth: 40
@@ -295,11 +295,11 @@ Item {
                 spacing: 8
                 anchors.right: parent.right
                 Button {
-                    text: "Abbrechen"
+                    text: App.uiText(App.language, "SettingsCancel")
                     onClicked: popup.close()
                 }
                 Button {
-                    text: "OK"
+                    text: App.uiText(App.language, "SettingsOk")
                     highlighted: true
                     onClicked: {
                         var c = root._working()

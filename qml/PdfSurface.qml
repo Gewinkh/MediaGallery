@@ -70,7 +70,7 @@ Item {
             if (audioClips[i].page === p) r.push(audioClips[i])
         return r
     }
-    function _audioLabel(clip, idxOnPage) { return "Audio " + (idxOnPage + 1) }
+    function _audioLabel(clip, idxOnPage) { return App.uiText(App.language, "PdfAudioItemLabel").arg(idxOnPage + 1) }
 
     // ── Tunbare Cache-Deckel ──────────────────────────────────────────────────
     //  Scroll-Vorhalte/-Cache in Viewporthoehen je Richtung. 1.5 ≈ eine Seite
@@ -281,7 +281,7 @@ Item {
         if (clip) {
             var onPage = _clipsOnPage(clip.page); var k = 0
             for (var j = 0; j < onPage.length; j++) if (onPage[j].id === id) { k = j; break }
-            root._activeTitle = "Audio " + (k + 1) + " \u00B7 S. " + (clip.page + 1)
+            root._activeTitle = App.uiText(App.language, "PdfAudioActiveTitle").arg(k + 1).arg(clip.page + 1)
         }
         var meta = root._audioMeta[id]
         if (meta && meta.url) _startActive(meta.url)
@@ -527,7 +527,7 @@ Item {
         anchors.centerIn: parent
         // Reaktiv an den Status des aktuellen Dokuments gebunden.
         visible: !!root.doc && root.doc.status === PdfDocument.Error
-        text: "PDF konnte nicht geladen werden."
+        text: App.uiText(App.language, "PdfLoadError")
         color: "#ff8a80"; font.pixelSize: 14
         z: 5
     }
@@ -552,8 +552,8 @@ Item {
                 // Dreiecke (\u25C0/\u25B6) → optisch klar unterscheidbar.
                 glyph: root.thumbsVisible ? "\u2190" : "\u2192"
                 active: root.thumbsVisible
-                tip: root.thumbsVisible ? "Seitenvorschau einklappen"
-                                        : "Seitenvorschau ausklappen"
+                tip: root.thumbsVisible ? App.uiText(App.language, "PdfCollapsePreview")
+                                        : App.uiText(App.language, "PdfExpandPreview")
                 onActivated: root.thumbsVisible = !root.thumbsVisible
             }
             Item { width: 4; height: 1 }
@@ -564,7 +564,7 @@ Item {
             }
             Text {
                 anchors.verticalCenter: parent.verticalCenter
-                text: "Seite " + (root.currentPage + 1) + " / " + root.pageCount
+                text: App.uiText(App.language, "PdfPageIndicator").arg(root.currentPage + 1).arg(root.pageCount)
                 color: App.themeTextPrimary; font.pixelSize: 12
                 width: 96; horizontalAlignment: Text.AlignHCenter
             }
@@ -584,7 +584,7 @@ Item {
                 glyph: "\u266A"
                 visible: PdfAudio.documentHasAudio
                 active: root.audioPanelVisible
-                tip: root.audioPanelVisible ? "Audioleiste ausblenden" : "Audioleiste einblenden"
+                tip: root.audioPanelVisible ? App.uiText(App.language, "PdfHideAudioBar") : App.uiText(App.language, "PdfShowAudioBar")
                 onActivated: root.audioPanelVisible = !root.audioPanelVisible
             }
             Item { width: PdfAudio.documentHasAudio ? 4 : 0; height: 1 }
@@ -595,7 +595,7 @@ Item {
                                         : Qt.rgba(App.themeTextPrimary.r, App.themeTextPrimary.g, App.themeTextPrimary.b, 0.07)
                 border.color: App.themeBorder; border.width: 1
                 Text { id: fitLabel; anchors.centerIn: parent
-                       text: root.fitMode === "page" ? "Ganze Seite" : "Breite"
+                       text: root.fitMode === "page" ? App.uiText(App.language, "PdfFitPage") : App.uiText(App.language, "PdfFitWidth")
                        color: App.themeTextPrimary; font.pixelSize: 11 }
                 HoverHandler { id: fitHover }
                 TapHandler {
@@ -983,7 +983,7 @@ Item {
                 height: 44
                 Text {
                     anchors { left: parent.left; leftMargin: 14; verticalCenter: parent.verticalCenter }
-                    text: "Audio \u00B7 Seite " + (root.currentPage + 1)
+                    text: App.uiText(App.language, "PdfAudioPanelHeader").arg(root.currentPage + 1)
                     color: App.themeTextPrimary; font.pixelSize: 13; font.bold: true
                 }
                 Rectangle {
@@ -1001,7 +1001,7 @@ Item {
             Text {
                 anchors.centerIn: parent
                 visible: audioPanel.pageClips.length === 0
-                text: "Keine Audios auf dieser Seite."
+                text: App.uiText(App.language, "PdfNoAudioOnPage")
                 color: App.themeTextMuted; font.pixelSize: 12
             }
 
@@ -1054,7 +1054,7 @@ Item {
                     Text {
                         id: arowTitle
                         anchors { left: arowBtn.right; leftMargin: 10; top: parent.top; topMargin: 9 }
-                        text: "Audio " + (arow.index + 1)
+                        text: App.uiText(App.language, "PdfAudioItemLabel").arg(arow.index + 1)
                         color: App.themeTextPrimary; font.pixelSize: 13; font.bold: arow.isActive
                     }
                     Text {

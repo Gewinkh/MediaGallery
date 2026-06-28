@@ -58,7 +58,7 @@ Rectangle {
         namePrompt.open()
     }
     function promptAddTag(catId) {
-        namePrompt.title = "Tag hinzufügen"; namePrompt.value = ""
+        namePrompt.title = App.uiText(App.language, "TagBarDropdownHeader"); namePrompt.value = ""
         namePrompt.onAcceptFn = function(v) { Tags.addTagToCategory(catId, v) }
         namePrompt.open()
     }
@@ -85,15 +85,15 @@ Rectangle {
                 anchors.fill: parent; anchors.leftMargin: 10; anchors.rightMargin: 10; spacing: 8
                 Text {
                     anchors.verticalCenter: parent.verticalCenter
-                    text: "Kategorien"; color: App.themeTextPrimary
+                    text: App.uiText(App.language, "SettingsTabCategories"); color: App.themeTextPrimary
                     font.pixelSize: 13; font.bold: true
                 }
                 Item { width: parent.width - 200; height: 1 }
                 Button {
                     anchors.verticalCenter: parent.verticalCenter
-                    height: 26; text: "+ Kategorie"; font.pixelSize: 11
+                    height: 26; text: App.uiText(App.language, "SettingsCatAdd"); font.pixelSize: 11
                     onClicked: {
-                        namePrompt.title = "Neue Kategorie"; namePrompt.value = ""
+                        namePrompt.title = App.uiText(App.language, "CatPanelAddCategory"); namePrompt.value = ""
                         namePrompt.onAcceptFn = function(v) { Tags.addRootCategory(v, Qt.rgba(0,0.7,0.63,1), false) }
                         namePrompt.open()
                     }
@@ -126,7 +126,7 @@ Rectangle {
 
                 Text {
                     visible: panel.tree.length === 0
-                    text: "Noch keine Kategorien."
+                    text: App.uiText(App.language, "TagPanelEmpty")
                     color: App.themeTextMuted; font.pixelSize: 12
                     topPadding: 12
                 }
@@ -154,8 +154,8 @@ Rectangle {
             }
             Row {
                 spacing: 8
-                Button { text: "OK"; onClicked: namePrompt.commit() }
-                Button { text: "Abbrechen"; onClicked: namePrompt.close() }
+                Button { text: App.uiText(App.language, "SettingsOk"); onClicked: namePrompt.commit() }
+                Button { text: App.uiText(App.language, "SettingsCancel"); onClicked: namePrompt.close() }
             }
         }
         onOpened: { promptField.text = value; promptField.forceActiveFocus(); promptField.selectAll() }
@@ -180,11 +180,11 @@ Rectangle {
         background: Rectangle { color: App.themeCard; radius: 10; border.color: App.themeBorder }
         contentItem: Column {
             spacing: 12
-            Text { text: "Kategorie löschen?"; color: App.themeTextPrimary; font.pixelSize: 14; font.bold: true }
+            Text { text: App.uiText(App.language, "TagPanelDeleteTitle"); color: App.themeTextPrimary; font.pixelSize: 14; font.bold: true }
             Row {
                 spacing: 8
-                Button { text: "Löschen"; onClicked: { Tags.deleteCategory(panel.deleteCatId); confirmDelete.close() } }
-                Button { text: "Abbrechen"; onClicked: confirmDelete.close() }
+                Button { text: App.uiText(App.language, "BookmarkDelete"); onClicked: { Tags.deleteCategory(panel.deleteCatId); confirmDelete.close() } }
+                Button { text: App.uiText(App.language, "SettingsCancel"); onClicked: confirmDelete.close() }
             }
         }
     }
