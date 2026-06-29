@@ -121,7 +121,6 @@ public:
     // ── Lesezeichen (Delegation an ISettings) ───────────────────────────────
     QVariantList savedFolders() const;
     Q_INVOKABLE void openBookmark(const QString& path);
-    Q_INVOKABLE void addCurrentFolderAsBookmark();
     // Phase 4: vollständige Lesezeichen-Verwaltung (für SettingsDialog/Bookmark-Tab)
     Q_INVOKABLE void addBookmark(const QString& name, const QString& path);
     Q_INVOKABLE void updateBookmark(int index, const QString& name, const QString& path);

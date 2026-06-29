@@ -102,7 +102,18 @@ Rectangle {
         cacheBuffer: root.cellH * 2
         boundsBehavior: Flickable.StopAtBounds
 
-        ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
+        // Vertikale Scrollbar bündig an den rechten Rand der Galerie (root) statt
+        // an den Rand des zentrierten Gitters. Sie bleibt funktional an den
+        // GridView gebunden (Größe/Position), wird aber zu root umgehängt und dort
+        // rechts verankert — Standardmuster für „Scrollbar am Container-Rand".
+        ScrollBar.vertical: ScrollBar {
+            id: vScroll
+            parent: root
+            anchors.top: parent.top
+            anchors.right: parent.right
+            anchors.bottom: parent.bottom
+            policy: ScrollBar.AsNeeded
+        }
 
         delegate: Item {
             id: cell

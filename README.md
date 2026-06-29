@@ -151,10 +151,10 @@ Custom themes can be exported to JSON and shared:
 ## Changelog
 
 ### Latest
-- **i18n**: English mode is now fully localized — Settings tabs, filter modes, sort options, the date editor, PDF tooltips and context menus that previously stayed German regardless of the selected language now switch correctly
-- **i18n**: dropped the unused Qt `.ts`/`.qm` translation pipeline (`qt_add_translations` / `LinguistTools`) — all UI strings now resolve through the central string table
-- **Fix**: fixed a black screen when opening certain images — paths are now passed as proper `file://` URLs (also fixes filenames containing spaces or CJK characters)
-- **Fonts**: added a CJK font fallback so Japanese/Chinese/Korean characters in filenames render correctly instead of as boxes (□)
+- **Fix**: Cleanup of unused and empty JSON files.
+- **Fix**: fixed an issue where the Add Folder button did not work.
+- **UI**: Improved dialog button placement and adjusted the filter text appearance.
+- **UI**: Improved the user interface.
 
 ---
 

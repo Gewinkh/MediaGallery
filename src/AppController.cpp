@@ -148,22 +148,6 @@ void AppController::openBookmark(const QString& path) {
         m_folderService.openFolder(path);
 }
 
-void AppController::addCurrentFolderAsBookmark() {
-    const QString folder = m_folderService.currentFolder();
-    if (folder.isEmpty()) return;
-
-    const QString name  = QFileInfo(folder).fileName();
-    const QString entry = name.isEmpty() ? folder
-                                         : (name + QLatin1Char('\t') + folder);
-
-    QStringList entries = m_settings.savedFolders();
-    if (entries.contains(entry)) return;          // Duplikat vermeiden
-    entries.append(entry);
-    m_settings.setSavedFolders(entries);
-    m_settings.sync();
-    emit savedFoldersChanged();
-}
-
 // ── Lesezeichen-Verwaltung (Phase 4) ─────────────────────────────────────────
 static QString makeBookmarkEntry(const QString& name, const QString& path) {
     const QString p = path.trimmed();

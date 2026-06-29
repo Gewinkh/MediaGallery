@@ -13,7 +13,6 @@
         <file>qml/CategoryNode.qml</file>
         <file>qml/TagBar.qml</file>
         <file>qml/MetadataDateEditor.qml</file>
-        <!-- Phase 4: QML-Migration der Dialoge (SettingsDialog/TileSize/ColorPicker) -->
         <file>qml/ColorPicker.qml</file>
         <file>qml/TileSizeDialog.qml</file>
         <file>qml/SettingsDialog.qml</file>
@@ -27,5 +26,6 @@
         <file>qml/SettingsConverterTab.qml</file>
         <file>qml/SettingsDesignTab.qml</file>
         <file>qml/SettingsBookmarksTab.qml</file>
+        <file>qml/BookmarkEditDialog.qml</file>
     </qresource>
 </RCC>

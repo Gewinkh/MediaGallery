@@ -106,26 +106,62 @@ ApplicationWindow {
         Menu {
             id: bookmarksMenu
             title: App.menuBookmarksText
+
             MenuItem {
                 text: App.bookmarkAddText
-                enabled: App.currentFolder.length > 0
-                onTriggered: App.addCurrentFolderAsBookmark()
+                // Öffnet denselben Hinzufügen-Dialog wie Einstellungen ▸ Lesezeichen
+                // (Anzeigename + Pfad + Durchsuchen). Bewusst kein offener Ordner
+                // mehr nötig — es lässt sich jeder Ordner als Lesezeichen anlegen.
+                onTriggered: bookmarkEditDialog.openAdd()
             }
-            MenuSeparator { visible: App.savedFolders.length > 0 }
+            MenuSeparator {
+                id: bookmarksSeparator
+                visible: App.savedFolders.length > 0
+            }
             MenuItem {
+                id: bookmarksEmpty
                 text: App.menuBookmarksEmptyText
                 enabled: false
                 visible: App.savedFolders.length === 0
             }
-            Instantiator {
-                model: App.savedFolders
-                delegate: MenuItem {
-                    required property var modelData
-                    text: modelData.name
-                    onTriggered: App.openBookmark(modelData.path)
+
+            // Vorlage für dynamisch erzeugte Lesezeichen-Einträge.
+            // Instantiator + insertItem() ist in Qt6 defekt (QTBUG-69922) →
+            // Items werden manuell per rebuildBookmarks() erzeugt und verwaltet.
+            Component {
+                id: bookmarkItemComponent
+                MenuItem {
+                    property string bookmarkPath: ""
+                    onTriggered: App.openBookmark(bookmarkPath)
                 }
-                onObjectAdded: (index, object) => bookmarksMenu.insertItem(index + 3, object)
-                onObjectRemoved: (index, object) => bookmarksMenu.removeItem(object)
+            }
+
+            // Aktuell aktive dynamische Items (zum sauberen Entfernen beim Rebuild).
+            property var dynamicBookmarkItems: []
+
+            function rebuildBookmarks() {
+                // Alte dynamische Items entfernen
+                for (var i = 0; i < dynamicBookmarkItems.length; i++)
+                    bookmarksMenu.removeItem(dynamicBookmarkItems[i])
+                dynamicBookmarkItems = []
+
+                // Neue Items für jeden gespeicherten Ordner anhängen
+                var folders = App.savedFolders
+                for (var j = 0; j < folders.length; j++) {
+                    var item = bookmarkItemComponent.createObject(bookmarksMenu, {
+                        text:         folders[j].name,
+                        bookmarkPath: folders[j].path
+                    })
+                    bookmarksMenu.addItem(item)
+                    dynamicBookmarkItems.push(item)
+                }
+            }
+
+            Component.onCompleted: rebuildBookmarks()
+
+            Connections {
+                target: App
+                function onSavedFoldersChanged() { bookmarksMenu.rebuildBookmarks() }
             }
         }
     }
@@ -325,6 +361,9 @@ ApplicationWindow {
         title: App.menuOpenFolderText
         onAccepted: App.openFolderUrl(folderDialog.selectedFolder)
     }
+
+    // ── Lesezeichen anlegen/bearbeiten (geteilt mit SettingsBookmarksTab) ──────
+    BookmarkEditDialog { id: bookmarkEditDialog }
 
     // ── Kachelgrößen-Dialog (Phase 4) ─────────────────────────────────────────
     TileSizeDialog { id: tileSizeDialog }
