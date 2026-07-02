@@ -392,17 +392,6 @@ void AppSettings::setAudioAccentApple(bool v) {
     m_settings.setValue("ui/audioAccentApple", v);
 }
 
-// ─── Sort ─────────────────────────────────────────────────────────────────────
-SortField AppSettings::sortField() const {
-    return static_cast<SortField>(m_settings.value("sort/field", 0).toInt());
-}
-void AppSettings::setSortField(SortField f) { m_settings.setValue("sort/field", static_cast<int>(f)); }
-
-SortOrder AppSettings::sortOrder() const {
-    return static_cast<SortOrder>(m_settings.value("sort/order", 0).toInt());
-}
-void AppSettings::setSortOrder(SortOrder o) { m_settings.setValue("sort/order", static_cast<int>(o)); }
-
 // ─── Legacy color helpers ─────────────────────────────────────────────────────
 QColor AppSettings::backgroundColor() const { return currentTheme().background; }
 void AppSettings::setBackgroundColor(const QColor& c) {
@@ -416,19 +405,8 @@ void AppSettings::setAccentColor(const QColor& c) {
 }
 
 // ─── Grid / filter ────────────────────────────────────────────────────────────
-int AppSettings::gridColumns() const { return m_settings.value("grid/columns", 1).toInt(); }
-void AppSettings::setGridColumns(int c) { m_settings.setValue("grid/columns", qBound(1, c, 25)); }
-
 int  AppSettings::tileWidth()  const { return m_settings.value("grid/tileWidth",  160).toInt(); }
-void AppSettings::setTileWidth(int w) {
-    m_settings.setValue("grid/tileWidth", qMax(40, w));
-    // No signal here — use setTileSize(w,h) to avoid double-emit
-}
 int  AppSettings::tileHeight() const { return m_settings.value("grid/tileHeight", 200).toInt(); }
-void AppSettings::setTileHeight(int h) {
-    m_settings.setValue("grid/tileHeight", qMax(40, h));
-    // No signal here — use setTileSize(w,h) to avoid double-emit
-}
 void AppSettings::setTileSize(int w, int h) {
     m_settings.setValue("grid/tileWidth",  qMax(40, w));
     m_settings.setValue("grid/tileHeight", qMax(40, h));
@@ -450,30 +428,8 @@ void AppSettings::setManualAreaWidth(int w) { m_settings.setValue("grid/manualAr
 int  AppSettings::manualAreaHeight() const { return m_settings.value("grid/manualAreaHeight", 0).toInt(); }
 void AppSettings::setManualAreaHeight(int h) { m_settings.setValue("grid/manualAreaHeight", qMax(0, h)); }
 
-bool AppSettings::tagFilterAnd() const { return m_settings.value("filter/tagAnd", true).toBool(); }
-void AppSettings::setTagFilterAnd(bool v) { m_settings.setValue("filter/tagAnd", v); }
-
-QColor AppSettings::andOrButtonColor() const {
-    return m_settings.value("colors/andOrButton", QColor(0, 180, 160)).value<QColor>();
-}
-void AppSettings::setAndOrButtonColor(const QColor& c) {
-    m_settings.setValue("colors/andOrButton", c);
-    emit colorSchemeChanged();
-}
-
 bool AppSettings::optionsVisible() const { return m_settings.value("ui/optionsVisible", true).toBool(); }
 void AppSettings::setOptionsVisible(bool v) { m_settings.setValue("ui/optionsVisible", v); }
-
-bool AppSettings::showImages() const { return m_settings.value("filter/showImages", true).toBool(); }
-void AppSettings::setShowImages(bool v) { m_settings.setValue("filter/showImages", v); }
-bool AppSettings::showVideos() const { return m_settings.value("filter/showVideos", true).toBool(); }
-void AppSettings::setShowVideos(bool v) { m_settings.setValue("filter/showVideos", v); }
-bool AppSettings::showAudio()  const { return m_settings.value("filter/showAudio",  true).toBool(); }
-void AppSettings::setShowAudio(bool v) { m_settings.setValue("filter/showAudio", v); }
-bool AppSettings::showPdfs()   const { return m_settings.value("filter/showPdfs",   true).toBool(); }
-void AppSettings::setShowPdfs(bool v)  { m_settings.setValue("filter/showPdfs",  v); }
-bool AppSettings::showTexts()  const { return m_settings.value("filter/showTexts",  true).toBool(); }
-void AppSettings::setShowTexts(bool v) { m_settings.setValue("filter/showTexts", v); }
 
 // ─── Text editor / auto-save ──────────────────────────────────────────────────
 bool AppSettings::autoSaveEnabled() const {

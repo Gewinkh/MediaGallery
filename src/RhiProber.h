@@ -26,7 +26,6 @@ public:
 
     // Schreibt das gewünschte Backend in QSettings (wirkt beim nächsten Start).
     static void setDesiredBackend(const QString& backend);
-    static QString storedBackend();
 
 private:
     static void applyApi(const QString& backend);

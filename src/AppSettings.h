@@ -38,18 +38,10 @@ public:
     bool           audioAccentApple() const override;
     void           setAudioAccentApple(bool v) override;
 
-    SortField sortField() const override;
-    void      setSortField(SortField f) override;
-    SortOrder sortOrder() const override;
-    void      setSortOrder(SortOrder o) override;
-
     QColor backgroundColor() const override;
     void   setBackgroundColor(const QColor& c) override;
     QColor accentColor() const override;
     void   setAccentColor(const QColor& c) override;
-
-    int  gridColumns() const override;
-    void setGridColumns(int c) override;
 
     TileArrangement tileArrangement() const override;
     void            setTileArrangement(TileArrangement a) override;
@@ -59,25 +51,11 @@ public:
     void            setManualAreaHeight(int h) override;
 
     int  tileWidth()  const override;
-    void setTileWidth(int w) override;
     int  tileHeight() const override;
-    void setTileHeight(int h) override;
     void setTileSize(int w, int h);   // atomic: saves both + emits tileSizeChanged once
-
-    bool tagFilterAnd() const override;
-    void setTagFilterAnd(bool v) override;
-
-    QColor andOrButtonColor() const override;
-    void   setAndOrButtonColor(const QColor& c) override;
 
     bool optionsVisible() const override;
     void setOptionsVisible(bool v) override;
-
-    bool showImages() const override; void setShowImages(bool v) override;
-    bool showVideos() const override; void setShowVideos(bool v) override;
-    bool showAudio()  const override; void setShowAudio(bool v) override;
-    bool showPdfs()   const override; void setShowPdfs(bool v)  override;
-    bool showTexts()  const override; void setShowTexts(bool v) override;
 
     bool autoSaveEnabled() const override;
     void setAutoSaveEnabled(bool v) override;

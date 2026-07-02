@@ -1,5 +1,4 @@
 #pragma once
-#include <QObject>
 #include <QString>
 #include <QSize>
 #include <QPoint>
@@ -8,8 +7,6 @@
 enum class Language      { German, English };
 enum class VideoPlayback { Native, External };
 enum class PageTransition { Slide, Fade };   // Vollbild-Öffnen/Schließen-Animation
-enum class SortField     { Date, Name, Tags, FileSize };
-enum class SortOrder     { Ascending, Descending };
 
 // ─── Tile arrangement / alignment mode ───────────────────────────────────────
 enum class TileArrangement {
@@ -23,8 +20,6 @@ enum class DesignProfile {
     Dark, DarkOLED, OceanDepth, InfernoBlaze,
     NeonPurple, MidnightRose, Elegant, Simple, Custom
 };
-
-struct GradStop { float pos; QColor color; };
 
 enum class AccentType  { Solid, Gradient, Glow };
 enum class TileBgType  { Solid, Gradient, Transparent };
@@ -106,20 +101,15 @@ public:
     virtual bool           audioAccentApple() const = 0;
     virtual void           setAudioAccentApple(bool v) = 0;
 
-    virtual SortField sortField() const = 0;
-    virtual void      setSortField(SortField f) = 0;
-    virtual SortOrder sortOrder() const = 0;
-    virtual void      setSortOrder(SortOrder o) = 0;
-
     virtual QColor backgroundColor() const = 0;
     virtual void   setBackgroundColor(const QColor& c) = 0;
     virtual QColor accentColor() const = 0;
     virtual void   setAccentColor(const QColor& c) = 0;
 
-    virtual int  gridColumns() const = 0;
-    virtual void setGridColumns(int c) = 0;
-
     // Tile arrangement / alignment
+    virtual int  tileWidth()  const = 0;
+    virtual int  tileHeight() const = 0;
+
     virtual TileArrangement tileArrangement() const = 0;
     virtual void            setTileArrangement(TileArrangement a) = 0;
     virtual int             manualAreaWidth()  const = 0;   // px; only used in Manual mode
@@ -127,25 +117,9 @@ public:
     virtual int             manualAreaHeight() const = 0;   // px; only used in Manual mode (0 = use tile height)
     virtual void            setManualAreaHeight(int h) = 0;
 
-    virtual int  tileWidth()  const = 0;
-    virtual void setTileWidth(int w) = 0;
-    virtual int  tileHeight() const = 0;
-    virtual void setTileHeight(int h) = 0;
-
-    virtual bool tagFilterAnd() const = 0;
-    virtual void setTagFilterAnd(bool v) = 0;
-
-    virtual QColor andOrButtonColor() const = 0;
-    virtual void   setAndOrButtonColor(const QColor& c) = 0;
 
     virtual bool optionsVisible() const = 0;
     virtual void setOptionsVisible(bool v) = 0;
-
-    virtual bool showImages() const = 0; virtual void setShowImages(bool v) = 0;
-    virtual bool showVideos() const = 0; virtual void setShowVideos(bool v) = 0;
-    virtual bool showAudio()  const = 0; virtual void setShowAudio(bool v) = 0;
-    virtual bool showPdfs()   const = 0; virtual void setShowPdfs(bool v)  = 0;
-    virtual bool showTexts()  const = 0; virtual void setShowTexts(bool v) = 0;
 
     // Text editor / auto-save
     virtual bool autoSaveEnabled() const = 0;

@@ -1,6 +1,7 @@
 import QtQuick
 import QtQuick.Controls
 import QtMultimedia
+import MediaGallery 1.0
 
 // ─────────────────────────────────────────────────────────────────────────────
 //  VideoSurface.qml — interner Video-Player (ersetzt VideoPlayer(QWidget)+
@@ -15,6 +16,12 @@ Item {
 
     property string source: ""
     property bool   active: true
+    // Von FullscreenViewer gesetzt (Höhe der globalen unteren Navigation
+    // ◀ N/M ▶), damit die eigene Steuerleiste (unten) sie nicht überdeckt.
+    // Weich animiert, damit die Leiste beim Ein-/Ausblenden der Navigation
+    // mitgleitet statt zu springen (180 ms, passend zur bottomNav-Fade-Dauer).
+    property real   bottomInset: 0
+    Behavior on bottomInset { NumberAnimation { duration: 180 } }
 
     function release() {
         player.stop()
@@ -22,7 +29,14 @@ Item {
     }
 
     onSourceChanged: {
-        player.source = source.length > 0 ? source : ""
+        // Rohen lokalen Pfad in eine korrekt kodierte file://-URL wandeln —
+        // analog zu Image/HtmlSurface. MediaPlayer.source ist QUrl-typisiert;
+        // ein roher String ohne Schema wird von QML relativ zur Basis-URL der
+        // Komponente (qrc:/qml/…) aufgelöst → ungültige qrc-Ressource, daher
+        // die Fehlermeldung "Attempting to play invalid Qt resource" beim
+        // Öffnen von Video-/Audio-Dateien. App.fileUrl() (QUrl::fromLocalFile)
+        // kodiert zudem Sonderzeichen (Leerzeichen, CJK/Arabisch, …) korrekt.
+        player.source = source.length > 0 ? App.fileUrl(source) : ""
         if (source.length > 0 && active)
             player.play()
     }
@@ -71,6 +85,7 @@ Item {
     Rectangle {
         id: controls
         anchors { left: parent.left; right: parent.right; bottom: parent.bottom }
+        anchors.bottomMargin: root.bottomInset
         height: 52
         color: Qt.rgba(0, 0, 0, 0.6)
         opacity: 1.0

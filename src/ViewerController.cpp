@@ -59,7 +59,7 @@ public:
             handler.scanDocument(m_path);
             list  = annotationsToVariant(handler.allAnnotations());
             temps = handler.tempFiles();
-            // Bewusst KEIN handler.cleanup(): extrahierte Temp-Medien werden zum
+            // Temp-Medien werden bewusst NICHT hier geloescht: sie werden zum
             // Abspielen gebraucht und erst beim App-Ende vom Owner entfernt.
         }
 

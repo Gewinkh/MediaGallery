@@ -3,7 +3,6 @@
 #include <QJsonObject>
 #include <QJsonArray>
 #include <QFile>
-#include <QDir>
 #include <QFileInfo>
 #include <QRandomGenerator>
 #include <QSet>
@@ -68,83 +67,19 @@ TagCategory JsonStorage::categoryFromJson(const QJsonObject& obj) {
     return cat;
 }
 
-// ── Converter - ready for cleanup ─────────────────────────────────────────────
-// Load old tag-centric format:
-//   { "tags": { "TagName": { "color": "#...", "files": [...] } }, "tagColors": {...} }
-void JsonStorage::loadLegacyFormat(const QJsonObject& root) {
-    m_isLegacyFormat = true;
-
-    // Tag registry + file→tag mapping (inverted from the tag-centric store)
-    QJsonObject tags = root["tags"].toObject();
-    for (auto it = tags.begin(); it != tags.end(); ++it) {
-        const QString& tagName = it.key();
-        QJsonObject tagObj = it.value().toObject();
-        m_tagColors[tagName] = QColor(tagObj["color"].toString("#64b4a0"));
-        QJsonArray files = tagObj["files"].toArray();
-        for (const auto& fv : files) {
-            QString fileName = fv.toString();
-            if (!fileName.isEmpty())
-                m_fileMeta[fileName].tags.append(tagName);
-        }
-    }
-
-    // Old separate "files" section: { "filename": { "tags": [...] } }
-    if (root.contains("files")) {
-        QJsonObject oldFiles = root["files"].toObject();
-        for (auto it = oldFiles.begin(); it != oldFiles.end(); ++it) {
-            QJsonObject o = it.value().toObject();
-            // Legacy files may hold tags or custom date
-            QJsonArray tagsArr = o["tags"].toArray();
-            for (const auto& tv : tagsArr) {
-                QString tag = tv.toString();
-                if (!m_fileMeta[it.key()].tags.contains(tag))
-                    m_fileMeta[it.key()].tags.append(tag);
-                ensureTagRegistered(tag);
-            }
-            if (o.contains("date")) {
-                QDateTime dt = QDateTime::fromString(o["date"].toString(), Qt::ISODate);
-                if (dt.isValid()) {
-                    m_fileMeta[it.key()].customDate    = dt;
-                    m_fileMeta[it.key()].hasCustomDate = true;
-                }
-            }
-        }
-    }
-
-    // Separate tagColors block (even older fallback)
-    if (root.contains("tagColors")) {
-        QJsonObject colors = root["tagColors"].toObject();
-        for (auto it = colors.begin(); it != colors.end(); ++it)
-            if (!m_tagColors.contains(it.key()))
-                m_tagColors[it.key()] = QColor(it.value().toString());
-    }
-
-    // Separate dates block (old format)
-    if (root.contains("dates")) {
-        QJsonObject dates = root["dates"].toObject();
-        for (auto it = dates.begin(); it != dates.end(); ++it) {
-            QDateTime dt = QDateTime::fromString(it.value().toString(), Qt::ISODate);
-            if (dt.isValid()) {
-                m_fileMeta[it.key()].customDate    = dt;
-                m_fileMeta[it.key()].hasCustomDate = true;
-            }
-        }
-    }
-}
-
-// ── Converter - ready for cleanup ─────────────────────────────────────────────
-// Load new file-centric format (compact, storage-efficient):
+// ── Dateizentrisches JSON-Format (kompakt, speichereffizient) ─────────────────
 //   {
-//     "v": 2,
 //     "files": { "img.jpg": { "t": ["tag1","tag2"], "d": "ISO8601" }, ... },
 //     "tagColors": { "TagName": "#rrggbb", ... },
 //     "categories": [...]
 //   }
-// Keys are abbreviated: "t" = tags, "d" = date.
-// Only non-empty fields are written → minimal JSON for large collections.
+// Schlüssel sind abgekürzt: "t" = Tags, "d" = Datum.
+// Nur nicht-leere Felder werden geschrieben → minimale JSON auch bei großen
+// Sammlungen. Ein Versions-Marker ("v") wird seit 2026-07 weder geschrieben
+// noch ausgewertet — das Legacy-Format (tag-zentrisch) und die zugehörige
+// Migration wurden entfernt; ältere Dateien mit "v"-Feld laden weiterhin,
+// das Feld wird schlicht ignoriert und beim nächsten Speichern entfernt.
 void JsonStorage::loadNewFormat(const QJsonObject& root) {
-    m_isLegacyFormat = false;
-
     // Tag colors
     QJsonObject tagColors = root["tagColors"].toObject();
     for (auto it = tagColors.begin(); it != tagColors.end(); ++it)
@@ -173,21 +108,12 @@ void JsonStorage::loadNewFormat(const QJsonObject& root) {
     }
 }
 
-// ── Converter - ready for cleanup ─────────────────────────────────────────────
-// Re-save in new format after loading a legacy JSON.
-void JsonStorage::migrateToNewFormat() {
-    m_isLegacyFormat = false;
-    saveCurrentFolder();
-}
-
 // ── Load / Save ───────────────────────────────────────────────────────────────
 void JsonStorage::loadFolder(const QString& folderPath) {
     m_folderPath = folderPath;
     m_fileMeta.clear();
     m_tagColors.clear();
     m_categories.clear();
-    m_isLegacyFormat = false;
-
     QFileInfo fi(folderPath);
     m_jsonPath = folderPath + "/" + fi.fileName() + ".json";
 
@@ -200,16 +126,7 @@ void JsonStorage::loadFolder(const QString& folderPath) {
 
     QJsonObject root = doc.object();
 
-    // Detect format by version field.
-    // v=2 → new file-centric format
-    // absent / v=1 / has "tags" object with per-tag "files" arrays → legacy
-    int version = root["v"].toInt(1);
-    if (version >= 2) {
-        loadNewFormat(root);
-    } else {
-        // Converter - ready for cleanup
-        loadLegacyFormat(root);
-    }
+    loadNewFormat(root);
 
     // Categories are format-independent
     QJsonArray cats = root["categories"].toArray();
@@ -218,9 +135,6 @@ void JsonStorage::loadFolder(const QString& folderPath) {
 
 void JsonStorage::saveFolder(const QString& folderPath) {
     QJsonObject root;
-
-    // Version marker — new format
-    root["v"] = 2;
 
     // ── Compact file-centric section ──────────────────────────────────────────
     // Only writes entries that have actual data (tags or custom date).
@@ -277,6 +191,20 @@ void JsonStorage::saveFolder(const QString& folderPath) {
     QString path = m_jsonPath.isEmpty()
                        ? folderPath + "/" + QFileInfo(folderPath).fileName() + ".json"
                        : m_jsonPath;
+
+    // Keine tatsächlichen Daten vorhanden (weder Datei-Metadaten noch Tags
+    // noch Kategorien) → KEINE Leerdatei ("{}") anlegen. Das verhindert,
+    // dass allein durch das Öffnen/Wechseln eines Ordners eine JSON entsteht.
+    // Existiert bereits eine (nun leere gewordene) Datei — z. B. weil der
+    // letzte Tag/die letzte Kategorie gerade gelöscht wurde — wird sie entfernt,
+    // statt einen leeren Stub zu hinterlassen.
+    const bool hasContent = root.contains("files") || root.contains("tagColors")
+                             || root.contains("categories");
+    if (!hasContent) {
+        if (QFile::exists(path))
+            QFile::remove(path);
+        return;
+    }
 
     QFile f(path);
     if (f.open(QIODevice::WriteOnly))

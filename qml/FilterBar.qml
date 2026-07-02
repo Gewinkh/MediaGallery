@@ -23,9 +23,30 @@ Rectangle {
     color: App.themeFilterBarBg
 
     signal enterAddToTagMode(string tag)
+    // Panel-Steuerung (Seitenpanel rechts): beide Abschnitte INDIVIDUELL
+    // schaltbar. Der Zustand lebt im TagCategoryPanel (showTagsSection/
+    // showCategoriesSection) und wird von der Shell in diese Properties
+    // gespiegelt → die Toggle-Zeilen im Filter-Popup zeigen den Aktiv-Zustand.
+    signal tagPanelToggled()
     signal categoryPanelToggled()
+    property bool tagPanelVisible: false
+    property bool categoryPanelVisible: false
 
     property var activeTags: []
+
+    // ── Referenzbasierte Konsistenz ──────────────────────────────────────────
+    //  Referenzquelle des Tag-Filters ist der Proxy (galleryModel.tagFilter).
+    //  Externe Änderungen — Tag-Toggle im Kategorie-Panel, Kaskaden-
+    //  Deaktivierung beim Abwählen von Kategorien — spiegeln sich hier, damit
+    //  die Inline-Chips und das Filter-Badge nie veralten.
+    Component.onCompleted: activeTags = galleryModel.tagFilter
+    Connections {
+        target: galleryModel
+        function onFilterChanged() {
+            if (bar.activeTags.join("\u001f") !== galleryModel.tagFilter.join("\u001f"))
+                bar.activeTags = galleryModel.tagFilter
+        }
+    }
 
     readonly property var modeNames:  [App.uiText(App.language, "FilterTagModeOr"), App.uiText(App.language, "FilterTagModeAnd"), App.uiText(App.language, "FilterTagModeNur"), App.uiText(App.language, "FilterTagModeInklusiv")]
     readonly property var modeTips: [
@@ -103,6 +124,31 @@ Rectangle {
             model: [App.uiText(App.language, "FilterDate"), App.uiText(App.language, "FilterName"), App.uiText(App.language, "FilterTags"), App.uiText(App.language, "FilterFileSize")]
             currentIndex: galleryModel.sortRole
             onActivated: galleryModel.sortRole = currentIndex
+
+            // Dropdown folgt der Menüleisten-Farbe (App.themeMenuBarBg) statt der
+            // ungefärbten Fusion-Standardvorgabe — Struktur analog Qt-Doku
+            // "Customizing ComboBox": contentItem/ListView bleibt Standardverhalten
+            // (Delegates/Highlight unverändert), nur der Popup-Hintergrund wird ersetzt.
+            popup: Popup {
+                y: sortField.height
+                width: sortField.width
+                implicitHeight: contentItem.implicitHeight
+                padding: 1
+
+                contentItem: ListView {
+                    clip: true
+                    implicitHeight: contentHeight
+                    model: sortField.popup.visible ? sortField.delegateModel : null
+                    currentIndex: sortField.highlightedIndex
+                    ScrollIndicator.vertical: ScrollIndicator {}
+                }
+
+                background: Rectangle {
+                    color: App.themeMenuBarBg
+                    border.color: App.themeBorder; border.width: 1
+                    radius: 4
+                }
+            }
         }
         ToolButton {
             anchors.verticalCenter: parent.verticalCenter
@@ -138,11 +184,13 @@ Rectangle {
                 property var popupTags: []
                 onAboutToShow: popupTags = App.allTags()
 
+                // "Tags" und "Kategorien" sind zu EINEM Eintrag zusammengelegt:
+                // Panel-Steuerung (Tag-/Kategorie-Panel individuell) + Tag-Schnellfilter.
                 readonly property var cats: [
-                    { label: App.uiText(App.language, "FilterMedia"),          hint: bar.mediaActiveCount + "/" + bar.mediaTypes.length },
+                    { label: App.uiText(App.language, "FilterMedia"), hint: bar.mediaActiveCount + "/" + bar.mediaTypes.length },
                     { label: App.uiText(App.language, "FilterTagModeLabel"), hint: bar.modeNames[galleryModel.tagFilterMode] },
-                    { label: "Tags",            hint: bar.activeTags.length > 0 ? bar.activeTags.length + App.uiText(App.language, "FilterActiveSuffix") : "—" },
-                    { label: App.uiText(App.language, "SettingsTabCategories"),      hint: App.uiText(App.language, "FilterCatPanelHint") }
+                    { label: App.uiText(App.language, "FilterTagsCatsLabel"),
+                      hint: bar.activeTags.length > 0 ? bar.activeTags.length + App.uiText(App.language, "FilterActiveSuffix") : "—" }
                 ]
 
                 background: Rectangle {
@@ -241,8 +289,7 @@ Rectangle {
                                 width: 236
                                 sourceComponent: filterPopup.selectedCat === 0 ? medienComp
                                                : filterPopup.selectedCat === 1 ? modeComp
-                                               : filterPopup.selectedCat === 2 ? tagsComp
-                                               : katComp
+                                               : tagsCatsComp
                             }
                         }
                     }
@@ -356,9 +403,62 @@ Rectangle {
                 }
 
                 Component {
-                    id: tagsComp
+                    id: tagsCatsComp
                     Column {
                         spacing: 4
+
+                        // ── Panel-Steuerung: Tag- und Kategorie-Panel INDIVIDUELL ────
+                        //  Toggle-Zeilen mit klar sichtbarem Aktiv-/Inaktiv-Zustand
+                        //  (✓/✕ + Akzentfüllung, identische Optik wie die Medien-Zeilen).
+                        Text {
+                            text: App.uiText(App.language, "FilterPanelHeader"); color: App.themeAccent
+                            font.pixelSize: 13; font.bold: true; bottomPadding: 4
+                        }
+                        Repeater {
+                            model: [
+                                { label: App.uiText(App.language, "FilterTagPanelRow"), tag: true },
+                                { label: App.uiText(App.language, "FilterCatPanelRow"), tag: false }
+                            ]
+                            delegate: Rectangle {
+                                id: panelRow
+                                required property var modelData
+                                readonly property bool on: modelData.tag ? bar.tagPanelVisible
+                                                                         : bar.categoryPanelVisible
+                                width: 236; height: 34; radius: 6
+                                color: on ? Qt.rgba(App.themeAccent.r, App.themeAccent.g, App.themeAccent.b, 0.22)
+                                          : (pHover.hovered ? Qt.rgba(1,1,1,0.06) : "transparent")
+                                border.width: 1
+                                border.color: on ? Qt.rgba(App.themeAccent.r, App.themeAccent.g, App.themeAccent.b, 0.55) : App.themeBorder
+                                Row {
+                                    anchors.fill: parent
+                                    anchors.leftMargin: 10; anchors.rightMargin: 10
+                                    spacing: 8
+                                    Text {
+                                        anchors.verticalCenter: parent.verticalCenter
+                                        width: 14
+                                        text: panelRow.on ? "\u2713" : "\u2715"
+                                        color: panelRow.on ? App.themeAccent : App.themeTextMuted
+                                        font.pixelSize: 14; font.bold: true
+                                        horizontalAlignment: Text.AlignHCenter
+                                    }
+                                    Text {
+                                        anchors.verticalCenter: parent.verticalCenter
+                                        text: panelRow.modelData.label
+                                        color: panelRow.on ? App.themeTextPrimary : App.themeTextMuted
+                                        font.pixelSize: 14
+                                        font.weight: panelRow.on ? Font.DemiBold : Font.Normal
+                                    }
+                                }
+                                HoverHandler { id: pHover }
+                                TapHandler {
+                                    onTapped: panelRow.modelData.tag ? bar.tagPanelToggled()
+                                                                     : bar.categoryPanelToggled()
+                                }
+                            }
+                        }
+
+                        Item { width: 1; height: 6 }   // Abstand Panel-Block ⇄ Tag-Schnellfilter
+
                         Item {
                             width: 236; height: tagsHdr.implicitHeight + 4
                             Text {
@@ -374,6 +474,48 @@ Rectangle {
                                 visible: bar.activeTags.length > 0
                                 text: "Leeren"; color: App.themeAccent; font.pixelSize: 12
                                 TapHandler { onTapped: bar.clearTags() }
+                            }
+                        }
+                        // ── Tag manuell zur Filterliste hinzufügen ────────────
+                        //  Eingabe + "Hinzufügen": fügt den eingegebenen Tag der
+                        //  bestehenden Filterliste (bar.activeTags → Proxy) hinzu.
+                        Row {
+                            spacing: 4
+                            function addTypedTag() {
+                                var t = addTagInput.text.trim()
+                                if (t.length === 0) return
+                                if (bar.activeTags.indexOf(t) < 0)
+                                    bar.toggleTag(t)          // fügt hinzu (nicht vorhanden)
+                                addTagInput.text = ""
+                            }
+                            TextField {
+                                id: addTagInput
+                                width: 236 - addTagBtn.width - 4
+                                height: 30
+                                font.pixelSize: 12
+                                color: App.themeTextPrimary
+                                placeholderText: App.uiText(App.language, "FilterAddTagPlaceholder")
+                                background: Rectangle {
+                                    color: App.themeCard; radius: 6
+                                    border.color: addTagInput.activeFocus ? App.themeAccent : App.themeBorder
+                                    border.width: 1
+                                }
+                                onAccepted: parent.addTypedTag()
+                            }
+                            Rectangle {
+                                id: addTagBtn
+                                width: addTagLbl.implicitWidth + 18; height: 30; radius: 6
+                                color: addHover.hovered ? Qt.rgba(App.themeAccent.r, App.themeAccent.g, App.themeAccent.b, 0.30)
+                                                        : Qt.rgba(App.themeAccent.r, App.themeAccent.g, App.themeAccent.b, 0.18)
+                                border.color: App.themeAccent; border.width: 1
+                                Text {
+                                    id: addTagLbl
+                                    anchors.centerIn: parent
+                                    text: App.uiText(App.language, "FilterAddTagBtn")
+                                    color: App.themeAccent; font.pixelSize: 12; font.bold: true
+                                }
+                                HoverHandler { id: addHover }
+                                TapHandler { onTapped: addTagBtn.parent.addTypedTag() }
                             }
                         }
                         Text {
@@ -425,35 +567,6 @@ Rectangle {
                     }
                 }
 
-                Component {
-                    id: katComp
-                    Column {
-                        spacing: 8
-                        Text {
-                            text: App.uiText(App.language, "SettingsTabCategories"); color: App.themeAccent
-                            font.pixelSize: 13; font.bold: true
-                        }
-                        Text {
-                            width: 236
-                            text: App.uiText(App.language, "FilterCatPanelTooltip")
-                            color: App.themeTextMuted; font.pixelSize: 13; wrapMode: Text.WordWrap
-                        }
-                        Rectangle {
-                            width: 236; height: 34; radius: 6
-                            color: katHover.hovered ? Qt.rgba(1,1,1,0.08) : Qt.rgba(1,1,1,0.04)
-                            border.color: App.themeBorder; border.width: 1
-                            Text {
-                                anchors.centerIn: parent
-                                text: App.uiText(App.language, "FilterCatPanelToggle")
-                                color: App.themeTextPrimary; font.pixelSize: 14
-                            }
-                            HoverHandler { id: katHover }
-                            TapHandler {
-                                onTapped: { bar.categoryPanelToggled(); filterPopup.close() }
-                            }
-                        }
-                    }
-                }
             }
         }
 

@@ -1,5 +1,7 @@
 #include "TagManager.h"
 
+#include <functional>
+
 TagManager::TagManager(JsonStorage* storage, QObject* parent)
     : QObject(parent), m_storage(storage) {}
 
@@ -19,6 +21,7 @@ void TagManager::addTagToFile(const QString& fileName, const QString& tag) {
     if (!tags.contains(tag)) {
         tags.append(tag);
         m_storage->setTags(fileName, tags);
+        m_storage->saveCurrentFolder();
         emit tagsChanged();
     }
 }
@@ -36,13 +39,9 @@ void TagManager::removeTagFromFile(const QString& fileName, const QString& tag) 
     QStringList tags = m_storage->getTags(fileName);
     if (tags.removeAll(tag) > 0) {
         m_storage->setTags(fileName, tags);
+        m_storage->saveCurrentFolder();
         emit tagsChanged();
     }
-}
-
-void TagManager::setTagsForFile(const QString& fileName, const QStringList& tags) {
-    m_storage->setTags(fileName, tags);
-    emit tagsChanged();
 }
 
 QStringList TagManager::tagsForFile(const QString& fileName) const {
@@ -54,6 +53,11 @@ void TagManager::deleteTag(const QString& tag) {
     for (auto& cat : m_storage->categoriesRef())
         cat.tags.removeAll(tag);
     m_storage->deleteTag(tag);
+    // Sofort persistieren — nicht erst beim nächsten anderweitigen Save.
+    // JsonStorage::saveFolder prüft dabei selbst, ob danach noch Tags/
+    // Kategorien/Datei-Metadaten übrig sind, und entfernt andernfalls die
+    // JSON-Datei komplett statt eines leeren Stubs.
+    m_storage->saveCurrentFolder();
     emit tagsChanged();
     emit categoriesChanged();
 }
@@ -71,6 +75,7 @@ void TagManager::renameTag(const QString& oldName, const QString& newName) {
     rename(m_storage->categoriesRef());
     m_storage->deleteTag(oldName);
     m_storage->setTagColor(newName, c);
+    m_storage->saveCurrentFolder();
     emit tagsChanged();
     emit categoriesChanged();
 }
@@ -107,6 +112,41 @@ void TagManager::renameCategory(const QString& id, const QString& newName) {
 
 void TagManager::deleteCategory(const QString& id) {
     removeById(m_storage->categoriesRef(), id);
+    m_storage->saveCurrentFolder();
+    emit categoriesChanged();
+}
+
+void TagManager::moveCategory(const QString& id, const QString& newParentId) {
+    if (id.isEmpty() || id == newParentId) return;
+
+    const TagCategory* node = findById(m_storage->categoriesRef(), id);
+    if (!node) return;
+
+    // Ziel darf nicht im Teilbaum des zu verschiebenden Knotens liegen.
+    if (!newParentId.isEmpty()) {
+        std::function<bool(const TagCategory&)> contains = [&](const TagCategory& c) {
+            if (c.id == newParentId) return true;
+            for (const TagCategory& ch : c.children)
+                if (contains(ch)) return true;
+            return false;
+        };
+        if (contains(*node)) return;
+        // Ziel muss existieren, sonst nichts tun (kein stiller Wurzel-Fallback).
+        if (!findById(m_storage->categoriesRef(), newParentId)) return;
+    }
+
+    TagCategory moved = *node;                    // tiefe Kopie inkl. Teilbaum
+    removeById(m_storage->categoriesRef(), id);
+
+    if (newParentId.isEmpty()) {
+        m_storage->categoriesRef().append(moved); // → Hauptebene (Wurzel)
+    } else {
+        // Parent NACH dem Entfernen frisch suchen (Container kann realloziert sein).
+        TagCategory* parent = findById(m_storage->categoriesRef(), newParentId);
+        if (parent) parent->children.append(moved);
+        else        m_storage->categoriesRef().append(moved);   // Absicherung
+    }
+
     m_storage->saveCurrentFolder();
     emit categoriesChanged();
 }
@@ -163,41 +203,53 @@ void TagManager::moveTagToCategory(const QString& tag,
     addTagToCategory(toCatId, tag);
 }
 
+// ── Datei ↔ Kategorie (direkte Mitgliedschaft) ────────────────────────────────
 void TagManager::addFileToCategory(const QString& catId, const QString& fileName) {
+    if (fileName.isEmpty()) return;
     TagCategory* cat = findById(m_storage->categoriesRef(), catId);
-    if (!cat) return;
-    if (!cat->files.contains(fileName)) cat->files.append(fileName);
+    if (!cat || cat->files.contains(fileName)) return;   // idempotent
+    cat->files.append(fileName);
     m_storage->saveCurrentFolder();
+    // categoriesChanged zieht den Proxy-Kategoriefilter (m_activeCatFiles) und
+    // alle QML-Ansichten (fileCount, Panels) nach.
     emit categoriesChanged();
 }
 
 void TagManager::removeFileFromCategory(const QString& catId, const QString& fileName) {
     TagCategory* cat = findById(m_storage->categoriesRef(), catId);
-    if (!cat) return;
-    cat->files.removeAll(fileName);
+    if (!cat || cat->files.removeAll(fileName) == 0) return;
     m_storage->saveCurrentFolder();
     emit categoriesChanged();
 }
 
-QStringList TagManager::categoriesForFile(const QString& fileName) const {
-    QStringList result;
-    std::function<void(const QList<TagCategory>&)> scan = [&](const QList<TagCategory>& list) {
-        for (const TagCategory& cat : list) {
-            if (cat.files.contains(fileName)) result.append(cat.id);
-            scan(cat.children);
-        }
-    };
-    scan(m_storage->categoriesRef());
-    return result;
+bool TagManager::fileInCategory(const QString& catId, const QString& fileName) const {
+    const TagCategory* cat = findById(m_storage->categoriesRef(), catId);
+    return cat && cat->files.contains(fileName);
 }
 
-QStringList TagManager::uncategorizedTags() const {
-    QStringList all = m_storage->allTags();
-    QStringList inCats = allTagsInTree(m_storage->categoriesRef());
-    QStringList result;
-    for (const QString& t : all)
-        if (!inCats.contains(t)) result.append(t);
-    return result;
+namespace {
+// Rekursiver Sammler: alle Kategorien, denen die Datei DIREKT angehört.
+// pick wählt, ob Name oder ID gesammelt wird.
+void collectFileCategories(const QList<TagCategory>& list, const QString& fileName,
+                           QStringList& out, bool ids) {
+    for (const auto& cat : list) {
+        if (cat.files.contains(fileName))
+            out.append(ids ? cat.id : cat.name);
+        collectFileCategories(cat.children, fileName, out, ids);
+    }
+}
+}
+
+QStringList TagManager::categoriesForFile(const QString& fileName) const {
+    QStringList out;
+    collectFileCategories(m_storage->categoriesRef(), fileName, out, /*ids=*/false);
+    return out;
+}
+
+QStringList TagManager::categoryIdsForFile(const QString& fileName) const {
+    QStringList out;
+    collectFileCategories(m_storage->categoriesRef(), fileName, out, /*ids=*/true);
+    return out;
 }
 
 // ── Static helpers ────────────────────────────────────────────────────────────
@@ -235,13 +287,4 @@ bool TagManager::removeById(QList<TagCategory>& list, const QString& id) {
         if (removeById(list[i].children, id)) return true;
     }
     return false;
-}
-
-QStringList TagManager::allTagsInTree(const QList<TagCategory>& list) {
-    QStringList result;
-    for (const auto& cat : list) {
-        result += cat.tags;
-        result += allTagsInTree(cat.children);
-    }
-    return result;
 }

@@ -35,7 +35,6 @@
 #include "PdfMediaHandler.h"
 
 #include <QFile>
-#include <QDir>
 #include <QFileInfo>
 #include <QStandardPaths>
 #include <QDebug>
@@ -47,13 +46,6 @@
 PdfMediaHandler::PdfMediaHandler(QPdfDocument* doc, QObject* parent)
     : QObject(parent), m_doc(doc)
 {}
-
-void PdfMediaHandler::cleanup() {
-    for (const QString& p : std::as_const(m_tempFiles)) {
-        QFile::remove(p);
-    }
-    m_tempFiles.clear();
-}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Public interface
@@ -75,34 +67,6 @@ void PdfMediaHandler::scanDocument(const QString& pdfPath) {
 
     qDebug() << "PdfMediaHandler: found" << m_annotations.size()
              << "media annotation(s) in" << QFileInfo(pdfPath).fileName();
-}
-
-QVector<MediaAnnotation> PdfMediaHandler::annotationsForPage(int page) const {
-    QVector<MediaAnnotation> result;
-    for (const auto& ann : m_annotations)
-        if (ann.page == page) result.append(ann);
-    return result;
-}
-
-QVector<MediaAnnotation> PdfMediaHandler::allLinks() const {
-    QVector<MediaAnnotation> result;
-    for (const auto& ann : m_annotations)
-        if (ann.type == MediaAnnotation::Type::Link) result.append(ann);
-    return result;
-}
-
-bool PdfMediaHandler::hasMedia() const {
-    for (const auto& ann : m_annotations)
-        if (ann.type == MediaAnnotation::Type::Audio ||
-            ann.type == MediaAnnotation::Type::Video)
-            return true;
-    return false;
-}
-
-bool PdfMediaHandler::hasLinks() const {
-    for (const auto& ann : m_annotations)
-        if (ann.type == MediaAnnotation::Type::Link) return true;
-    return false;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

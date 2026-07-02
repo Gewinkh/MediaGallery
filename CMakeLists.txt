@@ -5,10 +5,7 @@ set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_AUTOMOC ON)
 set(CMAKE_AUTORCC ON)
-# AUTOUIC entfernt: keine .ui-Dateien mehr (UI = 100% QML).
 
-# Phase 5: Widgets / MultimediaWidgets / PdfWidgets vollstaendig entfernt.
-# UI ist 100% Qt Quick/QML, Backend 100% C++ (QGuiApplication).
 find_package(Qt6 6.4 REQUIRED COMPONENTS
     Core
     Gui
@@ -18,9 +15,9 @@ find_package(Qt6 6.4 REQUIRED COMPONENTS
     Multimedia
     Pdf
     Svg
+    WebEngineQuick
 )
 
-# Fuer FlateDecode-Inflate der eingebetteten PDF-Audio-Streams (PdfAudioController).
 find_package(ZLIB REQUIRED)
 
 set(SOURCES
@@ -38,7 +35,6 @@ set(SOURCES
     src/ViewerController.h
     src/FolderService.cpp
     src/FolderService.h
-    src/MediaItem.cpp
     src/MediaItem.h
     src/MediaModel.cpp
     src/MediaModel.h
@@ -61,7 +57,6 @@ set(SOURCES
     src/PdfAudioController.h
     src/Strings.cpp
     src/Strings.h
-    src/Icons.h
     src/PathUtils.h
     qml.qrc
 )
@@ -77,6 +72,7 @@ target_link_libraries(MediaGallery PRIVATE
     Qt6::Multimedia
     Qt6::Pdf
     Qt6::Svg
+    Qt6::WebEngineQuick
     ZLIB::ZLIB
 )
 

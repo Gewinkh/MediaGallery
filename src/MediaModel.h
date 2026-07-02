@@ -93,7 +93,6 @@ private:
     void rebuild(const QString& folderPath);   // startet inkrementelle Befüllung
     void feedChunk(bool firstChunk);           // eine Charge Zeilen einspeisen
     void finishFill();                         // Aufräumen nach letzter Charge
-    void rebuildIndex();                       // Pfad→Row neu aufbauen (Mutationen)
     int  rowForPath(const QString& filePath) const;
     void emitRow(int row, const QVector<int>& roles);
 

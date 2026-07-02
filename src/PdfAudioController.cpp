@@ -430,12 +430,18 @@ QByteArray readSlice(const QString& path, qsizetype start, qsizetype len) {
     const QByteArray b = f.read(len); f.close(); return b;
 }
 
-QString writeTempWav(const QString& pdfPath, int id, const QByteArray& bytes) {
+QString writeTempWav(const QString& pdfPath, int id, int gen, const QByteArray& bytes) {
     const QString dir  = QStandardPaths::writableLocation(QStandardPaths::TempLocation);
     const QString base = QFileInfo(pdfPath).completeBaseName();
     // Pfad-Hash gegen Kollisionen zwischen gleichnamigen PDFs verschiedener Ordner.
     const QString tag  = QString::number(qHash(pdfPath) & 0xffff, 16);
-    const QString path = dir + QString("/mgaudio_%1_%2_%3.wav").arg(base, tag).arg(id);
+    // Generationszahl im Namen: JEDE Dokument-Session schreibt in FRISCHE Dateien
+    // (keine Pfad-Wiederverwendung). Beim erneuten Öffnen desselben PDFs kann die
+    // Extraktion damit nie mit einer evtl. noch offenen/gesperrten WAV der
+    // vorherigen Session kollidieren (Windows-Dateisperre → open(WriteOnly)
+    // schlug fehl → clipReady mit leerer URL → „jede zweite Datei stumm").
+    const QString path = dir + QString("/mgaudio_%1_%2_g%3_%4.wav")
+                                   .arg(base, tag).arg(gen).arg(id);
     QFile f(path); if (!f.open(QIODevice::WriteOnly)) return {};
     f.write(bytes); f.close(); return path;
 }
@@ -472,7 +478,7 @@ public:
                 if (bps > 0) durMs = int(double(pcm.size()) / double(qint64(m_clip.rate) * bps) * 1000.0 + 0.5);
                 QByteArray file = wavHeader(pcm.size(), m_clip.channels, m_clip.rate, m_clip.bits);
                 file.append(pcm);
-                wav = writeTempWav(m_path, m_clip.id, file);
+                wav = writeTempWav(m_path, m_clip.id, m_gen, file);
                 bytes = file.size();
             }
         }

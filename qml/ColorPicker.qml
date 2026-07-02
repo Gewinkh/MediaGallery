@@ -98,9 +98,14 @@ Item {
     // ── Popup mit Picker-UI ───────────────────────────────────────────────────
     Popup {
         id: popup
-        width: 264
-        // Genug Höhe für Titel + SV + Hue + (Alpha) + Hex + Buttons
-        height: 250 + (root.showAlpha ? 26 : 0)
+        // Größe ergibt sich automatisch aus dem Inhalt (contentItem = Column,
+        // implicitWidth/-Height aus deren Kindern) statt einer hartcodierten
+        // Höhen-Formel — die bisherige feste Höhe (250 + evtl. 26 für Alpha)
+        // war zu knapp bemessen (Titel + SV-Feld + Hue + Vorschau/Hex + Buttons
+        // brauchen mehr Platz als veranschlagt), wodurch der untere Teil des
+        // Popups (Buttons) über den vorgesehenen Rahmen hinausragte. Automatische
+        // Größe ist zudem robust gegenüber Schriftgröße/Style/Plattform.
+        padding: 16
         modal: true
         focus: true
         closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside

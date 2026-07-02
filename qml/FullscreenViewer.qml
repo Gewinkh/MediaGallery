@@ -32,6 +32,21 @@ FocusScope {
     property var    dateTime
     property bool   randomNext: false
 
+    // ── HTML-Vorschau (nur Typ 4 / Text mit Endung .html/.htm) ────────────────
+    //  „Gerendert zuerst": Web-Dateien öffnen direkt in der Vorschau (HtmlSurface);
+    //  der Umschalt-Button oben rechts wechselt zur Quelltext-Ansicht (TextSurface)
+    //  und zurück. Der Zustand bleibt über die Navigation hinweg erhalten;
+    //  nicht-renderbare Dateien (z. B. .css, .txt) zeigen immer den Quelltext.
+    property bool _htmlPreview: true
+    function _isHtmlPath(p) {
+        var dot = p.lastIndexOf(".")
+        if (dot < 0) return false
+        var ext = p.substring(dot + 1).toLowerCase()
+        return ext === "html" || ext === "htm"
+    }
+    readonly property bool _isWebRenderable: root.type === 4 && root._isHtmlPath(root.path)
+    readonly property bool _showWebPreview:  root._isWebRenderable && root._htmlPreview
+
     // Lade-Gating: Die schwere Medien-/PDF-Last erst NACH dem StackView-Übergang
     // anstoßen (Status Active) → die Öffnen-Animation läuft flüssig über einen
     // leichten Platzhalter statt gegen das synchrone PDF-Laden/Erstrendern.
@@ -233,17 +248,19 @@ FocusScope {
             case 1:  return (App.videoPlayback === "external") ? externalNote : videoComponent
             case 2:  return videoComponent      // Audio: VideoSurface mit Audio-Out
             case 3:  return pdfComponent
-            case 4:  return textComponent
+            case 4:  return root._showWebPreview ? htmlComponent : textComponent
             default: return unsupportedNote
             }
         }
         onItemChanged: if (item && item.hasOwnProperty("source")) item.source = root.path
     }
 
-    // ── PDF-Chrome unterhalb der globalen Leisten halten (kein Overlap) ────────
+    // ── Surface-Chrome unterhalb der globalen Leisten halten (kein Overlap) ────
     //  Reserviert die obere (topBar) und untere (Datei-Navigation) Hoehe in der
-    //  PdfSurface, sodass deren eigene Toolbar/Thumbnails NICHT mit der globalen
-    //  FullscreenViewer-Chrome ueberlappen.
+    //  jeweiligen Surface, sodass deren eigene Toolbar/Steuerleiste NICHT mit
+    //  der globalen FullscreenViewer-Chrome ueberlappen. topInset: PDF/Text/HTML
+    //  (eigene Toolbar oben). bottomInset: PDF/Text/HTML + Video/Audio (eigene
+    //  Steuerleiste unten, z. B. VideoSurface-Wiedergabeleiste).
     Binding {
         target: surface.item
         property: "topInset"
@@ -255,7 +272,12 @@ FocusScope {
         target: surface.item
         property: "bottomInset"
         value: bottomNav.visible ? 74 : 0
-        when: surface.item !== null && (root.type === 3 || root.type === 4)
+        // Auch Video/Audio (Typ 1/2): VideoSurface hebt damit ihre eigene
+        // Steuerleiste (Play/Seek/Lautstärke) über die globale Navigation
+        // (◀ N/M ▶) an, statt von ihr verdeckt zu werden — bottomNav selbst
+        // bleibt unverändert ganz unten.
+        when: surface.item !== null && (root.type === 1 || root.type === 2
+                                         || root.type === 3 || root.type === 4)
         restoreMode: Binding.RestoreNone
     }
 
@@ -311,6 +333,9 @@ FocusScope {
 
     // ── Text ──────────────────────────────────────────────────────────────────
     Component { id: textComponent; TextSurface {} }
+
+    // ── HTML (gerenderte Vorschau über WebEngine) ─────────────────────────────
+    Component { id: htmlComponent; HtmlSurface {} }
 
     // ── Hinweise ────────────────────────────────────────────────────────────
     Component {
@@ -385,10 +410,29 @@ FocusScope {
                     onActivated: dateEditor.openWith(root.dateTime)
                 }
 
+                // Quelltext ⇄ gerenderte HTML-Vorschau — nur sichtbar bei .html/.htm.
+                ChromeBtn {
+                    id: previewBtn
+                    visible: root._isWebRenderable
+                    anchors.right: calBtn.left; anchors.rightMargin: 8
+                    anchors.verticalCenter: parent.verticalCenter
+                    kind: "html"
+                    active: root._htmlPreview
+                    tip: root._htmlPreview ? App.uiText(App.language, "ViewerShowSource")
+                                           : App.uiText(App.language, "ViewerShowPreview")
+                    onActivated: {
+                        // Vor dem Komponentenwechsel die aktuelle Surface freigeben:
+                        // TextSurface sichert dabei ungespeicherte Änderungen, HtmlSurface
+                        // stoppt das Laden. Danach kippt der Modus → Loader tauscht die Surface.
+                        root.releaseCurrent()
+                        root._htmlPreview = !root._htmlPreview
+                    }
+                }
+
                 TextField {
                     id: nameEdit
                     anchors.left: backBtn.right; anchors.leftMargin: 8
-                    anchors.right: calBtn.left; anchors.rightMargin: 12
+                    anchors.right: previewBtn.visible ? previewBtn.left : calBtn.left; anchors.rightMargin: 12
                     anchors.verticalCenter: parent.verticalCenter
                     text: root.displayName
                     color: "white"
@@ -427,13 +471,20 @@ FocusScope {
     }
 
     // ── Untere Leiste: prev / next ────────────────────────────────────────────
+    //  Einheitlich für ALLE Medientypen standardmäßig ausgeblendet — erscheint
+    //  erst, sobald der Mauszeiger in den unteren 10 % des Viewers steht
+    //  (root._bottomNavHover), und verschwindet wieder, sobald er diese
+    //  Zone verlässt. Die eigene Steuerleiste der aktiven Surface (z. B.
+    //  VideoSurface-Wiedergabeleiste) folgt reaktiv über bottomInset (Binding
+    //  oben, an bottomNav.visible gekoppelt) — rückt beim Einblenden mit nach
+    //  oben, beim Ausblenden wieder nach unten.
     Row {
         id: bottomNav
         anchors.bottom: parent.bottom
         anchors.horizontalCenter: parent.horizontalCenter
         anchors.bottomMargin: 20
         spacing: 16
-        opacity: root.barOpacity
+        opacity: root._bottomNavHover ? 1.0 : 0.0
         visible: opacity > 0.01
         Behavior on opacity { NumberAnimation { duration: 180 } }
 
@@ -464,7 +515,9 @@ FocusScope {
         }
     }
 
-    // ── Auto-Hide der Leisten ──────────────────────────────────────────────────
+    // ── Auto-Hide der oberen Leiste ─────────────────────────────────────────
+    //  Betrifft nur noch topBar (Zurück/Name/Datum/Tags) — die untere
+    //  Navigation hat oben ihre eigene, unabhängige Hover-Logik.
     property real barOpacity: 1.0
     HoverHandler {
         id: viewHover
@@ -474,9 +527,19 @@ FocusScope {
         id: barTimer
         interval: 2800
         running: true
-        // Nur Bilder blenden die Leisten automatisch aus; PDFs behalten ihre
-        // Chrome dauerhaft (stabile, einheitliche Struktur ohne Layout-Springen).
+        // Nur Bilder blenden die obere Leiste automatisch aus; alle anderen
+        // Medientypen behalten topBar dauerhaft sichtbar.
         onTriggered: root.barOpacity = (root.type === 0) ? 0.0 : 1.0
+    }
+
+    // ── Untere Navigation: Sichtbarkeit über Hover-Position in den unteren 10 %
+    //  Ein eigener HoverHandler (statt viewHover mitzunutzen) bleibt bewusst
+    //  unabhängig von der Auto-Hide-Logik der oberen Leiste — reine
+    //  Positionsauswertung, kein Timer/Delay.
+    property bool _bottomNavHover: false
+    HoverHandler {
+        onPointChanged: root._bottomNavHover = point.position.y >= root.height * 0.90
+        onHoveredChanged: if (!hovered) root._bottomNavHover = false
     }
 
     // ── Datum-Editor ───────────────────────────────────────────────────────────
@@ -500,6 +563,24 @@ FocusScope {
         if (event.key === Qt.Key_Escape)      { root.backRequested(); event.accepted = true }
         else if (event.key === Qt.Key_Left)   { root.prevRow();       event.accepted = true }
         else if (event.key === Qt.Key_Right)  { root.nextRow();       event.accepted = true }
+    }
+
+    // ── S-Modus im Viewer (Alt+S) ─────────────────────────────────────────────
+    //  Schaltet den Optionen-/S-Modus (App.optionsVisible) auch im geöffneten
+    //  Media Viewer um — sichtbar an der erweiterten Metadaten-Zeile der oberen
+    //  Leiste (Datum + Tags) und an den Kachel-Overlays nach der Rückkehr.
+    //  Einheitliches Kürzel mit der Galerie-Seite: deren Alt+S-Shortcut ist per
+    //  stack.depth-Guard hier inaktiv — keine Kollision; ebenso wenig mit
+    //  Ctrl+S (Text speichern, TextSurface) oder den übrigen Viewer-Kürzeln
+    //  (Esc/←/→/+/-/Ctrl+C/Ctrl+A). Beim Umschalten wird
+    //  die obere Leiste kurz eingeblendet, damit die Wirkung sofort sichtbar ist.
+    Shortcut {
+        sequence: "Alt+S"
+        onActivated: {
+            App.toggleOptions()
+            root.barOpacity = 1.0
+            barTimer.restart()
+        }
     }
 
     // ── Minimalistischer Chrome-Button (flach, monochrom, theme-Akzent) ───────
@@ -544,6 +625,18 @@ FocusScope {
                 Rectangle { x: 7.5; y: 7.5; width: 3; height: 3; radius: 1.5; color: "#e8efed" }
                 Rectangle { x: 3;   y: 12;  width: 3; height: 3; radius: 1.5; color: "#e8efed" }
                 Rectangle { x: 12;  y: 12;  width: 3; height: 3; radius: 1.5; color: "#e8efed" }
+            }
+
+            // Web-Seite (HTML-Vorschau): Fensterrahmen + Titelleiste + Inhaltszeilen
+            Item {
+                anchors.fill: parent
+                visible: cb.kind === "html"
+                Rectangle { anchors.fill: parent; radius: 2; color: "transparent"
+                            border.color: "#e8efed"; border.width: 1.4 }
+                Rectangle { anchors.top: parent.top; anchors.left: parent.left
+                            anchors.right: parent.right; height: 5; radius: 1; color: "#e8efed" }
+                Rectangle { x: 3; y: 9;  width: 12; height: 1.6; radius: 0.8; color: "#e8efed" }
+                Rectangle { x: 3; y: 12; width: 8;  height: 1.6; radius: 0.8; color: "#e8efed" }
             }
         }
 

@@ -101,7 +101,7 @@ Rectangle {
         }
     }
 
-    // ── Interaktion (Bildbereich): Aktivieren / Tag-Toggle ──────────────────
+    // ── Interaktion (Bildbereich): Aktivieren / Tag-Toggle / Kontextmenü ─────
     MouseArea {
         anchors.fill: parent
         acceptedButtons: Qt.LeftButton | Qt.RightButton
@@ -110,11 +110,80 @@ Rectangle {
                 tile.activated(tile.filePath)
         }
         onClicked: function(mouse) {
-            if (tile.modeTag.length === 0) return
+            // Ohne aktiven View-Modus öffnet Rechtsklick das Kontextmenü
+            // (Tag/Kategorie hinzufügen). Die Modus-Interaktionen (Group/
+            // Add-to-Tag) bleiben unverändert und haben Vorrang.
+            if (tile.modeTag.length === 0) {
+                if (mouse.button === Qt.RightButton)
+                    ctxMenu.popup()
+                return
+            }
             if (tile.tagMode === 2 && mouse.button === Qt.LeftButton)
                 mediaModel.toggleTag(tile.filePath, tile.modeTag)
             else if (tile.tagMode === 1 && mouse.button === Qt.RightButton)
                 mediaModel.toggleTag(tile.filePath, tile.modeTag)
+        }
+    }
+
+    // ── Kontextmenü: Tag / Kategorie hinzufügen ──────────────────────────────
+    //  Speist sich beim Öffnen frisch aus der JSON-Persistenz (App.allTags /
+    //  Tags.categoriesFlat). Bereits zugewiesene Werte sind angehakt; erneutes
+    //  Auswählen entfernt sie wieder (Toggle). Mutationen laufen über
+    //  mediaModel.toggleTag (Tags, aktualisiert TagsRole) bzw.
+    //  Tags.toggleFileInCategory (direkte Datei↔Kategorie-Mitgliedschaft).
+    readonly property string fileName: filePath.substring(
+        Math.max(filePath.lastIndexOf("/"), filePath.lastIndexOf("\\")) + 1)
+
+    Menu {
+        id: ctxMenu
+        property var ctxTags: []       // alle Tags (JSON)
+        property var ctxCats: []       // flacher Kategorienbaum [{id,name,color}]
+        property var fileTags: []      // Tags der Datei
+        property var fileCatIds: []    // Kategorie-IDs der Datei
+        onAboutToShow: {
+            ctxTags    = App.allTags()
+            ctxCats    = Tags.categoriesFlat()
+            fileTags   = App.tagsForFile(tile.fileName)
+            fileCatIds = Tags.categoryIdsForFile(tile.fileName)
+        }
+
+        Menu {
+            title: App.uiText(App.language, "CtxAddTag")
+            MenuItem {
+                visible: ctxMenu.ctxTags.length === 0
+                height: visible ? implicitHeight : 0
+                enabled: false
+                text: App.uiText(App.language, "FilterNoTagsShort")
+            }
+            Repeater {
+                model: ctxMenu.ctxTags
+                delegate: MenuItem {
+                    required property var modelData
+                    text: modelData
+                    checkable: true
+                    checked: ctxMenu.fileTags.indexOf(modelData) >= 0
+                    onTriggered: mediaModel.toggleTag(tile.filePath, modelData)
+                }
+            }
+        }
+        Menu {
+            title: App.uiText(App.language, "CtxAddCategory")
+            MenuItem {
+                visible: ctxMenu.ctxCats.length === 0
+                height: visible ? implicitHeight : 0
+                enabled: false
+                text: App.uiText(App.language, "CtxNoCategories")
+            }
+            Repeater {
+                model: ctxMenu.ctxCats
+                delegate: MenuItem {
+                    required property var modelData
+                    text: modelData.name
+                    checkable: true
+                    checked: ctxMenu.fileCatIds.indexOf(modelData.id) >= 0
+                    onTriggered: Tags.toggleFileInCategory(modelData.id, tile.fileName)
+                }
+            }
         }
     }
 

@@ -6,6 +6,8 @@
 #include <QQuickStyle>
 #include <QQuickImageProvider>
 #include <QUrl>
+#include <QTimer>                    // verzögertes Löschen des RHI-Crash-Guards nach Start
+#include <QtWebEngineQuick>          // WebEngine-Vorschau (HtmlSurface): initialize() vor QGuiApplication
 
 #include "src/RhiProber.h"
 #include "src/AppSettings.h"
@@ -34,6 +36,13 @@ int main(int argc, char* argv[]) {
         Qt::HighDpiScaleFactorRoundingPolicy::PassThrough);
 
     QQuickStyle::setStyle(QStringLiteral("Fusion"));
+
+    // ── Qt WebEngine initialisieren ───────────────────────────────────────────
+    // Richtet den zwischen GUI- und Render-Prozess geteilten OpenGL-Kontext ein
+    // (entspricht Qt::AA_ShareOpenGLContexts). MUSS vor dem Erzeugen der
+    // QGuiApplication aufgerufen werden — danach ist es deprecated und kann
+    // fehlschlagen. Wird von HtmlSurface.qml (HTML-Vorschau) benötigt.
+    QtWebEngineQuick::initialize();
 
     QGuiApplication app(argc, argv);
     app.setApplicationName("MediaGallery");
@@ -117,9 +126,26 @@ int main(int argc, char* argv[]) {
     if (engine.rootObjects().isEmpty())
         return -1;
 
+    // ── Crash-Guard früh entschärfen (WICHTIG seit WebEngine-Vorschau) ────────
+    // Der RHI-Crash-Guard soll NUR Backends abfangen, die gar nicht starten/
+    // rendern können — solche Defekte schlagen sofort beim Start zu (< wenige
+    // Sekunden). Ein SPÄTERER Crash ist kein Backend-Defekt und darf den Guard
+    // nicht auslösen. Qt WebEngine stürzt auf manchen Linux-Grafikstacks beim
+    // Teardown (App schließen) ab; läge das Löschen des Guards — wie zuvor —
+    // erst NACH app.exec(), bliebe der Guard nach so einem Crash gesetzt und der
+    // nächste Start würde fälschlich auf Software-Rendering zurückfallen
+    // (= massiver Lag der HTML-Vorschau, Endlosschleife). Deshalb den Guard
+    //   (a) kurz nach erfolgreichem Start  und
+    //   (b) beim regulären Beenden (aboutToQuit, VOR dem Teardown)
+    // löschen — ein WebEngine-Schließen-Crash oder ein per kill beendeter
+    // Hänger kann dann nie wieder Software erzwingen.
+    QTimer::singleShot(4000, &app, [] { RhiProber::markCleanShutdown(); });
+    QObject::connect(&app, &QGuiApplication::aboutToQuit,
+                     &app, [] { RhiProber::markCleanShutdown(); });
+
     const int ret = app.exec();
 
-    // ── Sauberes Ende: Crash-Guard löschen ───────────────────────────────────
+    // Fallback für Exit-Pfade ohne aboutToQuit.
     RhiProber::markCleanShutdown();
     return ret;
 }

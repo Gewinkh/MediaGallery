@@ -85,13 +85,3 @@ void RhiProber::setDesiredBackend(const QString& backend)
     s.setValue(QString::fromUtf8(kKeyBackend), backend.toLower());
     s.sync();
 }
-
-// ─────────────────────────────────────────────────────────────────────────────
-//  storedBackend — aktuell gespeichertes Backend lesen
-// ─────────────────────────────────────────────────────────────────────────────
-QString RhiProber::storedBackend()
-{
-    QSettings s(QStringLiteral("MediaGallery"), QStringLiteral("MediaGallery"));
-    return s.value(QString::fromUtf8(kKeyBackend),
-                   QStringLiteral("opengl")).toString().toLower();
-}

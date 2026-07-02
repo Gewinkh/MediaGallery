@@ -6,9 +6,7 @@
 #include <QImage>
 #include <QPainter>
 #include <QBuffer>
-#include <QThread>
 #include <QMutexLocker>
-#include <QMetaObject>
 #include <utility>
 
 // ══════════════════════════════════════════════════════════════════════════════
@@ -130,15 +128,11 @@ void PdfThumbRenderTask::run() {
 
     // EIGENE Instanz → eigener PDFium-Render-Mutex (entkoppelt von der Hauptansicht).
     QPdfDocument doc;
-    if (doc.load(m_path) != QPdfDocument::Error::None) {
-        emit documentFailed(m_docId);
+    if (doc.load(m_path) != QPdfDocument::Error::None)
         return;
-    }
     const int n = doc.pageCount();
-    if (n <= 0) {
-        emit documentFailed(m_docId);
+    if (n <= 0)
         return;
-    }
 
     // Render-Reihenfolge: von der sichtbaren Seite nach aussen wachsend.
     QList<int> order;
@@ -191,10 +185,8 @@ void PdfThumbRenderTask::run() {
     }
 
     // Abschliessender Abbruch-Check: wurde das Dokument waehrend der letzten Seite
-    // verdraengt, dessen Seiten ebenfalls freigeben statt documentReady zu melden.
+    // verdraengt, dessen Seiten ebenfalls freigeben.
     if (cancelled()) { m_store->dropDocument(m_docId); return; }
-
-    emit documentReady(m_docId, n);
     // doc geht hier out of scope → die grosse Instanz wird sofort geschlossen.
 }
 
@@ -269,10 +261,6 @@ int PdfThumbnailProvider::ensureDocument(const QString& pathOrUrl, int startPage
         // Queued auf den GUI-Thread (Task lebt im Pool-Thread). Re-Emit an QML.
         connect(task, &PdfThumbRenderTask::pageReady,
                 this, &PdfThumbnailProvider::pageReady, Qt::QueuedConnection);
-        connect(task, &PdfThumbRenderTask::documentReady,
-                this, &PdfThumbnailProvider::documentReady, Qt::QueuedConnection);
-        connect(task, &PdfThumbRenderTask::documentFailed,
-                this, &PdfThumbnailProvider::documentFailed, Qt::QueuedConnection);
 
         m_pool.start(task);
     }

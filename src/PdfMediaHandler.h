@@ -42,10 +42,6 @@ struct MediaAnnotation {
     QString label;                  // /Contents or /NM
     Type    type      = Type::Unknown;
 
-    bool hasMedia() const {
-        return !sourcePath.isEmpty() || !sourceUrl.isEmpty();
-    }
-
     // Returns the best playback URI
     QString resolvedUri() const {
         if (!sourcePath.isEmpty()) return sourcePath;
@@ -65,27 +61,12 @@ public:
     // Call once after the document is Ready.
     void scanDocument(const QString& pdfPath);
 
-    // Per-page query (0-based)
-    QVector<MediaAnnotation> annotationsForPage(int page) const;
-
     // All annotations across all pages
     const QVector<MediaAnnotation>& allAnnotations() const { return m_annotations; }
 
     // In scanDocument() angelegte Temp-Dateien (extrahierte Medienstreams).
     // Erlaubt dem Aufrufer das Aufraeumen, OHNE den Handler am Leben zu halten.
     const QStringList& tempFiles() const { return m_tempFiles; }
-
-    // Cleans up temp files created during this session
-    void cleanup();
-
-    // All link annotations (Type::Link) across all pages
-    QVector<MediaAnnotation> allLinks() const;
-
-    // Returns true if any media annotation (audio/video) was found
-    bool hasMedia() const;
-
-    // Returns true if any link annotation was found
-    bool hasLinks() const;
 
 private:
     QPdfDocument*            m_doc = nullptr;

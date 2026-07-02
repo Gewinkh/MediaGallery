@@ -110,5 +110,4 @@ private:
     QThreadPool   m_pool;
 
     QString       m_selText;         // zuletzt markierter Text
-    int           m_selPage = -1;    // Seite der aktuellen Auswahl
 };

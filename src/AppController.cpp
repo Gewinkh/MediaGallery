@@ -8,15 +8,12 @@
 #include "MediaItem.h"     // MediaItem::detectType für Drop-Behandlung
 #include "RhiProber.h"
 
-#include <QByteArray>
-#include <QHash>
-#include <QImage>
 #include <QFileInfo>
 #include <QDir>
 #include <QFile>
-#include <QSettings>
-#include <QVariant>
 #include <QVariantMap>
+#include <QSize>
+#include <QPoint>
 
 AppController::AppController(ISettings& settings,
                             FolderService& folderService,
@@ -53,8 +50,6 @@ AppController::AppController(ISettings& settings,
 
 // ── Ordner ───────────────────────────────────────────────────────────────────
 QString AppController::currentFolder() const { return m_folderService.currentFolder(); }
-void    AppController::openFolder(const QString& path)  { m_folderService.openFolder(path); }
-void    AppController::saveCurrentFolder()              { m_folderService.saveCurrentFolder(); }
 void    AppController::restoreLastFolder()              { m_folderService.restoreLastFolder(); }
 
 void AppController::openFolderUrl(const QUrl& url) {
@@ -310,7 +305,6 @@ bool AppController::trySetRhiBackend(const QString& backend) {
     // Kein Probe-Prozess, kein Test. Der Crash-Guard in RhiProber fängt
     // einen fehlerhaften Start beim nächsten Mal automatisch ab.
     RhiProber::setDesiredBackend(backend);
-    emit rhiBackendChanged();
     return true;
 }
 
@@ -342,15 +336,11 @@ void AppController::saveWindowState(int w, int h, int x, int y, bool maximized) 
 QStringList AppController::allTags() const                       { return m_tagManager.allTags(); }
 QColor      AppController::tagColor(const QString& tag) const     { return m_tagManager.tagColor(tag); }
 QStringList AppController::tagsForFile(const QString& f) const    { return m_tagManager.tagsForFile(f); }
-QStringList AppController::categoriesForFile(const QString& f) const { return m_tagManager.categoriesForFile(f); }
 
 void AppController::addTagToFile(const QString& f, const QString& tag)      { m_tagManager.addTagToFile(f, tag); }
 void AppController::removeTagFromFile(const QString& f, const QString& tag) { m_tagManager.removeTagFromFile(f, tag); }
-void AppController::setTagsForFile(const QString& f, const QStringList& t)  { m_tagManager.setTagsForFile(f, t); }
 
 // ── Datei-Metadaten ──────────────────────────────────────────────────────────
-bool      AppController::hasCustomDate(const QString& f) const { return m_storage.hasCustomDate(f); }
-QDateTime AppController::customDate(const QString& f) const     { return m_storage.getCustomDate(f); }
 void      AppController::setCustomDate(const QString& f, const QDateTime& dt) { m_storage.setCustomDate(f, dt); }
 void      AppController::clearCustomDate(const QString& f)      { m_storage.clearCustomDate(f); }
 
@@ -371,10 +361,17 @@ QString AppController::uiText(const QString& lang, const QString& key) const {
 QString AppController::fileUrl(const QString& path) const {
     if (path.isEmpty())
         return QString();
-    // Bereits eine URL? Unverändert zurückgeben.
-    if (path.startsWith(QStringLiteral("file:")) ||
-        path.startsWith(QStringLiteral("qrc:"))  ||
-        path.startsWith(QStringLiteral("image://")))
+    // Bereits eine URL? Unverändert zurückgeben — inkl. http(s), da z. B.
+    // PdfMediaHandler::resolvedUri() bei verlinkten (nicht eingebetteten)
+    // Medien eine externe URL statt eines lokalen Pfades liefern kann
+    // (genutzt von VideoSurface für PDF-Video-/Link-Annotationen). Bewusst
+    // keine generische Schema-Erkennung per Doppelpunkt, da Windows-
+    // Laufwerksbuchstaben ("C:\…") sonst fälschlich als Schema gälten.
+    if (path.startsWith(QStringLiteral("file:"))  ||
+        path.startsWith(QStringLiteral("qrc:"))   ||
+        path.startsWith(QStringLiteral("image://")) ||
+        path.startsWith(QStringLiteral("http://")) ||
+        path.startsWith(QStringLiteral("https://")))
         return path;
     return QUrl::fromLocalFile(path).toString();
 }

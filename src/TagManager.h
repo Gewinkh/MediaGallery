@@ -19,7 +19,6 @@ public:
 
     void addTagToFile(const QString& fileName, const QString& tag);
     void removeTagFromFile(const QString& fileName, const QString& tag);
-    void setTagsForFile(const QString& fileName, const QStringList& tags);
     QStringList tagsForFile(const QString& fileName) const;
 
     void createTag(const QString& name, const QColor& color); // create a global tag with a specific color
@@ -36,6 +35,10 @@ public:
     void deleteCategory(const QString& id);
     void setCategoryUniformColor(const QString& id, bool uniform, const QColor& color,
                                  bool inheritToChildren = false);
+    // Kategorie (inkl. Teilbaum) an eine neue Position im Baum verschieben.
+    // newParentId leer = Wurzelebene. No-op, wenn das Ziel im eigenen Teilbaum
+    // liegt (der Knoten würde sonst verloren gehen) oder id == newParentId.
+    void moveCategory(const QString& id, const QString& newParentId);
     // Returns the effective display color for a category (uniform color if set,
     // or the default teal). Useful for dropdowns that need a live color lookup.
     QColor categoryColor(const QString& id) const;
@@ -48,13 +51,15 @@ public:
                            const QString& fromCatId,
                            const QString& toCatId);
 
-    // File <-> category membership
+    // ── Datei ↔ Kategorie (direkte Mitgliedschaft, TagCategory::files) ────────
+    //  Bisher entstanden Datei-Einträge nur über Legacy-JSON bzw. den Converter —
+    //  ohne Setter konnte QML Dateien weder Kategorien zuweisen noch die
+    //  Mitgliedschaft anzeigen. Schlüssel ist der DATEINAME (wie beim Tag-System).
     void addFileToCategory(const QString& catId, const QString& fileName);
     void removeFileFromCategory(const QString& catId, const QString& fileName);
-    QStringList categoriesForFile(const QString& fileName) const;  // returns category IDs
-
-    // Tags not yet in any category
-    QStringList uncategorizedTags() const;
+    bool fileInCategory(const QString& catId, const QString& fileName) const;
+    QStringList categoriesForFile(const QString& fileName) const;   // Namen (rekursiv)
+    QStringList categoryIdsForFile(const QString& fileName) const;  // IDs   (rekursiv)
 
 signals:
     void tagsChanged();
@@ -67,6 +72,5 @@ private:
     static TagCategory* findById(QList<TagCategory>& list, const QString& id);
     static const TagCategory* findById(const QList<TagCategory>& list, const QString& id);
     static bool         removeById(QList<TagCategory>& list, const QString& id);
-    static QStringList  allTagsInTree(const QList<TagCategory>& list);
     static void         applyColorToChildren(QList<TagCategory>& children, const QColor& color);
 };

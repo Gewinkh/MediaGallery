@@ -56,8 +56,23 @@ ApplicationWindow {
     }
 
     // ── Menüleiste ───────────────────────────────────────────────────────────
+    //  ThemedMenu: bisher folgten die Menü-POPUPS (Datei/Ansicht/Einstellungen/
+    //  Ordner + deren Untermenüs) NICHT der in Einstellungen ▸ Design gewählten
+    //  Menüleisten-Farbe (App.themeMenuBarBg) — nur die Leiste selbst (via
+    //  palette.button) war korrekt eingefärbt, die aufklappenden Popups nutzten
+    //  weiterhin die Fusion-Standardfarbe. Analog zum bereits korrekt
+    //  eingefärbten Filter-Popup (FilterBar.qml) bekommt jedes Menu hier
+    //  denselben expliziten Hintergrund.
+    component ThemedMenu: Menu {
+        background: Rectangle {
+            color: App.themeMenuBarBg
+            border.color: App.themeBorder; border.width: 1
+            radius: 6
+        }
+    }
+
     menuBar: MenuBar {
-        Menu {
+        ThemedMenu {
             title: App.menuFileText
             MenuItem { text: App.menuOpenFolderText; onTriggered: folderDialog.open() }
             MenuItem {
@@ -69,7 +84,7 @@ ApplicationWindow {
             MenuItem { text: App.menuQuitText; onTriggered: Qt.quit() }
         }
 
-        Menu {
+        ThemedMenu {
             title: App.menuViewText
             MenuItem {
                 text: App.menuToggleOptionsText
@@ -84,26 +99,26 @@ ApplicationWindow {
             }
         }
 
-        Menu {
+        ThemedMenu {
             title: App.menuSettingsText
             MenuItem {
                 text: App.uiText(App.language, "MenuSettingsItem")
                 onTriggered: shell.openSettings()
             }
             MenuSeparator {}
-            Menu {
+            ThemedMenu {
                 title: App.menuLanguageText
                 MenuItem { text: "Deutsch"; checkable: true; checked: App.language === "de"; onTriggered: App.setLanguage("de") }
                 MenuItem { text: "English"; checkable: true; checked: App.language === "en"; onTriggered: App.setLanguage("en") }
             }
-            Menu {
+            ThemedMenu {
                 title: App.menuVideoPlaybackText
                 MenuItem { text: App.menuVideoNativeText;   checkable: true; checked: App.videoPlayback === "native";   onTriggered: App.setVideoPlayback("native") }
                 MenuItem { text: App.menuVideoExternalText; checkable: true; checked: App.videoPlayback === "external"; onTriggered: App.setVideoPlayback("external") }
             }
         }
 
-        Menu {
+        ThemedMenu {
             id: bookmarksMenu
             title: App.menuBookmarksText
 
@@ -213,11 +228,12 @@ ApplicationWindow {
             id: galleryPage
 
             // ── Tastenkürzel (nur auf der Galerie-Seite, nicht im Vollbild) ──
-            //  S = Optionen umschalten, R = Ordner/Vorschau neu laden,
-            //  B = Vorschau-Sperre (blockieren ⇄ neu laden). Einzeltasten werden
-            //  von fokussierten Textfeldern via Shortcut-Override unterdrückt.
+            //  Alt+S = Optionen umschalten (einheitlich mit dem Media Viewer),
+            //  R = Ordner/Vorschau neu laden, B = Vorschau-Sperre (blockieren ⇄
+            //  neu laden). Einzeltasten werden von fokussierten Textfeldern via
+            //  Shortcut-Override unterdrückt.
             Shortcut {
-                sequence: "S"; enabled: stack.depth === 1
+                sequence: "Alt+S"; enabled: stack.depth === 1
                 onActivated: App.toggleOptions()
             }
             Shortcut {
@@ -253,7 +269,13 @@ ApplicationWindow {
                 id: filterBar
                 anchors { left: parent.left; right: parent.right; top: parent.top }
                 onEnterAddToTagMode: function(tag) { galleryView.enterAddToTagMode(tag) }
-                onCategoryPanelToggled: catPanel.visible = !catPanel.visible
+                // Panel-Steuerung: Tag- und Kategorie-Abschnitt des Seitenpanels
+                // INDIVIDUELL schaltbar; der Zustand lebt im TagCategoryPanel und
+                // wird hier für die Aktiv-Anzeige der Toggle-Zeilen gespiegelt.
+                tagPanelVisible: catPanel.showTagsSection
+                categoryPanelVisible: catPanel.showCategoriesSection
+                onTagPanelToggled:      catPanel.showTagsSection      = !catPanel.showTagsSection
+                onCategoryPanelToggled: catPanel.showCategoriesSection = !catPanel.showCategoriesSection
             }
 
             GalleryView {
@@ -269,7 +291,11 @@ ApplicationWindow {
 
             TagCategoryPanel {
                 id: catPanel
-                visible: false
+                // Beide Abschnitte starten ausgeblendet; das Panel erscheint,
+                // sobald mindestens einer aktiviert wird (Filter ▸ Tags & Kategorien).
+                showTagsSection: false
+                showCategoriesSection: false
+                visible: showTagsSection || showCategoriesSection
                 width: 300
                 anchors { right: parent.right; top: filterBar.bottom; bottom: parent.bottom }
                 onEnterAddToTagMode: function(tag) { galleryView.enterAddToTagMode(tag) }

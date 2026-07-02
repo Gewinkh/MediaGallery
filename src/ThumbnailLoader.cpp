@@ -22,6 +22,10 @@
 #include <QFile>
 #include <QTextStream>
 #include <QPainterPath>
+#include <QRegularExpression>
+#include <QColor>
+#include <QGuiApplication>
+#include <QHash>
 
 // ─── Disk-Cache-Helfer ───────────────────────────────────────────────────────
 namespace {
@@ -35,7 +39,16 @@ QString cacheDir() {
 QString cacheKeyFor(const QString& path) {
     // mtime einbeziehen → ersetzte/bearbeitete Dateien erhalten frische Thumbnails.
     // v4: feste Generierungsgröße (kThumbDim) statt variabler Kachelgröße.
-    static const int kCacheVersion = 4;
+    // v5: HTML/HTM rendern jetzt als Design-Karte statt Quelltext → alte
+    //     gecachte Quelltext-Thumbnails müssen einmalig invalidiert werden.
+    // v6: verbesserte Extraktion (Hero-Klassen-Farben, Arabisch-Sterne,
+    //     Bilingual-Titel-Split) → Karten erneut regenerieren.
+    // v7: arabischer Display-Titel als Haupttitel + Sekundärzeile, div-Untertitel.
+    // v8: PDF-Thumbnails werden jetzt immer auf weißen Untergrund compositet
+    //     (statt ggf. transparent→schwarz beim JPEG-Export) → alte, fälschlich
+    //     schwarze PDF-Thumbnails müssen einmalig neu generiert werden.
+    //     (Bei künftigen Änderungen an der Thumbnail-Darstellung weiter hochzählen.)
+    static const int kCacheVersion = 8;
     const qint64 mtime = QFileInfo(path).lastModified().toMSecsSinceEpoch();
     const QByteArray raw =
         (path + QChar('|')
@@ -48,10 +61,6 @@ QString cacheKeyFor(const QString& path) {
 }
 
 } // namespace
-
-QString ThumbnailLoader::diskCachePath(const QString& filePath) {
-    return cacheKeyFor(filePath);
-}
 
 // ─── ThumbnailLoader ─────────────────────────────────────────────────────────
 ThumbnailLoader::ThumbnailLoader(QObject* parent)
@@ -360,7 +369,22 @@ QPixmap ThumbnailTask::generatePdfThumbnail(const QString& path, const QSize& si
     if (img.isNull())
         return fallbackPdfThumbnail(size);
 
-    QPixmap page = QPixmap::fromImage(std::move(img));
+    // QPdfDocument::render() liefert bei manchen Dokumenten (abhängig vom
+    // internen PDFium-Renderpfad, z. B. schlanke, bildarme Text-PDFs) ein
+    // Bild mit TRANSPARENTEM statt weißem Seitenhintergrund — nur tatsächlich
+    // gezeichnete Inhalte (Text, farbige Emoji) sind opak. Da der Disk-Cache
+    // als JPEG (kein Alphakanal) gespeichert wird, würde der transparente
+    // Bereich beim Speichern zu SCHWARZ statt WEISS. Daher hier immer explizit
+    // auf einen weißen Untergrund compositen — für bereits opake Renderings
+    // (Normalfall) ändert das sichtbar nichts.
+    QImage flattened(img.size(), QImage::Format_RGB32);
+    flattened.fill(Qt::white);
+    {
+        QPainter fp(&flattened);
+        fp.drawImage(0, 0, img);
+    }
+
+    QPixmap page = QPixmap::fromImage(std::move(flattened));
     {
         QPainter p(&page);
         QFont f = p.font();
@@ -423,7 +447,532 @@ static void drawExtensionBadge(QPainter& p, const QSize& size, const QString& ex
     p.drawText(badge, Qt::AlignCenter, label);
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+//  HTML-„Design-Karte" — generische Hero-Nachbildung (statt Quelltext-Thumbnail)
+//
+//  Bildet den HERO-BLOCK der Seite als Mini-Karte nach: kein WebEngine, keine
+//  Meta-Tags, kein Editieren der Dateien. Rein durch Parsen dessen, was die
+//  Lern-Sheets gemeinsam haben — <header class="hero"> mit .eyebrow / <h1> /
+//  .sub sowie CSS-Variablen (--bg/--ink/…). Funktioniert über verschiedene
+//  Themes hinweg (hell/dunkel, LTR/RTL, mit/ohne Muster).
+// ─────────────────────────────────────────────────────────────────────────────
+namespace {
+
+struct HtmlMeta {
+    QString title, secondaryTitle, eyebrow, subtitle, chip;
+    QColor  bg, text, accent, sub;
+    bool    dark = true;
+    bool    rtl  = false;
+    int     texture = 0;            // 0 keine, 1 Gitter, 2 Sterne (Khatam)
+    bool    valid() const { return !title.isEmpty(); }
+};
+
+// HTML-Entities dekodieren (numerisch + die in den Sheets üblichen benannten).
+QString htmlDecodeEntities(QString s) {
+    static const QRegularExpression reNum(QStringLiteral("&#(x?)([0-9a-fA-F]+);"));
+    {
+        QString out; out.reserve(s.size());
+        qsizetype last = 0;
+        auto it = reNum.globalMatch(s);
+        while (it.hasNext()) {
+            const auto m = it.next();
+            out += s.mid(last, m.capturedStart() - last);
+            bool ok = false;
+            const uint cp = m.captured(2).toUInt(&ok, m.captured(1).isEmpty() ? 10 : 16);
+            if (ok && cp) { const char32_t c = static_cast<char32_t>(cp); out += QString::fromUcs4(&c, 1); }
+            last = m.capturedEnd();
+        }
+        out += s.mid(last);
+        s = out;
+    }
+    static const QHash<QString, QString> ent = {
+        {QStringLiteral("amp"),QStringLiteral("&")},   {QStringLiteral("lt"),QStringLiteral("<")},
+        {QStringLiteral("gt"),QStringLiteral(">")},    {QStringLiteral("quot"),QStringLiteral("\"")},
+        {QStringLiteral("apos"),QStringLiteral("'")},  {QStringLiteral("nbsp"),QStringLiteral(" ")},
+        {QStringLiteral("shy"),QString()},             {QStringLiteral("mdash"),QStringLiteral("\u2014")},
+        {QStringLiteral("ndash"),QStringLiteral("\u2013")},{QStringLiteral("middot"),QStringLiteral("\u00B7")},
+        {QStringLiteral("hellip"),QStringLiteral("\u2026")},{QStringLiteral("times"),QStringLiteral("\u00D7")},
+        {QStringLiteral("deg"),QStringLiteral("\u00B0")},{QStringLiteral("szlig"),QStringLiteral("\u00DF")},
+        {QStringLiteral("auml"),QStringLiteral("\u00E4")},{QStringLiteral("ouml"),QStringLiteral("\u00F6")},
+        {QStringLiteral("uuml"),QStringLiteral("\u00FC")},{QStringLiteral("Auml"),QStringLiteral("\u00C4")},
+        {QStringLiteral("Ouml"),QStringLiteral("\u00D6")},{QStringLiteral("Uuml"),QStringLiteral("\u00DC")},
+    };
+    static const QRegularExpression reName(QStringLiteral("&([a-zA-Z]+);"));
+    QString out; out.reserve(s.size());
+    qsizetype last = 0;
+    auto it = reName.globalMatch(s);
+    while (it.hasNext()) {
+        const auto m = it.next();
+        out += s.mid(last, m.capturedStart() - last);
+        out += ent.value(m.captured(1), m.captured(0));     // unbekannt → Original behalten
+        last = m.capturedEnd();
+    }
+    out += s.mid(last);
+    return out;
+}
+
+// Tags entfernen, Entities dekodieren, Weichtrennzeichen weg, Whitespace glätten.
+QString htmlStrip(QString s) {
+    static const QRegularExpression reTag(QStringLiteral("<[^>]*>"));
+    s.remove(reTag);
+    s = htmlDecodeEntities(s);
+    s.remove(QChar(0x00AD));                  // &shy; (Weiches Trennzeichen)
+    s.replace(QChar(0x00A0), QChar(u' '));    // &nbsp;
+    return s.simplified();
+}
+
+// CSS-Custom-Properties einsammeln (erstes Vorkommen gewinnt).
+QHash<QString, QString> cssVars(const QString& css) {
+    QHash<QString, QString> v;
+    static const QRegularExpression re(QStringLiteral("--([a-z0-9-]+)\\s*:\\s*([^;}]+)"),
+                                       QRegularExpression::CaseInsensitiveOption);
+    auto it = re.globalMatch(css);
+    while (it.hasNext()) {
+        const auto m = it.next();
+        const QString k = m.captured(1).toLower();
+        if (!v.contains(k)) v.insert(k, m.captured(2).trimmed());
+    }
+    return v;
+}
+
+// var(--x[, fallback]) rekursiv auflösen.
+QString cssResolve(QString val, const QHash<QString, QString>& v, int depth = 0) {
+    val = val.trimmed();
+    if (depth > 6) return val;
+    static const QRegularExpression re(QStringLiteral("var\\(\\s*--([a-z0-9-]+)\\s*(?:,\\s*([^)]+))?\\)"),
+                                       QRegularExpression::CaseInsensitiveOption);
+    const auto m = re.match(val);
+    if (m.hasMatch()) {
+        const QString name = m.captured(1).toLower();
+        return cssResolve(v.contains(name) ? v.value(name) : m.captured(2), v, depth + 1);
+    }
+    return val;
+}
+
+QString cssRuleBody(const QString& css, const QString& selector) {
+    const QRegularExpression re(QRegularExpression::escape(selector) + QStringLiteral("\\s*\\{([^}]*)\\}"),
+                               QRegularExpression::CaseInsensitiveOption);
+    const auto m = re.match(css);
+    return m.hasMatch() ? m.captured(1) : QString();
+}
+
+QString cssProp(const QString& body, const QString& name) {
+    const QRegularExpression re(QStringLiteral("(?:^|[;{\\s])") + QRegularExpression::escape(name)
+                                + QStringLiteral("\\s*:\\s*([^;}]+)"), QRegularExpression::CaseInsensitiveOption);
+    const auto m = re.match(body);
+    return m.hasMatch() ? m.captured(1).trimmed() : QString();
+}
+
+QColor parseCssColor(QString tok) {
+    tok = tok.trimmed();
+    if (tok.startsWith(QStringLiteral("rgb"), Qt::CaseInsensitive)) {
+        static const QRegularExpression re(QStringLiteral("rgba?\\(([^)]*)\\)"), QRegularExpression::CaseInsensitiveOption);
+        const auto m = re.match(tok);
+        if (m.hasMatch()) {
+            static const QRegularExpression sep(QStringLiteral("[\\s,/]+"));
+            const QStringList parts = m.captured(1).split(sep, Qt::SkipEmptyParts);
+            auto chan = [](const QString& s) -> int {
+                return s.endsWith(QChar(u'%')) ? int(s.left(s.size() - 1).toDouble() * 2.55 + 0.5)
+                                               : int(s.toDouble() + 0.5);
+            };
+            if (parts.size() >= 3) {
+                const int a = parts.size() >= 4 ? int(parts[3].toDouble() * 255 + 0.5) : 255;
+                return QColor(qBound(0, chan(parts[0]), 255), qBound(0, chan(parts[1]), 255),
+                              qBound(0, chan(parts[2]), 255), qBound(0, a, 255));
+            }
+        }
+        return QColor();
+    }
+    return QColor::fromString(tok);
+}
+
+// Erstes Farb-Token aus einer Deklaration (var() vorher aufgelöst).
+QColor firstColor(QString decl, const QHash<QString, QString>& v) {
+    if (decl.isEmpty()) return QColor();
+    decl = cssResolve(decl, v);
+    static const QRegularExpression re(QStringLiteral("#[0-9a-fA-F]{3,8}|rgba?\\([^)]*\\)"),
+                                       QRegularExpression::CaseInsensitiveOption);
+    const auto m = re.match(decl);
+    return m.hasMatch() ? parseCssColor(m.captured(0)) : QColor();
+}
+
+double relLuminance(const QColor& c) {
+    return 0.2126 * c.redF() + 0.7152 * c.greenF() + 0.0722 * c.blueF();
+}
+
+HtmlMeta extractHtmlMeta(const QString& path) {
+    HtmlMeta r;
+    QFile f(path);
+    if (!f.open(QIODevice::ReadOnly)) return r;
+    // Ganze Datei (bis 4 MB) — der Hero kann hinter großem <head>/<style> liegen.
+    const QString t = QString::fromUtf8(f.read(4 * 1024 * 1024));
+    f.close();
+    if (t.isEmpty()) return r;
+
+    const QHash<QString, QString> vars = cssVars(t);
+
+    // Hero-Block + Hero-Klasse(n) isolieren (Klasse → Quelle für Farben)
+    QString block, heroClass;
+    {
+        // 1) <header …class="…hero…">…</header>
+        static const QRegularExpression reHeroHdr(QStringLiteral("<header[^>]*class=\"([^\"]*hero[^\"]*)\"[^>]*>(.*?)</header>"),
+            QRegularExpression::CaseInsensitiveOption | QRegularExpression::DotMatchesEverythingOption);
+        // 2) beliebiges Element mit Hero-artiger Klasse → Fenster ab dort (verschachtelte divs)
+        static const QRegularExpression reHeroOpen(QStringLiteral("<(?:div|section|header|main)[^>]*class=\"([^\"]*(?:hero|masthead|banner|cover|intro|frontispiece|page-header|titlebar|kopf|titel)[^\"]*)\"[^>]*>"),
+            QRegularExpression::CaseInsensitiveOption);
+        // 3) beliebiger <header>
+        static const QRegularExpression reAnyHdr(QStringLiteral("<header\\b[^>]*>(.*?)</header>"),
+            QRegularExpression::CaseInsensitiveOption | QRegularExpression::DotMatchesEverythingOption);
+        const auto m1 = reHeroHdr.match(t);
+        if (m1.hasMatch()) { heroClass = m1.captured(1); block = m1.captured(2); }
+        else {
+            const auto m2 = reHeroOpen.match(t);
+            if (m2.hasMatch()) { heroClass = m2.captured(1); block = t.mid(m2.capturedStart(), 4000); }
+            else {
+                const auto m3 = reAnyHdr.match(t);
+                block = m3.hasMatch() ? m3.captured(1) : t;
+            }
+        }
+    }
+
+    // Titel = erstes <h1>; Fallback <title>
+    {
+        static const QRegularExpression re(QStringLiteral("<h1[^>]*>(.*?)</h1>"),
+            QRegularExpression::CaseInsensitiveOption | QRegularExpression::DotMatchesEverythingOption);
+        const auto m = re.match(block);
+        if (m.hasMatch()) r.title = htmlStrip(m.captured(1));
+    }
+    if (r.title.isEmpty()) {
+        static const QRegularExpression re(QStringLiteral("<title[^>]*>(.*?)</title>"),
+            QRegularExpression::CaseInsensitiveOption | QRegularExpression::DotMatchesEverythingOption);
+        const auto m = re.match(t);
+        if (m.hasMatch()) r.title = htmlStrip(m.captured(1)).section(QChar(0x00B7), 0, 0).trimmed();
+    }
+    if (r.title.isEmpty()) {       // letzter Ausweg: erstes <h2> im Block
+        static const QRegularExpression re(QStringLiteral("<h2[^>]*>(.*?)</h2>"),
+            QRegularExpression::CaseInsensitiveOption | QRegularExpression::DotMatchesEverythingOption);
+        const auto m = re.match(block);
+        if (m.hasMatch()) r.title = htmlStrip(m.captured(1));
+    }
+    if (r.title.isEmpty()) return r;       // ungültig → Quelltext-Fallback
+
+    // Prominenter arabischer Display-Titel im Hero (Element mit überwiegend
+    // arabischem, kurzem Text) → Haupttitel; bisheriges lat. <h1> → Sekundärzeile.
+    {
+        static const QRegularExpression reNode(QStringLiteral(">([^<>]+)<"));
+        QString arTitle;
+        auto it = reNode.globalMatch(block);
+        while (it.hasNext()) {
+            const QString txt = htmlStrip(it.next().captured(1));
+            if (txt.isEmpty() || txt.size() > 50) continue;
+            int ar = 0, lat = 0;
+            for (const QChar ch : txt) {
+                const ushort u = ch.unicode();
+                if (u >= 0x0600 && u <= 0x06FF) ++ar;
+                else if ((u >= u'A' && u <= u'Z') || (u >= u'a' && u <= u'z')) ++lat;
+            }
+            if (ar >= 3 && ar >= lat) { arTitle = txt; break; }
+        }
+        if (!arTitle.isEmpty() && arTitle != r.title) {
+            int arInTitle = 0;
+            for (const QChar ch : r.title) { const ushort u = ch.unicode(); if (u >= 0x0600 && u <= 0x06FF) ++arInTitle; }
+            if (arInTitle * 2 < r.title.size()) r.secondaryTitle = r.title;  // bisheriger Titel überwiegend nicht-arabisch
+            r.title = arTitle;
+        }
+    }
+
+    // Eyebrow / Kicker
+    {
+        static const QRegularExpression re(QStringLiteral("<(\\w+)[^>]*class=\"[^\"]*(?:eyebrow|kicker|overline|topline)[^\"]*\"[^>]*>(.*?)</\\1>"),
+            QRegularExpression::CaseInsensitiveOption | QRegularExpression::DotMatchesEverythingOption);
+        const auto m = re.match(block);
+        if (m.hasMatch()) r.eyebrow = htmlStrip(m.captured(2));
+    }
+
+    // Untertitel
+    {
+        static const QRegularExpression re(QStringLiteral("<(p|div|h2|h3)[^>]*class=\"[^\"]*(?:subtitle|untertitel|sub|lead|deck|tagline|standfirst|intro)[^\"]*\"[^>]*>(.*?)</\\1>"),
+            QRegularExpression::CaseInsensitiveOption | QRegularExpression::DotMatchesEverythingOption);
+        const auto m = re.match(block);
+        if (m.hasMatch()) r.subtitle = htmlStrip(m.captured(2));
+        else {
+            static const QRegularExpression re2(QStringLiteral("<h1[^>]*>.*?</h1>\\s*<p[^>]*>(.*?)</p>"),
+                QRegularExpression::CaseInsensitiveOption | QRegularExpression::DotMatchesEverythingOption);
+            const auto m2 = re2.match(block);
+            if (m2.hasMatch()) r.subtitle = htmlStrip(m2.captured(1));
+        }
+    }
+
+    // Zweisprachiger Titel (lateinisch + CJK) → CJK-Teil als Untertitel abspalten
+    {
+        static const QRegularExpression reCjk(QStringLiteral("[\\x{3000}-\\x{30FF}\\x{4E00}-\\x{9FFF}\\x{FF00}-\\x{FFEF}]"));
+        static const QRegularExpression reLat(QStringLiteral("[A-Za-z\\x{00C0}-\\x{024F}]"));
+        const auto mc = reCjk.match(r.title);
+        if (mc.hasMatch() && mc.capturedStart() >= 2) {
+            const QString latin = r.title.left(mc.capturedStart()).trimmed();
+            const QString cjk   = r.title.mid(mc.capturedStart()).trimmed();
+            if (reLat.match(latin).hasMatch() && latin.size() >= 2 && !cjk.isEmpty()) {
+                r.title = latin;
+                if (r.subtitle.isEmpty()) r.subtitle = cjk;
+            }
+        }
+    }
+
+    // Farben — Quelle: Hero-Element-Klasse(n) → .hero → body → CSS-Variablen
+    const QStringList heroToks = heroClass.split(QRegularExpression(QStringLiteral("\\s+")), Qt::SkipEmptyParts);
+    auto ruleColor = [&](const QString& selector, const char* a, const char* b) -> QColor {
+        const QString body = cssRuleBody(t, selector);
+        QString d = cssProp(body, QString::fromLatin1(a));
+        if (d.isEmpty() && b) d = cssProp(body, QString::fromLatin1(b));
+        return firstColor(d, vars);
+    };
+    // Hintergrund
+    for (const QString& tok : heroToks) {
+        r.bg = ruleColor(QChar(u'.') + tok, "background", "background-color");
+        if (r.bg.isValid()) break;
+    }
+    if (!r.bg.isValid()) r.bg = ruleColor(QStringLiteral(".hero"), "background", "background-color");
+    if (!r.bg.isValid()) r.bg = ruleColor(QStringLiteral("body"), "background", "background-color");
+    if (!r.bg.isValid()) r.bg = firstColor(vars.value(QStringLiteral("bg")), vars);
+    if (!r.bg.isValid()) r.bg = QColor(0x15, 0x24, 0x2E);
+    r.dark = relLuminance(r.bg) < 0.5;
+
+    // Textfarbe
+    for (const QString& tok : heroToks) {
+        r.text = ruleColor(QChar(u'.') + tok, "color", nullptr);
+        if (r.text.isValid()) break;
+    }
+    if (!r.text.isValid()) r.text = ruleColor(QStringLiteral(".hero"), "color", nullptr);
+    if (!r.text.isValid()) {
+        const QColor ink = firstColor(vars.value(QStringLiteral("ink")), vars);
+        r.text = r.dark ? QColor(0xED, 0xF3, 0xF4) : (ink.isValid() ? ink : QColor(0x15, 0x24, 0x2E));
+    }
+
+    // Akzent: .eyebrow .dot {background} → h1 .tbl {color} → saturierteste Variable
+    {
+        QString dotBody = cssRuleBody(t, QStringLiteral(".eyebrow .dot"));
+        if (dotBody.isEmpty()) dotBody = cssRuleBody(t, QStringLiteral(".dot"));
+        r.accent = firstColor(cssProp(dotBody, QStringLiteral("background")), vars);
+        if (!r.accent.isValid()) {
+            QString tblBody = cssRuleBody(t, QStringLiteral("h1 .tbl"));
+            if (tblBody.isEmpty()) tblBody = cssRuleBody(t, QStringLiteral(".tbl"));
+            r.accent = firstColor(cssProp(tblBody, QStringLiteral("color")), vars);
+        }
+        if (!r.accent.isValid()) {
+            for (const char* nm : {"accent","akzent","gold","brand","primary","highlight"}) {
+                const QColor c = firstColor(vars.value(QString::fromLatin1(nm)), vars);
+                if (c.isValid()) { r.accent = c; break; }
+            }
+        }
+        if (!r.accent.isValid()) {
+            QColor best; double bestSat = 0.25;
+            for (auto it = vars.constBegin(); it != vars.constEnd(); ++it) {
+                const QColor c = firstColor(it.value(), vars);
+                if (!c.isValid()) continue;
+                const double s = c.hslSaturationF(), l = c.lightnessF();
+                if (s > bestSat && l > 0.2 && l < 0.78) { bestSat = s; best = c; }
+            }
+            r.accent = best.isValid() ? best : r.text;
+        }
+    }
+
+    r.sub = firstColor(cssProp(cssRuleBody(t, QStringLiteral(".sub")), QStringLiteral("color")), vars);
+    if (!r.sub.isValid()) r.sub = r.dark ? QColor(0xA9, 0xBE, 0xC4) : QColor(0x7C, 0x76, 0x6B);
+
+    // Arabischer Kontext (für Layout-Richtung & Sterndekor)
+    static const QRegularExpression reArab(QStringLiteral("[\\x{0600}-\\x{06FF}]"));
+    const bool arabicCtx = reArab.match(t).hasMatch();
+    {
+        static const QRegularExpression reHtmlRtl(QStringLiteral("<html[^>]*dir=\"rtl\""), QRegularExpression::CaseInsensitiveOption);
+        static const QRegularExpression reBodyRtl(QStringLiteral("<body[^>]*dir=\"rtl\""), QRegularExpression::CaseInsensitiveOption);
+        // RTL-Layout nur, wenn der Titel selbst arabisch ist (lat. Titel bleibt LTR)
+        r.rtl = reHtmlRtl.match(t).hasMatch() || reBodyRtl.match(t).hasMatch() || reArab.match(r.title).hasMatch();
+    }
+
+    // Textur: arabischer Kontext / ornamentales Hero-Muster → Sterne; linear-gradient → Gitter
+    {
+        QString heroCss;
+        static const QRegularExpression reHeroRules(QStringLiteral("\\.hero(?:::?[a-z-]+)?\\s*\\{([^}]*)\\}"),
+            QRegularExpression::CaseInsensitiveOption);
+        auto it = reHeroRules.globalMatch(t);
+        while (it.hasNext()) heroCss += it.next().captured(1) + QChar(u';');
+        const bool ornamental = heroCss.contains(QStringLiteral("url("), Qt::CaseInsensitive)
+                             || heroCss.contains(QStringLiteral("radial-gradient"), Qt::CaseInsensitive);
+        const bool grid = heroCss.contains(QStringLiteral("linear-gradient"), Qt::CaseInsensitive);
+        if (arabicCtx || ornamental)   r.texture = 2;
+        else if (grid)                 r.texture = 1;
+        else                           r.texture = 0;
+    }
+
+    // Niveau-Chip (CEFR) aus Titel/Untertitel/Eyebrow
+    {
+        static const QRegularExpression reLvl(QStringLiteral("\\b([ABC][12])(?:\\s*[\\x{2013}\\x{2014}-]\\s*([ABC][12]))?\\b"));
+        const QString sources[3] = { r.title, r.subtitle, r.eyebrow };
+        for (const QString& src : sources) {
+            const auto m = reLvl.match(src);
+            if (m.hasMatch()) { r.chip = m.captured(0).simplified(); break; }
+        }
+    }
+
+    return r;
+}
+
+}  // namespace
+
+QPixmap ThumbnailTask::generateHtmlCardThumbnail(const QString& path, const QSize& size) {
+    const HtmlMeta m = extractHtmlMeta(path);
+    if (!m.valid()) return QPixmap();      // → Quelltext-Fallback
+
+    const int W = size.width(), H = size.height();
+    QPixmap pix(size);
+    pix.fill(m.bg);
+    QPainter p(&pix);
+    p.setRenderHint(QPainter::Antialiasing);
+    p.setRenderHint(QPainter::TextAntialiasing);
+
+    // ── Textur ──────────────────────────────────────────────────────────────
+    if (m.texture == 1) {                    // feines Gitter
+        const int step = qMax(16, W / 16);
+        p.setPen(QPen(m.dark ? QColor(255, 255, 255, 14) : QColor(0, 0, 0, 12), 1));
+        for (int gx = step; gx < W; gx += step) p.drawLine(gx, 0, gx, H);
+        for (int gy = step; gy < H; gy += step) p.drawLine(0, gy, W, gy);
+    } else if (m.texture == 2) {             // 8-zackige Sterne (Khatam): zwei überlagerte Quadrate
+        QColor c = m.accent; c.setAlpha(m.dark ? 30 : 22);
+        p.setPen(QPen(c, qMax(1, W / 360)));
+        p.setBrush(Qt::NoBrush);
+        const int step = qMax(40, W / 8);
+        const qreal s = step * 0.5;
+        for (int cy = step / 2; cy < H + step; cy += step)
+            for (int cx = step / 2; cx < W + step; cx += step) {
+                const QRectF sq(cx - s / 2.0, cy - s / 2.0, s, s);
+                p.drawRect(sq);
+                p.save(); p.translate(cx, cy); p.rotate(45); p.translate(-cx, -cy);
+                p.drawRect(sq); p.restore();
+            }
+    }
+
+    const int margin   = qMax(20, W * 9 / 100);
+    const int contentW = W - 2 * margin;
+    const int x        = margin;
+    const bool rtl     = m.rtl;
+    const Qt::Alignment hAlign = (rtl ? Qt::AlignHCenter : Qt::AlignLeft);
+
+    auto baseFont = [](int px, bool bold) -> QFont {
+        QFont f = QGuiApplication::font();             // App-Font → CJK/Arabisch-Fallback (Noto)
+        f.setPixelSize(qMax(8, px));
+        f.setWeight(bold ? QFont::DemiBold : QFont::Normal);
+        return f;
+    };
+
+    // ── Niveau-Chip (Ecke); Inhalt beginnt darunter → keine Überlappung ───────
+    int contentTop = qMax(20, H * 10 / 100);
+    if (!m.chip.isEmpty()) {
+        QFont cf = baseFont(qMax(12, H / 30), true);
+        p.setFont(cf);
+        const QFontMetrics fm(cf);
+        const int padX = qMax(7, W / 60);
+        const int bh   = fm.height() + qMax(6, H / 80);
+        const int bw   = fm.horizontalAdvance(m.chip) + 2 * padX;
+        const int cmrg = qMax(12, W / 38);
+        const int cx   = rtl ? cmrg : (W - bw - cmrg);
+        const QRect chip(cx, cmrg, bw, bh);
+        p.setPen(Qt::NoPen);
+        p.setBrush(m.accent);
+        p.drawRoundedRect(chip, qMax(5, bh / 3), qMax(5, bh / 3));
+        p.setPen(relLuminance(m.accent) < 0.55 ? QColor(Qt::white) : QColor(0x20, 0x20, 0x20));
+        p.drawText(chip, Qt::AlignCenter, m.chip);
+        contentTop = qMax(contentTop, int(chip.bottom()) + qMax(10, H / 40));
+    }
+
+    // Linker Akzentbalken nur bei cleanen Karten (keine Textur), LTR
+    if (m.texture == 0 && !rtl)
+        p.fillRect(QRect(0, 0, qMax(4, W / 100), H), m.accent);
+
+    int y = contentTop;
+
+    // ── Eyebrow ───────────────────────────────────────────────────────────────
+    if (!m.eyebrow.isEmpty()) {
+        QFont ef = baseFont(qMax(11, H / 34), false);
+        ef.setLetterSpacing(QFont::AbsoluteSpacing, qMax(1.0, H / 280.0));
+        p.setFont(ef);
+        QColor ec = m.accent; if (!m.dark) ec = ec.darker(112);
+        p.setPen(ec);
+        const QFontMetrics fm(ef);
+        const QString eb = fm.elidedText(m.eyebrow.toUpper(), Qt::ElideRight, contentW);
+        p.drawText(QRect(x, y, contentW, fm.height()), int(hAlign | Qt::AlignTop), eb);
+        y += fm.height() + qMax(6, H / 42);
+    }
+
+    // ── Titel (umbrochen, ggf. verkleinert bis 3 Zeilen passen) ────────────────
+    {
+        const int maxPct = m.secondaryTitle.isEmpty() ? 40 : 30;
+        int px = qMax(20, H / 11);
+        QFont tf = baseFont(px, true);
+        const int flags = int(hAlign | Qt::AlignTop) | int(Qt::TextWordWrap);
+        const QRect box(x, y, contentW, H);
+        for (int i = 0; i < 8 && px > 16; ++i) {
+            const QFontMetrics fm(tf);
+            if (fm.boundingRect(box, flags, m.title).height() <= H * maxPct / 100) break;
+            px -= 2; tf.setPixelSize(px);
+        }
+        p.setFont(tf);
+        p.setPen(m.secondaryTitle.isEmpty() ? m.text : m.accent);   // arab. Display-Titel im Akzent
+        const QFontMetrics fm(tf);
+        const int needH = qMin(fm.boundingRect(box, flags, m.title).height(), fm.lineSpacing() * 3);
+        p.drawText(QRect(x, y, contentW, needH), flags, m.title);
+        y += needH + qMax(6, H / (m.secondaryTitle.isEmpty() ? 38 : 60));
+    }
+
+    // ── Sekundärzeile (lat. Titel unter dem arab. Display-Titel) ───────────────
+    if (!m.secondaryTitle.isEmpty()) {
+        QFont stf = baseFont(qMax(14, H / 20), true);
+        p.setFont(stf);
+        p.setPen(m.text);
+        const QFontMetrics fm(stf);
+        const QString s = fm.elidedText(m.secondaryTitle, Qt::ElideRight, contentW);
+        p.drawText(QRect(x, y, contentW, fm.height()), int(hAlign | Qt::AlignTop), s);
+        y += fm.height() + qMax(8, H / 44);
+    }
+
+    // ── Akzentlinie ────────────────────────────────────────────────────────────
+    {
+        const int lw = qMax(28, W / 5);
+        const int lh = qMax(2, H / 190);
+        const int lx = rtl ? (W - lw) / 2 : x;
+        p.fillRect(QRect(lx, y, lw, lh), m.accent);
+        y += lh + qMax(8, H / 42);
+    }
+
+    // ── Untertitel (auf Platz über der Namensleiste begrenzt) ──────────────────
+    if (!m.subtitle.isEmpty()) {
+        QFont sf = baseFont(qMax(11, H / 30), false);
+        p.setFont(sf);
+        p.setPen(m.sub);
+        const QFontMetrics fm(sf);
+        const int safeBottom = H - qMax(28, H * 15 / 100);    // Platz für Namens-Overlay
+        const int avail = safeBottom - y;
+        if (avail > fm.lineSpacing()) {
+            const int lines = qBound(1, avail / fm.lineSpacing(), 3);
+            const int flags = int(hAlign | Qt::AlignTop) | int(Qt::TextWordWrap);
+            p.drawText(QRect(x, y, contentW, lines * fm.lineSpacing()), flags, m.subtitle);
+        }
+    }
+
+    p.end();
+    return pix;
+}
+
 QPixmap ThumbnailTask::generateTextThumbnail(const QString& path, const QSize& size) {
+    // HTML/HTM → gerenderte Design-Karte (Hero-Nachbildung) statt Quelltext.
+    {
+        const QString suf = QFileInfo(path).suffix().toLower();
+        if (suf == QStringLiteral("html") || suf == QStringLiteral("htm")) {
+            const QPixmap card = generateHtmlCardThumbnail(path, size);
+            if (!card.isNull()) return card;
+            // sonst: Quelltext-Fallback unten (z. B. wenn kein Hero/<h1> gefunden)
+        }
+    }
+
     QFile file(path);
     if (!file.open(QIODevice::ReadOnly | QIODevice::Text))
         return fallbackTextThumbnail(path, size);

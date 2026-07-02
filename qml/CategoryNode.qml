@@ -120,11 +120,16 @@ Column {
                 property string dragTag: modelData
                 property string dragFromCat: nodeRoot.node.id
 
+                // Klarer Toggle-Zustand (einheitlich mit dem Tags-Abschnitt des
+                // Panels): aktiv = gefüllt + Häkchen + kräftiger Rand.
+                readonly property bool active: nodeRoot.panel.isTagActive(chip.modelData)
+
                 height: 24; radius: 12
                 width: chipRow.implicitWidth + 16
                 color: Qt.rgba(App.tagColor(chip.modelData).r, App.tagColor(chip.modelData).g,
-                               App.tagColor(chip.modelData).b, 0.25)
-                border.color: App.tagColor(chip.modelData); border.width: 1
+                               App.tagColor(chip.modelData).b, chip.active ? 0.42 : 0.12)
+                border.color: chip.active ? App.tagColor(chip.modelData) : App.themeBorder
+                border.width: chip.active ? 2 : 1
 
                 Drag.active: dragHandler.active
                 Drag.source: chip
@@ -134,6 +139,12 @@ Column {
                 Row {
                     id: chipRow
                     anchors.centerIn: parent; spacing: 5
+                    Text {
+                        visible: chip.active
+                        anchors.verticalCenter: parent.verticalCenter
+                        text: "\u2713"; color: App.themeTextPrimary
+                        font.pixelSize: 10; font.bold: true
+                    }
                     Rectangle {
                         anchors.verticalCenter: parent.verticalCenter
                         width: 8; height: 8; radius: 4; color: App.tagColor(chip.modelData)

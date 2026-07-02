@@ -7,7 +7,6 @@
 #include <QClipboard>
 #include <QFileInfo>
 #include <QCoreApplication>
-#include <QThread>
 #include <QSizeF>
 #include <QPointF>
 #include <QRectF>
@@ -197,7 +196,6 @@ QVariantList PdfTextController::applySelection(const QPdfSelection& sel, int pag
         }
     }
 
-    m_selPage = page;
     if (text != m_selText) {
         m_selText = text;
         emit selectedTextChanged();
@@ -207,7 +205,6 @@ QVariantList PdfTextController::applySelection(const QPdfSelection& sel, int pag
 
 // ─────────────────────────────────────────────────────────────────────────────
 void PdfTextController::clearSelection() {
-    m_selPage = -1;
     if (!m_selText.isEmpty()) {
         m_selText.clear();
         emit selectedTextChanged();

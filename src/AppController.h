@@ -6,8 +6,6 @@
 #include <QDateTime>
 #include <QUrl>
 #include <QList>
-#include <QSize>
-#include <QPoint>
 #include <QVariantList>
 #include <QVariantMap>
 
@@ -109,11 +107,9 @@ public:
 
     // ── Ordner (Delegation an FolderService) ────────────────────────────────
     QString currentFolder() const;
-    Q_INVOKABLE void openFolder(const QString& path);
     Q_INVOKABLE void openFolderUrl(const QUrl& url);
     Q_INVOKABLE void refreshCurrentFolder();
     Q_INVOKABLE void restoreLastFolder();
-    Q_INVOKABLE void saveCurrentFolder();
 
     // ── Drag & Drop von Ordnern/Dateien auf das Fenster ─────────────────────
     Q_INVOKABLE void handleDroppedUrls(const QList<QUrl>& urls);
@@ -192,14 +188,10 @@ public:
     Q_INVOKABLE QStringList allTags() const;
     Q_INVOKABLE QColor      tagColor(const QString& tag) const;
     Q_INVOKABLE QStringList tagsForFile(const QString& fileName) const;
-    Q_INVOKABLE QStringList categoriesForFile(const QString& fileName) const;
     Q_INVOKABLE void addTagToFile(const QString& fileName, const QString& tag);
     Q_INVOKABLE void removeTagFromFile(const QString& fileName, const QString& tag);
-    Q_INVOKABLE void setTagsForFile(const QString& fileName, const QStringList& tags);
 
     // ── Datei-Metadaten (Delegation an JsonStorage) ─────────────────────────
-    Q_INVOKABLE bool      hasCustomDate(const QString& fileName) const;
-    Q_INVOKABLE QDateTime customDate(const QString& fileName) const;
     Q_INVOKABLE void      setCustomDate(const QString& fileName, const QDateTime& dt);
     Q_INVOKABLE void      clearCustomDate(const QString& fileName);
 
@@ -251,7 +243,6 @@ signals:
     void tileArrangementChanged();
     void tagsChanged();
     void categoriesChanged();
-    void rhiBackendChanged();   // nach erfolgreichem trySetRhiBackend()
 
 private:
     // Theme-Lese-Helfer

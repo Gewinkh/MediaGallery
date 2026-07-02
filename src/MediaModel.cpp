@@ -160,13 +160,6 @@ void MediaModel::finishFill() {
     m_pendingSidecar.clear();
 }
 
-void MediaModel::rebuildIndex() {
-    m_pathToRow.clear();
-    m_pathToRow.reserve(m_items.size());
-    for (int i = 0; i < m_items.size(); ++i)
-        m_pathToRow.insert(m_items[i].filePath, i);
-}
-
 int MediaModel::rowForPath(const QString& filePath) const {
     return m_pathToRow.value(filePath, -1);
 }
@@ -330,7 +323,6 @@ void MediaModel::toggleTag(const QString& filePath, const QString& tag) {
         m_tagManager.removeTagFromFile(name, tag);
     else
         m_tagManager.addTagToFile(name, tag);
-    m_storage.saveCurrentFolder();
     --m_suppressWatch;
 
     it.tags = m_tagManager.tagsForFile(name);

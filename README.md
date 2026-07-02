@@ -18,7 +18,7 @@ Built with **C++20** and **Qt 6.4+**.
 - **Grid view**: 1–25 columns, zoom with `Ctrl+Scroll` or `Shift+Scroll`
 - **Fullscreen gallery**: Prev/Next, Random mode, up to 10× zoom, pan with mouse
 - **Image viewer**: Hardware-accelerated QML viewer with pinch-zoom, wheel-zoom and mouse pan
-- **Compact mode**: Option bar toggle with `S`
+- **Compact mode**: Options mode toggle with `Alt+S` — works in the gallery and inside the open media viewer
 - **Cover mode**: Cover/uncover gallery with `B`
 - **Live folder watch**: New or deleted files are detected automatically
 
@@ -32,6 +32,11 @@ Built with **C++20** and **Qt 6.4+**.
 ### Tags & Categories
 - **Tags**: Per-folder, unlimited, freely named, color-coded
 - **Categories**: Hierarchical tag categories with optional color inheritance
+- **Unified side panel**: Tags and categories live in one panel with two equal sections — all tags as toggleable chips with a clearly visible active/inactive state, plus the full category tree below
+- **Individual panel toggles**: The Filter popup has a merged "Tags & Categories" section where the Tag panel and the Category panel can be shown or hidden independently, each with a clearly visible on/off state
+- **"+" buttons everywhere**: Create new tags and new categories directly from the panel headers, and — in options mode (`Alt+S`) — straight from a media tile, each "+" sitting right next to its corresponding button (new tags/categories are assigned to that file immediately)
+- **Smart filter cascade**: Deselecting a category (or subcategory) automatically deactivates its dependent subcategories and tags — unless they are still needed by another active filter, in which case they stay active
+- **Universal converter**: Convert in every direction between tags, subcategories, and top-level categories (Settings → Converter) — pick the direction from a dropdown and the form adapts to it
 - **Filter modes**: OR, AND, ONLY, INCLUSIVE — combinable with media-type filter
 - **Sorting**: Date, Name, File size (ascending/descending)
 
@@ -42,6 +47,7 @@ Built with **C++20** and **Qt 6.4+**.
 - Embedded audio and video annotation playback (Sound, Screen, Movie subtypes)
 - Sidecar audio file fallback (auto-detected by filename)
 - **First-load fix**: PDFs now open and render immediately on the first click
+- **Stable audio playback**: Embedded PDF audio now plays reliably on every file — the previous alternating failure (every second file staying silent) is fixed
 
 ### Full Color Customization (Settings → Design)
 - **9 built-in themes**: Dark, Dark OLED, Ocean Depth, Inferno Blaze, Neon Purple, Midnight Rose, Elegant, Simple, Custom
@@ -81,7 +87,7 @@ Built with **C++20** and **Qt 6.4+**.
 |--------|----------|
 | Open folder | `Ctrl+O` |
 | Reload / refresh thumbnails | `F5` / `R` |
-| Toggle options bar | `S` |
+| Toggle options mode (gallery & media viewer) | `Alt+S` |
 | Toggle cover mode | `B` |
 | Open fullscreen view | Double-click |
 | Next item | `→` |
@@ -104,7 +110,7 @@ Built with **C++20** and **Qt 6.4+**.
 ## Build Instructions
 
 ### Requirements
-- Qt 6.4+ with modules: `Widgets`, `Multimedia`, `MultimediaWidgets`, `Pdf`, `PdfWidgets`, `Qml`, `Quick`
+- Qt 6.4+ with modules: `Multimedia`, `MultimediaWidgets`, `Pdf`, `PdfWidgets`, `Qml`, `Quick`
 - CMake 3.21+
 - C++20-capable compiler (MSVC 2022, GCC 12+, Clang 15+)
 
@@ -151,10 +157,11 @@ Custom themes can be exported to JSON and shared:
 ## Changelog
 
 ### Latest
-- **Fix**: Cleanup of unused and empty JSON files.
-- **Fix**: fixed an issue where the Add Folder button did not work.
-- **UI**: Improved dialog button placement and adjusted the filter text appearance.
-- **UI**: Improved the user interface.
+- **Feature**: Added HTML support with live rendering.
+- **UI**: PDF documents now use a white background instead of black for improved readability.
+- **Fix**: Restored M4A playback.
+- **Fix**: Restored the Add Tag and Add Category actions after the QML migration.
+- **UI**: Various UI refinements, including improved dialog layouts, button placement, filter text styling, and general visual consistency.
 
 ---
 

@@ -124,5 +124,197 @@ Item {
                 }
             }
         }
+
+        // ── Optionen-Modus (S): „Tags anzeigen" / „Kategorien anzeigen" ─────
+        //  Zwei Buttons je Kachel; Klick zeigt die Liste der jeweiligen Werte
+        //  DIESES Mediums (Tags via App.tagsForFile, Kategorien via
+        //  Tags.categoriesForFile — beides frisch aus der JSON-Persistenz).
+        Row {
+            id: optRow
+            visible: !overlay.compact
+            spacing: 4
+
+            readonly property string fileName: overlay.filePath.substring(
+                Math.max(overlay.filePath.lastIndexOf("/"),
+                         overlay.filePath.lastIndexOf("\\")) + 1)
+
+            // ── „+"-Button (S-Modus): neuen Tag erstellen — LINKS vom Tags-Button ──
+            //  Bindet an die bestehende Daten-Logik an: App.addTagToFile registriert
+            //  den Tag (falls neu) und weist ihn diesem Medium zu.
+            Rectangle {
+                width: 18; height: 18; radius: 9
+                color: addTagHover.hovered ? Qt.rgba(1, 1, 1, 0.28) : Qt.rgba(1, 1, 1, 0.12)
+                border.color: Qt.rgba(1, 1, 1, 0.35); border.width: 1
+                Text {
+                    anchors.centerIn: parent
+                    text: "+"; color: "white"; font.pixelSize: 11; font.bold: true
+                }
+                HoverHandler { id: addTagHover }
+                TapHandler { onTapped: addPopup.openFor("tag") }
+                ToolTip.text: App.uiText(App.language, "PanelAddTagTip")
+                ToolTip.visible: addTagHover.hovered
+            }
+            Rectangle {
+                width: tagsBtnLbl.implicitWidth + 12; height: 18; radius: 9
+                color: tagsBtnHover.hovered ? Qt.rgba(1, 1, 1, 0.22) : Qt.rgba(1, 1, 1, 0.12)
+                border.color: Qt.rgba(1, 1, 1, 0.35); border.width: 1
+                Text {
+                    id: tagsBtnLbl
+                    anchors.centerIn: parent
+                    text: App.uiText(App.language, "OverlayShowTags")
+                    color: "white"; font.pixelSize: 9
+                }
+                HoverHandler { id: tagsBtnHover }
+                TapHandler {
+                    onTapped: {
+                        valuesPopup.title  = App.uiText(App.language, "OverlayShowTags")
+                        valuesPopup.values = App.tagsForFile(optRow.fileName)
+                        valuesPopup.open()
+                    }
+                }
+            }
+            // ── „+"-Button (S-Modus): neue Kategorie erstellen — LINKS vom
+            //  Kategorien-Button. Tags.addRootCategory liefert die neue
+            //  Kategorie-ID; anschließend wird das Medium via
+            //  Tags.toggleFileInCategory direkt zugeordnet.
+            Rectangle {
+                width: 18; height: 18; radius: 9
+                color: addCatHover.hovered ? Qt.rgba(1, 1, 1, 0.28) : Qt.rgba(1, 1, 1, 0.12)
+                border.color: Qt.rgba(1, 1, 1, 0.35); border.width: 1
+                Text {
+                    anchors.centerIn: parent
+                    text: "+"; color: App.themeAccent; font.pixelSize: 11; font.bold: true
+                }
+                HoverHandler { id: addCatHover }
+                TapHandler { onTapped: addPopup.openFor("category") }
+                ToolTip.text: App.uiText(App.language, "PanelAddCategoryTip")
+                ToolTip.visible: addCatHover.hovered
+            }
+            Rectangle {
+                width: catsBtnLbl.implicitWidth + 12; height: 18; radius: 9
+                color: catsBtnHover.hovered ? Qt.rgba(1, 1, 1, 0.22) : Qt.rgba(1, 1, 1, 0.12)
+                border.color: Qt.rgba(1, 1, 1, 0.35); border.width: 1
+                Text {
+                    id: catsBtnLbl
+                    anchors.centerIn: parent
+                    text: App.uiText(App.language, "OverlayShowCategories")
+                    color: "white"; font.pixelSize: 9
+                }
+                HoverHandler { id: catsBtnHover }
+                TapHandler {
+                    onTapped: {
+                        valuesPopup.title  = App.uiText(App.language, "OverlayShowCategories")
+                        valuesPopup.values = Tags.categoriesForFile(optRow.fileName)
+                        valuesPopup.open()
+                    }
+                }
+            }
+        }
+    }
+
+    // ── Eingabe-Popup: neuen Tag / neue Kategorie erstellen (S-Modus) ────────
+    Popup {
+        id: addPopup
+        property string mode: "tag"          // "tag" | "category"
+        x: 6
+        y: overlay.height - height - 6
+        padding: 10
+        modal: false
+        focus: true
+        closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
+        background: Rectangle {
+            color: App.themeMenuBarBg
+            border.color: App.themeBorder; border.width: 1
+            radius: 6
+        }
+
+        function openFor(m) { mode = m; open() }
+        onOpened: { addField.text = ""; addField.forceActiveFocus() }
+
+        function commit() {
+            var v = addField.text.trim()
+            if (v.length > 0) {
+                var fn = overlay.filePath.substring(
+                    Math.max(overlay.filePath.lastIndexOf("/"),
+                             overlay.filePath.lastIndexOf("\\")) + 1)
+                if (addPopup.mode === "tag") {
+                    App.addTagToFile(fn, v)
+                } else {
+                    var newId = Tags.addRootCategory(v, Qt.rgba(0, 0.7, 0.63, 1), false)
+                    if (newId && newId.length > 0)
+                        Tags.toggleFileInCategory(newId, fn)
+                }
+            }
+            close()
+        }
+
+        contentItem: Column {
+            spacing: 6
+            Text {
+                text: addPopup.mode === "tag"
+                      ? App.uiText(App.language, "CatPanelNewTag")
+                      : App.uiText(App.language, "CatPanelAddCategory")
+                color: App.themeAccent; font.pixelSize: 12; font.bold: true
+            }
+            Row {
+                spacing: 4
+                TextField {
+                    id: addField
+                    width: 120
+                    font.pixelSize: 11
+                    color: App.themeTextPrimary
+                    background: Rectangle {
+                        color: App.themeCard; radius: 4
+                        border.color: addField.activeFocus ? App.themeAccent : App.themeBorder
+                        border.width: 1
+                    }
+                    onAccepted: addPopup.commit()
+                }
+                Button {
+                    height: addField.height
+                    text: App.uiText(App.language, "SettingsOk")
+                    font.pixelSize: 10
+                    onClicked: addPopup.commit()
+                }
+            }
+        }
+    }
+
+    // ── Werte-Popup (Tags bzw. Kategorien des Mediums) ──────────────────────
+    Popup {
+        id: valuesPopup
+        property string title: ""
+        property var values: []
+        x: 6
+        y: overlay.height - height - 6
+        padding: 10
+        modal: false
+        focus: true
+        closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
+        background: Rectangle {
+            color: App.themeMenuBarBg
+            border.color: App.themeBorder; border.width: 1
+            radius: 6
+        }
+        contentItem: Column {
+            spacing: 4
+            Text {
+                text: valuesPopup.title
+                color: App.themeAccent; font.pixelSize: 12; font.bold: true
+            }
+            Text {
+                visible: valuesPopup.values.length === 0
+                text: App.uiText(App.language, "OverlayNoValues")
+                color: App.themeTextMuted; font.pixelSize: 11
+            }
+            Repeater {
+                model: valuesPopup.values
+                delegate: Text {
+                    required property var modelData
+                    text: "\u2022 " + modelData
+                    color: App.themeTextPrimary; font.pixelSize: 11
+                }
+            }
+        }
     }
 }

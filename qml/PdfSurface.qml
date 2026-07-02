@@ -176,7 +176,10 @@ Item {
         // warm (kein doc.source="" mehr) → Zurueckwechseln muss nicht neu parsen.
         mediaLoader.active = false
         _saveActivePos()
-        audioPlayer.stop()
+        // Player-Instanz restlos zerstören — releaseDocument() (bzw. der nächste
+        // prepare()) löscht die Temp-WAVs; eine noch lebende Instanz würde Handle
+        // und Alt-Zustand behalten (Windows-Dateisperre, verworfenes play()).
+        audioPlayer.reset()
         root.activeClipId = -1
         root._activeTitle = ""
         annotations = []
@@ -194,7 +197,10 @@ Item {
             annotations = []                 // bis der asynchrone Scan zurueckkommt
             clearSelection()                 // evtl. Auswahl des vorherigen PDFs verwerfen
             // Audio-Zustand des vorherigen PDFs verwerfen + neuen Scan anstoßen (lazy).
-            audioPlayer.stop()
+            // WICHTIG: Player-Instanz vollständig zerstören, BEVOR PdfAudio.prepare()
+            // (→ releaseDocument) die Temp-WAVs des alten Dokuments löscht — sonst
+            // hält der Player noch ein offenes Handle auf die letzte WAV.
+            audioPlayer.reset()
             root.audioClips = []
             root.documentHasAudio = false
             root.activeClipId = -1
@@ -294,8 +300,11 @@ Item {
         // auf 0 ueberschriebe).
         root._pendingSeekMs = root._audioPos[root.activeClipId] || 0
         root._pendingPlay = true
-        audioPlayer.stop()           // alte Wiedergabe sauber beenden
-        audioPlayer.source = url     // neue Quelle laden
+        // Vollständige Neu-Initialisierung: die neue Quelle wird in eine FRISCHE
+        // MediaPlayer-Instanz geladen (loadFresh zerstört die alte restlos) —
+        // kein wiederverwendeter Demuxer-/Handle-/Sink-Zustand, der die
+        // Wiedergabe auf jedem zweiten Wechsel verwerfen könnte.
+        audioPlayer.loadFresh(url)
         // FFmpeg-Backend (Linux): das erste play() direkt bei LoadedMedia wird auf
         // jedem zweiten Quellenwechsel VERWORFEN (Player bleibt Stopped, kein Ton) —
         // exakt das, was ein zweiter manueller Klick heilt. playRetry ruft play()
@@ -330,40 +339,91 @@ Item {
 
     onAudioPanelVisibleChanged: if (audioPanelVisible) _ensurePageClipsExtracted()
 
-    MediaPlayer {
+    // ── Audio-Player-Fassade: JEDE Wiedergabe = frische MediaPlayer-Instanz ────
+    //  Stabiler Zugriffspunkt (id: audioPlayer) für die gesamte UI (Slider/
+    //  Buttons binden weiter an audioPlayer.position/duration/playbackState).
+    //  Die eigentliche MediaPlayer+AudioOutput-Instanz wird für jede Wiedergabe
+    //  KOMPLETT NEU erzeugt und die alte restlos zerstört — keine Wieder-
+    //  verwendung von Demuxer, Datei-Handle oder Audio-Sink. Hintergrund: das
+    //  FFmpeg-Backend behält nach einem Quellenwechsel AUF DERSELBEN Instanz
+    //  internen Pipeline-Zustand und verwirft die Wiedergabe auf jedem zweiten
+    //  Wechsel (Datei wird korrekt geprobt/geladen — „Input #0, wav, …" — aber
+    //  es startet kein Ton). Mit einer frischen Instanz existiert dieser
+    //  Alt-Zustand gar nicht erst; zusätzlich sind die Temp-WAVs nach reset()
+    //  garantiert ungesperrt (löschbar).
+    Item {
         id: audioPlayer
-        audioOutput: AudioOutput { id: audioOut }
-        // Robust gegen das FFmpeg-Backend (Linux): play() wird bei LoadedMedia teils
-        // VERWORFEN (zu früh). Erstversuch hier (schneller Pfad), die eigentliche
-        // Absicherung uebernimmt playRetry (wiederholt play(), bis Playing). KEIN
-        // playbackState-Guard mehr — play() soll frei feuern duerfen; auf einem
-        // laufenden Player ist es ohnehin ein No-Op. Es wird NIE auf 0 gesucht (ein
-        // redundanter Seek-auf-0 ließ die erste Wiedergabe hängen); ein echter
-        // Resume-Sprung (>0) erfolgt erst, NACHDEM die Wiedergabe läuft.
-        onMediaStatusChanged: {
-            if ((mediaStatus === MediaPlayer.LoadedMedia || mediaStatus === MediaPlayer.BufferedMedia)
-                    && root._pendingPlay)
-                play()
+        visible: false
+
+        // Aktive Instanz (playerComponent) — null, wenn nichts geladen ist.
+        property var _inst: null
+
+        // Reaktive Spiegel-Properties (Ruhewerte, solange keine Instanz lebt).
+        readonly property int  playbackState: _inst ? _inst.playbackState : MediaPlayer.StoppedState
+        readonly property int  mediaStatus:   _inst ? _inst.mediaStatus   : MediaPlayer.NoMedia
+        readonly property real position:      _inst ? _inst.position      : 0
+        readonly property real duration:      _inst ? _inst.duration      : 0
+
+        function play()   { if (_inst) _inst.play() }
+        function pause()  { if (_inst) _inst.pause() }
+        function stop()   { if (_inst) _inst.stop() }
+        function seek(ms) { if (_inst) _inst.position = ms }
+
+        // Neue Quelle in eine FRISCHE Instanz laden (alte vorher restlos weg).
+        function loadFresh(url) {
+            reset()
+            _inst = playerComponent.createObject(audioPlayer, { source: url })
         }
-        onPlaybackStateChanged: {
-            if (playbackState === MediaPlayer.PlayingState) {
-                root._pendingPlay = false
-                if (root._pendingSeekMs > 0) { position = root._pendingSeekMs; root._pendingSeekMs = -1 }
+
+        // Instanz vollständig zerstören: erst Fassade abkoppeln (Bindings fallen
+        // auf Ruhewerte), dann stoppen, Quelle leeren (Datei-Handle/Demuxer
+        // SOFORT freigeben — destroy() ist verzögert) und Objekt zerstören.
+        function reset() {
+            var old = _inst
+            _inst = null
+            if (old) {
+                old.stop()
+                old.source = ""
+                old.destroy()
             }
         }
-        onErrorOccurred: function(err, errStr) {
-            if (err !== MediaPlayer.NoError) console.log("MediaGallery Audio-Fehler:", err, errStr)
+
+        Component {
+            id: playerComponent
+            MediaPlayer {
+                audioOutput: AudioOutput {}
+                // Robust gegen das FFmpeg-Backend (Linux): play() wird bei LoadedMedia
+                // teils VERWORFEN (zu früh). Erstversuch hier (schneller Pfad), die
+                // eigentliche Absicherung uebernimmt playRetry (wiederholt play(), bis
+                // Playing). Es wird NIE auf 0 gesucht (ein redundanter Seek-auf-0 ließ
+                // die erste Wiedergabe hängen); ein echter Resume-Sprung (>0) erfolgt
+                // erst, NACHDEM die Wiedergabe läuft.
+                onMediaStatusChanged: {
+                    if ((mediaStatus === MediaPlayer.LoadedMedia || mediaStatus === MediaPlayer.BufferedMedia)
+                            && root._pendingPlay)
+                        play()
+                }
+                onPlaybackStateChanged: {
+                    if (playbackState === MediaPlayer.PlayingState) {
+                        root._pendingPlay = false
+                        if (root._pendingSeekMs > 0) { position = root._pendingSeekMs; root._pendingSeekMs = -1 }
+                    }
+                }
+                onErrorOccurred: function(err, errStr) {
+                    if (err !== MediaPlayer.NoError) console.log("MediaGallery Audio-Fehler:", err, errStr)
+                }
+                // Nur in das einfache Objekt schreiben (Resume) — KEIN Reassign → keine
+                // Binding-Last je Tick. Der aktive Slider liest audioPlayer.position direkt.
+                onPositionChanged: if (root.activeClipId >= 0) root._audioPos[root.activeClipId] = position
+            }
         }
-        // Nur in das einfache Objekt schreiben (Resume) — KEIN Reassign → keine
-        // Binding-Last je Tick. Der aktive Slider liest audioPlayer.position direkt.
-        onPositionChanged: if (root.activeClipId >= 0) root._audioPos[root.activeClipId] = position
     }
 
-    // Wiederholt play(), bis die Wiedergabe wirklich laeuft. Notwendig, weil das
-    // FFmpeg-Backend das erste play() (direkt bei LoadedMedia) auf jedem zweiten
-    // Quellenwechsel verwirft und der Player dann in Stopped haengt. Stoppt sich
-    // selbst, sobald Playing erreicht ist, _pendingPlay zurueckgesetzt wurde, oder
-    // nach einer Sicherheitsgrenze (Schutz vor Endlos-Retry bei InvalidMedia).
+    // Wiederholt play(), bis die Wiedergabe wirklich laeuft (Sicherheitsnetz für
+    // den Fall, dass das erste play() direkt bei LoadedMedia verworfen wird).
+    // Stoppt sich selbst, sobald Playing erreicht ist, _pendingPlay zurueckgesetzt
+    // wurde, oder nach einer Sicherheitsgrenze (Schutz vor Endlos-Retry bei
+    // InvalidMedia).
     Timer {
         id: playRetry
         interval: 80
@@ -625,7 +685,15 @@ Item {
             left: parent.left; right: parent.right
             top: toolbar.visible ? toolbar.bottom : parent.top
             bottom: parent.bottom
-            bottomMargin: root.bottomInset
+            // "Ganze Seite": Der Fit haengt von der Viewport-HOEHE ab — jede
+            // bottomInset-Aenderung (Ein-/Ausblenden der unteren Datei-Navigation
+            // per Hover) wuerde die Seite sonst neu skalieren und verschieben
+            // (teures Re-Rendern + visuelles Springen). Daher wird das Inset im
+            // Seiten-Fit-Modus IGNORIERT: Die Navigation liegt dann — wie im
+            // "Breite"-Modus — als reines Overlay UEBER der statisch gerenderten
+            // PDF-Seite. Im "Breite"-Modus bleibt das Inset erhalten (Fit haengt
+            // nur von der Breite ab → kein Re-Rendern, nur Viewport-Hoehe).
+            bottomMargin: root.fitMode === "page" ? 0 : root.bottomInset
         }
 
         // ── Seiten (volle Breite; Thumbnail-Panel liegt als Overlay darüber) ──
@@ -1075,7 +1143,7 @@ Item {
                         value: pressed ? value
                                        : (arow.isActive ? audioPlayer.position
                                                         : (root._audioRev, root._savedPos(arow.cid)))
-                        onMoved: if (arow.isActive) audioPlayer.position = value
+                        onMoved: if (arow.isActive) audioPlayer.seek(value)
                         onPressedChanged: {
                             if (!pressed && !arow.isActive) {
                                 var m = root._audioPos; m[arow.cid] = value; root._audioPos = m; root._audioRev++
@@ -1134,7 +1202,7 @@ Item {
                     height: 18
                     from: 0; to: Math.max(1, audioPlayer.duration)
                     value: pressed ? value : audioPlayer.position
-                    onMoved: audioPlayer.position = value
+                    onMoved: audioPlayer.seek(value)
                     background: Rectangle {
                         x: miniSlider.leftPadding; y: miniSlider.topPadding + miniSlider.availableHeight / 2 - height / 2
                         width: miniSlider.availableWidth; height: 4; radius: 2

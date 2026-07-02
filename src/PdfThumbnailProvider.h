@@ -108,10 +108,6 @@ public:
 signals:
     // Feuert (queued → GUI-Thread) je fertig gerenderter Seite.
     void pageReady(int docId, int page);
-    // Feuert genau einmal, sobald das Dokument vollstaendig im Store liegt.
-    void documentReady(int docId, int pageCount);
-    // Laden/Parsen fehlgeschlagen (z. B. defekte Datei).
-    void documentFailed(int docId);
 
 private:
     bool cancelled() const {
@@ -168,10 +164,6 @@ public:
 signals:
     // Eine Seite liegt jetzt im Store → QML soll die Image-source neu anfordern.
     void pageReady(int docId, int page);
-    // Alle Seiten eines Dokuments liegen vor.
-    void documentReady(int docId, int pageCount);
-    // Vorschau-Erzeugung fuer ein Dokument fehlgeschlagen.
-    void documentFailed(int docId);
 
 private:
     using CancelFlag = std::shared_ptr<std::atomic<bool>>;

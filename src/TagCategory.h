@@ -22,12 +22,4 @@ struct TagCategory {
         c.name = name;
         return c;
     }
-
-    // Recursive helpers
-    bool isEmpty() const { return tags.isEmpty() && children.isEmpty(); }
-    int  tagCount() const {
-        int n = tags.size();
-        for (const auto& ch : children) n += ch.tagCount();
-        return n;
-    }
 };

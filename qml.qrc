@@ -8,6 +8,7 @@
         <file>qml/FullscreenViewer.qml</file>
         <file>qml/VideoSurface.qml</file>
         <file>qml/TextSurface.qml</file>
+        <file>qml/HtmlSurface.qml</file>
         <file>qml/PdfSurface.qml</file>
         <file>qml/TagCategoryPanel.qml</file>
         <file>qml/CategoryNode.qml</file>

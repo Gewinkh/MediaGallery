@@ -58,9 +58,6 @@ public:
     // Verwirft alle in-flight-Ergebnisse (Ordnerwechsel). Cache auf Platte bleibt.
     void cancelAll();
 
-    // Deterministischer Cache-Pfad (.jpg) für filePath bei kThumbDim.
-    static QString diskCachePath(const QString& filePath);
-
 signals:
     // thumbUrl ist eine fertige "file:///..."-URL für Image.source in QML.
     void thumbnailReady(const QString& filePath, const QString& thumbUrl);
@@ -110,6 +107,7 @@ private:
     static QPixmap generateAudioThumbnail(const QString& path, const QSize& size);
     static QPixmap generatePdfThumbnail(const QString& path, const QSize& size);
     static QPixmap generateTextThumbnail(const QString& path, const QSize& size);
+    static QPixmap generateHtmlCardThumbnail(const QString& path, const QSize& size);
     static QPixmap fallbackPdfThumbnail(const QSize& size);
     static QPixmap fallbackTextThumbnail(const QString& path, const QSize& size);
 };
