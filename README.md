@@ -13,14 +13,18 @@ Built with **C++20** and **Qt 6.4+**.
 - **Audio**: MP3, FLAC, WAV, OGG, AAC, M4A, WMA, Opus, AIFF, APE, ALAC, MIDI and more
 - **PDFs**: Full page rendering with thumbnail sidebar and media annotation support
 - **Text files**: TXT, Markdown, source code (C++, Python, Rust, Go, JS/TS, …), configs, scripts, logs, CSV and more — editable directly in the app
+- **HTML**: Rendered live preview (via Qt WebEngine) alongside the editable source view
 
 ### Gallery & View
 - **Grid view**: 1–25 columns, zoom with `Ctrl+Scroll` or `Shift+Scroll`
+- **Tile size dialog**: Adjust tile width/height with a live drag-resize preview
 - **Fullscreen gallery**: Prev/Next, Random mode, up to 10× zoom, pan with mouse
 - **Image viewer**: Hardware-accelerated QML viewer with pinch-zoom, wheel-zoom and mouse pan
 - **Compact mode**: Options mode toggle with `Alt+S` — works in the gallery and inside the open media viewer
 - **Cover mode**: Cover/uncover gallery with `B`
 - **Live folder watch**: New or deleted files are detected automatically
+- **Folder bookmarks**: Save folders under a custom name for one-click access (Menu → Folder, and Settings → Bookmarks)
+- **Fullscreen transitions**: Slide or Fade page animation (Settings → General)
 
 ### Text Editor
 - Opens any supported text/source file in a monospace editor inside the fullscreen view
@@ -28,6 +32,20 @@ Built with **C++20** and **Qt 6.4+**.
 - Unsaved-changes indicator (`*` in the filename label)
 - **Auto-Save**: optional timer-based auto-save (configurable interval, Settings → Text Editor)
 - Confirmation dialog on navigation away from unsaved changes (Save / Discard / Cancel)
+- Proper Arabic/CJK font fallback in the editor (no more missing-glyph "tofu" boxes)
+
+### HTML Viewer
+- **.html / .htm** files open in a rendered live preview by default, with a one-click toggle back to the editable source view
+- Preview runs fully **offline**: JavaScript stays enabled (quizzes, search, shortcuts keep working) while remote network access is blocked — no external fonts or trackers load
+- **Design-card thumbnails**: instead of showing raw source code, HTML thumbnails are auto-generated from the page's hero section (title, subtitle, colors, RTL/Arabic star patterns or gradients) and refresh automatically when the file changes
+
+### Live Transliteration
+- Type in Latin letters and get **Arabic (with full Harakat/diacritics)** or **Japanese (Hiragana/Katakana)** automatically as you type — no separate conversion step
+- Works in the **text editor**, **HTML source view**, and **PDF Editor notes**
+- Smart, unambiguous conversion: waits for the next keystroke whenever a shorter match could still extend into a longer one (e.g. holds `a` until it's clear whether `aa` follows)
+- Supports the Arabic definite article (sun/moon letter assimilation), doubled consonants (auto-Shadda), and word-boundary handling
+- Fully customizable mapping tables per script (Settings → Text Editor), with add/edit/remove/reset controls
+- Toggle button (with scheme picker) available directly in the editor toolbar and the PDF Editor toolbar
 
 ### Tags & Categories
 - **Tags**: Per-folder, unlimited, freely named, color-coded
@@ -35,8 +53,9 @@ Built with **C++20** and **Qt 6.4+**.
 - **Unified side panel**: Tags and categories live in one panel with two equal sections — all tags as toggleable chips with a clearly visible active/inactive state, plus the full category tree below
 - **Individual panel toggles**: The Filter popup has a merged "Tags & Categories" section where the Tag panel and the Category panel can be shown or hidden independently, each with a clearly visible on/off state
 - **"+" buttons everywhere**: Create new tags and new categories directly from the panel headers, and — in options mode (`Alt+S`) — straight from a media tile, each "+" sitting right next to its corresponding button (new tags/categories are assigned to that file immediately)
+- **Right-click context menu on tiles**: Assign existing tags or categories to a file directly from a submenu, with already-assigned entries checked, without opening a panel
 - **Smart filter cascade**: Deselecting a category (or subcategory) automatically deactivates its dependent subcategories and tags — unless they are still needed by another active filter, in which case they stay active
-- **Universal converter**: Convert in every direction between tags, subcategories, and top-level categories (Settings → Converter) — pick the direction from a dropdown and the form adapts to it
+- **Universal converter**: Convert in every direction between tags, subcategories, and top-level categories (Settings → Converter) — pick the direction from a dropdown and the form adapts to it, and move categories anywhere in the tree
 - **Filter modes**: OR, AND, ONLY, INCLUSIVE — combinable with media-type filter
 - **Sorting**: Date, Name, File size (ascending/descending)
 
@@ -48,6 +67,18 @@ Built with **C++20** and **Qt 6.4+**.
 - Sidecar audio file fallback (auto-detected by filename)
 - **First-load fix**: PDFs now open and render immediately on the first click
 - **Stable audio playback**: Embedded PDF audio now plays reliably on every file — the previous alternating failure (every second file staying silent) is fixed
+- **Browser-style text selection**: click-and-drag to select the embedded text layer, `Ctrl+C` to copy, `Ctrl+A` to select all on the current page
+- **Embedded audio panel**: a dedicated side panel lists every audio clip on the current page with a seek slider, plus an Apple-style mini-player that keeps playing while you scroll to other pages; clickable on-page audio hotspots
+
+### PDF Editor (Post-it Notes)
+- Add sticky-note style text boxes anywhere on a PDF page — the original file is **never modified**
+- Notes are saved to a **sidecar file** next to the PDF (non-destructive) and stay editable across sessions
+- **Export** writes a brand-new PDF copy (`…_edited(.n).pdf`) with the notes permanently rendered onto the pages — your original is always preserved
+- Full text formatting: font family (with automatic substitution hint for missing fonts), size, bold/italic/underline, alignment, vertical alignment, text color and note-paper (highlight) color, including an opacity slider
+- **Line-snapping**: new notes anchor precisely to detected text lines when placed nearby, or float freely elsewhere
+- **Cross-page dragging**: drag a note past the top/bottom of a page and it automatically moves to the neighboring page on release
+- Full undo/redo history and a note-visibility toggle (`Alt+Q`) that hides/shows all notes in both view and edit mode
+- Formatting panel can be docked as a **right sidebar** or a **Word-style ribbon** at the top (Settings → Text Editor)
 
 ### Full Color Customization (Settings → Design)
 - **9 built-in themes**: Dark, Dark OLED, Ocean Depth, Inferno Blaze, Neon Purple, Midnight Rose, Elegant, Simple, Custom
@@ -67,7 +98,8 @@ Built with **C++20** and **Qt 6.4+**.
 
 ### Metadata & File Management
 - **Date editor**: Custom date per file, persisted in JSON
-- **Delete file**: Red delete button in fullscreen view with confirmation dialog
+- **Delete file**: Red delete button in fullscreen view, plus a right-click "Delete file…" entry on gallery tiles — both with a confirmation dialog; the file goes to the system trash and its metadata/sidecar are cleaned up automatically
+- **Create file**: A "+ Create" button in the filter bar creates an empty PDF, HTML, or text file directly in the current folder (PDF starts as one blank A4 page, ready to annotate)
 - **Rename**: Also renames the file on disk
 - **Drag & Drop**: Drop a folder or individual media files onto the window
 - **JSON storage**: `<FolderName>.json` stored directly in the target folder (file-centric format v2)
@@ -76,7 +108,10 @@ Built with **C++20** and **Qt 6.4+**.
 - **Video playback**: Native (Qt Multimedia) or external player
 - **Audio thumbnails**: Styled previews with waveform decoration and format badge
 - **Text thumbnails**: First few lines of the file rendered in monospace with extension badge
+- **HTML thumbnails**: Auto-generated design cards instead of raw source code (see HTML Viewer)
 - **Language**: English / German — switchable at runtime (Settings → General)
+- **Audio player accent**: Theme color or Apple Blue for the PDF audio mini-player (Settings → General)
+- **Graphics backend**: Vulkan, OpenGL, or Software rendering, with an automatic crash-guard fallback if a backend fails to start (Settings → General)
 - **Themes**: Fully customizable — every color, every surface (Settings → Design)
 
 ---
@@ -104,13 +139,18 @@ Built with **C++20** and **Qt 6.4+**.
 | PDF: zoom out | `-` |
 | PDF: previous page | `←` |
 | PDF: next page | `→` |
+| PDF: copy selected text | `Ctrl+C` |
+| PDF: select all text on page | `Ctrl+A` |
+| PDF Editor: toggle note visibility | `Alt+Q` |
+| PDF Editor: delete selected note | `Delete` |
 
 ---
 
 ## Build Instructions
 
 ### Requirements
-- Qt 6.4+ with modules: `Multimedia`, `MultimediaWidgets`, `Pdf`, `PdfWidgets`, `Qml`, `Quick`
+- Qt 6.4+ (developed against 6.11) with modules: `Core`, `Gui`, `Qml`, `Quick`, `QuickControls2`, `Multimedia`, `Pdf`, `Svg`, `WebEngineQuick`
+- ZLIB (used for inflating embedded PDF audio streams)
 - CMake 3.21+
 - C++20-capable compiler (MSVC 2022, GCC 12+, Clang 15+)
 
@@ -157,11 +197,12 @@ Custom themes can be exported to JSON and shared:
 ## Changelog
 
 ### Latest
-- **Feature**: Added HTML support with live rendering.
-- **UI**: PDF documents now use a white background instead of black for improved readability.
-- **Fix**: Restored M4A playback.
-- **Fix**: Restored the Add Tag and Add Category actions after the QML migration.
-- **UI**: Various UI refinements, including improved dialog layouts, button placement, filter text styling, and general visual consistency.
+- **Feature**: New **PDF Editor** — add sticky-note style text boxes on top of any PDF page (font, size, style, color, alignment, note-paper color/opacity), with line-snapping, cross-page dragging, full undo/redo, non-destructive sidecar storage, and export to a new, edited PDF copy.
+- **Feature**: New **Live Transliteration** — type Latin letters and get automatic Arabic (with Harakat) or Japanese (Hiragana/Katakana) output live in the text editor, HTML source, and PDF Editor notes, with fully customizable mapping tables (Settings → Text Editor).
+- **Feature**: **Create file** button in the filter bar for new empty PDF, HTML, or text files in the current folder.
+- **Feature**: **Delete file** directly from a gallery tile's right-click menu (in addition to the fullscreen viewer), with confirmation and automatic metadata/sidecar cleanup.
+- **Fix**: Arabic and CJK text now render with correct font fallback in the text editor and PDF Editor instead of missing-glyph "tofu" boxes.
+- **Fix**: Note-visibility toggle (`Alt+Q`) in the new PDF Editor now works correctly in both view and edit mode.
 
 ---
 

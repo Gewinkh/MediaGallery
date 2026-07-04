@@ -55,6 +55,15 @@ set(SOURCES
     src/PdfMediaHandler.h
     src/PdfAudioController.cpp
     src/PdfAudioController.h
+    src/PdfEditTypes.h
+    src/PdfEditModel.cpp
+    src/PdfEditModel.h
+    src/PdfEditCommands.cpp
+    src/PdfEditCommands.h
+    src/TransliterationController.cpp
+    src/TransliterationController.h
+    src/PdfEditController.cpp
+    src/PdfEditController.h
     src/Strings.cpp
     src/Strings.h
     src/PathUtils.h

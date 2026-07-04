@@ -281,6 +281,72 @@ enum class StringKey {
     FilterPanelHeader,         // Filter-Popup: Überschrift der Panel-Steuerung
     FilterTagPanelRow,         // Filter-Popup: Toggle-Zeile „Tag-Panel"
     FilterCatPanelRow,         // Filter-Popup: Toggle-Zeile „Kategorie-Panel"
+
+    // ── PDF-Editor (Overlay-Textboxen; PdfSurface/PdfEdit*-QML) ──
+    PdfEditToggleTip,          // Toolbar: Bearbeitungsmodus ein/aus
+    PdfEditUndoTip,            // Toolbar: Rückgängig
+    PdfEditRedoTip,            // Toolbar: Wiederholen
+    PdfEditSnapTip,            // Toolbar: Zeilenfang ein/aus
+    PdfEditPanelHeader,        // Panel-Überschrift
+    PdfEditNoSelection,        // Panel-Hinweis ohne Auswahl
+    PdfEditFontLabel,          // Panel: Schriftart
+    PdfEditSizeLabel,          // Panel: Schriftgröße
+    PdfEditStyleLabel,         // Panel: Stil (B/I/U)
+    PdfEditAlignLabel,         // Panel: Ausrichtung (horizontal)
+    PdfEditVAlignLabel,        // Panel: vertikale Ausrichtung (oben/mittig)
+    PdfEditColorLabel,         // Panel: Textfarbe
+    PdfEditHighlightLabel,     // Panel: Hervorhebung (Box-Hintergrund)
+    PdfEditNoHighlight,        // Panel/Toolbar: Hervorhebung entfernen
+    PdfEditDeleteBtn,          // Textbox löschen
+    PdfEditAnchoredChip,       // Panel-Chip: an Textzeile verankert
+    PdfEditEmptyHint,          // Platzhalter in leerer Textbox
+    PdfEditSaveBtn,            // Panel: Overlay speichern
+    PdfEditSaveTip,            // Tooltip zum Speichern (Sidecar, editierbar)
+    PdfEditExportBtn,          // Panel: PDF exportieren
+    PdfEditExportTip,          // Tooltip zum Export (gerendertes PDF)
+    PdfEditSavedToast,         // Toast: gespeichert
+    PdfEditSaveFailedToast,    // Toast: Speichern fehlgeschlagen
+    PdfEditExportDoneToast,    // Toast: exportiert nach %1
+    PdfEditExportFailedToast,  // Toast: Export fehlgeschlagen (%1)
+    PdfEditExportingToast,     // Toast: Fortschritt Seite %1/%2
+    SettingsPdfEditGroup,      // Settings-Editor-Tab: Gruppentitel
+
+    // ── PDF-Editor Runde 2: Post-it-Notizen + Panel-Position ──
+    PdfEditNotesToggleTip,     // Toolbar: Notizen ein-/ausblenden (Alt+Q)
+    PdfEditOpacityLabel,       // Panel: Deckkraft des Notiz-Hintergrunds
+    PdfEditPanelPosLabel,      // Settings: Position der Text-Eigenschaften
+    PdfEditPanelPosRight,      // Settings-Option: rechte Seitenleiste
+    PdfEditPanelPosTop,        // Settings-Option: obere Leiste (Word-Stil)
+
+    // ── Datei-Erstellung (FilterBar „Erstellen") ──
+    CreateFileBtn,             // Button-Beschriftung
+    CreateFileTitle,           // Popup-Titel
+    CreateFileNameLabel,       // Eingabefeld-Label
+    CreateFileTypePdf,         // Typ: leere PDF
+    CreateFileTypeHtml,        // Typ: leere HTML-Datei
+    CreateFileTypeTxt,         // Typ: leere Textdatei
+    CreateFileDone,            // Statuszeile: Erstellt: %1
+    CreateFileFailed,          // Statuszeile: Erstellen fehlgeschlagen
+
+    // ── Galerie-Kontextmenü: Datei löschen ──
+    CtxDeleteFile,             // Kontextmenü-Eintrag „Datei löschen…"
+    DeleteMediaTitle,          // Dialog-Titel
+    DeleteMediaText,           // Dialog-Text „%1 wird in den Papierkorb …"
+    DeleteMediaConfirm,        // Dialog-Bestätigungsknopf „Löschen"
+
+    // ── Live-Transliteration (Latein → Arabisch/Kana) ──
+    TranslitTip,               // Button-Tooltip
+    TranslitOff,               // Popup: Aus
+    TranslitArabic,            // Popup: Arabisch (mit Harakat)
+    TranslitHiragana,          // Popup: Japanisch – Hiragana
+    TranslitKatakana,          // Popup: Japanisch – Katakana
+    SettingsTranslitGroup,     // Settings-Gruppentitel
+    TranslitSchemeLabel,       // Settings: Auswahl des zu bearbeitenden Schemas
+    TranslitKeyPlaceholder,    // Settings: Platzhalter Eingabe (Latein)
+    TranslitValuePlaceholder,  // Settings: Platzhalter Ausgabe (Zielschrift)
+    TranslitAddBtn,            // Settings: Zuordnung hinzufügen
+    TranslitResetBtn,          // Settings: Schema auf Standard zurücksetzen
+    TranslitHint,              // Settings: Erklärungstext
 };
 Q_ENUM_NS(StringKey)
 }  // namespace SK

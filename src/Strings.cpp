@@ -275,6 +275,72 @@ static const QMap<StringKey, QString> s_de = {
     { StringKey::FilterTagPanelRow,    "Tag-Panel" },
     { StringKey::FilterCatPanelRow,    "Kategorie-Panel" },
 
+    // ── PDF-Editor (Overlay-Textboxen) ──
+    { StringKey::PdfEditToggleTip,         "Bearbeitungsmodus (Overlay)" },
+    { StringKey::PdfEditUndoTip,           "Rückgängig" },
+    { StringKey::PdfEditRedoTip,           "Wiederholen" },
+    { StringKey::PdfEditSnapTip,           "An PDF-Textzeilen ausrichten" },
+    { StringKey::PdfEditPanelHeader,       "Text-Eigenschaften" },
+    { StringKey::PdfEditNoSelection,       "Textbox auswählen oder per Klick auf die Seite eine neue erstellen." },
+    { StringKey::PdfEditFontLabel,         "Schriftart" },
+    { StringKey::PdfEditSizeLabel,         "Größe" },
+    { StringKey::PdfEditStyleLabel,        "Stil" },
+    { StringKey::PdfEditAlignLabel,        "Ausrichtung" },
+    { StringKey::PdfEditVAlignLabel,       "Vertikal" },
+    { StringKey::PdfEditColorLabel,        "Textfarbe" },
+    { StringKey::PdfEditHighlightLabel,    "Notiz-Hintergrund" },
+    { StringKey::PdfEditNoHighlight,       "Keine" },
+    { StringKey::PdfEditDeleteBtn,         "Textbox löschen" },
+    { StringKey::PdfEditAnchoredChip,      "an Textzeile verankert" },
+    { StringKey::PdfEditEmptyHint,         "Text eingeben…" },
+    { StringKey::PdfEditSaveBtn,           "Speichern" },
+    { StringKey::PdfEditSaveTip,           "Änderungen sichern (bleibt editierbar)" },
+    { StringKey::PdfEditExportBtn,         "Export" },
+    { StringKey::PdfEditExportTip,         "PDF mit eingerechneten Änderungen erzeugen" },
+    { StringKey::PdfEditSavedToast,        "Änderungen gespeichert" },
+    { StringKey::PdfEditSaveFailedToast,   "Speichern fehlgeschlagen" },
+    { StringKey::PdfEditExportDoneToast,   "Exportiert: %1" },
+    { StringKey::PdfEditExportFailedToast, "Export fehlgeschlagen: %1" },
+    { StringKey::PdfEditExportingToast,    "Exportiere… Seite %1/%2" },
+    { StringKey::SettingsPdfEditGroup,     "PDF-Editor" },
+
+    // ── PDF-Editor Runde 2: Post-it-Notizen + Panel-Position ──
+    { StringKey::PdfEditNotesToggleTip,    "Notizen ein-/ausblenden (Alt+Q)" },
+    { StringKey::PdfEditOpacityLabel,      "Deckkraft" },
+    { StringKey::PdfEditPanelPosLabel,     "Position der Text-Eigenschaften" },
+    { StringKey::PdfEditPanelPosRight,     "Rechts (Seitenleiste)" },
+    { StringKey::PdfEditPanelPosTop,       "Oben (Leiste wie Word)" },
+
+    // ── Datei-Erstellung (FilterBar „Erstellen") ──
+    { StringKey::CreateFileBtn,            "Erstellen" },
+    { StringKey::CreateFileTitle,          "Neue Datei erstellen" },
+    { StringKey::CreateFileNameLabel,      "Dateiname" },
+    { StringKey::CreateFileTypePdf,        "Leere PDF" },
+    { StringKey::CreateFileTypeHtml,       "Leere HTML-Datei" },
+    { StringKey::CreateFileTypeTxt,        "Leere Textdatei" },
+    { StringKey::CreateFileDone,           "Erstellt: %1" },
+    { StringKey::CreateFileFailed,         "Datei konnte nicht erstellt werden." },
+
+    // ── Galerie-Kontextmenü: Datei löschen ──
+    { StringKey::CtxDeleteFile,            "Datei löschen…" },
+    { StringKey::DeleteMediaTitle,         "Datei löschen" },
+    { StringKey::DeleteMediaText,          "„%1“ wird in den Papierkorb verschoben." },
+    { StringKey::DeleteMediaConfirm,       "Löschen" },
+
+    // ── Live-Transliteration ──
+    { StringKey::TranslitTip,              "Transliteration (Latein → Arabisch/Japanisch)" },
+    { StringKey::TranslitOff,              "Aus" },
+    { StringKey::TranslitArabic,           "Arabisch (mit Harakat)" },
+    { StringKey::TranslitHiragana,         "Japanisch – Hiragana" },
+    { StringKey::TranslitKatakana,         "Japanisch – Katakana" },
+    { StringKey::SettingsTranslitGroup,    "Transliteration beim Schreiben" },
+    { StringKey::TranslitSchemeLabel,      "Schema" },
+    { StringKey::TranslitKeyPlaceholder,   "Eingabe (Latein)" },
+    { StringKey::TranslitValuePlaceholder, "Ausgabe (Zielschrift)" },
+    { StringKey::TranslitAddBtn,           "Hinzufügen" },
+    { StringKey::TranslitResetBtn,         "Auf Standard zurücksetzen" },
+    { StringKey::TranslitHint,             "Beim Schreiben von Text (TXT, HTML, PDF-Notizen) wird die lateinische Eingabe live in die Zielschrift umgesetzt – aber erst, sobald eindeutig ist, welches Zeichen gemeint ist (z. B. wird „a“ erst umgewandelt, wenn feststeht, dass kein längeres Kürzel wie „aa“ folgt). Die Zuordnungen unten lassen sich frei bearbeiten, ergänzen und löschen." },
+
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -549,6 +615,72 @@ static const QMap<StringKey, QString> s_en = {
     { StringKey::FilterPanelHeader,    "Side panel" },
     { StringKey::FilterTagPanelRow,    "Tag panel" },
     { StringKey::FilterCatPanelRow,    "Category panel" },
+
+    // ── PDF editor (overlay text boxes) ──
+    { StringKey::PdfEditToggleTip,         "Edit mode (overlay)" },
+    { StringKey::PdfEditUndoTip,           "Undo" },
+    { StringKey::PdfEditRedoTip,           "Redo" },
+    { StringKey::PdfEditSnapTip,           "Snap to PDF text lines" },
+    { StringKey::PdfEditPanelHeader,       "Text properties" },
+    { StringKey::PdfEditNoSelection,       "Select a text box or click the page to create one." },
+    { StringKey::PdfEditFontLabel,         "Font" },
+    { StringKey::PdfEditSizeLabel,         "Size" },
+    { StringKey::PdfEditStyleLabel,        "Style" },
+    { StringKey::PdfEditAlignLabel,        "Alignment" },
+    { StringKey::PdfEditVAlignLabel,       "Vertical" },
+    { StringKey::PdfEditColorLabel,        "Text color" },
+    { StringKey::PdfEditHighlightLabel,    "Note background" },
+    { StringKey::PdfEditNoHighlight,       "None" },
+    { StringKey::PdfEditDeleteBtn,         "Delete text box" },
+    { StringKey::PdfEditAnchoredChip,      "anchored to text line" },
+    { StringKey::PdfEditEmptyHint,         "Enter text…" },
+    { StringKey::PdfEditSaveBtn,           "Save" },
+    { StringKey::PdfEditSaveTip,           "Save changes (stays editable)" },
+    { StringKey::PdfEditExportBtn,         "Export" },
+    { StringKey::PdfEditExportTip,         "Render changes into a new PDF" },
+    { StringKey::PdfEditSavedToast,        "Changes saved" },
+    { StringKey::PdfEditSaveFailedToast,   "Saving failed" },
+    { StringKey::PdfEditExportDoneToast,   "Exported: %1" },
+    { StringKey::PdfEditExportFailedToast, "Export failed: %1" },
+    { StringKey::PdfEditExportingToast,    "Exporting… page %1/%2" },
+    { StringKey::SettingsPdfEditGroup,     "PDF editor" },
+
+    // ── PDF editor round 2: sticky notes + panel position ──
+    { StringKey::PdfEditNotesToggleTip,    "Show/hide notes (Alt+Q)" },
+    { StringKey::PdfEditOpacityLabel,      "Opacity" },
+    { StringKey::PdfEditPanelPosLabel,     "Text properties position" },
+    { StringKey::PdfEditPanelPosRight,     "Right (side panel)" },
+    { StringKey::PdfEditPanelPosTop,       "Top (Word-style bar)" },
+
+    // ── File creation (filter bar "Create") ──
+    { StringKey::CreateFileBtn,            "Create" },
+    { StringKey::CreateFileTitle,          "Create new file" },
+    { StringKey::CreateFileNameLabel,      "File name" },
+    { StringKey::CreateFileTypePdf,        "Empty PDF" },
+    { StringKey::CreateFileTypeHtml,       "Empty HTML file" },
+    { StringKey::CreateFileTypeTxt,        "Empty text file" },
+    { StringKey::CreateFileDone,           "Created: %1" },
+    { StringKey::CreateFileFailed,         "Could not create file." },
+
+    // ── Gallery context menu: delete file ──
+    { StringKey::CtxDeleteFile,            "Delete file…" },
+    { StringKey::DeleteMediaTitle,         "Delete file" },
+    { StringKey::DeleteMediaText,          "“%1” will be moved to the trash." },
+    { StringKey::DeleteMediaConfirm,       "Delete" },
+
+    // ── Live transliteration ──
+    { StringKey::TranslitTip,              "Transliteration (Latin → Arabic/Japanese)" },
+    { StringKey::TranslitOff,              "Off" },
+    { StringKey::TranslitArabic,           "Arabic (with harakat)" },
+    { StringKey::TranslitHiragana,         "Japanese – Hiragana" },
+    { StringKey::TranslitKatakana,         "Japanese – Katakana" },
+    { StringKey::SettingsTranslitGroup,    "Transliteration while typing" },
+    { StringKey::TranslitSchemeLabel,      "Scheme" },
+    { StringKey::TranslitKeyPlaceholder,   "Input (Latin)" },
+    { StringKey::TranslitValuePlaceholder, "Output (target script)" },
+    { StringKey::TranslitAddBtn,           "Add" },
+    { StringKey::TranslitResetBtn,         "Reset to defaults" },
+    { StringKey::TranslitHint,             "When writing text (TXT, HTML, PDF notes) your Latin input is converted live into the target script — but only once it is unambiguous which character you mean (e.g. “a” is only converted once it is clear no longer sequence such as “aa” follows). The mappings below can be edited, extended and removed freely." },
 
 };
 

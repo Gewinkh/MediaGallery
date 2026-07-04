@@ -34,6 +34,9 @@ Rectangle {
     property bool   covered: false
 
     signal activated(string filePath)
+    // Kontextmenü „Datei löschen…" → GalleryView zeigt EINEN gemeinsamen
+    // Bestätigungs-Dialog (kein Dialog je Kachel) und ruft mediaModel.deleteItem.
+    signal deleteRequested(string filePath, string displayName)
 
     readonly property bool tagged: modeTag.length > 0 && tags.indexOf(modeTag) >= 0
     readonly property bool dimmed: tagMode === 1 && modeTag.length > 0 && !tagged
@@ -184,6 +187,14 @@ Rectangle {
                     onTriggered: Tags.toggleFileInCategory(modelData.id, tile.fileName)
                 }
             }
+        }
+
+        MenuSeparator {}
+        // Datei löschen (in den Papierkorb) — Bestätigung übernimmt der
+        // gemeinsame Dialog in GalleryView (deleteRequested-Signal).
+        MenuItem {
+            text: App.uiText(App.language, "CtxDeleteFile")
+            onTriggered: tile.deleteRequested(tile.filePath, tile.displayName)
         }
     }
 

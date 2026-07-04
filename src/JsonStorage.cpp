@@ -276,3 +276,7 @@ void JsonStorage::renameFile(const QString& oldName, const QString& newName) {
     if (m_fileMeta.contains(oldName))
         m_fileMeta[newName] = m_fileMeta.take(oldName);
 }
+
+void JsonStorage::removeFile(const QString& fileName) {
+    m_fileMeta.remove(fileName);
+}

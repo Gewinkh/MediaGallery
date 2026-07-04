@@ -14,6 +14,7 @@
 #include <QVariantMap>
 #include <QRunnable>
 #include <utility>
+#include <algorithm>
 
 // ─────────────────────────────────────────────────────────────────────────────
 //  PdfLoadTask — laedt das Auswahl-Dokument OHNE GUI-Thread.
@@ -201,6 +202,65 @@ QVariantList PdfTextController::applySelection(const QPdfSelection& sel, int pag
         emit selectedTextChanged();
     }
     return rects;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  Zeilenfang des PDF-Editors: Fragment-Rechtecke aus getAllText() nach
+//  vertikaler Mitte sortieren und zu ZEILEN vereinigen. Toleranz = 60 % der
+//  kleineren Fragmenthöhe (robust gegen Hoch-/Tiefstellungen und leicht
+//  versetzte Runs derselben Zeile).
+// ─────────────────────────────────────────────────────────────────────────────
+QVariantList PdfTextController::textLineRects(int page) {
+    if (!m_doc || page < 0 || page >= m_doc->pageCount())
+        return {};
+
+    const QSizeF ps = m_doc->pagePointSize(page);
+    if (ps.isEmpty())
+        return {};
+
+    const QPdfSelection sel = m_doc->getAllText(page);
+    if (!sel.isValid())
+        return {};
+
+    QList<QRectF> frags;
+    const QList<QPolygonF> bounds = sel.bounds();
+    frags.reserve(bounds.size());
+    for (const QPolygonF& poly : bounds) {
+        const QRectF r = poly.boundingRect();
+        if (r.width() > 0.5 && r.height() > 0.5)
+            frags.append(r);
+    }
+    if (frags.isEmpty())
+        return {};
+
+    std::sort(frags.begin(), frags.end(), [](const QRectF& a, const QRectF& b) {
+        return a.center().y() < b.center().y();
+    });
+
+    QList<QRectF> lines;
+    for (const QRectF& r : std::as_const(frags)) {
+        if (!lines.isEmpty()) {
+            QRectF& last = lines.last();
+            const qreal tol = qMax(2.0, qMin(last.height(), r.height()) * 0.6);
+            if (qAbs(r.center().y() - last.center().y()) < tol) {
+                last = last.united(r);
+                continue;
+            }
+        }
+        lines.append(r);
+    }
+
+    QVariantList out;
+    out.reserve(lines.size());
+    for (const QRectF& r : std::as_const(lines)) {
+        QVariantMap m;
+        m.insert(QStringLiteral("x"), r.x()      / ps.width());
+        m.insert(QStringLiteral("y"), r.y()      / ps.height());
+        m.insert(QStringLiteral("w"), r.width()  / ps.width());
+        m.insert(QStringLiteral("h"), r.height() / ps.height());
+        out.append(m);
+    }
+    return out;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

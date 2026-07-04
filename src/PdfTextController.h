@@ -83,6 +83,15 @@ public:
     // Hebt die aktuelle Auswahl auf (z. B. reiner Klick ohne Ziehen).
     Q_INVOKABLE void clearSelection();
 
+    // ── PDF-Editor: Zeilenfang (Snapping) ─────────────────────────────────────
+    //  Liefert die erkannten TEXTZEILEN einer Seite als normalisierte Rechtecke
+    //  { x, y, w, h } (Ursprung oben-links). Quelle ist getAllText() — die
+    //  Fragment-Polygone werden nach vertikaler Mitte gruppiert und je Zeile
+    //  vereinigt. Leer, wenn das Auswahl-Dokument (lazy) noch nicht geladen ist
+    //  oder die Seite keine Textebene hat → der Editor fällt dann auf freie
+    //  Platzierung zurück.
+    Q_INVOKABLE QVariantList textLineRects(int page);
+
     // Kopiert den zuletzt markierten Text in die System-Zwischenablage.
     Q_INVOKABLE void copyToClipboard();
 

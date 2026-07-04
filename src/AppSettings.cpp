@@ -392,6 +392,15 @@ void AppSettings::setAudioAccentApple(bool v) {
     m_settings.setValue("ui/audioAccentApple", v);
 }
 
+// ─── PDF-Editor ───────────────────────────────────────────────────────────────
+bool AppSettings::pdfEditPanelTop() const {
+    // Standard: false → Text-Eigenschaften als rechte Seitenleiste.
+    return m_settings.value("pdfedit/panelTop", false).toBool();
+}
+void AppSettings::setPdfEditPanelTop(bool v) {
+    m_settings.setValue("pdfedit/panelTop", v);
+}
+
 // ─── Legacy color helpers ─────────────────────────────────────────────────────
 QColor AppSettings::backgroundColor() const { return currentTheme().background; }
 void AppSettings::setBackgroundColor(const QColor& c) {

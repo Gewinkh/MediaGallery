@@ -3,6 +3,7 @@
 #include <QString>
 #include <QStringList>
 #include <QColor>
+#include <QFont>
 #include <QDateTime>
 #include <QUrl>
 #include <QList>
@@ -109,6 +110,16 @@ public:
     QString currentFolder() const;
     Q_INVOKABLE void openFolderUrl(const QUrl& url);
     Q_INVOKABLE void refreshCurrentFolder();
+
+    // Erstellt eine leere Datei im AKTUELLEN Ordner (FilterBar „Erstellen").
+    // kind: "pdf" (eine leere A4-Seite via QPdfWriter) | "html" (Minimal-
+    // Skelett, UTF-8) | "txt" (leer). baseName ohne Endung; Pfadtrenner werden
+    // entfernt, Namenskollisionen per „ (n)"-Suffix aufgelöst. Schreibt atomar
+    // (QSaveFile), meldet Erfolg/Fehler über statusMessage und stößt via
+    // folderContentsChanged das Neuladen der Galerie an (Kachel erscheint
+    // sofort, ohne auf den FileSystemWatcher zu warten). Liefert den vollen
+    // Pfad der neuen Datei oder "" bei Fehler.
+    Q_INVOKABLE QString createEmptyFile(const QString& kind, const QString& baseName);
     Q_INVOKABLE void restoreLastFolder();
 
     // ── Drag & Drop von Ordnern/Dateien auf das Fenster ─────────────────────
@@ -140,6 +151,14 @@ public:
     Q_INVOKABLE void setCustomThemeFromMap(const QVariantMap& m);  // Live-Vorschau, wenn Custom aktiv
     Q_INVOKABLE bool exportCustomTheme(const QUrl& fileUrl);
     Q_INVOKABLE bool importCustomTheme(const QUrl& fileUrl);
+
+    // ── Schrift mit arabischem (Naskh-)/CJK-Fallback ────────────────────────
+    //  QML kennt in Qt 6.4 kein `font.families`; daher liefern wir einen QFont
+    //  mit Familien-Substitutionsliste aus C++ (führende Familie für Latein,
+    //  Naskh/CJK je Glyphe als Rückfall). Für Editoren mit arabischem Text.
+    Q_INVOKABLE QFont fallbackFont(const QString& family, qreal pixelSize,
+                                   bool bold = false, bool italic = false,
+                                   bool underline = false) const;
 
     // ── Galerie-View-State (Delegation an ISettings) ────────────────────────
     int  tileWidth()        const;

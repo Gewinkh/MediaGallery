@@ -77,6 +77,11 @@ public:
     Q_INVOKABLE void ensureThumbnail(const QString& filePath);
     Q_INVOKABLE void cancelThumbnail(const QString& filePath);   // weggescrollte Kachel
     Q_INVOKABLE void renameItem(const QString& filePath, const QString& newBaseName);
+    //  Datei löschen (Kontextmenü): verschiebt in den PAPIERKORB (reversibel;
+    //  Fallback: endgültig, falls das System keinen Papierkorb bietet), räumt
+    //  ein evtl. PDF-Editor-Sidecar (<pfad>.mgedit.json) und die persistierten
+    //  Metadaten (Tags/Datum) mit ab und entfernt die Zeile aus dem Modell.
+    Q_INVOKABLE bool deleteItem(const QString& filePath);
     Q_INVOKABLE void toggleTag(const QString& filePath, const QString& tag);
 
 signals:

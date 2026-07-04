@@ -11,6 +11,10 @@
 #include <QFileInfo>
 #include <QDir>
 #include <QFile>
+#include <QSaveFile>
+#include <QPdfWriter>
+#include <QPageSize>
+#include <QPainter>
 #include <QVariantMap>
 #include <QSize>
 #include <QPoint>
@@ -64,6 +68,101 @@ void AppController::refreshCurrentFolder() {
     m_storage.loadFolder(folder);
     emit folderContentsChanged();
     emit statusMessage(Strings::get(StringKey::MenuRefresh));
+}
+
+// ── Datei-Erstellung (FilterBar „Erstellen") ─────────────────────────────────
+//  Erzeugt eine leere PDF/HTML/TXT im aktuellen Ordner. Alles atomar über
+//  QSaveFile; die leere PDF ist eine EINZELNE weiße A4-Seite aus QPdfWriter
+//  (72 dpi, Ränder 0 — dieselbe Punkt-Skala wie der PDF-Editor-Export, damit
+//  neu erstellte PDFs sofort editierbar sind und WYSIWYG bleiben).
+QString AppController::createEmptyFile(const QString& kind, const QString& baseName) {
+    const QString folder = m_folderService.currentFolder();
+    if (folder.isEmpty()) {
+        emit statusMessage(Strings::get(StringKey::CreateFileFailed));
+        return {};
+    }
+
+    // Endung aus dem Typ ableiten (Whitelist).
+    QString ext;
+    if      (kind == QLatin1String("pdf"))  ext = QStringLiteral("pdf");
+    else if (kind == QLatin1String("html")) ext = QStringLiteral("html");
+    else if (kind == QLatin1String("txt"))  ext = QStringLiteral("txt");
+    else {
+        emit statusMessage(Strings::get(StringKey::CreateFileFailed));
+        return {};
+    }
+
+    // Namen säubern: Pfadtrenner raus, führende Punkte weg (keine versteckten
+    // Dateien aus Versehen), Fallback auf einen generischen Namen.
+    QString base = baseName.trimmed();
+    base.remove(QLatin1Char('/'));
+    base.remove(QLatin1Char('\\'));
+    while (base.startsWith(QLatin1Char('.')))
+        base.remove(0, 1);
+    if (base.isEmpty())
+        base = Strings::get(StringKey::CreateFileTitle);
+
+    // Kollisionen per „ (n)"-Suffix auflösen (wie der Editor-Export).
+    QString path = folder + QLatin1Char('/') + base + QLatin1Char('.') + ext;
+    int n = 2;
+    while (QFileInfo::exists(path)) {
+        path = folder + QLatin1Char('/') + base
+               + QStringLiteral(" (%1).").arg(n) + ext;
+        ++n;
+    }
+
+    bool ok = false;
+    QSaveFile out(path);
+    if (out.open(QIODevice::WriteOnly)) {
+        if (ext == QLatin1String("pdf")) {
+            // Leere einseitige PDF: begin() legt die erste (weiße) Seite an —
+            // es muss nichts gezeichnet werden.
+            QPdfWriter writer(&out);
+            writer.setResolution(72);
+            writer.setPageSize(QPageSize(QPageSize::A4));
+            writer.setPageMargins(QMarginsF(0, 0, 0, 0));
+            writer.setCreator(QStringLiteral("MediaGallery"));
+            writer.setTitle(base);
+            QPainter p;
+            if (p.begin(&writer)) {
+                p.end();
+                ok = out.commit();
+            } else {
+                out.cancelWriting();
+            }
+        } else {
+            QByteArray bytes;
+            if (ext == QLatin1String("html")) {
+                // Minimal-Skelett (UTF-8): sofort im HTML-Vorschau-/Quelltext-
+                // Editor der App nutzbar.
+                bytes = QStringLiteral(
+                            "<!DOCTYPE html>\n"
+                            "<html lang=\"de\">\n"
+                            "<head>\n"
+                            "    <meta charset=\"utf-8\">\n"
+                            "    <title>%1</title>\n"
+                            "</head>\n"
+                            "<body>\n\n"
+                            "</body>\n"
+                            "</html>\n").arg(base.toHtmlEscaped()).toUtf8();
+            }
+            // txt bleibt bewusst 0 Byte.
+            if (bytes.isEmpty() || out.write(bytes) == bytes.size())
+                ok = out.commit();
+            else
+                out.cancelWriting();
+        }
+    }
+
+    if (!ok) {
+        emit statusMessage(Strings::get(StringKey::CreateFileFailed));
+        return {};
+    }
+    // Galerie sofort aktualisieren (deterministisch, nicht nur Watcher).
+    emit folderContentsChanged();
+    emit statusMessage(Strings::get(StringKey::CreateFileDone)
+                           .arg(QFileInfo(path).fileName()));
+    return path;
 }
 
 // ── Drag & Drop ──────────────────────────────────────────────────────────────
@@ -576,4 +675,27 @@ bool AppController::importCustomTheme(const QUrl& fileUrl) {
     const bool ok = m_settings.importCustomTheme(path);  // setzt customTheme + Profil=Custom
     if (ok) m_settings.sync();
     return ok;
+}
+
+QFont AppController::fallbackFont(const QString& family, qreal pixelSize,
+                                 bool bold, bool italic, bool underline) const {
+    QFont f;
+    // Führende Familie (Latein/Wahl) + Naskh-/CJK-Rückfall je Glyphe. Nicht
+    // installierte Familien überspringt Qt stillschweigend. Naskh VOR CJK, damit
+    // arabischer Text nicht als System-Nastaliq landet.
+    f.setFamilies({
+        family,
+        QStringLiteral("Amiri"),
+        QStringLiteral("Noto Naskh Arabic"),
+        QStringLiteral("Noto Sans Arabic"),
+        QStringLiteral("Noto Sans CJK JP"),
+        QStringLiteral("Noto Sans CJK SC"),
+        QStringLiteral("Noto Sans CJK KR")
+    });
+    if (pixelSize >= 1.0)
+        f.setPixelSize(qRound(pixelSize));
+    f.setBold(bold);
+    f.setItalic(italic);
+    f.setUnderline(underline);
+    return f;
 }

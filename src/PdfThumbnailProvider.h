@@ -157,6 +157,11 @@ public:
     // docId fuer den URL-Aufbau: "image://pdfthumb/<docId>/<page>".
     Q_INVOKABLE int ensureDocument(const QString& pathOrUrl, int startPage = 0);
 
+    // Verwirft die Vorschauen eines Dokuments vollständig (Store + LRU + docId).
+    // Nötig, wenn sich die Datei INHALTLICH geändert hat (PDF-Editor: Export im
+    // Überschreib-Modus) — das nächste ensureDocument() rendert dann frisch.
+    Q_INVOKABLE void forgetDocument(const QString& pathOrUrl);
+
     // Erzeugt den zum Store gehoerenden ImageProvider. NUR EINMAL aufrufen
     // (in main.cpp, vor engine.load). Eigentum geht an die QML-Engine ueber.
     QQuickImageProvider* createImageProvider();

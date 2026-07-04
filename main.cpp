@@ -21,6 +21,8 @@
 #include "src/PdfThumbnailProvider.h"
 #include "src/PdfTextController.h"
 #include "src/PdfAudioController.h"
+#include "src/PdfEditController.h"
+#include "src/TransliterationController.h"
 #include "src/MediaModel.h"
 #include "src/MediaProxyModel.h"
 
@@ -57,12 +59,22 @@ int main(int argc, char* argv[]) {
     // Plattformübergreifend: Linux (Noto/Source Han), Windows (YaHei/Yu Gothic/
     // Meiryo), macOS (Hiragino). Voraussetzung: mind. eine CJK-Familie installiert
     // (Arch: `noto-fonts-cjk`).
+    //
+    // ARABISCH: ohne explizite arabische Familie greift fontconfig oft „Noto
+    // Nastaliq Urdu" (schräger, kalligrafischer Urdu-Stil) — daher hängen wir hier
+    // eine saubere Naskh-Druckschrift VOR den generischen Fallback. Amiri sitzt bei
+    // voll vokalisiertem Text (viele Harakat) am besten, Noto Naskh/Sans Arabic als
+    // breite Absicherung. Voraussetzung (Arch): `noto-fonts` (Naskh + Sans Arabic)
+    // und optional `ttf-amiri`.
     {
         QFont appFont = app.font();
         const QString primary = appFont.family();
         appFont.setFamilies({
             primary,
             QStringLiteral("Noto Sans"),
+            QStringLiteral("Amiri"),
+            QStringLiteral("Noto Naskh Arabic"),
+            QStringLiteral("Noto Sans Arabic"),
             QStringLiteral("Noto Sans CJK JP"),
             QStringLiteral("Noto Sans CJK SC"),
             QStringLiteral("Noto Sans CJK KR"),
@@ -92,6 +104,8 @@ int main(int argc, char* argv[]) {
     PdfThumbnailProvider pdfThumbs;
     PdfTextController    pdfText;
     PdfAudioController   pdfAudio;
+    PdfEditController    pdfEdit(settings);
+    TransliterationController translit;   // Live-Transliteration (Latein → Arabisch/Kana)
 
     // ── Galerie-Backend ──────────────────────────────────────────────────────
     ThumbnailLoader  thumbLoader;
@@ -112,6 +126,8 @@ int main(int argc, char* argv[]) {
     qmlRegisterSingletonInstance("MediaGallery", 1, 0, "PdfThumbs", &pdfThumbs);
     qmlRegisterSingletonInstance("MediaGallery", 1, 0, "PdfText",   &pdfText);
     qmlRegisterSingletonInstance("MediaGallery", 1, 0, "PdfAudio",  &pdfAudio);
+    qmlRegisterSingletonInstance("MediaGallery", 1, 0, "PdfEdit",   &pdfEdit);
+    qmlRegisterSingletonInstance("MediaGallery", 1, 0, "Translit",  &translit);
 
     // ── QML-Wurzel ───────────────────────────────────────────────────────────
     QQmlApplicationEngine engine;

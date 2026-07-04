@@ -45,6 +45,8 @@ public:
 
     // Update after rename
     void renameFile(const QString& oldName, const QString& newName);
+    //  Persistierte Metadaten (Tags/Datum) einer gelöschten Datei entsorgen.
+    void removeFile(const QString& fileName);
 
     // Tag management
     void deleteTag(const QString& tag);

@@ -572,6 +572,128 @@ Rectangle {
 
         ToolSeparator { anchors.verticalCenter: parent.verticalCenter }
 
+        // ── „Erstellen": leere PDF/HTML/TXT im aktuellen Ordner ───────────────
+        //  Öffnet ein kompaktes Popup: Typ wählen (3 Zeilen, radio-artig) +
+        //  Dateiname → App.createEmptyFile schreibt atomar, aktualisiert die
+        //  Galerie (folderContentsChanged) und meldet den Erfolg über die
+        //  Statuszeile. Ohne offenen Ordner deaktiviert.
+        Button {
+            id: createBtn
+            anchors.verticalCenter: parent.verticalCenter
+            height: 30
+            font.pixelSize: 13
+            enabled: App.currentFolder.length > 0
+            text: "+ " + App.uiText(App.language, "CreateFileBtn")
+            onClicked: {
+                if (createPopup.opened) {
+                    createPopup.close()
+                } else {
+                    createNameField.text = ""
+                    createPopup.kind = "pdf"
+                    createPopup.open()
+                    createNameField.forceActiveFocus()
+                }
+            }
+
+            Popup {
+                id: createPopup
+                y: createBtn.height + 4
+                width: 260
+                padding: 12
+                property string kind: "pdf"    // "pdf" | "html" | "txt"
+
+                function doCreate() {
+                    if (createNameField.text.trim().length === 0)
+                        return
+                    App.createEmptyFile(createPopup.kind, createNameField.text)
+                    createPopup.close()
+                }
+
+                background: Rectangle {
+                    color: App.themeMenuBarBg
+                    border.color: App.themeBorder; border.width: 1
+                    radius: 6
+                }
+
+                contentItem: Column {
+                    spacing: 8
+
+                    Text {
+                        text: App.uiText(App.language, "CreateFileTitle")
+                        color: App.themeTextPrimary; font.pixelSize: 13; font.bold: true
+                    }
+
+                    // Typ-Zeilen (radio-artig, Muster wie die Filter-Popup-Zeilen).
+                    Repeater {
+                        model: [ { kind: "pdf",  key: "CreateFileTypePdf"  },
+                                 { kind: "html", key: "CreateFileTypeHtml" },
+                                 { kind: "txt",  key: "CreateFileTypeTxt"  } ]
+                        delegate: Rectangle {
+                            id: typeRow
+                            required property var modelData
+                            readonly property bool on: createPopup.kind === modelData.kind
+                            width: parent.width; height: 30; radius: 5
+                            color: on ? Qt.rgba(App.themeAccent.r, App.themeAccent.g, App.themeAccent.b, 0.22)
+                                 : (tyHover.hovered
+                                    ? Qt.rgba(App.themeTextPrimary.r, App.themeTextPrimary.g, App.themeTextPrimary.b, 0.10)
+                                    : "transparent")
+                            border.color: on ? App.themeAccent : "transparent"
+                            border.width: 1
+                            Row {
+                                anchors.fill: parent
+                                anchors.leftMargin: 10; anchors.rightMargin: 10
+                                spacing: 8
+                                Rectangle {
+                                    anchors.verticalCenter: parent.verticalCenter
+                                    width: 10; height: 10; radius: 5
+                                    color: typeRow.on ? App.themeAccent : "transparent"
+                                    border.color: typeRow.on ? App.themeAccent : App.themeTextMuted
+                                    border.width: 1
+                                }
+                                Text {
+                                    anchors.verticalCenter: parent.verticalCenter
+                                    text: App.uiText(App.language, typeRow.modelData.key)
+                                    color: App.themeTextPrimary; font.pixelSize: 12
+                                }
+                            }
+                            HoverHandler { id: tyHover }
+                            TapHandler { onTapped: createPopup.kind = typeRow.modelData.kind }
+                        }
+                    }
+
+                    Text {
+                        text: App.uiText(App.language, "CreateFileNameLabel")
+                        color: App.themeTextMuted; font.pixelSize: 11
+                    }
+                    TextField {
+                        id: createNameField
+                        width: parent.width
+                        font.pixelSize: 12
+                        onAccepted: createPopup.doCreate()
+                    }
+
+                    Row {
+                        anchors.right: parent.right
+                        spacing: 8
+                        Button {
+                            height: 28; font.pixelSize: 12
+                            text: App.uiText(App.language, "SettingsCancel")
+                            onClicked: createPopup.close()
+                        }
+                        Button {
+                            height: 28; font.pixelSize: 12
+                            enabled: createNameField.text.trim().length > 0
+                            text: App.uiText(App.language, "CreateFileBtn")
+                            palette.buttonText: enabled ? App.themeAccent : App.themeTextMuted
+                            onClicked: createPopup.doCreate()
+                        }
+                    }
+                }
+            }
+        }
+
+        ToolSeparator { anchors.verticalCenter: parent.verticalCenter }
+
         // ── Aktive Tag-Chips (INLINE) ─────────────────────────────────────────
         Row {
             anchors.verticalCenter: parent.verticalCenter

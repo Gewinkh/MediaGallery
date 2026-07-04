@@ -311,6 +311,50 @@ void MediaModel::renameItem(const QString& filePath, const QString& newBaseName)
     emitRow(row, { FilePathRole, FileNameRole, DisplayNameRole, ThumbUrlRole, ThumbStateRole });
 }
 
+bool MediaModel::deleteItem(const QString& filePath) {
+    const int row = rowForPath(filePath);
+    if (row < 0)
+        return false;
+
+    const QString name = m_items.at(row).fileName();
+
+    // Watcher unterdrücken: das Löschen löst sonst einen kompletten
+    // Ordner-Reload aus — wir entfernen die Zeile gezielt selbst.
+    ++m_suppressWatch;
+    // Bevorzugt in den Papierkorb (reversibel); nur wenn das System keinen
+    // bietet (moveToTrash schlägt fehl), endgültig löschen.
+    bool ok = QFile::moveToTrash(filePath);
+    if (!ok)
+        ok = QFile::remove(filePath);
+    if (ok) {
+        // PDF-Editor-Sidecar mit entsorgen (Overlay-Notizen der Datei).
+        const QString sidecar = filePath + QStringLiteral(".mgedit.json");
+        if (QFile::exists(sidecar)) {
+            if (!QFile::moveToTrash(sidecar))
+                QFile::remove(sidecar);
+        }
+        // Persistierte Metadaten (Tags/Datum) aufräumen.
+        m_storage.removeFile(name);
+        m_storage.saveCurrentFolder();
+    }
+    --m_suppressWatch;
+    if (!ok)
+        return false;
+
+    // Zeile + Parallelvektoren entfernen; Pfad→Zeile-Hash neu aufbauen
+    // (alle nachfolgenden Zeilenindizes verschieben sich).
+    beginRemoveRows(QModelIndex(), row, row);
+    m_items.removeAt(row);
+    m_thumbUrls.removeAt(row);
+    m_thumbState.removeAt(row);
+    m_pathToRow.clear();
+    for (int i = 0; i < m_items.size(); ++i)
+        m_pathToRow.insert(m_items.at(i).filePath, i);
+    endRemoveRows();
+    emit countChanged();
+    return true;
+}
+
 void MediaModel::toggleTag(const QString& filePath, const QString& tag) {
     const int row = rowForPath(filePath);
     if (row < 0 || tag.isEmpty()) return;

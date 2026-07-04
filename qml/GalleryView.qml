@@ -174,6 +174,75 @@ Rectangle {
                 covered: root.covered
 
                 onActivated: function(p) { root.activated(p) }
+                onDeleteRequested: function(p, n) {
+                    deleteDialog.targetPath = p
+                    deleteDialog.targetName = n
+                    deleteDialog.open()
+                }
+            }
+        }
+    }
+
+    // ── Lösch-Bestätigung (EIN gemeinsamer Dialog für alle Kacheln) ──────────
+    //  Verschiebt die Datei in den Papierkorb (mediaModel.deleteItem — räumt
+    //  auch Sidecar + persistierte Metadaten ab). Themenkonform gestaltet.
+    Dialog {
+        id: deleteDialog
+        property string targetPath: ""
+        property string targetName: ""
+        anchors.centerIn: parent
+        modal: true
+        padding: 18
+        background: Rectangle {
+            color: App.themeCard
+            radius: 10
+            border.color: App.themeBorder; border.width: 1
+        }
+        contentItem: Column {
+            spacing: 10
+            Text {
+                text: App.uiText(App.language, "DeleteMediaTitle")
+                color: App.themeTextPrimary
+                font.pixelSize: 14; font.bold: true
+            }
+            Text {
+                width: 300
+                text: App.uiText(App.language, "DeleteMediaText").arg(deleteDialog.targetName)
+                color: App.themeTextMuted
+                font.pixelSize: 12
+                wrapMode: Text.WordWrap
+            }
+            Row {
+                anchors.right: parent.right
+                spacing: 8
+                Rectangle {
+                    width: cancelLbl.implicitWidth + 24; height: 30; radius: 6
+                    color: cancelHover.hovered
+                           ? Qt.rgba(App.themeTextPrimary.r, App.themeTextPrimary.g, App.themeTextPrimary.b, 0.16)
+                           : Qt.rgba(App.themeTextPrimary.r, App.themeTextPrimary.g, App.themeTextPrimary.b, 0.07)
+                    border.color: App.themeBorder; border.width: 1
+                    Text { id: cancelLbl; anchors.centerIn: parent
+                           text: App.uiText(App.language, "SettingsCancel")
+                           color: App.themeTextPrimary; font.pixelSize: 12 }
+                    HoverHandler { id: cancelHover }
+                    TapHandler { onTapped: deleteDialog.close() }
+                }
+                Rectangle {
+                    width: delLbl.implicitWidth + 24; height: 30; radius: 6
+                    color: delHover.hovered ? Qt.rgba(0.88, 0.35, 0.35, 0.30)
+                                            : Qt.rgba(0.88, 0.35, 0.35, 0.16)
+                    border.color: "#c25a5a"; border.width: 1
+                    Text { id: delLbl; anchors.centerIn: parent
+                           text: App.uiText(App.language, "DeleteMediaConfirm")
+                           color: "#e08080"; font.pixelSize: 12 }
+                    HoverHandler { id: delHover }
+                    TapHandler {
+                        onTapped: {
+                            mediaModel.deleteItem(deleteDialog.targetPath)
+                            deleteDialog.close()
+                        }
+                    }
+                }
             }
         }
     }

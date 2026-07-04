@@ -10,6 +10,10 @@
         <file>qml/TextSurface.qml</file>
         <file>qml/HtmlSurface.qml</file>
         <file>qml/PdfSurface.qml</file>
+        <file>qml/PdfEditBox.qml</file>
+        <file>qml/PdfEditToolbar.qml</file>
+        <file>qml/PdfEditPanel.qml</file>
+        <file>qml/TranslitButton.qml</file>
         <file>qml/TagCategoryPanel.qml</file>
         <file>qml/CategoryNode.qml</file>
         <file>qml/TagBar.qml</file>

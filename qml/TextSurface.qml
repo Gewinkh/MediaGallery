@@ -91,6 +91,13 @@ Item {
                 width: Math.min(implicitWidth, toolbar.width - 220)
             }
         }
+
+        // Live-Transliteration (oben rechts): Latein → Arabisch/Kana beim
+        // Tippen; Schema-Auswahl im Popup, Umsetzung s. editor.onTextChanged.
+        TranslitButton {
+            anchors { right: parent.right; rightMargin: 12
+                      verticalCenter: parent.verticalCenter }
+        }
     }
 
     // ── Editor (editierbar, eigene Flickable für sauberes Scrollen) ────────────
@@ -118,11 +125,32 @@ Item {
             wrapMode: TextEdit.NoWrap
             color: App.themeTextPrimary
             selectionColor: App.themeAccent
-            font.family: "monospace"
-            font.pixelSize: 13
+            // Monospace für Latein (Code/HTML-Bündigkeit); arabische Glyphen fallen
+            // pro Zeichen auf Naskh zurück (QFont-Familienliste aus C++, da QML in
+            // Qt 6.4 kein font.families kennt).
+            font: App.fallbackFont("monospace", 13)
             padding: 10
             background: Rectangle { color: App.themeCard; radius: 6; border.color: App.themeBorder }
-            onTextChanged: if (!root._loading) root.dirty = true
+            // Live-Transliteration: gezieltes remove()/insert() statt text-
+            // Neuzuweisung (Undo-Stack + Performance großer Dateien bleiben
+            // intakt); der Guard verhindert Re-Entranz durch die eigene Edition.
+            property bool _trGuard: false
+            function _applyTranslit() {
+                if (editor._trGuard || root._loading || !Translit.enabled)
+                    return
+                const r = Translit.liveApply(editor.text, editor.cursorPosition)
+                if (!r.changed)
+                    return
+                editor._trGuard = true
+                editor.remove(r.start, r.end)
+                editor.insert(r.start, r.replacement)
+                editor.cursorPosition = r.cursor
+                editor._trGuard = false
+            }
+            onTextChanged: {
+                if (!root._loading) root.dirty = true
+                editor._applyTranslit()
+            }
             Keys.onPressed: function(e) {
                 if ((e.modifiers & Qt.ControlModifier) && e.key === Qt.Key_S) {
                     root.save(); e.accepted = true

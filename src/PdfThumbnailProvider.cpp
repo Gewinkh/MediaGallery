@@ -268,3 +268,25 @@ int PdfThumbnailProvider::ensureDocument(const QString& pathOrUrl, int startPage
     enforceBudget();
     return docId;
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  Dokument vollständig vergessen (PDF-Editor: Original wurde überschrieben →
+//  gecachte Vorschauen zeigen veralteten Inhalt). Ein evtl. noch laufender
+//  Render-Task wird kooperativ gestoppt; das nächste ensureDocument() vergibt
+//  eine NEUE docId — QML-Image-URLs des alten Standes laufen damit ins Leere
+//  statt Altbilder zu liefern.
+// ─────────────────────────────────────────────────────────────────────────────
+void PdfThumbnailProvider::forgetDocument(const QString& pathOrUrl) {
+    const QString key = mg::toLocalPath(pathOrUrl);
+    const int docId = m_pathToId.value(key, 0);
+    if (docId == 0)
+        return;
+    if (auto f = m_flags.value(docId))
+        f->store(true, std::memory_order_relaxed);
+    m_store->dropDocument(docId);
+    m_pathToId.remove(key);
+    m_idToPath.remove(docId);
+    m_prepared.remove(docId);
+    m_flags.remove(docId);
+    m_lruOrder.removeAll(docId);
+}

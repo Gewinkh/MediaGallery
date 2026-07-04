@@ -57,6 +57,9 @@ public:
     bool optionsVisible() const override;
     void setOptionsVisible(bool v) override;
 
+    bool pdfEditPanelTop() const override;
+    void setPdfEditPanelTop(bool v) override;
+
     bool autoSaveEnabled() const override;
     void setAutoSaveEnabled(bool v) override;
     int  autoSaveIntervalSeconds() const override;

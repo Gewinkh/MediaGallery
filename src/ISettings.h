@@ -121,6 +121,11 @@ public:
     virtual bool optionsVisible() const = 0;
     virtual void setOptionsVisible(bool v) = 0;
 
+    // PDF-Editor: Text-Eigenschaften als obere Leiste (Word-Stil, true) oder
+    // als rechte Seitenleiste (false, Standard).
+    virtual bool pdfEditPanelTop() const = 0;
+    virtual void setPdfEditPanelTop(bool v) = 0;
+
     // Text editor / auto-save
     virtual bool autoSaveEnabled() const = 0;
     virtual void setAutoSaveEnabled(bool v) = 0;
