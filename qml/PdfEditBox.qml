@@ -19,7 +19,7 @@ import MediaGallery 1.0
 //   • Modell → Anzeige: imperativ (Component.onCompleted + onBoxTextChanged),
 //     aber NUR solange nicht editiert wird (Undo/Redo/Sidecar-Load).
 //   • Anzeige → Modell: während der Bearbeitung fließt jede Änderung live über
-//     PdfEdit.updateText() (Session; genau EIN Undo-Kommando am Ende).
+//     box.ctl.updateText() (Session; genau EIN Undo-Kommando am Ende).
 //  Externe Aktionen (Undo/Redo/Export/Löschen/Moduswechsel) schließen eine
 //  offene Bearbeitung DETERMINISTISCH über surface.editCommitRev ab.
 //
@@ -59,10 +59,13 @@ Item {
     property real pageWPt: 612           // Seitengröße in Punkten (Klemm-Grenzen)
     property real pageHPt: 792
     property var  surface: null          // PdfSurface-Root (Commit, Snapping, AutoEdit)
+    // Dezentraler PDF-Editor-Controller DIESER Kachel (von PdfSurface via
+    // surface.editCtl gesetzt) — ersetzt den früheren globalen PdfEdit-Singleton.
+    readonly property PdfEditController ctl: surface ? surface.editCtl : null
 
     readonly property bool onThisPage: page === pageIndex
-    readonly property bool editMode: PdfEdit.editMode
-    readonly property bool selected: editMode && PdfEdit.selectedId === boxId
+    readonly property bool editMode: box.ctl.editMode
+    readonly property bool selected: editMode && box.ctl.selectedId === boxId
     property bool editing: false         // Inline-Textbearbeitung aktiv
 
     // Sichtbar auf der eigenen Seite UND solange die Notizen nicht über den
@@ -97,8 +100,8 @@ Item {
     function startEditing() {
         if (!box.editMode || box.editing)
             return
-        PdfEdit.selectedId = box.boxId
-        PdfEdit.beginTextEdit(box.boxId)       // Session: Alt-Text als Undo-Basis
+        box.ctl.selectedId = box.boxId
+        box.ctl.beginTextEdit(box.boxId)       // Session: Alt-Text als Undo-Basis
         box.editing = true
         edit.forceActiveFocus()
         edit.cursorPosition = edit.length
@@ -107,7 +110,7 @@ Item {
         if (!box.editing)
             return
         box.editing = false
-        PdfEdit.endTextEdit(box.boxId)         // erzeugt genau EIN Text-Kommando
+        box.ctl.endTextEdit(box.boxId)         // erzeugt genau EIN Text-Kommando
         if (edit.activeFocus)
             edit.focus = false
     }
@@ -121,8 +124,8 @@ Item {
     readonly property bool hasPaper: highlightColor.a > 0
 
     Rectangle {                                     // weicher Schattenwurf
-        x: PdfEdit.noteShadowDxPt * box.pageScale
-        y: PdfEdit.noteShadowDyPt * box.pageScale
+        x: box.ctl.noteShadowDxPt * box.pageScale
+        y: box.ctl.noteShadowDyPt * box.pageScale
         width: parent.width
         height: parent.height
         color: Qt.rgba(0, 0, 0, 52 / 255)
@@ -135,7 +138,7 @@ Item {
     }
     Canvas {                                        // Eselsohr unten rechts
         id: fold
-        readonly property real f: Math.min(PdfEdit.noteFoldPt * box.pageScale,
+        readonly property real f: Math.min(box.ctl.noteFoldPt * box.pageScale,
                                            Math.min(box.width, box.height) / 3)
         readonly property color paper: box.highlightColor
         anchors { right: parent.right; bottom: parent.bottom }
@@ -182,7 +185,7 @@ Item {
     TextEdit {
         id: edit
         anchors.fill: parent
-        padding: PdfEdit.boxPaddingPt * box.pageScale   // gleiche Konstante wie Export
+        padding: box.ctl.boxPaddingPt * box.pageScale   // gleiche Konstante wie Export
         clip: false                        // Überlauf sichtbar — wie im Export
         textFormat: TextEdit.PlainText
         wrapMode: TextEdit.Wrap
@@ -228,7 +231,7 @@ Item {
         onTextChanged: {
             if (box.editing) {
                 edit._applyTranslit()
-                PdfEdit.updateText(box.boxId, text)
+                box.ctl.updateText(box.boxId, text)
             }
         }
         onActiveFocusChanged: if (!activeFocus) box.finishEditing()
@@ -240,7 +243,7 @@ Item {
     // ── Platzhalter in leerer Box (fester Grauton: lesbar auf weißer Seite) ───
     Text {
         anchors.fill: parent
-        anchors.margins: PdfEdit.boxPaddingPt * box.pageScale
+        anchors.margins: box.ctl.boxPaddingPt * box.pageScale
         visible: box.editMode && !box.editing && box.boxText.length === 0
         text: App.uiText(App.language, "PdfEditEmptyHint")
         color: "#9aa0a6"
@@ -271,12 +274,12 @@ Item {
                 box.surface.commitEditing()                // fremde Bearbeitung schließen
                 box.surface.editDragPage = box.pageIndex   // Delegate über Nachbarn heben
             }
-            PdfEdit.selectedId = box.boxId
+            box.ctl.selectedId = box.boxId
             const p = mapToItem(box.parent, m.x, m.y)
             grabDx = p.x - box.x
             grabDy = p.y - box.y
             moved = false
-            PdfEdit.beginGeometryEdit(box.boxId)
+            box.ctl.beginGeometryEdit(box.boxId)
         }
         onPositionChanged: (m) => {
             const p = mapToItem(box.parent, m.x, m.y)
@@ -293,7 +296,7 @@ Item {
             // y bewusst NICHT klemmen: über den unteren/oberen Seitenrand
             // hinausgezogene Notizen wandern beim Loslassen auf die
             // Nachbarseite (seitenübergreifendes Verschieben).
-            PdfEdit.updatePlacement(box.boxId, box.page, nx, ny, box.wPt, box.hPt)
+            box.ctl.updatePlacement(box.boxId, box.page, nx, ny, box.wPt, box.hPt)
         }
         onReleased: {
             // Über den Seitenrand gezogen? → Zielseite + lokale y-Koordinate
@@ -303,11 +306,11 @@ Item {
             if (moved && box.surface) {
                 const t = box.surface.resolveCrossPage(box.page, box.yPt,
                                                        box.hPt, box.pageScale)
-                PdfEdit.updatePlacement(box.boxId, t.page, box.xPt, t.y,
+                box.ctl.updatePlacement(box.boxId, t.page, box.xPt, t.y,
                                         box.wPt, box.hPt)
             }
             if (box.surface) box.surface.editDragPage = -1
-            PdfEdit.endGeometryEdit(box.boxId)     // EIN Undo-Kommando
+            box.ctl.endGeometryEdit(box.boxId)     // EIN Undo-Kommando
         }
         onDoubleClicked: box.startEditing()
     }
@@ -350,12 +353,12 @@ Item {
                 property real pressY: 0
                 onPressed: (m) => {
                     if (box.surface) box.surface.commitEditing()
-                    PdfEdit.selectedId = box.boxId
+                    box.ctl.selectedId = box.boxId
                     const p = mapToItem(box.parent, m.x, m.y)
                     pressX = p.x
                     pressY = p.y
                     startRect = Qt.rect(box.xPt, box.yPt, box.wPt, box.hPt)
-                    PdfEdit.beginGeometryEdit(box.boxId)
+                    box.ctl.beginGeometryEdit(box.boxId)
                 }
                 onPositionChanged: (m) => {
                     const p = mapToItem(box.parent, m.x, m.y)
@@ -368,8 +371,8 @@ Item {
                     if (handle.hy < 0) { y = startRect.y + dyPt; h = startRect.height - dyPt }
                     if (handle.hy > 0) {                          h = startRect.height + dyPt }
                     // Mindestgröße halten, OHNE die gegenüberliegende Kante zu bewegen.
-                    const minW = PdfEdit.minBoxWPt
-                    const minH = PdfEdit.minBoxHPt
+                    const minW = box.ctl.minBoxWPt
+                    const minH = box.ctl.minBoxHPt
                     if (w < minW) { if (handle.hx < 0) x = startRect.x + startRect.width  - minW; w = minW }
                     if (h < minH) { if (handle.hy < 0) y = startRect.y + startRect.height - minH; h = minH }
                     // In die Seite klemmen.
@@ -377,10 +380,10 @@ Item {
                     if (y < 0) { h += y; y = 0 }
                     if (x + w > box.pageWPt) w = box.pageWPt - x
                     if (y + h > box.pageHPt) h = box.pageHPt - y
-                    PdfEdit.updateGeometry(box.boxId, x, y,
+                    box.ctl.updateGeometry(box.boxId, x, y,
                                            Math.max(minW, w), Math.max(minH, h))
                 }
-                onReleased: PdfEdit.endGeometryEdit(box.boxId)
+                onReleased: box.ctl.endGeometryEdit(box.boxId)
             }
         }
     }

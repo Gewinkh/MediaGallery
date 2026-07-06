@@ -1,6 +1,7 @@
 #include "ViewerController.h"
 #include "PdfMediaHandler.h"
 #include "PathUtils.h"
+#include "MemoryUtils.h"   // mg::trimHeap — RSS-Rückgabe nach Annotations-LRU-Eviction
 
 #include <QPdfDocument>
 #include <QFile>
@@ -145,10 +146,16 @@ void ViewerController::touchCache(const QString& path) {
 void ViewerController::insertIntoCache(const QString& path, const QVariantList& anns) {
     m_annCache.insert(path, anns);
     touchCache(path);
+    bool evicted = false;
     while (m_cacheOrder.size() > kMaxCachedPdfs) {
         const QString victim = m_cacheOrder.takeFirst();
         m_annCache.remove(victim);
+        evicted = true;
     }
+    // Nur bei TATSÄCHLICHER Eviction: Annotationslisten enthalten eingebettete
+    // Medien-Payloads (QByteArray, potenziell MB) — Heap ans OS zurückgeben.
+    if (evicted)
+        mg::trimHeap();
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

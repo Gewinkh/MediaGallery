@@ -12,7 +12,7 @@ import MediaGallery 1.0
 //     denselben Reglern in Mini-Gruppen (Label über Control), horizontal
 //     scrollbar bei schmalen Fenstern, ✕ rechts.
 //
-//  Die Position wählt der Nutzer in den Einstellungen (PdfEdit.panelOnTop);
+//  Die Position wählt der Nutzer in den Einstellungen (panel.ctl.panelOnTop);
 //  PdfSurface instanziiert BEIDE Varianten und blendet genau eine ein. Das
 //  Panel öffnet AUTOMATISCH beim Erstellen/Auswählen einer Notiz (kein
 //  Toolbar-Button mehr) und schließt über sein ✕.
@@ -33,10 +33,13 @@ Rectangle {
     id: panel
 
     property var  surface: null          // PdfSurface-Root (Commit + Export-Start)
+    // Dezentraler PDF-Editor-Controller DIESER Kachel (von PdfSurface via
+    // surface.editCtl gesetzt) — ersetzt den früheren globalen PdfEdit-Singleton.
+    readonly property PdfEditController ctl: surface ? surface.editCtl : null
     property bool horizontal: false      // false = Seitenleiste, true = Ribbon
 
     // Eigenschaften der ausgewählten Box, rev-getrieben (Muster wie Toolbar).
-    readonly property var  info: (PdfEdit.selectionRev, PdfEdit.boxInfo(PdfEdit.selectedId))
+    readonly property var  info: (panel.ctl.selectionRev, panel.ctl.boxInfo(panel.ctl.selectedId))
     readonly property bool hasSel: info.exists === true
     // Standard-Papierfarbe, wenn der Deckkraft-Slider aus „Keine" heraus
     // hochgezogen wird (klassisches Post-it-Gelb, s. PdfEditTypes).
@@ -92,7 +95,7 @@ Rectangle {
         Text { anchors.centerIn: parent; text: ab.glyph
                color: App.themeTextPrimary; font.pixelSize: 12 }
         HoverHandler { id: abHover }
-        TapHandler { onTapped: PdfEdit.setBoxAlignment(PdfEdit.selectedId, ab.alignValue) }
+        TapHandler { onTapped: panel.ctl.setBoxAlignment(panel.ctl.selectedId, ab.alignValue) }
     }
     //  Vertikale Ausrichtung (0 = oben wie Word-Textfeld, 1 = mittig) —
     //  gleiches Muster wie AlignBtn, schreibt über setBoxVAlign.
@@ -111,7 +114,7 @@ Rectangle {
         Text { anchors.centerIn: parent; text: vb.glyph
                color: App.themeTextPrimary; font.pixelSize: 12 }
         HoverHandler { id: vbHover }
-        TapHandler { onTapped: PdfEdit.setBoxVAlign(PdfEdit.selectedId, vb.vAlignValue) }
+        TapHandler { onTapped: panel.ctl.setBoxVAlign(panel.ctl.selectedId, vb.vAlignValue) }
     }
     //  Ribbon-Gruppe: Mini-Label über dem Control (nur horizontal genutzt).
     component RibbonLabel: Text {
@@ -141,11 +144,11 @@ Rectangle {
     function applyOpacity(v) {
         const base = panel.info.hasHighlight ? panel.info.highlightColor
                                              : panel.defaultPaper
-        PdfEdit.setBoxHighlight(PdfEdit.selectedId,
+        panel.ctl.setBoxHighlight(panel.ctl.selectedId,
                                 Qt.rgba(base.r, base.g, base.b, v))
     }
     Connections {
-        target: PdfEdit
+        target: panel.ctl
         function onSelectionRevChanged() { panel.refreshFromSelection() }
     }
     Component.onCompleted: refreshFromSelection()
@@ -211,18 +214,18 @@ Rectangle {
                     id: fontBox
                     visible: panel.hasSel
                     width: parent.width
-                    model: PdfEdit.standardFonts()
+                    model: panel.ctl.standardFonts()
                     font.pixelSize: 12
-                    onActivated: (idx) => PdfEdit.setBoxFont(PdfEdit.selectedId, fontBox.textAt(idx))
+                    onActivated: (idx) => panel.ctl.setBoxFont(panel.ctl.selectedId, fontBox.textAt(idx))
                 }
                 // Substitutions-Hinweis: Ist die Familie nicht installiert (auf
                 // Linux z. B. Calibri/Helvetica), zeigt Qt-Fontauflösung, was
                 // TATSÄCHLICH gerendert wird — identisch in Anzeige und Export.
                 Text {
                     visible: panel.hasSel
-                             && PdfEdit.resolvedFont(fontBox.currentText) !== fontBox.currentText
+                             && panel.ctl.resolvedFont(fontBox.currentText) !== fontBox.currentText
                     width: parent.width
-                    text: "\u2192 " + PdfEdit.resolvedFont(fontBox.currentText)
+                    text: "\u2192 " + panel.ctl.resolvedFont(fontBox.currentText)
                     color: App.themeTextMuted; font.pixelSize: 10
                     elide: Text.ElideRight
                 }
@@ -241,7 +244,7 @@ Rectangle {
                             from: 4; to: 200
                             editable: true
                             font.pixelSize: 12
-                            onValueModified: PdfEdit.setBoxFontSize(PdfEdit.selectedId, value)
+                            onValueModified: panel.ctl.setBoxFontSize(panel.ctl.selectedId, value)
                         }
                     }
                     Column {
@@ -251,11 +254,11 @@ Rectangle {
                         Row {
                             spacing: 4
                             StyleBtn { glyph: "B"; boldGlyph: true;      checked: panel.info.bold === true
-                                       onActivated: PdfEdit.setBoxBold(PdfEdit.selectedId, !panel.info.bold) }
+                                       onActivated: panel.ctl.setBoxBold(panel.ctl.selectedId, !panel.info.bold) }
                             StyleBtn { glyph: "I"; italicGlyph: true;    checked: panel.info.italic === true
-                                       onActivated: PdfEdit.setBoxItalic(PdfEdit.selectedId, !panel.info.italic) }
+                                       onActivated: panel.ctl.setBoxItalic(panel.ctl.selectedId, !panel.info.italic) }
                             StyleBtn { glyph: "U"; underlineGlyph: true; checked: panel.info.underline === true
-                                       onActivated: PdfEdit.setBoxUnderline(PdfEdit.selectedId, !panel.info.underline) }
+                                       onActivated: panel.ctl.setBoxUnderline(panel.ctl.selectedId, !panel.info.underline) }
                         }
                     }
                 }
@@ -298,7 +301,7 @@ Rectangle {
                             title: App.uiText(App.language, "PdfEditColorLabel")
                             selectedColor: panel.hasSel ? panel.info.textColor : "#000000"
                             onColorPicked: (c) => {
-                                PdfEdit.setBoxColor(PdfEdit.selectedId, c)
+                                panel.ctl.setBoxColor(panel.ctl.selectedId, c)
                                 selectedColor = Qt.binding(() => panel.hasSel ? panel.info.textColor : "#000000")
                             }
                         }
@@ -315,7 +318,7 @@ Rectangle {
                                 selectedColor: (panel.hasSel && panel.info.hasHighlight)
                                                ? panel.info.highlightColor : panel.defaultPaper
                                 onColorPicked: (c) => {
-                                    PdfEdit.setBoxHighlight(PdfEdit.selectedId, c)
+                                    panel.ctl.setBoxHighlight(panel.ctl.selectedId, c)
                                     selectedColor = Qt.binding(() => (panel.hasSel && panel.info.hasHighlight)
                                                                      ? panel.info.highlightColor : panel.defaultPaper)
                                 }
@@ -333,7 +336,7 @@ Rectangle {
                                        text: App.uiText(App.language, "PdfEditNoHighlight")
                                        color: App.themeTextPrimary; font.pixelSize: 11 }
                                 HoverHandler { id: noneHover }
-                                TapHandler { onTapped: PdfEdit.setBoxHighlight(PdfEdit.selectedId, "transparent") }
+                                TapHandler { onTapped: panel.ctl.setBoxHighlight(panel.ctl.selectedId, "transparent") }
                             }
                         }
                     }
@@ -377,7 +380,7 @@ Rectangle {
                     TapHandler {
                         onTapped: {
                             if (panel.surface) panel.surface.commitEditing()
-                            PdfEdit.removeBox(PdfEdit.selectedId)
+                            panel.ctl.removeBox(panel.ctl.selectedId)
                         }
                     }
                 }
@@ -391,8 +394,8 @@ Rectangle {
                     // Speichern → Sidecar (bleibt editierbar)
                     Rectangle {
                         width: (parent.width - 8) / 2; height: 32; radius: 6
-                        opacity: PdfEdit.dirty ? 1.0 : 0.4
-                        color: saveHover.hovered && PdfEdit.dirty
+                        opacity: panel.ctl.dirty ? 1.0 : 0.4
+                        color: saveHover.hovered && panel.ctl.dirty
                                ? Qt.rgba(App.themeAccent.r, App.themeAccent.g, App.themeAccent.b, 0.35)
                                : Qt.rgba(App.themeAccent.r, App.themeAccent.g, App.themeAccent.b, 0.20)
                         border.color: App.themeAccent; border.width: 1
@@ -401,10 +404,10 @@ Rectangle {
                                color: App.themeTextPrimary; font.pixelSize: 12 }
                         HoverHandler { id: saveHover }
                         TapHandler {
-                            enabled: PdfEdit.dirty
+                            enabled: panel.ctl.dirty
                             onTapped: {
                                 if (panel.surface) panel.surface.commitEditing()
-                                PdfEdit.saveOverlay()
+                                panel.ctl.saveOverlay()
                             }
                         }
                         ToolTip.text: App.uiText(App.language, "PdfEditSaveTip")
@@ -413,7 +416,7 @@ Rectangle {
                     // Export → gerendertes PDF (Ziel je Überschreib-Option)
                     Rectangle {
                         width: (parent.width - 8) / 2; height: 32; radius: 6
-                        readonly property bool usable: !PdfEdit.busy && PdfEdit.boxCount > 0
+                        readonly property bool usable: !panel.ctl.busy && panel.ctl.boxCount > 0
                         opacity: usable ? 1.0 : 0.4
                         color: expHover.hovered && usable
                                ? Qt.rgba(App.themeAccent.r, App.themeAccent.g, App.themeAccent.b, 0.35)
@@ -437,7 +440,7 @@ Rectangle {
                 // die Notizen bleiben über das Sidecar reversibel).
                 Text {
                     width: parent.width
-                    text: PdfEdit.exportTargetPath()
+                    text: panel.ctl.exportTargetPath()
                     color: App.themeTextMuted; font.pixelSize: 10
                     elide: Text.ElideMiddle
                     maximumLineCount: 1
@@ -485,9 +488,9 @@ Rectangle {
                     ComboBox {
                         id: fontBoxH
                         width: 150
-                        model: PdfEdit.standardFonts()
+                        model: panel.ctl.standardFonts()
                         font.pixelSize: 11
-                        onActivated: (idx) => PdfEdit.setBoxFont(PdfEdit.selectedId, fontBoxH.textAt(idx))
+                        onActivated: (idx) => panel.ctl.setBoxFont(panel.ctl.selectedId, fontBoxH.textAt(idx))
                     }
                 }
                 Column {
@@ -499,7 +502,7 @@ Rectangle {
                         from: 4; to: 200
                         editable: true
                         font.pixelSize: 11
-                        onValueModified: PdfEdit.setBoxFontSize(PdfEdit.selectedId, value)
+                        onValueModified: panel.ctl.setBoxFontSize(panel.ctl.selectedId, value)
                     }
                 }
                 Column {
@@ -509,11 +512,11 @@ Rectangle {
                     Row {
                         spacing: 4
                         StyleBtn { glyph: "B"; boldGlyph: true;      checked: panel.info.bold === true
-                                   onActivated: PdfEdit.setBoxBold(PdfEdit.selectedId, !panel.info.bold) }
+                                   onActivated: panel.ctl.setBoxBold(panel.ctl.selectedId, !panel.info.bold) }
                         StyleBtn { glyph: "I"; italicGlyph: true;    checked: panel.info.italic === true
-                                   onActivated: PdfEdit.setBoxItalic(PdfEdit.selectedId, !panel.info.italic) }
+                                   onActivated: panel.ctl.setBoxItalic(panel.ctl.selectedId, !panel.info.italic) }
                         StyleBtn { glyph: "U"; underlineGlyph: true; checked: panel.info.underline === true
-                                   onActivated: PdfEdit.setBoxUnderline(PdfEdit.selectedId, !panel.info.underline) }
+                                   onActivated: panel.ctl.setBoxUnderline(panel.ctl.selectedId, !panel.info.underline) }
                     }
                 }
                 Column {
@@ -546,7 +549,7 @@ Rectangle {
                         title: App.uiText(App.language, "PdfEditColorLabel")
                         selectedColor: panel.hasSel ? panel.info.textColor : "#000000"
                         onColorPicked: (c) => {
-                            PdfEdit.setBoxColor(PdfEdit.selectedId, c)
+                            panel.ctl.setBoxColor(panel.ctl.selectedId, c)
                             selectedColor = Qt.binding(() => panel.hasSel ? panel.info.textColor : "#000000")
                         }
                     }
@@ -564,7 +567,7 @@ Rectangle {
                             selectedColor: (panel.hasSel && panel.info.hasHighlight)
                                            ? panel.info.highlightColor : panel.defaultPaper
                             onColorPicked: (c) => {
-                                PdfEdit.setBoxHighlight(PdfEdit.selectedId, c)
+                                panel.ctl.setBoxHighlight(panel.ctl.selectedId, c)
                                 selectedColor = Qt.binding(() => (panel.hasSel && panel.info.hasHighlight)
                                                                  ? panel.info.highlightColor : panel.defaultPaper)
                             }
@@ -605,7 +608,7 @@ Rectangle {
                     TapHandler {
                         onTapped: {
                             if (panel.surface) panel.surface.commitEditing()
-                            PdfEdit.removeBox(PdfEdit.selectedId)
+                            panel.ctl.removeBox(panel.ctl.selectedId)
                         }
                     }
                     ToolTip.text: App.uiText(App.language, "PdfEditDeleteBtn")
@@ -619,8 +622,8 @@ Rectangle {
                 Rectangle {
                     anchors.verticalCenter: parent.verticalCenter
                     width: 92; height: 30; radius: 6
-                    opacity: PdfEdit.dirty ? 1.0 : 0.4
-                    color: saveHoverH.hovered && PdfEdit.dirty
+                    opacity: panel.ctl.dirty ? 1.0 : 0.4
+                    color: saveHoverH.hovered && panel.ctl.dirty
                            ? Qt.rgba(App.themeAccent.r, App.themeAccent.g, App.themeAccent.b, 0.35)
                            : Qt.rgba(App.themeAccent.r, App.themeAccent.g, App.themeAccent.b, 0.20)
                     border.color: App.themeAccent; border.width: 1
@@ -629,10 +632,10 @@ Rectangle {
                            color: App.themeTextPrimary; font.pixelSize: 12 }
                     HoverHandler { id: saveHoverH }
                     TapHandler {
-                        enabled: PdfEdit.dirty
+                        enabled: panel.ctl.dirty
                         onTapped: {
                             if (panel.surface) panel.surface.commitEditing()
-                            PdfEdit.saveOverlay()
+                            panel.ctl.saveOverlay()
                         }
                     }
                     ToolTip.text: App.uiText(App.language, "PdfEditSaveTip")
@@ -641,7 +644,7 @@ Rectangle {
                 Rectangle {
                     anchors.verticalCenter: parent.verticalCenter
                     width: 92; height: 30; radius: 6
-                    readonly property bool usable: !PdfEdit.busy && PdfEdit.boxCount > 0
+                    readonly property bool usable: !panel.ctl.busy && panel.ctl.boxCount > 0
                     opacity: usable ? 1.0 : 0.4
                     color: expHoverH.hovered && usable
                            ? Qt.rgba(App.themeAccent.r, App.themeAccent.g, App.themeAccent.b, 0.35)
@@ -658,7 +661,7 @@ Rectangle {
                     // Ribbon hat keinen Platz für den Ziel-Pfad → ToolTip
                     // (immer eine neue Kopie „…_bearbeitet(.n).pdf").
                     ToolTip.text: App.uiText(App.language, "PdfEditExportTip") + "\n"
-                                  + PdfEdit.exportTargetPath()
+                                  + panel.ctl.exportTargetPath()
                     ToolTip.visible: expHoverH.hovered
                 }
             }

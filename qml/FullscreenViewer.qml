@@ -19,6 +19,16 @@ FocusScope {
     focus: true
 
     signal backRequested()
+    signal addFileRequested()
+
+    // ── Geteilte Ansicht (vom Shell gesetzt) ──────────────────────────────────
+    //  splitActive = mehr als eine Datei gleichzeitig offen → die untere
+    //    Hover-Navigation dieser Kachel (Pfeile + Zähler) entfällt; bei genau
+    //    einer Datei ist sie wieder aktiv.
+    //  canAddMore  = es lassen sich noch weitere Dateien hinzufügen (< 4) →
+    //    steuert die Sichtbarkeit des „+"-Buttons in der Kopfleiste.
+    property bool splitActive: false
+    property bool canAddMore: true
 
     // Vom Shell gesetzt (Einstiegspfad).
     property string startPath: ""
@@ -45,7 +55,11 @@ FocusScope {
         return ext === "html" || ext === "htm"
     }
     readonly property bool _isWebRenderable: root.type === 4 && root._isHtmlPath(root.path)
+    // WebEngine ist LAZY (WebEngineController): die Vorschau existiert nur,
+    // wenn WebEngine.ready — vorher fällt HTML IMMER auf TextSurface zurück
+    // und es wird garantiert keine WebEngineView instanziiert.
     readonly property bool _showWebPreview:  root._isWebRenderable && root._htmlPreview
+                                             && WebEngine.ready
 
     // Lade-Gating: Die schwere Medien-/PDF-Last erst NACH dem StackView-Übergang
     // anstoßen (Status Active) → die Öffnen-Animation läuft flüssig über einen
@@ -107,6 +121,13 @@ FocusScope {
         if (type === 1 && App.videoPlayback === "external") {
             Viewer.openExternally(path)
         }
+
+        // Trigger der lazy WebEngine-Initialisierung: das Öffnen einer
+        // .html/.htm-Datei fordert HTML-Rendering an. Der Aufruf ist synchron
+        // und idempotent — danach ist WebEngine.ready und der Loader unten
+        // wählt die gerenderte Vorschau (sonst Quelltext-Fallback).
+        if (root._isWebRenderable)
+            WebEngine.ensureInitializedForHtml()
 
         // Inhalt explizit nachziehen: Bei Navigation zwischen Medien GLEICHEN Typs
         // bleibt das Loader-Item dasselbe (onItemChanged feuert nicht) — sonst
@@ -335,7 +356,38 @@ FocusScope {
     Component { id: textComponent; TextSurface {} }
 
     // ── HTML (gerenderte Vorschau über WebEngine) ─────────────────────────────
-    Component { id: htmlComponent; HtmlSurface {} }
+    //  Indirektion statt direkter HtmlSurface-Instanz: HtmlSurface.qml wird per
+    //  URL-Loader erst zur LAUFZEIT kompiliert — der QtWebEngine-Import (und
+    //  damit die WebEngineView) wird also niemals angefasst, solange WebEngine
+    //  nicht Ready ist. Der innere Loader ist hart auf WebEngine.ready gegated.
+    Component {
+        id: htmlComponent
+        Item {
+            id: htmlHost
+            property string source: ""
+            property real   topInset: 0
+            property real   bottomInset: 0
+            function release() {
+                if (htmlInner.item && htmlInner.item.release)
+                    htmlInner.item.release()
+            }
+            Loader {
+                id: htmlInner
+                anchors.fill: parent
+                // Harte Garantie: ohne Ready wird HtmlSurface (und damit die
+                // WebEngineView) nie erzeugt — dieser Zweig wird ohnehin nur
+                // bei _showWebPreview (inkl. WebEngine.ready) gewählt.
+                source: WebEngine.ready ? "qrc:/qml/HtmlSurface.qml" : ""
+            }
+            // Properties an die geladene HtmlSurface durchreichen (reaktiv).
+            Binding { target: htmlInner.item; property: "source";      value: htmlHost.source
+                      when: htmlInner.item !== null; restoreMode: Binding.RestoreNone }
+            Binding { target: htmlInner.item; property: "topInset";    value: htmlHost.topInset
+                      when: htmlInner.item !== null; restoreMode: Binding.RestoreNone }
+            Binding { target: htmlInner.item; property: "bottomInset"; value: htmlHost.bottomInset
+                      when: htmlInner.item !== null; restoreMode: Binding.RestoreNone }
+        }
+    }
 
     // ── Hinweise ────────────────────────────────────────────────────────────
     Component {
@@ -410,11 +462,27 @@ FocusScope {
                     onActivated: dateEditor.openWith(root.dateTime)
                 }
 
+                // Datei zur geteilten Ansicht hinzufügen — kleiner „Datei +"-Button
+                // direkt neben dem Datum-Button (gleicher Stil wie Datum/Zufall).
+                // Nur sichtbar, solange < 4 Dateien offen sind (canAddMore); im
+                // 4er-Splitscreen entfällt er.
+                ChromeBtn {
+                    id: addBtn
+                    visible: root.canAddMore
+                    anchors.right: calBtn.left; anchors.rightMargin: 8
+                    anchors.verticalCenter: parent.verticalCenter
+                    kind: "addfile"
+                    tip: App.uiText(App.language, "SplitAddFile")
+                    onActivated: root.addFileRequested()
+                }
+
                 // Quelltext ⇄ gerenderte HTML-Vorschau — nur sichtbar bei .html/.htm.
                 ChromeBtn {
                     id: previewBtn
-                    visible: root._isWebRenderable
-                    anchors.right: calBtn.left; anchors.rightMargin: 8
+                    // Nur anzeigen, wenn HTML-Rendering TATSÄCHLICH verfügbar
+                    // ist (WebEngine bereit) — sonst gibt es nichts umzuschalten.
+                    visible: root._isWebRenderable && WebEngine.ready
+                    anchors.right: addBtn.visible ? addBtn.left : calBtn.left; anchors.rightMargin: 8
                     anchors.verticalCenter: parent.verticalCenter
                     kind: "html"
                     active: root._htmlPreview
@@ -432,7 +500,9 @@ FocusScope {
                 TextField {
                     id: nameEdit
                     anchors.left: backBtn.right; anchors.leftMargin: 8
-                    anchors.right: previewBtn.visible ? previewBtn.left : calBtn.left; anchors.rightMargin: 12
+                    anchors.right: previewBtn.visible ? previewBtn.left
+                                   : (addBtn.visible ? addBtn.left : calBtn.left)
+                    anchors.rightMargin: 12
                     anchors.verticalCenter: parent.verticalCenter
                     text: root.displayName
                     color: "white"
@@ -484,7 +554,10 @@ FocusScope {
         anchors.horizontalCenter: parent.horizontalCenter
         anchors.bottomMargin: 20
         spacing: 16
-        opacity: root._bottomNavHover ? 1.0 : 0.0
+        // Bei geteilter Ansicht (mehr als eine Datei offen) entfällt die untere
+        // Navigation dieser Kachel komplett; erst wenn nur noch EINE Datei offen
+        // ist, erscheint sie wieder per Hover in den unteren 10 %.
+        opacity: (!root.splitActive && root._bottomNavHover) ? 1.0 : 0.0
         visible: opacity > 0.01
         Behavior on opacity { NumberAnimation { duration: 180 } }
 
@@ -538,6 +611,8 @@ FocusScope {
     //  Positionsauswertung, kein Timer/Delay.
     property bool _bottomNavHover: false
     HoverHandler {
+        // In der geteilten Ansicht ganz aus — keine untere Kachel-Navigation.
+        enabled: !root.splitActive
         onPointChanged: root._bottomNavHover = point.position.y >= root.height * 0.90
         onHoveredChanged: if (!hovered) root._bottomNavHover = false
     }
@@ -559,10 +634,26 @@ FocusScope {
     }
 
     // ── Tastatur ────────────────────────────────────────────────────────────
+    //  Pfeiltasten-Guard: Liegt der Fokus in einem EDITIERBAREN Textfeld
+    //  (TextInput/TextEdit-basiert: TextField, TextArea, Editor, PDF-Notizen,
+    //  Namensfeld), gehören ←/→ ausschließlich der Cursor-Bewegung im Feld —
+    //  der Dateiwechsel darf dann nicht ausgelöst werden. Erkennung über die
+    //  gemeinsame API der Text-Items (cursorPosition + nicht readOnly).
+    function _editableTextFocused() {
+        var f = root.Window.activeFocusItem
+        if (!f) return false
+        return (f.cursorPosition !== undefined) && (f.readOnly !== true)
+    }
     Keys.onPressed: function(event) {
         if (event.key === Qt.Key_Escape)      { root.backRequested(); event.accepted = true }
-        else if (event.key === Qt.Key_Left)   { root.prevRow();       event.accepted = true }
-        else if (event.key === Qt.Key_Right)  { root.nextRow();       event.accepted = true }
+        else if (event.key === Qt.Key_Left) {
+            if (root._editableTextFocused()) return       // Pfeil bleibt im Textfeld
+            root.prevRow(); event.accepted = true
+        }
+        else if (event.key === Qt.Key_Right) {
+            if (root._editableTextFocused()) return       // Pfeil bleibt im Textfeld
+            root.nextRow(); event.accepted = true
+        }
     }
 
     // ── S-Modus im Viewer (Alt+S) ─────────────────────────────────────────────
@@ -637,6 +728,23 @@ FocusScope {
                             anchors.right: parent.right; height: 5; radius: 1; color: "#e8efed" }
                 Rectangle { x: 3; y: 9;  width: 12; height: 1.6; radius: 0.8; color: "#e8efed" }
                 Rectangle { x: 3; y: 12; width: 8;  height: 1.6; radius: 0.8; color: "#e8efed" }
+            }
+
+            // Datei hinzufügen: minimalistisches Datei-Blatt (Umriss + Inhaltszeilen)
+            // mit einem kleinen Plus daneben (rechts).
+            Item {
+                anchors.fill: parent
+                visible: cb.kind === "addfile"
+                // Blatt-Umriss (linke Seite)
+                Rectangle { x: 0; y: 1.5; width: 10; height: 14; radius: 1.5; color: "transparent"
+                            border.color: "#e8efed"; border.width: 1.4 }
+                // Inhaltszeilen im Blatt
+                Rectangle { x: 2.5; y: 5;    width: 5;   height: 1.3; radius: 0.6; color: "#e8efed" }
+                Rectangle { x: 2.5; y: 8;    width: 5;   height: 1.3; radius: 0.6; color: "#e8efed" }
+                Rectangle { x: 2.5; y: 11;   width: 3.4; height: 1.3; radius: 0.6; color: "#e8efed" }
+                // Plus daneben (rechts, mittig)
+                Rectangle { x: 10.5;  y: 7.25; width: 6.5; height: 1.8; radius: 0.9; color: "#e8efed" }
+                Rectangle { x: 12.85; y: 4.9;  width: 1.8; height: 6.5; radius: 0.9; color: "#e8efed" }
             }
         }
 

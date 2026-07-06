@@ -130,7 +130,7 @@ Item {
             // Qt 6.4 kein font.families kennt).
             font: App.fallbackFont("monospace", 13)
             padding: 10
-            background: Rectangle { color: App.themeCard; radius: 6; border.color: App.themeBorder }
+            background: Rectangle { color: App.themeEditorBg; radius: 6; border.color: App.themeBorder }
             // Live-Transliteration: gezieltes remove()/insert() statt text-
             // Neuzuweisung (Undo-Stack + Performance großer Dateien bleiben
             // intakt); der Guard verhindert Re-Entranz durch die eigene Edition.

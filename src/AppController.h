@@ -98,6 +98,7 @@ class AppController : public QObject {
     Q_PROPERTY(QColor themeFilterBarBg READ themeFilterBarBg NOTIFY themeChanged)
     Q_PROPERTY(QColor themeStatusBarBg READ themeStatusBarBg NOTIFY themeChanged)
     Q_PROPERTY(QColor themeSidebarBg   READ themeSidebarBg   NOTIFY themeChanged)
+    Q_PROPERTY(QColor themeEditorBg    READ themeEditorBg    NOTIFY themeChanged)
 
 public:
     AppController(ISettings& settings,
@@ -276,6 +277,7 @@ private:
     QColor themeFilterBarBg() const;
     QColor themeStatusBarBg() const;
     QColor themeSidebarBg()   const;
+    QColor themeEditorBg()    const;
 
     ISettings&     m_settings;
     FolderService& m_folderService;

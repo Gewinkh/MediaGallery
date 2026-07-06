@@ -20,6 +20,7 @@ Built with **C++20** and **Qt 6.4+**.
 - **Tile size dialog**: Adjust tile width/height with a live drag-resize preview
 - **Fullscreen gallery**: Prev/Next, Random mode, up to 10× zoom, pan with mouse
 - **Image viewer**: Hardware-accelerated QML viewer with pinch-zoom, wheel-zoom and mouse pan
+- **Split view**: Open up to **4 files side by side** in the fullscreen view (like a 2-, 3-, or 4-player split screen: 2 = two columns, 3 = two on top + one full-width below, 4 = 2×2). Each pane is an independent viewer with its own header and Prev/Next navigation, and its own PDF Editor / zoom / playback state. A **"+" button** in each pane's header returns to the gallery and adds the next clicked file as another pane (no file dialog — you pick straight from the gallery). **Back / `Esc`** on a pane closes just that file and frees its memory immediately; closing the last pane returns to the gallery.
 - **Compact mode**: Options mode toggle with `Alt+S` — works in the gallery and inside the open media viewer
 - **Cover mode**: Cover/uncover gallery with `B`
 - **Live folder watch**: New or deleted files are detected automatically
@@ -33,11 +34,13 @@ Built with **C++20** and **Qt 6.4+**.
 - **Auto-Save**: optional timer-based auto-save (configurable interval, Settings → Text Editor)
 - Confirmation dialog on navigation away from unsaved changes (Save / Discard / Cancel)
 - Proper Arabic/CJK font fallback in the editor (no more missing-glyph "tofu" boxes)
+- **Themeable editor background**: the text / HTML source editor surface has its own color, separate from the card/panel background (Settings → Design)
 
 ### HTML Viewer
 - **.html / .htm** files open in a rendered live preview by default, with a one-click toggle back to the editable source view
 - Preview runs fully **offline**: JavaScript stays enabled (quizzes, search, shortcuts keep working) while remote network access is blocked — no external fonts or trackers load
 - **Design-card thumbnails**: instead of showing raw source code, HTML thumbnails are auto-generated from the page's hero section (title, subtitle, colors, RTL/Arabic star patterns or gradients) and refresh automatically when the file changes
+- **Lazy rendering engine**: Qt WebEngine now initializes only the first time you actually open an `.html`/`.htm` file — for a faster start and a lower memory baseline. Until then, HTML files fall back to the editable source view and the preview toggle appears once the engine is ready
 
 ### Live Transliteration
 - Type in Latin letters and get **Arabic (with full Harakat/diacritics)** or **Japanese (Hiragana/Katakana)** automatically as you type — no separate conversion step
@@ -93,6 +96,7 @@ Built with **C++20** and **Qt 6.4+**.
   - Tile hover glow effect
   - **PDF Viewer** sidebar, toolbar, and scrollbar colors
   - Sidebar background color
+  - Editor background (text / HTML source editor surface)
 - Export / Import custom themes as JSON files
 - All color changes apply live without restarting
 
@@ -197,12 +201,11 @@ Custom themes can be exported to JSON and shared:
 ## Changelog
 
 ### Latest
-- **Feature**: New **PDF Editor** — add sticky-note style text boxes on top of any PDF page (font, size, style, color, alignment, note-paper color/opacity), with line-snapping, cross-page dragging, full undo/redo, non-destructive sidecar storage, and export to a new, edited PDF copy.
-- **Feature**: New **Live Transliteration** — type Latin letters and get automatic Arabic (with Harakat) or Japanese (Hiragana/Katakana) output live in the text editor, HTML source, and PDF Editor notes, with fully customizable mapping tables (Settings → Text Editor).
-- **Feature**: **Create file** button in the filter bar for new empty PDF, HTML, or text files in the current folder.
-- **Feature**: **Delete file** directly from a gallery tile's right-click menu (in addition to the fullscreen viewer), with confirmation and automatic metadata/sidecar cleanup.
-- **Fix**: Arabic and CJK text now render with correct font fallback in the text editor and PDF Editor instead of missing-glyph "tofu" boxes.
-- **Fix**: Note-visibility toggle (`Alt+Q`) in the new PDF Editor now works correctly in both view and edit mode.
+- **Feature**: New **Split View** — open up to four files side by side in the fullscreen view (two columns / two-over-one / 2×2). Each pane is an independent viewer with its own header, Prev/Next navigation, and its own PDF Editor / zoom / playback state; add more panes straight from the gallery via the per-pane "+" button, and close a single pane with Back/`Esc` while the others stay open.
+- **Feature**: New **Editor background color** — the text / HTML source editor surface now has its own themeable color, separate from the card/panel background (Settings → Design).
+- **Change**: **Lazy HTML engine** — Qt WebEngine now initializes only on first HTML open (instead of at startup), lowering the memory baseline and speeding up launch; HTML files fall back to the source view until the engine is ready.
+- **Change**: **Active memory return** — on Linux, large freed buffers (folder switch, PDF thumbnail/audio eviction, annotation-cache eviction) are now returned to the OS (`malloc_trim`), so resident memory drops after heavy use instead of staying high.
+- **Fix**: Arrow keys (`<-`/`->`) no longer switch files while a text field is focused, so editing note or source text is no longer interrupted.
 
 ---
 

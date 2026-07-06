@@ -109,6 +109,11 @@ public:
     static constexpr qreal kNoteShadowDxPt = 2.0;
     static constexpr qreal kNoteShadowDyPt = 3.0;
 
+    // Default-Konstruktor für die QML-Instanziierung PRO PdfSurface (dezentraler
+    // Editor je geöffneter PDF-Kachel): nutzt die zentrale AppSettings-Instanz.
+    // Der zusätzlich als Singleton „PdfEdit" registrierte Controller (ISettings&-
+    // Ctor) dient dann nur noch der globalen Einstellung panelOnTop.
+    explicit PdfEditController(QObject* parent = nullptr);
     explicit PdfEditController(ISettings& settings, QObject* parent = nullptr);
     ~PdfEditController() override;
 

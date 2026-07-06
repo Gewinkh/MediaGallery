@@ -11,7 +11,7 @@ import MediaGallery 1.0
 //  über der Box; fehlt oben der Platz, springt sie unter die Box — stets in
 //  die Seite geklemmt.
 //
-//  DATENFLUSS: `info` liest PdfEdit.boxInfo(selectedId) REV-GETRIEBEN neu
+//  DATENFLUSS: `info` liest bar.ctl.boxInfo(selectedId) REV-GETRIEBEN neu
 //  (selectionRev bumpt bei Auswahl- UND Datenänderung der ausgewählten Box) —
 //  dasselbe Muster wie _audioRev in PdfSurface. Die Buttons schreiben über die
 //  setBox…-Invokables zurück; aufeinanderfolgende Klicks desselben Feldes
@@ -30,12 +30,15 @@ Item {
     property real pageW: 0               // Seitenbreite in Pixel (Klemmen)
     property real pageH: 0
     property var  surface: null
+    // Dezentraler PDF-Editor-Controller DIESER Kachel (von PdfSurface via
+    // surface.editCtl gesetzt) — ersetzt den früheren globalen PdfEdit-Singleton.
+    readonly property PdfEditController ctl: surface ? surface.editCtl : null
 
     // Eigenschaften der ausgewählten Box, rev-getrieben neu gelesen. Aktiv nur,
     // wenn die Notizen nicht gerade über den Toggle (Alt+Q/◉) ausgeblendet
     // sind — sonst schwebte die Leiste über einer unsichtbaren Box.
-    readonly property var  info: (PdfEdit.selectionRev, PdfEdit.boxInfo(PdfEdit.selectedId))
-    readonly property bool active: PdfEdit.editMode && info.exists === true
+    readonly property var  info: (bar.ctl.selectionRev, bar.ctl.boxInfo(bar.ctl.selectedId))
+    readonly property bool active: bar.ctl.editMode && info.exists === true
                                    && info.page === pageIndex
                                    && (surface ? surface.notesVisible : true)
 
@@ -103,18 +106,18 @@ Item {
 
         // ── Stil ──────────────────────────────────────────────────────────────
         TBtn { glyph: "B"; boldGlyph: true;      checked: bar.info.bold === true
-               onActivated: PdfEdit.setBoxBold(PdfEdit.selectedId, !bar.info.bold) }
+               onActivated: bar.ctl.setBoxBold(bar.ctl.selectedId, !bar.info.bold) }
         TBtn { glyph: "I"; italicGlyph: true;    checked: bar.info.italic === true
-               onActivated: PdfEdit.setBoxItalic(PdfEdit.selectedId, !bar.info.italic) }
+               onActivated: bar.ctl.setBoxItalic(bar.ctl.selectedId, !bar.info.italic) }
         TBtn { glyph: "U"; underlineGlyph: true; checked: bar.info.underline === true
-               onActivated: PdfEdit.setBoxUnderline(PdfEdit.selectedId, !bar.info.underline) }
+               onActivated: bar.ctl.setBoxUnderline(bar.ctl.selectedId, !bar.info.underline) }
 
         Rectangle { width: 1; height: 16; color: App.themeBorder
                     anchors.verticalCenter: parent.verticalCenter }
 
         // ── Schriftgröße ──────────────────────────────────────────────────────
         TBtn { glyph: "\u2212"
-               onActivated: PdfEdit.setBoxFontSize(PdfEdit.selectedId,
+               onActivated: bar.ctl.setBoxFontSize(bar.ctl.selectedId,
                                                    Math.max(4, Math.round(bar.info.fontSizePt) - 1)) }
         Text {
             anchors.verticalCenter: parent.verticalCenter
@@ -123,7 +126,7 @@ Item {
             color: App.themeTextPrimary; font.pixelSize: 11
         }
         TBtn { glyph: "+"
-               onActivated: PdfEdit.setBoxFontSize(PdfEdit.selectedId,
+               onActivated: bar.ctl.setBoxFontSize(bar.ctl.selectedId,
                                                    Math.min(200, Math.round(bar.info.fontSizePt) + 1)) }
 
         Rectangle { width: 1; height: 16; color: App.themeBorder
@@ -131,11 +134,11 @@ Item {
 
         // ── Ausrichtung (0=links, 1=zentriert, 2=rechts) ──────────────────────
         TBtn { glyph: "\u2B05"; checked: bar.info.alignment === 0
-               onActivated: PdfEdit.setBoxAlignment(PdfEdit.selectedId, 0) }
+               onActivated: bar.ctl.setBoxAlignment(bar.ctl.selectedId, 0) }
         TBtn { glyph: "\u2194"; checked: bar.info.alignment === 1
-               onActivated: PdfEdit.setBoxAlignment(PdfEdit.selectedId, 1) }
+               onActivated: bar.ctl.setBoxAlignment(bar.ctl.selectedId, 1) }
         TBtn { glyph: "\u2B95"; checked: bar.info.alignment === 2
-               onActivated: PdfEdit.setBoxAlignment(PdfEdit.selectedId, 2) }
+               onActivated: bar.ctl.setBoxAlignment(bar.ctl.selectedId, 2) }
 
         Rectangle { width: 1; height: 16; color: App.themeBorder
                     anchors.verticalCenter: parent.verticalCenter }
@@ -143,10 +146,10 @@ Item {
         // ── Vertikale Ausrichtung (0=oben wie Word-Textfeld, 1=mittig) ────────
         TBtn { glyph: "\u2912"; checked: bar.info.vAlign === 0
                tip: App.uiText(App.language, "PdfEditVAlignLabel")
-               onActivated: PdfEdit.setBoxVAlign(PdfEdit.selectedId, 0) }
+               onActivated: bar.ctl.setBoxVAlign(bar.ctl.selectedId, 0) }
         TBtn { glyph: "\u2195"; checked: bar.info.vAlign === 1
                tip: App.uiText(App.language, "PdfEditVAlignLabel")
-               onActivated: PdfEdit.setBoxVAlign(PdfEdit.selectedId, 1) }
+               onActivated: bar.ctl.setBoxVAlign(bar.ctl.selectedId, 1) }
 
         Rectangle { width: 1; height: 16; color: App.themeBorder
                     anchors.verticalCenter: parent.verticalCenter }
@@ -205,7 +208,7 @@ Item {
             tip: App.uiText(App.language, "PdfEditDeleteBtn")
             onActivated: {
                 if (bar.surface) bar.surface.commitEditing()
-                PdfEdit.removeBox(PdfEdit.selectedId)
+                bar.ctl.removeBox(bar.ctl.selectedId)
             }
         }
     }
@@ -246,7 +249,7 @@ Item {
                 HoverHandler { id: noneHover }
                 TapHandler {
                     onTapped: {
-                        PdfEdit.setBoxHighlight(PdfEdit.selectedId, "transparent")
+                        bar.ctl.setBoxHighlight(bar.ctl.selectedId, "transparent")
                         palette.close()
                     }
                 }
@@ -266,9 +269,9 @@ Item {
                     TapHandler {
                         onTapped: {
                             if (palette.forHighlight)
-                                PdfEdit.setBoxHighlight(PdfEdit.selectedId, swatch.modelData)
+                                bar.ctl.setBoxHighlight(bar.ctl.selectedId, swatch.modelData)
                             else
-                                PdfEdit.setBoxColor(PdfEdit.selectedId, swatch.modelData)
+                                bar.ctl.setBoxColor(bar.ctl.selectedId, swatch.modelData)
                             palette.close()
                         }
                     }

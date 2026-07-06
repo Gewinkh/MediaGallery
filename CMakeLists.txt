@@ -67,6 +67,9 @@ set(SOURCES
     src/Strings.cpp
     src/Strings.h
     src/PathUtils.h
+    src/MemoryUtils.h
+    src/WebEngineController.cpp
+    src/WebEngineController.h
     qml.qrc
 )
 

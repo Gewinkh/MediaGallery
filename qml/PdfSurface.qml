@@ -72,13 +72,25 @@ Item {
     }
     function _audioLabel(clip, idxOnPage) { return App.uiText(App.language, "PdfAudioItemLabel").arg(idxOnPage + 1) }
 
-    // ── PDF-Editor (PdfEdit-Singleton) ────────────────────────────────────────
+    // ── Dezentrale Editor/Text/Audio-Controller (EIGENE Instanzen je Kachel) ──
+    //  Früher globale Singletons (PdfEdit/PdfText/PdfAudio) → in der geteilten
+    //  Ansicht teilten sich mehrere PDF-Kacheln DENSELBEN Editmodus/Boxen/Text/
+    //  Audio. Jetzt besitzt JEDE PdfSurface eigene Controller → Boxen, Editmodus,
+    //  Auswahl, Text-Selektion und Audio sind pro geöffneter Datei getrennt.
+    //  editCtl ist als Property exponiert, damit die Kinder (PdfEditBox/-Toolbar/
+    //  -Panel) über surface.editCtl darauf zugreifen. Die globale Einstellung
+    //  panelOnTop kommt weiterhin vom PdfEdit-Singleton (Einstellungen ▸ Editor).
+    property PdfEditController editCtl: PdfEditController {}
+    PdfTextController  { id: pdfTextCtl }
+    PdfAudioController { id: pdfAudioCtl }
+
+    // ── PDF-Editor (dezentraler Controller: root.editCtl) ─────────────────────
     //  Overlay-Textboxen über den Seiten: Modell/Undo/Sidecar/Export leben im
     //  Controller; hier nur UI-Zustand + drei Brücken-Mechanismen:
     //   • editCommitRev  — Zähler-Bump zwingt alle Box-Delegates, eine offene
     //     Textbearbeitung DETERMINISTISCH abzuschließen (vor Undo/Redo/Export/
     //     Moduswechsel/Löschen) — synchron, ohne Delegate-Registry.
-    //   • _snapCache     — Zeilenrechtecke je Seite (PdfText.textLineRects) für
+    //   • _snapCache     — Zeilenrechtecke je Seite (pdfTextCtl.textLineRects) für
     //     den Zeilenfang; einmal je Seite geholt, bei Dokumentwechsel geleert.
     //   • _autoEditId    — frisch erstellte Box startet direkt die Bearbeitung
     //     (das Delegate prüft die ID in Component.onCompleted).
@@ -135,7 +147,7 @@ Item {
     //  Oberkante yPt an die nächste erkannte Textzeile fangen (Toleranz: max aus
     //  7 pt und 75 % der Zeilenhöhe). Ohne Textebene/deaktiviert → unverändert.
     function snapYPt(page, yPt, hPt) {
-        if (!snapEnabled || !PdfText.ready || !root.docReady)
+        if (!snapEnabled || !pdfTextCtl.ready || !root.docReady)
             return yPt
         var pts = root.doc.pagePointSize(page)
         if (!pts || pts.height <= 0)
@@ -158,8 +170,8 @@ Item {
         var c = _snapCache[page]
         if (c !== undefined)
             return c
-        var l = PdfText.ready ? PdfText.textLineRects(page) : []
-        if (PdfText.ready)
+        var l = pdfTextCtl.ready ? pdfTextCtl.textLineRects(page) : []
+        if (pdfTextCtl.ready)
             _snapCache[page] = l
         return l
     }
@@ -168,10 +180,10 @@ Item {
     //  neben dem Original — das Original (und damit die Anzeige-Handles)
     //  bleibt unangetastet, die Notizen bleiben über das Sidecar reversibel.
     function startPdfExport() {
-        if (PdfEdit.busy || !root.docReady)
+        if (root.editCtl.busy || !root.docReady)
             return
         root.commitEditing()
-        PdfEdit.exportPdf()
+        root.editCtl.exportPdf()
     }
 
     // ── Tunbare Cache-Deckel ──────────────────────────────────────────────────
@@ -271,7 +283,7 @@ Item {
         root.doc = null
     }
 
-    Component.onDestruction: { _clearPool(); PdfText.releaseDocument(); PdfAudio.releaseDocument(); PdfEdit.releaseDocument() }
+    Component.onDestruction: { _clearPool(); pdfTextCtl.releaseDocument(); pdfAudioCtl.releaseDocument(); root.editCtl.releaseDocument() }
 
     function release() {
         // Leichtgewichtig: nur Overlays stoppen. Das RENDER-Dokument bleibt im Pool
@@ -288,11 +300,11 @@ Item {
         // Das separate AUSWAHL-Dokument dagegen freigeben (RAM-Prio 1): es wird beim
         // naechsten Markieren ohnehin wieder lazy geladen.
         clearSelection()
-        PdfText.releaseDocument()
+        pdfTextCtl.releaseDocument()
         // Editor: ungespeicherte Overlay-Änderungen automatisch ins Sidecar
         // sichern und Modell + Undo-Stack leeren (kein stiller Verlust).
         root.editPanelVisible = false
-        PdfEdit.releaseDocument()
+        root.editCtl.releaseDocument()
     }
 
     onSourceChanged: {
@@ -303,7 +315,7 @@ Item {
             annotations = []                 // bis der asynchrone Scan zurueckkommt
             clearSelection()                 // evtl. Auswahl des vorherigen PDFs verwerfen
             // Audio-Zustand des vorherigen PDFs verwerfen + neuen Scan anstoßen (lazy).
-            // WICHTIG: Player-Instanz vollständig zerstören, BEVOR PdfAudio.prepare()
+            // WICHTIG: Player-Instanz vollständig zerstören, BEVOR pdfAudioCtl.prepare()
             // (→ releaseDocument) die Temp-WAVs des alten Dokuments löscht — sonst
             // hält der Player noch ein offenes Handle auf die letzte WAV.
             audioPlayer.reset()
@@ -314,14 +326,14 @@ Item {
             root._audioMeta = ({})
             root._audioPos = ({})
             root.audioPanelVisible = false
-            PdfAudio.prepare(root.source)
+            pdfAudioCtl.prepare(root.source)
             // Editor: Zeilenfang-Cache + Panel des vorherigen PDFs verwerfen;
             // setDocument() sichert dessen ungespeicherte Änderungen automatisch
             // ins Sidecar und lädt das Overlay des neuen Dokuments.
             root._snapCache = ({})
             root._autoEditId = -1
             root.editPanelVisible = false
-            PdfEdit.setDocument(root.source)
+            root.editCtl.setDocument(root.source)
             _activateDoc(root.source)
             // Bei einem bereits warmen (Ready) Dokument feuert kein statusChanged →
             // Scrollposition hier zuruecksetzen und den Warmlauf direkt starten.
@@ -370,29 +382,29 @@ Item {
     // Drag-Auswahl nachholen, deren fruehe Abfragen mangels Dokument leer blieben
     // (relevant nur bei grossen PDFs, deren Laden laenger als der erste Drag dauert).
     Connections {
-        target: PdfText
+        target: pdfTextCtl
         function onReadyChanged() {
-            if (!PdfText.ready)
+            if (!pdfTextCtl.ready)
                 return
             // Editor: frisch geladenes Auswahl-Dokument → Zeilenfang-Cache neu
             // aufbauen (der alte könnte leere Fallback-Listen enthalten).
             root._snapCache = ({})
             if (root._selecting && root._lastSel) {
                 var s = root._lastSel
-                root.selRects = PdfText.selectionBetween(s.page, s.a0, s.b0, s.a1, s.b1)
+                root.selRects = pdfTextCtl.selectionBetween(s.page, s.a0, s.b0, s.a1, s.b1)
             } else if (root._pendingSelectAll) {
                 root._pendingSelectAll = false
                 root.selPage = root.currentPage
-                root.selRects = PdfText.selectAllOnPage(root.currentPage)
+                root.selRects = pdfTextCtl.selectAllOnPage(root.currentPage)
             }
         }
     }
 
     // ── PDF-Editor: Reaktionen auf Controller-Ereignisse ──────────────────────
     Connections {
-        target: PdfEdit
+        target: root.editCtl
         function onEditModeChanged() {
-            if (PdfEdit.editMode) {
+            if (root.editCtl.editMode) {
                 // Text-AUSWAHL und Editor schließen sich aus (der createArea-
                 // Fänger liegt über den Seiten); Auswahl-Dokument lazy laden —
                 // es liefert die Zeilenrechtecke für den Zeilenfang.
@@ -401,7 +413,7 @@ Item {
                 // ja bearbeiten.
                 root.notesVisible = true
                 if (root.source.length > 0)
-                    PdfText.prepare(root.source)
+                    pdfTextCtl.prepare(root.source)
                 // Word-Modus: die obere Leiste erscheint automatisch mit dem
                 // Editmodus (wie das Ribbon in Word); ⚙ kann sie ausblenden.
                 if (PdfEdit.panelOnTop)
@@ -423,7 +435,7 @@ Item {
         // (Exklusivität wie zuvor); Abwählen lässt das Panel offen — es
         // schließt über sein ✕ und öffnet bei der nächsten Auswahl erneut.
         function onSelectedIdChanged() {
-            if (PdfEdit.editMode && PdfEdit.selectedId >= 0) {
+            if (root.editCtl.editMode && root.editCtl.selectedId >= 0) {
                 root.editPanelVisible = true
                 if (!PdfEdit.panelOnTop)
                     root.audioPanelVisible = false
@@ -457,7 +469,7 @@ Item {
         }
         var meta = root._audioMeta[id]
         if (meta && meta.url) _startActive(meta.url)
-        else { root._pendingPlay = true; PdfAudio.requestClip(id) }   // async → onClipReady startet
+        else { root._pendingPlay = true; pdfAudioCtl.requestClip(id) }   // async → onClipReady startet
     }
 
     function _startActive(url) {
@@ -492,7 +504,7 @@ Item {
         if (!root.audioPanelVisible) return
         var cs = _clipsOnPage(root.currentPage)
         for (var i = 0; i < cs.length; i++)
-            if (!root._audioMeta[cs[i].id]) PdfAudio.requestClip(cs[i].id)
+            if (!root._audioMeta[cs[i].id]) pdfAudioCtl.requestClip(cs[i].id)
     }
 
     function _savedPos(id) { return root._audioPos[id] || 0 }
@@ -607,11 +619,11 @@ Item {
     }
 
     Connections {
-        target: PdfAudio
+        target: pdfAudioCtl
         function onReadyChanged() {
-            if (PdfAudio.ready) {
-                root.audioClips = PdfAudio.clips()
-                root.documentHasAudio = PdfAudio.documentHasAudio
+            if (pdfAudioCtl.ready) {
+                root.audioClips = pdfAudioCtl.clips()
+                root.documentHasAudio = pdfAudioCtl.documentHasAudio
                 root._ensurePageClipsExtracted()
             } else {
                 root.audioClips = []
@@ -634,8 +646,8 @@ Item {
     //  Zweitbindung den Shortcut mehrdeutig macht.
     Shortcut {
         sequence: "Ctrl+C"
-        enabled: root.docReady && PdfText.selectedText.length > 0
-        onActivated: PdfText.copyToClipboard()
+        enabled: root.docReady && pdfTextCtl.selectedText.length > 0
+        onActivated: pdfTextCtl.copyToClipboard()
     }
     // Notizen-Toggle (Alt+Q blendet die Post-its aus, erneutes Drücken wieder
     // ein). Wirkt in BEIDEN Modi — der Eintritt in den Editmodus erzwingt
@@ -653,14 +665,14 @@ Item {
     }
     // Entf löscht die AUSGEWÄHLTE Notiz (nur im Editmodus). Gesperrt, solange
     // eine Inline-Textbearbeitung läuft — dort gehört Entf dem TextEdit
-    // (Zeichen löschen), nicht der Box (PdfEdit.textEditing).
+    // (Zeichen löschen), nicht der Box (root.editCtl.textEditing).
     Shortcut {
         sequence: "Delete"
-        enabled: root.docReady && PdfEdit.editMode
-                 && PdfEdit.selectedId >= 0 && !PdfEdit.textEditing
+        enabled: root.docReady && root.editCtl.editMode
+                 && root.editCtl.selectedId >= 0 && !root.editCtl.textEditing
         onActivated: {
             root.commitEditing()
-            PdfEdit.removeBox(PdfEdit.selectedId)
+            root.editCtl.removeBox(root.editCtl.selectedId)
         }
     }
 
@@ -698,15 +710,15 @@ Item {
     //  beginSelection lädt das Auswahl-Dokument LAZY (erst bei echtem Markieren →
     //  reines Ansehen kostet kein zusätzliches QPdfDocument). Bei großen PDFs ist
     //  der asynchrone Ladevorgang ggf. erst während des Ziehens fertig — dann holt
-    //  der PdfText.onReadyChanged-Handler die Auswahl nach (Catch-up).
+    //  der pdfTextCtl.onReadyChanged-Handler die Auswahl nach (Catch-up).
     function beginSelection(page) {
         root._selecting = true
         root.selPage = page
         root.selRects = []
         root._lastSel = null
         root._pendingSelectAll = false
-        PdfText.clearSelection()
-        PdfText.prepare(root.source)
+        pdfTextCtl.clearSelection()
+        pdfTextCtl.prepare(root.source)
     }
     function updateSelection(page, a0, b0, a1, b1) {
         // Auf [0..1] klemmen (Ziehen über den Seitenrand hinaus).
@@ -714,7 +726,7 @@ Item {
         a1 = Math.max(0, Math.min(1, a1)); b1 = Math.max(0, Math.min(1, b1))
         root._lastSel = { page: page, a0: a0, b0: b0, a1: a1, b1: b1 }
         root.selPage = page
-        root.selRects = PdfText.selectionBetween(page, a0, b0, a1, b1)
+        root.selRects = pdfTextCtl.selectionBetween(page, a0, b0, a1, b1)
     }
     function endSelection(wasDrag) {
         root._selecting = false
@@ -725,15 +737,15 @@ Item {
         root.selRects = []
         root._lastSel = null
         root._pendingSelectAll = false
-        PdfText.clearSelection()
+        pdfTextCtl.clearSelection()
     }
     function selectAllCurrentPage() {
         if (!root.docReady) return
         root._lastSel = null
-        PdfText.prepare(root.source)
-        if (PdfText.ready) {
+        pdfTextCtl.prepare(root.source)
+        if (pdfTextCtl.ready) {
             root.selPage = root.currentPage
-            root.selRects = PdfText.selectAllOnPage(root.currentPage)
+            root.selRects = pdfTextCtl.selectAllOnPage(root.currentPage)
             root._pendingSelectAll = false
         } else {
             // Auswahl-Dokument laedt noch (lazy) → nach dem Laden nachholen.
@@ -828,44 +840,44 @@ Item {
             Item { width: 8; height: 1 }
             PdfToolButton {
                 glyph: "\u25C9"
-                visible: PdfEdit.boxCount > 0 || PdfEdit.editMode
+                visible: root.editCtl.boxCount > 0 || root.editCtl.editMode
                 active: root.notesVisible
                 tip: App.uiText(App.language, "PdfEditNotesToggleTip")
                 onActivated: root.notesVisible = !root.notesVisible
             }
             PdfToolButton {
                 glyph: "\u270E"
-                active: PdfEdit.editMode
+                active: root.editCtl.editMode
                 tip: App.uiText(App.language, "PdfEditToggleTip")
                 // commitEditing() VOR dem Umschalten: eine offene Text-Session
                 // schließt sauber ab, bevor der Modus (und damit die Auswahl)
                 // fällt — reiner Zustandswechsel, KEIN Dokument-Reload.
-                onActivated: { root.commitEditing(); PdfEdit.editMode = !PdfEdit.editMode }
+                onActivated: { root.commitEditing(); root.editCtl.editMode = !root.editCtl.editMode }
             }
             PdfToolButton {
                 glyph: "\u21B6"
-                visible: PdfEdit.editMode
-                enabled: PdfEdit.canUndo
+                visible: root.editCtl.editMode
+                enabled: root.editCtl.canUndo
                 tip: App.uiText(App.language, "PdfEditUndoTip")
-                onActivated: { root.commitEditing(); PdfEdit.undo() }
+                onActivated: { root.commitEditing(); root.editCtl.undo() }
             }
             PdfToolButton {
                 glyph: "\u21B7"
-                visible: PdfEdit.editMode
-                enabled: PdfEdit.canRedo
+                visible: root.editCtl.editMode
+                enabled: root.editCtl.canRedo
                 tip: App.uiText(App.language, "PdfEditRedoTip")
-                onActivated: { root.commitEditing(); PdfEdit.redo() }
+                onActivated: { root.commitEditing(); root.editCtl.redo() }
             }
             PdfToolButton {
                 glyph: "\u2261"
-                visible: PdfEdit.editMode
+                visible: root.editCtl.editMode
                 active: root.snapEnabled
                 tip: App.uiText(App.language, "PdfEditSnapTip")
                 onActivated: root.snapEnabled = !root.snapEnabled
             }
             // Der frühere ⚙-Button (Text-Eigenschaften ein/aus) entfällt: das
             // Panel öffnet automatisch beim Erstellen/Auswählen einer Notiz
-            // (s. Connections auf PdfEdit.onSelectedIdChanged) und schließt
+            // (s. Connections auf root.editCtl.onSelectedIdChanged) und schließt
             // über sein eigenes ✕.
         }
 
@@ -877,13 +889,13 @@ Item {
             // da Notizen hier getippt werden. Zustand/Schema global (Translit).
             TranslitButton {
                 anchors.verticalCenter: parent.verticalCenter
-                visible: PdfEdit.editMode
+                visible: root.editCtl.editMode
             }
-            Item { width: PdfEdit.editMode ? 4 : 0; height: 1 }
+            Item { width: root.editCtl.editMode ? 4 : 0; height: 1 }
             // Audio-Leiste umschalten — nur sichtbar, wenn das PDF Audio enthält.
             PdfToolButton {
                 glyph: "\u266A"
-                visible: PdfAudio.documentHasAudio
+                visible: pdfAudioCtl.documentHasAudio
                 active: root.audioPanelVisible
                 tip: root.audioPanelVisible ? App.uiText(App.language, "PdfHideAudioBar") : App.uiText(App.language, "PdfShowAudioBar")
                 onActivated: {
@@ -892,7 +904,7 @@ Item {
                         root.editPanelVisible = false
                 }
             }
-            Item { width: PdfAudio.documentHasAudio ? 4 : 0; height: 1 }
+            Item { width: pdfAudioCtl.documentHasAudio ? 4 : 0; height: 1 }
             Rectangle {
                 anchors.verticalCenter: parent.verticalCenter
                 width: fitLabel.implicitWidth + 22; height: 26; radius: 6
@@ -1155,15 +1167,15 @@ Item {
                         MouseArea {
                             id: createArea
                             anchors.fill: parent
-                            enabled: PdfEdit.editMode
-                            visible: PdfEdit.editMode
+                            enabled: root.editCtl.editMode
+                            visible: root.editCtl.editMode
                             acceptedButtons: Qt.LeftButton
                             cursorShape: Qt.CrossCursor
                             onClicked: (m) => {
                                 root.commitEditing()
                                 // Erst-Klick bei bestehender Auswahl: nur abwählen.
-                                if (PdfEdit.selectedId >= 0) {
-                                    PdfEdit.selectedId = -1
+                                if (root.editCtl.selectedId >= 0) {
+                                    root.editCtl.selectedId = -1
                                     return
                                 }
                                 var pts = pageCell.pts
@@ -1172,13 +1184,13 @@ Item {
                                 var xPt = (m.x / pageImg.width)  * pts.width
                                 var yPt = (m.y / pageImg.height) * pts.height
                                 var id = -1
-                                if (root.snapEnabled && PdfText.ready) {
+                                if (root.snapEnabled && pdfTextCtl.ready) {
                                     var lines = root._snapLines(pageCell.index)
                                     for (var i = 0; i < lines.length; i++) {
                                         var ly = lines[i].y * pts.height
                                         var lh = lines[i].h * pts.height
                                         if (yPt >= ly - lh * 0.35 && yPt <= ly + lh * 1.35) {
-                                            id = PdfEdit.addAnchoredTextBox(
+                                            id = root.editCtl.addAnchoredTextBox(
                                                      pageCell.index,
                                                      lines[i].x * pts.width, ly,
                                                      Math.max(48, lines[i].w * pts.width), lh)
@@ -1187,7 +1199,7 @@ Item {
                                     }
                                 }
                                 if (id < 0)
-                                    id = PdfEdit.addTextBox(pageCell.index, xPt, yPt,
+                                    id = root.editCtl.addTextBox(pageCell.index, xPt, yPt,
                                                             pts.width, pts.height)
                                 // Neue Box direkt in die Textbearbeitung schicken;
                                 // evtl. per Toggle ausgeblendete Notizen wieder
@@ -1204,7 +1216,7 @@ Item {
                         //    Delegate blendet sich über page===pageIndex selbst
                         //    ein (Boxzahl ist klein — kein Proxy-Filter nötig).
                         Repeater {
-                            model: PdfEdit.boxModel
+                            model: root.editCtl.boxModel
                             delegate: PdfEditBox {
                                 pageIndex: pageCell.index
                                 pageScale: pageCell.pts.width > 0
@@ -1365,7 +1377,7 @@ Item {
         PdfEditPanel {
             anchors { right: parent.right; rightMargin: 14; top: parent.top; bottom: parent.bottom }
             width: 320
-            visible: root.editPanelVisible && PdfEdit.editMode && !PdfEdit.panelOnTop
+            visible: root.editPanelVisible && root.editCtl.editMode && !PdfEdit.panelOnTop
             z: 4
             surface: root
         }
@@ -1373,7 +1385,7 @@ Item {
             anchors { left: parent.left; right: parent.right; top: parent.top }
             height: 62
             horizontal: true
-            visible: root.editPanelVisible && PdfEdit.editMode && PdfEdit.panelOnTop
+            visible: root.editPanelVisible && root.editCtl.editMode && PdfEdit.panelOnTop
             z: 4
             surface: root
         }
@@ -1382,7 +1394,7 @@ Item {
             id: audioPanel
             anchors { right: parent.right; rightMargin: 14; top: parent.top; bottom: parent.bottom }
             width: 300
-            visible: root.audioPanelVisible && PdfAudio.documentHasAudio
+            visible: root.audioPanelVisible && pdfAudioCtl.documentHasAudio
             z: 4
             color: App.themeSidebarBg
 

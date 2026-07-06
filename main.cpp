@@ -7,7 +7,6 @@
 #include <QQuickImageProvider>
 #include <QUrl>
 #include <QTimer>                    // verzögertes Löschen des RHI-Crash-Guards nach Start
-#include <QtWebEngineQuick>          // WebEngine-Vorschau (HtmlSurface): initialize() vor QGuiApplication
 
 #include "src/RhiProber.h"
 #include "src/AppSettings.h"
@@ -23,6 +22,7 @@
 #include "src/PdfAudioController.h"
 #include "src/PdfEditController.h"
 #include "src/TransliterationController.h"
+#include "src/WebEngineController.h"
 #include "src/MediaModel.h"
 #include "src/MediaProxyModel.h"
 
@@ -39,12 +39,14 @@ int main(int argc, char* argv[]) {
 
     QQuickStyle::setStyle(QStringLiteral("Fusion"));
 
-    // ── Qt WebEngine initialisieren ───────────────────────────────────────────
-    // Richtet den zwischen GUI- und Render-Prozess geteilten OpenGL-Kontext ein
-    // (entspricht Qt::AA_ShareOpenGLContexts). MUSS vor dem Erzeugen der
-    // QGuiApplication aufgerufen werden — danach ist es deprecated und kann
-    // fehlschlagen. Wird von HtmlSurface.qml (HTML-Vorschau) benötigt.
-    QtWebEngineQuick::initialize();
+    // ── Qt WebEngine: NICHT mehr beim Start initialisieren (RAM-Baseline) ────
+    // Viele Nutzer öffnen nie eine HTML-Datei — die Chromium-Grundkosten von
+    // QtWebEngineQuick::initialize() beim Start wären reine Verschwendung.
+    // Hier wird nur das kostenlose Kontext-Sharing-Attribut gesetzt (MUSS vor
+    // der QGuiApplication passieren, lädt KEIN Chromium). Die eigentliche
+    // Initialisierung übernimmt WebEngineController::ensureInitializedForHtml()
+    // lazy beim ersten Öffnen einer .html/.htm bzw. bei angeforderter Vorschau.
+    QCoreApplication::setAttribute(Qt::AA_ShareOpenGLContexts);
 
     QGuiApplication app(argc, argv);
     app.setApplicationName("MediaGallery");
@@ -102,10 +104,14 @@ int main(int argc, char* argv[]) {
     TagController       tagController(tagManager);
     ViewerController    viewerController;
     PdfThumbnailProvider pdfThumbs;
-    PdfTextController    pdfText;
-    PdfAudioController   pdfAudio;
+    // PDF-Editor/-Text/-Audio sind jetzt DEZENTRAL: je geöffneter PDF-Kachel
+    // (PdfSurface) erzeugt QML eine EIGENE Instanz (qmlRegisterType unten) →
+    // getrennter Editmodus/Boxen/Auswahl/Text-Selektion/Audio pro Datei. Der
+    // PdfEdit-Singleton bleibt allein für die globale Einstellung panelOnTop
+    // (Einstellungen ▸ Editor) erhalten.
     PdfEditController    pdfEdit(settings);
     TransliterationController translit;   // Live-Transliteration (Latein → Arabisch/Kana)
+    WebEngineController  webEngine;       // lazy WebEngine-Init (nur bei HTML-Bedarf)
 
     // ── Galerie-Backend ──────────────────────────────────────────────────────
     ThumbnailLoader  thumbLoader;
@@ -124,10 +130,16 @@ int main(int argc, char* argv[]) {
     qmlRegisterSingletonInstance("MediaGallery", 1, 0, "Tags",      &tagController);
     qmlRegisterSingletonInstance("MediaGallery", 1, 0, "Viewer",    &viewerController);
     qmlRegisterSingletonInstance("MediaGallery", 1, 0, "PdfThumbs", &pdfThumbs);
-    qmlRegisterSingletonInstance("MediaGallery", 1, 0, "PdfText",   &pdfText);
-    qmlRegisterSingletonInstance("MediaGallery", 1, 0, "PdfAudio",  &pdfAudio);
     qmlRegisterSingletonInstance("MediaGallery", 1, 0, "PdfEdit",   &pdfEdit);
+
+    // Dezentrale, pro PdfSurface (PDF-Kachel) instanziierbare Editor-Controller —
+    // eigener Zustand je geöffneter Datei (kein QML_ELEMENT-Makro, manuelle
+    // Registrierung wie die übrigen Typen).
+    qmlRegisterType<PdfTextController> ("MediaGallery", 1, 0, "PdfTextController");
+    qmlRegisterType<PdfAudioController>("MediaGallery", 1, 0, "PdfAudioController");
+    qmlRegisterType<PdfEditController> ("MediaGallery", 1, 0, "PdfEditController");
     qmlRegisterSingletonInstance("MediaGallery", 1, 0, "Translit",  &translit);
+    qmlRegisterSingletonInstance("MediaGallery", 1, 0, "WebEngine", &webEngine);
 
     // ── QML-Wurzel ───────────────────────────────────────────────────────────
     QQmlApplicationEngine engine;

@@ -9,6 +9,15 @@ import MediaGallery 1.0
 //  in TextSurface). Wird vom FullscreenViewer für Typ 4 (Text) geladen, sobald
 //  die Datei eine .html/.htm ist UND der Vorschau-Modus aktiv ist.
 //
+//  INVARIANTE (lazy WebEngine): Diese Datei importiert QtWebEngine und erzeugt
+//  eine WebEngineView — sie darf daher NUR instanziiert werden, wenn
+//  WebEngine.ready === true (WebEngineController hat initialisiert). Der
+//  FullscreenViewer stellt das sicher: HtmlSurface wird ausschließlich über
+//  einen URL-Loader geladen, der hart auf WebEngine.ready gegated ist; ohne
+//  Ready fällt HTML immer auf TextSurface (Quelltext) zurück. HtmlSurface
+//  NIEMALS direkt (als Typ) referenzieren — sonst lädt bereits das Kompilieren
+//  der referenzierenden Datei das QtWebEngine-Plugin.
+//
 //  • Rendert die lokale Datei über Qt WebEngine (Chromium, Teil von Qt 6.11 —
 //    keine externe Bibliothek). Pfad → kodierte file://-URL via App.fileUrl()
 //    (CJK-/Leerzeichen-fest), analog zur Bild-Komponente.

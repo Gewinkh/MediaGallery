@@ -284,9 +284,13 @@ ApplicationWindow {
                     left: parent.left
                     right: catPanel.visible ? catPanel.left : parent.right
                     top: filterBar.bottom
-                    bottom: modeBanner.visible ? modeBanner.top : parent.bottom
+                    bottom: addBanner.visible ? addBanner.top
+                            : (modeBanner.visible ? modeBanner.top : parent.bottom)
                 }
-                onActivated: function(filePath) { pushFullscreen(filePath) }
+                onActivated: function(filePath) {
+                    if (shell.pendingAddFile) shell.addFileFromGallery(filePath)
+                    else pushFullscreen(filePath)
+                }
             }
 
             TagCategoryPanel {
@@ -300,6 +304,30 @@ ApplicationWindow {
                 anchors { right: parent.right; top: filterBar.bottom; bottom: parent.bottom }
                 onEnterAddToTagMode: function(tag) { galleryView.enterAddToTagMode(tag) }
                 onEnterGroupMode: function(tag) { galleryView.enterGroupMode(tag) }
+            }
+
+            // ── Hinzufügen-Modus-Banner (Datei zur geteilten Ansicht wählen) ─
+            Rectangle {
+                id: addBanner
+                visible: shell.pendingAddFile
+                anchors { left: parent.left; right: parent.right
+                          bottom: modeBanner.visible ? modeBanner.top : parent.bottom }
+                height: 34
+                color: App.themeAccent
+                Row {
+                    anchors.fill: parent; anchors.leftMargin: 12; anchors.rightMargin: 12; spacing: 10
+                    Text {
+                        anchors.verticalCenter: parent.verticalCenter
+                        text: App.uiText(App.language, "SplitPickPrompt")
+                        color: App.themeBackground; font.pixelSize: 12; font.bold: true
+                    }
+                    Item { width: parent.width - 260; height: 1 }
+                    Button {
+                        anchors.verticalCenter: parent.verticalCenter
+                        height: 24; text: App.uiText(App.language, "SplitCancel"); font.pixelSize: 11
+                        onClicked: shell.cancelAddFile()
+                    }
+                }
             }
 
             // ── Modus-Banner (Gruppen-/Add-to-Tag-Modus verlassen) ───────────
@@ -328,22 +356,171 @@ ApplicationWindow {
         }
     }
 
+    // ── Geteilte Ansicht (Splitscreen): bis zu 4 Dateien NEBENEINANDER ────────
+    //  Anders als klassische Tabs zeigt die Vollbild-Seite mehrere Dateien
+    //  GLEICHZEITIG — analog zum 2-/3-/4-Spieler-Splitscreen: zwei Dateien
+    //  nebeneinander, drei als 2 oben + 1 unten (volle Breite), vier als 2×2.
+    //  So lässt sich bequem parallel arbeiten/vergleichen.
+    //
+    //  • Jede Kachel ist ein eigenständiger FullscreenViewer (eigene Kopfleiste,
+    //    eigene ←/→-Navigation über das Galerie-Modell).
+    //  • „+" (Kopfleiste jeder Kachel, direkt neben dem Datum-Button) öffnet
+    //    einen Datei-Dialog und fügt die gewählte Datei als weitere Kachel hinzu.
+    //  • Zurück/Esc einer Kachel SCHLIESST genau diese Datei (RAM sofort frei);
+    //    war es die letzte Kachel, geht es zurück zur Galerie.
+    //  • Bei mehr als einer Kachel entfällt die untere Hover-Navigation der
+    //    Kacheln (Pfeile + Zähler) — sie kehrt zurück, sobald nur noch eine
+    //    Datei offen ist (splitActive-Flag je Viewer).
+    readonly property int maxOpenFiles: 4
+    ListModel { id: openFilesModel }   // Rolle: path (aktueller Pfad der Kachel)
+
+    // Geometrie einer Kachel je Index/Anzahl (kleine Lücke g als Trennfuge).
+    function paneRect(index, count, W, H) {
+        var g = 2
+        if (count <= 1)
+            return { x: 0, y: 0, w: W, h: H }
+        if (count === 2) {                                   // zwei Spalten nebeneinander
+            var cw = (W - g) / 2
+            return { x: index * (cw + g), y: 0, w: cw, h: H }
+        }
+        if (count === 3) {                                   // 2 oben, 1 unten (volle Breite)
+            var cw3 = (W - g) / 2
+            var ch3 = (H - g) / 2
+            if (index === 0) return { x: 0,       y: 0,       w: cw3, h: ch3 }
+            if (index === 1) return { x: cw3 + g, y: 0,       w: cw3, h: ch3 }
+            return                { x: 0,       y: ch3 + g, w: W,   h: ch3 }
+        }
+        var cw4 = (W - g) / 2                                // 2×2
+        var ch4 = (H - g) / 2
+        var col = index % 2
+        var rowi = Math.floor(index / 2)
+        return { x: col * (cw4 + g), y: rowi * (ch4 + g), w: cw4, h: ch4 }
+    }
+
+    function indexOfOpenFile(p) {
+        for (var i = 0; i < openFilesModel.count; i++)
+            if (openFilesModel.get(i).path === p) return i
+        return -1
+    }
+
+    // Kachel schließen (Zurück/Esc einer Datei). Letzte Kachel → zurück zur Galerie.
+    function closePane(i) {
+        if (i < 0 || i >= openFilesModel.count) return
+        openFilesModel.remove(i)              // gibt den zugehörigen Viewer sofort frei
+        if (openFilesModel.count === 0)
+            popFullscreen()
+    }
+
+    // „+": weitere Datei zur geteilten Ansicht hinzufügen. Statt eines
+    // Datei-Dialogs kehrt die Ansicht zur GALERIE (Hauptfenster) zurück — die
+    // offenen Kacheln bleiben im Modell erhalten. Ein Klick in der Galerie wählt
+    // die nächste Datei; danach wird die geteilte Ansicht wiederhergestellt.
+    property bool pendingAddFile: false
+    function requestAddFile() {
+        if (openFilesModel.count >= shell.maxOpenFiles) {
+            shell.statusText = App.uiText(App.language, "SplitMaxReached")
+            statusClearTimer.restart()
+            return
+        }
+        shell.pendingAddFile = true
+        if (stack.depth > 1)
+            stack.pop()                 // NICHT leeren — offene Kacheln bleiben im Modell
+    }
+    // Datei aus der Galerie zur geteilten Ansicht hinzufügen (Klick im Hinzufügen-Modus).
+    function addFileFromGallery(p) {
+        shell.pendingAddFile = false
+        if (p !== undefined && p.length > 0
+                && indexOfOpenFile(p) < 0
+                && openFilesModel.count < shell.maxOpenFiles)
+            openFilesModel.append({ path: p })
+        if (stack.depth < 2)
+            stack.push(fullscreenComponent)   // geteilte Ansicht wiederherstellen
+    }
+    // Hinzufügen abbrechen → zurück zur (unveränderten) geteilten Ansicht.
+    function cancelAddFile() {
+        shell.pendingAddFile = false
+        if (stack.depth < 2 && openFilesModel.count > 0)
+            stack.push(fullscreenComponent)
+    }
+
     Component {
         id: fullscreenComponent
-        FullscreenViewer {
-            startPath: shell.pendingFullscreenPath
-            onBackRequested: popFullscreen()
+
+        Item {
+            id: splitPage
+
+            // Lade-Gating: die schwere Medienlast erst NACH dem StackView-Übergang
+            // anstoßen — die Viewer sitzen in Loadern UNTER der Seite (StackView.view
+            // wäre dort null), daher gated die Seite die Loader-Aktivierung.
+            property bool pageReady: false
+            function _checkReady() {
+                if (StackView.status === StackView.Active || StackView.view === null)
+                    pageReady = true
+            }
+            StackView.onStatusChanged: _checkReady()
+            Component.onCompleted: _checkReady()
+
+            // Trennfugen-Hintergrund (scheint in der 2 px-Lücke zwischen Kacheln durch).
+            Rectangle { anchors.fill: parent; color: "#0a0a0a" }
+
+            readonly property int paneCount: openFilesModel.count
+
+            // ── Kacheln: ein FullscreenViewer je Datei, per Split-Layout platziert ─
+            Repeater {
+                model: openFilesModel
+                delegate: Loader {
+                    id: paneLoader
+                    required property int index
+                    required property string path
+
+                    // Kachel-Geometrie nach Split-Layout (reagiert auf Anzahl/Größe).
+                    readonly property var _r: shell.paneRect(index, splitPage.paneCount,
+                                                             splitPage.width, splitPage.height)
+                    x: _r.x; y: _r.y
+                    width: _r.w; height: _r.h
+
+                    // Alle sichtbaren Kacheln sind aktiv (Splitscreen zeigt sie parallel).
+                    active: splitPage.pageReady
+
+                    sourceComponent: FullscreenViewer {
+                        startPath: paneLoader.path
+                        // Mehr als eine Datei offen → untere Hover-Navigation der Kachel
+                        // (Pfeile + Zähler) ausblenden; bei genau einer Datei wieder an.
+                        splitActive: splitPage.paneCount > 1
+                        canAddMore:  splitPage.paneCount < shell.maxOpenFiles
+                        onBackRequested:    shell.closePane(paneLoader.index)
+                        onAddFileRequested: shell.requestAddFile()
+                    }
+                    onLoaded: item.forceActiveFocus()
+
+                    // Kachel-Pfad folgt der ←/→-Navigation IM Viewer (Modell nachziehen).
+                    Connections {
+                        target: paneLoader.item
+                        ignoreUnknownSignals: true
+                        function onPathChanged() {
+                            if (paneLoader.item && paneLoader.index < openFilesModel.count)
+                                openFilesModel.setProperty(paneLoader.index, "path",
+                                                           paneLoader.item.path)
+                        }
+                    }
+                }
+            }
         }
     }
 
     // Navigations-API.
-    property string pendingFullscreenPath: ""
+    //  Galerie-Doppelklick → frische Einzel-Kachel (die vorherige Ansicht ist beim
+    //  Verlassen ohnehin geschlossen). Weitere Kacheln kommen über den „+"-Button.
     function pushFullscreen(filePath) {
-        pendingFullscreenPath = filePath !== undefined ? filePath : ""
+        var p = filePath !== undefined ? filePath : ""
+        if (p.length === 0) return
+        openFilesModel.clear()
+        openFilesModel.append({ path: p })
         if (stack.depth < 2)
             stack.push(fullscreenComponent)
     }
     function popFullscreen() {
+        openFilesModel.clear()          // Verlassen schließt alle Dateien (RAM frei)
         if (stack.depth > 1)
             stack.pop()
     }
@@ -379,7 +556,14 @@ ApplicationWindow {
     Connections {
         target: App
         function onStatusMessage(text) { shell.statusText = text; statusClearTimer.restart() }
-        function onFolderOpened(path)  { shell.statusText = path; statusClearTimer.restart() }
+        function onFolderOpened(path)  {
+            // Ordnerwechsel: die ←/→-Navigation läuft über das Galerie-Modell des
+            // aktuellen Ordners → beim Wechsel offene Kacheln (anderer Ordner)
+            // verwerfen und einen laufenden Hinzufügen-Modus beenden.
+            openFilesModel.clear()
+            shell.pendingAddFile = false
+            shell.statusText = path; statusClearTimer.restart()
+        }
     }
 
     FolderDialog {

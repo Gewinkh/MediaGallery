@@ -1,5 +1,6 @@
 #include "PdfAudioController.h"
 #include "PathUtils.h"
+#include "MemoryUtils.h"   // mg::trimHeap — RSS-Rückgabe nach WAV-Cache-Eviction
 
 #include <QFile>
 #include <QFileInfo>
@@ -555,8 +556,13 @@ void PdfAudioController::releaseDocument() {
     ++m_gen;                                  // laufende Tasks werden verworfen
     m_path.clear();
     m_clips.clear();
+    const bool hadWavs = !m_wavCache.isEmpty();
     for (const WavEntry& e : std::as_const(m_wavCache)) QFile::remove(e.path);
     m_wavCache.clear(); m_wavOrder.clear(); m_wavBytes = 0; m_clipInFlight.clear();
+    // Kompletter WAV-Cache + Clip-Metadaten freigegeben (große Freigabe beim
+    // Dokumentwechsel) → Heap aktiv ans OS zurückgeben.
+    if (hadWavs)
+        mg::trimHeap();
     const bool was = m_ready;
     m_ready = false; m_scanInFlight = false;
     if (was) emit readyChanged();
@@ -584,11 +590,16 @@ void PdfAudioController::applyClip(int id, const QString& wavPath, int durationM
 }
 
 void PdfAudioController::evictCache() {
+    bool evicted = false;
     while (m_wavBytes > kMaxWavBytes && m_wavOrder.size() > 1) {
         const int victim = m_wavOrder.takeFirst();
         auto it = m_wavCache.find(victim);
-        if (it != m_wavCache.end()) { m_wavBytes -= it->bytes; QFile::remove(it->path); m_wavCache.erase(it); }
+        if (it != m_wavCache.end()) { m_wavBytes -= it->bytes; QFile::remove(it->path); m_wavCache.erase(it); evicted = true; }
     }
+    // Nur bei TATSÄCHLICHER Eviction: die Inflate-/WAV-Puffer der Extraktion
+    // liegen im MB-Bereich — freigegebenen Heap aktiv ans OS zurückgeben.
+    if (evicted)
+        mg::trimHeap();
 }
 
 QString PdfAudioController::tempPathFor(int id) const {

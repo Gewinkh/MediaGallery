@@ -1,6 +1,7 @@
 #include "PdfEditController.h"
 #include "PdfEditCommands.h"
 #include "ISettings.h"
+#include "AppSettings.h"      // AppSettings::instance() für den Default-Ctor (QML-Instanzen)
 #include "PathUtils.h"
 
 #include <QPdfDocument>
@@ -265,6 +266,12 @@ private:
 // ═════════════════════════════════════════════════════════════════════════════
 //  PdfEditController
 // ═════════════════════════════════════════════════════════════════════════════
+// Default-Ctor für die QML-Instanziierung PRO PdfSurface (dezentraler Editor je
+// PDF-Kachel): delegiert an den ISettings&-Ctor mit der zentralen AppSettings-
+// Instanz. So teilen alle Instanzen dieselbe persistierte Einstellung panelOnTop.
+PdfEditController::PdfEditController(QObject* parent)
+    : PdfEditController(AppSettings::instance(), parent) {}
+
 PdfEditController::PdfEditController(ISettings& settings, QObject* parent)
     : QObject(parent), m_settings(settings) {
     m_stack.setUndoLimit(kUndoLimit);

@@ -57,7 +57,6 @@ static const QMap<StringKey, QString> s_de = {
     { StringKey::FilterTagRenamePrompt, "Tag umbenennen" },
 
     { StringKey::SettingsTabCategories,  "Kategorien" },
-    { StringKey::SettingsCatAdd,         "+ Kategorie" },
     { StringKey::SettingsCatNewLabel,    "Name:" },
     { StringKey::SettingsCatRenameTitle, "Kategorie umbenennen" },
     { StringKey::SettingsTagColorTitle,  "Tag-Farbe" },
@@ -156,6 +155,7 @@ static const QMap<StringKey, QString> s_de = {
     { StringKey::SettingsDesignStatusBar,  "Statusleiste" },
     { StringKey::SettingsDesignPdfViewer,  "PDF-Betrachter" },
     { StringKey::SettingsDesignSidebar,  "Seitenleiste" },
+    { StringKey::SettingsDesignEditorBg, "Editor-Hintergrund (Text/HTML)" },
     { StringKey::SettingsDesignScrollbar,  "Scrollleiste" },
     { StringKey::SettingsDesignViewerBg,  "Betrachter-Hintergrund" },
     { StringKey::SettingsDesignThumbBg,  "Thumbnail-Hintergrund" },
@@ -340,6 +340,10 @@ static const QMap<StringKey, QString> s_de = {
     { StringKey::TranslitAddBtn,           "Hinzufügen" },
     { StringKey::TranslitResetBtn,         "Auf Standard zurücksetzen" },
     { StringKey::TranslitHint,             "Beim Schreiben von Text (TXT, HTML, PDF-Notizen) wird die lateinische Eingabe live in die Zielschrift umgesetzt – aber erst, sobald eindeutig ist, welches Zeichen gemeint ist (z. B. wird „a“ erst umgewandelt, wenn feststeht, dass kein längeres Kürzel wie „aa“ folgt). Die Zuordnungen unten lassen sich frei bearbeiten, ergänzen und löschen." },
+    { StringKey::SplitAddFile,             "Datei hinzufügen" },
+    { StringKey::SplitMaxReached,          "Maximal 4 Dateien gleichzeitig geöffnet — bitte zuerst eine schließen." },
+    { StringKey::SplitPickPrompt,          "Datei anklicken, um sie zur geteilten Ansicht hinzuzufügen" },
+    { StringKey::SplitCancel,              "Abbrechen" },
 
 };
 
@@ -398,7 +402,6 @@ static const QMap<StringKey, QString> s_en = {
     { StringKey::FilterTagRenamePrompt, "Rename Tag" },
 
     { StringKey::SettingsTabCategories,  "Categories" },
-    { StringKey::SettingsCatAdd,         "+ Category" },
     { StringKey::SettingsCatNewLabel,    "Name:" },
     { StringKey::SettingsCatRenameTitle, "Rename Category" },
     { StringKey::SettingsTagColorTitle,  "Tag Color" },
@@ -497,6 +500,7 @@ static const QMap<StringKey, QString> s_en = {
     { StringKey::SettingsDesignStatusBar,  "Status bar" },
     { StringKey::SettingsDesignPdfViewer,  "PDF Viewer" },
     { StringKey::SettingsDesignSidebar,  "Sidebar" },
+    { StringKey::SettingsDesignEditorBg, "Editor background (text/HTML)" },
     { StringKey::SettingsDesignScrollbar,  "Scrollbar" },
     { StringKey::SettingsDesignViewerBg,  "Viewer background" },
     { StringKey::SettingsDesignThumbBg,  "Thumbnail background" },
@@ -681,6 +685,10 @@ static const QMap<StringKey, QString> s_en = {
     { StringKey::TranslitAddBtn,           "Add" },
     { StringKey::TranslitResetBtn,         "Reset to defaults" },
     { StringKey::TranslitHint,             "When writing text (TXT, HTML, PDF notes) your Latin input is converted live into the target script — but only once it is unambiguous which character you mean (e.g. “a” is only converted once it is clear no longer sequence such as “aa” follows). The mappings below can be edited, extended and removed freely." },
+    { StringKey::SplitAddFile,             "Add file" },
+    { StringKey::SplitMaxReached,          "A maximum of 4 files can be open at once — please close one first." },
+    { StringKey::SplitPickPrompt,          "Click a file to add it to the split view" },
+    { StringKey::SplitCancel,              "Cancel" },
 
 };
 

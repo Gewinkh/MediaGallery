@@ -8,6 +8,8 @@
 #include <QFileInfo>
 #include <QFile>
 
+#include "MemoryUtils.h"   // mg::trimHeap — RSS-Rückgabe nach Ordnerwechsel
+
 namespace {
 // Größe der ersten (synchronen) Charge: genug, um typische Viewports sofort zu
 // füllen. Folgechargen sind größer, da sie ohnehin zwischen Event-Loop-Ticks
@@ -175,6 +177,11 @@ void MediaModel::loadFolder(const QString& folderPath) {
 
     m_folder = folderPath;
     rebuild(folderPath);
+
+    // Ordnerwechsel = große Freigabe (alte Item-Liste, Thumb-URLs, Sidecar-
+    // Puffer des vorherigen Ordners) → freigegebenen Heap aktiv ans OS
+    // zurückgeben. Bewusst NICHT in reload() (gleicher Ordner, kleine Deltas).
+    mg::trimHeap();
 
     if (!folderPath.isEmpty())
         m_watcher->addPath(folderPath);

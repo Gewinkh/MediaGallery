@@ -67,7 +67,6 @@ enum class StringKey {
 
     // SettingsDialog – Categories tab
     SettingsTabCategories,
-    SettingsCatAdd,
     SettingsCatNewLabel,
     SettingsCatRenameTitle,
     SettingsTagColorTitle,
@@ -158,6 +157,7 @@ enum class StringKey {
     SettingsDesignStatusBar,
     SettingsDesignPdfViewer,
     SettingsDesignSidebar,
+    SettingsDesignEditorBg,    // Design: Hintergrund des Text-/HTML-Editors
     SettingsDesignScrollbar,
     SettingsDesignViewerBg,
     SettingsDesignThumbBg,
@@ -347,6 +347,12 @@ enum class StringKey {
     TranslitAddBtn,            // Settings: Zuordnung hinzufügen
     TranslitResetBtn,          // Settings: Schema auf Standard zurücksetzen
     TranslitHint,              // Settings: Erklärungstext
+
+    // ── Geteilte Ansicht / Splitscreen (bis zu 4 Dateien nebeneinander) ──
+    SplitAddFile,              // Tooltip: weitere Datei zur geteilten Ansicht hinzufügen
+    SplitMaxReached,           // Statuszeile: Maximum von 4 offenen Dateien erreicht
+    SplitPickPrompt,           // Galerie-Banner: Datei zum Hinzufügen anklicken
+    SplitCancel,               // Galerie-Banner: Hinzufügen abbrechen
 };
 Q_ENUM_NS(StringKey)
 }  // namespace SK
