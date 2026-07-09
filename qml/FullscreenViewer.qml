@@ -286,7 +286,7 @@ FocusScope {
         target: surface.item
         property: "topInset"
         value: topBar.visible ? topBar.height : 0
-        when: surface.item !== null && (root.type === 3 || root.type === 4)
+        when: surface.item !== null && (root.type === 0 || root.type === 3 || root.type === 4)
         restoreMode: Binding.RestoreNone
     }
     Binding {
@@ -297,54 +297,13 @@ FocusScope {
         // Steuerleiste (Play/Seek/Lautstärke) über die globale Navigation
         // (◀ N/M ▶) an, statt von ihr verdeckt zu werden — bottomNav selbst
         // bleibt unverändert ganz unten.
-        when: surface.item !== null && (root.type === 1 || root.type === 2
+        when: surface.item !== null && (root.type === 0 || root.type === 1 || root.type === 2
                                          || root.type === 3 || root.type === 4)
         restoreMode: Binding.RestoreNone
     }
 
-    // ── Bild ──────────────────────────────────────────────────────────────────
-    Component {
-        id: imageComponent
-        Item {
-            property string source: ""
-            function release() { img.source = "" }
-            // Rohen Dateipfad in eine korrekt kodierte file://-URL wandeln.
-            // Direkte Zuweisung des rohen Pfades an Image.source schlägt fehl, da
-            // die Basis-URL der Komponente "qrc:" ist → relative Auflösung zu
-            // "qrc:/home/…" ("Cannot open" → Blackscreen). Betrifft ALLE Bilder;
-            // App.fileUrl() (QUrl::fromLocalFile) kodiert zudem Sonderzeichen
-            // (Leerzeichen, CJK, …) korrekt.
-            onSourceChanged: { img.scale = 1.0; img.x = 0; img.y = 0; img.source = source ? App.fileUrl(source) : "" }
-
-            Image {
-                id: img
-                anchors.fill: parent
-                fillMode: Image.PreserveAspectFit
-                asynchronous: true
-                cache: false
-                smooth: true
-                mipmap: true
-                transformOrigin: Item.Center
-            }
-            PinchHandler {
-                target: img
-                minimumScale: 0.1
-                maximumScale: 10.0
-            }
-            WheelHandler {
-                target: null
-                onWheel: function(ev) {
-                    var f = ev.angleDelta.y > 0 ? 1.15 : 1/1.15
-                    img.scale = Math.max(0.1, Math.min(img.scale * f, 10.0))
-                    if (img.scale <= 1.0) { img.x = 0; img.y = 0 }
-                }
-            }
-            DragHandler {
-                target: img
-                enabled: img.scale > 1.0
-            }
-        }
-    }
+    // ── Bild (Viewer + dezentraler Bild-Editor) ───────────────────────────────
+    Component { id: imageComponent; ImageSurface {} }
 
     // ── Video / Audio ───────────────────────────────────────────────────────
     Component { id: videoComponent; VideoSurface {} }

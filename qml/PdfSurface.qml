@@ -32,6 +32,11 @@ Item {
     property real   zoom: 1.0
     property string fitMode: "page"          // "page" = ganze Seite, "width" = Breite
     property int    currentPage: 0
+    property real   panX: 0                   // horizontaler Schwenk-Offset (Zoom-Pan)
+    property int    _savePage: 0             // Resize: die stabile Seite sichern …
+    property int    _stablePage: 0           // zuletzt SICHER erkannte Seite (Quelle für _savePage)
+    property bool   _resizing: false         // Resize-Phase aktiv → updateCurrentPage gesperrt
+    property bool   _restoring: false        // … und danach deterministisch wiederherstellen
 
     property real   topInset: 0
     property real   bottomInset: 0
@@ -312,6 +317,9 @@ Item {
             zoom = 1.0
             fitMode = "page"
             currentPage = 0
+            panX = 0                         // Schwenk zurücksetzen (neues Dokument)
+            _stablePage = 0                  // stabile Seite zurücksetzen
+            _resizing = false; _restoring = false
             annotations = []                 // bis der asynchrone Scan zurueckkommt
             clearSelection()                 // evtl. Auswahl des vorherigen PDFs verwerfen
             // Audio-Zustand des vorherigen PDFs verwerfen + neuen Scan anstoßen (lazy).
@@ -658,6 +666,22 @@ Item {
         enabled: root.docReady
         onActivated: root.notesVisible = !root.notesVisible
     }
+    // Notiz KOPIEREN (Edit-Modus, Auswahl vorhanden, nicht beim Tippen) — greift
+    // vor dem Textebenen-Ctrl+C oben (dessen enabled verlangt markierten Text,
+    // sich gegenseitig ausschließend → keine Mehrdeutigkeit).
+    Shortcut {
+        sequence: "Ctrl+C"
+        enabled: root.docReady && root.editCtl.editMode
+                 && root.editCtl.selectedId >= 0 && !root.editCtl.textEditing
+        onActivated: { root.commitEditing(); root.editCtl.copySelected() }
+    }
+    // Notiz EINFÜGEN (Edit-Modus, Zwischenablage gefüllt).
+    Shortcut {
+        sequence: "Ctrl+V"
+        enabled: root.docReady && root.editCtl.editMode
+                 && root.editCtl.hasClipboard && !root.editCtl.textEditing
+        onActivated: root.editCtl.paste()
+    }
     Shortcut {
         sequence: "Ctrl+A"
         enabled: root.docReady
@@ -679,6 +703,11 @@ Item {
     onCurrentPageChanged: {
         if (thumbs.count > 0) thumbs.positionViewAtIndex(currentPage, ListView.Contain)
         _ensurePageClipsExtracted()
+        root.clampPanX()
+        // Stabile Seite nur außerhalb von Resize/Restore fortschreiben (Grundlage
+        // für die Wiederherstellung nach dem Resize).
+        if (!root._resizing && !root._restoring)
+            root._stablePage = root.currentPage
     }
 
     // ── Zoom mit Erhaltung der relativen Scrollposition ───────────────────────
@@ -690,9 +719,48 @@ Item {
         root.zoom = nz
         pages.contentY = Math.max(0, Math.min(anchor * ratio - pages.height / 2,
                                               Math.max(0, pages.contentHeight - pages.height)))
+        root.clampPanX()
     }
     function zoomIn()  { setZoom(root.zoom + 0.15) }
     function zoomOut() { setZoom(root.zoom - 0.15) }
+
+    // ── Horizontaler Schwenk (Zoom-Pan) ───────────────────────────────────────
+    //  Anzeigebreite der aktuellen Seite (Pixel) — spiegelt die Delegate-Formel.
+    function _curPageW() {
+        if (!root.docReady) return 0
+        var pts = root.doc.pagePointSize(root.currentPage)
+        if (!pts || pts.width <= 0) return 0
+        var wFit = (pages.width  - 24) / pts.width
+        var hFit = (pages.height - 24) / pts.height
+        var fit  = root.fitMode === "page" ? Math.min(wFit, hFit) : wFit
+        return pts.width * fit * root.zoom
+    }
+    function clampPanX() {
+        var overflow = Math.max(0, (_curPageW() - pages.width) / 2)
+        root.panX = Math.max(-overflow, Math.min(root.panX, overflow))
+    }
+    // Schwenken kann, wer über die Seite hinaus hinein- (horizontal) oder
+    // hinaus- (vertikal) gezoomt hat.
+    function canPan() {
+        return (_curPageW() - pages.width > 1) || (pages.contentHeight - pages.height > 1)
+    }
+    function panBy(dx, dy) {
+        root.panX += dx
+        root.clampPanX()
+        var maxY = Math.max(0, pages.contentHeight - pages.height)
+        pages.contentY = Math.max(0, Math.min(pages.contentY - dy, maxY))
+    }
+    // Liegt (nx,ny) [0..1] über einer erkannten Textzeile? (Pan vs. Markieren)
+    function _overText(page, nx, ny) {
+        if (!pdfTextCtl.ready) return false
+        var lines = _snapLines(page)
+        for (var i = 0; i < lines.length; i++) {
+            var L = lines[i]
+            if (nx >= L.x && nx <= L.x + L.w && ny >= L.y - 0.004 && ny <= L.y + L.h + 0.004)
+                return true
+        }
+        return false
+    }
 
     function goToPage(p) {
         if (pages.count <= 0) return
@@ -701,9 +769,38 @@ Item {
         root.currentPage = t
     }
     function updateCurrentPage() {
+        // Während Resize/Wiederherstellung NICHT überschreiben — sonst driftet die
+        // Seite durch die transienten contentY-Änderungen des Relayouts.
+        if (root._restoring || root._resizing) return
         if (pages.count <= 0) { root.currentPage = 0; return }
         var idx = pages.indexAt(pages.width / 2, pages.contentY + pages.height / 2)
         if (idx >= 0) root.currentPage = idx
+    }
+    // Fenster-Resize (auch Split-View: Datei hinzufügen ändert die Kachelgröße):
+    // die STABILE Seite (nur außerhalb von Resizes fortgeschrieben, s.
+    // onCurrentPageChanged) merken und nach dem Relayout wiederherstellen → KEIN
+    // Zurückspringen. `_resizing` sperrt updateCurrentPage für die GANZE
+    // Resize-Phase; der Timer feuert erst, wenn die Größenänderung ausläuft.
+    function _preservePageAcrossResize() {
+        if (!root.docReady) return
+        if (!root._resizing) {
+            root._resizing = true
+            root._savePage = root._stablePage     // garantiert unverfälschte Seite
+        }
+        restorePageTimer.restart()
+    }
+    Timer {
+        id: restorePageTimer
+        interval: 90                              // erst nach Ende des Resize-Bursts
+        onTriggered: {
+            root._restoring = true
+            pages.positionViewAtIndex(root._savePage, ListView.Beginning)
+            root.currentPage = root._savePage
+            root._stablePage = root._savePage
+            root.clampPanX()
+            root._restoring = false
+            root._resizing = false
+        }
     }
 
     // ── Textauswahl-Steuerung ─────────────────────────────────────────────────
@@ -981,6 +1078,10 @@ Item {
             boundsBehavior: Flickable.StopAtBounds
             onContentYChanged: root.updateCurrentPage()
             onCountChanged: root.updateCurrentPage()
+            // Breite/Höhe ändern sich beim Fenster-Resize UND beim Aufteilen der
+            // Split-Ansicht (Datei hinzufügen). Aktuelle Seite/Position halten.
+            onWidthChanged:  root._preservePageAcrossResize()
+            onHeightChanged: root._preservePageAcrossResize()
 
             ScrollBar.vertical: ScrollBar {
                 id: vbar
@@ -1017,7 +1118,10 @@ Item {
 
                 Rectangle {
                     id: pageBg
-                    anchors.horizontalCenter: parent.horizontalCenter
+                    // Horizontal grundsätzlich zentriert; bei Zoom-Überlauf um
+                    // root.panX verschiebbar (Links-Drag-Schwenk → sonst nicht
+                    // erreichbarer Inhalt am Rand wird sichtbar).
+                    x: Math.round((pages.width - width) / 2 + root.panX)
                     width: pageCell.pageW; height: pageCell.pageH
                     color: "white"
 
@@ -1031,19 +1135,35 @@ Item {
                         id: selArea
                         anchors.fill: parent
                         acceptedButtons: Qt.LeftButton
-                        cursorShape: Qt.IBeamCursor
+                        cursorShape: selArea._panMode ? Qt.ClosedHandCursor : Qt.IBeamCursor
                         preventStealing: true
                         property real sx: 0
                         property real sy: 0
+                        property real lastGX: 0
+                        property real lastGY: 0
                         property bool dragging: false
+                        property bool _panMode: false
                         onPressed: (m) => {
                             selArea.sx = m.x; selArea.sy = m.y
                             selArea.dragging = false
-                            root.beginSelection(pageCell.index)
+                            var g = mapToItem(null, m.x, m.y)
+                            selArea.lastGX = g.x; selArea.lastGY = g.y
+                            // Schwenken statt Markieren, wenn hineingezoomt UND der
+                            // Druckpunkt NICHT über auswählbarem Text liegt.
+                            var nx = m.x / pageImg.width, ny = m.y / pageImg.height
+                            selArea._panMode = root.canPan() && !root._overText(pageCell.index, nx, ny)
+                            if (!selArea._panMode)
+                                root.beginSelection(pageCell.index)
+                            else
+                                pdfTextCtl.prepare(root.source)   // Zeilen für später laden
                         }
                         onPositionChanged: (m) => {
-                            // Erst ab kleiner Schwelle als Ziehen werten (verhindert
-                            // Mikro-Drags, die einen Klick als Auswahl missdeuten).
+                            if (selArea._panMode) {
+                                var g = mapToItem(null, m.x, m.y)
+                                root.panBy(g.x - selArea.lastGX, g.y - selArea.lastGY)
+                                selArea.lastGX = g.x; selArea.lastGY = g.y
+                                return
+                            }
                             if (!selArea.dragging) {
                                 if (Math.abs(m.x - selArea.sx) + Math.abs(m.y - selArea.sy) < 3)
                                     return
@@ -1053,7 +1173,10 @@ Item {
                                 selArea.sx / pageImg.width, selArea.sy / pageImg.height,
                                 m.x        / pageImg.width, m.y        / pageImg.height)
                         }
-                        onReleased: root.endSelection(selArea.dragging)
+                        onReleased: {
+                            if (selArea._panMode) { selArea._panMode = false; return }
+                            root.endSelection(selArea.dragging)
+                        }
                     }
 
                     PdfPageImage {

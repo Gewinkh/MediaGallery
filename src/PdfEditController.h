@@ -74,6 +74,8 @@ class PdfEditController : public QObject {
     // Entf-Shortcut (Box löschen) zu sperren, solange getippt wird — Entf
     // gehört dann dem TextEdit (Zeichen löschen), nicht der Box.
     Q_PROPERTY(bool textEditing READ textEditing NOTIFY textEditingChanged)
+    // Notiz in der (kachel-lokalen) Zwischenablage vorhanden? → Einfügen-Button.
+    Q_PROPERTY(bool hasClipboard READ hasClipboard NOTIFY clipboardChanged)
     // Text-Eigenschaften als obere Leiste (Word-Stil) statt rechter Seitenleiste.
     // Persistiert in den App-Einstellungen (ISettings).
     Q_PROPERTY(bool panelOnTop READ panelOnTop WRITE setPanelOnTop NOTIFY panelOnTopChanged)
@@ -127,6 +129,7 @@ public:
     int  selectionRev() const { return m_selectionRev; }
     bool busy() const { return m_busy; }
     bool textEditing() const { return m_textEditId >= 0; }
+    bool hasClipboard() const { return m_hasClip; }
     bool panelOnTop() const;
     void setPanelOnTop(bool v);
     QObject* boxModel() { return &m_model; }
@@ -157,6 +160,12 @@ public:
     Q_INVOKABLE int  addAnchoredTextBox(int page, qreal xPt, qreal yPt,
                                         qreal wPt, qreal hPt);
     Q_INVOKABLE void removeBox(int id);
+
+    // ── Copy / Paste (kachel-lokale Zwischenablage; INKL. Text) ───────────────
+    //  copySelected sichert die ausgewählte Notiz; paste fügt eine versetzte
+    //  Kopie auf DERSELBEN Seite ein (neuer Undo-Schritt) und wählt sie aus.
+    Q_INVOKABLE void copySelected();
+    Q_INVOKABLE void paste();
 
     // ── Geometrie-Session (Ziehen/Skalieren → EIN Undo-Schritt) ───────────────
     Q_INVOKABLE void beginGeometryEdit(int id);
@@ -226,6 +235,7 @@ signals:
     void selectionRevChanged();
     void busyChanged();
     void textEditingChanged();
+    void clipboardChanged();
     void panelOnTopChanged();
     void boxCountChanged();
     void exportFinished(bool ok, const QString& targetPath, const QString& errorText);
@@ -239,6 +249,10 @@ private:
     void finishTextSession();
     void finishOpenSessions() { finishGeometrySession(); finishTextSession(); }
     void setBoxField(int id, PdfEditField f, const QVariant& v);
+    //  Neue Notiz erbt den zuletzt benutzten Stil (Schrift/Farben/Deckkraft/
+    //  Ausrichtung) — aber OHNE Text.
+    PdfEditBox seededBox() const;
+    void mirrorToTemplate(PdfEditField f, const QVariant& v);
     bool loadOverlay(const QString& pdfPath);
     static QString sidecarPath(const QString& pdfPath);
     static QString uniqueCopyPath(const QString& pdfPath);
@@ -259,6 +273,12 @@ private:
     QRectF  m_geoOld;
     int     m_textEditId = -1;
     QString m_textOld;
+
+    // Kachel-lokale Zwischenablage (Copy/Paste, inkl. Text) + Stil-Vorlage
+    // für neue Notizen (Stil-Erben).
+    PdfEditBox m_clip;
+    bool       m_hasClip = false;
+    PdfEditBox m_textTpl;
 
     // Export (1 Worker → RAM-Peak gedeckelt; Generationszahl verwirft Veraltetes).
     QThreadPool m_pool;

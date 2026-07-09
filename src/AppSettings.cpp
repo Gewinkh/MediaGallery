@@ -36,7 +36,8 @@ QJsonObject ThemeColors::toJson() const {
     o["pdfScrollbarBg"] = pdfScrollbarBg.name();
     o["buttonBg"]       = buttonBg.name(QColor::HexArgb);
     o["sidebarBg"]      = sidebarBg.name();
-    o["editorBg"]       = editorBg.name();
+    o["editorBgText"]   = editorBgText.name();
+    o["editorBgHtml"]   = editorBgHtml.name();
     o["menuBarBg"]      = menuBarBg.name();
     o["toolbarBg"]      = toolbarBg.name();
     o["filterBarBg"]    = filterBarBg.name();
@@ -85,7 +86,13 @@ ThemeColors ThemeColors::fromJson(const QJsonObject& o) {
         t.buttonBg = QColor(btn.isEmpty() ? "#00000000" : btn);
     }
     t.sidebarBg      = QColor(o["sidebarBg"].toString("#121c22"));
-    t.editorBg       = QColor(o["editorBg"].toString(t.card.name()));
+    // Rückwärtskompatibel: ein altes Theme mit nur „editorBg" seedet BEIDE neuen
+    // Farben (kein optischer Bruch); die getrennten Keys überschreiben, falls da.
+    {
+        const QString legacy = o["editorBg"].toString(t.card.name());
+        t.editorBgText = QColor(o["editorBgText"].toString(legacy));
+        t.editorBgHtml = QColor(o["editorBgHtml"].toString(legacy));
+    }
     t.menuBarBg      = QColor(o["menuBarBg"].toString("#0c141a"));
     t.toolbarBg      = QColor(o["toolbarBg"].toString("#0c141a"));
     t.filterBarBg    = QColor(o["filterBarBg"].toString("#0c141a"));
@@ -329,9 +336,10 @@ ThemeColors AppSettings::themeForProfile(DesignProfile p) {
     case DesignProfile::Custom:
         break;
     }
-    // Editor-Hintergrund folgt standardmäßig der Karten-/Flächenfarbe des Profils
-    // (frei überschreibbar im Custom-Profil über das Design-Tab).
-    t.editorBg = t.card;
+    // Editor-Hintergründe folgen standardmäßig der Karten-/Flächenfarbe des
+    // Profils (frei überschreibbar im Custom-Profil über das Design-Tab).
+    t.editorBgText = t.card;
+    t.editorBgHtml = t.card;
     return t;
 }
 

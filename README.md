@@ -19,8 +19,8 @@ Built with **C++20** and **Qt 6.4+**.
 - **Grid view**: 1–25 columns, zoom with `Ctrl+Scroll` or `Shift+Scroll`
 - **Tile size dialog**: Adjust tile width/height with a live drag-resize preview
 - **Fullscreen gallery**: Prev/Next, Random mode, up to 10× zoom, pan with mouse
-- **Image viewer**: Hardware-accelerated QML viewer with pinch-zoom, wheel-zoom and mouse pan
-- **Split view**: Open up to **4 files side by side** in the fullscreen view (like a 2-, 3-, or 4-player split screen: 2 = two columns, 3 = two on top + one full-width below, 4 = 2×2). Each pane is an independent viewer with its own header and Prev/Next navigation, and its own PDF Editor / zoom / playback state. A **"+" button** in each pane's header returns to the gallery and adds the next clicked file as another pane (no file dialog — you pick straight from the gallery). **Back / `Esc`** on a pane closes just that file and frees its memory immediately; closing the last pane returns to the gallery.
+- **Image viewer & editor**: Hardware-accelerated QML viewer with PDF-style zoom/pan (fit-to-window, 100%, wheel-zoom, drag-pan) and a full non-destructive **Image Editor** — see the dedicated section below
+- **Split view**: Open up to **4 files side by side** in the fullscreen view (like a 2-, 3-, or 4-player split screen: 2 = two columns, 3 = two on top + one full-width below, 4 = 2×2). Each pane is an independent viewer with its own header and Prev/Next navigation, and its own PDF Editor / Image Editor / zoom / playback state. The **boundaries between panes can be dragged** to resize the tiles (a column divider for 2 panes, plus a row divider for 3/4 panes). A **"+" button** in each pane's header returns to the gallery and adds the next clicked file as another pane (no file dialog — you pick straight from the gallery). **Back / `Esc`** on a pane closes just that file and frees its memory immediately; closing the last pane returns to the gallery. Resizing the window or adding a pane keeps every pane on its current page/position.
 - **Compact mode**: Options mode toggle with `Alt+S` — works in the gallery and inside the open media viewer
 - **Cover mode**: Cover/uncover gallery with `B`
 - **Live folder watch**: New or deleted files are detected automatically
@@ -34,7 +34,7 @@ Built with **C++20** and **Qt 6.4+**.
 - **Auto-Save**: optional timer-based auto-save (configurable interval, Settings → Text Editor)
 - Confirmation dialog on navigation away from unsaved changes (Save / Discard / Cancel)
 - Proper Arabic/CJK font fallback in the editor (no more missing-glyph "tofu" boxes)
-- **Themeable editor background**: the text / HTML source editor surface has its own color, separate from the card/panel background (Settings → Design)
+- **Themeable editor backgrounds**: the TXT/code editor and the HTML source view each have their **own separate** background color, independent of each other and of the card/panel background (Settings → Design)
 
 ### HTML Viewer
 - **.html / .htm** files open in a rendered live preview by default, with a one-click toggle back to the editable source view
@@ -82,6 +82,19 @@ Built with **C++20** and **Qt 6.4+**.
 - **Cross-page dragging**: drag a note past the top/bottom of a page and it automatically moves to the neighboring page on release
 - Full undo/redo history and a note-visibility toggle (`Alt+Q`) that hides/shows all notes in both view and edit mode
 - Formatting panel can be docked as a **right sidebar** or a **Word-style ribbon** at the top (Settings → Text Editor)
+
+### Image Editor
+- Opens on any image via the **✎ Edit** button in the image viewer's toolbar — the original file is **never modified**
+- **Tools**: Select/move, Text note, Freehand pen, Arrow, Rectangle, Ellipse (tool palette in the dockable panel)
+- **Text notes** with the same post-it styling as the PDF Editor: font family, size, bold/italic/underline, horizontal/vertical alignment, text color and note-paper (highlight) color with an opacity slider, plus **live transliteration** (Arabic/Japanese) while typing
+- **Drawings** with adjustable stroke color, line width and (for shapes) fill color
+- **Select / move / resize / delete** any annotation, with full **undo/redo** history and a note-visibility toggle (`Alt+Q`)
+- **Copy & paste** the selected annotation (`Ctrl+C` / `Ctrl+V` or the toolbar button) — duplicates it with all settings and text
+- A newly created note/shape **inherits the last-used style** (only without the text)
+- Notes are saved to a **sidecar file** `<image>.mgedit.json` next to the image (non-destructive) and stay editable across sessions
+- **Export** writes a brand-new image copy `…_bearbeitet(.n).<ext>` with the annotations permanently rendered onto it (QImage + QPainter, WYSIWYG); the copy keeps the **source format** (JPG→JPG, PNG→PNG, otherwise PNG)
+- Formatting panel can be docked as a **right sidebar** or a **Word-style ribbon** at the top (shares the PDF Editor's panel-position setting, Settings → Text Editor)
+- Fully decentralized: each split-view tile has its **own** independent image editor
 
 ### Full Color Customization (Settings → Design)
 - **9 built-in themes**: Dark, Dark OLED, Ocean Depth, Inferno Blaze, Neon Purple, Midnight Rose, Elegant, Simple, Custom
@@ -137,16 +150,19 @@ Built with **C++20** and **Qt 6.4+**.
 | Edit date (fullscreen) | `D` |
 | Open date editor | Calendar button (fullscreen) |
 | Delete file | Delete button (fullscreen) |
-| Image: zoom in | `Ctrl++` |
-| Image: zoom out | `Ctrl+-` |
+| Image: zoom in / out | Mouse wheel · toolbar `+` / `−` |
+| Image: fit to window / 100% | Toolbar buttons |
+| Image / PDF: pan when zoomed | Left-drag (PDF: on non-text areas) |
 | PDF: zoom in | `+` |
 | PDF: zoom out | `-` |
 | PDF: previous page | `←` |
 | PDF: next page | `→` |
 | PDF: copy selected text | `Ctrl+C` |
 | PDF: select all text on page | `Ctrl+A` |
-| PDF Editor: toggle note visibility | `Alt+Q` |
-| PDF Editor: delete selected note | `Delete` |
+| PDF / Image Editor: toggle note visibility | `Alt+Q` |
+| PDF / Image Editor: delete selected annotation | `Delete` |
+| PDF / Image Editor: copy / paste selected annotation | `Ctrl+C` / `Ctrl+V` |
+| Image Editor: toggle edit mode | ✎ toolbar button |
 
 ---
 
@@ -201,6 +217,15 @@ Custom themes can be exported to JSON and shared:
 ## Changelog
 
 ### Latest
+- **Feature**: New **Image Editor** — the image viewer is now a full non-destructive editor, mirroring the PDF Editor. PDF-style **zoom/pan** (fit-to-window, 100%, wheel-zoom, drag-pan) replaces the old simple scaling; add **text notes** (full post-it styling, live transliteration) and **drawings** (freehand pen, arrow, rectangle, ellipse) with color, line width and fill; **select/move/resize/delete** with full undo/redo. The original file is never touched: annotations save to a **sidecar** `<image>.mgedit.json` and **export** writes a new copy `…_bearbeitet(.n).<ext>` in the source format (JPG→JPG, PNG→PNG, else PNG). Each split-view tile has its own independent editor.
+- **Feature**: **Copy & paste stickers** — `Ctrl+C`/`Ctrl+V` (or the toolbar/panel button) duplicates the selected note/annotation with all of its settings **and** its text, in both the PDF and Image editors.
+- **Feature**: **Style inheritance** — a newly created note/shape inherits the last-used style (font, colors, opacity, line width, fill), only without the text — in both editors.
+- **Feature**: **Separate editor background colors** — the TXT/code editor and the HTML source view now have **two independent** background colors (Settings → Design), instead of sharing one.
+- **Feature**: **Draggable split dividers** — in split view the boundaries between panes can be dragged to resize the tiles (one divider for 2 panes, a row + column divider for 3/4 panes).
+- **Change**: **Zoomed panning** — when zoomed in, hold the left mouse button and drag to pan and reveal content that was off-screen (PDF & image). Over selectable PDF text, left-drag still selects text.
+- **Fix**: **Stable page on resize** — resizing the window (or adding a file in split view) no longer makes open PDFs/images jump to another/the first page; each pane keeps its current page and position.
+
+### Previous
 - **Feature**: New **Split View** — open up to four files side by side in the fullscreen view (two columns / two-over-one / 2×2). Each pane is an independent viewer with its own header, Prev/Next navigation, and its own PDF Editor / zoom / playback state; add more panes straight from the gallery via the per-pane "+" button, and close a single pane with Back/`Esc` while the others stay open.
 - **Feature**: New **Editor background color** — the text / HTML source editor surface now has its own themeable color, separate from the card/panel background (Settings → Design).
 - **Change**: **Lazy HTML engine** — Qt WebEngine now initializes only on first HTML open (instead of at startup), lowering the memory baseline and speeding up launch; HTML files fall back to the source view until the engine is ready.

@@ -64,6 +64,13 @@ set(SOURCES
     src/TransliterationController.h
     src/PdfEditController.cpp
     src/PdfEditController.h
+    src/ImageEditTypes.h
+    src/ImageEditModel.cpp
+    src/ImageEditModel.h
+    src/ImageEditCommands.cpp
+    src/ImageEditCommands.h
+    src/ImageEditController.cpp
+    src/ImageEditController.h
     src/Strings.cpp
     src/Strings.h
     src/PathUtils.h

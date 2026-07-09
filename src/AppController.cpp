@@ -503,7 +503,8 @@ QColor AppController::themeToolbarBg()   const { return m_settings.currentTheme(
 QColor AppController::themeFilterBarBg() const { return m_settings.currentTheme().filterBarBg; }
 QColor AppController::themeStatusBarBg() const { return m_settings.currentTheme().statusBarBg; }
 QColor AppController::themeSidebarBg()   const { return m_settings.currentTheme().sidebarBg; }
-QColor AppController::themeEditorBg()    const { return m_settings.currentTheme().editorBg; }
+QColor AppController::themeEditorBgText() const { return m_settings.currentTheme().editorBgText; }
+QColor AppController::themeEditorBgHtml() const { return m_settings.currentTheme().editorBgHtml; }
 
 // ── Editor / Auto-Save (Phase 4) ─────────────────────────────────────────────
 bool AppController::autoSaveEnabled()  const { return m_settings.autoSaveEnabled(); }
@@ -596,7 +597,8 @@ QVariantMap AppController::customThemeMap() const {
     m.insert("pdfToolbarBg",    t.pdfToolbarBg);
     m.insert("pdfScrollbarBg",  t.pdfScrollbarBg);
     m.insert("sidebarBg",       t.sidebarBg);
-    m.insert("editorBg",        t.editorBg);
+    m.insert("editorBgText",    t.editorBgText);
+    m.insert("editorBgHtml",    t.editorBgHtml);
     m.insert("menuBarBg",       t.menuBarBg);
     m.insert("toolbarBg",       t.toolbarBg);
     m.insert("filterBarBg",     t.filterBarBg);
@@ -656,7 +658,10 @@ void AppController::setCustomThemeFromMap(const QVariantMap& m) {
     t.pdfToolbarBg    = col("pdfToolbarBg",    t.pdfToolbarBg);
     t.pdfScrollbarBg  = col("pdfScrollbarBg",  t.pdfScrollbarBg);
     t.sidebarBg       = col("sidebarBg",       t.sidebarBg);
-    t.editorBg        = col("editorBg",        t.editorBg);
+    // Rückwärtskompatibel: ein alter „editorBg"-Wert seedet beide neuen Farben.
+    const QColor legacyEditorBg = col("editorBg", t.editorBgText);
+    t.editorBgText    = col("editorBgText",    legacyEditorBg);
+    t.editorBgHtml    = col("editorBgHtml",    legacyEditorBg);
     t.menuBarBg       = col("menuBarBg",       t.menuBarBg);
     t.toolbarBg       = col("toolbarBg",       t.toolbarBg);
     t.filterBarBg     = col("filterBarBg",     t.filterBarBg);

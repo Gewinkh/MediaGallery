@@ -157,7 +157,8 @@ enum class StringKey {
     SettingsDesignStatusBar,
     SettingsDesignPdfViewer,
     SettingsDesignSidebar,
-    SettingsDesignEditorBg,    // Design: Hintergrund des Text-/HTML-Editors
+    SettingsDesignEditorBgText, // Design: Hintergrund des TXT-/Code-Editors
+    SettingsDesignEditorBgHtml, // Design: Hintergrund der HTML-Quellansicht
     SettingsDesignScrollbar,
     SettingsDesignViewerBg,
     SettingsDesignThumbBg,
@@ -353,6 +354,30 @@ enum class StringKey {
     SplitMaxReached,           // Statuszeile: Maximum von 4 offenen Dateien erreicht
     SplitPickPrompt,           // Galerie-Banner: Datei zum Hinzufügen anklicken
     SplitCancel,               // Galerie-Banner: Hinzufügen abbrechen
+
+    // ── Bild-Editor ───────────────────────────────────────────────────────────
+    ImageEditToggle,           // Toolbar: Bild-Bearbeitung umschalten
+    ImageFitWindow,            // Toolbar: an Fenster anpassen
+    ImageActualSize,           // Toolbar: 100 %
+    ImageZoomIn,               // Toolbar: vergrößern
+    ImageZoomOut,              // Toolbar: verkleinern
+    ImageLoadError,            // Fehlermeldung: Bild nicht ladbar
+    ImageEditPanelTitle,       // Panel-Titel
+    ImageEditToolsLabel,       // Panel: Abschnitt „Werkzeuge"
+    ImageEditToolSelect,       // Werkzeug: Auswählen
+    ImageEditToolText,         // Werkzeug: Text
+    ImageEditToolPen,          // Werkzeug: Stift (Freihand)
+    ImageEditToolArrow,        // Werkzeug: Pfeil
+    ImageEditToolRect,         // Werkzeug: Rechteck
+    ImageEditToolEllipse,      // Werkzeug: Ellipse
+    ImageEditPickHint,         // Panel-Hinweis: Werkzeug/Annotation wählen
+    ImageEditEmptyHint,        // Platzhalter in leerer Text-Notiz
+    ImageEditStrokeLabel,      // Linienfarbe
+    ImageEditWidthLabel,       // Linienbreite
+    ImageEditFillLabel,        // Füllung
+    ImageEditCopyBtn,          // Annotation kopieren
+    ImageEditPasteBtn,         // Annotation einfügen
+    ImageEditDocSection,       // Panel: Abschnitt „Dokument"
 };
 Q_ENUM_NS(StringKey)
 }  // namespace SK

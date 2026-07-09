@@ -25,6 +25,13 @@ Item {
     property bool   dirty: false
     property bool   _loading: false
 
+    // HTML-Quelltext bekommt eine eigene Editor-Hintergrundfarbe (Design-Tab),
+    // getrennt von TXT/Code — daher Endungserkennung aus dem aktuellen Pfad.
+    readonly property bool _isHtml: {
+        var p = root.currentPath.toLowerCase()
+        return p.endsWith(".html") || p.endsWith(".htm")
+    }
+
     function save() {
         if (!root.dirty || root.currentPath.length === 0) return
         if (Viewer.writeTextFile(root.currentPath, editor.text))
@@ -130,7 +137,8 @@ Item {
             // Qt 6.4 kein font.families kennt).
             font: App.fallbackFont("monospace", 13)
             padding: 10
-            background: Rectangle { color: App.themeEditorBg; radius: 6; border.color: App.themeBorder }
+            background: Rectangle { color: root._isHtml ? App.themeEditorBgHtml : App.themeEditorBgText
+                                    radius: 6; border.color: App.themeBorder }
             // Live-Transliteration: gezieltes remove()/insert() statt text-
             // Neuzuweisung (Undo-Stack + Performance großer Dateien bleiben
             // intakt); der Guard verhindert Re-Entranz durch die eigene Edition.

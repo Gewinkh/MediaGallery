@@ -21,6 +21,7 @@
 #include "src/PdfTextController.h"
 #include "src/PdfAudioController.h"
 #include "src/PdfEditController.h"
+#include "src/ImageEditController.h"
 #include "src/TransliterationController.h"
 #include "src/WebEngineController.h"
 #include "src/MediaModel.h"
@@ -138,6 +139,8 @@ int main(int argc, char* argv[]) {
     qmlRegisterType<PdfTextController> ("MediaGallery", 1, 0, "PdfTextController");
     qmlRegisterType<PdfAudioController>("MediaGallery", 1, 0, "PdfAudioController");
     qmlRegisterType<PdfEditController> ("MediaGallery", 1, 0, "PdfEditController");
+    // Dezentraler Bild-Editor: je ImageSurface-Kachel eine eigene Instanz.
+    qmlRegisterType<ImageEditController>("MediaGallery", 1, 0, "ImageEditController");
     qmlRegisterSingletonInstance("MediaGallery", 1, 0, "Translit",  &translit);
     qmlRegisterSingletonInstance("MediaGallery", 1, 0, "WebEngine", &webEngine);
 

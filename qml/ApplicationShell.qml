@@ -375,26 +375,39 @@ ApplicationWindow {
     ListModel { id: openFilesModel }   // Rolle: path (aktueller Pfad der Kachel)
 
     // Geometrie einer Kachel je Index/Anzahl (kleine Lücke g als Trennfuge).
+    // Einstellbare Split-Verhältnisse (per Divider-Drag; auf sinnvolle Grenzen
+    // geklemmt). splitV = vertikale Trennung (Spalten), splitH = horizontale.
+    property real splitV: 0.5
+    property real splitH: 0.5
+    readonly property real _splitMin: 0.15
+    readonly property real _splitMax: 0.85
+
     function paneRect(index, count, W, H) {
         var g = 2
+        var rV = Math.max(_splitMin, Math.min(shell.splitV, _splitMax))
+        var rH = Math.max(_splitMin, Math.min(shell.splitH, _splitMax))
         if (count <= 1)
             return { x: 0, y: 0, w: W, h: H }
         if (count === 2) {                                   // zwei Spalten nebeneinander
-            var cw = (W - g) / 2
-            return { x: index * (cw + g), y: 0, w: cw, h: H }
+            var cwL = (W - g) * rV
+            if (index === 0) return { x: 0,        y: 0, w: cwL,           h: H }
+            return                { x: cwL + g,   y: 0, w: W - g - cwL,   h: H }
         }
         if (count === 3) {                                   // 2 oben, 1 unten (volle Breite)
-            var cw3 = (W - g) / 2
-            var ch3 = (H - g) / 2
-            if (index === 0) return { x: 0,       y: 0,       w: cw3, h: ch3 }
-            if (index === 1) return { x: cw3 + g, y: 0,       w: cw3, h: ch3 }
-            return                { x: 0,       y: ch3 + g, w: W,   h: ch3 }
+            var thT = (H - g) * rH
+            var cw3 = (W - g) * rV
+            if (index === 0) return { x: 0,       y: 0,       w: cw3,         h: thT }
+            if (index === 1) return { x: cw3 + g, y: 0,       w: W - g - cw3, h: thT }
+            return                { x: 0,       y: thT + g, w: W,           h: H - g - thT }
         }
-        var cw4 = (W - g) / 2                                // 2×2
-        var ch4 = (H - g) / 2
+        var topH = (H - g) * rH                              // 2×2
+        var leftW = (W - g) * rV
         var col = index % 2
         var rowi = Math.floor(index / 2)
-        return { x: col * (cw4 + g), y: rowi * (ch4 + g), w: cw4, h: ch4 }
+        return { x: col === 0 ? 0 : leftW + g,
+                 y: rowi === 0 ? 0 : topH + g,
+                 w: col === 0 ? leftW : W - g - leftW,
+                 h: rowi === 0 ? topH : H - g - topH }
     }
 
     function indexOfOpenFile(p) {
@@ -502,6 +515,49 @@ ApplicationWindow {
                                 openFilesModel.setProperty(paneLoader.index, "path",
                                                            paneLoader.item.path)
                         }
+                    }
+                }
+            }
+
+            // ── Ziehbare Trenner (Divider) ────────────────────────────────────
+            //  Vertikal (Spalten) ab 2 Kacheln; horizontal (Zeilen) ab 3 Kacheln.
+            //  Ziehen setzt shell.splitV / shell.splitH (geklemmt) → paneRect folgt.
+            readonly property real _gap: 2
+            readonly property real _vX: (splitPage.width  - _gap) * Math.max(shell._splitMin, Math.min(shell.splitV, shell._splitMax))
+            readonly property real _hY: (splitPage.height - _gap) * Math.max(shell._splitMin, Math.min(shell.splitH, shell._splitMax))
+
+            Rectangle {                                       // vertikaler Trenner
+                z: 50
+                visible: splitPage.paneCount >= 2
+                x: splitPage._vX - 3; y: 0
+                width: 8
+                height: splitPage.paneCount === 3 ? splitPage._hY : splitPage.height
+                color: vDivMA.pressed ? App.themeAccent : "transparent"
+                MouseArea {
+                    id: vDivMA
+                    anchors.fill: parent
+                    cursorShape: Qt.SplitHCursor
+                    onPositionChanged: (m) => {
+                        var p = mapToItem(splitPage, m.x, m.y)
+                        shell.splitV = Math.max(shell._splitMin,
+                            Math.min(p.x / Math.max(1, splitPage.width - splitPage._gap), shell._splitMax))
+                    }
+                }
+            }
+            Rectangle {                                       // horizontaler Trenner
+                z: 50
+                visible: splitPage.paneCount >= 3
+                x: 0; y: splitPage._hY - 3
+                width: splitPage.width; height: 8
+                color: hDivMA.pressed ? App.themeAccent : "transparent"
+                MouseArea {
+                    id: hDivMA
+                    anchors.fill: parent
+                    cursorShape: Qt.SplitVCursor
+                    onPositionChanged: (m) => {
+                        var p = mapToItem(splitPage, m.x, m.y)
+                        shell.splitH = Math.max(shell._splitMin,
+                            Math.min(p.y / Math.max(1, splitPage.height - splitPage._gap), shell._splitMax))
                     }
                 }
             }

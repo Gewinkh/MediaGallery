@@ -202,6 +202,12 @@ Item {
         Rectangle { width: 1; height: 16; color: App.themeBorder
                     anchors.verticalCenter: parent.verticalCenter }
 
+        // ── Kopieren (dupliziert die Notiz inkl. Text; Einfügen via Strg+V) ───
+        TBtn {
+            glyph: "\u2398"
+            tip: App.uiText(App.language, "ImageEditCopyBtn")
+            onActivated: { if (bar.surface) bar.surface.commitEditing(); bar.ctl.copySelected() }
+        }
         // ── Löschen (committet die offene Bearbeitung — Box verschwindet) ─────
         TBtn {
             glyph: "\u2715"; glyphColor: "#e05a5a"

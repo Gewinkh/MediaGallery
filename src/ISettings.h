@@ -62,9 +62,11 @@ struct ThemeColors {
     // Extra UI overrides
     QColor buttonBg       = QColor(0, 0, 0, 0);  // transparent = derive from accent
     QColor sidebarBg      = QColor(18, 28, 34);
-    // Hintergrund des Text-Editors (TextSurface: TXT + HTML-Quelltext). Standard
-    // folgt der Karten-/Flächenfarbe (card); frei wählbar im Design-Tab (Custom).
-    QColor editorBg       = QColor(18, 28, 34);
+    // Hintergrund des Text-Editors — GETRENNT für TXT- und HTML-Quellansicht
+    // (TextSurface wählt je Dateiendung). Standard folgt der Karten-/Flächen-
+    // farbe (card); beide frei wählbar im Design-Tab (Custom).
+    QColor editorBgText   = QColor(18, 28, 34);
+    QColor editorBgHtml   = QColor(18, 28, 34);
 
     // Main-window chrome colors
     QColor menuBarBg      = QColor(12, 20, 26);

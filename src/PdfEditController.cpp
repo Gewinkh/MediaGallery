@@ -398,7 +398,7 @@ int PdfEditController::addTextBox(int page, qreal xPt, qreal yPt,
     if (pageWPt <= 0.0) pageWPt = 612.0;
     if (pageHPt <= 0.0) pageHPt = 792.0;
 
-    PdfEditBox b;
+    PdfEditBox b = seededBox();                     // Stil der letzten Notiz erben
     b.id   = m_nextId++;
     b.page = page;
     // Standardgröße: ~1/3 Seitenbreite, zwei Zeilenhöhen; in die Seite geklemmt.
@@ -418,7 +418,7 @@ int PdfEditController::addAnchoredTextBox(int page, qreal xPt, qreal yPt,
     if (m_docPath.isEmpty() || page < 0)
         return -1;
 
-    PdfEditBox b;
+    PdfEditBox b = seededBox();                     // Stil der letzten Notiz erben
     b.id       = m_nextId++;
     b.page     = page;
     b.anchored = true;
@@ -442,6 +442,52 @@ void PdfEditController::removeBox(int id) {
     if (m_selectedId == id)
         setSelectedId(-1);
     pushCommand(new PdfEditRemoveCommand(&m_model, copy, row));
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  Copy / Paste + Stil-Vorlage
+// ─────────────────────────────────────────────────────────────────────────────
+PdfEditBox PdfEditController::seededBox() const {
+    PdfEditBox b = m_textTpl;                        // Schrift/Farben/Deckkraft/Ausrichtung
+    b.id       = 0;
+    b.text.clear();                                  // aber OHNE Text
+    b.anchored = false;
+    return b;
+}
+
+void PdfEditController::mirrorToTemplate(PdfEditField f, const QVariant& v) {
+    switch (f) {
+    case PdfEditField::FontFamily: m_textTpl.fontFamily = v.toString();     break;
+    case PdfEditField::FontSize:   m_textTpl.fontSizePt = v.toReal();       break;
+    case PdfEditField::Bold:       m_textTpl.bold       = v.toBool();       break;
+    case PdfEditField::Italic:     m_textTpl.italic     = v.toBool();       break;
+    case PdfEditField::Underline:  m_textTpl.underline  = v.toBool();       break;
+    case PdfEditField::Color:      m_textTpl.color      = v.value<QColor>();break;
+    case PdfEditField::Highlight:  m_textTpl.highlight  = v.value<QColor>();break;
+    case PdfEditField::Alignment:  m_textTpl.alignment  = v.toInt();        break;
+    case PdfEditField::VAlign:     m_textTpl.vAlign     = v.toInt();        break;
+    default: break;
+    }
+}
+
+void PdfEditController::copySelected() {
+    const PdfEditBox* b = m_model.boxById(m_selectedId);
+    if (!b)
+        return;
+    m_clip = *b;
+    if (!m_hasClip) { m_hasClip = true; emit clipboardChanged(); }
+}
+
+void PdfEditController::paste() {
+    if (!m_hasClip || m_docPath.isEmpty())
+        return;
+    finishOpenSessions();
+    PdfEditBox b = m_clip;                           // inkl. Text + allen Einstellungen
+    b.id = m_nextId++;
+    // Leicht versetzt auf derselben Seite, damit die Kopie sichtbar liegt.
+    b.rect.translate(14.0, 14.0);
+    pushCommand(new PdfEditAddCommand(&m_model, b, m_model.count()));
+    setSelectedId(b.id);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -551,6 +597,7 @@ void PdfEditController::setBoxField(int id, PdfEditField f, const QVariant& v) {
     case PdfEditField::VAlign:     old = b->vAlign;     break;
     default: return;                                // Text/Geometry: eigene Wege
     }
+    mirrorToTemplate(f, v);                          // neue Notizen erben diesen Stil
     if (old == v)
         return;
     pushCommand(new PdfEditFieldCommand(&m_model, id, f, old, v));

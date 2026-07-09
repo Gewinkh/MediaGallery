@@ -43,7 +43,8 @@ Item {
     property color twPdfToolbarBg: "#121c22"
     property color twPdfScrollbarBg: "#121c22"
     property color twSidebarBg: "#121c22"
-    property color twEditorBg: "#121c22"
+    property color twEditorBgText: "#121c22"
+    property color twEditorBgHtml: "#121c22"
     property color twMenuBarBg: "#0c141a"
     property color twToolbarBg: "#0c141a"
     property color twFilterBarBg: "#0c141a"
@@ -63,7 +64,7 @@ Item {
         twPdfViewerBg = m.pdfViewerBg;   twPdfThumbBg = m.pdfThumbBg;     twPdfSidebarBg = m.pdfSidebarBg
         twPdfToolbarBg = m.pdfToolbarBg; twPdfScrollbarBg = m.pdfScrollbarBg
         twSidebarBg = m.sidebarBg;       twMenuBarBg = m.menuBarBg;       twToolbarBg = m.toolbarBg
-        twEditorBg = m.editorBg
+        twEditorBgText = m.editorBgText; twEditorBgHtml = m.editorBgHtml
         twFilterBarBg = m.filterBarBg;   twStatusBarBg = m.statusBarBg
     }
 
@@ -80,7 +81,8 @@ Item {
             tileGlowOnHover: twTileGlowOnHover, tileGlowRadius: twTileGlowRadius,
             pdfViewerBg: twPdfViewerBg, pdfThumbBg: twPdfThumbBg, pdfSidebarBg: twPdfSidebarBg,
             pdfToolbarBg: twPdfToolbarBg, pdfScrollbarBg: twPdfScrollbarBg,
-            sidebarBg: twSidebarBg, menuBarBg: twMenuBarBg, toolbarBg: twToolbarBg, editorBg: twEditorBg,
+            sidebarBg: twSidebarBg, menuBarBg: twMenuBarBg, toolbarBg: twToolbarBg,
+            editorBgText: twEditorBgText, editorBgHtml: twEditorBgHtml,
             filterBarBg: twFilterBarBg, statusBarBg: twStatusBarBg
         }
     }
@@ -104,14 +106,20 @@ Item {
         signal picked(color c)
         spacing: 8
         Layout.fillWidth: true
-        Label { text: cr.label; color: App.themeTextPrimary; Layout.preferredWidth: 160 }
+        Label {
+            text: cr.label; color: App.themeTextPrimary
+            Layout.fillWidth: true
+            Layout.minimumWidth: 60
+            elide: Text.ElideRight
+            maximumLineCount: 1
+        }
         ColorPicker {
             width: 36; height: 22; showAlpha: false
+            Layout.preferredWidth: 36; Layout.preferredHeight: 22
             title: cr.label
             selectedColor: cr.value
             onColorPicked: (c) => cr.picked(c)
         }
-        Item { Layout.fillWidth: true }
     }
 
     ScrollView {
@@ -351,7 +359,8 @@ Item {
                     ColorRow { label: App.uiText(App.language, "SettingsDesignFilterBar");  value: root.twFilterBarBg; onPicked: (c) => { root.twFilterBarBg = c; root.applyLive() } }
                     ColorRow { label: App.uiText(App.language, "SettingsDesignStatusBar");  value: root.twStatusBarBg; onPicked: (c) => { root.twStatusBarBg = c; root.applyLive() } }
                     ColorRow { label: App.uiText(App.language, "SettingsDesignSidebar");  value: root.twSidebarBg;   onPicked: (c) => { root.twSidebarBg = c;   root.applyLive() } }
-                    ColorRow { label: App.uiText(App.language, "SettingsDesignEditorBg");  value: root.twEditorBg;    onPicked: (c) => { root.twEditorBg = c;    root.applyLive() } }
+                    ColorRow { label: App.uiText(App.language, "SettingsDesignEditorBgText"); value: root.twEditorBgText; onPicked: (c) => { root.twEditorBgText = c; root.applyLive() } }
+                    ColorRow { label: App.uiText(App.language, "SettingsDesignEditorBgHtml"); value: root.twEditorBgHtml; onPicked: (c) => { root.twEditorBgHtml = c; root.applyLive() } }
                 }
 
                 SettingsGroup {
