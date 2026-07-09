@@ -223,16 +223,11 @@ Custom themes can be exported to JSON and shared:
 - **Feature**: **Separate editor background colors** — the TXT/code editor and the HTML source view now have **two independent** background colors (Settings → Design), instead of sharing one.
 - **Feature**: **Draggable split dividers** — in split view the boundaries between panes can be dragged to resize the tiles (one divider for 2 panes, a row + column divider for 3/4 panes).
 - **Change**: **Zoomed panning** — when zoomed in, hold the left mouse button and drag to pan and reveal content that was off-screen (PDF & image). Over selectable PDF text, left-drag still selects text.
-- **Fix**: **Stable page on resize** — resizing the window (or adding a file in split view) no longer makes open PDFs/images jump to another/the first page; each pane keeps its current page and position.
-
-### Previous
-- **Feature**: New **Split View** — open up to four files side by side in the fullscreen view (two columns / two-over-one / 2×2). Each pane is an independent viewer with its own header, Prev/Next navigation, and its own PDF Editor / zoom / playback state; add more panes straight from the gallery via the per-pane "+" button, and close a single pane with Back/`Esc` while the others stay open.
-- **Feature**: New **Editor background color** — the text / HTML source editor surface now has its own themeable color, separate from the card/panel background (Settings → Design).
-- **Change**: **Lazy HTML engine** — Qt WebEngine now initializes only on first HTML open (instead of at startup), lowering the memory baseline and speeding up launch; HTML files fall back to the source view until the engine is ready.
-- **Change**: **Active memory return** — on Linux, large freed buffers (folder switch, PDF thumbnail/audio eviction, annotation-cache eviction) are now returned to the OS (`malloc_trim`), so resident memory drops after heavy use instead of staying high.
-- **Fix**: Arrow keys (`<-`/`->`) no longer switch files while a text field is focused, so editing note or source text is no longer interrupted.
 
 ---
+
+### Issue
+- Resizing the window or adding a file in Split View may reset PDFs/images to another or the first page instead of preserving the current page and scroll position.
 
 ## License
 
