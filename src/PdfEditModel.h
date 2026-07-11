@@ -24,7 +24,10 @@ public:
     enum Roles {
         BoxIdRole = Qt::UserRole + 1,
         PageRole,
+        KindRole,                       // PdfAnnKind (0 Text … 4 Ellipse)
         XRole, YRole, WRole, HRole,     // PDF-Punkte, Ursprung oben-links
+        PointsRole,                     // Freihand/Pfeil: QVariantList<QPointF>
+        StrokeRole, LineWidthRole, FillRole,
         TextRole,
         FontFamilyRole, FontSizeRole,
         BoldRole, ItalicRole, UnderlineRole,
@@ -54,6 +57,13 @@ public:
     //  applyPlacement: Rechteck UND Seite in einem Schritt (seitenübergreifendes
     //  Verschieben) — feuert nur die tatsächlich geänderten Rollen.
     bool applyPlacement(int id, int page, const QRectF& r);
+    //  applyPlacementPoints: Seite + Rechteck + Punkte in einem Schritt
+    //  (Strich verschieben/skalieren — auch seitenübergreifend); feuert nur
+    //  die tatsächlich geänderten Rollen.
+    bool applyPlacementPoints(int id, int page, const QRectF& r,
+                              const QVector<QPointF>& pts);
+    //  applyPoints: Freihand/Pfeil live zeichnen (Bounds werden neu berechnet).
+    bool applyPoints(int id, const QVector<QPointF>& pts);
     bool applyText(int id, const QString& t);
     bool applyField(int id, PdfEditField f, const QVariant& v);
     void clearAll();

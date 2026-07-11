@@ -236,14 +236,16 @@ Item {
                     Layout.fillWidth: true
                     RowLayout {
                         Layout.fillWidth: true; spacing: 8
-                        Label { text: App.uiText(App.language, "SettingsDesignAccentType"); color: App.themeTextPrimary; Layout.preferredWidth: 160 }
+                        // Rechtsbündig wie die Farbfelder der ColorRow: das Label
+                        // füllt die Zeile, die Box rückt an den rechten Rand.
+                        Label { text: App.uiText(App.language, "SettingsDesignAccentType"); color: App.themeTextPrimary
+                                Layout.fillWidth: true; elide: Text.ElideRight }
                         ComboBox {
                             Layout.preferredWidth: 200
                             model: [App.uiText(App.language, "SettingsDesignAccentSolid"), App.uiText(App.language, "SettingsDesignAccentGradient"), App.uiText(App.language, "SettingsDesignGlow")]
                             currentIndex: root.twAccentType
                             onActivated: { root.twAccentType = currentIndex; root.applyLive() }
                         }
-                        Item { Layout.fillWidth: true }
                     }
                     ColorRow { label: App.uiText(App.language, "SettingsDesignAccentColorLabel"); value: root.twAccent; onPicked: (c) => { root.twAccent = c; root.applyLive() } }
                     ColorRow {
@@ -292,13 +294,13 @@ Item {
                     RowLayout {
                         Layout.fillWidth: true; spacing: 8
                         visible: root.twBgIsGradient
-                        Label { text: App.uiText(App.language, "SettingsDesignAngleLabel"); color: App.themeTextPrimary; Layout.preferredWidth: 160 }
+                        Label { text: App.uiText(App.language, "SettingsDesignAngleLabel"); color: App.themeTextPrimary
+                                Layout.fillWidth: true; elide: Text.ElideRight }
                         SpinBox {
                             from: 0; to: 360; stepSize: 5
                             value: root.twBgGradAngle
                             onValueModified: { root.twBgGradAngle = value; root.applyLive() }
                         }
-                        Item { Layout.fillWidth: true }
                     }
                 }
 
@@ -307,27 +309,27 @@ Item {
                     Layout.fillWidth: true
                     RowLayout {
                         Layout.fillWidth: true; spacing: 8
-                        Label { text: App.uiText(App.language, "SettingsDesignTypeLabel"); color: App.themeTextPrimary; Layout.preferredWidth: 160 }
+                        Label { text: App.uiText(App.language, "SettingsDesignTypeLabel"); color: App.themeTextPrimary
+                                Layout.fillWidth: true; elide: Text.ElideRight }
                         ComboBox {
                             Layout.preferredWidth: 200
                             model: [App.uiText(App.language, "SettingsDesignAccentSolid"), App.uiText(App.language, "SettingsDesignAccentGradient"), App.uiText(App.language, "SettingsDesignTileTransparent")]
                             currentIndex: root.twTileBgType
                             onActivated: { root.twTileBgType = currentIndex; root.applyLive() }
                         }
-                        Item { Layout.fillWidth: true }
                     }
                     ColorRow { label: App.uiText(App.language, "SettingsDesignTileColorLabel");  value: root.twTileBgColor;  visible: root.twTileBgType !== 2; onPicked: (c) => { root.twTileBgColor = c;  root.applyLive() } }
                     ColorRow { label: App.uiText(App.language, "SettingsDesignTileGradEndLabel"); value: root.twTileBgGradEnd; visible: root.twTileBgType === 1; onPicked: (c) => { root.twTileBgGradEnd = c; root.applyLive() } }
                     RowLayout {
                         Layout.fillWidth: true; spacing: 8
                         visible: root.twTileBgType === 1
-                        Label { text: App.uiText(App.language, "SettingsDesignGradAngle"); color: App.themeTextPrimary; Layout.preferredWidth: 160 }
+                        Label { text: App.uiText(App.language, "SettingsDesignGradAngle"); color: App.themeTextPrimary
+                                Layout.fillWidth: true; elide: Text.ElideRight }
                         SpinBox {
                             from: 0; to: 360; stepSize: 5
                             value: root.twTileBgGradAngle
                             onValueModified: { root.twTileBgGradAngle = value; root.applyLive() }
                         }
-                        Item { Layout.fillWidth: true }
                     }
                     CheckBox {
                         text: App.uiText(App.language, "SettingsDesignGlowHover")

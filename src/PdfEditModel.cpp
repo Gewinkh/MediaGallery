@@ -14,6 +14,18 @@ QVariant PdfEditModel::data(const QModelIndex& index, int role) const {
     switch (role) {
     case BoxIdRole:      return b.id;
     case PageRole:       return b.page;
+    case KindRole:       return static_cast<int>(b.kind);
+    case PointsRole: {
+        // Für den QML-Canvas: Liste von QPointF (im Delegate über .x/.y lesbar).
+        QVariantList list;
+        list.reserve(b.points.size());
+        for (const QPointF& p : b.points)
+            list.append(QVariant::fromValue(p));
+        return list;
+    }
+    case StrokeRole:     return b.stroke;
+    case LineWidthRole:  return b.lineWidth;
+    case FillRole:       return b.fill;
     case XRole:          return b.rect.x();
     case YRole:          return b.rect.y();
     case WRole:          return b.rect.width();
@@ -39,6 +51,11 @@ QHash<int, QByteArray> PdfEditModel::roleNames() const {
     static const QHash<int, QByteArray> names = {
         { BoxIdRole,      "boxId"          },
         { PageRole,       "page"           },
+        { KindRole,       "boxKind"        },
+        { PointsRole,     "boxPoints"      },
+        { StrokeRole,     "strokeColor"    },
+        { LineWidthRole,  "lineWidth"      },
+        { FillRole,       "fillColor"      },
         { XRole,          "xPt"            },
         { YRole,          "yPt"            },
         { WRole,          "wPt"            },
@@ -129,6 +146,35 @@ bool PdfEditModel::applyPlacement(int id, int page, const QRectF& r) {
     return true;
 }
 
+bool PdfEditModel::applyPlacementPoints(int id, int page, const QRectF& r,
+                                        const QVector<QPointF>& pts) {
+    const int row = indexOfId(id);
+    if (row < 0)
+        return false;
+    PdfEditBox& b = m_boxes[row];
+    QList<int> roles;
+    if (b.page != page && page >= 0) { b.page = page; roles << PageRole; }
+    if (b.rect != r) { b.rect = r; roles << XRole << YRole << WRole << HRole; }
+    if (b.points != pts) { b.points = pts; roles << PointsRole; }
+    if (roles.isEmpty())
+        return false;
+    const QModelIndex idx = index(row);
+    emit dataChanged(idx, idx, roles);
+    return true;
+}
+
+bool PdfEditModel::applyPoints(int id, const QVector<QPointF>& pts) {
+    const int row = indexOfId(id);
+    if (row < 0)
+        return false;
+    PdfEditBox& b = m_boxes[row];
+    b.points = pts;
+    b.recomputeBounds();
+    const QModelIndex idx = index(row);
+    emit dataChanged(idx, idx, { PointsRole, XRole, YRole, WRole, HRole });
+    return true;
+}
+
 bool PdfEditModel::applyText(int id, const QString& t) {
     const int row = indexOfId(id);
     if (row < 0)
@@ -149,6 +195,20 @@ bool PdfEditModel::applyField(int id, PdfEditField f, const QVariant& v) {
     PdfEditBox& b = m_boxes[row];
     QList<int> roles;
     switch (f) {
+    case PdfEditField::Stroke:
+        if (b.stroke == v.value<QColor>()) return false;
+        b.stroke = v.value<QColor>();              roles = { StrokeRole };     break;
+    case PdfEditField::LineWidth:
+        if (qFuzzyCompare(b.lineWidth, v.toReal())) return false;
+        b.lineWidth = v.toReal();
+        // Striche tragen einen Linienbreiten-Rand in der Bounding-Box →
+        // neu berechnen und die Rechteck-Rollen mitfeuern.
+        if (b.isStroke()) { b.recomputeBounds();   roles = { LineWidthRole, XRole, YRole, WRole, HRole }; }
+        else                                       roles = { LineWidthRole };
+        break;
+    case PdfEditField::Fill:
+        if (b.fill == v.value<QColor>()) return false;
+        b.fill = v.value<QColor>();                roles = { FillRole };       break;
     case PdfEditField::FontFamily:
         if (b.fontFamily == v.toString()) return false;
         b.fontFamily = v.toString();               roles = { FontFamilyRole }; break;
@@ -178,6 +238,7 @@ bool PdfEditModel::applyField(int id, PdfEditField f, const QVariant& v) {
         b.vAlign = v.toInt();                      roles = { VAlignRole };     break;
     case PdfEditField::Text:      return applyText(id, v.toString());
     case PdfEditField::Geometry:  return applyGeometry(id, v.toRectF());
+    case PdfEditField::Points:    return false;   // eigener Weg (applyPoints)
     }
     const QModelIndex idx = index(row);
     emit dataChanged(idx, idx, roles);

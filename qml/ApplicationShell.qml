@@ -428,6 +428,24 @@ ApplicationWindow {
     // Datei-Dialogs kehrt die Ansicht zur GALERIE (Hauptfenster) zurück — die
     // offenen Kacheln bleiben im Modell erhalten. Ein Klick in der Galerie wählt
     // die nächste Datei; danach wird die geteilte Ansicht wiederhergestellt.
+    //
+    // WICHTIG (Issue-Fix): Die Split-Seite wird als PERSISTENTES Item genau
+    // EINMAL erzeugt und dieses Item gepusht — nicht die Component. StackView
+    // zerstört beim Pop nur selbst erzeugte Items; ein gepushtes Fremd-Item
+    // überlebt den Pop (Qt blendet es aus und gibt die Ownership zurück).
+    // Dadurch bleiben ALLE Viewer beim „+"-Rücksprung in die Galerie am Leben
+    // — PDFs behalten Seite/Scrollposition, Bilder ihren Zoom, Texte ihre
+    // Scrollstelle. Vorher zerstörte der Pop die per Component erzeugte Seite
+    // samt Viewern; der erneute Push baute alles frisch → Seite 1.
+    // popFullscreen() leert weiterhin das Modell → alle Viewer werden sofort
+    // freigegeben (RAM-Priorität unverändert); nur der leere Seiten-Rahmen
+    // bleibt für die Wiederverwendung bestehen.
+    property Item _splitPageItem: null
+    function _splitPage() {
+        if (!_splitPageItem)
+            _splitPageItem = fullscreenComponent.createObject(shell)
+        return _splitPageItem
+    }
     property bool pendingAddFile: false
     function requestAddFile() {
         if (openFilesModel.count >= shell.maxOpenFiles) {
@@ -437,7 +455,7 @@ ApplicationWindow {
         }
         shell.pendingAddFile = true
         if (stack.depth > 1)
-            stack.pop()                 // NICHT leeren — offene Kacheln bleiben im Modell
+            stack.pop()                 // NICHT leeren — Kacheln bleiben im Modell UND am Leben
     }
     // Datei aus der Galerie zur geteilten Ansicht hinzufügen (Klick im Hinzufügen-Modus).
     function addFileFromGallery(p) {
@@ -447,13 +465,13 @@ ApplicationWindow {
                 && openFilesModel.count < shell.maxOpenFiles)
             openFilesModel.append({ path: p })
         if (stack.depth < 2)
-            stack.push(fullscreenComponent)   // geteilte Ansicht wiederherstellen
+            stack.push(_splitPage())          // geteilte Ansicht wiederherstellen
     }
     // Hinzufügen abbrechen → zurück zur (unveränderten) geteilten Ansicht.
     function cancelAddFile() {
         shell.pendingAddFile = false
         if (stack.depth < 2 && openFilesModel.count > 0)
-            stack.push(fullscreenComponent)
+            stack.push(_splitPage())
     }
 
     Component {
@@ -465,13 +483,16 @@ ApplicationWindow {
             // Lade-Gating: die schwere Medienlast erst NACH dem StackView-Übergang
             // anstoßen — die Viewer sitzen in Loadern UNTER der Seite (StackView.view
             // wäre dort null), daher gated die Seite die Loader-Aktivierung.
+            // Nur bei Active setzen: das persistente Item existiert bereits VOR
+            // dem ersten Push (s. _splitPage()) — dort ist StackView.view noch
+            // null, das darf das Gating nicht auslösen. Einmal ready, bleibt
+            // ready (beim „+"-Rücksprung laufen die Viewer bewusst weiter).
             property bool pageReady: false
             function _checkReady() {
-                if (StackView.status === StackView.Active || StackView.view === null)
+                if (StackView.status === StackView.Active)
                     pageReady = true
             }
             StackView.onStatusChanged: _checkReady()
-            Component.onCompleted: _checkReady()
 
             // Trennfugen-Hintergrund (scheint in der 2 px-Lücke zwischen Kacheln durch).
             Rectangle { anchors.fill: parent; color: "#0a0a0a" }
@@ -573,12 +594,12 @@ ApplicationWindow {
         openFilesModel.clear()
         openFilesModel.append({ path: p })
         if (stack.depth < 2)
-            stack.push(fullscreenComponent)
+            stack.push(_splitPage())
     }
     function popFullscreen() {
         openFilesModel.clear()          // Verlassen schließt alle Dateien (RAM frei)
         if (stack.depth > 1)
-            stack.pop()
+            stack.pop()                 // die leere Split-Seite überlebt (persistentes Item)
     }
 
     // ── Drag & Drop ───────────────────────────────────────────────────────────

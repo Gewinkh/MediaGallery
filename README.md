@@ -73,14 +73,18 @@ Built with **C++20** and **Qt 6.4+**.
 - **Browser-style text selection**: click-and-drag to select the embedded text layer, `Ctrl+C` to copy, `Ctrl+A` to select all on the current page
 - **Embedded audio panel**: a dedicated side panel lists every audio clip on the current page with a seek slider, plus an Apple-style mini-player that keeps playing while you scroll to other pages; clickable on-page audio hotspots
 
-### PDF Editor (Post-it Notes)
+### PDF Editor (Post-it Notes & Drawings)
 - Add sticky-note style text boxes anywhere on a PDF page — the original file is **never modified**
-- Notes are saved to a **sidecar file** next to the PDF (non-destructive) and stay editable across sessions
-- **Export** writes a brand-new PDF copy (`…_edited(.n).pdf`) with the notes permanently rendered onto the pages — your original is always preserved
+- **Tools**: Select/move, Text note, Freehand pen, Arrow, Rectangle, Ellipse — the full image-editor tool set, now on PDFs (tool palette in the dockable panel)
+- **Drawings** with adjustable stroke color, line width (in PDF points) and (for shapes) fill color; drawings move/resize/copy/paste/undo exactly like notes, including **cross-page dragging**
+- Notes and drawings are saved to a **sidecar file** next to the PDF (non-destructive) and stay editable across sessions; old sidecars load unchanged
+- **Export** writes a brand-new PDF copy (`…_edited(.n).pdf`) with all annotations permanently rendered onto the pages — your original is always preserved
 - Full text formatting: font family (with automatic substitution hint for missing fonts), size, bold/italic/underline, alignment, vertical alignment, text color and note-paper (highlight) color, including an opacity slider
+- A newly created note/drawing **inherits the last-used style** (only without the text)
 - **Line-snapping**: new notes anchor precisely to detected text lines when placed nearby, or float freely elsewhere
-- **Cross-page dragging**: drag a note past the top/bottom of a page and it automatically moves to the neighboring page on release
-- Full undo/redo history and a note-visibility toggle (`Alt+Q`) that hides/shows all notes in both view and edit mode
+- **Cross-page dragging**: drag an annotation past the top/bottom of a page and it automatically moves to the neighboring page on release
+- Full undo/redo history (`Ctrl+Z` / `Ctrl+Shift+Z`) and a note-visibility toggle (`Alt+Q`) that hides/shows all annotations in both view and edit mode
+- **Copy & paste** the selected annotation (`Ctrl+C` / `Ctrl+V` or the toolbar/panel buttons) — duplicates it with all settings and text
 - Formatting panel can be docked as a **right sidebar** or a **Word-style ribbon** at the top (Settings → Text Editor)
 
 ### Image Editor
@@ -162,6 +166,7 @@ Built with **C++20** and **Qt 6.4+**.
 | PDF / Image Editor: toggle note visibility | `Alt+Q` |
 | PDF / Image Editor: delete selected annotation | `Delete` |
 | PDF / Image Editor: copy / paste selected annotation | `Ctrl+C` / `Ctrl+V` |
+| PDF / Image Editor: undo / redo | `Ctrl+Z` / `Ctrl+Shift+Z` |
 | Image Editor: toggle edit mode | ✎ toolbar button |
 
 ---
@@ -217,17 +222,14 @@ Custom themes can be exported to JSON and shared:
 ## Changelog
 
 ### Latest
-- **Feature**: New **Image Editor** — the image viewer is now a full non-destructive editor, mirroring the PDF Editor. PDF-style **zoom/pan** (fit-to-window, 100%, wheel-zoom, drag-pan) replaces the old simple scaling; add **text notes** (full post-it styling, live transliteration) and **drawings** (freehand pen, arrow, rectangle, ellipse) with color, line width and fill; **select/move/resize/delete** with full undo/redo. The original file is never touched: annotations save to a **sidecar** `<image>.mgedit.json` and **export** writes a new copy `…_bearbeitet(.n).<ext>` in the source format (JPG→JPG, PNG→PNG, else PNG). Each split-view tile has its own independent editor.
-- **Feature**: **Copy & paste stickers** — `Ctrl+C`/`Ctrl+V` (or the toolbar/panel button) duplicates the selected note/annotation with all of its settings **and** its text, in both the PDF and Image editors.
-- **Feature**: **Style inheritance** — a newly created note/shape inherits the last-used style (font, colors, opacity, line width, fill), only without the text — in both editors.
-- **Feature**: **Separate editor background colors** — the TXT/code editor and the HTML source view now have **two independent** background colors (Settings → Design), instead of sharing one.
-- **Feature**: **Draggable split dividers** — in split view the boundaries between panes can be dragged to resize the tiles (one divider for 2 panes, a row + column divider for 3/4 panes).
-- **Change**: **Zoomed panning** — when zoomed in, hold the left mouse button and drag to pan and reveal content that was off-screen (PDF & image). Over selectable PDF text, left-drag still selects text.
+- **Feature**: Added drawing tools to the PDF Editor (text, pen, arrow, rectangle, ellipse) with editing, copy/paste, undo/redo, style inheritance, and WYSIWYG PDF export.
+- **Feature**: Added `Ctrl+Z` / `Ctrl+Shift+Z` undo/redo shortcuts to the PDF Editor.
+- **Fix**: Split View now preserves the state of all open viewers when adding files.
+- **Fix**: PDF reading position is now preserved when resizing windows or panes.
+- **Fix**: Improved PDF zooming and scrolling stability.
+- **UI**: Improved alignment of controls in **Settings → Design**.
 
 ---
-
-### Issue
-- Resizing the window or adding a file in Split View may reset PDFs/images to another or the first page instead of preserving the current page and scroll position.
 
 ## License
 

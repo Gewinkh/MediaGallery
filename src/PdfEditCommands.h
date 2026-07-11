@@ -21,6 +21,9 @@
 
 #include <QUndoCommand>
 #include <QVariant>
+#include <QRectF>
+#include <QPointF>
+#include <QVector>
 #include "PdfEditTypes.h"
 
 class PdfEditModel;
@@ -56,22 +59,28 @@ private:
 // ─────────────────────────────────────────────────────────────────────────────
 //  Verschieben/Skalieren — EIN Kommando je Drag-Session (Delta alt→neu).
 //  Trägt neben dem Rechteck auch die SEITE (seitenübergreifendes Verschieben:
-//  Undo bringt die Box auf die alte Seite zurück).
+//  Undo bringt die Box auf die alte Seite zurück) UND die PUNKTE (Freihand/
+//  Pfeil werden beim Verschieben/Skalieren mit-transformiert; Undo stellt
+//  beides wieder her). Für punktlose Annotationen sind die Vektoren leer.
 // ─────────────────────────────────────────────────────────────────────────────
 class PdfEditGeometryCommand : public QUndoCommand {
 public:
     PdfEditGeometryCommand(PdfEditModel* model, int id,
                            int oldPage, const QRectF& oldRect,
-                           int newPage, const QRectF& newRect);
+                           const QVector<QPointF>& oldPts,
+                           int newPage, const QRectF& newRect,
+                           const QVector<QPointF>& newPts);
     void redo() override;
     void undo() override;
 private:
-    PdfEditModel* m_model;
-    int           m_id;
-    int           m_oldPage;
-    QRectF        m_old;
-    int           m_newPage;
-    QRectF        m_new;
+    PdfEditModel*    m_model;
+    int              m_id;
+    int              m_oldPage;
+    QRectF           m_old;
+    QVector<QPointF> m_oldPts;
+    int              m_newPage;
+    QRectF           m_new;
+    QVector<QPointF> m_newPts;
 };
 
 // ─────────────────────────────────────────────────────────────────────────────

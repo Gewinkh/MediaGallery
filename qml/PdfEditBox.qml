@@ -3,17 +3,20 @@ import QtQuick
 import MediaGallery 1.0
 
 // ─────────────────────────────────────────────────────────────────────────────
-//  PdfEditBox.qml — EINE Overlay-Textbox des PDF-Editors (Delegate im
-//  Boxen-Repeater jeder Seite von PdfSurface).
+//  PdfEditBox.qml — EINE Overlay-Annotation des PDF-Editors (Delegate im
+//  Boxen-Repeater jeder Seite von PdfSurface). Deckt alle fünf Arten ab:
+//  Text-Notiz (Post-it), Freihand, Pfeil, Rechteck, Ellipse — analog zum
+//  Bild-Editor (ImageEditBox), nur in PDF-Punkten statt Bild-Pixeln.
 //
 //  KOORDINATEN: Das Modell führt Position/Größe in PDF-PUNKTEN (Ursprung
 //  oben-links); dieses Item rechnet über `pageScale` (Pixel je Punkt) in
 //  Bildschirm-Pixel um. Zoom/Resize der Seite skaliert die Box damit
 //  automatisch korrekt mit — WYSIWYG zum Export (72-dpi-Schreiber).
 //
-//  SICHTBARKEIT: Boxen sind in BEIDEN Modi sichtbar (Teil des Dokuments-
-//  Eindrucks); Rahmen, Handles und Maus-Interaktion existieren nur im
-//  Edit-Modus.
+//  SICHTBARKEIT: Annotationen sind in BEIDEN Modi sichtbar (Teil des
+//  Dokument-Eindrucks); Rahmen, Handles und Maus-Interaktion existieren nur
+//  im Edit-Modus MIT dem Auswahl-Werkzeug (ctl.tool === Select) — während
+//  des Zeichnens fängt die drawArea der Seite alle Gesten.
 //
 //  TEXT-SYNC (bewusst KEINE text-Bindung — Zweiweg-Konflikt beim Tippen):
 //   • Modell → Anzeige: imperativ (Component.onCompleted + onBoxTextChanged),
@@ -23,13 +26,15 @@ import MediaGallery 1.0
 //  Externe Aktionen (Undo/Redo/Export/Löschen/Moduswechsel) schließen eine
 //  offene Bearbeitung DETERMINISTISCH über surface.editCommitRev ab.
 //
-//  GESTEN (Word-artig):
+//  GESTEN (Word-artig, Auswahl-Werkzeug):
 //   • Klick        → auswählen (schwebende Format-Toolbar erscheint)
-//   • Ziehen       → verschieben (optionaler Zeilenfang über surface.snapYPt);
-//                    über den Seitenrand hinaus → Notiz wechselt beim
-//                    Loslassen auf die Nachbarseite (surface.resolveCrossPage)
-//   • Doppelklick  → Textbearbeitung (Cursor, Auswahl, Tippen)
-//   • 8 Handles    → skalieren (Ecken + Kantenmitten), min. Größe aus PdfEdit
+//   • Ziehen       → verschieben (Text: optionaler Zeilenfang über
+//                    surface.snapYPt); über den Seitenrand hinaus → wechselt
+//                    beim Loslassen auf die Nachbarseite (resolveCrossPage) —
+//                    Strich-Punkte wandern über die Controller-Session mit
+//   • Doppelklick  → Textbearbeitung (nur Text-Notizen)
+//   • 8 Handles    → skalieren (Ecken + Kantenmitten; Striche transformieren
+//                    ihre Punkte proportional — Controller-Session)
 // ─────────────────────────────────────────────────────────────────────────────
 Item {
     id: box
@@ -37,10 +42,15 @@ Item {
     // ── Modellrollen (PdfEditModel) ───────────────────────────────────────────
     required property int    boxId
     required property int    page
+    required property int    boxKind          // 0 Text,1 Freihand,2 Pfeil,3 Rect,4 Ellipse
     required property real   xPt
     required property real   yPt
     required property real   wPt
     required property real   hPt
+    required property var    boxPoints        // Freihand/Pfeil: Liste von QPointF (PDF-Punkte)
+    required property color  strokeColor
+    required property real   lineWidth
+    required property color  fillColor
     required property string boxText
     required property string fontFamily
     required property real   fontSizePt
@@ -64,8 +74,17 @@ Item {
     readonly property PdfEditController ctl: surface ? surface.editCtl : null
 
     readonly property bool onThisPage: page === pageIndex
+    readonly property bool isText:   boxKind === 0
+    readonly property bool isStroke: boxKind === 1 || boxKind === 2
     readonly property bool editMode: box.ctl.editMode
+    // Auswahl/Verschieben/Skalieren nur mit dem Auswahl-Werkzeug (wie im
+    // Bild-Editor — während des Zeichnens fängt die drawArea der Seite).
+    readonly property bool selectTool: box.ctl.tool === 0
     readonly property bool selected: editMode && box.ctl.selectedId === boxId
+    // Kind-abhängige Mindestgrößen: Zeichnungen dürfen deutlich kleiner
+    // werden als Textboxen (dünner Pfeil ist legitim; Werte wie Controller).
+    readonly property real minWPt: isText ? box.ctl.minBoxWPt : 4
+    readonly property real minHPt: isText ? box.ctl.minBoxHPt : 4
     property bool editing: false         // Inline-Textbearbeitung aktiv
 
     // Sichtbar auf der eigenen Seite UND solange die Notizen nicht über den
@@ -98,7 +117,7 @@ Item {
     }
 
     function startEditing() {
-        if (!box.editMode || box.editing)
+        if (!box.isText || !box.editMode || box.editing)
             return
         box.ctl.selectedId = box.boxId
         box.ctl.beginTextEdit(box.boxId)       // Session: Alt-Text als Undo-Basis
@@ -121,7 +140,7 @@ Item {
     //  Schattenversatz/Eselsohr-Größe kommen aus PdfEdit-Konstanten (PDF-Punkte
     //  × pageScale), Schatten-Alpha 52/255, Flap = Papier ×1.18 dunkler,
     //  Faltlinie ×1.5 dunkler mit 0.7-pt-Strich → WYSIWYG.
-    readonly property bool hasPaper: highlightColor.a > 0
+    readonly property bool hasPaper: isText && highlightColor.a > 0
 
     Rectangle {                                     // weicher Schattenwurf
         x: box.ctl.noteShadowDxPt * box.pageScale
@@ -170,11 +189,99 @@ Item {
         }
     }
 
-    // ── Rahmen (nur Edit-Modus; Akzent bei Auswahl) ───────────────────────────
+    // ══ ZEICHNUNG (Freihand / Pfeil / Rechteck / Ellipse) ═════════════════════
+    //  Canvas deckt die Bounding-Box PLUS Linienbreiten-Rand ab (die äußere
+    //  Stifthälfte darf nicht abgeschnitten werden — der Export zeichnet
+    //  mittig). Geometrie in PDF-Punkten × pageScale — identisch zum Export
+    //  (drawBox im PdfExportTask) → WYSIWYG.
+    Canvas {
+        id: shape
+        visible: !box.isText
+        readonly property real pad: Math.max(2, box.lineWidth * box.pageScale)
+        anchors.fill: parent
+        anchors.margins: -pad
+        onPaint: {
+            const ctx = getContext("2d")
+            ctx.clearRect(0, 0, width, height)
+            ctx.lineCap = "round"; ctx.lineJoin = "round"
+            const sc = box.pageScale
+            const ox = pad, oy = pad     // Ursprung = Box-Ecke innerhalb des Canvas
+            const lw = Math.max(1, box.lineWidth * sc)
+            if (box.boxKind === 1) {                 // Freihand
+                if (box.boxPoints && box.boxPoints.length >= 2) {
+                    ctx.strokeStyle = box.strokeColor; ctx.lineWidth = lw
+                    ctx.beginPath()
+                    for (var i = 0; i < box.boxPoints.length; ++i) {
+                        const px = ox + (box.boxPoints[i].x - box.xPt) * sc
+                        const py = oy + (box.boxPoints[i].y - box.yPt) * sc
+                        if (i === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py)
+                    }
+                    ctx.stroke()
+                }
+            } else if (box.boxKind === 2) {          // Pfeil
+                if (box.boxPoints && box.boxPoints.length >= 2) {
+                    const fx = ox + (box.boxPoints[0].x - box.xPt) * sc
+                    const fy = oy + (box.boxPoints[0].y - box.yPt) * sc
+                    const tx = ox + (box.boxPoints[1].x - box.xPt) * sc
+                    const ty = oy + (box.boxPoints[1].y - box.yPt) * sc
+                    ctx.strokeStyle = box.strokeColor; ctx.lineWidth = lw
+                    ctx.beginPath(); ctx.moveTo(fx, fy); ctx.lineTo(tx, ty); ctx.stroke()
+                    // Pfeilspitze (identische Geometrie wie der Export:
+                    // Länge = max(10 pt, 4·Linienbreite), Spreizung π/7).
+                    const ang = Math.atan2(ty - fy, tx - fx)
+                    const len = Math.max(10 * sc, box.lineWidth * 4 * sc)
+                    const spread = Math.PI / 7
+                    ctx.beginPath()
+                    ctx.moveTo(tx, ty)
+                    ctx.lineTo(tx - len * Math.cos(ang - spread), ty - len * Math.sin(ang - spread))
+                    ctx.moveTo(tx, ty)
+                    ctx.lineTo(tx - len * Math.cos(ang + spread), ty - len * Math.sin(ang + spread))
+                    ctx.stroke()
+                }
+            } else {                                 // Rechteck / Ellipse
+                const rx = ox, ry = oy
+                const rw = box.width, rh = box.height
+                if (box.fillColor.a > 0) {
+                    ctx.fillStyle = box.fillColor
+                    if (box.boxKind === 4) { _ellipsePath(ctx, rx, ry, rw, rh); ctx.fill() }
+                    else ctx.fillRect(rx, ry, rw, rh)
+                }
+                ctx.strokeStyle = box.strokeColor; ctx.lineWidth = lw
+                if (box.boxKind === 4) { _ellipsePath(ctx, rx, ry, rw, rh); ctx.stroke() }
+                else ctx.strokeRect(rx, ry, rw, rh)
+            }
+        }
+        function _ellipsePath(ctx, x, y, w, h) {
+            ctx.beginPath()
+            const kappa = 0.5522847498
+            const cx = w / 2, cy = h / 2
+            const ex = w, ey = h
+            ctx.moveTo(x, y + cy)
+            ctx.bezierCurveTo(x, y + cy - cy * kappa, x + cx - cx * kappa, y, x + cx, y)
+            ctx.bezierCurveTo(x + cx + cx * kappa, y, x + ex, y + cy - cy * kappa, x + ex, y + cy)
+            ctx.bezierCurveTo(x + ex, y + cy + cy * kappa, x + cx + cx * kappa, y + ey, x + cx, y + ey)
+            ctx.bezierCurveTo(x + cx - cx * kappa, y + ey, x, y + cy + cy * kappa, x, y + cy)
+            ctx.closePath()
+        }
+        // Neu zeichnen bei jeder relevanten Änderung (Punkte/Farben/Zoom).
+        Connections {
+            target: box
+            function onWidthChanged()          { shape.requestPaint() }
+            function onHeightChanged()         { shape.requestPaint() }
+            function onBoxPointsChanged()      { shape.requestPaint() }
+            function onStrokeColorChanged()    { shape.requestPaint() }
+            function onLineWidthChanged()      { shape.requestPaint() }
+            function onFillColorChanged()      { shape.requestPaint() }
+            function onPageScaleChanged()      { shape.requestPaint() }
+        }
+        Component.onCompleted: requestPaint()
+    }
+
+    // ── Rahmen (nur Edit-Modus mit Auswahl-Werkzeug; Akzent bei Auswahl) ──────
     Rectangle {
         anchors.fill: parent
         color: "transparent"
-        visible: box.editMode
+        visible: box.editMode && box.selectTool
         border.color: box.selected ? App.themeAccent
                                    : Qt.rgba(App.themeAccent.r, App.themeAccent.g,
                                              App.themeAccent.b, 0.45)
@@ -184,6 +291,7 @@ Item {
     // ── Text (Anzeige + Inline-Bearbeitung) ───────────────────────────────────
     TextEdit {
         id: edit
+        visible: box.isText
         anchors.fill: parent
         padding: box.ctl.boxPaddingPt * box.pageScale   // gleiche Konstante wie Export
         clip: false                        // Überlauf sichtbar — wie im Export
@@ -210,7 +318,7 @@ Item {
         verticalAlignment: box.vAlign === 1 ? TextEdit.AlignVCenter
                                             : TextEdit.AlignTop
 
-        Component.onCompleted: text = box.boxText
+        Component.onCompleted: if (box.isText) text = box.boxText
         // Live-Transliteration (falls aktiv): gezieltes remove()/insert() VOR
         // updateText, damit der finale Zielschrift-Text ins Modell wandert.
         // Der Guard verhindert Re-Entranz durch die eigene Edition; das
@@ -238,13 +346,13 @@ Item {
         Keys.onEscapePressed: (e) => { box.finishEditing(); e.accepted = true }
     }
     // Modell → Anzeige (Undo/Redo/Sidecar), nur außerhalb einer Bearbeitung.
-    onBoxTextChanged: if (!editing && edit.text !== boxText) edit.text = boxText
+    onBoxTextChanged: if (isText && !editing && edit.text !== boxText) edit.text = boxText
 
     // ── Platzhalter in leerer Box (fester Grauton: lesbar auf weißer Seite) ───
     Text {
         anchors.fill: parent
         anchors.margins: box.ctl.boxPaddingPt * box.pageScale
-        visible: box.editMode && !box.editing && box.boxText.length === 0
+        visible: box.isText && box.editMode && !box.editing && box.boxText.length === 0
         text: App.uiText(App.language, "PdfEditEmptyHint")
         color: "#9aa0a6"
         font.pixelSize: Math.max(8, box.fontSizePt * box.pageScale * 0.85)
@@ -261,7 +369,7 @@ Item {
     MouseArea {
         id: moveArea
         anchors.fill: parent
-        enabled: box.editMode && !box.editing
+        enabled: box.editMode && box.selectTool && !box.editing
         visible: enabled
         acceptedButtons: Qt.LeftButton
         cursorShape: box.selected ? Qt.SizeAllCursor : Qt.PointingHandCursor
@@ -289,8 +397,9 @@ Item {
             if (!moved && Math.abs(nx - box.xPt) + Math.abs(ny - box.yPt) < 1.5)
                 return
             moved = true
-            // Zeilenfang (falls aktiv): Oberkante an erkannte PDF-Textzeile.
-            if (box.surface)
+            // Zeilenfang (falls aktiv): Oberkante an erkannte PDF-Textzeile —
+            // nur für TEXT-Notizen sinnvoll (Zeichnungen bewegen sich frei).
+            if (box.surface && box.isText)
                 ny = box.surface.snapYPt(box.pageIndex, ny, box.hPt)
             nx = Math.max(0, Math.min(nx, Math.max(0, box.pageWPt - box.wPt)))
             // y bewusst NICHT klemmen: über den unteren/oberen Seitenrand
@@ -320,7 +429,7 @@ Item {
     //  Cursorform und welche Kanten das Ziehen bewegt. Mindestgrößen kommen aus
     //  PdfEdit (dieselben Konstanten wie der Controller), Klemmen an die Seite.
     Repeater {
-        model: box.selected && !box.editing
+        model: box.selected && box.selectTool && !box.editing
                ? [ { hx: -1, hy: -1 }, { hx: 0, hy: -1 }, { hx: 1, hy: -1 },
                    { hx: -1, hy:  0 },                    { hx: 1, hy:  0 },
                    { hx: -1, hy:  1 }, { hx: 0, hy:  1 }, { hx: 1, hy:  1 } ]
@@ -370,9 +479,10 @@ Item {
                     if (handle.hx > 0) {                          w = startRect.width  + dxPt }
                     if (handle.hy < 0) { y = startRect.y + dyPt; h = startRect.height - dyPt }
                     if (handle.hy > 0) {                          h = startRect.height + dyPt }
-                    // Mindestgröße halten, OHNE die gegenüberliegende Kante zu bewegen.
-                    const minW = box.ctl.minBoxWPt
-                    const minH = box.ctl.minBoxHPt
+                    // Mindestgröße halten, OHNE die gegenüberliegende Kante zu
+                    // bewegen — kind-abhängig (Zeichnungen dürfen kleiner werden).
+                    const minW = box.minWPt
+                    const minH = box.minHPt
                     if (w < minW) { if (handle.hx < 0) x = startRect.x + startRect.width  - minW; w = minW }
                     if (h < minH) { if (handle.hy < 0) y = startRect.y + startRect.height - minH; h = minH }
                     // In die Seite klemmen.

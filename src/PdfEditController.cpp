@@ -26,6 +26,7 @@
 #include <QRunnable>
 #include <QMetaObject>
 #include <QCoreApplication>
+#include <QtMath>
 #include <utility>
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -171,15 +172,87 @@ private:
         return true;
     }
 
-    // Zeichnet eine Notiz exakt wie die QML-Anzeige: Post-it-Optik (versetzter
-    // Schatten, Papierfläche = highlight inkl. Alpha, Eselsohr unten rechts),
-    // dann der Text via QTextLayout (gleiche Text-Engine wie QML TextEdit;
-    // Umbruch WrapAtWordBoundaryOrAnywhere = TextEdit.Wrap). Vertikal je
-    // b.vAlign OBEN (Standard, wie Word-Textfelder) oder ZENTRIERT. KEIN
-    // Clipping — QML zeigt Überlauf ebenfalls an (clip:false) → WYSIWYG; bei
-    // zentriertem Überlauf wird der Offset negativ (symmetrisch wie Anzeige).
+    // Pfeilspitze: zwei kurze Schenkel am Endpunkt, Länge/Winkel aus der
+    // Linienbreite abgeleitet (identische Geometrie im QML-Delegate; Maße in
+    // PDF-Punkten).
+    static void drawArrowHead(QPainter& p, const QPointF& from, const QPointF& to,
+                              qreal lineWidth) {
+        const qreal ang = std::atan2(to.y() - from.y(), to.x() - from.x());
+        const qreal len = qMax<qreal>(10.0, lineWidth * 4.0);
+        const qreal spread = M_PI / 7.0;                 // ~25.7°
+        const QPointF a(to.x() - len * std::cos(ang - spread),
+                        to.y() - len * std::sin(ang - spread));
+        const QPointF b(to.x() - len * std::cos(ang + spread),
+                        to.y() - len * std::sin(ang + spread));
+        p.drawLine(to, a);
+        p.drawLine(to, b);
+    }
+
+    // Zeichnet eine Annotation exakt wie die QML-Anzeige. Text-Notizen:
+    // Post-it-Optik (versetzter Schatten, Papierfläche = highlight inkl. Alpha,
+    // Eselsohr unten rechts), dann der Text via QTextLayout (gleiche Text-
+    // Engine wie QML TextEdit; Umbruch WrapAtWordBoundaryOrAnywhere =
+    // TextEdit.Wrap). Vertikal je b.vAlign OBEN (Standard, wie Word-Text-
+    // felder) oder ZENTRIERT. KEIN Clipping — QML zeigt Überlauf ebenfalls an
+    // (clip:false) → WYSIWYG; bei zentriertem Überlauf wird der Offset negativ
+    // (symmetrisch wie Anzeige). Zeichnungen (Freihand/Pfeil/Rechteck/Ellipse)
+    // laufen 1:1 in PDF-Punkten — dieselbe Geometrie wie der Canvas im
+    // PdfEditBox-Delegate (Bild-Editor-Muster).
     void drawBox(QPainter& p, const PdfEditBox& b) {
         p.save();
+        p.setRenderHint(QPainter::Antialiasing, true);
+
+        switch (b.kind) {
+        case PdfAnnKind::Freehand: {
+            if (b.points.size() >= 2) {
+                QPen pen(b.stroke, qMax<qreal>(0.2, b.lineWidth));
+                pen.setCapStyle(Qt::RoundCap);
+                pen.setJoinStyle(Qt::RoundJoin);
+                p.setPen(pen);
+                QPainterPath path(b.points.first());
+                for (int i = 1; i < b.points.size(); ++i)
+                    path.lineTo(b.points.at(i));
+                p.drawPath(path);
+            } else if (b.points.size() == 1) {
+                p.setPen(Qt::NoPen);
+                p.setBrush(b.stroke);
+                const qreal r = qMax<qreal>(0.2, b.lineWidth) * 0.5;
+                p.drawEllipse(b.points.first(), r, r);
+            }
+            p.restore();
+            return;
+        }
+        case PdfAnnKind::Arrow: {
+            if (b.points.size() >= 2) {
+                QPen pen(b.stroke, qMax<qreal>(0.2, b.lineWidth));
+                pen.setCapStyle(Qt::RoundCap);
+                pen.setJoinStyle(Qt::RoundJoin);
+                p.setPen(pen);
+                const QPointF from = b.points.first();
+                const QPointF to   = b.points.at(1);
+                p.drawLine(from, to);
+                drawArrowHead(p, from, to, b.lineWidth);
+            }
+            p.restore();
+            return;
+        }
+        case PdfAnnKind::Rect: {
+            if (b.fill.alpha() > 0) p.setBrush(b.fill); else p.setBrush(Qt::NoBrush);
+            p.setPen(QPen(b.stroke, qMax<qreal>(0.2, b.lineWidth)));
+            p.drawRect(b.rect);
+            p.restore();
+            return;
+        }
+        case PdfAnnKind::Ellipse: {
+            if (b.fill.alpha() > 0) p.setBrush(b.fill); else p.setBrush(Qt::NoBrush);
+            p.setPen(QPen(b.stroke, qMax<qreal>(0.2, b.lineWidth)));
+            p.drawEllipse(b.rect);
+            p.restore();
+            return;
+        }
+        case PdfAnnKind::Text:
+            break;                                   // fällt in die Notiz-Zeichnung
+        }
 
         const bool paper = b.highlight.alpha() > 0;
         if (paper) {
@@ -321,10 +394,23 @@ void PdfEditController::setEditMode(bool on) {
     if (m_editMode == on)
         return;
     finishOpenSessions();
+    finishDrawSession();
     m_editMode = on;
-    if (!on)
-        setSelectedId(-1);
+    if (!on) { setTool(Select); setSelectedId(-1); }
     emit editModeChanged();
+}
+
+void PdfEditController::setTool(int t) {
+    if (t < Select || t > EllipseTool || m_tool == t)
+        return;
+    finishOpenSessions();
+    finishDrawSession();
+    m_tool = t;
+    // Beim Wechsel auf ein Zeichen-/Text-Werkzeug die Auswahl aufheben (keine
+    // schwebende Toolbar über einer alten Auswahl während des Zeichnens).
+    if (t != Select)
+        setSelectedId(-1);
+    emit toolChanged();
 }
 
 void PdfEditController::setSelectedId(int id) {
@@ -360,6 +446,7 @@ void PdfEditController::setDocument(const QString& pathOrUrl) {
         return;                                     // idempotent
 
     finishOpenSessions();
+    finishDrawSession();
     // Auto-Sicherung: ungesicherte Änderungen des VORHERIGEN Dokuments landen
     // im Sidecar — Navigation verliert nie stillschweigend Bearbeitungen.
     if (!m_docPath.isEmpty() && !m_stack.isClean())
@@ -367,6 +454,7 @@ void PdfEditController::setDocument(const QString& pathOrUrl) {
 
     m_docPath = local;
     setSelectedId(-1);
+    setTool(Select);
     m_stack.clear();                                // setzt zugleich auf „clean"
     m_model.clearAll();
     m_nextId = 1;
@@ -379,10 +467,12 @@ void PdfEditController::releaseDocument() {
     if (m_docPath.isEmpty())
         return;
     finishOpenSessions();
+    finishDrawSession();
     if (!m_stack.isClean())
         saveOverlay();
     m_docPath.clear();
     setSelectedId(-1);
+    setTool(Select);
     m_stack.clear();
     m_model.clearAll();
     m_nextId = 1;
@@ -432,6 +522,97 @@ int PdfEditController::addAnchoredTextBox(int page, qreal xPt, qreal yPt,
     return b.id;
 }
 
+// ── Zeichen-Session (Freihand/Pfeil/Rechteck/Ellipse — analog Bild-Editor) ───
+int PdfEditController::beginDraw(int kind, int page, qreal xPt, qreal yPt) {
+    if (m_docPath.isEmpty() || page < 0
+        || kind < static_cast<int>(PdfAnnKind::Freehand)
+        || kind > static_cast<int>(PdfAnnKind::Ellipse))
+        return -1;
+    finishOpenSessions();
+    finishDrawSession();
+
+    PdfEditBox b = seededDraw(static_cast<PdfAnnKind>(kind));
+    b.id   = m_nextId++;
+    b.page = page;
+    m_drawStart = QPointF(xPt, yPt);
+    m_drawPage  = page;
+    switch (b.kind) {
+    case PdfAnnKind::Freehand:
+        b.points = { QPointF(xPt, yPt) };
+        b.recomputeBounds();
+        break;
+    case PdfAnnKind::Arrow:
+        b.points = { QPointF(xPt, yPt), QPointF(xPt, yPt) };
+        b.recomputeBounds();
+        break;
+    default:                                        // Rect / Ellipse
+        b.rect = QRectF(xPt, yPt, 0.0, 0.0);
+        break;
+    }
+    // LIVE einfügen (Vorschau) — KEIN Kommando; das kommt erst bei endDraw().
+    m_model.insertBoxAt(m_model.count(), b);
+    m_drawId = b.id;
+    return b.id;
+}
+
+void PdfEditController::updateDraw(int id, qreal xPt, qreal yPt) {
+    if (id != m_drawId)
+        return;
+    const PdfEditBox* b = m_model.boxById(id);
+    if (!b)
+        return;
+    switch (b->kind) {
+    case PdfAnnKind::Freehand: {
+        QVector<QPointF> pts = b->points;
+        pts.append(QPointF(xPt, yPt));
+        m_model.applyPoints(id, pts);
+        break;
+    }
+    case PdfAnnKind::Arrow: {
+        QVector<QPointF> pts = b->points;
+        if (pts.size() < 2) pts.resize(2);
+        pts[0] = m_drawStart;
+        pts[1] = QPointF(xPt, yPt);
+        m_model.applyPoints(id, pts);
+        break;
+    }
+    default: {                                      // Rect / Ellipse
+        const QRectF r = QRectF(m_drawStart, QPointF(xPt, yPt)).normalized();
+        m_model.applyGeometry(id, r);
+        break;
+    }
+    }
+}
+
+void PdfEditController::endDraw(int id) {
+    if (id != m_drawId)
+        return;
+    m_drawId = -1;
+    const PdfEditBox* b = m_model.boxById(id);
+    if (!b) return;
+    PdfEditBox copy = *b;
+
+    // Entartete Zeichnungen verwerfen (reiner Klick ohne Zug).
+    const bool tooSmall =
+        (copy.isStroke() && copy.points.size() < 2)
+        || (!copy.isStroke() && (copy.rect.width() < 1.5 && copy.rect.height() < 1.5));
+    // Die Live-Instanz wieder entfernen (ohne Kommando) …
+    m_model.removeById(id);
+    if (tooSmall)
+        return;
+    // … und als EIN Add-Kommando neu einsetzen (Undo entfernt die Zeichnung).
+    pushCommand(new PdfEditAddCommand(&m_model, copy, m_model.count()));
+    // Zeichen-Defaults nachziehen (Stil-Erben für die nächste Zeichnung).
+    m_defStroke = copy.stroke; m_defLineWidth = copy.lineWidth; m_defFill = copy.fill;
+    ++m_defaultRev; emit defaultRevChanged();
+    setSelectedId(copy.id);
+}
+
+void PdfEditController::finishDrawSession() {
+    if (m_drawId >= 0)
+        endDraw(m_drawId);
+}
+
 void PdfEditController::removeBox(int id) {
     const int row = m_model.indexOfId(id);
     const PdfEditBox* b = m_model.boxById(id);
@@ -450,24 +631,46 @@ void PdfEditController::removeBox(int id) {
 PdfEditBox PdfEditController::seededBox() const {
     PdfEditBox b = m_textTpl;                        // Schrift/Farben/Deckkraft/Ausrichtung
     b.id       = 0;
+    b.kind     = PdfAnnKind::Text;
     b.text.clear();                                  // aber OHNE Text
+    b.points.clear();
     b.anchored = false;
     return b;
 }
 
-void PdfEditController::mirrorToTemplate(PdfEditField f, const QVariant& v) {
-    switch (f) {
-    case PdfEditField::FontFamily: m_textTpl.fontFamily = v.toString();     break;
-    case PdfEditField::FontSize:   m_textTpl.fontSizePt = v.toReal();       break;
-    case PdfEditField::Bold:       m_textTpl.bold       = v.toBool();       break;
-    case PdfEditField::Italic:     m_textTpl.italic     = v.toBool();       break;
-    case PdfEditField::Underline:  m_textTpl.underline  = v.toBool();       break;
-    case PdfEditField::Color:      m_textTpl.color      = v.value<QColor>();break;
-    case PdfEditField::Highlight:  m_textTpl.highlight  = v.value<QColor>();break;
-    case PdfEditField::Alignment:  m_textTpl.alignment  = v.toInt();        break;
-    case PdfEditField::VAlign:     m_textTpl.vAlign     = v.toInt();        break;
-    default: break;
+PdfEditBox PdfEditController::seededDraw(PdfAnnKind kind) const {
+    PdfEditBox b;
+    b.kind      = kind;
+    b.stroke    = m_defStroke;
+    b.lineWidth = m_defLineWidth;
+    b.fill      = m_defFill;
+    return b;
+}
+
+void PdfEditController::mirrorToTemplate(PdfEditField f, const QVariant& v, bool textKind) {
+    if (textKind) {
+        switch (f) {
+        case PdfEditField::FontFamily: m_textTpl.fontFamily = v.toString();     break;
+        case PdfEditField::FontSize:   m_textTpl.fontSizePt = v.toReal();       break;
+        case PdfEditField::Bold:       m_textTpl.bold       = v.toBool();       break;
+        case PdfEditField::Italic:     m_textTpl.italic     = v.toBool();       break;
+        case PdfEditField::Underline:  m_textTpl.underline  = v.toBool();       break;
+        case PdfEditField::Color:      m_textTpl.color      = v.value<QColor>();break;
+        case PdfEditField::Highlight:  m_textTpl.highlight  = v.value<QColor>();break;
+        case PdfEditField::Alignment:  m_textTpl.alignment  = v.toInt();        break;
+        case PdfEditField::VAlign:     m_textTpl.vAlign     = v.toInt();        break;
+        default: break;
+        }
+    } else {
+        switch (f) {
+        case PdfEditField::Stroke:    m_defStroke    = v.value<QColor>(); break;
+        case PdfEditField::LineWidth: m_defLineWidth = v.toReal();        break;
+        case PdfEditField::Fill:      m_defFill      = v.value<QColor>(); break;
+        default: break;
+        }
     }
+    ++m_defaultRev;
+    emit defaultRevChanged();
 }
 
 void PdfEditController::copySelected() {
@@ -482,10 +685,15 @@ void PdfEditController::paste() {
     if (!m_hasClip || m_docPath.isEmpty())
         return;
     finishOpenSessions();
+    finishDrawSession();
     PdfEditBox b = m_clip;                           // inkl. Text + allen Einstellungen
     b.id = m_nextId++;
-    // Leicht versetzt auf derselben Seite, damit die Kopie sichtbar liegt.
+    // Leicht versetzt auf derselben Seite, damit die Kopie sichtbar liegt;
+    // Strich-Punkte wandern synchron mit.
     b.rect.translate(14.0, 14.0);
+    for (QPointF& p : b.points)
+        p += QPointF(14.0, 14.0);
+    setTool(Select);
     pushCommand(new PdfEditAddCommand(&m_model, b, m_model.count()));
     setSelectedId(b.id);
 }
@@ -495,34 +703,73 @@ void PdfEditController::paste() {
 // ─────────────────────────────────────────────────────────────────────────────
 void PdfEditController::beginGeometryEdit(int id) {
     finishOpenSessions();
+    finishDrawSession();
     const PdfEditBox* b = m_model.boxById(id);
     if (!b)
         return;
     m_geoEditId  = id;
     m_geoOldPage = b->page;
     m_geoOld     = b->rect;
+    m_geoOldPts  = b->points;
+}
+
+//  Striche: Punkte proportional vom Session-Basis- in das neue Rechteck
+//  abbilden (Verschieben = Translation, Skalieren = Streckung) — identische
+//  Mathematik wie ImageEditController::updateGeometry.
+static QVector<QPointF> transformPoints(const QVector<QPointF>& oldPts,
+                                        const QRectF& oldRect, const QRectF& r) {
+    QVector<QPointF> pts;
+    if (oldPts.isEmpty() || oldRect.width() <= 0.0 || oldRect.height() <= 0.0)
+        return pts;
+    const qreal sx = r.width()  / oldRect.width();
+    const qreal sy = r.height() / oldRect.height();
+    pts.reserve(oldPts.size());
+    for (const QPointF& p : oldPts)
+        pts.append(QPointF(r.x() + (p.x() - oldRect.x()) * sx,
+                           r.y() + (p.y() - oldRect.y()) * sy));
+    return pts;
 }
 
 void PdfEditController::updateGeometry(int id, qreal xPt, qreal yPt,
                                        qreal wPt, qreal hPt) {
     if (id != m_geoEditId)
         return;                                     // nur innerhalb einer Session
-    QRectF r(xPt, yPt, qMax(kMinBoxWPt, wPt), qMax(kMinBoxHPt, hPt));
+    const PdfEditBox* b = m_model.boxById(id);
+    if (!b)
+        return;
+    // Zeichnungen dürfen deutlich kleiner werden als Textboxen.
+    const qreal minW = (b->kind == PdfAnnKind::Text) ? kMinBoxWPt : kMinDrawPt;
+    const qreal minH = (b->kind == PdfAnnKind::Text) ? kMinBoxHPt : kMinDrawPt;
+    QRectF r(xPt, yPt, qMax(minW, wPt), qMax(minH, hPt));
     if (r.x() < 0.0) r.moveLeft(0.0);
     if (r.y() < 0.0) r.moveTop(0.0);
-    m_model.applyGeometry(id, r);                   // live, KEIN Kommando je Move
+    if (!m_geoOldPts.isEmpty())
+        m_model.applyPlacementPoints(id, b->page, r,
+                                     transformPoints(m_geoOldPts, m_geoOld, r));
+    else
+        m_model.applyGeometry(id, r);               // live, KEIN Kommando je Move
 }
 
 void PdfEditController::updatePlacement(int id, int page, qreal xPt, qreal yPt,
                                         qreal wPt, qreal hPt) {
     if (id != m_geoEditId)
         return;                                     // nur innerhalb einer Session
-    QRectF r(xPt, yPt, qMax(kMinBoxWPt, wPt), qMax(kMinBoxHPt, hPt));
+    const PdfEditBox* b = m_model.boxById(id);
+    if (!b)
+        return;
+    const qreal minW = (b->kind == PdfAnnKind::Text) ? kMinBoxWPt : kMinDrawPt;
+    const qreal minH = (b->kind == PdfAnnKind::Text) ? kMinBoxHPt : kMinDrawPt;
+    QRectF r(xPt, yPt, qMax(minW, wPt), qMax(minH, hPt));
     if (r.x() < 0.0) r.moveLeft(0.0);
     // y bewusst NICHT klemmen: über den Seitenrand gezogene Zwischenzustände
     // (seitenübergreifendes Verschieben) brauchen y < 0 bzw. y > Seitenhöhe;
-    // die Zielseite + finale Klemmung liefert QML beim Loslassen.
-    m_model.applyPlacement(id, page, r);            // live, KEIN Kommando je Move
+    // die Zielseite + finale Klemmung liefert QML beim Loslassen. Strich-
+    // Punkte wandern synchron mit (Translation/Streckung aus der Session-Basis).
+    if (!m_geoOldPts.isEmpty())
+        m_model.applyPlacementPoints(id, page, r,
+                                     transformPoints(m_geoOldPts, m_geoOld, r));
+    else
+        m_model.applyPlacement(id, page, r);        // live, KEIN Kommando je Move
 }
 
 void PdfEditController::endGeometryEdit(int id) {
@@ -536,10 +783,12 @@ void PdfEditController::finishGeometrySession() {
     const int id = m_geoEditId;
     m_geoEditId = -1;
     const PdfEditBox* b = m_model.boxById(id);
-    if (b && (b->rect != m_geoOld || b->page != m_geoOldPage))
+    if (b && (b->rect != m_geoOld || b->page != m_geoOldPage
+              || b->points != m_geoOldPts))
         pushCommand(new PdfEditGeometryCommand(&m_model, id,
-                                               m_geoOldPage, m_geoOld,
-                                               b->page, b->rect));
+                                               m_geoOldPage, m_geoOld, m_geoOldPts,
+                                               b->page, b->rect, b->points));
+    m_geoOldPts.clear();
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -581,11 +830,22 @@ void PdfEditController::finishTextSession() {
 //  Stil/Format
 // ─────────────────────────────────────────────────────────────────────────────
 void PdfEditController::setBoxField(int id, PdfEditField f, const QVariant& v) {
+    if (id < 0) {
+        // Nur die Vorlage/Default für NEUE Annotationen setzen (kein Kommando):
+        // Zeichen-Felder → Zeichen-Defaults, sonst Text-Vorlage.
+        const bool draw = (f == PdfEditField::Stroke || f == PdfEditField::LineWidth
+                           || f == PdfEditField::Fill);
+        mirrorToTemplate(f, v, !draw);
+        return;
+    }
     const PdfEditBox* b = m_model.boxById(id);
     if (!b)
         return;
     QVariant old;
     switch (f) {
+    case PdfEditField::Stroke:     old = b->stroke;     break;
+    case PdfEditField::LineWidth:  old = b->lineWidth;  break;
+    case PdfEditField::Fill:       old = b->fill;       break;
     case PdfEditField::FontFamily: old = b->fontFamily; break;
     case PdfEditField::FontSize:   old = b->fontSizePt; break;
     case PdfEditField::Bold:       old = b->bold;       break;
@@ -595,14 +855,26 @@ void PdfEditController::setBoxField(int id, PdfEditField f, const QVariant& v) {
     case PdfEditField::Highlight:  old = b->highlight;  break;
     case PdfEditField::Alignment:  old = b->alignment;  break;
     case PdfEditField::VAlign:     old = b->vAlign;     break;
-    default: return;                                // Text/Geometry: eigene Wege
+    default: return;                                // Text/Geometry/Points: eigene Wege
     }
-    mirrorToTemplate(f, v);                          // neue Notizen erben diesen Stil
+    // Vorlage nachziehen (Stil-Erben), passend zur Annotationsart.
+    mirrorToTemplate(f, v, b->kind == PdfAnnKind::Text);
     if (old == v)
         return;
     pushCommand(new PdfEditFieldCommand(&m_model, id, f, old, v));
 }
 
+void PdfEditController::setBoxStroke(int id, const QColor& c) {
+    if (c.isValid())
+        setBoxField(id, PdfEditField::Stroke, c);
+}
+void PdfEditController::setBoxLineWidth(int id, qreal wPt) {
+    setBoxField(id, PdfEditField::LineWidth, qBound(0.2, wPt, 72.0));
+}
+void PdfEditController::setBoxFill(int id, const QColor& c) {
+    if (c.isValid())
+        setBoxField(id, PdfEditField::Fill, c);
+}
 void PdfEditController::setBoxFont(int id, const QString& family) {
     setBoxField(id, PdfEditField::FontFamily, family);
 }
@@ -641,10 +913,19 @@ QVariantMap PdfEditController::boxInfo(int id) const {
     if (!b)
         return m;
     m.insert(QStringLiteral("page"),           b->page);
+    m.insert(QStringLiteral("kind"),           static_cast<int>(b->kind));
+    m.insert(QStringLiteral("isText"),         b->kind == PdfAnnKind::Text);
+    m.insert(QStringLiteral("isStroke"),       b->isStroke());
+    m.insert(QStringLiteral("isShape"),        b->kind == PdfAnnKind::Rect
+                                               || b->kind == PdfAnnKind::Ellipse);
     m.insert(QStringLiteral("xPt"),            b->rect.x());
     m.insert(QStringLiteral("yPt"),            b->rect.y());
     m.insert(QStringLiteral("wPt"),            b->rect.width());
     m.insert(QStringLiteral("hPt"),            b->rect.height());
+    m.insert(QStringLiteral("strokeColor"),    b->stroke);
+    m.insert(QStringLiteral("lineWidth"),      b->lineWidth);
+    m.insert(QStringLiteral("fillColor"),      b->fill);
+    m.insert(QStringLiteral("hasFill"),        b->fill.alpha() > 0);
     m.insert(QStringLiteral("text"),           b->text);
     m.insert(QStringLiteral("fontFamily"),     b->fontFamily);
     m.insert(QStringLiteral("fontSizePt"),     b->fontSizePt);
@@ -660,6 +941,27 @@ QVariantMap PdfEditController::boxInfo(int id) const {
     return m;
 }
 
+QVariantMap PdfEditController::defaultInfo() const {
+    // Vorlagen-Defaults für neue Annotationen (Panel liest sie rev-getrieben
+    // über defaultRev, wenn nichts ausgewählt ist — Muster wie Bild-Editor).
+    QVariantMap m;
+    m.insert(QStringLiteral("strokeColor"),    m_defStroke);
+    m.insert(QStringLiteral("lineWidth"),      m_defLineWidth);
+    m.insert(QStringLiteral("fillColor"),      m_defFill);
+    m.insert(QStringLiteral("hasFill"),        m_defFill.alpha() > 0);
+    m.insert(QStringLiteral("fontFamily"),     m_textTpl.fontFamily);
+    m.insert(QStringLiteral("fontSizePt"),     m_textTpl.fontSizePt);
+    m.insert(QStringLiteral("bold"),           m_textTpl.bold);
+    m.insert(QStringLiteral("italic"),         m_textTpl.italic);
+    m.insert(QStringLiteral("underline"),      m_textTpl.underline);
+    m.insert(QStringLiteral("textColor"),      m_textTpl.color);
+    m.insert(QStringLiteral("highlightColor"), m_textTpl.highlight);
+    m.insert(QStringLiteral("hasHighlight"),   m_textTpl.highlight.alpha() > 0);
+    m.insert(QStringLiteral("alignment"),      m_textTpl.alignment);
+    m.insert(QStringLiteral("vAlign"),         m_textTpl.vAlign);
+    return m;
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 //  Undo/Redo
 // ─────────────────────────────────────────────────────────────────────────────
@@ -669,11 +971,13 @@ void PdfEditController::pushCommand(QUndoCommand* cmd) {
 
 void PdfEditController::undo() {
     finishOpenSessions();                           // deterministisch abschließen
+    finishDrawSession();
     m_stack.undo();
 }
 
 void PdfEditController::redo() {
     finishOpenSessions();
+    finishDrawSession();
     m_stack.redo();
 }
 
@@ -688,6 +992,7 @@ bool PdfEditController::saveOverlay() {
     if (m_docPath.isEmpty())
         return false;
     finishOpenSessions();
+    finishDrawSession();
 
     const QString sc = sidecarPath(m_docPath);
     bool ok = false;
@@ -781,6 +1086,7 @@ void PdfEditController::exportPdf() {
     if (m_busy || m_docPath.isEmpty())
         return;
     finishOpenSessions();
+    finishDrawSession();
 
     const QString target = exportTargetPath();
     if (target.isEmpty())

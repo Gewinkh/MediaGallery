@@ -34,17 +34,19 @@ void PdfEditRemoveCommand::undo() {
 // ─────────────────────────────────────────────────────────────────────────────
 PdfEditGeometryCommand::PdfEditGeometryCommand(PdfEditModel* model, int id,
                                                int oldPage, const QRectF& oldRect,
-                                               int newPage, const QRectF& newRect)
+                                               const QVector<QPointF>& oldPts,
+                                               int newPage, const QRectF& newRect,
+                                               const QVector<QPointF>& newPts)
     : m_model(model), m_id(id)
-    , m_oldPage(oldPage), m_old(oldRect)
-    , m_newPage(newPage), m_new(newRect) {}
+    , m_oldPage(oldPage), m_old(oldRect), m_oldPts(oldPts)
+    , m_newPage(newPage), m_new(newRect), m_newPts(newPts) {}
 
 void PdfEditGeometryCommand::redo() {
-    m_model->applyPlacement(m_id, m_newPage, m_new);
+    m_model->applyPlacementPoints(m_id, m_newPage, m_new, m_newPts);
 }
 
 void PdfEditGeometryCommand::undo() {
-    m_model->applyPlacement(m_id, m_oldPage, m_old);
+    m_model->applyPlacementPoints(m_id, m_oldPage, m_old, m_oldPts);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

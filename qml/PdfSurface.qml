@@ -35,6 +35,8 @@ Item {
     property real   panX: 0                   // horizontaler Schwenk-Offset (Zoom-Pan)
     property int    _savePage: 0             // Resize: die stabile Seite sichern …
     property int    _stablePage: 0           // zuletzt SICHER erkannte Seite (Quelle für _savePage)
+    property real   _saveFrac: 0             // … samt Innerseiten-Scrollanteil (0..1)
+    property real   _stableFrac: 0           // zuletzt sicher erkannter Innerseiten-Anteil
     property bool   _resizing: false         // Resize-Phase aktiv → updateCurrentPage gesperrt
     property bool   _restoring: false        // … und danach deterministisch wiederherstellen
 
@@ -319,6 +321,7 @@ Item {
             currentPage = 0
             panX = 0                         // Schwenk zurücksetzen (neues Dokument)
             _stablePage = 0                  // stabile Seite zurücksetzen
+            _stableFrac = 0                  // … samt Innerseiten-Anteil
             _resizing = false; _restoring = false
             annotations = []                 // bis der asynchrone Scan zurueckkommt
             clearSelection()                 // evtl. Auswahl des vorherigen PDFs verwerfen
@@ -346,7 +349,8 @@ Item {
             // Bei einem bereits warmen (Ready) Dokument feuert kein statusChanged →
             // Scrollposition hier zuruecksetzen und den Warmlauf direkt starten.
             if (root.docReady) {
-                pages.contentY = 0; root.currentPage = 0
+                // Origin-bewusst an den Dokumentanfang (s. clampContentY).
+                pages.positionViewAtBeginning(); root.currentPage = 0
                 _beginWarmup()
             }
             // Annotationen NICHT blockierend holen → der PDF-Wechsel laggt nicht
@@ -362,7 +366,8 @@ Item {
         target: root.doc
         function onStatusChanged() {
             if (root.doc && root.doc.status === PdfDocument.Ready) {
-                pages.contentY = 0
+                // Origin-bewusst an den Dokumentanfang (s. clampContentY).
+                pages.positionViewAtBeginning()
                 root.currentPage = 0
                 // Erst die sichtbare Seite rendern lassen, dann Puffer+Thumbnails.
                 root._beginWarmup()
@@ -699,6 +704,19 @@ Item {
             root.editCtl.removeBox(root.editCtl.selectedId)
         }
     }
+    // Undo/Redo des Editors (nur im Editmodus). Gesperrt während einer
+    // Inline-Textbearbeitung — dort gehört Strg+Z dem TextEdit (zeichenweises
+    // Undo beim Tippen); das Editor-Undo greift wieder nach dem Commit.
+    Shortcut {
+        sequence: "Ctrl+Z"
+        enabled: root.docReady && root.editCtl.editMode && !root.editCtl.textEditing
+        onActivated: root.editCtl.undo()
+    }
+    Shortcut {
+        sequence: "Ctrl+Shift+Z"
+        enabled: root.docReady && root.editCtl.editMode && !root.editCtl.textEditing
+        onActivated: root.editCtl.redo()
+    }
 
     onCurrentPageChanged: {
         if (thumbs.count > 0) thumbs.positionViewAtIndex(currentPage, ListView.Contain)
@@ -710,16 +728,37 @@ Item {
             root._stablePage = root.currentPage
     }
 
-    // ── Zoom mit Erhaltung der relativen Scrollposition ───────────────────────
+    // ── Zoom mit SEITEN-Verankerung ───────────────────────────────────────────
+    //  Der Punkt in der Viewport-MITTE bleibt beim Zoomen stehen — verankert
+    //  als Seite + Innerseiten-Anteil (dieselbe Mechanik wie die Resize-
+    //  Wiederherstellung). Die frühere reine contentY-Verhältnisrechnung
+    //  (`anchor·ratio`) war Relayout-anfällig: der Zoom ändert ALLE Delegate-
+    //  Höhen, die ListView schätzt nicht instanziierte Seiten und korrigiert
+    //  asynchron (originY-Verschiebung) → die Verhältnisrechnung sprang durch
+    //  die Seiten. Ablauf jetzt: Anker sichern → Zoom setzen → forceLayout
+    //  (neue Höhen deterministisch) → Seite anspringen → Anteil anlegen.
     function setZoom(z) {
         var nz = Math.max(0.25, Math.min(4.0, z))
         if (Math.abs(nz - root.zoom) < 0.0001) return
-        var anchor = pages.contentY + pages.height / 2
-        var ratio = nz / root.zoom
+        // Anker VOR dem Zoom bestimmen: Seite + Anteil unter der Viewport-Mitte.
+        var midY = pages.contentY + pages.height / 2
+        var page = pages.indexAt(pages.width / 2, midY)
+        if (page < 0) page = root._stablePage
+        var it0 = pages.itemAtIndex(page)
+        var frac = (it0 && it0.height > 0)
+                   ? Math.max(0, Math.min(1, (midY - it0.y) / it0.height)) : 0
+        root._restoring = true                  // updateCurrentPage während des Relayouts sperren
         root.zoom = nz
-        pages.contentY = Math.max(0, Math.min(anchor * ratio - pages.height / 2,
-                                              Math.max(0, pages.contentHeight - pages.height)))
+        pages.forceLayout()                     // neue Delegate-Höhen deterministisch anwenden
+        pages.positionViewAtIndex(page, ListView.Center)   // Delegate instanziieren
+        var it = pages.itemAtIndex(page)
+        if (it && it.height > 0)
+            pages.contentY = root.clampContentY(it.y + frac * it.height - pages.height / 2)
+        root.currentPage = page
+        root._stablePage = page
         root.clampPanX()
+        root._restoring = false
+        root.updateCurrentPage()                // _stableFrac auf den neuen Stand
     }
     function zoomIn()  { setZoom(root.zoom + 0.15) }
     function zoomOut() { setZoom(root.zoom - 0.15) }
@@ -747,8 +786,7 @@ Item {
     function panBy(dx, dy) {
         root.panX += dx
         root.clampPanX()
-        var maxY = Math.max(0, pages.contentHeight - pages.height)
-        pages.contentY = Math.max(0, Math.min(pages.contentY - dy, maxY))
+        pages.contentY = root.clampContentY(pages.contentY - dy)
     }
     // Liegt (nx,ny) [0..1] über einer erkannten Textzeile? (Pan vs. Markieren)
     function _overText(page, nx, ny) {
@@ -768,6 +806,22 @@ Item {
         pages.positionViewAtIndex(t, ListView.Beginning)
         root.currentPage = t
     }
+    // ── Origin-bewusste Scroll-Klemmen ────────────────────────────────────────
+    //  ListView kann nach positionViewAtIndex auf eine MITTLERE Seite einen
+    //  verschobenen Content-Ursprung haben (originY ≠ 0): oberhalb liegende,
+    //  noch nicht instanziierte Seiten werden geschätzt und beim Nachladen
+    //  korrigiert — der gültige contentY-Bereich ist dann
+    //  [originY … originY + contentHeight − height]. Klemmen auf [0 … cH−h]
+    //  blockieren das Hochscrollen (y < 0 unerreichbar) und stoppen das
+    //  Runterscrollen zu früh. ALLE manuellen contentY-Zuweisungen laufen
+    //  deshalb über clampContentY().
+    function minContentY() { return pages.originY }
+    function maxContentY() {
+        return pages.originY + Math.max(0, pages.contentHeight - pages.height)
+    }
+    function clampContentY(y) {
+        return Math.max(minContentY(), Math.min(y, maxContentY()))
+    }
     function updateCurrentPage() {
         // Während Resize/Wiederherstellung NICHT überschreiben — sonst driftet die
         // Seite durch die transienten contentY-Änderungen des Relayouts.
@@ -775,28 +829,56 @@ Item {
         if (pages.count <= 0) { root.currentPage = 0; return }
         var idx = pages.indexAt(pages.width / 2, pages.contentY + pages.height / 2)
         if (idx >= 0) root.currentPage = idx
+        // Innerseiten-Scrollanteil (0..1) der stabilen Seite fortschreiben —
+        // Grundlage, um nach einem Resize nicht nur die SEITE, sondern auch
+        // die POSITION innerhalb der Seite wiederherzustellen (das Seiten-
+        // Layout skaliert proportional → der Anteil bleibt gültig).
+        var it = pages.itemAtIndex(root._stablePage)
+        if (it && it.height > 0)
+            root._stableFrac = Math.max(0, Math.min(1,
+                (pages.contentY - it.y) / it.height))
     }
     // Fenster-Resize (auch Split-View: Datei hinzufügen ändert die Kachelgröße):
     // die STABILE Seite (nur außerhalb von Resizes fortgeschrieben, s.
-    // onCurrentPageChanged) merken und nach dem Relayout wiederherstellen → KEIN
-    // Zurückspringen. `_resizing` sperrt updateCurrentPage für die GANZE
-    // Resize-Phase; der Timer feuert erst, wenn die Größenänderung ausläuft.
+    // onCurrentPageChanged) samt Innerseiten-Anteil merken und nach dem Relayout
+    // wiederherstellen → KEIN Zurückspringen, KEIN Verlust der Scrollposition
+    // innerhalb langer Seiten. `_resizing` sperrt updateCurrentPage für die
+    // GANZE Resize-Phase; der Timer feuert erst, wenn die Größenänderung
+    // ausläuft.
     function _preservePageAcrossResize() {
         if (!root.docReady) return
         if (!root._resizing) {
             root._resizing = true
             root._savePage = root._stablePage     // garantiert unverfälschte Seite
+            root._saveFrac = root._stableFrac     // … samt Position in der Seite
         }
         restorePageTimer.restart()
     }
+    // Solange die Kachel VERSTECKT ist (abgepoppte, persistente Split-Seite
+    // während des Datei-Hinzufügens), ist die ListView-Geometrie nicht
+    // verlässlich (kein Fenster, keine Polish-Läufe) — die Wiederherstellung
+    // wartet dann auf das Wieder-Sichtbarwerden; `_resizing` bleibt gesetzt
+    // und sperrt updateCurrentPage (kein Drift durch transiente Zustände).
+    onVisibleChanged: if (visible && _resizing) restorePageTimer.restart()
     Timer {
         id: restorePageTimer
         interval: 90                              // erst nach Ende des Resize-Bursts
         onTriggered: {
+            if (!root.visible || pages.width <= 0 || pages.height <= 0)
+                return                            // versteckt → onVisibleChanged holt nach
             root._restoring = true
+            pages.forceLayout()                   // Geometrie deterministisch machen
             pages.positionViewAtIndex(root._savePage, ListView.Beginning)
+            // Innerseiten-Anteil auf die NEUE Seitenhöhe anwenden (nach
+            // positionViewAtIndex ist das Delegate der Seite instanziiert).
+            // Origin-bewusst klemmen: nach dem Sprung auf eine mittlere Seite
+            // kann originY ≠ 0 sein (s. clampContentY).
+            var it = pages.itemAtIndex(root._savePage)
+            if (it && it.height > 0)
+                pages.contentY = root.clampContentY(it.y + root._saveFrac * it.height)
             root.currentPage = root._savePage
             root._stablePage = root._savePage
+            root._stableFrac = root._saveFrac
             root.clampPanX()
             root._restoring = false
             root._resizing = false
@@ -863,13 +945,13 @@ Item {
             wheel.accepted = true
             return
         }
-        var maxY = Math.max(0, pages.contentHeight - pages.height)
-        if (maxY <= 0) { wheel.accepted = true; return }
+        var scrollable = pages.contentHeight - pages.height
+        if (scrollable <= 0) { wheel.accepted = true; return }
         var raw = (wheel.angleDelta.y !== 0)
                   ? (wheel.angleDelta.y / 120) * (pages.height * root.wheelPageFraction)
                   : wheel.pixelDelta.y * 1.6
         var base = pagesScroll.running ? pagesScroll.to : pages.contentY
-        var tgt = Math.max(0, Math.min(base - raw, maxY))
+        var tgt = root.clampContentY(base - raw)
         pagesScroll.from = pages.contentY
         pagesScroll.to = tgt
         pagesScroll.restart()
@@ -1276,28 +1358,73 @@ Item {
                             }
                         }
 
-                        // ── PDF-Editor: Erstell-/Deselektions-Fänger (nur Edit-
+                        // ── PDF-Editor: Werkzeug-Fänger der Seite (nur Edit-
                         //    Modus). Liegt ÜBER Auswahl-Fänger, Badges und Audio-
                         //    Hotspots (Editmodus hat Vorrang — Annotationen sind
                         //    dann bewusst nicht klickbar), aber UNTER den Box-
-                        //    Delegates: Klick auf eine Box trifft die Box, Klick
-                        //    auf freie Fläche deselektiert bzw. erstellt.
-                        //    Zeilenfang: Trifft der Klick das Fenster einer
-                        //    erkannten Textzeile (−35 %…+135 % der Zeilenhöhe um
-                        //    ihre Oberkante), entsteht eine VERANKERTE Box exakt
-                        //    auf der Zeile (Größe/Schrift aus der Zeile) — sonst
-                        //    eine freie Box an der Klickposition.
+                        //    Delegates: Klick auf eine Box trifft die Box (nur
+                        //    Auswahl-Werkzeug — sonst haben deren MouseAreas
+                        //    enabled:false und die Gesten fallen hierher durch).
+                        //    Routing nach aktivem Werkzeug (Muster Bild-Editor):
+                        //     • Auswählen  → Klick auf freie Fläche wählt ab
+                        //     • Textnotiz  → Klick erstellt eine Notiz; Zeilen-
+                        //       fang: Trifft der Klick das Fenster einer
+                        //       erkannten Textzeile (−35 %…+135 % der Zeilenhöhe
+                        //       um ihre Oberkante), entsteht eine VERANKERTE Box
+                        //       exakt auf der Zeile (Größe/Schrift aus der
+                        //       Zeile) — sonst eine freie Box am Klickpunkt
+                        //     • Stift/Pfeil/Rechteck/Ellipse → Ziehen zeichnet
+                        //       live (Controller-Session; Koordinaten in
+                        //       PDF-Punkten, an die Seite geklemmt)
                         MouseArea {
                             id: createArea
                             anchors.fill: parent
                             enabled: root.editCtl.editMode
                             visible: root.editCtl.editMode
                             acceptedButtons: Qt.LeftButton
-                            cursorShape: Qt.CrossCursor
-                            onClicked: (m) => {
+                            preventStealing: root.editCtl.tool >= 2
+                            cursorShape: root.editCtl.tool === 0 ? Qt.ArrowCursor
+                                                                 : Qt.CrossCursor
+                            property int _drawId: -1
+                            // Mausposition → PDF-Punkte, an die Seite geklemmt.
+                            function _toPt(mx, my) {
+                                var pts = pageCell.pts
+                                if (pts.width <= 0 || pts.height <= 0)
+                                    return null
+                                return { x: Math.max(0, Math.min((mx / pageImg.width)  * pts.width,  pts.width)),
+                                         y: Math.max(0, Math.min((my / pageImg.height) * pts.height, pts.height)) }
+                            }
+                            onPressed: (m) => {
+                                if (root.editCtl.tool < 2)
+                                    return                       // Auswahl/Text: s. onClicked
                                 root.commitEditing()
-                                // Erst-Klick bei bestehender Auswahl: nur abwählen.
-                                if (root.editCtl.selectedId >= 0) {
+                                const p = _toPt(m.x, m.y)
+                                if (!p) return
+                                root.notesVisible = true
+                                // Tool 2..5 → PdfAnnKind 1..4 (Freihand…Ellipse).
+                                _drawId = root.editCtl.beginDraw(root.editCtl.tool - 1,
+                                                                 pageCell.index, p.x, p.y)
+                            }
+                            onPositionChanged: (m) => {
+                                if (_drawId < 0) return
+                                const p = _toPt(m.x, m.y)
+                                if (p) root.editCtl.updateDraw(_drawId, p.x, p.y)
+                            }
+                            onReleased: {
+                                if (_drawId < 0) return
+                                root.editCtl.endDraw(_drawId)
+                                _drawId = -1
+                            }
+                            onCanceled: {
+                                if (_drawId < 0) return
+                                root.editCtl.endDraw(_drawId)
+                                _drawId = -1
+                            }
+                            onClicked: (m) => {
+                                if (root.editCtl.tool >= 2)
+                                    return                       // Zeichnen lief über pressed/released
+                                root.commitEditing()
+                                if (root.editCtl.tool === 0) {   // Auswahl: nur abwählen
                                     root.editCtl.selectedId = -1
                                     return
                                 }
@@ -1473,13 +1600,17 @@ Item {
                 acceptedButtons: Qt.NoButton
                 z: 1
                 onWheel: (wheel) => {
-                    var maxY = Math.max(0, thumbs.contentHeight - thumbs.height)
-                    if (maxY <= 0) { wheel.accepted = true; return }
+                    // Origin-bewusst wie die Hauptansicht (s. clampContentY):
+                    // positionViewAtIndex (Seitensprünge) kann originY ≠ 0 erzeugen.
+                    var scrollable = thumbs.contentHeight - thumbs.height
+                    if (scrollable <= 0) { wheel.accepted = true; return }
+                    var minY = thumbs.originY
+                    var maxY = thumbs.originY + scrollable
                     var raw = (wheel.angleDelta.y !== 0)
                               ? (wheel.angleDelta.y / 120) * (thumbs.height * 0.55)
                               : wheel.pixelDelta.y * 1.6
                     var base = thumbsScroll.running ? thumbsScroll.to : thumbs.contentY
-                    var tgt = Math.max(0, Math.min(base - raw, maxY))
+                    var tgt = Math.max(minY, Math.min(base - raw, maxY))
                     thumbsScroll.from = thumbs.contentY
                     thumbsScroll.to = tgt
                     thumbsScroll.restart()

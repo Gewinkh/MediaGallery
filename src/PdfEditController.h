@@ -42,6 +42,8 @@
 #include <QStringList>
 #include <QVariantMap>
 #include <QRectF>
+#include <QPointF>
+#include <QVector>
 #include <QColor>
 #include <QUndoStack>
 #include <QThreadPool>
@@ -55,8 +57,20 @@ class ISettings;
 
 class PdfEditController : public QObject {
     Q_OBJECT
+public:
+    // Aktives Werkzeug (Panel-Palette). Select = Auswählen/Verschieben/Skalieren;
+    // Werte identisch zum Bild-Editor (ImageEditController::Tool).
+    enum Tool { Select = 0, TextTool, FreehandTool, ArrowTool, RectTool, EllipseTool };
+    Q_ENUM(Tool)
+
+private:
     // Bearbeitungsmodus (View ⇄ Edit) — reiner Zustandswechsel, KEIN Reload.
     Q_PROPERTY(bool editMode READ editMode WRITE setEditMode NOTIFY editModeChanged)
+    // Aktives Werkzeug (0 Auswahl … 5 Ellipse) — s. Tool-Enum.
+    Q_PROPERTY(int  tool READ tool WRITE setTool NOTIFY toolChanged)
+    // Zähler: bumpt bei jeder Änderung der „Vorlagen"-Defaults (neue Annotation)
+    // → Panel/Toolbar lesen defaultInfo() rev-getrieben, wenn nichts ausgewählt.
+    Q_PROPERTY(int  defaultRev READ defaultRev NOTIFY defaultRevChanged)
     // Undo/Redo-Verfügbarkeit (Toolbar-Buttons).
     Q_PROPERTY(bool canUndo READ canUndo NOTIFY undoStateChanged)
     Q_PROPERTY(bool canRedo READ canRedo NOTIFY undoStateChanged)
@@ -110,6 +124,9 @@ public:
     static constexpr qreal kNoteFoldPt     = 10.0;
     static constexpr qreal kNoteShadowDxPt = 2.0;
     static constexpr qreal kNoteShadowDyPt = 3.0;
+    // Mindestgröße von ZEICHNUNGEN (Freihand/Pfeil/Rechteck/Ellipse) beim
+    // Skalieren — deutlich kleiner als Textboxen (dünner Pfeil ist legitim).
+    static constexpr qreal kMinDrawPt      = 4.0;
 
     // Default-Konstruktor für die QML-Instanziierung PRO PdfSurface (dezentraler
     // Editor je geöffneter PDF-Kachel): nutzt die zentrale AppSettings-Instanz.
@@ -121,6 +138,9 @@ public:
 
     bool editMode() const { return m_editMode; }
     void setEditMode(bool on);
+    int  tool() const { return m_tool; }
+    void setTool(int t);
+    int  defaultRev() const { return m_defaultRev; }
     bool canUndo() const { return m_stack.canUndo(); }
     bool canRedo() const { return m_stack.canRedo(); }
     bool dirty() const { return !m_stack.isClean(); }
@@ -159,6 +179,15 @@ public:
     //  abgeleitet, anchored=true.
     Q_INVOKABLE int  addAnchoredTextBox(int page, qreal xPt, qreal yPt,
                                         qreal wPt, qreal hPt);
+    //  Zeichen-Session (Freihand/Pfeil/Rechteck/Ellipse — analog Bild-Editor):
+    //   beginDraw() legt die Annotation LIVE auf der Seite an (sichtbare
+    //   Vorschau, KEIN Kommando), updateDraw() erweitert/skaliert live,
+    //   endDraw() finalisiert → genau EIN Add-Kommando (Undo entfernt die
+    //   ganze Zeichnung). kind = PdfAnnKind (1 Freihand … 4 Ellipse);
+    //   Koordinaten in PDF-Punkten der Seite `page`.
+    Q_INVOKABLE int  beginDraw(int kind, int page, qreal xPt, qreal yPt);
+    Q_INVOKABLE void updateDraw(int id, qreal xPt, qreal yPt);
+    Q_INVOKABLE void endDraw(int id);
     Q_INVOKABLE void removeBox(int id);
 
     // ── Copy / Paste (kachel-lokale Zwischenablage; INKL. Text) ───────────────
@@ -184,6 +213,11 @@ public:
     Q_INVOKABLE void endTextEdit(int id);
 
     // ── Stil/Format (Einzel-Kommandos, mergefähig) ────────────────────────────
+    //  id < 0 → setzt NUR die Vorlage/Default für neue Annotationen (kein
+    //  Kommando); id >= 0 → ändert die Annotation UND aktualisiert die Vorlage.
+    Q_INVOKABLE void setBoxStroke(int id, const QColor& c);
+    Q_INVOKABLE void setBoxLineWidth(int id, qreal wPt);
+    Q_INVOKABLE void setBoxFill(int id, const QColor& c);
     Q_INVOKABLE void setBoxFont(int id, const QString& family);
     Q_INVOKABLE void setBoxFontSize(int id, qreal sizePt);
     Q_INVOKABLE void setBoxBold(int id, bool v);
@@ -195,10 +229,14 @@ public:
     //  Vertikale Textausrichtung: 0 = oben (Word-Textfeld, Standard), 1 = mittig.
     Q_INVOKABLE void setBoxVAlign(int id, int vAlign);
 
-    // Eigenschaften einer Box für Toolbar/Panel: { exists, page, xPt, yPt, wPt,
-    // hPt, text, fontFamily, fontSizePt, bold, italic, underline, textColor,
+    // Eigenschaften einer Box für Toolbar/Panel: { exists, page, kind, isText,
+    // isStroke, isShape, xPt, yPt, wPt, hPt, strokeColor, lineWidth, fillColor,
+    // hasFill, text, fontFamily, fontSizePt, bold, italic, underline, textColor,
     // highlightColor, hasHighlight, alignment, vAlign, anchored }.
     Q_INVOKABLE QVariantMap boxInfo(int id) const;
+    // Aktuelle Vorlagen-Defaults (wenn nichts ausgewählt ist) — rev-getrieben
+    // über defaultRev, wie annInfo/defaultInfo des Bild-Editors.
+    Q_INVOKABLE QVariantMap defaultInfo() const;
 
     // ── Undo/Redo (schließen offene Sessions deterministisch ab) ──────────────
     Q_INVOKABLE void undo();
@@ -229,6 +267,8 @@ public:
 
 signals:
     void editModeChanged();
+    void toolChanged();
+    void defaultRevChanged();
     void undoStateChanged();
     void dirtyChanged();
     void selectedIdChanged();
@@ -247,12 +287,18 @@ private:
     void bumpSelectionRev();
     void finishGeometrySession();
     void finishTextSession();
+    void finishDrawSession();
     void finishOpenSessions() { finishGeometrySession(); finishTextSession(); }
     void setBoxField(int id, PdfEditField f, const QVariant& v);
     //  Neue Notiz erbt den zuletzt benutzten Stil (Schrift/Farben/Deckkraft/
     //  Ausrichtung) — aber OHNE Text.
     PdfEditBox seededBox() const;
-    void mirrorToTemplate(PdfEditField f, const QVariant& v);
+    //  Neue Zeichnung erbt die zuletzt benutzten Zeichen-Defaults
+    //  (Linienfarbe/-breite/Füllung).
+    PdfEditBox seededDraw(PdfAnnKind kind) const;
+    //  textKind steuert, ob die Text-Vorlage oder die Zeichen-Defaults
+    //  aktualisiert werden (Stroke/LineWidth/Fill → Zeichen-Defaults).
+    void mirrorToTemplate(PdfEditField f, const QVariant& v, bool textKind);
     bool loadOverlay(const QString& pdfPath);
     static QString sidecarPath(const QString& pdfPath);
     static QString uniqueCopyPath(const QString& pdfPath);
@@ -263,22 +309,31 @@ private:
 
     QString m_docPath;                  // lokaler Pfad des aktiven PDFs
     bool    m_editMode     = false;
+    int     m_tool         = Select;
     int     m_selectedId   = -1;
     int     m_selectionRev = 0;
+    int     m_defaultRev   = 0;
     int     m_nextId       = 1;
 
     // Offene Sessions (genau eine je Art; -1 = keine).
     int     m_geoEditId  = -1;
     int     m_geoOldPage = 0;
     QRectF  m_geoOld;
+    QVector<QPointF> m_geoOldPts;       // Striche: Punkte der Session-Basis
     int     m_textEditId = -1;
     QString m_textOld;
+    int     m_drawId     = -1;          // laufende Zeichen-Session
+    int     m_drawPage   = 0;           // Seite der Zeichen-Session
+    QPointF m_drawStart;                // Startpunkt (Rechteck/Ellipse/Pfeil)
 
-    // Kachel-lokale Zwischenablage (Copy/Paste, inkl. Text) + Stil-Vorlage
-    // für neue Notizen (Stil-Erben).
+    // Kachel-lokale Zwischenablage (Copy/Paste, inkl. Text) + Stil-Vorlagen
+    // für neue Annotationen (Stil-Erben; Zeichen-Defaults separat).
     PdfEditBox m_clip;
     bool       m_hasClip = false;
     PdfEditBox m_textTpl;
+    QColor     m_defStroke    = QColor(230, 44, 44);
+    qreal      m_defLineWidth = 2.0;    // PDF-Punkte
+    QColor     m_defFill      = QColor(0, 0, 0, 0);
 
     // Export (1 Worker → RAM-Peak gedeckelt; Generationszahl verwirft Veraltetes).
     QThreadPool m_pool;
