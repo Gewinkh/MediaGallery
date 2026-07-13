@@ -5,8 +5,10 @@
 #include <QQmlEngine>
 #include <QQuickStyle>
 #include <QQuickImageProvider>
+#include <QQuickWindow>              // Laufzeit-Guard: sceneGraphError (GPU-Wechsel/Device-Lost)
 #include <QUrl>
 #include <QTimer>                    // verzögertes Löschen des RHI-Crash-Guards nach Start
+#include <QDebug>                    // Warnung bei Scene-Graph-Laufzeitfehlern
 
 #include "src/RhiProber.h"
 #include "src/AppSettings.h"
@@ -156,6 +158,25 @@ int main(int argc, char* argv[]) {
     engine.load(QUrl(QStringLiteral("qrc:/qml/ApplicationShell.qml")));
     if (engine.rootObjects().isEmpty())
         return -1;
+
+    // ── Laufzeit-Guard: Scene-Graph-Fehler (GPU-Wechsel/Device-Lost) ──────────
+    // Ohne verbundenen Slot beendet Qt die App bei einem NICHT behebbaren
+    // Scene-Graph-Fehler hart (qFatal). Mit Slot behalten wir die Kontrolle:
+    // der Fehler wird geloggt und über RhiProber::noteRuntimeFailure() fürs
+    // NÄCHSTE Programm-Start ein sichereres Backend persistiert
+    // (Degradationskette vulkan/d3d11/metal → opengl → software). Die laufende
+    // Sitzung kann das verlorene Gerät zwar nicht mehr nutzen (das Fenster
+    // rendert ggf. nicht weiter), aber der Neustart läuft garantiert wieder —
+    // ergänzt den Start-Crash-Guard, der bewusst nur die ersten ~4 s abdeckt.
+    if (auto* rootWin = qobject_cast<QQuickWindow*>(engine.rootObjects().first())) {
+        QObject::connect(rootWin, &QQuickWindow::sceneGraphError, &app,
+                         [](QQuickWindow::SceneGraphError, const QString& message) {
+                             qWarning().noquote()
+                                 << "MediaGallery: Scene-Graph-Fehler:" << message
+                                 << "— der nächste Start nutzt ein sichereres Render-Backend.";
+                             RhiProber::noteRuntimeFailure();
+                         });
+    }
 
     // ── Crash-Guard früh entschärfen (WICHTIG seit WebEngine-Vorschau) ────────
     // Der RHI-Crash-Guard soll NUR Backends abfangen, die gar nicht starten/

@@ -139,6 +139,30 @@ Item {
                 }
             }
 
+            // ── Mono-Play (nur eine Wiedergabe gleichzeitig) ───────────────────
+            SettingsGroup {
+                title: App.uiText(App.language, "SettingsGenMonoPlay")
+                Layout.fillWidth: true
+
+                CheckBox {
+                    checked: App.monoPlay
+                    onToggled: App.setMonoPlay(checked)
+                    text: App.uiText(App.language, "SettingsGenMonoPlayLabel")
+                    contentItem: Text {
+                        text: parent.text; color: App.themeTextPrimary
+                        leftPadding: parent.indicator.width + 6
+                        verticalAlignment: Text.AlignVCenter
+                    }
+                }
+                Label {
+                    text: App.uiText(App.language, "SettingsGenMonoPlayHint")
+                    color: App.themeTextMuted
+                    font.pixelSize: 11
+                    wrapMode: Text.WordWrap
+                    Layout.fillWidth: true
+                }
+            }
+
             // ── Render-Backend ────────────────────────────────────────────────
             SettingsGroup {
                 title: App.uiText(App.language, "SettingsGenRenderBackend")

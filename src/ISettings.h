@@ -106,6 +106,12 @@ public:
     virtual bool           audioAccentApple() const = 0;
     virtual void           setAudioAccentApple(bool v) = 0;
 
+    // Mono-Play: nur EINE Audio-/Video-Wiedergabe gleichzeitig (relevant in der
+    // geteilten Ansicht) — startet eine neue Wiedergabe, wird die bereits
+    // laufende automatisch pausiert (nicht gestoppt). Standard: AN.
+    virtual bool monoPlay() const = 0;
+    virtual void setMonoPlay(bool v) = 0;
+
     virtual QColor backgroundColor() const = 0;
     virtual void   setBackgroundColor(const QColor& c) = 0;
     virtual QColor accentColor() const = 0;

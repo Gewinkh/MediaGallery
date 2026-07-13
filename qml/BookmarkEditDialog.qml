@@ -15,7 +15,8 @@ import MediaGallery 1.0
 //  über die globalen Singletons App.addBookmark / App.updateBookmark.
 //
 //  API:
-//    openAdd()                       → leeres Formular im Hinzufügen-Modus
+//    openAdd(prefillPath)            → Formular im Hinzufügen-Modus; optionaler
+//                                      vorbefüllter Pfad (bleibt frei änderbar)
 //    openEdit(index, name, path)     → vorbefülltes Formular im Bearbeiten-Modus
 // ─────────────────────────────────────────────────────────────────────────────
 Item {
@@ -24,10 +25,14 @@ Item {
     // -1 = Hinzufügen, >=0 = Bearbeiten (Index in App.savedFolders)
     property int editIndex: -1
 
-    function openAdd() {
+    function openAdd(prefillPath) {
         editIndex = -1
         nameField.text = ""
-        pathField.text = ""
+        // Optionale Vorbefüllung (z. B. der aktuell geöffnete Ordner aus dem
+        // Hauptmenü, sofern noch nicht gespeichert — s. ApplicationShell).
+        // Ohne Argument (Einstellungen ▸ Lesezeichen) bleibt das Feld leer.
+        pathField.text = (prefillPath !== undefined && prefillPath !== null)
+                         ? prefillPath : ""
         editDialog.title = App.uiText(App.language, "SettingsBookAddTitle")
         editDialog.open()
     }

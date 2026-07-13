@@ -41,6 +41,7 @@ class AppController : public QObject {
     Q_PROPERTY(QString videoPlayback   READ videoPlayback   NOTIFY videoPlaybackChanged)
     Q_PROPERTY(QString pageTransition  READ pageTransition  NOTIFY pageTransitionChanged)
     Q_PROPERTY(bool    audioAccentApple READ audioAccentApple NOTIFY audioAccentChanged)
+    Q_PROPERTY(bool    monoPlay        READ monoPlay        NOTIFY monoPlayChanged)
     Q_PROPERTY(bool    optionsVisible  READ optionsVisible  NOTIFY optionsVisibleChanged)
 
     // ── Editor / Auto-Save (Phase 4) ────────────────────────────────────────
@@ -182,6 +183,7 @@ public:
     QString videoPlayback()   const;   // "native" | "external"
     QString pageTransition()  const;   // "slide" | "fade"
     bool    audioAccentApple() const;  // true = Apple-Blau, false = Theme-Akzent
+    bool    monoPlay()        const;   // true = nur EINE Wiedergabe gleichzeitig
     bool    optionsVisible()  const;
     Q_INVOKABLE void setBackgroundColor(const QColor& c);
     Q_INVOKABLE void setAccentColor(const QColor& c);
@@ -189,6 +191,15 @@ public:
     Q_INVOKABLE void setVideoPlayback(const QString& mode);  // "native" | "external"
     Q_INVOKABLE void setPageTransition(const QString& mode); // "slide" | "fade"
     Q_INVOKABLE void setAudioAccentApple(bool apple);
+    Q_INVOKABLE void setMonoPlay(bool on);
+
+    // ── Mono-Play: Wiedergabe-Koordination ──────────────────────────────────
+    // Jede Wiedergabestelle (VideoSurface-Player, PDF-Audio-Fassade je Kachel)
+    // meldet ihren Play-START mit einem eindeutigen Token; alle anderen Stellen
+    // pausieren sich auf playbackStarted(fremdes Token) — Position bleibt
+    // erhalten (Pause, kein Stop). Sendet NUR bei aktivem Mono-Play; ist die
+    // Option aus, laufen Wiedergaben unkoordiniert (parallel) weiter.
+    Q_INVOKABLE void announcePlayback(const QString& token);
 
     // Versucht das RHI-Backend zu wechseln. Gibt true zurück, wenn der Probe
     // erfolgreich war (Cache aktualisiert, Neustart nötig). Bei Fehler bleibt
@@ -256,6 +267,9 @@ signals:
     void videoPlaybackChanged();
     void pageTransitionChanged();
     void audioAccentChanged();
+    void monoPlayChanged();
+    // Mono-Play: eine Wiedergabestelle hat gestartet (nur bei aktiver Option).
+    void playbackStarted(const QString& token);
     void optionsVisibleChanged();
     void savedFoldersChanged();
     void themeChanged();

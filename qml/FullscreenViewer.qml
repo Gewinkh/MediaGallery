@@ -21,6 +21,16 @@ FocusScope {
     signal backRequested()
     signal addFileRequested()
 
+    // ── Docking-Drag (Kopfleiste, geteilte Ansicht) ───────────────────────────
+    //  Bei mehr als einer offenen Datei (splitActive) lässt sich diese Kachel
+    //  über ihre obere Leiste per Klick+Ziehen verschieben; die Drop-Zonen und
+    //  das Anwenden des Layouts übernimmt die Shell (ApplicationShell). Die
+    //  Koordinaten sind Viewer-lokal — die Shell mappt sie auf die Split-Seite.
+    signal paneDragStarted()
+    signal paneDragMoved(real x, real y)
+    signal paneDragEnded(real x, real y)
+    signal paneDragCanceled()
+
     // ── Geteilte Ansicht (vom Shell gesetzt) ──────────────────────────────────
     //  splitActive = mehr als eine Datei gleichzeitig offen → die untere
     //    Hover-Navigation dieser Kachel (Pfeile + Zähler) entfällt; bei genau
@@ -384,6 +394,45 @@ FocusScope {
         visible: opacity > 0.01
         Behavior on opacity { NumberAnimation { duration: 180 } }
 
+        // ── Docking-Drag-Fläche (UNTER den Bedienelementen) ───────────────────
+        //  Erstes Kind der Leiste → Buttons und (im Alt+S-Modus) das aktive
+        //  Namensfeld liegen darüber und behalten ihre Klicks; Press+Ziehen auf
+        //  freien Leistenbereichen (und auf dem außerhalb des Alt+S-Modus
+        //  deaktivierten Namensfeld) startet den Kachel-Drag. Ein Drag beginnt
+        //  erst nach einer kleinen Bewegungsschwelle — ein einfacher Klick
+        //  bleibt folgenlos und stört den Edit-Modus nicht.
+        MouseArea {
+            id: paneDragArea
+            anchors.fill: parent
+            enabled: root.splitActive
+            preventStealing: true
+            cursorShape: dragging ? Qt.ClosedHandCursor
+                       : (root.splitActive ? Qt.OpenHandCursor : Qt.ArrowCursor)
+            property bool  dragging: false
+            property point pressPos: Qt.point(0, 0)
+            onPressed: (m) => { pressPos = Qt.point(m.x, m.y); dragging = false }
+            onPositionChanged: (m) => {
+                if (!pressed) return
+                if (!dragging
+                        && Math.abs(m.x - pressPos.x) + Math.abs(m.y - pressPos.y) > 10) {
+                    dragging = true
+                    root.paneDragStarted()
+                }
+                if (dragging) {
+                    var p = mapToItem(root, m.x, m.y)
+                    root.paneDragMoved(p.x, p.y)
+                }
+            }
+            onReleased: (m) => {
+                if (dragging) {
+                    var p = mapToItem(root, m.x, m.y)
+                    root.paneDragEnded(p.x, p.y)
+                }
+                dragging = false
+            }
+            onCanceled: { if (dragging) root.paneDragCanceled(); dragging = false }
+        }
+
         Column {
             anchors.fill: parent
             anchors.margins: 10
@@ -466,6 +515,14 @@ FocusScope {
                     text: root.displayName
                     color: "white"
                     font.pixelSize: 14; font.bold: true
+                    // Umbenennen NUR im Optionen-/Edit-Modus (Alt+S): außerhalb
+                    // ist das Feld deaktiviert (readOnly + keine Mauseingabe) —
+                    // damit bleibt die Kopfleiste dort eine freie Drag-Fläche
+                    // fürs Docking und versehentliche Fokus-Klicks entfallen.
+                    // Die Textfarbe ist explizit gesetzt (color) → kein
+                    // Ausgrauen im deaktivierten Zustand.
+                    readOnly: !App.optionsVisible
+                    enabled: App.optionsVisible
                     background: Rectangle {
                         color: "transparent"
                         border.color: nameEdit.activeFocus ? App.themeAccent : "transparent"

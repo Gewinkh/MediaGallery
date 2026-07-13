@@ -530,6 +530,29 @@ Item {
 
     onAudioPanelVisibleChanged: if (audioPanelVisible) _ensurePageClipsExtracted()
 
+    // ── Mono-Play ──────────────────────────────────────────────────────────────
+    //  Eindeutiges Token dieser Wiedergabestelle (PDF-Audio dieser Kachel; die
+    //  Objekt-Identität macht es je Instanz verschieden). Der Play-Start meldet
+    //  sich in playerComponent.onPlaybackStateChanged via App.announcePlayback;
+    //  startet eine ANDERE Stelle (fremdes Token), pausiert die Wiedergabe hier
+    //  — Position bleibt erhalten (Pause, kein Stop). App sendet playbackStarted
+    //  NUR bei aktivierter Mono-Play-Option (Einstellungen ▸ Allgemein).
+    readonly property string _playToken: "pdfaudio-" + root
+
+    Connections {
+        target: App
+        function onPlaybackStarted(token) {
+            if (token === root._playToken) return
+            // Läuft hier gerade Audio → pausieren (Position bleibt erhalten).
+            if (audioPlayer.playbackState === MediaPlayer.PlayingState)
+                audioPlayer.pause()
+            // Wartet hier noch ein asynchroner Play (Clip-Extraktion/playRetry),
+            // hat der FREMDE Start zuletzt gewonnen → schwebenden Play abbrechen,
+            // sonst „stiehlt" der verspätete Retry die Wiedergabe zurück.
+            root._pendingPlay = false
+        }
+    }
+
     // ── Audio-Player-Fassade: JEDE Wiedergabe = frische MediaPlayer-Instanz ────
     //  Stabiler Zugriffspunkt (id: audioPlayer) für die gesamte UI (Slider/
     //  Buttons binden weiter an audioPlayer.position/duration/playbackState).
@@ -598,6 +621,9 @@ Item {
                     if (playbackState === MediaPlayer.PlayingState) {
                         root._pendingPlay = false
                         if (root._pendingSeekMs > 0) { position = root._pendingSeekMs; root._pendingSeekMs = -1 }
+                        // Mono-Play: Start (auch Resume) melden — andere
+                        // Wiedergabestellen pausieren sich daraufhin.
+                        App.announcePlayback(root._playToken)
                     }
                 }
                 onErrorOccurred: function(err, errStr) {

@@ -21,10 +21,11 @@ Built with **C++20** and **Qt 6.4+**.
 - **Fullscreen gallery**: Prev/Next, Random mode, up to 10× zoom, pan with mouse
 - **Image viewer & editor**: Hardware-accelerated QML viewer with PDF-style zoom/pan (fit-to-window, 100%, wheel-zoom, drag-pan) and a full non-destructive **Image Editor** — see the dedicated section below
 - **Split view**: Open up to **4 files side by side** in the fullscreen view (like a 2-, 3-, or 4-player split screen: 2 = two columns, 3 = two on top + one full-width below, 4 = 2×2). Each pane is an independent viewer with its own header and Prev/Next navigation, and its own PDF Editor / Image Editor / zoom / playback state. The **boundaries between panes can be dragged** to resize the tiles (a column divider for 2 panes, plus a row divider for 3/4 panes). A **"+" button** in each pane's header returns to the gallery and adds the next clicked file as another pane (no file dialog — you pick straight from the gallery). **Back / `Esc`** on a pane closes just that file and frees its memory immediately; closing the last pane returns to the gallery. Resizing the window or adding a pane keeps every pane on its current page/position.
+- **Split view docking (drag & drop)**: Grab a pane by its **header bar** and drag it to rearrange the layout, with **visual drop zones and a live layout preview** (VS Code style). With 2 files you can switch between side-by-side and stacked (drop on an edge zone) or swap positions (drop on the other pane). With 3 files, dropping on an edge zone makes the dragged file the **large pane** on that side (the other two share the remaining half); dropping on a **corner zone** shrinks it back into that quadrant and the adjacent pane takes over the freed area; dropping on another pane swaps positions. With 4 files, dropping on another pane simply **swaps** the two (the 2×2 layout is fixed). Closing or adding panes keeps the arrangement as close as possible to what you set up; the custom layout lasts until the app is closed (not persisted).
 - **Compact mode**: Options mode toggle with `Alt+S` — works in the gallery and inside the open media viewer
 - **Cover mode**: Cover/uncover gallery with `B`
 - **Live folder watch**: New or deleted files are detected automatically
-- **Folder bookmarks**: Save folders under a custom name for one-click access (Menu → Folder, and Settings → Bookmarks)
+- **Folder bookmarks**: Save folders under a custom name for one-click access (Menu → Folder, and Settings → Bookmarks). "Add Folder" from the menu **pre-fills the path with the currently open folder** if it is not saved yet (comparison is case-sensitive with trailing separators normalized) — the path stays editable before confirming
 - **Fullscreen transitions**: Slide or Fade page animation (Settings → General)
 
 ### Text Editor
@@ -121,7 +122,7 @@ Built with **C++20** and **Qt 6.4+**.
 - **Date editor**: Custom date per file, persisted in JSON
 - **Delete file**: Red delete button in fullscreen view, plus a right-click "Delete file…" entry on gallery tiles — both with a confirmation dialog; the file goes to the system trash and its metadata/sidecar are cleaned up automatically
 - **Create file**: A "+ Create" button in the filter bar creates an empty PDF, HTML, or text file directly in the current folder (PDF starts as one blank A4 page, ready to annotate)
-- **Rename**: Also renames the file on disk
+- **Rename**: Also renames the file on disk. In the fullscreen view the filename in the header is editable **only in options mode (`Alt+S`)** — outside it, the header acts as the drag handle for split-view docking
 - **Drag & Drop**: Drop a folder or individual media files onto the window
 - **JSON storage**: `<FolderName>.json` stored directly in the target folder (file-centric format v2)
 
@@ -132,7 +133,8 @@ Built with **C++20** and **Qt 6.4+**.
 - **HTML thumbnails**: Auto-generated design cards instead of raw source code (see HTML Viewer)
 - **Language**: English / German — switchable at runtime (Settings → General)
 - **Audio player accent**: Theme color or Apple Blue for the PDF audio mini-player (Settings → General)
-- **Graphics backend**: Vulkan, OpenGL, or Software rendering, with an automatic crash-guard fallback if a backend fails to start (Settings → General)
+- **Mono-Play**: Only one audio/video playback at a time (enabled by default) — starting playback in another split-view pane automatically **pauses** the one already playing (position is kept). Disable it in Settings → General to allow parallel playback
+- **Graphics backend**: Vulkan, OpenGL, or Software rendering, with an automatic crash-guard that now **degrades gracefully** (Vulkan/D3D11/Metal → OpenGL → Software) if a backend fails to start, a Vulkan loader pre-check, validation of stale/foreign config values, and a runtime guard that switches to a safer backend on the next start after a GPU device-loss (Settings → General)
 - **Themes**: Fully customizable — every color, every surface (Settings → Design)
 
 ---
@@ -222,12 +224,12 @@ Custom themes can be exported to JSON and shared:
 ## Changelog
 
 ### Latest
-- **Feature**: Added drawing tools to the PDF Editor (text, pen, arrow, rectangle, ellipse) with editing, copy/paste, undo/redo, style inheritance, and WYSIWYG PDF export.
-- **Feature**: Added `Ctrl+Z` / `Ctrl+Shift+Z` undo/redo shortcuts to the PDF Editor.
-- **Fix**: Split View now preserves the state of all open viewers when adding files.
-- **Fix**: PDF reading position is now preserved when resizing windows or panes.
-- **Fix**: Improved PDF zooming and scrolling stability.
-- **UI**: Improved alignment of controls in **Settings → Design**.
+- **Feature**: Added drag-and-drop pane docking with live layout previews in Split View.
+- **Feature**: Added Mono-Play to automatically pause other media during playback (enabled by default).
+- **Feature**: "Add Folder" now pre-fills the current folder path when applicable.
+- **Change**: File renaming in fullscreen is now only available in options mode (`Alt+S`).
+- **Fix**: Improved render backend selection and compatibility fallback.
+- **Change**: Improved graphics backend recovery to reduce crashes and automatically use a safer backend when needed.
 
 ---
 

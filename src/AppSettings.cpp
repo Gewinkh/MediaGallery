@@ -404,6 +404,13 @@ bool AppSettings::audioAccentApple() const {
 void AppSettings::setAudioAccentApple(bool v) {
     m_settings.setValue("ui/audioAccentApple", v);
 }
+// Mono-Play: nur eine Audio-/Video-Wiedergabe gleichzeitig (Standard: AN).
+bool AppSettings::monoPlay() const {
+    return m_settings.value("ui/monoPlay", true).toBool();
+}
+void AppSettings::setMonoPlay(bool v) {
+    m_settings.setValue("ui/monoPlay", v);
+}
 
 // ─── PDF-Editor ───────────────────────────────────────────────────────────────
 bool AppSettings::pdfEditPanelTop() const {

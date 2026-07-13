@@ -22,6 +22,7 @@ _deps/
 *.autosave
 *.md.autosave
 MediaGallery_Projektueberblick.md
+tmp.txt
 
 *.o
 *.obj

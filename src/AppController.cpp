@@ -348,6 +348,8 @@ QString AppController::pageTransition() const {
 
 bool AppController::audioAccentApple() const { return m_settings.audioAccentApple(); }
 
+bool AppController::monoPlay() const { return m_settings.monoPlay(); }
+
 bool AppController::optionsVisible() const { return m_settings.optionsVisible(); }
 
 void AppController::setBackgroundColor(const QColor& c) {
@@ -393,6 +395,25 @@ void AppController::setAudioAccentApple(bool apple) {
     m_settings.setAudioAccentApple(apple);
     m_settings.sync();
     emit audioAccentChanged();
+}
+
+void AppController::setMonoPlay(bool on) {
+    if (m_settings.monoPlay() == on) return;
+    m_settings.setMonoPlay(on);
+    m_settings.sync();
+    emit monoPlayChanged();
+}
+
+// ─── Mono-Play: Wiedergabe-Koordination ───────────────────────────────────────
+// Zentrale, zustandslose Vermittlung: der Start einer Wiedergabe wird als
+// Broadcast an ALLE Wiedergabestellen gemeldet (inkl. der startenden — sie
+// erkennt sich am eigenen Token und ignoriert die Meldung). Bewusst KEINE
+// Registry/Pointer-Verwaltung: die Stellen leben in QML (Kacheln kommen und
+// gehen), ein reiner Signal-Broadcast ist lebensdauer-sicher und O(1).
+void AppController::announcePlayback(const QString& token) {
+    if (!m_settings.monoPlay())
+        return;                       // Option aus → parallele Wiedergaben erlaubt
+    emit playbackStarted(token);
 }
 
 // ─── RHI-Backend-Wechsel ──────────────────────────────────────────────────────

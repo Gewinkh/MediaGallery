@@ -23,6 +23,23 @@ Item {
     property real   bottomInset: 0
     Behavior on bottomInset { NumberAnimation { duration: 180 } }
 
+    // ── Mono-Play ─────────────────────────────────────────────────────────────
+    //  Eindeutiges Token dieser Wiedergabestelle (Objekt-Identität → je Kachel/
+    //  Instanz verschieden). Beim Play-Start meldet sich der Player über
+    //  App.announcePlayback; startet eine ANDERE Stelle (fremdes Token),
+    //  pausiert diese hier — Position bleibt erhalten (Pause, kein Stop).
+    //  App sendet playbackStarted NUR bei aktivierter Mono-Play-Option.
+    readonly property string _playToken: "video-" + root
+
+    Connections {
+        target: App
+        function onPlaybackStarted(token) {
+            if (token !== root._playToken
+                    && player.playbackState === MediaPlayer.PlayingState)
+                player.pause()
+        }
+    }
+
     function release() {
         player.stop()
         player.source = ""
@@ -48,6 +65,12 @@ Item {
         videoOutput: videoOut
         audioOutput: AudioOutput { id: audioOut; volume: 0.85 }
         onErrorOccurred: function(err, str) { errorLabel.text = str }
+        // Mono-Play: JEDEN Übergang nach Playing melden (auch Resume nach
+        // Pause) — andere Wiedergabestellen pausieren sich daraufhin.
+        onPlaybackStateChanged: {
+            if (playbackState === MediaPlayer.PlayingState)
+                App.announcePlayback(root._playToken)
+        }
     }
 
     VideoOutput {

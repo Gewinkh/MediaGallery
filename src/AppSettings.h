@@ -38,6 +38,9 @@ public:
     bool           audioAccentApple() const override;
     void           setAudioAccentApple(bool v) override;
 
+    bool monoPlay() const override;
+    void setMonoPlay(bool v) override;
+
     QColor backgroundColor() const override;
     void   setBackgroundColor(const QColor& c) override;
     QColor accentColor() const override;
