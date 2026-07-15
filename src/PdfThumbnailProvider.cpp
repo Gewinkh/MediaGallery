@@ -55,6 +55,22 @@ qint64 PdfThumbStore::totalBytes() const {
     return m_total;
 }
 
+void PdfThumbStore::setPreview(const QString& key, const QByteArray& jpeg) {
+    QMutexLocker lk(&m_mutex);
+    m_previewKey  = key;
+    m_previewJpeg = jpeg;          // ersetzt den EINEN Slot (RAM-Deckel: 1 JPEG)
+}
+
+QString PdfThumbStore::previewKey() const {
+    QMutexLocker lk(&m_mutex);
+    return m_previewKey;
+}
+
+QByteArray PdfThumbStore::previewJpeg() const {
+    QMutexLocker lk(&m_mutex);
+    return m_previewJpeg;
+}
+
 // ══════════════════════════════════════════════════════════════════════════════
 //  PdfThumbImageProvider — liefert die Vorschauen aus dem Store an QML.
 //
@@ -77,6 +93,24 @@ public:
         QString core = id;
         const int q = core.indexOf(QLatin1Char('?'));
         if (q >= 0) core.truncate(q);
+
+        // Sonder-ID "preview": liefert die Großvorschau aus dem Einzelslot.
+        // Der QML-Aufrufer bindet die source erst NACH largePreviewReady →
+        // der Slot enthaelt hier immer die angeforderte Seite.
+        if (core.startsWith(QLatin1String("preview"))) {
+            const QByteArray jpeg = m_store->previewJpeg();
+            if (!jpeg.isEmpty()) {
+                QImage img;
+                if (img.loadFromData(jpeg, "JPG") && !img.isNull()) {
+                    if (size) *size = img.size();
+                    return img;
+                }
+            }
+            QImage placeholder(QSize(2, 2), QImage::Format_ARGB32_Premultiplied);
+            placeholder.fill(Qt::transparent);
+            if (size) *size = placeholder.size();
+            return placeholder;
+        }
 
         const int slash = core.indexOf(QLatin1Char('/'));
         bool okDoc = false, okPage = false;
@@ -192,6 +226,62 @@ void PdfThumbRenderTask::run() {
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
+//  PdfPreviewRenderTask
+// ══════════════════════════════════════════════════════════════════════════════
+PdfPreviewRenderTask::PdfPreviewRenderTask(QString key, QString localPath,
+                                           int page, int maxPx, int jpegQuality,
+                                           std::shared_ptr<PdfThumbStore> store,
+                                           CancelFlag cancel)
+    : m_key(std::move(key))
+    , m_path(std::move(localPath))
+    , m_page(page)
+    , m_maxPx(maxPx)
+    , m_quality(jpegQuality)
+    , m_store(std::move(store))
+    , m_cancel(std::move(cancel)) {}
+
+void PdfPreviewRenderTask::run() {
+    if (cancelled()) return;
+
+    // EIGENE Instanz (eigener PDFium-Mutex); wird am Ende sofort geschlossen.
+    QPdfDocument doc;
+    if (doc.load(m_path) != QPdfDocument::Error::None)
+        return;
+    if (m_page < 0 || m_page >= doc.pageCount()) return;
+
+    const QSizeF pts = doc.pagePointSize(m_page);
+    if (pts.isEmpty() || pts.width() <= 0.0 || pts.height() <= 0.0) return;
+
+    // Längere Kante auf maxPx begrenzen (Seitenverhältnis bleibt erhalten).
+    const double scale = m_maxPx / qMax(pts.width(), pts.height());
+    const int w = qBound(1, static_cast<int>(pts.width()  * scale), m_maxPx);
+    const int h = qBound(1, static_cast<int>(pts.height() * scale), m_maxPx);
+    if (cancelled()) return;
+
+    QImage rendered = doc.render(m_page, QSize(w, h));
+    if (rendered.isNull() || cancelled()) return;
+
+    // Weisse Komposit-Basis (JPEG hat kein Alpha — wie beim Thumb-Task).
+    QImage flat(rendered.size(), QImage::Format_RGB32);
+    flat.fill(Qt::white);
+    {
+        QPainter p(&flat);
+        p.drawImage(0, 0, rendered);
+    }
+    QByteArray jpeg;
+    {
+        QBuffer buf(&jpeg);
+        buf.open(QIODevice::WriteOnly);
+        flat.save(&buf, "JPG", m_quality);
+    }
+    if (jpeg.isEmpty() || cancelled()) return;
+
+    m_store->setPreview(m_key, jpeg);
+    emit previewReady(m_path, m_page);
+    // doc geht hier out of scope → transiente Instanz sofort geschlossen.
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
 //  PdfThumbnailProvider
 // ══════════════════════════════════════════════════════════════════════════════
 PdfThumbnailProvider::PdfThumbnailProvider(QObject* parent)
@@ -201,14 +291,49 @@ PdfThumbnailProvider::PdfThumbnailProvider(QObject* parent)
     // EIN Worker: nie zwei der grossen QPdfDocument-Instanzen gleichzeitig offen.
     m_pool.setMaxThreadCount(1);
     m_pool.setExpiryTimeout(30000);
+    // Großvorschau-Pool (Strg+Hover): ebenfalls 1 Worker, aber GETRENNT vom
+    // Thumb-Pool — Hover-Vorschauen dürfen nicht hinter dem Volldokument-
+    // Rendern eines frisch geöffneten PDFs hängen (Details s. Task-Kommentar).
+    m_previewPool.setMaxThreadCount(1);
+    m_previewPool.setExpiryTimeout(30000);
 }
 
 PdfThumbnailProvider::~PdfThumbnailProvider() {
-    // Laufende/anstehende Tasks kooperativ stoppen, dann auf den Pool warten.
+    // Laufende/anstehende Tasks kooperativ stoppen, dann auf die Pools warten.
     for (auto& f : m_flags)
         if (f) f->store(true, std::memory_order_relaxed);
+    if (m_previewCancel)
+        m_previewCancel->store(true, std::memory_order_relaxed);
     m_pool.clear();
+    m_previewPool.clear();
     m_pool.waitForDone(3000);
+    m_previewPool.waitForDone(3000);
+}
+
+void PdfThumbnailProvider::requestLargePreview(const QString& pathOrUrl,
+                                               int page, int maxPx) {
+    const QString path = mg::toLocalPath(pathOrUrl);
+    if (path.isEmpty() || page < 0) return;
+    const int px = qBound(64, maxPx, 4096);
+
+    // Schlüssel = Pfad + Seite + Größe; '\n' kommt in Pfaden nicht vor.
+    const QString key = path + QLatin1Char('\n') + QString::number(page)
+                      + QLatin1Char('\n') + QString::number(px);
+    if (m_store->previewKey() == key) {
+        emit largePreviewReady(path, page);       // Slot-Treffer: sofort melden
+        return;
+    }
+    // Vorherige (nun veraltete) Anforderung kooperativ stoppen.
+    if (m_previewCancel)
+        m_previewCancel->store(true, std::memory_order_relaxed);
+    m_previewCancel = std::make_shared<std::atomic<bool>>(false);
+
+    auto* task = new PdfPreviewRenderTask(key, path, page, px, kJpegQuality,
+                                          m_store, m_previewCancel);
+    task->setAutoDelete(true);
+    connect(task, &PdfPreviewRenderTask::previewReady,
+            this, &PdfThumbnailProvider::largePreviewReady, Qt::QueuedConnection);
+    m_previewPool.start(task);
 }
 
 QQuickImageProvider* PdfThumbnailProvider::createImageProvider() {

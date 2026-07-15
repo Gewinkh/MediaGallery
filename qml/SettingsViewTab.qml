@@ -223,6 +223,41 @@ Item {
                 }
             }
 
+            // ── PDF-Extraktion: Auswahl-Darstellung ───────────────────────────
+            SettingsGroup {
+                title: App.uiText(App.language, "SettingsViewExtractStyle")
+                Layout.fillWidth: true
+
+                Text {
+                    Layout.fillWidth: true
+                    wrapMode: Text.WordWrap
+                    text: App.uiText(App.language, "SettingsViewExtractStyleHint")
+                    color: App.themeTextMuted
+                    font.pixelSize: 11
+                }
+
+                ButtonGroup { id: extractStyleGroup }
+
+                Repeater {
+                    model: [
+                        { label: App.uiText(App.language, "ExtractStyleFrame"),   value: "frame" },
+                        { label: App.uiText(App.language, "ExtractStyleOverlay"), value: "overlay" }
+                    ]
+                    delegate: RadioButton {
+                        required property var modelData
+                        text: modelData.label
+                        checked: App.extractSelectStyle === modelData.value
+                        ButtonGroup.group: extractStyleGroup
+                        onToggled: if (checked) App.setExtractSelectStyle(modelData.value)
+                        contentItem: Text {
+                            text: parent.text; color: App.themeTextPrimary
+                            leftPadding: parent.indicator.width + 6
+                            verticalAlignment: Text.AlignVCenter
+                        }
+                    }
+                }
+            }
+
             // ── Zoom-Hinweis ──────────────────────────────────────────────────
             Text {
                 Layout.fillWidth: true

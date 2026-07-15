@@ -29,6 +29,8 @@ Rectangle {
     // gespiegelt → die Toggle-Zeilen im Filter-Popup zeigen den Aktiv-Zustand.
     signal tagPanelToggled()
     signal categoryPanelToggled()
+    // „Extrahieren": globale Seiten-Extraktion anstoßen (Dialog hostet die Shell).
+    signal extractPagesRequested()
     property bool tagPanelVisible: false
     property bool categoryPanelVisible: false
 
@@ -690,6 +692,20 @@ Rectangle {
                     }
                 }
             }
+        }
+
+        // ── „Extrahieren": globale Seiten-Extraktion über alle PDFs des ───────
+        //    aktuellen Ordners. Der Button meldet nur die Absicht — Scan und
+        //    Auswahldialog hostet die ApplicationShell (sie kennt Overlay und
+        //    Statuszeile). Ohne offenen Ordner deaktiviert (wie „Erstellen").
+        Button {
+            id: extractBtn
+            anchors.verticalCenter: parent.verticalCenter
+            height: 30
+            font.pixelSize: 13
+            enabled: App.currentFolder.length > 0
+            text: App.uiText(App.language, "FilterExtractBtn")
+            onClicked: bar.extractPagesRequested()
         }
 
         ToolSeparator { anchors.verticalCenter: parent.verticalCenter }

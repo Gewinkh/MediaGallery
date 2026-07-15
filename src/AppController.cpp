@@ -346,6 +346,12 @@ QString AppController::pageTransition() const {
                : QStringLiteral("slide");
 }
 
+QString AppController::extractSelectStyle() const {
+    return m_settings.extractSelectStyle() == ExtractSelectStyle::Overlay
+               ? QStringLiteral("overlay")
+               : QStringLiteral("frame");
+}
+
 bool AppController::audioAccentApple() const { return m_settings.audioAccentApple(); }
 
 bool AppController::monoPlay() const { return m_settings.monoPlay(); }
@@ -388,6 +394,17 @@ void AppController::setPageTransition(const QString& mode) {
     m_settings.setPageTransition(t);
     m_settings.sync();
     emit pageTransitionChanged();
+}
+
+void AppController::setExtractSelectStyle(const QString& style) {
+    const ExtractSelectStyle s =
+        (style.compare(QLatin1String("overlay"), Qt::CaseInsensitive) == 0)
+            ? ExtractSelectStyle::Overlay
+            : ExtractSelectStyle::Frame;
+    if (m_settings.extractSelectStyle() == s) return;
+    m_settings.setExtractSelectStyle(s);
+    m_settings.sync();
+    emit extractSelectStyleChanged();
 }
 
 void AppController::setAudioAccentApple(bool apple) {

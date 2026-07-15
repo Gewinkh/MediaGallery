@@ -381,6 +381,27 @@ enum class StringKey {
     ImageEditCopyBtn,          // Annotation kopieren
     ImageEditPasteBtn,         // Annotation einfügen
     ImageEditDocSection,       // Panel: Abschnitt „Dokument"
+
+    // ── PDF-Seiten-Extraktion ────────────────────────────────────────────────
+    CtxExtractPage,            // Kontextmenü: „Seite extrahieren"
+    CtxExtractPages,           // Kontextmenü: „Mehrere Seiten extrahieren…"
+    ExtractNameTitle,          // Namensdialog: Titel
+    ExtractNameLabel,          // Namensdialog: Feldbeschriftung
+    ExtractCreateBtn,          // Namens-/Auswahldialog: „Extrahieren"
+    ExtractDialogTitle,        // Auswahldialog (in-PDF): Titel
+    ExtractGlobalTitle,        // Auswahldialog (global): Titel
+    ExtractHintCtrl,           // Auswahldialog: Klick-/Strg-Hover-Hinweis
+    ExtractSelectedCount,      // Auswahldialog: „%1 Seiten ausgewählt"
+    ExtractNoPdfs,             // Global: keine PDFs im Ordner
+    FilterExtractBtn,          // FilterBar-Button: „Extrahieren"
+    ExtractOkToast,            // Erfolgsmeldung: „PDF erstellt: %1"
+    ExtractFailToast,          // Fehlermeldung
+    ExtractProgressToast,      // Fortschritt: „Extrahiere Seite %1/%2"
+    ExtractPageShort,          // Kachel-Beschriftung: „S. %1"
+    SettingsViewExtractStyle,      // Einstellungen: Gruppentitel
+    SettingsViewExtractStyleHint,  // Einstellungen: Hinweistext
+    ExtractStyleFrame,         // Einstellungen: „Rahmen"
+    ExtractStyleOverlay,       // Einstellungen: „Überlagerung"
 };
 Q_ENUM_NS(StringKey)
 }  // namespace SK

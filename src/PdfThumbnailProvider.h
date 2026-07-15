@@ -79,11 +79,21 @@ public:
     // Summe aller gespeicherten JPEG-Bytes (fuer den Budget-Deckel).
     qint64 totalBytes() const;
 
+    // ── Großvorschau (Strg+Hover der Seiten-Extraktionsdialoge) ──────────────
+    //  Bewusst EIN Slot (nur die zuletzt gerenderte Vorschau) → RAM-Deckel ist
+    //  genau ein JPEG; der Schlüssel (Pfad+Seite+Größe) verhindert, dass eine
+    //  veraltete Vorschau als aktuelle ausgeliefert wird.
+    void       setPreview(const QString& key, const QByteArray& jpeg);
+    QString    previewKey()  const;
+    QByteArray previewJpeg() const;
+
 private:
     mutable QMutex                       m_mutex;
     QHash<int, QHash<int, QByteArray>>   m_pages;     // docId → (page → jpeg)
     QHash<int, qint64>                   m_docBytes;  // docId → Bytes-Summe
     qint64                               m_total = 0;
+    QString                              m_previewKey;   // Pfad+Seite+Größe
+    QByteArray                           m_previewJpeg;  // EIN Slot (s. o.)
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -124,6 +134,45 @@ private:
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
+//  PdfPreviewRenderTask — rendert EINE Seite als Großvorschau (Strg+Hover in
+//  den Seiten-Extraktionsdialogen, ~80 % Fenster).
+//
+//  Läuft in einem EIGENEN 1-Thread-Pool (getrennt vom Thumbnail-Pool): beim
+//  ersten Öffnen rendert der Thumb-Task u. U. sekundenlang ein ganzes Dokument
+//  — dahinter eingereiht käme die Hover-Vorschau viel zu spät. Der RAM-Preis
+//  ist ein TRANSIENT zweites offenes QPdfDocument nur während des Renderns;
+//  die Instanz wird am Ende von run() sofort geschlossen.
+// ─────────────────────────────────────────────────────────────────────────────
+class PdfPreviewRenderTask : public QObject, public QRunnable {
+    Q_OBJECT
+public:
+    using CancelFlag = std::shared_ptr<std::atomic<bool>>;
+
+    PdfPreviewRenderTask(QString key, QString localPath, int page, int maxPx,
+                         int jpegQuality, std::shared_ptr<PdfThumbStore> store,
+                         CancelFlag cancel);
+
+    void run() override;
+
+signals:
+    // Feuert (queued → GUI-Thread), sobald die Vorschau im Store liegt.
+    void previewReady(const QString& path, int page);
+
+private:
+    bool cancelled() const {
+        return m_cancel && m_cancel->load(std::memory_order_relaxed);
+    }
+
+    QString m_key;
+    QString m_path;
+    int     m_page;
+    int     m_maxPx;
+    int     m_quality;
+    std::shared_ptr<PdfThumbStore> m_store;
+    CancelFlag                     m_cancel;
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
 //  PdfThumbnailProvider — QML-Singleton ("PdfThumbs") + Steuerzentrale.
 //
 //  • ensureDocument(path, startPage) → vergibt/holt die docId und stoesst (nur
@@ -157,6 +206,13 @@ public:
     // docId fuer den URL-Aufbau: "image://pdfthumb/<docId>/<page>".
     Q_INVOKABLE int ensureDocument(const QString& pathOrUrl, int startPage = 0);
 
+    // Großvorschau EINER Seite anfordern (Strg+Hover der Extraktionsdialoge).
+    // maxPx begrenzt die laengere Kante. Meldet largePreviewReady, sobald die
+    // Vorschau unter "image://pdfthumb/preview?r=<rev>" abrufbar ist; liegt der
+    // identische Schlüssel bereits im Slot, feuert das Signal sofort.
+    Q_INVOKABLE void requestLargePreview(const QString& pathOrUrl, int page,
+                                         int maxPx);
+
     // Erzeugt den zum Store gehoerenden ImageProvider. NUR EINMAL aufrufen
     // (in main.cpp, vor engine.load). Eigentum geht an die QML-Engine ueber.
     QQuickImageProvider* createImageProvider();
@@ -164,6 +220,8 @@ public:
 signals:
     // Eine Seite liegt jetzt im Store → QML soll die Image-source neu anfordern.
     void pageReady(int docId, int page);
+    // Die Großvorschau (path, page) liegt im Store → QML rebindet die source.
+    void largePreviewReady(const QString& path, int page);
 
 private:
     using CancelFlag = std::shared_ptr<std::atomic<bool>>;
@@ -175,6 +233,8 @@ private:
 
     std::shared_ptr<PdfThumbStore> m_store;
     QThreadPool                    m_pool;
+    QThreadPool                    m_previewPool;    // eigener 1-Thread-Pool (s. Task)
+    CancelFlag                     m_previewCancel;  // Abbruch des letzten Preview-Tasks
 
     QHash<QString, int>     m_pathToId;   // lokaler Pfad → docId
     QHash<int, QString>     m_idToPath;    // docId → lokaler Pfad

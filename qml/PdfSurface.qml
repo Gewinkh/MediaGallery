@@ -1512,6 +1512,22 @@ Item {
                             pageH: pageImg.height
                             surface: root
                         }
+
+                        // ── Rechtsklick: Seiten-Kontextmenü (Extraktion) ──────────
+                        //  Eigene Ebene NUR für die rechte Maustaste, ÜBER
+                        //  selArea/createArea/Boxen: die Linksklick-Logik bleibt
+                        //  unberührt (acceptedButtons filtert), Rechtsklick war
+                        //  bisher ungenutzt. Das Menü lebt EINMAL im Root
+                        //  (pageCtxMenu) — kein Menü je Delegate.
+                        MouseArea {
+                            anchors.fill: parent
+                            acceptedButtons: Qt.RightButton
+                            z: 60
+                            onClicked: (m) => {
+                                pageCtxMenu.ctxPage = pageCell.index
+                                pageCtxMenu.popup()
+                            }
+                        }
                     }
                 }
             }
@@ -1899,6 +1915,76 @@ Item {
                 width: 40; height: 40; radius: 20; color: Qt.rgba(1,1,1,0.12)
                 Text { anchors.centerIn: parent; text: "\u2715"; color: "white"; font.pixelSize: 18 }
                 TapHandler { onTapped: mediaLoader.active = false }
+            }
+        }
+    }
+
+    // ── Seiten-Kontextmenü: PDF-Seiten extrahieren ─────────────────────────────
+    //  „Seite extrahieren"           → Namensdialog (Default „<Name> - Page N")
+    //  „Mehrere Seiten extrahieren…" → Auswahlraster (PdfPageSelectDialog);
+    //  Ziel-Ordner = Ordner der Quelldatei (Controller), Ergebnis via Toast.
+    Menu {
+        id: pageCtxMenu
+        property int ctxPage: 0
+        MenuItem {
+            text: App.uiText(App.language, "CtxExtractPage")
+            enabled: !PdfExtract.busy
+            onTriggered: extractNameDlg.openFor(
+                             PdfExtract.defaultSingleName(root.source,
+                                                          pageCtxMenu.ctxPage),
+                             false)
+        }
+        MenuItem {
+            text: App.uiText(App.language, "CtxExtractPages")
+            enabled: !PdfExtract.busy
+            onTriggered: {
+                extractSelectDlg.titleText   = App.uiText(App.language, "ExtractDialogTitle")
+                extractSelectDlg.defaultName = PdfExtract.defaultMultiName(root.source)
+                extractSelectDlg.openWith([{ path: root.source,
+                                             pageCount: root.docReady ? root.doc.pageCount : 0 }])
+            }
+        }
+    }
+
+    PdfExtractNameDialog {
+        id: extractNameDlg
+        onAccepted: (name) => {
+            root._extractPending = true
+            PdfExtract.extractSingle(root.source, pageCtxMenu.ctxPage, name)
+        }
+    }
+
+    PdfPageSelectDialog {
+        id: extractSelectDlg
+        anchors.fill: parent
+        requireName: false
+        onExtractRequested: (jobs, name) => {
+            root._extractPending = true
+            PdfExtract.extractSelection(jobs[0].path, jobs[0].pages, name)
+        }
+    }
+
+    //  PdfExtract ist ein Singleton (auch die Shell nutzt es global) → nur die
+    //  Surface, die den Auftrag GESTARTET hat, meldet das Ergebnis (Flag).
+    property bool _extractPending: false
+    Connections {
+        target: PdfExtract
+        function onExtractProgress(done, total) {
+            if (root._extractPending)
+                root._toast(App.uiText(App.language, "ExtractProgressToast")
+                                .arg(done).arg(total))
+        }
+        function onExtractFinished(ok, targetPath, errorText) {
+            if (!root._extractPending) return
+            root._extractPending = false
+            if (ok) {
+                // Neue Datei sofort in der Galerie zeigen (deterministisch,
+                // nicht nur über den Datei-Watcher — wie createEmptyFile).
+                App.refreshCurrentFolder()
+                root._toast(App.uiText(App.language, "ExtractOkToast")
+                                .arg(String(targetPath).split("/").pop()))
+            } else {
+                root._toast(App.uiText(App.language, "ExtractFailToast"))
             }
         }
     }

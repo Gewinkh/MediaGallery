@@ -74,6 +74,15 @@ Built with **C++20** and **Qt 6.4+**.
 - **Browser-style text selection**: click-and-drag to select the embedded text layer, `Ctrl+C` to copy, `Ctrl+A` to select all on the current page
 - **Embedded audio panel**: a dedicated side panel lists every audio clip on the current page with a seek slider, plus an Apple-style mini-player that keeps playing while you scroll to other pages; clickable on-page audio hotspots
 
+### PDF Page Extraction
+- **Extract pages from an open PDF**: right-click any page → **Extract page** (single) or **Extract multiple pages…** (grid picker). The new PDF is written next to the source file.
+- **Extract across the whole folder**: the **Extract** button in the filter bar (next to *+ Create*) collects **every PDF in the current folder** into one page grid — pick pages from several files and get them merged into a **single** new PDF.
+- **Lossless by default**: pages are copied at the PDF object level, so the **text layer, vector graphics, embedded fonts and annotations stay intact** — no rasterizing, no quality loss. If a source can't be copied that way (e.g. an encrypted file), just that file's pages fall back to a 150 dpi image page in the same output, so you always get a result.
+- **Selection**: a plain **left click** selects/deselects a page — no modifier needed. Hold **Ctrl** and hover a page for a **large preview** (~80% of the dialog) that disappears as soon as you release Ctrl.
+- **Scrolling** in the page grid uses the same smooth wheel behaviour as the main gallery.
+- Page tiles use your gallery tile size; the selected-page highlight style (**frame** or **overlay**) is configurable under *Settings → View*.
+- **Output is always in original order**, regardless of the order you clicked. Names default to `<source> - Page N` / `<source>-Selected` (required for the folder-wide mode); `.pdf` is appended automatically and existing names get ` (1)`, ` (2)`, … appended instead of being overwritten.
+
 ### PDF Editor (Post-it Notes & Drawings)
 - Add sticky-note style text boxes anywhere on a PDF page — the original file is **never modified**
 - **Tools**: Select/move, Text note, Freehand pen, Arrow, Rectangle, Ellipse — the full image-editor tool set, now on PDFs (tool palette in the dockable panel)
@@ -224,12 +233,10 @@ Custom themes can be exported to JSON and shared:
 ## Changelog
 
 ### Latest
-- **Feature**: Added drag-and-drop pane docking with live layout previews in Split View.
-- **Feature**: Added Mono-Play to automatically pause other media during playback (enabled by default).
-- **Feature**: "Add Folder" now pre-fills the current folder path when applicable.
-- **Change**: File renaming in fullscreen is now only available in options mode (`Alt+S`).
-- **Fix**: Improved render backend selection and compatibility fallback.
-- **Change**: Improved graphics backend recovery to reduce crashes and automatically use a safer backend when needed.
+- **Feature**: Added PDF page extraction for single pages, multiple pages, or pages from all PDFs in the current folder.
+- **Feature**: PDF extraction preserves the original content whenever possible, with automatic fallback for unsupported PDFs.
+- **Feature**: Added page previews and improved page selection in the PDF extraction dialog.
+- **Feature**: Added a setting to choose the PDF page selection highlight style (frame or overlay).
 
 ---
 

@@ -64,6 +64,10 @@ set(SOURCES
     src/TransliterationController.h
     src/PdfEditController.cpp
     src/PdfEditController.h
+    src/PdfExtractController.cpp
+    src/PdfExtractController.h
+    src/PdfPageCopier.cpp
+    src/PdfPageCopier.h
     src/ImageEditTypes.h
     src/ImageEditModel.cpp
     src/ImageEditModel.h

@@ -38,6 +38,14 @@ ApplicationWindow {
 
     property string statusText: ""
 
+    // ── Globale PDF-Seiten-Extraktion (FilterBar ▸ „Extrahieren") ─────────────
+    //  PdfExtract ist ein Singleton, das AUCH jede PdfSurface nutzt → diese
+    //  Flags markieren, ob der laufende Scan/Auftrag von HIER stammt; nur dann
+    //  reagiert die Shell auf die Ergebnis-Signale.
+    property bool _scanPending: false
+    property bool _extractPending: false
+    property string _extractName: ""
+
     Component.onCompleted: {
         if (App.startMaximized)
             shell.visibility = Window.Maximized
@@ -300,6 +308,13 @@ ApplicationWindow {
                 categoryPanelVisible: catPanel.showCategoriesSection
                 onTagPanelToggled:      catPanel.showTagsSection      = !catPanel.showTagsSection
                 onCategoryPanelToggled: catPanel.showCategoriesSection = !catPanel.showCategoriesSection
+                // „Extrahieren": Ordner asynchron nach PDFs durchsuchen; das
+                // Ergebnis öffnet unten (onFolderPdfsReady) den Auswahldialog.
+                // Das Flag grenzt uns gegen Scans anderer Aufrufer ab (Singleton).
+                onExtractPagesRequested: {
+                    shell._scanPending = true
+                    PdfExtract.scanFolder(App.currentFolder)
+                }
             }
 
             GalleryView {
@@ -1073,6 +1088,57 @@ ApplicationWindow {
                 App.handleDroppedUrls(drop.urls)
                 drop.acceptProposedAction()
             }
+        }
+    }
+
+    // ── Globale PDF-Seiten-Extraktion: Auswahldialog + Rückmeldungen ─────────
+    //  Dieselbe Komponente wie in der PdfSurface, nur mit allen PDFs des
+    //  Ordners und Namenspflicht (requireName) — die Ausgabe landet im
+    //  aktuellen Ordner, deshalb hostet die Shell den Dialog (sie kennt
+    //  Overlay und Statuszeile).
+    PdfPageSelectDialog {
+        id: globalExtractDlg
+        anchors.fill: parent
+        requireName: true
+        titleText: App.uiText(App.language, "ExtractGlobalTitle")
+        defaultName: ""
+        onExtractRequested: (jobs, name) => {
+            shell._extractPending = true
+            shell._extractName    = name
+            PdfExtract.extractGlobal(jobs, App.currentFolder, name)
+        }
+    }
+
+    Connections {
+        target: PdfExtract
+        function onFolderPdfsReady(files) {
+            if (!shell._scanPending) return          // Scan eines anderen Aufrufers
+            shell._scanPending = false
+            if (files.length === 0) {
+                shell.statusText = App.uiText(App.language, "ExtractNoPdfs")
+                statusClearTimer.restart()
+                return
+            }
+            globalExtractDlg.openWith(files)
+        }
+        function onExtractProgress(done, total) {
+            if (!shell._extractPending) return
+            shell.statusText = App.uiText(App.language, "ExtractProgressToast")
+                                   .arg(done).arg(total)
+            statusClearTimer.restart()
+        }
+        function onExtractFinished(ok, targetPath, errorText) {
+            if (!shell._extractPending) return
+            shell._extractPending = false
+            // ERST aktualisieren, DANN die eigene Meldung setzen: der Refresh
+            // emittiert selbst eine statusMessage („Aktualisiert"), die sonst
+            // unsere Erfolgsmeldung sofort wieder überschriebe.
+            if (ok) App.refreshCurrentFolder()
+            shell.statusText = ok
+                ? App.uiText(App.language, "ExtractOkToast")
+                      .arg(String(targetPath).split("/").pop())
+                : App.uiText(App.language, "ExtractFailToast")
+            statusClearTimer.restart()
         }
     }
 

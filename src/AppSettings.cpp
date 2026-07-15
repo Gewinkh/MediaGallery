@@ -398,6 +398,14 @@ PageTransition AppSettings::pageTransition() const {
 void AppSettings::setPageTransition(PageTransition t) {
     m_settings.setValue("ui/pageTransition", static_cast<int>(t));
 }
+ExtractSelectStyle AppSettings::extractSelectStyle() const {
+    // Default 0 = Frame (Akzent-Rahmen) — die dezentere Variante.
+    return static_cast<ExtractSelectStyle>(
+        m_settings.value("ui/extractSelectStyle", 0).toInt());
+}
+void AppSettings::setExtractSelectStyle(ExtractSelectStyle s) {
+    m_settings.setValue("ui/extractSelectStyle", static_cast<int>(s));
+}
 bool AppSettings::audioAccentApple() const {
     return m_settings.value("ui/audioAccentApple", false).toBool();
 }

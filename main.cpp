@@ -23,6 +23,7 @@
 #include "src/PdfTextController.h"
 #include "src/PdfAudioController.h"
 #include "src/PdfEditController.h"
+#include "src/PdfExtractController.h"
 #include "src/ImageEditController.h"
 #include "src/TransliterationController.h"
 #include "src/WebEngineController.h"
@@ -113,6 +114,10 @@ int main(int argc, char* argv[]) {
     // PdfEdit-Singleton bleibt allein für die globale Einstellung panelOnTop
     // (Einstellungen ▸ Editor) erhalten.
     PdfEditController    pdfEdit(settings);
+    // Globaler PDF-Seiten-Extraktor: EINE Instanz genügt (eigener 1-Thread-Pool
+    // seriell); wird sowohl aus jeder PdfSurface als auch aus der FilterBar/Shell
+    // (globale Ordner-Extraktion) angesprochen.
+    PdfExtractController pdfExtract;
     TransliterationController translit;   // Live-Transliteration (Latein → Arabisch/Kana)
     WebEngineController  webEngine;       // lazy WebEngine-Init (nur bei HTML-Bedarf)
 
@@ -134,6 +139,7 @@ int main(int argc, char* argv[]) {
     qmlRegisterSingletonInstance("MediaGallery", 1, 0, "Viewer",    &viewerController);
     qmlRegisterSingletonInstance("MediaGallery", 1, 0, "PdfThumbs", &pdfThumbs);
     qmlRegisterSingletonInstance("MediaGallery", 1, 0, "PdfEdit",   &pdfEdit);
+    qmlRegisterSingletonInstance("MediaGallery", 1, 0, "PdfExtract", &pdfExtract);
 
     // Dezentrale, pro PdfSurface (PDF-Kachel) instanziierbare Editor-Controller —
     // eigener Zustand je geöffneter Datei (kein QML_ELEMENT-Makro, manuelle

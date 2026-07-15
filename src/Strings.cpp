@@ -373,6 +373,27 @@ static const QMap<StringKey, QString> s_de = {
     { StringKey::ImageEditPasteBtn,        "Einfügen" },
     { StringKey::ImageEditDocSection,      "Dokument" },
 
+    // ── PDF-Seiten-Extraktion ────────────────────────────────────────────────
+    { StringKey::CtxExtractPage,           "Seite extrahieren" },
+    { StringKey::CtxExtractPages,          "Mehrere Seiten extrahieren…" },
+    { StringKey::ExtractNameTitle,         "Neue PDF benennen" },
+    { StringKey::ExtractNameLabel,         "Dateiname" },
+    { StringKey::ExtractCreateBtn,         "Extrahieren" },
+    { StringKey::ExtractDialogTitle,       "Seiten extrahieren" },
+    { StringKey::ExtractGlobalTitle,       "PDF-Seiten aus Ordner extrahieren" },
+    { StringKey::ExtractHintCtrl,          "Klicken wählt Seiten aus und ab. Strg gedrückt halten und mit der Maus über eine Seite fahren zeigt eine große Vorschau." },
+    { StringKey::ExtractSelectedCount,     "%1 Seiten ausgewählt" },
+    { StringKey::ExtractNoPdfs,            "In diesem Ordner gibt es keine PDF-Dateien." },
+    { StringKey::FilterExtractBtn,         "Extrahieren" },
+    { StringKey::ExtractOkToast,           "PDF erstellt: %1" },
+    { StringKey::ExtractFailToast,         "Extraktion fehlgeschlagen." },
+    { StringKey::ExtractProgressToast,     "Extrahiere Seite %1/%2" },
+    { StringKey::ExtractPageShort,         "S. %1" },
+    { StringKey::SettingsViewExtractStyle,     "PDF-Extraktion: Auswahl-Darstellung" },
+    { StringKey::SettingsViewExtractStyleHint, "Wie ausgewählte Seiten im Extraktionsdialog hervorgehoben werden." },
+    { StringKey::ExtractStyleFrame,        "Rahmen" },
+    { StringKey::ExtractStyleOverlay,      "Überlagerung" },
+
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -745,6 +766,27 @@ static const QMap<StringKey, QString> s_en = {
     { StringKey::ImageEditCopyBtn,         "Copy" },
     { StringKey::ImageEditPasteBtn,        "Paste" },
     { StringKey::ImageEditDocSection,      "Document" },
+
+    // ── PDF page extraction ──────────────────────────────────────────────────
+    { StringKey::CtxExtractPage,           "Extract page" },
+    { StringKey::CtxExtractPages,          "Extract multiple pages…" },
+    { StringKey::ExtractNameTitle,         "Name the new PDF" },
+    { StringKey::ExtractNameLabel,         "File name" },
+    { StringKey::ExtractCreateBtn,         "Extract" },
+    { StringKey::ExtractDialogTitle,       "Extract pages" },
+    { StringKey::ExtractGlobalTitle,       "Extract PDF pages from folder" },
+    { StringKey::ExtractHintCtrl,          "Click to select and deselect pages. Hold Ctrl and hover a page to see a large preview." },
+    { StringKey::ExtractSelectedCount,     "%1 pages selected" },
+    { StringKey::ExtractNoPdfs,            "There are no PDF files in this folder." },
+    { StringKey::FilterExtractBtn,         "Extract" },
+    { StringKey::ExtractOkToast,           "PDF created: %1" },
+    { StringKey::ExtractFailToast,         "Extraction failed." },
+    { StringKey::ExtractProgressToast,     "Extracting page %1/%2" },
+    { StringKey::ExtractPageShort,         "p. %1" },
+    { StringKey::SettingsViewExtractStyle,     "PDF extraction: selection style" },
+    { StringKey::SettingsViewExtractStyleHint, "How selected pages are highlighted in the extraction dialog." },
+    { StringKey::ExtractStyleFrame,        "Frame" },
+    { StringKey::ExtractStyleOverlay,      "Overlay" },
 
 };
 

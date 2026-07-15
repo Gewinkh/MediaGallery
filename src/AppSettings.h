@@ -35,6 +35,9 @@ public:
 
     PageTransition pageTransition() const override;
     void           setPageTransition(PageTransition t) override;
+
+    ExtractSelectStyle extractSelectStyle() const override;
+    void               setExtractSelectStyle(ExtractSelectStyle s) override;
     bool           audioAccentApple() const override;
     void           setAudioAccentApple(bool v) override;
 

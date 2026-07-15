@@ -8,6 +8,11 @@ enum class Language      { German, English };
 enum class VideoPlayback { Native, External };
 enum class PageTransition { Slide, Fade };   // Vollbild-Öffnen/Schließen-Animation
 
+// Darstellung der Seitenauswahl in den PDF-Extraktionsdialogen:
+//  Frame   = Akzent-Rahmen um die Kachel (Standard)
+//  Overlay = halbtransparente Akzent-Überlagerung mit Häkchen
+enum class ExtractSelectStyle { Frame, Overlay };
+
 // ─── Tile arrangement / alignment mode ───────────────────────────────────────
 enum class TileArrangement {
     Centered,       // tiles centred in viewport (current default)
@@ -103,6 +108,9 @@ public:
     // Vollbild-Übergangsstil (Slide/Fade) + Audio-Player-Akzent (Theme/Apple-Blau)
     virtual PageTransition pageTransition() const = 0;
     virtual void           setPageTransition(PageTransition t) = 0;
+
+    virtual ExtractSelectStyle extractSelectStyle() const = 0;
+    virtual void               setExtractSelectStyle(ExtractSelectStyle s) = 0;
     virtual bool           audioAccentApple() const = 0;
     virtual void           setAudioAccentApple(bool v) = 0;
 

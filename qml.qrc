@@ -13,6 +13,8 @@
         <file>qml/PdfEditBox.qml</file>
         <file>qml/PdfEditToolbar.qml</file>
         <file>qml/PdfEditPanel.qml</file>
+        <file>qml/PdfExtractNameDialog.qml</file>
+        <file>qml/PdfPageSelectDialog.qml</file>
         <file>qml/ImageSurface.qml</file>
         <file>qml/ImageEditBox.qml</file>
         <file>qml/ImageEditToolbar.qml</file>

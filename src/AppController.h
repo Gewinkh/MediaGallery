@@ -40,6 +40,7 @@ class AppController : public QObject {
     Q_PROPERTY(QString language        READ language        NOTIFY languageChanged)
     Q_PROPERTY(QString videoPlayback   READ videoPlayback   NOTIFY videoPlaybackChanged)
     Q_PROPERTY(QString pageTransition  READ pageTransition  NOTIFY pageTransitionChanged)
+    Q_PROPERTY(QString extractSelectStyle READ extractSelectStyle NOTIFY extractSelectStyleChanged)
     Q_PROPERTY(bool    audioAccentApple READ audioAccentApple NOTIFY audioAccentChanged)
     Q_PROPERTY(bool    monoPlay        READ monoPlay        NOTIFY monoPlayChanged)
     Q_PROPERTY(bool    optionsVisible  READ optionsVisible  NOTIFY optionsVisibleChanged)
@@ -182,6 +183,7 @@ public:
     QString language()        const;   // "de" | "en"
     QString videoPlayback()   const;   // "native" | "external"
     QString pageTransition()  const;   // "slide" | "fade"
+    QString extractSelectStyle() const;   // "frame" | "overlay"
     bool    audioAccentApple() const;  // true = Apple-Blau, false = Theme-Akzent
     bool    monoPlay()        const;   // true = nur EINE Wiedergabe gleichzeitig
     bool    optionsVisible()  const;
@@ -190,6 +192,7 @@ public:
     Q_INVOKABLE void setLanguage(const QString& code);       // "de" | "en"
     Q_INVOKABLE void setVideoPlayback(const QString& mode);  // "native" | "external"
     Q_INVOKABLE void setPageTransition(const QString& mode); // "slide" | "fade"
+    Q_INVOKABLE void setExtractSelectStyle(const QString& style); // "frame" | "overlay"
     Q_INVOKABLE void setAudioAccentApple(bool apple);
     Q_INVOKABLE void setMonoPlay(bool on);
 
@@ -266,6 +269,7 @@ signals:
     void languageChanged();
     void videoPlaybackChanged();
     void pageTransitionChanged();
+    void extractSelectStyleChanged();
     void audioAccentChanged();
     void monoPlayChanged();
     // Mono-Play: eine Wiedergabestelle hat gestartet (nur bei aktiver Option).
