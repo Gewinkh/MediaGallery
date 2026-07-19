@@ -4,9 +4,11 @@ import MediaGallery 1.0
 
 // ─────────────────────────────────────────────────────────────────────────────
 //  PdfEditBox.qml — EINE Overlay-Annotation des PDF-Editors (Delegate im
-//  Boxen-Repeater jeder Seite von PdfSurface). Deckt alle fünf Arten ab:
+//  Boxen-Repeater jeder Seite von PdfSurface). Deckt alle sechs Arten ab:
 //  Text-Notiz (Post-it), Freihand, Pfeil, Rechteck, Ellipse — analog zum
-//  Bild-Editor (ImageEditBox), nur in PDF-Punkten statt Bild-Pixeln.
+//  Bild-Editor (ImageEditBox), nur in PDF-Punkten statt Bild-Pixeln — sowie
+//  „Text ersetzen" (PDF-exklusiv): deckende, fix weiße Fläche + Textbox als
+//  EIN Objekt, ohne Post-it-Optik (kein Schatten, kein Eselsohr).
 //
 //  KOORDINATEN: Das Modell führt Position/Größe in PDF-PUNKTEN (Ursprung
 //  oben-links); dieses Item rechnet über `pageScale` (Pixel je Punkt) in
@@ -74,7 +76,13 @@ Item {
     readonly property PdfEditController ctl: surface ? surface.editCtl : null
 
     readonly property bool onThisPage: page === pageIndex
-    readonly property bool isText:   boxKind === 0
+    readonly property bool isText:    boxKind === 0
+    // „Text ersetzen" (kind 5): weiße Deckfläche + Textbox als EIN Objekt —
+    // volle Text-Pipeline, aber OHNE Post-it-Optik (kein Schatten/Eselsohr).
+    readonly property bool isReplace: boxKind === 5
+    // Textführende Arten (Notiz + Text ersetzen): TextEdit, Platzhalter,
+    // Zeilenfang und Text-Sync teilen sich denselben Pfad.
+    readonly property bool isTextual: isText || isReplace
     readonly property bool isStroke: boxKind === 1 || boxKind === 2
     readonly property bool editMode: box.ctl.editMode
     // Auswahl/Verschieben/Skalieren nur mit dem Auswahl-Werkzeug (wie im
@@ -83,8 +91,8 @@ Item {
     readonly property bool selected: editMode && box.ctl.selectedId === boxId
     // Kind-abhängige Mindestgrößen: Zeichnungen dürfen deutlich kleiner
     // werden als Textboxen (dünner Pfeil ist legitim; Werte wie Controller).
-    readonly property real minWPt: isText ? box.ctl.minBoxWPt : 4
-    readonly property real minHPt: isText ? box.ctl.minBoxHPt : 4
+    readonly property real minWPt: isTextual ? box.ctl.minBoxWPt : 4
+    readonly property real minHPt: isTextual ? box.ctl.minBoxHPt : 4
     property bool editing: false         // Inline-Textbearbeitung aktiv
 
     // Sichtbar auf der eigenen Seite UND solange die Notizen nicht über den
@@ -117,7 +125,7 @@ Item {
     }
 
     function startEditing() {
-        if (!box.isText || !box.editMode || box.editing)
+        if (!box.isTextual || !box.editMode || box.editing)
             return
         box.ctl.selectedId = box.boxId
         box.ctl.beginTextEdit(box.boxId)       // Session: Alt-Text als Undo-Basis
@@ -154,6 +162,11 @@ Item {
         anchors.fill: parent
         color: box.highlightColor
         visible: box.hasPaper
+    }
+    Rectangle {                                     // „Text ersetzen": deckende
+        anchors.fill: parent                        // weiße Fläche — bewusst
+        color: box.highlightColor                   // OHNE Schatten/Eselsohr
+        visible: box.isReplace                      // (Controller erzwingt Weiß)
     }
     Canvas {                                        // Eselsohr unten rechts
         id: fold
@@ -196,7 +209,7 @@ Item {
     //  (drawBox im PdfExportTask) → WYSIWYG.
     Canvas {
         id: shape
-        visible: !box.isText
+        visible: !box.isTextual
         readonly property real pad: Math.max(2, box.lineWidth * box.pageScale)
         anchors.fill: parent
         anchors.margins: -pad
@@ -291,7 +304,7 @@ Item {
     // ── Text (Anzeige + Inline-Bearbeitung) ───────────────────────────────────
     TextEdit {
         id: edit
-        visible: box.isText
+        visible: box.isTextual
         anchors.fill: parent
         padding: box.ctl.boxPaddingPt * box.pageScale   // gleiche Konstante wie Export
         clip: false                        // Überlauf sichtbar — wie im Export
@@ -301,6 +314,21 @@ Item {
         activeFocusOnPress: false          // Fokus vergibt AUSSCHLIESSLICH startEditing()
         selectByMouse: true
         persistentSelection: false
+        //  ↓ in der letzten Zeile springt ans Zeilenende (einheitlich in allen
+        //  Editoren der App — 2026-07-17).
+        Keys.onDownPressed: (e) => {
+            const yCur = edit.positionToRectangle(edit.cursorPosition).y
+            const yEnd = edit.positionToRectangle(edit.length).y
+            if (Math.abs(yCur - yEnd) < 0.5 && edit.cursorPosition < edit.length) {
+                if (e.modifiers & Qt.ShiftModifier)
+                    edit.moveCursorSelection(edit.length)
+                else
+                    edit.cursorPosition = edit.length
+                e.accepted = true
+            } else {
+                e.accepted = false
+            }
+        }
         // Gewählte Familie führt (Latein); arabische Glyphen fallen auf Naskh
         // zurück. QFont-Familienliste aus C++ (QML kennt in Qt 6.4 kein
         // font.families) — Größe/Stil werden mit übergeben und ersetzen die
@@ -318,7 +346,7 @@ Item {
         verticalAlignment: box.vAlign === 1 ? TextEdit.AlignVCenter
                                             : TextEdit.AlignTop
 
-        Component.onCompleted: if (box.isText) text = box.boxText
+        Component.onCompleted: if (box.isTextual) text = box.boxText
         // Live-Transliteration (falls aktiv): gezieltes remove()/insert() VOR
         // updateText, damit der finale Zielschrift-Text ins Modell wandert.
         // Der Guard verhindert Re-Entranz durch die eigene Edition; das
@@ -346,13 +374,13 @@ Item {
         Keys.onEscapePressed: (e) => { box.finishEditing(); e.accepted = true }
     }
     // Modell → Anzeige (Undo/Redo/Sidecar), nur außerhalb einer Bearbeitung.
-    onBoxTextChanged: if (isText && !editing && edit.text !== boxText) edit.text = boxText
+    onBoxTextChanged: if (isTextual && !editing && edit.text !== boxText) edit.text = boxText
 
     // ── Platzhalter in leerer Box (fester Grauton: lesbar auf weißer Seite) ───
     Text {
         anchors.fill: parent
         anchors.margins: box.ctl.boxPaddingPt * box.pageScale
-        visible: box.isText && box.editMode && !box.editing && box.boxText.length === 0
+        visible: box.isTextual && box.editMode && !box.editing && box.boxText.length === 0
         text: App.uiText(App.language, "PdfEditEmptyHint")
         color: "#9aa0a6"
         font.pixelSize: Math.max(8, box.fontSizePt * box.pageScale * 0.85)
@@ -399,7 +427,7 @@ Item {
             moved = true
             // Zeilenfang (falls aktiv): Oberkante an erkannte PDF-Textzeile —
             // nur für TEXT-Notizen sinnvoll (Zeichnungen bewegen sich frei).
-            if (box.surface && box.isText)
+            if (box.surface && box.isTextual)
                 ny = box.surface.snapYPt(box.pageIndex, ny, box.hPt)
             nx = Math.max(0, Math.min(nx, Math.max(0, box.pageWPt - box.wPt)))
             // y bewusst NICHT klemmen: über den unteren/oberen Seitenrand

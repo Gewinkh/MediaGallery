@@ -1,4 +1,5 @@
 #include "AppController.h"
+#include "DocxDocument.h"
 
 #include "FolderService.h"
 #include "JsonStorage.h"
@@ -87,6 +88,7 @@ QString AppController::createEmptyFile(const QString& kind, const QString& baseN
     if      (kind == QLatin1String("pdf"))  ext = QStringLiteral("pdf");
     else if (kind == QLatin1String("html")) ext = QStringLiteral("html");
     else if (kind == QLatin1String("txt"))  ext = QStringLiteral("txt");
+    else if (kind == QLatin1String("docx")) ext = QStringLiteral("docx");
     else {
         emit statusMessage(Strings::get(StringKey::CreateFileFailed));
         return {};
@@ -145,6 +147,11 @@ QString AppController::createEmptyFile(const QString& kind, const QString& baseN
                             "<body>\n\n"
                             "</body>\n"
                             "</html>\n").arg(base.toHtmlEscaped()).toUtf8();
+            }
+            else if (ext == QLatin1String("docx")) {
+                // Leeres Word-Dokument (A4, Standardränder 2,5 cm) aus der
+                // eigenen Container-Fabrik — sofort im DOCX-Editor nutzbar.
+                bytes = Docx::Document::emptyDocxBytes(base);
             }
             // txt bleibt bewusst 0 Byte.
             if (bytes.isEmpty() || out.write(bytes) == bytes.size())

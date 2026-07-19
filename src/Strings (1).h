@@ -299,28 +299,6 @@ enum class StringKey {
     PdfEditAlignLabel,         // Panel: Ausrichtung (horizontal)
     PdfEditVAlignLabel,        // Panel: vertikale Ausrichtung (oben/mittig)
     PdfEditToolReplace,        // Werkzeug-Tooltip: Text ersetzen (weiße Deckfläche + Textbox)
-    // ── DOCX-Editor (2026-07-16) ─────────────────────────────────────────────
-    CreateFileTypeDocx,       // „+ Erstellen"-Auswahl: leeres DOCX
-    SettingsDocxGroup,        // Einstellungen ▸ Editor: Gruppentitel
-    DocxSaveModeLabel,        // Einstellungen: Label über den Radiobuttons
-    DocxSaveDirect,           // Speichermodus 1 (Standard)
-    DocxSaveDirectHint,       // Hinweistext Modus 1
-    DocxSaveCopy,             // Speichermodus 2 + Toolbar-Button-Beschriftung
-    DocxSaveCopyHint,         // Hinweistext Modus 2
-    DocxLoadError,            // Ladefehler-Überschrift der Kachel
-    DocxSaveError,            // Status bei fehlgeschlagenem Speichern
-    DocxExportedTo,           // Status nach Kopie-Export (%1 = Dateiname)
-    DocxTablePlaceholder,     // Platzhalterzeile für opake Blöcke
-    DocxPageBreak,            // Marker-Beschriftung der gestrichelten Linie
-    DocxAlignJustify,         // Tooltip 4. Ausrichtungs-Button
-    DocxLineSpacing,          // Tooltip Zeilenabstand-Combo
-    DocxSpaceBefore,          // Tooltip SpinBox
-    DocxSpaceAfter,           // Tooltip SpinBox
-    DocxBullets,              // Tooltip Listen-Button
-    DocxNumbered,             // Tooltip Listen-Button
-    DocxSpacingGroup,         // DOCX-Toolbar: Sammel-Knopf (Zeilenabstand + davor/danach)
-    DocxListNone,             // DOCX-Listen-Popup: Liste ausschalten
-    DocxListType,             // DOCX-Toolbar: Tooltip des Listen-Knopfs
     PdfEditColorLabel,         // Panel: Textfarbe
     PdfEditHighlightLabel,     // Panel: Hervorhebung (Box-Hintergrund)
     PdfEditNoHighlight,        // Panel/Toolbar: Hervorhebung entfernen

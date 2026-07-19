@@ -5,7 +5,9 @@
 #include <QFileInfo>
 #include <QSet>
 
-enum class MediaType { Image, Video, Audio, Pdf, Text, Unknown };
+// Docx steht VOR Unknown (Viewer-Typtabelle: 5 = DOCX-Editor); Typen werden
+// stets frisch aus der Endung erkannt — keine numerische Persistenz.
+enum class MediaType { Image, Video, Audio, Pdf, Text, Docx, Unknown };
 
 struct MediaItem {
     QString filePath;       // Full path on disk
@@ -46,6 +48,7 @@ struct MediaItem {
         if (vidExts.contains(ext)) return MediaType::Video;
         if (audExts.contains(ext)) return MediaType::Audio;
         if (ext == "pdf") return MediaType::Pdf;
+        if (ext == "docx") return MediaType::Docx;   // Word-Dokumente (DOCX-Editor)
         if (txtExts.contains(ext)) return MediaType::Text;
         // Extension-less text files (e.g. "Makefile", "Dockerfile")
         const QString name = QFileInfo(path).fileName().toLower();

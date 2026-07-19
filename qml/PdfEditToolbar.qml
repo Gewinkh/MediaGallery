@@ -42,7 +42,11 @@ Item {
                                    && info.page === pageIndex
                                    && (surface ? surface.notesVisible : true)
     // Art der Auswahl → kontextsensitive Regler (Text vs. Strich vs. Form).
-    readonly property bool isText:   active && info.isText === true
+    readonly property bool isText:    active && info.isText === true
+    // „Text ersetzen": volle Text-Regler, aber KEIN Papier-Button (Deckfläche
+    // fix Weiß — keine Farbwahl-UI in dieser Phase).
+    readonly property bool isReplace: active && info.isReplace === true
+    readonly property bool isTextual: isText || isReplace
     readonly property bool isShape:  active && info.isShape === true
     readonly property bool isStroke: active && info.isStroke === true
 
@@ -109,59 +113,59 @@ Item {
         spacing: 2
 
         // ── TEXT-Regler (nur Text-Notizen) ────────────────────────────────────
-        TBtn { visible: bar.isText; glyph: "B"; boldGlyph: true;      checked: bar.info.bold === true
+        TBtn { visible: bar.isTextual; glyph: "B"; boldGlyph: true;      checked: bar.info.bold === true
                onActivated: bar.ctl.setBoxBold(bar.ctl.selectedId, !bar.info.bold) }
-        TBtn { visible: bar.isText; glyph: "I"; italicGlyph: true;    checked: bar.info.italic === true
+        TBtn { visible: bar.isTextual; glyph: "I"; italicGlyph: true;    checked: bar.info.italic === true
                onActivated: bar.ctl.setBoxItalic(bar.ctl.selectedId, !bar.info.italic) }
-        TBtn { visible: bar.isText; glyph: "U"; underlineGlyph: true; checked: bar.info.underline === true
+        TBtn { visible: bar.isTextual; glyph: "U"; underlineGlyph: true; checked: bar.info.underline === true
                onActivated: bar.ctl.setBoxUnderline(bar.ctl.selectedId, !bar.info.underline) }
 
-        Rectangle { visible: bar.isText; width: 1; height: 16; color: App.themeBorder
+        Rectangle { visible: bar.isTextual; width: 1; height: 16; color: App.themeBorder
                     anchors.verticalCenter: parent.verticalCenter }
 
         // ── Schriftgröße ──────────────────────────────────────────────────────
-        TBtn { visible: bar.isText; glyph: "\u2212"
+        TBtn { visible: bar.isTextual; glyph: "\u2212"
                onActivated: bar.ctl.setBoxFontSize(bar.ctl.selectedId,
                                                    Math.max(4, Math.round(bar.info.fontSizePt) - 1)) }
         Text {
-            visible: bar.isText
+            visible: bar.isTextual
             anchors.verticalCenter: parent.verticalCenter
             width: 24; horizontalAlignment: Text.AlignHCenter
-            text: bar.isText ? Math.round(bar.info.fontSizePt) : ""
+            text: bar.isTextual ? Math.round(bar.info.fontSizePt) : ""
             color: App.themeTextPrimary; font.pixelSize: 11
         }
-        TBtn { visible: bar.isText; glyph: "+"
+        TBtn { visible: bar.isTextual; glyph: "+"
                onActivated: bar.ctl.setBoxFontSize(bar.ctl.selectedId,
                                                    Math.min(200, Math.round(bar.info.fontSizePt) + 1)) }
 
-        Rectangle { visible: bar.isText; width: 1; height: 16; color: App.themeBorder
+        Rectangle { visible: bar.isTextual; width: 1; height: 16; color: App.themeBorder
                     anchors.verticalCenter: parent.verticalCenter }
 
         // ── Ausrichtung (0=links, 1=zentriert, 2=rechts) ──────────────────────
-        TBtn { visible: bar.isText; glyph: "\u2B05"; checked: bar.info.alignment === 0
+        TBtn { visible: bar.isTextual; glyph: "\u2B05"; checked: bar.info.alignment === 0
                onActivated: bar.ctl.setBoxAlignment(bar.ctl.selectedId, 0) }
-        TBtn { visible: bar.isText; glyph: "\u2194"; checked: bar.info.alignment === 1
+        TBtn { visible: bar.isTextual; glyph: "\u2194"; checked: bar.info.alignment === 1
                onActivated: bar.ctl.setBoxAlignment(bar.ctl.selectedId, 1) }
-        TBtn { visible: bar.isText; glyph: "\u2B95"; checked: bar.info.alignment === 2
+        TBtn { visible: bar.isTextual; glyph: "\u2B95"; checked: bar.info.alignment === 2
                onActivated: bar.ctl.setBoxAlignment(bar.ctl.selectedId, 2) }
 
-        Rectangle { visible: bar.isText; width: 1; height: 16; color: App.themeBorder
+        Rectangle { visible: bar.isTextual; width: 1; height: 16; color: App.themeBorder
                     anchors.verticalCenter: parent.verticalCenter }
 
         // ── Vertikale Ausrichtung (0=oben wie Word-Textfeld, 1=mittig) ────────
-        TBtn { visible: bar.isText; glyph: "\u2912"; checked: bar.info.vAlign === 0
+        TBtn { visible: bar.isTextual; glyph: "\u2912"; checked: bar.info.vAlign === 0
                tip: App.uiText(App.language, "PdfEditVAlignLabel")
                onActivated: bar.ctl.setBoxVAlign(bar.ctl.selectedId, 0) }
-        TBtn { visible: bar.isText; glyph: "\u2195"; checked: bar.info.vAlign === 1
+        TBtn { visible: bar.isTextual; glyph: "\u2195"; checked: bar.info.vAlign === 1
                tip: App.uiText(App.language, "PdfEditVAlignLabel")
                onActivated: bar.ctl.setBoxVAlign(bar.ctl.selectedId, 1) }
 
-        Rectangle { visible: bar.isText; width: 1; height: 16; color: App.themeBorder
+        Rectangle { visible: bar.isTextual; width: 1; height: 16; color: App.themeBorder
                     anchors.verticalCenter: parent.verticalCenter }
 
         // ── Textfarbe: „A" über aktuellem Farbbalken; öffnet die Palette ──────
         Rectangle {
-            visible: bar.isText
+            visible: bar.isTextual
             width: 26; height: 24; radius: 5
             color: colHover.hovered
                    ? Qt.rgba(App.themeTextPrimary.r, App.themeTextPrimary.g, App.themeTextPrimary.b, 0.16)
@@ -173,7 +177,7 @@ Item {
                 anchors { bottom: parent.bottom; bottomMargin: 3
                           horizontalCenter: parent.horizontalCenter }
                 width: 16; height: 4; radius: 1
-                color: bar.isText ? bar.info.textColor : "#000000"
+                color: bar.isTextual ? bar.info.textColor : "#000000"
                 border.color: App.themeBorder; border.width: 1
             }
             HoverHandler { id: colHover }
@@ -183,6 +187,8 @@ Item {
         }
 
         // ── Hervorhebung: Farbfeld (Schrägstrich = keine); öffnet die Palette ─
+        //    Bewusst NUR für Post-its — die Deckfläche von „Text ersetzen" ist
+        //    fix Weiß (keine eigene Farbwahl-UI in dieser Phase).
         Rectangle {
             visible: bar.isText
             width: 26; height: 24; radius: 5

@@ -65,6 +65,8 @@ public:
 
     bool pdfEditPanelTop() const override;
     void setPdfEditPanelTop(bool v) override;
+    bool docxSaveDirect() const override;
+    void setDocxSaveDirect(bool v) override;
 
     bool autoSaveEnabled() const override;
     void setAutoSaveEnabled(bool v) override;

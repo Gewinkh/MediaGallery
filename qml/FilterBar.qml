@@ -602,7 +602,7 @@ Rectangle {
                 y: createBtn.height + 4
                 width: 260
                 padding: 12
-                property string kind: "pdf"    // "pdf" | "html" | "txt"
+                property string kind: "pdf"    // "pdf" | "html" | "txt" | "docx"
 
                 function doCreate() {
                     if (createNameField.text.trim().length === 0)
@@ -629,7 +629,8 @@ Rectangle {
                     Repeater {
                         model: [ { kind: "pdf",  key: "CreateFileTypePdf"  },
                                  { kind: "html", key: "CreateFileTypeHtml" },
-                                 { kind: "txt",  key: "CreateFileTypeTxt"  } ]
+                                 { kind: "txt",  key: "CreateFileTypeTxt"  },
+                                 { kind: "docx", key: "CreateFileTypeDocx" } ]
                         delegate: Rectangle {
                             id: typeRow
                             required property var modelData

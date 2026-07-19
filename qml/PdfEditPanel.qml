@@ -57,14 +57,19 @@ Rectangle {
 
     // Kontextsensitive Regler-Sichtbarkeit: Art der Auswahl — oder ohne
     // Auswahl das aktive Werkzeug (Text-Regler beim Text-Werkzeug usw.).
-    readonly property bool selIsText:   hasSel && selInfo.isText === true
-    readonly property bool selIsStroke: hasSel && selInfo.isStroke === true
-    readonly property bool selIsShape:  hasSel && selInfo.isShape === true
-    readonly property bool showText:    selIsText || (!hasSel && panel.ctl.tool === 1)
+    readonly property bool selIsText:    hasSel && selInfo.isText === true
+    readonly property bool selIsReplace: hasSel && selInfo.isReplace === true
+    readonly property bool selIsStroke:  hasSel && selInfo.isStroke === true
+    readonly property bool selIsShape:   hasSel && selInfo.isShape === true
+    readonly property bool showText:    selIsText || selIsReplace
+                                        || (!hasSel && (panel.ctl.tool === 1 || panel.ctl.tool === 6))
     readonly property bool showStroke:  selIsStroke || selIsShape
-                                        || (!hasSel && panel.ctl.tool >= 2)
+                                        || (!hasSel && panel.ctl.tool >= 2 && panel.ctl.tool <= 5)
     readonly property bool showFill:    selIsShape
                                         || (!hasSel && (panel.ctl.tool === 4 || panel.ctl.tool === 5))
+    // Notiz-Papier (Farbe/„Keine"/Deckkraft) NUR für klassische Post-its —
+    // die Deckfläche von „Text ersetzen" ist fix Weiß (keine Farbwahl-UI).
+    readonly property bool showPaper:   selIsText || (!hasSel && panel.ctl.tool === 1)
 
     // Standard-Papierfarbe, wenn der Deckkraft-Slider aus „Keine" heraus
     // hochgezogen wird (klassisches Post-it-Gelb, s. PdfEditTypes).
@@ -163,6 +168,13 @@ Rectangle {
             onTapped: {
                 if (panel.surface) panel.surface.commitEditing()
                 panel.ctl.tool = tb.toolValue
+                //  ⇄ „Text ersetzen": eine bestehende Text-Markierung wird
+                //  direkt zur Ersetzen-Box. Bewusst HIER (nicht über
+                //  onToolChanged): war ⇄ bereits aktiv, feuert kein Signal —
+                //  der Klick wäre wirkungslos (Nutzerbefund 2026-07-17).
+                if (tb.toolValue === 6 && panel.surface
+                        && panel.surface.replaceSelectionNow)
+                    panel.surface.replaceSelectionNow()
             }
         }
         ToolTip.text: tb.tip
@@ -268,6 +280,8 @@ Rectangle {
                     ToolBtn { glyph: "\u2197"; toolValue: 3; tip: App.uiText(App.language, "ImageEditToolArrow") }
                     ToolBtn { glyph: "\u25AD"; toolValue: 4; tip: App.uiText(App.language, "ImageEditToolRect") }
                     ToolBtn { glyph: "\u2B2D"; toolValue: 5; tip: App.uiText(App.language, "ImageEditToolEllipse") }
+                    // „Text ersetzen" (PDF-exklusiv): weiße Deckfläche + Textbox.
+                    ToolBtn { glyph: "\u21C4"; toolValue: 6; tip: App.uiText(App.language, "PdfEditToolReplace") }
                 }
 
                 Rectangle { width: parent.width; height: 1; color: App.themeBorder }
@@ -384,6 +398,8 @@ Rectangle {
                     }
                     Column {
                         spacing: 4
+                        // Nur Post-its: die Deckfläche von „Text ersetzen" ist fix Weiß.
+                        visible: panel.showPaper
                         Text { text: App.uiText(App.language, "PdfEditHighlightLabel")
                                color: App.themeTextMuted; font.pixelSize: 11 }
                         Row {
@@ -418,13 +434,14 @@ Rectangle {
                     }
                 }
 
-                // Deckkraft des Notiz-Papiers (Post-it-Transparenz).
-                Text { visible: panel.showText
+                // Deckkraft des Notiz-Papiers (Post-it-Transparenz) — nur
+                // Post-its; die Deckfläche von „Text ersetzen" ist fix Weiß.
+                Text { visible: panel.showPaper
                        text: App.uiText(App.language, "PdfEditOpacityLabel")
                        color: App.themeTextMuted; font.pixelSize: 11 }
                 Slider {
                     id: opSlider
-                    visible: panel.showText
+                    visible: panel.showPaper
                     width: parent.width
                     from: 0; to: 1; stepSize: 0.05
                     onMoved: panel.applyOpacity(value)
@@ -508,7 +525,7 @@ Rectangle {
                 // Anker-Chip (Box wurde per Zeilenfang auf einer PDF-Textzeile
                 // erstellt).
                 Rectangle {
-                    visible: panel.selIsText && panel.info.anchored === true
+                    visible: (panel.selIsText || panel.selIsReplace) && panel.info.anchored === true
                     width: chipLbl.implicitWidth + 18; height: 22; radius: 11
                     color: Qt.rgba(App.themeAccent.r, App.themeAccent.g, App.themeAccent.b, 0.15)
                     border.color: App.themeAccent; border.width: 1
@@ -682,6 +699,8 @@ Rectangle {
                         ToolBtn { glyph: "\u2197"; toolValue: 3; tip: App.uiText(App.language, "ImageEditToolArrow") }
                         ToolBtn { glyph: "\u25AD"; toolValue: 4; tip: App.uiText(App.language, "ImageEditToolRect") }
                         ToolBtn { glyph: "\u2B2D"; toolValue: 5; tip: App.uiText(App.language, "ImageEditToolEllipse") }
+                        // „Text ersetzen" (PDF-exklusiv): weiße Deckfläche + Textbox.
+                        ToolBtn { glyph: "\u21C4"; toolValue: 6; tip: App.uiText(App.language, "PdfEditToolReplace") }
                     }
                 }
 
@@ -771,7 +790,8 @@ Rectangle {
                     }
                 }
                 Column {
-                    visible: panel.showText
+                    // Nur Post-its: die Deckfläche von „Text ersetzen" ist fix Weiß.
+                    visible: panel.showPaper
                     spacing: 2
                     RibbonLabel { text: App.uiText(App.language, "PdfEditHighlightLabel")
                                   + " \u00B7 " + App.uiText(App.language, "PdfEditOpacityLabel") }
@@ -864,7 +884,7 @@ Rectangle {
 
                 // Anker-Chip
                 Rectangle {
-                    visible: panel.selIsText && panel.info.anchored === true
+                    visible: (panel.selIsText || panel.selIsReplace) && panel.info.anchored === true
                     anchors.verticalCenter: parent.verticalCenter
                     width: chipLblH.implicitWidth + 16; height: 20; radius: 10
                     color: Qt.rgba(App.themeAccent.r, App.themeAccent.g, App.themeAccent.b, 0.15)

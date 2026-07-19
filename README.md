@@ -13,6 +13,7 @@ Built with **C++20** and **Qt 6.4+**.
 - **Audio**: MP3, FLAC, WAV, OGG, AAC, M4A, WMA, Opus, AIFF, APE, ALAC, MIDI and more
 - **PDFs**: Full page rendering with thumbnail sidebar and media annotation support
 - **Text files**: TXT, Markdown, source code (C++, Python, Rust, Go, JS/TS, …), configs, scripts, logs, CSV and more — editable directly in the app
+- **Word documents**: DOCX — opened in a built-in, loss-preserving editor (see *DOCX Editor* below)
 - **HTML**: Rendered live preview (via Qt WebEngine) alongside the editable source view
 
 ### Gallery & View
@@ -83,7 +84,7 @@ Built with **C++20** and **Qt 6.4+**.
 - Page tiles use your gallery tile size; the selected-page highlight style (**frame** or **overlay**) is configurable under *Settings → View*.
 - **Output is always in original order**, regardless of the order you clicked. Names default to `<source> - Page N` / `<source>-Selected` (required for the folder-wide mode); `.pdf` is appended automatically and existing names get ` (1)`, ` (2)`, … appended instead of being overwritten.
 
-### PDF Editor (Post-it Notes & Drawings)
+### PDF Editor (Post-it Notes, Drawings & Text Replacement)
 - Add sticky-note style text boxes anywhere on a PDF page — the original file is **never modified**
 - **Tools**: Select/move, Text note, Freehand pen, Arrow, Rectangle, Ellipse — the full image-editor tool set, now on PDFs (tool palette in the dockable panel)
 - **Drawings** with adjustable stroke color, line width (in PDF points) and (for shapes) fill color; drawings move/resize/copy/paste/undo exactly like notes, including **cross-page dragging**
@@ -92,6 +93,10 @@ Built with **C++20** and **Qt 6.4+**.
 - Full text formatting: font family (with automatic substitution hint for missing fonts), size, bold/italic/underline, alignment, vertical alignment, text color and note-paper (highlight) color, including an opacity slider
 - A newly created note/drawing **inherits the last-used style** (only without the text)
 - **Line-snapping**: new notes anchor precisely to detected text lines when placed nearby, or float freely elsewhere
+- **Replace text** tool: two ways to use it — drag across the text you want to replace (you see the familiar blue text selection while dragging, and the white patch appears when you release), or select text first and then press the **⇄** button. Either way it stays as non-destructive as everything else (original file and sidecar workflow unchanged)
+- Text selection keeps working **inside edit mode** with the Select tool, and a selection made before entering edit mode is preserved
+- The replacement box snaps exactly onto the detected text line(s), adopts their font size, and comes **pre-filled with the embedded text** underneath, so you edit instead of retyping; on scanned PDFs without a text layer the tool stays fully usable as a blank patch
+- Replacement boxes keep a fixed width with automatic word wrap and **grow in height with their content**; typing and the resulting growth undo together as a single step
 - **Cross-page dragging**: drag an annotation past the top/bottom of a page and it automatically moves to the neighboring page on release
 - Full undo/redo history (`Ctrl+Z` / `Ctrl+Shift+Z`) and a note-visibility toggle (`Alt+Q`) that hides/shows all annotations in both view and edit mode
 - **Copy & paste** the selected annotation (`Ctrl+C` / `Ctrl+V` or the toolbar/panel buttons) — duplicates it with all settings and text
@@ -109,6 +114,21 @@ Built with **C++20** and **Qt 6.4+**.
 - **Export** writes a brand-new image copy `…_bearbeitet(.n).<ext>` with the annotations permanently rendered onto it (QImage + QPainter, WYSIWYG); the copy keeps the **source format** (JPG→JPG, PNG→PNG, otherwise PNG)
 - Formatting panel can be docked as a **right sidebar** or a **Word-style ribbon** at the top (shares the PDF Editor's panel-position setting, Settings → Text Editor)
 - Fully decentralized: each split-view tile has its **own** independent image editor
+
+### DOCX Editor (Basic)
+- Opens `.docx` files directly in the viewer/split view as an **editable continuous text** (no page look yet; page breaks are shown as dashed markers)
+- **Loss-preserving by design**: only the XML nodes you actually touch are rewritten — untouched paragraphs, tables, images, headers/footers, styles and every other part of the file are carried over **byte-identically** (the document is never regenerated from scratch); a two-stage self-check on load refuses editing rather than risk silent data loss
+- **Text editing**: type, delete, select (mouse/keyboard), split & merge paragraphs, line breaks (`Shift+Enter`), full **undo/redo** with keystroke coalescing
+- **Character formatting**: font family, size, **bold/italic/underline**, text color — applied to the selection, or to the next typed text when nothing is selected (Word-style pending format)
+- **Paragraph formatting**: alignment (left/center/right/justify), spacing (line spacing plus space before/after, grouped behind one button), **bulleted & numbered lists** (numbering definitions are created and spliced into `numbering.xml` on save). Pressing Enter in an **empty list item ends the list** instead of adding another bullet — the Word behaviour
+- **Word-style page**: the text runs on an always-white paper strip on top of your theme background; page breaks appear as dashed markers
+- **Themed, compact toolbar**: every control follows the app theme; on narrow split panes the toolbar **scrolls horizontally with the mouse wheel** so nothing is cut off
+- Tables and other complex blocks are shown as placeholders and remain **fully intact** in the file; embedded objects (images, fields, hyperlinks) are protected as atomic units
+- **Live transliteration** (Arabic/Japanese) while typing, sharing the app-wide schemes
+- **Two save modes** (Settings → Text Editor): **Save directly** to the original file (a one-time `.bak` backup per session is created next to it) or **Export a copy** `<name>_edited(.n).docx` leaving the original untouched; `Ctrl+S` and auto-save on leaving the tile follow the chosen mode
+- **Create new Word documents** via the gallery's "+" button (empty A4 document, standard margins)
+- Gallery **thumbnails** show the first paragraphs of the document; `.docx` files appear under the Text filter
+- Fully decentralized: each split-view tile has its **own** independent DOCX editor
 
 ### Full Color Customization (Settings → Design)
 - **9 built-in themes**: Dark, Dark OLED, Ocean Depth, Inferno Blaze, Neon Purple, Midnight Rose, Elegant, Simple, Custom
@@ -179,6 +199,12 @@ Built with **C++20** and **Qt 6.4+**.
 | PDF / Image Editor: copy / paste selected annotation | `Ctrl+C` / `Ctrl+V` |
 | PDF / Image Editor: undo / redo | `Ctrl+Z` / `Ctrl+Shift+Z` |
 | Image Editor: toggle edit mode | ✎ toolbar button |
+| DOCX: save (follows the chosen save mode) | `Ctrl+S` |
+| DOCX: bold / italic / underline | `Ctrl+B` / `Ctrl+I` / `Ctrl+U` |
+| DOCX: undo / redo | `Ctrl+Z` / `Ctrl+Shift+Z` (or `Ctrl+Y`) |
+| DOCX: select all / copy / cut / paste | `Ctrl+A` / `Ctrl+C` / `Ctrl+X` / `Ctrl+V` |
+| DOCX: line break inside a paragraph | `Shift+Enter` |
+| Any editor: jump to end of the last line | `↓` (with `Shift` to select) |
 
 ---
 
@@ -233,10 +259,33 @@ Custom themes can be exported to JSON and shared:
 ## Changelog
 
 ### Latest
-- **Feature**: Added PDF page extraction for single pages, multiple pages, or pages from all PDFs in the current folder.
-- **Feature**: PDF extraction preserves the original content whenever possible, with automatic fallback for unsupported PDFs.
-- **Feature**: Added page previews and improved page selection in the PDF extraction dialog.
-- **Feature**: Added a setting to choose the PDF page selection highlight style (frame or overlay).
+- **Feature**: **DOCX editor** — Word documents open directly in the viewer and split view with text editing, character and paragraph formatting, bulleted and numbered lists, undo/redo and live transliteration.
+- **Feature**: **Flexible DOCX saving** — save straight to the original file (with a one-time `.bak` backup per session) or export a copy, plus creating new empty Word documents from the "+ Create" button.
+- **Feature**: **Replace text in PDFs** — cover existing text with an opaque white patch and type over it; the box snaps onto the detected line, adopts its font size and comes pre-filled with the text underneath.
+- **Improvement**: **DOCX editor polish** — themed toolbar controls, a Word-style white page on your theme background, a horizontally scrollable toolbar for narrow panes, and Word-style list behaviour.
+- **Improvement**: **Editing and navigation** — `↓` in the last line jumps to the end of that line in every editor (DOCX, TXT, HTML, PDF and image text boxes), TXT now wraps at the window width instead of scrolling sideways (HTML source keeps its code alignment), and the DOCX pane no longer reserves a strip for the file arrows — they float over the document like in the PDF view.
+- **Fix**: **PDF text selection and replacing** — text can be selected inside edit mode again, selections survive entering edit mode, and the ⇄ button reliably turns a selection into a replacement box.
+- **Fix**: **PDF page top reachable** — with the Word-style ribbon docked at the top, the first page can now be scrolled clear of the bar and edited completely.
+- **Fix**: **Settings → View preview** — the manual-area preview now uses the real gallery formulas, the current window size and scaled tiles, so the width slider shows its effect.
+
+---
+
+## Planned
+
+### PDF-Editor
+- True content-stream editing (rewriting the embedded PDF text directly instead of covering it), if the cover-patch approach reaches its limits.
+- Configurable cover-patch color (currently fixed white).
+- Optional automatic text recognition/OCR for scanned PDFs.
+- Automatic reflow across multiple linked boxes.
+
+### DOCX-Editor
+- True pagination with a page-accurate view and page thumbnails.
+- Editing support for tables, images, headers/footers, and find & replace.
+- Style templates (Formatvorlagen), footnotes, table of contents, multi-column layouts.
+- Comments and tracked changes as an authoring tool.
+- Legacy `.doc` support.
+- DOCX → PDF export.
+- Spell checking.
 
 ---
 

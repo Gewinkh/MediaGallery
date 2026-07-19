@@ -1,4 +1,5 @@
 #include "ThumbnailLoader.h"
+#include "DocxDocument.h"
 #include "MediaItem.h"
 
 #include <QPdfDocument>
@@ -223,6 +224,7 @@ void ThumbnailTask::run() {
     else if (t == MediaType::Audio) pix = generateAudioThumbnail(m_path, m_size);
     else if (t == MediaType::Pdf)   pix = generatePdfThumbnail(m_path, m_size);
     else if (t == MediaType::Text)  pix = generateTextThumbnail(m_path, m_size);
+    else if (t == MediaType::Docx)  pix = generateDocxThumbnail(m_path, m_size);
 
     if (pix.isNull()) {
         emit done(m_path, QString(), false, m_generation);
@@ -1015,6 +1017,50 @@ QPixmap ThumbnailTask::generateTextThumbnail(const QString& path, const QSize& s
     }
 
     drawExtensionBadge(p, size, QFileInfo(path).suffix());
+    p.end();
+    return pix;
+}
+
+QPixmap ThumbnailTask::generateDocxThumbnail(const QString& path, const QSize& size) {
+    //  DOCX-Karte: erste Absätze als Klartext (Docx::Document::plainTextPreview
+    //  — eigener ZIP/XML-Reader je Aufruf, threadsicher im Thumbnail-Worker)
+    //  auf Word-blauem Verlauf mit Proportionalschrift + DOCX-Badge; ohne
+    //  lesbaren Text fällt die Karte auf das Dokument-Symbol zurück.
+    const QString text = Docx::Document::plainTextPreview(path, 6);
+    if (text.trimmed().isEmpty())
+        return fallbackTextThumbnail(path, size);
+    const QStringList lines = text.split(QLatin1Char('\n'));
+
+    QPixmap pix(size);
+    pix.fill(Qt::transparent);
+    QPainter p(&pix);
+    p.setRenderHint(QPainter::Antialiasing);
+
+    QLinearGradient grad(0, 0, 0, size.height());
+    grad.setColorAt(0, QColor(24, 33, 54));
+    grad.setColorAt(1, QColor(14, 20, 34));
+    p.fillRect(pix.rect(), grad);
+
+    QFont f;
+    f.setPixelSize(qMax(8, size.height() / 15));
+    p.setFont(f);
+    p.setPen(QColor(198, 212, 232));
+
+    QFontMetrics fm(f);
+    const int lineH  = fm.height();
+    const int margin = qMax(6, size.width() / 18);
+    int y            = margin + fm.ascent();
+    const int avail  = size.width() - 2 * margin;
+
+    for (const QString& raw : lines) {
+        if (y > size.height() - margin) break;
+        QString line = raw;
+        line.replace(QLatin1Char('\t'), QStringLiteral("    "));
+        p.drawText(margin, y, fm.elidedText(line, Qt::ElideRight, avail));
+        y += lineH;
+    }
+
+    drawExtensionBadge(p, size, QStringLiteral("DOCX"));
     p.end();
     return pix;
 }

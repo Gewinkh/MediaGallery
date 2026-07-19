@@ -429,6 +429,15 @@ void AppSettings::setPdfEditPanelTop(bool v) {
     m_settings.setValue("pdfedit/panelTop", v);
 }
 
+// ─── DOCX-Editor ──────────────────────────────────────────────────────────────
+bool AppSettings::docxSaveDirect() const {
+    // Standard: true → Direkt speichern (mit einmaliger .bak je Sitzung).
+    return m_settings.value("docx/saveDirect", true).toBool();
+}
+void AppSettings::setDocxSaveDirect(bool v) {
+    m_settings.setValue("docx/saveDirect", v);
+}
+
 // ─── Legacy color helpers ─────────────────────────────────────────────────────
 QColor AppSettings::backgroundColor() const { return currentTheme().background; }
 void AppSettings::setBackgroundColor(const QColor& c) {

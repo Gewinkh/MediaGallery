@@ -95,6 +95,60 @@ Item {
                 }
             }
 
+            // ── DOCX-Editor ───────────────────────────────────────────────────
+            //  Speicherverhalten (Docx.saveDirect, persistiert): „Direkt
+            //  speichern" schreibt auf die Originaldatei (einmalige .bak je
+            //  Sitzung); „Kopie exportieren" lässt das Original unangetastet
+            //  und erzeugt <Name>_edited(.n).docx.
+            SettingsGroup {
+                title: App.uiText(App.language, "SettingsDocxGroup")
+                Layout.fillWidth: true
+
+                Label {
+                    text: App.uiText(App.language, "DocxSaveModeLabel")
+                    color: App.themeTextPrimary
+                    font.pixelSize: 13
+                }
+                RadioButton {
+                    id: docxDirect
+                    checked: Docx.saveDirect
+                    onToggled: if (checked) Docx.saveDirect = true
+                    contentItem: Text {
+                        text: App.uiText(App.language, "DocxSaveDirect")
+                        color: App.themeTextPrimary
+                        leftPadding: docxDirect.indicator.width + 6
+                        verticalAlignment: Text.AlignVCenter
+                    }
+                }
+                Label {
+                    text: App.uiText(App.language, "DocxSaveDirectHint")
+                    color: App.themeTextMuted
+                    font.pixelSize: 11
+                    leftPadding: 26
+                    wrapMode: Text.WordWrap
+                    Layout.fillWidth: true
+                }
+                RadioButton {
+                    id: docxCopy
+                    checked: !Docx.saveDirect
+                    onToggled: if (checked) Docx.saveDirect = false
+                    contentItem: Text {
+                        text: App.uiText(App.language, "DocxSaveCopy")
+                        color: App.themeTextPrimary
+                        leftPadding: docxCopy.indicator.width + 6
+                        verticalAlignment: Text.AlignVCenter
+                    }
+                }
+                Label {
+                    text: App.uiText(App.language, "DocxSaveCopyHint")
+                    color: App.themeTextMuted
+                    font.pixelSize: 11
+                    leftPadding: 26
+                    wrapMode: Text.WordWrap
+                    Layout.fillWidth: true
+                }
+            }
+
             // ── Live-Transliteration (Latein → Arabisch/Kana) ─────────────────
             //  Schema-Auswahl + editierbare Zuordnungsliste. Die Liste liest
             //  Translit.mappings(scheme) rev-getrieben (mappingsRev bumpt bei

@@ -163,6 +163,8 @@ bool MediaProxyModel::filterAcceptsRow(int sourceRow, const QModelIndex& sourceP
     case MediaType::Audio: if (!m_showAudio)  return false; break;
     case MediaType::Pdf:   if (!m_showPdfs)   return false; break;
     case MediaType::Text:  if (!m_showTexts)  return false; break;
+    // DOCX läuft bewusst unter dem Text-Filter (Dokumente).
+    case MediaType::Docx:  if (!m_showTexts)  return false; break;
     default:               return false;
     }
 

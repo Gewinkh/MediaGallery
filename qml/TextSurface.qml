@@ -117,19 +117,27 @@ Item {
             margins: 12
         }
         clip: true
-        contentWidth: editor.paintedWidth
+        //  TXT bricht an der SICHTBAREN Breite um (kein waagerechtes Scrollen
+        //  mehr — Nutzerwunsch 2026-07-17); HTML-Quelltext behält NoWrap, weil
+        //  Code-Zeilen dort bündig bleiben sollen.
+        contentWidth: root._isHtml ? editor.paintedWidth : width
         contentHeight: editor.paintedHeight
         boundsBehavior: Flickable.StopAtBounds
         flickableDirection: Flickable.AutoFlickIfNeeded
 
         ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
-        ScrollBar.horizontal: ScrollBar { policy: ScrollBar.AsNeeded }
+        ScrollBar.horizontal: ScrollBar {
+            policy: root._isHtml ? ScrollBar.AsNeeded : ScrollBar.AlwaysOff
+        }
 
         TextArea.flickable: TextArea {
             id: editor
             readOnly: false
             selectByMouse: true
-            wrapMode: TextEdit.NoWrap
+            //  Breite an den Viewport binden, sobald umgebrochen wird — sonst
+            //  bliebe die TextArea so breit wie ihre längste Zeile.
+            width: root._isHtml ? Math.max(implicitWidth, flick.width) : flick.width
+            wrapMode: root._isHtml ? TextEdit.NoWrap : TextEdit.Wrap
             color: App.themeTextPrimary
             selectionColor: App.themeAccent
             // Monospace für Latein (Code/HTML-Bündigkeit); arabische Glyphen fallen
@@ -142,6 +150,23 @@ Item {
             // Live-Transliteration: gezieltes remove()/insert() statt text-
             // Neuzuweisung (Undo-Stack + Performance großer Dateien bleiben
             // intakt); der Guard verhindert Re-Entranz durch die eigene Edition.
+            //  ↓ in der LETZTEN (sichtbaren) Zeile springt ans Zeilenende,
+            //  statt wirkungslos zu bleiben — einheitlich in allen Editoren
+            //  der App (Vergleich der Cursor-Zeilen-y mit dem Textende deckt
+            //  auch umgebrochene Zeilen ab).
+            Keys.onDownPressed: (e) => {
+                const yCur = editor.positionToRectangle(editor.cursorPosition).y
+                const yEnd = editor.positionToRectangle(editor.length).y
+                if (Math.abs(yCur - yEnd) < 0.5 && editor.cursorPosition < editor.length) {
+                    if (e.modifiers & Qt.ShiftModifier)
+                        editor.moveCursorSelection(editor.length)
+                    else
+                        editor.cursorPosition = editor.length
+                    e.accepted = true
+                } else {
+                    e.accepted = false
+                }
+            }
             property bool _trGuard: false
             function _applyTranslit() {
                 if (editor._trGuard || root._loading || !Translit.enabled)

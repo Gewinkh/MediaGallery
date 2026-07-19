@@ -145,6 +145,12 @@ public:
     virtual bool pdfEditPanelTop() const = 0;
     virtual void setPdfEditPanelTop(bool v) = 0;
 
+    // ── DOCX-Editor ──────────────────────────────────────────────────────────
+    //  true (Standard) = „Direkt speichern" (Original + einmalige .bak je
+    //  Sitzung); false = „Kopie exportieren" (<Name>_edited(.n).docx).
+    virtual bool docxSaveDirect() const = 0;
+    virtual void setDocxSaveDirect(bool v) = 0;
+
     // Text editor / auto-save
     virtual bool autoSaveEnabled() const = 0;
     virtual void setAutoSaveEnabled(bool v) = 0;

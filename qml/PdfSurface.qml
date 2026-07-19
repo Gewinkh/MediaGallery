@@ -42,6 +42,16 @@ Item {
 
     property real   topInset: 0
     property real   bottomInset: 0
+    //  Höhe der oben liegenden Word-Leiste (Ribbon). Sie ist ein OVERLAY über
+    //  den Seiten (z: 4) und verdeckte deren Oberkante — unerreichbar, weil
+    //  contentY nicht über den Listenanfang hinausgeht. Die Seitenliste
+    //  bekommt daher einen gleich hohen Kopfraum: die Seite lässt sich
+    //  vollständig unter die Leiste scrollen und ist ganz bearbeitbar
+    //  (2026-07-17). Der Seiten-Fit bleibt bewusst unangetastet — sonst würde
+    //  jedes Ein-/Ausblenden der Leiste die Seite neu skalieren (teuer, s.
+    //  bottomInset-Kommentar am contentArea).
+    readonly property real ribbonInset:
+        (root.editCtl.editMode && root.editPanelVisible && PdfEdit.panelOnTop) ? 62 : 0
     property bool   thumbsVisible: true
     property real   wheelPageFraction: 0.5   // Anteil der Viewporthöhe je Rad-Raststufe
 
@@ -418,10 +428,14 @@ Item {
         target: root.editCtl
         function onEditModeChanged() {
             if (root.editCtl.editMode) {
-                // Text-AUSWAHL und Editor schließen sich aus (der createArea-
-                // Fänger liegt über den Seiten); Auswahl-Dokument lazy laden —
-                // es liefert die Zeilenrechtecke für den Zeilenfang.
-                root.clearSelection()
+                //  2026-07-17: Die Text-Auswahl BLEIBT beim Betreten des
+                //  Editiermodus erhalten (vorher wurde sie verworfen — man
+                //  markierte Text und verlor ihn beim Umschalten). Mit dem
+                //  Auswahl-Werkzeug lässt sich auch IM Editiermodus markieren
+                //  (createArea reicht Tool 0 an die Auswahl weiter); ein Klick
+                //  auf ⇄ verwandelt die Markierung direkt in eine Ersetzen-Box.
+                //  Auswahl-Dokument lazy laden — es liefert die Zeilen-
+                //  rechtecke für den Zeilenfang.
                 // Ausgeblendete Notizen (Alt+Q) wieder zeigen — man will sie
                 // ja bearbeiten.
                 root.notesVisible = true
@@ -937,6 +951,53 @@ Item {
         root._selecting = false
         if (!wasDrag) root.clearSelection()   // reiner Klick → Auswahl aufheben
     }
+    //  Markierung → Ersetzen-Box (Arbeitsweise: Text auswählen ▸ ⇄ klicken).
+    //  Bewusst auf ROOT-Ebene und über die Panel-Schaltfläche AUFGERUFEN statt
+    //  über onToolChanged: war ⇄ bereits das aktive Werkzeug, feuert
+    //  toolChanged nicht — der Klick blieb dann wirkungslos (Nutzerbefund
+    //  2026-07-17). Seitenmaße kommen direkt aus root.doc, es braucht also
+    //  kein instanziiertes Seiten-Delegate.
+    function replaceSelectionNow() {
+        if (!root.docReady || !root.editCtl.editMode) return false
+        const page = root.selPage
+        if (page < 0 || root.selRects.length === 0) return false
+        const pts = root.doc.pagePointSize(page)
+        if (!pts || pts.width <= 0 || pts.height <= 0) return false
+        //  Strg+A markiert ohne Zug-Koordinaten (_lastSel = null) → Seitenfläche.
+        const sel = (root._lastSel && root._lastSel.page === page)
+                    ? root._lastSel : { a0: 0, b0: 0, a1: 1, b1: 1 }
+        const id = root.editCtl.beginDraw(5, page,
+                       sel.a0 * pts.width, sel.b0 * pts.height)
+        if (id < 0) return false
+        root.editCtl.updateDraw(id, sel.a1 * pts.width, sel.b1 * pts.height)
+
+        const info = root.editCtl.boxInfo(id)
+        let snapped = false
+        let sx = 0, sy = 0, sw = 0, sh = 0, lh = 0, txt = ""
+        if (info.exists === true && pdfTextCtl.ready) {
+            const pr = pdfTextCtl.replaceProbe(page,
+                           info.xPt / pts.width,
+                           info.yPt / pts.height,
+                           (info.xPt + info.wPt) / pts.width,
+                           (info.yPt + info.hPt) / pts.height)
+            if (pr.found === true) {
+                snapped = true
+                sx = pr.x * pts.width;  sy = pr.y * pts.height
+                sw = pr.w * pts.width;  sh = pr.h * pts.height
+                lh = pr.lineH * pts.height
+                txt = pr.text
+            }
+        }
+        const nid = root.editCtl.endReplaceDraw(id, snapped, sx, sy, sw, sh, lh, txt)
+        root.clearSelection()
+        if (nid >= 0) {
+            root.notesVisible = true
+            root._autoEditId = nid            // startet direkt in der Textbearbeitung
+            return true
+        }
+        return false
+    }
+
     function clearSelection() {
         root.selPage = -1
         root.selRects = []
@@ -1006,8 +1067,40 @@ Item {
         z: 6
         Rectangle { anchors.bottom: parent.bottom; width: parent.width; height: 1; color: App.themeBorder }
 
-        Row {
+        //  Die linke Werkzeuggruppe liegt in einem klemmenden Feld, das VOR
+        //  der rechten Gruppe endet (2026-07-17): vorher waren beide Reihen
+        //  nur verankert — bei schmaler (Split-)Kachel lagen die Knöpfe
+        //  ÜBEREINANDER. Passt die Gruppe nicht, schiebt das Mausrad (mit oder
+        //  ohne Umschalt) sie waagerecht — animiert wie überall in der App.
+        Item {
+            id: toolbarLeftClip
             anchors.left: parent.left; anchors.leftMargin: 12
+            anchors.right: toolbarRight.left; anchors.rightMargin: 8
+            anchors.top: parent.top; anchors.bottom: parent.bottom
+            clip: true
+            readonly property real maxScroll: Math.max(0, toolbarLeftRow.width - width)
+            NumberAnimation {
+                id: toolbarLeftAnim
+                target: toolbarLeftRow
+                property: "x"
+                duration: 180
+                easing.type: Easing.OutCubic
+            }
+            WheelHandler {
+                onWheel: (w) => {
+                    if (toolbarLeftClip.maxScroll <= 0) return
+                    const d = (w.angleDelta.y !== 0 ? w.angleDelta.y : w.angleDelta.x)
+                    const base = toolbarLeftAnim.running ? toolbarLeftAnim.to
+                                                         : toolbarLeftRow.x
+                    toolbarLeftAnim.to = Math.max(-toolbarLeftClip.maxScroll,
+                                            Math.min(0, base + (d > 0 ? -1 : 1)
+                                                            * toolbarLeftClip.width / 2))
+                    toolbarLeftAnim.restart()
+                }
+            }
+
+        Row {
+            id: toolbarLeftRow
             anchors.verticalCenter: parent.verticalCenter
             spacing: 6
             PdfToolButton {
@@ -1085,8 +1178,10 @@ Item {
             // (s. Connections auf root.editCtl.onSelectedIdChanged) und schließt
             // über sein eigenes ✕.
         }
+        }   // Ende toolbarLeftClip
 
         Row {
+            id: toolbarRight
             anchors.right: parent.right; anchors.rightMargin: 12
             anchors.verticalCenter: parent.verticalCenter
             spacing: 6
@@ -1172,6 +1267,11 @@ Item {
             interactive: false
             model: root.docReady ? root.doc.pageCount : 0
             spacing: 10
+            //  Kopfraum unter der Word-Leiste (s. root.ribbonInset): bewusst
+            //  als HEADER statt topMargin — so bleibt der gültige contentY-
+            //  Bereich [0 … contentHeight−height] und sämtliche vorhandene
+            //  Scroll-/ScrollBar-/positionViewAtIndex-Logik gilt unverändert.
+            header: Item { width: 1; height: root.ribbonInset }
             // Scroll-Cache: pageCacheScreens Viewporthoehen je Richtung bleiben
             // gerendert → Hoch-/Runterscrollen innerhalb des Fensters laedt nicht
             // neu. cache:false an den PdfPageImage → ausserhalb dieses Fensters
@@ -1402,6 +1502,12 @@ Item {
                         //     • Stift/Pfeil/Rechteck/Ellipse → Ziehen zeichnet
                         //       live (Controller-Session; Koordinaten in
                         //       PDF-Punkten, an die Seite geklemmt)
+                        //     • Text ersetzen → Aufziehen erzeugt eine weiße
+                        //       Deckfläche + Textbox als EIN Objekt; beim
+                        //       Loslassen schnappt die Box auf die erkannten
+                        //       Textzeilen (pdfTextCtl.replaceProbe) und über-
+                        //       nimmt Schriftgröße + eingebetteten Text — ohne
+                        //       Textebene bleibt sie STILL unbefüllt (Vorlage)
                         MouseArea {
                             id: createArea
                             anchors.fill: parent
@@ -1410,8 +1516,24 @@ Item {
                             acceptedButtons: Qt.LeftButton
                             preventStealing: root.editCtl.tool >= 2
                             cursorShape: root.editCtl.tool === 0 ? Qt.ArrowCursor
-                                                                 : Qt.CrossCursor
+                                         : root.editCtl.tool === 6 ? Qt.IBeamCursor
+                                                                   : Qt.CrossCursor
                             property int _drawId: -1
+                            //  Werkzeugwechsel auf ⇄ → Textebene (nach)laden,
+                            //  falls die editMode-Vorbereitung verworfen wurde
+                            //  (Quellenwechsel/Race) — prepare() ist idempotent.
+                            Connections {
+                                target: root.editCtl
+                                function onToolChanged() {
+                                    //  Nur die Textebene vorbereiten; die
+                                    //  Umwandlung einer bestehenden Markierung
+                                    //  läuft über root.replaceSelectionNow()
+                                    //  (vom ⇄-Knopf aufgerufen — feuert auch,
+                                    //  wenn ⇄ schon aktiv war).
+                                    if (root.editCtl.tool === 6 && root.source.length > 0)
+                                        pdfTextCtl.prepare(root.source)
+                                }
+                            }
                             // Mausposition → PDF-Punkte, an die Seite geklemmt.
                             function _toPt(mx, my) {
                                 var pts = pageCell.pts
@@ -1421,30 +1543,141 @@ Item {
                                          y: Math.max(0, Math.min((my / pageImg.height) * pts.height, pts.height)) }
                             }
                             onPressed: (m) => {
+                                if (root.editCtl.tool === 0 && pdfTextCtl.ready
+                                        && pageImg.width > 0 && pageImg.height > 0) {
+                                    // Markieren wie in der Leseansicht.
+                                    _textSel = true
+                                    _textSelDrag = false
+                                    _selSx = m.x; _selSy = m.y
+                                    root.beginSelection(pageCell.index)
+                                    return
+                                }
                                 if (root.editCtl.tool < 2)
                                     return                       // Auswahl/Text: s. onClicked
                                 root.commitEditing()
                                 const p = _toPt(m.x, m.y)
                                 if (!p) return
                                 root.notesVisible = true
-                                // Tool 2..5 → PdfAnnKind 1..4 (Freihand…Ellipse).
+                                const pts = pageCell.pts
+                                if (root.editCtl.tool === 6 && pdfTextCtl.ready
+                                        && pts.width > 0 && pts.height > 0) {
+                                    // Auswahl-Modus: wie die normale Text-
+                                    // Selektion, nur über das Werkzeug.
+                                    _repStart = { x: p.x / pts.width, y: p.y / pts.height }
+                                    _repLast  = _repStart
+                                    root.updateSelection(pageCell.index,
+                                        _repStart.x, _repStart.y, _repStart.x, _repStart.y)
+                                    return
+                                }
+                                // Tool 2..6 → PdfAnnKind 1..5 (Freihand…Text ersetzen).
                                 _drawId = root.editCtl.beginDraw(root.editCtl.tool - 1,
                                                                  pageCell.index, p.x, p.y)
                             }
                             onPositionChanged: (m) => {
+                                if (_textSel) {
+                                    if (!_textSelDrag) {
+                                        if (Math.abs(m.x - _selSx) + Math.abs(m.y - _selSy) < 3)
+                                            return
+                                        _textSelDrag = true
+                                    }
+                                    root.updateSelection(pageCell.index,
+                                        _selSx / pageImg.width, _selSy / pageImg.height,
+                                        m.x     / pageImg.width, m.y     / pageImg.height)
+                                    return
+                                }
+                                if (_repStart) {
+                                    const p = _toPt(m.x, m.y)
+                                    const pts = pageCell.pts
+                                    if (p && pts.width > 0) {
+                                        _repLast = { x: p.x / pts.width, y: p.y / pts.height }
+                                        root.updateSelection(pageCell.index,
+                                            _repStart.x, _repStart.y, _repLast.x, _repLast.y)
+                                    }
+                                    return
+                                }
                                 if (_drawId < 0) return
                                 const p = _toPt(m.x, m.y)
                                 if (p) root.editCtl.updateDraw(_drawId, p.x, p.y)
                             }
                             onReleased: {
+                                if (_textSel) {
+                                    root.endSelection(_textSelDrag)
+                                    if (!_textSelDrag) {         // reiner Klick: abwählen
+                                        root.commitEditing()
+                                        root.editCtl.selectedId = -1
+                                    }
+                                    _textSel = false
+                                    return
+                                }
+                                if (_repStart) {
+                                    const pts = pageCell.pts
+                                    if (pts.width > 0 && _repLast) {
+                                        _drawId = root.editCtl.beginDraw(5, pageCell.index,
+                                                      _repStart.x * pts.width,
+                                                      _repStart.y * pts.height)
+                                        root.editCtl.updateDraw(_drawId,
+                                                      _repLast.x * pts.width,
+                                                      _repLast.y * pts.height)
+                                        _finishReplace()
+                                    }
+                                    root.clearSelection()
+                                    _repStart = null; _repLast = null
+                                    _drawId = -1
+                                    return
+                                }
+                                if (_drawId < 0) return
+                                if (root.editCtl.tool === 6) _finishReplace()
+                                else root.editCtl.endDraw(_drawId)
+                                _drawId = -1
+                            }
+                            onCanceled: {
+                                if (_textSel) {
+                                    root.endSelection(_textSelDrag)
+                                    _textSel = false
+                                }
+                                if (_repStart) {
+                                    root.clearSelection()
+                                    _repStart = null; _repLast = null
+                                }
                                 if (_drawId < 0) return
                                 root.editCtl.endDraw(_drawId)
                                 _drawId = -1
                             }
-                            onCanceled: {
-                                if (_drawId < 0) return
-                                root.editCtl.endDraw(_drawId)
-                                _drawId = -1
+                            // „Text ersetzen"-Abschluss: die Textzeilen-Sonde
+                            // (replaceProbe) liefert Zeilen-Bounds, Ø-Zeilen-
+                            // höhe und den eingebetteten Text unter der auf-
+                            // gezogenen Fläche; der Controller schnappt die
+                            // Box darauf ein und befüllt sie vor. Ohne Text-
+                            // ebene/Treffer (gescannte PDF) → snapped=false,
+                            // die Box bleibt STILL unbefüllt (Anforderung:
+                            // kein Hinweis-Dialog/Toast). Die neue Box startet
+                            // wie Notizen direkt in der Textbearbeitung.
+                            function _finishReplace() {
+                                const info = root.editCtl.boxInfo(_drawId)
+                                const pts = pageCell.pts
+                                let snapped = false
+                                let sx = 0, sy = 0, sw = 0, sh = 0, lh = 0, txt = ""
+                                if (info.exists === true && pdfTextCtl.ready
+                                        && pts.width > 0 && pts.height > 0) {
+                                    const pr = pdfTextCtl.replaceProbe(pageCell.index,
+                                                   info.xPt / pts.width,
+                                                   info.yPt / pts.height,
+                                                   (info.xPt + info.wPt) / pts.width,
+                                                   (info.yPt + info.hPt) / pts.height)
+                                    if (pr.found === true) {
+                                        snapped = true
+                                        sx = pr.x * pts.width;  sy = pr.y * pts.height
+                                        sw = pr.w * pts.width;  sh = pr.h * pts.height
+                                        lh = pr.lineH * pts.height
+                                        txt = pr.text
+                                    }
+                                }
+                                const nid = root.editCtl.endReplaceDraw(
+                                                _drawId, snapped, sx, sy, sw, sh, lh, txt)
+                                if (nid >= 0) {
+                                    root.notesVisible = true
+                                    root._autoEditId = nid
+                                }
                             }
                             onClicked: (m) => {
                                 if (root.editCtl.tool >= 2)

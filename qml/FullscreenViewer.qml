@@ -280,6 +280,7 @@ FocusScope {
             case 2:  return videoComponent      // Audio: VideoSurface mit Audio-Out
             case 3:  return pdfComponent
             case 4:  return root._showWebPreview ? htmlComponent : textComponent
+            case 5:  return docxComponent       // Word-Dokumente (DOCX-Editor)
             default: return unsupportedNote
             }
         }
@@ -296,7 +297,8 @@ FocusScope {
         target: surface.item
         property: "topInset"
         value: topBar.visible ? topBar.height : 0
-        when: surface.item !== null && (root.type === 0 || root.type === 3 || root.type === 4)
+        when: surface.item !== null && (root.type === 0 || root.type === 3 || root.type === 4
+                                         || root.type === 5)
         restoreMode: Binding.RestoreNone
     }
     Binding {
@@ -308,7 +310,8 @@ FocusScope {
         // (◀ N/M ▶) an, statt von ihr verdeckt zu werden — bottomNav selbst
         // bleibt unverändert ganz unten.
         when: surface.item !== null && (root.type === 0 || root.type === 1 || root.type === 2
-                                         || root.type === 3 || root.type === 4)
+                                         || root.type === 3 || root.type === 4
+                                         || root.type === 5)
         restoreMode: Binding.RestoreNone
     }
 
@@ -323,6 +326,9 @@ FocusScope {
 
     // ── Text ──────────────────────────────────────────────────────────────────
     Component { id: textComponent; TextSurface {} }
+
+    // ── DOCX (dezentraler Editor je Kachel) ───────────────────────────────────
+    Component { id: docxComponent; DocxSurface {} }
 
     // ── HTML (gerenderte Vorschau über WebEngine) ─────────────────────────────
     //  Indirektion statt direkter HtmlSurface-Instanz: HtmlSurface.qml wird per

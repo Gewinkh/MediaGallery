@@ -64,6 +64,18 @@ set(SOURCES
     src/TransliterationController.h
     src/PdfEditController.cpp
     src/PdfEditController.h
+    src/DocxZip.cpp
+    src/DocxZip.h
+    src/DocxDocument.cpp
+    src/DocxDocument.h
+    src/DocxEditCommands.cpp
+    src/DocxEditCommands.h
+    src/DocxEditController.cpp
+    src/DocxEditController.h
+    src/DocxTextArea.cpp
+    src/DocxTextArea.h
+    src/DocxController.cpp
+    src/DocxController.h
     src/PdfExtractController.cpp
     src/PdfExtractController.h
     src/PdfPageCopier.cpp

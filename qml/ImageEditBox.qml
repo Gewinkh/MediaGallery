@@ -244,6 +244,21 @@ Item {
         activeFocusOnPress: false
         selectByMouse: true
         persistentSelection: false
+        //  ↓ in der letzten Zeile springt ans Zeilenende (einheitlich in allen
+        //  Editoren der App — 2026-07-17).
+        Keys.onDownPressed: (e) => {
+            const yCur = edit.positionToRectangle(edit.cursorPosition).y
+            const yEnd = edit.positionToRectangle(edit.length).y
+            if (Math.abs(yCur - yEnd) < 0.5 && edit.cursorPosition < edit.length) {
+                if (e.modifiers & Qt.ShiftModifier)
+                    edit.moveCursorSelection(edit.length)
+                else
+                    edit.cursorPosition = edit.length
+                e.accepted = true
+            } else {
+                e.accepted = false
+            }
+        }
         font: App.fallbackFont(box.fontFamily,
                                Math.max(1, box.fontSizePx * box.imgScale),
                                box.bold, box.italic, box.underline)

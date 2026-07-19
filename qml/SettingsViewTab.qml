@@ -1,4 +1,5 @@
 import QtQuick
+import QtQuick.Window
 import QtQuick.Controls
 import QtQuick.Layouts
 import MediaGallery 1.0
@@ -8,8 +9,14 @@ Item {
     id: root
 
     // Referenz-Fenstergröße für die maßstabsgetreue Zonen-Vorschau
-    readonly property int winW: App.initialWindowWidth  > 0 ? App.initialWindowWidth  : 1280
-    readonly property int winH: App.initialWindowHeight > 0 ? App.initialWindowHeight : 800
+    //  Bezugsfenster der Vorschau = das AKTUELLE Fenster (2026-07-17). Vorher
+    //  stand hier die INITIALE Fenstergröße — bei maximiertem Fenster rechnete
+    //  die Vorschau dadurch mit einer viel zu schmalen Fläche und zeigte
+    //  dauerhaft nur ~2 Kacheln, während die Galerie 6 anzeigte.
+    readonly property int winW: Window.window ? Window.window.width
+                                : (App.initialWindowWidth  > 0 ? App.initialWindowWidth  : 1280)
+    readonly property int winH: Window.window ? Window.window.height
+                                : (App.initialWindowHeight > 0 ? App.initialWindowHeight : 800)
 
     ScrollView {
         anchors.fill: parent
@@ -63,10 +70,19 @@ Item {
                     spacing: 10
                     visible: App.tileArrangement === 3
 
-                    // Zonen-Vorschau (maßstabsgetreu zum Fenster)
+                    //  Zonen-Vorschau — ORIGINALGETREU zur Galerie (2026-07-17):
+                    //  Die Galerie zentriert die manuelle Zone, klemmt sie an
+                    //  die Fensterbreite (−2×12 px Rand) und füllt sie mit
+                    //  Kacheln (Zelle = Kachel + 8 px Abstand, Spalten =
+                    //  ⌊Zone/Zelle⌋). Genau das zeigt die Vorschau jetzt im
+                    //  Maßstab — inklusive der ECHTEN Kachelgröße (live an die
+                    //  Werte der Kachelgröße-Gruppe unten gebunden). Wünscht
+                    //  man mehr Breite, als ins Fenster passt, zeigt eine
+                    //  gestrichelte Kontur den eingestellten (geklemmten)
+                    //  Wunsch — vorher wirkte der Breitenregler dadurch „tot".
                     Rectangle {
                         Layout.fillWidth: true
-                        Layout.preferredHeight: 200
+                        Layout.preferredHeight: 340
                         radius: 6
                         color: Qt.darker(App.themeBackground, 1.2)
                         border.color: App.themeBorder
@@ -82,29 +98,91 @@ Item {
                             readonly property real frameW: root.winW * previewArea.sf
                             readonly property real frameH: root.winH * previewArea.sf
 
-                            // Fenster-Rahmen
+                            // Fenster-Rahmen (zentriert im Vorschaufeld)
                             Rectangle {
                                 id: winFrame
+                                anchors.centerIn: parent
                                 width: previewArea.frameW
                                 height: previewArea.frameH
                                 color: Qt.rgba(1, 1, 1, 0.03)
                                 border.color: App.themeBorder
                                 radius: 3
 
-                                // Zonen-Rechteck (links-oben verankert)
+                                //  Galerie-Layoutmodell (Modell-Pixel, nicht
+                                //  skaliert) — exakt die Formeln aus
+                                //  GalleryView.qml.
+                                readonly property int  gMargin: 12
+                                readonly property int  gSpacing: 8
+                                readonly property int  tW: tileW.value
+                                readonly property int  tH: tileH.value
+                                readonly property int  cellW: tW + gSpacing
+                                readonly property int  cellH: tH + gSpacing
+                                readonly property int  areaW: Math.min(App.manualAreaWidth,
+                                                                       root.winW - 2 * gMargin)
+                                readonly property int  columns: Math.max(1, Math.floor(areaW / cellW))
+                                readonly property int  gridW: columns * cellW
+                                readonly property real gridX: Math.max(gMargin,
+                                                                       (root.winW - gridW) / 2)
+                                readonly property int  zoneHpx: App.manualAreaHeight === 0
+                                                                ? root.winH
+                                                                : Math.min(root.winH, App.manualAreaHeight)
+                                readonly property int  rows: Math.max(1, Math.floor(zoneHpx / cellH))
+
+                                //  Gewünschte Zonenbreite als gestrichelte
+                                //  Kontur, wenn sie über die Fensterklemme
+                                //  hinausgeht (zentriert wie die Galerie).
+                                Rectangle {
+                                    visible: App.manualAreaWidth > winFrame.areaW
+                                    x: Math.max(0, (winFrame.width
+                                                    - App.manualAreaWidth * previewArea.sf) / 2)
+                                    y: 0
+                                    width: Math.min(winFrame.width,
+                                                    App.manualAreaWidth * previewArea.sf)
+                                    height: zoneRect.height
+                                    color: "transparent"
+                                    border.color: Qt.rgba(App.themeAccent.r, App.themeAccent.g,
+                                                          App.themeAccent.b, 0.45)
+                                    border.width: 1
+                                    radius: 2
+                                }
+
+                                //  Effektive Zone (zentriert, wie die Galerie
+                                //  sie tatsächlich belegt) …
                                 Rectangle {
                                     id: zoneRect
-                                    x: 0; y: 0
-                                    width: Math.min(parent.width, App.manualAreaWidth * previewArea.sf)
-                                    height: App.manualAreaHeight === 0
-                                            ? parent.height
-                                            : Math.min(parent.height, App.manualAreaHeight * previewArea.sf)
-                                    color: Qt.rgba(App.themeAccent.r, App.themeAccent.g, App.themeAccent.b, 0.22)
+                                    x: winFrame.gridX * previewArea.sf
+                                    y: 0
+                                    width: winFrame.gridW * previewArea.sf
+                                    height: winFrame.zoneHpx * previewArea.sf
+                                    color: Qt.rgba(App.themeAccent.r, App.themeAccent.g,
+                                                   App.themeAccent.b, 0.14)
                                     border.color: App.themeAccent
                                     border.width: 1.5
                                     radius: 2
 
-                                    // SE-Resize-Griff
+                                    //  … gefüllt mit maßstabsgetreuen Kacheln
+                                    //  (Zeilen×Spalten wie die Galerie; zur
+                                    //  Sicherheit auf 400 Stück gedeckelt).
+                                    Repeater {
+                                        model: Math.min(400, winFrame.columns * winFrame.rows)
+                                        delegate: Rectangle {
+                                            required property int index
+                                            readonly property int col: index % winFrame.columns
+                                            readonly property int row: Math.floor(index / winFrame.columns)
+                                            x: col * winFrame.cellW * previewArea.sf
+                                            y: row * winFrame.cellH * previewArea.sf
+                                            width: winFrame.tW * previewArea.sf
+                                            height: winFrame.tH * previewArea.sf
+                                            radius: 2
+                                            //  Kachelfläche = Design ▸ Grundfarben ▸
+                                            //  Hintergrund (Nutzer-Vorgabe).
+                                            color: App.themeBackground
+                                            border.color: App.themeBorder
+                                            opacity: 0.95
+                                        }
+                                    }
+
+                                    // SE-Resize-Griff (Breite + Höhe ziehen)
                                     Rectangle {
                                         id: zoneHandle
                                         width: 16; height: 16; radius: 8
@@ -124,7 +202,7 @@ Item {
                                                 if (active) {
                                                     startW = App.manualAreaWidth
                                                     startH = App.manualAreaHeight === 0
-                                                             ? Math.round(winFrame.height / previewArea.sf)
+                                                             ? root.winH
                                                              : App.manualAreaHeight
                                                 }
                                             }

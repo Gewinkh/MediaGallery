@@ -25,6 +25,9 @@
 #include "src/PdfEditController.h"
 #include "src/PdfExtractController.h"
 #include "src/ImageEditController.h"
+#include "src/DocxController.h"
+#include "src/DocxEditController.h"
+#include "src/DocxTextArea.h"
 #include "src/TransliterationController.h"
 #include "src/WebEngineController.h"
 #include "src/MediaModel.h"
@@ -118,6 +121,10 @@ int main(int argc, char* argv[]) {
     // seriell); wird sowohl aus jeder PdfSurface als auch aus der FilterBar/Shell
     // (globale Ordner-Extraktion) angesprochen.
     PdfExtractController pdfExtract;
+    //  DOCX-Editor: der Editor-Zustand ist DEZENTRAL (DocxEditController je
+    //  Kachel via qmlRegisterType unten); das Docx-Singleton trägt allein die
+    //  globale Speicherverhalten-Einstellung (direkt / Kopie exportieren).
+    DocxController       docx(settings);
     TransliterationController translit;   // Live-Transliteration (Latein → Arabisch/Kana)
     WebEngineController  webEngine;       // lazy WebEngine-Init (nur bei HTML-Bedarf)
 
@@ -140,6 +147,7 @@ int main(int argc, char* argv[]) {
     qmlRegisterSingletonInstance("MediaGallery", 1, 0, "PdfThumbs", &pdfThumbs);
     qmlRegisterSingletonInstance("MediaGallery", 1, 0, "PdfEdit",   &pdfEdit);
     qmlRegisterSingletonInstance("MediaGallery", 1, 0, "PdfExtract", &pdfExtract);
+    qmlRegisterSingletonInstance("MediaGallery", 1, 0, "Docx",      &docx);
 
     // Dezentrale, pro PdfSurface (PDF-Kachel) instanziierbare Editor-Controller —
     // eigener Zustand je geöffneter Datei (kein QML_ELEMENT-Makro, manuelle
@@ -149,6 +157,8 @@ int main(int argc, char* argv[]) {
     qmlRegisterType<PdfEditController> ("MediaGallery", 1, 0, "PdfEditController");
     // Dezentraler Bild-Editor: je ImageSurface-Kachel eine eigene Instanz.
     qmlRegisterType<ImageEditController>("MediaGallery", 1, 0, "ImageEditController");
+    qmlRegisterType<DocxEditController>("MediaGallery", 1, 0, "DocxEditController");
+    qmlRegisterType<DocxTextArea>      ("MediaGallery", 1, 0, "DocxTextArea");
     qmlRegisterSingletonInstance("MediaGallery", 1, 0, "Translit",  &translit);
     qmlRegisterSingletonInstance("MediaGallery", 1, 0, "WebEngine", &webEngine);
 

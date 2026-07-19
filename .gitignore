@@ -21,7 +21,8 @@ _deps/
 *.zip
 *.autosave
 *.md.autosave
-MediaGallery_Projektueberblick.md
+CLAUDE.md
+Structure.md
 tmp.txt
 
 *.o
