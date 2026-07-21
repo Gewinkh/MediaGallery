@@ -59,14 +59,16 @@ class PdfEditController : public QObject {
     Q_OBJECT
 public:
     // Aktives Werkzeug (Panel-Palette). Select = Auswählen/Verschieben/Skalieren;
-    // Werte identisch zum Bild-Editor (ImageEditController::Tool).
-    enum Tool { Select = 0, TextTool, FreehandTool, ArrowTool, RectTool, EllipseTool };
+    // die Werte 0–5 sind identisch zum Bild-Editor (ImageEditController::Tool),
+    // ReplaceTool (6, „Text ersetzen") ist PDF-exklusiv.
+    enum Tool { Select = 0, TextTool, FreehandTool, ArrowTool, RectTool, EllipseTool,
+                ReplaceTool };
     Q_ENUM(Tool)
 
 private:
     // Bearbeitungsmodus (View ⇄ Edit) — reiner Zustandswechsel, KEIN Reload.
     Q_PROPERTY(bool editMode READ editMode WRITE setEditMode NOTIFY editModeChanged)
-    // Aktives Werkzeug (0 Auswahl … 5 Ellipse) — s. Tool-Enum.
+    // Aktives Werkzeug (0 Auswahl … 6 Text ersetzen) — s. Tool-Enum.
     Q_PROPERTY(int  tool READ tool WRITE setTool NOTIFY toolChanged)
     // Zähler: bumpt bei jeder Änderung der „Vorlagen"-Defaults (neue Annotation)
     // → Panel/Toolbar lesen defaultInfo() rev-getrieben, wenn nichts ausgewählt.
@@ -93,6 +95,13 @@ private:
     // Text-Eigenschaften als obere Leiste (Word-Stil) statt rechter Seitenleiste.
     // Persistiert in den App-Einstellungen (ISettings).
     Q_PROPERTY(bool panelOnTop READ panelOnTop WRITE setPanelOnTop NOTIFY panelOnTopChanged)
+
+    // Seiten hinzufügen/entfernen (Aufgabe 3): destruktiv (Original-PDF sofort
+    // neu schreiben) vs. nicht-destruktiv (Plan im Sidecar, wirkt beim Export).
+    Q_PROPERTY(bool pageEditDestructive READ pageEditDestructive WRITE setPageEditDestructive NOTIFY pageEditDestructiveChanged)
+    // Anzahl Ansichts-Seiten laut Seiten-Plan (inkl. eingefügter Leerseiten,
+    // ohne entfernte) — treibt die Seiten-ListView.
+    Q_PROPERTY(int  viewPageCount READ viewPageCount NOTIFY planChanged)
     // Overlay-Modell für QML-Repeater (je Seite gefiltert über die page-Rolle).
     Q_PROPERTY(QObject* boxModel READ boxModel CONSTANT)
     Q_PROPERTY(int boxCount READ boxCount NOTIFY boxCountChanged)
@@ -152,6 +161,10 @@ public:
     bool hasClipboard() const { return m_hasClip; }
     bool panelOnTop() const;
     void setPanelOnTop(bool v);
+
+    bool pageEditDestructive() const;
+    void setPageEditDestructive(bool v);
+    int  viewPageCount() const { return m_plan.size(); }
     QObject* boxModel() { return &m_model; }
     int  boxCount() const { return m_model.count(); }
     qreal boxPaddingPt() const { return kBoxPaddingPt; }
@@ -179,16 +192,53 @@ public:
     //  abgeleitet, anchored=true.
     Q_INVOKABLE int  addAnchoredTextBox(int page, qreal xPt, qreal yPt,
                                         qreal wPt, qreal hPt);
-    //  Zeichen-Session (Freihand/Pfeil/Rechteck/Ellipse — analog Bild-Editor):
+    //  Zeichen-Session (Freihand/Pfeil/Rechteck/Ellipse/Text ersetzen — analog
+    //  Bild-Editor):
     //   beginDraw() legt die Annotation LIVE auf der Seite an (sichtbare
     //   Vorschau, KEIN Kommando), updateDraw() erweitert/skaliert live,
     //   endDraw() finalisiert → genau EIN Add-Kommando (Undo entfernt die
-    //   ganze Zeichnung). kind = PdfAnnKind (1 Freihand … 4 Ellipse);
+    //   ganze Zeichnung). kind = PdfAnnKind (1 Freihand … 5 Text ersetzen —
+    //   Replace zieht wie Rechteck auf, Live-Vorschau = weiße Deckfläche,
+    //   regulärer Abschluss über endReplaceDraw statt endDraw);
     //   Koordinaten in PDF-Punkten der Seite `page`.
     Q_INVOKABLE int  beginDraw(int kind, int page, qreal xPt, qreal yPt);
     Q_INVOKABLE void updateDraw(int id, qreal xPt, qreal yPt);
     Q_INVOKABLE void endDraw(int id);
+    //  endReplaceDraw: schließt die „Text ersetzen"-Zeichen-Session ab (statt
+    //  endDraw). QML liefert das Ergebnis der Textzeilen-Sonde
+    //  (PdfTextController::replaceProbe) gleich mit:
+    //   • snapped=true  → Box schnappt auf die Zeilen-Bounds (x/y/w/h in
+    //     PDF-Punkten), Schriftgröße aus der Ø-Zeilenhöhe (0.72·lineHPt, wie
+    //     addAnchoredTextBox), text = erkannter eingebetteter Text (Vorbefüllung).
+    //   • snapped=false → Box bleibt exakt der aufgezogene Bereich, Stil aus
+    //     der „Text ersetzen"-Vorlage (Muster „Vorlage erbt letzten Stil");
+    //     entartete Klicks ohne Zug werden verworfen (wie endDraw).
+    //  Die Deckfläche (highlight) wird IMMER auf deckendes Weiß erzwungen.
+    //  Liefert die neue Box-ID (Auswahl folgt) oder −1 (verworfen).
+    Q_INVOKABLE int  endReplaceDraw(int id, bool snapped,
+                                    qreal xPt, qreal yPt, qreal wPt, qreal hPt,
+                                    qreal lineHPt, const QString& text);
     Q_INVOKABLE void removeBox(int id);
+
+    // ── Seiten hinzufügen/entfernen (Aufgabe 3, nur PDF, Editmodus) ───────────
+    //  QML meldet die Quell-Seitenzahl, sobald das PdfDocument bereit ist →
+    //  initialisiert den Plan (Identität [0..n-1]), falls kein Sidecar-Plan
+    //  geladen wurde, und validiert einen geladenen gegen die echte Seitenzahl.
+    Q_INVOKABLE void setSourcePageCount(int n);
+    //  Quellseite einer Ansichts-Seite: ≥0 = Index im pristinen Dokument,
+    //  −1 = eingefügte Leerseite. Basis der plan-getriebenen ListView.
+    Q_INVOKABLE int  viewSourcePage(int viewIndex) const;
+    //  Leere A4-Seite NACH viewIndex einfügen (viewIndex = −1 → an den Anfang).
+    Q_INVOKABLE void addBlankPageAfter(int viewIndex);
+    //  Ansichts-Seite entfernen (die letzte verbleibende Seite bleibt bestehen).
+    Q_INVOKABLE void removePage(int viewIndex);
+    //  Renderquelle für die Anzeige: nicht-destruktiv = Originalpfad; destruktiv
+    //  = pristine Sicherung (.mgorig), damit die Anzeige stets plan-getrieben
+    //  über die UNVERÄNDERTEN Seiten läuft (die .pdf auf Platte trägt derweil
+    //  die gebackene Struktur).
+    Q_INVOKABLE QString renderSourcePath() const;
+    //  Intern (Kommando redo/undo) — NICHT aus QML rufen.
+    void applyPlan(const QVector<int>& plan);
 
     // ── Copy / Paste (kachel-lokale Zwischenablage; INKL. Text) ───────────────
     //  copySelected sichert die ausgewählte Notiz; paste fügt eine versetzte
@@ -230,9 +280,9 @@ public:
     Q_INVOKABLE void setBoxVAlign(int id, int vAlign);
 
     // Eigenschaften einer Box für Toolbar/Panel: { exists, page, kind, isText,
-    // isStroke, isShape, xPt, yPt, wPt, hPt, strokeColor, lineWidth, fillColor,
-    // hasFill, text, fontFamily, fontSizePt, bold, italic, underline, textColor,
-    // highlightColor, hasHighlight, alignment, vAlign, anchored }.
+    // isReplace, isStroke, isShape, xPt, yPt, wPt, hPt, strokeColor, lineWidth,
+    // fillColor, hasFill, text, fontFamily, fontSizePt, bold, italic, underline,
+    // textColor, highlightColor, hasHighlight, alignment, vAlign, anchored }.
     Q_INVOKABLE QVariantMap boxInfo(int id) const;
     // Aktuelle Vorlagen-Defaults (wenn nichts ausgewählt ist) — rev-getrieben
     // über defaultRev, wie annInfo/defaultInfo des Bild-Editors.
@@ -277,6 +327,11 @@ signals:
     void textEditingChanged();
     void clipboardChanged();
     void panelOnTopChanged();
+    void pageEditDestructiveChanged();
+    void planChanged();
+    // Destruktiver Modus: die .pdf auf Platte wurde neu geschrieben → QML soll
+    // ihr PdfDocument neu laden (bzw. renderSourcePath() neu binden).
+    void documentRewritten();
     void boxCountChanged();
     void exportFinished(bool ok, const QString& targetPath, const QString& errorText);
     void exportProgress(int done, int total);
@@ -296,9 +351,20 @@ private:
     //  Neue Zeichnung erbt die zuletzt benutzten Zeichen-Defaults
     //  (Linienfarbe/-breite/Füllung).
     PdfEditBox seededDraw(PdfAnnKind kind) const;
-    //  textKind steuert, ob die Text-Vorlage oder die Zeichen-Defaults
-    //  aktualisiert werden (Stroke/LineWidth/Fill → Zeichen-Defaults).
-    void mirrorToTemplate(PdfEditField f, const QVariant& v, bool textKind);
+    //  Neue „Text ersetzen"-Box erbt die zuletzt benutzten Replace-Stilwerte
+    //  (eigene Vorlage, getrennt von den Post-its) — aber OHNE Text.
+    PdfEditBox seededReplace() const;
+    //  Startwerte der „Text ersetzen"-Vorlage: schwarzer Text auf fix weißer,
+    //  deckender Fläche (keine Post-it-Optik), oben-links ausgerichtet.
+    static PdfEditBox makeReplaceTpl();
+    //  Benötigte Boxhöhe (PDF-Punkte) für den Text einer Box bei fester Breite
+    //  — dieselbe QTextLayout-Mathematik wie der Export (WYSIWYG-Basis des
+    //  automatischen Höhenwachstums der „Text ersetzen"-Boxen).
+    static qreal requiredHeightPt(const PdfEditBox& b);
+    //  kind steuert, welche Vorlage nachgezogen wird: Text → m_textTpl,
+    //  Replace → m_replaceTpl (ohne Highlight — Deckfläche bleibt fix Weiß),
+    //  sonst Zeichen-Defaults (Stroke/LineWidth/Fill).
+    void mirrorToTemplate(PdfEditField f, const QVariant& v, PdfAnnKind kind);
     bool loadOverlay(const QString& pdfPath);
     static QString sidecarPath(const QString& pdfPath);
     static QString uniqueCopyPath(const QString& pdfPath);
@@ -308,6 +374,16 @@ private:
     QUndoStack   m_stack;
 
     QString m_docPath;                  // lokaler Pfad des aktiven PDFs
+
+    // Seiten-Plan (Aufgabe 3): Ansichts-Reihenfolge; ≥0 = Quellseiten-Index,
+    // −1 = eingefügte A4-Leerseite. Leer, solange keine Seitenzahl bekannt ist.
+    QVector<int> m_plan;
+    int          m_srcPageCount = 0;
+    bool planIsIdentity() const;        // Plan == [0..m_srcPageCount-1]?
+    void bakeWorking();                 // Arbeitsdatei aus (pristine + Plan) schreiben
+    QString pristinePath() const;       // Quelle mit den UNVERÄNDERTEN Seiten
+    static QString backupPath(const QString& pdfPath);   // <pdf>.mgorig (destruktiv)
+    static QString previewPath(const QString& pdfPath);  // <pdf>.mgpreview.pdf (nicht-destr.)
     bool    m_editMode     = false;
     int     m_tool         = Select;
     int     m_selectedId   = -1;
@@ -322,6 +398,10 @@ private:
     QVector<QPointF> m_geoOldPts;       // Striche: Punkte der Session-Basis
     int     m_textEditId = -1;
     QString m_textOld;
+    // Rechteck zu Session-Beginn: das automatische Höhenwachstum der „Text
+    // ersetzen"-Boxen wird am Session-Ende mit dem Text-Delta zu EINEM
+    // Undo-Schritt (Makro) zusammengefasst.
+    QRectF  m_textOldRect;
     int     m_drawId     = -1;          // laufende Zeichen-Session
     int     m_drawPage   = 0;           // Seite der Zeichen-Session
     QPointF m_drawStart;                // Startpunkt (Rechteck/Ellipse/Pfeil)
@@ -331,6 +411,10 @@ private:
     PdfEditBox m_clip;
     bool       m_hasClip = false;
     PdfEditBox m_textTpl;
+    // Eigene Stil-Vorlage der „Text ersetzen"-Boxen (schwarz auf fix Weiß) —
+    // getrennt von den Post-its, damit sich die beiden Werkzeuge ihre
+    // zuletzt benutzten Stile nicht gegenseitig überschreiben.
+    PdfEditBox m_replaceTpl = makeReplaceTpl();
     QColor     m_defStroke    = QColor(230, 44, 44);
     qreal      m_defLineWidth = 2.0;    // PDF-Punkte
     QColor     m_defFill      = QColor(0, 0, 0, 0);

@@ -210,12 +210,8 @@ QVariantList PdfTextController::applySelection(const QPdfSelection& sel, int pag
 //  kleineren Fragmenthöhe (robust gegen Hoch-/Tiefstellungen und leicht
 //  versetzte Runs derselben Zeile).
 // ─────────────────────────────────────────────────────────────────────────────
-QVariantList PdfTextController::textLineRects(int page) {
+QList<QRectF> PdfTextController::lineRectsPts(int page) const {
     if (!m_doc || page < 0 || page >= m_doc->pageCount())
-        return {};
-
-    const QSizeF ps = m_doc->pagePointSize(page);
-    if (ps.isEmpty())
         return {};
 
     const QPdfSelection sel = m_doc->getAllText(page);
@@ -249,6 +245,18 @@ QVariantList PdfTextController::textLineRects(int page) {
         }
         lines.append(r);
     }
+    return lines;
+}
+
+QVariantList PdfTextController::textLineRects(int page) {
+    if (!m_doc || page < 0 || page >= m_doc->pageCount())
+        return {};
+
+    const QSizeF ps = m_doc->pagePointSize(page);
+    if (ps.isEmpty())
+        return {};
+
+    const QList<QRectF> lines = lineRectsPts(page);
 
     QVariantList out;
     out.reserve(lines.size());
@@ -260,6 +268,70 @@ QVariantList PdfTextController::textLineRects(int page) {
         m.insert(QStringLiteral("h"), r.height() / ps.height());
         out.append(m);
     }
+    return out;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  „Text ersetzen"-Sonde: getroffene Zeilen vereinigen (Zeilen-Einschnappen),
+//  Ø-Zeilenhöhe für die Schriftgröße ableiten und den EINGEBETTETEN Text unter
+//  der vereinigten Fläche extrahieren. Der Text wird über getSelection zwischen
+//  den (leicht eingerückten) Ecken der Union geholt — bewusst OHNE die
+//  Nutzer-Auswahl (m_selText) anzufassen.
+// ─────────────────────────────────────────────────────────────────────────────
+QVariantMap PdfTextController::replaceProbe(int page, double nx0, double ny0,
+                                            double nx1, double ny1) {
+    QVariantMap out;
+    out.insert(QStringLiteral("found"), false);
+    if (!m_doc || page < 0 || page >= m_doc->pageCount())
+        return out;
+
+    const QSizeF ps = m_doc->pagePointSize(page);
+    if (ps.isEmpty())
+        return out;
+
+    // Aufgezogener Bereich in Punkten (normalisiert → Punkte, Ecken sortiert).
+    const QRectF drag(QPointF(qMin(nx0, nx1) * ps.width(),  qMin(ny0, ny1) * ps.height()),
+                      QPointF(qMax(nx0, nx1) * ps.width(),  qMax(ny0, ny1) * ps.height()));
+    // Entartete Klicks (kein echtes Aufziehen) treffen bewusst nichts.
+    if (drag.width() < 2.0 || drag.height() < 2.0)
+        return out;
+
+    QRectF uni;
+    qreal  hSum = 0.0;
+    int    n    = 0;
+    const QList<QRectF> lines = lineRectsPts(page);
+    for (const QRectF& l : lines) {
+        const qreal ovY = qMin(drag.bottom(), l.bottom()) - qMax(drag.top(), l.top());
+        const qreal ovX = qMin(drag.right(),  l.right())  - qMax(drag.left(), l.left());
+        // Treffer: horizontale Überlappung + vertikal mindestens 35 % der
+        // Zeilenhöhe ODER 80 % der Aufzieh-Höhe (flacher Zug INNERHALB einer
+        // hohen Zeile zählt ebenfalls) — Streifschüsse zählen nicht.
+        const qreal need = qMin(l.height() * 0.35, drag.height() * 0.8);
+        if (ovX <= 0.0 || ovY < qMax(0.5, need))
+            continue;
+        uni = (n == 0) ? l : uni.united(l);
+        hSum += l.height();
+        ++n;
+    }
+    if (n == 0 || uni.width() < 2.0 || uni.height() < 2.0)
+        return out;
+
+    // Eingebetteten Text unter der Union holen (Ecken minimal eingerückt,
+    // damit angrenzende Nachbarzeichen nicht mitgegriffen werden).
+    QString text;
+    const QPdfSelection sel = m_doc->getSelection(page,
+                                  QPointF(uni.left()  + 0.5, uni.top()    + 0.5),
+                                  QPointF(uni.right() - 0.5, uni.bottom() - 0.5));
+    if (sel.isValid())
+        text = sel.text();
+
+    out.insert(QStringLiteral("found"), true);
+    out.insert(QStringLiteral("x"),     uni.x()          / ps.width());
+    out.insert(QStringLiteral("y"),     uni.y()          / ps.height());
+    out.insert(QStringLiteral("w"),     uni.width()      / ps.width());
+    out.insert(QStringLiteral("h"),     uni.height()     / ps.height());
+    out.insert(QStringLiteral("lineH"), (hSum / n)       / ps.height());
+    out.insert(QStringLiteral("text"),  text);
     return out;
 }
 

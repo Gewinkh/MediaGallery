@@ -3,6 +3,7 @@
 #include "ISettings.h"
 #include "AppSettings.h"      // AppSettings::instance() für den Default-Ctor (QML-Instanzen)
 #include "PathUtils.h"
+#include "PdfPageCopier.h"   // PdfAssembler — destruktiver Seiten-Neuschrieb
 
 #include <QPdfDocument>
 #include <QPdfWriter>
@@ -54,11 +55,13 @@ public:
     using CancelFlag = std::shared_ptr<std::atomic<bool>>;
 
     PdfExportTask(PdfEditController* owner, QString sourcePath, QString targetPath,
-                  QVector<PdfEditBox> boxes, int generation, CancelFlag cancel)
+                  QVector<PdfEditBox> boxes, QVector<int> plan,
+                  int generation, CancelFlag cancel)
         : m_owner(owner)
         , m_source(std::move(sourcePath))
         , m_target(std::move(targetPath))
         , m_boxes(std::move(boxes))
+        , m_plan(std::move(plan))
         , m_gen(generation)
         , m_cancel(std::move(cancel)) {
         setAutoDelete(true);
@@ -113,8 +116,12 @@ private:
         writer.setCreator(QStringLiteral("MediaGallery"));
         writer.setTitle(QFileInfo(m_source).completeBaseName());
 
+        // Aufgabe 3: der Seiten-Plan bestimmt Reihenfolge/Anzahl der Ausgabe.
+        // Leer = Identität (Rückwärtskompatibilität). ≥0 = Quellseite, −1 = A4-Leer.
+        const int viewCount = m_plan.isEmpty() ? pageCount : m_plan.size();
+
         QPainter p;
-        for (int page = 0; page < pageCount; ++page) {
+        for (int vi = 0; vi < viewCount; ++vi) {
             if (cancelled()) {
                 if (p.isActive()) p.end();
                 out.cancelWriting();
@@ -122,15 +129,19 @@ private:
                 return false;
             }
 
-            QSizeF pts = doc.pagePointSize(page);
+            const int  src   = m_plan.isEmpty() ? vi : m_plan.at(vi);
+            const bool blank = (src < 0 || src >= pageCount);
+
+            QSizeF pts = blank ? QSizeF(595.276, 841.890)   // A4-Leerseite
+                               : doc.pagePointSize(src);
             if (pts.isEmpty())
-                pts = QSizeF(612.0, 792.0);             // Fallback: US Letter
+                pts = QSizeF(612.0, 792.0);                 // Fallback: US Letter
 
             writer.setPageSize(QPageSize(pts, QPageSize::Point,
                                          QString(), QPageSize::ExactMatch));
             writer.setPageMargins(QMarginsF(0, 0, 0, 0));
 
-            if (page == 0) {
+            if (vi == 0) {
                 if (!p.begin(&writer)) {
                     out.cancelWriting();
                     *err = QStringLiteral("begin");
@@ -146,21 +157,25 @@ private:
                 return false;
             }
 
-            // ── Basisseite als Bild (genau EIN Bild transient im RAM) ─────────
-            const QSize px(qMax(1, qRound(pts.width()  / 72.0 * PdfEditController::kExportRenderDpi)),
-                           qMax(1, qRound(pts.height() / 72.0 * PdfEditController::kExportRenderDpi)));
-            const QImage img = doc.render(page, px);
-            if (!img.isNull())
-                p.drawImage(QRectF(QPointF(0, 0), pts), img);
-            else
-                p.fillRect(QRectF(QPointF(0, 0), pts), Qt::white);
+            if (blank) {
+                p.fillRect(QRectF(QPointF(0, 0), pts), Qt::white);  // Leerseite
+            } else {
+                // ── Basisseite als Bild (genau EIN Bild transient im RAM) ─────
+                const QSize px(qMax(1, qRound(pts.width()  / 72.0 * PdfEditController::kExportRenderDpi)),
+                               qMax(1, qRound(pts.height() / 72.0 * PdfEditController::kExportRenderDpi)));
+                const QImage img = doc.render(src, px);
+                if (!img.isNull())
+                    p.drawImage(QRectF(QPointF(0, 0), pts), img);
+                else
+                    p.fillRect(QRectF(QPointF(0, 0), pts), Qt::white);
 
-            // ── Overlay-Boxen dieser Seite darüber ────────────────────────────
-            for (const PdfEditBox& b : std::as_const(m_boxes))
-                if (b.page == page)
-                    drawBox(p, b);
+                // ── Overlay-Boxen dieser Quellseite darüber ───────────────────
+                for (const PdfEditBox& b : std::as_const(m_boxes))
+                    if (b.page == src)
+                        drawBox(p, b);
+            }
 
-            reportProgress(page + 1, pageCount);
+            reportProgress(vi + 1, viewCount);
         }
 
         p.end();
@@ -250,11 +265,19 @@ private:
             p.restore();
             return;
         }
+        case PdfAnnKind::Replace:
+            // „Text ersetzen": deckende, fix weiße Fläche EXAKT über dem
+            // Box-Rechteck — bewusst OHNE Post-it-Optik (kein Schatten, kein
+            // Eselsohr); danach derselbe Text-Pfad wie die Notizen.
+            p.fillRect(b.rect, b.highlight);
+            break;
         case PdfAnnKind::Text:
             break;                                   // fällt in die Notiz-Zeichnung
         }
 
-        const bool paper = b.highlight.alpha() > 0;
+        // Post-it-Optik (Schatten/Papier/Eselsohr) NUR für klassische Notizen —
+        // die Replace-Deckfläche wurde oben bereits flach gezeichnet.
+        const bool paper = b.kind == PdfAnnKind::Text && b.highlight.alpha() > 0;
         if (paper) {
             // Schatten (Qt-PDF-Engine schreibt Konstant-Alpha nativ).
             p.fillRect(b.rect.translated(PdfEditController::kNoteShadowDxPt,
@@ -331,6 +354,7 @@ private:
     QString             m_source;
     QString             m_target;
     QVector<PdfEditBox> m_boxes;
+    QVector<int>        m_plan;    // Seiten-Plan (Aufgabe 3); leer = Identität
     int                 m_gen;
     CancelFlag          m_cancel;
 };
@@ -401,7 +425,7 @@ void PdfEditController::setEditMode(bool on) {
 }
 
 void PdfEditController::setTool(int t) {
-    if (t < Select || t > EllipseTool || m_tool == t)
+    if (t < Select || t > ReplaceTool || m_tool == t)
         return;
     finishOpenSessions();
     finishDrawSession();
@@ -438,6 +462,171 @@ void PdfEditController::setPanelOnTop(bool v) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+//  Seiten hinzufügen/entfernen (Aufgabe 3)
+// ─────────────────────────────────────────────────────────────────────────────
+bool PdfEditController::pageEditDestructive() const {
+    return m_settings.pdfPageEditDestructive();
+}
+void PdfEditController::setPageEditDestructive(bool v) {
+    if (m_settings.pdfPageEditDestructive() == v)
+        return;
+    m_settings.setPdfPageEditDestructive(v);
+    emit pageEditDestructiveChanged();
+    // Modewechsel bei bereits geändertem Plan → Arbeitsdatei neu am richtigen Ort.
+    if (!m_docPath.isEmpty() && !planIsIdentity())
+        bakeWorking();
+}
+
+QString PdfEditController::backupPath(const QString& pdfPath) {
+    return pdfPath + QStringLiteral(".mgorig");
+}
+QString PdfEditController::previewPath(const QString& pdfPath) {
+    return pdfPath + QStringLiteral(".mgpreview.pdf");
+}
+
+QString PdfEditController::pristinePath() const {
+    // Quelle mit den UNVERÄNDERTEN Seiten: destruktiv liegt sie in der
+    // einmaligen .mgorig-Sicherung, sonst ist das Original selbst pristine.
+    if (m_settings.pdfPageEditDestructive()) {
+        const QString bak = backupPath(m_docPath);
+        if (QFile::exists(bak))
+            return bak;
+    }
+    return m_docPath;
+}
+
+QString PdfEditController::renderSourcePath() const {
+    // Datei, die die ANZEIGE rendert: bei geändertem Plan die gebackene
+    // Arbeitsdatei (destruktiv = die .pdf selbst, sonst die temporäre
+    // .mgpreview.pdf), sonst die pristine Quelle. So bleibt „Ansichts-Index ==
+    // Seitenindex der gerenderten Datei" erhalten — die Ansicht muss den Plan
+    // NICHT selbst anwenden.
+    if (m_docPath.isEmpty() || planIsIdentity())
+        return pristinePath();
+    return m_settings.pdfPageEditDestructive() ? m_docPath
+                                               : previewPath(m_docPath);
+}
+
+bool PdfEditController::planIsIdentity() const {
+    if (m_plan.size() != m_srcPageCount)
+        return false;
+    for (int i = 0; i < m_plan.size(); ++i)
+        if (m_plan.at(i) != i)
+            return false;
+    return true;
+}
+
+void PdfEditController::setSourcePageCount(int n) {
+    if (n < 0) n = 0;
+    m_srcPageCount = n;
+    if (m_plan.isEmpty()) {
+        m_plan.resize(n);
+        for (int i = 0; i < n; ++i)
+            m_plan[i] = i;                      // Identitäts-Plan
+    } else {
+        // Geladenen Sidecar-Plan absichern: Quellindizes außerhalb [0,n)
+        // verwerfen, Leerseiten (−1) behalten; leert sich alles → Identität.
+        QVector<int> v;
+        v.reserve(m_plan.size());
+        for (int e : std::as_const(m_plan))
+            if (e == -1 || (e >= 0 && e < n))
+                v.append(e);
+        if (v.isEmpty())
+            for (int i = 0; i < n; ++i)
+                v.append(i);
+        m_plan = v;
+    }
+    emit planChanged();
+    // Geladener Nicht-Identitäts-Plan (Sidecar) → Arbeitsdatei erzeugen, damit
+    // die Anzeige sie sofort rendern kann (renderSourcePath()).
+    if (!planIsIdentity())
+        bakeWorking();
+}
+
+int PdfEditController::viewSourcePage(int viewIndex) const {
+    return (viewIndex >= 0 && viewIndex < m_plan.size())
+               ? m_plan.at(viewIndex) : -1;
+}
+
+void PdfEditController::addBlankPageAfter(int viewIndex) {
+    if (m_docPath.isEmpty())
+        return;
+    int pos = viewIndex + 1;
+    if (pos < 0)              pos = 0;
+    if (pos > m_plan.size())  pos = m_plan.size();
+    QVector<int> next = m_plan;
+    next.insert(pos, -1);
+    pushCommand(new PdfEditPagePlanCommand(this, m_plan, next));
+}
+
+void PdfEditController::removePage(int viewIndex) {
+    if (m_docPath.isEmpty() || viewIndex < 0 || viewIndex >= m_plan.size())
+        return;
+    if (m_plan.size() <= 1)
+        return;                                 // mindestens eine Seite bleibt
+    QVector<int> next = m_plan;
+    next.removeAt(viewIndex);
+    pushCommand(new PdfEditPagePlanCommand(this, m_plan, next));
+}
+
+void PdfEditController::applyPlan(const QVector<int>& plan) {
+    m_plan = plan;
+    emit planChanged();
+    bakeWorking();                              // Arbeitsdatei + Reload (beide Modi)
+}
+
+void PdfEditController::bakeWorking() {
+    if (m_docPath.isEmpty())
+        return;
+    const bool destructive = m_settings.pdfPageEditDestructive();
+
+    if (planIsIdentity()) {
+        // Kein Plan (mehr) → Arbeitsdatei = pristine.
+        if (destructive) {
+            const QString bak = backupPath(m_docPath);
+            if (QFile::exists(bak)) {           // gebackene .pdf aufs Original zurück
+                QFile::remove(m_docPath);
+                QFile::copy(bak, m_docPath);
+            }
+        } else {
+            QFile::remove(previewPath(m_docPath));   // temporäre Vorschau aufräumen
+        }
+        emit documentRewritten();
+        return;
+    }
+
+    // Pristine bestimmen (destruktiv: einmalige Sicherung anlegen).
+    QString src;
+    if (destructive) {
+        const QString bak = backupPath(m_docPath);
+        if (!QFile::exists(bak) && !QFile::copy(m_docPath, bak))
+            return;                             // ohne Sicherung nicht schreiben
+        src = bak;
+    } else {
+        src = m_docPath;                        // Original bleibt unverändert
+    }
+    const QString target = destructive ? m_docPath : previewPath(m_docPath);
+
+    const QSizeF a4(595.276, 841.890);
+    QSaveFile out(target);
+    if (!out.open(QIODevice::WriteOnly))
+        return;
+    QString err;
+    PdfAssembler asmbl(&out);
+    bool ok = asmbl.begin(&err);
+    for (int i = 0; ok && i < m_plan.size(); ++i) {
+        const int e = m_plan.at(i);
+        ok = (e >= 0) ? asmbl.addSourcePages(src, { e }, &err)
+                      : asmbl.addBlankPage(a4, &err);
+    }
+    ok = ok && asmbl.finish(&err);
+    if (ok && out.commit())
+        emit documentRewritten();
+    else
+        out.cancelWriting();                    // pristine bleibt unversehrt
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 //  Dokument-Lebenszyklus
 // ─────────────────────────────────────────────────────────────────────────────
 void PdfEditController::setDocument(const QString& pathOrUrl) {
@@ -452,12 +641,17 @@ void PdfEditController::setDocument(const QString& pathOrUrl) {
     if (!m_docPath.isEmpty() && !m_stack.isClean())
         saveOverlay();
 
+    if (!m_docPath.isEmpty())
+        QFile::remove(previewPath(m_docPath));  // Vorschau des VORIGEN Dokuments
+
     m_docPath = local;
     setSelectedId(-1);
     setTool(Select);
     m_stack.clear();                                // setzt zugleich auf „clean"
     m_model.clearAll();
     m_nextId = 1;
+    m_plan.clear();                                 // Seiten-Plan (Aufgabe 3)
+    m_srcPageCount = 0;
 
     if (!m_docPath.isEmpty())
         loadOverlay(m_docPath);
@@ -470,12 +664,15 @@ void PdfEditController::releaseDocument() {
     finishDrawSession();
     if (!m_stack.isClean())
         saveOverlay();
+    QFile::remove(previewPath(m_docPath));      // temporäre Vorschau verwerfen
     m_docPath.clear();
     setSelectedId(-1);
     setTool(Select);
     m_stack.clear();
     m_model.clearAll();
     m_nextId = 1;
+    m_plan.clear();
+    m_srcPageCount = 0;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -526,12 +723,16 @@ int PdfEditController::addAnchoredTextBox(int page, qreal xPt, qreal yPt,
 int PdfEditController::beginDraw(int kind, int page, qreal xPt, qreal yPt) {
     if (m_docPath.isEmpty() || page < 0
         || kind < static_cast<int>(PdfAnnKind::Freehand)
-        || kind > static_cast<int>(PdfAnnKind::Ellipse))
+        || kind > static_cast<int>(PdfAnnKind::Replace))
         return -1;
     finishOpenSessions();
     finishDrawSession();
 
-    PdfEditBox b = seededDraw(static_cast<PdfAnnKind>(kind));
+    // „Text ersetzen" zieht wie Rechteck/Ellipse auf (Live-Vorschau = weiße
+    // Fläche), erbt aber die eigene Replace-Vorlage statt der Zeichen-Defaults.
+    PdfEditBox b = (kind == static_cast<int>(PdfAnnKind::Replace))
+                       ? seededReplace()
+                       : seededDraw(static_cast<PdfAnnKind>(kind));
     b.id   = m_nextId++;
     b.page = page;
     m_drawStart = QPointF(xPt, yPt);
@@ -602,10 +803,74 @@ void PdfEditController::endDraw(int id) {
         return;
     // … und als EIN Add-Kommando neu einsetzen (Undo entfernt die Zeichnung).
     pushCommand(new PdfEditAddCommand(&m_model, copy, m_model.count()));
-    // Zeichen-Defaults nachziehen (Stil-Erben für die nächste Zeichnung).
-    m_defStroke = copy.stroke; m_defLineWidth = copy.lineWidth; m_defFill = copy.fill;
+    // Vorlage nachziehen (Stil-Erben): Replace pflegt die EIGENE Vorlage —
+    // dieser Pfad läuft nur, wenn eine Replace-Session unerwartet über das
+    // generische endDraw endet (z. B. finishDrawSession bei Moduswechsel);
+    // der reguläre Abschluss ist endReplaceDraw.
+    if (copy.kind == PdfAnnKind::Replace) {
+        m_replaceTpl = copy;
+        m_replaceTpl.text.clear();
+        m_replaceTpl.points.clear();
+    } else {
+        m_defStroke = copy.stroke; m_defLineWidth = copy.lineWidth; m_defFill = copy.fill;
+    }
     ++m_defaultRev; emit defaultRevChanged();
     setSelectedId(copy.id);
+}
+
+// ── „Text ersetzen": Session-Abschluss mit Zeilen-Einschnappen + Vorbefüllung ─
+int PdfEditController::endReplaceDraw(int id, bool snapped,
+                                      qreal xPt, qreal yPt, qreal wPt, qreal hPt,
+                                      qreal lineHPt, const QString& text) {
+    if (id != m_drawId)
+        return -1;
+    m_drawId = -1;
+    const PdfEditBox* b = m_model.boxById(id);
+    if (!b)
+        return -1;
+    PdfEditBox copy = *b;
+    // Die Live-Instanz wieder entfernen (ohne Kommando) …
+    m_model.removeById(id);
+    if (copy.kind != PdfAnnKind::Replace)
+        return -1;                                   // defensiv: falscher Aufruf
+
+    if (snapped) {
+        // Auf die erkannten Zeilen-Bounds einschnappen (weiße Fläche deckt
+        // die Zeile(n) exakt); Schriftgröße aus der Ø-Zeilenhöhe — dieselbe
+        // Typografie-Faustregel wie addAnchoredTextBox (≈ 72 % der Zeile).
+        copy.rect = QRectF(qMax(0.0, xPt), qMax(0.0, yPt),
+                           qMax(kMinBoxWPt, wPt), qMax(kMinBoxHPt, hPt));
+        copy.anchored = true;
+        if (lineHPt > 0.0)
+            copy.fontSizePt = qBound(6.0, lineHPt * 0.72, 72.0);
+        copy.text = text;                            // Vorbefüllung: erkannter Text
+    } else if (copy.rect.width() < 1.5 && copy.rect.height() < 1.5) {
+        return -1;                                   // entarteter Klick ohne Zug
+    } else {
+        // Keine Texterkennung (gescannte PDF/Stelle ohne Text): Box bleibt
+        // exakt der aufgezogene Bereich, Stil aus der Vorlage — bewusst STILL,
+        // ohne Hinweis-Dialog/Toast (konsistent zu den Post-its).
+        copy.rect.setWidth(qMax(kMinBoxWPt,  copy.rect.width()));
+        copy.rect.setHeight(qMax(kMinBoxHPt, copy.rect.height()));
+    }
+    // Invariante des Werkzeugs: Deckfläche fix deckendes Weiß.
+    copy.highlight = QColor(255, 255, 255, 255);
+    // Vorbefüllter Text muss vollständig in die Box passen (feste Breite,
+    // Umbruch, Höhe wächst mit dem Inhalt — Muster der Post-it-Reflow-Logik).
+    if (!copy.text.isEmpty()) {
+        const qreal need = requiredHeightPt(copy);
+        if (need > copy.rect.height())
+            copy.rect.setHeight(need);
+    }
+
+    pushCommand(new PdfEditAddCommand(&m_model, copy, m_model.count()));
+    // Replace-Vorlage nachziehen (Stil-Erben für die nächste Box, OHNE Text).
+    m_replaceTpl = copy;
+    m_replaceTpl.text.clear();
+    m_replaceTpl.points.clear();
+    ++m_defaultRev; emit defaultRevChanged();
+    setSelectedId(copy.id);
+    return copy.id;
 }
 
 void PdfEditController::finishDrawSession() {
@@ -647,18 +912,84 @@ PdfEditBox PdfEditController::seededDraw(PdfAnnKind kind) const {
     return b;
 }
 
-void PdfEditController::mirrorToTemplate(PdfEditField f, const QVariant& v, bool textKind) {
-    if (textKind) {
+PdfEditBox PdfEditController::seededReplace() const {
+    PdfEditBox b = m_replaceTpl;                     // eigene Replace-Vorlage
+    b.id       = 0;
+    b.kind     = PdfAnnKind::Replace;
+    b.text.clear();                                  // aber OHNE Text
+    b.points.clear();
+    b.anchored = false;
+    b.highlight = QColor(255, 255, 255, 255);        // Deckfläche fix Weiß
+    return b;
+}
+
+PdfEditBox PdfEditController::makeReplaceTpl() {
+    // Startwerte des „Text ersetzen"-Werkzeugs: schwarzer Text auf deckendem
+    // Weiß (ersetzt gedruckten Text — kein Post-it-Gelb), oben-links.
+    PdfEditBox b;
+    b.kind      = PdfAnnKind::Replace;
+    b.color     = QColor(0, 0, 0);
+    b.highlight = QColor(255, 255, 255, 255);
+    b.alignment = 0;
+    b.vAlign    = 0;
+    return b;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  Benötigte Boxhöhe für den Textinhalt (feste Breite, Umbruch) — dieselbe
+//  QTextLayout-Mathematik wie der Export-Zeichner (drawBox), nur ohne Gerät:
+//  QFont::setPixelSize nimmt Ganzzahlen, daher wird mit Faktor k skaliert
+//  (Sub-Punkt-Präzision); PreferNoHinting hält die Metriken linear skalierbar.
+// ─────────────────────────────────────────────────────────────────────────────
+qreal PdfEditController::requiredHeightPt(const PdfEditBox& b) {
+    if (b.text.isEmpty())
+        return b.rect.height();
+    const qreal k = 8.0;
+    QFont f(b.fontFamily);
+    f.setPixelSize(qMax(1, qRound(qMax(1.0, b.fontSizePt) * k)));
+    f.setBold(b.bold);
+    f.setItalic(b.italic);
+    f.setUnderline(b.underline);
+    f.setHintingPreference(QFont::PreferNoHinting);
+
+    const qreal availW = qMax<qreal>(4.0, b.rect.width() - 2.0 * kBoxPaddingPt) * k;
+
+    QTextOption opt;
+    opt.setWrapMode(QTextOption::WrapAtWordBoundaryOrAnywhere);
+
+    QTextLayout layout(b.text, f);
+    layout.setTextOption(opt);
+    layout.beginLayout();
+    qreal totalH = 0.0;
+    for (;;) {
+        QTextLine line = layout.createLine();
+        if (!line.isValid())
+            break;
+        line.setLineWidth(availW);
+        line.setPosition(QPointF(0.0, totalH));
+        totalH += line.height();
+    }
+    layout.endLayout();
+    return totalH / k + 2.0 * kBoxPaddingPt;
+}
+
+void PdfEditController::mirrorToTemplate(PdfEditField f, const QVariant& v, PdfAnnKind kind) {
+    if (kind == PdfAnnKind::Text || kind == PdfAnnKind::Replace) {
+        PdfEditBox& tpl = (kind == PdfAnnKind::Replace) ? m_replaceTpl : m_textTpl;
         switch (f) {
-        case PdfEditField::FontFamily: m_textTpl.fontFamily = v.toString();     break;
-        case PdfEditField::FontSize:   m_textTpl.fontSizePt = v.toReal();       break;
-        case PdfEditField::Bold:       m_textTpl.bold       = v.toBool();       break;
-        case PdfEditField::Italic:     m_textTpl.italic     = v.toBool();       break;
-        case PdfEditField::Underline:  m_textTpl.underline  = v.toBool();       break;
-        case PdfEditField::Color:      m_textTpl.color      = v.value<QColor>();break;
-        case PdfEditField::Highlight:  m_textTpl.highlight  = v.value<QColor>();break;
-        case PdfEditField::Alignment:  m_textTpl.alignment  = v.toInt();        break;
-        case PdfEditField::VAlign:     m_textTpl.vAlign     = v.toInt();        break;
+        case PdfEditField::FontFamily: tpl.fontFamily = v.toString();     break;
+        case PdfEditField::FontSize:   tpl.fontSizePt = v.toReal();       break;
+        case PdfEditField::Bold:       tpl.bold       = v.toBool();       break;
+        case PdfEditField::Italic:     tpl.italic     = v.toBool();       break;
+        case PdfEditField::Underline:  tpl.underline  = v.toBool();       break;
+        case PdfEditField::Color:      tpl.color      = v.value<QColor>();break;
+        case PdfEditField::Highlight:
+            // Replace: Deckfläche bleibt fix Weiß — kein Vorlagen-Nachzug.
+            if (kind == PdfAnnKind::Text)
+                tpl.highlight = v.value<QColor>();
+            break;
+        case PdfEditField::Alignment:  tpl.alignment  = v.toInt();        break;
+        case PdfEditField::VAlign:     tpl.vAlign     = v.toInt();        break;
         default: break;
         }
     } else {
@@ -738,8 +1069,8 @@ void PdfEditController::updateGeometry(int id, qreal xPt, qreal yPt,
     if (!b)
         return;
     // Zeichnungen dürfen deutlich kleiner werden als Textboxen.
-    const qreal minW = (b->kind == PdfAnnKind::Text) ? kMinBoxWPt : kMinDrawPt;
-    const qreal minH = (b->kind == PdfAnnKind::Text) ? kMinBoxHPt : kMinDrawPt;
+    const qreal minW = b->hasText() ? kMinBoxWPt : kMinDrawPt;
+    const qreal minH = b->hasText() ? kMinBoxHPt : kMinDrawPt;
     QRectF r(xPt, yPt, qMax(minW, wPt), qMax(minH, hPt));
     if (r.x() < 0.0) r.moveLeft(0.0);
     if (r.y() < 0.0) r.moveTop(0.0);
@@ -757,8 +1088,8 @@ void PdfEditController::updatePlacement(int id, int page, qreal xPt, qreal yPt,
     const PdfEditBox* b = m_model.boxById(id);
     if (!b)
         return;
-    const qreal minW = (b->kind == PdfAnnKind::Text) ? kMinBoxWPt : kMinDrawPt;
-    const qreal minH = (b->kind == PdfAnnKind::Text) ? kMinBoxHPt : kMinDrawPt;
+    const qreal minW = b->hasText() ? kMinBoxWPt : kMinDrawPt;
+    const qreal minH = b->hasText() ? kMinBoxHPt : kMinDrawPt;
     QRectF r(xPt, yPt, qMax(minW, wPt), qMax(minH, hPt));
     if (r.x() < 0.0) r.moveLeft(0.0);
     // y bewusst NICHT klemmen: über den Seitenrand gezogene Zwischenzustände
@@ -799,8 +1130,9 @@ void PdfEditController::beginTextEdit(int id) {
     const PdfEditBox* b = m_model.boxById(id);
     if (!b)
         return;
-    m_textEditId = id;
-    m_textOld    = b->text;
+    m_textEditId  = id;
+    m_textOld     = b->text;
+    m_textOldRect = b->rect;      // Basis des Höhenwachstums („Text ersetzen")
     emit textEditingChanged();
 }
 
@@ -808,6 +1140,21 @@ void PdfEditController::updateText(int id, const QString& text) {
     if (id != m_textEditId)
         return;
     m_model.applyText(id, text);                    // live, KEIN Kommando je Taste
+
+    // „Text ersetzen"-Boxen wachsen mit dem Inhalt: feste Breite, automatischer
+    // Umbruch, Höhe folgt dem Text (nie automatisches Schrumpfen — der Nutzer
+    // kann über die Handles jederzeit selbst verkleinern). Live ohne Kommando;
+    // die Höhenänderung wird am Session-Ende mit dem Text-Delta zu EINEM
+    // Undo-Schritt zusammengefasst (finishTextSession-Makro).
+    const PdfEditBox* b = m_model.boxById(id);
+    if (b && b->kind == PdfAnnKind::Replace) {
+        const qreal need = requiredHeightPt(*b);
+        if (need > b->rect.height() + 0.5) {
+            QRectF r = b->rect;
+            r.setHeight(need);
+            m_model.applyGeometry(id, r);
+        }
+    }
 }
 
 void PdfEditController::endTextEdit(int id) {
@@ -822,8 +1169,27 @@ void PdfEditController::finishTextSession() {
     m_textEditId = -1;
     emit textEditingChanged();
     const PdfEditBox* b = m_model.boxById(id);
-    if (b && b->text != m_textOld)
+    if (!b)
+        return;
+    const bool textChanged = b->text != m_textOld;
+    const bool rectChanged = b->rect != m_textOldRect;
+    if (textChanged && rectChanged) {
+        // Automatisches Höhenwachstum („Text ersetzen"): Text- und Geometrie-
+        // Delta zu EINEM Undo-Schritt zusammenfassen — Undo stellt Text UND
+        // ursprüngliche Boxhöhe gemeinsam wieder her.
+        m_stack.beginMacro(QStringLiteral("text"));
+        m_stack.push(new PdfEditTextCommand(&m_model, id, m_textOld, b->text));
+        m_stack.push(new PdfEditGeometryCommand(&m_model, id,
+                                                b->page, m_textOldRect, {},
+                                                b->page, b->rect, {}));
+        m_stack.endMacro();
+    } else if (textChanged) {
         pushCommand(new PdfEditTextCommand(&m_model, id, m_textOld, b->text));
+    } else if (rectChanged) {
+        pushCommand(new PdfEditGeometryCommand(&m_model, id,
+                                               b->page, m_textOldRect, {},
+                                               b->page, b->rect, {}));
+    }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -832,14 +1198,23 @@ void PdfEditController::finishTextSession() {
 void PdfEditController::setBoxField(int id, PdfEditField f, const QVariant& v) {
     if (id < 0) {
         // Nur die Vorlage/Default für NEUE Annotationen setzen (kein Kommando):
-        // Zeichen-Felder → Zeichen-Defaults, sonst Text-Vorlage.
+        // Zeichen-Felder → Zeichen-Defaults; Text-Felder → Vorlage des AKTIVEN
+        // Werkzeugs (Text ersetzen pflegt seine eigene, sonst die Post-its).
         const bool draw = (f == PdfEditField::Stroke || f == PdfEditField::LineWidth
                            || f == PdfEditField::Fill);
-        mirrorToTemplate(f, v, !draw);
+        const PdfAnnKind tplKind = draw ? PdfAnnKind::Freehand
+                                 : (m_tool == ReplaceTool ? PdfAnnKind::Replace
+                                                          : PdfAnnKind::Text);
+        mirrorToTemplate(f, v, tplKind);
         return;
     }
     const PdfEditBox* b = m_model.boxById(id);
     if (!b)
+        return;
+    // Invariante „Text ersetzen": Die Deckfläche ist fix deckendes Weiß — es
+    // gibt in dieser Phase bewusst keine Farbwahl (UI ausgeblendet, hier
+    // zusätzlich defensiv gesperrt).
+    if (f == PdfEditField::Highlight && b->kind == PdfAnnKind::Replace)
         return;
     QVariant old;
     switch (f) {
@@ -858,7 +1233,7 @@ void PdfEditController::setBoxField(int id, PdfEditField f, const QVariant& v) {
     default: return;                                // Text/Geometry/Points: eigene Wege
     }
     // Vorlage nachziehen (Stil-Erben), passend zur Annotationsart.
-    mirrorToTemplate(f, v, b->kind == PdfAnnKind::Text);
+    mirrorToTemplate(f, v, b->kind);
     if (old == v)
         return;
     pushCommand(new PdfEditFieldCommand(&m_model, id, f, old, v));
@@ -915,6 +1290,7 @@ QVariantMap PdfEditController::boxInfo(int id) const {
     m.insert(QStringLiteral("page"),           b->page);
     m.insert(QStringLiteral("kind"),           static_cast<int>(b->kind));
     m.insert(QStringLiteral("isText"),         b->kind == PdfAnnKind::Text);
+    m.insert(QStringLiteral("isReplace"),      b->kind == PdfAnnKind::Replace);
     m.insert(QStringLiteral("isStroke"),       b->isStroke());
     m.insert(QStringLiteral("isShape"),        b->kind == PdfAnnKind::Rect
                                                || b->kind == PdfAnnKind::Ellipse);
@@ -944,21 +1320,25 @@ QVariantMap PdfEditController::boxInfo(int id) const {
 QVariantMap PdfEditController::defaultInfo() const {
     // Vorlagen-Defaults für neue Annotationen (Panel liest sie rev-getrieben
     // über defaultRev, wenn nichts ausgewählt ist — Muster wie Bild-Editor).
+    // Die Text-Felder kommen aus der Vorlage des AKTIVEN Werkzeugs: „Text
+    // ersetzen" pflegt eine eigene (schwarz auf fix Weiß), sonst die Post-its.
+    const PdfEditBox& tpl = (m_tool == ReplaceTool) ? m_replaceTpl : m_textTpl;
     QVariantMap m;
     m.insert(QStringLiteral("strokeColor"),    m_defStroke);
     m.insert(QStringLiteral("lineWidth"),      m_defLineWidth);
     m.insert(QStringLiteral("fillColor"),      m_defFill);
     m.insert(QStringLiteral("hasFill"),        m_defFill.alpha() > 0);
-    m.insert(QStringLiteral("fontFamily"),     m_textTpl.fontFamily);
-    m.insert(QStringLiteral("fontSizePt"),     m_textTpl.fontSizePt);
-    m.insert(QStringLiteral("bold"),           m_textTpl.bold);
-    m.insert(QStringLiteral("italic"),         m_textTpl.italic);
-    m.insert(QStringLiteral("underline"),      m_textTpl.underline);
-    m.insert(QStringLiteral("textColor"),      m_textTpl.color);
-    m.insert(QStringLiteral("highlightColor"), m_textTpl.highlight);
-    m.insert(QStringLiteral("hasHighlight"),   m_textTpl.highlight.alpha() > 0);
-    m.insert(QStringLiteral("alignment"),      m_textTpl.alignment);
-    m.insert(QStringLiteral("vAlign"),         m_textTpl.vAlign);
+    m.insert(QStringLiteral("fontFamily"),     tpl.fontFamily);
+    m.insert(QStringLiteral("fontSizePt"),     tpl.fontSizePt);
+    m.insert(QStringLiteral("bold"),           tpl.bold);
+    m.insert(QStringLiteral("italic"),         tpl.italic);
+    m.insert(QStringLiteral("underline"),      tpl.underline);
+    m.insert(QStringLiteral("textColor"),      tpl.color);
+    m.insert(QStringLiteral("highlightColor"), tpl.highlight);
+    m.insert(QStringLiteral("hasHighlight"),   tpl.highlight.alpha() > 0);
+    m.insert(QStringLiteral("alignment"),      tpl.alignment);
+    m.insert(QStringLiteral("vAlign"),         tpl.vAlign);
+    m.insert(QStringLiteral("isReplace"),      m_tool == ReplaceTool);
     return m;
 }
 
@@ -997,18 +1377,30 @@ bool PdfEditController::saveOverlay() {
     const QString sc = sidecarPath(m_docPath);
     bool ok = false;
 
-    if (m_model.count() == 0) {
-        // Leeres Overlay → kein Sidecar-Artefakt zurücklassen.
+    const bool hasBoxes = m_model.count() > 0;
+    const bool hasPlan  = !planIsIdentity();
+
+    if (!hasBoxes && !hasPlan) {
+        // Leeres Overlay UND unveränderter Seiten-Plan → kein Sidecar zurücklassen.
         ok = !QFile::exists(sc) || QFile::remove(sc);
     } else {
-        QJsonArray arr;
-        const QVector<PdfEditBox> boxes = m_model.boxes();
-        for (const PdfEditBox& b : boxes)
-            arr.append(b.toJson());
         QJsonObject rootObj;
         rootObj.insert(QStringLiteral("format"),  QStringLiteral("mediagallery-pdf-overlay"));
         rootObj.insert(QStringLiteral("version"), 1);
-        rootObj.insert(QStringLiteral("boxes"),   arr);
+        if (hasBoxes) {
+            QJsonArray arr;
+            const QVector<PdfEditBox> boxes = m_model.boxes();
+            for (const PdfEditBox& b : boxes)
+                arr.append(b.toJson());
+            rootObj.insert(QStringLiteral("boxes"), arr);
+        }
+        if (hasPlan) {
+            // Seiten-Plan (Aufgabe 3): ≥0 Quellseite, −1 Leerseite.
+            QJsonArray parr;
+            for (int e : std::as_const(m_plan))
+                parr.append(e);
+            rootObj.insert(QStringLiteral("pageplan"), parr);
+        }
 
         // Atomar (QSaveFile) — wie ViewerController::writeTextFile.
         QSaveFile f(sc);
@@ -1054,6 +1446,14 @@ bool PdfEditController::loadOverlay(const QString& pdfPath) {
         boxes.append(b);
     }
     m_model.resetBoxes(boxes);
+
+    // Seiten-Plan (Aufgabe 3), falls vorhanden — die Validierung gegen die echte
+    // Seitenzahl erfolgt in setSourcePageCount(), sobald QML sie meldet.
+    m_plan.clear();
+    const QJsonArray parr = o.value(QStringLiteral("pageplan")).toArray();
+    for (const QJsonValue& v : parr)
+        m_plan.append(v.toInt(-1));
+
     return true;
 }
 
@@ -1097,8 +1497,10 @@ void PdfEditController::exportPdf() {
 
     const int gen = ++m_exportGen;
     m_cancel = std::make_shared<std::atomic<bool>>(false);
-    m_pool.start(new PdfExportTask(this, m_docPath, target,
-                                   m_model.boxes(), gen, m_cancel));
+    // Export rendert PRISTINE + Plan (einmalige Anwendung) — NICHT die bereits
+    // gebackene Arbeitsdatei (renderSourcePath()), sonst doppelte Anwendung.
+    m_pool.start(new PdfExportTask(this, pristinePath(), target,
+                                   m_model.boxes(), m_plan, gen, m_cancel));
 }
 
 void PdfEditController::exportTaskFinished(bool ok, const QString& target,

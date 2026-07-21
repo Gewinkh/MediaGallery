@@ -76,6 +76,8 @@ set(SOURCES
     src/DocxTextArea.h
     src/DocxController.cpp
     src/DocxController.h
+    src/DocxPdfExporter.cpp
+    src/DocxPdfExporter.h
     src/PdfExtractController.cpp
     src/PdfExtractController.h
     src/PdfPageCopier.cpp

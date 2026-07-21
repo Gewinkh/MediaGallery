@@ -30,14 +30,20 @@
 
 // Art der Annotation (im Sidecar als Ganzzahl gespeichert). Alte Sidecars ohne
 // „kind"-Feld laden als Text (0) — vollständig rückwärtskompatibel. Die Werte
-// sind identisch zum Bild-Editor (ImageAnnKind), damit QML/Export dieselbe
-// Semantik teilen.
+// 0–4 sind identisch zum Bild-Editor (ImageAnnKind), damit QML/Export dieselbe
+// Semantik teilen; Replace (5) ist PDF-exklusiv („Text ersetzen").
 enum class PdfAnnKind {
     Text     = 0,   // Post-it-artige Textbox (bisheriges Verhalten)
     Freehand = 1,   // Freihand-Stift (Polylinie)
     Arrow    = 2,   // Pfeil (Start → Ende)
     Rect     = 3,   // Rechteck (Kontur + optionale Füllung)
-    Ellipse  = 4    // Ellipse (Kontur + optionale Füllung)
+    Ellipse  = 4,   // Ellipse (Kontur + optionale Füllung)
+    // „Text ersetzen": deckende, fix WEISSE Fläche exakt über dem gewählten
+    // Bereich + frei editierbare Textbox darüber — EIN Annotation-Objekt
+    // (gemeinsames Verschieben/Skalieren/Löschen/Kopieren/Undo). KEINE
+    // Post-it-Optik (kein Schatten, kein Eselsohr); `highlight` trägt die
+    // Deckfläche und wird vom Controller auf deckendes Weiß erzwungen.
+    Replace  = 5
 };
 
 // Welches Feld einer Box ändert sich? (Delta-Undo + gezielte dataChanged-Rollen)
@@ -98,6 +104,9 @@ struct PdfEditBox {
     bool    anchored   = false;                    // an erkannte PDF-Textzeile gefangen
 
     bool isStroke() const { return kind == PdfAnnKind::Freehand || kind == PdfAnnKind::Arrow; }
+    // Textführende Arten: klassische Notiz UND „Text ersetzen" (beide nutzen
+    // die vollständige Text-Pipeline — Schrift/Farben/Ausrichtung/Sidecar).
+    bool hasText()  const { return kind == PdfAnnKind::Text || kind == PdfAnnKind::Replace; }
 
     // Bounding-Box aus den Punkten neu berechnen (Freihand/Pfeil). Ein
     // Linienbreiten-Rand hält Auswahlrahmen/Handles außerhalb des Strichs.
@@ -137,7 +146,7 @@ struct PdfEditBox {
         o.insert(QStringLiteral("stroke"), stroke.name(QColor::HexArgb));
         o.insert(QStringLiteral("lw"),     lineWidth);
         o.insert(QStringLiteral("fill"),   fill.name(QColor::HexArgb));
-        if (kind == PdfAnnKind::Text) {
+        if (hasText()) {
             o.insert(QStringLiteral("text"),   text);
             o.insert(QStringLiteral("font"),   fontFamily);
             o.insert(QStringLiteral("size"),   fontSizePt);
@@ -158,7 +167,7 @@ struct PdfEditBox {
         PdfEditBox b;
         b.page       = o.value(QStringLiteral("page")).toInt(0);
         const int k  = o.value(QStringLiteral("kind")).toInt(0);   // fehlt in Alt-Sidecars → Text
-        b.kind       = (k >= 0 && k <= 4) ? static_cast<PdfAnnKind>(k) : PdfAnnKind::Text;
+        b.kind       = (k >= 0 && k <= 5) ? static_cast<PdfAnnKind>(k) : PdfAnnKind::Text;
         b.rect       = QRectF(o.value(QStringLiteral("x")).toDouble(0.0),
                               o.value(QStringLiteral("y")).toDouble(0.0),
                               o.value(QStringLiteral("w")).toDouble(120.0),
@@ -193,6 +202,9 @@ struct PdfEditBox {
         if (b.fontSizePt > 200.0) b.fontSizePt = 200.0;
         if (b.alignment < 0 || b.alignment > 2) b.alignment = 0;
         if (b.vAlign    < 0 || b.vAlign    > 1) b.vAlign    = 0;
+        // „Text ersetzen": Deckfläche ist fix deckendes Weiß — auch gegen von
+        // Hand editierte/fremde Sidecars durchsetzen (Invariante des Werkzeugs).
+        if (b.kind == PdfAnnKind::Replace) b.highlight = QColor(255, 255, 255, 255);
         if (b.page < 0) b.page = 0;
         if (b.rect.width()  < 2.0) b.rect.setWidth(2.0);
         if (b.rect.height() < 2.0) b.rect.setHeight(2.0);

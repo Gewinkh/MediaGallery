@@ -1,5 +1,6 @@
 #include "DocxEditController.h"
 #include "DocxZip.h"
+#include "DocxPdfExporter.h"
 #include "AppSettings.h"
 #include "PathUtils.h"
 
@@ -969,6 +970,62 @@ void DocxEditController::exportCopy() {
     if (!m_ready || m_busy || m_source.isEmpty())
         return;
     startSaveWorker(exportTargetPath(), false);
+}
+
+QString DocxEditController::pdfExportTargetPath() const {
+    const QFileInfo fi(m_source);
+    const QString dir  = fi.absolutePath();
+    const QString base = fi.completeBaseName();
+    QString candidate = dir + QLatin1Char('/') + base + QStringLiteral(".pdf");
+    int n = 2;
+    while (QFileInfo::exists(candidate)) {
+        candidate = dir + QLatin1Char('/') + base
+                    + QStringLiteral(" (%1).pdf").arg(n);
+        ++n;
+    }
+    return candidate;
+}
+
+void DocxEditController::exportToPdf(const QString& tablePlaceholder,
+                                     const QString& pageBreakLabel) {
+    //  Aufgabe 2 „→ PDF": Original-.docx bleibt unangetastet, es entsteht
+    //  <Name>.pdf daneben. Der Aufbau des QTextDocument + das Paginieren nach
+    //  A4 laufen im Worker (potenziell länger → UI-Thread bleibt responsiv,
+    //  Regel 17). Der Worker arbeitet auf einer COW-Kopie des Modells.
+    if (!m_ready || m_busy || m_source.isEmpty())
+        return;
+    m_busy = true;
+    emit busyChanged();
+
+    const QString target = pdfExportTargetPath();
+    Docx::Document docCopy = m_doc;   // implizit geteilte Kopie (GUI-Thread)
+    QPointer<DocxEditController> self(this);
+
+    class PdfTask : public QRunnable {
+    public:
+        PdfTask(QPointer<DocxEditController> c, Docx::Document d, QString tgt,
+                QString tbl, QString pb)
+            : m_c(c), m_doc(std::move(d)), m_tgt(std::move(tgt)),
+              m_tbl(std::move(tbl)), m_pb(std::move(pb)) { setAutoDelete(true); }
+        void run() override {
+            QString err;
+            const bool ok = DocxPdf::exportToPdf(m_doc, m_tgt, m_tbl, m_pb, &err);
+            auto c = m_c;
+            const QString tgt = m_tgt;
+            QMetaObject::invokeMethod(qApp, [c, ok, tgt, err]() {
+                if (!c) return;
+                c->m_busy = false;
+                emit c->busyChanged();
+                emit c->pdfExportFinished(ok, tgt, err);
+            }, Qt::QueuedConnection);
+        }
+    private:
+        QPointer<DocxEditController> m_c;
+        Docx::Document m_doc;
+        QString m_tgt, m_tbl, m_pb;
+    };
+    QThreadPool::globalInstance()->start(
+        new PdfTask(self, std::move(docCopy), target, tablePlaceholder, pageBreakLabel));
 }
 
 void DocxEditController::startSaveWorker(const QString& targetPath, bool direct) {

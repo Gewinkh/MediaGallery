@@ -41,7 +41,10 @@
 #include <QObject>
 #include <QString>
 #include <QVariantList>
+#include <QVariantMap>
 #include <QThreadPool>
+#include <QRectF>
+#include <QList>
 
 class QPdfDocument;
 class QPdfSelection;
@@ -92,6 +95,20 @@ public:
     //  Platzierung zurück.
     Q_INVOKABLE QVariantList textLineRects(int page);
 
+    // ── PDF-Editor: „Text ersetzen" (Vorbefüllungs-Sonde) ─────────────────────
+    //  Prüft den NORMALISIERT [0..1] aufgezogenen Bereich gegen die erkannten
+    //  Textzeilen der Seite. Getroffene Zeilen (vertikale Überlappung ≥ 35 %
+    //  der Zeilenhöhe bzw. ≥ 80 % der Aufzieh-Höhe, horizontale Überlappung
+    //  > 0) werden VEREINIGT — die Box schnappt exakt auf die Zeilen-Bounds.
+    //  Rückgabe: { found, x, y, w, h (normalisiert, Union), lineH (normalisierte
+    //  Ø-Zeilenhöhe → Schriftgröße), text (eingebetteter Text unter der
+    //  Fläche) }. found=false ohne Textebene/Treffer → der Editor fällt STILL
+    //  auf die unbefüllte Box zurück (Anforderung: kein Hinweis-Dialog).
+    //  BEWUSST seiteneffektfrei: verändert weder die sichtbare Auswahl noch
+    //  selectedText (Strg+C des Nutzers bleibt unberührt).
+    Q_INVOKABLE QVariantMap replaceProbe(int page, double nx0, double ny0,
+                                         double nx1, double ny1);
+
     // Kopiert den zuletzt markierten Text in die System-Zwischenablage.
     Q_INVOKABLE void copyToClipboard();
 
@@ -109,6 +126,11 @@ private:
     // Text. pageSize ist die Seitengroesse in Punkten (zum Normalisieren).
     QVariantList applySelection(const QPdfSelection& sel, int page,
                                 double pageWidthPts, double pageHeightPts);
+
+    // Erkannte Textzeilen einer Seite in PDF-PUNKTEN (gemeinsamer Kern von
+    // textLineRects und replaceProbe): Fragment-Rechtecke aus getAllText()
+    // nach vertikaler Mitte gruppiert und je Zeile vereinigt.
+    QList<QRectF> lineRectsPts(int page) const;
 
     QPdfDocument* m_doc = nullptr;   // aktives Auswahl-Dokument (GUI-Thread-Affinitaet)
     QString       m_activePath;      // lokaler Pfad des aktiven Dokuments

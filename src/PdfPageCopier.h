@@ -75,6 +75,12 @@ public:
     bool addRasterPage(const QByteArray& jpeg, int pxW, int pxH,
                        const QSizeF& pagePt, QString* err);
 
+    // Leere (weiße) Seite mit der gegebenen Größe in PDF-Punkten anhängen
+    // (Aufgabe 3 „+ Seite" — Aufrufer nutzt A4 = 595.276 × 841.890 pt). Ohne
+    // Ressourcen, leerer Inhaltsstrom — der PDF-Seitengrund ist per Definition
+    // weiß. Verlustfrei einreihbar zwischen kopierte Quellseiten.
+    bool addBlankPage(const QSizeF& pagePt, QString* err);
+
     // Schließt die Datei ab: Seitenbaum, Katalog, XRef-Tabelle, Trailer.
     bool finish(QString* err);
 

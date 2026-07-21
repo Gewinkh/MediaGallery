@@ -362,6 +362,7 @@ Item {
                 // Origin-bewusst an den Dokumentanfang (s. clampContentY).
                 pages.positionViewAtBeginning(); root.currentPage = 0
                 _beginWarmup()
+                _ensurePlanInit()           // Aufgabe 3: Seiten-Plan initialisieren
             }
             // Annotationen NICHT blockierend holen → der PDF-Wechsel laggt nicht
             // mehr. Die Badges erscheinen, sobald pdfAnnotationsReady feuert.
@@ -381,6 +382,7 @@ Item {
                 root.currentPage = 0
                 // Erst die sichtbare Seite rendern lassen, dann Puffer+Thumbnails.
                 root._beginWarmup()
+                root._ensurePlanInit()      // Aufgabe 3: Seiten-Plan initialisieren
             }
         }
     }
@@ -389,6 +391,36 @@ Item {
     // emittierten lokalen Pfad (toLocalPath), plattformuebergreifend.
     function _localPath(s) {
         return s.indexOf("file://") === 0 ? s.substring(7) : s
+    }
+
+    // ── Aufgabe 3: Seiten-Plan ────────────────────────────────────────────────
+    //  Sobald das PRISTINE Dokument bereit ist, die Quell-Seitenzahl an den
+    //  Controller melden (initialisiert bzw. validiert den Plan). Nur solange
+    //  noch kein Plan steht (viewPageCount==0) — nach dem Reload der gebackenen
+    //  Arbeitsdatei ist er gesetzt und wird nicht überschrieben.
+    function _ensurePlanInit() {
+        if (root.docReady && root.editCtl.viewPageCount === 0)
+            root.editCtl.setSourcePageCount(root.doc.pageCount)
+    }
+
+    //  Nach einer Seiten-Plan-Änderung rendert die Ansicht die gebackene
+    //  Arbeitsdatei (renderSourcePath(): nicht-destruktiv .mgpreview.pdf,
+    //  destruktiv die .pdf selbst; bei Identität wieder das Original). Die Datei
+    //  kann sich in-place geändert haben → gepooltes Dokument verwerfen und neu
+    //  laden. So bleibt „Ansichts-Index == Seitenindex der Datei" erhalten und
+    //  die gesamte Scroll-/Thumbnail-/Overlay-Logik gilt unverändert.
+    function _reloadRenderDoc() {
+        var p = root.editCtl.renderSourcePath()
+        if (!p || p.length === 0) return
+        var key = root._localPath(p)
+        var old = root._pool[key]
+        if (old) {
+            delete root._pool[key]
+            var i = root._poolOrder.indexOf(key)
+            if (i >= 0) root._poolOrder.splice(i, 1)
+        }
+        _activateDoc(p)                     // frisch laden (Pool-Eintrag entfernt)
+        if (old && old !== root.doc) { old.source = ""; old.destroy() }
     }
 
     // Ergebnis des asynchronen Scans entgegennehmen — nur uebernehmen, wenn es
@@ -426,6 +458,8 @@ Item {
     // ── PDF-Editor: Reaktionen auf Controller-Ereignisse ──────────────────────
     Connections {
         target: root.editCtl
+        // Aufgabe 3: Seiten-Plan geändert → gebackene Arbeitsdatei neu rendern.
+        function onDocumentRewritten() { root._reloadRenderDoc() }
         function onEditModeChanged() {
             if (root.editCtl.editMode) {
                 //  2026-07-17: Die Text-Auswahl BLEIBT beim Betreten des
@@ -1322,7 +1356,9 @@ Item {
                                                  ? Math.min(wFit, hFit) : wFit
                 readonly property real pageW: pts.width  * fitScale * root.zoom
                 readonly property real pageH: pts.height * fitScale * root.zoom
-                height: pageH + 4
+                // Aufgabe 3: im Editmodus Platz für die „+"-Linie (Seite einfügen).
+                readonly property bool showAddLine: root.editCtl.editMode
+                height: pageH + 4 + (showAddLine ? 26 : 0)
 
                 Rectangle {
                     id: pageBg
@@ -1727,7 +1763,12 @@ Item {
                         Repeater {
                             model: root.editCtl.boxModel
                             delegate: PdfEditBox {
-                                pageIndex: pageCell.index
+                                // Aufgabe 3: die Ansichts-Seite pageCell.index zeigt
+                                // laut Seiten-Plan die Quellseite viewSourcePage();
+                                // die Box (quellseiten-indiziert) blendet sich darüber
+                                // ein. (viewPageCount als Reaktiv-Trigger bei Plan-Änd.)
+                                pageIndex: (root.editCtl.viewPageCount,
+                                            root.editCtl.viewSourcePage(pageCell.index))
                                 pageScale: pageCell.pts.width > 0
                                            ? pageImg.width / pageCell.pts.width : 1
                                 pageWPt: Math.max(1, pageCell.pts.width)
@@ -1738,7 +1779,8 @@ Item {
 
                         // ── PDF-Editor: schwebende Format-Toolbar der Auswahl ─────
                         PdfEditToolbar {
-                            pageIndex: pageCell.index
+                            pageIndex: (root.editCtl.viewPageCount,
+                                        root.editCtl.viewSourcePage(pageCell.index))
                             pageScale: pageCell.pts.width > 0
                                        ? pageImg.width / pageCell.pts.width : 1
                             pageW: pageImg.width
@@ -1760,6 +1802,41 @@ Item {
                                 pageCtxMenu.ctxPage = pageCell.index
                                 pageCtxMenu.popup()
                             }
+                        }
+                    }
+
+                    // ── Aufgabe 3: „+"-Linie unter der Seite (nur Editmodus) ──────
+                    //  Klick fügt eine leere A4-Seite NACH dieser Ansichts-Seite ein.
+                    Item {
+                        visible: pageCell.showAddLine
+                        // Kind von pageBg → in SEITEN-Koordinaten positionieren
+                        // (nicht nochmal über pages.width zentrieren, sonst
+                        //  doppelter Seiten-Offset → nach rechts versetzt).
+                        x: 0
+                        width: parent.width          // = Seitenbreite
+                        height: 26
+                        y: parent.height + 4         // direkt unter der Seite
+                        Rectangle {                                   // durchgehende Linie
+                            anchors.verticalCenter: parent.verticalCenter
+                            anchors.left: parent.left; anchors.right: parent.right
+                            height: 1
+                            color: addBtnHover.hovered ? App.themeAccent : App.themeBorder
+                        }
+                        Rectangle {                                   // „+"-Knopf mittig
+                            anchors.centerIn: parent
+                            width: 22; height: 22; radius: 11
+                            color: addBtnHover.hovered ? App.themeAccent : App.themeToolbarBg
+                            border.color: App.themeBorder
+                            Text {
+                                anchors.centerIn: parent; text: "+"
+                                font.pixelSize: 16; font.bold: true
+                                color: addBtnHover.hovered ? "white" : App.themeTextPrimary
+                            }
+                            HoverHandler { id: addBtnHover }
+                            TapHandler { onTapped: root.editCtl.addBlankPageAfter(pageCell.index) }
+                            ToolTip.visible: addBtnHover.hovered
+                            ToolTip.delay: 500
+                            ToolTip.text: App.uiText(App.language, "PdfAddPageTip")
                         }
                     }
                 }
@@ -2176,6 +2253,15 @@ Item {
                 extractSelectDlg.openWith([{ path: root.source,
                                              pageCount: root.docReady ? root.doc.pageCount : 0 }])
             }
+        }
+        // Aufgabe 3: Seite entfernen (nur im Editmodus; Strg+Z macht es rückgängig).
+        MenuSeparator { visible: root.editCtl.editMode }
+        MenuItem {
+            visible: root.editCtl.editMode
+            height: visible ? implicitHeight : 0
+            text: App.uiText(App.language, "PdfRemovePage")
+            enabled: root.editCtl.viewPageCount > 1
+            onTriggered: root.editCtl.removePage(pageCtxMenu.ctxPage)
         }
     }
 

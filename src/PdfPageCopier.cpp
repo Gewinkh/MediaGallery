@@ -1236,6 +1236,34 @@ bool PdfAssembler::addRasterPage(const QByteArray& jpeg, int pxW, int pxH,
     return true;
 }
 
+bool PdfAssembler::addBlankPage(const QSizeF& pagePt, QString* err) {
+    if (m_failed || !m_begun) {
+        if (err) *err = QStringLiteral("state");
+        return false;
+    }
+    // A4-Fallback, falls eine unbrauchbare Größe hereingereicht wird.
+    const double wPt = pagePt.width()  > 1.0 ? pagePt.width()  : 595.276;
+    const double hPt = pagePt.height() > 1.0 ? pagePt.height() : 841.890;
+    const int cntObj  = m_nextObj++;
+    const int pageObj = m_nextObj++;
+
+    // Leerer Inhaltsstrom — nichts zu zeichnen; der Seitengrund ist weiß.
+    if (!beginObject(cntObj, err)) return false;
+    if (!writeRaw(QByteArrayLiteral("<< /Length 0 >>\nstream\n\nendstream\nendobj\n"), err))
+        return false;
+
+    // Seite (keine Ressourcen, eigene MediaBox).
+    if (!beginObject(pageObj, err)) return false;
+    if (!writeRaw("<< /Type /Page /Parent 2 0 R /MediaBox [0 0 "
+                      + QByteArray::number(wPt, 'f', 4) + ' '
+                      + QByteArray::number(hPt, 'f', 4)
+                      + "] /Resources << >> /Contents " + QByteArray::number(cntObj)
+                      + " 0 R >>\nendobj\n", err))
+        return false;
+    m_pageObjs.append(pageObj);
+    return true;
+}
+
 bool PdfAssembler::finish(QString* err) {
     if (m_failed || !m_begun) {
         if (err) *err = QStringLiteral("state");

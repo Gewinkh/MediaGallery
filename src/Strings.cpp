@@ -313,6 +313,10 @@ static const QMap<StringKey, QString> s_de = {
     { StringKey::DocxSpacingGroup,             "Abstände" },
     { StringKey::DocxListNone,                 "Keine Liste" },
     { StringKey::DocxListType,                 "Listenart" },
+    { StringKey::DocxExportPdf,                 "\u2192 PDF" },
+    { StringKey::DocxExportPdfTip,             "Als PDF exportieren (Original bleibt erhalten)" },
+    { StringKey::DocxPdfExportedTo,            "PDF exportiert: %1" },
+    { StringKey::DocxPdfError,                 "PDF-Export fehlgeschlagen" },
     { StringKey::PdfEditColorLabel,        "Textfarbe" },
     { StringKey::PdfEditHighlightLabel,    "Notiz-Hintergrund" },
     { StringKey::PdfEditNoHighlight,       "Keine" },
@@ -415,6 +419,12 @@ static const QMap<StringKey, QString> s_de = {
     { StringKey::SettingsViewExtractStyleHint, "Wie ausgewählte Seiten im Extraktionsdialog hervorgehoben werden." },
     { StringKey::ExtractStyleFrame,        "Rahmen" },
     { StringKey::ExtractStyleOverlay,      "Überlagerung" },
+    { StringKey::SettingsPdfPageEditLabel,   "Seiten hinzufügen/entfernen" },
+    { StringKey::SettingsPdfPageEditHint,    "Im PDF-Editiermodus fügt die „+\"-Linie unter einer Seite eine leere A4-Seite ein; Rechtsklick auf eine Seite bietet „Seite entfernen\". Strg+Z macht beides rückgängig." },
+    { StringKey::PdfPageEditNonDestructive,  "Nicht-destruktiv (Änderungen wirken beim Export)" },
+    { StringKey::PdfPageEditDestructiveMode, "Destruktiv (Original-PDF sofort ändern)" },
+    { StringKey::PdfAddPageTip,              "Leere A4-Seite hier einfügen" },
+    { StringKey::PdfRemovePage,              "Seite entfernen" },
 
 };
 
@@ -729,6 +739,10 @@ static const QMap<StringKey, QString> s_en = {
     { StringKey::DocxSpacingGroup,             "Spacing" },
     { StringKey::DocxListNone,                 "No list" },
     { StringKey::DocxListType,                 "List type" },
+    { StringKey::DocxExportPdf,                 "\u2192 PDF" },
+    { StringKey::DocxExportPdfTip,             "Export as PDF (keeps the original)" },
+    { StringKey::DocxPdfExportedTo,            "Exported PDF: %1" },
+    { StringKey::DocxPdfError,                 "PDF export failed" },
     { StringKey::PdfEditColorLabel,        "Text color" },
     { StringKey::PdfEditHighlightLabel,    "Note background" },
     { StringKey::PdfEditNoHighlight,       "None" },
@@ -831,6 +845,12 @@ static const QMap<StringKey, QString> s_en = {
     { StringKey::SettingsViewExtractStyleHint, "How selected pages are highlighted in the extraction dialog." },
     { StringKey::ExtractStyleFrame,        "Frame" },
     { StringKey::ExtractStyleOverlay,      "Overlay" },
+    { StringKey::SettingsPdfPageEditLabel,   "Add / remove pages" },
+    { StringKey::SettingsPdfPageEditHint,    "In PDF edit mode, the “+” line beneath a page inserts a blank A4 page; right-clicking a page offers “Remove page”. Ctrl+Z undoes both." },
+    { StringKey::PdfPageEditNonDestructive,  "Non-destructive (changes apply on export)" },
+    { StringKey::PdfPageEditDestructiveMode, "Destructive (modify the original PDF immediately)" },
+    { StringKey::PdfAddPageTip,              "Insert a blank A4 page here" },
+    { StringKey::PdfRemovePage,              "Remove page" },
 
 };
 

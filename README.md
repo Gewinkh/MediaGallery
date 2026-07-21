@@ -90,6 +90,7 @@ Built with **C++20** and **Qt 6.4+**.
 - **Drawings** with adjustable stroke color, line width (in PDF points) and (for shapes) fill color; drawings move/resize/copy/paste/undo exactly like notes, including **cross-page dragging**
 - Notes and drawings are saved to a **sidecar file** next to the PDF (non-destructive) and stay editable across sessions; old sidecars load unchanged
 - **Export** writes a brand-new PDF copy (`…_edited(.n).pdf`) with all annotations permanently rendered onto the pages — your original is always preserved
+- **Add / remove pages** (in edit mode): the **"+" line** beneath each page inserts a blank A4 page; **right-click → Remove page** deletes one; **Ctrl+Z** undoes both. Choose the behaviour in **Settings → Editor (PDF)**: **non-destructive** (default — the change is applied on export, the original stays untouched) or **destructive** (the original PDF is rewritten immediately, with a one-time pristine backup)
 - Full text formatting: font family (with automatic substitution hint for missing fonts), size, bold/italic/underline, alignment, vertical alignment, text color and note-paper (highlight) color, including an opacity slider
 - A newly created note/drawing **inherits the last-used style** (only without the text)
 - **Line-snapping**: new notes anchor precisely to detected text lines when placed nearby, or float freely elsewhere
@@ -126,6 +127,7 @@ Built with **C++20** and **Qt 6.4+**.
 - Tables and other complex blocks are shown as placeholders and remain **fully intact** in the file; embedded objects (images, fields, hyperlinks) are protected as atomic units
 - **Live transliteration** (Arabic/Japanese) while typing, sharing the app-wide schemes
 - **Two save modes** (Settings → Text Editor): **Save directly** to the original file (a one-time `.bak` backup per session is created next to it) or **Export a copy** `<name>_edited(.n).docx` leaving the original untouched; `Ctrl+S` and auto-save on leaving the tile follow the chosen mode
+- **Export to PDF** (**→ PDF** button in the toolbar): writes an A4 PDF next to the document (`<name>.pdf`, collision-suffixed) using the same Qt text engine as the editor view; the original `.docx` is kept. Runs asynchronously so the UI stays responsive.
 - **Create new Word documents** via the gallery's "+" button (empty A4 document, standard margins)
 - Gallery **thumbnails** show the first paragraphs of the document; `.docx` files appear under the Text filter
 - Fully decentralized: each split-view tile has its **own** independent DOCX editor
@@ -259,14 +261,30 @@ Custom themes can be exported to JSON and shared:
 ## Changelog
 
 ### Latest
-- **Feature**: **DOCX editor** — Word documents open directly in the viewer and split view with text editing, character and paragraph formatting, bulleted and numbered lists, undo/redo and live transliteration.
-- **Feature**: **Flexible DOCX saving** — save straight to the original file (with a one-time `.bak` backup per session) or export a copy, plus creating new empty Word documents from the "+ Create" button.
-- **Feature**: **Replace text in PDFs** — cover existing text with an opaque white patch and type over it; the box snaps onto the detected line, adopts its font size and comes pre-filled with the text underneath.
-- **Improvement**: **DOCX editor polish** — themed toolbar controls, a Word-style white page on your theme background, a horizontally scrollable toolbar for narrow panes, and Word-style list behaviour.
-- **Improvement**: **Editing and navigation** — `↓` in the last line jumps to the end of that line in every editor (DOCX, TXT, HTML, PDF and image text boxes), TXT now wraps at the window width instead of scrolling sideways (HTML source keeps its code alignment), and the DOCX pane no longer reserves a strip for the file arrows — they float over the document like in the PDF view.
-- **Fix**: **PDF text selection and replacing** — text can be selected inside edit mode again, selections survive entering edit mode, and the ⇄ button reliably turns a selection into a replacement box.
-- **Fix**: **PDF page top reachable** — with the Word-style ribbon docked at the top, the first page can now be scrolled clear of the bar and edited completely.
-- **Fix**: **Settings → View preview** — the manual-area preview now uses the real gallery formulas, the current window size and scaled tiles, so the width slider shows its effect.
+- **Feature**: Added support for adding and removing pages in the PDF editor.
+- **Feature**: Added DOCX to PDF export.
+
+---
+
+## Issues
+
+### PDF Editor
+- The **Replace Text** button in the PDF editor is not working yet. Text cannot be selected while using this tool (selection works outside edit mode).
+- Drawing tools (freehand, arrow, rectangle, ellipse, etc.) do not work correctly. Shapes are only drawn for a few pixels.
+
+### DOCX Editor
+- Copying text does not preserve formatting such as font size, font family, or text style (italic, etc.).
+- The caret/position indicator is not updated correctly when the font size changes.
+- Formatting inheritance issue example: If a heading (e.g. font size 20) is followed by normal text (font size 12), deleting the normal text keeps its formatting until the last character is removed. Once the final character is deleted, the editor immediately inherits the heading's formatting. Instead, the current line's formatting should remain until Backspace is pressed again and the caret actually moves into the heading line. A line should not inherit the previous line's formatting as long as text has existed on that line.
+
+### HTML View
+- HTML rendering occasionally fails and can freeze the application.
+- HTML rendering is sometimes noticeably slow.
+- Closing an HTML document can completely freeze the system, requiring a restart.
+- The HTML viewer should be thoroughly reviewed and optimized for performance and stability.
+
+### Settings
+- Under **View/Layout → Tile Arrangement**, the **"Manual (free area)"** option allows adjusting the height, but this has no effect. The option should only allow changing the width.
 
 ---
 
@@ -284,8 +302,11 @@ Custom themes can be exported to JSON and shared:
 - Style templates (Formatvorlagen), footnotes, table of contents, multi-column layouts.
 - Comments and tracked changes as an authoring tool.
 - Legacy `.doc` support.
-- DOCX → PDF export.
 - Spell checking.
+
+### HTML View
+- make the scrolling in rendered HTMLs visually smooth
+- JavaScript support
 
 ---
 

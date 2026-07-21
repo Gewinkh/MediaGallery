@@ -107,6 +107,11 @@ public:
     //  exportCopy(): immer <Name>_edited(.n).docx daneben.
     Q_INVOKABLE void save();
     Q_INVOKABLE void exportCopy();
+    //  DOCX → PDF exportieren (Aufgabe 2): schreibt <Name>.pdf NEBEN der
+    //  Quelle (Original bleibt erhalten), async im Worker (Muster wie oben).
+    //  tablePlaceholder/pageBreakLabel = i18n-Texte aus QML (wie die Anzeige).
+    Q_INVOKABLE void exportToPdf(const QString& tablePlaceholder,
+                                 const QString& pageBreakLabel);
     Q_INVOKABLE void release();                          // Kachel wird verlassen
 
     //  Format am Cursor (Toolbar): { bold, italic, underline, font, sizePt,
@@ -130,6 +135,8 @@ signals:
     void blocksReplaced(int first, int oldCount, int newCount);
     void cursorChanged();
     void saveFinished(bool ok, const QString& target, const QString& error);
+    //  Ergebnis des DOCX→PDF-Exports (Aufgabe 2).
+    void pdfExportFinished(bool ok, const QString& target, const QString& error);
 
 private:
     struct EditScope;                                    // s. cpp
@@ -159,6 +166,7 @@ private:
     //  Nach Zeichen-Eingabe: Live-Transliteration am Cursor-Block.
     void runTranslit();
     QString exportTargetPath() const;
+    QString pdfExportTargetPath() const;                 // <Name>.pdf, Kollision → „ (n)"
     void startSaveWorker(const QString& targetPath, bool direct);
 
     Docx::Document m_doc;

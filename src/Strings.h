@@ -321,6 +321,10 @@ enum class StringKey {
     DocxSpacingGroup,         // DOCX-Toolbar: Sammel-Knopf (Zeilenabstand + davor/danach)
     DocxListNone,             // DOCX-Listen-Popup: Liste ausschalten
     DocxListType,             // DOCX-Toolbar: Tooltip des Listen-Knopfs
+    DocxExportPdf,            // DOCX-Toolbar: Button „→ PDF" (Aufgabe 2)
+    DocxExportPdfTip,         // Tooltip des „→ PDF"-Buttons
+    DocxPdfExportedTo,        // Status nach PDF-Export (%1 = Dateiname)
+    DocxPdfError,             // Status bei fehlgeschlagenem PDF-Export
     PdfEditColorLabel,         // Panel: Textfarbe
     PdfEditHighlightLabel,     // Panel: Hervorhebung (Box-Hintergrund)
     PdfEditNoHighlight,        // Panel/Toolbar: Hervorhebung entfernen
@@ -425,6 +429,13 @@ enum class StringKey {
     SettingsViewExtractStyleHint,  // Einstellungen: Hinweistext
     ExtractStyleFrame,         // Einstellungen: „Rahmen"
     ExtractStyleOverlay,       // Einstellungen: „Überlagerung"
+    // ── PDF: Seiten hinzufügen/entfernen (Aufgabe 3) ─────────────────────────
+    SettingsPdfPageEditLabel,   // Einstellungen ▸ Editor (PDF): Label über den Radios
+    SettingsPdfPageEditHint,    // Einstellungen: Hinweistext
+    PdfPageEditNonDestructive,  // Radio: nicht-destruktiv (wirkt beim Export)
+    PdfPageEditDestructiveMode, // Radio: destruktiv (Original sofort ändern)
+    PdfAddPageTip,              // „+"-Linie unter der Seite: Tooltip
+    PdfRemovePage,              // Rechtsklick-Menü: „Seite entfernen"
 };
 Q_ENUM_NS(StringKey)
 }  // namespace SK

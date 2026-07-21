@@ -27,6 +27,24 @@
 #include "PdfEditTypes.h"
 
 class PdfEditModel;
+class PdfEditController;
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  Seiten-Plan ändern (Seite hinzufügen/entfernen — Aufgabe 3). EIN Kommando je
+//  Op (Delta alt→neu Plan). redo()/undo() rufen PdfEditController::applyPlan()
+//  → Ansicht + (destruktiv) Datei-Neuschrieb folgen dem Undo/Redo.
+// ─────────────────────────────────────────────────────────────────────────────
+class PdfEditPagePlanCommand : public QUndoCommand {
+public:
+    PdfEditPagePlanCommand(PdfEditController* ctl,
+                           const QVector<int>& oldPlan, const QVector<int>& newPlan);
+    void redo() override;
+    void undo() override;
+private:
+    PdfEditController* m_ctl;
+    QVector<int>       m_old;
+    QVector<int>       m_new;
+};
 
 // ─────────────────────────────────────────────────────────────────────────────
 //  Textbox hinzufügen (undo entfernt sie wieder — Zeile bleibt stabil).

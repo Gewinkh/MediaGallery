@@ -1,5 +1,6 @@
 #include "PdfEditCommands.h"
 #include "PdfEditModel.h"
+#include "PdfEditController.h"
 
 // ─────────────────────────────────────────────────────────────────────────────
 //  Hinzufügen
@@ -92,3 +93,13 @@ bool PdfEditFieldCommand::mergeWith(const QUndoCommand* other) {
         setObsolete(true);
     return true;
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  Seiten-Plan (Aufgabe 3)
+// ─────────────────────────────────────────────────────────────────────────────
+PdfEditPagePlanCommand::PdfEditPagePlanCommand(PdfEditController* ctl,
+        const QVector<int>& oldPlan, const QVector<int>& newPlan)
+    : m_ctl(ctl), m_old(oldPlan), m_new(newPlan) {}
+
+void PdfEditPagePlanCommand::redo() { m_ctl->applyPlan(m_new); }
+void PdfEditPagePlanCommand::undo() { m_ctl->applyPlan(m_old); }

@@ -38,6 +38,15 @@ Item {
                 statusText.flash(App.uiText(App.language, "DocxExportedTo")
                                  .replace("%1", target.split("/").pop()))
         }
+        onPdfExportFinished: (ok, target, error) => {
+            if (ok)
+                statusText.flash(App.uiText(App.language, "DocxPdfExportedTo")
+                                 .replace("%1", target.split("/").pop()))
+            else
+                statusText.flash(error.length > 0
+                                 ? error
+                                 : App.uiText(App.language, "DocxPdfError"))
+        }
     }
 
     Rectangle { anchors.fill: parent; color: App.themeBackground }
@@ -345,6 +354,32 @@ Item {
                     anchors.verticalCenter: parent.verticalCenter
                     running: editCtl.busy
                     visible: editCtl.busy
+                }
+
+                //  DOCX → PDF exportieren (Aufgabe 2): Original bleibt erhalten.
+                Rectangle {
+                    width: pdfLbl.implicitWidth + 18; height: 26; radius: 6
+                    anchors.verticalCenter: parent.verticalCenter
+                    color: pdfHover.hovered ? App.themeCard : "transparent"
+                    border.color: App.themeBorder
+                    opacity: (editCtl.ready && !editCtl.busy) ? 1.0 : 0.45
+                    Text {
+                        id: pdfLbl
+                        anchors.centerIn: parent
+                        text: App.uiText(App.language, "DocxExportPdf")
+                        color: App.themeTextPrimary
+                        font.pixelSize: 12
+                    }
+                    HoverHandler { id: pdfHover }
+                    TapHandler {
+                        onTapped: if (editCtl.ready && !editCtl.busy)
+                                      editCtl.exportToPdf(
+                                          App.uiText(App.language, "DocxTablePlaceholder"),
+                                          App.uiText(App.language, "DocxPageBreak"))
+                    }
+                    ToolTip.visible: pdfHover.hovered
+                    ToolTip.delay: 600
+                    ToolTip.text: App.uiText(App.language, "DocxExportPdfTip")
                 }
 
                 Rectangle { width: 1; height: 20; color: App.themeBorder

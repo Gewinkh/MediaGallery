@@ -438,6 +438,15 @@ void AppSettings::setDocxSaveDirect(bool v) {
     m_settings.setValue("docx/saveDirect", v);
 }
 
+bool AppSettings::pdfPageEditDestructive() const {
+    // Standard: false → nicht-destruktiv (Seiten-Änderungen liegen im Sidecar
+    // und wirken erst beim Export; das Original-PDF bleibt unangetastet).
+    return m_settings.value("pdfedit/pageEditDestructive", false).toBool();
+}
+void AppSettings::setPdfPageEditDestructive(bool v) {
+    m_settings.setValue("pdfedit/pageEditDestructive", v);
+}
+
 // ─── Legacy color helpers ─────────────────────────────────────────────────────
 QColor AppSettings::backgroundColor() const { return currentTheme().background; }
 void AppSettings::setBackgroundColor(const QColor& c) {

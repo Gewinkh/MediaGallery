@@ -93,6 +93,48 @@ Item {
                         verticalAlignment: Text.AlignVCenter
                     }
                 }
+
+                // Seiten hinzufügen/entfernen (Aufgabe 3): nicht-destruktiv
+                // (Änderungen wirken beim Export, Original bleibt) vs. destruktiv
+                // (Original-PDF wird sofort neu geschrieben; einmalige .mgorig-
+                // Sicherung). PdfEdit.pageEditDestructive ist persistiert.
+                Label {
+                    text: App.uiText(App.language, "SettingsPdfPageEditLabel")
+                    color: App.themeTextPrimary
+                    font.pixelSize: 13
+                    topPadding: 6
+                }
+                RadioButton {
+                    id: pageEditSafe
+                    checked: !PdfEdit.pageEditDestructive
+                    onToggled: if (checked) PdfEdit.pageEditDestructive = false
+                    contentItem: Text {
+                        text: App.uiText(App.language, "PdfPageEditNonDestructive")
+                        color: App.themeTextPrimary
+                        leftPadding: pageEditSafe.indicator.width + 6
+                        verticalAlignment: Text.AlignVCenter
+                        wrapMode: Text.WordWrap
+                    }
+                }
+                RadioButton {
+                    id: pageEditDestr
+                    checked: PdfEdit.pageEditDestructive
+                    onToggled: if (checked) PdfEdit.pageEditDestructive = true
+                    contentItem: Text {
+                        text: App.uiText(App.language, "PdfPageEditDestructiveMode")
+                        color: App.themeTextPrimary
+                        leftPadding: pageEditDestr.indicator.width + 6
+                        verticalAlignment: Text.AlignVCenter
+                        wrapMode: Text.WordWrap
+                    }
+                }
+                Label {
+                    text: App.uiText(App.language, "SettingsPdfPageEditHint")
+                    color: App.themeTextSecondary
+                    font.pixelSize: 11
+                    wrapMode: Text.WordWrap
+                    Layout.fillWidth: true
+                }
             }
 
             // ── DOCX-Editor ───────────────────────────────────────────────────
