@@ -62,16 +62,20 @@ Item {
 
                 Repeater {
                     model: tab.treeModel
+                    //  setSource() STATT `source:` — SettingsCategoryNode benutzt
+                    //  `required property`, und die lassen sich AUSSCHLIESSLICH
+                    //  bei der Erzeugung belegen. `source:` erzeugt sofort und
+                    //  ohne Startwerte: Qt bricht die Erzeugung mit „Required
+                    //  property … was not initialized" ab, `onLoaded` feuert nie
+                    //  und der Baum blieb komplett leer — obwohl categoriesTree()
+                    //  die Kategorien korrekt lieferte (Nutzerbefund 2026-07-23).
                     delegate: Loader {
                         id: rootLoader
                         required property var modelData
                         width: parent ? parent.width : 0
-                        source: Qt.resolvedUrl("SettingsCategoryNode.qml")
-                        onLoaded: {
-                            item.node  = Qt.binding(function() { return rootLoader.modelData })
-                            item.depth = 0
-                            item.tab   = tab
-                        }
+                        Component.onCompleted: setSource(
+                            Qt.resolvedUrl("SettingsCategoryNode.qml"),
+                            { node: rootLoader.modelData, depth: 0, tab: tab })
                     }
                 }
 

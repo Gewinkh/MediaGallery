@@ -53,6 +53,10 @@ Item {
         else                   { web.stop(); web.url = "about:blank" }
     }
 
+    //  Der Loader entlädt diese Komponente beim Wechsel/Verlassen — ein noch
+    //  laufender Ladevorgang darf dabei nicht in die Zerstörung hineinlaufen.
+    Component.onDestruction: web.stop()
+
     // Hintergrund hinter/neben der View (während des Ladens sichtbar).
     Rectangle { anchors.fill: parent; color: App.themeBackground }
 
@@ -80,6 +84,29 @@ Item {
         onRenderProcessTerminated: function(terminationStatus, exitCode) {
             web.visible = false
             crashNote.visible = true
+        }
+
+        // Fehlgeschlagenes Laden (defekte Datei, verweigerter Zugriff, Timeout):
+        // bisher blieb einfach eine weiße Fläche stehen — nicht unterscheidbar
+        // von „hängt". Jetzt erscheint dieselbe Hinweisfläche wie beim Absturz,
+        // der Nutzer kann auf den Quelltext umschalten. about:blank ist der
+        // reguläre Ruhezustand und wird ausgenommen.
+        onLoadingChanged: function(info) {
+            if (info.status === WebEngineView.LoadFailedStatus
+                    && root.source.length > 0) {
+                web.visible = false
+                crashNote.visible = true
+            }
+        }
+
+        // Ein lokales Dokument darf die Ansicht nicht wegnavigieren (Links auf
+        // externe Seiten sind durch die Offline-Policy ohnehin blockiert) —
+        // Navigationsziele außerhalb von file:// werden verworfen, statt die
+        // View in einen Ladezustand zu schicken, der nie endet.
+        onNavigationRequested: function(request) {
+            if (request.navigationType === WebEngineView.LinkClickedNavigation
+                    && request.url.toString().indexOf("file:") !== 0)
+                request.action = WebEngineView.IgnoreRequest
         }
     }
 

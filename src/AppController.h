@@ -19,11 +19,6 @@ class TagManager;
 // ─────────────────────────────────────────────────────────────────────────────
 //  AppController — zentrale C++→QML-Bridge (Singleton).
 //
-//  Reine DELEGATION an bestehende Backends (ISettings, FolderService,
-//  JsonStorage, TagManager). KEINE Geschäftslogik außer der Koordination, die
-//  zuvor in MainWindow lag (Ordner-Drop, Lesezeichen, Fensterzustand). Diese
-//  wandert hier ins Backend, weil MainWindow ab Phase 1 entfällt.
-//
 //  Registrierung ausschließlich über qmlRegisterSingletonInstance in main.cpp —
 //  keine QML_ELEMENT/QML_SINGLETON-Makros. Alle Referenzen sind nicht-besitzend;
 //  die Backends leben in main().
@@ -63,7 +58,6 @@ class AppController : public QObject {
     Q_PROPERTY(int tileHeight       READ tileHeight       NOTIFY tileSizeChanged)
     Q_PROPERTY(int tileArrangement  READ tileArrangement  NOTIFY tileArrangementChanged)
     Q_PROPERTY(int manualAreaWidth  READ manualAreaWidth  NOTIFY tileArrangementChanged)
-    Q_PROPERTY(int manualAreaHeight READ manualAreaHeight NOTIFY tileArrangementChanged)
 
     // ── Startgeometrie (einmalig gelesen, daher CONSTANT) ───────────────────
     Q_PROPERTY(int  initialWindowWidth  READ initialWindowWidth  CONSTANT)
@@ -169,13 +163,11 @@ public:
     int  tileHeight()       const;
     int  tileArrangement()  const;   // == TileArrangement (Centered/Left/Right/Manual)
     int  manualAreaWidth()  const;
-    int  manualAreaHeight() const;
     Q_INVOKABLE void setTileSize(int w, int h);
     Q_INVOKABLE void zoomIn(int stepPx = 16);
     Q_INVOKABLE void zoomOut(int stepPx = 16);
     Q_INVOKABLE void setTileArrangement(int arrangement);
     Q_INVOKABLE void setManualAreaWidth(int w);
-    Q_INVOKABLE void setManualAreaHeight(int h);
 
     // ── Einstellungen (Delegation an ISettings) ─────────────────────────────
     QColor  backgroundColor() const;

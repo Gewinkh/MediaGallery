@@ -11,6 +11,8 @@
 #include <QFile>
 #include <QGuiApplication>
 #include <QClipboard>
+#include <QMimeData>
+#include <QDataStream>
 #include <QMetaObject>
 #include <QPointer>
 
@@ -244,6 +246,99 @@ void DocxEditController::applyPendingTo(Run& r) const {
     r.rprXml = rpr;
     r.rprMaterialized = true;
     r.dirty = true;
+}
+
+void DocxEditController::clearPending() {
+    m_pending      = RunFmt();
+    m_pendingBlock = -1;
+    m_pendingPos   = -1;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  Word-Verhalten: Wird das LETZTE Zeichen einer Zeile gelöscht, behält die
+//  Zeile ihr eigenes Zeichenformat, statt auf ihr Absatz-/Stil-Format
+//  zurückzufallen (Nutzerbefund: eine per Enter aus einer 20-pt-Zeile
+//  entstandene Zeile sprang nach dem Leerlöschen wieder auf 20 pt).
+//
+//  WO das Format lebt — der TRÄGER-RUN:
+//  Ein Enter am Zeilenende legt im neuen Absatz einen LEEREN Run an, der das
+//  rPr der alten Zeile erbt. Genau dieser Run ist das Gegenstück zur
+//  Absatzmarke in Word: Er trägt kein Zeichen, bestimmt aber, wie der Absatz
+//  aussieht und womit das nächste Tippen fortsetzt. Das ist gewollt — ohne ihn
+//  würde ein Enter die Formatierung der Vorzeile NICHT fortführen.
+//  Der Fehler war, dass dieser Träger nach dem Leerlöschen weiter das ALTE
+//  Format (20 pt) trug: Solange das Pending-Format lebte, überdeckte es das
+//  zwar — verließ der Cursor die Zeile aber einmal, kam wieder 20 pt zurück.
+//  Deshalb wird der Träger jetzt UMGESCHRIEBEN statt nur überdeckt; das Format
+//  überlebt damit Cursor-Wechsel, Speichern und Neuladen.
+//
+//  Gesetzt werden NUR die Felder, die vom Stil-Format des leeren Absatzes
+//  abweichen: minimales rPr (Verlusterhaltungs-/RAM-Prinzip), gleiches Bild.
+//  Gibt es keinen Träger (der Absatz hatte nie einen), wird einer angelegt —
+//  ein leerer `<w:r>` mit rPr ist gültiges OOXML und genau das, was Word für
+//  eine formatierte, leere Zeile schreibt.
+// ─────────────────────────────────────────────────────────────────────────────
+void DocxEditController::keepFormatOnEmptiedBlock(int bi, const RunFmt& had) {
+    if (!isEditableParagraph(bi))
+        return;
+    Block& blk = m_doc.blocks[bi];
+    if (blk.textLength() != 0)
+        return;                                   // Zeile ist nicht leer geworden
+    const RunFmt base = m_doc.resolveRun(blk, Run());
+    RunFmt p;
+    if (had.bold      != base.bold)      { p.bold      = had.bold;      p.set |= RunFmt::FBold; }
+    if (had.italic    != base.italic)    { p.italic    = had.italic;    p.set |= RunFmt::FItalic; }
+    if (had.underline != base.underline) { p.underline = had.underline; p.set |= RunFmt::FUnderline; }
+    if (!qFuzzyCompare(had.sizePt + 1, base.sizePt + 1)) { p.sizePt = had.sizePt; p.set |= RunFmt::FSize; }
+    if (had.font != base.font && !had.font.isEmpty())    { p.font   = had.font;   p.set |= RunFmt::FFont; }
+    if (had.color.isValid() && had.color != base.color)  { p.color  = had.color;  p.set |= RunFmt::FColor; }
+    clearPending();
+
+    //  Träger suchen (erster nicht-opaker Run des leeren Absatzes).
+    int carrier = -1;
+    for (int i = 0; i < blk.runs.size(); ++i) {
+        if (!blk.runs.at(i).opaque) { carrier = i; break; }
+    }
+
+    if (p.set == 0) {
+        //  Nichts weicht vom Stil ab: einen vorhandenen Träger von seinem
+        //  ALTEN (geerbten) rPr befreien, damit er nicht weiter ein fremdes
+        //  Format festhält. Ohne Träger ist ohnehin nichts zu tun.
+        if (carrier >= 0) {
+            Run& r = blk.runs[carrier];
+            r.rprXml.clear();
+            r.rprMaterialized = true;
+            r.fmt = RunFmt();
+            r.dirty = true;
+            blk.dirty = true;
+        }
+        return;
+    }
+
+    if (carrier < 0) {
+        //  Kein Träger vorhanden → einen leeren anlegen (Word-Äquivalent der
+        //  formatierten Absatzmarke).
+        Run r;
+        r.rprMaterialized = true;                 // startet ohne rPr
+        r.dirty = true;
+        blk.runs.append(r);
+        carrier = blk.runs.size() - 1;
+    } else {
+        //  Vorhandenen Träger auf ein FRISCHES rPr setzen: sonst bliebe das
+        //  geerbte Format (20 pt) unter den neu gesetzten Feldern erhalten.
+        Run& r = blk.runs[carrier];
+        r.rprXml.clear();
+        r.rprMaterialized = true;
+        r.fmt = RunFmt();
+    }
+
+    //  Felder über denselben Weg schreiben wie das Pending-Format beim Tippen
+    //  (applyPendingTo pflegt rPr-XML UND das geparste RunFmt konsistent).
+    const RunFmt save = m_pending;
+    m_pending = p;
+    applyPendingTo(blk.runs[carrier]);
+    m_pending = save;
+    blk.dirty = true;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -480,6 +575,8 @@ void DocxEditController::deleteBackward() {
         //  Selektion löschen = leeren Text „einfügen" über dieselbe Mechanik.
         int b1, p1, b2, p2;
         orderedSelection(b1, p1, b2, p2);
+        //  Format der gelöschten Stelle merken (s. keepFormatOnEmptiedBlock).
+        const RunFmt had = resolvedFormatAt(b1, p1);
         EditScope scope(this, b1, b2 - b1 + 1);
         Block& head = m_doc.blocks[b1];
         if (b1 == b2) {
@@ -494,6 +591,8 @@ void DocxEditController::deleteBackward() {
                 m_doc.blocks.removeAt(i);
         }
         m_cursor = { b1, p1, b1, p1 };
+        clearPending();
+        keepFormatOnEmptiedBlock(b1, had);
         scope.commit(1);
         return;
     }
@@ -508,6 +607,8 @@ void DocxEditController::deleteBackward() {
             --p1;
         int ri, ro;
         runAt(m_doc.blocks[bi], p1, &ri, &ro);
+        //  Format des gelöschten Zeichens merken (s. keepFormatOnEmptiedBlock).
+        const RunFmt had = resolvedFormatAt(bi, p1);
         EditScope scope(this, bi, 1, 1);
         Block& blk = m_doc.blocks[bi];
         if (ri >= 0 && blk.runs.at(ri).opaque && !blk.runs.at(ri).text.isEmpty()) {
@@ -521,12 +622,14 @@ void DocxEditController::deleteBackward() {
             removeRangeInBlock(blk, p1, m_cursor.pos);
         }
         m_cursor = { bi, p1, bi, p1 };
+        clearPending();
+        keepFormatOnEmptiedBlock(bi, had);
         scope.commit(1);
         return;
     }
     //  Am Absatzanfang: mit dem VORHERIGEN Absatz verschmelzen.
     int prev = bi - 1;
-    if (prev < 0) return;
+    if (prev < 0) return;                           // nichts zu tun → Pending hält
     if (!isEditableParagraph(prev)) {
         //  Opaker Block davor (Tabelle/sectPr): nichts löschen, nur Cursor
         //  vor den Block bewegen (Schutz vor versehentlichem Strukturverlust).
@@ -535,6 +638,10 @@ void DocxEditController::deleteBackward() {
         }
         return;
     }
+    //  Der Cursor wechselt jetzt die Zeile → das für die geleerte Zeile
+    //  gemerkte Format erlischt (genau das vom Nutzer gewünschte Verhalten:
+    //  „erst beim nächsten Backspace gilt die Überschriftformatierung").
+    clearPending();
     EditScope scope(this, prev, 2);
     Block& a = m_doc.blocks[prev];
     Block& b = m_doc.blocks[bi];
@@ -559,6 +666,9 @@ void DocxEditController::deleteForward() {
             ++p2;
         int ri, ro;
         runAt(m_doc.blocks[bi], m_cursor.pos, &ri, &ro);
+        //  Format des gelöschten Zeichens merken (s. keepFormatOnEmptiedBlock);
+        //  bei Entf steht es RECHTS vom Cursor.
+        const RunFmt had = resolvedFormatAt(bi, m_cursor.pos);
         EditScope scope(this, bi, 1);
         Block& blk = m_doc.blocks[bi];
         if (ri >= 0 && blk.runs.at(ri).opaque && !blk.runs.at(ri).text.isEmpty()) {
@@ -569,6 +679,8 @@ void DocxEditController::deleteForward() {
         } else {
             removeRangeInBlock(blk, m_cursor.pos, p2);
         }
+        clearPending();
+        keepFormatOnEmptiedBlock(bi, had);
         scope.commit(1);
         return;
     }
@@ -799,6 +911,159 @@ void DocxEditController::toggleNumbering() { toggleList(false); }
 // ─────────────────────────────────────────────────────────────────────────────
 //  Zwischenablage / Undo
 // ─────────────────────────────────────────────────────────────────────────────
+//  Eigener Zwischenablage-Typ: trägt die Runs MIT ihrem rPr-Fragment, damit
+//  Kopieren/Einfügen innerhalb der App (und zwischen zwei DOCX-Kacheln)
+//  Schriftgröße/-art/Stil/Farbe verlustfrei erhält. Reiner Text (setText)
+//  konnte das nicht — daher der Nutzerbefund „Kopieren verliert Formatierung".
+static const char* const kDocxMime = "application/x-mediagallery-docx-runs";
+static constexpr quint32 kClipMagic   = 0x4D474458u;   // "MGDX"
+static constexpr quint16 kClipVersion = 1;
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  Selektion → Blob. Kopiert werden AUSSCHLIESSLICH normale Runs; opake
+//  (Zeichnung/Feld/Hyperlink-Konstrukt) hängen an ihrem Original-XML im
+//  Quelldokument und dürfen nicht in ein anderes verpflanzt werden — sie
+//  entfallen wie bisher schon in der Klartext-Fassung. Die Sentinels
+//  U+FFFC/U+E000 werden mitentfernt (sonst wanderten Platzhalter mit).
+// ─────────────────────────────────────────────────────────────────────────────
+QByteArray DocxEditController::serializeSelection() const {
+    QByteArray blob;
+    QDataStream ds(&blob, QIODevice::WriteOnly);
+    ds.setVersion(QDataStream::Qt_6_0);
+    int b1, p1, b2, p2;
+    orderedSelection(b1, p1, b2, p2);
+
+    QList<QList<Run>> paras;
+    for (int i = b1; i <= b2; ++i) {
+        QList<Run> out;
+        if (isEditableParagraph(i)) {
+            const Block& blk = m_doc.blocks.at(i);
+            const int from = (i == b1) ? p1 : 0;
+            const int to   = (i == b2) ? p2 : blk.textLength();
+            int acc = 0;
+            for (const Run& r : blk.runs) {
+                const int rs = acc, re = acc + r.text.size();
+                acc = re;
+                if (r.opaque || r.text.isEmpty()) continue;
+                if (re <= from || rs >= to) continue;
+                Run c;
+                c.text = r.text.mid(qMax(0, from - rs),
+                                    qMin(re, to) - qMax(rs, from));
+                c.text.remove(kObjectChar);
+                c.text.remove(kPageBreak);
+                if (c.text.isEmpty()) continue;
+                c.rprXml = r.currentRpr(m_doc.docXml());
+                c.fmt    = r.fmt;
+                out.append(c);
+            }
+        }
+        paras.append(out);
+    }
+
+    ds << kClipMagic << kClipVersion << quint32(paras.size());
+    for (const QList<Run>& p : paras) {
+        ds << quint32(p.size());
+        for (const Run& r : p) {
+            ds << r.rprXml << r.text << qint32(r.fmt.set)
+               << r.fmt.bold << r.fmt.italic << r.fmt.underline
+               << double(r.fmt.sizePt) << r.fmt.font << r.fmt.color;
+        }
+    }
+    return blob;
+}
+
+bool DocxEditController::deserializeRuns(const QByteArray& blob,
+                                         QList<QList<Run>>* out) {
+    if (!out) return false;
+    QDataStream ds(blob);
+    ds.setVersion(QDataStream::Qt_6_0);
+    quint32 magic = 0; quint16 ver = 0; quint32 paraCount = 0;
+    ds >> magic >> ver >> paraCount;
+    if (ds.status() != QDataStream::Ok || magic != kClipMagic || ver != kClipVersion)
+        return false;
+    if (paraCount == 0 || paraCount > 100000u)
+        return false;
+    out->clear();
+    out->reserve(int(paraCount));
+    for (quint32 i = 0; i < paraCount; ++i) {
+        quint32 runCount = 0;
+        ds >> runCount;
+        if (ds.status() != QDataStream::Ok || runCount > 1000000u)
+            return false;
+        QList<Run> runs;
+        runs.reserve(int(runCount));
+        for (quint32 k = 0; k < runCount; ++k) {
+            Run r;
+            qint32 set = 0; double sz = 11.0;
+            ds >> r.rprXml >> r.text >> set
+               >> r.fmt.bold >> r.fmt.italic >> r.fmt.underline
+               >> sz >> r.fmt.font >> r.fmt.color;
+            if (ds.status() != QDataStream::Ok)
+                return false;
+            r.fmt.set    = int(set);
+            r.fmt.sizePt = sz;
+            //  Frische Runs OHNE Herkunfts-Spans: das rPr-Fragment ist bereits
+            //  materialisiert, der Text wird neu serialisiert.
+            r.rprMaterialized = true;
+            r.dirty = true;
+            runs.append(r);
+        }
+        out->append(runs);
+    }
+    return !out->isEmpty();
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  Selektion als HTML-Fragment — damit auch Word/LibreOffice/Browser die
+//  Formatierung übernehmen (die interne MIME-Form kennen sie nicht).
+// ─────────────────────────────────────────────────────────────────────────────
+QString DocxEditController::selectionAsHtml() const {
+    int b1, p1, b2, p2;
+    orderedSelection(b1, p1, b2, p2);
+    static const char* const kAlign[] = { "left", "center", "right", "justify" };
+    QString html = QStringLiteral("<!--StartFragment--><div>");
+    for (int i = b1; i <= b2; ++i) {
+        if (!isEditableParagraph(i)) continue;
+        const Block& blk = m_doc.blocks.at(i);
+        const ParFmt pf  = m_doc.resolvePar(blk);
+        html += QStringLiteral("<p style=\"margin:0;text-align:%1\">")
+                    .arg(QLatin1String(kAlign[qBound(0, pf.align, 3)]));
+        const int from = (i == b1) ? p1 : 0;
+        const int to   = (i == b2) ? p2 : blk.textLength();
+        int acc = 0;
+        bool any = false;
+        for (const Run& r : blk.runs) {
+            const int rs = acc, re = acc + r.text.size();
+            acc = re;
+            if (r.opaque || r.text.isEmpty()) continue;
+            if (re <= from || rs >= to) continue;
+            QString t = r.text.mid(qMax(0, from - rs), qMin(re, to) - qMax(rs, from));
+            t.remove(kObjectChar);
+            t.remove(kPageBreak);
+            if (t.isEmpty()) continue;
+            const RunFmt f = m_doc.resolveRun(blk, r);
+            QString style = QStringLiteral("font-family:'%1';font-size:%2pt;")
+                                .arg(Document::xmlEscape(f.font))
+                                .arg(f.sizePt, 0, 'f', 1);
+            if (f.bold)      style += QStringLiteral("font-weight:bold;");
+            if (f.italic)    style += QStringLiteral("font-style:italic;");
+            if (f.underline) style += QStringLiteral("text-decoration:underline;");
+            if (f.color.isValid())
+                style += QStringLiteral("color:%1;").arg(f.color.name(QColor::HexRgb));
+            html += QStringLiteral("<span style=\"%1\">%2</span>")
+                        .arg(style,
+                             Document::xmlEscape(t)
+                                 .replace(QLatin1Char('\t'), QLatin1String("&#9;"))
+                                 .replace(kLineBreak, QLatin1String("<br/>")));
+            any = true;
+        }
+        if (!any) html += QStringLiteral("<br/>");
+        html += QStringLiteral("</p>");
+    }
+    html += QStringLiteral("</div><!--EndFragment-->");
+    return html;
+}
+
 void DocxEditController::copy() {
     if (!m_cursor.hasSelection()) return;
     int b1, p1, b2, p2;
@@ -813,7 +1078,14 @@ void DocxEditController::copy() {
     }
     out.remove(kObjectChar);
     out.replace(kPageBreak, QLatin1Char('\n'));
-    QGuiApplication::clipboard()->setText(out);
+    //  DREI Darstellungen in EINEM QMimeData: intern verlustfrei (eigener Typ),
+    //  HTML für Fremdprogramme, Klartext als kleinster gemeinsamer Nenner.
+    //  Das QMimeData geht in den Besitz der Zwischenablage über.
+    auto* md = new QMimeData;
+    md->setText(out);
+    md->setHtml(selectionAsHtml());
+    md->setData(QLatin1String(kDocxMime), serializeSelection());
+    QGuiApplication::clipboard()->setMimeData(md);
 }
 void DocxEditController::cut() {
     if (!m_cursor.hasSelection()) return;
@@ -821,8 +1093,93 @@ void DocxEditController::cut() {
     deleteBackward();
 }
 void DocxEditController::paste() {
-    const QString t = QGuiApplication::clipboard()->text();
+    const QMimeData* md = QGuiApplication::clipboard()->mimeData();
+    if (!md) return;
+    //  Eigener Typ zuerst: Runs samt rPr → Formatierung bleibt erhalten.
+    if (md->hasFormat(QLatin1String(kDocxMime))) {
+        QList<QList<Run>> paras;
+        if (deserializeRuns(md->data(QLatin1String(kDocxMime)), &paras)) {
+            insertRunParagraphs(paras);
+            return;
+        }
+    }
+    //  Fremdinhalt: wie bisher als Klartext (HTML-Import ist bewusst NICHT
+    //  Teil dieses Editors — s. README „Planned").
+    const QString t = md->text();
     if (!t.isEmpty()) insertText(t);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  Einfügen fertiger Runs (Zwischenablage) — Ablauf identisch zu insertText,
+//  nur dass die Runs ihr Format MITBRINGEN (kein Erben vom Nachbarn, kein
+//  Pending). Absatz-Eigenschaften (pPr) übernimmt der Zielabsatz — genau wie
+//  beim Tippen von Enter; damit können keine Listen-/Stil-Verweise (numId,
+//  pStyle) aus einem fremden Dokument ins Ziel lecken.
+// ─────────────────────────────────────────────────────────────────────────────
+void DocxEditController::insertRunParagraphs(const QList<QList<Run>>& paras) {
+    if (!m_ready || paras.isEmpty()) return;
+    int b1, p1, b2, p2;
+    orderedSelection(b1, p1, b2, p2);
+    if (!isEditableParagraph(b1) || !isEditableParagraph(b2))
+        return;
+
+    EditScope scope(this, b1, b2 - b1 + 1);
+
+    //  1) Selektion entfernen: Bereich zu EINEM Block verschmelzen.
+    Block& head = m_doc.blocks[b1];
+    if (m_cursor.hasSelection()) {
+        if (b1 == b2) {
+            removeRangeInBlock(head, p1, p2);
+        } else {
+            removeRangeInBlock(head, p1, blockLen(b1));
+            Block& tail = m_doc.blocks[b2];
+            removeRangeInBlock(tail, 0, p2);
+            const int k = ensureRunBoundary(head, p1);
+            Q_UNUSED(k)
+            head.runs += tail.runs;
+            head.dirty = true;
+            for (int i = b2; i > b1; --i)
+                m_doc.blocks.removeAt(i);
+        }
+    }
+
+    //  2) Absätze einfügen.
+    int curBlock = b1, curPos = p1;
+    {
+        Block& blk = m_doc.blocks[curBlock];
+        int at = ensureRunBoundary(blk, curPos);
+        for (const Run& r : paras.at(0)) {
+            blk.runs.insert(at++, r);
+            curPos += r.text.size();
+        }
+        blk.dirty = true;
+    }
+    for (int pi = 1; pi < paras.size(); ++pi) {
+        //  Absatz-Split an curPos: Rest wandert in einen NEUEN Absatz.
+        Block& blk = m_doc.blocks[curBlock];
+        const int k = ensureRunBoundary(blk, curPos);
+        Block nb;
+        nb.kind = Block::Paragraph;
+        const QString ppr = blk.currentPpr(m_doc.docXml());
+        if (!ppr.isEmpty()) { nb.pprXml = ppr; nb.pprMaterialized = true; }
+        nb.pfmt = blk.pfmt;
+        while (blk.runs.size() > k)
+            nb.runs.append(blk.runs.takeAt(k));
+        blk.dirty = true;
+        nb.dirty  = true;
+        int at = 0;
+        curPos = 0;
+        for (const Run& r : paras.at(pi)) {
+            nb.runs.insert(at++, r);
+            curPos += r.text.size();
+        }
+        ++curBlock;
+        m_doc.blocks.insert(curBlock, nb);
+    }
+
+    m_cursor = { curBlock, curPos, curBlock, curPos };
+    clearPending();
+    scope.commit(curBlock - b1 + 1);
 }
 void DocxEditController::undo() { if (m_stack.canUndo()) m_stack.undo(); }
 void DocxEditController::redo() { if (m_stack.canRedo()) m_stack.redo(); }
@@ -880,6 +1237,41 @@ void DocxEditController::runTranslit() {
 // ─────────────────────────────────────────────────────────────────────────────
 //  Toolbar-Format
 // ─────────────────────────────────────────────────────────────────────────────
+//  Aufgelöstes Zeichenformat EINER Stelle. Leerer Absatz (alle Runs gelöscht):
+//  NICHT die docDefaults, sondern das Stil-Format des Absatzes selbst
+//  (resolveRun mit leerem Run läuft die pStyle-Kette ab) — sonst zeigte die
+//  Leiste in einer leergelöschten Überschrift-Zeile ein drittes, mit nichts
+//  übereinstimmendes Format (docDefaults) an.
+RunFmt DocxEditController::resolvedFormatAt(int block, int pos) const {
+    if (!isEditableParagraph(block))
+        return m_doc.defaultRun();
+    const Block& blk = m_doc.blocks.at(block);
+    int ri = -1, ro = 0;
+    runAt(blk, pos, &ri, &ro);
+    if (ri >= 0 && ri < blk.runs.size())
+        return m_doc.resolveRun(blk, blk.runs.at(ri));
+    return m_doc.resolveRun(blk, Run());
+}
+
+RunFmt DocxEditController::caretFormat() const {
+    if (!m_ready || m_doc.blocks.isEmpty())
+        return m_doc.defaultRun();
+    int b1, p1, b2, p2;
+    orderedSelection(b1, p1, b2, p2);
+    //  Format des Zeichens LINKS vom Cursor (Editor-Konvention).
+    RunFmt rf = resolvedFormatAt(b1, m_cursor.hasSelection() ? p1 : qMax(0, p1 - 1));
+    //  Pending-Format überlagert an der Pending-Stelle.
+    if (m_pendingBlock == m_cursor.block && m_pendingPos == m_cursor.pos) {
+        if (m_pending.set & RunFmt::FBold)      rf.bold      = m_pending.bold;
+        if (m_pending.set & RunFmt::FItalic)    rf.italic    = m_pending.italic;
+        if (m_pending.set & RunFmt::FUnderline) rf.underline = m_pending.underline;
+        if (m_pending.set & RunFmt::FFont)      rf.font      = m_pending.font;
+        if (m_pending.set & RunFmt::FSize)      rf.sizePt    = m_pending.sizePt;
+        if (m_pending.set & RunFmt::FColor)     rf.color     = m_pending.color;
+    }
+    return rf;
+}
+
 QVariantMap DocxEditController::currentFormat() const {
     QVariantMap m;
     if (m_doc.blocks.isEmpty() || !m_ready) {
@@ -889,25 +1281,7 @@ QVariantMap DocxEditController::currentFormat() const {
     int b1, p1, b2, p2;
     orderedSelection(b1, p1, b2, p2);
     const int bi = b1;
-    RunFmt rf = m_doc.defaultRun();
-    if (isEditableParagraph(bi)) {
-        const Block& blk = m_doc.blocks.at(bi);
-        //  Format des Zeichens LINKS vom Cursor (Editor-Konvention).
-        int pos = m_cursor.hasSelection() ? p1 : qMax(0, p1 - 1);
-        int ri, ro;
-        runAt(blk, pos, &ri, &ro);
-        if (ri >= 0 && ri < blk.runs.size())
-            rf = m_doc.resolveRun(blk, blk.runs.at(ri));
-    }
-    //  Pending-Format überlagert die Anzeige an der Pending-Stelle.
-    if (m_pendingBlock == m_cursor.block && m_pendingPos == m_cursor.pos) {
-        if (m_pending.set & RunFmt::FBold)      rf.bold      = m_pending.bold;
-        if (m_pending.set & RunFmt::FItalic)    rf.italic    = m_pending.italic;
-        if (m_pending.set & RunFmt::FUnderline) rf.underline = m_pending.underline;
-        if (m_pending.set & RunFmt::FFont)      rf.font      = m_pending.font;
-        if (m_pending.set & RunFmt::FSize)      rf.sizePt    = m_pending.sizePt;
-        if (m_pending.set & RunFmt::FColor)     rf.color     = m_pending.color;
-    }
+    const RunFmt rf = caretFormat();
     ParFmt pf;
     if (isEditableParagraph(bi))
         pf = m_doc.resolvePar(m_doc.blocks.at(bi));

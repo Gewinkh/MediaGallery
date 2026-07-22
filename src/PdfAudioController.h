@@ -44,6 +44,8 @@
 #include <QSet>
 #include <QVariantList>
 #include <QThreadPool>
+#include <atomic>
+#include <memory>
 
 // ─────────────────────────────────────────────────────
 // PdfAudioClip — ein extrahierbarer Audio-Treffer (Metadaten, kein PCM)
@@ -104,6 +106,15 @@ signals:
     void clipReady(int id, const QString& url, int durationMs);
 
 private:
+    //  Kooperativer Abbruch (Muster wie PdfEditController/ImageEditController/
+    //  ThumbnailLoader). OHNE dieses Flag wartete ~PdfAudioController im
+    //  GUI-Thread, bis ein laufender Scan fertig war — bei einer 363-MB-PDF
+    //  gemessen 745 ms Freeze allein fürs Schließen der Kachel. Der Scan liest
+    //  die GESAMTE Datei ein und läuft mehrfach über den Puffer; beides ist
+    //  jetzt in Abschnitte unterteilt, die das Flag prüfen.
+    using CancelFlag = std::shared_ptr<std::atomic<bool>>;
+    void   cancelRunningTasks();          // Flag setzen + frisches Flag anlegen
+
     void   evictCache();
     QString tempPathFor(int id) const;
 
@@ -124,6 +135,10 @@ private:
     // Eigener Pool (nicht der globale): serialisiert Scan + Extraktion (RAM-schonend
     // und vermeidet Disk-/CPU-Stoss beim Seitenwechsel).
     QThreadPool           m_pool;
+    //  Wird von JEDEM laufenden Task geteilt; cancelRunningTasks() setzt es und
+    //  legt ein frisches an, damit neu gestartete Tasks nicht mit abgebrochen
+    //  werden. Der Destruktor setzt es VOR waitForDone().
+    CancelFlag            m_cancel;
 
     static constexpr qint64 kMaxWavBytes = 96LL * 1024 * 1024;   // Cache-Deckel
 };

@@ -24,6 +24,29 @@
 // ══════════════════════════════════════════════════════════════════════════════
 namespace {
 
+//  Kooperativer Abbruch (Muster wie PdfEditController/ThumbnailLoader).
+using CancelFlag = std::shared_ptr<std::atomic<bool>>;
+inline bool aborted(const CancelFlag& c) {
+    return c && c->load(std::memory_order_relaxed);
+}
+
+//  Datei ABSCHNITTSWEISE lesen und zwischen den Abschnitten den Abbruch prüfen.
+//  QFile::readAll() auf eine 363-MB-PDF dauerte gemessen 225 ms — in dieser Zeit
+//  war der Scan nicht unterbrechbar und der Destruktor blockierte den GUI-Thread.
+QByteArray readAllCancellable(QFile& f, const CancelFlag& cancel) {
+    constexpr qint64 kChunk = 4 * 1024 * 1024;
+    QByteArray out;
+    const qint64 total = f.size();
+    if (total > 0) out.reserve(int(qMin<qint64>(total, INT_MAX)));
+    while (!f.atEnd()) {
+        if (aborted(cancel)) return {};
+        const QByteArray part = f.read(kChunk);
+        if (part.isEmpty()) break;
+        out.append(part);
+    }
+    return out;
+}
+
 inline bool isWs(char c)    { return c==' '||c=='\t'||c=='\r'||c=='\n'||c=='\f'||c=='\0'; }
 inline bool isDelim(char c) { return isWs(c)||c=='('||c==')'||c=='<'||c=='>'||c=='['||c==']'||c=='{'||c=='}'||c=='/'||c=='%'; }
 inline void skipWs(const QByteArray& d, qsizetype& i) { while (i < d.size() && isWs(d[i])) ++i; }
@@ -200,9 +223,13 @@ QVector<qsizetype> findAll(const QByteArray& d, const char* pat) {
 
 // Objektnummer → Byte-Offset HINTER „obj" (Start des Objektkoerpers). „endobj"
 // wird nicht als Deklaration gewertet (Zeichen vor „obj" muss Whitespace sein).
-QHash<int,qsizetype> buildObjectOffsets(const QByteArray& d) {
+QHash<int,qsizetype> buildObjectOffsets(const QByteArray& d, const CancelFlag& cancel) {
     QHash<int,qsizetype> map; qsizetype p = 0;
+    int tick = 0;
     while ((p = d.indexOf("obj", p)) >= 0) {
+        //  Nicht bei jedem Treffer prüfen (atomarer Load in der heißen Schleife) —
+        //  alle 4096 Objekte genügt für eine Reaktionszeit im Millisekundenbereich.
+        if (((++tick) & 0xFFF) == 0 && aborted(cancel)) return {};
         const qsizetype after = p + 3;
         const char nc = after < d.size() ? d[after] : ' ';
         const char pc = p > 0 ? d[p-1] : ' ';
@@ -317,9 +344,10 @@ void flattenPages(const QByteArray& d, const QHash<int,qsizetype>& off, int num,
 }
 
 // ── Haupt-Scan: alle eingebetteten Audio-Clips eines PDFs (nur Metadaten) ──────
-QVector<PdfAudioClip> scanClips(const QByteArray& d) {
+QVector<PdfAudioClip> scanClips(const QByteArray& d, const CancelFlag& cancel) {
     QVector<PdfAudioClip> out;
-    const QHash<int,qsizetype> off = buildObjectOffsets(d);
+    const QHash<int,qsizetype> off = buildObjectOffsets(d, cancel);
+    if (aborted(cancel)) return {};
 
     // Seitenobjekte in AUTORITATIVER Lesereihenfolge (Seitenbaum /Pages→/Kids).
     // Reines Byte-Offset-Scannen waere falsch: Illustrator-Inkrement-Saves
@@ -332,6 +360,7 @@ QVector<PdfAudioClip> scanClips(const QByteArray& d) {
         if (pageObjs.isEmpty()) {                       // Fallback: Datei-Reihenfolge
             QVector<QPair<qsizetype,int>> hits;
             for (auto it = off.constBegin(); it != off.constEnd(); ++it) {
+                if (aborted(cancel)) return {};
                 const qsizetype lt = d.indexOf("<<", it.value()); if (lt < 0) continue;
                 const QByteArray dict = readDictAt(d, lt);
                 if (!dict.isEmpty() && isPageObject(dict)) hits.append({ lt, it.key() });
@@ -340,6 +369,7 @@ QVector<PdfAudioClip> scanClips(const QByteArray& d) {
             for (const auto& h : hits) pageObjs.append(h.second);
         }
         for (int pn : pageObjs) {
+            if (aborted(cancel)) return {};
             QSizeF sz(595, 842);
             const qsizetype lt = off.contains(pn) ? d.indexOf("<<", off.value(pn)) : -1;
             if (lt >= 0) sz = mediaBoxSize(readDictAt(d, lt));
@@ -368,11 +398,15 @@ QVector<PdfAudioClip> scanClips(const QByteArray& d) {
     };
 
     // Pass A: Widget-Buttons mit Sound-Aktion.
+    if (aborted(cancel)) return {};
     { QVector<qsizetype> hits = findAll(d, "/Subtype/Widget"); hits += findAll(d, "/Subtype /Widget");
-      for (qsizetype p : hits) { const QByteArray ad = enclosingObjDict(d, p); if (!ad.isEmpty()) addAnnot(ad); } }
+      for (qsizetype p : hits) { if (aborted(cancel)) return {};
+                                 const QByteArray ad = enclosingObjDict(d, p); if (!ad.isEmpty()) addAnnot(ad); } }
     // Pass B: klassische /Subtype /Sound-Annotationen.
+    if (aborted(cancel)) return {};
     { QVector<qsizetype> hits = findAll(d, "/Subtype/Sound"); hits += findAll(d, "/Subtype /Sound");
-      for (qsizetype p : hits) { const QByteArray ad = enclosingObjDict(d, p); if (!ad.isEmpty()) addAnnot(ad); } }
+      for (qsizetype p : hits) { if (aborted(cancel)) return {};
+                                 const QByteArray ad = enclosingObjDict(d, p); if (!ad.isEmpty()) addAnnot(ad); } }
 
     // Stabile Reihenfolge: Seite, dann von oben nach unten, dann links nach rechts.
     std::sort(out.begin(), out.end(), [](const PdfAudioClip& a, const PdfAudioClip& b) {
@@ -450,28 +484,39 @@ QString writeTempWav(const QString& pdfPath, int id, int gen, const QByteArray& 
 // ── Worker: Metadaten-Scan ────────────────────────────────────────────────────
 class PdfAudioScanTask : public QRunnable {
 public:
-    PdfAudioScanTask(PdfAudioController* o, QString path, int gen)
-        : m_owner(o), m_path(std::move(path)), m_gen(gen) { setAutoDelete(true); }
+    PdfAudioScanTask(PdfAudioController* o, QString path, int gen, CancelFlag cancel)
+        : m_owner(o), m_path(std::move(path)), m_gen(gen), m_cancel(std::move(cancel)) { setAutoDelete(true); }
     void run() override {
         QVector<PdfAudioClip> clips;
         QFile f(m_path);
-        if (f.open(QIODevice::ReadOnly)) { const QByteArray d = f.readAll(); f.close(); clips = scanClips(d); }
+        if (f.open(QIODevice::ReadOnly)) {
+            const QByteArray d = readAllCancellable(f, m_cancel);
+            f.close();
+            if (!d.isEmpty()) clips = scanClips(d, m_cancel);
+        }
+        //  Abgebrochen ⇒ Ergebnis verwerfen UND den Owner nicht mehr anfassen:
+        //  Er wird gerade zerstört (Kachel geschlossen) oder hat auf ein anderes
+        //  Dokument umgeschaltet.
+        if (aborted(m_cancel)) return;
         PdfAudioController* owner = m_owner; const QString path = m_path; const int gen = m_gen;
         QMetaObject::invokeMethod(owner, [owner, path, clips, gen]() { owner->applyScan(path, clips, gen); }, Qt::QueuedConnection);
     }
 private:
-    PdfAudioController* m_owner; QString m_path; int m_gen;
+    PdfAudioController* m_owner; QString m_path; int m_gen; CancelFlag m_cancel;
 };
 
 // ── Worker: Einzel-Clip-Extraktion (inflate → swap → WAV) ─────────────────────
 class PdfAudioExtractTask : public QRunnable {
 public:
-    PdfAudioExtractTask(PdfAudioController* o, QString path, PdfAudioClip c, int gen)
-        : m_owner(o), m_path(std::move(path)), m_clip(c), m_gen(gen) { setAutoDelete(true); }
+    PdfAudioExtractTask(PdfAudioController* o, QString path, PdfAudioClip c, int gen,
+                        CancelFlag cancel)
+        : m_owner(o), m_path(std::move(path)), m_clip(c), m_gen(gen),
+          m_cancel(std::move(cancel)) { setAutoDelete(true); }
     void run() override {
         QString wav; int durMs = 0; qint64 bytes = 0;
+        if (aborted(m_cancel)) return;
         const QByteArray comp = readSlice(m_path, m_clip.streamStart, m_clip.streamLen);
-        if (!comp.isEmpty()) {
+        if (!comp.isEmpty() && !aborted(m_cancel)) {
             QByteArray pcm = m_clip.flate ? zlibInflate(comp) : comp;
             if (!pcm.isEmpty()) {
                 if (m_clip.bits == 16) byteswap16(pcm);   // PDF /Sound = Big-Endian
@@ -483,12 +528,14 @@ public:
                 bytes = file.size();
             }
         }
+        if (aborted(m_cancel)) return;              // s. Scan-Task
         PdfAudioController* owner = m_owner; const int id = m_clip.id; const int gen = m_gen;
         const QString w = wav; const int dm = durMs; const qint64 by = bytes;
         QMetaObject::invokeMethod(owner, [owner, id, w, dm, by, gen]() { owner->applyClip(id, w, dm, by, gen); }, Qt::QueuedConnection);
     }
 private:
     PdfAudioController* m_owner; QString m_path; PdfAudioClip m_clip; int m_gen;
+    CancelFlag m_cancel;
 };
 
 } // namespace
@@ -496,11 +543,25 @@ private:
 // ══════════════════════════════════════════════════════════════════════════════
 //  PdfAudioController — alle Member laufen auf dem GUI-Thread (keine Sync noetig).
 // ══════════════════════════════════════════════════════════════════════════════
-PdfAudioController::PdfAudioController(QObject* parent) : QObject(parent) {
+PdfAudioController::PdfAudioController(QObject* parent)
+    : QObject(parent), m_cancel(std::make_shared<std::atomic<bool>>(false)) {
     m_pool.setMaxThreadCount(1);   // Scan + Extraktion serialisieren (RAM/Disk-schonend)
 }
 
+//  Laufende Tasks abbrechen und ein FRISCHES Flag anlegen: danach gestartete
+//  Tasks dürfen nicht mit dem alten Abbruch mitgerissen werden.
+void PdfAudioController::cancelRunningTasks() {
+    if (m_cancel)
+        m_cancel->store(true, std::memory_order_relaxed);
+    m_cancel = std::make_shared<std::atomic<bool>>(false);
+}
+
 PdfAudioController::~PdfAudioController() {
+    //  ERST das Abbruch-Flag setzen, DANN warten: sonst blockiert der
+    //  GUI-Thread hier, bis ein laufender Scan die komplette PDF gelesen und
+    //  mehrfach durchsucht hat (gemessen 745 ms bei 363 MB).
+    if (m_cancel)
+        m_cancel->store(true, std::memory_order_relaxed);
     m_pool.clear();
     m_pool.waitForDone();
     for (const WavEntry& e : std::as_const(m_wavCache)) QFile::remove(e.path);
@@ -515,7 +576,7 @@ void PdfAudioController::prepare(const QString& filePathOrUrl) {
     if (path.isEmpty() || !QFileInfo::exists(path)) { m_ready = true; emit readyChanged(); return; }
 
     m_scanInFlight = true;
-    m_pool.start(new PdfAudioScanTask(this, path, m_gen));
+    m_pool.start(new PdfAudioScanTask(this, path, m_gen, m_cancel));
 }
 
 QVariantList PdfAudioController::clips() const {
@@ -549,11 +610,16 @@ void PdfAudioController::requestClip(int id) {
     }
     if (m_clipInFlight.contains(id)) return;
     m_clipInFlight.insert(id);
-    m_pool.start(new PdfAudioExtractTask(this, m_path, m_clips.at(id), m_gen));
+    m_pool.start(new PdfAudioExtractTask(this, m_path, m_clips.at(id), m_gen, m_cancel));
 }
 
 void PdfAudioController::releaseDocument() {
     ++m_gen;                                  // laufende Tasks werden verworfen
+    //  Die Generationszahl verwarf bisher nur das ERGEBNIS — der Task lief
+    //  vollständig weiter und belegte den 1-Thread-Pool. Beim schnellen Blättern
+    //  durch mehrere PDFs stauten sich so komplette Datei-Scans hintereinander.
+    //  Jetzt bricht der laufende Task auch tatsächlich ab.
+    cancelRunningTasks();
     m_path.clear();
     m_clips.clear();
     const bool hadWavs = !m_wavCache.isEmpty();

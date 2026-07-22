@@ -53,8 +53,6 @@ public:
     void            setTileArrangement(TileArrangement a) override;
     int             manualAreaWidth()  const override;
     void            setManualAreaWidth(int w) override;
-    int             manualAreaHeight() const override;
-    void            setManualAreaHeight(int h) override;
 
     int  tileWidth()  const override;
     int  tileHeight() const override;

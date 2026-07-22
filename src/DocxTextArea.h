@@ -108,6 +108,10 @@ private:
     void  rebuildMarkers();                    // Listen-Zähler (ganzes Dokument)
     void  buildLayout(int i);                  // QTextLayout eines Absatzes
     void  updateCursorRect();
+    //  Leere Absätze werden mit dem am Cursor GELTENDEN Format vermessen
+    //  (inkl. Pending) — beim Wechsel des Cursor-Blocks bzw. bei einer
+    //  Format-Änderung ohne Selektion muss ihr Layout daher verfallen.
+    void  invalidateEmptyBlock(int i);
     //  Maus (Item-Koordinaten) → (Block, Zeichenposition).
     void  hitTest(const QPointF& itemPos, int* block, int* pos);
     void  moveCursorVertical(int dir, bool keepAnchor);
@@ -129,4 +133,5 @@ private:
     bool   m_caretOn = true;
     bool   m_selecting = false;
     qreal  m_goalX = -1.0;                     // Wunsch-x für ↑/↓
+    int    m_lastCursorBlock = -1;             // s. invalidateEmptyBlock()
 };

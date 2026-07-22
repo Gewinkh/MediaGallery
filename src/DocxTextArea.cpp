@@ -52,6 +52,24 @@ void DocxTextArea::setCtl(DocxEditController* c) {
                 });
         connect(m_ctl, &DocxEditController::cursorChanged, this, [this]() {
             m_caretOn = true;
+            //  Der zuletzt besuchte LEERE Absatz wurde mit dem Cursor-Format
+            //  vermessen — verlässt der Cursor ihn, gilt wieder sein Stil-Format.
+            const int now = m_ctl->cursor().block;
+            if (m_lastCursorBlock != now) {
+                invalidateEmptyBlock(m_lastCursorBlock);
+                invalidateEmptyBlock(now);
+                m_lastCursorBlock = now;
+            }
+            updateCursorRect();
+            update();
+        });
+        //  Format-Änderung OHNE Selektion existiert nur als Pending-Format im
+        //  Controller — sie erzeugt weder blocksReplaced noch cursorChanged.
+        //  Ohne diese Verbindung blieb der Caret (und die Höhe einer leeren
+        //  Zeile) auf der alten Schriftgröße stehen (Nutzerbefund).
+        connect(m_ctl, &DocxEditController::formatRevChanged, this, [this]() {
+            m_caretOn = true;
+            invalidateEmptyBlock(m_ctl->cursor().block);
             updateCursorRect();
             update();
         });
@@ -84,6 +102,7 @@ void DocxTextArea::rebuildAll() {
     m_offsetsValidTo = 0;
     m_layChunkAt = 0;
     m_contentHeight = 0;
+    m_lastCursorBlock = (m_ctl && m_ctl->ready()) ? m_ctl->cursor().block : -1;
     if (m_ctl && m_ctl->ready()) {
         m_lay.resize(size_t(m_ctl->doc().blocks.size()));
         //  Schätzhöhen (eine Zeile je ~90 Zeichen) — vom Chunk-Layout ersetzt.
@@ -174,10 +193,20 @@ void DocxTextArea::buildLayout(int i) {
     const ParFmt pf = d.resolvePar(b);
     const QString text = b.plainText();
 
-    QFont base;
+    //  Grundschrift des Absatzes = SEIN aufgelöstes Stil-Format (nicht die
+    //  docDefaults): nur so ist eine leere Überschriftzeile auch so hoch wie
+    //  eine Überschrift. Steht der Cursor in dieser (leeren) Zeile, gilt das am
+    //  Cursor wirksame Format inkl. Pending — sonst hätte eine Schriftgrößen-
+    //  Änderung in einer leeren Zeile sichtbar keinerlei Wirkung.
     const RunFmt def = d.defaultRun();
-    base.setFamily(def.font);
-    base.setPointSizeF(def.sizePt);
+    RunFmt bf = d.resolveRun(b, Run());
+    if (text.isEmpty() && m_ctl->cursor().block == i)
+        bf = m_ctl->caretFormat();
+    QFont base;
+    base.setFamily(bf.font.isEmpty() ? def.font : bf.font);
+    base.setPointSizeF(bf.sizePt > 0 ? bf.sizePt : def.sizePt);
+    base.setBold(bf.bold);
+    base.setItalic(bf.italic);
 
     auto* lay = new QTextLayout(text, base);
     QTextOption opt;
@@ -315,6 +344,20 @@ void DocxTextArea::updateContentHeight() {
     }
 }
 
+//  Ein leerer Absatz wird mit dem am Cursor geltenden Format vermessen
+//  (s. buildLayout) — ändert sich dieser Bezug, muss sein Layout neu entstehen.
+void DocxTextArea::invalidateEmptyBlock(int i) {
+    if (!m_ctl || !m_ctl->ready() || i < 0 || i >= int(m_lay.size()))
+        return;
+    const Block& b = m_ctl->doc().blocks.at(i);
+    if (b.kind != Block::Paragraph || b.textLength() != 0)
+        return;
+    m_lay[i].laid = false;
+    m_lay[i].layout.reset();
+    ensureLaid(i);
+    updateContentHeight();
+}
+
 void DocxTextArea::updateCursorRect() {
     if (!m_ctl || !m_ctl->ready() || m_lay.empty()) {
         m_cursorRect = QRectF();
@@ -326,14 +369,31 @@ void DocxTextArea::updateCursorRect() {
     ensureLaid(bi);
     const BlockLayout& L = m_lay[bi];
     const qreal top = blockTop(bi);
-    qreal x = contentLeft() + L.indentPx, y = top + L.beforePx, h = 20;
+
+    //  Höhe/Grundlinie aus dem am Cursor WIRKSAMEN Zeichenformat (inkl.
+    //  Pending) statt aus der Zeilenhöhe: Die Zeile ist so hoch wie ihr
+    //  größtes Zeichen — der Caret muss aber die Größe zeigen, in der das
+    //  NÄCHSTE Zeichen erscheint. Genau das fehlte (Nutzerbefund: „Caret wird
+    //  bei Schriftgrößen-Wechsel nicht aktualisiert").
+    const RunFmt cf = m_ctl->caretFormat();
+    QFont f;
+    f.setFamily(cf.font.isEmpty() ? m_ctl->doc().defaultRun().font : cf.font);
+    f.setPointSizeF(cf.sizePt > 0 ? cf.sizePt : m_ctl->doc().defaultRun().sizePt);
+    f.setBold(cf.bold);
+    f.setItalic(cf.italic);
+    const QFontMetricsF fm(f);
+
+    qreal x = contentLeft() + L.indentPx;
+    qreal y = top + L.beforePx;
+    qreal h = fm.height();
     if (L.layout && L.layout->lineCount() > 0) {
         QTextLine line = L.layout->lineForTextPosition(
             qBound(0, c.pos, L.layout->text().size()));
         if (!line.isValid()) line = L.layout->lineAt(L.layout->lineCount() - 1);
         x += line.cursorToX(qBound(0, c.pos, L.layout->text().size()));
-        y  = top + line.y();
-        h  = line.height();
+        //  An der GRUNDLINIE der Zeile ausrichten (nicht an der Zeilenoberkante)
+        //  — sonst „schwebt" ein kleiner Caret in einer hohen Mischzeile.
+        y = top + line.y() + line.ascent() - fm.ascent();
     }
     m_cursorRect = QRectF(x, y, 1.6, h);
     emit cursorRectChanged();

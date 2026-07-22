@@ -289,7 +289,6 @@ int AppController::tileWidth()        const { return m_settings.tileWidth(); }
 int AppController::tileHeight()       const { return m_settings.tileHeight(); }
 int AppController::tileArrangement()  const { return static_cast<int>(m_settings.tileArrangement()); }
 int AppController::manualAreaWidth()  const { return m_settings.manualAreaWidth(); }
-int AppController::manualAreaHeight() const { return m_settings.manualAreaHeight(); }
 
 void AppController::setTileSize(int w, int h) {
     const int nw = qMax(40, w);
@@ -319,14 +318,6 @@ void AppController::setManualAreaWidth(int w) {
     const int nw = qMax(40, w);
     if (m_settings.manualAreaWidth() == nw) return;
     m_settings.setManualAreaWidth(nw);
-    m_settings.sync();
-    emit tileArrangementChanged();
-}
-
-void AppController::setManualAreaHeight(int h) {
-    const int nh = qMax(0, h);
-    if (m_settings.manualAreaHeight() == nh) return;
-    m_settings.setManualAreaHeight(nh);
     m_settings.sync();
     emit tileArrangementChanged();
 }

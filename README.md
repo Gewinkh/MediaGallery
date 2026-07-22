@@ -43,6 +43,8 @@ Built with **C++20** and **Qt 6.4+**.
 - Preview runs fully **offline**: JavaScript stays enabled (quizzes, search, shortcuts keep working) while remote network access is blocked — no external fonts or trackers load
 - **Design-card thumbnails**: instead of showing raw source code, HTML thumbnails are auto-generated from the page's hero section (title, subtitle, colors, RTL/Arabic star patterns or gradients) and refresh automatically when the file changes
 - **Lazy rendering engine**: Qt WebEngine now initializes only the first time you actually open an `.html`/`.htm` file — for a faster start and a lower memory baseline. Until then, HTML files fall back to the editable source view and the preview toggle appears once the engine is ready
+- **Software rendering by design**: the preview runs without GPU acceleration. Local documents rasterize fast enough in software, it avoids a whole class of graphics-driver crashes and hangs, and it saves the memory of a separate GPU process. Advanced users can override it by setting `QTWEBENGINE_CHROMIUM_FLAGS` before starting the app
+- **Clear failure handling**: if a page cannot be loaded or the render process dies, a readable hint replaces the blank area; links that would leave the local file are ignored
 
 ### Live Transliteration
 - Type in Latin letters and get **Arabic (with full Harakat/diacritics)** or **Japanese (Hiragana/Katakana)** automatically as you type — no separate conversion step
@@ -121,6 +123,9 @@ Built with **C++20** and **Qt 6.4+**.
 - **Loss-preserving by design**: only the XML nodes you actually touch are rewritten — untouched paragraphs, tables, images, headers/footers, styles and every other part of the file are carried over **byte-identically** (the document is never regenerated from scratch); a two-stage self-check on load refuses editing rather than risk silent data loss
 - **Text editing**: type, delete, select (mouse/keyboard), split & merge paragraphs, line breaks (`Shift+Enter`), full **undo/redo** with keystroke coalescing
 - **Character formatting**: font family, size, **bold/italic/underline**, text color — applied to the selection, or to the next typed text when nothing is selected (Word-style pending format)
+- **Formatting-preserving clipboard**: copy/cut keeps font family, size, bold/italic/underline and color when pasting back into the editor (or into another DOCX tile). The clipboard also carries an **HTML** flavour, so pasting into Word, LibreOffice or a browser keeps the formatting too; plain text remains available for everything else
+- **Word-style caret**: the text cursor is drawn in the size of the character that will be typed next — it follows a font-size change immediately, even in an empty line
+- **Line keeps its own formatting**: deleting the last character of a line does *not* make it fall back to the paragraph style (e.g. the heading it inherited its properties from). The line keeps its formatting until you press Backspace again and the caret actually moves into the previous line
 - **Paragraph formatting**: alignment (left/center/right/justify), spacing (line spacing plus space before/after, grouped behind one button), **bulleted & numbered lists** (numbering definitions are created and spliced into `numbering.xml` on save). Pressing Enter in an **empty list item ends the list** instead of adding another bullet — the Word behaviour
 - **Word-style page**: the text runs on an always-white paper strip on top of your theme background; page breaks appear as dashed markers
 - **Themed, compact toolbar**: every control follows the app theme; on narrow split panes the toolbar **scrolls horizontally with the mouse wheel** so nothing is cut off
@@ -261,30 +266,19 @@ Custom themes can be exported to JSON and shared:
 ## Changelog
 
 ### Latest
-- **Feature**: Added support for adding and removing pages in the PDF editor.
-- **Feature**: Added DOCX to PDF export.
+- **Fix**: Restored missing categories and subcategories in the UI.
+- **Fix**: Improved handling of PDFs with embedded audio, eliminating freezes when closing or switching documents.
+- **Fix**: Restored PDF editor drawing tools and Replace Text functionality.
+- **Fix**: Improved DOCX editor formatting, copy/paste, caret behavior, and formatting preservation.
+- **Fix**: Improved HTML view stability, rendering performance, and memory usage.
+- **Change**: Removed the unused height option from **Tile Arrangement → Manual (free area)**.
 
 ---
 
 ## Issues
-
-### PDF Editor
-- The **Replace Text** button in the PDF editor is not working yet. Text cannot be selected while using this tool (selection works outside edit mode).
-- Drawing tools (freehand, arrow, rectangle, ellipse, etc.) do not work correctly. Shapes are only drawn for a few pixels.
-
-### DOCX Editor
-- Copying text does not preserve formatting such as font size, font family, or text style (italic, etc.).
-- The caret/position indicator is not updated correctly when the font size changes.
-- Formatting inheritance issue example: If a heading (e.g. font size 20) is followed by normal text (font size 12), deleting the normal text keeps its formatting until the last character is removed. Once the final character is deleted, the editor immediately inherits the heading's formatting. Instead, the current line's formatting should remain until Backspace is pressed again and the caret actually moves into the heading line. A line should not inherit the previous line's formatting as long as text has existed on that line.
-
-### HTML View
-- HTML rendering occasionally fails and can freeze the application.
-- HTML rendering is sometimes noticeably slow.
-- Closing an HTML document can completely freeze the system, requiring a restart.
-- The HTML viewer should be thoroughly reviewed and optimized for performance and stability.
-
-### Settings
-- Under **View/Layout → Tile Arrangement**, the **"Manual (free area)"** option allows adjusting the height, but this has no effect. The option should only allow changing the width.
+- **Unified category color** does not work as intended. When enabled, all tags, subcategories, and nested subcategories within a category should use the same color. When disabled, every item should restore its original color.
+- **Embedded PDF audio** fails on every second playback (1st works, 2nd fails, 3rd works, 4th fails, etc.), regardless of which audio file is played.
+- In **View → Tile Size**, the preview area is too limited. If the tile becomes larger than the preview area, the tile preview disappears. The preview should be redesigned to scale properly and remain visually consistent.
 
 ---
 

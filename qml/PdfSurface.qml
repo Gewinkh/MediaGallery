@@ -1555,6 +1555,26 @@ Item {
                                          : root.editCtl.tool === 6 ? Qt.IBeamCursor
                                                                    : Qt.CrossCursor
                             property int _drawId: -1
+                            //  Zustand der beiden NICHT-zeichnenden Gesten dieses
+                            //  Fängers. Diese Bezeichner waren nirgends deklariert:
+                            //  QML wirft beim Lesen eines unbekannten Namens eine
+                            //  ReferenceError und beim Schreiben „Invalid write to
+                            //  global property" — beides bricht den Handler SOFORT
+                            //  ab. Folge: (a) „Text ersetzen" komplett tot, (b)
+                            //  Markieren im Editmodus unmöglich, (c) jedes Zeichnen
+                            //  endete am Druckpunkt, weil schon die erste Zeile von
+                            //  onPositionChanged/onReleased warf (updateDraw/endDraw
+                            //  wurden nie erreicht → nur der Stummel blieb stehen).
+                            //   • _textSel/_textSelDrag/_selSx/_selSy → Markieren
+                            //     mit dem Auswahl-Werkzeug (wie in der Leseansicht)
+                            //   • _repStart/_repLast → aufgezogener Bereich des
+                            //     „Text ersetzen"-Werkzeugs (seiten-normiert 0..1)
+                            property bool _textSel: false
+                            property bool _textSelDrag: false
+                            property real _selSx: 0
+                            property real _selSy: 0
+                            property var  _repStart: null
+                            property var  _repLast: null
                             //  Werkzeugwechsel auf ⇄ → Textebene (nach)laden,
                             //  falls die editMode-Vorbereitung verworfen wurde
                             //  (Quellenwechsel/Race) — prepare() ist idempotent.
@@ -1579,9 +1599,18 @@ Item {
                                          y: Math.max(0, Math.min((my / pageImg.height) * pts.height, pts.height)) }
                             }
                             onPressed: (m) => {
-                                if (root.editCtl.tool === 0 && pdfTextCtl.ready
+                                //  Markieren wie in der Leseansicht. BEWUSST OHNE
+                                //  `pdfTextCtl.ready`-Wache: beginSelection() lädt
+                                //  die Textebene lazy und der onReadyChanged-
+                                //  Catch-up (s. root._selecting/_lastSel) zieht die
+                                //  Auswahl nach. Mit der Wache blieb der erste
+                                //  Markierversuch im Editmodus wirkungslos, solange
+                                //  die Ebene noch nie geladen war (selArea in der
+                                //  Leseansicht kennt die Wache ebenfalls nicht —
+                                //  daher „Markieren geht nur außerhalb des
+                                //  Editmodus").
+                                if (root.editCtl.tool === 0
                                         && pageImg.width > 0 && pageImg.height > 0) {
-                                    // Markieren wie in der Leseansicht.
                                     _textSel = true
                                     _textSelDrag = false
                                     _selSx = m.x; _selSy = m.y

@@ -480,8 +480,6 @@ void AppSettings::setTileArrangement(TileArrangement a) {
 }
 int  AppSettings::manualAreaWidth()  const { return m_settings.value("grid/manualAreaWidth", 800).toInt(); }
 void AppSettings::setManualAreaWidth(int w) { m_settings.setValue("grid/manualAreaWidth", qMax(40, w)); }
-int  AppSettings::manualAreaHeight() const { return m_settings.value("grid/manualAreaHeight", 0).toInt(); }
-void AppSettings::setManualAreaHeight(int h) { m_settings.setValue("grid/manualAreaHeight", qMax(0, h)); }
 
 bool AppSettings::optionsVisible() const { return m_settings.value("ui/optionsVisible", true).toBool(); }
 void AppSettings::setOptionsVisible(bool v) { m_settings.setValue("ui/optionsVisible", v); }

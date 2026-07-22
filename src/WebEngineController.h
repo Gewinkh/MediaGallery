@@ -21,6 +21,14 @@
 //  fremden Threads werden blockierend auf den GUI-Thread umgeleitet, da
 //  QtWebEngineQuick::initialize() dort laufen muss.
 //
+//  CHROMIUM OHNE GPU (2026-07-22, gemessen): Mit GPU-Beschleunigung meldet
+//  Chromium hier „GBM is not supported with the current configuration.
+//  Fallback to Vulkan rendering in Chromium." und stürzt reproduzierbar mit
+//  SIGSEGV ab — die Ursache der gemeldeten HTML-Fehlerbilder (Rendern schlägt
+//  fehl, App hängt, Hänger beim Schließen). Deshalb wird VOR initialize()
+//  --disable-gpu gesetzt (s. cpp): damit läuft dieselbe Sequenz stabil, und
+//  zwar auf ALLEN Scene-Graph-Backends (OpenGL/Vulkan/Software, s. RhiProber).
+//
 //  QML-Singleton "WebEngine": FullscreenViewer/HtmlSurface gaten die
 //  WebEngineView-Instanziierung über WebEngine.ready — solange nicht Ready,
 //  fällt HTML immer auf die Quelltext-Ansicht (TextSurface) zurück.
@@ -42,7 +50,6 @@ public:
 
     State state() const { return m_state; }
     bool  ready() const { return m_state == State::Ready; }
-
     // Initialisiert WebEngine genau einmal (idempotent). Trigger: Öffnen einer
     // .html/.htm-Datei bzw. Anforderung der HTML-Vorschau. Läuft synchron auf
     // dem GUI-Thread — nach der Rückkehr ist ready() == true.

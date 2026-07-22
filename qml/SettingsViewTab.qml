@@ -18,6 +18,13 @@ Item {
     readonly property int winH: Window.window ? Window.window.height
                                 : (App.initialWindowHeight > 0 ? App.initialWindowHeight : 800)
 
+    //  Obergrenze der manuellen Zonenbreite = Breite des Bildschirms, auf dem
+    //  das Fenster liegt. Mehr lässt sich gar nicht darstellen: Die Galerie
+    //  klemmt die Zone ohnehin auf die Fensterbreite (GalleryView.areaW), ein
+    //  größerer Wert wäre also folgenlos — vorher ging der Regler bis 8000 px
+    //  und der obere Teil seines Wegs tat schlicht nichts.
+    readonly property int maxAreaW: Screen.width > 0 ? Screen.width : 3840
+
     ScrollView {
         anchors.fill: parent
         contentWidth: availableWidth
@@ -123,9 +130,12 @@ Item {
                                 readonly property int  gridW: columns * cellW
                                 readonly property real gridX: Math.max(gMargin,
                                                                        (root.winW - gridW) / 2)
-                                readonly property int  zoneHpx: App.manualAreaHeight === 0
-                                                                ? root.winH
-                                                                : Math.min(root.winH, App.manualAreaHeight)
+                                //  Die Zone läuft IMMER über die volle Fenster-
+                                //  höhe: Die Galerie kennt nur eine Breiten-
+                                //  begrenzung (s. GalleryView.areaW) — eine
+                                //  einstellbare Höhe hatte nie eine Wirkung und
+                                //  ist daher entfallen (Nutzerbefund).
+                                readonly property int  zoneHpx: root.winH
                                 readonly property int  rows: Math.max(1, Math.floor(zoneHpx / cellH))
 
                                 //  Gewünschte Zonenbreite als gestrichelte
@@ -150,9 +160,20 @@ Item {
                                 //  sie tatsächlich belegt) …
                                 Rectangle {
                                     id: zoneRect
-                                    x: winFrame.gridX * previewArea.sf
+                                    //  Sichtabstand zwischen Zonenrahmen und
+                                    //  Kacheln (NUR Darstellung): Der Rahmen lag
+                                    //  vorher direkt an der ersten Kachel — die
+                                    //  Zone war dadurch kaum als eigene Fläche
+                                    //  zu erkennen. Rechts entsteht der Abstand
+                                    //  ohnehin aus dem Kachel-Abstand (cellW−tW),
+                                    //  deshalb wird die Breite hier auf den
+                                    //  tatsächlich belegten Block gerechnet und
+                                    //  beidseitig um `pad` erweitert.
+                                    readonly property real pad: 5
+                                    x: winFrame.gridX * previewArea.sf - pad
                                     y: 0
-                                    width: winFrame.gridW * previewArea.sf
+                                    width: (winFrame.gridW - winFrame.gSpacing) * previewArea.sf
+                                           + 2 * pad
                                     height: winFrame.zoneHpx * previewArea.sf
                                     color: Qt.rgba(App.themeAccent.r, App.themeAccent.g,
                                                    App.themeAccent.b, 0.14)
@@ -169,8 +190,8 @@ Item {
                                             required property int index
                                             readonly property int col: index % winFrame.columns
                                             readonly property int row: Math.floor(index / winFrame.columns)
-                                            x: col * winFrame.cellW * previewArea.sf
-                                            y: row * winFrame.cellH * previewArea.sf
+                                            x: zoneRect.pad + col * winFrame.cellW * previewArea.sf
+                                            y: zoneRect.pad + row * winFrame.cellH * previewArea.sf
                                             width: winFrame.tW * previewArea.sf
                                             height: winFrame.tH * previewArea.sf
                                             radius: 2
@@ -182,36 +203,30 @@ Item {
                                         }
                                     }
 
-                                    // SE-Resize-Griff (Breite + Höhe ziehen)
+                                    // Ost-Griff: zieht NUR die Breite (die Höhe
+                                    // der Zone ist nicht einstellbar, s. o.).
                                     Rectangle {
                                         id: zoneHandle
                                         width: 16; height: 16; radius: 8
                                         color: App.themeAccent
                                         border.color: "white"; border.width: 1.5
                                         anchors.right: parent.right
-                                        anchors.bottom: parent.bottom
+                                        anchors.verticalCenter: parent.verticalCenter
                                         anchors.rightMargin: -8
-                                        anchors.bottomMargin: -8
 
                                         DragHandler {
                                             id: zoneDrag
                                             target: null
+                                            xAxis.enabled: true
+                                            yAxis.enabled: false
                                             property int startW: 0
-                                            property int startH: 0
-                                            onActiveChanged: {
-                                                if (active) {
-                                                    startW = App.manualAreaWidth
-                                                    startH = App.manualAreaHeight === 0
-                                                             ? root.winH
-                                                             : App.manualAreaHeight
-                                                }
-                                            }
+                                            onActiveChanged: if (active) startW = App.manualAreaWidth
                                             onActiveTranslationChanged: {
                                                 if (!active) return
                                                 var dx = activeTranslation.x / previewArea.sf
-                                                var dy = activeTranslation.y / previewArea.sf
-                                                App.setManualAreaWidth(Math.max(80, Math.round(startW + dx)))
-                                                App.setManualAreaHeight(Math.max(0, Math.round(startH + dy)))
+                                                App.setManualAreaWidth(
+                                                    Math.min(root.maxAreaW,
+                                                             Math.max(80, Math.round(startW + dx))))
                                             }
                                         }
                                     }
@@ -228,12 +243,12 @@ Item {
                         Slider {
                             id: wSlider
                             Layout.fillWidth: true
-                            from: 80; to: 8000
+                            from: 80; to: root.maxAreaW
                             value: App.manualAreaWidth
                             onMoved: App.setManualAreaWidth(Math.round(value))
                         }
                         SpinBox {
-                            from: 80; to: 8000; stepSize: 10
+                            from: 80; to: root.maxAreaW; stepSize: 10
                             value: App.manualAreaWidth
                             editable: true
                             textFromValue: function(v){ return v + " px" }
@@ -242,27 +257,10 @@ Item {
                         }
                     }
 
-                    // Höhe (0 = Auto)
-                    RowLayout {
-                        Layout.fillWidth: true
-                        spacing: 8
-                        Label { text: App.uiText(App.language, "SettingsViewHeight"); color: App.themeTextPrimary; Layout.preferredWidth: 70 }
-                        Slider {
-                            id: hSlider
-                            Layout.fillWidth: true
-                            from: 0; to: 2000
-                            value: App.manualAreaHeight
-                            onMoved: App.setManualAreaHeight(Math.round(value))
-                        }
-                        SpinBox {
-                            from: 0; to: 2000; stepSize: 10
-                            value: App.manualAreaHeight
-                            editable: true
-                            textFromValue: function(v){ return v === 0 ? App.uiText(App.language, "SettingsGenBackendAuto") : (v + " px") }
-                            valueFromText: function(t){ return t === App.uiText(App.language, "SettingsGenBackendAuto") ? 0 : parseInt(t) }
-                            onValueModified: App.setManualAreaHeight(value)
-                        }
-                    }
+                    //  KEIN Höhenregler: Die Galerie klemmt in der manuellen
+                    //  Anordnung ausschließlich die BREITE der Kachelzone
+                    //  (GalleryView.areaW); die Höhe ergibt sich aus der
+                    //  Kachelzahl. Der frühere Regler war folgenlos.
                 }
             }
 

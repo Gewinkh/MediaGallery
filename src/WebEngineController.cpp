@@ -32,6 +32,26 @@ void WebEngineController::ensureInitializedForHtml() {
     std::call_once(m_once, [this]() {
         setState(State::Initializing);
 
+        // ── Chromium OHNE GPU-Beschleunigung starten ─────────────────────────
+        //  Gemessen (2026-07-22, Arch, Wayland UND Xwayland, isolierte
+        //  WebEngine-Probe): Mit GPU-Beschleunigung meldet Chromium
+        //  „GBM is not supported with the current configuration. Fallback to
+        //  Vulkan rendering in Chromium." und stürzt reproduzierbar mit
+        //  SIGSEGV ab. Mit --disable-gpu läuft dieselbe Sequenz (Datei laden →
+        //  about:blank → erneut laden → fehlschlagendes Laden → Beenden)
+        //  fehlerfrei durch, auf JEDEM Scene-Graph-Backend (OpenGL, Vulkan,
+        //  Software — s. RhiProber) und mit korrektem Bild.
+        //  Das erklärt alle drei HTML-Befunde: „Rendern schlägt gelegentlich
+        //  fehl", „App friert ein", „Schließen hängt das System auf".
+        //
+        //  Kosten/Nutzen (§0): Lokale Text-/Lernzettel-Dokumente rastert
+        //  Chromium in Software schnell genug; dafür entfällt der GPU-Prozess
+        //  komplett → weniger RAM (Regel 9) und ein schnellerer erster Aufbau.
+        //  Eine bereits vom Nutzer gesetzte Variable bleibt unangetastet
+        //  (bewusste Übersteuerung ohne Codeänderung möglich).
+        if (!qEnvironmentVariableIsSet("QTWEBENGINE_CHROMIUM_FLAGS"))
+            qputenv("QTWEBENGINE_CHROMIUM_FLAGS", "--disable-gpu");
+
         // Nachträgliche Initialisierung: erlaubt, da main.cpp
         // Qt::AA_ShareOpenGLContexts bereits VOR der QGuiApplication gesetzt
         // hat (Qt quittiert den späten Aufruf nur mit einer Deprecation-

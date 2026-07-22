@@ -157,16 +157,18 @@ Column {
         visible: !nodeRoot.collapsed
         Repeater {
             model: nodeRoot.node.children
+            //  setSource() statt `source:` — s. SettingsCategoriesTab: mit
+            //  `required property` scheitert die Erzeugung sonst still und die
+            //  Unterkategorien blieben unsichtbar.
             delegate: Loader {
                 id: childLoader
                 required property var modelData
                 width: parent ? parent.width : 0
-                source: Qt.resolvedUrl("SettingsCategoryNode.qml")
-                onLoaded: {
-                    item.node  = Qt.binding(function() { return childLoader.modelData })
-                    item.depth = Qt.binding(function() { return nodeRoot.depth + 1 })
-                    item.tab   = nodeRoot.tab
-                }
+                Component.onCompleted: setSource(
+                    Qt.resolvedUrl("SettingsCategoryNode.qml"),
+                    { node:  childLoader.modelData,
+                      depth: nodeRoot.depth + 1,
+                      tab:   nodeRoot.tab })
             }
         }
     }

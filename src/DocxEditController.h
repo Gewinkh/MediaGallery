@@ -118,6 +118,13 @@ public:
     //  color, align, lineSpacing, beforePt, afterPt, list (0/1/2) }.
     Q_INVOKABLE QVariantMap currentFormat() const;
 
+    //  Aufgelöstes ZEICHENformat an der Cursorstelle (inkl. Pending-Overlay) —
+    //  EINE Quelle für die Toolbar (currentFormat) UND die Caret-Geometrie der
+    //  DocxTextArea. Ohne diese gemeinsame Auflösung zeigte der Caret stets die
+    //  Zeilenhöhe des Layouts und reagierte gar nicht auf Schriftgrößen-
+    //  Änderungen ohne Selektion (die nur als Pending-Format existieren).
+    Docx::RunFmt caretFormat() const;
+
     //  Interner Anwender der Kommandos (public für DocxReplaceBlocksCommand).
     void applyBlocks(int first, int oldCount, const QList<Docx::Block>& blocks,
                      const DocxCursor& cur);
@@ -157,6 +164,29 @@ private:
     void removeRangeInBlock(Docx::Block& b, int p1, int p2) const;
     //  Wendet das Pending-Format auf einen frisch getippten Run an.
     void applyPendingTo(Docx::Run& r) const;
+    //  Pending-Format verwerfen (Cursor verlässt die Stelle / Merge in einen
+    //  anderen Absatz). setCursor() macht das implizit — Pfade, die m_cursor
+    //  DIREKT setzen (Löschen/Verschmelzen), brauchen den expliziten Aufruf.
+    void clearPending();
+    //  Aufgelöstes Zeichenformat der Stelle (block,pos) — Zeichen LINKS vom
+    //  Cursor; im leeren Absatz das Stil-Format des Absatzes selbst.
+    Docx::RunFmt resolvedFormatAt(int block, int pos) const;
+    //  Word-Verhalten nach dem Löschen des LETZTEN Zeichens einer Zeile: Die
+    //  Zeile behält ihre eigene Formatierung, statt sofort auf das Absatz-/
+    //  Stil-Format (z. B. der Überschrift, von der sie das pPr geerbt hat)
+    //  zurückzufallen. `had` ist das VOR dem Löschen aufgelöste Format; gesetzt
+    //  werden nur die Felder, die sich vom Stil-Format des leeren Absatzes
+    //  unterscheiden (minimales rPr beim nächsten Tippen).
+    void keepFormatOnEmptiedBlock(int bi, const Docx::RunFmt& had);
+    //  Fügt fertige Runs (Zwischenablage) absatzweise an der Cursorstelle ein —
+    //  Gegenstück zu insertText, nur mit MITGEBRACHTEM Zeichenformat.
+    void insertRunParagraphs(const QList<QList<Docx::Run>>& paras);
+    //  Interne Zwischenablage: Selektion → Blob / Blob → Absätze mit Runs.
+    QByteArray serializeSelection() const;
+    static bool deserializeRuns(const QByteArray& blob,
+                                QList<QList<Docx::Run>>* out);
+    //  Selektion als HTML-Fragment (Zwischenablage für Word/LibreOffice & Co.).
+    QString selectionAsHtml() const;
     //  Zeichenformat-Feld auf die Selektion anwenden (oder Pending setzen).
     void applyCharFormat(int field, const QVariant& value);
     //  Absatzformat via upsertProp auf alle selektierten Absätze.

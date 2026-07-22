@@ -130,8 +130,14 @@ Item {
                 }
                 Label {
                     text: App.uiText(App.language, "SettingsPdfPageEditHint")
-                    color: App.themeTextSecondary
+                    //  themeTextMuted — die Hinweisfarbe aller übrigen
+                    //  Erklärtexte (s. DOCX-Gruppe unten). Hier stand
+                    //  `themeTextSecondary`: die Property gibt es in
+                    //  AppController NICHT, die Bindung lieferte `undefined`
+                    //  und der Text wurde schwarz gerendert.
+                    color: App.themeTextMuted
                     font.pixelSize: 11
+                    leftPadding: 26
                     wrapMode: Text.WordWrap
                     Layout.fillWidth: true
                 }

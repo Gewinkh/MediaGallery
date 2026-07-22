@@ -192,16 +192,20 @@ Column {
         visible: !nodeRoot.collapsed
         Repeater {
             model: nodeRoot.node.children
+            //  setSource() statt `source:`: CategoryNode benutzt `required
+            //  property`, die nur bei der Erzeugung belegt werden koennen.
+            //  Mit `source:` brach Qt die Erzeugung ab („Required property …
+            //  was not initialized"), onLoaded feuerte nie — UNTERkategorien
+            //  waren dadurch auch im Hauptbildschirm unsichtbar.
             delegate: Loader {
                 id: childLoader
                 required property var modelData
                 width: parent ? parent.width : 0
-                source: Qt.resolvedUrl("CategoryNode.qml")
-                onLoaded: {
-                    childLoader.item.node  = Qt.binding(function() { return childLoader.modelData })
-                    childLoader.item.depth = Qt.binding(function() { return nodeRoot.depth + 1 })
-                    childLoader.item.panel = Qt.binding(function() { return nodeRoot.panel })
-                }
+                Component.onCompleted: setSource(
+                    Qt.resolvedUrl("CategoryNode.qml"),
+                    { node:  childLoader.modelData,
+                      depth: nodeRoot.depth + 1,
+                      panel: nodeRoot.panel })
             }
         }
     }

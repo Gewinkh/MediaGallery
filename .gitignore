@@ -23,6 +23,7 @@ _deps/
 *.md.autosave
 CLAUDE.md
 Structure.md
+Authorization.txt
 tmp.txt
 
 *.o

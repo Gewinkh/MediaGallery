@@ -133,8 +133,6 @@ public:
     virtual void            setTileArrangement(TileArrangement a) = 0;
     virtual int             manualAreaWidth()  const = 0;   // px; only used in Manual mode
     virtual void            setManualAreaWidth(int w) = 0;
-    virtual int             manualAreaHeight() const = 0;   // px; only used in Manual mode (0 = use tile height)
-    virtual void            setManualAreaHeight(int h) = 0;
 
 
     virtual bool optionsVisible() const = 0;
