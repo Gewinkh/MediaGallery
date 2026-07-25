@@ -20,85 +20,155 @@ find_package(Qt6 6.4 REQUIRED COMPONENTS
 
 find_package(ZLIB REQUIRED)
 
+#  OCR (optional): Tesseract + Leptonica via pkg-config. Fehlt es, wird OCR
+#  einfach ausgelassen (available()==false) — der Build bleibt portabel.
+find_package(PkgConfig QUIET)
+if(PkgConfig_FOUND)
+    pkg_check_modules(TESSERACT IMPORTED_TARGET tesseract lept)
+endif()
+
+#  Sources are grouped by domain folder under src/ (see Structure.md §2).
+#  src/ itself is an include directory, so every local include is written
+#  relative to it (e.g. #include "pdf/edit/PdfEditModel.h").
+
+#  src/core — cross-cutting infrastructure: settings, strings, persistence,
+#  RHI backend choice, header-only helpers.
+set(SOURCES_CORE
+    src/core/ISettings.h
+    src/core/AppSettings.cpp
+    src/core/AppSettings.h
+    src/core/Strings.cpp
+    src/core/Strings.h
+    src/core/JsonStorage.cpp
+    src/core/JsonStorage.h
+    src/core/RhiProber.cpp
+    src/core/RhiProber.h
+    src/core/PathUtils.h
+    src/core/MemoryUtils.h
+)
+
+#  src/app — application-level bridges (App, Viewer, WebEngine, Translit).
+set(SOURCES_APP
+    src/app/AppController.cpp
+    src/app/AppController.h
+    src/app/ViewerController.cpp
+    src/app/ViewerController.h
+    src/app/WebEngineController.cpp
+    src/app/WebEngineController.h
+    src/app/TransliterationController.cpp
+    src/app/TransliterationController.h
+)
+
+#  src/media — media item data, models, folder scan, gallery thumbnails.
+set(SOURCES_MEDIA
+    src/media/MediaItem.h
+    src/media/MediaModel.cpp
+    src/media/MediaModel.h
+    src/media/MediaProxyModel.cpp
+    src/media/MediaProxyModel.h
+    src/media/FolderService.cpp
+    src/media/FolderService.h
+    src/media/ThumbnailLoader.cpp
+    src/media/ThumbnailLoader.h
+)
+
+#  src/tags — tags + category tree (truth source and QML facade).
+set(SOURCES_TAGS
+    src/tags/TagCategory.h
+    src/tags/TagManager.cpp
+    src/tags/TagManager.h
+    src/tags/TagController.cpp
+    src/tags/TagController.h
+)
+
+#  src/pdf — PDF subsystem: viewing, text/OCR, embedded media, page audio.
+set(SOURCES_PDF
+    src/pdf/PdfThumbnailProvider.cpp
+    src/pdf/PdfThumbnailProvider.h
+    src/pdf/PdfTextController.cpp
+    src/pdf/PdfTextController.h
+    src/pdf/OcrEngine.cpp
+    src/pdf/OcrEngine.h
+    src/pdf/PdfMediaHandler.cpp
+    src/pdf/PdfMediaHandler.h
+    src/pdf/PdfAudioController.cpp
+    src/pdf/PdfAudioController.h
+)
+
+#  src/pdf/edit — PDF annotation editor (model, undo commands, controller)
+#  plus lossless content-stream editing.
+set(SOURCES_PDF_EDIT
+    src/pdf/edit/PdfEditTypes.h
+    src/pdf/edit/PdfEditModel.cpp
+    src/pdf/edit/PdfEditModel.h
+    src/pdf/edit/PdfEditCommands.cpp
+    src/pdf/edit/PdfEditCommands.h
+    src/pdf/edit/PdfEditController.cpp
+    src/pdf/edit/PdfEditController.h
+    src/pdf/edit/PdfContentEditor.cpp
+    src/pdf/edit/PdfContentEditor.h
+)
+
+#  src/pdf/extract — page extraction and lossless page copying.
+set(SOURCES_PDF_EXTRACT
+    src/pdf/extract/PdfExtractController.cpp
+    src/pdf/extract/PdfExtractController.h
+    src/pdf/extract/PdfPageCopier.cpp
+    src/pdf/extract/PdfPageCopier.h
+)
+
+#  src/docx — DOCX container/document model and PDF export.
+set(SOURCES_DOCX
+    src/docx/DocxZip.cpp
+    src/docx/DocxZip.h
+    src/docx/DocxDocument.cpp
+    src/docx/DocxDocument.h
+    src/docx/DocxController.cpp
+    src/docx/DocxController.h
+    src/docx/DocxPdfExporter.cpp
+    src/docx/DocxPdfExporter.h
+)
+
+#  src/docx/edit — DOCX editor (controller, undo commands, painted text item).
+set(SOURCES_DOCX_EDIT
+    src/docx/edit/DocxEditController.cpp
+    src/docx/edit/DocxEditController.h
+    src/docx/edit/DocxEditCommands.cpp
+    src/docx/edit/DocxEditCommands.h
+    src/docx/edit/DocxTextArea.cpp
+    src/docx/edit/DocxTextArea.h
+)
+
+#  src/image/edit — image annotation editor.
+set(SOURCES_IMAGE_EDIT
+    src/image/edit/ImageEditTypes.h
+    src/image/edit/ImageEditModel.cpp
+    src/image/edit/ImageEditModel.h
+    src/image/edit/ImageEditCommands.cpp
+    src/image/edit/ImageEditCommands.h
+    src/image/edit/ImageEditController.cpp
+    src/image/edit/ImageEditController.h
+)
+
 set(SOURCES
     main.cpp
-    src/ISettings.h
-    src/RhiProber.cpp
-    src/RhiProber.h
-    src/AppSettings.cpp
-    src/AppSettings.h
-    src/AppController.cpp
-    src/AppController.h
-    src/TagController.cpp
-    src/TagController.h
-    src/ViewerController.cpp
-    src/ViewerController.h
-    src/FolderService.cpp
-    src/FolderService.h
-    src/MediaItem.h
-    src/MediaModel.cpp
-    src/MediaModel.h
-    src/MediaProxyModel.cpp
-    src/MediaProxyModel.h
-    src/TagManager.cpp
-    src/TagManager.h
-    src/TagCategory.h
-    src/JsonStorage.cpp
-    src/JsonStorage.h
-    src/ThumbnailLoader.cpp
-    src/ThumbnailLoader.h
-    src/PdfThumbnailProvider.cpp
-    src/PdfThumbnailProvider.h
-    src/PdfTextController.cpp
-    src/PdfTextController.h
-    src/PdfMediaHandler.cpp
-    src/PdfMediaHandler.h
-    src/PdfAudioController.cpp
-    src/PdfAudioController.h
-    src/PdfEditTypes.h
-    src/PdfEditModel.cpp
-    src/PdfEditModel.h
-    src/PdfEditCommands.cpp
-    src/PdfEditCommands.h
-    src/TransliterationController.cpp
-    src/TransliterationController.h
-    src/PdfEditController.cpp
-    src/PdfEditController.h
-    src/DocxZip.cpp
-    src/DocxZip.h
-    src/DocxDocument.cpp
-    src/DocxDocument.h
-    src/DocxEditCommands.cpp
-    src/DocxEditCommands.h
-    src/DocxEditController.cpp
-    src/DocxEditController.h
-    src/DocxTextArea.cpp
-    src/DocxTextArea.h
-    src/DocxController.cpp
-    src/DocxController.h
-    src/DocxPdfExporter.cpp
-    src/DocxPdfExporter.h
-    src/PdfExtractController.cpp
-    src/PdfExtractController.h
-    src/PdfPageCopier.cpp
-    src/PdfPageCopier.h
-    src/ImageEditTypes.h
-    src/ImageEditModel.cpp
-    src/ImageEditModel.h
-    src/ImageEditCommands.cpp
-    src/ImageEditCommands.h
-    src/ImageEditController.cpp
-    src/ImageEditController.h
-    src/Strings.cpp
-    src/Strings.h
-    src/PathUtils.h
-    src/MemoryUtils.h
-    src/WebEngineController.cpp
-    src/WebEngineController.h
+    ${SOURCES_CORE}
+    ${SOURCES_APP}
+    ${SOURCES_MEDIA}
+    ${SOURCES_TAGS}
+    ${SOURCES_PDF}
+    ${SOURCES_PDF_EDIT}
+    ${SOURCES_PDF_EXTRACT}
+    ${SOURCES_DOCX}
+    ${SOURCES_DOCX_EDIT}
+    ${SOURCES_IMAGE_EDIT}
     qml.qrc
 )
 
 qt_add_executable(MediaGallery ${SOURCES})
+
+#  All local includes are relative to src/ — see the comment above SOURCES_CORE.
+target_include_directories(MediaGallery PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
 
 target_link_libraries(MediaGallery PRIVATE
     Qt6::Core
@@ -112,6 +182,15 @@ target_link_libraries(MediaGallery PRIVATE
     Qt6::WebEngineQuick
     ZLIB::ZLIB
 )
+
+#  OCR optional dazulinken (Degradationskette: ohne Tesseract kein OCR).
+if(TESSERACT_FOUND)
+    target_link_libraries(MediaGallery PRIVATE PkgConfig::TESSERACT)
+    target_compile_definitions(MediaGallery PRIVATE MG_HAVE_TESSERACT)
+    message(STATUS "OCR aktiviert (Tesseract ${TESSERACT_VERSION})")
+else()
+    message(STATUS "OCR deaktiviert (Tesseract nicht gefunden)")
+endif()
 
 if(WIN32)
     set_target_properties(MediaGallery PROPERTIES WIN32_EXECUTABLE TRUE)

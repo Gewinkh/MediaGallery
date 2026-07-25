@@ -3,6 +3,11 @@ import QtQuick.Window
 import QtQuick.Controls
 import QtQuick.Dialogs
 import MediaGallery 1.0
+import "gallery"
+import "pdf"
+import "settings"
+import "tags"
+import "viewer"
 
 // ─────────────────────────────────────────────────────────────────────────────
 //  ApplicationShell.qml — Wurzel-Fenster der QML-UI.
@@ -92,16 +97,83 @@ ApplicationWindow {
     //  eingefärbten Filter-Popup (FilterBar.qml) bekommt jedes Menu hier
     //  denselben expliziten Hintergrund.
     component ThemedMenu: Menu {
+        //  Fusion leitet die Menübreite aus der Hintergrund-`implicitWidth`
+        //  (Standard 200) UND der automatisch aggregierten `contentWidth` ab.
+        //  Unser eigener Themen-Hintergrund hat aber KEINE `implicitWidth`, und
+        //  die Auto-`contentWidth` von QQuickMenu liefert in diesem Kontext 0 →
+        //  das Menü kollabierte auf die reine Polsterbreite (2 px), sichtbar nur
+        //  als schmaler senkrechter „Strich". Deshalb berechnen wir die
+        //  Inhaltsbreite reaktiv aus den Items selbst (Fusion-MenuItems sind je
+        //  ≥ 200 px und wachsen bei langem Text) und geben 200 px als Mindestmaß
+        //  vor — QML verfolgt dabei sowohl `count` als auch die gelesene
+        //  `implicitWidth` jedes Items, das Menü wächst also z. B. bei langen
+        //  Lesezeichennamen oder nach Sprachwechsel automatisch mit.
+        implicitWidth: {
+            var w = 0
+            for (var i = 0; i < count; i++) {
+                var it = itemAt(i)
+                if (it && it.implicitWidth > w) w = it.implicitWidth
+            }
+            return Math.max(w, 200) + leftPadding + rightPadding
+        }
         background: Rectangle {
+            implicitWidth: 200
             color: App.themeMenuBarBg
             border.color: App.themeBorder; border.width: 1
             radius: 6
         }
     }
 
-    menuBar: MenuBar {
+    //  EIGENE Menüleiste statt der nativen `MenuBar`: Die Fusion-`MenuBar`
+    //  belegt (wie ihr Widgets-Pendant) die ALT-Taste für Menü-Navigation/
+    //  Mnemoniks — sprachabhängig und per API nicht abschaltbar; das kollidierte
+    //  mit den App-Kürzeln (Alt+S/Alt+Q/Alt+←). Diese Leiste ist eine gethemte
+    //  Button-Reihe, die die `Menu`-Popups per KLICK öffnet → die Alt-Taste
+    //  gehört ausschließlich den App-Shortcuts, sprachunabhängig. Die
+    //  Menü-Inhalte (inkl. Lesezeichen-Logik) sind unverändert.
+    menuBar: Rectangle {
+        id: menuStrip
+        //  Nur auf der Galerie-Seite sichtbar: eine geöffnete Datei bekommt die
+        //  ungeteilte Fensterfläche (dedizierte Vollbild-Ansicht) — die Kachel
+        //  bringt ihre eigene Kopfleiste inkl. Zurück-Knopf mit. ApplicationWindow
+        //  nimmt eine unsichtbare `menuBar` aus dem Layout, es bleibt also kein
+        //  Leerstreifen stehen.
+        visible: stack.depth === 1
+        implicitHeight: 32
+        color: App.themeMenuBarBg
+        Rectangle { anchors.bottom: parent.bottom; width: parent.width; height: 1
+                    color: App.themeBorder }
+
+        component MenuBtn: Rectangle {
+            property string label: ""
+            property var menu: null
+            width: mbLbl.implicitWidth + 22; height: 24; radius: 5
+            anchors.verticalCenter: parent.verticalCenter
+            color: (mbHover.hovered || (menu && menu.opened)) ? App.themeCard : "transparent"
+            Text { id: mbLbl; anchors.centerIn: parent; text: parent.label
+                   color: App.themeTextPrimary; font.pixelSize: 13 }
+            HoverHandler { id: mbHover }
+            TapHandler {
+                onTapped: {
+                    if (menu.opened) menu.close()
+                    else menu.popup(parent, 0, parent.height + 3)
+                }
+            }
+        }
+
+        Row {
+            id: menuBtnRow
+            anchors { left: parent.left; leftMargin: 6; verticalCenter: parent.verticalCenter }
+            spacing: 2
+            MenuBtn { label: App.menuFileText;      menu: fileMenu }
+            MenuBtn { label: App.menuViewText;      menu: viewMenu }
+            MenuBtn { label: App.menuSettingsText;  menu: settingsMenu }
+            MenuBtn { label: App.menuBookmarksText; menu: bookmarksMenu }
+        }
+
+        // ── Menü-Popups (per Klick geöffnet — KEINE MenuBar/Alt-Navigation) ────
         ThemedMenu {
-            title: App.menuFileText
+            id: fileMenu
             MenuItem { text: App.menuOpenFolderText; onTriggered: folderDialog.open() }
             MenuItem {
                 text: App.menuRefreshText
@@ -113,7 +185,7 @@ ApplicationWindow {
         }
 
         ThemedMenu {
-            title: App.menuViewText
+            id: viewMenu
             MenuItem {
                 text: App.menuToggleOptionsText
                 checkable: true
@@ -128,7 +200,7 @@ ApplicationWindow {
         }
 
         ThemedMenu {
-            title: App.menuSettingsText
+            id: settingsMenu
             MenuItem {
                 text: App.uiText(App.language, "MenuSettingsItem")
                 onTriggered: shell.openSettings()
@@ -148,7 +220,6 @@ ApplicationWindow {
 
         ThemedMenu {
             id: bookmarksMenu
-            title: App.menuBookmarksText
 
             MenuItem {
                 text: App.bookmarkAddText
@@ -170,6 +241,10 @@ ApplicationWindow {
                 text: App.menuBookmarksEmptyText
                 enabled: false
                 visible: App.savedFolders.length === 0
+                //  Ein unsichtbarer `MenuItem` behält im Menü-ListView seine
+                //  Höhe → zwischen „Ordner hinzufügen" und dem ersten Lesezeichen
+                //  klaffte eine leere Zeile. Höhe explizit auf 0 klemmen.
+                height: visible ? implicitHeight : 0
             }
 
             // Vorlage für dynamisch erzeugte Lesezeichen-Einträge.
@@ -271,6 +346,16 @@ ApplicationWindow {
             Shortcut {
                 sequence: "R"; enabled: stack.depth === 1
                 onActivated: App.refreshCurrentFolder()
+            }
+            //  F5 = neu laden (Standard-Alias zu „R"); Ctrl+O = Ordner öffnen.
+            //  Beide nur auf der Galerie-Seite (stack.depth===1).
+            Shortcut {
+                sequence: "F5"; enabled: stack.depth === 1
+                onActivated: App.refreshCurrentFolder()
+            }
+            Shortcut {
+                sequence: "Ctrl+O"; enabled: stack.depth === 1
+                onActivated: folderDialog.open()
             }
             Shortcut {
                 sequence: "B"; enabled: stack.depth === 1
@@ -842,6 +927,15 @@ ApplicationWindow {
 
             readonly property int paneCount: openFilesModel.count
 
+            //  Aktive Kachel (Split-View): genau EINE trägt die fensterweiten
+            //  Tastenkürzel scharf (paneActive) → keine Mehrdeutigkeit bei 2–4
+            //  offenen Dateien. Ein Klick in eine Kachel (paneActivated) oder das
+            //  Laden einer neu hinzugefügten Kachel setzt den Index; beim
+            //  Schließen wird er in den gültigen Bereich geklemmt.
+            property int activePaneIndex: 0
+            onPaneCountChanged: activePaneIndex =
+                Math.max(0, Math.min(activePaneIndex, paneCount - 1))
+
             // ── Kacheln: ein FullscreenViewer je Datei, per Split-Layout platziert ─
             Repeater {
                 model: openFilesModel
@@ -865,6 +959,9 @@ ApplicationWindow {
                         // (Pfeile + Zähler) ausblenden; bei genau einer Datei wieder an.
                         splitActive: splitPage.paneCount > 1
                         canAddMore:  splitPage.paneCount < shell.maxOpenFiles
+                        // Nur die aktive Kachel trägt ihre fensterweiten Kürzel scharf.
+                        paneActive:  paneLoader.index === splitPage.activePaneIndex
+                        onPaneActivated: splitPage.activePaneIndex = paneLoader.index
                         onBackRequested:    shell.closePane(paneLoader.index)
                         onAddFileRequested: shell.requestAddFile()
                         // Docking: Kopfleisten-Drag dieser Kachel an die Shell
@@ -881,7 +978,11 @@ ApplicationWindow {
                         }
                         onPaneDragCanceled: shell.cancelPaneDrag()
                     }
-                    onLoaded: item.forceActiveFocus()
+                    onLoaded: {
+                        item.forceActiveFocus()
+                        // Neu geladene (zuletzt hinzugefügte) Kachel wird aktiv.
+                        splitPage.activePaneIndex = paneLoader.index
+                    }
 
                     // Kachel-Pfad folgt der ←/→-Navigation IM Viewer (Modell nachziehen).
                     Connections {
@@ -1102,10 +1203,12 @@ ApplicationWindow {
         requireName: true
         titleText: App.uiText(App.language, "ExtractGlobalTitle")
         defaultName: ""
-        onExtractRequested: (jobs, name) => {
+        onExtractRequested: (items, name) => {
             shell._extractPending = true
             shell._extractName    = name
-            PdfExtract.extractGlobal(jobs, App.currentFolder, name)
+            // items = [{path,page}] in Auswahlreihenfolge (Werkbank) bzw.
+            // Originalreihenfolge (kompakt) → extractOrdered erhält die Reihenfolge.
+            PdfExtract.extractOrdered(items, App.currentFolder, name)
         }
     }
 

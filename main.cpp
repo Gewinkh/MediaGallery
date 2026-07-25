@@ -4,34 +4,35 @@
 #include <QQmlContext>
 #include <QQmlEngine>
 #include <QQuickStyle>
+#include <QPalette>
 #include <QQuickImageProvider>
 #include <QQuickWindow>              // Laufzeit-Guard: sceneGraphError (GPU-Wechsel/Device-Lost)
 #include <QUrl>
 #include <QTimer>                    // verzögertes Löschen des RHI-Crash-Guards nach Start
 #include <QDebug>                    // Warnung bei Scene-Graph-Laufzeitfehlern
 
-#include "src/RhiProber.h"
-#include "src/AppSettings.h"
-#include "src/FolderService.h"
-#include "src/JsonStorage.h"
-#include "src/TagManager.h"
-#include "src/AppController.h"
-#include "src/TagController.h"
-#include "src/ViewerController.h"
-#include "src/ThumbnailLoader.h"
-#include "src/PdfThumbnailProvider.h"
-#include "src/PdfTextController.h"
-#include "src/PdfAudioController.h"
-#include "src/PdfEditController.h"
-#include "src/PdfExtractController.h"
-#include "src/ImageEditController.h"
-#include "src/DocxController.h"
-#include "src/DocxEditController.h"
-#include "src/DocxTextArea.h"
-#include "src/TransliterationController.h"
-#include "src/WebEngineController.h"
-#include "src/MediaModel.h"
-#include "src/MediaProxyModel.h"
+#include "core/RhiProber.h"
+#include "core/AppSettings.h"
+#include "media/FolderService.h"
+#include "core/JsonStorage.h"
+#include "tags/TagManager.h"
+#include "app/AppController.h"
+#include "tags/TagController.h"
+#include "app/ViewerController.h"
+#include "media/ThumbnailLoader.h"
+#include "pdf/PdfThumbnailProvider.h"
+#include "pdf/PdfTextController.h"
+#include "pdf/PdfAudioController.h"
+#include "pdf/edit/PdfEditController.h"
+#include "pdf/extract/PdfExtractController.h"
+#include "image/edit/ImageEditController.h"
+#include "docx/DocxController.h"
+#include "docx/edit/DocxEditController.h"
+#include "docx/edit/DocxTextArea.h"
+#include "app/TransliterationController.h"
+#include "app/WebEngineController.h"
+#include "media/MediaModel.h"
+#include "media/MediaProxyModel.h"
 
 int main(int argc, char* argv[]) {
     // ── RHI-Backend setzen ────────────────────────────────────────────────────
@@ -44,7 +45,10 @@ int main(int argc, char* argv[]) {
     QGuiApplication::setHighDpiScaleFactorRoundingPolicy(
         Qt::HighDpiScaleFactorRoundingPolicy::PassThrough);
 
-    QQuickStyle::setStyle(QStringLiteral("Fusion"));
+    //  Eigener, vollständig gethemter Control-Stil (qml/style/MediaGalleryStyle).
+    //  Nicht abgedeckte Controls fallen auf Fusion zurück (setFallbackStyle).
+    QQuickStyle::setStyle(QStringLiteral("MediaGalleryStyle"));
+    QQuickStyle::setFallbackStyle(QStringLiteral("Fusion"));
 
     // ── Qt WebEngine: NICHT mehr beim Start initialisieren (RAM-Baseline) ────
     // Viele Nutzer öffnen nie eine HTML-Datei — die Chromium-Grundkosten von
@@ -54,6 +58,21 @@ int main(int argc, char* argv[]) {
     // Initialisierung übernimmt WebEngineController::ensureInitializedForHtml()
     // lazy beim ersten Öffnen einer .html/.htm bzw. bei angeforderter Vorschau.
     QCoreApplication::setAttribute(Qt::AA_ShareOpenGLContexts);
+
+    // ── Plattform-Theme: bewusst das des Desktops ────────────────────────────
+    //  Eine Zwischenstufe erzwang hier `QT_QPA_PLATFORMTHEME=generic`, um die
+    //  Alt-Mnemoniks der Qt-Quick-`MenuBar` loszuwerden. Das ist nicht mehr nötig:
+    //  die Menüleiste ist inzwischen eine eigene, per Klick bediente Button-Reihe
+    //  (s. ApplicationShell.qml) — die Alt-Taste gehört damit ohnehin allein den
+    //  App-Kürzeln, und die App vergibt selbst keine „&"-Mnemoniks.
+    //  Das generische Theme hatte zwei unerwünschte Nebenwirkungen:
+    //    • Datei-/Farbdialoge fielen auf Qts eingebaute QML-Variante zurück
+    //      (fremde Optik, ungenutzte Leerflächen) statt der desktop-nativen;
+    //    • die Anwendungspalette kam aus Qts hellem Standardschema — helle
+    //      Standard-Controls in der dunklen App.
+    //  Beides entfällt mit dem Desktop-Theme. Von dessen Palette ist die App
+    //  unabhängig: sie setzt ihre QPalette weiter unten aus dem eigenen
+    //  Farbschema (applyThemePalette).
 
     QGuiApplication app(argc, argv);
     app.setApplicationName("MediaGallery");
@@ -140,6 +159,68 @@ int main(int argc, char* argv[]) {
     QObject::connect(&appController, &AppController::folderContentsChanged,
                      &mediaModel, &MediaModel::reload);
 
+    // Thumbnail-Zielgröße folgt der Kachelgröße (Stufen 512/1024/2048/4096):
+    // Kacheln > 512 px würden sonst aus der 512er-Cache-Datei hochskaliert
+    // (unscharf). Initial setzen; bei Stufenwechsel Thumbnails neu anfordern.
+    thumbLoader.setTargetDim(qMax(settings.tileWidth(), settings.tileHeight()));
+    QObject::connect(&appController, &AppController::tileSizeChanged,
+                     &mediaModel, [&settings, &thumbLoader, &mediaModel]() {
+        if (thumbLoader.setTargetDim(qMax(settings.tileWidth(),
+                                          settings.tileHeight())))
+            mediaModel.refreshThumbnails();
+    });
+
+    // ── Anwendungs-Palette folgt dem App-Farbschema ──────────────────────────
+    //  Die Standard-Controls (alles, was NICHT vom eigenen Stil abgedeckt ist:
+    //  Menüs, Dialoge, Beschriftungen, BusyIndicator …) zeichnen aus der
+    //  QPalette. Ohne diesen Schritt stammt sie vom Plattform-Theme, die App
+    //  hinge also am Farbschema des Desktops (und sähe auf einem hellen Desktop
+    //  aus wie helle Controls in einer dunklen App). Die Palette wird daher aus
+    //  dem eingestellten Thema abgeleitet und bei jedem Themenwechsel neu
+    //  gesetzt (Live-Wirkung wie bei den QML-Farben).
+    auto applyThemePalette = [&settings]() {
+        const ThemeColors t = settings.currentTheme();
+        const QColor bg     = t.background;
+        const QColor card   = t.card;
+        const QColor text   = t.textPrimary;
+        const QColor muted  = t.textMuted;
+        const QColor border = t.border;
+        const QColor accent = t.accent;
+        //  Heller Text auf dunklem Grund (oder umgekehrt) → passende Kontrastfarbe
+        //  für gefüllte Akzentflächen.
+        const QColor onAccent = accent.lightnessF() > 0.55 ? QColor(Qt::black) : QColor(Qt::white);
+
+        QPalette p;
+        p.setColor(QPalette::Window,          bg);
+        p.setColor(QPalette::WindowText,      text);
+        p.setColor(QPalette::Base,            card);
+        p.setColor(QPalette::AlternateBase,   bg);
+        p.setColor(QPalette::Text,            text);
+        p.setColor(QPalette::Button,          card);
+        p.setColor(QPalette::ButtonText,      text);
+        p.setColor(QPalette::BrightText,      onAccent);
+        p.setColor(QPalette::Highlight,       accent);
+        p.setColor(QPalette::HighlightedText, onAccent);
+        p.setColor(QPalette::ToolTipBase,     card);
+        p.setColor(QPalette::ToolTipText,     text);
+        p.setColor(QPalette::PlaceholderText, muted);
+        p.setColor(QPalette::Link,            accent);
+        p.setColor(QPalette::LinkVisited,     accent.darker(120));
+        p.setColor(QPalette::Mid,             border);
+        p.setColor(QPalette::Midlight,        border.lighter(120));
+        p.setColor(QPalette::Light,           card.lighter(130));
+        p.setColor(QPalette::Dark,            bg.darker(120));
+        p.setColor(QPalette::Shadow,          bg.darker(160));
+        p.setColor(QPalette::Accent,          accent);
+        //  Deaktivierte Zustände: gedämpfter Text, sonst wie oben.
+        p.setColor(QPalette::Disabled, QPalette::WindowText, muted);
+        p.setColor(QPalette::Disabled, QPalette::Text,       muted);
+        p.setColor(QPalette::Disabled, QPalette::ButtonText, muted);
+        QGuiApplication::setPalette(p);
+    };
+    applyThemePalette();
+    QObject::connect(&appController, &AppController::themeChanged, &app, applyThemePalette);
+
     qmlRegisterSingletonInstance("MediaGallery", 1, 0, "App",       &appController);
     qmlRegisterSingletonInstance("MediaGallery", 1, 0, "Settings",  &settings);
     qmlRegisterSingletonInstance("MediaGallery", 1, 0, "Tags",      &tagController);
@@ -164,6 +245,8 @@ int main(int argc, char* argv[]) {
 
     // ── QML-Wurzel ───────────────────────────────────────────────────────────
     QQmlApplicationEngine engine;
+    //  Suchpfad für den eigenen Control-Stil (liegt in den Ressourcen).
+    engine.addImportPath(QStringLiteral(":/qml/style"));
     engine.rootContext()->setContextProperty("galleryModel", &galleryModel);
     engine.rootContext()->setContextProperty("mediaModel",   &mediaModel);
 
@@ -184,6 +267,7 @@ int main(int argc, char* argv[]) {
     // Sitzung kann das verlorene Gerät zwar nicht mehr nutzen (das Fenster
     // rendert ggf. nicht weiter), aber der Neustart läuft garantiert wieder —
     // ergänzt den Start-Crash-Guard, der bewusst nur die ersten ~4 s abdeckt.
+
     if (auto* rootWin = qobject_cast<QQuickWindow*>(engine.rootObjects().first())) {
         QObject::connect(rootWin, &QQuickWindow::sceneGraphError, &app,
                          [](QQuickWindow::SceneGraphError, const QString& message) {

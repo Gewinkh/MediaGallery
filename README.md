@@ -45,6 +45,7 @@ Built with **C++20** and **Qt 6.4+**.
 - **Lazy rendering engine**: Qt WebEngine now initializes only the first time you actually open an `.html`/`.htm` file — for a faster start and a lower memory baseline. Until then, HTML files fall back to the editable source view and the preview toggle appears once the engine is ready
 - **Software rendering by design**: the preview runs without GPU acceleration. Local documents rasterize fast enough in software, it avoids a whole class of graphics-driver crashes and hangs, and it saves the memory of a separate GPU process. Advanced users can override it by setting `QTWEBENGINE_CHROMIUM_FLAGS` before starting the app
 - **Clear failure handling**: if a page cannot be loaded or the render process dies, a readable hint replaces the blank area; links that would leave the local file are ignored
+- **Smooth scrolling**: the rendered preview scrolls with animation (Chromium smooth scrolling), consistent with the web-style smooth wheel scrolling of the gallery, PDF, DOCX and text views
 
 ### Live Transliteration
 - Type in Latin letters and get **Arabic (with full Harakat/diacritics)** or **Japanese (Hiragana/Katakana)** automatically as you type — no separate conversion step
@@ -78,13 +79,15 @@ Built with **C++20** and **Qt 6.4+**.
 - **Embedded audio panel**: a dedicated side panel lists every audio clip on the current page with a seek slider, plus an Apple-style mini-player that keeps playing while you scroll to other pages; clickable on-page audio hotspots
 
 ### PDF Page Extraction
-- **Extract pages from an open PDF**: right-click any page → **Extract page** (single) or **Extract multiple pages…** (grid picker). The new PDF is written next to the source file.
-- **Extract across the whole folder**: the **Extract** button in the filter bar (next to *+ Create*) collects **every PDF in the current folder** into one page grid — pick pages from several files and get them merged into a **single** new PDF.
+- **Extract pages from an open PDF**: right-click any page → **Extract page** (single) or **Extract multiple pages…** (page picker). The new PDF is written next to the source file.
+- **Extract across the whole folder**: the **Extract** button in the filter bar (next to *+ Create*) collects **every PDF in the current folder** — pick pages from several files and get them merged into a **single** new PDF.
+- **Workbench layout** (default): the picker is a three-panel workbench — a **PDF list on the left** (the active file is highlighted; a fully-selected file shows a check, a partially-selected one shows an *N / M* count), the **pages of the active PDF on the right**, and a **selection bar at the bottom** that appears once you pick a page. The bar shows each selected page as its own thumbnail; **its left-to-right order is the extraction order**. Reorder pages by **dragging them inside the bar**, remove one by **dragging it out of the bar** (or the small ×). Drag a page from the grid, or a whole PDF from the left list (adds all its pages), straight into the bar; a **+ / −** button on each PDF row toggles all its pages at once.
+- **Compact layout** (optional, *Settings → View*): a minimalist single grid of all pages with a selection count — for anyone who prefers the simpler, less busy dialog. Output stays in original page order here.
 - **Lossless by default**: pages are copied at the PDF object level, so the **text layer, vector graphics, embedded fonts and annotations stay intact** — no rasterizing, no quality loss. If a source can't be copied that way (e.g. an encrypted file), just that file's pages fall back to a 150 dpi image page in the same output, so you always get a result.
 - **Selection**: a plain **left click** selects/deselects a page — no modifier needed. Hold **Ctrl** and hover a page for a **large preview** (~80% of the dialog) that disappears as soon as you release Ctrl.
 - **Scrolling** in the page grid uses the same smooth wheel behaviour as the main gallery.
 - Page tiles use your gallery tile size; the selected-page highlight style (**frame** or **overlay**) is configurable under *Settings → View*.
-- **Output is always in original order**, regardless of the order you clicked. Names default to `<source> - Page N` / `<source>-Selected` (required for the folder-wide mode); `.pdf` is appended automatically and existing names get ` (1)`, ` (2)`, … appended instead of being overwritten.
+- **Order**: in the workbench the **selection bar defines the output order**; the compact layout always writes pages in original order. Names default to `<source> - Page N` / `<source>-Selected` (required for the folder-wide mode); `.pdf` is appended automatically and existing names get ` (1)`, ` (2)`, … appended instead of being overwritten.
 
 ### PDF Editor (Post-it Notes, Drawings & Text Replacement)
 - Add sticky-note style text boxes anywhere on a PDF page — the original file is **never modified**
@@ -92,15 +95,18 @@ Built with **C++20** and **Qt 6.4+**.
 - **Drawings** with adjustable stroke color, line width (in PDF points) and (for shapes) fill color; drawings move/resize/copy/paste/undo exactly like notes, including **cross-page dragging**
 - Notes and drawings are saved to a **sidecar file** next to the PDF (non-destructive) and stay editable across sessions; old sidecars load unchanged
 - **Export** writes a brand-new PDF copy (`…_edited(.n).pdf`) with all annotations permanently rendered onto the pages — your original is always preserved
+- **Lossless text-stream export** (**→ PDF (edit text in stream)**): for *Replace text* edits this rewrites the **embedded text directly in the PDF content stream** instead of covering it, so the result stays fully **vector** (searchable/selectable text, no rasterizing). Used only when provably safe (unencrypted, simple non-CID fonts, ASCII text, the original text found unambiguously); anything else falls back automatically to the normal raster export
 - **Add / remove pages** (in edit mode): the **"+" line** beneath each page inserts a blank A4 page; **right-click → Remove page** deletes one; **Ctrl+Z** undoes both. Choose the behaviour in **Settings → Editor (PDF)**: **non-destructive** (default — the change is applied on export, the original stays untouched) or **destructive** (the original PDF is rewritten immediately, with a one-time pristine backup)
 - Full text formatting: font family (with automatic substitution hint for missing fonts), size, bold/italic/underline, alignment, vertical alignment, text color and note-paper (highlight) color, including an opacity slider
 - A newly created note/drawing **inherits the last-used style** (only without the text)
 - **Line-snapping**: new notes anchor precisely to detected text lines when placed nearby, or float freely elsewhere
-- **Replace text** tool: two ways to use it — drag across the text you want to replace (you see the familiar blue text selection while dragging, and the white patch appears when you release), or select text first and then press the **⇄** button. Either way it stays as non-destructive as everything else (original file and sidecar workflow unchanged)
+- **Replace text** tool: two ways to use it — drag across the text you want to replace (you see the familiar blue text selection while dragging, and the cover patch appears when you release), or select text first and then press the **⇄** button. Either way it stays as non-destructive as everything else (original file and sidecar workflow unchanged). The **cover-patch color is configurable** (panel/toolbar) and is always kept fully opaque; white is the default
 - Text selection keeps working **inside edit mode** with the Select tool, and a selection made before entering edit mode is preserved
 - The replacement box snaps exactly onto the detected text line(s), adopts their font size, and comes **pre-filled with the embedded text** underneath, so you edit instead of retyping; on scanned PDFs without a text layer the tool stays fully usable as a blank patch
 - Replacement boxes keep a fixed width with automatic word wrap and **grow in height with their content**; typing and the resulting growth undo together as a single step
 - **Cross-page dragging**: drag an annotation past the top/bottom of a page and it automatically moves to the neighboring page on release
+- **OCR for scanned PDFs**: on a page without an embedded text layer, the **OCR** button (editor tool panel) recognizes the page text (Tesseract). Afterwards line-snapping, the **Replace text** pre-fill and text selection/copy work on that page as if it had a real text layer. Runs asynchronously; optional (only shown when Tesseract is installed) and never required — pages with embedded text keep using it directly
+- **Linked text boxes (automatic reflow)**: link a text / *Replace text* box to a follow-up box (**🔗 Link to next box** in the panel, then click the target). Text then flows across the chain — when one box overflows, the remainder moves into the next automatically (the last box grows with its content). Editing anywhere reflows the whole chain as a single undo step; the links persist in the sidecar and are removable (**⛓ Unlink**)
 - Full undo/redo history (`Ctrl+Z` / `Ctrl+Shift+Z`) and a note-visibility toggle (`Alt+Q`) that hides/shows all annotations in both view and edit mode
 - **Copy & paste** the selected annotation (`Ctrl+C` / `Ctrl+V` or the toolbar/panel buttons) — duplicates it with all settings and text
 - Formatting panel can be docked as a **right sidebar** or a **Word-style ribbon** at the top (Settings → Text Editor)
@@ -131,6 +137,7 @@ Built with **C++20** and **Qt 6.4+**.
 - **Themed, compact toolbar**: every control follows the app theme; on narrow split panes the toolbar **scrolls horizontally with the mouse wheel** so nothing is cut off
 - Tables and other complex blocks are shown as placeholders and remain **fully intact** in the file; embedded objects (images, fields, hyperlinks) are protected as atomic units
 - **Live transliteration** (Arabic/Japanese) while typing, sharing the app-wide schemes
+- **Find & Replace** (`Ctrl+F`): a themed search bar with next/previous match, match-case toggle, single replace and replace-all. Replace-all is one undo step; the search wraps around and skips tables and other non-text blocks
 - **Two save modes** (Settings → Text Editor): **Save directly** to the original file (a one-time `.bak` backup per session is created next to it) or **Export a copy** `<name>_edited(.n).docx` leaving the original untouched; `Ctrl+S` and auto-save on leaving the tile follow the chosen mode
 - **Export to PDF** (**→ PDF** button in the toolbar): writes an A4 PDF next to the document (`<name>.pdf`, collision-suffixed) using the same Qt text engine as the editor view; the original `.docx` is kept. Runs asynchronously so the UI stays responsive.
 - **Create new Word documents** via the gallery's "+" button (empty A4 document, standard margins)
@@ -153,6 +160,7 @@ Built with **C++20** and **Qt 6.4+**.
   - Editor background (text / HTML source editor surface)
 - Export / Import custom themes as JSON files
 - All color changes apply live without restarting
+- **Themed standard controls**: buttons, checkboxes, radio buttons, combo boxes, spin boxes, text fields, sliders, scrollbars, tooltips and dialogs are drawn by the app's own control style — rounded corners, accent-colored checked states, consistent hover/pressed animations. They follow the selected theme (including custom colors) instead of the desktop color scheme, so the app looks identical on every platform and under every desktop theme
 
 ### Metadata & File Management
 - **Date editor**: Custom date per file, persisted in JSON
@@ -171,6 +179,10 @@ Built with **C++20** and **Qt 6.4+**.
 - **Audio player accent**: Theme color or Apple Blue for the PDF audio mini-player (Settings → General)
 - **Mono-Play**: Only one audio/video playback at a time (enabled by default) — starting playback in another split-view pane automatically **pauses** the one already playing (position is kept). Disable it in Settings → General to allow parallel playback
 - **Graphics backend**: Vulkan, OpenGL, or Software rendering, with an automatic crash-guard that now **degrades gracefully** (Vulkan/D3D11/Metal → OpenGL → Software) if a backend fails to start, a Vulkan loader pre-check, validation of stale/foreign config values, and a runtime guard that switches to a safer backend on the next start after a GPU device-loss (Settings → General)
+- **Keyboard-shortcut overview**: a themed, grouped cheat-sheet in **Settings → General** lists every shortcut with its key combination and function, sorted by context (gallery, media viewer, PDF/image/DOCX/text editor)
+- **Context-correct, language-independent shortcuts**: each shortcut only fires in the surface it belongs to — in split view only the **active pane** reacts, so the same key (e.g. `Ctrl+C`, `Alt+Q`) is never ambiguous across panes; the top menu no longer generates `Alt`+letter accelerators that clashed with app shortcuts, and every shortcut behaves the same regardless of the interface language
+- **Smooth wheel scrolling in Settings**: the settings pages scroll ~45 % of the visible height per wheel notch with a short eased animation — the same behavior as the gallery and the PDF page grid
+- **Dedicated fullscreen view**: opening a file hides the application menu bar — only the viewer and its own header are visible, and the freed space goes to the content
 - **Themes**: Fully customizable — every color, every surface (Settings → Design)
 
 ---
@@ -211,6 +223,7 @@ Built with **C++20** and **Qt 6.4+**.
 | DOCX: undo / redo | `Ctrl+Z` / `Ctrl+Shift+Z` (or `Ctrl+Y`) |
 | DOCX: select all / copy / cut / paste | `Ctrl+A` / `Ctrl+C` / `Ctrl+X` / `Ctrl+V` |
 | DOCX: line break inside a paragraph | `Shift+Enter` |
+| DOCX: find & replace | `Ctrl+F` |
 | Any editor: jump to end of the last line | `↓` (with `Shift` to select) |
 
 ---
@@ -220,6 +233,7 @@ Built with **C++20** and **Qt 6.4+**.
 ### Requirements
 - Qt 6.4+ (developed against 6.11) with modules: `Core`, `Gui`, `Qml`, `Quick`, `QuickControls2`, `Multimedia`, `Pdf`, `Svg`, `WebEngineQuick`
 - ZLIB (used for inflating embedded PDF audio streams)
+- **Optional**: Tesseract + Leptonica (via pkg-config) to enable **OCR for scanned PDFs**. If absent, the app builds and runs normally with OCR disabled
 - CMake 3.21+
 - C++20-capable compiler (MSVC 2022, GCC 12+, Clang 15+)
 
@@ -266,41 +280,33 @@ Custom themes can be exported to JSON and shared:
 ## Changelog
 
 ### Latest
-- **Fix**: Restored missing categories and subcategories in the UI.
-- **Fix**: Improved handling of PDFs with embedded audio, eliminating freezes when closing or switching documents.
-- **Fix**: Restored PDF editor drawing tools and Replace Text functionality.
-- **Fix**: Improved DOCX editor formatting, copy/paste, caret behavior, and formatting preservation.
-- **Fix**: Improved HTML view stability, rendering performance, and memory usage.
-- **Change**: Removed the unused height option from **Tile Arrangement → Manual (free area)**.
+- **Change**: Redesigned the application's controls with a modern, rounded, theme-aware appearance.
+- **Change**: Standard Qt controls now fully follow the application's customizable color theme.
+- **Feature**: Redesigned PDF page extraction with a three-panel layout, drag & drop, page reordering, and an optional compact view.
+- **Feature**: Added a themed keyboard shortcut overview in **Settings → General**.
+- **Feature**: Added missing keyboard shortcuts (`Ctrl+O`, `F5`, PDF `+`/`−`, `D`, `Alt+←`).
+- **Feature**: Added lossless PDF text editing, OCR support, linked text boxes, DOCX Find & Replace, customizable PDF text replacement colors, and smooth HTML scrolling.
+- **Change**: Improved tile sizing with dynamic limits, higher-resolution thumbnails, and better previews.
+- **Fix**: Fixed PDF loading skeleton rendering.
+- **Fix**: Improved PDF page extraction behavior, shortcut handling, DOCX Find & Replace, embedded PDF audio playback, and unified category colors.
 
 ---
 
 ## Issues
-- **Unified category color** does not work as intended. When enabled, all tags, subcategories, and nested subcategories within a category should use the same color. When disabled, every item should restore its original color.
-- **Embedded PDF audio** fails on every second playback (1st works, 2nd fails, 3rd works, 4th fails, etc.), regardless of which audio file is played.
-- In **View → Tile Size**, the preview area is too limited. If the tile becomes larger than the preview area, the tile preview disappears. The preview should be redesigned to scale properly and remain visually consistent.
 
----
+- :o
 
 ## Planned
 
 ### PDF-Editor
-- True content-stream editing (rewriting the embedded PDF text directly instead of covering it), if the cover-patch approach reaches its limits.
-- Configurable cover-patch color (currently fixed white).
-- Optional automatic text recognition/OCR for scanned PDFs.
-- Automatic reflow across multiple linked boxes.
+- Extend content-stream editing beyond the current safe subset (CID/Type0 fonts, non-ASCII text, text split across multiple show operators) — today those cases fall back to the raster export.
 
 ### DOCX-Editor
 - True pagination with a page-accurate view and page thumbnails.
-- Editing support for tables, images, headers/footers, and find & replace.
+- Editing support for tables, images, and headers/footers.
 - Style templates (Formatvorlagen), footnotes, table of contents, multi-column layouts.
 - Comments and tracked changes as an authoring tool.
-- Legacy `.doc` support.
-- Spell checking.
-
-### HTML View
-- make the scrolling in rendered HTMLs visually smooth
-- JavaScript support
+- Spell checking. (later with other languages)
 
 ---
 
