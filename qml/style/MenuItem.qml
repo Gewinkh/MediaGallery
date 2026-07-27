@@ -3,7 +3,7 @@ import QtQuick.Templates as T
 import MediaGallery 1.0
 
 // ─────────────────────────────────────────────────────────────────────────────
-//  MenuItem.qml — gethemter Menüeintrag (Stil "MediaGalleryStyle").
+//  MenuItem.qml — gethemter Menüeintrag (Stil "style").
 //
 //  Ersetzt Fusions hellgraues Kästchen mit Bitmap-Haken durch dieselbe
 //  abgerundete Akzent-Markierung wie `CheckBox.qml` und zeichnet den

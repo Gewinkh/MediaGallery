@@ -1,4 +1,4 @@
-module MediaGalleryStyle
+module style
 Button 1.0 Button.qml
 CheckBox 1.0 CheckBox.qml
 ComboBox 1.0 ComboBox.qml

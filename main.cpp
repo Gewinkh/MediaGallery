@@ -45,9 +45,11 @@ int main(int argc, char* argv[]) {
     QGuiApplication::setHighDpiScaleFactorRoundingPolicy(
         Qt::HighDpiScaleFactorRoundingPolicy::PassThrough);
 
-    //  Eigener, vollständig gethemter Control-Stil (qml/style/MediaGalleryStyle).
+    //  Eigener, vollständig gethemter Control-Stil (qml/style).
+    //  Der Stilname MUSS dem Verzeichnisnamen entsprechen, in dem die Stil-
+    //  Dateien liegen — deshalb "style" (Suchpfad ":/qml", s. addImportPath).
     //  Nicht abgedeckte Controls fallen auf Fusion zurück (setFallbackStyle).
-    QQuickStyle::setStyle(QStringLiteral("MediaGalleryStyle"));
+    QQuickStyle::setStyle(QStringLiteral("style"));
     QQuickStyle::setFallbackStyle(QStringLiteral("Fusion"));
 
     // ── Qt WebEngine: NICHT mehr beim Start initialisieren (RAM-Baseline) ────
@@ -245,8 +247,9 @@ int main(int argc, char* argv[]) {
 
     // ── QML-Wurzel ───────────────────────────────────────────────────────────
     QQmlApplicationEngine engine;
-    //  Suchpfad für den eigenen Control-Stil (liegt in den Ressourcen).
-    engine.addImportPath(QStringLiteral(":/qml/style"));
+    //  Suchpfad für den eigenen Control-Stil (liegt in den Ressourcen):
+    //  der Stil "style" wird als ":/qml/style/" aufgelöst.
+    engine.addImportPath(QStringLiteral(":/qml"));
     engine.rootContext()->setContextProperty("galleryModel", &galleryModel);
     engine.rootContext()->setContextProperty("mediaModel",   &mediaModel);
 

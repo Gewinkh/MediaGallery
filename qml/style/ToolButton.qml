@@ -3,7 +3,7 @@ import QtQuick.Templates as T
 import MediaGallery 1.0
 
 // ─────────────────────────────────────────────────────────────────────────────
-//  ToolButton.qml — flacher Werkzeug-Knopf (Stil "MediaGalleryStyle").
+//  ToolButton.qml — flacher Werkzeug-Knopf (Stil "style").
 //
 //  Fusion zeichnete hier einen vollflächigen Knopf-Block mit Verlauf und Rahmen —
 //  in den Leisten (Zurück-Pfeil des Viewers, Sortier-Richtung, Baum-Klapppfeile,

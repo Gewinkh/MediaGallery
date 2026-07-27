@@ -41,19 +41,19 @@
         <file>qml/common/ColorPicker.qml</file>
         <file>qml/common/SmoothWheelArea.qml</file>
         <file>qml/common/TranslitButton.qml</file>
-        <file>qml/style/MediaGalleryStyle/qmldir</file>
-        <file>qml/style/MediaGalleryStyle/Button.qml</file>
-        <file>qml/style/MediaGalleryStyle/CheckBox.qml</file>
-        <file>qml/style/MediaGalleryStyle/ComboBox.qml</file>
-        <file>qml/style/MediaGalleryStyle/Dialog.qml</file>
-        <file>qml/style/MediaGalleryStyle/DialogButtonBox.qml</file>
-        <file>qml/style/MediaGalleryStyle/MenuItem.qml</file>
-        <file>qml/style/MediaGalleryStyle/RadioButton.qml</file>
-        <file>qml/style/MediaGalleryStyle/ScrollBar.qml</file>
-        <file>qml/style/MediaGalleryStyle/Slider.qml</file>
-        <file>qml/style/MediaGalleryStyle/SpinBox.qml</file>
-        <file>qml/style/MediaGalleryStyle/TextField.qml</file>
-        <file>qml/style/MediaGalleryStyle/ToolButton.qml</file>
-        <file>qml/style/MediaGalleryStyle/ToolTip.qml</file>
+        <file>qml/style/qmldir</file>
+        <file>qml/style/Button.qml</file>
+        <file>qml/style/CheckBox.qml</file>
+        <file>qml/style/ComboBox.qml</file>
+        <file>qml/style/Dialog.qml</file>
+        <file>qml/style/DialogButtonBox.qml</file>
+        <file>qml/style/MenuItem.qml</file>
+        <file>qml/style/RadioButton.qml</file>
+        <file>qml/style/ScrollBar.qml</file>
+        <file>qml/style/Slider.qml</file>
+        <file>qml/style/SpinBox.qml</file>
+        <file>qml/style/TextField.qml</file>
+        <file>qml/style/ToolButton.qml</file>
+        <file>qml/style/ToolTip.qml</file>
     </qresource>
 </RCC>

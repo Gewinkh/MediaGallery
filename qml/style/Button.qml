@@ -3,7 +3,7 @@ import QtQuick.Templates as T
 import MediaGallery 1.0
 
 // ─────────────────────────────────────────────────────────────────────────────
-//  Button.qml — gethemter Standard-Button (Stil "MediaGalleryStyle").
+//  Button.qml — gethemter Standard-Button (Stil "style").
 //
 //  Ersetzt die eckige, palettengetriebene Fusion-Variante durch die Optik der
 //  handgebauten Leisten-Knöpfe der App (ChromeBtn/MenuBtn/SettingsTab): Radius 6,

@@ -3,7 +3,7 @@ import QtQuick.Templates as T
 import MediaGallery 1.0
 
 // ─────────────────────────────────────────────────────────────────────────────
-//  TextField.qml — gethemtes Eingabefeld (Stil "MediaGalleryStyle").
+//  TextField.qml — gethemtes Eingabefeld (Stil "style").
 //
 //  Radius 6, Kartenhintergrund, Akzentrahmen bei Fokus. Farbe/Auswahlfarben aus
 //  dem Themenschema; `color` bleibt überschreibbar (viele Aufrufstellen setzen

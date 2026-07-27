@@ -3,7 +3,7 @@ import QtQuick.Templates as T
 import MediaGallery 1.0
 
 // ─────────────────────────────────────────────────────────────────────────────
-//  CheckBox.qml — abgerundeter, gethemter Haken (Stil "MediaGalleryStyle").
+//  CheckBox.qml — abgerundeter, gethemter Haken (Stil "style").
 //
 //  Statt des eckigen Fusion-Kästchens mit grauem Bitmap-Haken: Radius-5-Feld,
 //  im Zustand „an" in der Akzentfarbe gefüllt, Haken als zwei gedrehte Balken

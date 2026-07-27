@@ -3,7 +3,7 @@ import QtQuick.Templates as T
 import MediaGallery 1.0
 
 // ─────────────────────────────────────────────────────────────────────────────
-//  Dialog.qml — gethemter Dialograhmen (Stil "MediaGalleryStyle").
+//  Dialog.qml — gethemter Dialograhmen (Stil "style").
 //
 //  Fusion zeichnete die Titelzeile mit eigenem Hintergrund in `palette.window`
 //  und Radius 2 — in den App-Dialogen (Karten-Hintergrund, Radius 8) ergab das

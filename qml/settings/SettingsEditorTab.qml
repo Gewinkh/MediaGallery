@@ -75,7 +75,7 @@ Item {
                 }
                 //  `text` MUSS gesetzt sein: der Stil richtet den Ring nur bei
                 //  nicht-leerem `control.text` links aus, sonst zentriert er ihn
-                //  in `availableWidth` (s. style/MediaGalleryStyle/RadioButton.qml).
+                //  in `availableWidth` (s. style/RadioButton.qml).
                 RadioButton {
                     id: posRight
                     text: App.uiText(App.language, "PdfEditPanelPosRight")

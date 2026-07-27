@@ -3,7 +3,7 @@ import QtQuick.Templates as T
 import MediaGallery 1.0
 
 // ─────────────────────────────────────────────────────────────────────────────
-//  SpinBox.qml — gethemtes Zahlenfeld (Stil "MediaGalleryStyle").
+//  SpinBox.qml — gethemtes Zahlenfeld (Stil "style").
 //
 //  Feld wie TextField (Radius 6, Kartenfarbe, Akzentrahmen bei Fokus); die
 //  beiden Schaltflächen sitzen rechts als abgerundete Halbfelder mit selbst
