@@ -206,6 +206,13 @@ public:
     // docId fuer den URL-Aufbau: "image://pdfthumb/<docId>/<page>".
     Q_INVOKABLE int ensureDocument(const QString& pathOrUrl, int startPage = 0);
 
+    // Vorschauen eines Dokuments VERWERFEN und neu erzeugen: Der Inhalt hinter
+    // demselben Pfad hat sich geändert (Seiten-Plan des PDF-Editors — Seiten
+    // umsortiert, gedreht, eingefügt, entfernt). Liefert eine NEUE docId, damit
+    // die QML-Image-Quellen (`image://pdfthumb/<docId>/<page>`) neu anfragen
+    // statt die alten Kacheln weiterzuzeigen.
+    Q_INVOKABLE int refreshDocument(const QString& pathOrUrl, int startPage = 0);
+
     // Großvorschau EINER Seite anfordern (Strg+Hover der Extraktionsdialoge).
     // maxPx begrenzt die laengere Kante. Meldet largePreviewReady, sobald die
     // Vorschau unter "image://pdfthumb/preview?r=<rev>" abrufbar ist; liegt der

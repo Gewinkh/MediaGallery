@@ -14,6 +14,7 @@
 #include <QVariantMap>
 #include <QThreadPool>
 #include <QRunnable>
+#include <QPointer>
 #include <utility>
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -64,19 +65,22 @@ public:
             // Abspielen gebraucht und erst beim App-Ende vom Owner entfernt.
         }
 
-        // Ergebnis auf den GUI-Thread marshallen. Die QPointer-/Context-Form von
-        // invokeMethod verwirft den Aufruf automatisch, falls der Owner zwischen-
-        // zeitlich zerstoert wurde (App-Shutdown) → kein Dangling-Zugriff.
-        ViewerController* owner = m_owner;
+        // Ergebnis auf den GUI-Thread marshallen. Der Owner wird als QPointer
+        // gehalten und im GUI-Thread erneut geprueft: ein roher Zeiger waere
+        // beim Zerstoeren des Owners waehrend des Scans (App-Shutdown) bereits
+        // fuer den invokeMethod-Aufruf selbst ungueltig.
+        QPointer<ViewerController> owner = m_owner;
+        if (!owner) return;
         const QString path = m_path;
         QMetaObject::invokeMethod(owner, [owner, path, list, temps]() {
-            owner->applyScanResult(path, list, temps);
+            if (owner)
+                owner->applyScanResult(path, list, temps);
         }, Qt::QueuedConnection);
     }
 
 private:
-    ViewerController* m_owner;
-    QString           m_path;
+    QPointer<ViewerController> m_owner;
+    QString                    m_path;
 };
 } // namespace
 

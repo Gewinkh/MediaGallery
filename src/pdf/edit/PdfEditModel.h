@@ -34,7 +34,9 @@ public:
         ColorRole, HighlightRole,
         AlignmentRole,
         VAlignRole,
-        AnchoredRole
+        AnchoredRole,
+        MarkupStyleRole,                // Markierung: 0 Fläche, 1 unter, 2 durch
+        ImagePathRole                   // Stempel: Pfad der Bilddatei                 // Markierung: 0 Fläche, 1 unter, 2 durch
     };
 
     explicit PdfEditModel(QObject* parent = nullptr);
@@ -69,6 +71,10 @@ public:
     //  Reflow-Verkettung: chainNext der Box setzen (kein QML-Rollen-Binding →
     //  keine dataChanged nötig; boxInfo liest den Wert rev-getrieben).
     bool setChainNext(int id, int next);
+    //  Ursprungshöhe vor dem Ketten-Ende-Wachstum (s. PdfEditBox::growBaseH).
+    //  Reine Buchführung — kein dataChanged nötig, die Geometrie selbst ändert
+    //  sich über applyGeometry.
+    void setGrowBaseH(int id, qreal h);
     void clearAll();
 
 signals:

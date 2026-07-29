@@ -528,7 +528,13 @@ public:
                 bytes = file.size();
             }
         }
-        if (aborted(m_cancel)) return;              // s. Scan-Task
+        if (aborted(m_cancel)) {
+            //  Abgebrochen NACH dem Schreiben: die WAV landet nie im Cache und
+            //  wuerde von dessen Aufraeumen (Destruktor/evictCache) nie erfasst
+            //  — sie bliebe bis zum naechsten Neustart im Temp-Verzeichnis liegen.
+            if (!wav.isEmpty()) QFile::remove(wav);
+            return;
+        }
         PdfAudioController* owner = m_owner; const int id = m_clip.id; const int gen = m_gen;
         const QString w = wav; const int dm = durMs; const qint64 by = bytes;
         QMetaObject::invokeMethod(owner, [owner, id, w, dm, by, gen]() { owner->applyClip(id, w, dm, by, gen); }, Qt::QueuedConnection);

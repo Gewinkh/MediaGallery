@@ -39,6 +39,12 @@ Item {
     property bool   requireName: false     // global: Name ist Pflicht
     property string titleText: ""
     property string defaultName: ""        // Platzhalter des Namensdialogs
+    //  Zweitverwendung „Seiten einfügen" (PDF-Editor): Dort entsteht KEINE neue
+    //  Datei, also wird auch kein Name abgefragt — der Knopf übergibt direkt.
+    //  askName=false zieht zugleich die Bindung an den Extraktionsauftrag
+    //  (PdfExtract.busy) heraus, der bei diesem Weg gar nicht läuft.
+    property bool   askName: true
+    property string confirmText: ""        // leer = Standardtext „Erstellen"
 
     // orderedItems = [{ path, page }] in AUSGABEREIHENFOLGE.
     signal extractRequested(var orderedItems, string baseName)
@@ -261,10 +267,14 @@ Item {
                         }
                         Button {
                             height: 28; font.pixelSize: 12
-                            enabled: barModel.count > 0 && !PdfExtract.busy
-                            text: App.uiText(App.language, "ExtractCreateBtn")
+                            enabled: barModel.count > 0 && (!root.askName || !PdfExtract.busy)
+                            text: root.confirmText.length > 0
+                                  ? root.confirmText
+                                  : App.uiText(App.language, "ExtractCreateBtn")
                             palette.buttonText: enabled ? App.themeAccent : App.themeTextMuted
-                            onClicked: nameDlg.openFor(root.defaultName, root.requireName)
+                            onClicked: root.askName ? nameDlg.openFor(root.defaultName,
+                                                                      root.requireName)
+                                                    : root._submit("")
                         }
                     }
                 }

@@ -66,6 +66,22 @@ Item {
                 title: App.uiText(App.language, "SettingsPdfEditGroup")
                 Layout.fillWidth: true
 
+                //  ZWEI GETRENNTE AUSWAHLGRUPPEN — zwingend nötig:
+                //  `RadioButton` ist `autoExclusive` und gruppiert sich dann
+                //  über das ELTERNELEMENT. SettingsGroup steckt aber ALLE
+                //  Kinder in dieselbe innere ColumnLayout (`default property
+                //  alias content: inner.data`), weshalb die vier Knöpfe dieser
+                //  Gruppe eine einzige Auswahl bildeten: ein Klick auf
+                //  „Seiten hinzufügen/entfernen" hob die Panel-Position wieder
+                //  auf (und umgekehrt) — es ließ sich immer nur EINE der beiden
+                //  Einstellungen zeigen. Eine explizite ButtonGroup je
+                //  Sachbereich stellt die Exklusivität wieder korrekt her.
+                //  (Die übrigen SettingsGroups haben je nur ein Auswahlpaar
+                //  und brauchen das daher nicht.)
+                ButtonGroup { id: panelPosGroup }
+                ButtonGroup { id: pageEditGroup }
+                ButtonGroup { id: exportModeGroup }
+
                 // Position der Text-Eigenschaften: rechte Seitenleiste (Standard)
                 // oder obere Leiste im Word-Stil (PdfEdit.panelOnTop, persistiert).
                 Label {
@@ -78,6 +94,7 @@ Item {
                 //  in `availableWidth` (s. style/RadioButton.qml).
                 RadioButton {
                     id: posRight
+                    ButtonGroup.group: panelPosGroup
                     text: App.uiText(App.language, "PdfEditPanelPosRight")
                     checked: !PdfEdit.panelOnTop
                     onToggled: if (checked) PdfEdit.panelOnTop = false
@@ -90,6 +107,7 @@ Item {
                 }
                 RadioButton {
                     id: posTop
+                    ButtonGroup.group: panelPosGroup
                     text: App.uiText(App.language, "PdfEditPanelPosTop")
                     checked: PdfEdit.panelOnTop
                     onToggled: if (checked) PdfEdit.panelOnTop = true
@@ -113,6 +131,7 @@ Item {
                 }
                 RadioButton {
                     id: pageEditSafe
+                    ButtonGroup.group: pageEditGroup
                     text: App.uiText(App.language, "PdfPageEditNonDestructive")
                     checked: !PdfEdit.pageEditDestructive
                     onToggled: if (checked) PdfEdit.pageEditDestructive = false
@@ -126,6 +145,7 @@ Item {
                 }
                 RadioButton {
                     id: pageEditDestr
+                    ButtonGroup.group: pageEditGroup
                     text: App.uiText(App.language, "PdfPageEditDestructiveMode")
                     checked: PdfEdit.pageEditDestructive
                     onToggled: if (checked) PdfEdit.pageEditDestructive = true
@@ -137,6 +157,77 @@ Item {
                         wrapMode: Text.WordWrap
                     }
                 }
+                // Export-Modus: steuert den EINEN „Export"-Knopf des PDF-Editors.
+                // Früher gab es dafür zwei Knöpfe nebeneinander — die Wahl ist
+                // aber eine Grundsatzentscheidung, keine je Export.
+                Label {
+                    text: App.uiText(App.language, "SettingsPdfExportLabel")
+                    color: App.themeTextPrimary
+                    font.pixelSize: 13
+                    topPadding: 6
+                }
+                RadioButton {
+                    id: expLossless
+                    ButtonGroup.group: exportModeGroup
+                    text: App.uiText(App.language, "PdfExportLosslessMode")
+                    checked: PdfEdit.exportLossless
+                    onToggled: if (checked) PdfEdit.exportLossless = true
+                    contentItem: Text {
+                        text: expLossless.text
+                        color: App.themeTextPrimary
+                        leftPadding: expLossless.indicator.width + 6
+                        verticalAlignment: Text.AlignVCenter
+                        wrapMode: Text.WordWrap
+                    }
+                }
+                RadioButton {
+                    id: expRaster
+                    ButtonGroup.group: exportModeGroup
+                    text: App.uiText(App.language, "PdfExportRasterMode")
+                    checked: !PdfEdit.exportLossless
+                    onToggled: if (checked) PdfEdit.exportLossless = false
+                    contentItem: Text {
+                        text: expRaster.text
+                        color: App.themeTextPrimary
+                        leftPadding: expRaster.indicator.width + 6
+                        verticalAlignment: Text.AlignVCenter
+                        wrapMode: Text.WordWrap
+                    }
+                }
+                //  Interchange: eigene Notizen als echte PDF-Annotationen
+                //  schreiben. BEWUSST eine CheckBox und KEIN Radio: die Wahl
+                //  ist unabhängig vom Export-Modus darüber (s. auch der Fehler,
+                //  bei dem zwei Radio-Gruppen einander gelöscht haben).
+                CheckBox {
+                    id: expAsAnnots
+                    text: App.uiText(App.language, "PdfExportAsAnnotationsOption")
+                    checked: PdfEdit.exportAsAnnotations
+                    onToggled: PdfEdit.exportAsAnnotations = checked
+                    topPadding: 6
+                    contentItem: Text {
+                        text: expAsAnnots.text
+                        color: App.themeTextPrimary
+                        leftPadding: expAsAnnots.indicator.width + 6
+                        verticalAlignment: Text.AlignVCenter
+                        wrapMode: Text.WordWrap
+                    }
+                }
+                Label {
+                    text: App.uiText(App.language, "PdfExportAsAnnotationsHint")
+                    color: App.themeTextMuted
+                    font.pixelSize: 11
+                    wrapMode: Text.WordWrap
+                    Layout.fillWidth: true
+                }
+                Label {
+                    text: App.uiText(App.language, "SettingsPdfExportHint")
+                    color: App.themeTextMuted
+                    font.pixelSize: 11
+                    leftPadding: 26
+                    wrapMode: Text.WordWrap
+                    Layout.fillWidth: true
+                }
+
                 Label {
                     text: App.uiText(App.language, "SettingsPdfPageEditHint")
                     //  themeTextMuted — die Hinweisfarbe aller übrigen

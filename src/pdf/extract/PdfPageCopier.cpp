@@ -2,6 +2,7 @@
 
 #include <QFile>
 #include <QFileInfo>
+#include <QSaveFile>
 #include <QHash>
 #include <QSet>
 #include <QIODevice>
@@ -915,7 +916,11 @@ class CopyPlan {
 public:
     CopyPlan(SourceDoc* doc, int firstNewNum) : m_doc(doc), m_next(firstNewNum) {}
 
-    bool plan(const QVector<int>& pageIndices, QString* err);
+    //  `rotations` ist entweder leer (keine zusätzliche Drehung) oder parallel
+    //  zu `pageIndices`: Gradzahl, die ZUSÄTZLICH zur Eigendrehung der Quellseite
+    //  wirkt (Vielfaches von 90).
+    bool plan(const QVector<int>& pageIndices, const QVector<int>& rotations,
+              QString* err);
 
     const QVector<PlannedObject>& objects() const { return m_objects; }
     int nextNum() const { return m_next; }
@@ -925,7 +930,7 @@ private:
     int  mapNum(qint64 srcNum);
     bool serializeValue(const PObj& v, QByteArray* out, int depth);
     bool planObject(qint64 srcNum, int newNum);
-    bool planPage(const SourceDoc::PageInfo& pi, int newNum);
+    bool planPage(const SourceDoc::PageInfo& pi, int newNum, int rotDelta);
 
     SourceDoc*             m_doc;
     int                    m_next;
@@ -1041,14 +1046,37 @@ bool CopyPlan::planObject(qint64 srcNum, int newNum) {
     return true;
 }
 
-bool CopyPlan::planPage(const SourceDoc::PageInfo& pi, int newNum) {
+bool CopyPlan::planPage(const SourceDoc::PageInfo& pi, int newNum, int rotDelta) {
+    // Zusätzliche Drehung (Seite drehen im Editor): Die Eigendrehung der
+    // Quellseite — eigenes /Rotate oder ein vom Seitenbaum geerbtes — wird um
+    // `rotDelta` weitergedreht und als EIN materialisierter Wert geschrieben.
+    // Das Original bleibt dabei unangetastet (es wird nur kopiert), und der
+    // Seiteninhalt selbst bleibt byteweise erhalten.
+    rotDelta = ((rotDelta % 360) + 360) % 360;
+    int rotOut = -1;                                 // −1 = keine Drehung schreiben
+    if (rotDelta != 0) {
+        int base = 0;
+        const PObj* own = pi.dict.find("Rotate");
+        if (own && own->t == PObj::Int)              base = static_cast<int>(own->i);
+        else if (pi.inhRotate.t == PObj::Int)        base = static_cast<int>(pi.inhRotate.i);
+        rotOut = (((base + rotDelta) % 360) + 360) % 360;
+        rotOut = (rotOut / 90) * 90;                 // Vielfaches von 90 sicherstellen
+    }
+
     // Seiten-Dictionary neu zusammensetzen: /Parent zeigt auf den NEUEN
     // Seitenbaum (Objekt 2); vererbte Attribute werden materialisiert;
     // /B (Artikel-Fäden) entfällt (zöge fremde Seitenketten in den Abschluss).
     QByteArray head("<< /Parent 2 0 R ");
     QSet<QByteArray> present;
+    if (rotOut >= 0) {
+        head.append("/Rotate ");
+        head.append(QByteArray::number(rotOut));
+        head.append(' ');
+        present.insert("Rotate");                    // eigenes /Rotate ersetzt
+    }
     for (const auto& kv : pi.dict.dict) {
         if (kv.first == "Parent" || kv.first == "B") continue;
+        if (rotOut >= 0 && kv.first == "Rotate") continue;   // s. o.
         present.insert(kv.first);
         head.append('/');
         head.append(kv.first);
@@ -1083,7 +1111,8 @@ bool CopyPlan::planPage(const SourceDoc::PageInfo& pi, int newNum) {
     return true;
 }
 
-bool CopyPlan::plan(const QVector<int>& pageIndices, QString* err) {
+bool CopyPlan::plan(const QVector<int>& pageIndices, const QVector<int>& rotations,
+                    QString* err) {
     QVector<SourceDoc::PageInfo> pages;
     if (!m_doc->flattenPages(&pages, err)) return false;
     for (const auto& p : pages)
@@ -1092,7 +1121,9 @@ bool CopyPlan::plan(const QVector<int>& pageIndices, QString* err) {
     // Gewählten Seiten ZUERST neue Nummern geben → Querverweise zwischen
     // gewählten Seiten (Links) bleiben funktionsfähig.
     QVector<QPair<const SourceDoc::PageInfo*, int>> chosen;
-    for (int idx : pageIndices) {
+    QVector<int> chosenRot;
+    for (int i = 0; i < pageIndices.size(); ++i) {
+        const int idx = pageIndices.at(i);
         if (idx < 0 || idx >= pages.size()) {
             if (err) *err = QStringLiteral("pageindex");
             return false;
@@ -1100,9 +1131,11 @@ bool CopyPlan::plan(const QVector<int>& pageIndices, QString* err) {
         const int nn = m_next++;
         m_map.insert(pages[idx].objNum, nn);
         chosen.append({&pages[idx], nn});
+        chosenRot.append(i < rotations.size() ? rotations.at(i) : 0);
     }
-    for (const auto& c : chosen) {
-        if (!planPage(*c.first, c.second)) {
+    for (int i = 0; i < chosen.size(); ++i) {
+        const auto& c = chosen.at(i);
+        if (!planPage(*c.first, c.second, chosenRot.at(i))) {
             if (err) *err = QStringLiteral("page");
             return false;
         }
@@ -1157,6 +1190,12 @@ bool PdfAssembler::begin(QString* err) {
 
 bool PdfAssembler::addSourcePages(const QString& sourcePath,
                                   const QVector<int>& pages, QString* err) {
+    return addSourcePages(sourcePath, pages, {}, err);
+}
+
+bool PdfAssembler::addSourcePages(const QString& sourcePath,
+                                  const QVector<int>& pages,
+                                  const QVector<int>& rotations, QString* err) {
     if (m_failed || !m_begun) {
         if (err) *err = QStringLiteral("state");
         return false;
@@ -1167,7 +1206,7 @@ bool PdfAssembler::addSourcePages(const QString& sourcePath,
     // Erst VOLLSTÄNDIG planen — schlägt hier etwas fehl, wurde noch kein Byte
     // geschrieben und der Aufrufer kann für DIESE Quelle rastern.
     CopyPlan plan(&doc, m_nextObj);
-    if (!plan.plan(pages, err)) return false;
+    if (!plan.plan(pages, rotations, err)) return false;
 
     // Dann in einem Rutsch schreiben (Stream-Spans direkt vom Quell-Mapping).
     for (const PlannedObject& po : plan.objects()) {
@@ -1300,6 +1339,41 @@ bool PdfAssembler::finish(QString* err) {
        + " /Root 1 0 R >>\nstartxref\n" + QByteArray::number(xrefPos)
        + "\n%%EOF\n";
     return writeRaw(x, err);
+}
+
+bool PdfAssembler::rebuild(const QString& sourcePath, const QString& outputPath,
+                           QString* err) {
+    auto fail = [&](const char* m) {
+        if (err) *err = QString::fromLatin1(m);
+        return false;
+    };
+    if (sourcePath == outputPath)
+        return fail("Ziel darf nicht die Quelle sein");
+
+    const int n = probePageCount(sourcePath);
+    if (n <= 0)
+        return fail("Seitenzahl nicht lesbar");
+    QVector<int> pages;
+    pages.reserve(n);
+    for (int i = 0; i < n; ++i)
+        pages.append(i);
+
+    //  QSaveFile: entweder es steht am Ende die vollständige neue Datei da
+    //  oder gar keine — eine halb geschriebene Ausgabe wäre hier besonders
+    //  bösartig, weil der Aufrufer sie für die geschwärzte Fassung hielte.
+    QSaveFile out(outputPath);
+    if (!out.open(QIODevice::WriteOnly))
+        return fail("Ziel nicht schreibbar");
+
+    PdfAssembler a(&out);
+    if (!a.begin(err) || !a.addSourcePages(sourcePath, pages, err)
+        || !a.finish(err)) {
+        out.cancelWriting();
+        return false;
+    }
+    if (!out.commit())
+        return fail("Ziel nicht abschliessbar");
+    return true;
 }
 
 int PdfAssembler::probePageCount(const QString& sourcePath) {

@@ -163,6 +163,13 @@ public:
     ParFmt resolvePar(const Block& b) const;
     const RunFmt& defaultRun() const { return m_defRun; }
 
+    //  true, wenn IRGENDEINE Absatzvorlage (oder docDefaults) eine Nummerierung
+    //  mitbringt. Ist es false, kann resolvePar(b).numId ausschliesslich aus
+    //  b.pfmt stammen — Aufrufer, die nur an der Nummerierung interessiert
+    //  sind (DocxTextArea::rebuildMarkers, laeuft ueber ALLE Bloecke bei jedem
+    //  Tastendruck), duerfen die Vorlagenaufloesung dann komplett ueberspringen.
+    bool stylesMayNumber() const { return m_stylesMayNumber; }
+
     // ── Nummerierung ─────────────────────────────────────────────────────────
     NumLevel numLevel(int numId, int ilvl) const;
     //  Liefert eine numId für neue Listen; legt (lazy) eigene abstractNum/num-
@@ -208,6 +215,7 @@ private:
     RunFmt  m_defRun;            // docDefaults (vollständig belegt)
     ParFmt  m_defPar;
     QHash<QString, StyleDef> m_styles;
+    bool    m_stylesMayNumber = false;   // s. stylesMayNumber()
 
     QHash<int, QHash<int, NumLevel>> m_numLevels;    // numId → ilvl → Level
     QHash<int, int> m_numToAbstract;

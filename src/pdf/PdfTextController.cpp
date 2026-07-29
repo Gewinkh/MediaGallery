@@ -2,6 +2,8 @@
 #include "core/PathUtils.h"
 
 #include <QPdfDocument>
+#include <QPdfSearchModel>
+#include <QPdfLink>
 #include <QPdfDocumentRenderOptions>
 #include <QPdfSelection>
 #include <QGuiApplication>
@@ -55,8 +57,15 @@ public:
         PdfTextController* owner = m_owner;
         const QString path = m_path;
         const int     gen  = m_gen;
-        QMetaObject::invokeMethod(owner, [owner, doc, path, gen]() {
-            owner->adoptDocument(doc, path, gen);
+        //  Das Dokument gehoert dem Lambda: wird das geposte Ereignis nie
+        //  ausgefuehrt (Controller wird gerade zerstoert — ~QObject verwirft
+        //  anhaengige Ereignisse), gibt der unique_ptr es beim Zerstoeren des
+        //  Lambdas frei. Mit dem rohen Zeiger blieb in genau diesem Fall ein
+        //  komplett geparstes QPdfDocument (MB-Bereich) verwaist im Speicher —
+        //  bei jedem Schliessen einer PDF-Kachel waehrend des Ladens.
+        std::unique_ptr<QPdfDocument> owned(doc);
+        QMetaObject::invokeMethod(owner, [owner, d = std::move(owned), path, gen]() mutable {
+            owner->adoptDocument(d.release(), path, gen);
         }, Qt::QueuedConnection);
     }
 
@@ -179,12 +188,33 @@ void PdfTextController::adoptDocument(QPdfDocument* doc, const QString& localPat
     }
 
     emit readyChanged();
+
+    //  Wurde schon gesucht, BEVOR das Dokument da war (Begriff eingetippt,
+    //  während die Textebene noch lud), läuft die Suche jetzt nach — sonst
+    //  bliebe die Trefferliste stumm leer, obwohl der Begriff dasteht.
+    if (m_doc && !m_searchTerm.isEmpty() && m_searchedDoc != m_doc) {
+        const QString again = m_searchTerm;
+        m_searchTerm.clear();       // Kurzschluss aushebeln
+        search(again);
+    }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
 void PdfTextController::releaseDocument() {
     ++m_generation;                 // evtl. laufenden Ladevorgang verwerfen
     ++m_ocrGen;                     // evtl. laufende OCR verwerfen
+    //  Laufende Suche zuerst stoppen: ihr Modell hält das Dokument, das gleich
+    //  gelöscht wird.
+    m_searchTimer.stop();
+    m_searchPage = -1;
+    m_hits.clear();
+    m_searchTerm.clear();
+    //  Das Suchmodell hält das Dokument — es verschwindet mit ihm (ein
+    //  setDocument(nullptr) meldet in Qt nur eine nutzlose connect-Warnung).
+    delete m_searchModel;
+    m_searchModel = nullptr;
+    m_searchedDoc = nullptr;
+    emit searchChanged();
     m_pendingPath.clear();
     m_activePath.clear();
     m_ocrCache.clear();
@@ -509,6 +539,145 @@ void PdfTextController::clearSelection() {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  Suche im Dokument
+//
+//  GRUNDLAGE: `QPdfSearchModel` (Qt PDF). Gemessen an einem Testdokument liefert
+//  es seine Rechtecke in PDF-PUNKTEN mit Ursprung OBEN-LINKS — dieselbe
+//  Konvention wie der ganze Editor, es muss also nichts gespiegelt werden. Es
+//  arbeitet allerdings **lazy**: Erst `resultsOnPage(p)` durchsucht Seite p.
+//  Deshalb holt ein Timer die Seiten STÜCKWEISE; ein 500-Seiten-Dokument würde
+//  die Oberfläche sonst für Sekunden einfrieren (Regel 17).
+//
+//  OCR: Gescannte Seiten haben keine Textebene — dort kennt nur `m_ocrCache`
+//  Text. Für sie ist die erkannte ZEILE der Treffer (feiner geht es nicht, OCR
+//  liefert keine Zeichenlagen); solche Treffer sind als `ocr` gekennzeichnet.
+// ─────────────────────────────────────────────────────────────────────────────
+void PdfTextController::search(const QString& needle) {
+    const QString term = needle.trimmed();
+    //  Kurzschluss NUR, wenn derselbe Begriff für DIESES Dokument bereits
+    //  gelaufen ist (s. m_searchedDoc).
+    if (term == m_searchTerm && !term.isEmpty() && m_doc && m_searchedDoc == m_doc)
+        return;
+    m_hits.clear();
+    m_searchTerm = term;
+    m_searchTimer.stop();
+    m_searchPage = -1;
+
+    if (term.isEmpty() || !m_doc) {
+        if (m_searchModel)
+            m_searchModel->setSearchString(QString());
+        emit searchChanged();
+        return;
+    }
+    if (!m_searchModel) {
+        m_searchModel = new QPdfSearchModel(this);
+        m_searchTimer.setSingleShot(false);
+        m_searchTimer.setInterval(0);            // so bald wie möglich, aber NACH den Ereignissen
+        connect(&m_searchTimer, &QTimer::timeout, this, &PdfTextController::stepSearch);
+    }
+    m_searchModel->setDocument(m_doc);
+    m_searchModel->setSearchString(term);
+    m_searchedDoc = m_doc;
+    m_searchPage = 0;
+    emit searchChanged();
+    m_searchTimer.start();
+}
+
+void PdfTextController::clearSearch() {
+    search(QString());
+}
+
+void PdfTextController::stepSearch() {
+    if (!m_doc || !m_searchModel || m_searchPage < 0) {
+        m_searchTimer.stop();
+        return;
+    }
+    const int pageCount = m_doc->pageCount();
+    //  Ein Stück je Durchlauf: klein genug, dass die Oberfläche zwischendurch
+    //  zeichnet, groß genug, dass eine normale Datei sofort fertig ist.
+    constexpr int kPagesPerStep = 4;
+    const int end = qMin(pageCount, m_searchPage + kPagesPerStep);
+    for (int p = m_searchPage; p < end; ++p) {
+        const QList<QPdfLink> found = m_searchModel->resultsOnPage(p);
+        for (const QPdfLink& l : found) {
+            for (const QRectF& r : l.rectangles()) {
+                if (r.width() <= 0.0 || r.height() <= 0.0)
+                    continue;
+                SearchHit h;
+                h.page   = p;
+                h.rect   = r;
+                h.before = l.contextBefore();
+                h.after  = l.contextAfter();
+                m_hits.push_back(h);
+            }
+        }
+        //  Seiten OHNE eingebettete Textebene, für die OCR vorliegt.
+        if (found.isEmpty())
+            appendOcrHits(p);
+    }
+    m_searchPage = end;
+    if (m_searchPage >= pageCount) {
+        m_searchPage = -1;                       // fertig
+        m_searchTimer.stop();
+    }
+    emit searchChanged();
+}
+
+void PdfTextController::appendOcrHits(int page) {
+    const auto it = m_ocrCache.constFind(page);
+    if (it == m_ocrCache.constEnd() || m_searchTerm.isEmpty())
+        return;
+    for (const mg::OcrLine& line : it.value()) {
+        if (!line.text.contains(m_searchTerm, Qt::CaseInsensitive))
+            continue;
+        SearchHit h;
+        h.page   = page;
+        h.rect   = line.rectPts;                 // die ganze Zeile ist der Treffer
+        h.before = line.text;
+        h.ocr    = true;
+        if (h.rect.width() > 0.0 && h.rect.height() > 0.0)
+            m_hits.push_back(h);
+    }
+}
+
+QVariantList PdfTextController::searchHitsOnPage(int page) const {
+    QVariantList out;
+    if (!m_doc || page < 0)
+        return out;
+    const QSizeF pts = m_doc->pagePointSize(page);
+    if (pts.width() <= 0.0 || pts.height() <= 0.0)
+        return out;
+    for (const SearchHit& h : m_hits) {
+        if (h.page != page)
+            continue;
+        QVariantMap m;
+        m.insert(QStringLiteral("x"), h.rect.x()      / pts.width());
+        m.insert(QStringLiteral("y"), h.rect.y()      / pts.height());
+        m.insert(QStringLiteral("w"), h.rect.width()  / pts.width());
+        m.insert(QStringLiteral("h"), h.rect.height() / pts.height());
+        out.push_back(m);
+    }
+    return out;
+}
+
+QVariantMap PdfTextController::searchHit(int index) const {
+    QVariantMap m;
+    if (index < 0 || index >= m_hits.size())
+        return m;
+    const SearchHit& h = m_hits.at(index);
+    m.insert(QStringLiteral("page"),   h.page);
+    m.insert(QStringLiteral("x"),      h.rect.x());
+    m.insert(QStringLiteral("y"),      h.rect.y());
+    m.insert(QStringLiteral("w"),      h.rect.width());
+    m.insert(QStringLiteral("h"),      h.rect.height());
+    m.insert(QStringLiteral("before"), h.before);
+    m.insert(QStringLiteral("after"),  h.after);
+    m.insert(QStringLiteral("ocr"),    h.ocr);
+    return m;
+}
+
 void PdfTextController::copyToClipboard() {
     if (m_selText.isEmpty())
         return;

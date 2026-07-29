@@ -67,6 +67,10 @@ public:
     void setPdfEditPanelTop(bool v) override;
     bool pdfPageEditDestructive() const override;
     void setPdfPageEditDestructive(bool v) override;
+    bool pdfExportLossless() const override;
+    void setPdfExportLossless(bool v) override;
+    bool pdfExportAsAnnotations() const override;
+    void setPdfExportAsAnnotations(bool v) override;
     bool docxSaveDirect() const override;
     void setDocxSaveDirect(bool v) override;
 

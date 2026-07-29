@@ -1,5 +1,4 @@
 build/
-py/
 out/
 cmake-build-*/
 *.pro.user
@@ -18,6 +17,9 @@ _deps/
 *.app/
 *.zip
 CLAUDE.md
+NEXT.md
+logs/
+tests/
 Structure.md
 Authorization.txt
 tmp.txt

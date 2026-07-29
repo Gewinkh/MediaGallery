@@ -108,6 +108,10 @@ private:
     void  rebuildMarkers();                    // Listen-Zähler (ganzes Dokument)
     void  buildLayout(int i);                  // QTextLayout eines Absatzes
     void  updateCursorRect();
+    //  Blinktakt an-/abschalten (nur bei Fokus + ohne Selektion, s. paint()).
+    void  syncCaretBlink();
+    //  QTextLayouts weit ausserhalb des Viewports freigeben (Hoehen bleiben).
+    void  trimLayouts(int firstVisible, int lastVisible);
     //  Leere Absätze werden mit dem am Cursor GELTENDEN Format vermessen
     //  (inkl. Pending) — beim Wechsel des Cursor-Blocks bzw. bei einer
     //  Format-Änderung ohne Selektion muss ihr Layout daher verfallen.
@@ -128,6 +132,7 @@ private:
     QVector<qreal>       m_offsets;            // Präfix-Summen der Höhen
     int    m_offsetsValidTo = 0;               // Offsets [0..N] gültig
     int    m_layChunkAt = 0;                   // Fortschritt Initial-Layout
+    int    m_trimLo = -1, m_trimHi = -1;       // zuletzt getrimmtes Layout-Fenster
     QTimer m_chunkTimer;
     QTimer m_blinkTimer;
     bool   m_caretOn = true;

@@ -43,6 +43,7 @@
 #include <QVariantList>
 #include <QVariantMap>
 #include <QThreadPool>
+#include <QTimer>
 #include <QRectF>
 #include <QList>
 #include <QHash>
@@ -50,6 +51,7 @@
 #include "pdf/OcrEngine.h"      // mg::OcrLine (für OCR-Cache/Signaturen)
 
 class QPdfDocument;
+class QPdfSearchModel;
 class QPdfSelection;
 
 class PdfTextController : public QObject {
@@ -62,6 +64,13 @@ class PdfTextController : public QObject {
     Q_PROPERTY(bool ocrAvailable READ ocrAvailable CONSTANT)
     // Läuft gerade eine (asynchrone) OCR-Erkennung?
     Q_PROPERTY(bool ocrBusy READ ocrBusy NOTIFY ocrBusyChanged)
+    // ── Suche im Dokument ─────────────────────────────────────────────────────
+    //  Anzahl der Treffer der laufenden/letzten Suche.
+    Q_PROPERTY(int  searchCount READ searchCount NOTIFY searchChanged)
+    //  Läuft noch (die Seiten werden STÜCKWEISE durchsucht, s. .cpp).
+    Q_PROPERTY(bool searching READ searching NOTIFY searchChanged)
+    //  Der aktuelle Suchbegriff (leer = keine Suche).
+    Q_PROPERTY(QString searchTerm READ searchTerm NOTIFY searchChanged)
 public:
     explicit PdfTextController(QObject* parent = nullptr);
     ~PdfTextController() override;
@@ -70,6 +79,9 @@ public:
     QString selectedText() const { return m_selText; }
     bool    ocrAvailable() const;
     bool    ocrBusy() const { return m_ocrBusy; }
+    int     searchCount() const { return m_hits.size(); }
+    bool    searching() const { return m_searchPage >= 0; }
+    QString searchTerm() const { return m_searchTerm; }
 
     // Sorgt (lazy, asynchron) dafuer, dass fuer pathOrUrl ein Auswahl-Dokument
     // geladen wird. Idempotent: laeuft bereits ein Laden/ist es aktiv → No-Op.
@@ -132,6 +144,19 @@ public:
     // Kopiert den zuletzt markierten Text in die System-Zwischenablage.
     Q_INVOKABLE void copyToClipboard();
 
+    // ── Suche ─────────────────────────────────────────────────────────────────
+    //  search: startet eine neue Suche (leerer Begriff hebt sie auf). Die Seiten
+    //  werden STÜCKWEISE durchsucht, damit die Oberfläche nicht stehenbleibt —
+    //  Fortschritt/Ende meldet `searchChanged`.
+    Q_INVOKABLE void search(const QString& needle);
+    Q_INVOKABLE void clearSearch();
+    //  Treffer-Rechtecke EINER Seite, normalisiert [0..1] wie `selectionBetween`
+    //  (die Anzeige zeichnet sie wie eine Auswahl).
+    Q_INVOKABLE QVariantList searchHitsOnPage(int page) const;
+    //  EIN Treffer für die Ergebnisliste/Navigation:
+    //  { page, x, y, w, h, before, after, ocr }.
+    Q_INVOKABLE QVariantMap searchHit(int index) const;
+
     // ── Intern (vom Worker-Thread per QueuedConnection aufgerufen) ────────────
     //  Nimmt ein fertig geladenes (oder fehlgeschlagenes = nullptr) Dokument auf
     //  dem GUI-Thread entgegen. NICHT direkt aus QML aufrufen.
@@ -145,6 +170,8 @@ signals:
     void selectedTextChanged();
     void ocrBusyChanged();
     void ocrReady(int page, int lineCount);
+    //  Suchzustand geändert (neue Treffer, Fortschritt, Ende).
+    void searchChanged();
 
 private:
     // Baut aus einer QPdfSelection die normalisierte Rechteckliste und merkt den
@@ -179,6 +206,36 @@ private:
     //  Läufe (Pfadwechsel/Freigabe).
     QThreadPool   m_ocrPool;
     QHash<int, QList<mg::OcrLine>> m_ocrCache;
+
+    // ── Suche ────────────────────────────────────────────────────────────────
+    //  EIN Treffer. `rect` steht in PDF-Punkten mit Ursprung oben-links —
+    //  genau so liefert QPdfSearchModel sie (gemessen), also dieselbe
+    //  Konvention wie im ganzen Editor.
+    struct SearchHit {
+        int     page = 0;
+        QRectF  rect;
+        QString before;
+        QString after;
+        bool    ocr = false;        // aus der OCR-Zeile, nicht aus der Textebene
+    };
+    QVector<SearchHit> m_hits;
+    QString            m_searchTerm;
+    //  Nächste zu durchsuchende Seite (−1 = keine Suche läuft). QPdfSearchModel
+    //  arbeitet LAZY je Seite (gemessen: erst `resultsOnPage(p)` durchsucht sie)
+    //  — der Timer holt sie stückweise, damit eine 500-Seiten-Datei die
+    //  Oberfläche nicht einfriert.
+    int                m_searchPage = -1;
+    QPdfSearchModel*   m_searchModel = nullptr;
+    //  Dokument, zu dem die Treffer gehören. Ohne diesen Vergleich hätte der
+    //  Kurzschluss „derselbe Begriff → nichts tun" eine Suche verschluckt, die
+    //  VOR dem Öffnen eingetippt wurde (sie lief nie, der Begriff stand aber
+    //  schon da).
+    QPdfDocument*      m_searchedDoc = nullptr;
+    QTimer             m_searchTimer;
+    void stepSearch();
+    //  Treffer der OCR-Zeilen einer Seite (nur wo es OCR gibt): die ZEILE ist
+    //  der Treffer — feiner geht es nicht, OCR liefert keine Zeichenlagen.
+    void appendOcrHits(int page);
     int           m_ocrGen  = 0;
     bool          m_ocrBusy = false;
 };

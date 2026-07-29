@@ -649,6 +649,16 @@ bool Document::parseStylesXml(const QByteArray& xml) {
             parseParProps(readFragment(), &m_styles[curStyle].pf);
         }
     }
+
+    //  Merken, ob ueberhaupt EINE Vorlage eine Nummerierung mitbringt. Ist das
+    //  nicht der Fall (der Normalfall), kann resolvePar(b).numId nur aus dem
+    //  Absatz selbst stammen — die Listenmarker-Berechnung darf dann jeden
+    //  Absatz ohne eigenes w:numPr per Bit-Test ueberspringen, statt fuer ihn
+    //  die komplette Vorlagenkette abzulaufen (s. stylesMayNumber()).
+    m_stylesMayNumber = (m_defPar.set & ParFmt::FNum) != 0;
+    for (auto it = m_styles.cbegin(); !m_stylesMayNumber && it != m_styles.cend(); ++it)
+        m_stylesMayNumber = (it.value().pf.set & ParFmt::FNum) != 0;
+
     return !r.hasError();
 }
 
@@ -700,13 +710,17 @@ bool Document::parseNumberingXml(const QByteArray& xml) {
 // ─────────────────────────────────────────────────────────────────────────────
 RunFmt Document::resolveRun(const Block& b, const Run& r) const {
     RunFmt out = m_defRun;
-    // Vorlagen-Kette des Absatzstils (max. 8 Stufen, Zyklus-Schutz).
-    QList<const StyleDef*> chain;
-    QString id = b.pfmt.styleId;
-    for (int i = 0; i < 8 && !id.isEmpty(); ++i) {
+    //  Vorlagen-Kette des Absatzstils (max. 8 Stufen, Zyklus-Schutz).
+    //  Feste Stack-Reihung statt QList: resolveRun/resolvePar laufen im
+    //  heissesten Pfad des Editors (je Run beim Layout, je Absatz beim
+    //  Markeraufbau) — die QList kostete dort eine Heap-Allokation pro Aufruf.
+    const StyleDef* chain[8];
+    int depth = 0;
+    QString id = b.pfmt.styleId;      // implizit geteilt → keine Kopie
+    while (depth < 8 && !id.isEmpty()) {
         auto it = m_styles.constFind(id);
         if (it == m_styles.constEnd()) break;
-        chain.prepend(&it.value());
+        chain[depth++] = &it.value();
         id = it->basedOn;
     }
     auto apply = [&out](const RunFmt& f) {
@@ -717,7 +731,8 @@ RunFmt Document::resolveRun(const Block& b, const Run& r) const {
         if (f.set & RunFmt::FFont)      out.font      = f.font;
         if (f.set & RunFmt::FColor)     out.color     = f.color;
     };
-    for (const StyleDef* s : std::as_const(chain)) apply(s->rf);
+    //  Basis zuerst, abgeleitete Vorlage zuletzt (frueher: prepend + Vorwaertslauf).
+    for (int i = depth - 1; i >= 0; --i) apply(chain[i]->rf);
     apply(r.fmt);
     return out;
 }
@@ -725,12 +740,13 @@ RunFmt Document::resolveRun(const Block& b, const Run& r) const {
 ParFmt Document::resolvePar(const Block& b) const {
     ParFmt out = m_defPar;
     out.styleId = b.pfmt.styleId;
-    QList<const StyleDef*> chain;
-    QString id = b.pfmt.styleId;
-    for (int i = 0; i < 8 && !id.isEmpty(); ++i) {
+    const StyleDef* chain[8];
+    int depth = 0;
+    QString id = b.pfmt.styleId;      // implizit geteilt → keine Kopie
+    while (depth < 8 && !id.isEmpty()) {
         auto it = m_styles.constFind(id);
         if (it == m_styles.constEnd()) break;
-        chain.prepend(&it.value());
+        chain[depth++] = &it.value();
         id = it->basedOn;
     }
     auto apply = [&out](const ParFmt& p) {
@@ -741,7 +757,8 @@ ParFmt Document::resolvePar(const Block& b) const {
         if (p.set & ParFmt::FNum)    { out.numId       = p.numId;
                                        out.ilvl        = p.ilvl;        out.set |= ParFmt::FNum; }
     };
-    for (const StyleDef* s : std::as_const(chain)) apply(s->pf);
+    //  Basis zuerst, abgeleitete Vorlage zuletzt (frueher: prepend + Vorwaertslauf).
+    for (int i = depth - 1; i >= 0; --i) apply(chain[i]->pf);
     apply(b.pfmt);
     return out;
 }

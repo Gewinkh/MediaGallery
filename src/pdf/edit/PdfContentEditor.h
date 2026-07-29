@@ -23,8 +23,16 @@
 //   • alle Fonts der Seite sind EINFACH (kein /Type0/CID) — ASCII-Byte==Zeichen,
 //   • Original- UND Ersatztext rein ASCII (0x20–0x7E; dort stimmen WinAnsi/
 //     Standard/MacRoman/PDFDoc mit ASCII überein → keine Encoding-Tabelle nötig),
-//   • der Originaltext wird als EIN `Tj`-String bzw. EIN `TJ`-Array GENAU EINMAL
-//     auf der Seite gefunden (sonst mehrdeutig → Fallback).
+//   • der Originaltext wird GENAU EINMAL auf der Seite gefunden (sonst
+//     mehrdeutig → Fallback) — entweder als EIN `Tj`-String/`TJ`-Array oder
+//     verteilt über eine FOLGE unmittelbar aufeinanderfolgender Zeige-
+//     Operatoren (Erzeuger zerlegen eine Zeile oft in mehrere Tj/TJ). Eine
+//     Folge zählt nur, solange zwischen ihren Gliedern ausschließlich
+//     Leerraum steht: sobald Positionierung (Td/TD/Tm/T*) oder ein
+//     Schriftwechsel (Tf) dazwischenliegt, bricht sie ab — der Ersatz kann
+//     also nie über einen Zeilenumbruch oder eine Schriftgrenze hinweg
+//     zusammengezogen werden. Der Ersatz landet im ERSTEN Glied, die
+//     übrigen werden geleert.
 //  Ein Fehlschlag schreibt NICHTS (kein Fragment).
 //
 //  ABHÄNGIGKEITEN: nur Qt6::Core + ZLIB (bestehende Projekt-Abhängigkeiten).

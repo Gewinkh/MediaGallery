@@ -1,4 +1,6 @@
 #include "pdf/edit/PdfContentEditor.h"
+#include "pdf/edit/PdfEncodings.h"
+#include "pdf/edit/PdfObjects.h"
 
 #include <QFile>
 #include <QSaveFile>
@@ -17,201 +19,11 @@
 // ══════════════════════════════════════════════════════════════════════════════
 namespace {
 
-// ── zlib raw/zlib inflate + deflate ─────────────────────────────────────────
-QByteArray zInflate(const QByteArray& src, bool* ok) {
-    *ok = false;
-    for (int attempt = 0; attempt < 2; ++attempt) {         // 0 = zlib-Header, 1 = raw
-        z_stream zs; std::memset(&zs, 0, sizeof(zs));
-        if (inflateInit2(&zs, attempt == 0 ? 15 : -15) != Z_OK) continue;
-        zs.next_in  = reinterpret_cast<Bytef*>(const_cast<char*>(src.constData()));
-        zs.avail_in = static_cast<uInt>(src.size());
-        QByteArray out; char buf[16384]; int rc;
-        do {
-            zs.next_out  = reinterpret_cast<Bytef*>(buf);
-            zs.avail_out = sizeof(buf);
-            rc = inflate(&zs, Z_NO_FLUSH);
-            if (rc != Z_OK && rc != Z_STREAM_END) break;
-            out.append(buf, sizeof(buf) - zs.avail_out);
-        } while (rc != Z_STREAM_END);
-        inflateEnd(&zs);
-        if (rc == Z_STREAM_END) { *ok = true; return out; }
-    }
-    return {};
-}
-
-QByteArray zDeflate(const QByteArray& src) {
-    z_stream zs; std::memset(&zs, 0, sizeof(zs));
-    if (deflateInit(&zs, Z_BEST_COMPRESSION) != Z_OK) return {};
-    zs.next_in  = reinterpret_cast<Bytef*>(const_cast<char*>(src.constData()));
-    zs.avail_in = static_cast<uInt>(src.size());
-    QByteArray out; char buf[16384]; int rc;
-    do {
-        zs.next_out  = reinterpret_cast<Bytef*>(buf);
-        zs.avail_out = sizeof(buf);
-        rc = deflate(&zs, Z_FINISH);
-        out.append(buf, sizeof(buf) - zs.avail_out);
-    } while (rc == Z_OK);
-    deflateEnd(&zs);
-    return (rc == Z_STREAM_END) ? out : QByteArray();
-}
-
-inline bool isWs(char c) { return c==' '||c=='\t'||c=='\r'||c=='\n'||c=='\f'||c=='\0'; }
-inline bool isDelim(char c) { return c=='('||c==')'||c=='<'||c=='>'||c=='['||c==']'
-                                     ||c=='{'||c=='}'||c=='/'||c=='%'; }
-
-// Objekt-Tabelle per Brute-Scan: "N G obj" → Byte-Offset + Generation (letztes
-// Vorkommen gewinnt = jüngster Inkrement-Save).
-struct ObjLoc { qint64 offset; int gen; };
-QHash<int, ObjLoc> scanObjects(const QByteArray& b) {
-    QHash<int, ObjLoc> map;
-    static const QRegularExpression re(QStringLiteral("(\\d+)\\s+(\\d+)\\s+obj"));
-    auto it = re.globalMatch(QString::fromLatin1(b));
-    while (it.hasNext()) {
-        const auto m = it.next();
-        const int num = m.captured(1).toInt();
-        const int gen = m.captured(2).toInt();
-        map.insert(num, { m.capturedStart(0), gen });        // letztes gewinnt
-    }
-    return map;
-}
-
-// Wert-Ende ab Index i (i zeigt auf das erste Nicht-WS des Wertes). Überspringt
-// Dict/Array/String/Hex/Name/Zahl/Ref/Keyword als GANZE Einheit.
-qint64 skipValue(const QByteArray& b, qint64 i) {
-    const qint64 n = b.size();
-    while (i < n && isWs(b[i])) ++i;
-    if (i >= n) return i;
-    const char c = b[i];
-    if (c == '<' && i+1 < n && b[i+1] == '<') {              // Dict
-        int depth = 0;
-        while (i < n) {
-            if (b[i]=='<' && i+1<n && b[i+1]=='<') { depth++; i+=2; }
-            else if (b[i]=='>' && i+1<n && b[i+1]=='>') { depth--; i+=2; if(depth==0) return i; }
-            else if (b[i]=='(') { i = skipValue(b, i); }
-            else ++i;
-        }
-        return i;
-    }
-    if (c == '[') {                                          // Array
-        int depth = 0;
-        while (i < n) {
-            if (b[i]=='[') { depth++; ++i; }
-            else if (b[i]==']') { depth--; ++i; if(depth==0) return i; }
-            else if (b[i]=='(') { i = skipValue(b, i); }
-            else ++i;
-        }
-        return i;
-    }
-    if (c == '(') {                                          // String (Paren, mit Escapes)
-        int depth = 0; ++i;
-        while (i < n) {
-            if (b[i]=='\\') { i += 2; continue; }
-            if (b[i]=='(') { depth++; ++i; continue; }
-            if (b[i]==')') { if (depth==0) return i+1; depth--; ++i; continue; }
-            ++i;
-        }
-        return i;
-    }
-    if (c == '<') {                                          // Hex-String
-        ++i; while (i < n && b[i] != '>') ++i; return (i<n)?i+1:i;
-    }
-    if (c == '/') {                                          // Name
-        ++i; while (i < n && !isWs(b[i]) && !isDelim(b[i])) ++i; return i;
-    }
-    // Zahl/Keyword/Bool — evtl. Referenz "N G R" (drei Tokens).
-    auto readToken = [&](qint64 p, QByteArray* tok) -> qint64 {
-        while (p < n && isWs(b[p])) ++p;
-        const qint64 s = p;
-        while (p < n && !isWs(b[p]) && !isDelim(b[p])) ++p;
-        *tok = b.mid(s, p - s); return p;
-    };
-    QByteArray t1; qint64 p1 = readToken(i, &t1);
-    bool num1 = !t1.isEmpty() && (t1.at(0)=='-' || t1.at(0)=='+' || t1.at(0)=='.'
-                                  || (t1.at(0)>='0' && t1.at(0)<='9'));
-    if (num1) {
-        QByteArray t2; qint64 p2 = readToken(p1, &t2);
-        bool num2 = !t2.isEmpty() && t2.at(0)>='0' && t2.at(0)<='9';
-        if (num2) {
-            QByteArray t3; qint64 p3 = readToken(p2, &t3);
-            if (t3 == "R") return p3;                        // Referenz
-        }
-    }
-    return p1;                                               // einfacher Token
-}
-
-// Sucht Schlüssel `/key` auf DEPTH 0 im Dict-Inhalt und liefert den Werteanfang
-// (oder -1). Dicts sind /Key Value /Key Value … → nach jedem Schlüssel wird der
-// WERT via skipValue übersprungen (so kann kein Wert-Name fälschlich matchen).
-qint64 findKey(const QByteArray& dict, const char* key) {
-    const QByteArray k = QByteArray("/") + key;
-    const qint64 n = dict.size();
-    qint64 i = 0;
-    while (i < n) {
-        while (i < n && isWs(dict[i])) ++i;
-        if (i >= n) break;
-        if (dict[i] != '/') { ++i; continue; }               // Robustheit: Streubytes
-        qint64 s = i; ++i;
-        while (i < n && !isWs(dict[i]) && !isDelim(dict[i])) ++i;
-        const QByteArray name = dict.mid(s, i - s);
-        while (i < n && isWs(dict[i])) ++i;
-        const qint64 valStart = i;
-        if (name == k) return valStart;
-        i = skipValue(dict, valStart);                       // Wert überspringen
-    }
-    return -1;
-}
-
-// Der `<< ... >>`-Inhalt eines Objektkörpers (ohne die äußeren <<>>), oder leer.
-QByteArray dictOfObject(const QByteArray& objBody) {
-    const qint64 s = objBody.indexOf("<<");
-    if (s < 0) return {};
-    qint64 e = skipValue(objBody, s);                        // bis inkl. schließendes >>
-    if (e <= s) return {};
-    return objBody.mid(s + 2, (e - 2) - (s + 2));
-}
-
-// Referenz "/key N G R" → Objektnummer (-1 falls keine).
-int refValue(const QByteArray& dict, const char* key) {
-    const qint64 i = findKey(dict, key);
-    if (i < 0) return -1;
-    const QByteArray tail = dict.mid(i, 40);
-    static const QRegularExpression re(QStringLiteral("^(\\d+)\\s+(\\d+)\\s+R"));
-    const auto m = re.match(QString::fromLatin1(tail));
-    return m.hasMatch() ? m.captured(1).toInt() : -1;
-}
-
-// Name-Wert "/key /Name" → "/Name" (oder leer).
-QByteArray nameValue(const QByteArray& dict, const char* key) {
-    const qint64 i = findKey(dict, key);
-    if (i < 0 || i >= dict.size() || dict[i] != '/') return {};
-    qint64 e = i + 1;
-    while (e < dict.size() && !isWs(dict[e]) && !isDelim(dict[e])) ++e;
-    return dict.mid(i, e - i);
-}
-
-// Ganzzahl-Wert "/key 123" (nur direkte Zahl; -1 sonst).
-qint64 intValue(const QByteArray& dict, const char* key) {
-    const qint64 i = findKey(dict, key);
-    if (i < 0) return -1;
-    qint64 e = i; bool any=false;
-    if (e < dict.size() && (dict[e]=='+'||dict[e]=='-')) ++e;
-    while (e < dict.size() && dict[e]>='0' && dict[e]<='9') { ++e; any=true; }
-    return any ? dict.mid(i, e-i).toLongLong() : -1;
-}
-
-// Objektkörper "N G obj … endobj" ab Offset.
-QByteArray objectBody(const QByteArray& buf, qint64 offset) {
-    const qint64 s = buf.indexOf("obj", offset);
-    if (s < 0) return {};
-    qint64 e = buf.indexOf("endobj", s);
-    if (e < 0) return {};
-    return buf.mid(s + 3, e - (s + 3));
-}
-
-bool asciiOnly(const QString& s) {
-    for (QChar c : s) if (c.unicode() < 0x20 || c.unicode() > 0x7E) return false;
-    return true;
-}
+//  Die generischen PDF-Objekt-Helfer liegen jetzt in
+//  PdfObjects.h — sie werden auch vom Vektor-Export gebraucht und sind
+//  bewusst nur EINMAL vorhanden (dieselbe streng geprüfte Byte-Arbeit
+//  zweimal zu pflegen wäre die schlechtere Lösung).
+using namespace mg::pdfobj;
 
 // PDF-Paren-String → Bytes (Escapes auflösen). in zeigt HINTER '('.
 QByteArray decodeParenString(const QByteArray& b, qint64 open, qint64 closeExcl) {
@@ -242,13 +54,22 @@ QByteArray decodeParenString(const QByteArray& b, qint64 open, qint64 closeExcl)
     return out;
 }
 
-// ASCII-Text → PDF-Paren-String "(...)" (nur ( ) \ escapen — ASCII sonst 1:1).
-QByteArray encodeParenString(const QString& s) {
+// Bytes → PDF-Paren-String "(...)".
+//  ( ) \ werden escapt; Bytes ausserhalb des druckbaren ASCII zusaetzlich
+//  OKTAL (\ddd). Das ist nötig, seit auch Nicht-ASCII-Kodierungen (WinAnsi/
+//  MacRoman) unterstützt werden: rohe Bytes ≥ 0x80 im String wären zwar nach
+//  Spezifikation erlaubt, aber \ddd ist die robuste, 7-Bit-sichere Form und
+//  vermeidet Ärger mit Werkzeugen, die den Strom als Text behandeln.
+QByteArray encodeParenBytes(const QByteArray& bytes) {
     QByteArray out = "(";
-    for (QChar c : s) {
-        char ch = char(c.unicode());
-        if (ch=='(' || ch==')' || ch=='\\') out += '\\';
-        out += ch;
+    for (char c : bytes) {
+        const unsigned char u = static_cast<unsigned char>(c);
+        if (c=='(' || c==')' || c=='\\') { out += '\\'; out += c; }
+        else if (u < 0x20 || u > 0x7E) {
+            out += '\\';
+            out += QByteArray::number(u, 8).rightJustified(3, '0');
+        }
+        else out += c;
     }
     out += ")";
     return out;
@@ -257,7 +78,23 @@ QByteArray encodeParenString(const QString& s) {
 // Ein Textzeige-Treffer im Content-Stream: Byte-Bereich des zu ersetzenden
 // Operanden (String bei Tj bzw. Array bei TJ), der dekodierte ASCII-Text und ob
 // es ein TJ-Array ist (dann muss der Ersatz ein Array bleiben).
-struct ShowHit { qint64 start; qint64 end; QString text; bool isArray; };
+//  `opEnd` = Byte-Position HINTER dem Operator-Schlüsselwort (Tj/TJ). Damit
+//  lässt sich prüfen, ob zwei Treffer UNMITTELBAR aufeinander folgen: liegt
+//  zwischen dem Operator des einen und dem Operanden des nächsten nur
+//  Leerraum, zeichnen beide ohne dazwischenliegende Positionierung (Td/TD/Tm/
+//  T*/Tf …) weiter — nur dann darf ihr Text als EINE zusammenhängende Stelle
+//  behandelt werden (s. `runsAreAdjacent`).
+//  `bytes` sind die ROHEN Stringbytes (bei TJ: alle String-Elemente
+//  aneinandergehängt). Sie werden ERST in editText entschlüsselt, wo die
+//  Kodierung der aktiven Schrift bekannt ist — vorher stünde nur eine
+//  Latin-1-Vermutung zur Verfügung, die bei WinAnsi/MacRoman falsch wäre.
+//  `fontRes` ist der Ressourcenname der zuletzt per `Tf` gesetzten Schrift.
+//  `size`/`charSp`/`wordSp` sind der Textzustand AN DIESER STELLE (Tf/Tc/Tw).
+//  Die Teil-Redaktion (s. unten) braucht sie, um die entstehende Lücke exakt
+//  auszugleichen — und lehnt ab, sobald sie ihn nicht sicher kennt.
+struct ShowHit { qint64 start; qint64 end; qint64 opEnd;
+                 QByteArray bytes; bool isArray; QByteArray fontRes;
+                 double size = 0.0; double charSp = 0.0; double wordSp = 0.0; };
 
 // Findet alle Tj/TJ-Treffer im (inflateten) Content-Stream. Überspringt
 // Inline-Bilder (BI…EI), damit deren Binärdaten nicht als Tokens missraten.
@@ -266,7 +103,13 @@ QVector<ShowHit> scanTextShows(const QByteArray& c) {
     const qint64 n = c.size();
     qint64 i = 0;
     // „Letzter Operand": Bereich + Typ (0 = keiner, 1 = String, 2 = Array).
-    qint64 lastStart = -1, lastEnd = -1; int lastType = 0; QString lastText;
+    qint64 lastStart = -1, lastEnd = -1; int lastType = 0; QByteArray lastBytes;
+    QByteArray lastName;      // zuletzt gesehener /Name-Operand (für Tf)
+    QByteArray curFont;       // aktive Schrift laut letztem "…Tf"
+    //  Textzustand: Schriftgröße (Tf), Zeichen- und Wortabstand (Tc/Tw).
+    double curSize = 0.0, curCharSp = 0.0, curWordSp = 0.0;
+    //  Die zuletzt gesehenen Zahlen-Operanden (Tf/Tc/Tw brauchen sie).
+    double num1 = 0.0, num2 = 0.0;
     while (i < n) {
         char ch = c[i];
         if (isWs(ch)) { ++i; continue; }
@@ -274,36 +117,41 @@ QVector<ShowHit> scanTextShows(const QByteArray& c) {
         if (ch == '(') {
             qint64 e = skipValue(c, i);
             lastStart=i; lastEnd=e; lastType=1;
-            lastText = QString::fromLatin1(decodeParenString(c, i, e));
+            lastBytes = decodeParenString(c, i, e);
             i = e; continue;
         }
         if (ch == '<' && !(i+1<n && c[i+1]=='<')) {          // Hex-String
             qint64 e = skipValue(c, i);
             lastStart=i; lastEnd=e; lastType=1;
             QByteArray hex = c.mid(i+1, e-1-(i+1)); hex.replace(" ","").replace("\n","").replace("\r","");
-            lastText = QString::fromLatin1(QByteArray::fromHex(hex));
+            lastBytes = QByteArray::fromHex(hex);
             i = e; continue;
         }
         if (ch == '[') {
             qint64 e = skipValue(c, i);
             // Array-Text = Verkettung seiner String-Elemente (Zahlen = Spacing).
             QByteArray inner = c.mid(i, e-i);
-            QString t; qint64 j = 0;
+            QByteArray t; qint64 j = 0;
             while (j < inner.size()) {
                 if (inner[j]=='(') { qint64 je = skipValue(inner, j);
-                    t += QString::fromLatin1(decodeParenString(inner, j, je)); j = je; }
+                    t += decodeParenString(inner, j, je); j = je; }
                 else if (inner[j]=='<') { qint64 je = skipValue(inner, j);
                     QByteArray hex = inner.mid(j+1, je-1-(j+1)); hex.replace(" ","").replace("\n","").replace("\r","");
-                    t += QString::fromLatin1(QByteArray::fromHex(hex)); j = je; }
+                    t += QByteArray::fromHex(hex); j = je; }
                 else ++j;
             }
-            lastStart=i; lastEnd=e; lastType=2; lastText=t;
+            lastStart=i; lastEnd=e; lastType=2; lastBytes=t;
             i = e; continue;
         }
         if (ch == '<' && i+1<n && c[i+1]=='<') { i = skipValue(c, i); lastType=0; continue; }
-        if (ch == '/') { i = skipValue(c, i); lastType=0; continue; }
+        if (ch == '/') { const qint64 ns = i; i = skipValue(c, i);
+                         lastName = c.mid(ns, i-ns); lastType=0; continue; }
         if (ch=='-'||ch=='+'||ch=='.'||(ch>='0'&&ch<='9')) {  // Zahl
-            ++i; while (i<n && !isWs(c[i]) && !isDelim(c[i])) ++i; continue;
+            const qint64 ns2 = i;
+            ++i; while (i<n && !isWs(c[i]) && !isDelim(c[i])) ++i;
+            num1 = num2;
+            num2 = c.mid(ns2, i - ns2).toDouble();
+            continue;
         }
         // Keyword/Operator
         qint64 s = i; while (i<n && !isWs(c[i]) && !isDelim(c[i])) ++i;
@@ -312,13 +160,40 @@ QVector<ShowHit> scanTextShows(const QByteArray& c) {
             qint64 ei = c.indexOf("EI", i);
             i = (ei < 0) ? n : ei + 2; lastType = 0; continue;
         }
+        if (op == "Tf") { curFont = lastName; curSize = num2; }   // "/F1 12 Tf"
+        else if (op == "Tc") curCharSp = num2;
+        else if (op == "Tw") curWordSp = num2;
         if (op == "Tj" && lastType == 1)
-            hits.push_back({ lastStart, lastEnd, lastText, false });
+            hits.push_back({ lastStart, lastEnd, i, lastBytes, false, curFont,
+                             curSize, curCharSp, curWordSp });
         else if (op == "TJ" && lastType == 2)
-            hits.push_back({ lastStart, lastEnd, lastText, true });
+            hits.push_back({ lastStart, lastEnd, i, lastBytes, true, curFont,
+                             curSize, curCharSp, curWordSp });
         lastType = 0;
     }
     return hits;
+}
+
+//  Folgen zwei Treffer UNMITTELBAR aufeinander? Nur wenn zwischen dem Operator
+//  des ersten und dem Operanden des zweiten ausschließlich Leerraum (oder ein
+//  Kommentar) steht. Jede andere Anweisung dazwischen — insbesondere
+//  Positionierung (Td/TD/Tm/T*) oder ein Schriftwechsel (Tf) — bedeutet, dass
+//  die Stücke an verschiedenen Stellen bzw. in verschiedenen Schriften
+//  gezeichnet werden; sie dürfen dann NICHT zu einer Fundstelle zusammengefasst
+//  werden, weil der Ersatz sonst an die Position des ERSTEN Stücks rutschen und
+//  der Zeilenumbruch bzw. die Schriftzuordnung verloren gehen würde.
+bool showsAreAdjacent(const QByteArray& c, const ShowHit& a, const ShowHit& b) {
+    qint64 i = a.opEnd;
+    while (i < b.start) {
+        const char ch = c[i];
+        if (isWs(ch)) { ++i; continue; }
+        if (ch == '%') {                              // Kommentar bis Zeilenende
+            while (i < b.start && c[i] != '\n' && c[i] != '\r') ++i;
+            continue;
+        }
+        return false;                                 // echte Anweisung dazwischen
+    }
+    return true;
 }
 
 }  // namespace
@@ -371,6 +246,36 @@ bool PdfContentEditor::editText(const QString& inputPath, const QString& outputP
     };
     auto dictOf = [&](int num) -> QByteArray { return dictOfObject(bodyOf(num)); };
 
+    //  Entpackte Nutzdaten eines Stream-Objekts (roh oder /FlateDecode).
+    //  Wird für /Contents UND für /ToUnicode-CMaps gebraucht; `ok` bleibt
+    //  false bei fremdem Filter oder defektem Strom.
+    auto streamDataOf = [&](int num, bool* ok) -> QByteArray {
+        *ok = false;
+        const QByteArray body = bodyOf(num);
+        if (body.isEmpty()) return {};
+        const QByteArray d = dictOfObject(body);
+        const QByteArray filt = nameValue(d, "Filter");
+        const bool fl = (filt == "/FlateDecode");
+        if (!filt.isEmpty() && !fl) return {};
+        qint64 sp = body.indexOf("stream");
+        if (sp < 0) return {};
+        sp += 6;
+        if (sp < body.size() && body[sp]=='\r') ++sp;
+        if (sp < body.size() && body[sp]=='\n') ++sp;
+        const qint64 ep = body.indexOf("endstream", sp);
+        if (ep < 0) return {};
+        qint64 len = ep - sp;
+        const qint64 dl = intValue(d, "Length");
+        if (dl >= 0 && dl <= len) len = dl;
+        const QByteArray raw = body.mid(sp, len);
+        if (!fl) { *ok = true; return raw; }
+        bool infOk = false;
+        const QByteArray inf = zInflate(raw, &infOk);
+        if (!infOk) return {};
+        *ok = true;
+        return inf;
+    };
+
     // Seitenbaum einsammeln (mit vererbtem /Resources), Reihenfolge = Dokument.
     const int pagesRoot = refValue(dictOf(rootNum), "Pages");
     if (pagesRoot < 0) return fail("kein /Pages");
@@ -415,26 +320,114 @@ bool PdfContentEditor::editText(const QString& inputPath, const QString& outputP
 
     for (const PdfTextEdit& ed : edits) {
         if (ed.page < 0 || ed.page >= pageObjs.size()) return fail("Seitenindex außerhalb");
-        if (!asciiOnly(ed.original) || !asciiOnly(ed.replacement)) return fail("Nicht-ASCII-Text");
         if (ed.original.isEmpty()) return fail("leerer Originaltext");
+        //  KEINE ASCII-Vorabprüfung mehr: ob ein Zeichen darstellbar ist, hängt
+        //  an der Kodierung der SCHRIFT an der Fundstelle und wird dort geprüft
+        //  (s. unten, `enc.encode`).
 
         const int pnum = pageObjs[ed.page];
         const QByteArray pdict = dictOf(pnum);
         const QByteArray res   = pageRes[ed.page];
 
-        // Font-Sicherheit: KEIN /Type0 unter /Resources/Font.
+        // Font-Sicherheit + Kodierung je Ressourcenname (/F1 → Encoding).
+        //  KEIN /Type0 (CID) — dafür fehlt das CMap-Round-Tripping.
+        QHash<QByteArray, mg::pdfenc::Encoding> fontEnc;
+        //  Glyphenbreiten je Schrift-Ressource: /FirstChar + /Widths (in
+        //  1/1000 em). NUR einfache Schriften; fehlt eines von beidem, bleibt
+        //  die Ressource hier ungenannt — die Teil-Redaktion lehnt dann ab,
+        //  statt mit geschätzten Breiten zu rechnen.
+        struct FontWidths { int firstChar = 0; QVector<double> widths; };
+        QHash<QByteArray, FontWidths> fontW;
         {
             const qint64 fp = findKey(res, "Font");
             if (fp < 0) return fail("keine Fonts (Sicherheitscheck)");
             QByteArray fontDict;
             if (res[fp] == '<') { qint64 e = skipValue(res, fp); fontDict = res.mid(fp+2, (e-2)-(fp+2)); }
             else { const int fn = refValue(res, "Font"); if (fn<0) return fail("Font-Ref"); fontDict = dictOf(fn); }
-            static const QRegularExpression fre(QStringLiteral("(\\d+)\\s+(\\d+)\\s+R"));
-            auto it = fre.globalMatch(QString::fromLatin1(fontDict));
-            while (it.hasNext()) {
-                const int fn = it.next().captured(1).toInt();
-                if (nameValue(dictOf(fn), "Subtype") == "/Type0")
-                    return fail("Type0/CID-Font → Fallback");
+
+            //  Das Font-Dict ist "/F1 5 0 R /F2 6 0 R …" — Name und Objekt
+            //  paarweise auslesen, damit die Kodierung dem im Content-Stream
+            //  benutzten Ressourcennamen zugeordnet werden kann.
+            qint64 i = 0;
+            while (i < fontDict.size()) {
+                while (i < fontDict.size() && isWs(fontDict[i])) ++i;
+                if (i >= fontDict.size() || fontDict[i] != '/') { ++i; continue; }
+                const qint64 ns = i;
+                i = skipValue(fontDict, i);
+                const QByteArray resName = fontDict.mid(ns, i - ns);
+                const qint64 vs = i;
+                i = skipValue(fontDict, vs);
+                const QByteArray refTail = fontDict.mid(vs, i - vs);
+                static const QRegularExpression rre(QStringLiteral("^\\s*(\\d+)\\s+(\\d+)\\s+R"));
+                const auto m = rre.match(QString::fromLatin1(refTail));
+                if (!m.hasMatch()) continue;
+                const int fn = m.captured(1).toInt();
+                const QByteArray fd = dictOf(fn);
+
+                //  ── Type0 (CID) ────────────────────────────────────────────
+                //  Die Stringbytes sind hier 2-Byte-CIDs, also Glyphennummern
+                //  der (meist als Teilmenge eingebetteten) Schrift. Welches
+                //  Zeichen dahintersteht, sagt einzig die /ToUnicode-CMap.
+                //  Unterstützt wird NUR /Identity-H: bei einer anderen
+                //  /Encoding-CMap wäre schon die Zerlegung in Codes unklar.
+                if (nameValue(fd, "Subtype") == "/Type0") {
+                    const QByteArray encName = nameValue(fd, "Encoding");
+                    if (encName != "/Identity-H")
+                        return fail("Type0 ohne /Identity-H → Fallback");
+                    const int tuNum = refValue(fd, "ToUnicode");
+                    if (tuNum < 0)
+                        return fail("Type0 ohne /ToUnicode → Fallback");
+                    bool sOk = false;
+                    const QByteArray cmapData = streamDataOf(tuNum, &sOk);
+                    if (!sOk || cmapData.isEmpty())
+                        return fail("/ToUnicode nicht lesbar → Fallback");
+                    bool cOk = false;
+                    const mg::pdfenc::Encoding cidEnc =
+                        mg::pdfenc::Encoding::fromCidToUnicode(cmapData, &cOk);
+                    if (!cOk)
+                        return fail("/ToUnicode-CMap nicht auswertbar → Fallback");
+                    fontEnc.insert(resName, cidEnc);
+                    continue;
+                }
+
+                //  /Encoding: Name ODER Dict (letzteres ggf. als Referenz).
+                QByteArray encVal;
+                const qint64 ep = findKey(fd, "Encoding");
+                if (ep >= 0) {
+                    if (fd[ep] == '/') { qint64 e = skipValue(fd, ep); encVal = fd.mid(ep, e-ep); }
+                    else if (fd[ep] == '<') { qint64 e = skipValue(fd, ep); encVal = fd.mid(ep, e-ep); }
+                    else { const int en = refValue(fd, "Encoding");
+                           if (en >= 0) encVal = QByteArray("<<") + dictOf(en) + ">>"; }
+                }
+                bool encOk = false;
+                const mg::pdfenc::Encoding enc =
+                    mg::pdfenc::Encoding::fromEncodingValue(encVal, &encOk);
+                if (!encOk) return fail("unbekannter Glyphenname in /Differences → Fallback");
+                fontEnc.insert(resName, enc);
+                {   //  Breiten mitnehmen, soweit die Schrift sie mitbringt.
+                    const QByteArray wRaw = [&]() -> QByteArray {
+                        const qint64 wp = findKey(fd, "Widths");
+                        if (wp < 0) return {};
+                        if (fd[wp] == '[') { const qint64 e = skipValue(fd, wp);
+                                             return fd.mid(wp, e - wp); }
+                        const int wn = refValue(fd, "Widths");
+                        return (wn >= 0) ? bodyOf(wn).trimmed() : QByteArray();
+                    }();
+                    const qint64 fcp = findKey(fd, "FirstChar");
+                    if (wRaw.startsWith('[') && fcp >= 0) {
+                        FontWidths fw;
+                        fw.firstChar = fd.mid(fcp, 12).simplified().split(' ').value(0).toInt();
+                        const QByteArray inner = wRaw.mid(1, wRaw.size() - 2).simplified();
+                        for (const QByteArray& part : inner.split(' ')) {
+                            if (part.isEmpty()) continue;
+                            bool okw = false;
+                            const double d = part.toDouble(&okw);
+                            if (okw) fw.widths.push_back(d);
+                        }
+                        if (!fw.widths.isEmpty())
+                            fontW.insert(resName, fw);
+                    }
+                }
             }
         }
 
@@ -484,23 +477,175 @@ bool PdfContentEditor::editText(const QString& inputPath, const QString& outputP
         // mehrere Ersetzungen dieselbe Seite betreffen.
         if (edited.contains(cnum)) content = edited.value(cnum).data;
 
-        // Treffer suchen: der Originaltext GENAU EINMAL als Tj-String bzw.
-        // TJ-Array.
+        // ── Treffer suchen ──────────────────────────────────────────────────
+        //  Der Originaltext muss GENAU EINMAL vorkommen — entweder als EIN
+        //  Tj-String/TJ-Array oder, seit der Erweiterung, verteilt über eine
+        //  FOLGE unmittelbar aufeinanderfolgender Zeige-Operatoren.
+        //
+        //  Warum das nötig ist: Erzeuger zerlegen eine Zeile regelmäßig in
+        //  mehrere Operatoren — etwa `(Hal) Tj (lo) Tj` nach einem Kerning-Paar
+        //  oder abwechselnde Tj/TJ-Stücke. Der Text steht dann VISUELL
+        //  zusammenhängend auf einer Zeile, war für die Suche aber nie
+        //  auffindbar, und jede solche Ersetzung fiel auf den Raster-Export
+        //  zurück.
+        //
+        //  Sicherheit: eine Folge zählt nur, wenn zwischen ihren Gliedern
+        //  ausschließlich Leerraum steht (`showsAreAdjacent`) — sobald
+        //  Positionierung oder ein Schriftwechsel dazwischenliegt, bricht die
+        //  Folge ab. Damit kann der Ersatz nie über einen Zeilenumbruch oder
+        //  eine Schriftgrenze hinweg zusammengezogen werden.
         const QVector<ShowHit> hits = scanTextShows(content);
-        int matchIdx = -1, matchCount = 0;
-        for (int k = 0; k < hits.size(); ++k)
-            if (hits[k].text == ed.original) { matchIdx = k; ++matchCount; }
-        if (matchCount == 0) return fail("Originaltext nicht gefunden → Fallback");
+
+        //  Die Rohbytes jedes Treffers werden mit der Kodierung SEINER Schrift
+        //  entschlüsselt. Ist die Schrift unbekannt (kein passendes /Tf oder
+        //  fehlender Ressourceneintrag), gilt die konservative ASCII-Tabelle —
+        //  Nicht-ASCII-Bytes werden dann zu U+FFFD und passen sicher auf keinen
+        //  Originaltext, statt zufällig zu treffen.
+        const mg::pdfenc::Encoding asciiFallback;
+        auto encOfHit = [&](const ShowHit& h) -> const mg::pdfenc::Encoding& {
+            const auto it = fontEnc.constFind(h.fontRes);
+            return (it == fontEnc.constEnd()) ? asciiFallback : it.value();
+        };
+        QVector<QString> hitText;
+        hitText.reserve(hits.size());
+        for (const ShowHit& h : hits)
+            hitText.push_back(encOfHit(h).decode(h.bytes));
+
+        int matchStart = -1, matchLen = 0, matchCount = 0;
+        for (int k = 0; k < hits.size(); ++k) {
+            QString acc;
+            for (int j = k; j < hits.size(); ++j) {
+                if (j > k && !showsAreAdjacent(content, hits[j-1], hits[j]))
+                    break;                        // Folge endet hier
+                acc += hitText[j];
+                if (acc.size() > ed.original.size())
+                    break;                        // schon zu lang → abbrechen
+                if (acc == ed.original) {
+                    //  Kürzeste Folge ab k gewinnt; über alle k zählen wir die
+                    //  Fundstellen, um Mehrdeutigkeit zu erkennen.
+                    if (matchCount == 0) { matchStart = k; matchLen = j - k + 1; }
+                    ++matchCount;
+                    break;
+                }
+            }
+        }
+        // ── TEIL-REDAKTION: der Text steht MITTEN in EINEM Zeige-String ─────
+        //  Der Weg oben ersetzt nur GANZE Zeige-Strings (bzw. Folgen davon).
+        //  Für das Schwärzen ist das zu grob: „Name Muster Geheim" steht oft in
+        //  EINEM Tj, und nur „Geheim" soll verschwinden.
+        //
+        //  Das Herauslösen verschiebt den Rest der Zeile nach links — es sei
+        //  denn, die entstehende Lücke wird ausgeglichen. Genau das tut der
+        //  TJ-Versatz: `(Name Muster ) -2778 (…)` schiebt um 2.778 · Schriftgröße
+        //  nach rechts, also exakt um die Breite der entfernten Zeichen.
+        //  Gerechnet wird NUR mit den Breiten, die die Schrift selbst mitbringt
+        //  (`/Widths`) — geschätzt wird nichts.
+        //
+        //  BEWUSST ENG (sonst Ablehnung, nie Raten):
+        //   • nur ENTFERNEN (leerer Ersatz) — ein anderer Text hätte eine
+        //     eigene Breite, die zusätzlich zu verrechnen wäre,
+        //   • nur ein einfacher `Tj`-String (ein TJ-Array bringt eigene
+        //     Versätze mit, die mitgerechnet werden müssten),
+        //   • Zeichen- und Wortabstand müssen 0 sein (Tc/Tw gehen sonst in die
+        //     Vorschubrechnung ein),
+        //   • Schriftgröße bekannt, Breiten für JEDES entfernte Zeichen da,
+        //   • der Text kommt im Dokument genau EINMAL vor.
+        bool partial = false;
+        int  partialHit = -1, partialAt = -1;
+        if (matchCount == 0 && ed.replacement.isEmpty()) {
+            int found = 0;
+            for (int k = 0; k < hits.size(); ++k) {
+                const int at = hitText[k].indexOf(ed.original);
+                if (at < 0) continue;
+                //  Mehrfach in DERSELBEN Zeichenkette? Dann ist es mehrdeutig.
+                if (hitText[k].indexOf(ed.original, at + 1) >= 0) { found += 2; break; }
+                ++found;
+                partialHit = k;
+                partialAt  = at;
+            }
+            if (found == 1) partial = true;
+            else if (found > 1) return fail("Originaltext mehrdeutig → Fallback");
+        }
+
+        if (!partial && matchCount == 0) return fail("Originaltext nicht gefunden → Fallback");
         if (matchCount > 1) return fail("Originaltext mehrdeutig → Fallback");
 
-        const ShowHit& h = hits[matchIdx];
-        QByteArray repl;
-        if (h.isArray) repl = QByteArray("[") + (ed.replacement.isEmpty() ? QByteArray()
-                                                 : encodeParenString(ed.replacement)) + "]";
-        else           repl = ed.replacement.isEmpty() ? QByteArray("()")
-                                                        : encodeParenString(ed.replacement);
+        if (partial) {
+            const ShowHit& h = hits[partialHit];
+            if (h.isArray)        return fail("Teiltext in einem TJ-Array → Fallback");
+            if (h.size <= 0.0)    return fail("Schriftgröße unbekannt → Fallback");
+            if (h.charSp != 0.0 || h.wordSp != 0.0)
+                return fail("Zeichen-/Wortabstand gesetzt → Fallback");
+
+            const auto wit = fontW.constFind(h.fontRes);
+            if (wit == fontW.constEnd()) return fail("keine /Widths → Fallback");
+
+            //  Byte-Index == Zeichen-Index gilt nur, solange die Zeichenkette
+            //  rein ASCII ist — das prüft diese Einheit ohnehin für Original
+            //  und Ersatz, hier zusätzlich für den GANZEN String.
+            const QString whole = hitText[partialHit];
+            for (const QChar c2 : whole)
+                if (c2.unicode() < 0x20 || c2.unicode() > 0x7E)
+                    return fail("Teiltext nur in reinem ASCII → Fallback");
+            if (whole.size() != h.bytes.size())
+                return fail("Byte-/Zeichenlänge weichen ab → Fallback");
+
+            //  Breite der entfernten Zeichen (1/1000 em) aufsummieren.
+            double removed = 0.0;
+            for (int k = 0; k < ed.original.size(); ++k) {
+                const int code = static_cast<unsigned char>(h.bytes.at(partialAt + k));
+                const int idx  = code - wit->firstChar;
+                if (idx < 0 || idx >= wit->widths.size())
+                    return fail("Breite eines Zeichens fehlt → Fallback");
+                removed += wit->widths.at(idx);
+            }
+
+            const QByteArray prefix = h.bytes.left(partialAt);
+            const QByteArray suffix = h.bytes.mid(partialAt + ed.original.size());
+
+            //  Neues TJ-Array: Vorderteil, Versatz (negativ = nach rechts),
+            //  Hinterteil. Leere Teile werden weggelassen.
+            QByteArray arr = "[";
+            if (!prefix.isEmpty()) arr += encodeParenBytes(prefix);
+            //  Steht nichts mehr dahinter, braucht es auch keinen Ausgleich —
+            //  dann verschiebt sich nichts.
+            if (!suffix.isEmpty()) {
+                arr += " " + QByteArray::number(-removed, 'f', 0) + " ";
+                arr += encodeParenBytes(suffix);
+            }
+            arr += "] TJ";
+
+            QByteArray nc = content;
+            nc.replace(h.start, h.opEnd - h.start, arr);
+            edited.insert(cnum, { cnum, cit->gen, nc });
+            continue;
+        }
+
+        //  Der GESAMTE Ersatz wandert in das ERSTE Glied der Folge; alle
+        //  weiteren Glieder werden geleert (ihre Operatoren bleiben stehen, sie
+        //  zeichnen nur nichts mehr). Da die Folge nachweislich ohne
+        //  Positionierung dazwischen auskommt, beginnt der Ersatz exakt an der
+        //  Stelle, an der der Originaltext begann.
+        //  Von HINTEN nach vorn ersetzen, damit die vorderen Byte-Offsets
+        //  gültig bleiben.
+        //  Der Ersatz muss in der Kodierung der Schrift AN DER FUNDSTELLE
+        //  darstellbar sein — sonst stünden im PDF Bytes, die diese Schrift gar
+        //  nicht kennt. Nicht darstellbar → sauber ablehnen (Raster-Fallback).
+        QByteArray replBytes;
+        if (!encOfHit(hits[matchStart]).encode(ed.replacement, &replBytes))
+            return fail("Ersatztext in der Schriftkodierung nicht darstellbar → Fallback");
+
         QByteArray nc = content;
-        nc.replace(h.start, h.end - h.start, repl);
+        for (int j = matchStart + matchLen - 1; j >= matchStart; --j) {
+            const ShowHit& h = hits[j];
+            const QByteArray piece = (j == matchStart) ? replBytes : QByteArray();
+            QByteArray repl;
+            if (h.isArray) repl = QByteArray("[") + (piece.isEmpty() ? QByteArray()
+                                                     : encodeParenBytes(piece)) + "]";
+            else           repl = piece.isEmpty() ? QByteArray("()")
+                                                  : encodeParenBytes(piece);
+            nc.replace(h.start, h.end - h.start, repl);
+        }
         edited.insert(cnum, { cnum, cit->gen, nc });
     }
     if (edited.isEmpty()) return fail("nichts ersetzt");

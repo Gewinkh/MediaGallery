@@ -2,6 +2,7 @@ pragma ComponentBehavior: Bound
 import QtQuick
 import QtQuick.Window
 import QtQuick.Controls
+import QtQuick.Dialogs
 import QtQuick.Pdf
 import QtMultimedia
 import MediaGallery 1.0
@@ -134,6 +135,10 @@ Item {
     // ÜBER den Seitenrand hinaus sichtbar über die Lücke auf die Nachbarseite
     // gleitet (sonst malte die später erzeugte Nachbarseite sie zu).
     property int  editDragPage: -1
+    // „Text bearbeiten" ist aktiv UND ein Caret steht — dann gehören Tasten
+    // (auch „+"/„−") dem Text und nicht den Ansichts-Kürzeln.
+    readonly property bool caretActive: editCtl.editMode && editCtl.tool === 7
+                                        && editCtl.caretPage >= 0
 
     function commitEditing() { editCommitRev++ }
 
@@ -221,6 +226,18 @@ Item {
         root.editCtl.exportContentEdited()
     }
 
+    //  EIN Export-Weg für die Oberfläche: welcher der beiden oben tatsächlich
+    //  läuft, entscheidet die Einstellung `PdfEdit.exportLossless`
+    //  (Einstellungen → Editor → PDF-Editor → Export). Vorher gab es dafür zwei
+    //  Knöpfe nebeneinander, was die Wahl bei JEDEM Export erzwang, obwohl sie
+    //  eine Grundsatzentscheidung ist. Der verlustfreie Weg fällt im Controller
+    //  ohnehin selbsttätig auf den Raster-Export zurück, wo er nicht sicher
+    //  anwendbar ist — die Einstellung kann also nichts unmöglich machen.
+    function startExport() {
+        if (PdfEdit.exportLossless) root.startContentExport()
+        else                        root.startPdfExport()
+    }
+
     // ── Tunbare Cache-Deckel ──────────────────────────────────────────────────
     //  Scroll-Vorhalte/-Cache in Viewporthoehen je Richtung. 1.5 ≈ eine Seite
     //  ober- und unterhalb bleibt gerendert (Scroll-zurueck ohne Reload). Hoeher
@@ -250,6 +267,12 @@ Item {
     // Baut die image://pdfthumb/<docId>/<page>-URLs der Seitenleiste.
     property int    _thumbDocId: 0
 
+    //  Quelle der Vorschauleiste = die Datei, die die Ansicht rendert.
+    function _thumbSource() {
+        var p = root.editCtl.renderSourcePath()
+        return (p && p.length > 0) ? p : root.source
+    }
+
     // Warmlauf nach jedem (Neu-)Laden anstossen: erst sichtbare Seite, dann Rest.
     function _beginWarmup() {
         root._warm = false
@@ -263,8 +286,13 @@ Item {
             // Vorrendern der Seitenleiste anstossen, BEVOR die Delegates ueber
             // _warm entstehen → sie binden sofort die korrekte docId. Sichtbare
             // Seite (currentPage) wird im Provider zuerst gerendert.
+            //  Vorschauen der Datei, die auch die Seiten zeigt: Bei geändertem
+            //  Seiten-Plan ist das die gebackene Arbeitsdatei — sonst zeigte die
+            //  Leiste die Originalreihenfolge, während die Ansicht längst
+            //  umsortiert ist.
             if (root.source.length > 0)
-                root._thumbDocId = PdfThumbs.ensureDocument(root.source, root.currentPage)
+                root._thumbDocId = PdfThumbs.ensureDocument(root._thumbSource(),
+                                                            root.currentPage)
             root._warm = true
         }
     }
@@ -476,6 +504,15 @@ Item {
                 root._ocrWantedPage = -1
             }
         }
+        //  Suchlauf hat neue Treffer (er läuft stückweise) → Anzeige nachziehen
+        //  und beim ERSTEN Treffer gleich dorthin springen.
+        function onSearchChanged() {
+            root._searchRev++
+            if (pdfTextCtl.searchCount > 0 && root.searchIndex < 0)
+                root.goToHit(0)
+            else if (pdfTextCtl.searchCount === 0)
+                root.searchIndex = -1
+        }
         //  OCR fertig: Zeilenfang-Cache invalidieren (nutzt jetzt die OCR-Zeilen)
         //  und Rückmeldung geben.
         function onOcrReady(page, lineCount) {
@@ -491,6 +528,15 @@ Item {
         target: root.editCtl
         // Aufgabe 3: Seiten-Plan geändert → gebackene Arbeitsdatei neu rendern.
         function onDocumentRewritten() { root._reloadRenderDoc() }
+        //  Seitenstruktur geändert (umsortiert/gedreht/eingefügt/entfernt) →
+        //  Vorschauleiste neu rendern. BEWUSST nicht an documentRewritten
+        //  gehängt: Ein Neubau der Textebene lässt die Struktur unberührt und
+        //  würde die Vorschauen bei jedem Tippen verwerfen.
+        function onPageStructureChanged() {
+            if (root._warm && root.source.length > 0)
+                root._thumbDocId = PdfThumbs.refreshDocument(root._thumbSource(),
+                                                             root.currentPage)
+        }
         function onEditModeChanged() {
             if (root.editCtl.editMode) {
                 //  2026-07-17: Die Text-Auswahl BLEIBT beim Betreten des
@@ -519,6 +565,19 @@ Item {
                 root._toast(App.uiText(App.language, "PdfEditExportDoneToast").arg(targetPath))
             else
                 root._toast(App.uiText(App.language, "PdfEditExportFailedToast").arg(errorText))
+        }
+        //  Formular in eine Kopie geschrieben (bzw. gescheitert).
+        function onFormSaved(ok, targetPath, errorText, flattened) {
+            if (ok && flattened === true)
+                //  Kopie trägt die geänderte Seitenfolge — dafür sind die
+                //  Felder darin festgeschrieben. Das muss gesagt werden.
+                root._toast(App.uiText(App.language, "PdfFormSavedFlattenedToast")
+                                .arg(targetPath))
+            else if (ok)
+                root._toast(App.uiText(App.language, "PdfFormSavedToast").arg(targetPath))
+            else
+                root._toast(App.uiText(App.language, "PdfFormSaveFailedToast")
+                                .arg(errorText.length > 0 ? errorText : "?"))
         }
         // Content-Stream-Editing nicht (vollständig) möglich → Raster-Export.
         function onContentEditFellBack() {
@@ -553,6 +612,43 @@ Item {
         function onOverlaySaved(ok) {
             root._toast(App.uiText(App.language,
                                    ok ? "PdfEditSavedToast" : "PdfEditSaveFailedToast"))
+        }
+        // „Text bearbeiten": Die Änderung ließ sich nicht in den Content-Stream
+        // schreiben (z. B. Zeichen nicht in der Kodierung der Schrift) — der
+        // Controller hat sie verworfen, der Nutzer erfährt WARUM.
+        //  Der Absatz-Umbruch nach dem Tippen hat den Rest nicht mehr
+        //  unterbringen können — das wird gesagt, statt ihn still über den
+        //  Rand laufen zu lassen.
+        function onReflowOverflow() {
+            root._toast(App.uiText(App.language, "PdfReflowOverflow"))
+        }
+        function onTextEditFailed(reason) {
+            root._toast(App.uiText(App.language, "PdfEditTextOpFailed")
+                            .arg(reason.length > 0 ? reason : "?"))
+        }
+        // Zeichen-Layout der angeklickten Seite ist da — ist sie nicht
+        // bearbeitbar, wird das gesagt statt still nichts zu tun.
+        function onCaretReadyChanged() {
+            if (root.editCtl.tool !== 7 || root.editCtl.caretReady)
+                return
+            //  Eingefügte/gedrehte Seite: Der Controller lehnt das Caret dort
+            //  bewusst ab (die Ops adressieren die ungedrehte Quellseite) und
+            //  meldet das über caretError — dann DIESEN Grund nennen.
+            if (root.editCtl.caretError === "pagenotext") {
+                root._toast(App.uiText(App.language, "PdfCaretPageNotEditable"))
+                return
+            }
+            //  Seite gelesen, aber ohne Text: das ist kein Fehler, sondern eine
+            //  andere Lage — und ein Klick, der gar nichts meldet, wirkt kaputt.
+            if (root.editCtl.caretError === "pagenotext_empty") {
+                root._toast(App.uiText(App.language, "PdfCaretPageNoText"))
+                return
+            }
+            //  Sonst: den WIRKLICHEN Grund nennen. Ein Pauschalsatz macht aus
+            //  einem behebbaren Fall ein Rätsel — auch für Fehlermeldungen.
+            if (root.editCtl.caretPage >= 0 && root.editCtl.caretError.length > 0)
+                root._toast(App.uiText(App.language, "PdfEditCaretUnavailable")
+                                .arg(root.editCtl.caretError))
         }
     }
 
@@ -814,6 +910,12 @@ Item {
     // ein). Wirkt in BEIDEN Modi — der Eintritt in den Editmodus erzwingt
     // notesVisible=true, danach kann auch dort ausgeblendet werden (das
     // Erstellen einer Notiz blendet wieder ein, s. createArea).
+    //  Suchen wie überall: Strg+F (bzw. was die Plattform dafür vorsieht).
+    Shortcut {
+        sequences: [StandardKey.Find]
+        enabled: root.paneActive && root.docReady
+        onActivated: root.toggleSearch()
+    }
     Shortcut {
         sequence: "Alt+Q"
         enabled: root.paneActive && root.docReady
@@ -870,13 +972,49 @@ Item {
     //  „=" liegt auf derselben Taste wie „+" (ohne Shift) → als Zweit-Sequenz.
     Shortcut {
         sequences: ["+", "="]
-        enabled: root.paneActive && root.docReady
+        enabled: root.paneActive && root.docReady && !root.caretActive
         onActivated: root.zoomIn()
     }
     Shortcut {
         sequence: "-"
-        enabled: root.paneActive && root.docReady
+        enabled: root.paneActive && root.docReady && !root.caretActive
         onActivated: root.zoomOut()
+    }
+
+    // ── Tastatur des Werkzeugs „Text bearbeiten" ──────────────────────────────
+    //  Ein Shortcut kann das nicht leisten: Hier wird BELIEBIGER Text getippt,
+    //  nicht eine feste Tastenfolge abgefangen. Deshalb ein eigener, unsichtbarer
+    //  Fokus-Empfänger, der beim Setzen des Carets den Fokus holt (createArea).
+    //  Er nimmt keine Fläche ein und fängt daher keine Mausereignisse ab.
+    Item {
+        id: caretInput
+        width: 0; height: 0
+        enabled: root.caretActive
+        Keys.onPressed: (e) => {
+            if (!root.caretActive)
+                return
+            const c = root.editCtl
+            switch (e.key) {
+            case Qt.Key_Left:      c.moveCaret(-1);      e.accepted = true; return
+            case Qt.Key_Right:     c.moveCaret(1);       e.accepted = true; return
+            case Qt.Key_Up:        c.moveCaretLine(-1);  e.accepted = true; return
+            case Qt.Key_Down:      c.moveCaretLine(1);   e.accepted = true; return
+            case Qt.Key_Home:      c.caretHome();        e.accepted = true; return
+            case Qt.Key_End:       c.caretEnd();         e.accepted = true; return
+            case Qt.Key_Backspace: c.deleteAtCaret(-1);  e.accepted = true; return
+            case Qt.Key_Delete:    c.deleteAtCaret(1);   e.accepted = true; return
+            case Qt.Key_Escape:    c.clearCaret();       e.accepted = true; return
+            }
+            // Steuerkürzel (Strg+Z/C/V …) bleiben den Shortcuts überlassen.
+            if (e.modifiers & (Qt.ControlModifier | Qt.AltModifier | Qt.MetaModifier))
+                return
+            // Nur DRUCKBARE Zeichen einfügen — Rest (F-Tasten, Tab …) durchlassen.
+            if (e.text.length > 0 && e.text.charCodeAt(0) >= 0x20
+                    && e.text.charCodeAt(0) !== 0x7f) {
+                c.insertAtCaret(e.text)
+                e.accepted = true
+            }
+        }
     }
 
     onCurrentPageChanged: {
@@ -1081,6 +1219,41 @@ Item {
             root._toast(App.uiText(App.language, "PdfOcrBusy"))
         }
     }
+    // ── Suche im Dokument ────────────────────────────────────────────────────
+    //  Der Controller hält Begriff und Treffer; hier liegt nur, was die
+    //  ANZEIGE braucht: ob die Leiste offen ist und welcher Treffer gerade dran
+    //  ist. `_searchRev` zieht die Treffer-Rechtecke der Seiten nach (die Suche
+    //  läuft stückweise, also kommen sie nach und nach).
+    property bool searchVisible: false
+    property int  searchIndex: -1
+    property int  _searchRev: 0
+
+    //  Signatur/Stempel: Bild auswählen und einfügen (vom Panel-Knopf gerufen).
+    function pickStampImage() {
+        if (!root.docReady || !root.editCtl.editMode) return
+        stampFileDlg.open()
+    }
+
+    function toggleSearch() {
+        root.searchVisible = !root.searchVisible
+        if (root.searchVisible) {
+            if (root.source.length > 0) pdfTextCtl.prepare(root.source)
+            searchField.forceActiveFocus()
+            searchField.selectAll()
+        } else {
+            pdfTextCtl.clearSearch()
+            root.searchIndex = -1
+        }
+    }
+    //  Zum Treffer springen: Seite anzeigen und ihn als „aktuell" merken.
+    function goToHit(i) {
+        const n = pdfTextCtl.searchCount
+        if (n <= 0) { root.searchIndex = -1; return }
+        root.searchIndex = ((i % n) + n) % n          // umlaufend
+        const h = pdfTextCtl.searchHit(root.searchIndex)
+        if (h.page !== undefined) root.goToPage(h.page)
+    }
+
     function updateSelection(page, a0, b0, a1, b1) {
         // Auf [0..1] klemmen (Ziehen über den Seitenrand hinaus).
         a0 = Math.max(0, Math.min(1, a0)); b0 = Math.max(0, Math.min(1, b0))
@@ -1093,6 +1266,32 @@ Item {
         root._selecting = false
         if (!wasDrag) root.clearSelection()   // reiner Klick → Auswahl aufheben
     }
+    //  Auswahl → TEXTMARKIERUNG. Die Zeilenrechtecke der Textauswahl
+    //  (`selRects`, von PdfText geliefert) sind exakt das, was eine Markierung
+    //  braucht — je Zeile ein Bereich, alle zusammen EIN Objekt. Ohne Textebene
+    //  (gescannte Seite) gibt es keine Zeilen; dann markiert `fallback` genau
+    //  den aufgezogenen Bereich.
+    function markSelectionNow(style, fallback) {
+        if (!root.docReady || !root.editCtl.editMode) return false
+        const page = root.selPage >= 0 ? root.selPage : (fallback ? fallback.page : -1)
+        if (page < 0) return false
+        const pts = root.doc.pagePointSize(page)
+        if (pts.width <= 0 || pts.height <= 0) return false
+        let quads = []
+        for (var i = 0; i < root.selRects.length; i++) {
+            const r = root.selRects[i]
+            quads.push({ x: r.x * pts.width,  y: r.y * pts.height,
+                         w: r.w * pts.width,  h: r.h * pts.height })
+        }
+        if (quads.length === 0 && fallback && fallback.w > 0 && fallback.h > 0)
+            quads = [ { x: fallback.x, y: fallback.y, w: fallback.w, h: fallback.h } ]
+        if (quads.length === 0) return false
+        const id = root.editCtl.addMarkup(page, style, quads)
+        root.clearSelection()
+        if (id >= 0) root.notesVisible = true
+        return id >= 0
+    }
+
     //  Markierung → Ersetzen-Box (Arbeitsweise: Text auswählen ▸ ⇄ klicken).
     //  Bewusst auf ROOT-Ebene und über die Panel-Schaltfläche AUFGERUFEN statt
     //  über onToolChanged: war ⇄ bereits das aktive Werkzeug, feuert
@@ -1309,11 +1508,28 @@ Item {
                 onActivated: { root.commitEditing(); root.editCtl.redo() }
             }
             PdfToolButton {
+                glyph: "\uD83D\uDD0D"
+                active: root.searchVisible
+                tip: App.uiText(App.language, "PdfSearchTip")
+                onActivated: root.toggleSearch()
+            }
+            PdfToolButton {
                 glyph: "\u2261"
                 visible: root.editCtl.editMode
                 active: root.snapEnabled
                 tip: App.uiText(App.language, "PdfEditSnapTip")
                 onActivated: root.snapEnabled = !root.snapEnabled
+            }
+            // \u2500\u2500 Formular \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+            //  Nur bei einem Dokument MIT ausf\u00fcllbaren Feldern; schreibt die
+            //  eingetragenen Werte in eine Kopie \u201e\u2026_ausgefuellt.pdf".
+            //  Unabh\u00e4ngig vom Editmodus: Formulare f\u00fcllt man beim Lesen aus.
+            PdfToolButton {
+                glyph: "\u2611"
+                visible: root.editCtl.hasForm
+                enabled: root.editCtl.formDirty && !root.editCtl.busy
+                tip: App.uiText(App.language, "PdfFormSaveTip")
+                onActivated: root.editCtl.saveFormValues()
             }
             // Der frühere ⚙-Button (Text-Eigenschaften ein/aus) entfällt: das
             // Panel öffnet automatisch beim Erstellen/Auswählen einer Notiz
@@ -1377,6 +1593,73 @@ Item {
         }
     }
 
+    // ── Suchleiste (Overlay unter der Toolbar; Strg+F) ───────────────────────
+    Rectangle {
+        id: searchBar
+        visible: root.searchVisible && root.docReady
+        z: 7
+        anchors { left: parent.left; right: parent.right }
+        y: toolbar.visible ? toolbar.y + toolbar.height : root.topInset
+        height: 40
+        color: App.themeToolbarBg
+        Rectangle { anchors.bottom: parent.bottom; width: parent.width
+                    height: 1; color: App.themeBorder }
+        //  Klicks dürfen nicht auf die Seite darunter durchfallen.
+        MouseArea { anchors.fill: parent; acceptedButtons: Qt.AllButtons }
+
+        Row {
+            anchors.verticalCenter: parent.verticalCenter
+            anchors.left: parent.left
+            anchors.leftMargin: 12
+            anchors.right: parent.right
+            anchors.rightMargin: 12
+            spacing: 8
+
+            TextField {
+                id: searchField
+                objectName: "searchField"
+                width: Math.min(320, searchBar.width - 260)
+                anchors.verticalCenter: parent.verticalCenter
+                placeholderText: App.uiText(App.language, "PdfSearchPlaceholder")
+                //  Live suchen: der Controller sucht stückweise, das hält die
+                //  Oberfläche auch bei langen Dokumenten flüssig.
+                onTextChanged: {
+                    root.searchIndex = -1
+                    pdfTextCtl.search(text)
+                }
+                Keys.onReturnPressed: root.goToHit(root.searchIndex + 1)
+                Keys.onEscapePressed: root.toggleSearch()
+            }
+            Text {
+                anchors.verticalCenter: parent.verticalCenter
+                color: App.themeTextMuted
+                font.pixelSize: 12
+                text: pdfTextCtl.searchTerm.length === 0
+                      ? ""
+                      : (pdfTextCtl.searchCount === 0
+                         ? (pdfTextCtl.searching ? "…"
+                            : App.uiText(App.language, "PdfSearchNone"))
+                         : App.uiText(App.language, "PdfSearchCount")
+                               .arg(root.searchIndex + 1).arg(pdfTextCtl.searchCount)
+                           + (pdfTextCtl.searching ? " …" : ""))
+            }
+            PdfToolButton {
+                glyph: "\u25B2"
+                enabled: pdfTextCtl.searchCount > 0
+                onActivated: root.goToHit(root.searchIndex - 1)
+            }
+            PdfToolButton {
+                glyph: "\u25BC"
+                enabled: pdfTextCtl.searchCount > 0
+                onActivated: root.goToHit(root.searchIndex + 1)
+            }
+            PdfToolButton {
+                glyph: "\u2715"
+                onActivated: root.toggleSearch()
+            }
+        }
+    }
+
     // ── Inhaltsbereich ────────────────────────────────────────────────────────
     Item {
         id: contentArea
@@ -1423,8 +1706,12 @@ Item {
             // Oeffnen rendert NUR die sichtbare Seite (kein Vorab-Rendern von
             // Nachbarseiten, die sie sonst hinter dem Render-Mutex blockierten).
             // Danach klappt der volle Vorhalte-Puffer fuer fluessiges Scrollen auf.
-            cacheBuffer: Math.round(pages.height *
-                                    (root._warm ? root.pageCacheScreens : 0.1))
+            //  max(0, …): vor dem ersten Layout ist die Höhe negativ (Inset
+            //  minus Null-Höhe) — ein negativer cacheBuffer ist ungültig und
+            //  wurde beim Öffnen als Warnung gemeldet (wie bei der
+            //  Vorschauleiste unten).
+            cacheBuffer: Math.max(0, Math.round(pages.height *
+                                    (root._warm ? root.pageCacheScreens : 0.1)))
             boundsBehavior: Flickable.StopAtBounds
             onContentYChanged: root.updateCurrentPage()
             onCountChanged: root.updateCurrentPage()
@@ -1557,6 +1844,56 @@ Item {
                             }
                         }
 
+                        // ── Treffer der Dokumentsuche ─────────────────────────
+                        //  Rev-getrieben: die Suche liefert stückweise, die
+                        //  Rechtecke kommen normalisiert wie die Auswahl.
+                        Repeater {
+                            model: root.searchVisible
+                                   ? (root._searchRev,
+                                      pdfTextCtl.searchHitsOnPage(pageCell.index))
+                                   : []
+                            delegate: Rectangle {
+                                required property var modelData
+                                x: modelData.x * pageImg.width
+                                y: modelData.y * pageImg.height
+                                width:  Math.max(2, modelData.w * pageImg.width)
+                                height: Math.max(2, modelData.h * pageImg.height)
+                                color: Qt.rgba(1.0, 0.85, 0.0, 0.42)
+                                border.color: Qt.rgba(0.9, 0.55, 0.0, 0.9)
+                                border.width: 1
+                            }
+                        }
+
+                        // ── Caret des Werkzeugs „Text bearbeiten" ─────────────
+                        //  Sitzt DIREKT in der eingebetteten Textebene (kein
+                        //  Overlay): Position kommt aus PdfTextLayout über den
+                        //  Controller, in PDF-Punkten der Seite — hier nur auf
+                        //  die aktuelle Darstellungsgröße skaliert.
+                        Rectangle {
+                            id: caretBar
+                            readonly property rect r: root.editCtl.caretRectPt
+                            visible: root.editCtl.editMode
+                                     && root.editCtl.tool === 7
+                                     && root.editCtl.caretPage === pageCell.index
+                                     && caretBar.r.height > 0
+                                     && pageCell.pts.width > 0 && pageCell.pts.height > 0
+                            x: caretBar.r.x / pageCell.pts.width  * pageImg.width
+                            y: caretBar.r.y / pageCell.pts.height * pageImg.height
+                            width: Math.max(1, Math.round(
+                                       1.4 / pageCell.pts.width * pageImg.width))
+                            height: Math.max(2, caretBar.r.height
+                                                / pageCell.pts.height * pageImg.height)
+                            color: App.themeAccent
+                            // Blinken wie in jedem Texteditor; läuft nur, solange
+                            // das Caret sichtbar ist (keine Animation im Leerlauf).
+                            SequentialAnimation on opacity {
+                                running: caretBar.visible
+                                loops: Animation.Infinite
+                                NumberAnimation { to: 0.15; duration: 450 }
+                                NumberAnimation { to: 1.0;  duration: 450 }
+                            }
+                        }
+
                         Repeater {
                             model: root.annotations
                             delegate: Rectangle {
@@ -1660,7 +1997,9 @@ Item {
                             acceptedButtons: Qt.LeftButton
                             preventStealing: root.editCtl.tool >= 2
                             cursorShape: root.editCtl.tool === 0 ? Qt.ArrowCursor
-                                         : root.editCtl.tool === 6 ? Qt.IBeamCursor
+                                         : (root.editCtl.tool === 6
+                                            || root.editCtl.tool === 7
+                                            || root.editCtl.tool === 8) ? Qt.IBeamCursor
                                                                    : Qt.CrossCursor
                             property int _drawId: -1
                             //  Zustand der beiden NICHT-zeichnenden Gesten dieses
@@ -1694,7 +2033,8 @@ Item {
                                     //  läuft über root.replaceSelectionNow()
                                     //  (vom ⇄-Knopf aufgerufen — feuert auch,
                                     //  wenn ⇄ schon aktiv war).
-                                    if (root.editCtl.tool === 6 && root.source.length > 0)
+                                    if ((root.editCtl.tool === 6 || root.editCtl.tool === 8)
+                                            && root.source.length > 0)
                                         pdfTextCtl.prepare(root.source)
                                 }
                             }
@@ -1725,6 +2065,27 @@ Item {
                                     root.beginSelection(pageCell.index)
                                     return
                                 }
+                                //  „Text bearbeiten": Klick setzt das Caret in die
+                                //  eingebettete Textebene. KEINE Zeichen-Session
+                                //  (Werkzeug 7 liegt über der Zeichen-Schwelle 2,
+                                //  würde sonst in beginDraw laufen).
+                                if (root.editCtl.tool === 7) {
+                                    root.commitEditing()
+                                    const cp = _toPt(m.x, m.y)
+                                    if (cp) {
+                                        const first = !root.editCtl.caretReady
+                                                      || root.editCtl.caretPage !== pageCell.index
+                                        root.editCtl.placeCaret(pageCell.index, cp.x, cp.y)
+                                        caretInput.forceActiveFocus()
+                                        // Beim ersten Klick auf eine Seite wird die
+                                        // Textebene asynchron gelesen — das dauert
+                                        // sichtbar, also sagen wir es.
+                                        if (first && !root.editCtl.caretReady)
+                                            root._toast(App.uiText(App.language,
+                                                                   "PdfEditCaretLoading"))
+                                    }
+                                    return
+                                }
                                 if (root.editCtl.tool < 2)
                                     return                       // Auswahl/Text: s. onClicked
                                 root.commitEditing()
@@ -1732,7 +2093,24 @@ Item {
                                 if (!p) return
                                 root.notesVisible = true
                                 const pts = pageCell.pts
-                                if (root.editCtl.tool === 6 && pdfTextCtl.ready
+                                //  Markieren (Werkzeug 8) zieht wie „Text
+                                //  ersetzen" auf: Die Textauswahl darunter
+                                //  liefert die Zeilenbereiche. Ohne Textebene
+                                //  bleibt der aufgezogene Bereich selbst.
+                                if (root.editCtl.tool === 8
+                                        && pts.width > 0 && pts.height > 0) {
+                                    _repStart = { x: p.x / pts.width, y: p.y / pts.height }
+                                    _repLast  = _repStart
+                                    if (pdfTextCtl.ready)
+                                        root.updateSelection(pageCell.index,
+                                            _repStart.x, _repStart.y, _repStart.x, _repStart.y)
+                                    return
+                                }
+                                //  Schwärzen (Werkzeug 9) zieht wie „Text
+                                //  ersetzen" auf: dieselbe Auswahl, anderer
+                                //  Abschluss.
+                                if ((root.editCtl.tool === 6 || root.editCtl.tool === 9)
+                                        && pdfTextCtl.ready
                                         && pts.width > 0 && pts.height > 0) {
                                     // Auswahl-Modus: wie die normale Text-
                                     // Selektion, nur über das Werkzeug.
@@ -1784,6 +2162,22 @@ Item {
                                 }
                                 if (_repStart) {
                                     const pts = pageCell.pts
+                                    //  Markieren: keine Zeichen-Session, die
+                                    //  Auswahl IST das Ergebnis.
+                                    if (root.editCtl.tool === 8) {
+                                        if (pts.width > 0 && _repLast) {
+                                            const x0 = Math.min(_repStart.x, _repLast.x) * pts.width
+                                            const y0 = Math.min(_repStart.y, _repLast.y) * pts.height
+                                            const x1 = Math.max(_repStart.x, _repLast.x) * pts.width
+                                            const y1 = Math.max(_repStart.y, _repLast.y) * pts.height
+                                            root.markSelectionNow(
+                                                root.editCtl.markupStyle(),
+                                                { page: pageCell.index, x: x0, y: y0,
+                                                  w: x1 - x0, h: y1 - y0 })
+                                        }
+                                        _repStart = null; _repLast = null
+                                        return
+                                    }
                                     if (pts.width > 0 && _repLast) {
                                         _drawId = root.editCtl.beginDraw(5, pageCell.index,
                                                       _repStart.x * pts.width,
@@ -1791,7 +2185,8 @@ Item {
                                         root.editCtl.updateDraw(_drawId,
                                                       _repLast.x * pts.width,
                                                       _repLast.y * pts.height)
-                                        _finishReplace()
+                                        if (root.editCtl.tool === 9) _finishRedact()
+                                        else                         _finishReplace()
                                     }
                                     root.clearSelection()
                                     _repStart = null; _repLast = null
@@ -1800,6 +2195,7 @@ Item {
                                 }
                                 if (_drawId < 0) return
                                 if (root.editCtl.tool === 6) _finishReplace()
+                                else if (root.editCtl.tool === 9) _finishRedact()
                                 else root.editCtl.endDraw(_drawId)
                                 _drawId = -1
                             }
@@ -1825,6 +2221,35 @@ Item {
                             // die Box bleibt STILL unbefüllt (Anforderung:
                             // kein Hinweis-Dialog/Toast). Die neue Box startet
                             // wie Notizen direkt in der Textbearbeitung.
+                            //  Abschluss der Schwärzung: dieselbe Zeilen-Sonde
+                            //  wie beim Ersetzen — nur wandert der erkannte
+                            //  Text NICHT in die Box, sondern in `origText`,
+                            //  damit der Export ihn aus dem Strom entfernt.
+                            function _finishRedact() {
+                                const info = root.editCtl.boxInfo(_drawId)
+                                const pts = pageCell.pts
+                                let snapped = false
+                                let sx = 0, sy = 0, sw = 0, sh = 0, txt = ""
+                                if (info.exists === true && pdfTextCtl.ready
+                                        && pts.width > 0 && pts.height > 0) {
+                                    const pr = pdfTextCtl.replaceProbe(pageCell.index,
+                                                   info.xPt / pts.width,
+                                                   info.yPt / pts.height,
+                                                   (info.xPt + info.wPt) / pts.width,
+                                                   (info.yPt + info.hPt) / pts.height)
+                                    if (pr.found === true) {
+                                        snapped = true
+                                        sx = pr.x * pts.width;  sy = pr.y * pts.height
+                                        sw = pr.w * pts.width;  sh = pr.h * pts.height
+                                        txt = pr.text
+                                    }
+                                }
+                                const nid = root.editCtl.endRedactDraw(
+                                                _drawId, snapped, sx, sy, sw, sh, txt)
+                                if (nid >= 0)
+                                    root.notesVisible = true
+                            }
+
                             function _finishReplace() {
                                 const info = root.editCtl.boxInfo(_drawId)
                                 const pts = pageCell.pts
@@ -1900,12 +2325,14 @@ Item {
                         Repeater {
                             model: root.editCtl.boxModel
                             delegate: PdfEditBox {
-                                // Aufgabe 3: die Ansichts-Seite pageCell.index zeigt
-                                // laut Seiten-Plan die Quellseite viewSourcePage();
-                                // die Box (quellseiten-indiziert) blendet sich darüber
-                                // ein. (viewPageCount als Reaktiv-Trigger bei Plan-Änd.)
+                                //  Die Notiz findet ihre Seite über den STABILEN
+                                //  Seiten-Key (viewPageKey), nicht über die
+                                //  Position — deshalb bleibt sie beim
+                                //  Umsortieren/Einfügen an ihrer Seite.
+                                //  (viewPageCount als Reaktiv-Trigger bei Plan-Änd.)
                                 pageIndex: (root.editCtl.viewPageCount,
-                                            root.editCtl.viewSourcePage(pageCell.index))
+                                            root.editCtl.viewPageKey(pageCell.index))
+                                viewIndex: pageCell.index
                                 pageScale: pageCell.pts.width > 0
                                            ? pageImg.width / pageCell.pts.width : 1
                                 pageWPt: Math.max(1, pageCell.pts.width)
@@ -1914,10 +2341,33 @@ Item {
                             }
                         }
 
+                        // ── Formularfelder (AcroForm) dieser Seite ────────────
+                        //  Qt PDF zeichnet Widget-Annotationen NICHT — dieses
+                        //  Overlay ist die EINZIGE Darstellung der Felder und
+                        //  deshalb in BEIDEN Modi aktiv (ein Formular gehört
+                        //  dem Dokument, nicht dem Editor). Die Liste ändert
+                        //  sich nur bei Dokument-/Plan-Wechsel; das Tippen
+                        //  läuft rev-getrieben (formValueRev), damit die
+                        //  Delegates nicht je Zeichen neu entstehen.
+                        Repeater {
+                            model: root.editCtl.formFields
+                            delegate: PdfFormField {
+                                required property var modelData
+                                field: modelData
+                                visible: modelData.page === pageCell.index
+                                enabled: visible
+                                ctl: root.editCtl
+                                pageScale: pageCell.pts.width > 0
+                                           ? pageImg.width / pageCell.pts.width : 1
+                                pageWPt: Math.max(1, pageCell.pts.width)
+                                pageHPt: Math.max(1, pageCell.pts.height)
+                            }
+                        }
+
                         // ── PDF-Editor: schwebende Format-Toolbar der Auswahl ─────
                         PdfEditToolbar {
                             pageIndex: (root.editCtl.viewPageCount,
-                                        root.editCtl.viewSourcePage(pageCell.index))
+                                        root.editCtl.viewPageKey(pageCell.index))
                             pageScale: pageCell.pts.width > 0
                                        ? pageImg.width / pageCell.pts.width : 1
                             pageW: pageImg.width
@@ -2013,9 +2463,63 @@ Item {
                 // Scrollen kostet nur einen winzigen Dekode, kein PDFium-Render.
                 // Etwas mehr Vorhalt haelt die Leiste auch bei schnellem Scrollen
                 // luecken­frei, ohne nennenswerten RAM (wenige KB je Vorschau).
-                cacheBuffer: Math.round(thumbs.height * 1.5)
+                // max(0, …): vor dem ersten Layout ist die Höhe negativ
+                // (Panel-Höhe 0 minus 2×8 px Rand) — ein negativer cacheBuffer
+                // ist ungültig und wurde beim Start als Warnung gemeldet.
+                cacheBuffer: Math.max(0, Math.round(thumbs.height * 1.5))
                 boundsBehavior: Flickable.StopAtBounds
                 ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
+
+                // ── Seiten umsortieren (Ziehen in der Vorschauleiste) ──────────
+                //  Nur im Editmodus. Gezogen wird die VORSCHAU, umsortiert wird
+                //  der Seiten-Plan im Controller (movePage → EIN Undo-Schritt);
+                //  die Notizen folgen ihrer Seite über den Seiten-Key.
+                //  dragIndex = gezogene Seite, dropIndex = Zielposition.
+                property int dragIndex: -1
+                property int dropIndex: -1
+                readonly property bool reorderable: root.editCtl.editMode
+                                                    && root.editCtl.viewPageCount > 1
+
+                //  Zielposition aus einer y-Koordinate IN der Liste (Inhalts-
+                //  koordinaten). Zwischen zwei Kacheln (Lücke) liefert indexAt
+                //  −1 — dann entscheidet die Nähe: oberhalb der ersten Kachel
+                //  die 0, unterhalb der letzten die letzte Position.
+                function indexForContentY(cy) {
+                    var i = thumbs.indexAt(thumbs.width / 2, cy)
+                    if (i >= 0)
+                        return i
+                    if (cy <= thumbs.originY)
+                        return 0
+                    if (cy >= thumbs.originY + thumbs.contentHeight)
+                        return thumbs.count - 1
+                    //  In der Lücke: die nächstgelegene Kachel oberhalb suchen.
+                    for (var d = 4; d < 40; d += 4) {
+                        var up = thumbs.indexAt(thumbs.width / 2, cy - d)
+                        if (up >= 0)
+                            return up
+                        var dn = thumbs.indexAt(thumbs.width / 2, cy + d)
+                        if (dn >= 0)
+                            return dn
+                    }
+                    return -1
+                }
+
+                //  Randnähe beim Ziehen scrollt die Leiste weiter — sonst wäre
+                //  nur innerhalb des sichtbaren Ausschnitts umsortierbar.
+                Timer {
+                    id: thumbAutoScroll
+                    interval: 16; repeat: true
+                    running: thumbs.dragIndex >= 0 && dir !== 0
+                    property int dir: 0
+                    onTriggered: {
+                        var scrollable = thumbs.contentHeight - thumbs.height
+                        if (scrollable <= 0)
+                            return
+                        var minY = thumbs.originY
+                        var maxY = thumbs.originY + scrollable
+                        thumbs.contentY = Math.max(minY, Math.min(thumbs.contentY + dir * 6, maxY))
+                    }
+                }
 
                 delegate: Item {
                     id: thumbCell
@@ -2064,14 +2568,98 @@ Item {
                                     : ""
                             sourceSize.width: thumbCell.thumbW * Screen.devicePixelRatio
                         }
+                        //  Gezogene Kachel blasser zeichnen (sie „liegt in der Hand").
+                        opacity: thumbs.dragIndex === thumbCell.index ? 0.45 : 1.0
                         TapHandler { onTapped: root.goToPage(thumbCell.index) }
+
+                        //  Ziehen sortiert um. TapHandler und DragHandler
+                        //  vertragen sich: Wird aus dem Druck ein Zug, feuert der
+                        //  Tap nicht mehr (kein Seitensprung beim Umsortieren).
+                        DragHandler {
+                            id: thumbDrag
+                            enabled: thumbs.reorderable
+                            target: null                      // wir bewegen nichts selbst
+                            cursorShape: Qt.ClosedHandCursor
+                            //  ENTSCHEIDEND in einer ListView: Ohne die
+                            //  eingeschränkten Rechte reißt die Liste den Griff
+                            //  an sich und scrollt, statt die Seite ziehen zu
+                            //  lassen (senkrechter Zug in senkrechter Liste).
+                            //  Kein „Approves…“ = die Liste darf nicht stehlen.
+                            grabPermissions: PointerHandler.CanTakeOverFromAnything
+                            onActiveChanged: {
+                                if (active) {
+                                    thumbs.dragIndex = thumbCell.index
+                                    thumbs.dropIndex = thumbCell.index
+                                    return
+                                }
+                                //  Loslassen: umsortieren (EIN Undo-Schritt).
+                                const from = thumbs.dragIndex
+                                const to   = thumbs.dropIndex
+                                thumbs.dragIndex = -1
+                                thumbs.dropIndex = -1
+                                thumbAutoScroll.dir = 0
+                                if (from >= 0 && to >= 0 && from !== to) {
+                                    root.commitEditing()
+                                    root.editCtl.movePage(from, to)
+                                    root.goToPage(to)
+                                }
+                            }
+                            onCentroidChanged: {
+                                if (!active)
+                                    return
+                                //  Randnähe → Leiste mitscrollen (Sichtfenster-
+                                //  Koordinaten).
+                                const ly = thumbs.mapFromItem(null, centroid.scenePosition).y
+                                thumbAutoScroll.dir = ly < 24 ? -1
+                                                   : ly > thumbs.height - 24 ? 1 : 0
+                                //  Zielposition: indexAt() erwartet INHALTS-
+                                //  koordinaten → direkt über das contentItem
+                                //  abbilden (originY-sicher).
+                                const cy = thumbs.contentItem.mapFromItem(
+                                               null, centroid.scenePosition).y
+                                const i = thumbs.indexForContentY(cy)
+                                if (i >= 0)
+                                    thumbs.dropIndex = i
+                            }
+                        }
+                        ToolTip.visible: thumbDrag.active
+                        ToolTip.text: App.uiText(App.language, "PdfMovePageTip")
                     }
-                    Text {
+
+                    //  Einfügemarke: zeigt, WO die gezogene Seite landet.
+                    Rectangle {
+                        visible: thumbs.dragIndex >= 0 && thumbs.dropIndex === thumbCell.index
+                                 && thumbs.dragIndex !== thumbCell.index
+                        anchors.horizontalCenter: parent.horizontalCenter
+                        width: thumbCell.thumbW; height: 3; radius: 1.5
+                        color: App.themeAccent
+                        //  Von oben gezogen → Marke unter die Zielkachel, sonst darüber.
+                        y: thumbs.dragIndex < thumbCell.index ? thumbFrame.height + 1 : -2
+                        z: 5
+                    }
+
+                    Row {
                         anchors.top: thumbFrame.bottom; anchors.topMargin: 2
                         anchors.horizontalCenter: parent.horizontalCenter
-                        text: (thumbCell.index + 1)
-                        color: thumbCell.index === root.currentPage ? App.themeAccent : App.themeTextMuted
-                        font.pixelSize: 10
+                        spacing: 4
+                        Text {
+                            text: (thumbCell.index + 1)
+                            color: thumbCell.index === root.currentPage ? App.themeAccent
+                                                                        : App.themeTextMuted
+                            font.pixelSize: 10
+                        }
+                        //  Marke für eingefügte (fremde) Seiten — im Editmodus
+                        //  sichtbar, damit erkennbar bleibt, was nicht aus dem
+                        //  Originaldokument stammt (dort ist auch kein
+                        //  zeichenweises Bearbeiten möglich).
+                        Text {
+                            visible: root.editCtl.editMode
+                                     && (root.editCtl.viewPageCount,
+                                         root.editCtl.pageInfo(thumbCell.index).imported === true)
+                            text: App.uiText(App.language, "PdfPageImportedBadge")
+                            color: App.themeAccent
+                            font.pixelSize: 9
+                        }
                     }
                 }
             }
@@ -2391,8 +2979,29 @@ Item {
                                              pageCount: root.docReady ? root.doc.pageCount : 0 }])
             }
         }
-        // Aufgabe 3: Seite entfernen (nur im Editmodus; Strg+Z macht es rückgängig).
+        // ── Seitenverwaltung (nur im Editmodus; Strg+Z macht alles rückgängig) ─
         MenuSeparator { visible: root.editCtl.editMode }
+        MenuItem {
+            visible: root.editCtl.editMode
+            height: visible ? implicitHeight : 0
+            text: App.uiText(App.language, "PdfRotatePageLeft")
+            onTriggered: root._rotatePage(pageCtxMenu.ctxPage, -90)
+        }
+        MenuItem {
+            visible: root.editCtl.editMode
+            height: visible ? implicitHeight : 0
+            text: App.uiText(App.language, "PdfRotatePageRight")
+            onTriggered: root._rotatePage(pageCtxMenu.ctxPage, 90)
+        }
+        MenuItem {
+            visible: root.editCtl.editMode
+            height: visible ? implicitHeight : 0
+            text: App.uiText(App.language, "PdfInsertPagesFrom")
+            onTriggered: {
+                root._insertAfter = pageCtxMenu.ctxPage
+                insertFileDlg.open()
+            }
+        }
         MenuItem {
             visible: root.editCtl.editMode
             height: visible ? implicitHeight : 0
@@ -2400,6 +3009,84 @@ Item {
             enabled: root.editCtl.viewPageCount > 1
             onTriggered: root.editCtl.removePage(pageCtxMenu.ctxPage)
         }
+    }
+
+    // ── Seiten aus einer FREMDEN PDF einfügen ──────────────────────────────────
+    //  Erst die Datei wählen, dann IHRE Seiten im bekannten Auswahlraster
+    //  (PdfPageSelectDialog, hier ohne Namensabfrage). Das Kopieren selbst läuft
+    //  verlustfrei im Controller; die Rückmeldung kommt als Toast.
+    property int _insertAfter: -1
+
+    FileDialog {
+        id: stampFileDlg
+        title: App.uiText(App.language, "PdfStampFileTitle")
+        fileMode: FileDialog.OpenFile
+        nameFilters: ["Bilder (*.png *.jpg *.jpeg *.webp *.bmp *.tif *.tiff)"]
+        //  Das Bild landet mittig auf der aktuellen Seite; Größe = ein Drittel
+        //  der Seitenbreite, Höhe folgt dem Seitenverhältnis (Controller).
+        onAccepted: {
+            const page = root.currentPage
+            const pts = root.doc.pagePointSize(page)
+            if (pts.width <= 0) { root._toast(App.uiText(App.language, "PdfStampFailedToast")); return }
+            const w = pts.width / 3
+            const id = root.editCtl.addStamp(selectedFile, page,
+                                             (pts.width - w) / 2, pts.height / 3, w)
+            if (id < 0) root._toast(App.uiText(App.language, "PdfStampFailedToast"))
+            else        root.notesVisible = true
+        }
+    }
+
+    FileDialog {
+        id: insertFileDlg
+        title: App.uiText(App.language, "PdfInsertPagesFileTitle")
+        fileMode: FileDialog.OpenFile
+        nameFilters: ["PDF (*.pdf)"]
+        onAccepted: {
+            var n = root.editCtl.probePageCount(selectedFile)
+            if (n <= 0) {
+                root._toast(App.uiText(App.language, "PdfPagesInsertFailedToast"))
+                return
+            }
+            insertSelectDlg.titleText = App.uiText(App.language, "PdfInsertPagesDialogTitle")
+            insertSelectDlg.openWith([{ path: String(selectedFile), pageCount: n }])
+        }
+    }
+
+    PdfPageSelectDialog {
+        id: insertSelectDlg
+        anchors.fill: parent
+        requireName: false
+        askName: false                    // Einfügen braucht keinen Dateinamen
+        confirmText: App.uiText(App.language, "PdfInsertPagesFrom")
+        onExtractRequested: (items, name) => {
+            if (!items || items.length === 0)
+                return
+            var pages = []
+            for (var i = 0; i < items.length; i++)
+                pages.push(items[i].page)
+            root.editCtl.insertPagesFrom(items[0].path, pages, root._insertAfter)
+        }
+    }
+
+    Connections {
+        target: root.editCtl
+        function onPagesInserted(count, errorText) {
+            root._toast(count > 0
+                        ? App.uiText(App.language, "PdfPagesInsertedToast").arg(count)
+                        : App.uiText(App.language, "PdfPagesInsertFailedToast"))
+        }
+    }
+
+    //  Drehen: Die Seitenmaße in Punkten kennt nur die Ansicht — der Controller
+    //  dreht damit auch die Notizen der Seite mit (EIN Undo-Schritt).
+    function _rotatePage(viewIndex, delta) {
+        if (!root.docReady || viewIndex < 0)
+            return
+        root.commitEditing()
+        var pts = root.doc.pagePointSize(viewIndex)
+        root.editCtl.rotatePage(viewIndex, delta,
+                                pts && pts.width  > 0 ? pts.width  : 595.276,
+                                pts && pts.height > 0 ? pts.height : 841.890)
     }
 
     PdfExtractNameDialog {

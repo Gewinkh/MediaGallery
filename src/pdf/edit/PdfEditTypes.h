@@ -43,7 +43,24 @@ enum class PdfAnnKind {
     // (gemeinsames Verschieben/Skalieren/Löschen/Kopieren/Undo). KEINE
     // Post-it-Optik (kein Schatten, kein Eselsohr); `highlight` trägt die
     // Deckfläche und wird vom Controller auf deckendes Weiß erzwungen.
-    Replace  = 5
+    Replace  = 5,
+    // Textmarkierung auf der eingebetteten Textebene: Markieren (gefüllte
+    // Fläche), Unterstreichen, Durchstreichen. Anders als die übrigen Arten
+    // trägt sie MEHRERE Bereiche — eine Markierung über drei Zeilen ist EIN
+    // Objekt mit drei Rechtecken (so wie `/QuadPoints` es im PDF hält). Die
+    // Rechtecke liegen paarweise (obere linke, untere rechte Ecke) in
+    // `points`; `rect` ist ihre Hülle. Der Stil steht in `markupStyle`.
+    Markup   = 6,
+    // „Text schwärzen": deckende Fläche über dem Bereich UND Entfernen des
+    // darunterliegenden Textes aus dem Content-Stream (`origText` trägt den
+    // erkannten Text). Bewusst NICHT „Redaktion" genannt: Geschützt ist damit
+    // das Kopieren/Durchsuchen im Betrachter — der alte Strom bleibt beim
+    // inkrementellen Update in den Rohbytes der Datei stehen.
+    Redact   = 7,
+    // Signatur-/Stempelbild: eine Bilddatei, im Dokument platziert. Der Pfad
+    // steht in `imagePath`; eingebettet wird das Bild erst beim Export
+    // (`PdfImageEmbed`) — das Sidecar bleibt so klein wie bisher.
+    Stamp    = 8
 };
 
 // Welches Feld einer Box ändert sich? (Delta-Undo + gezielte dataChanged-Rollen)
@@ -112,8 +129,35 @@ struct PdfEditBox {
     // Rest automatisch in die nächste. NICHT direkt in toJson (IDs sind
     // sitzungslokal) — persistiert als Index-Array „chains" im Sidecar.
     int     chainNext  = 0;
+    // Höhe, die die Box hatte, BEVOR sie als Ketten-ENDE automatisch gewachsen
+    // ist (0 = nie gewachsen). Nur das letzte Glied einer Kette wächst mit
+    // seinem Inhalt; wird die Kette hinter ihm verlängert, ist es nicht mehr das
+    // Ende und muss auf seine ursprüngliche, vom Nutzer gesetzte Höhe
+    // zurückschrumpfen — sonst behält es die aufgeblähte Höhe, fasst weiterhin
+    // den GESAMTEN Resttext und in der neuen Folgebox kommt nie etwas an (das
+    // sah aus, als funktioniere die Verkettung nicht). Sitzungslokal wie
+    // chainNext, aber im Sidecar als "growBase" mitgeführt, damit die Höhe auch
+    // über einen Neustart hinweg wiederherstellbar bleibt.
+    qreal   growBaseH  = 0.0;
+    // ── Herkunft: aus dem DOKUMENT übernommene Annotation ─────────────────────
+    //  0 = eigene Notiz (Normalfall). >0 = diese Box ist beim Öffnen aus einer
+    //  echten PDF-Annotation entstanden (`mg::PdfAnnotations`) und trägt deren
+    //  Objektnummer. Bedeutung für die Ausgabe: Solange die Box UNVERÄNDERT ist,
+    //  darf sie NICHT noch einmal gezeichnet werden — sie steht bereits in der
+    //  Datei; sonst stünde jede importierte Notiz doppelt. Wird sie bearbeitet
+    //  oder gelöscht, muss stattdessen das ORIGINAL aus `/Annots` entfernt
+    //  werden (sonst bliebe die alte Fassung darunter sichtbar).
+    int     srcObjNum  = 0;
+    // Nur `Markup`: 0 = Markieren (Fläche), 1 = Unterstreichen, 2 = Durchstreichen.
+    int     markupStyle = 0;
+    // Nur `Stamp`: Pfad der Bilddatei (lokal, absolut).
+    QString imagePath;
 
     bool isStroke() const { return kind == PdfAnnKind::Freehand || kind == PdfAnnKind::Arrow; }
+    // Textmarkierung (mehrere Bereiche, an den Text gebunden).
+    bool isMarkup() const { return kind == PdfAnnKind::Markup; }
+    bool isRedact() const { return kind == PdfAnnKind::Redact; }
+    bool isStamp()  const { return kind == PdfAnnKind::Stamp; }
     // Textführende Arten: klassische Notiz UND „Text ersetzen" (beide nutzen
     // die vollständige Text-Pipeline — Schrift/Farben/Ausrichtung/Sidecar).
     bool hasText()  const { return kind == PdfAnnKind::Text || kind == PdfAnnKind::Replace; }
@@ -145,13 +189,26 @@ struct PdfEditBox {
         o.insert(QStringLiteral("y"),      rect.y());
         o.insert(QStringLiteral("w"),      rect.width());
         o.insert(QStringLiteral("h"),      rect.height());
-        if (isStroke()) {
+        //  Punkte trägt nicht nur der Strich: eine Markierung hält darin ihre
+        //  Bereiche (je zwei Ecken). Deshalb am INHALT entscheiden, nicht an
+        //  der Art — sonst verlöre ein neuer Typ seine Geometrie im Sidecar.
+        if (!points.isEmpty()) {
             QJsonArray pts;
             for (const QPointF& p : points) {
                 pts.append(p.x());
                 pts.append(p.y());
             }
             o.insert(QStringLiteral("pts"), pts);
+        }
+        if (srcObjNum > 0) o.insert(QStringLiteral("srcobj"), srcObjNum);
+        if (isMarkup())    o.insert(QStringLiteral("mstyle"), markupStyle);
+        if (isStamp() && !imagePath.isEmpty())
+            o.insert(QStringLiteral("img"), imagePath);
+        if (isRedact()) {
+            //  Die Schwärzung braucht ihre Fläche UND den Text, der beim
+            //  Export aus dem Strom verschwinden soll.
+            o.insert(QStringLiteral("hilite"), highlight.name(QColor::HexArgb));
+            if (!origText.isEmpty()) o.insert(QStringLiteral("orig"), origText);
         }
         o.insert(QStringLiteral("stroke"), stroke.name(QColor::HexArgb));
         o.insert(QStringLiteral("lw"),     lineWidth);
@@ -179,7 +236,7 @@ struct PdfEditBox {
         PdfEditBox b;
         b.page       = o.value(QStringLiteral("page")).toInt(0);
         const int k  = o.value(QStringLiteral("kind")).toInt(0);   // fehlt in Alt-Sidecars → Text
-        b.kind       = (k >= 0 && k <= 5) ? static_cast<PdfAnnKind>(k) : PdfAnnKind::Text;
+        b.kind       = (k >= 0 && k <= 8) ? static_cast<PdfAnnKind>(k) : PdfAnnKind::Text;
         b.rect       = QRectF(o.value(QStringLiteral("x")).toDouble(0.0),
                               o.value(QStringLiteral("y")).toDouble(0.0),
                               o.value(QStringLiteral("w")).toDouble(120.0),
@@ -189,6 +246,10 @@ struct PdfEditBox {
             for (int i = 0; i + 1 < pts.size(); i += 2)
                 b.points.append(QPointF(pts.at(i).toDouble(), pts.at(i + 1).toDouble()));
         }
+        //  Herkunftsmarke (fehlt in älteren Sidecars → 0 = eigene Notiz).
+        b.srcObjNum = qMax(0, o.value(QStringLiteral("srcobj")).toInt(0));
+        b.markupStyle = qBound(0, o.value(QStringLiteral("mstyle")).toInt(0), 2);
+        b.imagePath   = o.value(QStringLiteral("img")).toString();
         b.stroke    = QColor(o.value(QStringLiteral("stroke")).toString(QStringLiteral("#ffe62c2c")));
         b.lineWidth = o.value(QStringLiteral("lw")).toDouble(2.0);
         b.fill      = QColor(o.value(QStringLiteral("fill")).toString(QStringLiteral("#00000000")));
@@ -232,3 +293,129 @@ struct PdfEditBox {
         return b;
     }
 };
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  PdfPlanPage — EIN Eintrag des Seiten-Plans (Ansichts-Reihenfolge).
+//
+//  Der Plan ist die einzige Quelle dafür, WELCHE Seite WO und WIE steht; die
+//  Anzeige rendert stets die daraus gebackene Arbeitsdatei (s.
+//  PdfEditController::renderSourcePath), sodass „Ansichts-Index == Seitenindex
+//  der gerenderten Datei" gilt.
+//
+//   • `src`  ≥ 0 = Seitenindex in der Quelle, −1 = eingefügte A4-Leerseite.
+//   • `doc`  0 = pristines Hauptdokument, 1 = Begleitdatei „<pdf>.mgpages.pdf"
+//            mit den aus FREMDEN PDFs verlustfrei übernommenen Seiten.
+//   • `rot`  zusätzliche Drehung in Grad (0/90/180/270) ÜBER die Drehung, die
+//            die Quellseite schon selbst trägt.
+//   • `key`  STABILE Kennung dieser Ansichts-Seite: Notizen (PdfEditBox::page)
+//            adressieren ihre Seite über den Key, nicht über die Position. Nur
+//            so bleiben sie beim Umsortieren/Einfügen/Entfernen an ihrer Seite,
+//            und zwei Leerseiten sind unterscheidbar.
+//            RÜCKWÄRTSKOMPATIBEL: Seiten des pristinen Dokuments tragen
+//            key == src, damit Sidecars aus älteren Versionen (Notiz-Seite ==
+//            Seitenindex, Plan als reines Int-Array) unverändert weitergelten.
+//            Neu eingefügte Seiten (leer/importiert) bekommen Keys ≥ Seitenzahl
+//            des pristinen Dokuments.
+// ─────────────────────────────────────────────────────────────────────────────
+struct PdfPlanPage {
+    int src = -1;
+    int doc = 0;
+    int rot = 0;
+    int key = -1;
+
+    bool isBlank() const    { return src < 0; }
+    bool isImported() const { return doc == 1 && src >= 0; }
+    //  Seite des pristinen Hauptdokuments — nur diese ist zeichenweise
+    //  bearbeitbar (Caret) und trägt key == src.
+    bool isPristine() const { return doc == 0 && src >= 0; }
+
+    QJsonObject toJson() const {
+        QJsonObject o;
+        o.insert(QStringLiteral("src"), src);
+        o.insert(QStringLiteral("key"), key);
+        if (doc != 0) o.insert(QStringLiteral("doc"), doc);
+        if (rot != 0) o.insert(QStringLiteral("rot"), rot);
+        return o;
+    }
+
+    static PdfPlanPage fromJson(const QJsonObject& o) {
+        PdfPlanPage p;
+        p.src = o.value(QStringLiteral("src")).toInt(-1);
+        p.key = o.value(QStringLiteral("key")).toInt(-1);
+        p.doc = o.value(QStringLiteral("doc")).toInt(0);
+        p.rot = o.value(QStringLiteral("rot")).toInt(0);
+        // Defensive Klemmen gegen defekte/fremde Sidecars (Regel 22): unbekannte
+        // Quelle → Leerseite; Drehung auf ein Vielfaches von 90° normalisieren.
+        if (p.src < 0)              p.src = -1;
+        if (p.key < 0)              p.key = -1;   // ungültig → wird neu vergeben
+        if (p.doc != 0 && p.doc != 1) p.doc = 0;
+        p.rot = ((p.rot % 360) + 360) % 360;
+        p.rot = (p.rot / 90) * 90;
+        if (p.src < 0) p.doc = 0;             // Leerseite hat keine Quelldatei
+        return p;
+    }
+};
+
+inline bool operator==(const PdfPlanPage& a, const PdfPlanPage& b) {
+    return a.src == b.src && a.doc == b.doc && a.rot == b.rot && a.key == b.key;
+}
+inline bool operator!=(const PdfPlanPage& a, const PdfPlanPage& b) { return !(a == b); }
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  PdfTextOp — EINE Änderung an der EINGEBETTETEN Textebene (Caret-Werkzeug).
+//
+//  Anders als PdfEditBox liegt diese Änderung nicht ÜBER der Seite, sondern IN
+//  ihr. Trotzdem bleibt das Original unberührt: Die Ops sind ein DELTA, das im
+//  Sidecar liegt und beim Anzeigen/Exportieren auf die pristine Datei
+//  angewendet wird (PdfTextEditor). Damit ist das direkte Textbearbeiten genau
+//  so reversibel wie die Notizen — Undo entfernt einfach die letzte Op.
+//
+//   • Einfügen  → `text` = eingefügte Zeichen, `removed` = 0
+//   • Löschen   → `removed` = Anzahl, `text` = die ENTFERNTEN Zeichen (nur für
+//                 das Undo/Redo-Delta; die Wiedergabe braucht sie nicht)
+//  `index` ist der Glyphen-Index in dem Zustand, den die VORHERIGEN Ops erzeugt
+//  haben — die Reihenfolge der Liste ist deshalb bedeutungstragend.
+// ─────────────────────────────────────────────────────────────────────────────
+struct PdfTextOp {
+    int     page    = 0;    // Seitenindex (0-basiert, Ansichts-/Dateiseite)
+    int     index   = 0;    // Glyphen-Index, vor dem eingefügt/ab dem gelöscht wird
+    QString text;           // eingefügte bzw. entfernte Zeichen
+    int     removed = 0;    // >0 = Löschung dieser Länge, 0 = Einfügung
+
+    bool isInsert() const { return removed <= 0; }
+
+    QJsonObject toJson() const {
+        QJsonObject o;
+        o.insert(QStringLiteral("page"), page);
+        o.insert(QStringLiteral("at"),   index);
+        o.insert(QStringLiteral("text"), text);
+        if (removed > 0)
+            o.insert(QStringLiteral("del"), removed);
+        return o;
+    }
+
+    static PdfTextOp fromJson(const QJsonObject& o) {
+        PdfTextOp t;
+        t.page    = o.value(QStringLiteral("page")).toInt(0);
+        t.index   = o.value(QStringLiteral("at")).toInt(0);
+        t.text    = o.value(QStringLiteral("text")).toString();
+        t.removed = o.value(QStringLiteral("del")).toInt(0);
+        // Defensive Klemmen gegen defekte/fremde Sidecar-Dateien: negative
+        // Indizes/Seiten würden im Editor auf ungültige Glyphen zeigen.
+        if (t.page  < 0) t.page  = 0;
+        if (t.index < 0) t.index = 0;
+        if (t.removed < 0) t.removed = 0;
+        // Länge und Text einer Löschung müssen zusammenpassen (Undo-Delta).
+        if (t.removed > 0 && t.text.size() != t.removed)
+            t.removed = t.text.isEmpty() ? t.removed : t.text.size();
+        return t;
+    }
+};
+
+//  Vergleich: der Controller prüft damit, ob die Arbeitsdatei die aktuelle
+//  Op-Liste bereits abbildet — ein Neubau, der nichts ändert, unterbleibt.
+inline bool operator==(const PdfTextOp& a, const PdfTextOp& b) {
+    return a.page == b.page && a.index == b.index
+           && a.removed == b.removed && a.text == b.text;
+}
+inline bool operator!=(const PdfTextOp& a, const PdfTextOp& b) { return !(a == b); }

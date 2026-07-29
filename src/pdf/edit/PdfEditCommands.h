@@ -30,20 +30,40 @@ class PdfEditModel;
 class PdfEditController;
 
 // ─────────────────────────────────────────────────────────────────────────────
-//  Seiten-Plan ändern (Seite hinzufügen/entfernen — Aufgabe 3). EIN Kommando je
-//  Op (Delta alt→neu Plan). redo()/undo() rufen PdfEditController::applyPlan()
-//  → Ansicht + (destruktiv) Datei-Neuschrieb folgen dem Undo/Redo.
+//  Seiten-Plan ändern (Seite hinzufügen/entfernen/umsortieren/drehen/importieren).
+//  EIN Kommando je Op (Delta alt→neu Plan). redo()/undo() rufen
+//  PdfEditController::applyPlan() → Ansicht + (destruktiv) Datei-Neuschrieb
+//  folgen dem Undo/Redo. Der Plan ist eine Liste kleiner Structs (vier ints je
+//  Seite) — auch bei tausend Seiten wenige Kilobyte, also kein Snapshot-Problem.
 // ─────────────────────────────────────────────────────────────────────────────
 class PdfEditPagePlanCommand : public QUndoCommand {
 public:
     PdfEditPagePlanCommand(PdfEditController* ctl,
-                           const QVector<int>& oldPlan, const QVector<int>& newPlan);
+                           const QVector<PdfPlanPage>& oldPlan,
+                           const QVector<PdfPlanPage>& newPlan);
+    void redo() override;
+    void undo() override;
+private:
+    PdfEditController*   m_ctl;
+    QVector<PdfPlanPage> m_old;
+    QVector<PdfPlanPage> m_new;
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  Änderung an der EINGEBETTETEN Textebene (Werkzeug „Text bearbeiten").
+//  Delta = genau EINE PdfTextOp; undo() entfernt die zuletzt angewendete Op
+//  wieder. Das ist immer die richtige, weil der QUndoStack streng LIFO
+//  arbeitet: Die Ops stehen in der Liste in exakt der Reihenfolge, in der ihre
+//  Kommandos auf dem Stack liegen.
+// ─────────────────────────────────────────────────────────────────────────────
+class PdfEditTextOpCommand : public QUndoCommand {
+public:
+    PdfEditTextOpCommand(PdfEditController* ctl, const PdfTextOp& op);
     void redo() override;
     void undo() override;
 private:
     PdfEditController* m_ctl;
-    QVector<int>       m_old;
-    QVector<int>       m_new;
+    PdfTextOp          m_op;
 };
 
 // ─────────────────────────────────────────────────────────────────────────────

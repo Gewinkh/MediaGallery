@@ -107,6 +107,28 @@ set(SOURCES_PDF_EDIT
     src/pdf/edit/PdfEditController.h
     src/pdf/edit/PdfContentEditor.cpp
     src/pdf/edit/PdfContentEditor.h
+    src/pdf/edit/PdfEncodings.cpp
+    src/pdf/edit/PdfEncodings.h
+    src/pdf/edit/PdfObjects.cpp
+    src/pdf/edit/PdfObjects.h
+    src/pdf/edit/PdfVectorExport.cpp
+    src/pdf/edit/PdfVectorExport.h
+    src/pdf/edit/PdfFormFields.cpp
+    src/pdf/edit/PdfAnnotations.cpp
+    src/pdf/edit/PdfImageEmbed.cpp
+    src/pdf/edit/PdfFormFields.h
+    src/pdf/edit/PdfAnnotations.h
+    src/pdf/edit/PdfImageEmbed.h
+    src/pdf/edit/PdfBaseFontWidths.cpp
+    src/pdf/edit/PdfBaseFontWidths.h
+    src/pdf/edit/PdfTextLayout.cpp
+    src/pdf/edit/PdfTextLayout.h
+    src/pdf/edit/PdfTextEditor.cpp
+    src/pdf/edit/PdfTextEditor.h
+    src/pdf/edit/PdfTextReflow.cpp
+    src/pdf/edit/PdfTextReflow.h
+    src/pdf/edit/PdfFontEmbed.cpp
+    src/pdf/edit/PdfFontEmbed.h
 )
 
 #  src/pdf/extract — page extraction and lossless page copying.
@@ -198,6 +220,25 @@ endif()
 
 if(APPLE)
     set_target_properties(MediaGallery PROPERTIES MACOSX_BUNDLE TRUE)
+endif()
+
+#  Regressionssuite (CLAUDE.md Regel 23): eigenständige Testtreiber unter
+#  tests/, ausgeführt über ctest. Standardmäßig AN; für reine Auslieferungs-
+#  Builds mit -DMG_BUILD_TESTS=OFF abschaltbar.
+#
+#  WICHTIG — das Verzeichnis wird bewusst NUR eingebunden, wenn es tatsächlich
+#  vorhanden ist: `tests/` steht in der .gitignore und ist damit NICHT Teil des
+#  veröffentlichten Repositorys. Ohne diese Prüfung bräche ein frischer Clone
+#  bereits beim Konfigurieren ab ("add_subdirectory given source 'tests' which
+#  is not an existing directory"). So bleibt das Repository für sich allein
+#  baubar, und wer die Suite hat, bekommt sie automatisch dazu.
+option(MG_BUILD_TESTS "Regressionssuite (tests/) mitbauen, sofern vorhanden" ON)
+if(MG_BUILD_TESTS AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/tests/CMakeLists.txt")
+    enable_testing()
+    add_subdirectory(tests)
+    message(STATUS "Regressionssuite aktiviert (ctest)")
+elseif(MG_BUILD_TESTS)
+    message(STATUS "Regressionssuite übersprungen (tests/ nicht vorhanden)")
 endif()
 
 install(TARGETS MediaGallery

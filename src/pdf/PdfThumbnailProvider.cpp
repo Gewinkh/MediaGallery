@@ -365,6 +365,26 @@ void PdfThumbnailProvider::enforceBudget() {
         mg::trimHeap();
 }
 
+int PdfThumbnailProvider::refreshDocument(const QString& pathOrUrl, int startPage) {
+    const QString key = mg::toLocalPath(pathOrUrl);
+    if (key.isEmpty()) return 0;
+
+    const int old = m_pathToId.value(key, 0);
+    if (old != 0) {
+        // Laufenden Render-Lauf kooperativ abbrechen (er malte den ALTEN Stand)
+        // und die Kacheln aus dem Store werfen.
+        if (const CancelFlag f = m_flags.value(old))
+            f->store(true, std::memory_order_relaxed);
+        m_store->dropDocument(old);
+        m_prepared.remove(old);
+        m_flags.remove(old);
+        m_pathToId.remove(key);
+        m_idToPath.remove(old);
+        m_lruOrder.removeAll(old);
+    }
+    return ensureDocument(key, startPage);      // frische docId + neuer Lauf
+}
+
 int PdfThumbnailProvider::ensureDocument(const QString& pathOrUrl, int startPage) {
     const QString key = mg::toLocalPath(pathOrUrl);
     if (key.isEmpty()) return 0;

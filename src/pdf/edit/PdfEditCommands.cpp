@@ -3,6 +3,20 @@
 #include "pdf/edit/PdfEditController.h"
 
 // ─────────────────────────────────────────────────────────────────────────────
+//  Textebene (Caret-Werkzeug)
+// ─────────────────────────────────────────────────────────────────────────────
+PdfEditTextOpCommand::PdfEditTextOpCommand(PdfEditController* ctl, const PdfTextOp& op)
+    : m_ctl(ctl), m_op(op) {}
+
+void PdfEditTextOpCommand::redo() {
+    m_ctl->applyTextOp(m_op);
+}
+
+void PdfEditTextOpCommand::undo() {
+    m_ctl->revokeLastTextOp();
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 //  Hinzufügen
 // ─────────────────────────────────────────────────────────────────────────────
 PdfEditAddCommand::PdfEditAddCommand(PdfEditModel* model, const PdfEditBox& box, int row)
@@ -105,10 +119,10 @@ bool PdfEditFieldCommand::mergeWith(const QUndoCommand* other) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-//  Seiten-Plan (Aufgabe 3)
+//  Seiten-Plan
 // ─────────────────────────────────────────────────────────────────────────────
 PdfEditPagePlanCommand::PdfEditPagePlanCommand(PdfEditController* ctl,
-        const QVector<int>& oldPlan, const QVector<int>& newPlan)
+        const QVector<PdfPlanPage>& oldPlan, const QVector<PdfPlanPage>& newPlan)
     : m_ctl(ctl), m_old(oldPlan), m_new(newPlan) {}
 
 void PdfEditPagePlanCommand::redo() { m_ctl->applyPlan(m_new); }

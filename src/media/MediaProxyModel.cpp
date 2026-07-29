@@ -21,6 +21,11 @@ MediaProxyModel::MediaProxyModel(QObject* parent)
     connect(this, &QAbstractItemModel::layoutChanged,  this, &MediaProxyModel::countChanged);
 }
 
+void MediaProxyModel::setSourceModel(QAbstractItemModel* source) {
+    m_src = qobject_cast<MediaModel*>(source);
+    QSortFilterProxyModel::setSourceModel(source);
+}
+
 void MediaProxyModel::setTagManager(TagManager* mgr) {
     if (m_tagMgr == mgr) return;
     if (m_tagMgr) m_tagMgr->disconnect(this);
@@ -152,11 +157,21 @@ void MediaProxyModel::collectTagsForCategory(const QString& id, QSet<QString>& o
 }
 
 bool MediaProxyModel::filterAcceptsRow(int sourceRow, const QModelIndex& sourceParent) const {
-    const QModelIndex idx = sourceModel()->index(sourceRow, 0, sourceParent);
-    if (!idx.isValid()) return false;
+    // Schneller Pfad: direkt auf das MediaItem-Struct (kein QVariant je Zeile).
+    // Nur fuer Zeilen der Wurzelebene des bekannten Quellmodells; sonst (fremdes
+    // Modell, hypothetische Baumzeilen) bleibt der QVariant-Weg.
+    const MediaItem* item = (m_src && !sourceParent.isValid())
+                                ? m_src->itemAt(sourceRow) : nullptr;
+
+    QModelIndex idx;
+    if (!item) {
+        idx = sourceModel()->index(sourceRow, 0, sourceParent);
+        if (!idx.isValid()) return false;
+    }
 
     // ── Medientyp-Filter ────────────────────────────────────────────────────
-    const auto type = static_cast<MediaType>(idx.data(MediaModel::MediaTypeRole).toInt());
+    const auto type = item ? item->type
+                           : static_cast<MediaType>(idx.data(MediaModel::MediaTypeRole).toInt());
     switch (type) {
     case MediaType::Image: if (!m_showImages) return false; break;
     case MediaType::Video: if (!m_showVideos) return false; break;
@@ -176,7 +191,8 @@ bool MediaProxyModel::filterAcceptsRow(int sourceRow, const QModelIndex& sourceP
     // ── Direkte Datei↔Kategorie-Mitgliedschaft: passiert immer ───────────────
     //  O(1)-Lookup im vorberechneten Cache statt rekursivem Baum-Scan pro Zeile.
     if (hasCategoryFilter && !m_activeCatFiles.isEmpty()) {
-        const QString fileName = idx.data(MediaModel::FileNameRole).toString();
+        const QString fileName = item ? item->fileName()
+                                      : idx.data(MediaModel::FileNameRole).toString();
         if (m_activeCatFiles.contains(fileName))
             return true;
     }
@@ -186,7 +202,11 @@ bool MediaProxyModel::filterAcceptsRow(int sourceRow, const QModelIndex& sourceP
         return false;
 
     // ── Tag-Modus-Auswertung gegen die effektive Filtermenge ─────────────────
-    const QStringList itemTags = idx.data(MediaModel::TagsRole).toStringList();
+    //  Beim schnellen Pfad ohne Kopie (Referenz auf die Item-Tags), sonst aus
+    //  dem QVariant. `owned` haelt die Kopie nur im Fallback am Leben.
+    const QStringList owned = item ? QStringList()
+                                   : idx.data(MediaModel::TagsRole).toStringList();
+    const QStringList& itemTags = item ? item->tags : owned;
     switch (m_mode) {
     case TagMode::Or:
     case TagMode::Inklusiv:
@@ -215,6 +235,37 @@ bool MediaProxyModel::filterAcceptsRow(int sourceRow, const QModelIndex& sourceP
 }
 
 bool MediaProxyModel::lessThan(const QModelIndex& left, const QModelIndex& right) const {
+    // Schneller Pfad wie in filterAcceptsRow: Sortieren laeuft O(n log n) mal
+    // durch diese Funktion — je Vergleich zwei QVariants (inkl. QDateTime-/
+    // QStringList-Kopien) waren der Loewenanteil der Sortierkosten.
+    if (m_src) {
+        const MediaItem* a = m_src->itemAt(left.row());
+        const MediaItem* b = m_src->itemAt(right.row());
+        if (a && b) {
+            switch (m_field) {
+            case Field::Name: {
+                const int cmp = a->displayName.compare(b->displayName, Qt::CaseInsensitive);
+                if (cmp != 0) return cmp < 0;
+                break;
+            }
+            case Field::FileSize:
+                if (a->fileSize != b->fileSize) return a->fileSize < b->fileSize;
+                break;
+            case Field::Tags: {
+                const int cmp = a->tags.join(QChar(',')).compare(
+                                    b->tags.join(QChar(',')), Qt::CaseInsensitive);
+                if (cmp != 0) return cmp < 0;
+                break;
+            }
+            case Field::Date:
+            default:
+                break;
+            }
+            if (a->dateTime != b->dateTime) return a->dateTime < b->dateTime;
+            return a->displayName.compare(b->displayName, Qt::CaseInsensitive) < 0;
+        }
+    }
+
     switch (m_field) {
     case Field::Name: {
         const QString a = left.data(MediaModel::DisplayNameRole).toString();
@@ -261,6 +312,15 @@ QStringList MediaProxyModel::tagsAt(int r)    const { return roleAt(r, MediaMode
 QDateTime MediaProxyModel::dateTimeAt(int r)  const { return roleAt(r, MediaModel::DateTimeRole).toDateTime(); }
 
 int MediaProxyModel::rowForPath(const QString& filePath) const {
+    // O(1) ueber den Pfad→Zeile-Hash des Quellmodells + mapFromSource statt
+    // eines linearen Scans mit QVariant-Konvertierung je Zeile (die Funktion
+    // laeuft bei JEDEM Oeffnen/Weiterblaettern im Vollbild).
+    if (m_src) {
+        const int srcRow = m_src->rowForPath(filePath);
+        if (srcRow < 0) return -1;
+        const QModelIndex proxy = mapFromSource(m_src->index(srcRow));
+        return proxy.isValid() ? proxy.row() : -1;   // −1 = durch Filter ausgeblendet
+    }
     const int n = rowCount();
     for (int i = 0; i < n; ++i)
         if (index(i, 0).data(MediaModel::FilePathRole).toString() == filePath)

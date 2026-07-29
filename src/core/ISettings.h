@@ -157,6 +157,25 @@ public:
     virtual bool pdfPageEditDestructive() const = 0;
     virtual void setPdfPageEditDestructive(bool v) = 0;
 
+    // PDF-Editor: Verhalten des EINEN Export-Knopfes. true (Standard) =
+    // verlustfrei bevorzugen — „Text ersetzen"-Änderungen werden direkt in die
+    // eingebettete Textebene geschrieben, die Seite bleibt vektoriell
+    // (durchsuchbarer Text, eingebettete Schriften); wo das nicht sicher
+    // möglich ist, fällt der Controller selbsttätig auf den Raster-Export
+    // zurück. false = immer der Raster-Export (150 dpi Seitenbild).
+    virtual bool pdfExportLossless() const = 0;
+    virtual void setPdfExportLossless(bool v) = 0;
+
+    // PDF-Editor: Eigene Notizen beim Export als ECHTE PDF-Annotationen
+    // schreiben (Interchange) statt sie als Inhalt zu malen. true = in anderen
+    // Betrachtern bleiben sie auswähl-, verschieb- und löschbar; false
+    // (Standard) = gemalter Inhalt — der sieht überall gleich aus und lässt
+    // sich nicht versehentlich wegklicken. Nicht abbildbare Notizen („Text
+    // ersetzen", verkettete Textboxen) werden IMMER gemalt; enthält die Seite
+    // solche, gilt der gemalte Weg für alles.
+    virtual bool pdfExportAsAnnotations() const = 0;
+    virtual void setPdfExportAsAnnotations(bool v) = 0;
+
     // ── DOCX-Editor ──────────────────────────────────────────────────────────
     //  true (Standard) = „Direkt speichern" (Original + einmalige .bak je
     //  Sitzung); false = „Kopie exportieren" (<Name>_edited(.n).docx).

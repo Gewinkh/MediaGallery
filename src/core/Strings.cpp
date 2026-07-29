@@ -292,6 +292,10 @@ static const QMap<StringKey, QString> s_de = {
     { StringKey::PdfEditAlignLabel,        "Ausrichtung" },
     { StringKey::PdfEditVAlignLabel,       "Vertikal" },
     { StringKey::PdfEditToolReplace,       "Text ersetzen" },
+    { StringKey::PdfEditToolCaret,         "Text bearbeiten" },
+    { StringKey::PdfEditCaretLoading,      "Textebene wird gelesen …" },
+    { StringKey::PdfEditCaretUnavailable,  "Diese Seite lässt sich nicht zeichenweise bearbeiten (%1)." },
+    { StringKey::PdfEditTextOpFailed,      "Änderung nicht möglich: %1" },
     { StringKey::CreateFileTypeDocx,     "Word-Dokument (DOCX)" },
     { StringKey::SettingsDocxGroup,      "DOCX-Editor" },
     { StringKey::DocxSaveModeLabel,      "Speicherverhalten" },
@@ -338,8 +342,6 @@ static const QMap<StringKey, QString> s_de = {
     { StringKey::PdfChainUnlink,            "Kette lösen" },
     { StringKey::PdfChainPick,              "Zielbox anklicken …" },
     { StringKey::PdfChainDone,              "Boxen verkettet (Text fließt über)" },
-    { StringKey::PdfEditExportVectorBtn,    "→ PDF (Text im Stream)" },
-    { StringKey::PdfEditExportVectorTip,    "„Text ersetzen“ verlustfrei in die Textebene schreiben (Datei bleibt vektoriell); sonst automatischer Raster-Export" },
     { StringKey::PdfContentFallbackToast,   "Nicht verlustfrei möglich – Raster-Export verwendet" },
     { StringKey::PdfEditNoHighlight,       "Keine" },
     { StringKey::PdfEditDeleteBtn,         "Textbox löschen" },
@@ -445,8 +447,62 @@ static const QMap<StringKey, QString> s_de = {
     { StringKey::SettingsPdfPageEditHint,    "Im PDF-Editiermodus fügt die „+\"-Linie unter einer Seite eine leere A4-Seite ein; Rechtsklick auf eine Seite bietet „Seite entfernen\". Strg+Z macht beides rückgängig." },
     { StringKey::PdfPageEditNonDestructive,  "Nicht-destruktiv (Änderungen wirken beim Export)" },
     { StringKey::PdfPageEditDestructiveMode, "Destruktiv (Original-PDF sofort ändern)" },
+    { StringKey::SettingsPdfExportLabel,     "Export" },
+    { StringKey::SettingsPdfExportHint,      "Gilt für den „Export\"-Knopf im PDF-Editor. Verlustfrei hält Text durchsuchbar und Grafik vektoriell; wo das nicht sicher möglich ist (verschlüsselt, CID-Schriften, Nicht-ASCII), wird die betroffene Seite automatisch als Bild exportiert. Das Original bleibt in beiden Fällen unangetastet — es entsteht immer eine neue Kopie." },
+    { StringKey::PdfExportLosslessMode,      "Verlustfrei, wenn möglich (Text bleibt durchsuchbar)" },
+    { StringKey::PdfExportRasterMode,        "Immer als Bild (Raster, 150 dpi)" },
     { StringKey::PdfAddPageTip,              "Leere A4-Seite hier einfügen" },
     { StringKey::PdfRemovePage,              "Seite entfernen" },
+    { StringKey::PdfRotatePageLeft,          "Seite nach links drehen" },
+    { StringKey::PdfRotatePageRight,         "Seite nach rechts drehen" },
+    { StringKey::PdfInsertPagesFrom,         "Seiten aus PDF einfügen…" },
+    { StringKey::PdfInsertPagesDialogTitle,  "Seiten zum Einfügen wählen" },
+    { StringKey::PdfInsertPagesFileTitle,    "PDF auswählen" },
+    { StringKey::PdfPagesInsertedToast,      "%1 Seite(n) eingefügt" },
+    { StringKey::PdfPagesInsertFailedToast,  "Seiten konnten nicht eingefügt werden" },
+    { StringKey::PdfMovePageTip,             "Ziehen sortiert die Seite um" },
+    { StringKey::PdfPageImportedBadge,       "eingefügt" },
+    { StringKey::PdfCaretPageNotEditable,    "Diese Seite lässt sich nicht zeichenweise "
+                                             "bearbeiten (eingefügt oder gedreht)." },
+    { StringKey::PdfReflowOverflow,          "Der Absatz ist voll — der Rest steht in der "
+                                             "letzten Zeile." },
+    { StringKey::PdfEditDeleteMarkup,        "Markierung löschen" },
+    { StringKey::PdfFormSavedFlattenedToast, "Formular gespeichert: %1 — mit der geänderten "
+                                             "Seitenfolge. Die Felder sind in der Kopie "
+                                             "festgeschrieben und dort nicht mehr ausfüllbar." },
+    { StringKey::PdfCaretPageNoText,         "Auf dieser Seite gibt es keinen Text zum Bearbeiten "
+                                             "(gescannte Seite? Dann hilft der OCR-Knopf)." },
+    { StringKey::PdfSearchPlaceholder,       "Im Dokument suchen …" },
+    { StringKey::PdfSearchCount,             "%1 von %2" },
+    { StringKey::PdfSearchNone,              "Keine Treffer" },
+    { StringKey::PdfSearchTip,               "Im Dokument suchen (Strg+F)" },
+    { StringKey::PdfEditToolStamp,           "Signatur/Stempel einfügen (Bild)" },
+    { StringKey::PdfStampFileTitle,          "Bild auswählen" },
+    { StringKey::PdfStampFailedToast,        "Bild konnte nicht eingefügt werden" },
+    { StringKey::PdfEditToolRedact,          "Text schwärzen (entfernt den Text)" },
+    { StringKey::PdfRedactLimitHint,         "Der geschwärzte Text wird beim Export aus dem "
+                                             "Dokument entfernt — er lässt sich dann nicht mehr "
+                                             "markieren, kopieren oder finden. Die Kopie wird "
+                                             "dafür vollständig neu geschrieben: Auch in ihren "
+                                             "Rohdaten steht er nicht mehr. Lässt er sich nicht "
+                                             "sicher entfernen, wird die Seite als Bild "
+                                             "ausgegeben — dann ist er ebenfalls fort, die "
+                                             "Textebene der Kopie aber auch. Das Original bleibt "
+                                             "in beiden Fällen unverändert." },
+    { StringKey::PdfEditToolMarkup,          "Text markieren (ziehen)" },
+    { StringKey::PdfMarkupHighlight,         "Markieren" },
+    { StringKey::PdfMarkupUnderline,         "Unterstreichen" },
+    { StringKey::PdfMarkupStrike,            "Durchstreichen" },
+    { StringKey::PdfExportAsAnnotationsOption, "Notizen als PDF-Annotationen schreiben" },
+    { StringKey::PdfExportAsAnnotationsHint,  "Dann bleiben eigene Notizen auch in anderen "
+                                              "PDF-Betrachtern auswählbar und löschbar. Ohne "
+                                              "diese Option werden sie fest in die Seite "
+                                              "gezeichnet — das sieht überall gleich aus. "
+                                              "„Text ersetzen\" und verkettete Textboxen "
+                                              "werden immer gezeichnet." },
+    { StringKey::PdfFormSaveTip,             "Ausgefülltes Formular als Kopie speichern" },
+    { StringKey::PdfFormSavedToast,          "Formular gespeichert: %1" },
+    { StringKey::PdfFormSaveFailedToast,     "Formular konnte nicht gespeichert werden (%1)" },
     { StringKey::SettingsGenShortcuts,       "Tastenkürzel" },
     { StringKey::ShortcutCtxGallery,         "Galerie" },
     { StringKey::ShortcutCtxViewer,          "Medienansicht" },
@@ -756,6 +812,10 @@ static const QMap<StringKey, QString> s_en = {
     { StringKey::PdfEditAlignLabel,        "Alignment" },
     { StringKey::PdfEditVAlignLabel,       "Vertical" },
     { StringKey::PdfEditToolReplace,       "Replace text" },
+    { StringKey::PdfEditToolCaret,         "Edit text" },
+    { StringKey::PdfEditCaretLoading,      "Reading text layer …" },
+    { StringKey::PdfEditCaretUnavailable,  "This page cannot be edited character by character (%1)." },
+    { StringKey::PdfEditTextOpFailed,      "Change not possible: %1" },
     { StringKey::CreateFileTypeDocx,     "Word document (DOCX)" },
     { StringKey::SettingsDocxGroup,      "DOCX Editor" },
     { StringKey::DocxSaveModeLabel,      "Save behavior" },
@@ -802,8 +862,6 @@ static const QMap<StringKey, QString> s_en = {
     { StringKey::PdfChainUnlink,            "Unlink" },
     { StringKey::PdfChainPick,              "Click the target box …" },
     { StringKey::PdfChainDone,              "Boxes linked (text overflows)" },
-    { StringKey::PdfEditExportVectorBtn,    "→ PDF (edit text in stream)" },
-    { StringKey::PdfEditExportVectorTip,    "Write “Replace text” losslessly into the text layer (keeps the file vector); otherwise falls back to raster export" },
     { StringKey::PdfContentFallbackToast,   "Lossless edit not possible – used raster export" },
     { StringKey::PdfEditNoHighlight,       "None" },
     { StringKey::PdfEditDeleteBtn,         "Delete text box" },
@@ -909,8 +967,60 @@ static const QMap<StringKey, QString> s_en = {
     { StringKey::SettingsPdfPageEditHint,    "In PDF edit mode, the “+” line beneath a page inserts a blank A4 page; right-clicking a page offers “Remove page”. Ctrl+Z undoes both." },
     { StringKey::PdfPageEditNonDestructive,  "Non-destructive (changes apply on export)" },
     { StringKey::PdfPageEditDestructiveMode, "Destructive (modify the original PDF immediately)" },
+    { StringKey::SettingsPdfExportLabel,     "Export" },
+    { StringKey::SettingsPdfExportHint,      "Applies to the “Export” button in the PDF editor. Lossless keeps text searchable and graphics vector-based; where that is not provably safe (encrypted, CID fonts, non-ASCII), the affected page is exported as an image automatically. Either way the original stays untouched — a new copy is always created." },
+    { StringKey::PdfExportLosslessMode,      "Lossless when possible (keeps text searchable)" },
+    { StringKey::PdfExportRasterMode,        "Always as an image (raster, 150 dpi)" },
     { StringKey::PdfAddPageTip,              "Insert a blank A4 page here" },
     { StringKey::PdfRemovePage,              "Remove page" },
+    { StringKey::PdfRotatePageLeft,          "Rotate page left" },
+    { StringKey::PdfRotatePageRight,         "Rotate page right" },
+    { StringKey::PdfInsertPagesFrom,         "Insert pages from PDF…" },
+    { StringKey::PdfInsertPagesDialogTitle,  "Choose pages to insert" },
+    { StringKey::PdfInsertPagesFileTitle,    "Choose PDF" },
+    { StringKey::PdfPagesInsertedToast,      "%1 page(s) inserted" },
+    { StringKey::PdfPagesInsertFailedToast,  "Pages could not be inserted" },
+    { StringKey::PdfMovePageTip,             "Drag to reorder this page" },
+    { StringKey::PdfPageImportedBadge,       "inserted" },
+    { StringKey::PdfCaretPageNotEditable,    "This page cannot be edited character by "
+                                             "character (inserted or rotated)." },
+    { StringKey::PdfReflowOverflow,          "The paragraph is full — the remainder stays "
+                                             "on the last line." },
+    { StringKey::PdfEditDeleteMarkup,        "Delete highlight" },
+    { StringKey::PdfFormSavedFlattenedToast, "Form saved: %1 — with your new page order. The "
+                                             "fields are baked into that copy and can no longer "
+                                             "be filled in there." },
+    { StringKey::PdfCaretPageNoText,         "There is no text to edit on this page "
+                                             "(scanned? then the OCR button helps)." },
+    { StringKey::PdfSearchPlaceholder,       "Search in document …" },
+    { StringKey::PdfSearchCount,             "%1 of %2" },
+    { StringKey::PdfSearchNone,              "No matches" },
+    { StringKey::PdfSearchTip,               "Search in document (Ctrl+F)" },
+    { StringKey::PdfEditToolStamp,           "Insert signature/stamp (image)" },
+    { StringKey::PdfStampFileTitle,          "Choose image" },
+    { StringKey::PdfStampFailedToast,        "The image could not be inserted" },
+    { StringKey::PdfEditToolRedact,          "Black out text (removes it)" },
+    { StringKey::PdfRedactLimitHint,         "The blacked-out text is removed from the document "
+                                             "on export — it can no longer be selected, copied "
+                                             "or found. The copy is written from scratch for "
+                                             "that, so the text is not in its raw bytes either. "
+                                             "If it cannot be removed safely, the page is written "
+                                             "out as an image — the text is gone there too, but "
+                                             "so is the copy's text layer. Your original is left "
+                                             "untouched either way." },
+    { StringKey::PdfEditToolMarkup,          "Highlight text (drag)" },
+    { StringKey::PdfMarkupHighlight,         "Highlight" },
+    { StringKey::PdfMarkupUnderline,         "Underline" },
+    { StringKey::PdfMarkupStrike,            "Strikethrough" },
+    { StringKey::PdfExportAsAnnotationsOption, "Write notes as PDF annotations" },
+    { StringKey::PdfExportAsAnnotationsHint,  "Your notes then stay selectable and deletable "
+                                              "in other PDF readers too. Without this option "
+                                              "they are drawn into the page, which looks the "
+                                              "same everywhere. \"Replace text\" and linked "
+                                              "text boxes are always drawn." },
+    { StringKey::PdfFormSaveTip,             "Save the filled form as a copy" },
+    { StringKey::PdfFormSavedToast,          "Form saved: %1" },
+    { StringKey::PdfFormSaveFailedToast,     "The form could not be saved (%1)" },
     { StringKey::SettingsGenShortcuts,       "Keyboard Shortcuts" },
     { StringKey::ShortcutCtxGallery,         "Gallery" },
     { StringKey::ShortcutCtxViewer,          "Media Viewer" },

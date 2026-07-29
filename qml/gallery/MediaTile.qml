@@ -118,7 +118,7 @@ Rectangle {
             // Add-to-Tag) bleiben unverändert und haben Vorrang.
             if (tile.modeTag.length === 0) {
                 if (mouse.button === Qt.RightButton)
-                    ctxMenu.popup()
+                    tile.openContextMenu()
                 return
             }
             if (tile.tagMode === 2 && mouse.button === Qt.LeftButton)
@@ -137,64 +137,85 @@ Rectangle {
     readonly property string fileName: filePath.substring(
         Math.max(filePath.lastIndexOf("/"), filePath.lastIndexOf("\\")) + 1)
 
-    Menu {
-        id: ctxMenu
-        property var ctxTags: []       // alle Tags (JSON)
-        property var ctxCats: []       // flacher Kategorienbaum [{id,name,color}]
-        property var fileTags: []      // Tags der Datei
-        property var fileCatIds: []    // Kategorie-IDs der Datei
-        onAboutToShow: {
-            ctxTags    = App.allTags()
-            ctxCats    = Tags.categoriesFlat()
-            fileTags   = App.tagsForFile(tile.fileName)
-            fileCatIds = Tags.categoryIdsForFile(tile.fileName)
-        }
+    //  LAZY: Das Menü (samt zwei Untermenüs und deren Repeatern) wird erst beim
+    //  ersten Rechtsklick erzeugt. Als direktes Kind entstand es bei JEDEM
+    //  Delegate — bei ~40 sichtbaren Kacheln also 120 Popup-Instanzen (Menu ist
+    //  ein Popup mit eigenem Hintergrund, contentItem und ListView), obwohl
+    //  höchstens eines je gleichzeitig sichtbar ist. Das war der grösste
+    //  Einzelposten beim Aufbau und Recyceln der Galerie-Delegates.
+    Loader {
+        id: ctxLoader
+        active: false
+        sourceComponent: ctxMenuComponent
+    }
+    function openContextMenu() {
+        ctxLoader.active = true
+        if (ctxLoader.item)
+            ctxLoader.item.popup()
+    }
+
+    Component {
+        id: ctxMenuComponent
 
         Menu {
-            title: App.uiText(App.language, "CtxAddTag")
-            MenuItem {
-                visible: ctxMenu.ctxTags.length === 0
-                height: visible ? implicitHeight : 0
-                enabled: false
-                text: App.uiText(App.language, "FilterNoTagsShort")
+            id: ctxMenu
+            property var ctxTags: []       // alle Tags (JSON)
+            property var ctxCats: []       // flacher Kategorienbaum [{id,name,color}]
+            property var fileTags: []      // Tags der Datei
+            property var fileCatIds: []    // Kategorie-IDs der Datei
+            onAboutToShow: {
+                ctxTags    = App.allTags()
+                ctxCats    = Tags.categoriesFlat()
+                fileTags   = App.tagsForFile(tile.fileName)
+                fileCatIds = Tags.categoryIdsForFile(tile.fileName)
             }
-            Repeater {
-                model: ctxMenu.ctxTags
-                delegate: MenuItem {
-                    required property var modelData
-                    text: modelData
-                    checkable: true
-                    checked: ctxMenu.fileTags.indexOf(modelData) >= 0
-                    onTriggered: mediaModel.toggleTag(tile.filePath, modelData)
-                }
-            }
-        }
-        Menu {
-            title: App.uiText(App.language, "CtxAddCategory")
-            MenuItem {
-                visible: ctxMenu.ctxCats.length === 0
-                height: visible ? implicitHeight : 0
-                enabled: false
-                text: App.uiText(App.language, "CtxNoCategories")
-            }
-            Repeater {
-                model: ctxMenu.ctxCats
-                delegate: MenuItem {
-                    required property var modelData
-                    text: modelData.name
-                    checkable: true
-                    checked: ctxMenu.fileCatIds.indexOf(modelData.id) >= 0
-                    onTriggered: Tags.toggleFileInCategory(modelData.id, tile.fileName)
-                }
-            }
-        }
 
-        MenuSeparator {}
-        // Datei löschen (in den Papierkorb) — Bestätigung übernimmt der
-        // gemeinsame Dialog in GalleryView (deleteRequested-Signal).
-        MenuItem {
-            text: App.uiText(App.language, "CtxDeleteFile")
-            onTriggered: tile.deleteRequested(tile.filePath, tile.displayName)
+            Menu {
+                title: App.uiText(App.language, "CtxAddTag")
+                MenuItem {
+                    visible: ctxMenu.ctxTags.length === 0
+                    height: visible ? implicitHeight : 0
+                    enabled: false
+                    text: App.uiText(App.language, "FilterNoTagsShort")
+                }
+                Repeater {
+                    model: ctxMenu.ctxTags
+                    delegate: MenuItem {
+                        required property var modelData
+                        text: modelData
+                        checkable: true
+                        checked: ctxMenu.fileTags.indexOf(modelData) >= 0
+                        onTriggered: mediaModel.toggleTag(tile.filePath, modelData)
+                    }
+                }
+            }
+            Menu {
+                title: App.uiText(App.language, "CtxAddCategory")
+                MenuItem {
+                    visible: ctxMenu.ctxCats.length === 0
+                    height: visible ? implicitHeight : 0
+                    enabled: false
+                    text: App.uiText(App.language, "CtxNoCategories")
+                }
+                Repeater {
+                    model: ctxMenu.ctxCats
+                    delegate: MenuItem {
+                        required property var modelData
+                        text: modelData.name
+                        checkable: true
+                        checked: ctxMenu.fileCatIds.indexOf(modelData.id) >= 0
+                        onTriggered: Tags.toggleFileInCategory(modelData.id, tile.fileName)
+                    }
+                }
+            }
+
+            MenuSeparator {}
+            // Datei löschen (in den Papierkorb) — Bestätigung übernimmt der
+            // gemeinsame Dialog in GalleryView (deleteRequested-Signal).
+            MenuItem {
+                text: App.uiText(App.language, "CtxDeleteFile")
+                onTriggered: tile.deleteRequested(tile.filePath, tile.displayName)
+            }
         }
     }
 

@@ -249,15 +249,25 @@ QByteArray Reader::fileData(int index, bool* ok) const {
     if (!rawOk)
         return {};
     const Entry& e = m_entries.at(index);
+    QByteArray plain;
     if (e.method == 0) {                       // Store: 1:1
-        if (ok) *ok = true;
-        return raw;
+        // Bei Store MUSS die unkomprimierte Größe der komprimierten
+        // entsprechen — weicht sie ab, ist das Zentralverzeichnis
+        // inkonsistent (manipuliert oder defekt).
+        if (e.uncompSize != e.compSize)
+            return {};
+        plain = raw;
+    } else {
+        bool infOk = false;
+        plain = inflateRaw(raw, e.uncompSize, &infOk);
+        if (!infOk)
+            return {};
     }
-    bool infOk = false;
-    QByteArray plain = inflateRaw(raw, e.uncompSize, &infOk);
-    if (!infOk)
-        return {};
     // Integrität: CRC muss stimmen (schützt vor stiller Korruption).
+    // Gilt für BEIDE Methoden — gespeicherte (unkomprimierte) Einträge kamen
+    // vorher ungeprüft durch, obwohl gerade sie durch einen Bytefehler in der
+    // Datei unbemerkt verfälscht werden können (Deflate wäre dabei mit hoher
+    // Wahrscheinlichkeit schon am Strom selbst gescheitert).
     if (crcOf(plain) != e.crc32)
         return {};
     if (ok) *ok = true;

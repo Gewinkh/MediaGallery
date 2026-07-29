@@ -117,14 +117,19 @@ private:
         return m_cancel && m_cancel->load(std::memory_order_relaxed);
     }
 
-    static QPixmap generateVideoThumbnail(const QString& path, const QSize& size);
-    static QPixmap generateImageThumbnail(const QString& path, const QSize& size);
-    static QPixmap generateAudioThumbnail(const QString& path, const QSize& size);
-    static QPixmap generatePdfThumbnail(const QString& path, const QSize& size);
-    static QPixmap generateTextThumbnail(const QString& path, const QSize& size);
+    //  Alle Erzeuger arbeiten auf QImage, NICHT auf QPixmap: QPixmap ist an den
+    //  GUI-Thread gebunden (Qt-Dokumentation: „QPixmap … outside the GUI thread"
+    //  ist nicht unterstuetzt), diese Funktionen laufen aber ausnahmslos in
+    //  Pool-Workern. QImage ist dort explizit erlaubt und spart zusaetzlich die
+    //  QPixmap::fromImage-Konvertierung samt zweitem Vollbild-Puffer je Thumbnail.
+    static QImage generateVideoThumbnail(const QString& path, const QSize& size);
+    static QImage generateImageThumbnail(const QString& path, const QSize& size);
+    static QImage generateAudioThumbnail(const QString& path, const QSize& size);
+    static QImage generatePdfThumbnail(const QString& path, const QSize& size);
+    static QImage generateTextThumbnail(const QString& path, const QSize& size);
     //  DOCX-Karte (erste Absätze via Docx::Document::plainTextPreview).
-    static QPixmap generateDocxThumbnail(const QString& path, const QSize& size);
-    static QPixmap generateHtmlCardThumbnail(const QString& path, const QSize& size);
-    static QPixmap fallbackPdfThumbnail(const QSize& size);
-    static QPixmap fallbackTextThumbnail(const QString& path, const QSize& size);
+    static QImage generateDocxThumbnail(const QString& path, const QSize& size);
+    static QImage generateHtmlCardThumbnail(const QString& path, const QSize& size);
+    static QImage fallbackPdfThumbnail(const QSize& size);
+    static QImage fallbackTextThumbnail(const QString& path, const QSize& size);
 };

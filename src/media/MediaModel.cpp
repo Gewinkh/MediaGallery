@@ -5,6 +5,7 @@
 
 #include <QFileSystemWatcher>
 #include <QDir>
+#include <QDirIterator>
 #include <QFileInfo>
 #include <QFile>
 
@@ -45,7 +46,7 @@ MediaModel::MediaModel(JsonStorage& storage,
     m_fillTimer.setInterval(0);   // „sobald die Event-Loop atmet“ — kein Blockieren
     connect(&m_fillTimer, &QTimer::timeout, this, [this]() {
         feedChunk(/*firstChunk=*/false);
-        if (m_pendingIndex >= m_pendingEntries.size()) {
+        if (!m_pendingIt || !m_pendingIt->hasNext()) {
             m_fillTimer.stop();
             finishFill();
         }
@@ -60,12 +61,14 @@ MediaModel::MediaModel(JsonStorage& storage,
     });
 }
 
+//  s. Header: hier ist QDirIterator vollständig bekannt.
+MediaModel::~MediaModel() = default;
+
 // ─── Enumeration / inkrementelle Befüllung ───────────────────────────────────
 void MediaModel::rebuild(const QString& folderPath) {
     // Laufende Befüllung abbrechen.
     m_fillTimer.stop();
-    m_pendingEntries.clear();
-    m_pendingIndex = 0;
+    m_pendingIt.reset();
     m_pendingSidecar.clear();
 
     // Leeres Modell SOFORT publizieren → die UI rendert ohne Verzögerung den
@@ -86,21 +89,29 @@ void MediaModel::rebuild(const QString& folderPath) {
     // Kachel angezeigt.
     m_pendingSidecar = QFileInfo(folderPath).fileName() + QStringLiteral(".json");
 
-    // entryInfoList sortiert nur über die Dateinamen; die teuren stat()-Aufrufe
-    // (Größe/mtime) erfolgen erst beim Aufbau der MediaItems je Charge — also
-    // verteilt statt in einem Block vorab.
-    m_pendingEntries = QDir(folderPath).entryInfoList(QDir::Files, QDir::Name);
-
-    const int upperBound = m_pendingEntries.size();
-    m_items.reserve(upperBound);
-    m_thumbUrls.reserve(upperBound);
-    m_thumbState.reserve(upperBound);
-    m_pathToRow.reserve(upperBound);
+    // ── Verzeichnis STREAMEND lesen (QDirIterator) statt vorab als Liste ─────
+    //  Vorher materialisierte `QDir::entryInfoList` den GESAMTEN Ordner als
+    //  QFileInfoList, bevor die erste Kachel sichtbar wurde: je Eintrag ein
+    //  QFileInfoPrivate samt QFileSystemEntry und QFileSystemMetaData. Bei
+    //  20 000 Dateien waren das ~20 MB, die bis zum Ende der Befüllung liegen
+    //  blieben — und der Nutzer wartete auf die Enumeration ALLER Einträge,
+    //  obwohl der Viewport nur die ersten paar Dutzend zeigt.
+    //  Der Iterator hält dagegen immer nur EINEN Eintrag; jede Charge liest
+    //  genau so viele Einträge, wie sie einspeist.
+    //
+    //  KEINE Sortierung (QDirIterator sortiert grundsätzlich nicht, und
+    //  `QDir::Name` wäre ohnehin verschenkt): die sichtbare Reihenfolge legt
+    //  ausschließlich `MediaProxyModel` fest (`sort(0, …)` im Konstruktor,
+    //  `dynamicSortFilter`), dessen `lessThan` bei Gleichstand deterministisch
+    //  über den Anzeigenamen entscheidet. Damit ist die Anzeige unverändert,
+    //  eine Voll-Sortierung aller Namen entfällt aber.
+    m_pendingIt = std::make_unique<QDirIterator>(folderPath, QDir::Files,
+                                                 QDirIterator::NoIteratorFlags);
 
     // Erste Charge SYNCHRON → Viewport ist sofort gefüllt (kein Flackern),
     // der Rest folgt gechunkt über den Timer.
     feedChunk(/*firstChunk=*/true);
-    if (m_pendingIndex < m_pendingEntries.size())
+    if (m_pendingIt && m_pendingIt->hasNext())
         m_fillTimer.start();
     else
         finishFill();
@@ -113,8 +124,9 @@ void MediaModel::feedChunk(bool firstChunk) {
     batch.reserve(budget);
 
     int produced = 0;
-    while (m_pendingIndex < m_pendingEntries.size() && produced < budget) {
-        const QFileInfo& fi = m_pendingEntries.at(m_pendingIndex++);
+    while (m_pendingIt && m_pendingIt->hasNext() && produced < budget) {
+        m_pendingIt->next();
+        const QFileInfo fi = m_pendingIt->fileInfo();
         if (fi.fileName() == m_pendingSidecar) continue;   // eigene Konfig überspringen
 
         const MediaType t = MediaItem::detectType(fi.filePath());
@@ -157,9 +169,20 @@ void MediaModel::feedChunk(bool firstChunk) {
 }
 
 void MediaModel::finishFill() {
-    m_pendingEntries.clear();
-    m_pendingIndex = 0;
+    m_pendingIt.reset();
     m_pendingSidecar.clear();
+
+    //  Trim GENAU HIER: erst jetzt ist die inkrementelle Befuellung wirklich
+    //  fertig. Der Trim in loadFolder() laeuft schon nach der ERSTEN Charge und
+    //  kann den Speicher des vorherigen Ordners daher noch nicht vollstaendig
+    //  zurueckgeben.
+    //
+    //  BEWUSST KEIN squeeze() auf den Parallel-Vektoren: gemessen (20 000
+    //  Dateien) betraegt die Wachstums-Reserve nur ~93 kB von 9,2 MB Nutzdaten
+    //  (unter 1 %) — Qts Wachstumsstrategie ist keine reine Verdopplung. Dafuer
+    //  wuerde squeeze() den gesamten Item-Vektor umkopieren und damit die
+    //  SPITZE kurzzeitig verdoppeln. Schlechter Tausch (§0-Prio 2 vor 4).
+    mg::trimHeap();
 }
 
 int MediaModel::rowForPath(const QString& filePath) const {
@@ -181,6 +204,9 @@ void MediaModel::loadFolder(const QString& folderPath) {
     // Ordnerwechsel = große Freigabe (alte Item-Liste, Thumb-URLs, Sidecar-
     // Puffer des vorherigen Ordners) → freigegebenen Heap aktiv ans OS
     // zurückgeben. Bewusst NICHT in reload() (gleicher Ordner, kleine Deltas).
+    // Der zweite, wichtigere Trim sitzt in finishFill(): DORT ist die
+    // inkrementelle Befüllung tatsächlich abgeschlossen — hier läuft erst die
+    // erste Charge, der Rest folgt über den Timer.
     mg::trimHeap();
 
     if (!folderPath.isEmpty())

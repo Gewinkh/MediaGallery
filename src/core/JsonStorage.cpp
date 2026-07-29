@@ -3,6 +3,7 @@
 #include <QJsonObject>
 #include <QJsonArray>
 #include <QFile>
+#include <QSaveFile>
 #include <QFileInfo>
 #include <QRandomGenerator>
 #include <QSet>
@@ -206,9 +207,22 @@ void JsonStorage::saveFolder(const QString& folderPath) {
         return;
     }
 
-    QFile f(path);
-    if (f.open(QIODevice::WriteOnly))
-        f.write(QJsonDocument(root).toJson(QJsonDocument::Indented));
+    // ATOMAR schreiben (QSaveFile: Temp-Datei + Rename). Diese Datei ist die
+    // EINZIGE Quelle aller Tags, Kategorien und Custom-Daten eines Ordners und
+    // wird bei jeder Mutation komplett neu geschrieben. Mit open(WriteOnly)
+    // wurde sie dabei zuerst auf 0 Bytes gekuerzt — ein Absturz, ein voller
+    // Datentraeger oder ein Stromausfall im Schreibfenster hinterliess eine
+    // leere/halbe Datei und damit den TOTALVERLUST der Verschlagwortung.
+    // Wie bei ViewerController::writeTextFile und den Editor-Exporten.
+    const QByteArray bytes = QJsonDocument(root).toJson(QJsonDocument::Indented);
+    QSaveFile f(path);
+    if (!f.open(QIODevice::WriteOnly | QIODevice::Truncate))
+        return;
+    if (f.write(bytes) != bytes.size()) {
+        f.cancelWriting();     // Original bleibt unangetastet
+        return;
+    }
+    f.commit();
 }
 
 void JsonStorage::saveCurrentFolder() {

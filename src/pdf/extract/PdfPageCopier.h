@@ -70,6 +70,14 @@ public:
     bool addSourcePages(const QString& sourcePath, const QVector<int>& pages,
                         QString* err);
 
+    // Wie oben, zusätzlich mit einer DREHUNG je übernommener Seite (Grad,
+    // Vielfaches von 90; parallel zu `pages`, leer = keine). Der Wert wirkt
+    // ZUSÄTZLICH zur Eigendrehung der Quellseite und wird als materialisiertes
+    // /Rotate der Zielseite geschrieben — der Seiteninhalt selbst bleibt
+    // byteweise unverändert (Grundlage von „Seite drehen" im PDF-Editor).
+    bool addSourcePages(const QString& sourcePath, const QVector<int>& pages,
+                        const QVector<int>& rotations, QString* err);
+
     // Fallback-Seite: hängt EIN JPEG (DCTDecode) als vollflächige Bildseite mit
     // der gegebenen Seitengröße in PDF-Punkten an. RGB, 8 Bit je Kanal.
     bool addRasterPage(const QByteArray& jpeg, int pxW, int pxH,
@@ -86,6 +94,26 @@ public:
 
     // Bisher registrierte Seiten (für Fortschritt/Plausibilität).
     int pageCount() const { return m_pageObjs.size(); }
+
+    // Schreibt `sourcePath` VOLLSTÄNDIG NEU nach `outputPath`: alle Seiten in
+    // ihrer Reihenfolge verlustfrei kopiert, jedes Objekt genau EINMAL, mit
+    // frischer XRef-Tabelle und OHNE /Prev-Kette.
+    //
+    // WOZU: Alle schreibenden Einheiten des Projekts arbeiten inkrementell
+    // (anhängen, Originalbytes bleiben). Für „Text schwärzen" ist genau das
+    // die Lücke: Der Text ist aus der Anzeige verschwunden, steht aber noch in
+    // den alten Bytes der Datei — ein Hex-Editor findet ihn. Nach diesem
+    // Neuschreiben ist nur noch der aktuelle Stand in der Datei; was kein
+    // Objekt des Seitengraphen mehr ist, wird nicht mitkopiert.
+    //
+    // PREIS (der Aufrufer muss ihn kennen): Der Katalog entsteht neu — was
+    // NICHT am Seitengraphen hängt, geht verloren: `/AcroForm` (Formulare
+    // deshalb vorher mit `mg::PdfFormFields::flatten` festschreiben),
+    // Lesezeichen, benannte Ziele, Dokument-Metadaten, Seitenbeschriftungen.
+    // Deshalb wird NICHT jede Ausgabe so geschrieben, sondern nur die, die es
+    // braucht.
+    static bool rebuild(const QString& sourcePath, const QString& outputPath,
+                        QString* err);
 
     // Anzahl Seiten einer PDF ermitteln, ohne sie zu rendern (leichtgewichtiger
     // Struktur-Parse; -1 bei Fehlschlag). Für den Ordner-Scan des globalen

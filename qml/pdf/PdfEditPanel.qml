@@ -155,8 +155,16 @@ Rectangle {
         id: tb
         property string glyph: ""
         property int toolValue: 0
+        //  Nur für die Markier-Knöpfe: zusätzlich der Stil (0/1/2). −1 = kein
+        //  Stil, dann entscheidet allein das Werkzeug über „aktiv".
+        property int styleValue: -1
         property string tip: ""
-        readonly property bool checked: panel.ctl.tool === toolValue
+        //  Knöpfe, die KEIN Werkzeug setzen (toolValue < 0), sondern nur etwas
+        //  auslösen — z. B. der Bild-Einfügen-Knopf.
+        signal clicked()
+        readonly property bool checked: tb.toolValue >= 0 && panel.ctl.tool === toolValue
+                 && (tb.styleValue < 0
+                     || (panel.ctl.defaultRev, panel.ctl.markupStyle()) === tb.styleValue)
         width: 34; height: 30; radius: 6
         color: checked ? Qt.rgba(App.themeAccent.r, App.themeAccent.g, App.themeAccent.b, 0.30)
              : (tbHover.hovered
@@ -170,7 +178,11 @@ Rectangle {
         TapHandler {
             onTapped: {
                 if (panel.surface) panel.surface.commitEditing()
-                panel.ctl.tool = tb.toolValue
+                if (tb.styleValue >= 0)
+                    panel.ctl.setMarkupStyle(tb.styleValue)
+                if (tb.toolValue >= 0)
+                    panel.ctl.tool = tb.toolValue
+                tb.clicked()
                 //  ⇄ „Text ersetzen": eine bestehende Text-Markierung wird
                 //  direkt zur Ersetzen-Box. Bewusst HIER (nicht über
                 //  onToolChanged): war ⇄ bereits aktiv, feuert kein Signal —
@@ -285,6 +297,27 @@ Rectangle {
                     ToolBtn { glyph: "\u2B2D"; toolValue: 5; tip: App.uiText(App.language, "ImageEditToolEllipse") }
                     // „Text ersetzen" (PDF-exklusiv): weiße Deckfläche + Textbox.
                     ToolBtn { glyph: "\u21C4"; toolValue: 6; tip: App.uiText(App.language, "PdfEditToolReplace") }
+                    // „Text bearbeiten" (PDF-exklusiv): Caret DIREKT in der
+                    // eingebetteten Textebene — kein Overlay, die Seite bleibt
+                    // vektoriell.
+                    ToolBtn { glyph: "\u2336"; toolValue: 7; tip: App.uiText(App.language, "PdfEditToolCaret") }
+                    // Textmarkierung (PDF-exklusiv): Ziehen über Text markiert,
+                    // unterstreicht oder streicht durch — je nach Stil-Knopf.
+                    ToolBtn { glyph: "\u25A8"; toolValue: 8; styleValue: 0
+                              tip: App.uiText(App.language, "PdfMarkupHighlight") }
+                    ToolBtn { glyph: "\u2581"; toolValue: 8; styleValue: 1
+                              tip: App.uiText(App.language, "PdfMarkupUnderline") }
+                    ToolBtn { glyph: "\u2015"; toolValue: 8; styleValue: 2
+                              tip: App.uiText(App.language, "PdfMarkupStrike") }
+                    // „Text schwärzen": deckt ab UND entfernt den Text beim
+                    // Export aus dem Content-Stream (Grenze s. Tooltip).
+                    ToolBtn { glyph: "\u25AE"; toolValue: 9
+                              tip: App.uiText(App.language, "PdfEditToolRedact") + "\n"
+                                   + App.uiText(App.language, "PdfRedactLimitHint") }
+                    // Signatur/Stempel: öffnet den Dateidialog der Kachel.
+                    ToolBtn { glyph: "\u270D"; toolValue: -1
+                              tip: App.uiText(App.language, "PdfEditToolStamp")
+                              onClicked: if (panel.surface) panel.surface.pickStampImage() }
                 }
 
                 // \u2500\u2500 OCR (gescannte PDFs): erkennt die Textzeilen der aktuellen
@@ -664,7 +697,10 @@ Rectangle {
                                             : Qt.rgba(0.88, 0.35, 0.35, 0.10)
                     border.color: "#c25a5a"; border.width: 1
                     Text { anchors.centerIn: parent
-                           text: "\u2715  " + App.uiText(App.language, "PdfEditDeleteBtn")
+                           //  Bei einer Markierung ist „Textbox" schlicht falsch.
+                           text: "\u2715  " + App.uiText(App.language,
+                                     panel.selInfo.kind === 6 ? "PdfEditDeleteMarkup"
+                                                              : "PdfEditDeleteBtn")
                            color: "#e08080"; font.pixelSize: 12 }
                     HoverHandler { id: delHover }
                     TapHandler {
@@ -703,7 +739,10 @@ Rectangle {
                         ToolTip.text: App.uiText(App.language, "PdfEditSaveTip")
                         ToolTip.visible: saveHover.hovered
                     }
-                    // Export → gerendertes PDF (Ziel je Überschreib-Option)
+                    //  Export → neue PDF-Kopie. WELCHER Weg (verlustfrei oder
+                    //  Raster) genommen wird, steht in den Einstellungen
+                    //  (`PdfEdit.exportLossless`) — hier gibt es bewusst nur
+                    //  noch EINEN Knopf, s. `PdfSurface.startExport`.
                     Rectangle {
                         width: (parent.width - 8) / 2; height: 32; radius: 6
                         readonly property bool usable: !panel.ctl.busy && panel.ctl.boxCount > 0
@@ -718,43 +757,17 @@ Rectangle {
                         HoverHandler { id: expHover }
                         TapHandler {
                             enabled: parent.usable
-                            onTapped: if (panel.surface) panel.surface.startPdfExport()
+                            onTapped: if (panel.surface) panel.surface.startExport()
                         }
+                        //  Ziel und Modus stehen im ToolTip. Früher standen hier
+                        //  zusätzlich ein zweiter Knopf („→ PDF (Text im Stream)")
+                        //  und eine eigene Pfad-Zeile — beides ist entfallen: der
+                        //  Weg ist jetzt eine EINSTELLUNG, keine Entscheidung bei
+                        //  jedem einzelnen Export.
                         ToolTip.text: App.uiText(App.language, "PdfEditExportTip")
+                                      + "\n" + panel.ctl.exportTargetPath()
                         ToolTip.visible: expHover.hovered
                     }
-                }
-
-                // Verlustfreier Export: „Text ersetzen" direkt in die eingebettete
-                // Textebene schreiben (Datei bleibt vektoriell); fällt automatisch
-                // auf den Raster-Export zurück, wo das nicht sicher möglich ist.
-                Rectangle {
-                    width: parent.width; height: 30; radius: 6
-                    readonly property bool usable: !panel.ctl.busy && panel.ctl.boxCount > 0
-                    opacity: usable ? 1.0 : 0.4
-                    color: ceHover.hovered && usable ? App.themeCard : "transparent"
-                    border.color: App.themeBorder; border.width: 1
-                    Text { anchors.centerIn: parent
-                           text: App.uiText(App.language, "PdfEditExportVectorBtn")
-                           color: App.themeTextPrimary; font.pixelSize: 11 }
-                    HoverHandler { id: ceHover }
-                    TapHandler {
-                        enabled: parent.usable
-                        onTapped: if (panel.surface) panel.surface.startContentExport()
-                    }
-                    ToolTip.text: App.uiText(App.language, "PdfEditExportVectorTip")
-                    ToolTip.visible: ceHover.hovered
-                }
-
-                // Ziel des nächsten Exports (immer eine neue Kopie
-                // „…_bearbeitet(.n).pdf" — das Original bleibt unangetastet,
-                // die Notizen bleiben über das Sidecar reversibel).
-                Text {
-                    width: parent.width
-                    text: panel.ctl.exportTargetPath()
-                    color: App.themeTextMuted; font.pixelSize: 10
-                    elide: Text.ElideMiddle
-                    maximumLineCount: 1
                 }
             }
         }
@@ -770,6 +783,7 @@ Rectangle {
         visible: panel.horizontal
 
         Flickable {
+            id: ribbonFlick
             anchors { left: parent.left; right: closeBtnH.left; top: parent.top; bottom: parent.bottom }
             anchors.leftMargin: 12
             anchors.rightMargin: 8
@@ -778,6 +792,34 @@ Rectangle {
             clip: true
             boundsBehavior: Flickable.StopAtBounds
             flickableDirection: Flickable.HorizontalFlick
+
+            //  STRG + Mausrad blättert die Leiste SEITLICH (Rad hoch = nach
+            //  rechts). Nötig, weil das Ribbon bei schmalem Fenster — etwa
+            //  einer halben Bildschirmbreite oder einer Split-View-Kachel —
+            //  rechts abgeschnitten wird und die dortigen Regler sonst nur
+            //  per Ziehen erreichbar waren.
+            //
+            //  OHNE Strg bleibt das Rad unverändert: es fällt an die
+            //  Seitenansicht darunter durch (Scrollen bzw. Strg-loses
+            //  Verhalten dort) — die Leiste kapert das Rad also nicht.
+            //  Eine MouseArea ist zwingend, ein WheelHandler genügt NICHT:
+            //  ein interaktives Flickable verarbeitet Radereignisse vorher
+            //  selbst (s. „Bekannte Workarounds" in Structure.md).
+            SmoothWheelArea {
+                flickable: ribbonFlick
+                horizontal: true
+                requiredModifier: Qt.ControlModifier
+            }
+
+            //  Sichtbare Rückmeldung, dass seitlich mehr da ist (und zweiter,
+            //  entdeckbarer Weg zum selben Ziel). Blendet sich aus, sobald die
+            //  Leiste vollständig passt.
+            ScrollBar.horizontal: ScrollBar {
+                policy: ribbonFlick.contentWidth > ribbonFlick.width
+                        ? ScrollBar.AlwaysOn : ScrollBar.AlwaysOff
+                height: 4
+                opacity: 0.6
+            }
 
             Row {
                 id: ribbon
@@ -798,6 +840,26 @@ Rectangle {
                         ToolBtn { glyph: "\u2B2D"; toolValue: 5; tip: App.uiText(App.language, "ImageEditToolEllipse") }
                         // „Text ersetzen" (PDF-exklusiv): weiße Deckfläche + Textbox.
                         ToolBtn { glyph: "\u21C4"; toolValue: 6; tip: App.uiText(App.language, "PdfEditToolReplace") }
+                        // „Text bearbeiten" (PDF-exklusiv): Caret DIREKT in der
+                        // eingebetteten Textebene.
+                        ToolBtn { glyph: "\u2336"; toolValue: 7; tip: App.uiText(App.language, "PdfEditToolCaret") }
+                        // Textmarkierung (PDF-exklusiv): Ziehen über Text markiert,
+                        // unterstreicht oder streicht durch — je nach Stil-Knopf.
+                        ToolBtn { glyph: "\u25A8"; toolValue: 8; styleValue: 0
+                                  tip: App.uiText(App.language, "PdfMarkupHighlight") }
+                        ToolBtn { glyph: "\u2581"; toolValue: 8; styleValue: 1
+                                  tip: App.uiText(App.language, "PdfMarkupUnderline") }
+                        ToolBtn { glyph: "\u2015"; toolValue: 8; styleValue: 2
+                                  tip: App.uiText(App.language, "PdfMarkupStrike") }
+                        // „Text schwärzen": deckt ab UND entfernt den Text beim
+                        // Export aus dem Content-Stream (Grenze s. Tooltip).
+                        ToolBtn { glyph: "\u25AE"; toolValue: 9
+                                  tip: App.uiText(App.language, "PdfEditToolRedact") + "\n"
+                                       + App.uiText(App.language, "PdfRedactLimitHint") }
+                        // Signatur/Stempel: öffnet den Dateidialog der Kachel.
+                        ToolBtn { glyph: "\u270D"; toolValue: -1
+                                  tip: App.uiText(App.language, "PdfEditToolStamp")
+                                  onClicked: if (panel.surface) panel.surface.pickStampImage() }
                     }
                 }
 
@@ -1124,7 +1186,9 @@ Rectangle {
                             panel.ctl.removeBox(panel.ctl.selectedId)
                         }
                     }
-                    ToolTip.text: App.uiText(App.language, "PdfEditDeleteBtn")
+                    ToolTip.text: App.uiText(App.language,
+                                      panel.selInfo.kind === 6 ? "PdfEditDeleteMarkup"
+                                                               : "PdfEditDeleteBtn")
                     ToolTip.visible: delHoverH.hovered
                 }
 
@@ -1169,32 +1233,16 @@ Rectangle {
                     HoverHandler { id: expHoverH }
                     TapHandler {
                         enabled: parent.usable
-                        onTapped: if (panel.surface) panel.surface.startPdfExport()
+                        onTapped: if (panel.surface) panel.surface.startExport()
                     }
                     // Ribbon hat keinen Platz für den Ziel-Pfad → ToolTip
                     // (immer eine neue Kopie „…_bearbeitet(.n).pdf").
+                    // Der zweite Knopf für den verlustfreien Weg ist entfallen;
+                    // welcher Weg läuft, steht in den Einstellungen
+                    // (`PdfEdit.exportLossless`, s. `PdfSurface.startExport`).
                     ToolTip.text: App.uiText(App.language, "PdfEditExportTip") + "\n"
                                   + panel.ctl.exportTargetPath()
                     ToolTip.visible: expHoverH.hovered
-                }
-                // Verlustfreier Export (Text im Stream) — Ribbon.
-                Rectangle {
-                    anchors.verticalCenter: parent.verticalCenter
-                    width: 92; height: 30; radius: 6
-                    readonly property bool usable: !panel.ctl.busy && panel.ctl.boxCount > 0
-                    opacity: usable ? 1.0 : 0.4
-                    color: ceHoverH.hovered && usable ? App.themeCard : "transparent"
-                    border.color: App.themeBorder; border.width: 1
-                    Text { anchors.centerIn: parent
-                           text: App.uiText(App.language, "PdfEditExportVectorBtn")
-                           color: App.themeTextPrimary; font.pixelSize: 11 }
-                    HoverHandler { id: ceHoverH }
-                    TapHandler {
-                        enabled: parent.usable
-                        onTapped: if (panel.surface) panel.surface.startContentExport()
-                    }
-                    ToolTip.text: App.uiText(App.language, "PdfEditExportVectorTip")
-                    ToolTip.visible: ceHoverH.hovered
                 }
             }
         }

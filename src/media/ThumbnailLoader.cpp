@@ -5,7 +5,6 @@
 #include <QPdfDocument>
 #include <QPainter>
 #include <QLinearGradient>
-#include <QPixmap>
 #include <QImage>
 #include <QImageReader>
 #include <QFont>
@@ -31,10 +30,22 @@
 // ─── Disk-Cache-Helfer ───────────────────────────────────────────────────────
 namespace {
 
-QString cacheDir() {
-    const QString base = QStandardPaths::writableLocation(QStandardPaths::CacheLocation);
-    QDir().mkpath(base + QStringLiteral("/thumbs"));
-    return base + QStringLiteral("/thumbs");
+// Cache-Verzeichnis EINMAL je Prozess ermitteln und anlegen.
+//
+// Vorher lief mkpath() bei JEDEM cacheKeyFor()-Aufruf — also je sichtbarer
+// Kachel und je Anforderung, auch auf dem GUI-Thread (Schnellpfad in
+// requestThumbnail). mkpath prueft/erzeugt dabei die gesamte Pfadkette
+// (mehrere Syscalls) und war damit beim Scrollen die teuerste Einzeloperation
+// des Schnellpfads. Der Pfad ist prozessweit konstant → einmal genuegt.
+// Q_GLOBAL_STATIC-freie Variante: function-local static, thread-safe seit C++11.
+const QString& cacheDir() {
+    static const QString dir = []() {
+        const QString base = QStandardPaths::writableLocation(QStandardPaths::CacheLocation)
+                             + QStringLiteral("/thumbs");
+        QDir().mkpath(base);
+        return base;
+    }();
+    return dir;
 }
 
 QString cacheKeyFor(const QString& path, int dim) {
@@ -236,7 +247,7 @@ void ThumbnailTask::run() {
     }
 
     const MediaType t = MediaItem::detectType(m_path);
-    QPixmap pix;
+    QImage pix;
     if      (t == MediaType::Image) pix = generateImageThumbnail(m_path, m_size);
     else if (t == MediaType::Video) pix = generateVideoThumbnail(m_path, m_size);
     else if (t == MediaType::Audio) pix = generateAudioThumbnail(m_path, m_size);
@@ -259,8 +270,8 @@ void ThumbnailTask::run() {
     emit done(m_path, saved ? cachePath : QString(), saved, m_generation);
 }
 
-QPixmap ThumbnailTask::generateAudioThumbnail(const QString& path, const QSize& size) {
-    QPixmap pix(size);
+QImage ThumbnailTask::generateAudioThumbnail(const QString& path, const QSize& size) {
+    QImage pix(size, QImage::Format_ARGB32_Premultiplied);
     pix.fill(Qt::transparent);
 
     QPainter p(&pix);
@@ -300,7 +311,7 @@ QPixmap ThumbnailTask::generateAudioThumbnail(const QString& path, const QSize& 
     return pix;
 }
 
-QPixmap ThumbnailTask::generateImageThumbnail(const QString& path, const QSize& size) {
+QImage ThumbnailTask::generateImageThumbnail(const QString& path, const QSize& size) {
     QImageReader reader(path);
     reader.setAutoTransform(true);
 
@@ -309,69 +320,92 @@ QPixmap ThumbnailTask::generateImageThumbnail(const QString& path, const QSize& 
         reader.setScaledSize(imgSize.scaled(size, Qt::KeepAspectRatio));
 
     QImage img = reader.read();
-    if (img.isNull()) return QPixmap();
+    if (img.isNull()) return {};
 
     if (img.width() > size.width() || img.height() > size.height())
         img = img.scaled(size, Qt::KeepAspectRatio, Qt::SmoothTransformation);
 
-    return QPixmap::fromImage(std::move(img));
+    return img;
 }
 
-QPixmap ThumbnailTask::generateVideoThumbnail(const QString& path, const QSize& size) {
+QImage ThumbnailTask::generateVideoThumbnail(const QString& path, const QSize& size) {
     // QMediaPlayer benötigt eine Event-Loop und darf NICHT im generischen Pool-
     // Worker laufen → dedizierter QThread, plattformübergreifend korrekt.
-    QPixmap result;
+    QImage result;
 
     QThread thread;
     QObject context;
-    QMediaPlayer* player = nullptr;
-    QVideoSink*   sink   = nullptr;
-    bool          gotFrame = false;
-    QMutex        mutex;
+    bool           done = false;      // Frame da ODER Backend-Fehler
+    QMutex         mutex;
     QWaitCondition cond;
 
-    player = new QMediaPlayer;
-    sink   = new QVideoSink;
+    auto* player = new QMediaPlayer;
+    auto* sink   = new QVideoSink;
     player->moveToThread(&thread);
     sink->moveToThread(&thread);
 
     QObject::connect(sink, &QVideoSink::videoFrameChanged,
                      &context, [&](const QVideoFrame& frame) {
         QMutexLocker lk(&mutex);
-        if (gotFrame || !frame.isValid()) return;
-        gotFrame = true;
+        if (done || !frame.isValid()) return;
+        done = true;
         QImage img = frame.toImage();
         if (!img.isNull())
-            result = QPixmap::fromImage(
-                img.scaled(size, Qt::KeepAspectRatio, Qt::SmoothTransformation));
+            result = img.scaled(size, Qt::KeepAspectRatio, Qt::SmoothTransformation);
         cond.wakeAll();
     }, Qt::DirectConnection);
 
-    QObject::connect(&thread, &QThread::started, player, [&]() {
+    // Unlesbare/defekte Videodateien liefern NIE einen Frame. Ohne diesen
+    // Handler lief dafuer jedes Mal die volle Zeitschranke ab und blockierte
+    // einen Pool-Worker vier Sekunden lang.
+    QObject::connect(player, &QMediaPlayer::errorOccurred,
+                     &context, [&](QMediaPlayer::Error, const QString&) {
+        QMutexLocker lk(&mutex);
+        done = true;
+        cond.wakeAll();
+    }, Qt::DirectConnection);
+
+    QObject::connect(&thread, &QThread::started, player, [player, sink, path]() {
         player->setVideoSink(sink);
         player->setSource(QUrl::fromLocalFile(path));
         player->play();
     });
 
-    thread.start();
-
+    // Die Sperre wird VOR thread.start() genommen: der Frame-Handler laeuft im
+    // Player-Thread und kann sonst zwischen start() und wait() feuern — sein
+    // wakeAll() ginge dann ins Leere und der Aufruf wartete die volle
+    // Zeitschranke ab, obwohl das Bild laengst da war (verlorenes Wakeup).
     {
         QMutexLocker lk(&mutex);
-        cond.wait(&mutex, 4000);
+        thread.start();
+        const QDeadlineTimer deadline(4000);
+        while (!done) {
+            if (!cond.wait(&mutex, deadline))
+                break;                       // Zeitschranke erreicht
+        }
     }
 
-    QMetaObject::invokeMethod(player, [&]() {
+    // Aufraeumen im Player-Thread. Die Lambda faengt NUR Zeiger per Wert —
+    // sie darf den Stack dieses Frames nicht mehr berühren, falls das Warten
+    // unten wider Erwarten scheitert.
+    QMetaObject::invokeMethod(player, [player, sink]() {
         player->stop();
-        player->deleteLater();
-        sink->deleteLater();
-        thread.quit();
+        delete player;
+        delete sink;
     }, Qt::QueuedConnection);
+    thread.quit();
 
-    thread.wait(5000);
+    if (!thread.wait(5000)) {
+        // Backend haengt: hier unbegrenzt weiterwarten blockiert zwar diesen
+        // einen Pool-Worker, verhindert aber den sicheren Absturz durch
+        // „QThread: Destroyed while thread is still running" (qFatal) beim
+        // Verlassen dieses Gueltigkeitsbereichs.
+        thread.wait();
+    }
     return result;
 }
 
-QPixmap ThumbnailTask::generatePdfThumbnail(const QString& path, const QSize& size) {
+QImage ThumbnailTask::generatePdfThumbnail(const QString& path, const QSize& size) {
     QPdfDocument doc;
     if (doc.load(path) != QPdfDocument::Error::None)
         return fallbackPdfThumbnail(size);
@@ -404,7 +438,7 @@ QPixmap ThumbnailTask::generatePdfThumbnail(const QString& path, const QSize& si
         fp.drawImage(0, 0, img);
     }
 
-    QPixmap page = QPixmap::fromImage(std::move(flattened));
+    QImage page = std::move(flattened);
     {
         QPainter p(&page);
         QFont f = p.font();
@@ -423,8 +457,8 @@ QPixmap ThumbnailTask::generatePdfThumbnail(const QString& path, const QSize& si
     return page;
 }
 
-QPixmap ThumbnailTask::fallbackPdfThumbnail(const QSize& size) {
-    QPixmap pix(size);
+QImage ThumbnailTask::fallbackPdfThumbnail(const QSize& size) {
+    QImage pix(size, QImage::Format_ARGB32_Premultiplied);
     pix.fill(Qt::transparent);
     QPainter p(&pix);
     p.setRenderHint(QPainter::Antialiasing);
@@ -839,12 +873,12 @@ HtmlMeta extractHtmlMeta(const QString& path) {
 
 }  // namespace
 
-QPixmap ThumbnailTask::generateHtmlCardThumbnail(const QString& path, const QSize& size) {
+QImage ThumbnailTask::generateHtmlCardThumbnail(const QString& path, const QSize& size) {
     const HtmlMeta m = extractHtmlMeta(path);
-    if (!m.valid()) return QPixmap();      // → Quelltext-Fallback
+    if (!m.valid()) return {};             // → Quelltext-Fallback
 
     const int W = size.width(), H = size.height();
-    QPixmap pix(size);
+    QImage pix(size, QImage::Format_ARGB32_Premultiplied);
     pix.fill(m.bg);
     QPainter p(&pix);
     p.setRenderHint(QPainter::Antialiasing);
@@ -982,12 +1016,12 @@ QPixmap ThumbnailTask::generateHtmlCardThumbnail(const QString& path, const QSiz
     return pix;
 }
 
-QPixmap ThumbnailTask::generateTextThumbnail(const QString& path, const QSize& size) {
+QImage ThumbnailTask::generateTextThumbnail(const QString& path, const QSize& size) {
     // HTML/HTM → gerenderte Design-Karte (Hero-Nachbildung) statt Quelltext.
     {
         const QString suf = QFileInfo(path).suffix().toLower();
         if (suf == QStringLiteral("html") || suf == QStringLiteral("htm")) {
-            const QPixmap card = generateHtmlCardThumbnail(path, size);
+            const QImage card = generateHtmlCardThumbnail(path, size);
             if (!card.isNull()) return card;
             // sonst: Quelltext-Fallback unten (z. B. wenn kein Hero/<h1> gefunden)
         }
@@ -1004,7 +1038,7 @@ QPixmap ThumbnailTask::generateTextThumbnail(const QString& path, const QSize& s
         lines << in.readLine();
     file.close();
 
-    QPixmap pix(size);
+    QImage pix(size, QImage::Format_ARGB32_Premultiplied);
     pix.fill(Qt::transparent);
     QPainter p(&pix);
     p.setRenderHint(QPainter::Antialiasing);
@@ -1039,7 +1073,7 @@ QPixmap ThumbnailTask::generateTextThumbnail(const QString& path, const QSize& s
     return pix;
 }
 
-QPixmap ThumbnailTask::generateDocxThumbnail(const QString& path, const QSize& size) {
+QImage ThumbnailTask::generateDocxThumbnail(const QString& path, const QSize& size) {
     //  DOCX-Karte: erste Absätze als Klartext (Docx::Document::plainTextPreview
     //  — eigener ZIP/XML-Reader je Aufruf, threadsicher im Thumbnail-Worker)
     //  auf Word-blauem Verlauf mit Proportionalschrift + DOCX-Badge; ohne
@@ -1049,7 +1083,7 @@ QPixmap ThumbnailTask::generateDocxThumbnail(const QString& path, const QSize& s
         return fallbackTextThumbnail(path, size);
     const QStringList lines = text.split(QLatin1Char('\n'));
 
-    QPixmap pix(size);
+    QImage pix(size, QImage::Format_ARGB32_Premultiplied);
     pix.fill(Qt::transparent);
     QPainter p(&pix);
     p.setRenderHint(QPainter::Antialiasing);
@@ -1083,8 +1117,8 @@ QPixmap ThumbnailTask::generateDocxThumbnail(const QString& path, const QSize& s
     return pix;
 }
 
-QPixmap ThumbnailTask::fallbackTextThumbnail(const QString& path, const QSize& size) {
-    QPixmap pix(size);
+QImage ThumbnailTask::fallbackTextThumbnail(const QString& path, const QSize& size) {
+    QImage pix(size, QImage::Format_ARGB32_Premultiplied);
     pix.fill(Qt::transparent);
     QPainter p(&pix);
     p.setRenderHint(QPainter::Antialiasing);

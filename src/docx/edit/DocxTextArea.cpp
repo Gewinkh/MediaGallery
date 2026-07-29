@@ -17,6 +17,17 @@ constexpr qreal kPadV       = 28.0;           // Innenabstand oben/unten
 constexpr qreal kMaxContent = 900.0;          // maximale Zeilenbreite
 constexpr qreal kListIndent = 28.0;           // Einzug je Listenebene
 constexpr int   kChunk      = 300;            // Blöcke je Initial-Layout-Tick
+
+//  Layout-Fenster (RAM): Ein vermessener QTextLayout haelt die komplette
+//  Glyphen-/Zeilenstruktur seines Absatzes — bei einem 400-Seiten-Dokument mit
+//  ~10.000 Absaetzen summiert sich das auf zweistellige Megabyte, obwohl nie
+//  mehr als ein Bildschirm davon gebraucht wird. Ab kLayoutCap Bloecken werden
+//  daher Layouts ausserhalb des Fensters (sichtbarer Bereich ± kKeepMargin)
+//  freigegeben; die bereits vermessene HOEHE bleibt erhalten (Bildlaufleiste
+//  und Offsets bleiben exakt), ensureLaid() baut das Layout bei Bedarf
+//  identisch neu auf.
+constexpr int   kLayoutCap  = 600;
+constexpr int   kKeepMargin = 150;
 }
 
 DocxTextArea::DocxTextArea(QQuickItem* parent) : QQuickPaintedItem(parent) {
@@ -30,12 +41,34 @@ DocxTextArea::DocxTextArea(QQuickItem* parent) : QQuickPaintedItem(parent) {
     m_chunkTimer.setSingleShot(false);
     connect(&m_chunkTimer, &QTimer::timeout, this, &DocxTextArea::layoutChunk);
 
+    //  Der Blinktakt laeuft NUR, solange der Caret ueberhaupt sichtbar sein kann
+    //  (Fokus, keine Selektion). Jedes update() dieses QQuickPaintedItem malt den
+    //  gesamten Viewport samt aller sichtbaren QTextLayouts neu und laedt die
+    //  Textur wieder zur GPU — vorher geschah das zweimal je Sekunde dauerhaft,
+    //  auch bei fokusloser, unsichtbarer oder gar nicht editierter Ansicht.
     m_blinkTimer.setInterval(530);
     connect(&m_blinkTimer, &QTimer::timeout, this, [this]() {
         m_caretOn = !m_caretOn;
         update();
     });
-    m_blinkTimer.start();
+    connect(this, &QQuickItem::activeFocusChanged, this, &DocxTextArea::syncCaretBlink);
+    syncCaretBlink();
+}
+
+//  Blinken exakt dann laufen lassen, wenn paint() den Caret auch zeichnen wuerde
+//  (s. Bedingung am Ende von paint()).
+void DocxTextArea::syncCaretBlink() {
+    const bool want = hasActiveFocus() && m_ctl && m_ctl->ready()
+                      && !m_ctl->cursor().hasSelection();
+    if (want == m_blinkTimer.isActive())
+        return;
+    if (want) {
+        m_caretOn = true;
+        m_blinkTimer.start();
+    } else {
+        m_blinkTimer.stop();
+    }
+    update();
 }
 
 DocxTextArea::~DocxTextArea() = default;
@@ -45,7 +78,10 @@ void DocxTextArea::setCtl(DocxEditController* c) {
     if (m_ctl) m_ctl->disconnect(this);
     m_ctl = c;
     if (m_ctl) {
-        connect(m_ctl, &DocxEditController::readyChanged, this, [this]() { rebuildAll(); });
+        connect(m_ctl, &DocxEditController::readyChanged, this, [this]() {
+            rebuildAll();
+            syncCaretBlink();
+        });
         connect(m_ctl, &DocxEditController::blocksReplaced, this,
                 [this](int first, int oldCount, int newCount) {
                     invalidateFrom(first, oldCount, newCount);
@@ -61,6 +97,7 @@ void DocxTextArea::setCtl(DocxEditController* c) {
                 m_lastCursorBlock = now;
             }
             updateCursorRect();
+            syncCaretBlink();   // Selektion begonnen/aufgehoben → Blinken an/aus
             update();
         });
         //  Format-Änderung OHNE Selektion existiert nur als Pending-Format im
@@ -76,6 +113,7 @@ void DocxTextArea::setCtl(DocxEditController* c) {
     }
     emit ctlChanged();
     rebuildAll();
+    syncCaretBlink();
 }
 
 void DocxTextArea::setContentY(qreal y) {
@@ -101,6 +139,7 @@ void DocxTextArea::rebuildAll() {
     m_offsets.clear();
     m_offsetsValidTo = 0;
     m_layChunkAt = 0;
+    m_trimLo = m_trimHi = -1;   // Indizes verschoben → Layout-Fenster neu bestimmen
     m_contentHeight = 0;
     m_lastCursorBlock = (m_ctl && m_ctl->ready()) ? m_ctl->cursor().block : -1;
     if (m_ctl && m_ctl->ready()) {
@@ -131,6 +170,7 @@ void DocxTextArea::invalidateFrom(int first, int oldCount, int newCount) {
     for (int i = 0; i < newCount; ++i)
         ensureLaid(first + i);
     m_offsetsValidTo = qMin(m_offsetsValidTo, first);
+    m_trimLo = m_trimHi = -1;   // Indizes verschoben → Layout-Fenster neu bestimmen
     rebuildMarkers();
     //  Marker können sich hinter der Änderung geändert haben (Listenzähler) —
     //  betroffene Layouts dort NICHT wegwerfen (nur Marker-Strings neu).
@@ -139,15 +179,24 @@ void DocxTextArea::invalidateFrom(int first, int oldCount, int newCount) {
     update();
 }
 
+//  Läuft über das GESAMTE Dokument und wird bei JEDER Blockänderung (also bei
+//  jedem Tastendruck) aufgerufen — die Listenzähler sind global. Der teure Teil
+//  war bisher resolvePar() je Absatz: Vorlagenkette ablaufen, ParFmt bauen.
+//  Kann laut Vorlagen keine Nummerierung entstehen (Normalfall), genügt ein
+//  Bit-Test am Absatz selbst und die Schleife wird pro Block O(1) ohne
+//  Allokation — bei einem 400-Seiten-Dokument der Unterschied zwischen
+//  spürbarem Tipp-Ruckeln und gar nicht messbar.
 void DocxTextArea::rebuildMarkers() {
     if (!m_ctl) return;
     const Document& d = m_ctl->doc();
+    const bool mayNumber = d.stylesMayNumber();
     QHash<int, int> counters;                       // numId → laufende Nummer
     for (int i = 0; i < d.blocks.size() && i < int(m_lay.size()); ++i) {
         const Block& b = d.blocks.at(i);
         QString marker;
         qreal indent = 0;
-        if (b.kind == Block::Paragraph) {
+        if (b.kind == Block::Paragraph
+            && (mayNumber || (b.pfmt.set & ParFmt::FNum))) {
             const ParFmt pf = d.resolvePar(b);
             if (pf.numId > 0) {
                 const NumLevel lv = d.numLevel(pf.numId, pf.ilvl);
@@ -163,7 +212,10 @@ void DocxTextArea::rebuildMarkers() {
                     if (marker.isEmpty()) marker = QStringLiteral("%1.");
                     marker.replace(QStringLiteral("%1"), QString::number(n));
                     //  Fremde Mehr-Ebenen-Muster (%2…) pragmatisch kappen.
-                    marker.remove(QRegularExpression(QStringLiteral("%\\d")));
+                    //  static: sonst würde das Muster je Listenabsatz und je
+                    //  Tastendruck neu übersetzt.
+                    static const QRegularExpression reLvlRest(QStringLiteral("%\\d"));
+                    marker.remove(reLvlRest);
                 }
                 marker += QLatin1Char(' ');
             }
@@ -330,7 +382,37 @@ void DocxTextArea::layoutChunk() {
         m_chunkTimer.stop();
         updateCursorRect();
     }
+    //  Schon WAEHREND des Initial-Layouts trimmen: sonst laegen bei einem
+    //  400-Seiten-Dokument kurzzeitig alle Layouts gleichzeitig im Speicher
+    //  (genau der Spitzenwert, den das Fenster vermeiden soll). m_trimLo wird
+    //  zurueckgesetzt, damit die gerade neu gebauten Layouts erfasst werden.
+    m_trimLo = -1;
+    trimLayouts(blockAtY(m_contentY), blockAtY(m_contentY + height()));
     update();
+}
+
+void DocxTextArea::trimLayouts(int firstVisible, int lastVisible) {
+    const int n = int(m_lay.size());
+    if (n <= kLayoutCap)
+        return;                       // kleine Dokumente zahlen hier gar nichts
+
+    const int lo = qMax(0, firstVisible - kKeepMargin);
+    const int hi = qMin(n - 1, lastVisible + kKeepMargin);
+    if (lo == m_trimLo && hi == m_trimHi)
+        return;                       // Fenster unveraendert → nichts zu tun
+    m_trimLo = lo;
+    m_trimHi = hi;
+
+    //  Cursor-Block ausnehmen: updateCursorRect/moveCursorVertical brauchen sein
+    //  Layout bei jedem Tastendruck — ihn wegzuwerfen kostete mehr, als er belegt.
+    const int cursorBlock = (m_ctl && m_ctl->ready()) ? m_ctl->cursor().block : -1;
+    for (int i = 0; i < n; ++i) {
+        if ((i >= lo && i <= hi) || i == cursorBlock)
+            continue;
+        //  NUR das Layout freigeben — `laid`/`height` bleiben gueltig, damit
+        //  weder Praefix-Offsets noch die Inhaltshoehe neu berechnet werden.
+        m_lay[i].layout.reset();
+    }
 }
 
 void DocxTextArea::updateContentHeight() {
@@ -432,10 +514,13 @@ void DocxTextArea::paint(QPainter* p) {
     const qreal viewTop = m_contentY, viewBot = m_contentY + height();
     int i = blockAtY(viewTop);
     if (i < 0) return;
+    const int firstVisible = i;
+    int lastVisible = i;
     for (; i < int(m_lay.size()); ++i) {
         ensureLaid(i);
         const qreal top = blockTop(i);
         if (top > viewBot) break;
+        lastVisible = i;
         const BlockLayout& L = m_lay[i];
         if (top + L.height < viewTop || L.height <= 0)
             continue;
@@ -500,6 +585,9 @@ void DocxTextArea::paint(QPainter* p) {
     if (m_caretOn && hasActiveFocus() && !hasSel && !m_cursorRect.isNull()) {
         p->fillRect(m_cursorRect.translated(0, -m_contentY), QColor(20, 20, 20));
     }
+
+    //  Layouts weit ausserhalb des Viewports freigeben (nur grosse Dokumente).
+    trimLayouts(firstVisible, lastVisible);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -711,6 +799,7 @@ void DocxTextArea::geometryChange(const QRectF& n, const QRectF& o) {
         for (auto& L : m_lay) { L.laid = false; L.layout.reset(); }
         m_offsetsValidTo = 0;
         m_layChunkAt = 0;
+        m_trimLo = m_trimHi = -1;
         if (m_ctl && m_ctl->ready())
             m_chunkTimer.start();
     }

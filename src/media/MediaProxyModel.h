@@ -6,6 +6,7 @@
 #include <QPointer>
 
 class TagManager;
+class MediaModel;
 
 // ─────────────────────────────────────────────────────────────────────────────
 //  MediaProxyModel — QSortFilterProxyModel vor dem MediaModel.
@@ -59,6 +60,12 @@ public:
 
     explicit MediaProxyModel(QObject* parent = nullptr);
 
+    // Merkt sich das Quellmodell zusaetzlich typisiert (m_src) — Filter und
+    // Sortierung greifen darueber direkt auf die MediaItem-Structs zu, statt je
+    // Zeile QVariants zu bauen. Faellt auf den QVariant-Pfad zurueck, falls je
+    // ein anderes Quellmodell gesetzt wird.
+    void setSourceModel(QAbstractItemModel* source) override;
+
     // TagManager wird in main() injiziert; nicht-besitzend.
     void setTagManager(TagManager* mgr);
 
@@ -111,7 +118,8 @@ private:
     void collectTagsForCategory(const QString& id, QSet<QString>& out) const;
     QVariant roleAt(int proxyRow, int role) const;
 
-    QPointer<TagManager> m_tagMgr;
+    QPointer<TagManager>  m_tagMgr;
+    QPointer<MediaModel>  m_src;   // typisiertes Quellmodell (s. setSourceModel)
 
     Field   m_field      = Field::Date;
     bool    m_descending = true;

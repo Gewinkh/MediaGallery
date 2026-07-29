@@ -64,9 +64,19 @@ Item {
     required property int    alignment
     required property int    vAlign
     required property bool   anchored
+    //  Nur Stempel: Pfad der Bilddatei.
+    required property string imagePath
+    //  Nur Markierungen: 0 Fläche, 1 unterstrichen, 2 durchgestrichen.
+    required property int    markupStyle
 
     // ── Vom Seiten-Delegate gesetzt ───────────────────────────────────────────
-    property int  pageIndex: -1          // Seite, auf der dieses Delegate lebt
+    //  pageIndex = STABILER Seiten-Key (PdfEdit.viewPageKey): darüber findet die
+    //  Notiz ihre Seite, auch nachdem Seiten umsortiert/eingefügt wurden.
+    //  viewIndex = laufende Nummer derselben Seite in der Seitenliste; alles
+    //  Geometrische (Nachbarseiten, Zeilenfang, Zielseite beim Ziehen) rechnet
+    //  damit, weil nur die Ansicht Seitenmaße und Lücken kennt.
+    property int  pageIndex: -1
+    property int  viewIndex: -1
     property real pageScale: 1.0         // Pixel je PDF-Punkt (Zoom-abhängig)
     property real pageWPt: 612           // Seitengröße in Punkten (Klemm-Grenzen)
     property real pageHPt: 792
@@ -84,6 +94,17 @@ Item {
     // Zeilenfang und Text-Sync teilen sich denselben Pfad.
     readonly property bool isTextual: isText || isReplace
     readonly property bool isStroke: boxKind === 1 || boxKind === 2
+    //  Textmarkierung (Markieren/Unterstreichen/Durchstreichen): EIN Objekt mit
+    //  MEHREREN Bereichen (paarweise in boxPoints). Sie hängt am Text darunter
+    //  — deshalb bewusst NICHT verschieb- oder skalierbar: Auswählen, umfärben
+    //  und löschen ja, herumziehen nein (so verhält sie sich in jedem
+    //  PDF-Betrachter).
+    readonly property bool isMarkup: boxKind === 6
+    //  „Text schwärzen": deckende Fläche, kein eigener Text. Der darunter
+    //  liegende Text verschwindet erst beim Export aus dem Content-Stream.
+    readonly property bool isRedact: boxKind === 7
+    //  Signatur/Stempel: eine Bilddatei im Dokument.
+    readonly property bool isStamp:  boxKind === 8
     readonly property bool editMode: box.ctl.editMode
     // Auswahl/Verschieben/Skalieren nur mit dem Auswahl-Werkzeug (wie im
     // Bild-Editor — während des Zeichnens fängt die drawArea der Seite).
@@ -168,6 +189,48 @@ Item {
         color: box.highlightColor                   // OHNE Schatten/Eselsohr
         visible: box.isReplace                      // Cover-Farbe (Controller erzwingt Deckung)
     }
+    Rectangle {                                     // „Text schwärzen": deckende
+        anchors.fill: parent                        // Fläche (Standard Schwarz)
+        color: box.highlightColor
+        visible: box.isRedact
+    }
+    Image {                                         // Signatur/Stempel
+        anchors.fill: parent
+        visible: box.isStamp && box.imagePath.length > 0
+        source: box.isStamp && box.imagePath.length > 0
+                ? "file://" + box.imagePath : ""
+        fillMode: Image.Stretch                     // Box FOLGT dem Seitenverhältnis
+        smooth: true
+        asynchronous: true
+        //  Deckkraft steckt im Alpha der Füllfarbe (Panel-Regler).
+        opacity: box.fillColor.a
+    }
+    // ── Textmarkierung: je Bereich eine Fläche bzw. eine Linie ───────────────
+    //  Die Bereiche stehen in PDF-Punkten und BEZIEHEN SICH AUF DIE SEITE —
+    //  hier also relativ zur Box-Ecke rechnen (box.xPt/yPt), nicht absolut.
+    Repeater {
+        model: box.isMarkup ? box.boxPoints.length / 2 : 0
+        delegate: Rectangle {
+            required property int index
+            readonly property point p0: box.boxPoints[index * 2]
+            readonly property point p1: box.boxPoints[index * 2 + 1]
+            readonly property real qx: Math.min(p0.x, p1.x)
+            readonly property real qy: Math.min(p0.y, p1.y)
+            readonly property real qw: Math.abs(p1.x - p0.x)
+            readonly property real qh: Math.abs(p1.y - p0.y)
+            //  Strichstärke der Unter-/Durchstreichung wie im Export: 1/14 der
+            //  Bereichshöhe, mindestens ein sichtbarer halber Punkt.
+            readonly property real t: Math.max(0.5, qh / 14)
+            x: (qx - box.xPt) * box.pageScale
+            y: ((box.markupStyle === 0 ? qy
+                 : box.markupStyle === 1 ? qy + qh - t
+                                         : qy + qh / 2) - box.yPt) * box.pageScale
+            width:  Math.max(1, qw * box.pageScale)
+            height: Math.max(1, (box.markupStyle === 0 ? qh : t) * box.pageScale)
+            color: box.strokeColor
+        }
+    }
+
     Canvas {                                        // Eselsohr unten rechts
         id: fold
         readonly property real f: Math.min(box.ctl.noteFoldPt * box.pageScale,
@@ -209,7 +272,12 @@ Item {
     //  (drawBox im PdfExportTask) → WYSIWYG.
     Canvas {
         id: shape
-        visible: !box.isTextual
+        //  Nur die ZEICHNUNGEN (Strich/Pfeil/Rechteck/Ellipse). Textarten
+        //  bringen ihre eigene Darstellung mit — und die neuen Arten
+        //  Markierung/Schwärzung/Stempel ebenso; ohne diese Ausnahme malte
+        //  der Formen-Canvas seine Füllung ÜBER das Stempelbild (im echten
+        //  Fenster als schwarzes Rechteck aufgefallen).
+        visible: !box.isTextual && !box.isMarkup && !box.isRedact && !box.isStamp
         readonly property real pad: Math.max(2, box.lineWidth * box.pageScale)
         anchors.fill: parent
         anchors.margins: -pad
@@ -400,7 +468,9 @@ Item {
         enabled: box.editMode && box.selectTool && !box.editing
         visible: enabled
         acceptedButtons: Qt.LeftButton
-        cursorShape: box.selected ? Qt.SizeAllCursor : Qt.PointingHandCursor
+        //  Markierungen hängen am Text: auswählen ja, ziehen nein.
+        cursorShape: box.isMarkup ? Qt.PointingHandCursor
+                                  : (box.selected ? Qt.SizeAllCursor : Qt.PointingHandCursor)
         preventStealing: true              // ListView darf den Drag nicht klauen
         property real grabDx: 0
         property real grabDy: 0
@@ -408,7 +478,7 @@ Item {
         onPressed: (m) => {
             if (box.surface) {
                 box.surface.commitEditing()                // fremde Bearbeitung schließen
-                box.surface.editDragPage = box.pageIndex   // Delegate über Nachbarn heben
+                box.surface.editDragPage = box.viewIndex   // Delegate über Nachbarn heben
             }
             box.ctl.selectedId = box.boxId
             const p = mapToItem(box.parent, m.x, m.y)
@@ -418,6 +488,8 @@ Item {
             box.ctl.beginGeometryEdit(box.boxId)
         }
         onPositionChanged: (m) => {
+            if (box.isMarkup)
+                return                     // Markierungen bleiben an ihrem Text
             const p = mapToItem(box.parent, m.x, m.y)
             let nx = (p.x - grabDx) / box.pageScale
             let ny = (p.y - grabDy) / box.pageScale
@@ -428,12 +500,12 @@ Item {
             // Zeilenfang (falls aktiv): Oberkante an erkannte PDF-Textzeile —
             // nur für TEXT-Notizen sinnvoll (Zeichnungen bewegen sich frei).
             if (box.surface && box.isTextual)
-                ny = box.surface.snapYPt(box.pageIndex, ny, box.hPt)
+                ny = box.surface.snapYPt(box.viewIndex, ny, box.hPt)
             nx = Math.max(0, Math.min(nx, Math.max(0, box.pageWPt - box.wPt)))
             // y bewusst NICHT klemmen: über den unteren/oberen Seitenrand
             // hinausgezogene Notizen wandern beim Loslassen auf die
             // Nachbarseite (seitenübergreifendes Verschieben).
-            box.ctl.updatePlacement(box.boxId, box.page, nx, ny, box.wPt, box.hPt)
+            box.ctl.updatePlacement(box.boxId, box.viewIndex, nx, ny, box.wPt, box.hPt)
         }
         onReleased: {
             // Über den Seitenrand gezogen? → Zielseite + lokale y-Koordinate
@@ -441,7 +513,7 @@ Item {
             // Session mit der finalen Platzierung abschließen (EIN Undo-Schritt
             // inkl. Seitenwechsel).
             if (moved && box.surface) {
-                const t = box.surface.resolveCrossPage(box.page, box.yPt,
+                const t = box.surface.resolveCrossPage(box.viewIndex, box.yPt,
                                                        box.hPt, box.pageScale)
                 box.ctl.updatePlacement(box.boxId, t.page, box.xPt, t.y,
                                         box.wPt, box.hPt)
@@ -457,7 +529,7 @@ Item {
     //  Cursorform und welche Kanten das Ziehen bewegt. Mindestgrößen kommen aus
     //  PdfEdit (dieselben Konstanten wie der Controller), Klemmen an die Seite.
     Repeater {
-        model: box.selected && box.selectTool && !box.editing
+        model: box.selected && box.selectTool && !box.editing && !box.isMarkup
                ? [ { hx: -1, hy: -1 }, { hx: 0, hy: -1 }, { hx: 1, hy: -1 },
                    { hx: -1, hy:  0 },                    { hx: 1, hy:  0 },
                    { hx: -1, hy:  1 }, { hx: 0, hy:  1 }, { hx: 1, hy:  1 } ]

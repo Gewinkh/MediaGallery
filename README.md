@@ -68,15 +68,11 @@ Built with **C++20** and **Qt 6.4+**.
 - **Sorting**: Date, Name, File size (ascending/descending)
 
 ### PDF Viewer
-- Full multi-page rendering via Qt6 PDF
-- Thumbnail sidebar for quick page navigation
-- Zoom in/out, fit-page, fit-width, single-page / multi-page scroll modes
-- Embedded audio and video annotation playback (Sound, Screen, Movie subtypes)
-- Sidecar audio file fallback (auto-detected by filename)
-- **First-load fix**: PDFs now open and render immediately on the first click
-- **Stable audio playback**: Embedded PDF audio now plays reliably on every file — the previous alternating failure (every second file staying silent) is fixed
-- **Browser-style text selection**: click-and-drag to select the embedded text layer, `Ctrl+C` to copy, `Ctrl+A` to select all on the current page
-- **Embedded audio panel**: a dedicated side panel lists every audio clip on the current page with a seek slider, plus an Apple-style mini-player that keeps playing while you scroll to other pages; clickable on-page audio hotspots
+- Full multi-page rendering via Qt6 PDF, with a thumbnail sidebar for quick navigation
+- Zoom in/out, fit-page, fit-width, single-page and continuous scrolling
+- **Browser-style text selection**: click and drag across the embedded text layer, `Ctrl+C` to copy, `Ctrl+A` to select the page; the selection survives switching into edit mode
+- **Search across the document** (`Ctrl+F`): matches light up on the page while you type, the bar shows "x of n", and ▲/▼ (or Enter) step through them and jump to the right page. Long documents stay responsive — pages are searched in small batches. Scanned pages you ran OCR on take part too, where the recognized line is the match
+- **Embedded audio and video**: annotation playback (Sound, Screen, Movie subtypes) plus a side panel listing every audio clip on the current page with a seek slider; a sidecar audio file next to the PDF is picked up automatically
 
 ### PDF Page Extraction
 - **Extract pages from an open PDF**: right-click any page → **Extract page** (single) or **Extract multiple pages…** (page picker). The new PDF is written next to the source file.
@@ -89,27 +85,38 @@ Built with **C++20** and **Qt 6.4+**.
 - Page tiles use your gallery tile size; the selected-page highlight style (**frame** or **overlay**) is configurable under *Settings → View*.
 - **Order**: in the workbench the **selection bar defines the output order**; the compact layout always writes pages in original order. Names default to `<source> - Page N` / `<source>-Selected` (required for the folder-wide mode); `.pdf` is appended automatically and existing names get ` (1)`, ` (2)`, … appended instead of being overwritten.
 
-### PDF Editor (Post-it Notes, Drawings & Text Replacement)
-- Add sticky-note style text boxes anywhere on a PDF page — the original file is **never modified**
-- **Tools**: Select/move, Text note, Freehand pen, Arrow, Rectangle, Ellipse — the full image-editor tool set, now on PDFs (tool palette in the dockable panel)
-- **Drawings** with adjustable stroke color, line width (in PDF points) and (for shapes) fill color; drawings move/resize/copy/paste/undo exactly like notes, including **cross-page dragging**
-- Notes and drawings are saved to a **sidecar file** next to the PDF (non-destructive) and stay editable across sessions; old sidecars load unchanged
-- **Export** writes a brand-new PDF copy (`…_edited(.n).pdf`) with all annotations permanently rendered onto the pages — your original is always preserved
-- **Lossless text-stream export** (**→ PDF (edit text in stream)**): for *Replace text* edits this rewrites the **embedded text directly in the PDF content stream** instead of covering it, so the result stays fully **vector** (searchable/selectable text, no rasterizing). Used only when provably safe (unencrypted, simple non-CID fonts, ASCII text, the original text found unambiguously); anything else falls back automatically to the normal raster export
-- **Add / remove pages** (in edit mode): the **"+" line** beneath each page inserts a blank A4 page; **right-click → Remove page** deletes one; **Ctrl+Z** undoes both. Choose the behaviour in **Settings → Editor (PDF)**: **non-destructive** (default — the change is applied on export, the original stays untouched) or **destructive** (the original PDF is rewritten immediately, with a one-time pristine backup)
-- Full text formatting: font family (with automatic substitution hint for missing fonts), size, bold/italic/underline, alignment, vertical alignment, text color and note-paper (highlight) color, including an opacity slider
-- A newly created note/drawing **inherits the last-used style** (only without the text)
-- **Line-snapping**: new notes anchor precisely to detected text lines when placed nearby, or float freely elsewhere
-- **Replace text** tool: two ways to use it — drag across the text you want to replace (you see the familiar blue text selection while dragging, and the cover patch appears when you release), or select text first and then press the **⇄** button. Either way it stays as non-destructive as everything else (original file and sidecar workflow unchanged). The **cover-patch color is configurable** (panel/toolbar) and is always kept fully opaque; white is the default
-- Text selection keeps working **inside edit mode** with the Select tool, and a selection made before entering edit mode is preserved
-- The replacement box snaps exactly onto the detected text line(s), adopts their font size, and comes **pre-filled with the embedded text** underneath, so you edit instead of retyping; on scanned PDFs without a text layer the tool stays fully usable as a blank patch
-- Replacement boxes keep a fixed width with automatic word wrap and **grow in height with their content**; typing and the resulting growth undo together as a single step
-- **Cross-page dragging**: drag an annotation past the top/bottom of a page and it automatically moves to the neighboring page on release
-- **OCR for scanned PDFs**: on a page without an embedded text layer, the **OCR** button (editor tool panel) recognizes the page text (Tesseract). Afterwards line-snapping, the **Replace text** pre-fill and text selection/copy work on that page as if it had a real text layer. Runs asynchronously; optional (only shown when Tesseract is installed) and never required — pages with embedded text keep using it directly
-- **Linked text boxes (automatic reflow)**: link a text / *Replace text* box to a follow-up box (**🔗 Link to next box** in the panel, then click the target). Text then flows across the chain — when one box overflows, the remainder moves into the next automatically (the last box grows with its content). Editing anywhere reflows the whole chain as a single undo step; the links persist in the sidecar and are removable (**⛓ Unlink**)
-- Full undo/redo history (`Ctrl+Z` / `Ctrl+Shift+Z`) and a note-visibility toggle (`Alt+Q`) that hides/shows all annotations in both view and edit mode
-- **Copy & paste** the selected annotation (`Ctrl+C` / `Ctrl+V` or the toolbar/panel buttons) — duplicates it with all settings and text
-- Formatting panel can be docked as a **right sidebar** or a **Word-style ribbon** at the top (Settings → Text Editor)
+### PDF Editor
+Everything below is **non-destructive**: your original PDF is never modified. Notes live in a sidecar file (`<name>.mgedit.json`) next to it and stay editable across sessions; **Export** writes a new copy (`…_edited(.n).pdf`).
+
+**Tools** (palette in the dockable panel): select/move · text note · freehand pen · arrow · rectangle · ellipse · replace text · edit text · highlight/underline/strikethrough · black out text · signature or stamp image.
+
+**Notes and drawings**
+- Sticky-note text boxes with full formatting: font family (with a hint when the system substitutes one), size, bold/italic/underline, alignment, vertical alignment, text and paper colour, opacity
+- Drawings with stroke colour, line width in PDF points and (for shapes) fill colour
+- Select, move, resize, copy/paste (`Ctrl+C`/`Ctrl+V`), delete, full undo/redo (`Ctrl+Z` / `Ctrl+Shift+Z`), and a visibility toggle (`Alt+Q`)
+- **Cross-page dragging**: pull an annotation past the top or bottom edge and it moves to the neighbouring page
+- **Line-snapping**: a new note anchors to a detected text line when you place it nearby, or floats freely elsewhere
+- A new note or drawing **inherits the last-used style** (without the text)
+- **Linked text boxes**: chain a box to a follow-up box (**🔗**) and text flows across the chain — the last box grows with its content, and editing anywhere re-flows the whole chain as one undo step
+
+**Working with the text that is already in the page**
+- **Replace text**: drag across the text (or select it and press **⇄**). The box snaps onto the detected line, adopts its font size and comes pre-filled with the embedded text, so you edit instead of retyping. On a scanned page without a text layer it stays usable as a blank patch
+- **Edit text** (⌶): click into the page text and type — characters go into the PDF's own text layer, so the page stays vector and searchable. Arrow keys, `Home`/`End`, `Backspace`/`Delete` work as expected, continuous typing undoes as one step, and the paragraph re-flows as you type (gaining a line and pushing the content below down where that is provably safe)
+- **Highlight, underline, strikethrough**: pick one of the three markers and drag across the text. The mark snaps to the text lines, so a sweep across three lines is **one** marker covering exactly those lines — recolour or delete it in one go. Highlights are translucent so the text stays readable
+- **Black out text**: an opaque bar *and* removal of the covered text from the document on export, so it can no longer be selected, copied or found — and the exported copy is written from scratch, so the text is not left behind in its raw bytes either. Where it cannot be removed safely, the page is written out as an image instead and you are told
+- **OCR for scanned PDFs**: the **OCR** button recognizes the page text (Tesseract, optional). Afterwards line-snapping, the *Replace text* pre-fill, selection and search work on that page as if it had a real text layer
+
+**Forms, foreign annotations, images**
+- **Fill in PDF forms (AcroForm)**: text fields, check boxes, radio groups and drop-down lists become visible and editable right on the page — in view mode as well as edit mode, because a form belongs to the document. Qt's PDF renderer does not draw form widgets at all, so they are drawn as an overlay that matches what gets written into the file. Values are buffered while you type and kept in the sidecar, so a half-filled form survives closing it; the **☑** button writes them into a new copy (`…_ausgefuellt(.n).pdf`) as an incremental update, with a proper appearance stream per field so the values show up in any reader and in print. Read-only fields stay visible but locked. If you reordered, rotated or removed pages, the copy follows what you see: the values are drawn into the pages first and the file is then rebuilt in your order — that copy is a finished document rather than a form you can go on filling in, and the message after saving says so
+- **Annotations from other PDF readers** are picked up when you open a file: sticky notes, text boxes, rectangles, ellipses, lines, freehand drawings, highlights, underlines and strikeouts become normal editable notes. Each remembers which object it came from, so an untouched one is never exported twice and one you edited or deleted is removed from the exported copy instead of lingering underneath
+- **Your own notes as real PDF annotations** (*Settings → Editor → PDF Editor*): instead of being drawn into the page they become annotation objects that stay selectable and deletable in other readers. Off by default — drawn notes look identical everywhere. *Replace text* patches and linked boxes are always drawn, and if a page holds one, everything on it is drawn (never a mixture)
+- **Signature and stamp images**: place a PNG or JPEG anywhere on the page; it keeps its aspect ratio and moves, resizes, fades and undoes like any other note. On export it is embedded into the PDF with its transparency intact, and the same file placed several times is embedded only once
+
+**Pages and export**
+- **Manage pages** (edit mode): the **"+" line** below a page inserts a blank A4 page; right-click for **Remove page**, **Rotate left/right** or **Insert pages from PDF…**; drag a thumbnail in the sidebar to reorder. Every one of them undoes as a single step, and notes travel and rotate with their page. Inserted pages are copied losslessly into a companion file, so they survive even if the file you took them from is gone. Choose **non-destructive** (default) or **destructive** in *Settings → Editor (PDF)*
+- **One Export button**; which path it takes is a setting (*Settings → Editor → PDF Editor → Export*): **lossless when possible** (default) or **always as an image**. Lossless writes annotations as real vector content, keeps the original page content byte-for-byte and leaves untouched pages alone; for *Replace text* it rewrites the embedded text directly in the content stream, including text split across several show operators, non-ASCII text via the font's encoding, and CID/Type0 fonts via `/ToUnicode`. Notes in a font outside the standard 14 are embedded rather than silently substituted
+- Where lossless is not provably safe the export falls back to the image path — always correct, and you are told when it happens
+- The formatting panel docks as a **right sidebar** or a **Word-style ribbon** (*Settings → Text Editor*); `Ctrl` + mouse wheel pans the ribbon sideways when the window is narrow
 
 ### Image Editor
 - Opens on any image via the **✎ Edit** button in the image viewer's toolbar — the original file is **never modified**
@@ -244,6 +251,23 @@ cmake -B build -DCMAKE_BUILD_TYPE=Release
 cmake --build build --parallel
 ```
 
+### Tests
+
+A regression suite is built by default and run with `ctest`:
+
+```bash
+ctest --test-dir build --output-on-failure   # everything
+ctest --test-dir build -R docx               # one domain only
+```
+
+Disable it with `-DMG_BUILD_TESTS=OFF`. The drivers are plain executables (no
+test framework, no extra dependency) and cover the hand-written DOCX/ZIP parser,
+the document model, path handling, gallery sorting/filtering and the
+tag/category sidecar persistence.
+
+The `tests/` directory is not part of the published repository. The build simply
+skips it when it is absent, so a fresh clone configures and compiles without it.
+
 ### Windows (vcpkg)
 ```bash
 cmake -B build -DCMAKE_TOOLCHAIN_FILE=<vcpkg_root>/scripts/buildsystems/vcpkg.cmake
@@ -280,15 +304,36 @@ Custom themes can be exported to JSON and shared:
 ## Changelog
 
 ### Latest
-- **Change**: Redesigned the application's controls with a modern, rounded, theme-aware appearance.
-- **Change**: Standard Qt controls now fully follow the application's customizable color theme.
-- **Feature**: Redesigned PDF page extraction with a three-panel layout, drag & drop, page reordering, and an optional compact view.
-- **Feature**: Added a themed keyboard shortcut overview in **Settings → General**.
-- **Feature**: Added missing keyboard shortcuts (`Ctrl+O`, `F5`, PDF `+`/`−`, `D`, `Alt+←`).
-- **Feature**: Added lossless PDF text editing, OCR support, linked text boxes, DOCX Find & Replace, customizable PDF text replacement colors, and smooth HTML scrolling.
-- **Change**: Improved tile sizing with dynamic limits, higher-resolution thumbnails, and better previews.
-- **Fix**: Fixed PDF loading skeleton rendering.
-- **Fix**: Improved PDF page extraction behavior, shortcut handling, DOCX Find & Replace, embedded PDF audio playback, and unified category colors.
+- **Feature**: Major PDF editor improvements:
+  - Lossless PDF editing and export with preserved text layers, fonts, vectors, and annotations.
+  - Added text editing, text replacement, OCR support, PDF search, highlighting, underlining, strikeout, signatures, stamps, and form filling.
+  - Added page management with reorder, rotation, insertion, and extraction while preserving document quality.
+  - Added improved annotation support and compatibility with external PDF readers.
+
+- **Feature**: Improved PDF text handling:
+  - Better support for embedded fonts, CID fonts, non-ASCII text, and complex text layouts.
+  - Added text wrapping and linked text boxes with automatic reflow.
+
+- **Feature**: Improved PDF export reliability:
+  - Safer redaction/export handling.
+  - Preserves annotations and avoids unnecessary rasterization.
+  - Automatically falls back when lossless editing is not possible.
+
+- **Feature**: Added PDF page extraction improvements with drag & drop, reordering, and better workflow.
+
+- **Change**: Improved DOCX editing:
+  - Better formatting preservation.
+  - Improved text editing performance and stability.
+
+- **Change**: Improved application performance:
+  - Faster folder loading and gallery browsing.
+  - Reduced memory usage for large folders and documents.
+  - Improved thumbnail generation and background processing.
+
+- **Fix**: Improved stability:
+  - Fixed PDF audio loading/closing issues.
+  - Fixed data corruption risks during metadata saving.
+  - Fixed various PDF editor, annotation, and document handling issues.
 
 ---
 
@@ -298,15 +343,23 @@ Custom themes can be exported to JSON and shared:
 
 ## Planned
 
-### PDF-Editor
-- Extend content-stream editing beyond the current safe subset (CID/Type0 fonts, non-ASCII text, text split across multiple show operators) — today those cases fall back to the raster export.
-
 ### DOCX-Editor
+- **`Ctrl` + mouse wheel to pan the format toolbar sideways**, the same way the PDF editor's ribbon already does — so every control stays reachable when the window is only half a screen wide or the editor sits in a split-view pane.
 - True pagination with a page-accurate view and page thumbnails.
 - Editing support for tables, images, and headers/footers.
 - Style templates (Formatvorlagen), footnotes, table of contents, multi-column layouts.
 - Comments and tracked changes as an authoring tool.
 - Spell checking. (later with other languages)
+
+---
+
+## Known limits (by design, not planned work)
+
+Things the app deliberately does not do — listed so you know where the edges are, not as a to-do list.
+- **Highlights cannot be dragged**: a highlight belongs to the text underneath it, so it can be recoloured and deleted but not moved. Every PDF reader behaves that way.
+- **Signature fields (`/Sig`) are left alone**: they are neither shown nor filled in. Filling one means actually signing — certificates, byte-range digests, a CMS container, a trust story — which is cryptography rather than PDF work, and a field you could never complete is a promise without cover. For putting a signature *image* on a page, use the signature/stamp tool.
+- **A form you filled in after reordering pages** comes out as a finished document rather than a form you can keep filling in: the rebuilt file cannot carry the form definition, so the values are drawn into the pages instead. Saving without changing the page order gives you a fully fillable form.
+- **Lossless export is not always possible**: encrypted files, unusual font encodings or text a replacement cannot be expressed in fall back to the image-based export. That path always works, but the page becomes a picture — and you are told when it happens.
 
 ---
 

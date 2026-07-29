@@ -455,6 +455,28 @@ void AppSettings::setPdfPageEditDestructive(bool v) {
     m_settings.setValue("pdfedit/pageEditDestructive", v);
 }
 
+bool AppSettings::pdfExportLossless() const {
+    // Standard: true → verlustfrei bevorzugen. Das ist der schonendere Weg
+    // (Text bleibt durchsuchbar, Vektorgrafik/Schriften bleiben erhalten) und
+    // kann nichts kaputt machen: wo er nicht sicher anwendbar ist, weicht der
+    // Controller selbsttätig auf den Raster-Export aus.
+    return m_settings.value("pdfedit/exportLossless", true).toBool();
+}
+void AppSettings::setPdfExportLossless(bool v) {
+    m_settings.setValue("pdfedit/exportLossless", v);
+}
+
+bool AppSettings::pdfExportAsAnnotations() const {
+    // Standard: false → gemalter Inhalt. Er sieht in JEDEM Betrachter und im
+    // Druck gleich aus; echte Annotationen sind zwar weiterbearbeitbar, aber
+    // eben auch mit einem Klick zu löschen und werden nicht überall gleich
+    // dargestellt. Wer den Austausch will, schaltet es bewusst ein.
+    return m_settings.value("pdfedit/exportAsAnnotations", false).toBool();
+}
+void AppSettings::setPdfExportAsAnnotations(bool v) {
+    m_settings.setValue("pdfedit/exportAsAnnotations", v);
+}
+
 // ─── Legacy color helpers ─────────────────────────────────────────────────────
 QColor AppSettings::backgroundColor() const { return currentTheme().background; }
 void AppSettings::setBackgroundColor(const QColor& c) {

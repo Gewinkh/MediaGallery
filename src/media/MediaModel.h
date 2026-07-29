@@ -6,12 +6,14 @@
 #include <QStringList>
 #include <QTimer>
 #include <QFileInfo>
+#include <memory>
 #include "media/MediaItem.h"
 
 class JsonStorage;
 class TagManager;
 class ThumbnailLoader;
 class QFileSystemWatcher;
+class QDirIterator;
 
 // ─────────────────────────────────────────────────────────────────────────────
 //  MediaModel — QAbstractListModel (Phase 2/3, RAM-kritisch).
@@ -60,6 +62,11 @@ public:
                         TagManager& tagManager,
                         ThumbnailLoader& loader,
                         QObject* parent = nullptr);
+    //  Out-of-line: m_pendingIt ist ein unique_ptr auf den nur VORWÄRTS
+    //  deklarierten QDirIterator — der implizite Destruktor bräuchte hier den
+    //  vollständigen Typ und würde <QDirIterator> in jede einbindende
+    //  Übersetzungseinheit ziehen.
+    ~MediaModel() override;
 
     // QAbstractListModel
     int rowCount(const QModelIndex& parent = QModelIndex()) const override;
@@ -68,6 +75,19 @@ public:
 
     int     count()  const { return m_items.size(); }
     QString folder() const { return m_folder; }
+
+    // Direktzugriff auf die Quelldaten einer Zeile (nullptr bei ungültigem Index).
+    // Ausschliesslich fuer MediaProxyModel: Filter und Sortierung laufen ueber
+    // ALLE Zeilen und wuerden ueber data()/QVariant je Zeile QStringList- und
+    // QDateTime-Kopien in QVariants boxen. Ueber die Struct-Referenz entfaellt
+    // das vollstaendig (gleiche Semantik, da beide im GUI-Thread laufen).
+    const MediaItem* itemAt(int row) const {
+        return (row >= 0 && row < m_items.size()) ? &m_items.at(row) : nullptr;
+    }
+
+    // Quellzeile zu einem Dateipfad (O(1) ueber den Pfad→Zeile-Hash), −1 wenn
+    // nicht vorhanden. Auch von MediaProxyModel::rowForPath genutzt.
+    int rowForPath(const QString& filePath) const;
 
     // ── Ordner-Steuerung (von AppController-Signalen getrieben) ──────────────
     void loadFolder(const QString& folderPath);
@@ -104,7 +124,6 @@ private:
     void rebuild(const QString& folderPath);   // startet inkrementelle Befüllung
     void feedChunk(bool firstChunk);           // eine Charge Zeilen einspeisen
     void finishFill();                         // Aufräumen nach letzter Charge
-    int  rowForPath(const QString& filePath) const;
     void emitRow(int row, const QVector<int>& roles);
 
     static QString typeLabel(const MediaItem& item);
@@ -119,8 +138,9 @@ private:
     QHash<QString, int>    m_pathToRow;   // schnelle Adressierung für Updates
 
     // ── Inkrementelle Befüllung ──────────────────────────────────────────────
-    QFileInfoList m_pendingEntries;   // noch nicht eingespeiste Verzeichniseinträge
-    int           m_pendingIndex = 0; // nächster Index in m_pendingEntries
+    //  STREAMEND statt als Liste: der Iterator hält immer nur EINEN Eintrag,
+    //  jede Charge liest genau so viele, wie sie einspeist (s. rebuild()).
+    std::unique_ptr<QDirIterator> m_pendingIt;   // nullptr = keine Befüllung aktiv
     QString       m_pendingSidecar;   // "<Ordner>.json" → überspringen
     QTimer        m_fillTimer;        // 0-ms-Timer: speist Chargen, gibt dazwischen ab
 

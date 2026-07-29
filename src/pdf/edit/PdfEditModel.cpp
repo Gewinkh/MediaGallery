@@ -41,6 +41,8 @@ QVariant PdfEditModel::data(const QModelIndex& index, int role) const {
     case AlignmentRole:  return b.alignment;
     case VAlignRole:     return b.vAlign;
     case AnchoredRole:   return b.anchored;
+    case MarkupStyleRole: return b.markupStyle;
+    case ImagePathRole:  return b.imagePath;
     default:             return {};
     }
 }
@@ -71,6 +73,8 @@ QHash<int, QByteArray> PdfEditModel::roleNames() const {
         { AlignmentRole,  "alignment"      },
         { VAlignRole,     "vAlign"         },
         { AnchoredRole,   "anchored"       },
+        { MarkupStyleRole, "markupStyle"   },
+        { ImagePathRole,  "imagePath"     },
     };
     return names;
 }
@@ -195,6 +199,13 @@ bool PdfEditModel::setChainNext(int id, int next) {
     m_boxes[row].chainNext = next;
     return true;                                   // kein QML-Rollen-Binding
 }
+void PdfEditModel::setGrowBaseH(int id, qreal h) {
+    const int row = indexOfId(id);
+    if (row < 0)
+        return;
+    m_boxes[row].growBaseH = h;
+}
+
 
 bool PdfEditModel::applyField(int id, PdfEditField f, const QVariant& v) {
     const int row = indexOfId(id);

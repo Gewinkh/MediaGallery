@@ -299,6 +299,10 @@ enum class StringKey {
     PdfEditAlignLabel,         // Panel: Ausrichtung (horizontal)
     PdfEditVAlignLabel,        // Panel: vertikale Ausrichtung (oben/mittig)
     PdfEditToolReplace,        // Werkzeug-Tooltip: Text ersetzen (weiße Deckfläche + Textbox)
+    PdfEditToolCaret,          // Werkzeug-Tooltip: Text bearbeiten (Caret in der Textebene)
+    PdfEditCaretLoading,       // Hinweis: Zeichen-Layout der Seite wird geladen
+    PdfEditCaretUnavailable,   // Hinweis: Seite nicht zeichenweise bearbeitbar
+    PdfEditTextOpFailed,       // Toast: Änderung an der Textebene nicht möglich
     // ── DOCX-Editor (2026-07-16) ─────────────────────────────────────────────
     CreateFileTypeDocx,       // „+ Erstellen"-Auswahl: leeres DOCX
     SettingsDocxGroup,        // Einstellungen ▸ Editor: Gruppentitel
@@ -346,8 +350,6 @@ enum class StringKey {
     PdfChainUnlink,            // Panel: Kette lösen
     PdfChainPick,              // Toast: Zielbox anklicken
     PdfChainDone,              // Toast: Boxen verkettet
-    PdfEditExportVectorBtn,    // Panel: Button verlustfreier Export (Text im Stream)
-    PdfEditExportVectorTip,    // Tooltip des verlustfreien Exports
     PdfContentFallbackToast,   // Toast: auf Raster-Export zurückgefallen
     PdfEditNoHighlight,        // Panel/Toolbar: Hervorhebung entfernen
     PdfEditDeleteBtn,          // Textbox löschen
@@ -456,8 +458,45 @@ enum class StringKey {
     SettingsPdfPageEditHint,    // Einstellungen: Hinweistext
     PdfPageEditNonDestructive,  // Radio: nicht-destruktiv (wirkt beim Export)
     PdfPageEditDestructiveMode, // Radio: destruktiv (Original sofort ändern)
+    SettingsPdfExportLabel,     // Einstellungen ▸ Editor (PDF): Label über den Export-Radios
+    SettingsPdfExportHint,      // Einstellungen: Hinweistext zum Export-Modus
+    PdfExportLosslessMode,      // Radio: verlustfrei bevorzugen (Text bleibt vektoriell)
+    PdfExportRasterMode,        // Radio: immer Raster (Seitenbild)
+    PdfEditDeleteMarkup,        // Löschen-Knopf, wenn eine Markierung gewählt ist
+    PdfFormSavedFlattenedToast, // Toast: gespeichert, aber Felder festgeschrieben
+    PdfCaretPageNoText,         // Hinweis: auf dieser Seite gibt es keinen Text
+    PdfSearchPlaceholder,       // Suchleiste: Platzhalter im Eingabefeld
+    PdfSearchCount,             // Suchleiste: „%1 von %2"
+    PdfSearchNone,              // Suchleiste: keine Treffer
+    PdfSearchTip,               // Toolbar: Suche öffnen/schließen
+    PdfEditToolStamp,           // Werkzeug: Signatur-/Stempelbild einfügen
+    PdfStampFileTitle,          // Dateidialog: Bild auswählen
+    PdfStampFailedToast,        // Toast: Bild nicht verwendbar
+    PdfEditToolRedact,          // Werkzeug: Text schwärzen (entfernt ihn)
+    PdfRedactLimitHint,         // Hinweis: wogegen die Schwärzung schützt — und wogegen nicht
+    PdfEditToolMarkup,          // Werkzeug: Text markieren
+    PdfMarkupHighlight,         // Stil: Markieren (Fläche)
+    PdfMarkupUnderline,         // Stil: Unterstreichen
+    PdfMarkupStrike,            // Stil: Durchstreichen
+    PdfExportAsAnnotationsOption, // CheckBox: Notizen als PDF-Annotationen schreiben
+    PdfExportAsAnnotationsHint,   // Hinweistext dazu
     PdfAddPageTip,              // „+"-Linie unter der Seite: Tooltip
     PdfRemovePage,              // Rechtsklick-Menü: „Seite entfernen"
+    PdfRotatePageLeft,          // Rechtsklick-Menü: „Seite nach links drehen"
+    PdfRotatePageRight,         // Rechtsklick-Menü: „Seite nach rechts drehen"
+    PdfInsertPagesFrom,         // Rechtsklick-Menü: „Seiten aus PDF einfügen…"
+    PdfInsertPagesDialogTitle,  // Auswahldialog: Titel beim Einfügen
+    PdfInsertPagesFileTitle,    // Dateidialog: Titel („PDF auswählen")
+    PdfPagesInsertedToast,      // Toast: „%1 Seite(n) eingefügt"
+    PdfPagesInsertFailedToast,  // Toast: Einfügen fehlgeschlagen
+    PdfMovePageTip,             // Vorschauleiste: Ziehen sortiert die Seite um
+    PdfPageImportedBadge,       // Vorschauleiste: Marke „eingefügt"
+    PdfCaretPageNotEditable,    // Hinweis: Seite nicht zeichenweise bearbeitbar
+    PdfReflowOverflow,          // Hinweis: Absatz voll, Rest steht in der letzten Zeile
+    // Formularfelder (AcroForm)
+    PdfFormSaveTip,             // Tooltip: ausgefülltes Formular speichern
+    PdfFormSavedToast,          // Toast: Formular in „%1" gespeichert
+    PdfFormSaveFailedToast,     // Toast: Formular konnte nicht gespeichert werden (%1)
     // Einstellungen ▸ Allgemein: Tastenkürzel-Übersicht (Titel + Kontext-Köpfe)
     SettingsGenShortcuts,       // Gruppentitel „Tastenkürzel"
     ShortcutCtxGallery,         // Abschnitt: Galerie

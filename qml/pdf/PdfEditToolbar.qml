@@ -274,7 +274,8 @@ Item {
         // ── Löschen (committet die offene Bearbeitung — Box verschwindet) ─────
         TBtn {
             glyph: "\u2715"; glyphColor: "#e05a5a"
-            tip: App.uiText(App.language, "PdfEditDeleteBtn")
+            tip: App.uiText(App.language,
+                     bar.info.kind === 6 ? "PdfEditDeleteMarkup" : "PdfEditDeleteBtn")
             onActivated: {
                 if (bar.surface) bar.surface.commitEditing()
                 bar.ctl.removeBox(bar.ctl.selectedId)
