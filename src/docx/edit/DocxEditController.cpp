@@ -13,6 +13,12 @@
 #include <QClipboard>
 #include <QMimeData>
 #include <QDataStream>
+#include <QBuffer>
+#include <QImage>
+#include <QImageReader>
+#include <QPainter>
+#include <QPdfDocument>
+#include <QDir>
 #include <QMetaObject>
 #include <QPointer>
 
@@ -80,6 +86,11 @@ void DocxEditController::setSource(const QString& s) {
     m_bakDone  = false;
     m_modified = false;
     m_cursor   = DocxCursor();
+    //  Regionen zurücksetzen — die neue Datei hat eigene Kopf-/Fußzeilenteile.
+    m_region = Body;
+    for (RegionSlot& slot : m_slots) slot = RegionSlot();
+    emit activeRegionChanged();
+    emit regionsAvailable();
     emit readyChanged();
     emit modifiedChanged();
     if (path.isEmpty())
@@ -104,6 +115,15 @@ void DocxEditController::setSource(const QString& s) {
                 if (ok) {
                     c->m_doc = std::move(*doc);
                     c->m_ready = true;
+                    //  Kopf-/Fußzeilen-Teile des Hauptabschnitts merken; geladen
+                    //  werden sie erst beim Umschalten (lazy, RAM).
+                    c->m_slots[Body].partPath  = c->m_doc.partPath();
+                    c->m_slots[Body].available = true;
+                    c->m_slots[Header].partPath = c->m_doc.headerFooterPart(false, false);
+                    c->m_slots[Footer].partPath = c->m_doc.headerFooterPart(true, false);
+                    c->m_slots[Header].available = !c->m_slots[Header].partPath.isEmpty();
+                    c->m_slots[Footer].available = !c->m_slots[Footer].partPath.isEmpty();
+                    emit c->regionsAvailable();
                 } else {
                     c->m_loadError = err;
                 }
@@ -134,8 +154,35 @@ int DocxEditController::blockLen(int i) const {
     return m_doc.blocks.at(i).textLength();
 }
 bool DocxEditController::isEditableParagraph(int i) const {
-    return i >= 0 && i < m_doc.blocks.size()
-           && m_doc.blocks.at(i).kind == Block::Paragraph;
+    if (i < 0 || i >= m_doc.blocks.size())
+        return false;
+    const Block& b = m_doc.blocks.at(i);
+    if (b.kind != Block::Paragraph)
+        return false;
+    return true;
+}
+
+//  Gehören zwei Blöcke in DIESELBE Zelle (bzw. beide in den Rumpf)? Das ist die
+//  Grenze, über die keine STRUKTUR-Änderung laufen darf: ein Absatz-Merge über
+//  eine Zellgrenze würde eine Zelle auflösen und damit die Tabelle zerstören —
+//  die Datei bliebe zwar wohlgeformt, aber der Inhalt wäre verschoben.
+bool DocxEditController::sameCell(int i, int j) const {
+    if (i == j) return true;
+    if (i < 0 || j < 0 || i >= m_doc.blocks.size() || j >= m_doc.blocks.size())
+        return false;
+    const Block& a = m_doc.blocks.at(i);
+    const Block& b = m_doc.blocks.at(j);
+    if (a.tableId != b.tableId) return false;
+    if (a.tableId < 0) return true;                  // beide im Rumpf
+    return a.row == b.row && a.col == b.col;
+}
+
+//  Mehrblock-Operationen auf die Zelle des ANKERS begrenzen. Eine Selektion darf
+//  quer über Zellen laufen (Kopieren ist harmlos); LÖSCHEN darf es nicht, sonst
+//  verschwänden Zellgrenzen. Statt die Aktion zu verweigern, wird der Bereich
+//  gekürzt — so bleibt Strg+A + Entf im Rumpf benutzbar.
+void DocxEditController::clampRangeToCell(int b1, int& b2) const {
+    while (b2 > b1 && !sameCell(b1, b2)) --b2;
 }
 
 void DocxEditController::orderedSelection(int& b1, int& p1, int& b2, int& p2) const {
@@ -395,6 +442,80 @@ void DocxEditController::clearSelection() {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+//  Regionen: Körper / Kopfzeile / Fußzeile
+//
+//  Die aktive Region liegt in m_doc/m_cursor — der gesamte übrige Editor-Code
+//  bleibt dadurch unverändert. Umschalten heißt: den aktuellen Zustand in
+//  seinen Slot PARKEN und den anderen holen (move, O(1) je Member).
+// ─────────────────────────────────────────────────────────────────────────────
+bool DocxEditController::ensureRegionLoaded(Region r) {
+    RegionSlot& s = m_slots[r];
+    if (s.loaded) return true;
+    if (!s.available || s.partPath.isEmpty()) return false;
+
+    Docx::Document d;
+    QString err;
+    if (!d.loadPart(m_source, s.partPath, &err)) {
+        //  Nicht editierbar (Selbstprüfung/Encoding) → Region bleibt gesperrt.
+        s.available = false;
+        emit regionsAvailable();
+        return false;
+    }
+    s.doc    = std::move(d);
+    s.cursor = DocxCursor();
+    s.loaded = true;
+    return true;
+}
+
+bool DocxEditController::setRegion(int rInt) {
+    if (!m_ready) return false;
+    const Region r = Region(qBound(0, rInt, 2));
+    if (r == m_region) return true;
+    if (r != Body && !ensureRegionLoaded(r)) return false;
+
+    //  Aktiven Zustand parken …
+    m_slots[m_region].doc    = std::move(m_doc);
+    m_slots[m_region].cursor = m_cursor;
+    m_slots[m_region].loaded = true;
+    //  … und den neuen aktivieren.
+    m_doc    = std::move(m_slots[r].doc);
+    m_cursor = m_slots[r].cursor;
+    m_region = r;
+    clearPending();
+
+    //  Anderes Dokument ⇒ die Fläche legt auf activeRegionChanged ALLES neu aus.
+    emit activeRegionChanged();
+    emit cursorChanged();
+    bumpFormat();
+    return true;
+}
+
+void DocxEditController::setActiveRegionInt(int r) { setRegion(r); }
+
+void DocxEditController::activateRegionForCommand(int r) {
+    if (int(m_region) != r) setRegion(r);
+}
+
+//  Alle geladenen Regionen fürs Speichern zusammentragen: je Region ihr
+//  Teil-XML plus ihre Ersatzteile (Medien/Beziehungen liegen je Teil in einer
+//  EIGENEN .rels-Datei, kollidieren also nicht). Der Körper wird zuletzt
+//  eingetragen und gewinnt bei gemeinsamen Dateien ([Content_Types].xml).
+QHash<QString, QByteArray> DocxEditController::allRegionParts() const {
+    QHash<QString, QByteArray> parts;
+    for (int r = 2; r >= 0; --r) {
+        const bool active = (int(m_region) == r);
+        if (!active && !m_slots[r].loaded) continue;
+        const Docx::Document& d = active ? m_doc : m_slots[r].doc;
+        if (d.partPath().isEmpty()) continue;
+        const QHash<QString, QByteArray> own = d.replacementParts();
+        for (auto it = own.constBegin(); it != own.constEnd(); ++it)
+            parts.insert(it.key(), it.value());
+        parts.insert(d.partPath(), d.newDocumentXml().toUtf8());
+    }
+    return parts;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 //  Kommando-Anwendung (Undo/Redo-Pfad)
 // ─────────────────────────────────────────────────────────────────────────────
 void DocxEditController::applyBlocks(int first, int oldCount,
@@ -421,6 +542,10 @@ struct DocxEditController::EditScope {
     QList<Block> before;
     DocxCursor   curBefore;
     int          mergeKind;
+    //  Struktur-Änderungen an einer Tabelle betreffen NEBEN den Blöcken auch
+    //  das Gerüst — beides muss zusammen zurückgenommen werden.
+    int          tableId = -1;
+    Docx::TableDef tblBefore;
 
     EditScope(DocxEditController* ctl, int firstIdx, int count, int merge = -1)
         : c(ctl), first(firstIdx), oldCount(count), mergeKind(merge) {
@@ -428,6 +553,11 @@ struct DocxEditController::EditScope {
         before.reserve(count);
         for (int i = 0; i < count; ++i)
             before.append(c->m_doc.blocks.at(first + i));
+    }
+    //  VOR der Mutation aufrufen.
+    void watchTable(int tid) {
+        tableId = tid;
+        tblBefore = c->m_doc.tableDef(tid);
     }
     //  newCount = Blockzahl des Bereichs NACH der Mutation; Cursor ist vom
     //  Aufrufer bereits gesetzt.
@@ -440,9 +570,13 @@ struct DocxEditController::EditScope {
         emit c->blocksReplaced(first, oldCount, newCount);
         emit c->cursorChanged();
         c->bumpFormat();
-        c->m_stack.push(new DocxReplaceBlocksCommand(
+        auto* cmd = new DocxReplaceBlocksCommand(
             c, first, std::move(before), std::move(after),
-            curBefore, c->m_cursor, mergeKind));
+            curBefore, c->m_cursor, mergeKind);
+        cmd->setRegion(int(c->m_region));
+        if (tableId >= 0)
+            cmd->snapshotTable(tableId, tblBefore, c->m_doc.tableDef(tableId));
+        c->m_stack.push(cmd);
     }
 };
 
@@ -459,6 +593,12 @@ void DocxEditController::insertText(const QString& raw) {
     orderedSelection(b1, p1, b2, p2);
     if (!isEditableParagraph(b1) || !isEditableParagraph(b2))
         return;
+    //  Selektion über Zellgrenzen: nur den Teil in der Zelle des Ankers ersetzen.
+    if (b2 != b1) {
+        const int wanted = b2;
+        clampRangeToCell(b1, b2);
+        if (b2 != wanted) p2 = blockLen(b2);
+    }
 
     const bool oneChar = !m_cursor.hasSelection() && text.size() == 1
                          && !text.contains(QLatin1Char('\n'));
@@ -519,6 +659,12 @@ void DocxEditController::insertText(const QString& raw) {
         const int k = ensureRunBoundary(blk, curPos);
         Block nb;
         nb.kind = Block::Paragraph;
+        //  Ein neuer Absatz bleibt in DERSELBEN Zelle — sonst stünde er nach dem
+        //  Speichern außerhalb der Tabelle (die Gruppen-Emission ordnet Blöcke
+        //  über tableId/row/col ihren Zellen zu).
+        nb.tableId = blk.tableId;
+        nb.row = blk.row;
+        nb.col = blk.col;
         const QString ppr = blk.currentPpr(m_doc.docXml());
         if (!ppr.isEmpty()) { nb.pprXml = ppr; nb.pprMaterialized = true; }
         nb.pfmt = blk.pfmt;
@@ -575,6 +721,11 @@ void DocxEditController::deleteBackward() {
         //  Selektion löschen = leeren Text „einfügen" über dieselbe Mechanik.
         int b1, p1, b2, p2;
         orderedSelection(b1, p1, b2, p2);
+        if (b2 != b1) {
+            const int wanted = b2;
+            clampRangeToCell(b1, b2);
+            if (b2 != wanted) p2 = blockLen(b2);
+        }
         //  Format der gelöschten Stelle merken (s. keepFormatOnEmptiedBlock).
         const RunFmt had = resolvedFormatAt(b1, p1);
         EditScope scope(this, b1, b2 - b1 + 1);
@@ -630,6 +781,11 @@ void DocxEditController::deleteBackward() {
     //  Am Absatzanfang: mit dem VORHERIGEN Absatz verschmelzen.
     int prev = bi - 1;
     if (prev < 0) return;                           // nichts zu tun → Pending hält
+    //  ZELLGRENZE: der vorherige Absatz steht in einer anderen Zelle (oder im
+    //  Rumpf) → NICHT verschmelzen. Sonst fiele eine Zellgrenze weg und die
+    //  Tabelle verlöre eine Zelle. Der Cursor bleibt einfach stehen.
+    if (!sameCell(bi, prev))
+        return;
     if (!isEditableParagraph(prev)) {
         //  Opaker Block davor (Tabelle/sectPr): nichts löschen, nur Cursor
         //  vor den Block bewegen (Schutz vor versehentlichem Strukturverlust).
@@ -686,6 +842,9 @@ void DocxEditController::deleteForward() {
     }
     //  Am Absatzende: mit dem NÄCHSTEN Absatz verschmelzen.
     const int nxt = bi + 1;
+    //  ZELLGRENZE (s. deleteBackward): kein Verschmelzen aus einer anderen Zelle.
+    if (nxt < m_doc.blocks.size() && !sameCell(bi, nxt))
+        return;
     if (nxt >= m_doc.blocks.size() || !isEditableParagraph(nxt))
         return;
     EditScope scope(this, bi, 2);
@@ -865,6 +1024,369 @@ void DocxEditController::setSpaceAfterPt(qreal pt) {
     pt = qBound<qreal>(0.0, pt, 200.0);
     applyParProp(QStringLiteral("w:spacing"), QString(),
                  [pt](ParFmt& p) { p.afterPt = pt; p.set |= ParFmt::FAfter; });
+}
+
+QVariantList DocxEditController::paragraphStyles() const {
+    QVariantList out;
+    if (!m_ready) return out;
+    const QList<Docx::StyleInfo>& styles = m_doc.paragraphStyles();
+    out.reserve(styles.size());
+    for (const Docx::StyleInfo& s : styles) {
+        QVariantMap m;
+        m.insert(QStringLiteral("id"),        s.id);
+        m.insert(QStringLiteral("name"),      s.name);
+        m.insert(QStringLiteral("isDefault"), s.isDefault);
+        out.append(m);
+    }
+    return out;
+}
+
+void DocxEditController::setParagraphStyle(const QString& styleId) {
+    if (!m_ready) return;
+    //  Standardvorlage = KEIN w:pStyle: Word schreibt sie nie in den Absatz,
+    //  und ein explizites w:pStyle="Standard" würde beim Vorlagenwechsel im
+    //  Zieldokument anders auflösen als der Absatz ohne Angabe.
+    const bool toDefault = styleId.isEmpty()
+                           || styleId == m_doc.defaultParagraphStyleId();
+    const QString id = toDefault ? QString() : styleId;
+    applyParProp(QStringLiteral("w:pStyle"),
+                 id.isEmpty() ? QString()
+                              : QStringLiteral("<w:pStyle w:val=\"%1\"/>")
+                                    .arg(Document::xmlEscape(id)),
+                 [id](ParFmt& p) { p.styleId = id; });
+}
+
+void DocxEditController::insertTable(int rows, int cols) {
+    if (!m_ready) return;
+    rows = qBound(1, rows, 100);
+    cols = qBound(1, cols, 32);
+
+    //  Einfügestelle: hinter dem Cursor-Absatz. Steht er in einer Zelle, hinter
+    //  der ganzen Tabelle (keine verschachtelten Tabellen).
+    int at = qBound(0, m_cursor.block, m_doc.blocks.size() - 1) + 1;
+    if (!m_doc.blocks.isEmpty()) {
+        const Block& cur = m_doc.blocks.at(qBound(0, m_cursor.block,
+                                                  m_doc.blocks.size() - 1));
+        if (cur.tableId >= 0) {
+            const int last = m_doc.tableLastBlock(cur.tableId);
+            if (last >= 0) at = last + 1;
+        }
+    }
+    at = qBound(0, at, m_doc.blocks.size());
+
+    //  Der Undo-Schnappschuss deckt einen LEEREN Bereich ab (reines Einfügen):
+    //  vorher 0 Blöcke, nachher rows*cols. Das Kommando kann das bereits.
+    //  Die TableDef bleibt beim Rückgängig in m_tables stehen — sie ist ohne
+    //  zugehörige Blöcke inert (die Emission läuft über die Blöcke) und wird
+    //  beim Wiederherstellen mit derselben tableId wieder benutzt.
+    EditScope scope(this, at, 0);
+    const int first = m_doc.insertTable(at, rows, cols);
+    if (first < 0) return;
+    m_cursor = { first, 0, first, 0 };
+    clearPending();
+    scope.commit(rows * cols);
+}
+
+void DocxEditController::insertTableOfContents() {
+    if (!m_ready) return;
+    //  Wie beim Einfügen einer Tabelle: hinter dem Cursor-Absatz, bei einer
+    //  Tabelle hinter der GANZEN Tabelle.
+    int at = qBound(0, m_cursor.block, qMax(0, m_doc.blocks.size() - 1)) + 1;
+    if (!m_doc.blocks.isEmpty()) {
+        const Block& cur = m_doc.blocks.at(qBound(0, m_cursor.block,
+                                                  m_doc.blocks.size() - 1));
+        if (cur.tableId >= 0) {
+            const int last = m_doc.tableLastBlock(cur.tableId);
+            if (last >= 0) at = last + 1;
+        }
+    }
+    at = qBound(0, at, m_doc.blocks.size());
+
+    EditScope scope(this, at, 0);
+    const int idx = m_doc.insertToc(at);
+    if (idx < 0) return;
+    m_cursor = { idx, 0, idx, 0 };
+    clearPending();
+    scope.commit(1);
+}
+
+void DocxEditController::insertImage(const QString& fileUrl) {
+    if (!m_ready) return;
+    const QString path = mg::toLocalPath(fileUrl);
+    if (path.isEmpty()) return;
+
+    int at = qBound(0, m_cursor.block, qMax(0, m_doc.blocks.size() - 1)) + 1;
+    if (!m_doc.blocks.isEmpty()) {
+        const Block& cur = m_doc.blocks.at(qBound(0, m_cursor.block,
+                                                  m_doc.blocks.size() - 1));
+        //  In einer Zelle: das Bild landet IN der Zelle (dafür muss der neue
+        //  Block ihre Koordinaten erben) — sonst hinter dem Absatz.
+        Q_UNUSED(cur)
+    }
+    at = qBound(0, at, m_doc.blocks.size());
+
+    EditScope scope(this, at, 0);
+    QString err;
+    const int idx = m_doc.insertImage(at, path, &err);
+    if (idx < 0) {
+        emit imageInsertFailed(err);
+        return;                                   // Scope ohne commit = kein Kommando
+    }
+    //  Steht der Cursor in einer Zelle, gehört das Bild in dieselbe Zelle.
+    if (idx > 0 && idx - 1 < m_doc.blocks.size()) {
+        const Block& prev = m_doc.blocks.at(idx - 1);
+        if (prev.tableId >= 0) {
+            Block& nb = m_doc.blocks[idx];
+            nb.tableId = prev.tableId;
+            nb.row = prev.row;
+            nb.col = prev.col;
+        }
+    }
+    m_cursor = { idx, 0, idx, 0 };
+    clearPending();
+    scope.commit(1);
+}
+
+void DocxEditController::insertImageData(const QByteArray& bytes,
+                                         const QString& ext) {
+    if (!m_ready || bytes.isEmpty()) return;
+    int at = qBound(0, m_cursor.block, qMax(0, m_doc.blocks.size() - 1)) + 1;
+    at = qBound(0, at, m_doc.blocks.size());
+
+    EditScope scope(this, at, 0);
+    QString err;
+    const int idx = m_doc.insertImageData(at, bytes, ext, &err);
+    if (idx < 0) {
+        emit imageInsertFailed(err);
+        return;
+    }
+    if (idx > 0 && idx - 1 < m_doc.blocks.size()) {
+        const Block& prev = m_doc.blocks.at(idx - 1);
+        if (prev.tableId >= 0) {
+            Block& nb = m_doc.blocks[idx];
+            nb.tableId = prev.tableId;
+            nb.row = prev.row;
+            nb.col = prev.col;
+        }
+    }
+    m_cursor = { idx, 0, idx, 0 };
+    clearPending();
+    scope.commit(1);
+}
+
+QVariantList DocxEditController::folderImages() const {
+    QVariantList out;
+    const QString dirPath = QFileInfo(m_source).absolutePath();
+    if (dirPath.isEmpty()) return out;
+
+    QStringList filters;
+    const auto fmts = QImageReader::supportedImageFormats();
+    filters.reserve(fmts.size());
+    for (const QByteArray& f : fmts)
+        filters << QStringLiteral("*.") + QString::fromLatin1(f).toLower();
+
+    QDir d(dirPath);
+    const QFileInfoList files = d.entryInfoList(filters, QDir::Files | QDir::Readable,
+                                                QDir::Name | QDir::IgnoreCase);
+    //  Deckel: das Popup zeigt Miniaturen; ein Ordner mit tausenden Bildern
+    //  soll die Kachel nicht lahmlegen (RAM/Reaktionszeit).
+    constexpr int kMax = 300;
+    for (const QFileInfo& fi : files) {
+        if (out.size() >= kMax) break;
+        QVariantMap m;
+        m.insert(QStringLiteral("name"), fi.fileName());
+        m.insert(QStringLiteral("url"), QUrl::fromLocalFile(fi.absoluteFilePath()).toString());
+        out.append(m);
+    }
+    return out;
+}
+
+int DocxEditController::pdfPageCount(const QString& fileUrl) const {
+    const QString path = mg::toLocalPath(fileUrl);
+    if (path.isEmpty()) return 0;
+    QPdfDocument d;
+    if (d.load(path) != QPdfDocument::Error::None) return 0;
+    return qMax(0, d.pageCount());
+}
+
+void DocxEditController::insertPdfPage(const QString& fileUrl, int page) {
+    if (!m_ready) return;
+    const QString path = mg::toLocalPath(fileUrl);
+    if (path.isEmpty()) return;
+    QPdfDocument d;
+    if (d.load(path) != QPdfDocument::Error::None || d.pageCount() <= 0) {
+        emit imageInsertFailed(QStringLiteral("PDF nicht lesbar."));
+        return;
+    }
+    page = qBound(0, page, d.pageCount() - 1);
+
+    //  150 dpi: Druckqualität, ohne den Container zu sprengen. Die Punktgröße
+    //  der Seite ist 1/72 Zoll — daraus folgt die Pixelgröße direkt.
+    constexpr qreal kDpi = 150.0;
+    const QSizeF ptSize = d.pagePointSize(page);
+    const QSize px(qMax(1, qRound(ptSize.width()  / 72.0 * kDpi)),
+                   qMax(1, qRound(ptSize.height() / 72.0 * kDpi)));
+    const QImage raw = d.render(page, px);
+    if (raw.isNull()) {
+        emit imageInsertFailed(QStringLiteral("Seite konnte nicht gerendert werden."));
+        return;
+    }
+    //  Auf WEISS komponieren — der Renderer liefert einen transparenten Grund,
+    //  im Dokument sähe die Seite sonst je nach Betrachter unterschiedlich aus.
+    QImage flat(raw.size(), QImage::Format_RGB32);
+    flat.fill(Qt::white);
+    { QPainter p(&flat); p.drawImage(0, 0, raw); }
+
+    QByteArray bytes;
+    {
+        QBuffer buf(&bytes);
+        buf.open(QIODevice::WriteOnly);
+        if (!flat.save(&buf, "PNG")) {
+            emit imageInsertFailed(QStringLiteral("Seite konnte nicht gewandelt werden."));
+            return;
+        }
+    }
+    insertImageData(bytes, QStringLiteral("png"));
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  Tabellen-Struktur (Kontextmenü)
+// ─────────────────────────────────────────────────────────────────────────────
+void DocxEditController::applyTableDef(int tableId, const Docx::TableDef& def) {
+    m_doc.setTableDef(tableId, def);
+}
+
+QVariantMap DocxEditController::tableInfoAt(int block) const {
+    QVariantMap m;
+    m.insert(QStringLiteral("table"), false);
+    if (!m_ready || m_doc.blocks.isEmpty()) return m;
+    const int bi = qBound(0, block < 0 ? m_cursor.block : block,
+                          m_doc.blocks.size() - 1);
+    const Block& b = m_doc.blocks.at(bi);
+    if (b.tableId < 0) return m;
+
+    const int tid = b.tableId;
+    const bool editable = m_doc.tableStructEditable(tid);
+    m.insert(QStringLiteral("table"), true);
+    m.insert(QStringLiteral("tableId"), tid);
+    m.insert(QStringLiteral("row"), b.row);
+    m.insert(QStringLiteral("col"), b.col);
+    m.insert(QStringLiteral("rows"), m_doc.tableRowCount(tid));
+    m.insert(QStringLiteral("cols"), m_doc.tableColumnCount(tid));
+    m.insert(QStringLiteral("editable"), editable);
+    //  Breiten für den Dialog in MILLIMETERN (Twips sind keine Nutzergröße).
+    QVariantList mm;
+    if (editable)
+        for (int tw : m_doc.tableColumnWidths(tid))
+            mm.append(qRound(tw / 56.6929 * 10.0) / 10.0);
+    m.insert(QStringLiteral("widths"), mm);
+    return m;
+}
+
+//  Gemeinsamer Rahmen aller Struktur-Operationen: der Undo-Bereich ist die
+//  GANZE Tabelle (Blöcke) plus ihr Gerüst-Schnappschuss.
+bool DocxEditController::tableStructOp(int tableId,
+                                       const std::function<bool()>& op) {
+    if (!m_ready) return false;
+    const int first = m_doc.tableFirstBlock(tableId);
+    const int last  = m_doc.tableLastBlock(tableId);
+    if (first < 0 || last < first) return false;
+
+    EditScope scope(this, first, last - first + 1);
+    scope.watchTable(tableId);
+    if (!op()) return false;                       // ohne commit = kein Kommando
+
+    const int newLast = m_doc.tableLastBlock(tableId);
+    const int newCount = (newLast < first) ? 0 : newLast - first + 1;
+    //  Der Cursor kann in einem entfallenen Block gestanden haben.
+    const int nb = m_doc.blocks.size();
+    m_cursor.block = qBound(0, m_cursor.block, qMax(0, nb - 1));
+    m_cursor.pos   = qBound(0, m_cursor.pos, blockLen(m_cursor.block));
+    m_cursor.collapse();
+    clearPending();
+    scope.commit(newCount);
+    return true;
+}
+
+void DocxEditController::tableInsertRow(int tableId, int atRow) {
+    tableStructOp(tableId, [&] { return m_doc.tableInsertRow(tableId, atRow); });
+}
+void DocxEditController::tableDeleteRow(int tableId, int row) {
+    tableStructOp(tableId, [&] { return m_doc.tableDeleteRow(tableId, row); });
+}
+void DocxEditController::tableInsertColumn(int tableId, int atCol) {
+    tableStructOp(tableId, [&] { return m_doc.tableInsertColumn(tableId, atCol); });
+}
+void DocxEditController::tableDeleteColumn(int tableId, int col) {
+    tableStructOp(tableId, [&] { return m_doc.tableDeleteColumn(tableId, col); });
+}
+
+void DocxEditController::tableSetColumnWidthsMm(int tableId,
+                                                const QVariantList& mm) {
+    QVector<int> tw;
+    for (const QVariant& v : mm)
+        tw.append(qRound(v.toDouble() * 56.6929));      // mm → Twips
+    tableStructOp(tableId, [&] { return m_doc.tableSetColumnWidths(tableId, tw); });
+}
+
+void DocxEditController::scaleTableWidths(int tableId, qreal factor) {
+    if (!m_ready) return;
+    factor = qBound(0.1, factor, 10.0);
+    QVector<int> tw = m_doc.tableColumnWidths(tableId);
+    if (tw.isEmpty()) return;
+    for (int& w : tw) w = qBound(200, int(qRound(w * factor)), 100000);
+    tableStructOp(tableId, [&] { return m_doc.tableSetColumnWidths(tableId, tw); });
+}
+
+void DocxEditController::deleteTable(int tableId) {
+    if (!m_ready) return;
+    const int first = m_doc.tableFirstBlock(tableId);
+    const int last  = m_doc.tableLastBlock(tableId);
+    if (first < 0 || last < first) return;
+
+    //  Die TableDef bleibt stehen — ohne Blöcke ist sie inert (die Emission
+    //  läuft über die Blöcke), und ein Undo benutzt sie unverändert wieder.
+    EditScope scope(this, first, last - first + 1);
+    for (int i = last; i >= first; --i)
+        m_doc.blocks.removeAt(i);
+    const int nb = m_doc.blocks.size();
+    m_cursor.block = qBound(0, first, qMax(0, nb - 1));
+    m_cursor.pos   = 0;
+    m_cursor.collapse();
+    clearPending();
+    scope.commit(0);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  Bildgröße (A2)
+// ─────────────────────────────────────────────────────────────────────────────
+QVariantMap DocxEditController::imageInfoAt(int block) const {
+    QVariantMap m;
+    m.insert(QStringLiteral("image"), false);
+    if (!m_ready || m_doc.blocks.isEmpty()) return m;
+    const int bi = qBound(0, block < 0 ? m_cursor.block : block,
+                          m_doc.blocks.size() - 1);
+    Docx::InlineImage info;
+    if (!m_doc.paragraphImage(m_doc.blocks.at(bi), &info)) return m;
+    m.insert(QStringLiteral("image"), true);
+    m.insert(QStringLiteral("block"), bi);
+    //  Größe in Millimetern (1 mm = 36000 EMU).
+    m.insert(QStringLiteral("widthMm"),  qRound(info.cxEmu / 36000.0 * 10.0) / 10.0);
+    m.insert(QStringLiteral("heightMm"), qRound(info.cyEmu / 36000.0 * 10.0) / 10.0);
+    return m;
+}
+
+void DocxEditController::setImageSizeMm(int block, qreal widthMm, qreal heightMm) {
+    if (!m_ready || m_doc.blocks.isEmpty()) return;
+    const int bi = qBound(0, block < 0 ? m_cursor.block : block,
+                          m_doc.blocks.size() - 1);
+    const qint64 cx = qint64(qRound(qBound(1.0, widthMm,  5000.0) * 36000.0));
+    const qint64 cy = qint64(qRound(qBound(1.0, heightMm, 5000.0) * 36000.0));
+
+    EditScope scope(this, bi, 1);
+    if (!m_doc.setImageSizeEmu(bi, cx, cy)) return;
+    clearPending();
+    scope.commit(1);
 }
 
 void DocxEditController::toggleList(bool bullet) {
@@ -1064,7 +1586,43 @@ QString DocxEditController::selectionAsHtml() const {
     return html;
 }
 
+//  Bild in die Zwischenablage: als BILD, nicht als Modell-Ausschnitt. Damit
+//  landet es auch in anderen Programmen, und `paste()` fügt es über die
+//  bestehende Bild-Kette wieder ein — die Beziehung (rId) wandert also nicht
+//  mit, was sie in einem FREMDEN Dokument ohnehin nicht dürfte. Preis: die
+//  Pixel werden neu als PNG kodiert, das Original bleibt aber unangetastet
+//  (kopiert wird ja nur).
+bool DocxEditController::copyImageAtCursor() {
+    if (!m_ready || m_doc.blocks.isEmpty()) return false;
+    const int bi = qBound(0, m_cursor.block, m_doc.blocks.size() - 1);
+    Docx::InlineImage info;
+    if (!m_doc.paragraphImage(m_doc.blocks.at(bi), &info)) return false;
+    const QByteArray bytes = m_doc.imageBytes(info.relId);
+    QImage img;
+    if (bytes.isEmpty() || !img.loadFromData(bytes) || img.isNull()) return false;
+    QGuiApplication::clipboard()->setImage(img);
+    return true;
+}
+
+void DocxEditController::deleteImageAtCursor() {
+    if (!m_ready || m_doc.blocks.isEmpty()) return;
+    const int bi = qBound(0, m_cursor.block, m_doc.blocks.size() - 1);
+    Docx::InlineImage info;
+    if (!m_doc.paragraphImage(m_doc.blocks.at(bi), &info)) return;
+
+    EditScope scope(this, bi, 1);
+    m_doc.blocks.removeAt(bi);
+    const int nb = m_doc.blocks.size();
+    m_cursor.block = qBound(0, bi > 0 ? bi - 1 : 0, qMax(0, nb - 1));
+    m_cursor.pos   = 0;
+    m_cursor.collapse();
+    clearPending();
+    scope.commit(0);
+}
+
 void DocxEditController::copy() {
+    //  Kein Text markiert, aber ein Bild ausgewählt → das Bild kopieren.
+    if (!m_cursor.hasSelection() && copyImageAtCursor()) return;
     if (!m_cursor.hasSelection()) return;
     int b1, p1, b2, p2;
     orderedSelection(b1, p1, b2, p2);
@@ -1088,7 +1646,10 @@ void DocxEditController::copy() {
     QGuiApplication::clipboard()->setMimeData(md);
 }
 void DocxEditController::cut() {
-    if (!m_cursor.hasSelection()) return;
+    if (!m_cursor.hasSelection()) {
+        if (copyImageAtCursor()) deleteImageAtCursor();
+        return;
+    }
     copy();
     deleteBackward();
 }
@@ -1101,6 +1662,22 @@ void DocxEditController::paste() {
         if (deserializeRuns(md->data(QLatin1String(kDocxMime)), &paras)) {
             insertRunParagraphs(paras);
             return;
+        }
+    }
+    //  BILD aus der Zwischenablage (Bildschirmfoto, Browser, Bildbetrachter):
+    //  vor dem Klartext prüfen — viele Quellen legen zusätzlich einen
+    //  Dateinamen als Text ab, der sonst gewönne. PNG behält Transparenz.
+    if (md->hasImage()) {
+        const QImage img = qvariant_cast<QImage>(md->imageData());
+        if (!img.isNull()) {
+            QByteArray bytes;
+            QBuffer buf(&bytes);
+            buf.open(QIODevice::WriteOnly);
+            if (img.save(&buf, "PNG")) {
+                buf.close();
+                insertImageData(bytes, QStringLiteral("png"));
+                return;
+            }
         }
     }
     //  Fremdinhalt: wie bisher als Klartext (HTML-Import ist bewusst NICHT
@@ -1438,6 +2015,9 @@ QVariantMap DocxEditController::currentFormat() const {
     m.insert(QStringLiteral("beforePt"),    pf.beforePt);
     m.insert(QStringLiteral("afterPt"),     pf.afterPt);
     m.insert(QStringLiteral("list"),        list);
+    //  Absatzvorlage am Cursor. Leer = Standardvorlage (kein w:pStyle); die
+    //  Auswahlliste zeigt dafür ihren ersten Eintrag.
+    m.insert(QStringLiteral("styleId"),     pf.styleId);
     m.insert(QStringLiteral("hasSelection"), m_cursor.hasSelection());
     return m;
 }
@@ -1510,7 +2090,9 @@ void DocxEditController::exportToPdf(const QString& tablePlaceholder,
     emit busyChanged();
 
     const QString target = pdfExportTargetPath();
-    Docx::Document docCopy = m_doc;   // implizit geteilte Kopie (GUI-Thread)
+    //  IMMER der Körper — steht der Editor gerade in der Kopfzeile, wäre
+    //  sonst diese das exportierte "Dokument".
+    Docx::Document docCopy = bodyDoc();   // implizit geteilte Kopie
     QPointer<DocxEditController> self(this);
 
     class PdfTask : public QRunnable {
@@ -1544,9 +2126,10 @@ void DocxEditController::startSaveWorker(const QString& targetPath, bool direct)
     m_busy = true;
     emit busyChanged();
 
-    //  Schnappschuss der Ersatzteile auf dem GUI-Thread (reine Strings).
-    QHash<QString, QByteArray> parts = m_doc.replacementParts();
-    parts.insert(QStringLiteral("word/document.xml"), m_doc.newDocumentXml().toUtf8());
+    //  Schnappschuss der Ersatzteile auf dem GUI-Thread (reine Strings) —
+    //  über ALLE geladenen Regionen, damit eine bearbeitete Kopf-/Fußzeile
+    //  mitgeschrieben wird (s. allRegionParts).
+    QHash<QString, QByteArray> parts = allRegionParts();
     const QString srcPath = m_source;
     QPointer<DocxEditController> self(this);
 

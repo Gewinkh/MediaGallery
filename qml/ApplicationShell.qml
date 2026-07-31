@@ -40,6 +40,19 @@ ApplicationWindow {
     palette.highlight:  App.themeAccent
     palette.highlightedText: App.themeBackground
     palette.mid:        App.themeBorder
+    //  Schattierungs-Rollen: hier BEWUSST noch einmal, obwohl main.cpp sie
+    //  bereits auf der QGuiApplication-Palette setzt. Datei-/Ordnerdialoge
+    //  öffnen als EIGENES Fenster und erben die Palette ihres ELTERNfensters,
+    //  nicht die der Anwendung (gemessen) — ohne diese Zeilen zeichnet Qts
+    //  Dialog-Implementierung Rahmen, Trenner und Seitenleiste aus der
+    //  Systempalette und wirkt als Fremdkörper im Theme.
+    //  Werte identisch zu `applyThemePalette` in main.cpp halten.
+    palette.light:      Qt.lighter(App.themeCard, 1.3)
+    palette.midlight:   Qt.lighter(App.themeBorder, 1.2)
+    palette.dark:       Qt.darker(App.themeBackground, 1.2)
+    palette.shadow:     Qt.darker(App.themeBackground, 1.6)
+    palette.alternateBase:   App.themeBackground
+    palette.placeholderText: App.themeTextMuted
 
     property string statusText: ""
 

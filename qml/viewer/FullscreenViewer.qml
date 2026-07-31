@@ -740,12 +740,14 @@ FocusScope {
         enabled: root.paneActive
         onActivated: root.backRequested()
     }
-    //  D = Datum-Editor dieser Datei öffnen (wie der Kalender-Knopf der oberen
-    //  Leiste). Einzeltaste: ein fokussiertes Textfeld/Notiz-Editor unterdrückt
-    //  sie via ShortcutOverride (gleiches Muster wie R/B in der Galerie).
+    //  D = Datum-Editor dieser Datei öffnen — NUR im Optionen-Modus (Alt+S).
+    //  Ohne diese Bedingung kaperte die Einzeltaste in jedem Editor die
+    //  Texteingabe; der reguläre Weg ist und bleibt der Kalender-Knopf oben
+    //  rechts. (Zusätzlich unterdrücken fokussierte Eingabeflächen Einzeltasten
+    //  via ShortcutOverride — QML-Textfelder von selbst, DocxTextArea explizit.)
     Shortcut {
         sequence: "D"
-        enabled: root.paneActive && root.path.length > 0
+        enabled: root.paneActive && root.path.length > 0 && App.optionsVisible
         onActivated: dateEditor.openWith(root.dateTime)
     }
 

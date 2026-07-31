@@ -5,6 +5,8 @@
 #include <QIODevice>
 #include <QBuffer>
 #include <QFile>
+#include <QImage>
+#include <QFileInfo>
 #include <QRegularExpression>
 
 namespace Docx {
@@ -241,7 +243,20 @@ void Document::parseParProps(QStringView xml, ParFmt* out) {
 //  Laden
 // ─────────────────────────────────────────────────────────────────────────────
 bool Document::load(const QString& path, QString* err) {
+    return loadPart(path, QStringLiteral("word/document.xml"), err);
+}
+
+//  Beziehungs-Datei EINES Teils: "word/header1.xml" → "word/_rels/header1.xml.rels".
+static QString relsPathOf(const QString& partPath) {
+    const int slash = partPath.lastIndexOf(QLatin1Char('/'));
+    const QString dir  = (slash > 0) ? partPath.left(slash + 1) : QString();
+    const QString name = partPath.mid(slash + 1);
+    return dir + QStringLiteral("_rels/") + name + QStringLiteral(".rels");
+}
+
+bool Document::loadPart(const QString& path, const QString& partPath, QString* err) {
     m_path = path;
+    m_partPath = partPath;
     blocks.clear();
     m_styles.clear();
     m_numLevels.clear();
@@ -250,14 +265,40 @@ bool Document::load(const QString& path, QString* err) {
     m_numberingXml.clear();
     m_hadNumberingPart = false;
 
+    m_tables.clear();
+    m_rels.clear();
+    m_hdrRefs.clear();
+    m_ftrRefs.clear();
+
     DocxZip::Reader zip;
     if (!zip.open(path, err))
         return false;
 
+    //  Beziehungen (Bilder, Kopf-/Fußzeilen-Teile). Fehlt die Datei, bleibt die
+    //  Tabelle leer — dann gibt es eben keine Bilder/Kopfzeilen anzuzeigen.
+    {
+        bool rOk = false;
+        const QByteArray relBytes = zip.fileData(relsPathOf(m_partPath), &rOk);
+        if (rOk) {
+            QXmlStreamReader rr(QString::fromUtf8(relBytes));
+            rr.setNamespaceProcessing(false);
+            while (!rr.atEnd()) {
+                if (rr.readNext() != QXmlStreamReader::StartElement) continue;
+                if (rr.qualifiedName() != QLatin1String("Relationship")) continue;
+                const QString id = attr(rr, "Id");
+                const QString target = attr(rr, "Target");
+                //  Externe Ziele (TargetMode="External") sind keine ZIP-Einträge.
+                if (!id.isEmpty() && !target.isEmpty()
+                    && attr(rr, "TargetMode") != QLatin1String("External"))
+                    m_rels.insert(id, target);
+            }
+        }
+    }
+
     bool ok = false;
-    const QByteArray docBytes = zip.fileData(QStringLiteral("word/document.xml"), &ok);
+    const QByteArray docBytes = zip.fileData(m_partPath, &ok);
     if (!ok) {
-        if (err) *err = QStringLiteral("word/document.xml fehlt oder ist defekt.");
+        if (err) *err = QStringLiteral("%1 fehlt oder ist defekt.").arg(m_partPath);
         return false;
     }
     //  UTF-8-Roundtrip-Garantie: nur wenn Dekodieren+Re-Enkodieren byteidentisch
@@ -310,18 +351,23 @@ bool Document::parseDocumentXml(QString* err) {
         return t;
     };
 
-    // Bis in den <w:body> laufen.
+    //  Bis in den Rumpf laufen. Der heißt im Hauptdokument <w:body>, in einem
+    //  Kopf-/Fußzeilen-Teil <w:hdr>/<w:ftr> — sonst ist alles identisch.
+    QString rootTag;
     int bodyContentStart = -1;
     while (!r.atEnd()) {
         const auto t = next();
-        if (t == QXmlStreamReader::StartElement
-            && r.qualifiedName() == QLatin1String("w:body")) {
+        if (t != QXmlStreamReader::StartElement) continue;
+        const QString qn = r.qualifiedName().toString();
+        if (qn == QLatin1String("w:body") || qn == QLatin1String("w:hdr")
+            || qn == QLatin1String("w:ftr")) {
+            rootTag = qn;
             bodyContentStart = int(tokEnd);
             break;
         }
     }
     if (bodyContentStart < 0) {
-        if (err) *err = QStringLiteral("Kein <w:body> gefunden.");
+        if (err) *err = QStringLiteral("Kein <w:body>/<w:hdr>/<w:ftr> gefunden.");
         return false;
     }
     m_bodyPrefix = { 0, bodyContentStart };
@@ -482,12 +528,227 @@ bool Document::parseDocumentXml(QString* err) {
         return b;
     };
 
+    //  ── w:tbl FLACH zerlegen (Option A) ──────────────────────────────────────
+    //  Zell-Absätze werden reguläre Blöcke in `blocks`, das XML-Gerüst landet als
+    //  Spans in `m_tables`. Rückgabe false = nicht vollständig verstanden; dann
+    //  bleibt die Tabelle EIN opaker Block (Verhalten wie bisher). Nichts wird
+    //  angefasst, solange nicht der ganze Baum sauber zerlegt ist — deshalb wird
+    //  erst in Zwischenspeicher gesammelt und am Ende gemeinsam übernommen.
+    auto parseTable = [&](int absStart, int absLen) -> bool {
+        const QString frag = m_docXml.mid(absStart, absLen);
+        QXmlStreamReader tr(frag);
+        tr.setNamespaceProcessing(false);
+
+        qint64 ts = 0, te = 0;
+        auto tnext = [&]() {
+            ts = te;
+            const auto t = tr.readNext();
+            te = tr.characterOffset();
+            return t;
+        };
+
+        TableDef def;
+        QList<Block> cellBlocks;                       // in Reihenfolge (row-major)
+        int firstRowStart = -1;                        // Fragment-Offset "<w:tr"
+
+        //  Erstes Token = StartElement <w:tbl …> (Offsets im Fragment ab hier exakt).
+        while (!tr.atEnd()) {
+            if (tnext() == QXmlStreamReader::StartElement) break;
+        }
+        if (tr.qualifiedName() != QLatin1String("w:tbl")) return false;
+
+        while (!tr.atEnd()) {
+            const auto t = tnext();
+            if (t == QXmlStreamReader::EndElement
+                && tr.qualifiedName() == QLatin1String("w:tbl")) {
+                //  Footer = "</w:tbl>" (Rest des Fragments).
+                def.footerSpan = { absStart + int(ts), int(te - ts) };
+                break;
+            }
+            if (t != QXmlStreamReader::StartElement) continue;
+            if (tr.qualifiedName() != QLatin1String("w:tr")) {
+                //  tblPr/tblGrid gehören in den Header; alles ANDERE (z. B.
+                //  w:sdt um Zeilen herum, w:customXml) wird nicht gedeutet.
+                if (tr.qualifiedName() != QLatin1String("w:tblPr")
+                    && tr.qualifiedName() != QLatin1String("w:tblGrid")
+                    && tr.qualifiedName() != QLatin1String("w:tblPrEx"))
+                    return false;
+                const bool isGrid = (tr.qualifiedName() == QLatin1String("w:tblGrid"));
+                const int gs = int(ts);
+                tr.skipCurrentElement();
+                te = tr.characterOffset();
+                if (isGrid) {
+                    //  Spaltenbreiten fürs Layout mitnehmen.
+                    QXmlStreamReader gr(frag.mid(gs, int(te) - gs));
+                    gr.setNamespaceProcessing(false);
+                    while (!gr.atEnd()) {
+                        if (gr.readNext() != QXmlStreamReader::StartElement) continue;
+                        if (gr.qualifiedName() != QLatin1String("w:gridCol")) continue;
+                        bool okw = false;
+                        const int w = attr(gr, "w:w").toInt(&okw);
+                        def.gridTw.append(okw ? qBound(0, w, 100000) : 0);
+                    }
+                }
+                continue;
+            }
+
+            //  ── Zeile ────────────────────────────────────────────────────────
+            const int rowStart = int(ts);
+            if (firstRowStart < 0) firstRowStart = rowStart;
+            tr.skipCurrentElement();
+            te = tr.characterOffset();
+            const int rowEnd = int(te);
+
+            const QString rowFrag = frag.mid(rowStart, rowEnd - rowStart);
+            QXmlStreamReader rr(rowFrag);
+            rr.setNamespaceProcessing(false);
+            qint64 rs = 0, re = 0;
+            auto rnext = [&]() {
+                rs = re;
+                const auto t2 = rr.readNext();
+                re = rr.characterOffset();
+                return t2;
+            };
+            while (!rr.atEnd()) {
+                if (rnext() == QXmlStreamReader::StartElement) break;
+            }
+
+            const int rowIdx = def.rowSpans.size();
+            int firstCellStart = -1, lastCellEnd = -1;
+            QVector<QPair<int, int>> cellRanges;        // (start,end) im rowFrag
+            bool rowOk = true;
+            while (!rr.atEnd()) {
+                const auto t2 = rnext();
+                if (t2 == QXmlStreamReader::EndElement
+                    && rr.qualifiedName() == QLatin1String("w:tr"))
+                    break;
+                if (t2 != QXmlStreamReader::StartElement) continue;
+                if (rr.qualifiedName() != QLatin1String("w:tc")) {
+                    if (rr.qualifiedName() != QLatin1String("w:trPr")) { rowOk = false; break; }
+                    rr.skipCurrentElement();
+                    re = rr.characterOffset();
+                    continue;
+                }
+                const int cs = int(rs);
+                rr.skipCurrentElement();
+                re = rr.characterOffset();
+                const int ce = int(re);
+                if (firstCellStart < 0) firstCellStart = cs;
+                lastCellEnd = ce;
+                cellRanges.append({ cs, ce });
+            }
+            if (!rowOk || cellRanges.isEmpty()) return false;
+
+            def.rowSpans.append({ absStart + rowStart, firstCellStart });
+            def.rowFirstCell.append(def.cellSpans.size());
+
+            //  ── Zellen ───────────────────────────────────────────────────────
+            for (int ci = 0; ci < cellRanges.size(); ++ci) {
+                const int cs = cellRanges.at(ci).first;
+                const int ce = cellRanges.at(ci).second;
+                const QString cellFrag = rowFrag.mid(cs, ce - cs);
+                QXmlStreamReader cr(cellFrag);
+                cr.setNamespaceProcessing(false);
+                qint64 ps = 0, pe = 0;
+                auto pnext2 = [&]() {
+                    ps = pe;
+                    const auto t3 = cr.readNext();
+                    pe = cr.characterOffset();
+                    return t3;
+                };
+                while (!cr.atEnd()) {
+                    if (pnext2() == QXmlStreamReader::StartElement) break;
+                }
+
+                int firstParStart = -1, lastParEnd = -1;
+                QVector<QPair<int, int>> parRanges;
+                bool cellOk = true;
+                int cellSpanVal = 1, cellWidthVal = 0;
+                while (!cr.atEnd()) {
+                    const auto t3 = pnext2();
+                    if (t3 == QXmlStreamReader::EndElement
+                        && cr.qualifiedName() == QLatin1String("w:tc"))
+                        break;
+                    if (t3 != QXmlStreamReader::StartElement) continue;
+                    const auto cn = cr.qualifiedName();
+                    if (cn == QLatin1String("w:p")) {
+                        const int pStart = int(ps);
+                        cr.skipCurrentElement();
+                        pe = cr.characterOffset();
+                        if (firstParStart < 0) firstParStart = pStart;
+                        lastParEnd = int(pe);
+                        parRanges.append({ pStart, int(pe) });
+                    } else if (cn == QLatin1String("w:tcPr")) {
+                        const int ps2 = int(ps);
+                        cr.skipCurrentElement();
+                        pe = cr.characterOffset();
+                        //  gridSpan/tcW fürs Layout mitnehmen.
+                        QXmlStreamReader pr3(cellFrag.mid(ps2, int(pe) - ps2));
+                        pr3.setNamespaceProcessing(false);
+                        while (!pr3.atEnd()) {
+                            if (pr3.readNext() != QXmlStreamReader::StartElement) continue;
+                            const auto pn = pr3.qualifiedName();
+                            if (pn == QLatin1String("w:gridSpan")) {
+                                bool okg = false;
+                                const int g = attr(pr3, "w:val").toInt(&okg);
+                                if (okg) cellSpanVal = qBound(1, g, 64);
+                            } else if (pn == QLatin1String("w:tcW")) {
+                                bool okw = false;
+                                const int w = attr(pr3, "w:w").toInt(&okw);
+                                if (okw && attr(pr3, "w:type") != QLatin1String("pct"))
+                                    cellWidthVal = qBound(0, w, 100000);
+                            }
+                        }
+                    } else {
+                        //  Verschachtelte Tabelle, sdt, altChunk … → nicht deuten.
+                        cellOk = false;
+                        break;
+                    }
+                }
+                //  Eine Zelle OHNE Absatz ist laut Schema unzulässig; hier wäre
+                //  sie ein Loch in der Rekonstruktion.
+                if (!cellOk || parRanges.isEmpty()) return false;
+
+                const int cellAbs = absStart + rowStart + cs;
+                def.cellSpans.append({ cellAbs, firstParStart });
+                def.cellEndSpans.append({ absStart + rowStart + cs + lastParEnd,
+                                          (ce - cs) - lastParEnd });
+                def.cellRow.append(rowIdx);
+                def.cellGridSpan.append(cellSpanVal);
+                def.cellWidthTw.append(cellWidthVal);
+
+                for (const auto& pr2 : parRanges) {
+                    Block cb = parseParagraph(cellAbs + pr2.first,
+                                              pr2.second - pr2.first);
+                    cb.row = rowIdx;
+                    cb.col = ci;
+                    cellBlocks.append(cb);
+                }
+            }
+
+            def.rowEndSpans.append({ absStart + rowStart + lastCellEnd,
+                                     (rowEnd - rowStart) - lastCellEnd });
+        }
+
+        if (def.rowSpans.isEmpty() || firstRowStart < 0 || !def.footerSpan.valid())
+            return false;
+        def.headerSpan = { absStart, firstRowStart };
+
+        //  Übernehmen — ab hier ist die Zerlegung vollständig.
+        const int tableId = m_tables.size();
+        for (Block& cb : cellBlocks) {
+            cb.tableId = tableId;
+            blocks.append(cb);
+        }
+        m_tables.append(def);
+        return true;
+    };
+
     // Body-Kinder.
     int bodyContentEnd = -1;
     while (!r.atEnd()) {
         const auto t = next();
-        if (t == QXmlStreamReader::EndElement
-            && r.qualifiedName() == QLatin1String("w:body")) {
+        if (t == QXmlStreamReader::EndElement && r.qualifiedName() == rootTag) {
             bodyContentEnd = int(tokStart);
             break;
         }
@@ -509,6 +770,11 @@ bool Document::parseDocumentXml(QString* err) {
         const int blen = int(tokEnd) - bs;
         if (name == QLatin1String("w:p")) {
             blocks.append(parseParagraph(bs, blen));
+        } else if (name == QLatin1String("w:tbl") && parseTable(bs, blen)) {
+            //  Zellinhalt liegt jetzt FLACH in `blocks`, das Gerüst in m_tables.
+            //  Schlägt das Zerlegen fehl (verschachtelte Tabelle, sdt, fremde
+            //  Kinder), fällt es unten auf den bisherigen opaken Block zurück —
+            //  dann bleibt alles wie vorher, statt Inhalt zu riskieren.
         } else {
             Block ob;
             ob.kind = (name == QLatin1String("w:tbl")
@@ -518,6 +784,10 @@ bool Document::parseDocumentXml(QString* err) {
             ob.rawSpan    = { bs, blen };
             ob.opaqueName = name;
             blocks.append(ob);
+            //  Seiteneinrichtung des Hauptteils: das LETZTE w:sectPr im Körper
+            //  gewinnt (frühere gehören zu abgeschlossenen Abschnitten).
+            if (name == QLatin1String("w:sectPr"))
+                parseSectPr(QStringView(m_docXml).mid(bs, blen));
         }
     }
     if (bodyContentEnd < 0 || r.hasError()) {
@@ -530,12 +800,15 @@ bool Document::parseDocumentXml(QString* err) {
     //  SELBSTPRÜFUNG (Verlusterhaltungs-Garantie): Prefix + Block-Spans +
     //  Suffix müssen das Original EXAKT rekonstruieren. Bei Abweichung wird
     //  das Laden verweigert (lieber gar nicht editieren als still verlieren).
+    //  Seit Tabellen flach zerlegt werden, reicht ein Aneinanderhängen der
+    //  Block-Spans nicht mehr — das Gerüst (w:tbl/w:tr/w:tc) liegt in m_tables.
+    //  Geprüft wird deshalb über denselben Gruppen-Lauf, den auch das Speichern
+    //  nimmt (emitBlocks, nur-Roh-Variante).
     {
         QString rebuilt;
         rebuilt.reserve(m_docXml.size());
         rebuilt += QStringView(m_docXml).mid(m_bodyPrefix.start, m_bodyPrefix.len);
-        for (const Block& b : std::as_const(blocks))
-            rebuilt += QStringView(m_docXml).mid(b.rawSpan.start, b.rawSpan.len);
+        rebuilt += emitBlocks(true);
         rebuilt += QStringView(m_docXml).mid(m_bodySuffix.start, m_bodySuffix.len);
         if (rebuilt != m_docXml) {
             if (err) *err = QStringLiteral("Struktur-Selbstprüfung fehlgeschlagen — "
@@ -584,15 +857,421 @@ bool Document::parseDocumentXml(QString* err) {
 // ─────────────────────────────────────────────────────────────────────────────
 //  styles.xml (nur Anzeige): docDefaults + Vorlagen-Kette (basedOn)
 // ─────────────────────────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────────────
+//  Tabellen-ANZEIGE: w:tbl → Zeilen/Zellen/Absätze.
+//
+//  Bewusst ein EIGENER, schlanker Parser statt einer Erweiterung von
+//  parseDocumentXml: die Tabelle bleibt im Blockmodell ein unangetasteter
+//  OpaqueVisible-Block (beim Speichern byteidentisch), diese Sicht dient
+//  ausschließlich dem Auslegen und Zeichnen. Sie füllt daher nur `pfmt` und
+//  `runs` der Zell-Absätze — genau das, was resolvePar/resolveRun brauchen.
+// ─────────────────────────────────────────────────────────────────────────────
+namespace {
+
+//  Sichtbaren Text eines w:p-Fragments samt Zeichenformaten einsammeln.
+//  Dieselben Sentinels wie im Hauptparser (Tab/Umbruch/atomares Objekt).
+//  Text eines Runs (samt Sentinels) aus seinem Roh-Fragment lesen.
+void collectRunText(QStringView runFrag, Run* run) {
+    QXmlStreamReader tr(runFrag.toString());
+    tr.setNamespaceProcessing(false);
+    while (!tr.atEnd()) {
+        if (tr.readNext() != QXmlStreamReader::StartElement) continue;
+        const auto tn = tr.qualifiedName();
+        if (tn == QLatin1String("w:t")) {
+            run->text += tr.readElementText();
+        } else if (tn == QLatin1String("w:tab")) {
+            run->text += QLatin1Char('\t');
+        } else if (tn == QLatin1String("w:br")) {
+            run->text += (attr(tr, "w:type") == QLatin1String("page")) ? kPageBreak
+                                                                      : kLineBreak;
+        } else if (tn == QLatin1String("w:cr")) {
+            run->text += kLineBreak;
+        } else if (tn == QLatin1String("w:noBreakHyphen")) {
+            run->text += QChar(0x2011);
+        } else if (tn == QLatin1String("w:drawing") || tn == QLatin1String("w:object")
+                   || tn == QLatin1String("w:pict")) {
+            run->text  += kObjectChar;
+            run->opaque = true;
+        }
+    }
+}
+
+Block parseCellParagraph(QStringView frag) {
+    Block b;
+    b.kind = Block::Paragraph;
+    QXmlStreamReader r(frag.toString());
+    r.setNamespaceProcessing(false);
+
+    //  Token-Grenzen mitführen (Muster parseDocumentXml): ein Element beginnt
+    //  bei `tokStart`, characterOffset() zeigt hinter das gerade gelesene Token.
+    qint64 tokStart = 0, tokEnd = 0;
+    auto next = [&]() {
+        tokStart = tokEnd;
+        const auto t = r.readNext();
+        tokEnd = r.characterOffset();
+        return t;
+    };
+    auto fragmentOf = [&](qint64 startAt) -> QStringView {
+        r.skipCurrentElement();
+        tokEnd = r.characterOffset();
+        if (startAt < 0 || tokEnd <= startAt || tokEnd > frag.size()) return {};
+        return frag.mid(int(startAt), int(tokEnd - startAt));
+    };
+
+    while (!r.atEnd()) {
+        if (next() != QXmlStreamReader::StartElement) continue;
+        const auto n = r.qualifiedName();
+        const qint64 elemStart = tokStart;
+        if (n == QLatin1String("w:pPr")) {
+            const QStringView f = fragmentOf(elemStart);
+            if (!f.isEmpty()) Document::parseParProps(f, &b.pfmt);
+        } else if (n == QLatin1String("w:r")) {
+            const QStringView f = fragmentOf(elemStart);
+            if (f.isEmpty()) continue;
+            Run run;
+            Document::parseRunProps(f, &run.fmt);
+            collectRunText(f, &run);
+            if (!run.text.isEmpty()) b.runs.append(run);
+        } else if (n == QLatin1String("w:hyperlink") || n == QLatin1String("w:ins")
+                   || n == QLatin1String("w:smartTag") || n == QLatin1String("w:sdt")) {
+            //  Beschriftung anzeigen, Struktur nicht deuten.
+            const QStringView f = fragmentOf(elemStart);
+            if (f.isEmpty()) continue;
+            Run run;
+            collectRunText(f, &run);
+            if (!run.text.isEmpty()) b.runs.append(run);
+        }
+    }
+    return b;
+}
+
+} // namespace
+
+TableView Document::parseTableForDisplay(const Block& b) const {
+    TableView tv;
+    if (b.kind != Block::OpaqueVisible
+        || b.opaqueName != QLatin1String("w:tbl")
+        || !b.rawSpan.valid()
+        || b.rawSpan.start < 0
+        || b.rawSpan.start + b.rawSpan.len > m_docXml.size())
+        return tv;                                   // ok bleibt false
+
+    const QString all = QStringView(m_docXml).mid(b.rawSpan.start, b.rawSpan.len).toString();
+
+    //  Ein Fragment-Leser mit mitgeführten Token-Grenzen — dreimal gebraucht
+    //  (Tabelle → Zeile → Zelle), deshalb als Lambda-Fabrik.
+    struct Scan {
+        QXmlStreamReader r;
+        qint64 tokStart = 0, tokEnd = 0;
+        explicit Scan(const QString& s) : r(s) { r.setNamespaceProcessing(false); }
+        QXmlStreamReader::TokenType next() {
+            tokStart = tokEnd;
+            const auto t = r.readNext();
+            tokEnd = r.characterOffset();
+            return t;
+        }
+        //  Roh-Fragment des gerade begonnenen Elements (ab seinem '<').
+        QString take(const QString& src) {
+            const qint64 s = tokStart;
+            r.skipCurrentElement();
+            tokEnd = r.characterOffset();
+            if (s < 0 || tokEnd <= s || tokEnd > src.size()) return {};
+            return src.mid(int(s), int(tokEnd - s));
+        }
+    };
+
+    Scan t1(all);
+    int depth = 0;                                   // Verschachtelungstiefe w:tbl
+    while (!t1.r.atEnd()) {
+        const auto t = t1.next();
+        if (t == QXmlStreamReader::EndElement) {
+            if (t1.r.qualifiedName() == QLatin1String("w:tbl")) --depth;
+            continue;
+        }
+        if (t != QXmlStreamReader::StartElement) continue;
+        const auto n = t1.r.qualifiedName();
+        if (n == QLatin1String("w:tbl")) { ++depth; continue; }
+        if (depth != 1) continue;                    // nur die ÄUSSERE Tabelle
+
+        if (n == QLatin1String("w:gridCol")) {
+            bool ok = false;
+            const int w = attr(t1.r, "w:w").toInt(&ok);
+            tv.gridTw.append(ok ? qBound(0, w, 100000) : 0);
+        } else if (n == QLatin1String("w:tr")) {
+            const QString rowFrag = t1.take(all);
+            if (rowFrag.isEmpty()) continue;
+
+            TableRow row;
+            Scan t2(rowFrag);
+            int cellDepth = 0;
+            while (!t2.r.atEnd()) {
+                const auto t2t = t2.next();
+                if (t2t == QXmlStreamReader::EndElement) {
+                    if (t2.r.qualifiedName() == QLatin1String("w:tbl")) --cellDepth;
+                    continue;
+                }
+                if (t2t != QXmlStreamReader::StartElement) continue;
+                if (t2.r.qualifiedName() == QLatin1String("w:tbl")) { ++cellDepth; continue; }
+                if (cellDepth != 0) continue;        // Inhalt verschachtelter Tabellen
+                if (t2.r.qualifiedName() != QLatin1String("w:tc")) continue;
+
+                const QString cellFrag = t2.take(rowFrag);
+                if (cellFrag.isEmpty()) continue;
+
+                TableCell cell;
+                Scan t3(cellFrag);
+                while (!t3.r.atEnd()) {
+                    if (t3.next() != QXmlStreamReader::StartElement) continue;
+                    const auto cn = t3.r.qualifiedName();
+                    if (cn == QLatin1String("w:tbl")) {
+                        //  VERSCHACHTELTE Tabelle → Platzhalter-Absatz in dieser
+                        //  Zelle (Inhalt bleibt in der Datei, nur nicht gedeutet).
+                        Block nested;
+                        nested.kind = Block::OpaqueVisible;
+                        nested.opaqueName = QStringLiteral("w:tbl");
+                        cell.paragraphs.append(nested);
+                        t3.take(cellFrag);
+                    } else if (cn == QLatin1String("w:gridSpan")) {
+                        bool ok = false;
+                        const int gs = attr(t3.r, "w:val").toInt(&ok);
+                        if (ok) cell.gridSpan = qBound(1, gs, 64);
+                    } else if (cn == QLatin1String("w:tcW")) {
+                        bool ok = false;
+                        const int w = attr(t3.r, "w:w").toInt(&ok);
+                        if (ok && attr(t3.r, "w:type") != QLatin1String("pct"))
+                            cell.widthTw = qBound(0, w, 100000);
+                    } else if (cn == QLatin1String("w:p")) {
+                        const QString pFrag = t3.take(cellFrag);
+                        if (!pFrag.isEmpty())
+                            cell.paragraphs.append(parseCellParagraph(pFrag));
+                    }
+                }
+                row.cells.append(cell);
+            }
+            if (!row.cells.isEmpty()) tv.rows.append(row);
+        }
+    }
+    QXmlStreamReader& r = t1.r;
+
+    //  Brauchbar nur mit mindestens einer Zeile und einer Zelle. Fehlt das
+    //  Gitter, werden die Spalten später gleichmäßig verteilt.
+    tv.ok = !r.hasError() && !tv.rows.isEmpty();
+    return tv;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  Bilder, weitere ZIP-Teile, Kopf-/Fußzeilen (alles ANZEIGE)
+// ─────────────────────────────────────────────────────────────────────────────
+QString Document::relTarget(const QString& relId) const {
+    return m_rels.value(relId);
+}
+
+QByteArray Document::partBytes(const QString& zipPath) const {
+    if (zipPath.isEmpty() || m_path.isEmpty()) return {};
+    //  Das ZIP wird für diesen einen Eintrag erneut geöffnet und NICHT
+    //  offengehalten: Bilddaten dauerhaft im Speicher zu halten wäre bei einem
+    //  bildlastigen Dokument der größte Einzelposten (RAM = Priorität 1). Die
+    //  Anzeige hält stattdessen nur das eingepasste QImage im Layout-Fenster.
+    DocxZip::Reader zip;
+    if (!zip.open(m_path, nullptr)) return {};
+    bool ok = false;
+    const QByteArray data = zip.fileData(zipPath, &ok);
+    zip.close();
+    return ok ? data : QByteArray();
+}
+
+QByteArray Document::imageBytes(const QString& relId) const {
+    //  Frisch eingefügte Bilder liegen noch NICHT im Container — sonst zeigte
+    //  die Anzeige bis zum Speichern nur einen leeren Rahmen.
+    for (const PendingMedia& m : m_pendingMedia)
+        if (m.relId == relId) return m.bytes;
+    QString target = relTarget(relId);
+    if (target.isEmpty()) return {};
+    //  Ziele stehen relativ zu word/ ("media/bild1.png"); absolute Angaben
+    //  ("/word/media/…") und Rückwärtsschritte kommen vor.
+    while (target.startsWith(QLatin1Char('/')))
+        target.remove(0, 1);
+    if (target.startsWith(QLatin1String("word/")))
+        return partBytes(target);
+    if (target.contains(QLatin1String("..")))
+        return {};                                   // keine Pfad-Ausbrüche
+    return partBytes(QStringLiteral("word/") + target);
+}
+
+bool Document::paragraphImage(const Block& b, InlineImage* out) const {
+    if (b.kind != Block::Paragraph) return false;
+    //  Genau EIN sichtbarer Run, und der ist ein atomares Objekt.
+    const Run* only = nullptr;
+    for (const Run& r : b.runs) {
+        if (r.text.isEmpty()) continue;
+        if (only) return false;                      // mehr als ein Inhalt
+        only = &r;
+    }
+    if (!only || !only->opaque || only->text != QString(kObjectChar)
+        || !only->rawSpan.valid()
+        || only->rawSpan.start < 0
+        || only->rawSpan.start + only->rawSpan.len > m_docXml.size())
+        return false;
+
+    const QStringView frag = QStringView(m_docXml).mid(only->rawSpan.start,
+                                                       only->rawSpan.len);
+    QXmlStreamReader r(frag.toString());
+    r.setNamespaceProcessing(false);
+    InlineImage img;
+    while (!r.atEnd()) {
+        if (r.readNext() != QXmlStreamReader::StartElement) continue;
+        //  Präfixe sind nicht garantiert (a:blip, wp:extent) → lokaler Name.
+        const QString qn = r.qualifiedName().toString();
+        const QString local = qn.section(QLatin1Char(':'), -1);
+        if (local == QLatin1String("blip")) {
+            const QString id = attr(r, "r:embed");
+            if (!id.isEmpty()) img.relId = id;
+        } else if (local == QLatin1String("extent")) {
+            bool okx = false, oky = false;
+            const int cx = attr(r, "cx").toInt(&okx);
+            const int cy = attr(r, "cy").toInt(&oky);
+            //  Grenzen: 0 … 200 Zoll. Unsinnige Werte → Vorgabe über das Bild.
+            if (okx && cx > 0) img.cxEmu = qMin(cx, 182880000);
+            if (oky && cy > 0) img.cyEmu = qMin(cy, 182880000);
+        }
+    }
+    if (img.relId.isEmpty()) return false;
+    if (out) *out = img;
+    return true;
+}
+
+//  ZIP-Pfad des Kopf-/Fußzeilen-Teils; leer, wenn es keinen gibt. Öffentlich,
+//  weil der Editor diesen Teil als EIGENE Document-Instanz lädt (Region).
+QString Document::headerFooterPart(bool footer, bool first) const {
+    const QHash<QString, QString>& refs = footer ? m_ftrRefs : m_hdrRefs;
+    QString id = first ? refs.value(QStringLiteral("first")) : QString();
+    if (id.isEmpty()) id = refs.value(QStringLiteral("default"));
+    if (id.isEmpty()) return {};
+
+    QString target = relTarget(id);
+    if (target.isEmpty() || target.contains(QLatin1String(".."))) return {};
+    while (target.startsWith(QLatin1Char('/'))) target.remove(0, 1);
+    if (!target.startsWith(QLatin1String("word/")))
+        target = QStringLiteral("word/") + target;
+    return target;
+}
+
+HeaderFooter Document::headerFooter(bool footer, bool first) const {
+    HeaderFooter hf;
+    const QString target = headerFooterPart(footer, first);
+    if (target.isEmpty()) return hf;
+    const QByteArray xml = partBytes(target);
+    if (xml.isEmpty()) return hf;
+
+    //  Absätze des Teils einsammeln — gleiche Technik wie bei Tabellenzellen.
+    const QString text = QString::fromUtf8(xml);
+    QXmlStreamReader r(text);
+    r.setNamespaceProcessing(false);
+    qint64 tokStart = 0, tokEnd = 0;
+    int tblDepth = 0;
+    while (!r.atEnd()) {
+        tokStart = tokEnd;
+        const auto t = r.readNext();
+        tokEnd = r.characterOffset();
+        if (t == QXmlStreamReader::EndElement
+            && r.qualifiedName() == QLatin1String("w:tbl")) { --tblDepth; continue; }
+        if (t != QXmlStreamReader::StartElement) continue;
+        if (r.qualifiedName() == QLatin1String("w:tbl")) { ++tblDepth; continue; }
+        if (tblDepth > 0) continue;                  // Tabellen in Kopfzeilen: nein
+        if (r.qualifiedName() != QLatin1String("w:p")) continue;
+        const qint64 s = tokStart;
+        r.skipCurrentElement();
+        tokEnd = r.characterOffset();
+        if (s < 0 || tokEnd <= s || tokEnd > text.size()) continue;
+        hf.paragraphs.append(parseCellParagraph(QStringView(text).mid(int(s),
+                                                                     int(tokEnd - s))));
+    }
+    hf.ok = !hf.paragraphs.isEmpty();
+    return hf;
+}
+
+//  w:sectPr → SectionProps. Bewusst tolerant: fehlende Attribute behalten den
+//  A4-Vorgabewert, unsinnige Werte werden geklemmt (ein Dokument mit
+//  pgSz w="0" würde sonst eine Seite ohne Textbreite ergeben).
+void Document::parseSectPr(QStringView xml) {
+    QXmlStreamReader r(xml.toString());
+    r.setNamespaceProcessing(false);
+    //  Twips: 1/1440 Zoll. Grenzen = 0,5 cm … 2 m Seitenmaß bzw. 0 … halbe
+    //  Seite Rand — großzügig, aber nicht mehr zerstörerisch.
+    auto num = [&r](const char* name, int fallback, int lo, int hi) {
+        const QString v = attr(r, name);
+        if (v.isEmpty()) return fallback;
+        bool ok = false;
+        const int n = v.toInt(&ok);
+        return ok ? qBound(lo, n, hi) : fallback;
+    };
+    while (!r.atEnd()) {
+        if (r.readNext() != QXmlStreamReader::StartElement) continue;
+        const auto n = r.qualifiedName();
+        if (n == QLatin1String("w:pgSz")) {
+            m_section.pageW = num("w:w", m_section.pageW, 284, 113386);
+            m_section.pageH = num("w:h", m_section.pageH, 284, 113386);
+            m_section.landscape = (attr(r, "w:orient") == QLatin1String("landscape"));
+        } else if (n == QLatin1String("w:pgMar")) {
+            m_section.marTop    = num("w:top",    m_section.marTop,    0, 56693);
+            m_section.marRight  = num("w:right",  m_section.marRight,  0, 56693);
+            m_section.marBottom = num("w:bottom", m_section.marBottom, 0, 56693);
+            m_section.marLeft   = num("w:left",   m_section.marLeft,   0, 56693);
+        } else if (n == QLatin1String("w:cols")) {
+            m_section.cols     = num("w:num",   1,   1, 12);
+            m_section.colSpace = num("w:space", 708, 0, 14400);
+        } else if (n == QLatin1String("w:headerReference")
+                   || n == QLatin1String("w:footerReference")) {
+            //  w:type = default | first | even; das Ziel steckt in r:id.
+            const QString id = attr(r, "r:id");
+            QString type = attr(r, "w:type");
+            if (type.isEmpty()) type = QStringLiteral("default");
+            if (id.isEmpty()) continue;
+            if (n == QLatin1String("w:headerReference")) m_hdrRefs.insert(type, id);
+            else                                        m_ftrRefs.insert(type, id);
+        }
+    }
+    //  Ränder dürfen die Seite nicht auffressen: mindestens 1 cm Textbreite
+    //  bzw. -höhe bleiben stehen, sonst gilt die Angabe als unbrauchbar.
+    if (m_section.marLeft + m_section.marRight > m_section.pageW - 567)
+        m_section.marLeft = m_section.marRight = qMax(0, (m_section.pageW - 567) / 2);
+    if (m_section.marTop + m_section.marBottom > m_section.pageH - 567)
+        m_section.marTop = m_section.marBottom = qMax(0, (m_section.pageH - 567) / 2);
+    //  Spalten müssen zusammen mit ihren Abständen in die Textbreite passen.
+    const int textW = m_section.pageW - m_section.marLeft - m_section.marRight;
+    while (m_section.cols > 1
+           && (m_section.cols - 1) * m_section.colSpace + m_section.cols * 284 > textW)
+        --m_section.cols;
+}
+
 bool Document::parseStylesXml(const QByteArray& xml) {
     QXmlStreamReader r(QString::fromUtf8(xml));
     r.setNamespaceProcessing(false);
+
+    //  Anzeige-Daten der ABSATZ-Vorlagen, in Reihenfolge der styles.xml
+    //  gesammelt und erst am Ende gefiltert (semiHidden fällt weg, sofern die
+    //  Vorlage nicht per qFormat ausdrücklich in die Auswahl gehört — genau
+    //  die Menge, die auch Word im Formatvorlagen-Katalog zeigt).
+    struct UiStyle { StyleInfo info; bool semiHidden = false; bool quick = false; };
+    QList<UiStyle> uiStyles;
+    m_parStyles.clear();
+    m_defaultParStyle.clear();
+
+    //  w:default/w:semiHidden/w:qFormat sind ST_OnOff: fehlender Wert = an.
+    auto isOn = [](const QString& v) {
+        return !(v == QLatin1String("0") || v == QLatin1String("false")
+                 || v == QLatin1String("off"));
+    };
+
     QString curStyle;
+    int curUi = -1;                                   // Index in uiStyles, −1 = keiner
     while (!r.atEnd()) {
         const auto t = r.readNext();
         if (t == QXmlStreamReader::EndElement
-            && r.qualifiedName() == QLatin1String("w:style"))
+            && r.qualifiedName() == QLatin1String("w:style")) {
             curStyle.clear();
+            curUi = -1;
+        }
         if (t != QXmlStreamReader::StartElement)
             continue;
         const auto n = r.qualifiedName();
@@ -639,8 +1318,31 @@ bool Document::parseStylesXml(const QByteArray& xml) {
             }
         } else if (n == QLatin1String("w:style")) {
             curStyle = attr(r, "w:styleId");
-            if (!curStyle.isEmpty())
+            curUi = -1;
+            if (!curStyle.isEmpty()) {
                 m_styles.insert(curStyle, StyleDef());
+                //  Fehlendes w:type bedeutet laut Schema "paragraph"; nur
+                //  Absatzvorlagen sind über w:pStyle anwendbar.
+                const QString type = attr(r, "w:type");
+                if (type.isEmpty() || type == QLatin1String("paragraph")) {
+                    UiStyle u;
+                    u.info.id   = curStyle;
+                    u.info.name = curStyle;          // bis ein w:name kommt
+                    const QString def = attr(r, "w:default");
+                    u.info.isDefault = !def.isNull() && isOn(def);
+                    if (u.info.isDefault && m_defaultParStyle.isEmpty())
+                        m_defaultParStyle = curStyle;
+                    uiStyles.append(u);
+                    curUi = uiStyles.size() - 1;
+                }
+            }
+        } else if (curUi >= 0 && n == QLatin1String("w:name")) {
+            const QString nm = attr(r, "w:val");
+            if (!nm.isEmpty()) uiStyles[curUi].info.name = nm;
+        } else if (curUi >= 0 && n == QLatin1String("w:semiHidden")) {
+            uiStyles[curUi].semiHidden = isOn(attr(r, "w:val"));
+        } else if (curUi >= 0 && n == QLatin1String("w:qFormat")) {
+            uiStyles[curUi].quick = isOn(attr(r, "w:val"));
         } else if (!curStyle.isEmpty() && n == QLatin1String("w:basedOn")) {
             m_styles[curStyle].basedOn = attr(r, "w:val");
         } else if (!curStyle.isEmpty() && n == QLatin1String("w:rPr")) {
@@ -658,6 +1360,17 @@ bool Document::parseStylesXml(const QByteArray& xml) {
     m_stylesMayNumber = (m_defPar.set & ParFmt::FNum) != 0;
     for (auto it = m_styles.cbegin(); !m_stylesMayNumber && it != m_styles.cend(); ++it)
         m_stylesMayNumber = (it.value().pf.set & ParFmt::FNum) != 0;
+
+    //  Auswahlliste: semiHidden bleibt draußen, es sei denn qFormat holt die
+    //  Vorlage ausdrücklich in den Katalog. Die Standardvorlage steht vorn —
+    //  sie ist der Weg ZURÜCK (Anwenden entfernt das w:pStyle wieder).
+    m_parStyles.reserve(uiStyles.size());
+    for (const UiStyle& u : uiStyles)
+        if (u.info.isDefault)
+            m_parStyles.append(u.info);
+    for (const UiStyle& u : uiStyles)
+        if (!u.info.isDefault && (u.quick || !u.semiHidden))
+            m_parStyles.append(u.info);
 
     return !r.hasError();
 }
@@ -875,17 +1588,1016 @@ QString Document::buildParagraphXml(const Block& b) const {
     return out;
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+//  Einfügen neuer Knoten
+// ─────────────────────────────────────────────────────────────────────────────
+int Document::appendPool(const QString& xml) {
+    const int at = m_docXml.size();
+    m_docXml += xml;
+    return at;
+}
+
+int Document::insertTable(int beforeBlock, int rows, int cols) {
+    rows = qBound(1, rows, 100);
+    cols = qBound(1, cols, 32);
+    beforeBlock = qBound(0, beforeBlock, int(blocks.size()));
+
+    //  Gleichmäßiges Gitter über die Textbreite des Abschnitts.
+    const int textW = qMax(1000, m_section.pageW - m_section.marLeft - m_section.marRight);
+    const int colW  = qMax(200, textW / cols);
+
+    //  XML in EINEM Stück bauen und dabei die lokalen Offsets mitschreiben —
+    //  wir erzeugen es selbst, es muss also nicht zurückgeparst werden.
+    QString xml;
+    xml.reserve(256 + rows * cols * 64);
+
+    QString header = QStringLiteral(
+        "<w:tbl><w:tblPr><w:tblW w:w=\"0\" w:type=\"auto\"/><w:tblBorders>");
+    for (const char* side : { "top", "left", "bottom", "right",
+                              "insideH", "insideV" })
+        header += QStringLiteral("<w:%1 w:val=\"single\" w:sz=\"4\" w:space=\"0\" "
+                                 "w:color=\"auto\"/>").arg(QLatin1String(side));
+    header += QStringLiteral("</w:tblBorders></w:tblPr><w:tblGrid>");
+    for (int c = 0; c < cols; ++c)
+        header += QStringLiteral("<w:gridCol w:w=\"%1\"/>").arg(colW);
+    header += QStringLiteral("</w:tblGrid>");
+    xml += header;
+
+    struct LocalSpan { int start = 0; int len = 0; };
+    QVector<LocalSpan> rowPre, rowEnd, cellPre, cellEnd, parAll, parTag;
+    TableDef def;
+
+    for (int r = 0; r < rows; ++r) {
+        const int rp = xml.size();
+        xml += QStringLiteral("<w:tr>");
+        rowPre.append({ rp, xml.size() - rp });
+        def.rowFirstCell.append(cellPre.size());
+
+        for (int c = 0; c < cols; ++c) {
+            const int cp = xml.size();
+            xml += QStringLiteral("<w:tc><w:tcPr><w:tcW w:w=\"%1\" w:type=\"dxa\"/>"
+                                  "</w:tcPr>").arg(colW);
+            cellPre.append({ cp, xml.size() - cp });
+
+            //  Leerer Absatz: NICHT selbstschließend, damit der Dirty-Neuaufbau
+            //  (StartTag + Inhalt + "</w:p>") ohne Sonderfall greift.
+            const int pp = xml.size();
+            xml += QStringLiteral("<w:p>");
+            const int tagLen = xml.size() - pp;
+            xml += QStringLiteral("</w:p>");
+            parAll.append({ pp, xml.size() - pp });
+            parTag.append({ pp, tagLen });
+
+            const int ce = xml.size();
+            xml += QStringLiteral("</w:tc>");
+            cellEnd.append({ ce, xml.size() - ce });
+
+            def.cellRow.append(r);
+            def.cellGridSpan.append(1);
+            def.cellWidthTw.append(colW);
+        }
+        const int re = xml.size();
+        xml += QStringLiteral("</w:tr>");
+        rowEnd.append({ re, xml.size() - re });
+    }
+    const int fs = xml.size();
+    xml += QStringLiteral("</w:tbl>");
+
+    //  In den Pool legen und alle Offsets absolut machen.
+    const int base = appendPool(xml);
+    auto abs = [base](const LocalSpan& s) { return Span{ base + s.start, s.len }; };
+
+    def.headerSpan = { base, header.size() };
+    def.footerSpan = { base + fs, xml.size() - fs };
+    for (const LocalSpan& s : rowPre)  def.rowSpans.append(abs(s));
+    for (const LocalSpan& s : rowEnd)  def.rowEndSpans.append(abs(s));
+    for (const LocalSpan& s : cellPre) def.cellSpans.append(abs(s));
+    for (const LocalSpan& s : cellEnd) def.cellEndSpans.append(abs(s));
+    for (int c = 0; c < cols; ++c) def.gridTw.append(colW);
+
+    const int tableId = m_tables.size();
+    m_tables.append(def);
+
+    //  Zell-Blöcke in Lesereihenfolge einsetzen.
+    QList<Block> newBlocks;
+    newBlocks.reserve(rows * cols);
+    for (int i = 0; i < rows * cols; ++i) {
+        Block b;
+        b.kind         = Block::Paragraph;
+        b.rawSpan      = abs(parAll.at(i));
+        b.startTagSpan = abs(parTag.at(i));
+        b.tableId      = tableId;
+        b.row          = i / cols;
+        b.col          = i % cols;
+        newBlocks.append(b);
+    }
+    for (int i = 0; i < newBlocks.size(); ++i)
+        blocks.insert(beforeBlock + i, newBlocks.at(i));
+    return beforeBlock;
+}
+
+//  Eingefügte Bilder: Medien-Teil, Content-Type (Default je Endung) und
+//  Beziehung. Baut auf dem Bestand auf und ergänzt nur Fehlendes.
+QHash<QString, QByteArray> Document::mediaParts() const {
+    QHash<QString, QByteArray> out;
+    if (m_pendingMedia.isEmpty())
+        return out;
+
+    static const QHash<QString, QString> kTypes = {
+        { QStringLiteral("png"),  QStringLiteral("image/png") },
+        { QStringLiteral("jpg"),  QStringLiteral("image/jpeg") },
+        { QStringLiteral("jpeg"), QStringLiteral("image/jpeg") },
+        { QStringLiteral("gif"),  QStringLiteral("image/gif") },
+        { QStringLiteral("bmp"),  QStringLiteral("image/bmp") },
+        { QStringLiteral("tif"),  QStringLiteral("image/tiff") },
+        { QStringLiteral("tiff"), QStringLiteral("image/tiff") },
+        { QStringLiteral("webp"), QStringLiteral("image/webp") },
+    };
+
+    for (const PendingMedia& m : m_pendingMedia)
+        out.insert(m.zipName, m.bytes);
+
+    DocxZip::Reader zip;
+    if (!zip.open(m_path))
+        return out;
+
+    //  [Content_Types].xml: je Endung ein <Default>, falls noch keiner da ist.
+    bool ok = false;
+    QByteArray ct = zip.fileData(QStringLiteral("[Content_Types].xml"), &ok);
+    if (ok) {
+        QString s = QString::fromUtf8(ct);
+        bool changed = false;
+        for (const PendingMedia& m : m_pendingMedia) {
+            const QString type = kTypes.value(m.ext);
+            if (type.isEmpty()) continue;
+            const QString needle = QStringLiteral("Extension=\"%1\"").arg(m.ext);
+            if (s.contains(needle)) continue;
+            const int p = s.lastIndexOf(QLatin1String("</Types>"));
+            if (p < 0) break;
+            s.insert(p, QStringLiteral("<Default Extension=\"%1\" ContentType=\"%2\"/>")
+                            .arg(m.ext, type));
+            changed = true;
+        }
+        if (changed) out.insert(QStringLiteral("[Content_Types].xml"), s.toUtf8());
+    }
+
+    //  Beziehungen ergänzen (auf einer evtl. schon von numberingParts()
+    //  geänderten Fassung würde hier der Bestand gewinnen — deshalb liest diese
+    //  Funktion IMMER den Originalstand und fügt beide Ergänzungen zusammen).
+    const QString relsName = relsPathOf(m_partPath);
+    QByteArray rels = zip.fileData(relsName, &ok);
+    QString relsXml = ok ? QString::fromUtf8(rels)
+                         : QStringLiteral(
+                               "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\r\n"
+                               "<Relationships xmlns=\"http://schemas.openxmlformats.org/"
+                               "package/2006/relationships\"></Relationships>");
+    //  Listen-Beziehung ggf. mitnehmen (sonst ginge sie hier verloren).
+    if (!m_pendingNums.isEmpty() && !relsXml.contains(QLatin1String("relationships/numbering"))) {
+        const int p = relsXml.lastIndexOf(QLatin1String("</Relationships>"));
+        if (p >= 0)
+            relsXml.insert(p, QStringLiteral(
+                "<Relationship Id=\"rIdMGnum\" Type=\"http://schemas.openxmlformats.org/"
+                "officeDocument/2006/relationships/numbering\" Target=\"numbering.xml\"/>"));
+    }
+    static const char* kImageRelType =
+        "http://schemas.openxmlformats.org/officeDocument/2006/relationships/image";
+    for (const PendingMedia& m : m_pendingMedia) {
+        if (relsXml.contains(QStringLiteral("Id=\"%1\"").arg(m.relId))) continue;
+        const int p = relsXml.lastIndexOf(QLatin1String("</Relationships>"));
+        if (p < 0) break;
+        QString target = m.zipName;
+        target.remove(0, QStringLiteral("word/").size());   // relativ zu word/
+        relsXml.insert(p, QStringLiteral("<Relationship Id=\"%1\" Type=\"%2\" "
+                                         "Target=\"%3\"/>")
+                              .arg(m.relId, QLatin1String(kImageRelType), target));
+    }
+    out.insert(relsName, relsXml.toUtf8());
+    return out;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  Inhaltsverzeichnis
+//
+//  Das Feld bleibt DEKLARATIV: `w:fldSimple` mit der TOC-Anweisung, ohne
+//  eingebackene Seitenzahlen. Damit rechnet Word die Zahlen selbst (und aktua-
+//  lisiert sie beim Drucken), und wir müssen beim Speichern keine Zahlen
+//  pflegen, die schon beim nächsten Tippen falsch wären. Unsere ANZEIGE füllt
+//  sie aus der eigenen Paginierung — s. DocxTextArea.
+// ─────────────────────────────────────────────────────────────────────────────
+bool Document::isTocParagraph(const Block& b) const {
+    if (b.kind != Block::Paragraph || !b.rawSpan.valid()) return false;
+    if (b.rawSpan.start < 0 || b.rawSpan.start + b.rawSpan.len > m_docXml.size())
+        return false;
+    const QStringView frag = QStringView(m_docXml).mid(b.rawSpan.start, b.rawSpan.len);
+    const int fld = frag.indexOf(QLatin1String("<w:fldSimple"));
+    if (fld < 0) return false;
+    //  Die Anweisung steht im Attribut w:instr; " TOC \o ... " ist der Normalfall.
+    const int gt = frag.indexOf(QLatin1Char('>'), fld);
+    if (gt < 0) return false;
+    return frag.mid(fld, gt - fld).contains(QLatin1String("TOC"));
+}
+
+QList<TocEntry> Document::tocEntries(int maxLevel) const {
+    maxLevel = qBound(1, maxLevel, 9);
+    QList<TocEntry> out;
+    for (int i = 0; i < blocks.size(); ++i) {
+        const Block& b = blocks.at(i);
+        if (b.kind != Block::Paragraph || b.tableId >= 0) continue;
+        //  Die styleId ist sprachunabhängig ("Heading1"), der Anzeigename nicht.
+        const QString id = resolvePar(b).styleId;
+        if (!id.startsWith(QLatin1String("Heading"), Qt::CaseInsensitive)) continue;
+        bool ok = false;
+        const int lvl = QStringView(id).mid(7).toInt(&ok);
+        if (!ok || lvl < 1 || lvl > maxLevel) continue;
+        const QString text = b.plainText().trimmed();
+        if (text.isEmpty()) continue;
+        out.append({ text, lvl, i });
+    }
+    return out;
+}
+
+int Document::insertToc(int beforeBlock, int maxLevel) {
+    maxLevel = qBound(1, maxLevel, 9);
+    beforeBlock = qBound(0, beforeBlock, int(blocks.size()));
+
+    //  Ein leerer Run als Feldergebnis: Word ersetzt ihn beim Aktualisieren,
+    //  unsere Anzeige baut die Einträge ohnehin selbst. Ohne IRGENDein Kind
+    //  wäre das fldSimple laut Schema unzulässig.
+    const QString xml =
+        QStringLiteral("<w:p><w:fldSimple w:instr=\" TOC \\o &quot;1-%1&quot; "
+                       "\\h \\z \\u \"><w:r><w:t xml:space=\"preserve\"> "
+                       "</w:t></w:r></w:fldSimple></w:p>")
+            .arg(maxLevel);
+
+    const int base = appendPool(xml);
+    Block b;
+    b.kind         = Block::Paragraph;
+    b.rawSpan      = { base, xml.size() };
+    b.startTagSpan = { base, int(QStringLiteral("<w:p>").size()) };
+    //  EIN atomarer opaker Run: der Absatz ist damit nicht versehentlich
+    //  bearbeitbar, und beim Speichern geht sein Roh-Span verbatim heraus.
+    Run r;
+    r.rawSpan = { base + int(QStringLiteral("<w:p>").size()),
+                  xml.size() - int(QStringLiteral("<w:p>").size())
+                      - int(QStringLiteral("</w:p>").size()) };
+    r.opaque  = true;
+    r.text    = QString(kObjectChar);
+    b.runs.append(r);
+    blocks.insert(beforeBlock, b);
+    return beforeBlock;
+}
+
+int Document::insertImage(int beforeBlock, const QString& localPath, QString* err) {
+    QFile f(localPath);
+    if (!f.open(QIODevice::ReadOnly)) {
+        if (err) *err = QStringLiteral("Bilddatei nicht lesbar.");
+        return -1;
+    }
+    const QByteArray bytes = f.readAll();
+    f.close();
+    return insertImageData(beforeBlock, bytes, QFileInfo(localPath).suffix(), err);
+}
+
+int Document::insertImageData(int beforeBlock, const QByteArray& bytes,
+                              const QString& extIn, QString* err) {
+    beforeBlock = qBound(0, beforeBlock, int(blocks.size()));
+    QImage probe;
+    if (bytes.isEmpty() || !probe.loadFromData(bytes) || probe.isNull()) {
+        if (err) *err = QStringLiteral("Datei ist kein lesbares Bild.");
+        return -1;
+    }
+
+    QString ext = extIn.toLower();
+    if (ext == QLatin1String("jpe")) ext = QStringLiteral("jpg");
+    //  Nur Endungen, für die mediaParts() einen Content-Type kennt — sonst
+    //  landete ein Teil ohne <Default> im Container und Word verweigerte ihn.
+    static const QStringList kKnown = {
+        QStringLiteral("png"),  QStringLiteral("jpg"), QStringLiteral("jpeg"),
+        QStringLiteral("gif"),  QStringLiteral("bmp"), QStringLiteral("tif"),
+        QStringLiteral("tiff"), QStringLiteral("webp")
+    };
+    if (!kKnown.contains(ext)) ext = QStringLiteral("png");
+
+    PendingMedia pm;
+    pm.ext     = ext;
+    pm.relId   = QStringLiteral("rIdMGimg%1").arg(m_nextMediaId);
+    pm.zipName = QStringLiteral("word/media/mgimg%1.%2").arg(m_nextMediaId).arg(ext);
+    pm.bytes   = bytes;
+    ++m_nextMediaId;
+    m_pendingMedia.append(pm);
+    m_rels.insert(pm.relId, pm.zipName.mid(QStringLiteral("word/").size()));
+
+    //  Größe: native Pixel bei 96 dpi in EMU, auf die Textbreite gedeckelt.
+    constexpr qint64 kEmuPerPx = 914400 / 96;
+    qint64 cx = qint64(probe.width())  * kEmuPerPx;
+    qint64 cy = qint64(probe.height()) * kEmuPerPx;
+    const qint64 maxCx = qint64(qMax(1000, m_section.pageW - m_section.marLeft
+                                           - m_section.marRight)) * 635;  // Twip→EMU
+    if (cx > maxCx && cx > 0) {
+        cy = cy * maxCx / cx;
+        cx = maxCx;
+    }
+    cx = qBound<qint64>(1LL, cx, 182880000LL);
+    cy = qBound<qint64>(1LL, cy, 182880000LL);
+
+    //  Namensräume BEWUSST inline: das Wirtsdokument deklariert wp:/a:/pic:
+    //  (und teils nicht einmal r:) nicht zwingend am Wurzelelement.
+    const QString runXml = QStringLiteral(
+        "<w:r><w:drawing>"
+        "<wp:inline xmlns:wp=\"http://schemas.openxmlformats.org/drawingml/2006/"
+        "wordprocessingDrawing\">"
+        "<wp:extent cx=\"%1\" cy=\"%2\"/>"
+        "<wp:docPr id=\"%3\" name=\"Bild %3\"/>"
+        "<a:graphic xmlns:a=\"http://schemas.openxmlformats.org/drawingml/2006/main\">"
+        "<a:graphicData uri=\"http://schemas.openxmlformats.org/drawingml/2006/picture\">"
+        "<pic:pic xmlns:pic=\"http://schemas.openxmlformats.org/drawingml/2006/picture\">"
+        "<pic:nvPicPr><pic:cNvPr id=\"%3\" name=\"Bild %3\"/><pic:cNvPicPr/></pic:nvPicPr>"
+        "<pic:blipFill>"
+        "<a:blip xmlns:r=\"http://schemas.openxmlformats.org/officeDocument/2006/"
+        "relationships\" r:embed=\"%4\"/>"
+        "<a:stretch><a:fillRect/></a:stretch></pic:blipFill>"
+        "<pic:spPr><a:xfrm><a:off x=\"0\" y=\"0\"/><a:ext cx=\"%1\" cy=\"%2\"/></a:xfrm>"
+        "<a:prstGeom prst=\"rect\"><a:avLst/></a:prstGeom></pic:spPr>"
+        "</pic:pic></a:graphicData></a:graphic></wp:inline>"
+        "</w:drawing></w:r>")
+        .arg(cx).arg(cy).arg(m_nextMediaId - 1).arg(pm.relId);
+
+    QString xml = QStringLiteral("<w:p>");
+    const int tagLen = xml.size();
+    const int runStart = xml.size();
+    xml += runXml;
+    const int runLen = xml.size() - runStart;
+    xml += QStringLiteral("</w:p>");
+
+    const int base = appendPool(xml);
+    Block b;
+    b.kind         = Block::Paragraph;
+    b.rawSpan      = { base, xml.size() };
+    b.startTagSpan = { base, tagLen };
+    Run r;
+    r.rawSpan = { base + runStart, runLen };
+    r.opaque  = true;
+    r.text    = QString(kObjectChar);
+    b.runs.append(r);
+    blocks.insert(beforeBlock, b);
+    return beforeBlock;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  Tabellen-STRUKTUR bearbeiten (Zeilen/Spalten/Breiten)
+//
+//  Das Gerüst besteht aus Spans ins Original und ist damit unveränderlich.
+//  Geändert wird deshalb nach dem bewährten Muster Block::pprXml: die betroffene
+//  Stelle wird EINMAL materialisiert (headerXml/cellXml) und ab dann statt des
+//  Spans emittiert. Neu hinzukommende Zeilen/Zellen bekommen echte Spans in den
+//  Anhang-Pool — sie brauchen keine Sonderbehandlung.
+// ─────────────────────────────────────────────────────────────────────────────
+namespace {
+
+//  Kanonische Kindreihenfolge von w:tcPr (ECMA-376, CT_TcPr).
+const QStringList& tcPrOrder() {
+    static const QStringList o = {
+        QStringLiteral("w:cnfStyle"),   QStringLiteral("w:tcW"),
+        QStringLiteral("w:gridSpan"),   QStringLiteral("w:hMerge"),
+        QStringLiteral("w:vMerge"),     QStringLiteral("w:tcBorders"),
+        QStringLiteral("w:shd"),        QStringLiteral("w:noWrap"),
+        QStringLiteral("w:tcMar"),      QStringLiteral("w:textDirection"),
+        QStringLiteral("w:tcFitText"),  QStringLiteral("w:vAlign"),
+        QStringLiteral("w:hideMark")
+    };
+    return o;
+}
+
+//  Index hinter dem '>' des ersten Start-Tags (quote-bewusst); −1 = keins.
+int afterStartTag(const QString& xml) {
+    const int lt = xml.indexOf(QLatin1Char('<'));
+    if (lt < 0) return -1;
+    bool inQ = false; QChar q;
+    for (int i = lt + 1; i < xml.size(); ++i) {
+        const QChar c = xml.at(i);
+        if (inQ) { if (c == q) inQ = false; continue; }
+        if (c == QLatin1Char('"') || c == QLatin1Char('\'')) { inQ = true; q = c; continue; }
+        if (c == QLatin1Char('>')) return i + 1;
+    }
+    return -1;
+}
+
+//  Balancierter Bereich eines Kind-Elements `name` in `xml` (auch
+//  selbstschließend); liefert false, wenn es nicht vorkommt.
+bool findElement(const QString& xml, const QString& name, int* start, int* len) {
+    int i = 0;
+    while (i < xml.size()) {
+        const int lt = xml.indexOf(QLatin1Char('<'), i);
+        if (lt < 0) return false;
+        bool inQ = false; QChar q; int gt = -1;
+        for (int k = lt + 1; k < xml.size(); ++k) {
+            const QChar c = xml.at(k);
+            if (inQ) { if (c == q) inQ = false; continue; }
+            if (c == QLatin1Char('"') || c == QLatin1Char('\'')) { inQ = true; q = c; continue; }
+            if (c == QLatin1Char('>')) { gt = k; break; }
+        }
+        if (gt < 0) return false;
+        int s = lt + 1;
+        if (s < xml.size() && xml.at(s) == QLatin1Char('/')) { i = gt + 1; continue; }
+        int e = s;
+        while (e < gt && !xml.at(e).isSpace() && xml.at(e) != QLatin1Char('/')
+               && xml.at(e) != QLatin1Char('>'))
+            ++e;
+        if (xml.mid(s, e - s) != name) { i = gt + 1; continue; }
+        if (xml.at(gt - 1) == QLatin1Char('/')) {           // selbstschließend
+            *start = lt; *len = gt - lt + 1;
+            return true;
+        }
+        const QString close = QLatin1String("</") + name + QLatin1Char('>');
+        const int ce = xml.indexOf(close, gt + 1);
+        if (ce < 0) return false;
+        *start = lt; *len = ce + close.size() - lt;
+        return true;
+    }
+    return false;
+}
+
+//  w:tcW eines Zell-Präfixes ("<w:tc …>" + tcPr) auf `widthTw` setzen.
+QString withCellWidth(const QString& cellPrefix, int widthTw) {
+    const QString prop = QStringLiteral("<w:tcW w:w=\"%1\" w:type=\"dxa\"/>").arg(widthTw);
+    int s = 0, l = 0;
+    if (findElement(cellPrefix, QStringLiteral("w:tcPr"), &s, &l)) {
+        QString frag = cellPrefix.mid(s, l);
+        if (frag.endsWith(QLatin1String("/>")))              // <w:tcPr/> öffnen
+            frag = QStringLiteral("<w:tcPr></w:tcPr>");
+        frag = Document::upsertProp(frag, QStringLiteral("w:tcPr"),
+                                    QStringLiteral("w:tcW"), prop, tcPrOrder());
+        QString out = cellPrefix;
+        out.replace(s, l, frag);
+        return out;
+    }
+    const int at = afterStartTag(cellPrefix);
+    if (at < 0) return cellPrefix;
+    QString out = cellPrefix;
+    out.insert(at, QStringLiteral("<w:tcPr>") + prop + QStringLiteral("</w:tcPr>"));
+    return out;
+}
+
+//  w:tblGrid eines Tabellen-Headers durch das neue Gitter ersetzen.
+QString withGrid(const QString& header, const QVector<int>& widthsTw) {
+    QString grid = QStringLiteral("<w:tblGrid>");
+    for (int w : widthsTw)
+        grid += QStringLiteral("<w:gridCol w:w=\"%1\"/>").arg(qMax(1, w));
+    grid += QStringLiteral("</w:tblGrid>");
+
+    int s = 0, l = 0;
+    QString out = header;
+    if (findElement(header, QStringLiteral("w:tblGrid"), &s, &l)) {
+        out.replace(s, l, grid);
+        return out;
+    }
+    //  Kein Gitter vorhanden: hinter tblPr, sonst hinter "<w:tbl …>".
+    int at = afterStartTag(header);
+    if (findElement(header, QStringLiteral("w:tblPr"), &s, &l))
+        at = s + l;
+    if (at < 0) return header;
+    out.insert(at, grid);
+    return out;
+}
+
+} // namespace
+
+void Document::rowCellRange(const TableDef& d, int row, int* first, int* last) {
+    *first = -1; *last = -2;
+    if (row < 0 || row >= d.rowFirstCell.size()) return;
+    *first = d.rowFirstCell.at(row);
+    *last = (row + 1 < d.rowFirstCell.size()) ? d.rowFirstCell.at(row + 1) - 1
+                                              : d.cellSpans.size() - 1;
+}
+
+QString Document::tableHeaderText(const TableDef& d) const {
+    if (!d.headerXml.isEmpty()) return d.headerXml;
+    return m_docXml.mid(d.headerSpan.start, d.headerSpan.len);
+}
+
+QString Document::tableCellText(const TableDef& d, int cellIdx) const {
+    if (cellIdx >= 0 && cellIdx < d.cellXml.size()
+        && !d.cellXml.at(cellIdx).isEmpty())
+        return d.cellXml.at(cellIdx);
+    if (cellIdx < 0 || cellIdx >= d.cellSpans.size()) return {};
+    const Span& s = d.cellSpans.at(cellIdx);
+    return m_docXml.mid(s.start, s.len);
+}
+
+void Document::materializeGrid(TableDef& d, const QVector<int>& widthsTw) {
+    d.headerXml = withGrid(tableHeaderText(d), widthsTw);
+    d.gridTw.clear();
+    for (int w : widthsTw) d.gridTw.append(qMax(1, w));
+
+    if (d.cellXml.size() != d.cellSpans.size())
+        d.cellXml.resize(d.cellSpans.size());
+    for (int r = 0; r < d.rowFirstCell.size(); ++r) {
+        int first = 0, last = -1;
+        rowCellRange(d, r, &first, &last);
+        for (int c = first; c <= last; ++c) {
+            const int col = c - first;
+            const int w = qMax(1, widthsTw.value(col, widthsTw.isEmpty()
+                                                          ? 1000
+                                                          : widthsTw.last()));
+            d.cellXml[c] = withCellWidth(tableCellText(d, c), w);
+            if (c < d.cellWidthTw.size()) d.cellWidthTw[c] = w;
+        }
+    }
+    d.structDirty = true;
+}
+
+int Document::tableRowCount(int tableId) const {
+    if (tableId < 0 || tableId >= m_tables.size()) return 0;
+    return m_tables.at(tableId).rowSpans.size();
+}
+
+int Document::tableColumnCount(int tableId) const {
+    if (tableId < 0 || tableId >= m_tables.size()) return 0;
+    int first = 0, last = -1;
+    rowCellRange(m_tables.at(tableId), 0, &first, &last);
+    return qMax(0, last - first + 1);
+}
+
+bool Document::tableStructEditable(int tableId) const {
+    if (tableId < 0 || tableId >= m_tables.size()) return false;
+    const TableDef& d = m_tables.at(tableId);
+    if (d.rowSpans.isEmpty() || d.cellSpans.isEmpty()) return false;
+    if (tableFirstBlock(tableId) < 0) return false;         // gelöschte Tabelle
+
+    const int cols = tableColumnCount(tableId);
+    if (cols <= 0) return false;
+    for (int r = 0; r < d.rowSpans.size(); ++r) {
+        int first = 0, last = -1;
+        rowCellRange(d, r, &first, &last);
+        if (last - first + 1 != cols) return false;         // ungleiche Zeilen
+    }
+    for (int c = 0; c < d.cellSpans.size(); ++c) {
+        if (d.cellGridSpan.value(c, 1) != 1) return false;   // verbundene Zellen
+        const QString pre = tableCellText(d, c);
+        if (pre.contains(QLatin1String("w:vMerge"))
+            || pre.contains(QLatin1String("w:hMerge")))
+            return false;
+    }
+    return true;
+}
+
+QVector<int> Document::tableColumnWidths(int tableId) const {
+    QVector<int> out;
+    if (tableId < 0 || tableId >= m_tables.size()) return out;
+    const TableDef& d = m_tables.at(tableId);
+    const int cols = tableColumnCount(tableId);
+    if (cols <= 0) return out;
+
+    for (int c = 0; c < cols; ++c) {
+        int w = d.gridTw.value(c, 0);
+        if (w <= 0) w = d.cellWidthTw.value(d.rowFirstCell.value(0, 0) + c, 0);
+        out.append(w);
+    }
+    //  Kein brauchbares Gitter → gleichmäßig über die Textbreite.
+    bool anyZero = false;
+    for (int w : out) if (w <= 0) anyZero = true;
+    if (anyZero) {
+        const int textW = qMax(1000, m_section.pageW - m_section.marLeft
+                                         - m_section.marRight);
+        for (int& w : out) w = textW / cols;
+    }
+    return out;
+}
+
+TableDef Document::tableDef(int tableId) const {
+    if (tableId < 0 || tableId >= m_tables.size()) return {};
+    return m_tables.at(tableId);
+}
+
+void Document::setTableDef(int tableId, const TableDef& def) {
+    if (tableId < 0 || tableId >= m_tables.size()) return;
+    m_tables[tableId] = def;
+}
+
+bool Document::tableInsertRow(int tableId, int atRow) {
+    if (!tableStructEditable(tableId)) return false;
+    TableDef& d = m_tables[tableId];
+    const int rows = d.rowSpans.size();
+    const int cols = tableColumnCount(tableId);
+    atRow = qBound(0, atRow, rows);
+    if (rows >= 200) return false;
+
+    const QVector<int> widths = tableColumnWidths(tableId);
+
+    //  XML der neuen Zeile in EINEM Stück bauen (Offsets beim Bauen mitschreiben).
+    struct LocalSpan { int start = 0; int len = 0; };
+    QString xml;
+    QVector<LocalSpan> cellPre, cellEnd, parAll, parTag;
+    const int rowPreStart = 0;
+    xml += QStringLiteral("<w:tr>");
+    const int rowPreLen = xml.size() - rowPreStart;
+    for (int c = 0; c < cols; ++c) {
+        const int cp = xml.size();
+        xml += QStringLiteral("<w:tc><w:tcPr><w:tcW w:w=\"%1\" w:type=\"dxa\"/>"
+                              "</w:tcPr>").arg(qMax(1, widths.value(c, 1000)));
+        cellPre.append({ cp, xml.size() - cp });
+        const int pp = xml.size();
+        xml += QStringLiteral("<w:p>");
+        const int tagLen = xml.size() - pp;
+        xml += QStringLiteral("</w:p>");
+        parAll.append({ pp, xml.size() - pp });
+        parTag.append({ pp, tagLen });
+        const int ce = xml.size();
+        xml += QStringLiteral("</w:tc>");
+        cellEnd.append({ ce, xml.size() - ce });
+    }
+    const int rowEndStart = xml.size();
+    xml += QStringLiteral("</w:tr>");
+    const int rowEndLen = xml.size() - rowEndStart;
+
+    const int base = appendPool(xml);
+    auto abs = [base](const LocalSpan& s) { return Span{ base + s.start, s.len }; };
+
+    //  Gerüst einsetzen.
+    const int cellBase = (atRow < rows) ? d.rowFirstCell.at(atRow) : d.cellSpans.size();
+    d.rowSpans.insert(atRow, Span{ base + rowPreStart, rowPreLen });
+    d.rowEndSpans.insert(atRow, Span{ base + rowEndStart, rowEndLen });
+    if (d.cellXml.size() != d.cellSpans.size()) d.cellXml.resize(d.cellSpans.size());
+    for (int c = cols - 1; c >= 0; --c) {
+        d.cellSpans.insert(cellBase, abs(cellPre.at(c)));
+        d.cellEndSpans.insert(cellBase, abs(cellEnd.at(c)));
+        d.cellRow.insert(cellBase, atRow);
+        d.cellGridSpan.insert(cellBase, 1);
+        d.cellWidthTw.insert(cellBase, qMax(1, widths.value(c, 1000)));
+        d.cellXml.insert(cellBase, QString());
+    }
+    for (int c = cellBase + cols; c < d.cellRow.size(); ++c)
+        d.cellRow[c] += 1;
+    d.rowFirstCell.insert(atRow, cellBase);
+    for (int r = atRow + 1; r < d.rowFirstCell.size(); ++r)
+        d.rowFirstCell[r] += cols;
+    d.structDirty = true;
+
+    //  Blöcke einsetzen: vor den ersten Block der bisherigen Zeile `atRow`,
+    //  bzw. hinter den letzten Block der Tabelle.
+    int at = -1;
+    for (int i = 0; i < blocks.size(); ++i) {
+        if (blocks.at(i).tableId == tableId && blocks.at(i).row >= atRow) { at = i; break; }
+    }
+    if (at < 0) at = tableLastBlock(tableId) + 1;
+    for (int i = 0; i < blocks.size(); ++i)
+        if (blocks.at(i).tableId == tableId && blocks.at(i).row >= atRow)
+            blocks[i].row += 1;
+    for (int c = 0; c < cols; ++c) {
+        Block b;
+        b.kind         = Block::Paragraph;
+        b.rawSpan      = abs(parAll.at(c));
+        b.startTagSpan = abs(parTag.at(c));
+        b.tableId      = tableId;
+        b.row          = atRow;
+        b.col          = c;
+        blocks.insert(at + c, b);
+    }
+    return true;
+}
+
+bool Document::tableDeleteRow(int tableId, int row) {
+    if (!tableStructEditable(tableId)) return false;
+    TableDef& d = m_tables[tableId];
+    const int rows = d.rowSpans.size();
+    const int cols = tableColumnCount(tableId);
+    if (rows <= 1 || row < 0 || row >= rows) return false;
+
+    const int cellBase = d.rowFirstCell.at(row);
+    if (d.cellXml.size() != d.cellSpans.size()) d.cellXml.resize(d.cellSpans.size());
+    for (int c = 0; c < cols; ++c) {
+        d.cellSpans.removeAt(cellBase);
+        d.cellEndSpans.removeAt(cellBase);
+        d.cellRow.removeAt(cellBase);
+        d.cellGridSpan.removeAt(cellBase);
+        d.cellWidthTw.removeAt(cellBase);
+        d.cellXml.removeAt(cellBase);
+    }
+    for (int c = cellBase; c < d.cellRow.size(); ++c)
+        d.cellRow[c] -= 1;
+    d.rowSpans.removeAt(row);
+    d.rowEndSpans.removeAt(row);
+    d.rowFirstCell.removeAt(row);
+    for (int r = row; r < d.rowFirstCell.size(); ++r)
+        d.rowFirstCell[r] -= cols;
+    d.structDirty = true;
+
+    for (int i = blocks.size() - 1; i >= 0; --i) {
+        Block& b = blocks[i];
+        if (b.tableId != tableId) continue;
+        if (b.row == row) blocks.removeAt(i);
+        else if (b.row > row) b.row -= 1;
+    }
+    return true;
+}
+
+bool Document::tableInsertColumn(int tableId, int atCol) {
+    if (!tableStructEditable(tableId)) return false;
+    TableDef& d = m_tables[tableId];
+    const int rows = d.rowSpans.size();
+    const int cols = tableColumnCount(tableId);
+    atCol = qBound(0, atCol, cols);
+    if (cols >= 64) return false;
+
+    //  Gesamtbreite konstant halten (wie Word): die neue Spalte bekommt den
+    //  gleichen Anteil, die übrigen schrumpfen proportional.
+    QVector<int> widths = tableColumnWidths(tableId);
+    int total = 0;
+    for (int w : widths) total += w;
+    if (total <= 0) total = qMax(1000, m_section.pageW - m_section.marLeft
+                                           - m_section.marRight);
+    const int newW = qMax(200, total / (cols + 1));
+    int rest = qMax(cols * 100, total - newW);
+    int sum = 0;
+    for (int w : widths) sum += w;
+    QVector<int> out;
+    int acc = 0;
+    for (int i = 0; i < widths.size(); ++i) {
+        const int w = (sum > 0) ? qMax(100, widths.at(i) * rest / sum) : rest / cols;
+        out.append(w);
+        acc += w;
+    }
+    Q_UNUSED(acc)
+    out.insert(atCol, newW);
+
+    //  Je Zeile eine Zelle + Absatzblock (alles in EINEM Pool-Stück).
+    struct LocalSpan { int start = 0; int len = 0; };
+    QString xml;
+    QVector<LocalSpan> cellPre, cellEnd, parAll, parTag;
+    for (int r = 0; r < rows; ++r) {
+        const int cp = xml.size();
+        xml += QStringLiteral("<w:tc><w:tcPr><w:tcW w:w=\"%1\" w:type=\"dxa\"/>"
+                              "</w:tcPr>").arg(newW);
+        cellPre.append({ cp, xml.size() - cp });
+        const int pp = xml.size();
+        xml += QStringLiteral("<w:p>");
+        const int tagLen = xml.size() - pp;
+        xml += QStringLiteral("</w:p>");
+        parAll.append({ pp, xml.size() - pp });
+        parTag.append({ pp, tagLen });
+        const int ce = xml.size();
+        xml += QStringLiteral("</w:tc>");
+        cellEnd.append({ ce, xml.size() - ce });
+    }
+    const int base = appendPool(xml);
+    auto abs = [base](const LocalSpan& s) { return Span{ base + s.start, s.len }; };
+
+    if (d.cellXml.size() != d.cellSpans.size()) d.cellXml.resize(d.cellSpans.size());
+    //  Von hinten nach vorn, damit die Indizes der noch offenen Zeilen stimmen.
+    for (int r = rows - 1; r >= 0; --r) {
+        const int at = d.rowFirstCell.at(r) + atCol;
+        d.cellSpans.insert(at, abs(cellPre.at(r)));
+        d.cellEndSpans.insert(at, abs(cellEnd.at(r)));
+        d.cellRow.insert(at, r);
+        d.cellGridSpan.insert(at, 1);
+        d.cellWidthTw.insert(at, newW);
+        d.cellXml.insert(at, QString());
+        for (int r2 = r + 1; r2 < d.rowFirstCell.size(); ++r2)
+            d.rowFirstCell[r2] += 1;
+    }
+
+    //  Blöcke: je Zeile einen neuen Zell-Absatz an der richtigen Stelle.
+    for (int r = rows - 1; r >= 0; --r) {
+        int at = -1;
+        for (int i = 0; i < blocks.size(); ++i) {
+            const Block& b = blocks.at(i);
+            if (b.tableId == tableId && b.row == r && b.col >= atCol) { at = i; break; }
+        }
+        if (at < 0) {
+            for (int i = blocks.size() - 1; i >= 0; --i) {
+                const Block& b = blocks.at(i);
+                if (b.tableId == tableId && b.row == r) { at = i + 1; break; }
+            }
+        }
+        if (at < 0) continue;
+        for (int i = 0; i < blocks.size(); ++i) {
+            Block& b = blocks[i];
+            if (b.tableId == tableId && b.row == r && b.col >= atCol) b.col += 1;
+        }
+        Block b;
+        b.kind         = Block::Paragraph;
+        b.rawSpan      = abs(parAll.at(r));
+        b.startTagSpan = abs(parTag.at(r));
+        b.tableId      = tableId;
+        b.row          = r;
+        b.col          = atCol;
+        blocks.insert(at, b);
+    }
+
+    materializeGrid(d, out);
+    return true;
+}
+
+bool Document::tableDeleteColumn(int tableId, int col) {
+    if (!tableStructEditable(tableId)) return false;
+    TableDef& d = m_tables[tableId];
+    const int rows = d.rowSpans.size();
+    const int cols = tableColumnCount(tableId);
+    if (cols <= 1 || col < 0 || col >= cols) return false;
+
+    //  Breite der entfallenden Spalte proportional auf die übrigen verteilen.
+    QVector<int> widths = tableColumnWidths(tableId);
+    int total = 0;
+    for (int w : widths) total += w;
+    const int gone = widths.value(col, 0);
+    widths.removeAt(col);
+    int rest = total - gone;
+    if (rest <= 0) rest = total;
+    int sum = 0;
+    for (int w : widths) sum += w;
+    QVector<int> out;
+    for (int w : widths)
+        out.append(sum > 0 ? qMax(100, w * total / sum) : total / qMax(1, cols - 1));
+
+    if (d.cellXml.size() != d.cellSpans.size()) d.cellXml.resize(d.cellSpans.size());
+    for (int r = rows - 1; r >= 0; --r) {
+        const int at = d.rowFirstCell.at(r) + col;
+        d.cellSpans.removeAt(at);
+        d.cellEndSpans.removeAt(at);
+        d.cellRow.removeAt(at);
+        d.cellGridSpan.removeAt(at);
+        d.cellWidthTw.removeAt(at);
+        d.cellXml.removeAt(at);
+        for (int r2 = r + 1; r2 < d.rowFirstCell.size(); ++r2)
+            d.rowFirstCell[r2] -= 1;
+    }
+    for (int i = blocks.size() - 1; i >= 0; --i) {
+        Block& b = blocks[i];
+        if (b.tableId != tableId) continue;
+        if (b.col == col) blocks.removeAt(i);
+        else if (b.col > col) b.col -= 1;
+    }
+
+    materializeGrid(d, out);
+    return true;
+}
+
+bool Document::tableSetColumnWidths(int tableId, const QVector<int>& widthsTw) {
+    if (!tableStructEditable(tableId)) return false;
+    const int cols = tableColumnCount(tableId);
+    if (widthsTw.size() != cols) return false;
+    QVector<int> out;
+    for (int w : widthsTw) out.append(qBound(200, w, 100000));
+    materializeGrid(m_tables[tableId], out);
+    return true;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  Bildgröße ändern (A2)
+//
+//  Der Bild-Run bleibt OPAK: statt die Zeichnung neu zu bauen (und dabei
+//  Zuschnitt, Effekte, Alternativtext und Umbruchangaben eines von Word
+//  erzeugten Bildes zu verlieren) wird der bestehende Roh-Text kopiert, darin
+//  werden NUR wp:extent und a:ext umgeschrieben, und das Ergebnis kommt in den
+//  Anhang-Pool. Der Run zeigt danach dorthin — das Original bleibt unberührt.
+// ─────────────────────────────────────────────────────────────────────────────
+namespace {
+
+//  cx/cy im Start-Tag des ersten Elements `elem` setzen (Attribut anlegen,
+//  falls es fehlt). false = Element nicht gefunden.
+bool setExtentAttrs(QString& xml, const QString& elem, qint64 cx, qint64 cy) {
+    int s = 0, l = 0;
+    if (!findElement(xml, elem, &s, &l)) return false;
+    QString tag = xml.mid(s, l);
+    auto put = [&](QLatin1String name, qint64 v) {
+        const QString key = QLatin1Char(' ') + name + QLatin1String("=\"");
+        const int p = tag.indexOf(key);
+        if (p < 0) {
+            tag.insert(1 + elem.size(),
+                       QStringLiteral(" %1=\"%2\"").arg(name).arg(v));
+            return;
+        }
+        const int vs = p + key.size();
+        const int ve = tag.indexOf(QLatin1Char('"'), vs);
+        if (ve < 0) return;
+        tag.replace(vs, ve - vs, QString::number(v));
+    };
+    put(QLatin1String("cx"), cx);
+    put(QLatin1String("cy"), cy);
+    xml.replace(s, l, tag);
+    return true;
+}
+
+} // namespace
+
+bool Document::setImageSizeEmu(int blockIdx, qint64 cxEmu, qint64 cyEmu) {
+    if (blockIdx < 0 || blockIdx >= blocks.size()) return false;
+    Block& b = blocks[blockIdx];
+    InlineImage info;
+    if (!paragraphImage(b, &info)) return false;
+
+    cxEmu = qBound<qint64>(9525LL, cxEmu, 182880000LL);  // 1 px … 200 Zoll
+    cyEmu = qBound<qint64>(9525LL, cyEmu, 182880000LL);
+
+    Run* run = nullptr;
+    for (Run& r : b.runs)
+        if (!r.text.isEmpty()) { run = &r; break; }
+    if (!run || !run->rawSpan.valid()) return false;
+
+    QString xml = m_docXml.mid(run->rawSpan.start, run->rawSpan.len);
+    const bool a = setExtentAttrs(xml, QStringLiteral("wp:extent"), cxEmu, cyEmu);
+    //  a:ext steckt in pic:spPr/a:xfrm; fehlt es (manche Erzeuger lassen es
+    //  weg), reicht wp:extent — Word skaliert dann darüber.
+    setExtentAttrs(xml, QStringLiteral("a:ext"), cxEmu, cyEmu);
+    if (!a) return false;
+
+    const int base = appendPool(xml);
+    run->rawSpan = { base, xml.size() };
+    b.dirty = true;                    // Absatz aus seinen Teilen serialisieren
+    return true;
+}
+
+int Document::tableFirstBlock(int tableId) const {
+    if (tableId < 0) return -1;
+    for (int i = 0; i < blocks.size(); ++i)
+        if (blocks.at(i).tableId == tableId) return i;
+    return -1;
+}
+int Document::tableLastBlock(int tableId) const {
+    if (tableId < 0) return -1;
+    for (int i = blocks.size() - 1; i >= 0; --i)
+        if (blocks.at(i).tableId == tableId) return i;
+    return -1;
+}
+
+//  Ein Lauf für BEIDES: Speichern (rawOnly=false) und Selbstprüfung
+//  (rawOnly=true). Dass die Prüfung denselben Code nimmt, ist der Punkt — sie
+//  prüft damit genau den Weg, den unangetastete Teile beim Speichern gehen.
+QString Document::emitBlocks(bool rawOnly) const {
+    const QStringView doc(m_docXml);
+    QString out;
+    out.reserve(m_docXml.size() + 1024);
+
+    auto emitOne = [&](const Block& b) {
+        if (rawOnly || b.kind != Block::Paragraph
+            || (!b.dirty && !b.pprMaterialized && b.rawSpan.valid()))
+            out += doc.mid(b.rawSpan.start, b.rawSpan.len);
+        else
+            out += buildParagraphXml(b);
+    };
+
+    for (int i = 0; i < blocks.size(); ) {
+        const Block& b = blocks.at(i);
+        if (b.tableId < 0) { emitOne(b); ++i; continue; }
+
+        //  ── Tabelle als GRUPPE ───────────────────────────────────────────────
+        const int tid = b.tableId;
+        int j = i;
+        bool anyDirty = false;
+        while (j < blocks.size() && blocks.at(j).tableId == tid) {
+            const Block& cb = blocks.at(j);
+            if (cb.dirty || cb.pprMaterialized || !cb.rawSpan.valid()) anyDirty = true;
+            ++j;
+        }
+        const TableDef& def = m_tables.at(tid);
+        //  Struktur geändert (Zeile/Spalte/Breite) ⇒ NIE der Schnellpfad, auch
+        //  wenn keine einzige Zelle berührt wurde.
+        if (def.structDirty) anyDirty = true;
+        if (rawOnly || !anyDirty) {
+            //  SCHNELLPFAD: nichts berührt → der ganze <w:tbl>-Bereich als
+            //  Original-Teilstring, also byteidentisch und ohne Gerüst-Aufbau.
+            const Span raw = def.rawSpan();
+            out += doc.mid(raw.start, raw.len);
+            i = j;
+            continue;
+        }
+
+        //  Gerüst wieder darumlegen: Header, je Zeile ihr Prefix, je Zelle ihr
+        //  Prefix + die Absatz-Blöcke + Zell-Ende, Zeilen-Ende, Footer.
+        out += tableHeaderText(def);
+        int blockAt = i;
+        for (int rowIdx = 0; rowIdx < def.rowSpans.size(); ++rowIdx) {
+            out += doc.mid(def.rowSpans.at(rowIdx).start, def.rowSpans.at(rowIdx).len);
+            const int firstCell = def.rowFirstCell.at(rowIdx);
+            const int lastCell = (rowIdx + 1 < def.rowFirstCell.size())
+                                     ? def.rowFirstCell.at(rowIdx + 1) - 1
+                                     : def.cellSpans.size() - 1;
+            for (int cellIdx = firstCell; cellIdx <= lastCell; ++cellIdx) {
+                out += tableCellText(def, cellIdx);
+                const int colOfCell = cellIdx - firstCell;
+                while (blockAt < j && blocks.at(blockAt).tableId == tid
+                       && blocks.at(blockAt).row == rowIdx
+                       && blocks.at(blockAt).col == colOfCell) {
+                    emitOne(blocks.at(blockAt));
+                    ++blockAt;
+                }
+                out += doc.mid(def.cellEndSpans.at(cellIdx).start,
+                               def.cellEndSpans.at(cellIdx).len);
+            }
+            out += doc.mid(def.rowEndSpans.at(rowIdx).start,
+                           def.rowEndSpans.at(rowIdx).len);
+        }
+        out += doc.mid(def.footerSpan.start, def.footerSpan.len);
+        i = j;
+    }
+    return out;
+}
+
 QString Document::newDocumentXml() const {
     QString out;
     out.reserve(m_docXml.size() + 1024);
     out += QStringView(m_docXml).mid(m_bodyPrefix.start, m_bodyPrefix.len);
-    for (const Block& b : blocks) {
-        if (b.kind != Block::Paragraph || (!b.dirty && !b.pprMaterialized
-                                           && b.rawSpan.valid()))
-            out += QStringView(m_docXml).mid(b.rawSpan.start, b.rawSpan.len);
-        else
-            out += buildParagraphXml(b);
-    }
+    out += emitBlocks(false);
     out += QStringView(m_docXml).mid(m_bodySuffix.start, m_bodySuffix.len);
     return out;
 }
@@ -916,7 +2628,21 @@ const char* kNumberingRelType =
 
 } // namespace
 
+//  Ersatz-/Zusatzteile beim Speichern = Listen-Infrastruktur + eingefügte
+//  Medien. Bewusst zwei getrennte Funktionen: die Nummerierungs-Kette ist
+//  erprobt und wird nicht angefasst.
 QHash<QString, QByteArray> Document::replacementParts() const {
+    QHash<QString, QByteArray> out = numberingParts();
+    const QHash<QString, QByteArray> media = mediaParts();
+    for (auto it = media.cbegin(); it != media.cend(); ++it) {
+        //  [Content_Types].xml und die .rels können von BEIDEN stammen —
+        //  dann gewinnt die Medien-Fassung, weil sie auf der anderen aufbaut.
+        out.insert(it.key(), it.value());
+    }
+    return out;
+}
+
+QHash<QString, QByteArray> Document::numberingParts() const {
     QHash<QString, QByteArray> out;
     if (m_pendingNums.isEmpty())
         return out;
@@ -978,7 +2704,7 @@ QHash<QString, QByteArray> Document::replacementParts() const {
                 out.insert(QStringLiteral("[Content_Types].xml"), s.toUtf8());
             }
         }
-        const QString relsName = QStringLiteral("word/_rels/document.xml.rels");
+        const QString relsName = relsPathOf(m_partPath);
         QByteArray rels = zip.fileData(relsName, &ok);
         if (ok) {
             if (!rels.contains("relationships/numbering")) {
@@ -1008,12 +2734,23 @@ QHash<QString, QByteArray> Document::replacementParts() const {
 //  anfügen. Ziel-Device liefert der Aufrufer (QSaveFile → atomar).
 // ─────────────────────────────────────────────────────────────────────────────
 bool Document::writeTo(QIODevice* target, QString* err) const {
+    return writeTo(target, {}, err);
+}
+
+bool Document::writeTo(QIODevice* target,
+                       const QHash<QString, QByteArray>& extraParts,
+                       QString* err) const {
     DocxZip::Reader zip;
     if (!zip.open(m_path, err))
         return false;
 
     QHash<QString, QByteArray> repl = replacementParts();
-    repl.insert(QStringLiteral("word/document.xml"), newDocumentXml().toUtf8());
+    //  Fremde Teile ZUERST, damit die eigenen (numbering/media/rels) gewinnen,
+    //  falls beide dieselbe Datei anfassen wollten.
+    for (auto it = extraParts.constBegin(); it != extraParts.constEnd(); ++it)
+        if (!repl.contains(it.key()))
+            repl.insert(it.key(), it.value());
+    repl.insert(m_partPath, newDocumentXml().toUtf8());
 
     DocxZip::Writer w(target);
     for (int i = 0; i < zip.entries().size(); ++i) {
@@ -1114,23 +2851,35 @@ QString Document::plainTextPreview(const QString& path, int maxLines) {
     r.setNamespaceProcessing(false);
     QStringList lines;
     QString cur;
+    //  Leerzeilen überspringen: eine Vorschau mit sechs Zeilen soll INHALT
+    //  zeigen, nicht die Absatzabstände des Dokuments.
+    auto push = [&lines, maxLines](const QString& line) {
+        if (lines.size() < maxLines && !line.trimmed().isEmpty())
+            lines << line;
+    };
     while (!r.atEnd() && lines.size() < maxLines) {
         const auto t = r.readNext();
         if (t == QXmlStreamReader::StartElement) {
-            if (r.qualifiedName() == QLatin1String("w:t"))
+            if (r.qualifiedName() == QLatin1String("w:t")) {
                 cur += r.readElementText();
-            else if (r.qualifiedName() == QLatin1String("w:tab"))
+            } else if (r.qualifiedName() == QLatin1String("w:tab")) {
                 cur += QLatin1Char('\t');
+            } else if (r.qualifiedName() == QLatin1String("w:br")
+                       || r.qualifiedName() == QLatin1String("w:cr")) {
+                //  Zeilenumbruch IM Absatz beendet auch die Vorschauzeile.
+                //  Ohne das lief ein ganzes Dokument, das mit Umschalt+Enter
+                //  statt Enter gesetzt ist, in EINER Zeile zusammen
+                //  („1 NFJedes Attribut nur ein…" — Nutzerbefund).
+                push(cur);
+                cur.clear();
+            }
         } else if (t == QXmlStreamReader::EndElement
                    && r.qualifiedName() == QLatin1String("w:p")) {
-            lines << cur;
+            push(cur);
             cur.clear();
         }
     }
-    if (!cur.isEmpty() && lines.size() < maxLines)
-        lines << cur;
-    while (!lines.isEmpty() && lines.constLast().trimmed().isEmpty())
-        lines.removeLast();
+    push(cur);
     return lines.join(QLatin1Char('\n'));
 }
 

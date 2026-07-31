@@ -30,6 +30,14 @@
 
 class DocxEditController : public QObject {
     Q_OBJECT
+    //  ── Bearbeitungs-REGION (Aufgabe 3A) ────────────────────────────────────
+    //  Kopf- und Fußzeile sind eigene ZIP-Teile mit eigenem Rumpf. Sie werden
+    //  als eigene `Docx::Document`-Instanz geladen; der Controller kennt die
+    //  aktive Region und die Fläche bindet immer an die aktive (`doc()`).
+    Q_PROPERTY(int activeRegion READ activeRegionInt WRITE setActiveRegionInt
+                   NOTIFY activeRegionChanged)
+    Q_PROPERTY(bool hasHeader READ hasHeader NOTIFY regionsAvailable)
+    Q_PROPERTY(bool hasFooter READ hasFooter NOTIFY regionsAvailable)
     Q_PROPERTY(QString source READ source WRITE setSource NOTIFY sourceChanged)
     Q_PROPERTY(bool ready READ ready NOTIFY readyChanged)
     Q_PROPERTY(bool busy READ busy NOTIFY busyChanged)          // Speichern läuft
@@ -95,6 +103,72 @@ public:
     Q_INVOKABLE void toggleBullets();
     Q_INVOKABLE void toggleNumbering();
 
+    // ── Formatvorlagen (Absatzvorlagen des Dokuments) ────────────────────────
+    //  Liste für die Auswahl: [{ id, name, isDefault }] in Katalog-Reihenfolge
+    //  (Standardvorlage zuerst). Leer, wenn das Dokument keine styles.xml hat.
+    Q_INVOKABLE QVariantList paragraphStyles() const;
+    //  Vorlage auf alle Absätze der Selektion anwenden. Die Standardvorlage
+    //  (oder eine leere id) ENTFERNT das w:pStyle — direkte Formatierung des
+    //  Absatzes bleibt in beiden Fällen erhalten.
+    Q_INVOKABLE void setParagraphStyle(const QString& styleId);
+
+    // ── Einfügen ─────────────────────────────────────────────────────────────
+    //  Leere Tabelle NACH dem aktuellen Absatz einfügen (undo-fähig). Steht der
+    //  Cursor in einer Zelle, landet sie hinter der GANZEN Tabelle — verschachtelte
+    //  Tabellen werden bewusst nicht erzeugt (der Parser deutet sie auch nicht).
+    Q_INVOKABLE void insertTable(int rows, int cols);
+    //  Bild als eigenen Absatz einfügen (undo-fähig). `fileUrl` darf eine
+    //  file://-URL oder ein Pfad sein. Fehler landen im Status über
+    //  imageInsertFailed.
+    Q_INVOKABLE void insertImage(const QString& fileUrl);
+    //  Bild aus BYTES einfügen (Zwischenablage): `ext` ist die Zielendung
+    //  ("png"/"jpg"/…) und bestimmt Content-Type und Teilname im Container.
+    Q_INVOKABLE void insertImageData(const QByteArray& bytes, const QString& ext);
+    //  Bilder im ORDNER der geöffneten Datei — als [{name, url}] für das
+    //  Auswahl-Popup. Filter ist QImageReader::supportedImageFormats(), also
+    //  jedes Format, das Qt lesen kann (keine feste Endungsliste).
+    Q_INVOKABLE QVariantList folderImages() const;
+    //  Seitenzahl einer PDF (für den Seitenwähler); 0 = keine lesbare PDF.
+    Q_INVOKABLE int pdfPageCount(const QString& fileUrl) const;
+    //  EINE Seite einer PDF als Bild einfügen. Gerendert wird bei 150 dpi —
+    //  fein genug zum Drucken, ohne den Container zu sprengen.
+    Q_INVOKABLE void insertPdfPage(const QString& fileUrl, int page);
+    //  Inhaltsverzeichnis NACH dem aktuellen Absatz einfügen (undo-fähig).
+    //  Das Feld bleibt deklarativ — die Einträge zeigt die Fläche aus der
+    //  eigenen Paginierung, Word rechnet sie beim Öffnen selbst.
+    Q_INVOKABLE void insertTableOfContents();
+
+    // ── Tabellen-Struktur (Kontextmenü) ──────────────────────────────────────
+    //  Lage-/Zustandsauskunft für den Block `block` (−1 = Cursorblock):
+    //  { table (bool), tableId, row, col, rows, cols, editable, widths[] }.
+    //  `editable` false ⇒ verbundene Zellen/ungleiche Zeilen: Struktur wird
+    //  nicht angefasst, das Menü bietet dann nur „Tabelle löschen".
+    Q_INVOKABLE QVariantMap tableInfoAt(int block) const;
+    Q_INVOKABLE void tableInsertRow(int tableId, int atRow);
+    Q_INVOKABLE void tableDeleteRow(int tableId, int row);
+    Q_INVOKABLE void tableInsertColumn(int tableId, int atCol);
+    Q_INVOKABLE void tableDeleteColumn(int tableId, int col);
+    //  Spaltenbreiten in MILLIMETERN (die Anzeige rechnet nicht in Twips).
+    Q_INVOKABLE void tableSetColumnWidthsMm(int tableId, const QVariantList& mm);
+    Q_INVOKABLE void deleteTable(int tableId);
+    //  ALLE Spalten mit demselben Faktor skalieren (Ziehen an Rahmen/Ecke) —
+    //  die Zellen behalten dadurch ihr Größenverhältnis zueinander.
+    Q_INVOKABLE void scaleTableWidths(int tableId, qreal factor);
+
+    // ── Bildgröße ────────────────────────────────────────────────────────────
+    //  { image (bool), block, widthMm, heightMm } für den Block `block`
+    //  (−1 = Cursorblock). image == false ⇒ kein reiner Bild-Absatz.
+    Q_INVOKABLE QVariantMap imageInfoAt(int block) const;
+    //  Ausgewähltes Bild (= Cursor steht in einem reinen Bild-Absatz) in die
+    //  Zwischenablage legen bzw. entfernen. `copy()`/`cut()` rufen das selbst
+    //  auf, wenn keine TEXT-Selektion besteht — damit wirken Strg+C/Strg+X
+    //  auch auf ein Bild.
+    Q_INVOKABLE bool copyImageAtCursor();
+    Q_INVOKABLE void deleteImageAtCursor();
+    //  Neue Größe in Millimetern (undo-fähig; Seitenverhältnis hält der
+    //  Aufrufer, damit Ziehen an einer Kante bewusst verzerren darf).
+    Q_INVOKABLE void setImageSizeMm(int block, qreal widthMm, qreal heightMm);
+
     // ── Zwischenablage / Undo ────────────────────────────────────────────────
     Q_INVOKABLE void copy();
     Q_INVOKABLE void cut();
@@ -144,9 +218,31 @@ public:
     //  Änderungen ohne Selektion (die nur als Pending-Format existieren).
     Docx::RunFmt caretFormat() const;
 
+    //  Seiteneinrichtung — IMMER die des Körpers, auch wenn gerade die
+    //  Kopfzeile bearbeitet wird: sie hat keine eigene und würde sonst auf A4
+    //  zurückfallen, die Seite also unter dem Cursor die Größe wechseln.
+    const Docx::SectionProps& section() const { return bodyDoc().section(); }
+
+    // ── Regionen (Körper / Kopfzeile / Fußzeile) ─────────────────────────────
+    enum Region { Body = 0, Header = 1, Footer = 2 };
+    Q_ENUM(Region)
+
+    int  activeRegionInt() const { return int(m_region); }
+    void setActiveRegionInt(int r);
+    bool hasHeader() const { return m_slots[Header].available; }
+    bool hasFooter() const { return m_slots[Footer].available; }
+    //  Region wechseln; lädt den Teil beim ersten Mal nach. Liefert false, wenn
+    //  es den Teil nicht gibt oder er nicht editierbar ist.
+    Q_INVOKABLE bool setRegion(int r);
+
     //  Interner Anwender der Kommandos (public für DocxReplaceBlocksCommand).
     void applyBlocks(int first, int oldCount, const QList<Docx::Block>& blocks,
                      const DocxCursor& cur);
+    //  Undo/Redo eines Kommandos einer ANDEREN Region: erst umschalten (die
+    //  Ansicht folgt), dann anwenden — genau das macht Undo Word-ähnlich.
+    void activateRegionForCommand(int r);
+    //  Gerüst einer Tabelle zurücksetzen (Undo/Redo von Struktur-Änderungen).
+    void applyTableDef(int tableId, const Docx::TableDef& def);
 
 signals:
     void sourceChanged();
@@ -163,12 +259,21 @@ signals:
     void saveFinished(bool ok, const QString& target, const QString& error);
     //  Ergebnis des DOCX→PDF-Exports (Aufgabe 2).
     void pdfExportFinished(bool ok, const QString& target, const QString& error);
+    void imageInsertFailed(const QString& error);
+    //  Aktive Region gewechselt — die Fläche legt alles neu aus (anderes
+    //  Dokument), die Leiste zeigt die Umschaltung an.
+    void activeRegionChanged();
+    void regionsAvailable();
 
 private:
     struct EditScope;                                    // s. cpp
 
     void bumpFormat();
     void setModified(bool m);
+    //  Gemeinsamer Rahmen der Tabellen-Struktur-Operationen: EditScope über die
+    //  ganze Tabelle + Gerüst-Schnappschuss, dann `op`. Liefert false, wenn die
+    //  Operation abgelehnt wurde (dann entsteht auch kein Undo-Schritt).
+    bool tableStructOp(int tableId, const std::function<bool()>& op);
     QString blockText(int i) const;
     //  Klartext der aktuellen Selektion (mehrblockig mit „\n" verbunden).
     QString selectionPlainText() const;
@@ -176,6 +281,10 @@ private:
     void selectRange(int bi, int start, int len);
     int  blockLen(int i) const;
     bool isEditableParagraph(int i) const;
+    //  Tabellen-Grenzregeln (Option A): Struktur-Änderungen dürfen nie über
+    //  eine Zellgrenze laufen, sonst verschwände eine Zelle.
+    bool sameCell(int i, int j) const;
+    void clampRangeToCell(int b1, int& b2) const;
     //  Ordnet (block,pos) so, dass (b1,p1) ≤ (b2,p2).
     void orderedSelection(int& b1, int& p1, int& b2, int& p2) const;
     //  Run-Index + Offset im Run zu einer Absatzposition.
@@ -221,6 +330,37 @@ private:
     QString exportTargetPath() const;
     QString pdfExportTargetPath() const;                 // <Name>.pdf, Kollision → „ (n)"
     void startSaveWorker(const QString& targetPath, bool direct);
+
+    //  ── Regionen ─────────────────────────────────────────────────────────────
+    //  Die AKTIVE Region liegt in `m_doc`/`m_cursor` — dadurch bleibt der
+    //  gesamte übrige Editor-Code unverändert und arbeitet immer auf ihr. Beim
+    //  Umschalten wird der Zustand in den Slot GEPARKT und der andere geholt
+    //  (move, also O(1) je Member).
+    //
+    //  EIN Undo-Stack für ALLE Regionen — bewusst statt je Region einer plus
+    //  Koordinator: jedes Kommando merkt sich seine Region und schaltet beim
+    //  Undo/Redo selbst um. Zwei Stapel könnten auseinanderlaufen (eine
+    //  verworfene Redo-Historie in Region A ist aus Region B heraus nicht mehr
+    //  aus einem QUndoStack zu entfernen); mit einem Stapel ist die Reihenfolge
+    //  per Konstruktion global richtig.
+    struct RegionSlot {
+        Docx::Document doc;
+        DocxCursor     cursor;
+        QString        partPath;          // "word/header1.xml", … ("" = keiner)
+        bool           available = false; // Teil im Container vorhanden
+        bool           loaded    = false; // schon geparst
+    };
+    RegionSlot m_slots[3];
+    Region     m_region = Body;
+    //  Teil laden, falls nötig; false = nicht vorhanden/nicht editierbar.
+    bool ensureRegionLoaded(Region r);
+    //  Das KÖRPER-Dokument, egal welche Region gerade aktiv ist (PDF-Export,
+    //  Seitengeometrie, Kopfzeilen-Anzeige hängen daran).
+    const Docx::Document& bodyDoc() const {
+        return (m_region == Body) ? m_doc : m_slots[Body].doc;
+    }
+    //  Alle Regionen für das Speichern zusammentragen (Teil-XML + Ersatzteile).
+    QHash<QString, QByteArray> allRegionParts() const;
 
     Docx::Document m_doc;
     QString    m_source;

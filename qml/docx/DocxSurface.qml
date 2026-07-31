@@ -1,7 +1,9 @@
 import QtQuick
 import QtQuick.Controls.Basic
+import QtQuick.Dialogs
 import MediaGallery 1.0
 import "../common"
+import "../pdf"
 
 //  DocxSurface.qml — die DOCX-Editor-Kachel des Viewers (FullscreenViewer
 //  type 5). Erfüllt den Viewer-Vertrag der übrigen Surfaces: source,
@@ -62,6 +64,11 @@ Item {
                 statusText.flash(App.uiText(App.language, "DocxExportedTo")
                                  .replace("%1", target.split("/").pop()))
         }
+        onImageInsertFailed: (error) => {
+            statusText.flash(error.length > 0
+                             ? error
+                             : App.uiText(App.language, "DocxImageError"))
+        }
         onPdfExportFinished: (ok, target, error) => {
             if (ok)
                 statusText.flash(App.uiText(App.language, "DocxPdfExportedTo")
@@ -71,6 +78,46 @@ Item {
                                  ? error
                                  : App.uiText(App.language, "DocxPdfError"))
         }
+    }
+
+    //  ── PDF-Seiten als Bild einfügen ─────────────────────────────────────
+    //  Wird im Bild-Popup eine PDF gewählt, kommt NICHT stillschweigend deren
+    //  Cover ins Dokument: es öffnet dieselbe Seitenauswahl wie die
+    //  Extraktion (großes Raster, jede Seite anklickbar, Mehrfachauswahl).
+    //  Die Komponente ist unverändert wiederverwendet — sie kennt den Modus
+    //  „ohne Namensabfrage" schon vom PDF-Editor („Seiten einfügen").
+    function openPdfPagePicker(fileUrl) {
+        const n = editCtl.pdfPageCount(fileUrl)
+        if (n <= 0) {
+            statusText.flash(App.uiText(App.language, "DocxPdfPageError"))
+            return
+        }
+        pdfPagesDlg.files = [ { path: fileUrl, pageCount: n } ]
+        pdfPagesDlg.open()
+    }
+
+    PdfPageSelectDialog {
+        id: pdfPagesDlg
+        anchors.fill: parent
+        z: 20
+        requireName: false
+        askName: false
+        titleText: App.uiText(App.language, "DocxInsertPdfPage")
+        //  Reihenfolge = Auswahlreihenfolge; jede Seite wird ein eigener
+        //  Bild-Absatz (und damit ein eigener Undo-Schritt).
+        onExtractRequested: (items, name) => {
+            for (let i = 0; i < items.length; ++i)
+                editCtl.insertPdfPage(items[i].path, items[i].page)
+            area.forceActiveFocus()
+        }
+    }
+
+    //  Dateiauswahl fürs Bild-Einfügen (Labs-Dialog wie anderswo in der App).
+    FileDialog {
+        id: imgDialog
+        title: App.uiText(App.language, "DocxInsertImage")
+        nameFilters: [ App.uiText(App.language, "DocxImageFilter") ]
+        onAccepted: editCtl.insertImage(selectedFile)
     }
 
     Rectangle { anchors.fill: parent; color: App.themeBackground }
@@ -91,12 +138,35 @@ Item {
         //  Format am Cursor (rev-getrieben, Muster PdfEditToolbar).
         property var fmt: ({})
         function refresh() { fmt = editCtl.currentFormat() }
+
+        //  Absatzvorlagen des Dokuments — hängen am DOKUMENT, nicht am Cursor:
+        //  einmal beim Laden holen, NICHT in refresh() (das läuft bei jedem
+        //  Formatwechsel, also praktisch bei jedem Tastendruck).
+        property var styleList: []          // [{ id, name, isDefault }]
+        property var styleNames: []         // dieselben Namen für das Modell
+        function reloadStyles() {
+            const l = editCtl.ready ? editCtl.paragraphStyles() : []
+            const n = []
+            for (let i = 0; i < l.length; ++i) n.push(l[i].name)
+            bar.styleList  = l
+            bar.styleNames = n
+        }
+        //  Index der Vorlage am Cursor; ohne w:pStyle gilt die Standardvorlage.
+        function styleIndex() {
+            const sid = bar.fmt.styleId || ""
+            for (let i = 0; i < bar.styleList.length; ++i)
+                if (bar.styleList[i].id === sid) return i
+            for (let j = 0; j < bar.styleList.length; ++j)
+                if (bar.styleList[j].isDefault) return j
+            return -1
+        }
+
         Connections {
             target: editCtl
             function onFormatRevChanged() { bar.refresh() }
-            function onReadyChanged()     { bar.refresh() }
+            function onReadyChanged()     { bar.refresh(); bar.reloadStyles() }
         }
-        Component.onCompleted: refresh()
+        Component.onCompleted: { refresh(); reloadStyles() }
 
         // ── Gethemte Bausteine ────────────────────────────────────────────────
         component DBtn: Rectangle {
@@ -322,29 +392,31 @@ Item {
             clip: true
             boundsBehavior: Flickable.StopAtBounds
 
-            //  Umschalt + Mausrad scrollt die Leiste waagerecht (hoch = nach
-            //  rechts, runter = nach links) — bei schmalem Fenster bleibt so
-            //  ALLES erreichbar. Ohne Umschalt scrollt das Rad ebenfalls
-            //  waagerecht (die Leiste kennt keine Senkrechte), animiert wie
-            //  überall in der App (halbe Sichtbreite, 180 ms OutCubic).
-            NumberAnimation {
-                id: barScrollAnim
-                target: leftFlick
-                property: "contentX"
-                duration: 180
-                easing.type: Easing.OutCubic
-            }
-            WheelHandler {
-                acceptedModifiers: Qt.NoModifier | Qt.ShiftModifier
-                onWheel: (w) => {
-                    const maxX = Math.max(0, leftFlick.contentWidth - leftFlick.width)
-                    if (maxX <= 0) return
-                    const d = (w.angleDelta.y !== 0 ? w.angleDelta.y : w.angleDelta.x)
-                    const base = barScrollAnim.running ? barScrollAnim.to : leftFlick.contentX
-                    barScrollAnim.to = Math.max(0, Math.min(maxX,
-                                          base + (d > 0 ? 1 : -1) * leftFlick.width / 2))
-                    barScrollAnim.restart()
-                }
+            //  Mausrad scrollt die Leiste waagerecht (hoch = nach rechts,
+            //  runter = nach links) — bei schmalem Fenster bleibt so ALLES
+            //  erreichbar. Gilt OHNE Modifikator, mit Umschalt UND mit STRG:
+            //  Strg+Rad ist der Griff, den der PDF-Editor für sein Ribbon
+            //  schon anbietet (s. PdfEditPanel), und wer ihn dort gelernt
+            //  hat, erwartet ihn hier genauso. Animiert wie überall in der
+            //  App (halbe Sichtbreite, 180 ms OutCubic).
+            //  Mausrad scrollt die Leiste waagerecht (hoch = nach rechts) —
+            //  bei schmalem Fenster bleibt so ALLES erreichbar.
+            //
+            //  ES MUSS `SmoothWheelArea` SEIN, kein `WheelHandler`: dieses
+            //  Flickable ist interaktiv und verarbeitet Radereignisse SELBST,
+            //  bevor ein Handler darunter sie sieht — die Leiste scrollte
+            //  deshalb in Qts Vorgabeschritten von ~60 px statt in halben
+            //  Sichtbreiten (Nutzerbefund „scrollt langsam"). Genau dieselbe
+            //  Falle ist in `PdfEditPanel` schon dokumentiert und dort mit
+            //  derselben Komponente gelöst (Structure.md ▸ Workarounds).
+            //
+            //  `requiredModifier: Qt.NoModifier` heißt hier „jeder": die
+            //  Komponente reicht nur dann durch, wenn ein Modifikator
+            //  VERLANGT und nicht gedrückt ist. Rad, Umschalt+Rad, Strg+Rad
+            //  und Alt+Rad schwenken die Leiste also alle.
+            SmoothWheelArea {
+                flickable: leftFlick
+                horizontal: true
             }
 
             Row {
@@ -409,14 +481,40 @@ Item {
                 Rectangle { width: 1; height: 20; color: App.themeBorder
                             anchors.verticalCenter: parent.verticalCenter }
 
+                //  Schlüssel bewusst die des PDF-Editors: der Text ist
+                //  „Rückgängig"/„Wiederholen" und damit editorneutral. Die
+                //  früheren Namen ImageEditUndo/-Redo gab es im String-Katalog
+                //  GAR NICHT — App.uiText gibt bei unbekanntem Namen den Namen
+                //  zurück, im Tooltip stand also wörtlich „ImageEditUndo".
                 DBtn { glyph: "\u21A9"; enabledBtn: editCtl.canUndo
-                       tip: App.uiText(App.language, "ImageEditUndo")
+                       tip: App.uiText(App.language, "PdfEditUndoTip")
                        onClicked: editCtl.undo() }
                 DBtn { glyph: "\u21AA"; enabledBtn: editCtl.canRedo
-                       tip: App.uiText(App.language, "ImageEditRedo")
+                       tip: App.uiText(App.language, "PdfEditRedoTip")
                        onClicked: editCtl.redo() }
 
                 Rectangle { width: 1; height: 20; color: App.themeBorder
+                            anchors.verticalCenter: parent.verticalCenter }
+
+                //  Formatvorlage des Absatzes (Standardvorlage = erster
+                //  Eintrag; Anwenden entfernt dort das w:pStyle wieder).
+                //  Ohne styles.xml im Dokument bleibt die Liste leer und die
+                //  Auswahl verschwindet, statt leer dazustehen.
+                DCombo {
+                    id: styleCombo
+                    width: 150
+                    visible: bar.styleNames.length > 0
+                    model: bar.styleNames
+                    currentIndex: bar.styleIndex()
+                    tip: App.uiText(App.language, "DocxParagraphStyle")
+                    onActivated: (i) => {
+                        if (i >= 0 && i < bar.styleList.length)
+                            editCtl.setParagraphStyle(bar.styleList[i].id)
+                    }
+                }
+
+                Rectangle { width: 1; height: 20; color: App.themeBorder
+                            visible: styleCombo.visible
                             anchors.verticalCenter: parent.verticalCenter }
 
                 //  Schriftfamilie + Größe (pt).
@@ -691,6 +789,257 @@ Item {
                         }
                     }
                 }
+
+                Rectangle { width: 1; height: 20; color: App.themeBorder
+                            anchors.verticalCenter: parent.verticalCenter }
+
+                //  ── Bearbeitungs-Region: Text / Kopfzeile / Fußzeile ──────
+                //  Die Fläche zeigt IMMER die aktive Region; Esc führt zurück.
+                //  Nicht vorhandene Teile bleiben deaktiviert — eine fehlende
+                //  Kopfzeile ANZULEGEN wäre eine eigene Aufgabe.
+                Row {
+                    spacing: 2
+                    anchors.verticalCenter: parent.verticalCenter
+                    visible: editCtl.ready
+                    Repeater {
+                        model: [
+                            { key: "DocxRegionBody",   rid: 0 },
+                            { key: "DocxRegionHeader", rid: 1 },
+                            { key: "DocxRegionFooter", rid: 2 }
+                        ]
+                        delegate: Rectangle {
+                            required property var modelData
+                            readonly property bool sel: editCtl.activeRegion === modelData.rid
+                            readonly property bool avail:
+                                modelData.rid === 0
+                                || (modelData.rid === 1 ? editCtl.hasHeader
+                                                        : editCtl.hasFooter)
+                            width: rgLabel.implicitWidth + 16
+                            height: 26
+                            radius: 6
+                            anchors.verticalCenter: parent.verticalCenter
+                            color: sel ? App.themeAccent
+                                       : (rgHover.hovered && avail ? App.themeCard
+                                                                   : "transparent")
+                            opacity: avail ? 1.0 : 0.4
+                            Text {
+                                id: rgLabel
+                                anchors.centerIn: parent
+                                text: App.uiText(App.language, modelData.key)
+                                font.pixelSize: 12
+                                color: parent.sel ? "#ffffff" : App.themeTextPrimary
+                            }
+                            HoverHandler { id: rgHover; enabled: parent.avail }
+                            TapHandler {
+                                enabled: parent.avail
+                                onTapped: {
+                                    editCtl.setRegion(modelData.rid)
+                                    area.forceActiveFocus()
+                                }
+                            }
+                            ToolTip.visible: rgHover.hovered && !parent.avail
+                            ToolTip.delay: 500
+                            ToolTip.text: App.uiText(App.language, "DocxRegionNone")
+                        }
+                    }
+                }
+
+                Rectangle { width: 1; height: 20; color: App.themeBorder
+                            anchors.verticalCenter: parent.verticalCenter }
+
+                //  Bild einfügen: Dateidialog → eigener Absatz an der Cursorstelle.
+                DBtn {
+                    glyph: "\u274F"          // ❏ — BMP, monochrom wie die übrigen
+                    enabledBtn: editCtl.ready
+                    tip: App.uiText(App.language, "DocxInsertImage")
+                    //  Erst die Bilder im ORDNER der Datei anbieten (der häufige
+                    //  Fall, ganz ohne Dateidialog), sonst der Dateidialog.
+                    //  Strg+V fügt zusätzlich Bilder aus der Zwischenablage ein.
+                    onClicked: {
+                        imgPopup.entries = editCtl.folderImages()
+                        imgPopup.open()
+                    }
+
+                    Popup {
+                        id: imgPopup
+                        y: parent.height + 4
+                        padding: 8
+                        property var entries: []
+                        background: Rectangle {
+                            color: App.themeMenuBarBg
+                            border.color: App.themeBorder
+                            radius: 8
+                        }
+                        contentItem: Column {
+                            spacing: 6
+                            Text {
+                                text: App.uiText(App.language, "DocxImageFromFolder")
+                                color: App.themeTextMuted; font.pixelSize: 11
+                            }
+                            Text {
+                                visible: imgPopup.entries.length === 0
+                                text: App.uiText(App.language, "DocxNoImagesInFolder")
+                                color: App.themeTextPrimary; font.pixelSize: 12
+                            }
+                            //  Miniaturen werden ASYNCHRON und nur für die
+                            //  sichtbaren Delegates geladen; sourceSize deckelt
+                            //  die dekodierte Größe (RAM = Priorität 1).
+                            GridView {
+                                id: imgGrid
+                                visible: imgPopup.entries.length > 0
+                                width: 396
+                                height: Math.min(300, Math.ceil(
+                                            imgPopup.entries.length / 4) * 96)
+                                cellWidth: 98
+                                cellHeight: 96
+                                clip: true
+                                model: imgPopup.entries
+                                boundsBehavior: Flickable.StopAtBounds
+                                ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
+                                //  Ohne das scrollt Qt in ~60-px-Rastungen
+                                //  (Nutzerbefund „Scrollen ist langsam").
+                                //  `flickable` MUSS über die id gesetzt werden,
+                                //  nicht über `parent`: SmoothWheelArea setzt
+                                //  selbst `parent: flickable` — mit
+                                //  `flickable: parent` entsteht eine
+                                //  BINDUNGSSCHLEIFE und die Komponente bleibt
+                                //  wirkungslos (genau so blieb der erste
+                                //  Anlauf ohne Wirkung).
+                                SmoothWheelArea { flickable: imgGrid }
+                                delegate: Rectangle {
+                                    required property var modelData
+                                    width: 94; height: 92
+                                    radius: 5
+                                    color: fiHover.hovered ? App.themeCard : "transparent"
+                                    border.color: fiHover.hovered ? App.themeAccent
+                                                                  : App.themeBorder
+                                    Image {
+                                        anchors.top: parent.top
+                                        anchors.horizontalCenter: parent.horizontalCenter
+                                        anchors.topMargin: 4
+                                        width: 82; height: 58
+                                        fillMode: Image.PreserveAspectFit
+                                        asynchronous: true
+                                        cache: false
+                                        sourceSize.width: 96
+                                        sourceSize.height: 96
+                                        source: parent.modelData.url
+                                    }
+                                    Text {
+                                        anchors.bottom: parent.bottom
+                                        anchors.bottomMargin: 3
+                                        x: 3
+                                        width: parent.width - 6
+                                        horizontalAlignment: Text.AlignHCenter
+                                        elide: Text.ElideMiddle
+                                        text: parent.modelData.name
+                                        color: App.themeTextPrimary
+                                        font.pixelSize: 10
+                                    }
+                                    HoverHandler { id: fiHover }
+                                    TapHandler {
+                                        onTapped: {
+                                            const u = parent.modelData.url
+                                            imgPopup.close()
+                                            //  PDF: NICHT stillschweigend das
+                                            //  Cover nehmen, sondern dieselbe
+                                            //  Seitenauswahl anbieten wie die
+                                            //  Extraktion (Nutzerbefund).
+                                            if (u.toLowerCase().endsWith(".pdf"))
+                                                root.openPdfPagePicker(u)
+                                            else
+                                                editCtl.insertImage(u)
+                                            area.forceActiveFocus()
+                                        }
+                                    }
+                                }
+                            }
+                            Rectangle {
+                                width: 150; height: 26; radius: 6
+                                color: brHover.hovered ? App.themeCard : "transparent"
+                                border.color: App.themeBorder
+                                Text {
+                                    anchors.centerIn: parent
+                                    text: App.uiText(App.language, "DocxImageBrowse")
+                                    color: App.themeTextPrimary; font.pixelSize: 12
+                                }
+                                HoverHandler { id: brHover }
+                                TapHandler {
+                                    onTapped: { imgPopup.close(); imgDialog.open() }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                //  Inhaltsverzeichnis einfügen: das Feld bleibt deklarativ,
+                //  die Seitenzahlen kommen aus unserer eigenen Paginierung.
+                DBtn {
+                    glyph: "\u2261"          // ≡
+                    enabledBtn: editCtl.ready
+                    tip: App.uiText(App.language, "DocxInsertToc")
+                    onClicked: {
+                        editCtl.insertTableOfContents()
+                        area.forceActiveFocus()
+                    }
+                }
+
+                //  Tabelle einfügen: kleiner Knopf mit Zeilen/Spalten-Popup.
+                //  Eingefügt wird HINTER dem Cursor-Absatz; steht der Cursor in
+                //  einer Zelle, hinter der ganzen Tabelle (keine Verschachtelung).
+                DBtn {
+                    id: tblBtn
+                    glyph: "\u25A6"
+                    enabledBtn: editCtl.ready
+                    tip: App.uiText(App.language, "DocxInsertTable")
+                    onClicked: tblPopup.open()
+
+                    Popup {
+                        id: tblPopup
+                        y: parent.height + 4
+                        padding: 10
+                        background: Rectangle {
+                            color: App.themeMenuBarBg
+                            border.color: App.themeBorder
+                            radius: 8
+                        }
+                        contentItem: Column {
+                            spacing: 8
+                            Row {
+                                spacing: 6
+                                Text { text: App.uiText(App.language, "DocxTableRows")
+                                       color: App.themeTextPrimary; font.pixelSize: 12
+                                       anchors.verticalCenter: parent.verticalCenter }
+                                DSpin { id: rowSpin; value: 3; from: 1; to: 100 }
+                            }
+                            Row {
+                                spacing: 6
+                                Text { text: App.uiText(App.language, "DocxTableCols")
+                                       color: App.themeTextPrimary; font.pixelSize: 12
+                                       anchors.verticalCenter: parent.verticalCenter }
+                                DSpin { id: colSpin; value: 3; from: 1; to: 32 }
+                            }
+                            Rectangle {
+                                width: 120; height: 26; radius: 6
+                                color: insHover.hovered ? Qt.darker(App.themeAccent, 1.1)
+                                                        : App.themeAccent
+                                Text {
+                                    anchors.centerIn: parent
+                                    text: App.uiText(App.language, "DocxInsert")
+                                    color: "#ffffff"; font.pixelSize: 12; font.bold: true
+                                }
+                                HoverHandler { id: insHover }
+                                TapHandler {
+                                    onTapped: {
+                                        editCtl.insertTable(rowSpin.value, colSpin.value)
+                                        tblPopup.close()
+                                        area.forceActiveFocus()
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
             }
         }
 
@@ -738,14 +1087,97 @@ Item {
         anchors.bottom: parent.bottom
         clip: true
 
+        //  ── Seiten-Miniaturen ──────────────────────────────────────────────
+        //  Links angedockte Leiste, nur bei mehr als einer Seite und nur, wenn
+        //  die Kachel breit genug ist (in einer schmalen Split-Kachel hätte das
+        //  Dokument selbst keinen Platz mehr). Die Delegates malen über
+        //  DocxTextArea::paintPageInto — es gibt keinen Bild-Cache.
+        Rectangle {
+            id: thumbBar
+            anchors.left: parent.left
+            anchors.top: parent.top
+            anchors.bottom: parent.bottom
+            width: 132
+            visible: editCtl.ready && area.pageCount > 1 && viewport.width > 520
+            color: Qt.darker(App.themeBackground, 1.15)
+            z: 1
+
+            Rectangle { anchors.right: parent.right; width: 1; height: parent.height
+                        color: App.themeBorder }
+
+            ListView {
+                id: thumbList
+                anchors.fill: parent
+                anchors.margins: 8
+                spacing: 10
+                clip: true
+                model: area.pageCount
+                boundsBehavior: Flickable.StopAtBounds
+                ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
+
+                delegate: Column {
+                    id: thumbItem
+                    required property int index
+                    readonly property bool isCurrent: thumbItem.index === area.currentPage
+                    //  MUSS über diesen Umweg gehen: `area: area` würde INNERHALB
+                    //  von DocxPageThumb auf dessen EIGENE `area`-Property
+                    //  auflösen (Selbst-Beschattung) und bliebe null — die
+                    //  Miniaturen blieben leer. Hier im Column-Scope meint
+                    //  `area` eindeutig die Textfläche.
+                    readonly property var docArea: area
+                    width: thumbList.width - 12
+                    spacing: 3
+
+                    Rectangle {
+                        width: parent.width
+                        //  A4-Verhältnis als Rahmenmaß; die Miniatur selbst folgt
+                        //  der echten Seitengeometrie (paintPageInto rechnet mit
+                        //  dem Seitenmaß des Dokuments und passt sich ein).
+                        height: Math.round(parent.width * 1.414)
+                        color: "transparent"
+                        border.color: thumbItem.isCurrent ? App.themeAccent
+                                                          : App.themeBorder
+                        border.width: thumbItem.isCurrent ? 2 : 1
+
+                        DocxPageThumb {
+                            anchors.fill: parent
+                            anchors.margins: 2
+                            area: thumbItem.docArea
+                            page: thumbItem.index
+                        }
+                        TapHandler {
+                            onTapped: {
+                                scrollAnim.to = area.pageTop(thumbItem.index)
+                                scrollAnim.restart()
+                            }
+                        }
+                    }
+                    Text {
+                        anchors.horizontalCenter: parent.horizontalCenter
+                        text: thumbItem.index + 1
+                        color: thumbItem.isCurrent ? App.themeAccent
+                                                   : App.themeTextMuted
+                        font.pixelSize: 11
+                    }
+                }
+            }
+        }
+
         DocxTextArea {
             id: area
-            anchors.fill: parent
+            anchors.top: parent.top
+            anchors.bottom: parent.bottom
+            anchors.left: thumbBar.visible ? thumbBar.right : parent.left
+            anchors.right: parent.right
             ctl: editCtl
             surroundColor: App.themeBackground
             tablePlaceholder: App.uiText(App.language, "DocxTablePlaceholder")
             pageBreakLabel: App.uiText(App.language, "DocxPageBreak")
+            tocEmptyLabel: App.uiText(App.language, "DocxTocEmpty")
             onSaveRequested: editCtl.save()
+            //  Rechtsklick: Menü nur dort anbieten, wo es etwas zu tun gibt
+            //  (Tabelle oder Bild) — sonst bleibt der Klick wie bisher folgenlos.
+            onContextMenuRequested: (mx, my, block) => ctxMenu.openFor(mx, my, block)
             //  Cursor sichtbar halten (Inhalts- → Viewport-Koordinaten).
             onCursorRectChanged: {
                 if (cursorH <= 0) return
@@ -756,6 +1188,531 @@ Item {
                 else
                     return
                 scrollAnim.restart()
+            }
+        }
+
+        //  ── Hinweis, solange Kopf-/Fußzeile bearbeitet wird ────────────────
+        //  Ohne den wäre nicht zu erkennen, warum die Seite plötzlich nur die
+        //  Kopfzeile zeigt — sie IST in diesem Modus der Inhalt der Fläche.
+        Rectangle {
+            visible: editCtl.ready && editCtl.activeRegion !== 0
+            anchors.horizontalCenter: parent.horizontalCenter
+            anchors.top: parent.top
+            anchors.topMargin: 8
+            z: 6
+            radius: 6
+            color: App.themeAccent
+            width: regionHint.implicitWidth + 20
+            height: 26
+            Text {
+                id: regionHint
+                anchors.centerIn: parent
+                text: App.uiText(App.language, "DocxRegionHint")
+                color: "#ffffff"
+                font.pixelSize: 11
+            }
+        }
+
+        //  ── Ziehpunkte des ausgewählten Bildes ─────────────────────────────
+        //  Auswahl = der Cursor steht in einem reinen Bild-Absatz (area.
+        //  selImageBlock). Die Fläche liefert das Rechteck bereits in
+        //  ITEM-Pixeln; gezogen wird nur eine VORSCHAU — erst beim Loslassen
+        //  geht EIN setImageSizeMm an den Controller. Sonst entstünde je
+        //  Mausbewegung ein Undo-Schritt und eine neue Zeichnung im Anhang-Pool.
+        Item {
+            id: imgBox
+            visible: area.selImageBlock >= 0 && editCtl.ready
+            z: 4
+            x: area.x + area.selImageX
+            y: area.y + area.selImageY
+            width:  dragging ? previewW : Math.max(1, area.selImageW)
+            height: dragging ? previewH : Math.max(1, area.selImageH)
+
+            property bool dragging: false
+            property real previewW: 0
+            property real previewH: 0
+            //  Umrechnung Item-Pixel ↔ Millimeter: das Modell führt die Größe
+            //  in mm, die Anzeige in Pixeln — der Faktor ergibt sich aus dem
+            //  aktuellen Rechteck (er trägt Zoom und Einpass-Maßstab bereits).
+            readonly property real mmPerPx: {
+                const info = editCtl.imageInfoAt(area.selImageBlock)
+                return (info.image && area.selImageW > 1)
+                       ? info.widthMm / area.selImageW : 0.26458
+            }
+
+            Rectangle {
+                anchors.fill: parent
+                color: "transparent"
+                border.color: App.themeAccent
+                border.width: imgBox.dragging ? 2 : 1
+            }
+
+            //  4 Ecken + 4 Kantenmitten — gleiche Interaktion wie im Bild-Editor
+            //  (ImageEditBox): „nach außen ziehen vergrößert". Das Bild bleibt
+            //  am linken Textrand verankert (Inline-Absatz), es wandert also nie.
+            Repeater {
+                model: [ { hx: -1, hy: -1 }, { hx: 0, hy: -1 }, { hx: 1, hy: -1 },
+                         { hx: -1, hy:  0 },                    { hx: 1, hy:  0 },
+                         { hx: -1, hy:  1 }, { hx: 0, hy:  1 }, { hx: 1, hy:  1 } ]
+                delegate: Rectangle {
+                    id: handle
+                    required property var modelData
+                    readonly property int hx: modelData.hx
+                    readonly property int hy: modelData.hy
+                    width: 9; height: 9; radius: 2
+                    color: App.themeAccent
+                    border.color: "#ffffff"; border.width: 1
+                    x: (hx < 0 ? 0 : hx > 0 ? imgBox.width  : imgBox.width  / 2) - width / 2
+                    y: (hy < 0 ? 0 : hy > 0 ? imgBox.height : imgBox.height / 2) - height / 2
+
+                    MouseArea {
+                        anchors.fill: parent
+                        anchors.margins: -4
+                        acceptedButtons: Qt.LeftButton
+                        preventStealing: true
+                        cursorShape: {
+                            if (handle.hx !== 0 && handle.hy !== 0)
+                                return (handle.hx === handle.hy) ? Qt.SizeFDiagCursor
+                                                                 : Qt.SizeBDiagCursor
+                            return handle.hx !== 0 ? Qt.SizeHorCursor : Qt.SizeVerCursor
+                        }
+                        property real pressX: 0
+                        property real pressY: 0
+                        property real startW: 0
+                        property real startH: 0
+                        onPressed: (m) => {
+                            const p = mapToItem(viewport, m.x, m.y)
+                            pressX = p.x; pressY = p.y
+                            startW = Math.max(1, area.selImageW)
+                            startH = Math.max(1, area.selImageH)
+                            imgBox.previewW = startW
+                            imgBox.previewH = startH
+                            imgBox.dragging = true
+                        }
+                        onPositionChanged: (m) => {
+                            if (!imgBox.dragging) return
+                            const p = mapToItem(viewport, m.x, m.y)
+                            //  Nach außen ziehen vergrößert — unabhängig davon,
+                            //  an welchem der acht Punkte gezogen wird.
+                            const dx = (p.x - pressX) * (handle.hx < 0 ? -1 : 1)
+                            const dy = (p.y - pressY) * (handle.hy < 0 ? -1 : 1)
+                            let w = startW + (handle.hx !== 0 ? dx : 0)
+                            let h = startH + (handle.hy !== 0 ? dy : 0)
+                            //  Ecken halten das Seitenverhältnis (wie in Word);
+                            //  Kantenmitten dürfen bewusst verzerren.
+                            if (handle.hx !== 0 && handle.hy !== 0) {
+                                const f = Math.max(w / startW, h / startH)
+                                w = startW * f
+                                h = startH * f
+                            }
+                            imgBox.previewW = Math.max(12, w)
+                            imgBox.previewH = Math.max(12, h)
+                        }
+                        onReleased: {
+                            if (!imgBox.dragging) return
+                            imgBox.dragging = false
+                            editCtl.setImageSizeMm(area.selImageBlock,
+                                                   imgBox.previewW * imgBox.mmPerPx,
+                                                   imgBox.previewH * imgBox.mmPerPx)
+                        }
+                    }
+                }
+            }
+        }
+
+        //  ── Rahmen + Ziehpunkte der ausgewählten Tabelle ───────────────────
+        //  Auswahl = der Cursor steht in einer Tabelle (kein zweiter Zustand,
+        //  wie beim Bild). Gezogen wird eine VORSCHAU; beim Loslassen geht EIN
+        //  Aufruf an den Controller, der ALLE Spalten mit demselben Faktor
+        //  skaliert — die Zellen behalten so ihr Verhältnis zueinander.
+        Item {
+            id: tblBox
+            visible: area.selTableId >= 0 && editCtl.ready && !imgBox.visible
+            z: 3
+            x: area.x + area.selTableX
+            y: area.y + area.selTableY
+            width:  dragging ? previewW : Math.max(1, area.selTableW)
+            height: dragging ? previewH : Math.max(1, area.selTableH)
+
+            property bool dragging: false
+            property real previewW: 0
+            property real previewH: 0
+
+            Rectangle {
+                anchors.fill: parent
+                anchors.margins: -2
+                color: "transparent"
+                border.color: App.themeAccent
+                border.width: tblBox.dragging ? 2 : 1
+                opacity: tblBox.dragging ? 1.0 : 0.55
+            }
+
+            Repeater {
+                model: [ { hx: -1, hy: -1 }, { hx: 0, hy: -1 }, { hx: 1, hy: -1 },
+                         { hx: -1, hy:  0 },                    { hx: 1, hy:  0 },
+                         { hx: -1, hy:  1 }, { hx: 0, hy:  1 }, { hx: 1, hy:  1 } ]
+                delegate: Rectangle {
+                    id: th
+                    required property var modelData
+                    readonly property int hx: modelData.hx
+                    readonly property int hy: modelData.hy
+                    width: 8; height: 8; radius: 2
+                    color: App.themeAccent
+                    border.color: "#ffffff"; border.width: 1
+                    x: (hx < 0 ? 0 : hx > 0 ? tblBox.width  : tblBox.width  / 2) - width / 2
+                    y: (hy < 0 ? 0 : hy > 0 ? tblBox.height : tblBox.height / 2) - height / 2
+
+                    MouseArea {
+                        anchors.fill: parent
+                        anchors.margins: -4
+                        acceptedButtons: Qt.LeftButton
+                        preventStealing: true
+                        cursorShape: {
+                            if (th.hx !== 0 && th.hy !== 0)
+                                return (th.hx === th.hy) ? Qt.SizeFDiagCursor
+                                                         : Qt.SizeBDiagCursor
+                            return th.hx !== 0 ? Qt.SizeHorCursor : Qt.SizeVerCursor
+                        }
+                        property real pressX: 0
+                        property real startW: 0
+                        onPressed: (m) => {
+                            pressX = mapToItem(viewport, m.x, m.y).x
+                            startW = Math.max(1, area.selTableW)
+                            tblBox.previewW = startW
+                            tblBox.previewH = Math.max(1, area.selTableH)
+                            tblBox.dragging = true
+                        }
+                        onPositionChanged: (m) => {
+                            if (!tblBox.dragging) return
+                            //  Nur die BREITE ist frei wählbar: die Höhe einer
+                            //  Tabelle ergibt sich aus ihrem Inhalt. Nach außen
+                            //  ziehen vergrößert, wie beim Bild.
+                            const dx = (mapToItem(viewport, m.x, m.y).x - pressX)
+                                       * (th.hx < 0 ? -1 : 1)
+                            tblBox.previewW = Math.max(40, startW + (th.hx !== 0 ? dx : 0))
+                        }
+                        onReleased: {
+                            if (!tblBox.dragging) return
+                            tblBox.dragging = false
+                            const f = tblBox.previewW / Math.max(1, startW)
+                            if (Math.abs(f - 1.0) > 0.01)
+                                editCtl.scaleTableWidths(area.selTableId, f)
+                            area.forceActiveFocus()
+                        }
+                    }
+                }
+            }
+        }
+
+        //  ── Kontextmenü (Rechtsklick): Tabelle & Bild ──────────────────────
+        //  Bewusst ein gethemtes Popup statt eines Controls-`Menu`: die App malt
+        //  alle Bedienelemente selbst, und ein eigener Menu-Background braucht
+        //  eine berechnete implicitWidth, sonst kollabiert das Popup.
+        Popup {
+            id: ctxMenu
+            parent: area
+            width: 268
+            padding: 5
+            modal: false
+            focus: true
+            closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
+                         | Popup.CloseOnReleaseOutside
+            //  [{ text, act, enabled, sep }] — von openFor() gefüllt.
+            property var entries: []
+
+            function openFor(mx, my, block) {
+                const t = editCtl.tableInfoAt(block)
+                const im = editCtl.imageInfoAt(block)
+                let list = []
+                if (t.table) {
+                    if (t.editable) {
+                        list.push({ text: App.uiText(App.language, "DocxRowInsertAbove"),
+                                    act: () => editCtl.tableInsertRow(t.tableId, t.row) })
+                        list.push({ text: App.uiText(App.language, "DocxRowInsertBelow"),
+                                    act: () => editCtl.tableInsertRow(t.tableId, t.row + 1) })
+                        list.push({ text: App.uiText(App.language, "DocxRowDelete"),
+                                    enabled: t.rows > 1,
+                                    act: () => editCtl.tableDeleteRow(t.tableId, t.row) })
+                        list.push({ sep: true })
+                        list.push({ text: App.uiText(App.language, "DocxColInsertLeft"),
+                                    act: () => editCtl.tableInsertColumn(t.tableId, t.col) })
+                        list.push({ text: App.uiText(App.language, "DocxColInsertRight"),
+                                    act: () => editCtl.tableInsertColumn(t.tableId, t.col + 1) })
+                        list.push({ text: App.uiText(App.language, "DocxColDelete"),
+                                    enabled: t.cols > 1,
+                                    act: () => editCtl.tableDeleteColumn(t.tableId, t.col) })
+                        list.push({ sep: true })
+                        list.push({ text: App.uiText(App.language, "DocxColWidths"),
+                                    act: () => widthPop.openFor(t) })
+                    } else {
+                        list.push({ text: App.uiText(App.language, "DocxTableLocked"),
+                                    enabled: false })
+                    }
+                    list.push({ sep: true })
+                    list.push({ text: App.uiText(App.language, "DocxTableDelete"),
+                                act: () => editCtl.deleteTable(t.tableId) })
+                }
+                if (im.image) {
+                    if (list.length > 0) list.push({ sep: true })
+                    list.push({ text: App.uiText(App.language, "DocxImageSize"),
+                                act: () => imgSizePop.openFor(im) })
+                    list.push({ text: App.uiText(App.language, "DocxImageCopy"),
+                                act: () => editCtl.copyImageAtCursor() })
+                    list.push({ text: App.uiText(App.language, "DocxImageCut"),
+                                act: () => editCtl.cut() })
+                    list.push({ text: App.uiText(App.language, "DocxImageDelete"),
+                                act: () => editCtl.deleteImageAtCursor() })
+                }
+                if (list.length === 0) return
+                ctxMenu.entries = list
+                ctxMenu.x = Math.max(0, Math.min(mx, area.width - ctxMenu.width))
+                ctxMenu.y = Math.max(0, Math.min(my, area.height - ctxMenu.implicitHeight))
+                ctxMenu.open()
+            }
+
+            background: Rectangle {
+                color: App.themeMenuBarBg
+                border.color: App.themeBorder
+                radius: 8
+            }
+            contentItem: Column {
+                spacing: 1
+                Repeater {
+                    model: ctxMenu.entries
+                    delegate: Item {
+                        required property var modelData
+                        readonly property bool isSep: modelData.sep === true
+                        readonly property bool on: !isSep && modelData.enabled !== false
+                        width: ctxMenu.width - 2 * ctxMenu.padding
+                        height: isSep ? 7 : 26
+
+                        Rectangle {
+                            visible: parent.isSep
+                            anchors.verticalCenter: parent.verticalCenter
+                            width: parent.width; height: 1
+                            color: App.themeBorder
+                        }
+                        Rectangle {
+                            visible: !parent.isSep
+                            anchors.fill: parent
+                            radius: 5
+                            color: (ctxHover.hovered && parent.on) ? App.themeCard
+                                                                   : "transparent"
+                            Text {
+                                anchors.verticalCenter: parent.verticalCenter
+                                x: 8
+                                width: parent.width - 16
+                                elide: Text.ElideRight
+                                //  Trenner-Einträge tragen keinen Text.
+                                text: modelData.text !== undefined ? modelData.text : ""
+                                font.pixelSize: 12
+                                color: parent.parent.on ? App.themeTextPrimary
+                                                        : App.themeTextMuted
+                            }
+                            HoverHandler { id: ctxHover; enabled: parent.parent.on }
+                            TapHandler {
+                                enabled: parent.parent.on
+                                onTapped: {
+                                    ctxMenu.close()
+                                    modelData.act()
+                                    area.forceActiveFocus()
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        //  ── Spaltenbreiten (aus dem Kontextmenü) ───────────────────────────
+        Popup {
+            id: widthPop
+            parent: area
+            padding: 10
+            modal: false
+            focus: true
+            closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
+
+            property int tblId: -1
+            property var mmValues: []          // je Spalte ein ganzzahliger mm-Wert
+
+            function openFor(t) {
+                widthPop.tblId = t.tableId
+                let v = []
+                for (let i = 0; i < t.widths.length; ++i)
+                    v.push(Math.max(4, Math.round(t.widths[i])))
+                widthPop.mmValues = v
+                widthPop.x = Math.max(0, (area.width - widthPop.implicitWidth) / 2)
+                widthPop.y = 60
+                widthPop.open()
+            }
+            function setAt(i, v) {
+                let c = widthPop.mmValues.slice()
+                c[i] = v
+                widthPop.mmValues = c
+            }
+
+            background: Rectangle {
+                color: App.themeMenuBarBg
+                border.color: App.themeBorder
+                radius: 8
+            }
+            contentItem: Column {
+                spacing: 8
+                Text {
+                    text: App.uiText(App.language, "DocxColWidths")
+                    color: App.themeTextMuted; font.pixelSize: 11
+                }
+                Repeater {
+                    model: widthPop.mmValues.length
+                    delegate: Row {
+                        required property int index
+                        spacing: 8
+                        Text {
+                            anchors.verticalCenter: parent.verticalCenter
+                            width: 84
+                            text: (parent.index + 1) + ". (mm)"
+                            color: App.themeTextPrimary; font.pixelSize: 12
+                        }
+                        DSpin {
+                            value: widthPop.mmValues[parent.index]
+                            from: 4; to: 400
+                            onCommitted: (v) => widthPop.setAt(parent.index, v)
+                        }
+                    }
+                }
+                Rectangle {
+                    width: 130; height: 26; radius: 6
+                    color: wapHover.hovered ? Qt.darker(App.themeAccent, 1.1)
+                                            : App.themeAccent
+                    Text {
+                        anchors.centerIn: parent
+                        text: App.uiText(App.language, "DocxApply")
+                        color: "#ffffff"; font.pixelSize: 12; font.bold: true
+                    }
+                    HoverHandler { id: wapHover }
+                    TapHandler {
+                        onTapped: {
+                            editCtl.tableSetColumnWidthsMm(widthPop.tblId,
+                                                           widthPop.mmValues)
+                            widthPop.close()
+                            area.forceActiveFocus()
+                        }
+                    }
+                }
+            }
+        }
+
+        //  ── Bildgröße numerisch (aus dem Kontextmenü) ──────────────────────
+        Popup {
+            id: imgSizePop
+            parent: area
+            padding: 10
+            modal: false
+            focus: true
+            closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
+
+            property int blk: -1
+            property int wMm: 0
+            property int hMm: 0
+            property real ratio: 1.0
+            property bool keepAspect: true
+
+            function openFor(im) {
+                imgSizePop.blk = im.block
+                imgSizePop.wMm = Math.max(1, Math.round(im.widthMm))
+                imgSizePop.hMm = Math.max(1, Math.round(im.heightMm))
+                imgSizePop.ratio = imgSizePop.hMm / Math.max(1, imgSizePop.wMm)
+                imgSizePop.x = Math.max(0, (area.width - imgSizePop.implicitWidth) / 2)
+                imgSizePop.y = 60
+                imgSizePop.open()
+            }
+
+            background: Rectangle {
+                color: App.themeMenuBarBg
+                border.color: App.themeBorder
+                radius: 8
+            }
+            contentItem: Column {
+                spacing: 8
+                Row {
+                    spacing: 8
+                    Text {
+                        anchors.verticalCenter: parent.verticalCenter
+                        width: 96
+                        text: App.uiText(App.language, "DocxImageWidth")
+                        color: App.themeTextPrimary; font.pixelSize: 12
+                    }
+                    DSpin {
+                        value: imgSizePop.wMm
+                        from: 1; to: 400
+                        onCommitted: (v) => {
+                            imgSizePop.wMm = v
+                            if (imgSizePop.keepAspect)
+                                imgSizePop.hMm = Math.max(1, Math.round(v * imgSizePop.ratio))
+                        }
+                    }
+                }
+                Row {
+                    spacing: 8
+                    Text {
+                        anchors.verticalCenter: parent.verticalCenter
+                        width: 96
+                        text: App.uiText(App.language, "DocxImageHeight")
+                        color: App.themeTextPrimary; font.pixelSize: 12
+                    }
+                    DSpin {
+                        value: imgSizePop.hMm
+                        from: 1; to: 400
+                        onCommitted: (v) => {
+                            imgSizePop.hMm = v
+                            if (imgSizePop.keepAspect)
+                                imgSizePop.wMm = Math.max(1, Math.round(
+                                                     v / Math.max(0.01, imgSizePop.ratio)))
+                        }
+                    }
+                }
+                Row {
+                    spacing: 6
+                    Rectangle {
+                        width: 16; height: 16; radius: 3
+                        anchors.verticalCenter: parent.verticalCenter
+                        color: imgSizePop.keepAspect ? App.themeAccent : App.themeCard
+                        border.color: App.themeBorder
+                        Text {
+                            anchors.centerIn: parent
+                            text: imgSizePop.keepAspect ? "✓" : ""
+                            color: "#ffffff"; font.pixelSize: 11
+                        }
+                        TapHandler {
+                            onTapped: imgSizePop.keepAspect = !imgSizePop.keepAspect
+                        }
+                    }
+                    Text {
+                        anchors.verticalCenter: parent.verticalCenter
+                        text: App.uiText(App.language, "DocxKeepAspect")
+                        color: App.themeTextPrimary; font.pixelSize: 12
+                    }
+                }
+                Rectangle {
+                    width: 130; height: 26; radius: 6
+                    color: iapHover.hovered ? Qt.darker(App.themeAccent, 1.1)
+                                            : App.themeAccent
+                    Text {
+                        anchors.centerIn: parent
+                        text: App.uiText(App.language, "DocxApply")
+                        color: "#ffffff"; font.pixelSize: 12; font.bold: true
+                    }
+                    HoverHandler { id: iapHover }
+                    TapHandler {
+                        onTapped: {
+                            editCtl.setImageSizeMm(imgSizePop.blk, imgSizePop.wMm,
+                                                   imgSizePop.hMm)
+                            imgSizePop.close()
+                            area.forceActiveFocus()
+                        }
+                    }
+                }
             }
         }
 
@@ -832,7 +1789,12 @@ Item {
             }
 
             //  Gethemter kleiner Knopf.
+            //  `parent` meint hier den ELTERN-Item der Komponente, nicht die
+            //  Komponente selbst — `parent.tip`/`parent.label` waren deshalb
+            //  undefiniert („Unable to assign [undefined] to QString", sechsmal
+            //  je Suchleiste). Über die eigene id ist es eindeutig.
             component FBtn: Rectangle {
+                id: fbtn
                 property string label: ""
                 property string tip: ""
                 property bool wide: false
@@ -841,14 +1803,14 @@ Item {
                 height: 28; radius: 6
                 color: fbHover.hovered ? App.themeAccent : App.themeCard
                 border.color: App.themeBorder
-                Text { id: fbLbl; anchors.centerIn: parent; text: parent.label
+                Text { id: fbLbl; anchors.centerIn: parent; text: fbtn.label
                        color: fbHover.hovered ? "#ffffff" : App.themeTextPrimary
                        font.pixelSize: 12 }
                 HoverHandler { id: fbHover }
-                TapHandler { onTapped: parent.clicked() }
-                ToolTip.visible: fbHover.hovered && parent.tip.length > 0
+                TapHandler { onTapped: fbtn.clicked() }
+                ToolTip.visible: fbHover.hovered && fbtn.tip.length > 0
                 ToolTip.delay: 500
-                ToolTip.text: parent.tip
+                ToolTip.text: fbtn.tip
             }
 
             Grid {

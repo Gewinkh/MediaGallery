@@ -10,6 +10,12 @@
 #include <QPageSize>
 #include <QPageLayout>
 #include <QMarginsF>
+#include <QAbstractTextDocumentLayout>
+#include <QPainter>
+#include <QPalette>
+#include <QTextImageFormat>
+#include <QUrl>
+#include <QImage>
 #include <QSaveFile>
 #include <QFileInfo>
 #include <QFont>
@@ -98,12 +104,24 @@ bool exportToPdf(const Document& doc, const QString& targetPath,
 
     {
         QPdfWriter writer(&out);
-        writer.setPageSize(QPageSize(QPageSize::A4));
-        writer.setPageMargins(QMarginsF(25, 25, 25, 25), QPageLayout::Millimeter);
+        //  SEITENEINRICHTUNG AUS DEM DOKUMENT (w:sectPr) statt fest A4/25 mm —
+        //  sonst bekommt jedes Dokument dieselben Ränder, egal wie es gesetzt
+        //  ist. Die Werte liegen in Twips vor (1440 = 1 Zoll).
+        constexpr qreal kTwipToMm = 25.4 / 1440.0;
+        const SectionProps& sp = doc.section();
+        writer.setPageSize(QPageSize(QSizeF(sp.pageW * kTwipToMm, sp.pageH * kTwipToMm),
+                                     QPageSize::Millimeter, QString(),
+                                     QPageSize::FuzzyMatch));
+        writer.setPageMargins(QMarginsF(sp.marLeft * kTwipToMm, sp.marTop * kTwipToMm,
+                                        sp.marRight * kTwipToMm, sp.marBottom * kTwipToMm),
+                              QPageLayout::Millimeter);
         writer.setResolution(kResolution);
         writer.setTitle(QFileInfo(targetPath).completeBaseName());
 
         const qreal ptToPx = writer.resolution() / 72.0;
+        //  Bedruckbare Breite — Bilder werden darauf eingepasst.
+        const qreal printW =
+            writer.pageLayout().paintRectPixels(writer.resolution()).width();
 
         //  QTextDocument aus dem Modell aufbauen (gleiche aufgelösten Formate
         //  wie die Editor-Anzeige). Seitenränder liefert der QPdfWriter.
@@ -149,6 +167,39 @@ bool exportToPdf(const Document& doc, const QString& targetPath,
                 continue;
             }
 
+            //  Absatz, der NUR ein Bild trägt → als BILD ausgeben. Ohne das
+            //  fiel die Zeichnung ersatzlos weg: der Text-Zweig unten entfernt
+            //  das Objekt-Zeichen (sonst stünde dort ein Ersatzkästchen) und
+            //  damit war das Bild aus dem PDF verschwunden (Nutzerbefund).
+            {
+                InlineImage info;
+                if (doc.paragraphImage(b, &info)) {
+                    const QByteArray bytes = doc.imageBytes(info.relId);
+                    QImage im;
+                    if (!bytes.isEmpty() && im.loadFromData(bytes) && !im.isNull()) {
+                        const QString name =
+                            QStringLiteral("mgdocx:/%1").arg(info.relId);
+                        td.addResource(QTextDocument::ImageResource,
+                                       QUrl(name), QVariant(im));
+                        //  Sollmaß aus wp:extent (EMU), sonst native Pixel;
+                        //  auf die bedruckbare Breite einpassen.
+                        constexpr qreal kEmuPerPx = 914400.0 / 96.0;
+                        qreal w = info.cxEmu > 0 ? info.cxEmu / kEmuPerPx : im.width();
+                        qreal h = info.cyEmu > 0 ? info.cyEmu / kEmuPerPx : im.height();
+                        w *= writer.resolution() / 96.0;
+                        h *= writer.resolution() / 96.0;
+                        if (w > printW && w > 0) { h *= printW / w; w = printW; }
+                        QTextImageFormat ifmt;
+                        ifmt.setName(name);
+                        ifmt.setWidth(qMax(1.0, w));
+                        ifmt.setHeight(qMax(1.0, h));
+                        beginBlock(blockFormatFor(doc.resolvePar(b), ptToPx));
+                        cur.insertImage(ifmt);
+                        continue;
+                    }
+                }
+            }
+
             //  Absatz.
             const ParFmt pf = doc.resolvePar(b);
             const QTextBlockFormat bf = blockFormatFor(pf, ptToPx);
@@ -185,8 +236,32 @@ bool exportToPdf(const Document& doc, const QString& targetPath,
             }
         }
 
-        //  Paginiert nach A4 schreiben (Qt-Text-Engine übernimmt Umbruch/Ränder).
-        td.print(&writer);
+        //  SELBST paginieren statt QTextDocument::print(): print() skaliert den
+        //  Inhalt mit dem Verhältnis Geräte-DPI zu Dokument-DPI — und die
+        //  Dokument-DPI kommt mangels Zeichengerät vom BILDSCHIRM. Auf einem
+        //  HiDPI-Schirm schrumpfte der Text dadurch auf ~75 % und die Ränder
+        //  wuchsen entsprechend (gemessen: 45 mm statt 25 mm, Textbreite 119
+        //  statt 160 mm). Mit eigenem Paginieren hängt die Ausgabe an nichts
+        //  außer dem Dokument.
+        const QRectF paintRect =
+            writer.pageLayout().paintRectPixels(writer.resolution());
+        td.documentLayout()->setPaintDevice(&writer);   // Metriken = Writer-DPI
+        td.setPageSize(paintRect.size());
+
+        QPainter p(&writer);
+        const int pages = qMax(1, td.pageCount());
+        for (int pg = 0; pg < pages; ++pg) {
+            if (pg > 0) writer.newPage();
+            p.save();
+            p.translate(0, -pg * paintRect.height());
+            QAbstractTextDocumentLayout::PaintContext ctx;
+            ctx.clip = QRectF(0, pg * paintRect.height(),
+                              paintRect.width(), paintRect.height());
+            ctx.palette.setColor(QPalette::Text, Qt::black);
+            td.documentLayout()->draw(&p, ctx);
+            p.restore();
+        }
+        p.end();
     }   // QPdfWriter zerstört → PDF finalisiert (Trailer) in den QSaveFile-Puffer
 
     if (!out.commit()) {

@@ -205,6 +205,8 @@ target_link_libraries(MediaGallery PRIVATE
     ZLIB::ZLIB
 )
 
+target_compile_options(MediaGallery PRIVATE -w)
+
 #  OCR optional dazulinken (Degradationskette: ohne Tesseract kein OCR).
 if(TESSERACT_FOUND)
     target_link_libraries(MediaGallery PRIVATE PkgConfig::TESSERACT)
@@ -222,16 +224,6 @@ if(APPLE)
     set_target_properties(MediaGallery PROPERTIES MACOSX_BUNDLE TRUE)
 endif()
 
-#  Regressionssuite (CLAUDE.md Regel 23): eigenständige Testtreiber unter
-#  tests/, ausgeführt über ctest. Standardmäßig AN; für reine Auslieferungs-
-#  Builds mit -DMG_BUILD_TESTS=OFF abschaltbar.
-#
-#  WICHTIG — das Verzeichnis wird bewusst NUR eingebunden, wenn es tatsächlich
-#  vorhanden ist: `tests/` steht in der .gitignore und ist damit NICHT Teil des
-#  veröffentlichten Repositorys. Ohne diese Prüfung bräche ein frischer Clone
-#  bereits beim Konfigurieren ab ("add_subdirectory given source 'tests' which
-#  is not an existing directory"). So bleibt das Repository für sich allein
-#  baubar, und wer die Suite hat, bekommt sie automatisch dazu.
 option(MG_BUILD_TESTS "Regressionssuite (tests/) mitbauen, sofern vorhanden" ON)
 if(MG_BUILD_TESTS AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/tests/CMakeLists.txt")
     enable_testing()

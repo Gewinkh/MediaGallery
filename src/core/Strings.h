@@ -316,6 +316,46 @@ enum class StringKey {
     DocxExportedTo,           // Status nach Kopie-Export (%1 = Dateiname)
     DocxTablePlaceholder,     // Platzhalterzeile für opake Blöcke
     DocxPageBreak,            // Marker-Beschriftung der gestrichelten Linie
+    DocxParagraphStyle,       // Tooltip Formatvorlagen-Combo
+    DocxInsertTable,          // Toolbar: Tabelle einfügen
+    DocxTableRows,            // Popup: Zeilen
+    DocxTableCols,            // Popup: Spalten
+    DocxInsert,               // Popup: Einfügen-Knopf
+    DocxInsertImage,          // Toolbar: Bild einfügen
+    DocxImageFilter,          // Dateidialog-Filter
+    DocxImageError,           // Status: Bild konnte nicht eingefügt werden
+    DocxImageFromFolder,      // Bild-Popup: aus dem Ordner der Datei wählen
+    DocxNoImagesInFolder,     // Bild-Popup: Ordner enthält keine Bilder
+    DocxImageBrowse,          // Bild-Popup: Dateidialog öffnen
+    // Kontextmenü der Tabelle (Rechtsklick in der Fläche)
+    DocxRowInsertAbove,
+    DocxRowInsertBelow,
+    DocxRowDelete,
+    DocxColInsertLeft,
+    DocxColInsertRight,
+    DocxColDelete,
+    DocxColWidths,            // öffnet den Breiten-Dialog
+    DocxTableDelete,
+    DocxTableLocked,          // verbundene Zellen → Struktur unveränderlich
+    // Bildgröße (Kontextmenü + Ziehpunkte)
+    DocxImageSize,
+    DocxImageWidth,
+    DocxImageHeight,
+    DocxKeepAspect,
+    DocxApply,                // Übernehmen-Knopf der kleinen Popups
+    // Bearbeitungs-Region (Körper / Kopfzeile / Fußzeile)
+    DocxRegionBody,
+    DocxRegionHeader,
+    DocxRegionFooter,
+    DocxRegionHint,           // Banner beim Bearbeiten von Kopf-/Fußzeile
+    DocxRegionNone,           // Status: Datei hat keine Kopf-/Fußzeile
+    DocxInsertToc,            // Toolbar: Inhaltsverzeichnis einfügen
+    DocxTocEmpty,             // Verzeichnis ohne Überschriften
+    DocxInsertPdfPage,        // Titel der Seitenauswahl beim Bild-Einfügen
+    DocxPdfPageError,         // PDF nicht lesbar
+    DocxImageCopy,
+    DocxImageCut,
+    DocxImageDelete,
     DocxAlignJustify,         // Tooltip 4. Ausrichtungs-Button
     DocxLineSpacing,          // Tooltip Zeilenabstand-Combo
     DocxSpaceBefore,          // Tooltip SpinBox

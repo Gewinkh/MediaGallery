@@ -52,6 +52,20 @@ int main(int argc, char* argv[]) {
     QQuickStyle::setStyle(QStringLiteral("style"));
     QQuickStyle::setFallbackStyle(QStringLiteral("Fusion"));
 
+    //  Datei-/Ordnerdialoge NICHT nativ öffnen.
+    //  Der native Dialog (auf dem Linux-Desktop der GTK-/Portal-Dialog) folgt
+    //  ausschließlich den Systemfarben — im dunklen App-Theme sitzt dann ein
+    //  helles Fremdfenster mitten in der Anwendung, und seine Liste scrollt in
+    //  festen Rastungen. Er liest KEINE Qt-Palette, ist also von hier aus
+    //  überhaupt nicht einfärbbar. Qts eigene QML-Fassung dagegen erbt die
+    //  Palette ihres Elternfensters — und die setzt ApplicationShell.qml
+    //  bereits aus dem App-Theme. EINE Zeile deckt damit alle sieben
+    //  Dialog-Stellen ab (Ordner öffnen, Lesezeichen, Design-Import/-Export,
+    //  PDF-Bild/-Anhang, DOCX-Bild).
+    //  Preis, bewusst in Kauf genommen: die Desktop-Integration des nativen
+    //  Dialogs (GTK-Lesezeichen, zuletzt benutzte Orte) entfällt.
+    QCoreApplication::setAttribute(Qt::AA_DontUseNativeDialogs);
+
     // ── Qt WebEngine: NICHT mehr beim Start initialisieren (RAM-Baseline) ────
     // Viele Nutzer öffnen nie eine HTML-Datei — die Chromium-Grundkosten von
     // QtWebEngineQuick::initialize() beim Start wären reine Verschwendung.
@@ -242,6 +256,9 @@ int main(int argc, char* argv[]) {
     qmlRegisterType<ImageEditController>("MediaGallery", 1, 0, "ImageEditController");
     qmlRegisterType<DocxEditController>("MediaGallery", 1, 0, "DocxEditController");
     qmlRegisterType<DocxTextArea>      ("MediaGallery", 1, 0, "DocxTextArea");
+    //  Seiten-Miniatur des DOCX-Editors (Delegate der Miniaturen-Leiste; malt
+    //  über DocxTextArea::paintPageInto, hält also selbst kein Bild).
+    qmlRegisterType<DocxPageThumb>     ("MediaGallery", 1, 0, "DocxPageThumb");
     qmlRegisterSingletonInstance("MediaGallery", 1, 0, "Translit",  &translit);
     qmlRegisterSingletonInstance("MediaGallery", 1, 0, "WebEngine", &webEngine);
 

@@ -40,6 +40,17 @@ public:
                              const DocxCursor& curBefore, const DocxCursor& curAfter,
                              int mergeKind = -1);
 
+    //  Struktur-Änderungen an einer Tabelle (Zeile/Spalte/Breite) mutieren
+    //  NEBEN den Blöcken auch das Gerüst (TableDef). Ohne diesen Schnappschuss
+    //  liefe Undo auseinander: die Blöcke kämen zurück, das Gerüst behielte die
+    //  zusätzliche Zeile — und beim Speichern entstünde eine leere Geisterzeile.
+    void snapshotTable(int tableId, const Docx::TableDef& before,
+                       const Docx::TableDef& after);
+    //  Region (Körper/Kopf-/Fußzeile), in der dieses Kommando gilt. Undo/Redo
+    //  schalten VOR dem Anwenden dorthin um — die Ansicht folgt, genau wie in
+    //  Word. Deshalb genügt EIN Undo-Stapel für alle Regionen.
+    void setRegion(int r) { m_regionId = r; }
+
     void undo() override;
     void redo() override;
     int  id() const override { return m_mergeKind >= 0 ? 0xD0C : -1; }
@@ -54,4 +65,7 @@ private:
     DocxCursor          m_curAfter;
     int                 m_mergeKind;
     bool                m_firstRedo = true;   // push() ruft redo(); Mutation lief schon
+    int                 m_regionId = 0;       // DocxEditController::Region
+    int                 m_tableId = -1;       // −1 = kein Gerüst betroffen
+    Docx::TableDef      m_tblBefore, m_tblAfter;
 };
