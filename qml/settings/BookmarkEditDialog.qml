@@ -1,8 +1,8 @@
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
-import QtQuick.Dialogs
 import MediaGallery 1.0
+import "../common"
 
 // ── Wiederverwendbarer Dialog: gespeicherten Ordner (Lesezeichen) anlegen/ändern
 //
@@ -11,7 +11,7 @@ import MediaGallery 1.0
 //    • Hauptmenü ▸ Ordner ▸ "Ordner hinzufügen"
 //
 //  Die Komponente ist self-contained: Sie kapselt den modalen Eingabedialog
-//  (Anzeigename + Pfad + Durchsuchen) samt FolderDialog und schreibt direkt
+//  (Anzeigename + Pfad + Durchsuchen) samt Ordner-Wähler und schreibt direkt
 //  über die globalen Singletons App.addBookmark / App.updateBookmark.
 //
 //  API:
@@ -107,9 +107,10 @@ Item {
     }
 
     // ── Ordner-Auswahl (füllt nur das Pfadfeld) ──────────────────────────────
-    FolderDialog {
+    FileChooser {
         id: folderDialog
         title: App.uiText(App.language, "SettingsBookChooseFolder")
+        fileMode: FileChooser.Directory
         onAccepted: {
             var p = selectedFolder.toString()
             if (p.startsWith("file://")) p = decodeURIComponent(p.substring(7))

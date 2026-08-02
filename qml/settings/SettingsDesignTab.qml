@@ -2,7 +2,6 @@ pragma ComponentBehavior: Bound
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
-import QtQuick.Dialogs
 import MediaGallery 1.0
 import "../common"
 
@@ -414,19 +413,19 @@ Item {
         }
     }
 
-    FileDialog {
+    FileChooser {
         id: exportDialog
         title: App.uiText(App.language, "SettingsDesignExportTitle")
-        fileMode: FileDialog.SaveFile
+        fileMode: FileChooser.SaveFile
         nameFilters: [App.uiText(App.language, "SettingsDesignThemeFileFilter"), App.uiText(App.language, "SettingsDesignAllFilesFilter")]
         defaultSuffix: "json"
         onAccepted: App.exportCustomTheme(selectedFile)
     }
 
-    FileDialog {
+    FileChooser {
         id: importDialog
         title: App.uiText(App.language, "SettingsDesignImportTitle")
-        fileMode: FileDialog.OpenFile
+        fileMode: FileChooser.OpenFile
         nameFilters: [App.uiText(App.language, "SettingsDesignThemeFileFilter"), App.uiText(App.language, "SettingsDesignAllFilesFilter")]
         onAccepted: { if (App.importCustomTheme(selectedFile)) root.loadTheme() }
     }

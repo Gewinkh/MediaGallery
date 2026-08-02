@@ -1,6 +1,5 @@
 import QtQuick
 import QtQuick.Controls.Basic
-import QtQuick.Dialogs
 import MediaGallery 1.0
 import "../common"
 import "../pdf"
@@ -82,18 +81,57 @@ Item {
 
     //  ── PDF-Seiten als Bild einfügen ─────────────────────────────────────
     //  Wird im Bild-Popup eine PDF gewählt, kommt NICHT stillschweigend deren
-    //  Cover ins Dokument: es öffnet dieselbe Seitenauswahl wie die
-    //  Extraktion (großes Raster, jede Seite anklickbar, Mehrfachauswahl).
-    //  Die Komponente ist unverändert wiederverwendet — sie kennt den Modus
+    //  Cover ins Dokument: es öffnet DERSELBE große Auswahlbildschirm wie die
+    //  Extraktion — links alle PDFs des Ordners, rechts das Seitenraster der
+    //  angeklickten, unten die Werkbank-Leiste für die Reihenfolge.
+    //  Die Komponente ist unverändert wiederverwendet; sie kennt den Modus
     //  „ohne Namensabfrage" schon vom PDF-Editor („Seiten einfügen").
+    //
+    //  Der Ordner-Scan läuft über das Singleton `PdfExtract` (async, ermittelt
+    //  je PDF die Seitenzahl). Weil ALLE Flächen und die Shell dasselbe
+    //  Singleton hören, markiert `_pdfScanPending`, dass der laufende Scan von
+    //  HIER stammt — Muster wie `_extractPending` in PdfSurface/ApplicationShell.
+    property bool _pdfScanPending: false
+    property string _pdfScanPick: ""      // angeklickte PDF (Basisname)
+
+    function _baseName(s) {
+        const t = decodeURIComponent(String(s))
+        const i = Math.max(t.lastIndexOf("/"), t.lastIndexOf("\\"))
+        return i >= 0 ? t.substring(i + 1) : t
+    }
+
     function openPdfPagePicker(fileUrl) {
         const n = editCtl.pdfPageCount(fileUrl)
         if (n <= 0) {
             statusText.flash(App.uiText(App.language, "DocxPdfPageError"))
             return
         }
-        pdfPagesDlg.files = [ { path: fileUrl, pageCount: n } ]
-        pdfPagesDlg.open()
+        const dir = editCtl.folderPath()
+        if (dir.length > 0) {
+            //  Ergebnis öffnet den Dialog in onFolderPdfsReady; scheitert der
+            //  Scan, greift dort der Rückfall auf die eine angeklickte Datei.
+            root._pdfScanPick    = root._baseName(fileUrl)
+            root._pdfScanPending = true
+            PdfExtract.scanFolder(dir)
+            return
+        }
+        pdfPagesDlg.openWith([ { path: fileUrl, pageCount: n } ], 0)
+    }
+
+    Connections {
+        target: PdfExtract
+        function onFolderPdfsReady(files) {
+            if (!root._pdfScanPending) return    // Scan eines anderen Aufrufers
+            root._pdfScanPending = false
+            if (files.length === 0) {
+                statusText.flash(App.uiText(App.language, "DocxPdfPageError"))
+                return
+            }
+            let idx = 0
+            for (let i = 0; i < files.length; ++i)
+                if (root._baseName(files[i].path) === root._pdfScanPick) { idx = i; break }
+            pdfPagesDlg.openWith(files, idx)
+        }
     }
 
     PdfPageSelectDialog {
@@ -103,6 +141,7 @@ Item {
         requireName: false
         askName: false
         titleText: App.uiText(App.language, "DocxInsertPdfPage")
+        confirmText: App.uiText(App.language, "DocxInsertPdfPageBtn")
         //  Reihenfolge = Auswahlreihenfolge; jede Seite wird ein eigener
         //  Bild-Absatz (und damit ein eigener Undo-Schritt).
         onExtractRequested: (items, name) => {
@@ -112,9 +151,10 @@ Item {
         }
     }
 
-    //  Dateiauswahl fürs Bild-Einfügen (Labs-Dialog wie anderswo in der App).
-    FileDialog {
+    //  Dateiauswahl fürs Bild-Einfügen — eigener gethemter Wähler (qml/common).
+    FileChooser {
         id: imgDialog
+        fileMode: FileChooser.OpenFile
         title: App.uiText(App.language, "DocxInsertImage")
         nameFilters: [ App.uiText(App.language, "DocxImageFilter") ]
         onAccepted: editCtl.insertImage(selectedFile)
@@ -147,7 +187,14 @@ Item {
         function reloadStyles() {
             const l = editCtl.ready ? editCtl.paragraphStyles() : []
             const n = []
-            for (let i = 0; i < l.length; ++i) n.push(l[i].name)
+            for (let i = 0; i < l.length; ++i) {
+                //  Überschriften heißen im OOXML immer „heading N" (nur an
+                //  diesem eingebauten Namen erkennt Word sie als Überschrift) —
+                //  angezeigt wird die übersetzte Fassung.
+                const m = /^Heading([1-9])$/.exec(l[i].id)
+                n.push(m ? App.uiText(App.language, "DocxHeadingLevel").arg(m[1])
+                         : l[i].name)
+            }
             bar.styleList  = l
             bar.styleNames = n
         }
@@ -1223,28 +1270,81 @@ Item {
             id: imgBox
             visible: area.selImageBlock >= 0 && editCtl.ready
             z: 4
-            x: area.x + area.selImageX
-            y: area.y + area.selImageY
+            x: area.x + area.selImageX + (moving ? previewDx : 0)
+            y: area.y + area.selImageY + (moving ? previewDy : 0)
             width:  dragging ? previewW : Math.max(1, area.selImageW)
             height: dragging ? previewH : Math.max(1, area.selImageH)
 
             property bool dragging: false
             property real previewW: 0
             property real previewH: 0
+            //  Verschieben (nur umfließende Bilder — ein Zeilen-Bild hat keine
+            //  Lage, es steht dort, wo sein Zeichen im Text steht).
+            property bool moving: false
+            property real previewDx: 0
+            property real previewDy: 0
+            //  Auskunft zum ausgewählten Bild; hängt an denselben Bindungen wie
+            //  das Rechteck, wird also mit jeder Auswahl/Änderung neu geholt.
+            readonly property var selInfo: (area.selImageBlock >= 0 && editCtl.ready
+                                            && area.selImageW >= 0 && editCtl.formatRev >= 0)
+                                           ? editCtl.imageInfoAt(area.selImageBlock)
+                                           : ({ image: false })
+            readonly property bool floatingSel: selInfo.image === true
+                                                && selInfo.floating === true
             //  Umrechnung Item-Pixel ↔ Millimeter: das Modell führt die Größe
             //  in mm, die Anzeige in Pixeln — der Faktor ergibt sich aus dem
             //  aktuellen Rechteck (er trägt Zoom und Einpass-Maßstab bereits).
-            readonly property real mmPerPx: {
-                const info = editCtl.imageInfoAt(area.selImageBlock)
-                return (info.image && area.selImageW > 1)
-                       ? info.widthMm / area.selImageW : 0.26458
-            }
+            readonly property real mmPerPx: (selInfo.image && area.selImageW > 1)
+                                            ? selInfo.widthMm / area.selImageW : 0.26458
 
             Rectangle {
                 anchors.fill: parent
                 color: "transparent"
                 border.color: App.themeAccent
-                border.width: imgBox.dragging ? 2 : 1
+                border.width: (imgBox.dragging || imgBox.moving) ? 2 : 1
+            }
+
+            //  Ziehen im Bild selbst VERSCHIEBT es — aber nur, wenn es
+            //  umfließend ist; sonst müsste die Fläche Klicks schlucken, die
+            //  in Wahrheit den Cursor setzen sollen. Wie beim Ändern der Größe
+            //  wandert nur eine VORSCHAU, erst das Loslassen schreibt EINEN
+            //  Undo-Schritt.
+            MouseArea {
+                anchors.fill: parent
+                z: -1
+                enabled: imgBox.floatingSel && !imgBox.dragging
+                visible: enabled
+                acceptedButtons: Qt.LeftButton
+                preventStealing: true
+                cursorShape: Qt.SizeAllCursor
+                property real pressX: 0
+                property real pressY: 0
+                onPressed: (m) => {
+                    const p = mapToItem(viewport, m.x, m.y)
+                    pressX = p.x; pressY = p.y
+                    imgBox.previewDx = 0
+                    imgBox.previewDy = 0
+                    imgBox.moving = true
+                }
+                onPositionChanged: (m) => {
+                    if (!imgBox.moving) return
+                    const p = mapToItem(viewport, m.x, m.y)
+                    imgBox.previewDx = p.x - pressX
+                    imgBox.previewDy = p.y - pressY
+                }
+                onReleased: {
+                    if (!imgBox.moving) return
+                    imgBox.moving = false
+                    if (Math.abs(imgBox.previewDx) < 2 && Math.abs(imgBox.previewDy) < 2)
+                        return                       // Klick, keine Geste
+                    const info = imgBox.selInfo
+                    if (!info.image) return
+                    editCtl.setImagePositionMm(
+                        area.selImageBlock,
+                        info.xMm + imgBox.previewDx * imgBox.mmPerPx,
+                        info.yMm + imgBox.previewDy * imgBox.mmPerPx)
+                }
+                onCanceled: imgBox.moving = false
             }
 
             //  4 Ecken + 4 Kantenmitten — gleiche Interaktion wie im Bild-Editor
@@ -1339,12 +1439,41 @@ Item {
             property real previewH: 0
 
             Rectangle {
+                id: tblFrame
                 anchors.fill: parent
                 anchors.margins: -2
                 color: "transparent"
                 border.color: App.themeAccent
                 border.width: tblBox.dragging ? 2 : 1
                 opacity: tblBox.dragging ? 1.0 : 0.55
+
+                //  Klick auf den RAHMEN wählt die ganze Tabelle aus — danach
+                //  löscht `Entf`/`Rücktaste` sie (`deleteSelectedTable`).
+                //  VIER Randstreifen statt einer Fläche mit `containmentMask`:
+                //  eine Maske aus einem `QtObject` wird von Qt VERWORFEN
+                //  („does not have an invokable contains method") — die Fläche
+                //  hätte dann die ganze Tabelle abgedeckt und jeden Klick in
+                //  eine Zelle verschluckt. Die Ziehpunkte liegen darüber und
+                //  behalten Vorrang.
+                Repeater {
+                    model: [ "top", "bottom", "left", "right" ]
+                    delegate: MouseArea {
+                        required property string modelData
+                        readonly property bool horiz: modelData === "top"
+                                                      || modelData === "bottom"
+                        width:  horiz ? parent.width : 6
+                        height: horiz ? 6 : parent.height
+                        x: modelData === "right" ? parent.width - 6 : 0
+                        y: modelData === "bottom" ? parent.height - 6 : 0
+                        acceptedButtons: Qt.LeftButton
+                        hoverEnabled: true
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: {
+                            editCtl.selectTable(area.selTableId)
+                            area.forceActiveFocus()
+                        }
+                    }
+                }
             }
 
             Repeater {
@@ -1449,13 +1578,57 @@ Item {
                                     enabled: false })
                     }
                     list.push({ sep: true })
+                    //  Ganze Tabelle in die Zwischenablage — dieselben Wege wie
+                    //  Strg+C/X/V, hier nur sichtbar gemacht. Verschieben =
+                    //  Ausschneiden + an der Zielstelle Einfügen.
+                    list.push({ text: App.uiText(App.language, "DocxTableCopy"),
+                                enabled: t.editable,
+                                act: () => editCtl.copyTableAtCursor() })
+                    list.push({ text: App.uiText(App.language, "DocxTableCut"),
+                                enabled: t.editable,
+                                act: () => editCtl.cut() })
                     list.push({ text: App.uiText(App.language, "DocxTableDelete"),
                                 act: () => editCtl.deleteTable(t.tableId) })
+                }
+                //  Einfügen steht auch AUSSERHALB einer Tabelle bereit — sonst
+                //  ließe sich eine ausgeschnittene Tabelle nirgends absetzen.
+                //  Nur, wenn wirklich eine in der Ablage liegt: sonst erschiene
+                //  bei jedem Rechtsklick im Fließtext ein Menü mit einem
+                //  einzigen, wirkungslosen Eintrag.
+                if (editCtl.ready && editCtl.clipboardHasTable()) {
+                    if (list.length > 0) list.push({ sep: true })
+                    list.push({ text: App.uiText(App.language, "DocxTablePaste"),
+                                act: () => editCtl.paste() })
                 }
                 if (im.image) {
                     if (list.length > 0) list.push({ sep: true })
                     list.push({ text: App.uiText(App.language, "DocxImageSize"),
                                 act: () => imgSizePop.openFor(im) })
+                    //  Umbruchart: in der Zeile (wp:inline) oder umfließend
+                    //  (wp:anchor + w:wrapSquare) — gezeigt wird immer das,
+                    //  was man WÄHLEN kann, nicht der aktuelle Zustand.
+                    list.push({ text: App.uiText(App.language,
+                                    im.floating ? "DocxImageInline"
+                                                : "DocxImageFloating"),
+                                act: () => editCtl.setImageFloating(block,
+                                                                    !im.floating) })
+                    //  Umbruchseite — nur ein umfließendes Bild hat eine. Der
+                    //  laufende Wert bekommt einen Haken, damit man nicht raten
+                    //  muss, wie es gerade steht.
+                    if (im.floating) {
+                        //  „Beide Seiten" (Words Vorgabe) zeigt die Anzeige wie
+                        //  „breitere Seite" — eine Zeile kann nicht in zwei
+                        //  Stücke links UND rechts des Bildes zerfallen. Damit
+                        //  Menü, Datei und Anzeige dasselbe sagen, wird hier
+                        //  Words eigener Wert `largest` geschrieben.
+                        const side = (v) => (im.wrapSide === v ? "✓  " : "     ")
+                        list.push({ text: side(3) + App.uiText(App.language, "DocxWrapLargest"),
+                                    act: () => editCtl.setImageWrapSide(block, 3) })
+                        list.push({ text: side(1) + App.uiText(App.language, "DocxWrapLeft"),
+                                    act: () => editCtl.setImageWrapSide(block, 1) })
+                        list.push({ text: side(2) + App.uiText(App.language, "DocxWrapRight"),
+                                    act: () => editCtl.setImageWrapSide(block, 2) })
+                    }
                     list.push({ text: App.uiText(App.language, "DocxImageCopy"),
                                 act: () => editCtl.copyImageAtCursor() })
                     list.push({ text: App.uiText(App.language, "DocxImageCut"),
@@ -1879,8 +2052,7 @@ Item {
                      && root.source.length > 0
         }
 
-        //  Animiertes Mausrad (Muster TextSurface: halbe Viewporthöhe je
-        //  Klick, 180 ms OutCubic) — schreibt area.contentY.
+        //  Animiertes Mausrad (180 ms OutCubic) — schreibt area.contentY.
         NumberAnimation {
             id: scrollAnim
             target: area
@@ -1891,12 +2063,31 @@ Item {
         MouseArea {
             anchors.fill: parent
             acceptedButtons: Qt.NoButton
+            //  ZEILEN je Rastung, wie in jedem Texteditor — nicht ein Anteil
+            //  der Fensterhöhe. Der Anteil war zuletzt ein Viertel Viewport und
+            //  damit auf einem 900-px-Fenster ~225 px je Rastung, also das
+            //  Vierfache eines gewöhnlichen Editors; außerdem hing die
+            //  Geschwindigkeit an der Fenstergröße (Nutzerbefund „immer noch zu
+            //  schnell"). Die Zeilenzahl kommt aus derselben Systemeinstellung,
+            //  die auch die Qt-Dialoge benutzen.
+            //  `Application.styleHints`, NICHT `Qt.styleHints` — Letzteres gibt
+            //  es in QML nicht, die Bindung wäre still NaN und das Rad tot.
+            readonly property int wheelLines:
+                Math.max(1, Application.styleHints.wheelScrollLines)
             onWheel: (w) => {
-                const step = viewport.height / 2
-                const dir = w.angleDelta.y > 0 ? -1 : 1
+                //  Touchpad/hochauflösendes Rad liefern `pixelDelta` — das ist
+                //  bereits die gewünschte Strecke und wird PIXELGENAU
+                //  übernommen; alles andere zählt Rastungen (120 = eine).
+                let dy = 0
+                if (w.pixelDelta.y !== 0)
+                    dy = w.pixelDelta.y
+                else if (w.angleDelta.y !== 0)
+                    dy = (w.angleDelta.y / 120) * wheelLines * area.lineStep
+                if (dy === 0) return
                 const base = scrollAnim.running ? scrollAnim.to : area.contentY
-                scrollAnim.to = Math.max(0, Math.min(base + dir * step,
-                                     Math.max(0, area.contentHeight - viewport.height)))
+                scrollAnim.to = Math.max(0,
+                    Math.min(base - dy,
+                             Math.max(0, area.contentHeight - viewport.height)))
                 scrollAnim.restart()
             }
         }

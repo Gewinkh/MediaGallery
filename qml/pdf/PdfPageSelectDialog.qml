@@ -64,12 +64,14 @@ Item {
     property bool   _previewOk: false
     property int    _prevRev: 0
 
-    function openWith(fileList) {
+    //  `activeIdx` (optional) wählt die links vorausgewählte Datei — der DOCX-Weg
+    //  reicht ALLE PDFs des Ordners herein, öffnet aber auf der angeklickten.
+    function openWith(fileList, activeIdx) {
         files = fileList || []
         barModel.clear()
         _inSel = ({})
         _selRev++
-        _activeFileIdx = 0
+        _activeFileIdx = (activeIdx > 0 && activeIdx < files.length) ? activeIdx : 0
         _clearHover()
         dlg.open()
     }
@@ -350,6 +352,16 @@ Item {
                             spacing: 4
                             boundsBehavior: Flickable.StopAtBounds
                             ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
+
+                            //  Die vorausgewählte Datei muss auch SICHTBAR sein.
+                            //  Beim ERSTEN Öffnen entsteht dieser Baum erst nach
+                            //  `openWith` (Popup-Inhalt wird lazy erzeugt), bei
+                            //  jedem weiteren steht er schon — deshalb beides.
+                            currentIndex: root._activeFileIdx
+                            onCurrentIndexChanged: positionViewAtIndex(currentIndex,
+                                                                       ListView.Contain)
+                            Component.onCompleted: positionViewAtIndex(root._activeFileIdx,
+                                                                       ListView.Contain)
 
                             delegate: Rectangle {
                                 id: fileRow

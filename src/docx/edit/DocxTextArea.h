@@ -44,6 +44,10 @@ class DocxTextArea : public QQuickPaintedItem {
     //  Cursor-Rechteck in INHALTS-Koordinaten (QML scrollt es sichtbar).
     Q_PROPERTY(qreal cursorY READ cursorY NOTIFY cursorRectChanged)
     Q_PROPERTY(qreal cursorH READ cursorH NOTIFY cursorRectChanged)
+    //  Höhe EINER Textzeile in ITEM-Pixeln (mit Maßstab). Das Mausrad rechnet
+    //  seine Schrittweite daraus — ein Textdokument scrollt in Zeilen, nicht in
+    //  Bruchteilen der Fenster­höhe.
+    Q_PROPERTY(qreal lineStep READ lineStep NOTIFY contentHeightChanged)
     //  i18n-Texte kommen aus QML (App.uiText) — kein Strings-Coupling hier.
     Q_PROPERTY(QString tablePlaceholder MEMBER m_tablePlaceholder NOTIFY labelsChanged)
     Q_PROPERTY(QString pageBreakLabel MEMBER m_pageBreakLabel NOTIFY labelsChanged)
@@ -88,6 +92,7 @@ public:
     //  m_cursorRect liegt in Dokument-Pixeln; QML rechnet mit Item-Pixeln.
     qreal cursorY() const { return m_cursorRect.y() * m_scale; }
     qreal cursorH() const { return m_cursorRect.height() * m_scale; }
+    qreal lineStep() const;
 
     int   pageCount() const { return m_pageCount; }
     int   currentPage() const;
@@ -105,6 +110,10 @@ public:
     //  Oberkante einer Seite in ITEM-Pixeln — QML setzt damit contentY, wenn
     //  eine Miniatur angeklickt wird.
     Q_INVOKABLE qreal pageTop(int page);
+    //  1-basierte Seitenzahl eines Blocks — Grundlage der
+    //  Verzeichnis-Einträge und im Testtreiber die Probe darauf, dass
+    //  das Verzeichnis wirklich allein auf seinen Seiten steht.
+    Q_INVOKABLE int pageOfBlock(int i);
 
     //  EINE Seite in ein Zielrechteck malen (Miniaturen, s. DocxPageThumb).
     //  Nutzt denselben Zeichenweg wie paint() — es gibt keine zweite Darstellung
@@ -159,9 +168,12 @@ private:
     //    Maßstab passt eine zu breite Seite in eine schmale Kachel ein und ist
     //    ein reiner Zeichen-Faktor — das Layout selbst bleibt seitengenau.
     struct PageSeg {
-        int   slot      = 0;                   // Spalten-Slot dieses Stücks
-        int   firstLine = 0;                   // erste Zeile des Stücks
-        qreal yInSlot   = 0.0;                 // Oberkante im Slot
+        int   slot    = 0;                     // Spalten-Slot dieses Stücks
+        //  ZWEI Bedeutungen, je nach Block: bei einem Absatz die erste ZEILE
+        //  des Stücks, bei einem Inhaltsverzeichnis der erste EINTRAG dieser
+        //  Seite. Nie direkt lesen — segFirstLine()/segFirstEntry() trennen das.
+        int   first   = 0;
+        qreal yInSlot = 0.0;                   // Oberkante im Slot
     };
     //  ── Tabellen-ANZEIGE (read-only) ─────────────────────────────────────────
     //  Eine Tabelle bleibt EIN Block (beim Speichern byteidentisch). Sie wird
@@ -185,15 +197,70 @@ private:
         qreal width = 0.0;
     };
 
+    //  ── Ein STÜCK eines Absatzes ─────────────────────────────────────────────
+    //  Ein Absatz ohne Bild hat genau EIN Stück über seinen ganzen Text; ein
+    //  Absatz mit Bildern eines je Textabschnitt ZWISCHEN den Bildern (das
+    //  Objekt-Zeichen U+FFFC gehört keinem Stück — QTextLayout würde daraus ein
+    //  Kästchen malen). Die Zeilen eines Stücks tragen BLOCK-lokale
+    //  Koordinaten, `dx`/`dy` bleiben deshalb 0, solange ein Stück nicht als
+    //  Ganzes versetzt wird.
+    struct Piece {
+        std::unique_ptr<QTextLayout> lay;
+        qreal dx = 0.0, dy = 0.0;
+        int   textStart = 0;                   // Zeichenposition im Absatz
+    };
+    //  ── Ein BILD im Absatz (`w:drawing`-Run) ─────────────────────────────────
+    //  Gehalten wird nur das eingepasste `QImage` (nicht die Originalbytes);
+    //  das Layout-Fenster gibt es wieder frei, die Kastenmaße bleiben stehen,
+    //  damit die Höhe des Absatzes exakt bleibt.
+    struct ImageBox {
+        QImage  img;
+        QString relId;
+        qreal   x = 0.0, y = 0.0, w = 0.0, h = 0.0;   // block-lokal
+        int     pos = 0;                       // Zeichenindex des U+FFFC
+        int     run = -1;                      // Run-Index im Block
+        bool    broken = false;                // Bytes/Beziehung unbrauchbar
+        //  VERANKERT (`wp:anchor` + `w:wrapSquare`): das Bild steht NICHT im
+        //  Zeilenfluss, sondern an seiner eigenen Stelle — der Text weicht ihm
+        //  über so viele Zeilen aus, wie es hoch ist. `padL/padR` sind die
+        //  Abstände, die das Dokument dafür verlangt (`distL`/`distR`).
+        bool    floating = false;
+        qreal   padL = 0.0, padR = 0.0;
+        //  Auf welcher Seite der Text laufen darf (`InlineImage::WrapSide`).
+        int     wrapSide = 0;
+    };
+    //  ── Ein ZEILENBAND = eine sichtbare Zeile ────────────────────────────────
+    //  Höchstens EINE Textzeile, dazu die Bilder, die daneben stehen. Das Band
+    //  ist die Einheit von Paginierung, Caret und Treffersuche — deshalb spricht
+    //  die Facade von „Zeilen": ohne Bild ist ein Band genau eine `QTextLine`.
+    struct RowInfo {
+        qreal y = 0.0;                         // Oberkante (block-lokal)
+        qreal h = 0.0;                         // Vorschub bis zum nächsten Band
+        qreal visH = 0.0;                      // sichtbare Höhe (ohne Durchschuss)
+        //  Versatz der TEXTZEILE im Band: neben einem Bild sitzt sie an dessen
+        //  Unterkante (Grundlinie, wie in Word), das Band beginnt aber oben.
+        //  Caret und Listenmarker müssen der ZEILE folgen, nicht dem Band —
+        //  sonst stünde die Schreibmarke oben und der Text erschiene unten.
+        qreal textDy = 0.0;
+        qreal ascent = 0.0;
+        int   charStart = 0, charEnd = 0;      // Zeichenspanne im Absatz
+        int   piece = -1, line = 0;            // Textzeile (piece < 0 = nur Bilder)
+        int   imgFirst = 0, imgCount = 0;      // Bilder dieses Bandes
+    };
+
     struct BlockLayout {
-        std::unique_ptr<QTextLayout> layout;   // nullptr = noch nicht vermessen
+        //  Textstücke + Bilder + Zeilenbänder — ALLES über die Facade lesen.
+        std::vector<Piece>    pieces;
+        std::vector<ImageBox> images;
+        std::vector<RowInfo>  rows;
+        int     textLen = 0;                   // Zeichen des Absatzes
+        bool    isText  = false;               // Block ist ein ausgelegter Absatz
+        //  Layout-Fenster hat Stücke/Bilder freigegeben (Höhen bleiben gültig).
+        bool    trimmed = false;
         std::unique_ptr<TableLayout> table;    // nur bei w:tbl (s. isTable)
         bool    isTable = false;               // Block ist eine deutbare Tabelle
-        //  Absatz besteht NUR aus einem Bild: das eingepasste QImage wird im
-        //  Layout-Fenster gehalten (nicht die Originalbytes) und mit dem Layout
-        //  wieder freigegeben. `imageBoxH` bleibt gültig, damit die Höhe steht.
+        //  Absatz besteht NUR aus einem Bild (Sonderfall für Auswahl/Zellen).
         bool    isImage = false;
-        QImage  image;
         //  ── Inhaltsverzeichnis ───────────────────────────────────────────────
         //  Die EINTRÄGE stehen nicht in der Datei (das Feld bleibt deklarativ),
         //  sie werden hier zum Auslegen gehalten. Die SEITENZAHL steht bewusst
@@ -203,7 +270,11 @@ private:
         bool    isToc = false;
         QList<Docx::TocEntry> tocEntries;
         qreal   tocLineH = 0.0;
-        qreal   imageBoxW = 0.0, imageBoxH = 0.0;
+        //  Zeichenformat des Verzeichnisses (aus w:pPr/w:rPr des Absatzes) —
+        //  Schriftart und -größe sind das Einzige, was daran einstellbar ist.
+        QFont   tocFont;
+        //  Einträge, die auf EINE Seite passen (Aufteilung über mehrere Seiten).
+        int     tocPerPage = 0;
         //  ── Zellblock einer flach zerlegten Tabelle ──────────────────────────
         //  Der FLUSS bleibt monoton, weil die ganze Tabelle am Anker hängt (nur
         //  er trägt Höhe). Die Lage im Dokument steht deshalb hier EXPLIZIT,
@@ -221,6 +292,56 @@ private:
         //  überschreiten.
         QVector<PageSeg> segs;
     };
+
+    //  ── Layout-STÜCKE eines Blocks (die einzige Lesesicht auf seine Zeilen) ──
+    //  Jeder Leser geht über diese Schicht, NIE direkt an `pieces`/`images`.
+    //  „Zeile" heißt hier ZEILENBAND (`RowInfo`): ohne Bild ist das genau eine
+    //  `QTextLine`, mit Bildern das Band aus Bild(ern) und der Textzeile
+    //  daneben. Aufrufer: `updateCursorRect` · `hitTest` · `moveCursorVertical`
+    //  · Selektions-Hinterlegung · `paginateBlock`/`PageSeg`.
+    //  Einheiten: Bänder werden BLOCK-global gezählt, x/y sind BLOCK-lokal,
+    //  Zeichenpositionen sind BLOCK-lokal.
+    struct LineRef {
+        const QTextLayout* lay = nullptr;      // Stück, in dem die Zeile liegt
+        int   line = -1;                       // Zeilenindex IN diesem Stück
+        qreal dx = 0.0, dy = 0.0;              // Lage des Stücks im Block
+        int   textStart = 0;                   // Zeichenversatz des Stücks
+        bool  valid() const { return lay && line >= 0; }
+        QTextLine textLine() const { return lay->lineAt(line); }
+    };
+    bool    hasText(const BlockLayout& L) const;    // Block ist ein Absatz
+    int     textLength(const BlockLayout& L) const; // Zeichen des Blocks
+    QString blockText(const BlockLayout& L) const;
+    int     lineCount(const BlockLayout& L) const;  // Zeilenbänder
+    LineRef lineRef(const BlockLayout& L, int li) const;
+    qreal   lineTop(const BlockLayout& L, int li) const;
+    qreal   lineTextTop(const BlockLayout& L, int li) const;   // inkl. textDy
+    qreal   lineHeight(const BlockLayout& L, int li) const;
+    qreal   lineAscent(const BlockLayout& L, int li) const;
+    qreal   linesBottom(const BlockLayout& L) const;  // Unterkante des Inhalts
+    int     lineForPos(const BlockLayout& L, int pos) const;
+    int     lineForLocalY(const BlockLayout& L, qreal y) const;
+    void    lineTextRange(const BlockLayout& L, int li, int* start, int* len) const;
+    qreal   xForPos(const BlockLayout& L, int li, int pos) const;
+    int     posForX(const BlockLayout& L, int li, qreal x) const;
+    //  Bild an einer Zeichenposition (−1 = dort steht keines) bzw. unter einem
+    //  Punkt eines Bandes — die Treffersuche macht daraus die Cursor-Stelle.
+    int     imageAtPos(const BlockLayout& L, int pos) const;
+    int     imageAtX(const BlockLayout& L, int li, qreal x) const;
+    //  Verankertes Bild an einer block-lokalen Stelle — es hängt an keinem
+    //  Zeilenband, sondern nur an seiner Lage.
+    int     floatingImageAt(const BlockLayout& L, qreal x, qreal y) const;
+    //  Inhalt eines Blocks samt Selektion zeichnen (block-lokale Positionen;
+    //  selStart ≥ selEnd = keine Selektion). Malt Textstücke UND Bilder.
+    void    drawBlockText(QPainter* p, const BlockLayout& L, const QPointF& origin,
+                          int selStart, int selEnd, const QColor& selBg) const;
+    //  Deutung eines Segments (s. PageSeg::first).
+    int     segFirstLine(const BlockLayout& L, const PageSeg& s) const;
+    int     segFirstEntry(const BlockLayout& L, const PageSeg& s) const;
+    //  Layout-y, die auf der OBERKANTE eines Segments liegt: beim ERSTEN
+    //  Segment 0 (der Abstand davor gehört zum Block, nicht zur Zeile), bei
+    //  jedem weiteren die y seiner ersten Zeile.
+    qreal   segOriginY(const BlockLayout& L, const PageSeg& s) const;
 
     //  ── Seitengeometrie (Dokument-Pixel, fensterunabhängig) ──────────────────
     const Docx::SectionProps& sect() const;
@@ -256,25 +377,36 @@ private:
     //  Einen Block auf Slots verteilen (füllt seine Segmente) und das Fluss-y
     //  NACH ihm zurückgeben. Kern der Paginierung.
     qreal paginateBlock(int idx, qreal flowStart, qreal slotH);
+    //  Steht auf `page` VOR Block `idx` schon etwas Sichtbares? Entscheidet, ob
+    //  ein Inhaltsverzeichnis auf die nächste Seite springt.
+    bool  pageHasInkBefore(int idx, int page) const;
     qreal blockTop(int i);                     // Inhalts-y des Blocks
     int   blockAtY(qreal y);                   // Block unter Inhalts-y
     void  layoutChunk();                       // Timer-Tick des Initial-Layouts
     void  updateContentHeight();
     void  rebuildMarkers();                    // Listen-Zähler (ganzes Dokument)
-    void  buildLayout(int i);                  // QTextLayout eines Absatzes
+    void  buildLayout(int i);                  // Stücke/Bänder eines Absatzes
     void  buildTableLayout(int i);             // Gitter-Layout eines w:tbl-Blocks
     void  buildFlatTableLayout(int anchor);    // Gitter aus den LEBENDEN Zellblöcken
     int   tableAnchorOf(int i) const;          // Zellblock → Anker (−1 = keiner)
-    //  Bild-Absatz auslegen (true = war einer). `availWidth` ≤ 0 bedeutet die
-    //  Textbreite der Spalte; in einer Tabellenzelle wird deren Breite übergeben.
-    bool  buildImageLayout(int i, qreal availWidth = -1.0);
+    //  Absatz mit Bildern in ZEILENBÄNDER auslegen (Bilder nebeneinander, Text
+    //  daneben — genau wie `wp:inline` in Word). Rückgabe: Unterkante des
+    //  Inhalts (block-lokal, ohne Abstand danach).
+    qreal buildInlineRows(BlockLayout& L, const Docx::Block& b, const QFont& base,
+                          const Docx::ParFmt& pf, qreal width);
+    //  Grundschrift eines Absatzes (mit Cursor-Sonderfall für leere Zeilen).
+    QFont blockBaseFont(const Docx::Block& b, int blockIdx) const;
+    //  Bild eines Runs auf `avail` einpassen (Seitenverhältnis bleibt).
+    bool  makeImageBox(const Docx::InlineImage& info, qreal avail,
+                       ImageBox* out) const;
     //  Inhaltsverzeichnis-Feld auslegen (true = war eines). Reserviert je
     //  Überschrift eine Zeile; gezeichnet wird in `paintToc`.
     bool  buildTocLayout(int i);
+    //  `firstEntry` = erster Eintrag DIESER Seite; das Verzeichnis kann sich
+    //  über mehrere Seiten erstrecken (je Seite ein PageSeg).
     void  paintToc(QPainter* p, const BlockLayout& L, qreal left, qreal y,
-                   qreal width);
+                   qreal width, int firstEntry);
     //  1-basierte Seitenzahl eines Blocks (für die Verzeichnis-Einträge).
-    int   pageOfBlock(int i);
     void  ensureHeaderFooter();                // Kopf-/Fußzeile lazy auslegen
     void  paintHeaderFooter(QPainter* p, int page);
     void  paintTable(QPainter* p, const BlockLayout& L, qreal left, qreal y);

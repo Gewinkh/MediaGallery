@@ -1,6 +1,7 @@
 #include <QGuiApplication>
 #include <QFont>
 #include <QQmlApplicationEngine>
+#include <QStyleHints>
 #include <QQmlContext>
 #include <QQmlEngine>
 #include <QQuickStyle>
@@ -12,6 +13,7 @@
 #include <QDebug>                    // Warnung bei Scene-Graph-Laufzeitfehlern
 
 #include "core/RhiProber.h"
+#include "core/FileBrowseModel.h"
 #include "core/AppSettings.h"
 #include "media/FolderService.h"
 #include "core/JsonStorage.h"
@@ -94,6 +96,18 @@ int main(int argc, char* argv[]) {
     app.setApplicationName("MediaGallery");
     app.setOrganizationName("MediaGallery");
     app.setApplicationVersion("1.0.0");
+
+    // ── Rad-Schrittweite von Qts EIGENEN Dialogen ─────────────────────────────
+    // Der Datei-/Ordnerdialog ist Qts eigener (AA_DontUseNativeDialogs, s.o.);
+    // seine Dateiliste ist eine schlichte QQuickListView und kroch mit Qts
+    // Vorgabe von 3 Zeilen je Rastung durch lange Ordner. Gemessen an genau
+    // dieser Liste (Höhe 329, contentHeight 5400): 3 Zeilen = 72 px, 6 = 144 px,
+    // 12 = 288 px je Rastung — der Wert wirkt also linear.
+    // MUSS nach der QGuiApplication stehen (vorher gibt es keine styleHints).
+    // Die Einstellung gilt GLOBAL für jedes Qt-Flickable; die Listen der App
+    // selbst sind davon unberührt, soweit sie `SmoothWheelArea` benutzen (die
+    // rechnet aus `angleDelta` und ihrem eigenen stepFactor).
+    app.styleHints()->setWheelScrollLines(6);
 
     // ── Schriftart mit CJK-Fallback ───────────────────────────────────────────
     // Hängt eine Familien-Fallbackkette an die Standardschrift, damit Zeichen
@@ -259,6 +273,10 @@ int main(int argc, char* argv[]) {
     //  Seiten-Miniatur des DOCX-Editors (Delegate der Miniaturen-Leiste; malt
     //  über DocxTextArea::paintPageInto, hält also selbst kein Bild).
     qmlRegisterType<DocxPageThumb>     ("MediaGallery", 1, 0, "DocxPageThumb");
+    //  Verzeichnis-Inhalt für den eigenen Datei-/Ordnerwähler
+    //  (`qml/common/FileChooser.qml`) — ein Modell je Wähler, damit zwei
+    //  geöffnete Wähler nicht im selben Verzeichnis stehen.
+    qmlRegisterType<FileBrowseModel>   ("MediaGallery", 1, 0, "FileBrowseModel");
     qmlRegisterSingletonInstance("MediaGallery", 1, 0, "Translit",  &translit);
     qmlRegisterSingletonInstance("MediaGallery", 1, 0, "WebEngine", &webEngine);
 

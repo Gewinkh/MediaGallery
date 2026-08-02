@@ -2,7 +2,6 @@ pragma ComponentBehavior: Bound
 import QtQuick
 import QtQuick.Window
 import QtQuick.Controls
-import QtQuick.Dialogs
 import QtQuick.Pdf
 import QtMultimedia
 import MediaGallery 1.0
@@ -3017,10 +3016,10 @@ Item {
     //  verlustfrei im Controller; die Rückmeldung kommt als Toast.
     property int _insertAfter: -1
 
-    FileDialog {
+    FileChooser {
         id: stampFileDlg
         title: App.uiText(App.language, "PdfStampFileTitle")
-        fileMode: FileDialog.OpenFile
+        fileMode: FileChooser.OpenFile
         nameFilters: ["Bilder (*.png *.jpg *.jpeg *.webp *.bmp *.tif *.tiff)"]
         //  Das Bild landet mittig auf der aktuellen Seite; Größe = ein Drittel
         //  der Seitenbreite, Höhe folgt dem Seitenverhältnis (Controller).
@@ -3036,10 +3035,10 @@ Item {
         }
     }
 
-    FileDialog {
+    FileChooser {
         id: insertFileDlg
         title: App.uiText(App.language, "PdfInsertPagesFileTitle")
-        fileMode: FileDialog.OpenFile
+        fileMode: FileChooser.OpenFile
         nameFilters: ["PDF (*.pdf)"]
         onAccepted: {
             var n = root.editCtl.probePageCount(selectedFile)

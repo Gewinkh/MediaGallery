@@ -43,6 +43,8 @@ set(SOURCES_CORE
     src/core/JsonStorage.h
     src/core/RhiProber.cpp
     src/core/RhiProber.h
+    src/core/FileBrowseModel.cpp
+    src/core/FileBrowseModel.h
     src/core/PathUtils.h
     src/core/MemoryUtils.h
 )
@@ -172,49 +174,83 @@ set(SOURCES_IMAGE_EDIT
     src/image/edit/ImageEditController.h
 )
 
-set(SOURCES
-    main.cpp
-    ${SOURCES_CORE}
-    ${SOURCES_APP}
-    ${SOURCES_MEDIA}
-    ${SOURCES_TAGS}
-    ${SOURCES_PDF}
-    ${SOURCES_PDF_EDIT}
-    ${SOURCES_PDF_EXTRACT}
-    ${SOURCES_DOCX}
-    ${SOURCES_DOCX_EDIT}
-    ${SOURCES_IMAGE_EDIT}
-    qml.qrc
-)
+# ─────────────────────────────────────────────────────────────────────────────
+#  Domänen-BIBLIOTHEKEN — jede Quelle wird GENAU EINMAL übersetzt
+#
+#  Vorher trug jedes Testziel seine Quellen selbst bei: 31 Dateien wurden im
+#  Testbaum 201 mal übersetzt (DocxDocument.cpp allein elfmal à ~22 s). Gemessen
+#  waren das 2116 s von 2575 s CPU eines vollen Builds. Jetzt ist jeder
+#  Domänenordner eine statische Bibliothek; App und Treiber VERLINKEN sie nur.
+#  Der Linker zieht dabei aus einer statischen Bibliothek ausschließlich die
+#  Objekte, die wirklich gebraucht werden — ein Treiber bekommt also weiterhin
+#  nur das, was er prüft, nur eben ohne es neu zu übersetzen.
+#
+#  Neue Datei → in die `set(SOURCES_…)`-Liste ihres Ordners (s. oben); an den
+#  Bibliotheken selbst ist dann nichts zu tun.
+# ─────────────────────────────────────────────────────────────────────────────
+function(mg_add_lib name)
+    add_library(${name} STATIC ${ARGN})
+    #  Alle projektinternen Includes stehen relativ zu src/ (s. Structure.md).
+    target_include_directories(${name} PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)
+    target_compile_options(${name} PRIVATE -w)
+endfunction()
 
-qt_add_executable(MediaGallery ${SOURCES})
+mg_add_lib(mg_core       ${SOURCES_CORE})
+mg_add_lib(mg_tags       ${SOURCES_TAGS})
+mg_add_lib(mg_docx       ${SOURCES_DOCX})
+mg_add_lib(mg_docxedit   ${SOURCES_DOCX_EDIT})
+mg_add_lib(mg_media      ${SOURCES_MEDIA})
+mg_add_lib(mg_pdfextract ${SOURCES_PDF_EXTRACT})
+mg_add_lib(mg_pdfedit    ${SOURCES_PDF_EDIT})
+mg_add_lib(mg_pdf        ${SOURCES_PDF})
+mg_add_lib(mg_imageedit  ${SOURCES_IMAGE_EDIT})
+mg_add_lib(mg_app        ${SOURCES_APP})
 
-#  All local includes are relative to src/ — see the comment above SOURCES_CORE.
-target_include_directories(MediaGallery PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
-
-target_link_libraries(MediaGallery PRIVATE
-    Qt6::Core
-    Qt6::Gui
-    Qt6::Qml
-    Qt6::Quick
-    Qt6::QuickControls2
-    Qt6::Multimedia
-    Qt6::Pdf
-    Qt6::Svg
-    Qt6::WebEngineQuick
-    ZLIB::ZLIB
-)
-
-target_compile_options(MediaGallery PRIVATE -w)
+#  Abhängigkeiten PUBLIC: wer eine Bibliothek verlinkt, bekommt automatisch die
+#  Qt-Module, die ihre Objekte brauchen — ein Treiber muss sie nicht kennen.
+#  RhiProber (mg_core) fasst QQuickWindow an, deshalb Quick schon hier.
+target_link_libraries(mg_core       PUBLIC Qt6::Core Qt6::Gui Qt6::Quick)
+target_link_libraries(mg_tags       PUBLIC mg_core)
+target_link_libraries(mg_docx       PUBLIC mg_core ZLIB::ZLIB)
+target_link_libraries(mg_docxedit   PUBLIC mg_docx Qt6::Pdf)
+target_link_libraries(mg_media      PUBLIC mg_core mg_tags mg_docx
+                                           Qt6::Multimedia Qt6::Pdf)
+target_link_libraries(mg_pdfextract PUBLIC mg_core Qt6::Pdf ZLIB::ZLIB)
+target_link_libraries(mg_pdfedit    PUBLIC mg_core mg_pdfextract Qt6::Pdf ZLIB::ZLIB)
+target_link_libraries(mg_pdf        PUBLIC mg_core Qt6::Pdf Qt6::Multimedia ZLIB::ZLIB)
+target_link_libraries(mg_imageedit  PUBLIC mg_core)
+target_link_libraries(mg_app        PUBLIC mg_core mg_media mg_tags mg_pdf
+                                           mg_pdfedit mg_docx Qt6::Qml
+                                           Qt6::WebEngineQuick)
 
 #  OCR optional dazulinken (Degradationskette: ohne Tesseract kein OCR).
+#  Gehört an mg_pdf — dort liegt OcrEngine.cpp.
 if(TESSERACT_FOUND)
-    target_link_libraries(MediaGallery PRIVATE PkgConfig::TESSERACT)
-    target_compile_definitions(MediaGallery PRIVATE MG_HAVE_TESSERACT)
+    target_link_libraries(mg_pdf PUBLIC PkgConfig::TESSERACT)
+    target_compile_definitions(mg_pdf PUBLIC MG_HAVE_TESSERACT)
     message(STATUS "OCR aktiviert (Tesseract ${TESSERACT_VERSION})")
 else()
     message(STATUS "OCR deaktiviert (Tesseract nicht gefunden)")
 endif()
+
+qt_add_executable(MediaGallery main.cpp qml.qrc)
+
+target_link_libraries(MediaGallery PRIVATE
+    mg_app
+    mg_core
+    mg_media
+    mg_tags
+    mg_pdf
+    mg_pdfedit
+    mg_pdfextract
+    mg_docx
+    mg_docxedit
+    mg_imageedit
+    Qt6::QuickControls2
+    Qt6::Svg
+)
+
+target_compile_options(MediaGallery PRIVATE -w)
 
 if(WIN32)
     set_target_properties(MediaGallery PROPERTIES WIN32_EXECUTABLE TRUE)

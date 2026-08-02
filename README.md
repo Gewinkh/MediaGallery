@@ -141,16 +141,21 @@ Everything below is **non-destructive**: your original PDF is never modified. No
 - **Line keeps its own formatting**: deleting the last character of a line does *not* make it fall back to the paragraph style (e.g. the heading it inherited its properties from). The line keeps its formatting until you press Backspace again and the caret actually moves into the previous line
 - **Paragraph formatting**: alignment (left/center/right/justify), spacing (line spacing plus space before/after, grouped behind one button), **bulleted & numbered lists** (numbering definitions are created and spliced into `numbering.xml` on save). Pressing Enter in an **empty list item ends the list** instead of adding another bullet - the Word behaviour
 - **Style templates (Formatvorlagen)**: the document's own paragraph styles appear in a toolbar dropdown (the same set Word offers - hidden internal styles stay out of the way). Applying one writes a real `w:pStyle`, so headings keep working in Word; picking the default style removes it again, and direct formatting of the paragraph survives either way
+- **Headings work in every document**: most .docx files define no heading style at all, which used to leave the dropdown with nothing but "Normal". *Heading 1-3* are always offered; the first time you apply one, its definition is written into the document's `styles.xml` with Word's built-in name, so it looks like a heading in the editor straight away *and* Word recognises it (navigation pane, table of contents)
 - **True pagination**: the document is laid out on **real pages** taken from its own page setup (`w:sectPr` - page size, orientation, margins), separated by gaps on your theme background. A paragraph that crosses a page boundary is split **line by line**, exactly where Word breaks it. Because the line width is the page's text width rather than the window's, the page count in a narrow split pane is the same as in Word - a narrow pane scales the page down instead of re-wrapping it
 - **Multi-column layout**: sections set to two or more columns (`w:cols`) are laid out and paginated in columns
 - **Page thumbnails**: a sidebar shows every page as a live miniature with the current page highlighted; clicking one scrolls there. The miniatures are drawn on demand through the same painting path as the page view, so they cost no extra memory
 - **Themed, compact toolbar**: every control follows the app theme; on narrow split panes the toolbar **scrolls horizontally with the mouse wheel** - plain wheel, `Shift`+wheel or `Ctrl`+wheel, the same grip the PDF editor's ribbon offers - so nothing is cut off
-- **Insert a table of contents** from the toolbar: it lists the document's headings with a dot leader and the page number from the editor's own pagination, and updates itself when a heading changes. The file keeps a declarative `TOC` field with no page numbers baked in, so Word recalculates them
+- **Insert a table of contents** from the toolbar: it lists the document's headings with a dot leader and the page number from the editor's own pagination, and updates itself when a heading changes. The file keeps a declarative `TOC` field with no page numbers baked in, so Word recalculates them. It sits on **its own page** - the text after it starts on the next one, and a contents list that outgrows a page simply takes the following one, which also carries nothing else (Word gets the same layout through `w:pageBreakBefore`). Typing inside it is not possible; **font and font size** are the two things you can set
+- **Wrap text around a picture**: the picture's right-click menu switches between *In line with text* (the default: the picture is part of the line) and *Wrap text around* (the text flows beside it over its whole height). The latter is written as a real Word floating picture, so it looks the same in Word. A wrapping picture can be **dragged anywhere on the page** - grab it and move it, the text re-flows around its new place, and the same menu picks the **side the text runs on** (wider side / left only / right only). If there is no room for a readable column beside it, the text starts **below** the picture instead of squeezing through a sliver.
 - **Insert a table** (rows/columns from a small popup) or **an image** straight from the toolbar. The image button first offers the pictures **in the document's own folder** as thumbnails - every format Qt can read - with the file dialog one click away; `Ctrl+V` also pastes an image straight from the clipboard
+- **Insert PDF pages as pictures**: picking a PDF in that popup opens the **same page-selection screen as *Extract pages*** - every PDF of the folder on the left, the page grid of the one you clicked on the right, `Ctrl`+hover for a large preview, and a bottom bar that holds the chosen pages in the order you want them inserted
 - **Table context menu** (right-click a cell): insert or delete rows and columns, set the **column widths in millimetres**, or delete the whole table - each as a single undo step. The column total stays constant when you add or remove a column, the way Word does it. A table with **merged cells** is deliberately left untouched (the menu then only offers "Delete table") rather than risk tearing the grid apart
-- **Resize a picture**: click it to select, then drag any of the **eight handles** - corners keep the aspect ratio, edge midpoints may stretch - or type width and height in millimetres via the context menu. Only the size is rewritten, so crops, effects, alt text and wrapping of a Word-authored picture survive untouched
+- **Delete a whole table from the keyboard**: click its selection frame (the accent-coloured border around the table) to select it as an object, then `Delete` or `Backspace`. Selecting cells by dragging deliberately does *not* do this - it only clears their text, so a stray drag cannot destroy a table
+- **Copy, cut and paste a whole table** (`Ctrl+C` / `Ctrl+X` / `Ctrl+V` with the cursor in a cell and nothing selected, or from the right-click menu): the table is transferred as its *form* - rows, columns, column widths and cell contents with their formatting - and rebuilt in the target document, so it also works between two files. Cut + paste is how you move a table. Other programs receive the cells as tab-separated lines
+- **Resize a picture**: click it to select, then drag any of the **eight handles** - corners keep the aspect ratio, edge midpoints may stretch - or type width and height in millimetres via the context menu. Only the size is rewritten, so crops, effects, alt text and wrapping of a Word-authored picture survive untouched. **Copying a picture keeps that size** - pasting it back inserts it exactly as large as it was, not at its full pixel resolution, while other programs still get the plain image
 - **Tables are editable**: they are laid out as real grids (rows, columns including `w:gridSpan`, the document's own column widths) and you can click into a cell and type, with the full undo, formatting and find & replace you have everywhere else. The table has its **true height**, so every page break *after* it lands where Word puts it. Structure is protected: Backspace or Delete at a cell edge will not merge cells away, and a table you did not touch stays **byte-identical** in the file
-- **Images are shown**: a picture that sits alone in its paragraph is rendered at the size the document asks for (`wp:extent`), scaled down to fit the text width; the decoded image is only kept while it is near the visible area. This works **inside table cells** too - the picture is fitted to the cell and the row grows to match. A picture *inside* a line of text stays an atomic placeholder, and the bytes are never touched either way
+- **Pictures sit in the text, like in Word**: a picture is inserted **where the cursor is** and is laid out as part of the line, at the size the document asks for (`wp:extent`), scaled down to fit the text width. Insert two pictures in a row and they stand **side by side**; whatever you type after them appears **next to them** as long as there is room, and moves below once there is not. The same holds **inside table cells** (the picture is fitted to the cell and the row grows to match) and in the **PDF export**. Click a picture to select it - handles, size, copy and delete all act on that one picture. The decoded image is only kept while it is near the visible area, and the picture's own bytes are never touched
 - **Headers and footers are drawn** in the page margins of every page, from the document's own header/footer parts - and they are **editable**: the toolbar switches the editing region (Body / Header / Footer), `Esc` goes back. Undo spans all regions in the order you made the changes
 - A **table nested inside a cell** is shown as a placeholder (not interpreted) and stays fully intact; other complex blocks remain placeholders too, and embedded objects (images, fields, hyperlinks) are protected as atomic units
 - **Live transliteration** (Arabic/Japanese) while typing, sharing the app-wide schemes
@@ -199,6 +204,7 @@ Everything below is **non-destructive**: your original PDF is never modified. No
 - **Keyboard-shortcut overview**: a themed, grouped cheat-sheet in **Settings -> General** lists every shortcut with its key combination and function, sorted by context (gallery, media viewer, PDF/image/DOCX/text editor)
 - **Context-correct, language-independent shortcuts**: each shortcut only fires in the surface it belongs to - in split view only the **active pane** reacts, so the same key (e.g. `Ctrl+C`, `Alt+Q`) is never ambiguous across panes; the top menu no longer generates `Alt`+letter accelerators that clashed with app shortcuts, and every shortcut behaves the same regardless of the interface language
 - **Smooth wheel scrolling in Settings**: the settings pages scroll ~45 % of the visible height per wheel notch with a short eased animation - the same behavior as the gallery and the PDF page grid
+- **The app's own file and folder chooser**: every *Open folder*, *Choose file* and *Save as* now opens a themed chooser **inside the window** instead of Qt's separate dialog - the same colors as the rest of the app, the same **animated wheel scrolling**, a places sidebar (Home, Documents, Pictures, ...), a clickable breadcrumb path, file size and date, a name filter, *Show hidden*, and a Save button that says **Overwrite** when the target file already exists
 - **Dedicated fullscreen view**: opening a file hides the application menu bar - only the viewer and its own header are visible, and the freed space goes to the content
 - **Themes**: Fully customizable - every color, every surface (Settings -> Design)
 
@@ -370,47 +376,51 @@ Custom themes can be exported to JSON and shared:
 ## Changelog
 
 ### Latest
-- **Feature**: Major DOCX editor improvements:
-  - Added editable tables with resizing, row/column management, and image support inside tables.
-  - Added image insertion, resizing, copy/cut/paste, and PDF page insertion as images.
-  - Added editable headers and footers.
-  - Added automatic table of contents generation with live page numbers.
-  - Added improved pagination, page thumbnails, multi-column layouts, and paragraph styles.
+- **Feature**: Added a fully integrated, themeable file and folder chooser with bookmarks, breadcrumbs, filters, hidden-file support, and smooth scrolling.
 
-- **Change**: Improved DOCX export and compatibility:
-  - DOCX → PDF export now respects document page settings, margins, DPI independence, and includes images.
-  - Improved preservation of document structure and formatting during editing.
+- **Feature**: Expanded DOCX editor:
+  - Added floating and freely positioned images with configurable text wrapping.
+  - Added inline image layouts with side-by-side images.
+  - Added keyboard support for deleting, copying, cutting, and pasting tables.
+  - Added automatic heading styles and improved table of contents support.
+  - Added integrated PDF page selection for inserting PDF pages as images.
 
-- **Change**: Improved DOCX editor usability:
-  - Better toolbar scrolling behavior.
-  - Improved image and table interaction.
-  - Themed file and folder dialogs.
+- **Change**: Improved DOCX document layout and usability:
+  - Table of contents now uses dedicated pages.
+  - Improved image positioning, text flow, caret placement, and scrolling.
+  - Improved file dialog integration and navigation.
 
-- **Fix**: Improved DOCX handling:
-  - Fixed incorrect DOCX thumbnails with line breaks.
-  - Fixed shortcut conflicts inside the editor.
-  - Fixed toolbar translation issues.
+- **Fix**: Improved DOCX stability:
+  - Fixed image handling, wrapping behavior, and table interactions.
+  - Fixed table of contents rendering and editing issues.
+  - Fixed PDF page insertion.
+  - Fixed various layout and rendering issues.
 
 ---
 
 ## Issues
 
-### Insert-image popup
-- **PDF pages cannot be inserted at all** (regression). Clicking a PDF in the popup does nothing; previously it at least inserted the cover page.
-- The popup is still a **small popup**, and PDFs are shown only with their **cover page** (see `tests/Bild_aus_Ordner.png`). It should use the **same page-selection screen as *Extract*** in the main menu, where any page of a PDF or picture can be picked.
+### Checked again and closed
+- **Blank DOCX page**: No longer reproducible. `tests/ER.docx` was verified across multiple window sizes, rendering paths (live view and page thumbnails), and in a normal application window. Every page contains content. The apparent "blank" page is intentional: page 1 contains only the table of contents, while the lower part of page 2 remains empty because the following full-page image no longer fits there. Word produces the same layout.
+- **DOCX scrolling too fast**: Fixed. Scrolling is now line-based instead of depending on the window height, providing consistent behavior across different window sizes.
+- **File and folder chooser**: Replaced by the application's own themed file chooser with the same scrolling behavior and appearance as the rest of the UI.
 
-### Pictures
-- **Copying a picture loses its size**: pasting inserts it at full size instead of the size it had in the document.
-- **No control over placement**: a picture always sits alone on its own line. You cannot put two pictures side by side, and text cannot flow next to a picture even when there is room for it.
+### DOCX table of contents
+- **Incorrect page numbers for multiple headings within a single paragraph**: Some DOCX files store several headings inside one paragraph separated by line breaks instead of separate paragraphs. The table of contents correctly creates one entry per heading, but page numbers are still determined from the paragraph itself rather than the individual heading line. As a result, headings that continue onto a later page may receive the wrong page number. This also affects the PDF export.
 
-### Headings
-- **A heading style has no visible effect in the editor.** The heading only looks like one in the exported PDF; in the DOCX editor the paragraph stays plain, so headings cannot really be written.
+### Image insertion
+- **Consistent image insertion workflow across all editors**: Every editor should offer both insertion methods:
+  - Select an image from the current working folder using a thumbnail grid.
+  - Browse the computer using the file chooser.
+  
+  At the moment only the DOCX editor provides both options. Other editors (e.g. the PDF editor's stamp tool) immediately open the file chooser, forcing the user to navigate back to the current folder repeatedly.
 
-### Tables
-- A table **cannot be moved**, and there is **no `Ctrl+X` / `Ctrl+C` / `Ctrl+V`** for tables (cut/copy/paste).
+- **Folder image picker does not adapt to narrow layouts**: The thumbnail popup currently has a fixed width (approximately four columns). In split view or narrow windows, parts of it extend beyond the visible area. It should either adapt dynamically (fewer columns) or open as a resizable dialog similar to the application's file chooser.
 
-### File and folder chooser
-- The dialogs follow the app theme now, but their list still scrolls in Qt's default steps rather than with the app's smooth wheel scrolling. (This is Qt's own *Open folder* / *Choose file* dialog - the DOCX image popup scrolls smoothly.)
+### Images
+- **"Wrap on both sides" is only partially supported**: Word allows text to flow simultaneously on both sides of a floating image within the same line. The current layout engine only supports flowing text on one side (the larger available side). Existing documents using true "both sides" wrapping therefore cannot be reproduced exactly.
+
+- **Floating images remain anchored to their original paragraph**: Dragging a floating image only moves it within the bounds of its current paragraph. In Word, moving a floating image near another paragraph automatically changes its anchor so subsequent paragraphs wrap around it. This re-anchoring behavior is not yet implemented.
 
 ---
 

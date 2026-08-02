@@ -193,6 +193,19 @@ enum class StringKey {
     SettingsBookFolderPath,
     SettingsBookDisplayName,
     SettingsBookChooseFolder,
+    //  Eigener Datei-/Ordnerwähler (qml/common/FileChooser.qml)
+    ChooserPlaces,
+    ChooserName,
+    ChooserOpen,
+    ChooserSave,
+    ChooserOverwrite,
+    ChooserChoose,
+    ChooserUp,
+    ChooserEmpty,
+    ChooserShowHidden,
+    ChooserAllFiles,
+    ChooserNewFolder,
+    ChooserFolderExists,
     SettingsCatBtnNew,
     SettingsCatHintNew,
     SettingsCatEmptyNew,
@@ -335,10 +348,18 @@ enum class StringKey {
     DocxColInsertRight,
     DocxColDelete,
     DocxColWidths,            // öffnet den Breiten-Dialog
+    DocxTableCopy,            // Kontextmenü: ganze Tabelle kopieren
+    DocxTableCut,             // Kontextmenü: ganze Tabelle ausschneiden
+    DocxTablePaste,           // Kontextmenü: Tabelle aus der Ablage einfügen
     DocxTableDelete,
     DocxTableLocked,          // verbundene Zellen → Struktur unveränderlich
     // Bildgröße (Kontextmenü + Ziehpunkte)
     DocxImageSize,
+    DocxImageInline,
+    DocxImageFloating,
+    DocxWrapLargest,
+    DocxWrapLeft,
+    DocxWrapRight,
     DocxImageWidth,
     DocxImageHeight,
     DocxKeepAspect,
@@ -351,7 +372,9 @@ enum class StringKey {
     DocxRegionNone,           // Status: Datei hat keine Kopf-/Fußzeile
     DocxInsertToc,            // Toolbar: Inhaltsverzeichnis einfügen
     DocxTocEmpty,             // Verzeichnis ohne Überschriften
+    DocxHeadingLevel,         // Vorlagenliste: „Überschrift %1"
     DocxInsertPdfPage,        // Titel der Seitenauswahl beim Bild-Einfügen
+    DocxInsertPdfPageBtn,     // Bestätigungsknopf derselben Auswahl
     DocxPdfPageError,         // PDF nicht lesbar
     DocxImageCopy,
     DocxImageCut,

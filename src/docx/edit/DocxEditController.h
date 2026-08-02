@@ -123,11 +123,17 @@ public:
     Q_INVOKABLE void insertImage(const QString& fileUrl);
     //  Bild aus BYTES einfügen (Zwischenablage): `ext` ist die Zielendung
     //  ("png"/"jpg"/…) und bestimmt Content-Type und Teilname im Container.
-    Q_INVOKABLE void insertImageData(const QByteArray& bytes, const QString& ext);
+    //  `cxEmu`/`cyEmu` > 0 = Anzeigegröße vorgeben (Einfügen eines im Editor
+    //  kopierten Bildes); 0 = aus den nativen Pixeln rechnen.
+    Q_INVOKABLE void insertImageData(const QByteArray& bytes, const QString& ext,
+                                     qint64 cxEmu = 0, qint64 cyEmu = 0);
     //  Bilder im ORDNER der geöffneten Datei — als [{name, url}] für das
     //  Auswahl-Popup. Filter ist QImageReader::supportedImageFormats(), also
     //  jedes Format, das Qt lesen kann (keine feste Endungsliste).
     Q_INVOKABLE QVariantList folderImages() const;
+    //  Ordner der geöffneten Datei (Pfad, leer wenn nichts geladen) — der
+    //  PDF-Seitenwähler scannt damit denselben Ordner wie folderImages().
+    Q_INVOKABLE QString folderPath() const;
     //  Seitenzahl einer PDF (für den Seitenwähler); 0 = keine lesbare PDF.
     Q_INVOKABLE int pdfPageCount(const QString& fileUrl) const;
     //  EINE Seite einer PDF als Bild einfügen. Gerendert wird bei 150 dpi —
@@ -151,6 +157,9 @@ public:
     //  Spaltenbreiten in MILLIMETERN (die Anzeige rechnet nicht in Twips).
     Q_INVOKABLE void tableSetColumnWidthsMm(int tableId, const QVariantList& mm);
     Q_INVOKABLE void deleteTable(int tableId);
+    //  Ganze Tabelle AUSWÄHLEN (erster bis letzter Zellblock). Danach löscht
+    //  Entf/Rücktaste sie — der Tastaturweg zum Entfernen einer Tabelle.
+    Q_INVOKABLE void selectTable(int tableId);
     //  ALLE Spalten mit demselben Faktor skalieren (Ziehen an Rahmen/Ecke) —
     //  die Zellen behalten dadurch ihr Größenverhältnis zueinander.
     Q_INVOKABLE void scaleTableWidths(int tableId, qreal factor);
@@ -164,10 +173,26 @@ public:
     //  auf, wenn keine TEXT-Selektion besteht — damit wirken Strg+C/Strg+X
     //  auch auf ein Bild.
     Q_INVOKABLE bool copyImageAtCursor();
+    //  Ganze Tabelle am Cursor in die Zwischenablage (eigener Typ + Klartext);
+    //  false, wenn der Cursor in keiner Tabelle steht oder die Tabelle
+    //  verbundene Zellen hat. Wird von copy()/cut() ohne Textauswahl benutzt.
+    Q_INVOKABLE bool copyTableAtCursor();
+    //  Liegt eine mit copyTableAtCursor() abgelegte Tabelle in der
+    //  Zwischenablage? (Kontextmenü: „Tabelle einfügen" nur dann zeigen.)
+    Q_INVOKABLE bool clipboardHasTable() const;
     Q_INVOKABLE void deleteImageAtCursor();
     //  Neue Größe in Millimetern (undo-fähig; Seitenverhältnis hält der
     //  Aufrufer, damit Ziehen an einer Kante bewusst verzerren darf).
     Q_INVOKABLE void setImageSizeMm(int block, qreal widthMm, qreal heightMm);
+    //  Umbruchart des ausgewählten Bildes: false = mit dem Text in der Zeile
+    //  (`wp:inline`), true = umfließend (`wp:anchor` + `w:wrapSquare`).
+    Q_INVOKABLE void setImageFloating(int block, bool floating);
+    //  LAGE eines umfließenden Bildes in Millimetern, relativ zur linken
+    //  Textkante und zur Oberkante seines Absatzes — das schreibt das Ziehen.
+    Q_INVOKABLE void setImagePositionMm(int block, qreal xMm, qreal yMm);
+    //  Umbruchseite: 0 = beide, 1 = nur links, 2 = nur rechts, 3 = breitere
+    //  Seite (`Docx::InlineImage::WrapSide`).
+    Q_INVOKABLE void setImageWrapSide(int block, int side);
 
     // ── Zwischenablage / Undo ────────────────────────────────────────────────
     Q_INVOKABLE void copy();
@@ -285,10 +310,32 @@ private:
     //  eine Zellgrenze laufen, sonst verschwände eine Zelle.
     bool sameCell(int i, int j) const;
     void clampRangeToCell(int b1, int& b2) const;
+    //  Deckt die Selektion GENAU eine ganze Tabelle ab? Dann löschen
+    //  Entf/Rücktaste sie als Ganzes (statt nur die erste Zelle zu leeren).
+    bool deleteSelectedTable();
+    //  Cursor in einem Inhaltsverzeichnis? Dort ist nur Schriftart und
+    //  -größe einstellbar, getippt wird nicht.
+    bool cursorInToc() const;
+    void applyTocCharFormat(int field, const QVariant& value);
+    //  Tabelle, die per selectTable() als OBJEKT ausgewählt ist (−1 = keine).
+    //  Jede Cursor-Bewegung löscht den Zustand wieder.
+    int  m_tableObjectSel = -1;
     //  Ordnet (block,pos) so, dass (b1,p1) ≤ (b2,p2).
     void orderedSelection(int& b1, int& p1, int& b2, int& p2) const;
     //  Run-Index + Offset im Run zu einer Absatzposition.
     void runAt(const Docx::Block& b, int pos, int* runIdx, int* runOfs) const;
+    //  Bild AM CURSOR — dieselbe Regel wie in der Anzeige: entweder der Absatz
+    //  besteht nur aus diesem Bild, oder die Selektion deckt genau sein
+    //  Objekt-Zeichen (so wählt ein Klick ein Bild im Fließtext aus).
+    bool imageAtCursor(int* block, int* run, Docx::InlineImage* info) const;
+    //  Block+Run des gemeinten Bildes nach derselben Regel — Lage/Umbruchseite
+    //  brauchen die Auskunft ohne die `InlineImage` selbst.
+    bool selectedImage(int block, int* blockOut, int* runOut) const;
+    //  Gemeinsamer Weg von insertImage/insertImageData/paste: das Bild kommt
+    //  AN DIE CURSOR-STELLE in den laufenden Absatz (wie in Word) — nur so
+    //  können zwei Bilder nebeneinander und Text daneben stehen.
+    void insertImageBytes(const QByteArray& bytes, const QString& ext,
+                          qint64 cxEmu, qint64 cyEmu);
     //  Stellt eine Run-Grenze bei pos her (teilt bei Bedarf); liefert den
     //  Index des Runs, der BEI pos beginnt.
     int  ensureRunBoundary(Docx::Block& b, int pos) const;
@@ -315,6 +362,9 @@ private:
     void insertRunParagraphs(const QList<QList<Docx::Run>>& paras);
     //  Interne Zwischenablage: Selektion → Blob / Blob → Absätze mit Runs.
     QByteArray serializeSelection() const;
+    //  Tabelle aus dem eigenen Zwischenablage-Typ einsetzen (EIN Undo-Schritt);
+    //  false bei fremdem/defektem Blob — dann greifen die übrigen Formate.
+    bool pasteTableBlob(const QByteArray& blob);
     static bool deserializeRuns(const QByteArray& blob,
                                 QList<QList<Docx::Run>>* out);
     //  Selektion als HTML-Fragment (Zwischenablage für Word/LibreOffice & Co.).

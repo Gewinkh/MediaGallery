@@ -1,8 +1,8 @@
 import QtQuick
 import QtQuick.Window
 import QtQuick.Controls
-import QtQuick.Dialogs
 import MediaGallery 1.0
+import "common"
 import "gallery"
 import "pdf"
 import "settings"
@@ -1289,9 +1289,11 @@ ApplicationWindow {
         }
     }
 
-    FolderDialog {
+    //  Eigener gethemter Wähler statt Qts FolderDialog (s. qml/common).
+    FileChooser {
         id: folderDialog
         title: App.menuOpenFolderText
+        fileMode: FileChooser.Directory
         onAccepted: App.openFolderUrl(folderDialog.selectedFolder)
     }
 

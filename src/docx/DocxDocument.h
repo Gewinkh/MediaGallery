@@ -202,6 +202,13 @@ struct TableDef {
     //  Gerüst geändert → emitBlocks darf den Schnellpfad NICHT nehmen, auch
     //  wenn keine einzige Zelle „dirty" ist (Zeile eingefügt/gelöscht usw.).
     bool structDirty = false;
+    //  Zahl der Zellblöcke beim Zerlegen bzw. Bauen. Wird ein Block in eine
+    //  Zelle EINGEFÜGT oder daraus ENTFERNT, ohne dass eine Zelle „dirty" wird
+    //  (Bild/PDF-Seite/Verzeichnis einfügen, Bild löschen), stimmt die Zahl
+    //  nicht mehr — und der Schnellpfad muss entfallen, sonst emittiert er den
+    //  alten Original-Teilstring und der neue Inhalt geht beim Speichern
+    //  verloren. Zusätzlich prüft emitBlocks die Span-Lage jedes Blocks.
+    int blockCount = 0;
 
     //  Gesamter <w:tbl>…</w:tbl>-Bereich — Schnellpfad beim Speichern.
     Span rawSpan() const {
@@ -247,6 +254,23 @@ struct TocEntry {
 struct InlineImage {
     QString relId;              // r:embed → Beziehung → word/media/…
     int cxEmu = 0, cyEmu = 0;   // wp:extent (EMU: 1 Zoll = 914400)
+    int run = -1;               // Index des Bild-Runs im Block
+    int pos = 0;                // Zeichenposition des U+FFFC im Absatztext
+    //  ── Verankert statt „in der Zeile" (wp:anchor statt wp:inline) ──────────
+    //  Ein verankertes Bild steht NICHT im Zeilenfluss: der Text fließt um sein
+    //  Rechteck herum. `wrap` sagt, wie — nur `Square` wird ausgelegt, alles
+    //  Übrige (durchlaufend/hinter dem Text) verhält sich wie `None`.
+    enum Wrap { WrapNone = 0, WrapSquare = 1 };
+    //  Auf WELCHER Seite des Bildes der Text laufen darf (`w:wrapSquare`
+    //  ▸ `wrapText`). `Largest` ist Words Vorgabe „nimm die breitere Seite".
+    enum WrapSide { SideBoth = 0, SideLeft = 1, SideRight = 2, SideLargest = 3 };
+    bool anchored = false;
+    int  wrap     = WrapNone;
+    int  wrapSide = SideBoth;
+    int  posXEmu  = 0;          // wp:positionH/wp:posOffset (Spalte)
+    int  posYEmu  = 0;          // wp:positionV/wp:posOffset (Absatz)
+    //  Der Text darf rechts bzw. links vom Bild NICHT direkt anstoßen.
+    int  distLEmu = 0, distREmu = 0;
 };
 
 // ── Kopf-/Fußzeile eines Abschnitts ──────────────────────────────────────────
@@ -295,6 +319,11 @@ public:
 
     // ── Anzeige-Auflösung (docDefaults + pStyle-Kette + direkte Formate) ─────
     RunFmt resolveRun(const Block& b, const Run& r) const;
+    //  Zeichenformat der ABSATZMARKE (`w:pPr/w:rPr`), über das aufgelöste
+    //  Absatzformat gelegt. Word legt dort das Format der Marke ab und
+    //  wendet es auf ein Feldergebnis an — der Editor stellt darüber
+    //  Schriftart und -größe des Inhaltsverzeichnisses ein.
+    RunFmt paragraphMarkFormat(const Block& b) const;
     ParFmt resolvePar(const Block& b) const;
     const RunFmt& defaultRun() const { return m_defRun; }
 
@@ -312,6 +341,17 @@ public:
     const QList<StyleInfo>& paragraphStyles() const { return m_parStyles; }
     //  w:styleId der Standard-Absatzvorlage (w:default="1"), sonst leer.
     QString defaultParagraphStyleId() const { return m_defaultParStyle; }
+    //  Kennt das Dokument diese Vorlage überhaupt? (w:pStyle auf eine
+    //  undefinierte id löst wie eine fehlende Vorlage auf — also gar nicht.)
+    bool hasStyle(const QString& id) const { return m_styles.contains(id); }
+    //  Überschriftvorlage `Heading<level>` SICHERSTELLEN (level 1…9) und ihre
+    //  styleId liefern; leer bei unsinnigem Level. Die meisten .docx bringen
+    //  keine mit — ohne das ließe sich in ihnen keine Überschrift schreiben.
+    //  Neu angelegte Vorlagen gehen beim Speichern nach `word/styles.xml`
+    //  (s. stylesParts()); ein Undo lässt sie stehen, sie sind dann inert.
+    QString ensureHeadingStyle(int level);
+    //  Höchster Überschrift-Level, den die Auswahlliste anbieten soll.
+    static constexpr int kMaxHeadingLevel = 3;
 
     // ── NEUE Knoten anlegen (Einfügen) ───────────────────────────────────────
     //  Neu erzeugtes XML hat keine Herkunft im Original. Damit das Span-Modell
@@ -347,13 +387,43 @@ public:
     int insertImage(int beforeBlock, const QString& localPath, QString* err);
     //  Dasselbe aus BYTES (Zwischenablage): `ext` bestimmt Teilname und
     //  Content-Type; unbekannte Endungen werden zu "png".
+    //  `cxEmu`/`cyEmu` > 0 geben die ANZEIGEGRÖSSE vor (Kopieren innerhalb des
+    //  Editors reicht die Größe der Quelle durch); 0 = aus den nativen Pixeln
+    //  rechnen. Auf die Textbreite gedeckelt wird in beiden Fällen.
     int insertImageData(int beforeBlock, const QByteArray& bytes,
-                        const QString& ext, QString* err);
+                        const QString& ext, QString* err,
+                        qint64 cxEmu = 0, qint64 cyEmu = 0);
+    //  Bild MITTEN in einen Absatz setzen: als `w:drawing`-Run VOR `runIdx`
+    //  (der Aufrufer hat dort bereits eine Run-Grenze erzeugt). Das ist der
+    //  Weg, auf dem zwei Bilder nebeneinander und Text daneben entstehen —
+    //  in der Datei ganz normales `wp:inline`, wie Word es schreibt.
+    //  Liefert den Run-Index, −1 bei Fehler (Text in `err`).
+    int insertImageRunAt(int blockIdx, int runIdx, const QByteArray& bytes,
+                         const QString& ext, QString* err,
+                         qint64 cxEmu = 0, qint64 cyEmu = 0);
     //  Größe eines EINGEBETTETEN Bildes ändern (wp:extent + a:ext in pic:spPr).
     //  Der Bild-Run bleibt opak; geschrieben wird eine NEUE Zeichnung in den
     //  Anhang-Pool, auf die der Run zeigt — das Original bleibt unangetastet.
     //  false, wenn der Block kein reiner Bild-Absatz ist.
     bool setImageSizeEmu(int blockIdx, qint64 cxEmu, qint64 cyEmu);
+    //  Dasselbe für EIN Bild eines Absatzes, der auch Text tragen kann.
+    bool setImageSizeEmu(int blockIdx, int runIdx, qint64 cxEmu, qint64 cyEmu);
+    //  UMBRUCHART eines Bildes: `wp:inline` (in der Zeile) ⇄ `wp:anchor` +
+    //  `w:wrapSquare` (Text fließt daneben). Umgeschrieben wird wie bei der
+    //  Größe: der Roh-Span des Bild-Runs wird materialisiert, die neue
+    //  Zeichnung kommt in den Anhang-Pool, der Run zeigt dorthin — alles
+    //  Übrige am Bild (Zuschnitt, Effekte, Alternativtext) bleibt unangetastet.
+    //  false, wenn der Run kein deutbares `w:drawing` trägt.
+    bool setImageWrap(int blockIdx, int runIdx, bool floating);
+    //  LAGE eines verankerten Bildes (`wp:positionH/V` ▸ `wp:posOffset`, EMU,
+    //  relativ zu Textspalte und Absatz) — das, was Ziehen mit der Maus
+    //  schreibt. false, wenn das Bild in der Zeile steht oder sich nichts ändert.
+    bool setImageAnchorEmu(int blockIdx, int runIdx, int posXEmu, int posYEmu);
+    //  UMBRUCHSEITE eines verankerten Bildes (`InlineImage::WrapSide`).
+    bool setImageWrapSide(int blockIdx, int runIdx, int side);
+    //  Das Bild EINES Runs (Lage/Umbruchseite/Maße) — false, wenn dieser Run
+    //  keine deutbare Zeichnung trägt.
+    bool imageOfRun(int blockIdx, int runIdx, InlineImage* out) const;
 
     // ── Tabellen-Gerüst ──────────────────────────────────────────────────────
     const QVector<TableDef>& tables() const { return m_tables; }
@@ -399,6 +469,9 @@ public:
     //  Text bräuchte einen Inline-Objekt-Handler, den QTextLayout ohne
     //  QTextDocument nicht kennt; es bleibt dann der graue Platzhalter.
     bool paragraphImage(const Block& b, InlineImage* out) const;
+    //  ALLE Bilder eines Absatzes in Textreihenfolge (Run-Index + Zeichenstelle
+    //  des Objekt-Zeichens). Grundlage der Anzeige „Bild im Fließtext".
+    QVector<InlineImage> paragraphImages(const Block& b) const;
     //  Beziehungsziel (`rId…` → z. B. "media/bild1.png"), leer wenn unbekannt.
     QString relTarget(const QString& relId) const;
     //  EINEN Eintrag aus dem Container nachladen (öffnet das ZIP erneut — die
@@ -433,6 +506,10 @@ public:
     static QString    plainTextPreview(const QString& path, int maxLines);
     static QString    xmlEscape(const QString& s);
     static QString    serializeRunsText(const QString& text); // Text → <w:t>/<w:tab/>…
+    //  <w:rPr>-Fragment aus einem RunFmt (öffentlich: der Controller schreibt
+    //  damit das Zeichenformat des Inhaltsverzeichnis-Absatzes in dessen
+    //  w:pPr/w:rPr — der Feld-Run selbst bleibt opak und unangetastet).
+    QString buildRPrXml(const RunFmt& f) const;
 
     //  Kanonisch geordnetes Einfügen/Ersetzen EINES Property-Elements in einem
     //  bestehenden <w:rPr>/<w:pPr>-Fragment — alle übrigen Kinder bleiben
@@ -453,6 +530,12 @@ private:
         ParFmt  pf;
     };
 
+    //  Der EINE Schreibweg für den Rahmen einer Zeichnung: Umbruchart, Lage und
+    //  Umbruchseite. Die Kinder werden übernommen, nur der Rahmen entsteht neu.
+    bool rewriteDrawingFrame(int blockIdx, int runIdx, bool floating,
+                             int posXEmu, int posYEmu, int wrapSide,
+                             bool requireModeChange);
+
     bool parseDocumentXml(QString* err);
     void parseSectPr(QStringView xml);       // w:pgSz/w:pgMar/w:cols → m_section
     bool parseStylesXml(const QByteArray& xml);
@@ -466,8 +549,14 @@ private:
     QString emitBlocks(bool rawOnly) const;
     QHash<QString, QByteArray> numberingParts() const;   // Listen-Infrastruktur
     QHash<QString, QByteArray> mediaParts() const;       // eingefügte Bilder
+    QHash<QString, QByteArray> stylesParts(
+        const QHash<QString, QByteArray>& base) const;   // neu angelegte Vorlagen
     QString buildRunXml(const Run& r) const;
-    QString buildRPrXml(const RunFmt& f) const;      // nur für NEUE Runs
+    //  Bild als ZIP-Teil vormerken und den `w:drawing`-Run bauen — gemeinsamer
+    //  Kern von `insertImageData` (eigener Absatz) und `insertImageRunAt`
+    //  (Bild im Fließtext). Leerer Rückgabewert = Fehler (Text in `err`).
+    QString buildImageRunXml(const QByteArray& bytes, const QString& ext,
+                             QString* err, qint64 cxEmu, qint64 cyEmu);
 
     //  Gerüst-Text EINER Stelle: materialisiert, sonst Original-Span.
     QString tableHeaderText(const TableDef& d) const;
@@ -517,6 +606,12 @@ private:
     int  m_nextAbstractId = 0;
     bool m_hadNumberingPart = false;
     QString m_numberingXml;      // dekodierter Bestand (für Splice), sonst leer
+
+    bool m_hadStylesPart = false;
+    QString m_stylesXml;         // dekodierter Bestand (für Splice), sonst leer
+    //  XML der per ensureHeadingStyle() neu angelegten Vorlagen, in
+    //  Anlegereihenfolge — beim Speichern vor </w:styles> gespliced.
+    QStringList m_pendingStyles;
 };
 
 } // namespace Docx
