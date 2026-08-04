@@ -6,6 +6,15 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_AUTOMOC ON)
 set(CMAKE_AUTORCC ON)
 
+find_program(MG_CCACHE_PROGRAM NAMES ccache NO_CACHE)
+if(MG_CCACHE_PROGRAM AND NOT CMAKE_CXX_COMPILER_LAUNCHER)
+    set(CMAKE_CXX_COMPILER_LAUNCHER ${CMAKE_COMMAND} -E env
+        CCACHE_SLOPPINESS=pch_defines,time_macros ${MG_CCACHE_PROGRAM})
+    message(STATUS "ccache: ${MG_CCACHE_PROGRAM}")
+else()
+    message(STATUS "ccache: nicht benutzt")
+endif()
+
 find_package(Qt6 6.4 REQUIRED COMPONENTS
     Core
     Gui
@@ -20,211 +29,192 @@ find_package(Qt6 6.4 REQUIRED COMPONENTS
 
 find_package(ZLIB REQUIRED)
 
-#  OCR (optional): Tesseract + Leptonica via pkg-config. Fehlt es, wird OCR
-#  einfach ausgelassen (available()==false) — der Build bleibt portabel.
 find_package(PkgConfig QUIET)
 if(PkgConfig_FOUND)
     pkg_check_modules(TESSERACT IMPORTED_TARGET tesseract lept)
 endif()
 
-#  Sources are grouped by domain folder under src/ (see Structure.md §2).
-#  src/ itself is an include directory, so every local include is written
-#  relative to it (e.g. #include "pdf/edit/PdfEditModel.h").
+set(MG_PCH_STUB ${CMAKE_CURRENT_BINARY_DIR}/mg_pch_stub.cpp)
+file(GENERATE OUTPUT ${MG_PCH_STUB} CONTENT "namespace mg { const int pchMarker = 0; }\n")
+set_source_files_properties(${MG_PCH_STUB} PROPERTIES GENERATED TRUE)
+add_library(mg_pch STATIC ${MG_PCH_STUB})
+set_target_properties(mg_pch PROPERTIES AUTOMOC OFF AUTORCC OFF)
+target_compile_options(mg_pch PRIVATE -w)
+target_link_libraries(mg_pch PRIVATE Qt6::Core Qt6::Gui)
+target_precompile_headers(mg_pch PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/cmake/Precompiled.h)
 
-#  src/core — cross-cutting infrastructure: settings, strings, persistence,
-#  RHI backend choice, header-only helpers.
-set(SOURCES_CORE
-    src/core/ISettings.h
-    src/core/AppSettings.cpp
-    src/core/AppSettings.h
-    src/core/Strings.cpp
-    src/core/Strings.h
-    src/core/JsonStorage.cpp
-    src/core/JsonStorage.h
-    src/core/RhiProber.cpp
-    src/core/RhiProber.h
-    src/core/FileBrowseModel.cpp
-    src/core/FileBrowseModel.h
-    src/core/PathUtils.h
-    src/core/MemoryUtils.h
-)
-
-#  src/app — application-level bridges (App, Viewer, WebEngine, Translit).
-set(SOURCES_APP
-    src/app/AppController.cpp
-    src/app/AppController.h
-    src/app/ViewerController.cpp
-    src/app/ViewerController.h
-    src/app/WebEngineController.cpp
-    src/app/WebEngineController.h
-    src/app/TransliterationController.cpp
-    src/app/TransliterationController.h
-)
-
-#  src/media — media item data, models, folder scan, gallery thumbnails.
-set(SOURCES_MEDIA
-    src/media/MediaItem.h
-    src/media/MediaModel.cpp
-    src/media/MediaModel.h
-    src/media/MediaProxyModel.cpp
-    src/media/MediaProxyModel.h
-    src/media/FolderService.cpp
-    src/media/FolderService.h
-    src/media/ThumbnailLoader.cpp
-    src/media/ThumbnailLoader.h
-)
-
-#  src/tags — tags + category tree (truth source and QML facade).
-set(SOURCES_TAGS
-    src/tags/TagCategory.h
-    src/tags/TagManager.cpp
-    src/tags/TagManager.h
-    src/tags/TagController.cpp
-    src/tags/TagController.h
-)
-
-#  src/pdf — PDF subsystem: viewing, text/OCR, embedded media, page audio.
-set(SOURCES_PDF
-    src/pdf/PdfThumbnailProvider.cpp
-    src/pdf/PdfThumbnailProvider.h
-    src/pdf/PdfTextController.cpp
-    src/pdf/PdfTextController.h
-    src/pdf/OcrEngine.cpp
-    src/pdf/OcrEngine.h
-    src/pdf/PdfMediaHandler.cpp
-    src/pdf/PdfMediaHandler.h
-    src/pdf/PdfAudioController.cpp
-    src/pdf/PdfAudioController.h
-)
-
-#  src/pdf/edit — PDF annotation editor (model, undo commands, controller)
-#  plus lossless content-stream editing.
-set(SOURCES_PDF_EDIT
-    src/pdf/edit/PdfEditTypes.h
-    src/pdf/edit/PdfEditModel.cpp
-    src/pdf/edit/PdfEditModel.h
-    src/pdf/edit/PdfEditCommands.cpp
-    src/pdf/edit/PdfEditCommands.h
-    src/pdf/edit/PdfEditController.cpp
-    src/pdf/edit/PdfEditController.h
-    src/pdf/edit/PdfContentEditor.cpp
-    src/pdf/edit/PdfContentEditor.h
-    src/pdf/edit/PdfEncodings.cpp
-    src/pdf/edit/PdfEncodings.h
-    src/pdf/edit/PdfObjects.cpp
-    src/pdf/edit/PdfObjects.h
-    src/pdf/edit/PdfVectorExport.cpp
-    src/pdf/edit/PdfVectorExport.h
-    src/pdf/edit/PdfFormFields.cpp
-    src/pdf/edit/PdfAnnotations.cpp
-    src/pdf/edit/PdfImageEmbed.cpp
-    src/pdf/edit/PdfFormFields.h
-    src/pdf/edit/PdfAnnotations.h
-    src/pdf/edit/PdfImageEmbed.h
-    src/pdf/edit/PdfBaseFontWidths.cpp
-    src/pdf/edit/PdfBaseFontWidths.h
-    src/pdf/edit/PdfTextLayout.cpp
-    src/pdf/edit/PdfTextLayout.h
-    src/pdf/edit/PdfTextEditor.cpp
-    src/pdf/edit/PdfTextEditor.h
-    src/pdf/edit/PdfTextReflow.cpp
-    src/pdf/edit/PdfTextReflow.h
-    src/pdf/edit/PdfFontEmbed.cpp
-    src/pdf/edit/PdfFontEmbed.h
-)
-
-#  src/pdf/extract — page extraction and lossless page copying.
-set(SOURCES_PDF_EXTRACT
-    src/pdf/extract/PdfExtractController.cpp
-    src/pdf/extract/PdfExtractController.h
-    src/pdf/extract/PdfPageCopier.cpp
-    src/pdf/extract/PdfPageCopier.h
-)
-
-#  src/docx — DOCX container/document model and PDF export.
-set(SOURCES_DOCX
-    src/docx/DocxZip.cpp
-    src/docx/DocxZip.h
-    src/docx/DocxDocument.cpp
-    src/docx/DocxDocument.h
-    src/docx/DocxController.cpp
-    src/docx/DocxController.h
-    src/docx/DocxPdfExporter.cpp
-    src/docx/DocxPdfExporter.h
-)
-
-#  src/docx/edit — DOCX editor (controller, undo commands, painted text item).
-set(SOURCES_DOCX_EDIT
-    src/docx/edit/DocxEditController.cpp
-    src/docx/edit/DocxEditController.h
-    src/docx/edit/DocxEditCommands.cpp
-    src/docx/edit/DocxEditCommands.h
-    src/docx/edit/DocxTextArea.cpp
-    src/docx/edit/DocxTextArea.h
-)
-
-#  src/image/edit — image annotation editor.
-set(SOURCES_IMAGE_EDIT
-    src/image/edit/ImageEditTypes.h
-    src/image/edit/ImageEditModel.cpp
-    src/image/edit/ImageEditModel.h
-    src/image/edit/ImageEditCommands.cpp
-    src/image/edit/ImageEditCommands.h
-    src/image/edit/ImageEditController.cpp
-    src/image/edit/ImageEditController.h
-)
-
-# ─────────────────────────────────────────────────────────────────────────────
-#  Domänen-BIBLIOTHEKEN — jede Quelle wird GENAU EINMAL übersetzt
-#
-#  Vorher trug jedes Testziel seine Quellen selbst bei: 31 Dateien wurden im
-#  Testbaum 201 mal übersetzt (DocxDocument.cpp allein elfmal à ~22 s). Gemessen
-#  waren das 2116 s von 2575 s CPU eines vollen Builds. Jetzt ist jeder
-#  Domänenordner eine statische Bibliothek; App und Treiber VERLINKEN sie nur.
-#  Der Linker zieht dabei aus einer statischen Bibliothek ausschließlich die
-#  Objekte, die wirklich gebraucht werden — ein Treiber bekommt also weiterhin
-#  nur das, was er prüft, nur eben ohne es neu zu übersetzen.
-#
-#  Neue Datei → in die `set(SOURCES_…)`-Liste ihres Ordners (s. oben); an den
-#  Bibliotheken selbst ist dann nichts zu tun.
-# ─────────────────────────────────────────────────────────────────────────────
-function(mg_add_lib name)
-    add_library(${name} STATIC ${ARGN})
-    #  Alle projektinternen Includes stehen relativ zu src/ (s. Structure.md).
+function(mg_domain name)
+    cmake_parse_arguments(PARSE_ARGV 1 D "" "" "SOURCES;LIBS")
+    add_library(${name} STATIC ${D_SOURCES})
     target_include_directories(${name} PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)
     target_compile_options(${name} PRIVATE -w)
+    target_link_libraries(${name} PUBLIC ${D_LIBS})
+    target_precompile_headers(${name} REUSE_FROM mg_pch)
 endfunction()
 
-mg_add_lib(mg_core       ${SOURCES_CORE})
-mg_add_lib(mg_tags       ${SOURCES_TAGS})
-mg_add_lib(mg_docx       ${SOURCES_DOCX})
-mg_add_lib(mg_docxedit   ${SOURCES_DOCX_EDIT})
-mg_add_lib(mg_media      ${SOURCES_MEDIA})
-mg_add_lib(mg_pdfextract ${SOURCES_PDF_EXTRACT})
-mg_add_lib(mg_pdfedit    ${SOURCES_PDF_EDIT})
-mg_add_lib(mg_pdf        ${SOURCES_PDF})
-mg_add_lib(mg_imageedit  ${SOURCES_IMAGE_EDIT})
-mg_add_lib(mg_app        ${SOURCES_APP})
+mg_domain(mg_core
+    SOURCES
+        src/core/ISettings.h
+        src/core/AppSettings.cpp
+        src/core/AppSettings.h
+        src/core/Strings.cpp
+        src/core/Strings.h
+        src/core/JsonStorage.cpp
+        src/core/JsonStorage.h
+        src/core/RhiProber.cpp
+        src/core/RhiProber.h
+        src/core/FileBrowseModel.cpp
+        src/core/FileBrowseModel.h
+        src/core/PathUtils.h
+        src/core/MemoryUtils.h
+    LIBS
+        Qt6::Core Qt6::Gui Qt6::Quick
+)
 
-#  Abhängigkeiten PUBLIC: wer eine Bibliothek verlinkt, bekommt automatisch die
-#  Qt-Module, die ihre Objekte brauchen — ein Treiber muss sie nicht kennen.
-#  RhiProber (mg_core) fasst QQuickWindow an, deshalb Quick schon hier.
-target_link_libraries(mg_core       PUBLIC Qt6::Core Qt6::Gui Qt6::Quick)
-target_link_libraries(mg_tags       PUBLIC mg_core)
-target_link_libraries(mg_docx       PUBLIC mg_core ZLIB::ZLIB)
-target_link_libraries(mg_docxedit   PUBLIC mg_docx Qt6::Pdf)
-target_link_libraries(mg_media      PUBLIC mg_core mg_tags mg_docx
-                                           Qt6::Multimedia Qt6::Pdf)
-target_link_libraries(mg_pdfextract PUBLIC mg_core Qt6::Pdf ZLIB::ZLIB)
-target_link_libraries(mg_pdfedit    PUBLIC mg_core mg_pdfextract Qt6::Pdf ZLIB::ZLIB)
-target_link_libraries(mg_pdf        PUBLIC mg_core Qt6::Pdf Qt6::Multimedia ZLIB::ZLIB)
-target_link_libraries(mg_imageedit  PUBLIC mg_core)
-target_link_libraries(mg_app        PUBLIC mg_core mg_media mg_tags mg_pdf
-                                           mg_pdfedit mg_docx Qt6::Qml
-                                           Qt6::WebEngineQuick)
+mg_domain(mg_tags
+    SOURCES
+        src/tags/TagCategory.h
+        src/tags/TagManager.cpp
+        src/tags/TagManager.h
+        src/tags/TagController.cpp
+        src/tags/TagController.h
+    LIBS
+        mg_core
+)
 
-#  OCR optional dazulinken (Degradationskette: ohne Tesseract kein OCR).
-#  Gehört an mg_pdf — dort liegt OcrEngine.cpp.
+mg_domain(mg_docx
+    SOURCES
+        src/docx/DocxZip.cpp
+        src/docx/DocxZip.h
+        src/docx/DocxDocument.cpp
+        src/docx/DocxDocument.h
+        src/docx/DocxController.cpp
+        src/docx/DocxController.h
+        src/docx/DocxPdfExporter.cpp
+        src/docx/DocxPdfExporter.h
+    LIBS
+        mg_core ZLIB::ZLIB
+)
+
+mg_domain(mg_docxedit
+    SOURCES
+        src/docx/edit/DocxEditController.cpp
+        src/docx/edit/DocxEditController.h
+        src/docx/edit/DocxEditCommands.cpp
+        src/docx/edit/DocxEditCommands.h
+        src/docx/edit/DocxTextArea.cpp
+        src/docx/edit/DocxTextArea.h
+    LIBS
+        mg_docx Qt6::Pdf
+)
+
+mg_domain(mg_media
+    SOURCES
+        src/media/MediaItem.h
+        src/media/MediaModel.cpp
+        src/media/MediaModel.h
+        src/media/MediaProxyModel.cpp
+        src/media/MediaProxyModel.h
+        src/media/FolderService.cpp
+        src/media/FolderService.h
+        src/media/ThumbnailLoader.cpp
+        src/media/ThumbnailLoader.h
+    LIBS
+        mg_core mg_tags mg_docx Qt6::Multimedia Qt6::Pdf
+)
+
+mg_domain(mg_pdfextract
+    SOURCES
+        src/pdf/extract/PdfExtractController.cpp
+        src/pdf/extract/PdfExtractController.h
+        src/pdf/extract/PdfPageCopier.cpp
+        src/pdf/extract/PdfPageCopier.h
+    LIBS
+        mg_core Qt6::Pdf ZLIB::ZLIB
+)
+
+mg_domain(mg_pdfedit
+    SOURCES
+        src/pdf/edit/PdfEditTypes.h
+        src/pdf/edit/PdfEditModel.cpp
+        src/pdf/edit/PdfEditModel.h
+        src/pdf/edit/PdfEditCommands.cpp
+        src/pdf/edit/PdfEditCommands.h
+        src/pdf/edit/PdfEditController.cpp
+        src/pdf/edit/PdfEditController.h
+        src/pdf/edit/PdfContentEditor.cpp
+        src/pdf/edit/PdfContentEditor.h
+        src/pdf/edit/PdfEncodings.cpp
+        src/pdf/edit/PdfEncodings.h
+        src/pdf/edit/PdfObjects.cpp
+        src/pdf/edit/PdfObjects.h
+        src/pdf/edit/PdfVectorExport.cpp
+        src/pdf/edit/PdfVectorExport.h
+        src/pdf/edit/PdfFormFields.cpp
+        src/pdf/edit/PdfFormFields.h
+        src/pdf/edit/PdfAnnotations.cpp
+        src/pdf/edit/PdfAnnotations.h
+        src/pdf/edit/PdfImageEmbed.cpp
+        src/pdf/edit/PdfImageEmbed.h
+        src/pdf/edit/PdfBaseFontWidths.cpp
+        src/pdf/edit/PdfBaseFontWidths.h
+        src/pdf/edit/PdfTextLayout.cpp
+        src/pdf/edit/PdfTextLayout.h
+        src/pdf/edit/PdfTextEditor.cpp
+        src/pdf/edit/PdfTextEditor.h
+        src/pdf/edit/PdfTextReflow.cpp
+        src/pdf/edit/PdfTextReflow.h
+        src/pdf/edit/PdfFontEmbed.cpp
+        src/pdf/edit/PdfFontEmbed.h
+    LIBS
+        mg_core mg_pdfextract Qt6::Pdf ZLIB::ZLIB
+)
+
+mg_domain(mg_pdf
+    SOURCES
+        src/pdf/PdfThumbnailProvider.cpp
+        src/pdf/PdfThumbnailProvider.h
+        src/pdf/PdfTextController.cpp
+        src/pdf/PdfTextController.h
+        src/pdf/OcrEngine.cpp
+        src/pdf/OcrEngine.h
+        src/pdf/PdfMediaHandler.cpp
+        src/pdf/PdfMediaHandler.h
+        src/pdf/PdfAudioController.cpp
+        src/pdf/PdfAudioController.h
+    LIBS
+        mg_core Qt6::Pdf Qt6::Multimedia ZLIB::ZLIB
+)
+
+mg_domain(mg_imageedit
+    SOURCES
+        src/image/edit/ImageEditTypes.h
+        src/image/edit/ImageEditModel.cpp
+        src/image/edit/ImageEditModel.h
+        src/image/edit/ImageEditCommands.cpp
+        src/image/edit/ImageEditCommands.h
+        src/image/edit/ImageEditController.cpp
+        src/image/edit/ImageEditController.h
+    LIBS
+        mg_core
+)
+
+mg_domain(mg_app
+    SOURCES
+        src/app/AppController.cpp
+        src/app/AppController.h
+        src/app/ViewerController.cpp
+        src/app/ViewerController.h
+        src/app/WebEngineController.cpp
+        src/app/WebEngineController.h
+        src/app/TransliterationController.cpp
+        src/app/TransliterationController.h
+    LIBS
+        mg_core mg_media mg_tags mg_pdf mg_pdfedit mg_docx
+        Qt6::Qml Qt6::WebEngineQuick
+)
+
 if(TESSERACT_FOUND)
     target_link_libraries(mg_pdf PUBLIC PkgConfig::TESSERACT)
     target_compile_definitions(mg_pdf PUBLIC MG_HAVE_TESSERACT)
@@ -251,6 +241,7 @@ target_link_libraries(MediaGallery PRIVATE
 )
 
 target_compile_options(MediaGallery PRIVATE -w)
+target_precompile_headers(MediaGallery REUSE_FROM mg_pch)
 
 if(WIN32)
     set_target_properties(MediaGallery PROPERTIES WIN32_EXECUTABLE TRUE)

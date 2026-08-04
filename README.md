@@ -376,25 +376,7 @@ Custom themes can be exported to JSON and shared:
 ## Changelog
 
 ### Latest
-- **Feature**: Added a fully integrated, themeable file and folder chooser with bookmarks, breadcrumbs, filters, hidden-file support, and smooth scrolling.
-
-- **Feature**: Expanded DOCX editor:
-  - Added floating and freely positioned images with configurable text wrapping.
-  - Added inline image layouts with side-by-side images.
-  - Added keyboard support for deleting, copying, cutting, and pasting tables.
-  - Added automatic heading styles and improved table of contents support.
-  - Added integrated PDF page selection for inserting PDF pages as images.
-
-- **Change**: Improved DOCX document layout and usability:
-  - Table of contents now uses dedicated pages.
-  - Improved image positioning, text flow, caret placement, and scrolling.
-  - Improved file dialog integration and navigation.
-
-- **Fix**: Improved DOCX stability:
-  - Fixed image handling, wrapping behavior, and table interactions.
-  - Fixed table of contents rendering and editing issues.
-  - Fixed PDF page insertion.
-  - Fixed various layout and rendering issues.
+- **Build**: optimize CMakeLists configuration for faster builds
 
 ---
 
