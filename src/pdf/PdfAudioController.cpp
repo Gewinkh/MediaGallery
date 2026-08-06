@@ -13,7 +13,7 @@
 #include <algorithm>
 #include <utility>
 #include <cstring>
-#include <zlib.h>
+#include "core/ZCodec.h"
 
 // ══════════════════════════════════════════════════════════════════════════════
 //  Roh-PDF-Parser-Helfer (frei, im anonymen Namespace) + Worker-Tasks.
@@ -418,25 +418,12 @@ QVector<PdfAudioClip> scanClips(const QByteArray& d, const CancelFlag& cancel) {
     return out;
 }
 
-// ── zlib-Inflate (FlateDecode). 15+32 = Fenster 15, Header-Autoerkennung. ──────
+// ── Inflate (FlateDecode) über den ZCodec-Shim. Wrap::Auto = Kopf selbst
+//    erkennen; ohne ZLIB gebaut heißt das „zlib-gerahmt, kein gzip". ──────────
 QByteArray zlibInflate(const QByteArray& in) {
-    if (in.isEmpty()) return {};
-    z_stream s; std::memset(&s, 0, sizeof(s));
-    if (inflateInit2(&s, 15 + 32) != Z_OK) return {};
-    s.next_in  = reinterpret_cast<Bytef*>(const_cast<char*>(in.constData()));
-    s.avail_in = static_cast<uInt>(in.size());
-    QByteArray out, buf; buf.resize(256 * 1024);
-    int ret = Z_OK;
-    do {
-        s.next_out  = reinterpret_cast<Bytef*>(buf.data());
-        s.avail_out = static_cast<uInt>(buf.size());
-        ret = inflate(&s, Z_NO_FLUSH);
-        if (ret != Z_OK && ret != Z_STREAM_END && ret != Z_BUF_ERROR) { inflateEnd(&s); return {}; }
-        out.append(buf.constData(), buf.size() - s.avail_out);
-        if (ret == Z_BUF_ERROR && s.avail_in == 0) break;     // kein weiterer Input
-    } while (ret != Z_STREAM_END);
-    inflateEnd(&s);
-    return out;
+    bool ok = false;
+    return mg::zcodec::inflate(in, mg::zcodec::Wrap::Auto, 0,
+                               /*tolerant*/ true, &ok);
 }
 
 // 16-bit-Samples Big-Endian → Little-Endian (PDF-/Sound-Reihenfolge → WAV).

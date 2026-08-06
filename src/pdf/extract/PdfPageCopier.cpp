@@ -8,7 +8,7 @@
 #include <QIODevice>
 #include <QtGlobal>
 
-#include <zlib.h>
+#include "core/ZCodec.h"
 #include <cstring>
 
 // ══════════════════════════════════════════════════════════════════════════════
@@ -36,31 +36,14 @@ inline bool isDigit(char c)   { return c >= '0' && c <= '9'; }
 QByteArray zlibInflate(const char* src, qint64 len, bool* ok) {
     *ok = false;
     if (!src || len <= 0) return {};
-    for (int attempt = 0; attempt < 2; ++attempt) {
-        z_stream zs;
-        std::memset(&zs, 0, sizeof(zs));
-        if (inflateInit2(&zs, attempt == 0 ? 15 : -15) != Z_OK) continue;
-        zs.next_in  = reinterpret_cast<Bytef*>(const_cast<char*>(src));
-        zs.avail_in = static_cast<uInt>(qMin<qint64>(len, 0x7FFFFFFF));
-        QByteArray out;
-        char buf[1 << 15];
-        int rc = Z_OK;
-        while (rc == Z_OK) {
-            zs.next_out  = reinterpret_cast<Bytef*>(buf);
-            zs.avail_out = sizeof(buf);
-            rc = inflate(&zs, Z_NO_FLUSH);
-            const qint64 produced = sizeof(buf) - zs.avail_out;
-            if (produced > 0) out.append(buf, produced);
-            if (out.size() > (256LL << 20)) { rc = Z_MEM_ERROR; break; }  // Deckel 256 MB
-        }
-        inflateEnd(&zs);
-        if (rc == Z_STREAM_END || (rc == Z_OK && !out.isEmpty())
-            || (rc == Z_BUF_ERROR && !out.isEmpty())) {
-            *ok = true;
-            return out;
-        }
-    }
-    return {};
+    const QByteArray in = QByteArray::fromRawData(src, len);
+    // Ohne ZLIB gebaut trägt nur der erste Versuch, und `tolerant` (also das
+    // Verwerten abgeschnittener Ströme) entfällt — s. ZCodec.h.
+    QByteArray out = mg::zcodec::inflate(in, mg::zcodec::Wrap::Zlib, 0,
+                                         /*tolerant*/ true, ok);
+    if (*ok) return out;
+    return mg::zcodec::inflate(in, mg::zcodec::Wrap::Raw, 0,
+                               /*tolerant*/ true, ok);
 }
 
 // ── PNG-Prädiktor-Dekodierung (für XRef-Streams üblich: Predictor 12/„Up") ──

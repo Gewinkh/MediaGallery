@@ -635,6 +635,12 @@ Rectangle {
                             id: typeRow
                             required property var modelData
                             readonly property bool on: createPopup.kind === modelData.kind
+                            //  DOCX braucht ZLIB (s. src/core/ZCodec.h). Fehlt sie,
+                            //  bleibt die Zeile stehen, ist aber ausgegraut — der
+                            //  Hover-Text nennt die fehlende Bibliothek.
+                            readonly property bool avail: modelData.kind !== "docx"
+                                                          || App.docxAvailable
+                            opacity: avail ? 1.0 : 0.45
                             width: parent.width; height: 30; radius: 5
                             color: on ? Qt.rgba(App.themeAccent.r, App.themeAccent.g, App.themeAccent.b, 0.22)
                                  : (tyHover.hovered
@@ -660,7 +666,13 @@ Rectangle {
                                 }
                             }
                             HoverHandler { id: tyHover }
-                            TapHandler { onTapped: createPopup.kind = typeRow.modelData.kind }
+                            TapHandler {
+                                enabled: typeRow.avail
+                                onTapped: createPopup.kind = typeRow.modelData.kind
+                            }
+                            ToolTip.visible: tyHover.hovered && !typeRow.avail
+                            ToolTip.delay: 500
+                            ToolTip.text: App.uiText(App.language, "LibMissingZlib")
                         }
                     }
 

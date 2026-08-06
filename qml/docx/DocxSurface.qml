@@ -63,6 +63,13 @@ Item {
                 statusText.flash(App.uiText(App.language, "DocxExportedTo")
                                  .replace("%1", target.split("/").pop()))
         }
+        //  Eine vorhandene Kopf-/Fußzeile ließ sich nicht öffnen: das muss man
+        //  SEHEN — vorher wurde die Schaltfläche nur stumm gesperrt.
+        onRegionOpenFailed: (region, error) => {
+            statusText.flash(error.length > 0
+                             ? error
+                             : App.uiText(App.language, "DocxRegionOpenError"))
+        }
         onImageInsertFailed: (error) => {
             statusText.flash(error.length > 0
                              ? error
@@ -884,9 +891,26 @@ Item {
                                     area.forceActiveFocus()
                                 }
                             }
-                            ToolTip.visible: rgHover.hovered && !parent.avail
+                            //  `avail` OHNE `parent.`: die Bindung einer
+                            //  ANGEHÄNGTEN Eigenschaft wird im Geltungsbereich
+                            //  der Kachel selbst ausgewertet — `parent` ist dort
+                            //  die Row, `parent.avail` also undefined und die
+                            //  Bedingung immer wahr. Der Hinweis erschien
+                            //  dadurch an den VERFÜGBAREN Schaltflächen. Der
+                            //  HoverHandler ist davon nicht betroffen: er ist
+                            //  ein KIND der Kachel.
+                            ToolTip.visible: rgHover.hovered && !avail
                             ToolTip.delay: 500
-                            ToolTip.text: App.uiText(App.language, "DocxRegionNone")
+                            //  „Gibt es nicht" und „vorhanden, aber nicht lesbar"
+                            //  sind zwei verschiedene Dinge — der Grund steht im
+                            //  Controller, sobald das Öffnen fehlschlug. Die
+                            //  Bindung hängt an `avail` (NOTIFY regionsAvailable),
+                            //  damit sie genau dann neu ausgewertet wird.
+                            ToolTip.text: avail
+                                          ? ""
+                                          : (editCtl.regionError(modelData.rid).length > 0
+                                             ? editCtl.regionError(modelData.rid)
+                                             : App.uiText(App.language, "DocxRegionNone"))
                         }
                     }
                 }
@@ -1339,7 +1363,12 @@ Item {
                         return                       // Klick, keine Geste
                     const info = imgBox.selInfo
                     if (!info.image) return
-                    editCtl.setImagePositionMm(
+                    //  Über die ANZEIGE ablegen, nicht direkt über den
+                    //  Controller: liegt das Bild nach der Geste über einem
+                    //  anderen Absatz, hängt sie den Anker dorthin um (wie
+                    //  Word) — erst dann umfließt dessen Text es. Ohne
+                    //  Absatzwechsel ist es dasselbe wie bisher.
+                    area.dropSelectedImage(
                         area.selImageBlock,
                         info.xMm + imgBox.previewDx * imgBox.mmPerPx,
                         info.yMm + imgBox.previewDy * imgBox.mmPerPx)
@@ -1616,12 +1645,14 @@ Item {
                     //  laufende Wert bekommt einen Haken, damit man nicht raten
                     //  muss, wie es gerade steht.
                     if (im.floating) {
-                        //  „Beide Seiten" (Words Vorgabe) zeigt die Anzeige wie
-                        //  „breitere Seite" — eine Zeile kann nicht in zwei
-                        //  Stücke links UND rechts des Bildes zerfallen. Damit
-                        //  Menü, Datei und Anzeige dasselbe sagen, wird hier
-                        //  Words eigener Wert `largest` geschrieben.
+                        //  Alle vier Werte, die ECMA-376 kennt — „beide Seiten"
+                        //  ist Words Vorgabe und die der Anzeige: sie teilt ein
+                        //  Zeilenband dafür in ein Stück links und eines rechts
+                        //  des Bildes. Ist eine Seite zu schmal, weicht sie von
+                        //  selbst auf die breitere aus.
                         const side = (v) => (im.wrapSide === v ? "✓  " : "     ")
+                        list.push({ text: side(0) + App.uiText(App.language, "DocxWrapBoth"),
+                                    act: () => editCtl.setImageWrapSide(block, 0) })
                         list.push({ text: side(3) + App.uiText(App.language, "DocxWrapLargest"),
                                     act: () => editCtl.setImageWrapSide(block, 3) })
                         list.push({ text: side(1) + App.uiText(App.language, "DocxWrapLeft"),

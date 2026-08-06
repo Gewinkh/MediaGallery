@@ -246,6 +246,12 @@ struct TocEntry {
     QString text;
     int     level = 1;          // 1…9 (aus HeadingN)
     int     block = -1;         // Index in Document::blocks
+    //  Zeichenposition des ZEILENANFANGS in `Block::plainText()`. Ein Absatz
+    //  kann mehrere Überschriften tragen (nur durch `w:br` getrennt) und über
+    //  eine Seitengrenze laufen — dann gilt die Seitenzahl des Blocks nicht mehr
+    //  für jeden Eintrag. Verbraucher: `DocxTextArea::pageOfEntry` und der
+    //  PDF-Export.
+    int     pos   = 0;
 };
 
 // ── Eingebettetes Bild eines Absatzes (w:drawing) ────────────────────────────
@@ -415,6 +421,13 @@ public:
     //  Übrige am Bild (Zuschnitt, Effekte, Alternativtext) bleibt unangetastet.
     //  false, wenn der Run kein deutbares `w:drawing` trägt.
     bool setImageWrap(int blockIdx, int runIdx, bool floating);
+    //  Bild-RUN in einen ANDEREN Absatz umhängen (Anker wechselt den Absatz,
+    //  wie in Word beim Ablegen über einem anderen Absatz). Der Run wandert
+    //  unverändert mit seinem Roh-Span — Zeichnung, Zuschnitt und Größe bleiben
+    //  also byteweise erhalten; nur seine LAGE ist danach relativ zum neuen
+    //  Absatz und wird vom Aufrufer über `setImageAnchorEmu` nachgezogen.
+    //  Liefert den Run-Index im Zielabsatz, −1 wenn nicht möglich.
+    int moveImageRun(int srcBlock, int runIdx, int dstBlock);
     //  LAGE eines verankerten Bildes (`wp:positionH/V` ▸ `wp:posOffset`, EMU,
     //  relativ zu Textspalte und Absatz) — das, was Ziehen mit der Maus
     //  schreibt. false, wenn das Bild in der Zeile steht oder sich nichts ändert.

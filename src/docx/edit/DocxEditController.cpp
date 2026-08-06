@@ -252,6 +252,55 @@ void DocxEditController::removeRangeInBlock(Block& b, int p1, int p2) const {
     b.dirty = true;
 }
 
+//  Absatz an `pos` teilen. Der neue Absatz erbt Zelle, pPr und ParFmt — er ist
+//  derselbe Absatz, nur ab dieser Stelle. `dropBreakAtPos` schluckt ein dort
+//  stehendes `w:br`-Zeichen: aus dem Zeilenumbruch wird die Absatzgrenze,
+//  sonst bliebe er als leere erste Zeile im neuen Absatz stehen.
+int DocxEditController::splitParagraphAt(int blockIdx, int pos, bool dropBreakAtPos) {
+    if (blockIdx < 0 || blockIdx >= m_doc.blocks.size()) return blockIdx;
+    Block& blk = m_doc.blocks[blockIdx];
+    if (dropBreakAtPos && pos < blk.textLength()
+        && blk.plainText().at(pos) == Docx::kLineBreak)
+        removeRangeInBlock(blk, pos, pos + 1);
+
+    const int k = ensureRunBoundary(blk, pos);
+    Block nb;
+    nb.kind    = Block::Paragraph;
+    //  In DERSELBEN Zelle bleiben — sonst stünde der neue Absatz nach dem
+    //  Speichern ausserhalb der Tabelle (wie in `insertText`).
+    nb.tableId = blk.tableId;
+    nb.row     = blk.row;
+    nb.col     = blk.col;
+    const QString ppr = blk.currentPpr(m_doc.docXml());
+    if (!ppr.isEmpty()) { nb.pprXml = ppr; nb.pprMaterialized = true; }
+    nb.pfmt = blk.pfmt;
+    while (blk.runs.size() > k)
+        nb.runs.append(blk.runs.takeAt(k));
+    blk.dirty = true;
+    nb.dirty  = true;
+    m_doc.blocks.insert(blockIdx + 1, nb);
+    return blockIdx + 1;
+}
+
+//  Die Zeilen [from,to) eines Absatzes, dessen Zeilen nur durch `w:br` getrennt
+//  sind, zu einem EIGENEN Absatz machen. Nötig, weil eine Absatzvorlage sonst
+//  zwangsläufig ALLE Zeilen trifft — der Nutzer markiert aber eine Zeile.
+//  Erst HINTEN teilen: eine Teilung vorne verschöbe sonst die hintere Stelle.
+int DocxEditController::splitOffLines(int blockIdx, int from, int to) {
+    if (blockIdx < 0 || blockIdx >= m_doc.blocks.size()) return -1;
+    const Block& blk = m_doc.blocks.at(blockIdx);
+    const QString t = blk.plainText();
+    if (!t.contains(Docx::kLineBreak)) return -1;          // nichts zu teilen
+    if (from <= 0 && to >= t.size()) return -1;            // schon der ganze Absatz
+
+    //  Hinten: der Umbruch steht AUF `to` (er trennt die letzte gewählte Zeile
+    //  von der nächsten). Vorne steht er auf `from - 1` — dort wird geteilt,
+    //  sonst bliebe er als leere Schlusszeile im ersten Absatz stehen.
+    if (to < t.size())  splitParagraphAt(blockIdx, to, /*dropBreakAtPos=*/true);
+    if (from > 0)       return splitParagraphAt(blockIdx, from - 1, /*dropBreakAtPos=*/true);
+    return blockIdx;
+}
+
 void DocxEditController::applyPendingTo(Run& r) const {
     QString rpr = r.currentRpr(m_doc.docXml());
     auto upsert = [&](const QString& name, const QString& xml) {
@@ -459,15 +508,26 @@ bool DocxEditController::ensureRegionLoaded(Region r) {
     Docx::Document d;
     QString err;
     if (!d.loadPart(m_source, s.partPath, &err)) {
-        //  Nicht editierbar (Selbstprüfung/Encoding) → Region bleibt gesperrt.
+        //  Nicht editierbar (Selbstprüfung/Encoding, fehlende Bibliothek) →
+        //  Region bleibt gesperrt. Der GRUND wird gemerkt und gemeldet: sonst
+        //  sah eine vorhandene, aber defekte Kopfzeile aus wie eine fehlende,
+        //  und der Klick auf die Schaltfläche tat scheinbar nichts.
         s.available = false;
+        s.error     = err;
         emit regionsAvailable();
+        emit regionOpenFailed(int(r), err);
         return false;
     }
     s.doc    = std::move(d);
     s.cursor = DocxCursor();
     s.loaded = true;
+    s.error.clear();
     return true;
+}
+
+QString DocxEditController::regionError(int r) const {
+    if (r < 0 || r > 2) return {};
+    return m_slots[r].error;
 }
 
 bool DocxEditController::setRegion(int rInt) {
@@ -1167,10 +1227,51 @@ void DocxEditController::setParagraphStyle(const QString& styleId) {
             id = m_doc.ensureHeadingStyle(m.captured(1).toInt());
         if (id.isEmpty()) return;
     }
-    applyParProp(QStringLiteral("w:pStyle"),
-                 id.isEmpty() ? QString()
-                              : QStringLiteral("<w:pStyle w:val=\"%1\"/>")
-                                    .arg(Document::xmlEscape(id)),
+    const QString styleXml = id.isEmpty()
+                                 ? QString()
+                                 : QStringLiteral("<w:pStyle w:val=\"%1\"/>")
+                                       .arg(Document::xmlEscape(id));
+
+    //  ── Nur die MARKIERTEN Zeilen, nicht der ganze Absatz ───────────────────
+    //  Viele Dokumente trennen mehrere Überschriften nur durch `w:br` (Beleg:
+    //  `tests/ER.docx`, ein Absatz mit sechs Zeilen). Eine Absatzvorlage trifft
+    //  zwangsläufig den GANZEN Absatz — wer eine Zeile markiert, formatierte so
+    //  auch alles darunter (Nutzerbefund). Deshalb wird der Absatz vorher an
+    //  seinen Zeilenumbrüchen geteilt; Teilen und Vorlage sind EIN Undo-Schritt.
+    int b1, p1, b2, p2;
+    orderedSelection(b1, p1, b2, p2);
+    if (b1 == b2 && isEditableParagraph(b1)) {
+        const QString t = m_doc.blocks.at(b1).plainText();
+        if (t.contains(Docx::kLineBreak)) {
+            //  Markierung auf GANZE Zeilen aufziehen.
+            int from = qBound(0, p1, int(t.size()));
+            int to   = qBound(0, p2, int(t.size()));
+            while (from > 0 && t.at(from - 1) != Docx::kLineBreak) --from;
+            while (to < t.size() && t.at(to) != Docx::kLineBreak) ++to;
+            if (!(from == 0 && to >= t.size())) {
+                EditScope scope(this, b1, 1);
+                const int before = int(m_doc.blocks.size());
+                const int mid = splitOffLines(b1, from, to);
+                if (mid < 0) return;                         // nichts zu teilen
+                Block& blk = m_doc.blocks[mid];
+                blk.pprXml = Document::upsertProp(blk.currentPpr(m_doc.docXml()),
+                                                  QStringLiteral("w:pPr"),
+                                                  QStringLiteral("w:pStyle"),
+                                                  styleXml, kPPrOrder);
+                blk.pprMaterialized = true;
+                blk.pfmt.styleId = id;
+                //  Auswahl auf den neuen Absatz nachziehen.
+                m_cursor.block = m_cursor.aBlock = mid;
+                m_cursor.aPos  = 0;
+                m_cursor.pos   = blk.textLength();
+                clearPending();
+                scope.commit(1 + int(m_doc.blocks.size()) - before);
+                return;
+            }
+        }
+    }
+
+    applyParProp(QStringLiteral("w:pStyle"), styleXml,
                  [id](ParFmt& p) { p.styleId = id; });
 }
 
@@ -1576,6 +1677,37 @@ void DocxEditController::setImagePositionMm(int block, qreal xMm, qreal yMm) {
     if (!m_doc.setImageAnchorEmu(bi, run, px, py)) return;   // kein Kommando
     clearPending();
     scope.commit(1);
+}
+
+//  Bild an einen ANDEREN Absatz hängen und dort ablegen — EIN Undo-Schritt über
+//  beide Absätze (der Quellabsatz verliert den Run, der Zielabsatz bekommt ihn).
+void DocxEditController::moveImageToBlock(int srcBlock, int dstBlock,
+                                          qreal xMm, qreal yMm) {
+    int bi = -1, run = -1;
+    if (!selectedImage(srcBlock, &bi, &run)) return;
+    if (dstBlock < 0 || dstBlock >= m_doc.blocks.size() || dstBlock == bi) {
+        setImagePositionMm(srcBlock, xMm, yMm);      // kein Wechsel nötig
+        return;
+    }
+    const int px = int(qRound(qBound(-5000.0, xMm, 5000.0) * 36000.0));
+    const int py = int(qRound(qBound(-5000.0, yMm, 5000.0) * 36000.0));
+
+    const int first = qMin(bi, dstBlock);
+    const int count = qAbs(dstBlock - bi) + 1;
+    EditScope scope(this, first, count);
+    const int newRun = m_doc.moveImageRun(bi, run, dstBlock);
+    if (newRun < 0) return;                          // kein Kommando
+    m_doc.setImageAnchorEmu(dstBlock, newRun, px, py);
+    //  Auswahl dem Bild nachziehen: sie hängt am Objekt-Zeichen, das jetzt im
+    //  Zielabsatz steht — sonst zeigten die Ziehpunkte auf die alte Stelle.
+    Docx::InlineImage moved;
+    if (m_doc.imageOfRun(dstBlock, newRun, &moved)) {
+        m_cursor.block = m_cursor.aBlock = dstBlock;
+        m_cursor.pos   = moved.pos;
+        m_cursor.aPos  = moved.pos + 1;
+    }
+    clearPending();
+    scope.commit(count);
 }
 
 //  Umbruchseite eines verankerten Bildes (`Docx::InlineImage::WrapSide`).

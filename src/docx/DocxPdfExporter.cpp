@@ -170,8 +170,12 @@ bool exportToPdf(const Document& doc, const QString& targetPath,
         bool hasToc = false;
         for (const Block& b : doc.blocks)
             if (doc.isTocParagraph(b)) { hasToc = true; break; }
-        QHash<int, int> headingPos;    // Docx-Block → Position in td
-        QHash<int, int> headingPage;   // Docx-Block → 1-basierte Seite
+        QHash<int, int> headingPos;    // Docx-Block → Position des Absatz-TEXTES in td
+        //  Je EINTRAG, nicht je Block: ein Überschrift-Absatz kann mehrere
+        //  Einträge tragen (nur durch `w:br` getrennt) und über eine Seitengrenze
+        //  laufen. Die Anzeige rechnet genauso (`DocxTextArea::pageOfEntry`) —
+        //  laufen beide auseinander, widersprechen sich Bildschirm und PDF.
+        QHash<int, int> entryPage;     // Index in tocEntries → 1-basierte Seite
         QSet<int> tocTargets;
         for (const TocEntry& e : tocEntries) tocTargets.insert(e.block);
 
@@ -254,6 +258,11 @@ bool exportToPdf(const Document& doc, const QString& targetPath,
                 const qreal x = qBound(0.0, ii.posXEmu / kEmuPerPx,
                                        qMax(0.0, availW - ifmt.width()));
                 //  Seite wie in der Anzeige: dorthin, wo weniger Rest bleibt.
+                //  `wrapText="bothSides"` bildet Qt NICHT ab — ein Rahmen ist
+                //  entweder FloatLeft oder FloatRight, Text links UND rechts
+                //  desselben Bildes kann er nicht. Die Anzeige teilt dafür ein
+                //  Zeilenband (s. `DocxTextArea`); im PDF läuft der Text dann
+                //  nur auf der breiteren Seite.
                 const bool leftSide = (x <= availW - (x + ifmt.width()));
                 QTextFrameFormat ff;
                 ff.setPosition(leftSide ? QTextFrameFormat::FloatLeft
@@ -276,14 +285,18 @@ bool exportToPdf(const Document& doc, const QString& targetPath,
             }
 
             beginBlock(c, firstFlag, bf);
-            //  Lage merken, wenn ein Verzeichnis-Eintrag auf diesen Block zeigt
-            //  — daraus wird im zweiten Durchgang seine Seitenzahl.
-            if (blockIdx >= 0 && tocTargets.contains(blockIdx))
-                headingPos.insert(blockIdx, c.position());
 
             const QString marker = markerFor(doc, pf, counters);
             if (!marker.isEmpty())
                 c.insertText(marker, baseCf);
+
+            //  Lage merken, wenn ein Verzeichnis-Eintrag auf diesen Block zeigt
+            //  — daraus wird im zweiten Durchgang seine Seitenzahl. Gemerkt wird
+            //  der Anfang des TEXTES (hinter einer Listennummer): der zweite
+            //  Durchgang zählt von dort Zeichen ab, um die Zeile eines Eintrags
+            //  zu finden.
+            if (blockIdx >= 0 && tocTargets.contains(blockIdx))
+                headingPos.insert(blockIdx, c.position());
 
             //  Bilder dieses Absatzes an IHRER Stelle im Text ausgeben. Ohne
             //  das fiele die Zeichnung ersatzlos weg: der Text-Zweig entfernt
@@ -366,8 +379,7 @@ bool exportToPdf(const Document& doc, const QString& targetPath,
                 breakBeforeNext = false;   // gilt für DIESEN Block, s. oben
                 beginBlock(cur, first, bf);
 
-                const QString num =
-                    QString::number(headingPage.value(e.block, 1));
+                const QString num = QString::number(entryPage.value(ei, 1));
                 //  Punkte konservativ füllen: lieber eine Lücke als ein Umbruch.
                 const qreal gap = printW - indent - fm.horizontalAdvance(e.text)
                                   - fm.horizontalAdvance(num) - 4.0 * dotW;
@@ -566,19 +578,40 @@ bool exportToPdf(const Document& doc, const QString& targetPath,
             //  einmal bauen. Die Zeilenzahl des Verzeichnisses ändert sich
             //  dabei nicht (nur die Zahl am Zeilenende), der zweite Durchgang
             //  verschiebt also nichts mehr.
-            for (auto it = headingPos.cbegin(); it != headingPos.cend(); ++it) {
-                const QTextBlock tb = td.findBlock(it.value());
+            for (int ei = 0; ei < tocEntries.size(); ++ei) {
+                const TocEntry& e = tocEntries.at(ei);
+                const auto it = headingPos.constFind(e.block);
+                if (it == headingPos.constEnd()) continue;
+                QTextBlock tb = td.findBlock(it.value());
                 if (!tb.isValid()) continue;
+
+                //  Zeichenposition des EINTRAGS im td-Block nachvollziehen: der
+                //  Text-Zweig lässt `kLineBreak` stehen, entfernt `kObjectChar`
+                //  und beginnt bei `kPageBreak` einen neuen Block (s.
+                //  emitParagraph) — genau diese drei Regeln hier wiederholen.
+                int off = it.value() - tb.position();
+                const QString raw = doc.blocks.at(e.block).plainText();
+                for (int k = 0; k < e.pos && k < int(raw.size()); ++k) {
+                    const QChar ch = raw.at(k);
+                    if (ch == kPageBreak)       { tb = tb.next(); off = 0; }
+                    else if (ch != kObjectChar) ++off;
+                }
+                if (!tb.isValid()) continue;
+
                 qreal top = td.documentLayout()->blockBoundingRect(tb).top();
-                //  Die ERSTE ZEILE zählt, nicht der Blockanfang: passt die Zeile
-                //  nicht mehr auf die Seite (hohes Bild im selben Absatz),
-                //  schiebt Qt sie per Zwischenraum auf die nächste, während der
-                //  Block noch auf der alten beginnt. Ohne das war die Seitenzahl
-                //  im Verzeichnis um eins zu klein.
-                if (const QTextLayout* lay = tb.layout())
-                    if (lay->lineCount() > 0) top += lay->lineAt(0).y();
-                headingPage.insert(it.key(),
-                                   int(top / qMax(1.0, paintRect.height())) + 1);
+                //  Die ZEILE des Eintrags zählt, nicht der Blockanfang: passt
+                //  eine Zeile nicht mehr auf die Seite (hohes Bild im selben
+                //  Absatz, oder schlicht mehrere Überschriften in einem Absatz),
+                //  schiebt Qt sie auf die nächste, während der Block noch auf der
+                //  alten beginnt. Ohne das war die Seitenzahl im Verzeichnis um
+                //  eins zu klein.
+                if (const QTextLayout* lay = tb.layout()) {
+                    const QTextLine ln = lay->lineForTextPosition(
+                        qBound(0, off, int(tb.text().size())));
+                    if (ln.isValid())             top += ln.y();
+                    else if (lay->lineCount() > 0) top += lay->lineAt(0).y();
+                }
+                entryPage.insert(ei, int(top / qMax(1.0, paintRect.height())) + 1);
             }
             buildPass();
         }
@@ -603,6 +636,18 @@ bool exportToPdf(const Document& doc, const QString& targetPath,
             //  nichts. Ein Block, der die Seitengrenze schneidet (ein hohes
             //  Bild), wurde deshalb ganz gemalt und ragte als Streifen in die
             //  Nachbarseite. Der Maler-Clip schneidet ihn wirklich ab.
+            //
+            //  Die Auswahl bleibt EXAKT die Seite. Ein knapperer Rand nimmt die
+            //  Zeile der Folgeseite zwar aus dem Seiteninhalt (sie berührt die
+            //  Kante und wird sonst unsichtbar mitgeschrieben) — an
+            //  `tests/ER.docx` bricht dabei aber der TEXTLAYER einer Seite auf
+            //  Einzelglyphen auf: `getAllText` liefert dort „s 1 - > I 1" statt
+            //  „s1 -> I1" (mit -0,5 / -1 / -2 px gemessen, ebenso beim
+            //  Selbstzeichnen über `QTextLine::draw`). In einem SCHLICHTEN
+            //  Dokument tritt das nicht auf (gegengeprüft mit zwei Schriften,
+            //  Inline-Objekt und umfließendem Rahmen) — der Auslöser ist also
+            //  nicht isoliert. Solange er es nicht ist, wiegt eine unsichtbare
+            //  Extrazeile leichter als ein zerfallener Textlayer.
             p.setClipRect(ctx.clip);
             ctx.palette.setColor(QPalette::Text, Qt::black);
             td.documentLayout()->draw(&p, ctx);

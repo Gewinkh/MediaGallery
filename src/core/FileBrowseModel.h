@@ -43,10 +43,20 @@ class FileBrowseModel : public QAbstractListModel {
     Q_PROPERTY(int  count READ count NOTIFY countChanged)
     Q_PROPERTY(bool loading READ loading NOTIFY loadingChanged)
     Q_PROPERTY(bool canGoUp READ canGoUp NOTIFY folderChanged)
+    //  Sortierung der Liste — Ordner stehen IMMER zuerst (wie in jedem
+    //  Dateiverwalter); die Richtung dreht nur die Reihenfolge INNERHALB der
+    //  Gruppen. Umschalten liest NICHT neu, es sortiert die vorhandenen Zeilen.
+    Q_PROPERTY(int  sortKey READ sortKey WRITE setSortKey NOTIFY sortChanged)
+    Q_PROPERTY(bool sortDescending READ sortDescending WRITE setSortDescending
+                   NOTIFY sortChanged)
 
 public:
     explicit FileBrowseModel(QObject* parent = nullptr);
     ~FileBrowseModel() override;
+
+    //  Wonach sortiert wird (Kopfzeile des Wählers).
+    enum SortKey { SortName = 0, SortSize = 1, SortDate = 2 };
+    Q_ENUM(SortKey)
 
     //  Eine Zeile — öffentlich, weil der Lese-Worker sie füllt.
     struct Row {
@@ -97,6 +107,16 @@ public:
     Q_INVOKABLE QString  baseName(const QString& path) const;
     Q_INVOKABLE bool     fileExists(const QString& path) const;
     Q_INVOKABLE bool     dirExists(const QString& path) const;
+    //  Unterordner im AKTUELLEN Verzeichnis anlegen. Liefert 0 = angelegt,
+    //  1 = Name unbrauchbar (leer, Pfadtrenner, „.."), 2 = gibt es schon,
+    //  3 = Anlegen fehlgeschlagen (Rechte, Nur-Lesen). Die Meldung dazu wählt
+    //  die Oberfläche — das Modell kennt keine Sprache.
+    //  Bei Erfolg wird neu gelesen, der neue Ordner steht danach in der Liste.
+    Q_INVOKABLE int      createFolder(const QString& name);
+    int  sortKey() const { return m_sortKey; }
+    void setSortKey(int k);
+    bool sortDescending() const { return m_sortDesc; }
+    void setSortDescending(bool d);
     //  Endung ergänzen, wenn der Name keine trägt (Speichern-Modus).
     Q_INVOKABLE QString  withSuffix(const QString& name, const QString& suffix) const;
     //  Pfad ⇄ URL — die Aufrufstellen reichen `file://`-URLs weiter.
@@ -107,6 +127,7 @@ public:
 
 signals:
     void folderChanged();
+    void sortChanged();
     void nameFiltersChanged();
     void showHiddenChanged();
     void dirsOnlyChanged();
@@ -116,12 +137,17 @@ signals:
 private:
     void startLoad();
     void applyRows(std::vector<Row> rows, quint64 gen);
+    //  Ordner zuerst, danach nach `m_sortKey`; bei Gleichstand immer der Name
+    //  (sonst wäre die Reihenfolge gleich großer Dateien zufällig).
+    void sortRows(std::vector<Row>& rows) const;
 
     QString     m_folder;
     QStringList m_filters;
     bool        m_showHidden = false;
     bool        m_dirsOnly   = false;
     bool        m_loading    = false;
+    int         m_sortKey    = SortName;
+    bool        m_sortDesc   = false;
     std::vector<Row> m_rows;
 
     //  Ein Worker genügt — zwei Verzeichnisse gleichzeitig braucht niemand,

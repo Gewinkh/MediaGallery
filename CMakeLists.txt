@@ -27,7 +27,10 @@ find_package(Qt6 6.4 REQUIRED COMPONENTS
     WebEngineQuick
 )
 
-find_package(ZLIB REQUIRED)
+#  ZLIB ist OPTIONAL (wie Tesseract). Fehlt sie, weicht src/core/ZCodec.cpp auf
+#  qCompress/qUncompress aus: PDF bleibt vollständig, DOCX entfällt, weil
+#  ZIP-Einträge rohes Deflate sind (Begründung in ZCodec.h).
+find_package(ZLIB)
 
 find_package(PkgConfig QUIET)
 if(PkgConfig_FOUND)
@@ -68,9 +71,21 @@ mg_domain(mg_core
         src/core/FileBrowseModel.h
         src/core/PathUtils.h
         src/core/MemoryUtils.h
+        src/core/ZCodec.cpp
+        src/core/ZCodec.h
     LIBS
         Qt6::Core Qt6::Gui Qt6::Quick
 )
+
+#  Der Shim ist die EINZIGE Stelle im Baum, die zlib.h einbindet — alle
+#  Domänen erben ihn über mg_core (PUBLIC), keine braucht ZLIB::ZLIB selbst.
+if(ZLIB_FOUND)
+    target_link_libraries(mg_core PUBLIC ZLIB::ZLIB)
+    target_compile_definitions(mg_core PUBLIC MG_HAVE_ZLIB)
+    message(STATUS "ZLIB gefunden (${ZLIB_VERSION_STRING}) — DOCX verfügbar")
+else()
+    message(STATUS "ZLIB fehlt — Qt-Fallback aktiv, DOCX deaktiviert (PDF vollständig)")
+endif()
 
 mg_domain(mg_tags
     SOURCES
@@ -94,7 +109,7 @@ mg_domain(mg_docx
         src/docx/DocxPdfExporter.cpp
         src/docx/DocxPdfExporter.h
     LIBS
-        mg_core ZLIB::ZLIB
+        mg_core
 )
 
 mg_domain(mg_docxedit
@@ -131,7 +146,7 @@ mg_domain(mg_pdfextract
         src/pdf/extract/PdfPageCopier.cpp
         src/pdf/extract/PdfPageCopier.h
     LIBS
-        mg_core Qt6::Pdf ZLIB::ZLIB
+        mg_core Qt6::Pdf
 )
 
 mg_domain(mg_pdfedit
@@ -168,7 +183,7 @@ mg_domain(mg_pdfedit
         src/pdf/edit/PdfFontEmbed.cpp
         src/pdf/edit/PdfFontEmbed.h
     LIBS
-        mg_core mg_pdfextract Qt6::Pdf ZLIB::ZLIB
+        mg_core mg_pdfextract Qt6::Pdf
 )
 
 mg_domain(mg_pdf
@@ -184,7 +199,7 @@ mg_domain(mg_pdf
         src/pdf/PdfAudioController.cpp
         src/pdf/PdfAudioController.h
     LIBS
-        mg_core Qt6::Pdf Qt6::Multimedia ZLIB::ZLIB
+        mg_core Qt6::Pdf Qt6::Multimedia
 )
 
 mg_domain(mg_imageedit

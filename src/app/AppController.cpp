@@ -8,6 +8,7 @@
 #include "core/Strings.h"
 #include "media/MediaItem.h"     // MediaItem::detectType für Drop-Behandlung
 #include "core/RhiProber.h"
+#include "core/ZCodec.h"        // docxAvailable: DOCX hängt an ZLIB
 
 #include <QFileInfo>
 #include <QDir>
@@ -485,6 +486,11 @@ int  AppController::initialWindowHeight() const { return m_settings.windowSize()
 int  AppController::initialWindowX()      const { return m_settings.windowPos().x(); }
 int  AppController::initialWindowY()      const { return m_settings.windowPos().y(); }
 bool AppController::startMaximized()      const { return m_settings.windowMaximized(); }
+
+//  DOCX steht und fällt mit ZLIB: ZIP-Einträge sind rohes Deflate, das der
+//  Qt-Fallback nicht entpacken kann — und auch das Speichern liest die Quelle
+//  zuerst wieder ein (s. core/ZCodec.h).
+bool AppController::docxAvailable()       const { return mg::zcodec::available(); }
 
 void AppController::saveWindowState(int w, int h, int x, int y, bool maximized) {
     m_settings.setWindowMaximized(maximized);

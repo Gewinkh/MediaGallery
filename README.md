@@ -147,7 +147,7 @@ Everything below is **non-destructive**: your original PDF is never modified. No
 - **Page thumbnails**: a sidebar shows every page as a live miniature with the current page highlighted; clicking one scrolls there. The miniatures are drawn on demand through the same painting path as the page view, so they cost no extra memory
 - **Themed, compact toolbar**: every control follows the app theme; on narrow split panes the toolbar **scrolls horizontally with the mouse wheel** - plain wheel, `Shift`+wheel or `Ctrl`+wheel, the same grip the PDF editor's ribbon offers - so nothing is cut off
 - **Insert a table of contents** from the toolbar: it lists the document's headings with a dot leader and the page number from the editor's own pagination, and updates itself when a heading changes. The file keeps a declarative `TOC` field with no page numbers baked in, so Word recalculates them. It sits on **its own page** - the text after it starts on the next one, and a contents list that outgrows a page simply takes the following one, which also carries nothing else (Word gets the same layout through `w:pageBreakBefore`). Typing inside it is not possible; **font and font size** are the two things you can set
-- **Wrap text around a picture**: the picture's right-click menu switches between *In line with text* (the default: the picture is part of the line) and *Wrap text around* (the text flows beside it over its whole height). The latter is written as a real Word floating picture, so it looks the same in Word. A wrapping picture can be **dragged anywhere on the page** - grab it and move it, the text re-flows around its new place, and the same menu picks the **side the text runs on** (wider side / left only / right only). If there is no room for a readable column beside it, the text starts **below** the picture instead of squeezing through a sliver.
+- **Wrap text around a picture**: the picture's right-click menu switches between *In line with text* (the default: the picture is part of the line) and *Wrap text around* (the text flows beside it over its whole height). The latter is written as a real Word floating picture, so it looks the same in Word. A wrapping picture can be **dragged anywhere on the page** - grab it and move it, the text re-flows around its new place, and dropping it over a **different paragraph re-anchors it there** (as Word does), so that paragraph's text wraps around it instead of starting below it - moving and re-anchoring are a single undo step, and the same menu picks the **side the text runs on** (both sides / wider side / left only / right only). With *both sides* - Word's own default - a line is split into a piece left and a piece right of the picture, just like in Word; if one side has no room for a readable column, that line falls back to the wider side. If there is no room for a readable column beside it, the text starts **below** the picture instead of squeezing through a sliver.
 - **Insert a table** (rows/columns from a small popup) or **an image** straight from the toolbar. The image button first offers the pictures **in the document's own folder** as thumbnails - every format Qt can read - with the file dialog one click away; `Ctrl+V` also pastes an image straight from the clipboard
 - **Insert PDF pages as pictures**: picking a PDF in that popup opens the **same page-selection screen as *Extract pages*** - every PDF of the folder on the left, the page grid of the one you clicked on the right, `Ctrl`+hover for a large preview, and a bottom bar that holds the chosen pages in the order you want them inserted
 - **Table context menu** (right-click a cell): insert or delete rows and columns, set the **column widths in millimetres**, or delete the whole table - each as a single undo step. The column total stays constant when you add or remove a column, the way Word does it. A table with **merged cells** is deliberately left untouched (the menu then only offers "Delete table") rather than risk tearing the grid apart
@@ -257,7 +257,7 @@ Everything below is **non-destructive**: your original PDF is never modified. No
 ### Requirements
 - Qt 6.4+ (developed against Qt 6.11) with modules:
   `Core`, `Gui`, `Qml`, `Quick`, `QuickControls2`, `Multimedia`, `Pdf`, `Svg`, `WebEngineQuick`
-- ZLIB (used for inflating embedded PDF audio streams)
+- **Optional**: ZLIB, to enable the **DOCX editor**. If absent, the app builds and runs normally, falls back to Qt's own `qCompress`/`qUncompress`, and only DOCX is disabled — every PDF feature (viewing, editing, page extraction, embedded media) stays fully available. DOCX files still appear in the gallery, but their tiles are greyed out and explain on hover why they cannot be opened
 - **Optional**: Tesseract + Leptonica (via pkg-config) to enable **OCR for scanned PDFs**. If absent, the app builds and runs normally with OCR disabled
 - CMake 3.21+
 - C++20-capable compiler:
@@ -376,33 +376,24 @@ Custom themes can be exported to JSON and shared:
 ## Changelog
 
 ### Latest
-- **Build**: optimize CMakeLists configuration for faster builds
+- Added advanced themed file chooser with sorting, bookmarks, multi-selection, and folder creation
+- Improved DOCX editing with better image handling, tables, styles, and table of contents support
+- Added clearer handling for missing optional dependencies
+- Improved document layout, scrolling, page numbering, and overall editor stability
 
 ---
 
 ## Issues
 
-### Checked again and closed
-- **Blank DOCX page**: No longer reproducible. `tests/ER.docx` was verified across multiple window sizes, rendering paths (live view and page thumbnails), and in a normal application window. Every page contains content. The apparent "blank" page is intentional: page 1 contains only the table of contents, while the lower part of page 2 remains empty because the following full-page image no longer fits there. Word produces the same layout.
-- **DOCX scrolling too fast**: Fixed. Scrolling is now line-based instead of depending on the window height, providing consistent behavior across different window sizes.
-- **File and folder chooser**: Replaced by the application's own themed file chooser with the same scrolling behavior and appearance as the rest of the UI.
+### Known limitations
+- **Long tables**: A table that does not fit on one page moves to the next page as a whole; rows beyond that page are not drawn yet.
+- **Text around images in the PDF export**: The editor wraps text on both sides of a floating image, the exported PDF keeps the text on one side only.
+- **Hidden extra line in the PDF export**: Copying or searching a single exported page can return one line that belongs to the neighbouring page. It is never visible in the document.
+- **Floating image on a paragraph that spans a page break**: The image can end up outside the text area of the page and be cut off. Move it again to place it.
 
-### DOCX table of contents
-- **Incorrect page numbers for multiple headings within a single paragraph**: Some DOCX files store several headings inside one paragraph separated by line breaks instead of separate paragraphs. The table of contents correctly creates one entry per heading, but page numbers are still determined from the paragraph itself rather than the individual heading line. As a result, headings that continue onto a later page may receive the wrong page number. This also affects the PDF export.
-
-### Image insertion
-- **Consistent image insertion workflow across all editors**: Every editor should offer both insertion methods:
-  - Select an image from the current working folder using a thumbnail grid.
-  - Browse the computer using the file chooser.
-  
-  At the moment only the DOCX editor provides both options. Other editors (e.g. the PDF editor's stamp tool) immediately open the file chooser, forcing the user to navigate back to the current folder repeatedly.
-
-- **Folder image picker does not adapt to narrow layouts**: The thumbnail popup currently has a fixed width (approximately four columns). In split view or narrow windows, parts of it extend beyond the visible area. It should either adapt dynamically (fewer columns) or open as a resizable dialog similar to the application's file chooser.
-
-### Images
-- **"Wrap on both sides" is only partially supported**: Word allows text to flow simultaneously on both sides of a floating image within the same line. The current layout engine only supports flowing text on one side (the larger available side). Existing documents using true "both sides" wrapping therefore cannot be reproduced exactly.
-
-- **Floating images remain anchored to their original paragraph**: Dragging a floating image only moves it within the bounds of its current paragraph. In Word, moving a floating image near another paragraph automatically changes its anchor so subsequent paragraphs wrap around it. This re-anchoring behavior is not yet implemented.
+### Planned
+- **Image insertion in all editors**: Only the DOCX editor lets you pick an image from the current folder; the other editors open the file chooser right away.
+- **Folder image picker in narrow windows**: The thumbnail popup has a fixed width and can reach past the window edge in split view.
 
 ---
 

@@ -74,16 +74,9 @@ void ScanTask::run() {
     }
     if (m_cancel && m_cancel->load()) return;
 
-    //  Ordner zuerst, dann nach Namen — mit `QCollator`, damit „Bild10" hinter
-    //  „Bild9" steht und Umlaute an ihrer Stelle einsortiert werden.
-    QCollator coll;
-    coll.setNumericMode(true);
-    coll.setCaseSensitivity(Qt::CaseInsensitive);
-    std::sort(out.begin(), out.end(),
-              [&coll](const FileBrowseModel::Row& a, const FileBrowseModel::Row& b) {
-                  if (a.isDir != b.isDir) return a.isDir;
-                  return coll.compare(a.name, b.name) < 0;
-              });
+    //  Sortiert wird im MODELL (`sortRows`) — dort steht die eingestellte
+    //  Reihenfolge, und ein Umschalten der Spalte darf das Verzeichnis nicht
+    //  erneut lesen müssen.
 
     FileBrowseModel* owner = m_owner;
     const quint64 gen = m_gen;
@@ -198,6 +191,7 @@ void FileBrowseModel::startLoad() {
 
 void FileBrowseModel::applyRows(std::vector<Row> rows, quint64 gen) {
     if (gen != m_gen) return;                       // veralteter Lauf
+    sortRows(rows);                                 // eingestellte Reihenfolge
     beginResetModel();
     m_rows.clear();
     m_rows.reserve(rows.size());
@@ -281,6 +275,64 @@ bool FileBrowseModel::fileExists(const QString& path) const {
 
 bool FileBrowseModel::dirExists(const QString& path) const {
     return QFileInfo(path).isDir();
+}
+
+void FileBrowseModel::sortRows(std::vector<Row>& rows) const {
+    //  `QCollator` numerisch: „Bild10" steht hinter „Bild9", Umlaute an ihrer
+    //  Stelle. Ordner bleiben IMMER vorn — auch absteigend; sonst müsste man
+    //  zum Hochgehen erst durch alle Dateien scrollen.
+    QCollator coll;
+    coll.setNumericMode(true);
+    coll.setCaseSensitivity(Qt::CaseInsensitive);
+    const int  key  = m_sortKey;
+    const bool desc = m_sortDesc;
+    std::sort(rows.begin(), rows.end(), [&](const Row& a, const Row& b) {
+        if (a.isDir != b.isDir) return a.isDir;
+        int c = 0;
+        if (key == SortSize)      c = (a.size < b.size) ? -1 : (a.size > b.size ? 1 : 0);
+        else if (key == SortDate) c = (a.mtime < b.mtime) ? -1 : (a.mtime > b.mtime ? 1 : 0);
+        if (c == 0) c = coll.compare(a.name, b.name);   // Gleichstand → Name
+        return desc ? c > 0 : c < 0;
+    });
+}
+
+void FileBrowseModel::setSortKey(int k) {
+    const int v = qBound(int(SortName), k, int(SortDate));
+    if (v == m_sortKey) return;
+    m_sortKey = v;
+    beginResetModel();
+    sortRows(m_rows);
+    endResetModel();
+    emit sortChanged();
+}
+
+void FileBrowseModel::setSortDescending(bool d) {
+    if (d == m_sortDesc) return;
+    m_sortDesc = d;
+    beginResetModel();
+    sortRows(m_rows);
+    endResetModel();
+    emit sortChanged();
+}
+
+int FileBrowseModel::createFolder(const QString& name) {
+    const QString clean = name.trimmed();
+    //  Nur ein NAME, kein Pfad: ein Trenner oder „.." würde aus dem aktuellen
+    //  Verzeichnis herausführen — der Wähler soll aber genau dort anlegen.
+    if (clean.isEmpty() || clean == QLatin1String(".") || clean == QLatin1String("..")
+        || clean.contains(QLatin1Char('/')) || clean.contains(QLatin1Char('\\')))
+        return 1;
+    if (m_folder.isEmpty()) return 3;
+
+    QDir dir(m_folder);
+    //  `exists` deckt Datei UND Ordner ab: ein gleichnamiger Eintrag jeder Art
+    //  verhindert das Anlegen, und ein „gibt es schon" ist die ehrlichere
+    //  Meldung als ein Fehlschlag ohne Grund.
+    if (QFileInfo::exists(dir.filePath(clean))) return 2;
+    if (!dir.mkdir(clean)) return 3;
+
+    reload();
+    return 0;
 }
 
 QString FileBrowseModel::withSuffix(const QString& name, const QString& suffix) const {

@@ -1980,18 +1980,22 @@ QList<TocEntry> Document::tocEntries(int maxLevel) const {
         //  bekommt ihre eigene Zeile im Verzeichnis — alles in EINEM Eintrag
         //  zusammenzuziehen ergibt kein Inhaltsverzeichnis, sondern eine
         //  Textwurst (Nutzerbefund an `tests/ER.docx`).
+        //  Selbst zerlegt statt `QStringView::split`: der Eintrag braucht die
+        //  Position seines Zeilenanfangs (s. `TocEntry::pos`), und split()
+        //  wirft sie weg.
         const QString raw = b.plainText();
-        const QList<QStringView> lines = QStringView(raw).split(
-            kLineBreak, Qt::SkipEmptyParts);
-        for (const QStringView& lineRef : lines) {
+        for (int start = 0; start <= int(raw.size()); ) {
+            int brk = int(raw.indexOf(kLineBreak, start));
+            if (brk < 0) brk = int(raw.size());
             //  Seitenumbruch-Sentinel und Objekt-Zeichen gehören nicht in den
             //  Eintragstext.
-            QString text = lineRef.toString();
+            QString text = raw.mid(start, brk - start);
             text.remove(kPageBreak);
             text.remove(kObjectChar);
             text = text.trimmed();
-            if (text.isEmpty()) continue;
-            out.append({ text, lvl, i });
+            if (!text.isEmpty())
+                out.append({ text, lvl, i, start });
+            start = brk + 1;
         }
     }
     return out;
@@ -2774,11 +2778,38 @@ static QLatin1String wrapTextValue(int side) {
 }
 
 bool Document::setImageWrap(int blockIdx, int runIdx, bool floating) {
-    //  Vorgabe `largest` (Words eigener Wert): die Anzeige kann eine Zeile
-    //  nicht in ein Stück links UND eines rechts des Bildes zerlegen, also
-    //  sagen Datei und Anzeige mit `largest` dasselbe.
+    //  Vorgabe `bothSides` — wie in Word: der Text läuft links UND rechts am
+    //  Bild vorbei. Die Anzeige teilt ein Band dafür in zwei Stücke
+    //  (`DocxTextArea`, `usableSpan`/`pendingRightX`); Datei und Anzeige sagen
+    //  damit dasselbe. Ist eine Seite zu schmal, weicht die Anzeige von selbst
+    //  auf die breitere aus.
     return rewriteDrawingFrame(blockIdx, runIdx, floating, 0, 0,
-                               InlineImage::SideLargest, /*requireModeChange=*/true);
+                               InlineImage::SideBoth, /*requireModeChange=*/true);
+}
+
+int Document::moveImageRun(int srcBlock, int runIdx, int dstBlock) {
+    if (srcBlock < 0 || srcBlock >= blocks.size()) return -1;
+    if (dstBlock < 0 || dstBlock >= blocks.size()) return -1;
+    if (srcBlock == dstBlock) return -1;
+    Block& src = blocks[srcBlock];
+    Block& dst = blocks[dstBlock];
+    if (src.kind != Block::Paragraph || dst.kind != Block::Paragraph) return -1;
+    if (runIdx < 0 || runIdx >= src.runs.size()) return -1;
+    //  Nur ein VERANKERTES Bild darf umziehen: ein Bild im Zeilenfluss gehört
+    //  an seine Textstelle, ein Umhängen würde den Satz auseinanderreißen.
+    InlineImage info;
+    if (!imageOfRun(srcBlock, runIdx, &info) || !info.anchored) return -1;
+
+    //  Der Run wandert unverändert — sein Roh-Span zeigt weiter auf dieselbe
+    //  Zeichnung (Original-XML oder Anhang-Pool), beide sind absolute Stellen.
+    const Run r = src.runs.at(runIdx);
+    src.runs.removeAt(runIdx);
+    src.dirty = true;
+    //  Ans ENDE des Zielabsatzes: ein verankertes Bild belegt keine Zeilenbreite,
+    //  seine Stelle im Text ist nur der Anker.
+    dst.runs.append(r);
+    dst.dirty = true;
+    return int(dst.runs.size()) - 1;
 }
 
 bool Document::setImageAnchorEmu(int blockIdx, int runIdx, int posXEmu, int posYEmu) {

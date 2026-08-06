@@ -324,10 +324,15 @@ Rectangle {
                 //    Seite, danach greifen Zeilenfang + \u201EText ersetzen"-Vorbef\u00FCllung
                 //    wie bei einer eingebetteten Textebene. Nur wenn Tesseract da ist.
                 Rectangle {
+                    id: ocrBtn
+                    //  Fehlt Tesseract, bleibt der Knopf SICHTBAR, wird aber
+                    //  ausgegraut \u2014 der Hover-Text sagt dann, was fehlt.
+                    readonly property bool ocrOn: panel.surface && panel.surface.textCtl
+                                                  && panel.surface.textCtl.ocrAvailable
                     width: parent.width; height: 30; radius: 6
                     visible: panel.surface && panel.surface.textCtl
-                             && panel.surface.textCtl.ocrAvailable
-                    color: ocrHover.hovered ? App.themeCard : "transparent"
+                    opacity: ocrOn ? 1.0 : 0.45
+                    color: (ocrOn && ocrHover.hovered) ? App.themeCard : "transparent"
                     border.color: App.themeBorder; border.width: 1
                     Row {
                         anchors.centerIn: parent; spacing: 6
@@ -340,15 +345,21 @@ Rectangle {
                         }
                         Text {
                             text: "\u2315  " + App.uiText(App.language, "PdfOcrBtn")
-                            color: App.themeTextPrimary; font.pixelSize: 12
+                            color: ocrBtn.ocrOn ? App.themeTextPrimary : App.themeTextMuted
+                            font.pixelSize: 12
                             anchors.verticalCenter: parent.verticalCenter
                         }
                     }
                     HoverHandler { id: ocrHover }
-                    TapHandler { onTapped: if (panel.surface) panel.surface.requestOcr() }
+                    TapHandler {
+                        enabled: ocrBtn.ocrOn
+                        onTapped: if (panel.surface) panel.surface.requestOcr()
+                    }
                     ToolTip.visible: ocrHover.hovered
                     ToolTip.delay: 500
-                    ToolTip.text: App.uiText(App.language, "PdfOcrTip")
+                    ToolTip.text: ocrBtn.ocrOn
+                                  ? App.uiText(App.language, "PdfOcrTip")
+                                  : App.uiText(App.language, "LibMissingTesseract")
                 }
 
                 Rectangle { width: parent.width; height: 1; color: App.themeBorder }
@@ -863,13 +874,17 @@ Rectangle {
                     }
                 }
 
-                // \u2500\u2500 OCR (gescannte PDFs) \u2014 nur wenn Tesseract verf\u00FCgbar.
+                // \u2500\u2500 OCR (gescannte PDFs). Ohne Tesseract ausgegraut statt weg \u2014
+                //    der Hover-Text nennt dann die fehlende Bibliothek.
                 Rectangle {
+                    id: ocrRibBtn
+                    readonly property bool ocrOn: panel.surface && panel.surface.textCtl
+                                                  && panel.surface.textCtl.ocrAvailable
                     anchors.verticalCenter: parent.verticalCenter
                     visible: panel.surface && panel.surface.textCtl
-                             && panel.surface.textCtl.ocrAvailable
+                    opacity: ocrOn ? 1.0 : 0.45
                     width: ocrRibRow.implicitWidth + 16; height: 30; radius: 6
-                    color: ocrRibHover.hovered ? App.themeCard : "transparent"
+                    color: (ocrOn && ocrRibHover.hovered) ? App.themeCard : "transparent"
                     border.color: App.themeBorder; border.width: 1
                     Row {
                         id: ocrRibRow
@@ -883,15 +898,21 @@ Rectangle {
                         }
                         Text {
                             text: "\u2315  " + App.uiText(App.language, "PdfOcrBtn")
-                            color: App.themeTextPrimary; font.pixelSize: 12
+                            color: ocrRibBtn.ocrOn ? App.themeTextPrimary : App.themeTextMuted
+                            font.pixelSize: 12
                             anchors.verticalCenter: parent.verticalCenter
                         }
                     }
                     HoverHandler { id: ocrRibHover }
-                    TapHandler { onTapped: if (panel.surface) panel.surface.requestOcr() }
+                    TapHandler {
+                        enabled: ocrRibBtn.ocrOn
+                        onTapped: if (panel.surface) panel.surface.requestOcr()
+                    }
                     ToolTip.visible: ocrRibHover.hovered
                     ToolTip.delay: 500
-                    ToolTip.text: App.uiText(App.language, "PdfOcrTip")
+                    ToolTip.text: ocrRibBtn.ocrOn
+                                  ? App.uiText(App.language, "PdfOcrTip")
+                                  : App.uiText(App.language, "LibMissingTesseract")
                 }
 
                 Rectangle { width: 1; height: 34; color: App.themeBorder

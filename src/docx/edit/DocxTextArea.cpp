@@ -279,6 +279,30 @@ int DocxTextArea::lineForPos(const BlockLayout& L, int pos) const {
             return li;
     return n - 1;
 }
+//  Ein Band kann ZWEI Zeilen tragen: Text links UND rechts eines umflossenen
+//  Bildes (`wrapText="bothSides"`). Beide liegen auf derselben y — welche
+//  gemeint ist, sagt x. Ohne geteiltes Band bleibt es bei `li`.
+int DocxTextArea::rowAtX(const BlockLayout& L, int li, qreal x) const {
+    if (li < 0 || li >= int(L.rows.size())) return li;
+    const qreal y = L.rows[size_t(li)].y;
+    //  Auf den ANFANG des Bandes zurückgehen — `li` kann schon das rechte Stück
+    //  sein (etwa beim Sprung aus dem Band darunter).
+    int first = li;
+    while (first > 0 && qFuzzyIsNull(L.rows[size_t(first - 1)].y - y)) --first;
+    int   best = first;
+    qreal bestDist = std::numeric_limits<qreal>::max();
+    for (int k = first; k < int(L.rows.size()); ++k) {
+        if (!qFuzzyIsNull(L.rows[size_t(k)].y - y)) break;   // nächstes Band
+        const LineRef r = lineRef(L, k);
+        if (!r.valid()) continue;
+        const QTextLine ln = r.textLine();
+        const qreal a = ln.x() + r.dx;
+        const qreal b = a + ln.naturalTextWidth();
+        const qreal dist = (x < a) ? a - x : (x > b ? x - b : 0.0);
+        if (dist < bestDist) { bestDist = dist; best = k; }
+    }
+    return best;
+}
 //  Block-lokale y → Zeilenband (das erste, dessen Unterkante darunter liegt).
 int DocxTextArea::lineForLocalY(const BlockLayout& L, qreal y) const {
     const int n = int(L.rows.size());
@@ -482,7 +506,11 @@ int DocxTextArea::currentPage() const {
     const int bi = qBound(0, m_ctl->cursor().block, int(m_lay.size()) - 1);
     const BlockLayout& L = m_lay[size_t(bi)];
     if (L.segs.isEmpty()) return 0;
-    return L.segs.constFirst().slot / colCount();
+    //  Die ZEILE des Cursors zählt, nicht der Blockanfang: ein Absatz darf über
+    //  Seitengrenzen laufen — steht der Cursor in seiner unteren Hälfte, ist er
+    //  auf der FOLGESEITE. Mit `segs.constFirst()` meldete die Anzeige dort die
+    //  Seite, auf der der Absatz beginnt.
+    return segAt(bi, lineForPos(L, m_ctl->cursor().pos)).slot / colCount();
 }
 
 qreal DocxTextArea::pageTop(int page) {
@@ -778,12 +806,24 @@ qreal DocxTextArea::buildInlineRows(BlockLayout& L, const Block& b,
         cur = int(L.rows.size()) - 1;
         x = rowAdv = rowVis = 0.0;
     };
+    //  ── Geteiltes Band (`wrapText="bothSides"`) ──────────────────────────────
+    //  Ein Bild mit Umfluss auf BEIDEN Seiten zerlegt eine Zeile in ein Stück
+    //  links und eines rechts davon. Beide sind eigene Bänder mit DERSELBEN `y`;
+    //  vorgerückt wird erst nach dem rechten Stück, und beide bekommen die Höhe
+    //  des ganzen Bandes (die Paginierung liest sie zeilenweise).
+    qreal bandCarryAdv = 0.0, bandCarryVis = 0.0;
+    int   leftRowIdx = -1;      // linkes Stück, dessen Höhen noch nachzuziehen sind
+    qreal pendingRightX = -1.0; // ≥ 0: nächste Zeile gehört rechts neben das Bild
+
     //  Band abschließen: Höhen festschreiben und — falls ein Bild darin steht —
     //  Bild und Textzeile auf die UNTERKANTE ausrichten (Word setzt den Text
-    //  auf die Grundlinie unter das Bild).
-    auto closeRow = [&]() {
+    //  auf die Grundlinie unter das Bild). `advance == false` schließt nur das
+    //  linke Stück eines geteilten Bandes: die y bleibt stehen.
+    auto closeRow = [&](bool advance = true) {
         if (cur < 0) return;
         RowInfo& R = L.rows[size_t(cur)];
+        rowAdv = qMax(rowAdv, bandCarryAdv);
+        rowVis = qMax(rowVis, bandCarryVis);
         R.h    = rowAdv;
         R.visH = rowVis;
         if (R.imgCount > 0) {
@@ -803,7 +843,20 @@ qreal DocxTextArea::buildInlineRows(BlockLayout& L, const Block& b,
                 }
             }
         }
-        y += rowAdv;
+        if (advance) {
+            y += rowAdv;
+            //  Höhen des linken Stücks nachziehen — beide Stücke eines Bandes
+            //  melden dieselbe Höhe, sonst trennte die Paginierung sie.
+            if (leftRowIdx >= 0 && leftRowIdx < int(L.rows.size())) {
+                L.rows[size_t(leftRowIdx)].h    = rowAdv;
+                L.rows[size_t(leftRowIdx)].visH = rowVis;
+                leftRowIdx = -1;
+            }
+            bandCarryAdv = bandCarryVis = 0.0;
+        } else {
+            bandCarryAdv = rowAdv;
+            bandCarryVis = rowVis;
+        }
         cur = -1;
     };
     auto ensureRow = [&](int charStart) {
@@ -844,12 +897,17 @@ qreal DocxTextArea::buildInlineRows(BlockLayout& L, const Block& b,
     //  dürfen selbst wählen — dann gewinnt die breitere Seite.
     //  `pushTo` meldet, bis wohin die Zeile ausweichen MUSS, wenn daneben keine
     //  lesbare Spalte übrig bleibt (= Unterkante des breitesten Störers).
+    //  `gapL`/`gapR` melden zusätzlich die LÜCKE eines `bothSides`-Bildes: dort
+    //  läuft der Text links UND rechts daneben, das Band wird geteilt. Ohne
+    //  Lücke bleibt `gapR <= gapL`.
     auto usableSpan = [&](qreal top, qreal h, qreal* left, qreal* right,
-                          qreal* pushTo) {
+                          qreal* pushTo, qreal* gapL, qreal* gapR) {
         *left = 0.0;
         *right = W;
         *pushTo = top;
+        *gapL = *gapR = -1.0;
         qreal lowest = top;
+        qreal bothL = -1.0, bothR = -1.0;   // erstes Bild mit Umfluss beidseitig
         for (const ImageBox& B : L.images) {
             if (!B.floating) continue;
             if (top >= B.y + B.h || top + h <= B.y) continue;   // kein Überlapp
@@ -858,9 +916,28 @@ qreal DocxTextArea::buildInlineRows(BlockLayout& L, const Block& b,
             //  `wrapText="left"` heißt: der Text läuft LINKS vom Bild.
             if (B.wrapSide == InlineImage::SideLeft)       *right = qMin(*right, bl);
             else if (B.wrapSide == InlineImage::SideRight) *left  = qMax(*left,  br);
+            else if (B.wrapSide == InlineImage::SideBoth && bothL < 0.0) {
+                bothL = bl;                 // Seiten erst unten prüfen (s. u.)
+                bothR = br;
+            }
             else if (bl <= W - br)                         *left  = qMax(*left,  br);
             else                                           *right = qMin(*right, bl);
             lowest = qMax(lowest, B.y + B.h);
+        }
+        //  Die Lücke gilt nur, wenn auf BEIDEN Seiten eine lesbare Spalte übrig
+        //  bleibt — sonst verhält sich das Bild wie `largest` (breitere Seite).
+        //  Erst hier zu prüfen ist nötig: andere Bilder desselben Bandes können
+        //  die Ränder vorher noch verschoben haben.
+        if (bothL >= 0.0) {
+            if (bothL - *left >= kMinTextBesideImage
+                && *right - bothR >= kMinTextBesideImage) {
+                *gapL = bothL;
+                *gapR = bothR;
+            } else if (bothL - *left <= *right - bothR) {
+                *left = qMax(*left, bothR);
+            } else {
+                *right = qMin(*right, bothL);
+            }
         }
         //  Bleibt weniger als eine lesbare Spalte, fängt der Text UNTER dem Bild
         //  an, statt sich Wort für Wort durch einen Streifen zu quetschen (am
@@ -908,8 +985,12 @@ qreal DocxTextArea::buildInlineRows(BlockLayout& L, const Block& b,
             if (!ln.isValid()) break;
             //  Umbruch innerhalb des Stücks ⇒ neues Band. Und wenn neben einem
             //  Bild kaum Platz bleibt, fängt der Text lieber darunter an.
+            //  Gehört die Zeile ins RECHTE Stück eines geteilten Bandes, bleibt
+            //  die y stehen: sie sitzt neben dem linken Stück, nicht darunter.
+            const bool toRight = (pendingRightX >= 0.0);
             if (li > 0 || (cur >= 0 && x > 0.0 && W - x < kMinTextBesideImage)) {
-                closeRow();
+                if (toRight) leftRowIdx = cur;
+                closeRow(!toRight);
                 openRow(from + ln.textStart());
             }
             ensureRow(from + ln.textStart());
@@ -917,21 +998,35 @@ qreal DocxTextArea::buildInlineRows(BlockLayout& L, const Block& b,
             //  entscheidet, welche verankerten Bilder das Band schneiden), dann
             //  auf den tatsächlich nutzbaren Bereich zurücksetzen.
             ln.setLineWidth(qMax(8.0, W - x));
-            qreal availL = 0.0, availR = W;
+            qreal availL = 0.0, availR = W, gapL = -1.0, gapR = -1.0;
             if (!floats.isEmpty()) {
                 //  Reicht der Platz daneben nicht, rutscht das BAND unter das
                 //  Bild — volle Breite an derselben y wäre Text ÜBER dem Bild.
                 //  Nur solange das Band noch leer ist; sonst müssten die schon
-                //  gesetzten Zeilen-Bilder mitwandern.
-                const bool bandEmpty = (x <= 0.0 && L.rows[size_t(cur)].imgCount == 0);
+                //  gesetzten Zeilen-Bilder mitwandern. Das rechte Stück eines
+                //  geteilten Bandes darf nie schieben — sein linkes Stück steht
+                //  schon.
+                const bool bandEmpty = (!toRight && x <= 0.0
+                                        && L.rows[size_t(cur)].imgCount == 0);
                 for (int guard = 0; guard < 8; ++guard) {
                     qreal push = y;
-                    usableSpan(y, ln.height(), &availL, &availR, &push);
+                    usableSpan(y, ln.height(), &availL, &availR, &push, &gapL, &gapR);
                     if (!bandEmpty || push <= y) break;
                     y = push;
                     L.rows[size_t(cur)].y = y;
                 }
-                ln.setLineWidth(qMax(8.0, availR - availL - x));
+                if (toRight) {
+                    //  Rechtes Stück: von der Bildkante bis zum rechten Rand.
+                    availL = qMax(availL, pendingRightX);
+                    pendingRightX = -1.0;
+                    ln.setLineWidth(qMax(8.0, availR - availL));
+                } else if (gapR > gapL) {
+                    //  Linkes Stück; was nicht hineinpasst, läuft rechts weiter.
+                    pendingRightX = gapR;
+                    ln.setLineWidth(qMax(8.0, gapL - availL - x));
+                } else {
+                    ln.setLineWidth(qMax(8.0, availR - availL - x));
+                }
             }
             ln.setPosition(QPointF(availL + x, y));
             RowInfo& R = L.rows[size_t(cur)];
@@ -944,6 +1039,9 @@ qreal DocxTextArea::buildInlineRows(BlockLayout& L, const Block& b,
             x += ln.naturalTextWidth();
         }
         lp->endLayout();
+        //  Endet ein Stück mitten in einem geteilten Band (danach kommt ein Bild
+        //  im Zeilenfluss), gilt die offene rechte Hälfte nicht weiter.
+        pendingRightX = -1.0;
     };
 
     int at = 0, imgIdx = 0;
@@ -1172,11 +1270,84 @@ bool DocxTextArea::buildTocLayout(int i) {
 
 //  1-basierte Seitenzahl eines Blocks (Verzeichnis-Einträge).
 int DocxTextArea::pageOfBlock(int i) {
+    return pageOfEntry(i, 0);
+}
+
+//  Dasselbe für EINE STELLE im Block: Zeichenposition → Zeilenband → Stück →
+//  Slot → Seite. Nötig, weil ein Überschrift-Absatz mehrere Verzeichnis-Einträge
+//  tragen kann (nur durch `w:br` getrennt) und dabei über eine Seitengrenze
+//  laufen darf — die Zeilen liegen dann in verschiedenen Stücken.
+int DocxTextArea::pageOfEntry(int i, int pos) {
     if (i < 0 || i >= int(m_lay.size())) return 1;
     ensureOffsetsTo(i + 1);
     const BlockLayout& L = m_lay[size_t(i)];
     if (L.segs.isEmpty()) return 1;
-    return L.segs.constFirst().slot / qMax(1, colCount()) + 1;
+    return segAt(i, lineForPos(L, pos)).slot / qMax(1, colCount()) + 1;
+}
+
+//  Ein abgelegtes Bild an den Absatz hängen, über dessen TEXT seine Oberkante
+//  liegt. Gemessen wird am Text, nicht an der Blockhöhe: ein verankertes Bild
+//  bläht seinen eigenen Absatz auf (der Block reicht bis zu seiner Unterkante),
+//  sonst läge es immer über „seinem" Absatz und wechselte nie.
+void DocxTextArea::dropSelectedImage(int block, qreal xMm, qreal yMm) {
+    if (!m_ctl || !m_ctl->ready()) return;
+    const int n = int(m_lay.size());
+    const int src = qBound(0, block < 0 ? m_ctl->cursor().block : block, qMax(0, n - 1));
+    if (src >= n) return;
+    ensureLaid(src);
+
+    constexpr qreal kMmToPx = kPtToPx / 12700.0 * 36000.0;   // 1 mm = 36000 EMU
+    const Document& d = m_ctl->doc();
+    auto editable = [&](int i) {
+        return i >= 0 && i < d.blocks.size()
+               && d.blocks.at(i).kind == Block::Paragraph && d.blocks.at(i).tableId < 0
+               && !m_lay[size_t(i)].isToc;
+    };
+    //  Texthöhe eines Absatzes OHNE seine verankerten Bilder.
+    auto textHeight = [&](int i) {
+        ensureLaid(i);
+        const BlockLayout& L = m_lay[size_t(i)];
+        return qMax(L.beforePx + 1.0, linesBottom(L));
+    };
+
+    const BlockLayout& L0 = m_lay[size_t(src)];
+    qreal top = L0.beforePx + yMm * kMmToPx;     // Oberkante im Quellabsatz
+    int dst = src;
+
+    if (top > textHeight(src)) {
+        //  Nach UNTEN: den überstehenden Rest durch die folgenden Absätze
+        //  reichen. Reicht er über den letzten hinaus, gilt der letzte — sonst
+        //  bliebe ein Ablegen unterhalb des Textes wirkungslos.
+        qreal rest = top - textHeight(src);
+        for (int i = src + 1; i < n; ++i) {
+            if (!editable(i)) continue;
+            const qreal h = textHeight(i);
+            dst = i;
+            top = qMin(rest, h);
+            if (rest <= h) break;
+            rest -= h;
+        }
+    } else if (top < m_lay[size_t(src)].beforePx) {
+        //  Nach OBEN: dasselbe rückwärts, mit demselben Anschlag am ersten Absatz.
+        qreal rest = top - m_lay[size_t(src)].beforePx;   // ≤ 0
+        for (int i = src - 1; i >= 0; --i) {
+            if (!editable(i)) continue;
+            const qreal h = textHeight(i);
+            dst = i;
+            top = qMax(0.0, rest + h);
+            if (rest + h >= 0.0) break;
+            rest += h;
+        }
+    }
+
+    if (dst == src) {
+        m_ctl->setImagePositionMm(block, xMm, yMm);
+        return;
+    }
+    //  `yMm` zählt ab der Oberkante des ZIELabsatzes (ohne dessen Abstand davor,
+    //  genau wie `posYEmu` im Dokument).
+    const qreal yInDst = (top - m_lay[size_t(dst)].beforePx) / kMmToPx;
+    m_ctl->moveImageToBlock(src, dst, xMm, yInDst);
 }
 
 void DocxTextArea::paintToc(QPainter* p, const BlockLayout& L, qreal left,
@@ -1203,7 +1374,7 @@ void DocxTextArea::paintToc(QPainter* p, const BlockLayout& L, qreal left,
     for (int ei = from; ei < to; ++ei) {
         const Docx::TocEntry& e = L.tocEntries.at(ei);
         const qreal indent = (e.level - 1) * 18.0;
-        const QString page = QString::number(pageOfBlock(e.block));
+        const QString page = QString::number(pageOfEntry(e.block, e.pos));
         const qreal pw = fm.horizontalAdvance(page);
         //  Text links (bei Bedarf gekürzt), Seitenzahl rechtsbündig, dazwischen
         //  eine Punktreihe — wie in Word.
@@ -2358,8 +2529,10 @@ void DocxTextArea::hitTest(const QPointF& itemPos, int* block, int* pos) {
     const PageSeg seg = L.segs.isEmpty() ? PageSeg() : L.segs.at(segIdx);
     const qreal localY = (docY - (slotDocY(seg.slot) + seg.yInSlot))
                          + segOriginY(L, seg);
-    const int li = lineForLocalY(L, localY);
     const qreal localX = docX - slotDocX(seg.slot) - L.indentPx;
+    //  `rowAtX`: bei einem geteilten Band (Text links UND rechts eines Bildes)
+    //  liegen zwei Zeilen auf derselben y — x entscheidet.
+    const int li = rowAtX(L, lineForLocalY(L, localY), localX);
     //  Ein VERANKERTES Bild gehört keinem Zeilenband — getroffen wird es über
     //  seine LAGE. `imageAtX` findet es nur, solange ein Band sein Rechteck
     //  schneidet; läuft der Text vollständig darunter (breites Bild), war es
@@ -2452,9 +2625,23 @@ void DocxTextArea::moveCursorVertical(int dir, bool keepAnchor) {
         return i >= 0 && i < d.blocks.size()
                && d.blocks.at(i).kind == Block::Paragraph;
     };
+    //  ↑/↓ springen ein BAND, nicht ein Stück: bei einem geteilten Band (Text
+    //  links und rechts eines Bildes) liegen zwei Zeilen auf derselben y, und
+    //  „eine Zeile tiefer" wäre sonst die Hälfte daneben. Innerhalb des Zielbandes
+    //  entscheidet `m_goalX`, welches Stück gemeint ist.
+    auto bandStep = [&](int from, int step) {
+        const qreal y0 = lineTop(L, from);
+        int k = from;
+        while (k + step >= 0 && k + step < nLines
+               && qFuzzyIsNull(lineTop(L, k + step) - y0))
+            k += step;
+        k += step;
+        return (k < 0 || k >= nLines) ? -1 : rowAtX(L, k, m_goalX);
+    };
     if (dir < 0) {
-        if (li > 0) {
-            m_ctl->setCursor(bi, posForX(L, li - 1, m_goalX), keepAnchor);
+        const int up = bandStep(li, -1);
+        if (up >= 0) {
+            m_ctl->setCursor(bi, posForX(L, up, m_goalX), keepAnchor);
             return;
         }
         int pb = bi - 1;
@@ -2467,8 +2654,9 @@ void DocxTextArea::moveCursorVertical(int dir, bool keepAnchor) {
             pos = posForX(P, lineCount(P) - 1, m_goalX);
         m_ctl->setCursor(pb, pos, keepAnchor);
     } else {
-        if (li < nLines - 1) {
-            m_ctl->setCursor(bi, posForX(L, li + 1, m_goalX), keepAnchor);
+        const int down = bandStep(li, 1);
+        if (down >= 0) {
+            m_ctl->setCursor(bi, posForX(L, down, m_goalX), keepAnchor);
             return;
         }
         int nb = bi + 1;

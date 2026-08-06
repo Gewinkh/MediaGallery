@@ -206,6 +206,11 @@ enum class StringKey {
     ChooserAllFiles,
     ChooserNewFolder,
     ChooserFolderExists,
+    ChooserFolderFailed,
+    ChooserColName,
+    ChooserColSize,
+    ChooserColDate,
+    ChooserBookmarks,
     SettingsCatBtnNew,
     SettingsCatHintNew,
     SettingsCatEmptyNew,
@@ -357,6 +362,7 @@ enum class StringKey {
     DocxImageSize,
     DocxImageInline,
     DocxImageFloating,
+    DocxWrapBoth,
     DocxWrapLargest,
     DocxWrapLeft,
     DocxWrapRight,
@@ -370,6 +376,7 @@ enum class StringKey {
     DocxRegionFooter,
     DocxRegionHint,           // Banner beim Bearbeiten von Kopf-/Fußzeile
     DocxRegionNone,           // Status: Datei hat keine Kopf-/Fußzeile
+    DocxRegionOpenError,      // Status: Kopf-/Fußzeile nicht lesbar
     DocxInsertToc,            // Toolbar: Inhaltsverzeichnis einfügen
     DocxTocEmpty,             // Verzeichnis ohne Überschriften
     DocxHeadingLevel,         // Vorlagenliste: „Überschrift %1"
@@ -406,6 +413,8 @@ enum class StringKey {
     PdfEditCoverLabel,         // Panel: Deckfläche (Cover-Farbe von „Text ersetzen")
     PdfOcrBtn,                 // Panel: OCR-Button (gescannte Seite erkennen)
     PdfOcrTip,                 // Tooltip des OCR-Buttons
+    LibMissingTesseract,       // Hover-Hinweis: Feature braucht Tesseract
+    LibMissingZlib,            // Hover-Hinweis: Feature braucht ZLIB
     PdfOcrBusy,                // Toast: OCR läuft
     PdfOcrDone,                // Toast: %1 Zeilen erkannt
     PdfOcrNone,                // Toast: kein Text erkannt

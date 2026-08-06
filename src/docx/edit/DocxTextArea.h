@@ -114,6 +114,18 @@ public:
     //  Verzeichnis-Einträge und im Testtreiber die Probe darauf, dass
     //  das Verzeichnis wirklich allein auf seinen Seiten steht.
     Q_INVOKABLE int pageOfBlock(int i);
+    //  1-basierte Seitenzahl EINER STELLE im Block. Ein Überschrift-Absatz kann
+    //  mehrere Einträge tragen und über eine Seitengrenze laufen — dann liegen
+    //  seine Zeilen auf verschiedenen Seiten und `pageOfBlock` wäre für alle
+    //  ausser der ersten falsch.
+    Q_INVOKABLE int pageOfEntry(int i, int pos);
+    //  Ein umfließendes Bild ABLEGEN (Ende der Ziehgeste): liegt seine
+    //  Oberkante nicht mehr über dem Text seines Absatzes, wandert der Anker in
+    //  den Absatz, über dem es jetzt steht — erst dadurch umfließt DESSEN Text
+    //  es (Word macht es genauso). `xMm`/`yMm` sind die gezogene Lage relativ
+    //  zum bisherigen Absatz; der Rest ist Geometrie und deshalb Sache der
+    //  Anzeige. Ohne Absatzwechsel identisch zu `setImagePositionMm`.
+    Q_INVOKABLE void dropSelectedImage(int block, qreal xMm, qreal yMm);
 
     //  EINE Seite in ein Zielrechteck malen (Miniaturen, s. DocxPageThumb).
     //  Nutzt denselben Zeichenweg wie paint() — es gibt keine zweite Darstellung
@@ -320,6 +332,9 @@ private:
     qreal   lineAscent(const BlockLayout& L, int li) const;
     qreal   linesBottom(const BlockLayout& L) const;  // Unterkante des Inhalts
     int     lineForPos(const BlockLayout& L, int pos) const;
+    //  Bei einem geteilten Band (Text links UND rechts eines Bildes) das Stück,
+    //  das zu dieser x gehört — sonst `li` unverändert.
+    int     rowAtX(const BlockLayout& L, int li, qreal x) const;
     int     lineForLocalY(const BlockLayout& L, qreal y) const;
     void    lineTextRange(const BlockLayout& L, int li, int* start, int* len) const;
     qreal   xForPos(const BlockLayout& L, int li, int pos) const;

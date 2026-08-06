@@ -2,8 +2,10 @@
 // ─────────────────────────────────────────────────────────────────────────────
 //  DocxZip — minimaler ZIP-Reader/-Writer für den DOCX-Editor (OOXML-Container).
 //
-//  Abhängigkeiten: NUR Qt6::Core + ZLIB (beide bereits im Projekt — keine neue
-//  Bibliothek; Muster PdfPageCopier). Kein Q_OBJECT/moc → isoliert testbar.
+//  Abhängigkeiten: Qt6::Core + mg::zcodec (src/core/ZCodec.h) — keine neue
+//  Bibliothek; Muster PdfPageCopier. Kein Q_OBJECT/moc → isoliert testbar.
+//  ZLIB ist dadurch OPTIONAL; ohne sie weist Reader::open Einträge mit
+//  Methode 8 ab, also praktisch jedes DOCX (Begründung in ZCodec.h).
 //
 //  Kernprinzip (Verlusterhaltung, §0): Der Writer übernimmt ALLE nicht
 //  angefassten Einträge als ROH-KOPIE — die komprimierten Datenbytes, CRC,
@@ -96,7 +98,7 @@ private:
     bool           m_finished = false;
 };
 
-// ── zlib-Helfer (raw deflate, windowBits −15 — das ZIP-Format) ───────────────
+// ── Codec-Helfer über mg::zcodec (raw deflate, windowBits −15 = ZIP) ────────
 QByteArray inflateRaw(const QByteArray& comp, quint32 expectedSize, bool* ok);
 QByteArray deflateRaw(const QByteArray& plain, bool* ok);
 quint32    crcOf(const QByteArray& data);

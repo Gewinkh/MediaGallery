@@ -190,6 +190,13 @@ public:
     //  LAGE eines umfließenden Bildes in Millimetern, relativ zur linken
     //  Textkante und zur Oberkante seines Absatzes — das schreibt das Ziehen.
     Q_INVOKABLE void setImagePositionMm(int block, qreal xMm, qreal yMm);
+    //  Dasselbe, aber der Anker wechselt den ABSATZ (Word hängt ein abgelegtes
+    //  Bild an den Absatz, über dem es liegt — erst dadurch umfließt dessen
+    //  Text es). `yMm` zählt ab der Oberkante des ZIELabsatzes. Umhängen und
+    //  neue Lage sind EIN Undo-Schritt. Den Zielabsatz bestimmt die Anzeige
+    //  (`DocxTextArea::dropSelectedImage`), sie kennt die Geometrie.
+    Q_INVOKABLE void moveImageToBlock(int srcBlock, int dstBlock,
+                                      qreal xMm, qreal yMm);
     //  Umbruchseite: 0 = beide, 1 = nur links, 2 = nur rechts, 3 = breitere
     //  Seite (`Docx::InlineImage::WrapSide`).
     Q_INVOKABLE void setImageWrapSide(int block, int side);
@@ -259,6 +266,10 @@ public:
     //  Region wechseln; lädt den Teil beim ersten Mal nach. Liefert false, wenn
     //  es den Teil nicht gibt oder er nicht editierbar ist.
     Q_INVOKABLE bool setRegion(int r);
+    //  Warum eine Kopf-/Fußzeile gesperrt ist. Leer heißt „gibt es nicht" —
+    //  gefüllt heißt „vorhanden, aber nicht lesbar" (Selbstprüfung, Encoding,
+    //  fehlende Bibliothek). Beides sah vorher gleich aus.
+    Q_INVOKABLE QString regionError(int r) const;
 
     //  Interner Anwender der Kommandos (public für DocxReplaceBlocksCommand).
     void applyBlocks(int first, int oldCount, const QList<Docx::Block>& blocks,
@@ -289,6 +300,10 @@ signals:
     //  Dokument), die Leiste zeigt die Umschaltung an.
     void activeRegionChanged();
     void regionsAvailable();
+    //  Eine vorhandene Kopf-/Fußzeile ließ sich NICHT öffnen (Selbstprüfung,
+    //  Encoding, fehlende Bibliothek). Ohne diese Meldung wurde die Schaltfläche
+    //  nur stumm gesperrt und sah aus wie „gibt es nicht".
+    void regionOpenFailed(int region, const QString& error);
 
 private:
     struct EditScope;                                    // s. cpp
@@ -341,6 +356,15 @@ private:
     int  ensureRunBoundary(Docx::Block& b, int pos) const;
     //  Löscht [p1,p2) innerhalb EINES Blocks (Run-bewusst, opake atomar).
     void removeRangeInBlock(Docx::Block& b, int p1, int p2) const;
+    //  Absatz an `pos` teilen: alles ab dort wandert in einen NEUEN Absatz
+    //  DAHINTER (gleiche Zelle, gleiches pPr/pfmt). Steht an `pos` ein
+    //  `w:br`-Zeichen, wird es dabei geschluckt — aus dem Zeilenumbruch wird
+    //  die Absatzgrenze. Liefert den Index des neuen Absatzes.
+    int  splitParagraphAt(int blockIdx, int pos, bool dropBreakAtPos);
+    //  Zeilenbereich [from,to) eines `w:br`-Absatzes als EIGENEN Absatz
+    //  herauslösen (0…2 Teilungen). Liefert dessen Index, −1 wenn nichts zu tun
+    //  ist (kein Zeilenumbruch, oder der Bereich ist schon der ganze Absatz).
+    int  splitOffLines(int blockIdx, int from, int to);
     //  Wendet das Pending-Format auf einen frisch getippten Run an.
     void applyPendingTo(Docx::Run& r) const;
     //  Pending-Format verwerfen (Cursor verlässt die Stelle / Merge in einen
@@ -399,6 +423,9 @@ private:
         QString        partPath;          // "word/header1.xml", … ("" = keiner)
         bool           available = false; // Teil im Container vorhanden
         bool           loaded    = false; // schon geparst
+        //  Grund, WARUM der Teil nicht editierbar ist (leer = kein Versuch/ok).
+        //  Ohne ihn sah eine defekte Kopfzeile aus wie eine fehlende.
+        QString        error;
     };
     RegionSlot m_slots[3];
     Region     m_region = Body;

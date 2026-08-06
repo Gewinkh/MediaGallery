@@ -18,7 +18,7 @@
 //  im Zweifel „nicht gefunden" (−1 / leer) statt zu raten oder zu lesen, was
 //  ihr nicht gehört. Sie wirft nie und greift nie außerhalb der Puffer zu.
 //
-//  ABHÄNGIGKEITEN: Qt6::Core + ZLIB. Kein Q_OBJECT/moc; isoliert testbar.
+//  ABHÄNGIGKEITEN: Qt6::Core + mg::zcodec. Kein Q_OBJECT/moc; isoliert testbar.
 // ══════════════════════════════════════════════════════════════════════════════
 
 #include <QByteArray>
@@ -33,6 +33,7 @@ namespace mg::pdfobj {
 
 // ── zlib ────────────────────────────────────────────────────────────────────
 //  Versucht zuerst den zlib-Header, dann „raw" (−15) — PDFs enthalten beides.
+//  Der zweite Versuch trägt nur mit einkompiliertem ZLIB (s. core/ZCodec.h).
 QByteArray zInflate(const QByteArray& src, bool* ok);
 QByteArray zDeflate(const QByteArray& src);
 

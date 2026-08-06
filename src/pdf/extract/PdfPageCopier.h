@@ -42,7 +42,7 @@
 //  addSourcePages() plant dafür ZUERST vollständig im Speicher und schreibt
 //  erst bei Erfolg — ein Fehlschlag hinterlässt KEINE Fragmente in der Ausgabe.
 //
-//  ABHÄNGIGKEITEN: nur Qt6::Core + ZLIB (beides bestehende Projekt-
+//  ABHÄNGIGKEITEN: nur Qt6::Core + mg::zcodec (beides bestehende Projekt-
 //  Abhängigkeiten) → isoliert testbar, keine neue Bibliothek (§0-Priorität 3).
 // ══════════════════════════════════════════════════════════════════════════════
 

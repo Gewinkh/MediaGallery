@@ -1,8 +1,9 @@
 #include "docx/DocxZip.h"
 
+#include "core/ZCodec.h"
+
 #include <QFile>
 #include <QtEndian>
-#include <zlib.h>
 
 // ─────────────────────────────────────────────────────────────────────────────
 //  Interne Helfer: Little-Endian-Lesen/Schreiben über QByteArray/QIODevice.
@@ -32,23 +33,17 @@ namespace DocxZip {
 // ─────────────────────────────────────────────────────────────────────────────
 QByteArray inflateRaw(const QByteArray& comp, quint32 expectedSize, bool* ok) {
     if (ok) *ok = false;
-    // RAM-Kantenschutz: DOCX-Teile sind klein; 256 MB Deckel wie PdfPageCopier.
-    if (expectedSize > 256u * 1024u * 1024u)
+    // RAM-Kantenschutz: DOCX-Teile sind klein; Deckel steckt in ZCodec.
+    if (expectedSize > mg::zcodec::kMaxOutput)
         return {};
-    QByteArray out;
-    out.resize(int(expectedSize));
-
-    z_stream zs; memset(&zs, 0, sizeof(zs));
-    if (inflateInit2(&zs, -15) != Z_OK)
-        return {};
-    zs.next_in   = reinterpret_cast<Bytef*>(const_cast<char*>(comp.constData()));
-    zs.avail_in  = uInt(comp.size());
-    zs.next_out  = reinterpret_cast<Bytef*>(out.data());
-    zs.avail_out = uInt(out.size());
-    const int rc = inflate(&zs, Z_FINISH);
-    const bool good = (rc == Z_STREAM_END) && (zs.total_out == expectedSize);
-    inflateEnd(&zs);
-    if (!good)
+    bool zOk = false;
+    // Ohne ZLIB liefert das immer leer (roher Deflate-Strom, s. ZCodec.h) —
+    // deshalb weist Reader::open Archive mit Methode 8 vorher ab.
+    QByteArray out = mg::zcodec::inflate(comp, mg::zcodec::Wrap::Raw,
+                                         expectedSize, /*tolerant*/ false, &zOk);
+    // Die Größe MUSS auf das Zentralverzeichnis passen — weicht sie ab, ist
+    // der Eintrag inkonsistent (manipuliert oder defekt).
+    if (!zOk || out.size() != qsizetype(expectedSize))
         return {};
     if (ok) *ok = true;
     return out;
@@ -56,29 +51,17 @@ QByteArray inflateRaw(const QByteArray& comp, quint32 expectedSize, bool* ok) {
 
 QByteArray deflateRaw(const QByteArray& plain, bool* ok) {
     if (ok) *ok = false;
-    z_stream zs; memset(&zs, 0, sizeof(zs));
     // Level 6 = zlib-Standard (guter Kompromiss Zeit/Größe, Word-üblich).
-    if (deflateInit2(&zs, 6, Z_DEFLATED, -15, 8, Z_DEFAULT_STRATEGY) != Z_OK)
-        return {};
-    QByteArray out;
-    out.resize(int(deflateBound(&zs, uLong(plain.size()))));
-    zs.next_in   = reinterpret_cast<Bytef*>(const_cast<char*>(plain.constData()));
-    zs.avail_in  = uInt(plain.size());
-    zs.next_out  = reinterpret_cast<Bytef*>(out.data());
-    zs.avail_out = uInt(out.size());
-    const int rc = deflate(&zs, Z_FINISH);
-    const bool good = (rc == Z_STREAM_END);
-    out.truncate(int(zs.total_out));
-    deflateEnd(&zs);
-    if (!good)
+    bool zOk = false;
+    QByteArray out = mg::zcodec::deflate(plain, mg::zcodec::Wrap::Raw, 6, &zOk);
+    if (!zOk)
         return {};
     if (ok) *ok = true;
     return out;
 }
 
 quint32 crcOf(const QByteArray& data) {
-    return quint32(crc32(0L, reinterpret_cast<const Bytef*>(data.constData()),
-                         uInt(data.size())));
+    return mg::zcodec::crc32(data);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -183,6 +166,15 @@ bool Reader::open(const QString& path, QString* err) {
         if (en.method != 0 && en.method != 8) {
             if (err) *err = QStringLiteral("Nicht unterstützte Kompressionsmethode (%1).")
                                 .arg(en.method);
+            close(); return false;
+        }
+        // Ohne ZLIB gebaut: ZIP-Einträge sind ROHES Deflate, das der
+        // Qt-Fallback nicht entpacken kann (s. ZCodec.h). Hier abweisen statt
+        // später an einem CRC-Fehler — der Grund wäre dann nicht mehr zu
+        // erkennen. Store(0) bleibt lesbar.
+        if (en.method == 8 && !mg::zcodec::available()) {
+            if (err) *err = QStringLiteral(
+                "Ohne ZLIB gebaut: DOCX-Dateien werden nicht unterstützt.");
             close(); return false;
         }
         if (pos + 46 + nameLen + extraLen + commLen > cd.size()) {

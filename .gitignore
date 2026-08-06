@@ -25,6 +25,7 @@ NEXT.md
 logs/
 tests/
 Structure.md
+config.md
 Authorization.txt
 tmp.txt
 *.o

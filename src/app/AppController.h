@@ -74,6 +74,12 @@ class AppController : public QObject {
     Q_PROPERTY(int  initialWindowY      READ initialWindowY      CONSTANT)
     Q_PROPERTY(bool startMaximized      READ startMaximized      CONSTANT)
 
+    // ── Optionale Bibliotheken (Bauzeit-Entscheidung, daher CONSTANT) ───────
+    //  QML graut die betroffenen Bedienelemente damit aus und zeigt beim
+    //  Hovern, WELCHE Bibliothek fehlt. Das OCR-Gegenstück heißt
+    //  PdfTextController::ocrAvailable (dort, weil je Kachel eine Instanz).
+    Q_PROPERTY(bool docxAvailable       READ docxAvailable       CONSTANT)
+
     // ── Shell-Beschriftungen (i18n, reaktiv bei languageChanged) ────────────
     Q_PROPERTY(QString menuFileText           READ menuFileText           NOTIFY languageChanged)
     Q_PROPERTY(QString menuViewText           READ menuViewText           NOTIFY languageChanged)
@@ -226,6 +232,7 @@ public:
     int  initialWindowX()      const;
     int  initialWindowY()      const;
     bool startMaximized()      const;
+    bool docxAvailable()       const;
     Q_INVOKABLE void saveWindowState(int w, int h, int x, int y, bool maximized);
 
     // ── Tags (Delegation an TagManager) ─────────────────────────────────────

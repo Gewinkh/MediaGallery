@@ -6,7 +6,6 @@
 #include <QSaveFile>
 #include <QHash>
 #include <QRegularExpression>
-#include <zlib.h>
 #include <functional>
 #include <algorithm>
 #include <cstdio>

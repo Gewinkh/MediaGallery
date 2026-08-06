@@ -6,8 +6,9 @@
 #include <QSaveFile>
 #include <algorithm>
 #include <functional>
-#include <zlib.h>
 #include <cstring>
+
+#include "core/ZCodec.h"
 
 // Die Erläuterungen zu jeder Funktion stehen im Header.
 namespace mg::pdfobj {
@@ -15,39 +16,19 @@ namespace mg::pdfobj {
 // ── zlib raw/zlib inflate + deflate ─────────────────────────────────────────
 QByteArray zInflate(const QByteArray& src, bool* ok) {
     *ok = false;
-    for (int attempt = 0; attempt < 2; ++attempt) {         // 0 = zlib-Header, 1 = raw
-        z_stream zs; std::memset(&zs, 0, sizeof(zs));
-        if (inflateInit2(&zs, attempt == 0 ? 15 : -15) != Z_OK) continue;
-        zs.next_in  = reinterpret_cast<Bytef*>(const_cast<char*>(src.constData()));
-        zs.avail_in = static_cast<uInt>(src.size());
-        QByteArray out; char buf[16384]; int rc;
-        do {
-            zs.next_out  = reinterpret_cast<Bytef*>(buf);
-            zs.avail_out = sizeof(buf);
-            rc = inflate(&zs, Z_NO_FLUSH);
-            if (rc != Z_OK && rc != Z_STREAM_END) break;
-            out.append(buf, sizeof(buf) - zs.avail_out);
-        } while (rc != Z_STREAM_END);
-        inflateEnd(&zs);
-        if (rc == Z_STREAM_END) { *ok = true; return out; }
-    }
-    return {};
+    // Erst der zlib-Rahmen (Normalfall), dann roh — manche Erzeuger schreiben
+    // fehlerhafte Köpfe. Ohne ZLIB gebaut trägt nur der erste Versuch
+    // (s. ZCodec.h); solche Sonderlinge werden dann abgelehnt.
+    QByteArray out = mg::zcodec::inflate(src, mg::zcodec::Wrap::Zlib, 0,
+                                         /*tolerant*/ false, ok);
+    if (*ok) return out;
+    return mg::zcodec::inflate(src, mg::zcodec::Wrap::Raw, 0,
+                               /*tolerant*/ false, ok);
 }
 
 QByteArray zDeflate(const QByteArray& src) {
-    z_stream zs; std::memset(&zs, 0, sizeof(zs));
-    if (deflateInit(&zs, Z_BEST_COMPRESSION) != Z_OK) return {};
-    zs.next_in  = reinterpret_cast<Bytef*>(const_cast<char*>(src.constData()));
-    zs.avail_in = static_cast<uInt>(src.size());
-    QByteArray out; char buf[16384]; int rc;
-    do {
-        zs.next_out  = reinterpret_cast<Bytef*>(buf);
-        zs.avail_out = sizeof(buf);
-        rc = deflate(&zs, Z_FINISH);
-        out.append(buf, sizeof(buf) - zs.avail_out);
-    } while (rc == Z_OK);
-    deflateEnd(&zs);
-    return (rc == Z_STREAM_END) ? out : QByteArray();
+    bool ok = false;
+    return mg::zcodec::deflate(src, mg::zcodec::Wrap::Zlib, 9, &ok);
 }
 
 

@@ -19,7 +19,7 @@ Rectangle {
     // Model-Rollen (vom Delegate gesetzt)
     property string filePath: ""
     property string displayName: ""
-    property int    mediaType: 5      // 0 Image,1 Video,2 Audio,3 Pdf,4 Text,5 Unknown
+    property int    mediaType: 6      // 0 Image,1 Video,2 Audio,3 Pdf,4 Text,5 Docx,6 Unknown
     property string typeLabel: ""
     property var    tags: []
     property var    dateTime
@@ -41,11 +41,18 @@ Rectangle {
     readonly property bool tagged: modeTag.length > 0 && tags.indexOf(modeTag) >= 0
     readonly property bool dimmed: tagMode === 1 && modeTag.length > 0 && !tagged
 
+    //  DOCX braucht ZLIB (s. src/core/ZCodec.h) — ohne sie lässt sich eine .docx
+    //  nicht einmal LESEN (ZIP legt Einträge als rohes Deflate ab). Die Kachel
+    //  bleibt samt Namen stehen, ist aber ausgegraut und nicht zu öffnen; der
+    //  Hover-Text nennt die fehlende Bibliothek (Muster wie FilterBar.qml).
+    //  Verschlagworten, Umbenennen und Löschen funktionieren weiter.
+    readonly property bool unavailable: mediaType === 5 && !App.docxAvailable
+
     // Rundum gleichmaessig abgerundet (oben wie unten).
     radius: 10
     color: App.themeCard
     clip: true
-    opacity: dimmed ? 0.45 : 1.0
+    opacity: (dimmed || unavailable) ? 0.45 : 1.0
     Behavior on opacity { NumberAnimation { duration: 120 } }
 
     border.width: tagged ? 2 : 1
@@ -109,6 +116,9 @@ Rectangle {
         anchors.fill: parent
         acceptedButtons: Qt.LeftButton | Qt.RightButton
         onDoubleClicked: function(mouse) {
+            // Ohne ZLIB öffnet die DOCX-Kachel nicht — der Editor bliebe leer.
+            if (tile.unavailable)
+                return
             if (mouse.button === Qt.LeftButton)
                 tile.activated(tile.filePath)
         }
@@ -127,6 +137,14 @@ Rectangle {
                 mediaModel.toggleTag(tile.filePath, tile.modeTag)
         }
     }
+
+    // ── Hover-Hinweis, wenn der Typ mangels Bibliothek nicht öffenbar ist ────
+    //  HoverHandler statt hoverEnabled an der MouseArea: der Handler läuft
+    //  parallel und nimmt der MouseArea keine Klicks weg.
+    HoverHandler { id: tileHover }
+    ToolTip.visible: tileHover.hovered && tile.unavailable
+    ToolTip.delay: 500
+    ToolTip.text: App.uiText(App.language, "LibMissingZlib")
 
     // ── Kontextmenü: Tag / Kategorie hinzufügen ──────────────────────────────
     //  Speist sich beim Öffnen frisch aus der JSON-Persistenz (App.allTags /
