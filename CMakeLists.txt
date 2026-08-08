@@ -15,6 +15,30 @@ else()
     message(STATUS "ccache: nicht benutzt")
 endif()
 
+#  MG_WARN_FLAGS gilt für ALLE Ziele (auch mg_pch, auch die Testtreiber):
+#  abweichende Flags würden das per REUSE_FROM geteilte PCH-Abbild verwerfen.
+option(MG_WARNINGS "Compiler-Warnungen (-Wall -Wextra) einschalten" ON)
+if(MSVC)
+    set(MG_WARN_FLAGS $<IF:$<BOOL:${MG_WARNINGS}>,/W4,/w>)
+else()
+    set(MG_WARN_FLAGS $<IF:$<BOOL:${MG_WARNINGS}>,-Wall$<SEMICOLON>-Wextra,-w>)
+endif()
+
+#  Bewusst GLOBAL (add_compile_options vor allen Zielen), nicht nur an den
+#  Testzielen: Sanitizer ändern die Codeerzeugung, ein halb instrumentierter Baum
+#  passt weder zum PCH-Abbild noch zu den Bibliotheken, gegen die die Treiber
+#  linken. Gehört in einen EIGENEN Ordner, nie in den Auslieferungs-Build.
+option(MG_SANITIZE "Address-/UB-Sanitizer in den ganzen Baum einbauen" OFF)
+if(MG_SANITIZE)
+    if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+        add_compile_options(-fsanitize=address,undefined -fno-omit-frame-pointer -g)
+        add_link_options(-fsanitize=address,undefined)
+        message(STATUS "Sanitizer aktiv (address,undefined) — NICHT für Auslieferung")
+    else()
+        message(WARNING "MG_SANITIZE ignoriert: nur GCC/Clang unterstützt")
+    endif()
+endif()
+
 find_package(Qt6 6.4 REQUIRED COMPONENTS
     Core
     Gui
@@ -42,7 +66,7 @@ file(GENERATE OUTPUT ${MG_PCH_STUB} CONTENT "namespace mg { const int pchMarker 
 set_source_files_properties(${MG_PCH_STUB} PROPERTIES GENERATED TRUE)
 add_library(mg_pch STATIC ${MG_PCH_STUB})
 set_target_properties(mg_pch PROPERTIES AUTOMOC OFF AUTORCC OFF)
-target_compile_options(mg_pch PRIVATE -w)
+target_compile_options(mg_pch PRIVATE ${MG_WARN_FLAGS})
 target_link_libraries(mg_pch PRIVATE Qt6::Core Qt6::Gui)
 target_precompile_headers(mg_pch PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/cmake/Precompiled.h)
@@ -51,7 +75,7 @@ function(mg_domain name)
     cmake_parse_arguments(PARSE_ARGV 1 D "" "" "SOURCES;LIBS")
     add_library(${name} STATIC ${D_SOURCES})
     target_include_directories(${name} PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)
-    target_compile_options(${name} PRIVATE -w)
+    target_compile_options(${name} PRIVATE ${MG_WARN_FLAGS})
     target_link_libraries(${name} PUBLIC ${D_LIBS})
     target_precompile_headers(${name} REUSE_FROM mg_pch)
 endfunction()
@@ -255,7 +279,7 @@ target_link_libraries(MediaGallery PRIVATE
     Qt6::Svg
 )
 
-target_compile_options(MediaGallery PRIVATE -w)
+target_compile_options(MediaGallery PRIVATE ${MG_WARN_FLAGS})
 target_precompile_headers(MediaGallery REUSE_FROM mg_pch)
 
 if(WIN32)

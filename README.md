@@ -21,7 +21,7 @@ Built with **C++20** and **Qt 6.4+**.
 - **Tile size dialog**: Adjust tile width/height with a live drag-resize preview
 - **Fullscreen gallery**: Prev/Next, Random mode, up to 10× zoom, pan with mouse
 - **Image viewer & editor**: Hardware-accelerated QML viewer with PDF-style zoom/pan (fit-to-window, 100%, wheel-zoom, drag-pan) and a full non-destructive **Image Editor** - see the dedicated section below
-- **Split view**: Open up to **4 files side by side** in the fullscreen view (like a 2-, 3-, or 4-player split screen: 2 = two columns, 3 = two on top + one full-width below, 4 = 2×2). Each pane is an independent viewer with its own header and Prev/Next navigation, and its own PDF Editor / Image Editor / zoom / playback state. The **boundaries between panes can be dragged** to resize the tiles (a column divider for 2 panes, plus a row divider for 3/4 panes). A **"+" button** in each pane's header returns to the gallery and adds the next clicked file as another pane (no file dialog - you pick straight from the gallery). **Back / `Esc`** on a pane closes just that file and frees its memory immediately; closing the last pane returns to the gallery. Resizing the window or adding a pane keeps every pane on its current page/position.
+- **Split view**: Open up to **4 files side by side** in the fullscreen view (like a 2-, 3-, or 4-player split screen: 2 = two columns, 3 = two on top + one full-width below, 4 = 2×2). Each pane is an independent viewer with its own header and its own PDF Editor / Image Editor / zoom / playback state; the arrow keys act on the focused pane. The **boundaries between panes can be dragged** to resize the tiles (a column divider for 2 panes, plus a row divider for 3/4 panes). A **"+" button** in each pane's header returns to the gallery and adds the next clicked file as another pane (no file dialog - you pick straight from the gallery). **Back / `Esc`** on a pane closes just that file and frees its memory immediately; closing the last pane returns to the gallery. Resizing the window or adding a pane keeps every pane on its current page/position.
 - **Split view docking (drag & drop)**: Grab a pane by its **header bar** and drag it to rearrange the layout, with **visual drop zones and a live layout preview** (VS Code style). With 2 files you can switch between side-by-side and stacked (drop on an edge zone) or swap positions (drop on the other pane). With 3 files, dropping on an edge zone makes the dragged file the **large pane** on that side (the other two share the remaining half); dropping on a **corner zone** shrinks it back into that quadrant and the adjacent pane takes over the freed area; dropping on another pane swaps positions. With 4 files, dropping on another pane simply **swaps** the two (the 2×2 layout is fixed). Closing or adding panes keeps the arrangement as close as possible to what you set up; the custom layout lasts until the app is closed (not persisted).
 - **Compact mode**: Options mode toggle with `Alt+S` - works in the gallery and inside the open media viewer
 - **Cover mode**: Cover/uncover gallery with `B`
@@ -206,6 +206,9 @@ Everything below is **non-destructive**: your original PDF is never modified. No
 - **Smooth wheel scrolling in Settings**: the settings pages scroll ~45 % of the visible height per wheel notch with a short eased animation - the same behavior as the gallery and the PDF page grid
 - **The app's own file and folder chooser**: every *Open folder*, *Choose file* and *Save as* now opens a themed chooser **inside the window** instead of Qt's separate dialog - the same colors as the rest of the app, the same **animated wheel scrolling**, a places sidebar (Home, Documents, Pictures, ...), a clickable breadcrumb path, file size and date, a name filter, *Show hidden*, and a Save button that says **Overwrite** when the target file already exists
 - **Dedicated fullscreen view**: opening a file hides the application menu bar - only the viewer and its own header are visible, and the freed space goes to the content
+- **True fullscreen (`F`)**: in the media viewer, `F` also drops the window decoration and the viewer's own header - just the medium (and, for video/audio, the progress bar). `F` again or `Esc` brings everything back; leaving the file does too. If the window was **already fullscreen** (via your window manager), `F` leaves the window alone and only hides the chrome - you keep your window state. From a windowed or maximized window it switches to real fullscreen and returns to exactly that state afterwards. In fullscreen the arrow keys keep browsing images, but **seek** a video or audio track
+- **Keyboard-only file navigation**: the floating Prev/Next buttons at the bottom of the viewer are gone - `->` and `<-` move to the next/previous item, in every view mode
+- **Seek step**: how far `->` / `<-` skip a video in fullscreen, adjustable from 1 to 600 seconds (Settings -> General, default 15 s)
 - **Themes**: Fully customizable - every color, every surface (Settings -> Design)
 
 ---
@@ -221,6 +224,9 @@ Everything below is **non-destructive**: your original PDF is never modified. No
 | Open fullscreen view | Double-click |
 | Next item | `->` |
 | Previous item | `<-` |
+| Toggle fullscreen (media viewer) | `F` |
+| Leave fullscreen (before closing the file) | `Esc` |
+| Fullscreen + video/audio: seek forward / back | `->` / `<-` |
 | Back to gallery | `Esc` |
 | Back to gallery (from any viewer) | `Alt+←` |
 | Save text file | `Ctrl+S` |
@@ -376,10 +382,10 @@ Custom themes can be exported to JSON and shared:
 ## Changelog
 
 ### Latest
-- Added advanced themed file chooser with sorting, bookmarks, multi-selection, and folder creation
-- Improved DOCX editing with better image handling, tables, styles, and table of contents support
-- Added clearer handling for missing optional dependencies
-- Improved document layout, scrolling, page numbering, and overall editor stability
+- Added fullscreen mode for images and videos
+- Improved keyboard navigation, focus handling, and video/audio seeking
+- Improved video progress bar behavior
+- Simplified the viewer interface and removed unnecessary controls
 
 ---
 

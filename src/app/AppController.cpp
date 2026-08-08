@@ -373,6 +373,8 @@ bool AppController::audioAccentApple() const { return m_settings.audioAccentAppl
 
 bool AppController::monoPlay() const { return m_settings.monoPlay(); }
 
+int AppController::videoSeekStep() const { return m_settings.videoSeekStep(); }
+
 bool AppController::optionsVisible() const { return m_settings.optionsVisible(); }
 
 void AppController::setBackgroundColor(const QColor& c) {
@@ -447,6 +449,18 @@ void AppController::setMonoPlay(bool on) {
     m_settings.setMonoPlay(on);
     m_settings.sync();
     emit monoPlayChanged();
+}
+
+// Spulschritt der Pfeiltasten im Video-Vollbild. Vergleich gegen den bereits
+// GEKLEMMTEN gespeicherten Wert (ISettings klemmt beim Schreiben) — ein
+// Vergleich mit dem rohen Argument würde bei Werten außerhalb des Bereichs
+// jedes Mal neu schreiben und ein Signal auslösen.
+void AppController::setVideoSeekStep(int seconds) {
+    const int before = m_settings.videoSeekStep();
+    m_settings.setVideoSeekStep(seconds);
+    if (m_settings.videoSeekStep() == before) return;
+    m_settings.sync();
+    emit videoSeekStepChanged();
 }
 
 // ─── Mono-Play: Wiedergabe-Koordination ───────────────────────────────────────

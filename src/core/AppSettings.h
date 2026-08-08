@@ -46,6 +46,9 @@ public:
     bool monoPlay() const override;
     void setMonoPlay(bool v) override;
 
+    int  videoSeekStep() const override;
+    void setVideoSeekStep(int seconds) override;
+
     QColor backgroundColor() const override;
     void   setBackgroundColor(const QColor& c) override;
     QColor accentColor() const override;

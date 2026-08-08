@@ -43,6 +43,9 @@ Item {
         ] },
         { headerKey: "ShortcutCtxViewer", rows: [
             { de: "Nächste / vorherige Datei",     en: "Next / previous item",        keys: ["→", "←"] },
+            { de: "Vollbild ein-/ausschalten",     en: "Toggle fullscreen",           keys: ["F"] },
+            { de: "Video vor-/zurückspulen (Vollbild)",
+              en: "Seek video forward / back (fullscreen)",                           keys: ["→", "←"] },
             { de: "Zurück zur Galerie",            en: "Back to gallery",             keys: ["Esc", "Alt+←"] },
             { de: "Optionen-Modus umschalten",     en: "Toggle options mode",         keys: ["Alt+S"] },
             { de: "Datum bearbeiten",              en: "Edit date",                   keys: ["D"] }

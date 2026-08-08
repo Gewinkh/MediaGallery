@@ -36,13 +36,28 @@ FocusScope {
     signal paneDragCanceled()
 
     // ── Geteilte Ansicht (vom Shell gesetzt) ──────────────────────────────────
-    //  splitActive = mehr als eine Datei gleichzeitig offen → die untere
-    //    Hover-Navigation dieser Kachel (Pfeile + Zähler) entfällt; bei genau
-    //    einer Datei ist sie wieder aktiv.
+    //  splitActive = mehr als eine Datei gleichzeitig offen → die Kopfleiste
+    //    dieser Kachel wird zur Ziehfläche fürs Docking und das immersive
+    //    Vollbild (F) entfällt; bei genau einer Datei ist es wieder verfügbar.
     //  canAddMore  = es lassen sich noch weitere Dateien hinzufügen (< 4) →
     //    steuert die Sichtbarkeit des „+"-Buttons in der Kopfleiste.
     property bool splitActive: false
     property bool canAddMore: true
+
+    // ── Immersives Vollbild (Taste F) ─────────────────────────────────────────
+    //  Vom Shell gesetzt (er schaltet zusätzlich das Fenster auf Vollbild und
+    //  blendet die Menüleiste aus). Hier bedeutet es: KEINE Kachel-Chrome mehr —
+    //  die obere Leiste (Zurück/Name/Datum/Tags) verschwindet, übrig bleibt
+    //  allein die Steuerleiste der Surface
+    //  (bei Video/Audio der Fortschrittsregler).
+    //  Nur im Einzel-View: in der geteilten Ansicht ist die Kopfleiste zugleich
+    //  die Ziehfläche fürs Docking und darf nicht verschwinden.
+    property bool immersive: false
+    readonly property bool immersiveCapable: !root.splitActive && root.path.length > 0
+    //  Wirksam nur im Einzel-View — käme in der geteilten Ansicht doch einmal
+    //  ein gesetztes `immersive` an, bleibt die Kopfleiste (Drag-Fläche) da.
+    readonly property bool immersiveActive: root.immersive && !root.splitActive
+    signal immersiveToggleRequested()
 
     //  paneActive = diese Kachel ist die AKTIVE (fokussierte) im Split-View.
     //  Im Einzel-View immer true. Alle fensterweiten Tastenkürzel dieser Kachel
@@ -209,11 +224,11 @@ FocusScope {
 
         // Viewport, in dem die PDF-Seite NACH dem Laden erscheint — spiegelt die
         // PdfSurface-Geometrie: unter Metadaten-Leiste + PdfSurface-Toolbar (40 px,
-        // erscheint mit docReady), oberhalb der unteren Navigation (74 px). Seiten-Fit
+        // erscheint mit docReady) bis zum unteren Rand. Seiten-Fit
         // wie fitMode "page": min(wFit,hFit) gegen (Viewport − 24); Standardmaß A4
         // (595×842 pt) als Annahme, bis das echte Seitenmaß bekannt ist.
         readonly property real _vpTop:    (topBar.visible ? topBar.height : 0) + 40
-        readonly property real _vpBottom: root.height - (bottomNav.visible ? 74 : 0)
+        readonly property real _vpBottom: root.height
         readonly property real _vpW:      root.width
         readonly property real _vpH:      Math.max(0, _vpBottom - _vpTop)
         readonly property real _fit:      Math.max(0, Math.min((_vpW - 24) / 595, (_vpH - 24) / 842))
@@ -314,29 +329,17 @@ FocusScope {
     }
 
     // ── Surface-Chrome unterhalb der globalen Leisten halten (kein Overlap) ────
-    //  Reserviert die obere (topBar) und untere (Datei-Navigation) Hoehe in der
+    //  Reserviert die Hoehe der oberen Leiste (topBar) in der
     //  jeweiligen Surface, sodass deren eigene Toolbar/Steuerleiste NICHT mit
-    //  der globalen FullscreenViewer-Chrome ueberlappen. topInset: PDF/Text/HTML
-    //  (eigene Toolbar oben). bottomInset: PDF/Text/HTML + Video/Audio (eigene
-    //  Steuerleiste unten, z. B. VideoSurface-Wiedergabeleiste).
+    //  der globalen FullscreenViewer-Chrome ueberlappen. Betrifft nur noch
+    //  topInset (topBar): eine globale UNTERE Chrome gibt es nicht mehr — die
+    //  Vor/Zurueck-Schaltflaechen sind entfallen, die Navigation laeuft ueber
+    //  die Pfeiltasten. `bottomInset` bleibt Teil des Surface-Vertrags (0).
     Binding {
         target: surface.item
         property: "topInset"
         value: topBar.visible ? topBar.height : 0
         when: surface.item !== null && (root.type === 0 || root.type === 3 || root.type === 4
-                                         || root.type === 5)
-        restoreMode: Binding.RestoreNone
-    }
-    Binding {
-        target: surface.item
-        property: "bottomInset"
-        value: bottomNav.visible ? 74 : 0
-        // Auch Video/Audio (Typ 1/2): VideoSurface hebt damit ihre eigene
-        // Steuerleiste (Play/Seek/Lautstärke) über die globale Navigation
-        // (◀ N/M ▶) an, statt von ihr verdeckt zu werden — bottomNav selbst
-        // bleibt unverändert ganz unten.
-        when: surface.item !== null && (root.type === 0 || root.type === 1 || root.type === 2
-                                         || root.type === 3 || root.type === 4
                                          || root.type === 5)
         restoreMode: Binding.RestoreNone
     }
@@ -433,7 +436,9 @@ FocusScope {
         height: App.optionsVisible ? 96 : 52
         color: Qt.rgba(0, 0, 0, 0.55)
         opacity: root.barOpacity
-        visible: opacity > 0.01
+        // Im immersiven Vollbild ist die Leiste komplett weg (nicht nur
+        // durchsichtig) — damit fällt auch der topInset der Surface auf 0.
+        visible: opacity > 0.01 && !root.immersiveActive
         Behavior on opacity { NumberAnimation { duration: 180 } }
 
         // ── Docking-Drag-Fläche (UNTER den Bedienelementen) ───────────────────
@@ -598,57 +603,8 @@ FocusScope {
         }
     }
 
-    // ── Untere Leiste: prev / next ────────────────────────────────────────────
-    //  Einheitlich für ALLE Medientypen standardmäßig ausgeblendet — erscheint
-    //  erst, sobald der Mauszeiger in den unteren 10 % des Viewers steht
-    //  (root._bottomNavHover), und verschwindet wieder, sobald er diese
-    //  Zone verlässt. Die eigene Steuerleiste der aktiven Surface (z. B.
-    //  VideoSurface-Wiedergabeleiste) folgt reaktiv über bottomInset (Binding
-    //  oben, an bottomNav.visible gekoppelt) — rückt beim Einblenden mit nach
-    //  oben, beim Ausblenden wieder nach unten.
-    Row {
-        id: bottomNav
-        anchors.bottom: parent.bottom
-        anchors.horizontalCenter: parent.horizontalCenter
-        anchors.bottomMargin: 20
-        spacing: 16
-        // Bei geteilter Ansicht (mehr als eine Datei offen) entfällt die untere
-        // Navigation dieser Kachel komplett; erst wenn nur noch EINE Datei offen
-        // ist, erscheint sie wieder per Hover in den unteren 10 %.
-        opacity: (!root.splitActive && root._bottomNavHover) ? 1.0 : 0.0
-        visible: opacity > 0.01
-        Behavior on opacity { NumberAnimation { duration: 180 } }
-
-        Rectangle {
-            width: 56; height: 44; radius: 8
-            color: prevHover.hovered ? "#1f4d47" : Qt.rgba(0,0,0,0.55)
-            border.color: "#3a4a48"; border.width: 1
-            Text { anchors.centerIn: parent; text: "\u25C0"; color: "#c8dbd5"; font.pixelSize: 18 }
-            HoverHandler { id: prevHover }
-            TapHandler { onTapped: root.prevRow() }
-        }
-        Rectangle {
-            width: 80; height: 44; radius: 8
-            color: Qt.rgba(0,0,0,0.55)
-            Text {
-                anchors.centerIn: parent
-                text: (root.currentRow + 1) + " / " + galleryModel.count
-                color: "#c8dbd5"; font.pixelSize: 12
-            }
-        }
-        Rectangle {
-            width: 56; height: 44; radius: 8
-            color: nextHover.hovered ? "#1f4d47" : Qt.rgba(0,0,0,0.55)
-            border.color: "#3a4a48"; border.width: 1
-            Text { anchors.centerIn: parent; text: "\u25B6"; color: "#c8dbd5"; font.pixelSize: 18 }
-            HoverHandler { id: nextHover }
-            TapHandler { onTapped: root.nextRow() }
-        }
-    }
-
     // ── Auto-Hide der oberen Leiste ─────────────────────────────────────────
-    //  Betrifft nur noch topBar (Zurück/Name/Datum/Tags) — die untere
-    //  Navigation hat oben ihre eigene, unabhängige Hover-Logik.
+    //  Betrifft ausschließlich topBar (Zurück/Name/Datum/Tags).
     property real barOpacity: 1.0
     HoverHandler {
         id: viewHover
@@ -661,18 +617,6 @@ FocusScope {
         // Nur Bilder blenden die obere Leiste automatisch aus; alle anderen
         // Medientypen behalten topBar dauerhaft sichtbar.
         onTriggered: root.barOpacity = (root.type === 0) ? 0.0 : 1.0
-    }
-
-    // ── Untere Navigation: Sichtbarkeit über Hover-Position in den unteren 10 %
-    //  Ein eigener HoverHandler (statt viewHover mitzunutzen) bleibt bewusst
-    //  unabhängig von der Auto-Hide-Logik der oberen Leiste — reine
-    //  Positionsauswertung, kein Timer/Delay.
-    property bool _bottomNavHover: false
-    HoverHandler {
-        // In der geteilten Ansicht ganz aus — keine untere Kachel-Navigation.
-        enabled: !root.splitActive
-        onPointChanged: root._bottomNavHover = point.position.y >= root.height * 0.90
-        onHoveredChanged: if (!hovered) root._bottomNavHover = false
     }
 
     // ── Datum-Editor ───────────────────────────────────────────────────────────
@@ -702,14 +646,42 @@ FocusScope {
         if (!f) return false
         return (f.cursorPosition !== undefined) && (f.readOnly !== true)
     }
+    //  Video/Audio: die geladene Surface um `sec` Sekunden spulen (negativ =
+    //  zurück). Gibt true zurück, wenn tatsächlich gespult wurde.
+    function _seekSurface(sec) {
+        if (root.type !== 1 && root.type !== 2) return false
+        if (!surface.item || !surface.item.seekBy) return false
+        surface.item.seekBy(sec * 1000)
+        return true
+    }
+
     Keys.onPressed: function(event) {
-        if (event.key === Qt.Key_Escape)      { root.backRequested(); event.accepted = true }
+        if (event.key === Qt.Key_Escape) {
+            // Im immersiven Vollbild verlässt Esc zuerst das Vollbild —
+            // erst der zweite Druck schließt die Datei.
+            if (root.immersiveActive) root.immersiveToggleRequested()
+            else                root.backRequested()
+            event.accepted = true
+        }
+        //  F = immersives Vollbild an/aus. Ein fokussiertes Textfeld (Editor,
+        //  Namensfeld, PDF-Notiz) verbraucht den Tastendruck selbst und erreicht
+        //  diesen Handler gar nicht erst; der Guard sichert die Randfälle ab.
+        else if (event.key === Qt.Key_F && event.modifiers === Qt.NoModifier) {
+            if (root._editableTextFocused()) return
+            if (root.immersiveCapable || root.immersiveActive) {
+                root.immersiveToggleRequested()
+                event.accepted = true
+            }
+        }
         else if (event.key === Qt.Key_Left) {
             if (root._editableTextFocused()) return       // Pfeil bleibt im Textfeld
+            // Vollbild + Video/Audio: zurückspulen statt Dateiwechsel.
+            if (root.immersiveActive && root._seekSurface(-App.videoSeekStep)) { event.accepted = true; return }
             root.prevRow(); event.accepted = true
         }
         else if (event.key === Qt.Key_Right) {
             if (root._editableTextFocused()) return       // Pfeil bleibt im Textfeld
+            if (root.immersiveActive && root._seekSurface(App.videoSeekStep)) { event.accepted = true; return }
             root.nextRow(); event.accepted = true
         }
     }

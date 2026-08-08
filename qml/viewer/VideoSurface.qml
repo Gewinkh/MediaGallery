@@ -1,5 +1,6 @@
 import QtQuick
 import QtQuick.Controls
+import QtQuick.Layouts
 import QtMultimedia
 import MediaGallery 1.0
 
@@ -43,6 +44,22 @@ Item {
     function release() {
         player.stop()
         player.source = ""
+    }
+
+    // Relatives Spulen (Millisekunden, negativ = zurück) — genutzt von den
+    // Pfeiltasten im Vollbild (FullscreenViewer). Geklemmt auf [0, duration];
+    // bei noch unbekannter Dauer (duration <= 0) passiert nichts.
+    function seekBy(deltaMs) {
+        if (player.duration <= 0 || !player.seekable) return
+        player.position = Math.max(0, Math.min(player.position + deltaMs,
+                                               player.duration))
+        root.showControls()
+    }
+
+    // Steuerleiste einblenden und den Auto-Hide-Timer neu starten.
+    function showControls() {
+        root._controlsShown = true
+        hideTimer.restart()
     }
 
     onSourceChanged: {
@@ -94,14 +111,30 @@ Item {
     MouseArea {
         anchors.fill: parent
         onClicked: player.playbackState === MediaPlayer.PlayingState ? player.pause() : player.play()
-        onPositionChanged: { controls.opacity = 1.0; hideTimer.restart() }
+        onPositionChanged: root.showControls()
         hoverEnabled: true
     }
 
+    // ── Auto-Hide der Steuerleiste ───────────────────────────────────────────
+    //  Die Leiste wird NIE ausgeblendet, solange der Zeiger auf ihr steht oder
+    //  ein Regler gezogen wird. Zuvor lief der Timer weiter, sobald der Zeiger
+    //  die Leiste erreichte: über ihr bekam die darunterliegende MouseArea keine
+    //  Bewegungen mehr, der Timer feuerte nach 2,5 s und die Leiste blendete sich
+    //  genau beim Zugreifen weg. Im ausgeblendeten Zustand ist sie zudem nicht
+    //  mehr bedienbar (enabled/visible) — eine unsichtbare, aber weiterhin
+    //  klickbare Leiste schluckte sonst Klicks auf die Videofläche.
+    property bool _controlsShown: true
     Timer {
         id: hideTimer
         interval: 2500
-        onTriggered: if (player.playbackState === MediaPlayer.PlayingState) controls.opacity = 0.0
+        onTriggered: {
+            if (controlsHover.hovered || seek.pressed || volumeSlider.pressed) {
+                restart()                     // Zeiger/Griff auf der Leiste → sichtbar lassen
+                return
+            }
+            if (player.playbackState === MediaPlayer.PlayingState)
+                root._controlsShown = false
+        }
     }
 
     // ── Steuerleiste ─────────────────────────────────────────────────────────
@@ -111,25 +144,36 @@ Item {
         anchors.bottomMargin: root.bottomInset
         height: 52
         color: Qt.rgba(0, 0, 0, 0.6)
-        opacity: 1.0
+        opacity: root._controlsShown ? 1.0 : 0.0
+        visible: opacity > 0.01
+        enabled: root._controlsShown
         Behavior on opacity { NumberAnimation { duration: 200 } }
 
-        Row {
+        //  Hält die Leiste sichtbar, solange der Zeiger auf ihr steht, und holt
+        //  sie beim Betreten sofort zurück.
+        HoverHandler {
+            id: controlsHover
+            onHoveredChanged: if (hovered) root.showControls()
+        }
+
+        //  RowLayout statt Row: Der Fortschrittsregler bekam seine Breite früher
+        //  als `parent.width - 320` — in schmalen Kacheln (geteilte Ansicht) wurde
+        //  das negativ, der Regler schrumpfte auf 0 und war nicht mehr greifbar.
+        //  Jetzt füllt er den Rest und behält eine Mindestbreite.
+        RowLayout {
             anchors.fill: parent
             anchors.leftMargin: 12
             anchors.rightMargin: 12
             spacing: 10
 
             ToolButton {
-                anchors.verticalCenter: parent.verticalCenter
-                width: 36; height: 36
+                Layout.preferredWidth: 36; Layout.preferredHeight: 36
                 text: player.playbackState === MediaPlayer.PlayingState ? "\u23F8" : "\u25B6"
                 font.pixelSize: 16
                 onClicked: player.playbackState === MediaPlayer.PlayingState ? player.pause() : player.play()
             }
 
             Text {
-                anchors.verticalCenter: parent.verticalCenter
                 text: root.formatTime(player.position)
                 color: "white"
                 font.pixelSize: 11
@@ -137,32 +181,38 @@ Item {
 
             Slider {
                 id: seek
-                anchors.verticalCenter: parent.verticalCenter
-                width: parent.width - 320
+                Layout.fillWidth: true
+                Layout.minimumWidth: 60
                 from: 0
                 to: Math.max(1, player.duration)
-                value: pressed ? value : player.position
+                //  Der Griff folgt dem Player — aber NICHT während des Ziehens
+                //  (sonst zöge die laufende Wiedergabe ihn zurück). Als eigenes
+                //  Binding statt `value: pressed ? value : …`, das sich selbst
+                //  referenziert (Binding-Schleife).
+                Binding on value {
+                    when: !seek.pressed
+                    value: player.position
+                    restoreMode: Binding.RestoreNone
+                }
                 onMoved: player.position = value
             }
 
             Text {
-                anchors.verticalCenter: parent.verticalCenter
                 text: root.formatTime(player.duration)
                 color: "white"
                 font.pixelSize: 11
             }
 
             ToolButton {
-                anchors.verticalCenter: parent.verticalCenter
-                width: 32; height: 36
+                Layout.preferredWidth: 32; Layout.preferredHeight: 36
                 text: audioOut.muted ? "\u{1F507}" : "\u{1F50A}"
                 font.pixelSize: 14
                 onClicked: audioOut.muted = !audioOut.muted
             }
 
             Slider {
-                anchors.verticalCenter: parent.verticalCenter
-                width: 90
+                id: volumeSlider
+                Layout.preferredWidth: 90
                 from: 0; to: 1.0
                 value: audioOut.volume
                 onMoved: { audioOut.volume = value; if (value > 0) audioOut.muted = false }

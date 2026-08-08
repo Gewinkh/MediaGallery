@@ -39,6 +39,7 @@ class AppController : public QObject {
     Q_PROPERTY(QString extractLayout   READ extractLayout   NOTIFY extractLayoutChanged)
     Q_PROPERTY(bool    audioAccentApple READ audioAccentApple NOTIFY audioAccentChanged)
     Q_PROPERTY(bool    monoPlay        READ monoPlay        NOTIFY monoPlayChanged)
+    Q_PROPERTY(int     videoSeekStep   READ videoSeekStep   NOTIFY videoSeekStepChanged)
     Q_PROPERTY(bool    optionsVisible  READ optionsVisible  NOTIFY optionsVisibleChanged)
 
     // ── Editor / Auto-Save (Phase 4) ────────────────────────────────────────
@@ -200,6 +201,7 @@ public:
     QString extractLayout() const;        // "workbench" | "compact"
     bool    audioAccentApple() const;  // true = Apple-Blau, false = Theme-Akzent
     bool    monoPlay()        const;   // true = nur EINE Wiedergabe gleichzeitig
+    int     videoSeekStep()   const;   // Spulschritt der Pfeiltasten (Sekunden)
     bool    optionsVisible()  const;
     Q_INVOKABLE void setBackgroundColor(const QColor& c);
     Q_INVOKABLE void setAccentColor(const QColor& c);
@@ -210,6 +212,7 @@ public:
     Q_INVOKABLE void setExtractLayout(const QString& layout);     // "workbench" | "compact"
     Q_INVOKABLE void setAudioAccentApple(bool apple);
     Q_INVOKABLE void setMonoPlay(bool on);
+    Q_INVOKABLE void setVideoSeekStep(int seconds);
 
     // ── Mono-Play: Wiedergabe-Koordination ──────────────────────────────────
     // Jede Wiedergabestelle (VideoSurface-Player, PDF-Audio-Fassade je Kachel)
@@ -289,6 +292,7 @@ signals:
     void extractLayoutChanged();
     void audioAccentChanged();
     void monoPlayChanged();
+    void videoSeekStepChanged();
     // Mono-Play: eine Wiedergabestelle hat gestartet (nur bei aktiver Option).
     void playbackStarted(const QString& token);
     void optionsVisibleChanged();

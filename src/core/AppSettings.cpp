@@ -2,6 +2,7 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QFile>
+#include <algorithm>
 
 // ─────────────────────────────────────────────────────────────────────────────
 //  ThemeColors  serialization
@@ -426,6 +427,16 @@ bool AppSettings::monoPlay() const {
 }
 void AppSettings::setMonoPlay(bool v) {
     m_settings.setValue("ui/monoPlay", v);
+}
+// Spulschritt der Pfeiltasten im Video-Vollbild (Sekunden, Standard 15).
+// Beim Lesen geklemmt, damit eine von Hand verfälschte Konfiguration nicht in
+// einen 0- oder Riesen-Sprung mündet.
+int AppSettings::videoSeekStep() const {
+    const int v = m_settings.value("ui/videoSeekStep", 15).toInt();
+    return std::clamp(v, 1, 600);
+}
+void AppSettings::setVideoSeekStep(int seconds) {
+    m_settings.setValue("ui/videoSeekStep", std::clamp(seconds, 1, 600));
 }
 
 // ─── PDF-Editor ───────────────────────────────────────────────────────────────

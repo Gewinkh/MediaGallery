@@ -165,6 +165,39 @@ Item {
                 }
             }
 
+            // ── Spulschritt der Pfeiltasten im Video-Vollbild ──────────────────
+            SettingsGroup {
+                title: App.uiText(App.language, "SettingsGenSeekStep")
+                Layout.fillWidth: true
+
+                RowLayout {
+                    Layout.fillWidth: true
+                    spacing: 12
+
+                    Label {
+                        text: App.uiText(App.language, "SettingsGenSeekStepLabel")
+                        color: App.themeTextPrimary
+                    }
+                    SpinBox {
+                        id: seekStepSpin
+                        from: 1; to: 600; stepSize: 5
+                        value: App.videoSeekStep
+                        editable: true
+                        textFromValue: function(v) { return v + " s" }
+                        valueFromText: function(t) { return parseInt(t) }
+                        onValueModified: App.setVideoSeekStep(value)
+                    }
+                    Item { Layout.fillWidth: true }
+                }
+                Label {
+                    text: App.uiText(App.language, "SettingsGenSeekStepHint")
+                    color: App.themeTextMuted
+                    font.pixelSize: 11
+                    wrapMode: Text.WordWrap
+                    Layout.fillWidth: true
+                }
+            }
+
             // ── Render-Backend ────────────────────────────────────────────────
             SettingsGroup {
                 title: App.uiText(App.language, "SettingsGenRenderBackend")

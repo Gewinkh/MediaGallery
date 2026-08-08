@@ -128,6 +128,10 @@ public:
     virtual bool monoPlay() const = 0;
     virtual void setMonoPlay(bool v) = 0;
 
+    // Spulschritt (Sekunden) der Pfeiltasten im Video-Vollbild. Standard: 15.
+    virtual int  videoSeekStep() const = 0;
+    virtual void setVideoSeekStep(int seconds) = 0;
+
     virtual QColor backgroundColor() const = 0;
     virtual void   setBackgroundColor(const QColor& c) = 0;
     virtual QColor accentColor() const = 0;

@@ -56,6 +56,60 @@ ApplicationWindow {
 
     property string statusText: ""
 
+    // ── Immersives Vollbild (Taste F im Media Viewer) ─────────────────────────
+    //  Blendet die App-Chrome aus: Fenster auf Vollbild (Titelleiste/Dekoration
+    //  weg), Menüleiste weg, Kachel-Chrome der Viewer weg (dort: obere Leiste +
+    //  untere Vor/Zurück-Navigation, s. FullscreenViewer.immersive). Erneutes F
+    //  (oder Esc) stellt alles wieder her.
+    //  Fenstergeometrie/-zustand VOR dem Vollbild merken: `visibility` liefert im
+    //  Vollbild nur noch FullScreen und width/height die Bildschirmmaße — ohne
+    //  diese Sicherung würde ein Beenden im Vollbild die gespeicherte
+    //  Fensterposition/-größe mit den Bildschirmmaßen überschreiben.
+    property bool immersiveFullscreen: false
+    property int  _preImmersiveVisibility: Window.Windowed
+    property rect _preImmersiveGeometry: Qt.rect(0, 0, 0, 0)
+    //  Haben WIR den Fensterzustand umgeschaltet? Nur dann dürfen wir ihn beim
+    //  Verlassen wieder anfassen.
+    property bool _windowWasSwitched: false
+
+    function setImmersive(on) {
+        if (shell.immersiveFullscreen === on) return
+        if (on) {
+            shell._preImmersiveVisibility = shell.visibility
+            shell._preImmersiveGeometry = Qt.rect(shell.x, shell.y, shell.width, shell.height)
+            shell.immersiveFullscreen = true
+            //  **War das Fenster schon im Vollbild, wird es NICHT angefasst** —
+            //  weder beim Betreten noch beim Verlassen. Wer die App per
+            //  Fenstermanager auf Vollbild gestellt hat, bekommt durch F nur die
+            //  Chrome weg und behält seinen Fensterzustand. Ein blindes Setzen
+            //  und späteres „Zurücksetzen" warf das Fenster hier auf seine
+            //  normale Größe zurück.
+            shell._windowWasSwitched = (shell.visibility !== Window.FullScreen)
+            if (shell._windowWasSwitched)
+                shell.visibility = Window.FullScreen
+        } else {
+            shell.immersiveFullscreen = false
+            if (!shell._windowWasSwitched)
+                return                     // Fenster gehörte uns nie
+            shell._windowWasSwitched = false
+            //  Deterministisch zurück: ERST in den normalen Zustand samt
+            //  gemerkter Geometrie, DANN ggf. maximieren. Der direkte Sprung
+            //  Vollbild → Maximiert ist eine reine Wertzuweisung, die manche
+            //  Fenstermanager verschlucken; über den Zwischenschritt gibt es in
+            //  jedem Fall einen echten Zustandswechsel, und die Geometrie sitzt
+            //  danach auch als „normale" Fläche des Fensters richtig.
+            shell.visibility = Window.Windowed
+            const g = shell._preImmersiveGeometry
+            if (g.width > 0) {
+                shell.x = g.x; shell.y = g.y
+                shell.width = g.width; shell.height = g.height
+            }
+            if (shell._preImmersiveVisibility === Window.Maximized)
+                shell.visibility = Window.Maximized
+        }
+    }
+    function toggleImmersive() { setImmersive(!shell.immersiveFullscreen) }
+
     // ── Globale PDF-Seiten-Extraktion (FilterBar ▸ „Extrahieren") ─────────────
     //  PdfExtract ist ein Singleton, das AUCH jede PdfSurface nutzt → diese
     //  Flags markieren, ob der laufende Scan/Auftrag von HIER stammt; nur dann
@@ -71,6 +125,14 @@ ApplicationWindow {
     }
 
     onClosing: function(close) {
+        // Im immersiven Vollbild den GEMERKTEN Fensterzustand sichern — sonst
+        // startet die App beim nächsten Mal in Bildschirmgröße an Position 0,0.
+        if (shell.immersiveFullscreen) {
+            const g = shell._preImmersiveGeometry
+            App.saveWindowState(g.width, g.height, g.x, g.y,
+                                shell._preImmersiveVisibility === Window.Maximized)
+            return
+        }
         App.saveWindowState(shell.width, shell.height, shell.x, shell.y,
                             shell.visibility === Window.Maximized)
     }
@@ -150,8 +212,8 @@ ApplicationWindow {
         //  ungeteilte Fensterfläche (dedizierte Vollbild-Ansicht) — die Kachel
         //  bringt ihre eigene Kopfleiste inkl. Zurück-Knopf mit. ApplicationWindow
         //  nimmt eine unsichtbare `menuBar` aus dem Layout, es bleibt also kein
-        //  Leerstreifen stehen.
-        visible: stack.depth === 1
+        //  Leerstreifen stehen. Im immersiven Vollbild (F) ist sie ebenfalls weg.
+        visible: stack.depth === 1 && !shell.immersiveFullscreen
         implicitHeight: 32
         color: App.themeMenuBarBg
         Rectangle { anchors.bottom: parent.bottom; width: parent.width; height: 1
@@ -306,6 +368,10 @@ ApplicationWindow {
         id: stack
         anchors.fill: parent
         initialItem: galleryComponent
+
+        //  Rückkehr zur Galerie beendet das immersive Vollbild — egal auf
+        //  welchem Weg (Zurück, Esc, letzte Kachel geschlossen, „+"-Sprung).
+        onDepthChanged: if (depth === 1) shell.setImmersive(false)
 
         // Übergangsstil aus den Einstellungen. Bewusst nur GPU-günstige Transforms
         // (x/scale/opacity) → kein Relayout/Neu-Rendern während der Animation. Die
@@ -933,7 +999,25 @@ ApplicationWindow {
                 if (StackView.status === StackView.Active)
                     pageReady = true
             }
-            StackView.onStatusChanged: _checkReady()
+            //  Tastatur-Fokus auf die aktive Kachel legen. NÖTIG bei JEDEM
+            //  Sichtbarwerden der Seite, nicht nur beim ersten: Beim zweiten
+            //  Öffnen ist `pageReady` schon true (die Seite ist persistent), der
+            //  Kachel-Loader lädt also SOFORT beim Befüllen des Modells — also
+            //  VOR dem StackView-Push. Das `forceActiveFocus()` im `onLoaded`
+            //  läuft dann auf einer Seite, die noch gar nicht die aktive ist,
+            //  und der anschließende Push nimmt den Fokus wieder weg
+            //  (`activeFocusItem` = QQuickRootItem). Ergebnis: die Kachel sah
+            //  richtig aus, reagierte aber auf KEINE Taste mehr — F, ←/→ und Esc
+            //  hängen alle am `Keys.onPressed` des FullscreenViewer.
+            function _focusActivePane() {
+                const l = paneRepeater.itemAt(splitPage.activePaneIndex)
+                if (l && l.item) l.item.forceActiveFocus()
+            }
+            StackView.onStatusChanged: {
+                _checkReady()
+                if (StackView.status === StackView.Active) _focusActivePane()
+            }
+            onActivePaneIndexChanged: _focusActivePane()
 
             // Trennfugen-Hintergrund (scheint in der 2 px-Lücke zwischen Kacheln durch).
             Rectangle { anchors.fill: parent; color: "#0a0a0a" }
@@ -951,6 +1035,7 @@ ApplicationWindow {
 
             // ── Kacheln: ein FullscreenViewer je Datei, per Split-Layout platziert ─
             Repeater {
+                id: paneRepeater
                 model: openFilesModel
                 delegate: Loader {
                     id: paneLoader
@@ -975,6 +1060,10 @@ ApplicationWindow {
                         // Nur die aktive Kachel trägt ihre fensterweiten Kürzel scharf.
                         paneActive:  paneLoader.index === splitPage.activePaneIndex
                         onPaneActivated: splitPage.activePaneIndex = paneLoader.index
+                        // Immersives Vollbild (F): Zustand kommt vom Shell, der
+                        // Wunsch geht dorthin zurück (Fenster + Menüleiste).
+                        immersive: shell.immersiveFullscreen
+                        onImmersiveToggleRequested: shell.toggleImmersive()
                         onBackRequested:    shell.closePane(paneLoader.index)
                         onAddFileRequested: shell.requestAddFile()
                         // Docking: Kopfleisten-Drag dieser Kachel an die Shell
@@ -1258,21 +1347,15 @@ ApplicationWindow {
         }
     }
 
-    // ── Statusleiste ─────────────────────────────────────────────────────────
-    footer: Rectangle {
-        implicitHeight: 24
-        color: App.themeStatusBarBg
-        Rectangle { anchors.top: parent.top; width: parent.width; height: 1; color: App.themeBorder }
-        Text {
-            anchors.verticalCenter: parent.verticalCenter
-            anchors.left: parent.left; anchors.right: parent.right
-            anchors.leftMargin: 12; anchors.rightMargin: 12
-            text: shell.statusText
-            color: App.themeTextMuted; font.pixelSize: 11
-            elide: Text.ElideRight
-        }
-    }
-
+    //  ── KEINE Statusleiste mehr ──────────────────────────────────────────────
+    //  Der `footer` (24-px-Streifen am unteren Fensterrand) ist entfernt: er
+    //  stand in jeder Ansicht und kostete überall Fläche.
+    //  `statusText` bleibt als SAMMELSTELLE bestehen — alle Melder (globale
+    //  PDF-Extraktion, „max. 4 Dateien", Ordnerwechsel, App.statusMessage)
+    //  schreiben unverändert hierher. Damit ist eine spätere Anzeige (z. B. ein
+    //  eingeblendeter Toast wie in PdfSurface) EIN Element, ohne die Melder
+    //  anzufassen. Solange keine Anzeige existiert, sind diese Meldungen
+    //  unsichtbar — das ist die bewusste Folge des Entfernens.
     Timer { id: statusClearTimer; interval: 4000; onTriggered: shell.statusText = "" }
 
     Connections {
