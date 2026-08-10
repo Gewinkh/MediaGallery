@@ -90,6 +90,28 @@ struct Run {
     bool    opaque = false;     // nicht verstandener Run — Raw bleibt verbatim
     bool    dirty  = false;     // Text/Format geändert → aus Teilen serialisieren
 
+    //  ── Änderungsverfolgung (nur ANZEIGE, „Dekorator") ───────────────────────
+    //  Word markiert Einfügungen mit `w:ins`, Löschungen mit `w:del`. Gedeutet
+    //  wird hier NUR, wie es aussieht: eingefügter Text unterstrichen,
+    //  gelöschter durchgestrichen. Die Struktur bleibt unangetastet — beim
+    //  Speichern geht der Roh-Bereich verbatim heraus.
+    enum Revision { RevNone = 0, RevInserted, RevDeleted };
+    Revision revision = RevNone;
+    QString  revAuthor;         // `w:author` (für die Farbe je Autor)
+
+    //  ── Fußnoten-VERWEIS ─────────────────────────────────────────────────────
+    //  > 0, wenn dieser Run ein `w:footnoteReference` ist. Sein `text` trägt
+    //  dann die laufende Nummer als Zeichen — vorher war der Verweis
+    //  unsichtbar, weil ein `w:footnoteReference` keinen `w:t` hat.
+    int footnoteId = 0;
+
+    //  ── Ersatz-ROHFORM (Änderungsverfolgung annehmen/verwerfen) ──────────────
+    //  Ein opaker Run geht sonst BYTEGLEICH heraus. Wird eine Änderung
+    //  angenommen oder verworfen, ändert sich genau dieser Roh-Bereich —
+    //  darüber, nicht über eine Mutation der Dokument-XML: die Spans ALLER
+    //  späteren Blöcke hängen an deren Offsets. Leer = unverändert.
+    QString rawOverride;
+
     QString currentRpr(QStringView docXml) const {
         if (rprMaterialized) return rprXml;
         if (rprSpan.valid()) return docXml.mid(rprSpan.start, rprSpan.len).toString();
@@ -105,6 +127,11 @@ struct Block {
         OpaqueHidden            // z. B. w:sectPr, bookmarkStart — unsichtbar
     };
     Kind    kind = Paragraph;
+    //  ── Absatz INNERHALB einer Fußnote (flach zerlegt wie `w:tbl`) ───────────
+    //  Index in `footnoteDefs()` (−1 = kein Fußnoten-Absatz). Der Rahmen
+    //  (`<w:footnote …>` … `</w:footnote>`) liegt als Spans im Gerüst — genau
+    //  wie bei Tabellen, damit der Teil byteidentisch bleibt.
+    int     footnotePart = -1;
     Span    rawSpan;            // gesamter Block im Original
     Span    startTagSpan;       // "<w:p …>"
     Span    pprSpan;            // "<w:pPr>…</w:pPr>"
@@ -283,6 +310,37 @@ struct InlineImage {
 struct HeaderFooter {
     QList<Block> paragraphs;    // nur pfmt + runs gefüllt (wie Tabellenzellen)
     bool ok = false;
+};
+
+// ── Gerüst einer Fußnote im TEIL `word/footnotes.xml` (BEARBEITEN) ───────────
+//  Wie `TableDef` bei Tabellen: die Absätze liegen flach in `blocks`, der
+//  Rahmen bleibt als Spans stehen. Nur so ist der Text editierbar UND der Teil
+//  byteidentisch, solange nichts geändert wurde.
+struct FootnoteDef {
+    int  id = 0;                // `w:id`
+    Span headerSpan;            // "<w:footnote …>"
+    Span footerSpan;            // "</w:footnote>"
+    int  blockCount = 0;        // Absätze, die dazugehören
+    Span rawSpan() const {
+        return { headerSpan.start,
+                 footerSpan.start + footerSpan.len - headerSpan.start };
+    }
+};
+
+// ── Fußnote (ANZEIGE) ────────────────────────────────────────────────────────
+//  `word/footnotes.xml` hält je `w:id` einen oder mehrere Absätze; im Text steht
+//  nur ein `w:footnoteReference w:id="…"`. Die Absätze werden wie Tabellenzellen
+//  gelesen (nur `pfmt` + `runs`) — die Datei selbst bleibt unangetastet.
+//  Die IDs 0 und −1 sind Wortsonderfälle (Trenner/Fortsetzungstrenner) und
+//  gehören NICHT in den Text.
+struct Footnote {
+    int          id = 0;
+    QList<Block> paragraphs;
+    QString      plainText() const {
+        QStringList out;
+        for (const Block& b : paragraphs) out << b.plainText();
+        return out.join(QLatin1Char(' ')).simplified();
+    }
 };
 
 // ── Nummerierungs-Definitionen (Anzeige + Erzeugung) ─────────────────────────
@@ -501,6 +559,28 @@ public:
     //  der Editor lädt ihn als eigene Document-Instanz (Region), s. loadPart.
     QString headerFooterPart(bool footer, bool first) const;
 
+    // ── Fußnoten (ANZEIGE) ───────────────────────────────────────────────────
+    //  Alle echten Fußnoten des Dokuments, in Dateireihenfolge. Leer, wenn es
+    //  keine `word/footnotes.xml` gibt oder sie nur die Trenner enthält.
+    //  Gelesen wird beim ersten Zugriff und dann gehalten (die Absätze sind
+    //  klein; ein erneutes Öffnen des ZIP je Seite wäre teurer).
+    const QVector<Footnote>& footnotes() const;
+    //  Gerüste der Fußnoten DIESES Teils (nur gefüllt, wenn `word/footnotes.xml`
+    //  geladen wurde — s. `loadPart`).
+    const QVector<FootnoteDef>& footnoteDefs() const { return m_footnoteDefs; }
+
+    //  ── Änderungsverfolgung ANNEHMEN / VERWERFEN ─────────────────────────────
+    //  `accept` = die Änderung gilt: eine Einfügung bleibt (ohne Markierung),
+    //  eine Löschung wird ausgeführt. `!accept` = zurücknehmen: die Einfügung
+    //  verschwindet, der gelöschte Text kommt zurück.
+    //  Gearbeitet wird über `Run::rawOverride` und Entfernen von Runs, NICHT
+    //  über eine Mutation der Dokument-XML — sonst verschöben sich die Spans
+    //  aller späteren Blöcke. false = an dieser Stelle steht keine Änderung.
+    bool applyRevision(int blockIdx, int runIdx, bool accept);
+    //  Die 1-basierte laufende NUMMER einer Fußnote (wie Word sie zeigt) —
+    //  Reihenfolge des Vorkommens im Text, nicht die `w:id`.
+    int footnoteNumber(int id) const;
+
     // ── Seiteneinrichtung ────────────────────────────────────────────────────
     //  Die Werte des LETZTEN w:sectPr im Körper (das für den Hauptteil gilt).
     //  Abschnittswechsel mitten im Dokument werden bewusst nicht abgebildet —
@@ -560,6 +640,19 @@ private:
     //  damit prüft die Selbstprüfung genau den Weg, den auch das
     //  Speichern unangetasteter Teile nimmt.
     QString emitBlocks(bool rawOnly) const;
+public:
+    //  Der geladene TEIL als vollständiges XML (Prefix + Blöcke + Suffix) —
+    //  genau das, was `writeTo` in den Container legt. Öffentlich, damit der
+    //  Fußnoten-Teil einzeln geprüft und geschrieben werden kann.
+    QString buildPartXml() const {
+        QString out;
+        out.reserve(m_docXml.size() + 512);
+        out += QStringView(m_docXml).mid(m_bodyPrefix.start, m_bodyPrefix.len);
+        out += emitBlocks(false);
+        out += QStringView(m_docXml).mid(m_bodySuffix.start, m_bodySuffix.len);
+        return out;
+    }
+private:
     QHash<QString, QByteArray> numberingParts() const;   // Listen-Infrastruktur
     QHash<QString, QByteArray> mediaParts() const;       // eingefügte Bilder
     QHash<QString, QByteArray> stylesParts(
@@ -625,6 +718,14 @@ private:
     //  XML der per ensureHeadingStyle() neu angelegten Vorlagen, in
     //  Anlegereihenfolge — beim Speichern vor </w:styles> gespliced.
     QStringList m_pendingStyles;
+
+    //  Fußnoten werden LAZY gelesen (erst beim ersten Zugriff) und dann
+    //  gehalten — `footnotes()` ist const, deshalb mutable.
+    mutable QVector<Footnote> m_footnotes;
+    mutable bool m_footnotesLoaded = false;
+    //  `w:id` → laufende Nummer, aus der Reihenfolge im TEXT.
+    mutable QHash<int, int> m_footnoteNo;
+    QVector<FootnoteDef>    m_footnoteDefs;
 };
 
 } // namespace Docx

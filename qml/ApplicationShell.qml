@@ -1347,16 +1347,43 @@ ApplicationWindow {
         }
     }
 
-    //  ── KEINE Statusleiste mehr ──────────────────────────────────────────────
-    //  Der `footer` (24-px-Streifen am unteren Fensterrand) ist entfernt: er
-    //  stand in jeder Ansicht und kostete überall Fläche.
-    //  `statusText` bleibt als SAMMELSTELLE bestehen — alle Melder (globale
-    //  PDF-Extraktion, „max. 4 Dateien", Ordnerwechsel, App.statusMessage)
-    //  schreiben unverändert hierher. Damit ist eine spätere Anzeige (z. B. ein
-    //  eingeblendeter Toast wie in PdfSurface) EIN Element, ohne die Melder
-    //  anzufassen. Solange keine Anzeige existiert, sind diese Meldungen
-    //  unsichtbar — das ist die bewusste Folge des Entfernens.
+    //  ── Meldungen: eingeblendeter TOAST statt Statusleiste ───────────────────
+    //  Der frühere `footer` (24-px-Streifen) ist entfernt — er stand in JEDER
+    //  Ansicht und kostete überall Fläche, im Vollbild lag er quer unter dem
+    //  Video. `statusText` blieb als Sammelstelle bestehen; alle Melder
+    //  (globale PDF-Extraktion, „max. 4 Dateien", Ordnerwechsel,
+    //  `App.statusMessage`) schreiben unverändert dorthin. Angezeigt wird das
+    //  jetzt wie in den Kacheln: ein Toast, der sich selbst ausblendet und
+    //  KEINE Fläche kostet (Overlay, klickdurchlässig).
     Timer { id: statusClearTimer; interval: 4000; onTriggered: shell.statusText = "" }
+
+    Rectangle {
+        id: statusToast
+        parent: Overlay.overlay
+        z: 9999
+        //  Unten mittig, mit Abstand zum Rand — im Vollbild wie in der Galerie.
+        anchors.horizontalCenter: parent ? parent.horizontalCenter : undefined
+        anchors.bottom: parent ? parent.bottom : undefined
+        anchors.bottomMargin: 28
+        width: Math.min(parent ? parent.width - 48 : 400, toastLabel.implicitWidth + 32)
+        height: toastLabel.implicitHeight + 18
+        radius: 8
+        color: Qt.rgba(0, 0, 0, 0.82)
+        border.color: Qt.rgba(1, 1, 1, 0.18)
+        visible: opacity > 0.01
+        opacity: shell.statusText.length > 0 ? 1.0 : 0.0
+        Behavior on opacity { NumberAnimation { duration: 160 } }
+        Text {
+            id: toastLabel
+            anchors.centerIn: parent
+            width: Math.min(parent.width - 24, implicitWidth)
+            text: shell.statusText
+            color: "#ffffff"
+            font.pixelSize: 12
+            elide: Text.ElideRight
+            horizontalAlignment: Text.AlignHCenter
+        }
+    }
 
     Connections {
         target: App

@@ -196,8 +196,11 @@ bool PdfTextLayout::buildForPage(const QString& pdfPath, int pageIndex,
         QByteArray fontDict;
         if (pageRes[fp] == '<') { const qint64 e = skipValue(pageRes, fp);
                                   fontDict = pageRes.mid(fp + 2, (e - 2) - (fp + 2)); }
-        else { const int fn = refValue(pageRes, "Font");
-               if (fn < 0) return fail("Font-Ref"); fontDict = dictOf(fn); }
+        else {
+            const int fn = refValue(pageRes, "Font");
+            if (fn < 0) return fail("Font-Ref");
+            fontDict = dictOf(fn);
+        }
 
         qint64 i = 0;
         while (i < fontDict.size()) {

@@ -59,6 +59,9 @@ find_package(ZLIB)
 find_package(PkgConfig QUIET)
 if(PkgConfig_FOUND)
     pkg_check_modules(TESSERACT IMPORTED_TARGET tesseract lept)
+    #  Rechtschreibprüfung — OPTIONAL, wie ZLIB und Tesseract: fehlt sie, bleibt
+    #  die Prüfung aus und die Oberfläche sagt warum.
+    pkg_check_modules(HUNSPELL IMPORTED_TARGET hunspell)
 endif()
 
 set(MG_PCH_STUB ${CMAKE_CURRENT_BINARY_DIR}/mg_pch_stub.cpp)
@@ -93,6 +96,10 @@ mg_domain(mg_core
         src/core/RhiProber.h
         src/core/FileBrowseModel.cpp
         src/core/FileBrowseModel.h
+        src/core/FolderImages.cpp
+        src/core/FolderImages.h
+        src/core/SpellChecker.cpp
+        src/core/SpellChecker.h
         src/core/PathUtils.h
         src/core/MemoryUtils.h
         src/core/ZCodec.cpp
@@ -253,6 +260,14 @@ mg_domain(mg_app
         mg_core mg_media mg_tags mg_pdf mg_pdfedit mg_docx
         Qt6::Qml Qt6::WebEngineQuick
 )
+
+if(HUNSPELL_FOUND)
+    target_link_libraries(mg_core PUBLIC PkgConfig::HUNSPELL)
+    target_compile_definitions(mg_core PUBLIC MG_HAVE_HUNSPELL)
+    message(STATUS "Rechtschreibprüfung aktiviert (Hunspell ${HUNSPELL_VERSION})")
+else()
+    message(STATUS "Rechtschreibprüfung deaktiviert (Hunspell nicht gefunden)")
+endif()
 
 if(TESSERACT_FOUND)
     target_link_libraries(mg_pdf PUBLIC PkgConfig::TESSERACT)

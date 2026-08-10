@@ -51,9 +51,25 @@ Item {
     function save()    { editCtl.save() }
     function release() { editCtl.release() }
 
+    //  Rechtschreibprüfung folgt der globalen Einstellung — der Controller
+    //  gehört zur KACHEL und kennt die Einstellungen bewusst nicht, deshalb
+    //  reicht die Kachel sie herein (beim Start und bei jeder Änderung).
+    //  `Connections` gehört an ein ITEM: ein QObject-Typ wie der Controller hat
+    //  kein Default-Property und nimmt keine Kinder auf.
+    function _applySpellSettings() {
+        editCtl.setSpellLanguage(App.spellLanguage)
+        editCtl.setSpellCheckEnabled(App.spellCheck)
+    }
+    Component.onCompleted: root._applySpellSettings()
+    Connections {
+        target: App
+        function onSpellCheckChanged() { root._applySpellSettings() }
+    }
+
     DocxEditController {
         id: editCtl
         translit: Translit
+
         onSaveFinished: (ok, target, error) => {
             if (!ok)
                 statusText.flash(error.length > 0
@@ -859,7 +875,10 @@ Item {
                         model: [
                             { key: "DocxRegionBody",   rid: 0 },
                             { key: "DocxRegionHeader", rid: 1 },
-                            { key: "DocxRegionFooter", rid: 2 }
+                            { key: "DocxRegionFooter", rid: 2 },
+                            //  Fußnoten sind ein eigener Teil (word/footnotes.xml)
+                            //  und werden wie Kopf-/Fußzeile umgeschaltet.
+                            { key: "DocxRegionFootnotes", rid: 3 }
                         ]
                         delegate: Rectangle {
                             required property var modelData
@@ -867,7 +886,8 @@ Item {
                             readonly property bool avail:
                                 modelData.rid === 0
                                 || (modelData.rid === 1 ? editCtl.hasHeader
-                                                        : editCtl.hasFooter)
+                                   : modelData.rid === 2 ? editCtl.hasFooter
+                                                         : editCtl.hasFootnotes)
                             width: rgLabel.implicitWidth + 16
                             height: 26
                             radius: 6
@@ -931,115 +951,21 @@ Item {
                         imgPopup.open()
                     }
 
-                    Popup {
+                    //  Ordner-Bildwähler (gemeinsam mit dem PDF-Editor).
+                    FolderImagePicker {
                         id: imgPopup
-                        y: parent.height + 4
-                        padding: 8
-                        property var entries: []
-                        background: Rectangle {
-                            color: App.themeMenuBarBg
-                            border.color: App.themeBorder
-                            radius: 8
+                        hostWidth: root.width
+                        onPicked: function(u) {
+                            //  PDF: NICHT stillschweigend das Cover nehmen,
+                            //  sondern dieselbe Seitenauswahl anbieten wie die
+                            //  Extraktion (Nutzerbefund).
+                            if (u.toLowerCase().endsWith(".pdf"))
+                                root.openPdfPagePicker(u)
+                            else
+                                editCtl.insertImage(u)
+                            area.forceActiveFocus()
                         }
-                        contentItem: Column {
-                            spacing: 6
-                            Text {
-                                text: App.uiText(App.language, "DocxImageFromFolder")
-                                color: App.themeTextMuted; font.pixelSize: 11
-                            }
-                            Text {
-                                visible: imgPopup.entries.length === 0
-                                text: App.uiText(App.language, "DocxNoImagesInFolder")
-                                color: App.themeTextPrimary; font.pixelSize: 12
-                            }
-                            //  Miniaturen werden ASYNCHRON und nur für die
-                            //  sichtbaren Delegates geladen; sourceSize deckelt
-                            //  die dekodierte Größe (RAM = Priorität 1).
-                            GridView {
-                                id: imgGrid
-                                visible: imgPopup.entries.length > 0
-                                width: 396
-                                height: Math.min(300, Math.ceil(
-                                            imgPopup.entries.length / 4) * 96)
-                                cellWidth: 98
-                                cellHeight: 96
-                                clip: true
-                                model: imgPopup.entries
-                                boundsBehavior: Flickable.StopAtBounds
-                                ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
-                                //  Ohne das scrollt Qt in ~60-px-Rastungen
-                                //  (Nutzerbefund „Scrollen ist langsam").
-                                //  `flickable` MUSS über die id gesetzt werden,
-                                //  nicht über `parent`: SmoothWheelArea setzt
-                                //  selbst `parent: flickable` — mit
-                                //  `flickable: parent` entsteht eine
-                                //  BINDUNGSSCHLEIFE und die Komponente bleibt
-                                //  wirkungslos (genau so blieb der erste
-                                //  Anlauf ohne Wirkung).
-                                SmoothWheelArea { flickable: imgGrid }
-                                delegate: Rectangle {
-                                    required property var modelData
-                                    width: 94; height: 92
-                                    radius: 5
-                                    color: fiHover.hovered ? App.themeCard : "transparent"
-                                    border.color: fiHover.hovered ? App.themeAccent
-                                                                  : App.themeBorder
-                                    Image {
-                                        anchors.top: parent.top
-                                        anchors.horizontalCenter: parent.horizontalCenter
-                                        anchors.topMargin: 4
-                                        width: 82; height: 58
-                                        fillMode: Image.PreserveAspectFit
-                                        asynchronous: true
-                                        cache: false
-                                        sourceSize.width: 96
-                                        sourceSize.height: 96
-                                        source: parent.modelData.url
-                                    }
-                                    Text {
-                                        anchors.bottom: parent.bottom
-                                        anchors.bottomMargin: 3
-                                        x: 3
-                                        width: parent.width - 6
-                                        horizontalAlignment: Text.AlignHCenter
-                                        elide: Text.ElideMiddle
-                                        text: parent.modelData.name
-                                        color: App.themeTextPrimary
-                                        font.pixelSize: 10
-                                    }
-                                    HoverHandler { id: fiHover }
-                                    TapHandler {
-                                        onTapped: {
-                                            const u = parent.modelData.url
-                                            imgPopup.close()
-                                            //  PDF: NICHT stillschweigend das
-                                            //  Cover nehmen, sondern dieselbe
-                                            //  Seitenauswahl anbieten wie die
-                                            //  Extraktion (Nutzerbefund).
-                                            if (u.toLowerCase().endsWith(".pdf"))
-                                                root.openPdfPagePicker(u)
-                                            else
-                                                editCtl.insertImage(u)
-                                            area.forceActiveFocus()
-                                        }
-                                    }
-                                }
-                            }
-                            Rectangle {
-                                width: 150; height: 26; radius: 6
-                                color: brHover.hovered ? App.themeCard : "transparent"
-                                border.color: App.themeBorder
-                                Text {
-                                    anchors.centerIn: parent
-                                    text: App.uiText(App.language, "DocxImageBrowse")
-                                    color: App.themeTextPrimary; font.pixelSize: 12
-                                }
-                                HoverHandler { id: brHover }
-                                TapHandler {
-                                    onTapped: { imgPopup.close(); imgDialog.open() }
-                                }
-                            }
-                        }
+                        onBrowseRequested: imgDialog.open()
                     }
                 }
 
@@ -1666,6 +1592,54 @@ Item {
                                 act: () => editCtl.cut() })
                     list.push({ text: App.uiText(App.language, "DocxImageDelete"),
                                 act: () => editCtl.deleteImageAtCursor() })
+                }
+                //  ── Änderungsverfolgung: annehmen/verwerfen ───────────────
+                //  Nur, wenn an der Cursorstelle wirklich eine Änderung steht.
+                {
+                    const rev = editCtl.revisionAt(editCtl.cursorBlock(),
+                                                   editCtl.cursorPos())
+                    if (rev > 0) {
+                        const who = editCtl.revisionAuthorAt(editCtl.cursorBlock(),
+                                                             editCtl.cursorPos())
+                        const suffix = who.length > 0 ? "  (" + who + ")" : ""
+                        const head = []
+                        head.push({ text: App.uiText(App.language, "DocxRevAccept") + suffix,
+                                    act: () => editCtl.acceptRevisionAt(
+                                             editCtl.cursorBlock(), editCtl.cursorPos()) })
+                        head.push({ text: App.uiText(App.language, "DocxRevReject") + suffix,
+                                    act: () => editCtl.rejectRevisionAt(
+                                             editCtl.cursorBlock(), editCtl.cursorPos()) })
+                        if (list.length > 0) head.push({ sep: true })
+                        list = head.concat(list)
+                    }
+                }
+
+                //  ── Rechtschreibung: Vorschläge ganz OBEN ─────────────────
+                //  Der Rechtsklick setzt den Cursor an die Stelle (s. area),
+                //  also fragt das Menü genau dort nach. Ersetzt wird nur auf
+                //  Wahl — die Prüfung fasst den Text nie von selbst an.
+                if (editCtl.spellAvailable) {
+                    const sug = editCtl.spellSuggestions(editCtl.cursorBlock(),
+                                                         editCtl.cursorPos())
+                    if (sug.length > 0 || editCtl.spellHasIssueAt(editCtl.cursorBlock(),
+                                                                  editCtl.cursorPos())) {
+                        const head = []
+                        for (let i = 0; i < Math.min(5, sug.length); ++i) {
+                            const w = sug[i]
+                            head.push({ text: w,
+                                        act: () => editCtl.spellReplaceAt(
+                                                 editCtl.cursorBlock(),
+                                                 editCtl.cursorPos(), w) })
+                        }
+                        if (sug.length === 0)
+                            head.push({ text: App.uiText(App.language, "DocxSpellNoSuggestion"),
+                                        enabled: false, act: () => {} })
+                        head.push({ text: App.uiText(App.language, "DocxSpellIgnore"),
+                                    act: () => editCtl.spellIgnoreAt(editCtl.cursorBlock(),
+                                                                     editCtl.cursorPos()) })
+                        if (list.length > 0) head.push({ sep: true })
+                        list = head.concat(list)
+                    }
                 }
                 if (list.length === 0) return
                 ctxMenu.entries = list

@@ -198,6 +198,58 @@ Item {
                 }
             }
 
+            // ── Rechtschreibprüfung ───────────────────────────────────────────
+            //  PRÜFUNG, nicht Korrektur: markiert wird, ersetzt wird nur auf
+            //  ausdrückliche Wahl im Kontextmenü.
+            SettingsGroup {
+                title: App.uiText(App.language, "SettingsGenSpell")
+                Layout.fillWidth: true
+
+                RowLayout {
+                    Layout.fillWidth: true
+                    spacing: 12
+                    Switch {
+                        id: spellSwitch
+                        checked: App.spellCheck
+                        enabled: App.spellLanguages().length > 0
+                        text: App.uiText(App.language, "SettingsGenSpellLabel")
+                        onToggled: App.setSpellCheck(checked)
+                    }
+                    Item { Layout.fillWidth: true }
+                }
+                RowLayout {
+                    Layout.fillWidth: true
+                    spacing: 12
+                    visible: App.spellLanguages().length > 0
+                    Label {
+                        text: App.uiText(App.language, "SettingsGenSpellLang")
+                        color: App.themeTextPrimary
+                    }
+                    ComboBox {
+                        id: spellLangBox
+                        model: App.spellLanguages()
+                        enabled: App.spellCheck
+                        Component.onCompleted: {
+                            const i = model.indexOf(App.spellLanguage)
+                            currentIndex = i >= 0 ? i : 0
+                        }
+                        onActivated: App.setSpellLanguage(currentText)
+                    }
+                    Item { Layout.fillWidth: true }
+                }
+                Label {
+                    //  Ohne Wörterbuch ist der Schalter wirkungslos — dann steht
+                    //  hier, warum (dasselbe Muster wie bei fehlendem ZLIB).
+                    text: App.spellLanguages().length > 0
+                          ? App.uiText(App.language, "SettingsGenSpellHint")
+                          : App.uiText(App.language, "SettingsGenSpellNone")
+                    color: App.themeTextMuted
+                    font.pixelSize: 11
+                    wrapMode: Text.WordWrap
+                    Layout.fillWidth: true
+                }
+            }
+
             // ── Render-Backend ────────────────────────────────────────────────
             SettingsGroup {
                 title: App.uiText(App.language, "SettingsGenRenderBackend")

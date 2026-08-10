@@ -1,5 +1,6 @@
 #pragma once
 #include <QSortFilterProxyModel>
+#include <QtGlobal>
 #include <QStringList>
 #include <QSet>
 #include <QDateTime>
@@ -109,6 +110,19 @@ signals:
     void filterChanged();
 
 protected:
+    //  Zeilenfilter neu auswerten. `invalidateRowsFilter()` ist ab Qt 6.9
+    //  veraltet (Ersatz: `beginFilterChange()` + `endFilterChange(Rows)`), das
+    //  Projekt baut aber ab Qt 6.4 — deshalb EINE Stelle mit Weiche statt
+    //  neun Aufrufe mit `#if` drumherum.
+    void refilterRows() {
+#if QT_VERSION >= QT_VERSION_CHECK(6, 9, 0)
+        beginFilterChange();
+        endFilterChange(QSortFilterProxyModel::Direction::Rows);
+#else
+        invalidateRowsFilter();
+#endif
+    }
+
     bool filterAcceptsRow(int sourceRow, const QModelIndex& sourceParent) const override;
     bool lessThan(const QModelIndex& left, const QModelIndex& right) const override;
 

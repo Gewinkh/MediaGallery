@@ -431,6 +431,19 @@ void AppSettings::setMonoPlay(bool v) {
 // Spulschritt der Pfeiltasten im Video-Vollbild (Sekunden, Standard 15).
 // Beim Lesen geklemmt, damit eine von Hand verfälschte Konfiguration nicht in
 // einen 0- oder Riesen-Sprung mündet.
+bool AppSettings::spellCheckEnabled() const {
+    return m_settings.value("ui/spellCheck", false).toBool();
+}
+void AppSettings::setSpellCheckEnabled(bool v) {
+    m_settings.setValue("ui/spellCheck", v);
+}
+QString AppSettings::spellLanguage() const {
+    return m_settings.value("ui/spellLanguage", QString()).toString();
+}
+void AppSettings::setSpellLanguage(const QString& lang) {
+    m_settings.setValue("ui/spellLanguage", lang);
+}
+
 int AppSettings::videoSeekStep() const {
     const int v = m_settings.value("ui/videoSeekStep", 15).toInt();
     return std::clamp(v, 1, 600);

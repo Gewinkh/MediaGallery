@@ -304,6 +304,9 @@ QVariantList PdfTextController::selectAllOnPage(int page) {
 QVariantList PdfTextController::applySelection(const QPdfSelection& sel, int page,
                                                double pageWidthPts,
                                                double pageHeightPts) {
+    //  `page` gehört zur Signatur (Symmetrie zu ocrSelection), die Umrechnung
+    //  braucht ihn nicht — die Rechtecke sind bereits seitenrelativ.
+    Q_UNUSED(page)
     QVariantList rects;
     QString text;
 

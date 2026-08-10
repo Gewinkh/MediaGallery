@@ -1,4 +1,6 @@
 #include "docx/edit/DocxEditController.h"
+
+#include "core/FolderImages.h"
 #include "docx/DocxZip.h"
 #include "docx/DocxPdfExporter.h"
 #include "core/AppSettings.h"
@@ -124,7 +126,15 @@ void DocxEditController::setSource(const QString& s) {
                     c->m_slots[Footer].partPath = c->m_doc.headerFooterPart(true, false);
                     c->m_slots[Header].available = !c->m_slots[Header].partPath.isEmpty();
                     c->m_slots[Footer].available = !c->m_slots[Footer].partPath.isEmpty();
+                    //  Fußnoten: nur anbieten, wenn der Teil ECHTE Notizen hat
+                    //  (die beiden Trenner allein sind nichts zum Bearbeiten).
+                    c->m_slots[Footnotes].partPath =
+                        c->m_doc.footnotes().isEmpty() ? QString()
+                                                       : QStringLiteral("word/footnotes.xml");
+                    c->m_slots[Footnotes].available =
+                        !c->m_slots[Footnotes].partPath.isEmpty();
                     emit c->regionsAvailable();
+                    c->spellStart();          // Wörterbuch + erste Prüfung
                 } else {
                     c->m_loadError = err;
                 }
@@ -532,7 +542,7 @@ QString DocxEditController::regionError(int r) const {
 
 bool DocxEditController::setRegion(int rInt) {
     if (!m_ready) return false;
-    const Region r = Region(qBound(0, rInt, 2));
+    const Region r = Region(qBound(0, rInt, 3));
     if (r == m_region) return true;
     if (r != Body && !ensureRegionLoaded(r)) return false;
 
@@ -565,7 +575,7 @@ void DocxEditController::activateRegionForCommand(int r) {
 //  eingetragen und gewinnt bei gemeinsamen Dateien ([Content_Types].xml).
 QHash<QString, QByteArray> DocxEditController::allRegionParts() const {
     QHash<QString, QByteArray> parts;
-    for (int r = 2; r >= 0; --r) {
+    for (int r = 3; r >= 0; --r) {
         const bool active = (int(m_region) == r);
         if (!active && !m_slots[r].loaded) continue;
         const Docx::Document& d = active ? m_doc : m_slots[r].doc;
@@ -591,6 +601,9 @@ void DocxEditController::applyBlocks(int first, int oldCount,
     m_cursor = cur;
     setModified(true);
     emit blocksReplaced(first, oldCount, blocks.size());
+    //  Geänderte Absätze neu prüfen. Der Deckel auf die eingefügten Blöcke
+    //  hält den Aufwand am Tippen klein: ein Tastendruck betrifft EINEN Absatz.
+    spellInvalidate(first, qMax(1, blocks.size()));
     emit cursorChanged();
     bumpFormat();
 }
@@ -1378,31 +1391,233 @@ void DocxEditController::insertImageBytes(const QByteArray& bytes,
     scope.commit(1);
 }
 
-QVariantList DocxEditController::folderImages() const {
-    QVariantList out;
-    const QString dirPath = QFileInfo(m_source).absolutePath();
-    if (dirPath.isEmpty()) return out;
-
-    QStringList filters;
-    const auto fmts = QImageReader::supportedImageFormats();
-    filters.reserve(fmts.size());
-    for (const QByteArray& f : fmts)
-        filters << QStringLiteral("*.") + QString::fromLatin1(f).toLower();
-
-    QDir d(dirPath);
-    const QFileInfoList files = d.entryInfoList(filters, QDir::Files | QDir::Readable,
-                                                QDir::Name | QDir::IgnoreCase);
-    //  Deckel: das Popup zeigt Miniaturen; ein Ordner mit tausenden Bildern
-    //  soll die Kachel nicht lahmlegen (RAM/Reaktionszeit).
-    constexpr int kMax = 300;
-    for (const QFileInfo& fi : files) {
-        if (out.size() >= kMax) break;
-        QVariantMap m;
-        m.insert(QStringLiteral("name"), fi.fileName());
-        m.insert(QStringLiteral("url"), QUrl::fromLocalFile(fi.absoluteFilePath()).toString());
-        out.append(m);
+// ─────────────────────────────────────────────────────────────────────────────
+//  Rechtschreib-PRÜFUNG — absatzweise, asynchron, ohne den Text anzufassen
+// ─────────────────────────────────────────────────────────────────────────────
+//  Ein Auftrag je Absatz auf einem Pool mit EINEM Thread: die Reihenfolge
+//  bleibt die Tippreihenfolge, und `m_spell` (das Wörterbuch) gehört genau
+//  diesem Thread — es wird dort erzeugt und nie vom GUI-Thread berührt.
+namespace {
+class SpellTask : public QRunnable {
+public:
+    SpellTask(QPointer<DocxEditController> owner, std::shared_ptr<mg::SpellChecker> sc,
+              int block, QString text, QStringList ignored, int gen)
+        : m_owner(std::move(owner)), m_sc(std::move(sc)), m_block(block),
+          m_text(std::move(text)), m_ignored(std::move(ignored)), m_gen(gen) {
+        setAutoDelete(true);
     }
-    return out;
+    void run() override {
+        if (!m_sc) return;
+        for (const QString& w : std::as_const(m_ignored)) m_sc->ignoreWord(w);
+        const std::vector<mg::SpellRange> bad = m_sc->checkText(m_text);
+        QVector<mg::SpellRange> out;
+        out.reserve(int(bad.size()));
+        for (const mg::SpellRange& r : bad) out.append(r);
+        const int block = m_block, gen = m_gen;
+        QPointer<DocxEditController> owner = m_owner;
+        QMetaObject::invokeMethod(owner ? owner.data() : nullptr,
+                                  [owner, block, gen, out]() {
+            if (owner) owner->spellResult(block, gen, out);
+        }, Qt::QueuedConnection);
+    }
+private:
+    QPointer<DocxEditController> m_owner;
+    std::shared_ptr<mg::SpellChecker> m_sc;
+    int m_block;
+    QString m_text;
+    QStringList m_ignored;
+    int m_gen;
+};
+} // namespace
+
+void DocxEditController::spellResult(int block, int gen,
+                                     const QVector<mg::SpellRange>& bad) {
+    if (gen != m_spellGen) return;                  // Ergebnis eines alten Laufs
+    m_spellPending.remove(block);
+    if (bad.isEmpty()) m_spellBad.remove(block);
+    else               m_spellBad.insert(block, bad);
+    emit spellRangesChanged(block);
+}
+
+void DocxEditController::spellStart() {
+    ++m_spellGen;
+    m_spellBad.clear();
+    m_spellPending.clear();
+    m_spellReady = false;
+    m_spellLang.clear();
+    m_spell.reset();
+    if (!m_spellPool) {
+        m_spellPool = new QThreadPool(this);
+        m_spellPool->setMaxThreadCount(1);
+    }
+    if (!m_spellOn || !mg::SpellChecker::compiledIn()) {
+        emit spellChanged();
+        emit spellRangesChanged(-1);
+        return;
+    }
+    //  Sprache: die vom Aufrufer gesetzte, sonst die erste gefundene. Die
+    //  EINSTELLUNG liest QML und reicht sie herein — der Controller gehört zur
+    //  Kachel und kennt die globalen Einstellungen bewusst nicht.
+    QString lang = m_spellWanted;
+    if (lang.isEmpty()) {
+        const QStringList have = mg::SpellChecker::availableLanguages();
+        if (!have.isEmpty()) lang = have.first();
+    }
+    auto sc = std::make_shared<mg::SpellChecker>();
+    //  Das Öffnen liest zwei Dateien — im Vergleich zum Prüfen selbst
+    //  vernachlässigbar, aber es gehört trotzdem nicht in den GUI-Thread.
+    //  Deshalb: hier nur anlegen, geöffnet wird beim ersten Auftrag.
+    m_spellReady = !lang.isEmpty() && sc->open(lang);
+    m_spellLang  = m_spellReady ? sc->language() : QString();
+    m_spell      = m_spellReady ? sc : nullptr;
+    emit spellChanged();
+    if (m_spellReady) spellInvalidate(0, m_doc.blocks.size());
+    else              emit spellRangesChanged(-1);
+}
+
+void DocxEditController::setSpellCheckEnabled(bool on) {
+    if (m_spellOn == on) return;
+    m_spellOn = on;
+    spellStart();
+}
+
+void DocxEditController::setSpellLanguage(const QString& lang) {
+    if (m_spellWanted == lang) return;
+    m_spellWanted = lang;
+    if (m_spellOn) spellStart();
+}
+
+void DocxEditController::spellInvalidate(int first, int count) {
+    if (!m_spellReady) return;
+    const int n = m_doc.blocks.size();
+    for (int i = qMax(0, first); i < qMin(n, first + qMax(1, count)); ++i) {
+        m_spellBad.remove(i);
+        spellRequest(i);
+    }
+    emit spellRangesChanged(-1);
+}
+
+void DocxEditController::spellRequest(int block) {
+    if (!m_spellReady || !m_spell || !m_spellPool) return;
+    if (block < 0 || block >= m_doc.blocks.size()) return;
+    const Docx::Block& b = m_doc.blocks.at(block);
+    if (b.kind != Docx::Block::Paragraph) return;
+    m_spellPending.insert(block);
+    m_spellPool->start(new SpellTask(QPointer<DocxEditController>(this), m_spell,
+                                     block, b.plainText(), m_spellIgnored,
+                                     m_spellGen));
+}
+
+const QVector<mg::SpellRange>& DocxEditController::spellRanges(int block) const {
+    static const QVector<mg::SpellRange> empty;
+    const auto it = m_spellBad.constFind(block);
+    return it == m_spellBad.cend() ? empty : it.value();
+}
+
+//  Das beanstandete Wort an einer Stelle finden (Kontextmenü).
+int DocxEditController::spellWordAt(int block, int pos, mg::SpellRange* out) const {
+    const QVector<mg::SpellRange>& r = spellRanges(block);
+    for (const mg::SpellRange& s : r) {
+        if (pos >= s.start && pos <= s.start + s.length) {
+            if (out) *out = s;
+            return 1;
+        }
+    }
+    return 0;
+}
+
+QStringList DocxEditController::spellSuggestions(int block, int pos) const {
+    mg::SpellRange r;
+    if (!m_spellReady || !m_spell || !spellWordAt(block, pos, &r)) return {};
+    if (block < 0 || block >= m_doc.blocks.size()) return {};
+    const QString word = m_doc.blocks.at(block).plainText().mid(r.start, r.length);
+    //  Gelesen wird hier im GUI-Thread — Vorschläge sind eine EINZELNE Abfrage
+    //  auf Tastendruck (Rechtsklick), keine Schleife über das Dokument.
+    return m_spell->suggest(word);
+}
+
+bool DocxEditController::spellReplaceAt(int block, int pos,
+                                        const QString& replacement) {
+    mg::SpellRange r;
+    if (replacement.isEmpty() || !spellWordAt(block, pos, &r)) return false;
+    //  Über den gewöhnlichen Weg: auswählen, ersetzen — EIN Undo-Schritt, und
+    //  alle Beobachter (Anzeige, Modified-Flag) erfahren es wie immer.
+    setCursor(block, r.start, false);
+    setCursor(block, r.start + r.length, true);
+    insertText(replacement);
+    return true;
+}
+
+void DocxEditController::spellIgnoreAt(int block, int pos) {
+    mg::SpellRange r;
+    if (!spellWordAt(block, pos, &r)) return;
+    if (block < 0 || block >= m_doc.blocks.size()) return;
+    const QString word = m_doc.blocks.at(block).plainText().mid(r.start, r.length);
+    if (word.isEmpty() || m_spellIgnored.contains(word)) return;
+    m_spellIgnored << word;
+    //  Das Wort kann überall stehen — also alles neu prüfen.
+    spellInvalidate(0, m_doc.blocks.size());
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  Änderungsverfolgung annehmen / verwerfen
+// ─────────────────────────────────────────────────────────────────────────────
+//  Der Run an einer Stelle: die Runs eines Absatzes liegen hintereinander, die
+//  Zeichenposition zählt über sie hinweg.
+static int runIndexAt(const Docx::Block& b, int pos) {
+    int acc = 0;
+    for (int i = 0; i < b.runs.size(); ++i) {
+        const int len = int(b.runs.at(i).text.size());
+        if (pos >= acc && pos < acc + len) return i;
+        acc += len;
+    }
+    return -1;
+}
+
+int DocxEditController::revisionAt(int block, int pos) const {
+    if (!m_ready || block < 0 || block >= m_doc.blocks.size()) return 0;
+    const Docx::Block& b = m_doc.blocks.at(block);
+    const int ri = runIndexAt(b, pos);
+    if (ri < 0) return 0;
+    switch (b.runs.at(ri).revision) {
+    case Docx::Run::RevInserted: return 1;
+    case Docx::Run::RevDeleted:  return 2;
+    default:                     return 0;
+    }
+}
+
+QString DocxEditController::revisionAuthorAt(int block, int pos) const {
+    if (!m_ready || block < 0 || block >= m_doc.blocks.size()) return {};
+    const Docx::Block& b = m_doc.blocks.at(block);
+    const int ri = runIndexAt(b, pos);
+    return ri < 0 ? QString() : b.runs.at(ri).revAuthor;
+}
+
+//  EIN Undo-Schritt über dasselbe Kommando wie jede andere Textänderung: der
+//  Scope schnappt den Absatz vorher und nachher.
+bool DocxEditController::acceptRevisionAt(int block, int pos) {
+    if (!m_ready || block < 0 || block >= m_doc.blocks.size()) return false;
+    const int ri = runIndexAt(m_doc.blocks.at(block), pos);
+    if (ri < 0) return false;
+    EditScope scope(this, block, 1);
+    if (!m_doc.applyRevision(block, ri, true)) return false;
+    return true;
+}
+
+bool DocxEditController::rejectRevisionAt(int block, int pos) {
+    if (!m_ready || block < 0 || block >= m_doc.blocks.size()) return false;
+    const int ri = runIndexAt(m_doc.blocks.at(block), pos);
+    if (ri < 0) return false;
+    EditScope scope(this, block, 1);
+    if (!m_doc.applyRevision(block, ri, false)) return false;
+    return true;
+}
+
+QVariantList DocxEditController::folderImages() const {
+    //  PDFs kommen MIT: ein Tippen darauf öffnet die Seitenauswahl (s.
+    //  DocxSurface). Die Abfrage selbst teilt sich der Editor mit dem
+    //  PDF-Editor — sie steht in `core/FolderImages`.
+    return mg::folderImages(m_source, 300, true);
 }
 
 QString DocxEditController::folderPath() const {

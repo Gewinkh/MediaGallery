@@ -19,6 +19,10 @@
 //  Command): Bereich kopieren → mutieren → Kommando mit Vorher/Nachher pushen.
 // ─────────────────────────────────────────────────────────────────────────────
 
+#include "core/SpellChecker.h"
+#include <QSet>
+#include <QThreadPool>
+#include <memory>
 #include "docx/DocxDocument.h"
 #include "docx/edit/DocxEditCommands.h"
 
@@ -38,6 +42,7 @@ class DocxEditController : public QObject {
                    NOTIFY activeRegionChanged)
     Q_PROPERTY(bool hasHeader READ hasHeader NOTIFY regionsAvailable)
     Q_PROPERTY(bool hasFooter READ hasFooter NOTIFY regionsAvailable)
+    Q_PROPERTY(bool hasFootnotes READ hasFootnotes NOTIFY regionsAvailable)
     Q_PROPERTY(QString source READ source WRITE setSource NOTIFY sourceChanged)
     Q_PROPERTY(bool ready READ ready NOTIFY readyChanged)
     Q_PROPERTY(bool busy READ busy NOTIFY busyChanged)          // Speichern läuft
@@ -131,6 +136,53 @@ public:
     //  Auswahl-Popup. Filter ist QImageReader::supportedImageFormats(), also
     //  jedes Format, das Qt lesen kann (keine feste Endungsliste).
     Q_INVOKABLE QVariantList folderImages() const;
+
+    //  ── Rechtschreib-PRÜFUNG (unterkringeln + Vorschläge) ────────────────────
+    //  Geprüft wird ABSATZWEISE und ASYNCHRON (Regel 8): ein `QRunnable` je
+    //  Auftrag auf einem eigenen Pool mit EINEM Thread — die Reihenfolge bleibt
+    //  damit die Tippreihenfolge, und der GUI-Thread sieht nie ein Wörterbuch.
+    //  Der Text wird NIE von selbst geändert; „Korrektur" ist ein Menüpunkt.
+    Q_PROPERTY(bool spellAvailable READ spellAvailable NOTIFY spellChanged)
+    Q_PROPERTY(QString spellLanguage READ spellLanguage NOTIFY spellChanged)
+    bool    spellAvailable() const { return m_spellReady; }
+    QString spellLanguage() const  { return m_spellLang; }
+    //  Falsch geschriebene Stellen eines Absatzes (leer, solange der Auftrag
+    //  läuft oder die Prüfung aus ist). Leser ist `DocxTextArea` beim Zeichnen.
+    const QVector<mg::SpellRange>& spellRanges(int block) const;
+    int    spellWordAt(int block, int pos, mg::SpellRange* out) const;
+    //  Vorschläge für das Wort an einer Stelle (Kontextmenü). Leer, wenn dort
+    //  kein beanstandetes Wort steht.
+    Q_INVOKABLE QStringList spellSuggestions(int block, int pos) const;
+    //  Steht an dieser Stelle überhaupt ein beanstandetes Wort? (Das Menü
+    //  zeigt „Ignorieren" auch dann, wenn es keine Vorschläge gibt.)
+    Q_INVOKABLE bool spellHasIssueAt(int block, int pos) const {
+        return spellWordAt(block, pos, nullptr) != 0;
+    }
+    //  Cursorstelle für QML — das Kontextmenü fragt genau dort nach.
+    Q_INVOKABLE int cursorBlock() const { return m_cursor.block; }
+    Q_INVOKABLE int cursorPos() const   { return m_cursor.pos; }
+    //  Das beanstandete Wort an einer Stelle durch `replacement` ersetzen —
+    //  EIN Undo-Schritt, wie jede andere Textänderung.
+    Q_INVOKABLE bool spellReplaceAt(int block, int pos, const QString& replacement);
+    //  Für diese Sitzung durchgehen lassen (alle Absätze werden neu geprüft).
+    Q_INVOKABLE void spellIgnoreAt(int block, int pos);
+
+    //  ── Änderungsverfolgung annehmen / verwerfen ─────────────────────────────
+    //  An der Cursorstelle: `revisionAt` sagt, was dort steht (0 = nichts,
+    //  1 = Einfügung, 2 = Löschung) — das Kontextmenü zeigt die Einträge nur
+    //  dann. `acceptRevisionAt`/`rejectRevisionAt` sind EIN Undo-Schritt.
+    Q_INVOKABLE int  revisionAt(int block, int pos) const;
+    Q_INVOKABLE QString revisionAuthorAt(int block, int pos) const;
+    Q_INVOKABLE bool acceptRevisionAt(int block, int pos);
+    Q_INVOKABLE bool rejectRevisionAt(int block, int pos);
+    //  Prüfung an/aus (folgt der Einstellung, QML schaltet sie um).
+    Q_INVOKABLE void setSpellCheckEnabled(bool on);
+    //  Wörterbuch-Kürzel („de_DE"); leer = die erste gefundene Sprache.
+    Q_INVOKABLE void setSpellLanguage(const QString& lang);
+    //  Welche Wörterbücher liegen auf diesem Rechner? (Einstellungsdialog.)
+    Q_INVOKABLE static QStringList spellLanguages() {
+        return mg::SpellChecker::availableLanguages();
+    }
     //  Ordner der geöffneten Datei (Pfad, leer wenn nichts geladen) — der
     //  PDF-Seitenwähler scannt damit denselben Ordner wie folderImages().
     Q_INVOKABLE QString folderPath() const;
@@ -256,13 +308,17 @@ public:
     const Docx::SectionProps& section() const { return bodyDoc().section(); }
 
     // ── Regionen (Körper / Kopfzeile / Fußzeile) ─────────────────────────────
-    enum Region { Body = 0, Header = 1, Footer = 2 };
+    //  Bearbeitbare Bereiche des Dokuments. `Footnotes` ist der Teil
+    //  `word/footnotes.xml` — seine Absätze liegen flach im Modell (s.
+    //  `Docx::FootnoteDef`), deshalb ist er editierbar wie jeder andere.
+    enum Region { Body = 0, Header = 1, Footer = 2, Footnotes = 3 };
     Q_ENUM(Region)
 
     int  activeRegionInt() const { return int(m_region); }
     void setActiveRegionInt(int r);
     bool hasHeader() const { return m_slots[Header].available; }
     bool hasFooter() const { return m_slots[Footer].available; }
+    bool hasFootnotes() const { return m_slots[Footnotes].available; }
     //  Region wechseln; lädt den Teil beim ersten Mal nach. Liefert false, wenn
     //  es den Teil nicht gibt oder er nicht editierbar ist.
     Q_INVOKABLE bool setRegion(int r);
@@ -291,6 +347,10 @@ signals:
     //  Anzeige-Invalidierung: Blöcke [first, first+oldCount) wurden durch
     //  newCount Blöcke ersetzt (Layout ab first neu).
     void blocksReplaced(int first, int oldCount, int newCount);
+    //  Die geprüften Stellen eines Absatzes liegen vor (oder die Prüfung wurde
+    //  an-/abgeschaltet: `block < 0` = alles neu zeichnen).
+    void spellRangesChanged(int block);
+    void spellChanged();
     void cursorChanged();
     void saveFinished(bool ok, const QString& target, const QString& error);
     //  Ergebnis des DOCX→PDF-Exports (Aufgabe 2).
@@ -427,7 +487,7 @@ private:
         //  Ohne ihn sah eine defekte Kopfzeile aus wie eine fehlende.
         QString        error;
     };
-    RegionSlot m_slots[3];
+    RegionSlot m_slots[4];
     Region     m_region = Body;
     //  Teil laden, falls nötig; false = nicht vorhanden/nicht editierbar.
     bool ensureRegionLoaded(Region r);
@@ -456,4 +516,26 @@ private:
     Docx::RunFmt m_pending;
     int        m_pendingBlock = -1;
     int        m_pendingPos   = -1;
+
+    //  ── Rechtschreibprüfung ──────────────────────────────────────────────────
+    //  Eigener Pool mit EINEM Thread (Regel 8): die Aufträge laufen in der
+    //  Reihenfolge, in der getippt wurde, und der Cache bleibt konsistent.
+    //  Der `SpellChecker` gehört DIESEM Pool-Thread — er wird dort erzeugt.
+    void   spellStart();                 // Wörterbuch (neu) öffnen
+    void   spellInvalidate(int first, int count);   // Absätze neu prüfen
+    void   spellRequest(int block);      // einen Absatz einreihen
+public:
+    //  Rückmeldung des Prüf-Auftrags (aus dem Pool via QueuedConnection).
+    void   spellResult(int block, int gen, const QVector<mg::SpellRange>& bad);
+private:
+    QThreadPool* m_spellPool = nullptr;
+    std::shared_ptr<mg::SpellChecker> m_spell;      // nur im Pool-Thread benutzt
+    QHash<int, QVector<mg::SpellRange>> m_spellBad; // Absatz → Fundstellen
+    QSet<int>  m_spellPending;           // eingereiht, Ergebnis steht aus
+    QStringList m_spellIgnored;          // Sitzungswörter (GUI-Thread hält sie)
+    bool       m_spellOn = false;
+    bool       m_spellReady = false;
+    QString    m_spellLang;
+    QString    m_spellWanted;      // gewünschte Sprache (aus den Einstellungen)
+    int        m_spellGen = 0;           // verwirft Ergebnisse alter Dokumente
 };

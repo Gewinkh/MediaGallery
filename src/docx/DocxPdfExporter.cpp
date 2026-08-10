@@ -44,6 +44,10 @@ namespace {
 constexpr qreal kListIndentPt = 21.0;   // ≈ 28 px @96 dpi (Editor: kListIndent)
 constexpr int   kResolution   = 96;     // Layout-DPI (wie die Editor-Anzeige)
 constexpr qreal kCellPadTw    = 108.0;  // Zellrand, Word-Vorgabe (wie DocxTextArea)
+//  Fußnotenbereich: Luft über der Trennlinie, Linie, Luft darunter — dieselben
+//  Werte wie in der Anzeige (DocxTextArea), damit beide gleich aussehen.
+constexpr qreal kFootGapTop    = 8.0;
+constexpr qreal kFootGapBottom = 4.0;
 
 //  Zeichenformat aus einem aufgelösten Run bauen (identisch zu DocxTextArea).
 QTextCharFormat charFormatFor(const RunFmt& rf, const RunFmt& def) {
@@ -171,6 +175,7 @@ bool exportToPdf(const Document& doc, const QString& targetPath,
         for (const Block& b : doc.blocks)
             if (doc.isTocParagraph(b)) { hasToc = true; break; }
         QHash<int, int> headingPos;    // Docx-Block → Position des Absatz-TEXTES in td
+        QHash<int, int> blockStart;    // Docx-Block → Position im td (alle Absätze)
         //  Je EINTRAG, nicht je Block: ein Überschrift-Absatz kann mehrere
         //  Einträge tragen (nur durch `w:br` getrennt) und über eine Seitengrenze
         //  laufen. Die Anzeige rechnet genauso (`DocxTextArea::pageOfEntry`) —
@@ -272,8 +277,18 @@ bool exportToPdf(const Document& doc, const QString& targetPath,
                 ff.setPadding(0);
                 ff.setTopMargin(0);
                 ff.setBottomMargin(0);
-                ff.setLeftMargin(leftSide ? 0.0 : padL);
-                ff.setRightMargin(leftSide ? padR : 0.0);
+                //  Die WAAGERECHTE LAGE trägt der Aussenabstand: ein Rahmen
+                //  sitzt sonst bündig am Rand, ein mittig gesetztes Bild sprang
+                //  dorthin (gemessen: linke Kante 20 mm statt 80 mm). Der
+                //  Abstand zum Text (`distL`/`distR`) kommt auf der Textseite
+                //  obendrauf.
+                //  Nur die AUSSENliegende Seite trägt den Versatz — trüge ihn
+                //  auch die Textseite, belegte der Rahmen die ganze Zeile und
+                //  es flösse überhaupt kein Text mehr daneben (gemessen: 0
+                //  Zeilen statt 4).
+                const qreal restR = qMax(0.0, availW - (x + ifmt.width()));
+                ff.setLeftMargin(leftSide ? x : padL);
+                ff.setRightMargin(leftSide ? padR : restR);
                 QTextFrame* fr = c.insertFrame(ff);
                 QTextCursor fc = fr->firstCursorPosition();
                 fc.insertImage(ifmt);
@@ -297,6 +312,9 @@ bool exportToPdf(const Document& doc, const QString& targetPath,
             //  zu finden.
             if (blockIdx >= 0 && tocTargets.contains(blockIdx))
                 headingPos.insert(blockIdx, c.position());
+            //  Lage JEDES Absatzes — die Fußnoten brauchen die Seite ihres
+            //  Verweises, nicht nur die der Überschriften.
+            if (blockIdx >= 0) blockStart.insert(blockIdx, c.position());
 
             //  Bilder dieses Absatzes an IHRER Stelle im Text ausgeben. Ohne
             //  das fiele die Zeichnung ersatzlos weg: der Text-Zweig entfernt
@@ -522,6 +540,7 @@ bool exportToPdf(const Document& doc, const QString& targetPath,
         //  der erste liefert die Seiten der Überschriften, der zweite schreibt
         //  sie in die Einträge.
         auto buildPass = [&]() {
+            blockStart.clear();
         td.clear();
         td.setDocumentMargin(0);
         td.setDefaultFont(base);
@@ -573,6 +592,100 @@ bool exportToPdf(const Document& doc, const QString& targetPath,
         };   // buildPass
 
         buildPass();
+
+        //  ── FUSSNOTEN: Platz am Seitenfuß schaffen ──────────────────────────
+        //  `QTextDocument` kennt nur EINE Seitengröße — die Anzeige kürzt die
+        //  Kapazität dagegen je Seite. Deshalb hier der einzige Weg, der ohne
+        //  eigenen Zeichenweg auskommt: am fertigen Layout ablesen, welche
+        //  Fußnoten auf welche Seite fallen, die GRÖSSTE Höhe bestimmen und das
+        //  Dokument mit entsprechend kleinerer Seite NEU bauen. Preis: auch
+        //  Seiten ohne Fußnote verlieren diesen Platz — dafür stehen die Notizen
+        //  überhaupt im PDF (vorher fehlten sie ganz) und der Text läuft nie
+        //  über sie hinweg.
+        QHash<int, QVector<int>> footOfPage;      // Seite (0-basiert) → Indizes
+        qreal footBand = 0.0;                     // gekürzte Höhe je Seite
+        QVector<QSharedPointer<QTextDocument>> footDocs;   // je Fußnote gesetzt
+        const QVector<Docx::Footnote>& allFoot = doc.footnotes();
+        if (!allFoot.isEmpty()) {
+            //  Jede Fußnote EINMAL setzen (Breite = Textbreite), Höhe merken.
+            QHash<int, int> byId;
+            for (int i = 0; i < allFoot.size(); ++i) byId.insert(allFoot.at(i).id, i);
+            footDocs.resize(allFoot.size());
+            QVector<qreal> footH(allFoot.size(), 0.0);
+            for (int i = 0; i < allFoot.size(); ++i) {
+                auto fd = QSharedPointer<QTextDocument>::create();
+                fd->documentLayout()->setPaintDevice(&writer);
+                fd->setDefaultFont(td.defaultFont());
+                fd->setTextWidth(printW);
+                QTextCursor fc(fd.data());
+                bool firstPara = true;
+                for (const Docx::Block& fb : allFoot.at(i).paragraphs) {
+                    if (!firstPara) fc.insertBlock();
+                    firstPara = false;
+                    fc.insertText(fb.plainText());
+                }
+                footH[i] = fd->size().height();
+                footDocs[i] = fd;
+            }
+            //  Welche Fußnote liegt auf welcher Seite? Über die Lage des
+            //  VERWEIS-Runs im fertigen Layout — dieselbe Technik wie beim
+            //  Inhaltsverzeichnis.
+            for (int bi = 0; bi < doc.blocks.size(); ++bi) {
+                const auto hit = headingPos.constFind(bi);
+                Q_UNUSED(hit)
+                int pos = 0;
+                for (const Docx::Run& r : doc.blocks.at(bi).runs) {
+                    if (r.footnoteId > 0) {
+                        const auto bit = byId.constFind(r.footnoteId);
+                        if (bit != byId.cend()) {
+                            //  Seite des ABSATZES genügt: eine Fußnote gehört zu
+                            //  der Seite, auf der ihr Verweis steht.
+                            const auto pit = blockStart.constFind(bi);
+                            if (pit != blockStart.cend()) {
+                                QTextBlock tb = td.findBlock(pit.value());
+                                if (tb.isValid()) {
+                                    const qreal top =
+                                        td.documentLayout()->blockBoundingRect(tb).top();
+                                    const int pg = int(top / qMax(1.0, printH));
+                                    footOfPage[pg].append(bit.value());
+                                }
+                            }
+                        }
+                    }
+                    pos += r.text.size();
+                }
+            }
+            //  Größte Seitenlast bestimmen (plus Trennlinie und Abstände).
+            for (auto it = footOfPage.cbegin(); it != footOfPage.cend(); ++it) {
+                qreal h = kFootGapTop + 1.0 + kFootGapBottom;
+                for (int idx : it.value()) h += footH.value(idx, 0.0);
+                footBand = qMax(footBand, h);
+            }
+            //  Nie mehr als die Hälfte der Seite hergeben.
+            footBand = qMin(footBand, printH * 0.5);
+            if (footBand > 0.0) {
+                td.setPageSize(QSizeF(paintRect.width(), printH - footBand));
+                footOfPage.clear();
+                buildPass();
+                //  Zuordnung mit der NEUEN Seitenhöhe noch einmal ablesen.
+                const qreal ph2 = printH - footBand;
+                for (int bi = 0; bi < doc.blocks.size(); ++bi) {
+                    for (const Docx::Run& r : doc.blocks.at(bi).runs) {
+                        if (r.footnoteId <= 0) continue;
+                        const auto bit = byId.constFind(r.footnoteId);
+                        if (bit == byId.cend()) continue;
+                        const auto pit = blockStart.constFind(bi);
+                        if (pit == blockStart.cend()) continue;
+                        QTextBlock tb = td.findBlock(pit.value());
+                        if (!tb.isValid()) continue;
+                        const qreal top =
+                            td.documentLayout()->blockBoundingRect(tb).top();
+                        footOfPage[int(top / qMax(1.0, ph2))].append(bit.value());
+                    }
+                }
+            }
+        }
+
         if (hasToc && !tocEntries.isEmpty()) {
             //  Seite jeder Überschrift am fertigen Layout ablesen und noch
             //  einmal bauen. Die Zeilenzahl des Verzeichnisses ändert sich
@@ -623,35 +736,106 @@ bool exportToPdf(const Document& doc, const QString& targetPath,
         //  wuchsen entsprechend (gemessen: 45 mm statt 25 mm, Textbreite 119
         //  statt 160 mm). Mit eigenem Paginieren hängt die Ausgabe an nichts
         //  außer dem Dokument. Seitengröße und Metriken stehen schon (s. oben).
+        //  ── Die Auswahlkante EINER Seite ────────────────────────────────────
+        //  `ctx.clip` WÄHLT nur aus, was gezeichnet wird — geklippt wird nichts.
+        //  Ein Block, der die Seitengrenze schneidet (ein hohes Bild), wurde
+        //  deshalb ganz gemalt und ragte als Streifen in die Nachbarseite; der
+        //  Maler-Clip schneidet ihn wirklich ab.
+        //
+        //  Qt wählt an den beiden Kanten NACH VERSCHIEDENEN REGELN aus, und
+        //  beide schrieben je eine fremde Zeile in den Seiteninhalt (unsichtbar,
+        //  aber in `getAllText`/Kopieren/Suchen enthalten — gemessen: 36
+        //  doppelte Wörter in einem dreiseitigen Dokument):
+        //   • UNTERKANTE, geometrisch: eine Zeile, die die Kante nur BERÜHRT,
+        //     gilt als sichtbar. Ein halber Punkt weniger schließt sie aus.
+        //   • OBERKANTE, INDEXbasiert: gezeichnet wird immer auch „die Zeile vor
+        //     der ersten sichtbaren". Dagegen hilft kein knapperer Rand — mit
+        //     0/0,5/1/2 pt gemessen, die Zahl blieb gleich.
+        //  Deshalb wird die Oberkante auf die UNTERKANTE der ersten eigenen
+        //  Zeile gelegt: dann ist „die Zeile davor" genau diese erste Zeile, und
+        //  die Regel arbeitet FÜR die Seite statt gegen sie.
+        //
+        //  `firstLineBottom` läuft mit den Seiten mit (die Blöcke werden in
+        //  Leserichtung abgearbeitet) — kein erneuter Lauf über das Dokument je
+        //  Seite. Findet sich am Seitenanfang keine Textzeile (Bild, Tabelle,
+        //  Rahmen), bleibt die Kante, wo sie war: lieber eine Extrazeile als ein
+        //  weggelassenes Objekt.
+        QTextBlock scan = td.begin();
+        auto firstLineBottom = [&](qreal top) -> qreal {
+            for (; scan.isValid(); scan = scan.next()) {
+                const QRectF br = td.documentLayout()->blockBoundingRect(scan);
+                if (br.bottom() <= top + 0.01) continue;   // liegt ganz darüber
+                if (br.top() > top + 0.01) return -1.0;    // fängt erst darunter an
+                const QTextLayout* lay = scan.layout();
+                if (!lay) return -1.0;
+                for (int i = 0; i < lay->lineCount(); ++i) {
+                    const QTextLine ln = lay->lineAt(i);
+                    const qreal lt = br.top() + ln.y();
+                    if (lt < top - 0.01) continue;
+                    //  Nur, wenn die Zeile WIRKLICH an der Kante beginnt.
+                    if (lt > top + 0.01) return -1.0;
+                    return lt + ln.height();
+                }
+                return -1.0;
+            }
+            return -1.0;
+        };
+
         QPainter p(&writer);
+        //  HÖHE EINER DOKUMENT-SEITE: bei Fußnoten ist sie um deren Band
+        //  gekürzt (s. o.) — der Seitenlauf MUSS damit rechnen, sonst liegt der
+        //  Text der Folgeseite über den Fußnoten (gemessen: Text und Notizen
+        //  übereinander auf derselben Seite).
+        const qreal docPageH = (footBand > 0.0) ? (printH - footBand) : printH;
         const int pages = qMax(1, td.pageCount());
         for (int pg = 0; pg < pages; ++pg) {
             if (pg > 0) writer.newPage();
             p.save();
-            p.translate(0, -pg * paintRect.height());
+            p.translate(0, -pg * docPageH);
             QAbstractTextDocumentLayout::PaintContext ctx;
-            ctx.clip = QRectF(0, pg * paintRect.height(),
-                              paintRect.width(), paintRect.height());
-            //  `ctx.clip` WÄHLT nur aus, was gezeichnet wird — geklippt wird
-            //  nichts. Ein Block, der die Seitengrenze schneidet (ein hohes
-            //  Bild), wurde deshalb ganz gemalt und ragte als Streifen in die
-            //  Nachbarseite. Der Maler-Clip schneidet ihn wirklich ab.
-            //
-            //  Die Auswahl bleibt EXAKT die Seite. Ein knapperer Rand nimmt die
-            //  Zeile der Folgeseite zwar aus dem Seiteninhalt (sie berührt die
-            //  Kante und wird sonst unsichtbar mitgeschrieben) — an
-            //  `tests/ER.docx` bricht dabei aber der TEXTLAYER einer Seite auf
-            //  Einzelglyphen auf: `getAllText` liefert dort „s 1 - > I 1" statt
-            //  „s1 -> I1" (mit -0,5 / -1 / -2 px gemessen, ebenso beim
-            //  Selbstzeichnen über `QTextLine::draw`). In einem SCHLICHTEN
-            //  Dokument tritt das nicht auf (gegengeprüft mit zwei Schriften,
-            //  Inline-Objekt und umfließendem Rahmen) — der Auslöser ist also
-            //  nicht isoliert. Solange er es nicht ist, wiegt eine unsichtbare
-            //  Extrazeile leichter als ein zerfallener Textlayer.
-            p.setClipRect(ctx.clip);
+            const qreal pageTop = pg * docPageH;
+            qreal top = pageTop;
+            if (pg > 0) {
+                const qreal b = firstLineBottom(pageTop);
+                //  Nur übernehmen, wenn die Zeile die Seite nicht schon füllt.
+                if (b > pageTop && b < pageTop + docPageH)
+                    top = b;
+            }
+            //  Halber Punkt an der Unterkante: die berührende Zeile der
+            //  Folgeseite fällt heraus, jede eigene bleibt (Zeilen sind ein
+            //  Vielfaches davon hoch).
+            const qreal bottom = pageTop + docPageH - 0.5;
+            ctx.clip = QRectF(0, top, paintRect.width(), qMax(1.0, bottom - top));
+            //  Geklippt wird auf die GANZE Seite — die erste Zeile, die die
+            //  Indexregel wieder hinzunimmt, liegt über `top` und muss sichtbar
+            //  bleiben.
+            p.setClipRect(QRectF(0, pageTop, paintRect.width(), docPageH));
             ctx.palette.setColor(QPalette::Text, Qt::black);
             td.documentLayout()->draw(&p, ctx);
             p.restore();
+
+            //  ── Fußnoten dieser Seite an den Fuß ────────────────────────────
+            //  Gezeichnet wird NACH dem Inhalt und ohne dessen Verschiebung: der
+            //  Platz dafür wurde beim Aufbau aus der Seitenhöhe herausgenommen.
+            const auto fit = footOfPage.constFind(pg);
+            if (fit != footOfPage.cend() && !fit.value().isEmpty() && footBand > 0.0) {
+                p.save();
+                qreal fy = docPageH + kFootGapTop;
+                p.setPen(QPen(QColor(120, 120, 128), 0.8));
+                p.drawLine(QPointF(0, fy), QPointF(printW * 0.33, fy));
+                fy += 1.0 + kFootGapBottom;
+                for (int idx : fit.value()) {
+                    if (idx < 0 || idx >= footDocs.size() || !footDocs.at(idx)) continue;
+                    p.save();
+                    p.translate(0, fy);
+                    QAbstractTextDocumentLayout::PaintContext fctx;
+                    fctx.palette.setColor(QPalette::Text, Qt::black);
+                    footDocs.at(idx)->documentLayout()->draw(&p, fctx);
+                    p.restore();
+                    fy += footDocs.at(idx)->size().height();
+                }
+                p.restore();
+            }
         }
         p.end();
     }   // QPdfWriter zerstört → PDF finalisiert (Trailer) in den QSaveFile-Puffer

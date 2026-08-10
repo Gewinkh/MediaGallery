@@ -1,4 +1,6 @@
 #include "app/AppController.h"
+
+#include "core/SpellChecker.h"
 #include "docx/DocxDocument.h"
 
 #include "media/FolderService.h"
@@ -374,6 +376,23 @@ bool AppController::audioAccentApple() const { return m_settings.audioAccentAppl
 bool AppController::monoPlay() const { return m_settings.monoPlay(); }
 
 int AppController::videoSeekStep() const { return m_settings.videoSeekStep(); }
+
+bool AppController::spellCheck() const { return m_settings.spellCheckEnabled(); }
+QString AppController::spellLanguage() const { return m_settings.spellLanguage(); }
+
+void AppController::setSpellCheck(bool v) {
+    if (m_settings.spellCheckEnabled() == v) return;
+    m_settings.setSpellCheckEnabled(v);
+    emit spellCheckChanged();
+}
+void AppController::setSpellLanguage(const QString& lang) {
+    if (m_settings.spellLanguage() == lang) return;
+    m_settings.setSpellLanguage(lang);
+    emit spellCheckChanged();
+}
+QStringList AppController::spellLanguages() const {
+    return mg::SpellChecker::availableLanguages();
+}
 
 bool AppController::optionsVisible() const { return m_settings.optionsVisible(); }
 

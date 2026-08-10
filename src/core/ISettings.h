@@ -129,6 +129,13 @@ public:
     virtual void setMonoPlay(bool v) = 0;
 
     // Spulschritt (Sekunden) der Pfeiltasten im Video-Vollbild. Standard: 15.
+    //  Rechtschreibprüfung: an/aus und Sprache (Wörterbuch-Kürzel wie „de_DE").
+    //  Leere Sprache = automatisch die erste gefundene.
+    virtual bool spellCheckEnabled() const = 0;
+    virtual void setSpellCheckEnabled(bool v) = 0;
+    virtual QString spellLanguage() const = 0;
+    virtual void    setSpellLanguage(const QString& lang) = 0;
+
     virtual int  videoSeekStep() const = 0;
     virtual void setVideoSeekStep(int seconds) = 0;
 

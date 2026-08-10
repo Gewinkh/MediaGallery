@@ -123,6 +123,18 @@ enum class StringKey {
     SettingsGenSeekStep,
     SettingsGenSeekStepLabel,
     SettingsGenSeekStepHint,
+    //  Rechtschreibprüfung (unterkringeln + Vorschläge; nie automatisch ersetzen)
+    SettingsGenSpell,
+    SettingsGenSpellLabel,
+    SettingsGenSpellHint,
+    SettingsGenSpellLang,
+    SettingsGenSpellNone,
+    DocxSpellSuggestions,
+    DocxSpellIgnore,
+    DocxSpellNoSuggestion,
+    //  Änderungsverfolgung: annehmen/verwerfen (Kontextmenü)
+    DocxRevAccept,
+    DocxRevReject,
     SettingsViewTileSize,
     SettingsViewWidth,
     SettingsViewHeight,
@@ -375,6 +387,7 @@ enum class StringKey {
     DocxApply,                // Übernehmen-Knopf der kleinen Popups
     // Bearbeitungs-Region (Körper / Kopfzeile / Fußzeile)
     DocxRegionBody,
+    DocxRegionFootnotes,
     DocxRegionHeader,
     DocxRegionFooter,
     DocxRegionHint,           // Banner beim Bearbeiten von Kopf-/Fußzeile

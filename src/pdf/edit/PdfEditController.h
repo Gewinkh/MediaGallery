@@ -487,6 +487,11 @@ public:
     //  „…_bearbeitet(.n).pdf" — das Original wird nie ersetzt (die Bearbeitung
     //  bleibt über das Sidecar dauerhaft reversibel).
     Q_INVOKABLE QString exportTargetPath() const;
+    //  Bilder NEBEN dem PDF — dieselbe Abkürzung wie im DOCX-Editor: einen
+    //  Stempel aus dem Arbeitsordner wählen, ohne durch den Dateidialog zu
+    //  navigieren. `[{name,url}]`, PDFs bleiben draußen (ein Stempel ist ein
+    //  Bild). Die Abfrage teilen sich beide Editoren (`core/FolderImages`).
+    Q_INVOKABLE QVariantList folderImages() const;
 
     // ── Formularfelder ────────────────────────────────────────────────────────
     //  setFormValue: neuen Wert eines Feldes PUFFERN (kein Schreiben auf Platte).

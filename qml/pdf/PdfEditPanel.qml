@@ -314,10 +314,23 @@ Rectangle {
                     ToolBtn { glyph: "\u25AE"; toolValue: 9
                               tip: App.uiText(App.language, "PdfEditToolRedact") + "\n"
                                    + App.uiText(App.language, "PdfRedactLimitHint") }
-                    // Signatur/Stempel: öffnet den Dateidialog der Kachel.
+                    // Signatur/Stempel: erst die Bilder im ORDNER anbieten (der
+                    // häufige Fall, ganz ohne Dateidialog), „Durchsuchen…"
+                    // fällt auf den Dateidialog der Kachel zurück.
                     ToolBtn { glyph: "\u270D"; toolValue: -1
                               tip: App.uiText(App.language, "PdfEditToolStamp")
-                              onClicked: if (panel.surface) panel.surface.pickStampImage() }
+                              onClicked: {
+                                  stampPickA.entries = panel.ctl.folderImages()
+                                  stampPickA.open()
+                              }
+                              FolderImagePicker {
+                                  id: stampPickA
+                                  hostWidth: panel.width
+                                  onPicked: function(u) {
+                                      if (panel.surface) panel.surface.insertStampImage(u)
+                                  }
+                                  onBrowseRequested: if (panel.surface) panel.surface.pickStampImage()
+                              } }
                 }
 
                 // \u2500\u2500 OCR (gescannte PDFs): erkennt die Textzeilen der aktuellen
@@ -867,10 +880,22 @@ Rectangle {
                         ToolBtn { glyph: "\u25AE"; toolValue: 9
                                   tip: App.uiText(App.language, "PdfEditToolRedact") + "\n"
                                        + App.uiText(App.language, "PdfRedactLimitHint") }
-                        // Signatur/Stempel: öffnet den Dateidialog der Kachel.
+                        // Signatur/Stempel: wie in der schmalen Leiste — erst
+                        // die Bilder im Ordner, dann der Dateidialog.
                         ToolBtn { glyph: "\u270D"; toolValue: -1
                                   tip: App.uiText(App.language, "PdfEditToolStamp")
-                                  onClicked: if (panel.surface) panel.surface.pickStampImage() }
+                                  onClicked: {
+                                      stampPickB.entries = panel.ctl.folderImages()
+                                      stampPickB.open()
+                                  }
+                                  FolderImagePicker {
+                                      id: stampPickB
+                                      hostWidth: panel.width
+                                      onPicked: function(u) {
+                                          if (panel.surface) panel.surface.insertStampImage(u)
+                                      }
+                                      onBrowseRequested: if (panel.surface) panel.surface.pickStampImage()
+                                  } }
                     }
                 }
 

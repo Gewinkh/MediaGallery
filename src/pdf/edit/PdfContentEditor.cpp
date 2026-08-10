@@ -107,8 +107,9 @@ QVector<ShowHit> scanTextShows(const QByteArray& c) {
     QByteArray curFont;       // aktive Schrift laut letztem "…Tf"
     //  Textzustand: Schriftgröße (Tf), Zeichen- und Wortabstand (Tc/Tw).
     double curSize = 0.0, curCharSp = 0.0, curWordSp = 0.0;
-    //  Die zuletzt gesehenen Zahlen-Operanden (Tf/Tc/Tw brauchen sie).
-    double num1 = 0.0, num2 = 0.0;
+    //  Der zuletzt gesehene Zahlen-Operand (Tf/Tc/Tw brauchen ihn — jeweils
+    //  den LETZTEN vor dem Operator).
+    double num2 = 0.0;
     while (i < n) {
         char ch = c[i];
         if (isWs(ch)) { ++i; continue; }
@@ -148,7 +149,6 @@ QVector<ShowHit> scanTextShows(const QByteArray& c) {
         if (ch=='-'||ch=='+'||ch=='.'||(ch>='0'&&ch<='9')) {  // Zahl
             const qint64 ns2 = i;
             ++i; while (i<n && !isWs(c[i]) && !isDelim(c[i])) ++i;
-            num1 = num2;
             num2 = c.mid(ns2, i - ns2).toDouble();
             continue;
         }

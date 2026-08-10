@@ -1228,9 +1228,26 @@ Item {
     property int  _searchRev: 0
 
     //  Signatur/Stempel: Bild auswählen und einfügen (vom Panel-Knopf gerufen).
+    //  Der Knopf bietet zuerst die Bilder im ORDNER an (s. FolderImagePicker);
+    //  dies hier ist der Weg über den Dateidialog.
     function pickStampImage() {
         if (!root.docReady || !root.editCtl.editMode) return
         stampFileDlg.open()
+    }
+
+    //  Ein gewähltes Bild als Stempel setzen — EIN Weg für Dateidialog und
+    //  Ordner-Wähler. Das Bild landet mittig auf der aktuellen Seite; Größe =
+    //  ein Drittel der Seitenbreite, Höhe folgt dem Seitenverhältnis.
+    function insertStampImage(fileUrl) {
+        if (!root.docReady || !root.editCtl.editMode) return
+        const page = root.currentPage
+        const pts = root.doc.pagePointSize(page)
+        if (pts.width <= 0) { root._toast(App.uiText(App.language, "PdfStampFailedToast")); return }
+        const w = pts.width / 3
+        const id = root.editCtl.addStamp(fileUrl, page,
+                                        (pts.width - w) / 2, pts.height / 3, w)
+        if (id < 0) root._toast(App.uiText(App.language, "PdfStampFailedToast"))
+        else        root.notesVisible = true
     }
 
     function toggleSearch() {
@@ -3021,18 +3038,7 @@ Item {
         title: App.uiText(App.language, "PdfStampFileTitle")
         fileMode: FileChooser.OpenFile
         nameFilters: ["Bilder (*.png *.jpg *.jpeg *.webp *.bmp *.tif *.tiff)"]
-        //  Das Bild landet mittig auf der aktuellen Seite; Größe = ein Drittel
-        //  der Seitenbreite, Höhe folgt dem Seitenverhältnis (Controller).
-        onAccepted: {
-            const page = root.currentPage
-            const pts = root.doc.pagePointSize(page)
-            if (pts.width <= 0) { root._toast(App.uiText(App.language, "PdfStampFailedToast")); return }
-            const w = pts.width / 3
-            const id = root.editCtl.addStamp(selectedFile, page,
-                                             (pts.width - w) / 2, pts.height / 3, w)
-            if (id < 0) root._toast(App.uiText(App.language, "PdfStampFailedToast"))
-            else        root.notesVisible = true
-        }
+        onAccepted: root.insertStampImage(selectedFile)
     }
 
     FileChooser {

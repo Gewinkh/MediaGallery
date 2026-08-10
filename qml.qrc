@@ -41,6 +41,7 @@
         <file>qml/settings/BookmarkEditDialog.qml</file>
         <file>qml/common/ColorPicker.qml</file>
         <file>qml/common/FileChooser.qml</file>
+        <file>qml/common/FolderImagePicker.qml</file>
         <file>qml/common/SmoothWheelArea.qml</file>
         <file>qml/common/TranslitButton.qml</file>
         <file>qml/style/qmldir</file>

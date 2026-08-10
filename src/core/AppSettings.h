@@ -46,6 +46,11 @@ public:
     bool monoPlay() const override;
     void setMonoPlay(bool v) override;
 
+    bool spellCheckEnabled() const override;
+    void setSpellCheckEnabled(bool v) override;
+    QString spellLanguage() const override;
+    void    setSpellLanguage(const QString& lang) override;
+
     int  videoSeekStep() const override;
     void setVideoSeekStep(int seconds) override;
 

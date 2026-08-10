@@ -30,6 +30,7 @@
 #include <QTimer>
 #include <QVector>
 #include <memory>
+#include <unordered_map>
 #include <vector>
 
 //  Vollständiger Typ nötig: Q_PROPERTY(DocxEditController*) registriert den
@@ -181,9 +182,10 @@ private:
     //    ein reiner Zeichen-Faktor — das Layout selbst bleibt seitengenau.
     struct PageSeg {
         int   slot    = 0;                     // Spalten-Slot dieses Stücks
-        //  ZWEI Bedeutungen, je nach Block: bei einem Absatz die erste ZEILE
+        //  DREI Bedeutungen, je nach Block: bei einem Absatz die erste ZEILE
         //  des Stücks, bei einem Inhaltsverzeichnis der erste EINTRAG dieser
-        //  Seite. Nie direkt lesen — segFirstLine()/segFirstEntry() trennen das.
+        //  Seite, bei einer Tabelle die erste TABELLENZEILE. Nie direkt lesen —
+        //  segFirstLine()/segFirstEntry()/segFirstRow() trennen das.
         int   first   = 0;
         qreal yInSlot = 0.0;                   // Oberkante im Slot
     };
@@ -294,7 +296,18 @@ private:
         //  Spalten ihre eigene x-Lage haben, ohne den Fluss zu verbiegen.
         bool    isCell = false;
         qreal   cellRelX = 0.0, cellRelY = 0.0, cellW = 0.0;
+        //  Tabellenzeile dieses Zellblocks — sie entscheidet, auf welchem Stück
+        //  der Tabelle (und damit auf welcher Seite) er liegt.
+        int     cellRow = 0;
         qreal   height = 0.0;                  // inkl. Abstand davor/danach
+        //  Wie weit ragen verankerte Bilder dieses Blocks UNTER seine eigene
+        //  Unterkante? Genau darum fließen die FOLGENDEN Absätze herum — in
+        //  Word endet der Umfluss nicht am Absatz. 0 = kein Überstand.
+        qreal   floatOverhang = 0.0;
+        //  Blöcke, die NICHT umfließen können (Tabelle, Verzeichnis), weichen
+        //  einem hereinragenden Bild nach UNTEN aus: `topPad` ist der Versatz,
+        //  um den ihr Inhalt dafür nach unten rückt (in `height` enthalten).
+        qreal   topPad = 0.0;
         qreal   beforePx = 0.0;                // Versatz bis zur ersten Zeile
         qreal   indentPx = 0.0;                // Listen-Einzug
         QString marker;                        // "• " / "3. " (Listen)
@@ -353,10 +366,25 @@ private:
     //  Deutung eines Segments (s. PageSeg::first).
     int     segFirstLine(const BlockLayout& L, const PageSeg& s) const;
     int     segFirstEntry(const BlockLayout& L, const PageSeg& s) const;
+    int     segFirstRow(const BlockLayout& L, const PageSeg& s) const;
+    //  Trägt dieser Block ein Gitter, dessen Segmente Tabellenzeilen zählen?
+    bool    segCountsTableRows(const BlockLayout& L) const;
     //  Layout-y, die auf der OBERKANTE eines Segments liegt: beim ERSTEN
     //  Segment 0 (der Abstand davor gehört zum Block, nicht zur Zeile), bei
-    //  jedem weiteren die y seiner ersten Zeile.
+    //  jedem weiteren die y seiner ersten Zeile bzw. Tabellenzeile.
     qreal   segOriginY(const BlockLayout& L, const PageSeg& s) const;
+    //  ── Eine Tabelle über mehrere Seiten ─────────────────────────────────────
+    //  Zeilenbereich [from, to) eines Tabellen-Segments; `to` ist die erste
+    //  Zeile des NÄCHSTEN Stücks bzw. die Zeilenzahl beim letzten.
+    void    tableSegRows(const BlockLayout& A, int segIdx, int* from, int* to) const;
+    //  Segment des Ankers, in dem eine Tabellenzeile liegt (−1 = keines).
+    int     tableSegOfRow(const BlockLayout& A, int row) const;
+    //  Dokument-Ursprung EINES Tabellenstücks — dieselbe Rechnung, die
+    //  `paintSlot` zum Zeichnen benutzt. Zellblöcke hängen daran mit ihrem
+    //  `cellRelX`/`cellRelY`, damit Gezeichnetes und Getroffenes zusammenfallen.
+    QPointF tableSegOrigin(const BlockLayout& A, int segIdx) const;
+    //  Ursprung des Stücks, auf dem ein Zellblock liegt (Zeile ⇒ Segment).
+    QPointF cellOrigin(int cellBlock, int anchor);
 
     //  ── Seitengeometrie (Dokument-Pixel, fensterunabhängig) ──────────────────
     const Docx::SectionProps& sect() const;
@@ -384,6 +412,11 @@ private:
     //  Blöcke eines Slots zeichnen (gemeinsamer Weg von paint() und
     //  paintPageInto(); `p` ist bereits auf Dokument-Pixel gestellt).
     void  paintSlot(QPainter* p, int slot, bool withCaret);
+    //  Rote Wellenlinie unter den beanstandeten Stellen (Rechtschreibprüfung).
+    //  Farbe der Änderungsmarkierung je Autor (stabil, aus dem Namen).
+    static QColor revisionColor(const QString& author);
+    void  paintSpell(QPainter* p, const BlockLayout& L, int blockIdx,
+                     const QPointF& origin);
 
     void  rebuildAll();                        // Dokument (neu) geladen
     void  invalidateFrom(int first, int oldCount, int newCount);
@@ -392,6 +425,27 @@ private:
     //  Einen Block auf Slots verteilen (füllt seine Segmente) und das Fluss-y
     //  NACH ihm zurückgeben. Kern der Paginierung.
     qreal paginateBlock(int idx, qreal flowStart, qreal slotH);
+    //  ── FUSSNOTEN am Seitenfuß ───────────────────────────────────────────────
+    //  Die Fluss-Invariante `Fluss-y = slot · slotHeight() + y` bleibt: die
+    //  Slot-HÖHE ist weiter uniform (daran hängen `blockAtY`, `docYForLine` und
+    //  die ganze Paginierung). Gekürzt wird NUR die Kapazität — was in einen
+    //  Slot passt, endet früher, wenn dort Fußnoten stehen.
+    qreal slotCapacity(int slot) const;
+    //  Höhe des Fußnotenbereichs eines Slots (0 = keine Fußnote dort).
+    qreal footHeightOf(int slot) const;
+    //  Nach der Paginierung: welche Fußnote liegt in welchem Slot? Rückgabe
+    //  true, wenn sich die Zuordnung gegenüber der letzten unterscheidet.
+    bool  recomputeFootnoteSlots();
+    //  Mehrpass: paginieren → Zuordnung bestimmen → erneut paginieren, bis sie
+    //  stabil ist (höchstens `kFootPasses` Läufe). Ohne Fußnoten ein No-op.
+    void  settleFootnotes();
+    //  Auslegen einer Fußnote (lazy, gehalten) — Absätze auf Textbreite.
+    struct FootLayout {
+        std::vector<std::unique_ptr<QTextLayout>> paras;
+        qreal height = 0.0;
+    };
+    const FootLayout& footLayout(int fnIndex);
+    void  paintFootnotes(QPainter* p, int slot);
     //  Steht auf `page` VOR Block `idx` schon etwas Sichtbares? Entscheidet, ob
     //  ein Inhaltsverzeichnis auf die nächste Seite springt.
     bool  pageHasInkBefore(int idx, int page) const;
@@ -408,7 +462,30 @@ private:
     //  daneben — genau wie `wp:inline` in Word). Rückgabe: Unterkante des
     //  Inhalts (block-lokal, ohne Abstand danach).
     qreal buildInlineRows(BlockLayout& L, const Docx::Block& b, const QFont& base,
-                          const Docx::ParFmt& pf, qreal width);
+                          const Docx::ParFmt& pf, qreal width, int blockIdx = -1);
+    //  ── Umfluss ÜBER die Absatzgrenze (Word-Verhalten) ───────────────────────
+    //  Ein verankertes Bild lässt auch die FOLGENDEN Absätze um sich herum
+    //  laufen, solange es in sie hineinragt. `foreignFloats` sammelt die Störer
+    //  der Blöcke VOR `blockIdx` in dessen block-lokalen Koordinaten;
+    //  `blockIdx < 0` (Zell-Absätze) liefert nichts.
+    struct FloatObstacle {
+        qreal x = 0.0, y = 0.0, w = 0.0, h = 0.0, padL = 0.0, padR = 0.0;
+        int   wrapSide = 0;
+    };
+    QVector<FloatObstacle> foreignFloats(int blockIdx) const;
+    //  Unterkante des tiefsten fremden Störers in Block-Koordinaten (≤ 0 = keiner
+    //  ragt herein). Blöcke ohne Umfluss schieben sich um diesen Wert nach unten.
+    qreal foreignFloatBottom(int blockIdx) const;
+    //  Kann dieser Block einem hereinragenden Bild AUSWEICHEN? Nur gewöhnliche
+    //  Absätze legen sich über `buildInlineRows` aus und fragen dabei
+    //  `usableSpan`; Tabellen, Inhaltsverzeichnis und opake Blöcke nicht.
+    bool  canWrapAroundFloats(int blockIdx) const;
+    //  Einen nicht umfließenden Block unter die hereinragenden Bilder schieben
+    //  (setzt `topPad`, erhöht die Höhe, verschiebt Gitter und Zell-Lagen).
+    void  shiftBelowForeignFloats(int blockIdx);
+    //  Nach einer Höhen-/Überstands-Änderung die Blöcke im Reichweitenband des
+    //  Überstands zum Neuauslegen markieren (nur vorwärts — kein Zyklus).
+    void  invalidateFloatFollowers(int i, qreal reach);
     //  Grundschrift eines Absatzes (mit Cursor-Sonderfall für leere Zeilen).
     QFont blockBaseFont(const Docx::Block& b, int blockIdx) const;
     //  Bild eines Runs auf `avail` einpassen (Seitenverhältnis bleibt).
@@ -424,7 +501,10 @@ private:
     //  1-basierte Seitenzahl eines Blocks (für die Verzeichnis-Einträge).
     void  ensureHeaderFooter();                // Kopf-/Fußzeile lazy auslegen
     void  paintHeaderFooter(QPainter* p, int page);
-    void  paintTable(QPainter* p, const BlockLayout& L, qreal left, qreal y);
+    //  Gitter und (bei opaken Tabellen) Zelltext EINES Stücks zeichnen —
+    //  `rowTo < 0` heißt „alle Zeilen".
+    void  paintTable(QPainter* p, const BlockLayout& L, qreal left, qreal y,
+                     int rowFrom = 0, int rowTo = -1);
     //  Einen Absatz (auch einen Zell-Absatz) vermessen; Rückgabe = Höhe.
     std::unique_ptr<QTextLayout> layoutParagraph(const Docx::Block& b, qreal width,
                                                  qreal* heightOut) const;
@@ -479,6 +559,16 @@ private:
     QRectF m_tblSelDoc;                        // Tabellenrechteck in Dokument-Px
     int    m_imgSelBlock = -1;                 // s. selImageBlock()
     QRectF m_imgSelDoc;                        // Bildrechteck in Dokument-Pixeln
+    //  ── Fußnoten (Anzeige am Seitenfuß) ──────────────────────────────────────
+    //  Slot → Indizes in `doc().footnotes()`, in Reihenfolge des Vorkommens.
+    QHash<int, QVector<int>> m_footOfSlot;
+    //  Slot → Höhe des Bereichs (Trennlinie + Absätze + Abstände).
+    QHash<int, qreal>        m_footHeight;
+    //  Ausgelegte Fußnoten (lazy; klein, deshalb gehalten). KEIN QHash: der
+    //  Eintrag hält `unique_ptr` und ist damit nicht kopierbar.
+    std::unordered_map<int, FootLayout> m_footLay;
+    bool                     m_inFootSettle = false;   // Rekursionsschutz
+
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -509,4 +599,5 @@ signals:
 private:
     DocxTextArea* m_area = nullptr;
     int m_page = 0;
+
 };

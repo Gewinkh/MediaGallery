@@ -40,6 +40,11 @@ class AppController : public QObject {
     Q_PROPERTY(bool    audioAccentApple READ audioAccentApple NOTIFY audioAccentChanged)
     Q_PROPERTY(bool    monoPlay        READ monoPlay        NOTIFY monoPlayChanged)
     Q_PROPERTY(int     videoSeekStep   READ videoSeekStep   NOTIFY videoSeekStepChanged)
+    //  Rechtschreibprüfung: an/aus + Sprache. Die Kacheln lesen beides und
+    //  reichen es an ihren Editor-Controller weiter (der kennt die globalen
+    //  Einstellungen bewusst nicht).
+    Q_PROPERTY(bool    spellCheck     READ spellCheck      NOTIFY spellCheckChanged)
+    Q_PROPERTY(QString spellLanguage  READ spellLanguage   NOTIFY spellCheckChanged)
     Q_PROPERTY(bool    optionsVisible  READ optionsVisible  NOTIFY optionsVisibleChanged)
 
     // ── Editor / Auto-Save (Phase 4) ────────────────────────────────────────
@@ -202,6 +207,12 @@ public:
     bool    audioAccentApple() const;  // true = Apple-Blau, false = Theme-Akzent
     bool    monoPlay()        const;   // true = nur EINE Wiedergabe gleichzeitig
     int     videoSeekStep()   const;   // Spulschritt der Pfeiltasten (Sekunden)
+    bool    spellCheck()      const;
+    QString spellLanguage()   const;
+    Q_INVOKABLE void setSpellCheck(bool v);
+    Q_INVOKABLE void setSpellLanguage(const QString& lang);
+    //  Wörterbücher auf diesem Rechner (Einstellungsdialog).
+    Q_INVOKABLE QStringList spellLanguages() const;
     bool    optionsVisible()  const;
     Q_INVOKABLE void setBackgroundColor(const QColor& c);
     Q_INVOKABLE void setAccentColor(const QColor& c);
@@ -293,6 +304,7 @@ signals:
     void audioAccentChanged();
     void monoPlayChanged();
     void videoSeekStepChanged();
+    void spellCheckChanged();
     // Mono-Play: eine Wiedergabestelle hat gestartet (nur bei aktiver Option).
     void playbackStarted(const QString& token);
     void optionsVisibleChanged();

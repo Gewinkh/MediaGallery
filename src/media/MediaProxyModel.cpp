@@ -33,16 +33,16 @@ void MediaProxyModel::setTagManager(TagManager* mgr) {
     if (m_tagMgr) {
         connect(m_tagMgr, &TagManager::categoriesChanged, this, [this] {
             recomputeFilterCaches();
-            invalidateRowsFilter();
+            refilterRows();
             emit filterChanged();
         });
         connect(m_tagMgr, &TagManager::tagsChanged, this, [this] {
             recomputeFilterCaches();
-            invalidateRowsFilter();
+            refilterRows();
         });
     }
     recomputeFilterCaches();
-    invalidateRowsFilter();
+    refilterRows();
 }
 
 void MediaProxyModel::reapplySort() {
@@ -66,13 +66,13 @@ void MediaProxyModel::setSortDescending(bool d) {
     emit sortChanged();
 }
 
-// Typ-Umschalter berühren nur den Zeilenfilter → invalidateRowsFilter() statt
+// Typ-Umschalter berühren nur den Zeilenfilter → refilterRows() statt
 // invalidate() (kein Re-Sort, keine Spalten-Neubewertung).
 #define PROXY_BOOL_SETTER(Setter, Member)            \
     void MediaProxyModel::Setter(bool v) {           \
         if (v == Member) return;                     \
         Member = v;                                  \
-        invalidateRowsFilter();                      \
+        refilterRows();                      \
         emit filterChanged();                        \
     }
 PROXY_BOOL_SETTER(setShowImages, m_showImages)
@@ -86,7 +86,7 @@ void MediaProxyModel::setTagFilter(const QStringList& t) {
     if (t == m_tagFilter) return;
     m_tagFilter = t;
     recomputeFilterCaches();
-    invalidateRowsFilter();
+    refilterRows();
     emit filterChanged();
 }
 
@@ -94,7 +94,7 @@ void MediaProxyModel::setTagFilterModeInt(int m) {
     const TagMode nm = static_cast<TagMode>(m);
     if (nm == m_mode) return;
     m_mode = nm;
-    invalidateRowsFilter();
+    refilterRows();
     emit filterChanged();
 }
 
@@ -103,7 +103,7 @@ void MediaProxyModel::setCategoryFilter(const QStringList& ids) {
     m_categoryFilter = ids;
     m_activeCatIds = QSet<QString>(ids.begin(), ids.end());
     recomputeFilterCaches();
-    invalidateRowsFilter();
+    refilterRows();
     emit filterChanged();
 }
 
@@ -111,7 +111,7 @@ void MediaProxyModel::setTagFilterAnd(bool v) {
     const TagMode nm = v ? TagMode::And : TagMode::Or;
     if (nm == m_mode) return;
     m_mode = nm;
-    invalidateRowsFilter();
+    refilterRows();
     emit filterChanged();
 }
 

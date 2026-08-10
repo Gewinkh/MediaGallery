@@ -1,4 +1,6 @@
 #include "pdf/edit/PdfEditController.h"
+
+#include "core/FolderImages.h"
 #include "pdf/edit/PdfVectorExport.h"
 #include "pdf/edit/PdfEditCommands.h"
 #include "core/ISettings.h"
@@ -784,6 +786,66 @@ private:
             p.restore();
             return;
         }
+        case PdfAnnKind::Stamp: {
+            //  Signatur/Stempel: das Bild in sein Rechteck. Ohne diesen Zweig
+            //  fiel der Stempel im Rasterweg ERSATZLOS aus und an seiner Stelle
+            //  stand ein leerer Notizzettel.
+            if (!b.imagePath.isEmpty()) {
+                QImage img(b.imagePath);
+                if (!img.isNull()) {
+                    const qreal op = (b.fill.alpha() > 0 && b.fill.alpha() < 255)
+                                         ? b.fill.alpha() / 255.0 : 1.0;
+                    p.setOpacity(op);
+                    p.drawImage(b.rect, img);
+                    p.setOpacity(1.0);
+                }
+            }
+            p.restore();
+            return;
+        }
+        case PdfAnnKind::Redact: {
+            //  Schwärzung: EINE deckende Fläche, sonst nichts. Der Text darunter
+            //  ist beim Rasterweg ohnehin mit der Textebene verschwunden; die
+            //  Fläche macht sichtbar, DASS hier etwas entfernt wurde. Ohne
+            //  eigenen Zweig lief eine Schwärzung in die Notiz-Zeichnung —
+            //  Post-it mit Schatten und Eselsohr statt Balken.
+            const QColor cover = b.highlight.alpha() > 0 ? b.highlight
+                                                         : QColor(0, 0, 0);
+            p.fillRect(b.rect, cover);
+            p.restore();
+            return;
+        }
+        case PdfAnnKind::Markup: {
+            //  Textmarkierung: MEHRERE Bereiche in EINEM Objekt (je zwei Ecken
+            //  in `points`). Markieren multipliziert, damit der Text darunter
+            //  lesbar bleibt; Unterstreichen zieht die Linie knapp über der
+            //  Unterkante, Durchstreichen auf halber Höhe — identisch zum
+            //  Vektorweg (`PdfVectorExport`).
+            if (b.points.size() >= 2) {
+                if (b.markupStyle == 0) {
+                    p.setCompositionMode(QPainter::CompositionMode_Multiply);
+                    p.setPen(Qt::NoPen);
+                    p.setBrush(b.stroke);
+                    for (int i = 0; i + 1 < b.points.size(); i += 2)
+                        p.drawRect(QRectF(b.points.at(i), b.points.at(i + 1)).normalized());
+                    p.setCompositionMode(QPainter::CompositionMode_SourceOver);
+                } else {
+                    for (int i = 0; i + 1 < b.points.size(); i += 2) {
+                        const QRectF q =
+                            QRectF(b.points.at(i), b.points.at(i + 1)).normalized();
+                        const qreal t = qMax(0.5, q.height() / 14.0);
+                        const qreal y = (b.markupStyle == 1)
+                                            ? q.y() + q.height() - t
+                                            : q.y() + q.height() / 2.0;
+                        p.setPen(QPen(b.stroke, t));
+                        p.drawLine(QPointF(q.x(), y),
+                                   QPointF(q.x() + q.width(), y));
+                    }
+                }
+            }
+            p.restore();
+            return;
+        }
         case PdfAnnKind::Replace:
             // „Text ersetzen": deckende, fix weiße Fläche EXAKT über dem
             // Box-Rechteck — bewusst OHNE Post-it-Optik (kein Schatten, kein
@@ -1009,6 +1071,10 @@ void PdfEditController::setPanelOnTop(bool v) {
 }
 
 //  Export-Modus des EINEN Export-Knopfes (s. Header).
+QVariantList PdfEditController::folderImages() const {
+    return mg::folderImages(m_docPath, 300, false);
+}
+
 bool PdfEditController::exportAsAnnotations() const {
     return m_settings.pdfExportAsAnnotations();
 }
