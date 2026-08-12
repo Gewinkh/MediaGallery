@@ -2,6 +2,7 @@ pragma ComponentBehavior: Bound
 import QtQuick
 import QtQuick.Controls
 import MediaGallery 1.0
+import "../common"
 
 // ─────────────────────────────────────────────────────────────────────────────
 //  PdfEditToolbar.qml — schwebende Kompakt-Toolbar des PDF-Editors (Word-artig).
@@ -69,6 +70,7 @@ Item {
     component TBtn: Rectangle {
         id: tb
         property string glyph: ""
+        property url iconSource: ""
         property string tip: ""
         property bool checked: false
         property bool boldGlyph: false
@@ -92,7 +94,10 @@ Item {
             font.bold: tb.boldGlyph
             font.italic: tb.italicGlyph
             font.underline: tb.underlineGlyph
-        }
+               visible: String(tb.iconSource).length === 0 }
+        ThemedIcon { anchors.centerIn: parent; source: tb.iconSource; size: 16
+                     color: tb.glyphColor
+                     visible: String(tb.iconSource).length > 0 }
         HoverHandler { id: tbHover; enabled: tb.enabled }
         TapHandler { enabled: tb.enabled; onTapped: tb.activated() }
         ToolTip.text: tb.tip
@@ -124,7 +129,7 @@ Item {
                     anchors.verticalCenter: parent.verticalCenter }
 
         // ── Schriftgröße ──────────────────────────────────────────────────────
-        TBtn { visible: bar.isTextual; glyph: "\u2212"
+        TBtn { visible: bar.isTextual; iconSource: "qrc:/qml/icons/minus.svg"
                onActivated: bar.ctl.setBoxFontSize(bar.ctl.selectedId,
                                                    Math.max(4, Math.round(bar.info.fontSizePt) - 1)) }
         Text {
@@ -134,7 +139,7 @@ Item {
             text: bar.isTextual ? Math.round(bar.info.fontSizePt) : ""
             color: App.themeTextPrimary; font.pixelSize: 11
         }
-        TBtn { visible: bar.isTextual; glyph: "+"
+        TBtn { visible: bar.isTextual; iconSource: "qrc:/qml/icons/plus.svg"
                onActivated: bar.ctl.setBoxFontSize(bar.ctl.selectedId,
                                                    Math.min(200, Math.round(bar.info.fontSizePt) + 1)) }
 
@@ -142,21 +147,21 @@ Item {
                     anchors.verticalCenter: parent.verticalCenter }
 
         // ── Ausrichtung (0=links, 1=zentriert, 2=rechts) ──────────────────────
-        TBtn { visible: bar.isTextual; glyph: "\u2B05"; checked: bar.info.alignment === 0
+        TBtn { visible: bar.isTextual; iconSource: "qrc:/qml/icons/align-left.svg"; checked: bar.info.alignment === 0
                onActivated: bar.ctl.setBoxAlignment(bar.ctl.selectedId, 0) }
-        TBtn { visible: bar.isTextual; glyph: "\u2194"; checked: bar.info.alignment === 1
+        TBtn { visible: bar.isTextual; iconSource: "qrc:/qml/icons/align-center.svg"; checked: bar.info.alignment === 1
                onActivated: bar.ctl.setBoxAlignment(bar.ctl.selectedId, 1) }
-        TBtn { visible: bar.isTextual; glyph: "\u2B95"; checked: bar.info.alignment === 2
+        TBtn { visible: bar.isTextual; iconSource: "qrc:/qml/icons/align-right.svg"; checked: bar.info.alignment === 2
                onActivated: bar.ctl.setBoxAlignment(bar.ctl.selectedId, 2) }
 
         Rectangle { visible: bar.isTextual; width: 1; height: 16; color: App.themeBorder
                     anchors.verticalCenter: parent.verticalCenter }
 
         // ── Vertikale Ausrichtung (0=oben wie Word-Textfeld, 1=mittig) ────────
-        TBtn { visible: bar.isTextual; glyph: "\u2912"; checked: bar.info.vAlign === 0
+        TBtn { visible: bar.isTextual; iconSource: "qrc:/qml/icons/valign-top.svg"; checked: bar.info.vAlign === 0
                tip: App.uiText(App.language, "PdfEditVAlignLabel")
                onActivated: bar.ctl.setBoxVAlign(bar.ctl.selectedId, 0) }
-        TBtn { visible: bar.isTextual; glyph: "\u2195"; checked: bar.info.vAlign === 1
+        TBtn { visible: bar.isTextual; iconSource: "qrc:/qml/icons/valign-middle.svg"; checked: bar.info.vAlign === 1
                tip: App.uiText(App.language, "PdfEditVAlignLabel")
                onActivated: bar.ctl.setBoxVAlign(bar.ctl.selectedId, 1) }
 
@@ -229,7 +234,7 @@ Item {
             ToolTip.visible: scHover.hovered
         }
         //  Linienbreite (PDF-Punkte)
-        TBtn { visible: bar.isStroke || bar.isShape; glyph: "\u2212"
+        TBtn { visible: bar.isStroke || bar.isShape; iconSource: "qrc:/qml/icons/minus.svg"
                onActivated: bar.ctl.setBoxLineWidth(bar.ctl.selectedId,
                                                     Math.max(1, Math.round(bar.info.lineWidth) - 1)) }
         Text {
@@ -239,7 +244,7 @@ Item {
             text: (bar.isStroke || bar.isShape) ? Math.round(bar.info.lineWidth) : ""
             color: App.themeTextPrimary; font.pixelSize: 11
         }
-        TBtn { visible: bar.isStroke || bar.isShape; glyph: "+"
+        TBtn { visible: bar.isStroke || bar.isShape; iconSource: "qrc:/qml/icons/plus.svg"
                onActivated: bar.ctl.setBoxLineWidth(bar.ctl.selectedId,
                                                     Math.min(72, Math.round(bar.info.lineWidth) + 1)) }
         //  Füllung (nur Formen)
@@ -267,13 +272,13 @@ Item {
 
         // ── Kopieren (dupliziert die Annotation inkl. Text; Einfügen Strg+V) ──
         TBtn {
-            glyph: "\u2398"
+            iconSource: "qrc:/qml/icons/copy.svg"
             tip: App.uiText(App.language, "ImageEditCopyBtn")
             onActivated: { if (bar.surface) bar.surface.commitEditing(); bar.ctl.copySelected() }
         }
         // ── Löschen (committet die offene Bearbeitung — Box verschwindet) ─────
         TBtn {
-            glyph: "\u2715"; glyphColor: "#e05a5a"
+            iconSource: "qrc:/qml/icons/close.svg"; glyphColor: "#e05a5a"
             tip: App.uiText(App.language,
                      bar.info.kind === 6 ? "PdfEditDeleteMarkup" : "PdfEditDeleteBtn")
             onActivated: {

@@ -9,6 +9,7 @@
 #include <QThreadPool>
 #include <QRunnable>
 #include <QSaveFile>
+#include <QDateTime>
 #include <QFileInfo>
 #include <QFile>
 #include <QGuiApplication>
@@ -89,11 +90,6 @@ void DocxEditController::setSource(const QString& s) {
     m_bakDone  = false;
     m_modified = false;
     m_cursor   = DocxCursor();
-    //  Regionen zurücksetzen — die neue Datei hat eigene Kopf-/Fußzeilenteile.
-    m_region = Body;
-    for (RegionSlot& slot : m_slots) slot = RegionSlot();
-    emit activeRegionChanged();
-    emit regionsAvailable();
     emit readyChanged();
     emit modifiedChanged();
     if (path.isEmpty())
@@ -118,22 +114,7 @@ void DocxEditController::setSource(const QString& s) {
                 if (ok) {
                     c->m_doc = std::move(*doc);
                     c->m_ready = true;
-                    //  Kopf-/Fußzeilen-Teile des Hauptabschnitts merken; geladen
-                    //  werden sie erst beim Umschalten (lazy, RAM).
-                    c->m_slots[Body].partPath  = c->m_doc.partPath();
-                    c->m_slots[Body].available = true;
-                    c->m_slots[Header].partPath = c->m_doc.headerFooterPart(false, false);
-                    c->m_slots[Footer].partPath = c->m_doc.headerFooterPart(true, false);
-                    c->m_slots[Header].available = !c->m_slots[Header].partPath.isEmpty();
-                    c->m_slots[Footer].available = !c->m_slots[Footer].partPath.isEmpty();
-                    //  Fußnoten: nur anbieten, wenn der Teil ECHTE Notizen hat
-                    //  (die beiden Trenner allein sind nichts zum Bearbeiten).
-                    c->m_slots[Footnotes].partPath =
-                        c->m_doc.footnotes().isEmpty() ? QString()
-                                                       : QStringLiteral("word/footnotes.xml");
-                    c->m_slots[Footnotes].available =
-                        !c->m_slots[Footnotes].partPath.isEmpty();
-                    emit c->regionsAvailable();
+                    c->refreshRevisions();    // Hinweisstreifen (Änderungen)
                     c->spellStart();          // Wörterbuch + erste Prüfung
                 } else {
                     c->m_loadError = err;
@@ -504,91 +485,6 @@ void DocxEditController::clearSelection() {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-//  Regionen: Körper / Kopfzeile / Fußzeile
-//
-//  Die aktive Region liegt in m_doc/m_cursor — der gesamte übrige Editor-Code
-//  bleibt dadurch unverändert. Umschalten heißt: den aktuellen Zustand in
-//  seinen Slot PARKEN und den anderen holen (move, O(1) je Member).
-// ─────────────────────────────────────────────────────────────────────────────
-bool DocxEditController::ensureRegionLoaded(Region r) {
-    RegionSlot& s = m_slots[r];
-    if (s.loaded) return true;
-    if (!s.available || s.partPath.isEmpty()) return false;
-
-    Docx::Document d;
-    QString err;
-    if (!d.loadPart(m_source, s.partPath, &err)) {
-        //  Nicht editierbar (Selbstprüfung/Encoding, fehlende Bibliothek) →
-        //  Region bleibt gesperrt. Der GRUND wird gemerkt und gemeldet: sonst
-        //  sah eine vorhandene, aber defekte Kopfzeile aus wie eine fehlende,
-        //  und der Klick auf die Schaltfläche tat scheinbar nichts.
-        s.available = false;
-        s.error     = err;
-        emit regionsAvailable();
-        emit regionOpenFailed(int(r), err);
-        return false;
-    }
-    s.doc    = std::move(d);
-    s.cursor = DocxCursor();
-    s.loaded = true;
-    s.error.clear();
-    return true;
-}
-
-QString DocxEditController::regionError(int r) const {
-    if (r < 0 || r > 2) return {};
-    return m_slots[r].error;
-}
-
-bool DocxEditController::setRegion(int rInt) {
-    if (!m_ready) return false;
-    const Region r = Region(qBound(0, rInt, 3));
-    if (r == m_region) return true;
-    if (r != Body && !ensureRegionLoaded(r)) return false;
-
-    //  Aktiven Zustand parken …
-    m_slots[m_region].doc    = std::move(m_doc);
-    m_slots[m_region].cursor = m_cursor;
-    m_slots[m_region].loaded = true;
-    //  … und den neuen aktivieren.
-    m_doc    = std::move(m_slots[r].doc);
-    m_cursor = m_slots[r].cursor;
-    m_region = r;
-    clearPending();
-
-    //  Anderes Dokument ⇒ die Fläche legt auf activeRegionChanged ALLES neu aus.
-    emit activeRegionChanged();
-    emit cursorChanged();
-    bumpFormat();
-    return true;
-}
-
-void DocxEditController::setActiveRegionInt(int r) { setRegion(r); }
-
-void DocxEditController::activateRegionForCommand(int r) {
-    if (int(m_region) != r) setRegion(r);
-}
-
-//  Alle geladenen Regionen fürs Speichern zusammentragen: je Region ihr
-//  Teil-XML plus ihre Ersatzteile (Medien/Beziehungen liegen je Teil in einer
-//  EIGENEN .rels-Datei, kollidieren also nicht). Der Körper wird zuletzt
-//  eingetragen und gewinnt bei gemeinsamen Dateien ([Content_Types].xml).
-QHash<QString, QByteArray> DocxEditController::allRegionParts() const {
-    QHash<QString, QByteArray> parts;
-    for (int r = 3; r >= 0; --r) {
-        const bool active = (int(m_region) == r);
-        if (!active && !m_slots[r].loaded) continue;
-        const Docx::Document& d = active ? m_doc : m_slots[r].doc;
-        if (d.partPath().isEmpty()) continue;
-        const QHash<QString, QByteArray> own = d.replacementParts();
-        for (auto it = own.constBegin(); it != own.constEnd(); ++it)
-            parts.insert(it.key(), it.value());
-        parts.insert(d.partPath(), d.newDocumentXml().toUtf8());
-    }
-    return parts;
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
 //  Kommando-Anwendung (Undo/Redo-Pfad)
 // ─────────────────────────────────────────────────────────────────────────────
 void DocxEditController::applyBlocks(int first, int oldCount,
@@ -604,6 +500,10 @@ void DocxEditController::applyBlocks(int first, int oldCount,
     //  Geänderte Absätze neu prüfen. Der Deckel auf die eingefügten Blöcke
     //  hält den Aufwand am Tippen klein: ein Tastendruck betrifft EINEN Absatz.
     spellInvalidate(first, qMax(1, blocks.size()));
+    //  Undo/Redo kann eine Änderung zurückholen oder entfernen — der
+    //  Hinweisstreifen muss folgen. Bewusst NICHT im EditScope: dort liefe der
+    //  Lauf über alle Blöcke bei JEDEM Tastendruck.
+    refreshRevisions();
     emit cursorChanged();
     bumpFormat();
 }
@@ -649,7 +549,6 @@ struct DocxEditController::EditScope {
         auto* cmd = new DocxReplaceBlocksCommand(
             c, first, std::move(before), std::move(after),
             curBefore, c->m_cursor, mergeKind);
-        cmd->setRegion(int(c->m_region));
         if (tableId >= 0)
             cmd->snapshotTable(tableId, tblBefore, c->m_doc.tableDef(tableId));
         c->m_stack.push(cmd);
@@ -793,6 +692,7 @@ void DocxEditController::insertParagraphBreak() {
     insertText(QStringLiteral("\n"));
 }
 void DocxEditController::insertLineBreak()      { insertText(QString(kLineBreak)); }
+void DocxEditController::insertClearBreak()     { insertText(QString(Docx::kClearBreak)); }
 
 //  Deckt die Selektion eine GANZE Tabelle ab, löschen Entf/Rücktaste die
 //  Tabelle statt nur den Zellinhalt der ersten Zelle (`clampRangeToCell` kürzt
@@ -1312,11 +1212,18 @@ void DocxEditController::insertTable(int rows, int cols) {
     //  zugehörige Blöcke inert (die Emission läuft über die Blöcke) und wird
     //  beim Wiederherstellen mit derselben tableId wieder benutzt.
     EditScope scope(this, at, 0);
+    const int before = int(m_doc.blocks.size());
     const int first = m_doc.insertTable(at, rows, cols);
     if (first < 0) return;
+    //  Die GEMESSENE Zahl neuer Blöcke, nicht rows*cols: das Modell hängt hinter
+    //  die Tabelle noch einen leeren Absatz, falls dort keiner steht (Word macht
+    //  es genauso — ohne ihn käme der Cursor an einer Tabelle am Dokumentende
+    //  nie wieder heraus). Mit der alten festen Zahl bliebe dieser Absatz beim
+    //  Rückgängigmachen stehen.
+    const int added = int(m_doc.blocks.size()) - before;
     m_cursor = { first, 0, first, 0 };
     clearPending();
-    scope.commit(rows * cols);
+    scope.commit(qMax(0, added));
 }
 
 void DocxEditController::insertTableOfContents() {
@@ -1340,6 +1247,51 @@ void DocxEditController::insertTableOfContents() {
     m_cursor = { idx, 0, idx, 0 };
     clearPending();
     scope.commit(1);
+}
+
+//  Unterschrift/Stempel: Bild einsetzen UND sofort verankern. Beides gehört
+//  für den Nutzer zusammen (er will es frei hinschieben), deshalb EIN
+//  Undo-Schritt über ein Makro. Danach ist das Bild ausgewählt — die
+//  Ziehpunkte der Kachel hängen an der Auswahl.
+void DocxEditController::insertSignatureImage(const QString& fileUrl) {
+    if (!m_ready) return;
+    const QString path = mg::toLocalPath(fileUrl);
+    if (path.isEmpty()) return;
+    QFile f(path);
+    if (!f.open(QIODevice::ReadOnly)) {
+        emit imageInsertFailed(QStringLiteral("Bilddatei nicht lesbar."));
+        return;
+    }
+    const QByteArray bytes = f.readAll();
+    f.close();
+
+    m_stack.beginMacro(QStringLiteral("Unterschrift"));
+    insertImageBytes(bytes, QFileInfo(path).suffix(), 0, 0);
+    const int bi  = qBound(0, m_cursor.block, qMax(0, m_doc.blocks.size() - 1));
+    const int pos = qMax(0, m_cursor.pos - 1);      // Objekt-Zeichen des Bildes
+
+    //  ZUERST auswählen, dann verankern: `setImageFloating` findet das Bild
+    //  über den Cursor (`imageAtCursor`) — und `paragraphImage` als Rückfall
+    //  greift nur bei einem Absatz, der NUR aus dem Bild besteht. Eine
+    //  Unterschrift steht aber meist hinter Text.
+    setCursor(bi, pos, false);
+    setCursor(bi, pos + 1, true);
+
+    bool ok = false;
+    {
+        const QVector<Docx::InlineImage> imgs =
+            m_doc.paragraphImages(m_doc.blocks.at(bi));
+        for (const Docx::InlineImage& ii : imgs)
+            if (ii.pos == pos) ok = true;
+    }
+    if (ok) setImageFloating(bi, true);
+    m_stack.endMacro();
+    if (!ok) { m_stack.undo(); return; }
+
+    //  Die Auswahl auf das Objekt-Zeichen wiederherstellen (das Verankern hat
+    //  den Absatz neu gesetzt und den Cursor mitgeführt).
+    setCursor(bi, pos, false);
+    setCursor(bi, pos + 1, true);
 }
 
 void DocxEditController::insertImage(const QString& fileUrl) {
@@ -1595,22 +1547,91 @@ QString DocxEditController::revisionAuthorAt(int block, int pos) const {
 
 //  EIN Undo-Schritt über dasselbe Kommando wie jede andere Textänderung: der
 //  Scope schnappt den Absatz vorher und nachher.
-bool DocxEditController::acceptRevisionAt(int block, int pos) {
+bool DocxEditController::applyRevisionAt(int block, int pos, bool accept) {
     if (!m_ready || block < 0 || block >= m_doc.blocks.size()) return false;
     const int ri = runIndexAt(m_doc.blocks.at(block), pos);
     if (ri < 0) return false;
     EditScope scope(this, block, 1);
-    if (!m_doc.applyRevision(block, ri, true)) return false;
+    if (!m_doc.applyRevision(block, ri, accept)) return false;
+    //  OHNE commit gäbe es weder Undo-Schritt noch `blocksReplaced`, und das
+    //  Dokument gälte als unverändert — die Annahme wäre beim Verlassen der
+    //  Kachel verloren gewesen.
+    scope.commit(1);
+    refreshRevisions();
     return true;
 }
 
+bool DocxEditController::acceptRevisionAt(int block, int pos) {
+    return applyRevisionAt(block, pos, true);
+}
+
 bool DocxEditController::rejectRevisionAt(int block, int pos) {
-    if (!m_ready || block < 0 || block >= m_doc.blocks.size()) return false;
-    const int ri = runIndexAt(m_doc.blocks.at(block), pos);
-    if (ri < 0) return false;
-    EditScope scope(this, block, 1);
-    if (!m_doc.applyRevision(block, ri, false)) return false;
-    return true;
+    return applyRevisionAt(block, pos, false);
+}
+
+//  ── ALLE Änderungen auf einmal ──────────────────────────────────────────────
+//  EIN Undo-Schritt (Makro) über alle betroffenen Absätze. Gearbeitet wird von
+//  HINTEN nach vorn: `applyRevision` kann Runs entfernen, spätere Indizes im
+//  selben Absatz verschöben sich sonst.
+int DocxEditController::applyAllRevisions(bool accept) {
+    if (!m_ready) return 0;
+    int done = 0;
+    m_stack.beginMacro(accept ? QStringLiteral("Alle Änderungen annehmen")
+                              : QStringLiteral("Alle Änderungen verwerfen"));
+    for (int bi = 0; bi < m_doc.blocks.size(); ++bi) {
+        //  Trägt der Absatz überhaupt eine Änderung? Sonst kein Kommando.
+        bool any = false;
+        for (const Docx::Run& r : m_doc.blocks.at(bi).runs)
+            if (r.revision != Docx::Run::RevNone) { any = true; break; }
+        if (!any) continue;
+
+        EditScope scope(this, bi, 1);
+        int n = 0;
+        for (int ri = m_doc.blocks.at(bi).runs.size() - 1; ri >= 0; --ri) {
+            if (ri >= m_doc.blocks.at(bi).runs.size()) continue;
+            if (m_doc.blocks.at(bi).runs.at(ri).revision == Docx::Run::RevNone) continue;
+            if (m_doc.applyRevision(bi, ri, accept)) ++n;
+        }
+        if (n == 0) continue;                 // Scope ohne commit = kein Kommando
+        scope.commit(1);
+        done += n;
+    }
+    m_stack.endMacro();
+    if (done == 0) m_stack.undo();            // leeres Makro nicht stehen lassen
+    refreshRevisions();
+    return done;
+}
+
+int DocxEditController::acceptAllRevisions() { return applyAllRevisions(true); }
+int DocxEditController::rejectAllRevisions() { return applyAllRevisions(false); }
+
+//  Wie viele nachverfolgte Änderungen stehen im Dokument, und von wem?
+//  Gezählt werden GRUPPEN: aufeinanderfolgende Runs derselben Art und desselben
+//  Autors sind EINE Änderung — Word zählt genauso, und ein Wort in drei Runs
+//  wäre sonst „drei Änderungen".
+void DocxEditController::refreshRevisions() {
+    int count = 0;
+    QStringList authors;
+    for (const Docx::Block& b : m_doc.blocks) {
+        int lastRev = int(Docx::Run::RevNone);
+        QString lastAuthor;
+        for (const Docx::Run& r : b.runs) {
+            if (r.revision == Docx::Run::RevNone) {
+                lastRev = int(Docx::Run::RevNone);
+                lastAuthor.clear();
+                continue;
+            }
+            if (int(r.revision) != lastRev || r.revAuthor != lastAuthor) ++count;
+            lastRev    = int(r.revision);
+            lastAuthor = r.revAuthor;
+            if (!r.revAuthor.isEmpty() && !authors.contains(r.revAuthor))
+                authors.append(r.revAuthor);
+        }
+    }
+    if (count == m_revCount && authors == m_revAuthors) return;
+    m_revCount   = count;
+    m_revAuthors = authors;
+    emit revisionsChanged();
 }
 
 QVariantList DocxEditController::folderImages() const {
@@ -2927,7 +2948,7 @@ void DocxEditController::exportToPdf(const QString& tablePlaceholder,
     const QString target = pdfExportTargetPath();
     //  IMMER der Körper — steht der Editor gerade in der Kopfzeile, wäre
     //  sonst diese das exportierte "Dokument".
-    Docx::Document docCopy = bodyDoc();   // implizit geteilte Kopie
+    Docx::Document docCopy = m_doc;       // implizit geteilte Kopie
     QPointer<DocxEditController> self(this);
 
     class PdfTask : public QRunnable {
@@ -2961,10 +2982,11 @@ void DocxEditController::startSaveWorker(const QString& targetPath, bool direct)
     m_busy = true;
     emit busyChanged();
 
-    //  Schnappschuss der Ersatzteile auf dem GUI-Thread (reine Strings) —
-    //  über ALLE geladenen Regionen, damit eine bearbeitete Kopf-/Fußzeile
-    //  mitgeschrieben wird (s. allRegionParts).
-    QHash<QString, QByteArray> parts = allRegionParts();
+    //  Schnappschuss der zu schreibenden Teile auf dem GUI-Thread (reine
+    //  Strings): das neue document.xml plus die Ersatzteile (Nummerierung,
+    //  Medien, Vorlagen). Der Worker fasst das Modell danach nicht mehr an.
+    QHash<QString, QByteArray> parts = m_doc.replacementParts();
+    parts.insert(m_doc.partPath(), m_doc.newDocumentXml().toUtf8());
     const QString srcPath = m_source;
     QPointer<DocxEditController> self(this);
 

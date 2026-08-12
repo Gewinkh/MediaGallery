@@ -6,6 +6,7 @@
 #include <QQmlEngine>
 #include <QQuickStyle>
 #include <QPalette>
+#include "app/IconProvider.h"
 #include <QQuickImageProvider>
 #include <QQuickWindow>              // Laufzeit-Guard: sceneGraphError (GPU-Wechsel/Device-Lost)
 #include <QUrl>
@@ -285,6 +286,8 @@ int main(int argc, char* argv[]) {
     //  Suchpfad für den eigenen Control-Stil (liegt in den Ressourcen):
     //  der Stil "style" wird als ":/qml/style/" aufgelöst.
     engine.addImportPath(QStringLiteral(":/qml"));
+    //  Bedien-Symbole (SVG, auf die Theme-Farbe eingefärbt) — s. IconProvider.h.
+    engine.addImageProvider(QStringLiteral("mgicon"), new IconProvider);
     engine.rootContext()->setContextProperty("galleryModel", &galleryModel);
     engine.rootContext()->setContextProperty("mediaModel",   &mediaModel);
 

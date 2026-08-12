@@ -29,6 +29,7 @@ static const QMap<StringKey, QString> s_de = {
     { StringKey::FilterTagModeOr,       "ODER" },
     { StringKey::FilterTagModeNur,      "NUR" },
     { StringKey::FilterTagModeInklusiv, "INKLUSIV" },
+    { StringKey::FilterBtn,             "Filter" },
 
 
     { StringKey::SettingsTitle,         "Einstellungen" },
@@ -117,6 +118,10 @@ static const QMap<StringKey, QString> s_de = {
 
     { StringKey::EditorAutoSave,         "Auto-Speichern aktivieren" },
     { StringKey::EditorSave,             "Speichern" },
+    { StringKey::TextExportPdf,          "\u2192 PDF" },
+    { StringKey::TextExportPdfTip,       "Als PDF exportieren (Original bleibt erhalten)" },
+    { StringKey::TextExportPdfOk,        "PDF geschrieben: %1" },
+    { StringKey::TextExportPdfFail,      "PDF-Export fehlgeschlagen: %1" },
     // ── Migration: vereinheitlichte UI-Strings ──
     { StringKey::SettingsGenFullscreenAnim,  "Vollbild-Animation" },
     { StringKey::SettingsGenAnimSlide,  "Verschieben (seitlich)" },
@@ -340,6 +345,7 @@ static const QMap<StringKey, QString> s_de = {
     { StringKey::DocxTablePlaceholder,   "Tabelle — Bearbeitung folgt in einer späteren Version" },
     { StringKey::DocxPageBreak,          "Seitenumbruch" },
     { StringKey::DocxParagraphStyle,     "Formatvorlage des Absatzes" },
+    { StringKey::DocxInsertSignature,    "Unterschrift einfügen" },
     { StringKey::DocxInsertTable,        "Tabelle einfügen" },
     { StringKey::DocxTableRows,          "Zeilen" },
     { StringKey::DocxTableCols,          "Spalten" },
@@ -350,6 +356,7 @@ static const QMap<StringKey, QString> s_de = {
     { StringKey::DocxImageFromFolder,    "Aus dem Ordner der Datei" },
     { StringKey::DocxNoImagesInFolder,   "Keine Bilder in diesem Ordner" },
     { StringKey::DocxImageBrowse,        "Datei wählen …" },
+    { StringKey::DocxClearBreak,         "Weiter unter der Tabelle" },
     { StringKey::DocxRowInsertAbove,     "Zeile darüber einfügen" },
     { StringKey::DocxRowInsertBelow,     "Zeile darunter einfügen" },
     { StringKey::DocxRowDelete,          "Zeile löschen" },
@@ -373,14 +380,11 @@ static const QMap<StringKey, QString> s_de = {
     { StringKey::DocxImageHeight,        "Höhe (mm)" },
     { StringKey::DocxKeepAspect,         "Seitenverhältnis halten" },
     { StringKey::DocxApply,              "Übernehmen" },
-    { StringKey::DocxRegionBody,         "Text" },
-    { StringKey::DocxRegionFootnotes,  "Fußnoten" },
-    { StringKey::DocxRegionHeader,       "Kopfzeile" },
-    { StringKey::DocxRegionFooter,       "Fußzeile" },
-    { StringKey::DocxRegionHint,         "Kopf-/Fußzeile wird bearbeitet — Esc zurück zum Text" },
-    { StringKey::DocxRegionNone,         "Diese Datei hat keine Kopf-/Fußzeile" },
-    { StringKey::DocxRegionOpenError,    "Kopf-/Fußzeile lässt sich nicht öffnen" },
     { StringKey::DocxInsertToc,          "Inhaltsverzeichnis einfügen" },
+    { StringKey::DocxRevisionsBanner,    "%1 nachverfolgte Änderung(en) von %2" },
+    { StringKey::DocxRevisionsHint,      "Angezeigt wird, was andere geändert haben: Eingefügtes unterstrichen, Gelöschtes durchgestrichen, je Autor eine Farbe. Eigene Eingaben werden nicht aufgezeichnet." },
+    { StringKey::DocxRevAcceptAll,       "Alle annehmen" },
+    { StringKey::DocxRevRejectAll,       "Alle verwerfen" },
     { StringKey::DocxTocEmpty,           "Keine Überschriften im Dokument" },
     { StringKey::DocxHeadingLevel,       "Überschrift %1" },
     { StringKey::DocxInsertPdfPage,      "PDF-Seite einfügen" },
@@ -562,7 +566,7 @@ static const QMap<StringKey, QString> s_de = {
     { StringKey::PdfEditToolStamp,           "Signatur/Stempel einfügen (Bild)" },
     { StringKey::PdfStampFileTitle,          "Bild auswählen" },
     { StringKey::PdfStampFailedToast,        "Bild konnte nicht eingefügt werden" },
-    { StringKey::PdfEditToolRedact,          "Text schwärzen (entfernt den Text)" },
+    { StringKey::PdfEditToolRedact,          "Schwärzen" },
     { StringKey::PdfRedactLimitHint,         "Der geschwärzte Text wird beim Export aus dem "
                                              "Dokument entfernt — er lässt sich dann nicht mehr "
                                              "markieren, kopieren oder finden. Die Kopie wird "
@@ -572,6 +576,9 @@ static const QMap<StringKey, QString> s_de = {
                                              "ausgegeben — dann ist er ebenfalls fort, die "
                                              "Textebene der Kopie aber auch. Das Original bleibt "
                                              "in beiden Fällen unverändert." },
+    { StringKey::PdfRedactNoTextToast,       "Diese Seite hat keine Textebene — hier lässt sich "
+                                             "nichts schwärzen. Über „Texterkennung“ wird sie "
+                                             "lesbar gemacht." },
     { StringKey::PdfEditToolMarkup,          "Text markieren (ziehen)" },
     { StringKey::PdfMarkupHighlight,         "Markieren" },
     { StringKey::PdfMarkupUnderline,         "Unterstreichen" },
@@ -632,6 +639,7 @@ static const QMap<StringKey, QString> s_en = {
     { StringKey::FilterTagModeOr,       "OR" },
     { StringKey::FilterTagModeNur,      "ONLY" },
     { StringKey::FilterTagModeInklusiv, "INCLUSIVE" },
+    { StringKey::FilterBtn,             "Filter" },
 
 
     { StringKey::SettingsTitle,         "Settings" },
@@ -720,6 +728,10 @@ static const QMap<StringKey, QString> s_en = {
 
     { StringKey::EditorAutoSave,         "Enable Auto-Save" },
     { StringKey::EditorSave,             "Save" },
+    { StringKey::TextExportPdf,          "\u2192 PDF" },
+    { StringKey::TextExportPdfTip,       "Export as PDF (keeps the original)" },
+    { StringKey::TextExportPdfOk,        "PDF written: %1" },
+    { StringKey::TextExportPdfFail,      "PDF export failed: %1" },
     // ── Migration: vereinheitlichte UI-Strings ──
     { StringKey::SettingsGenFullscreenAnim,  "Fullscreen Animation" },
     { StringKey::SettingsGenAnimSlide,  "Slide (horizontal)" },
@@ -943,6 +955,7 @@ static const QMap<StringKey, QString> s_en = {
     { StringKey::DocxTablePlaceholder,   "Table — editing coming in a later version" },
     { StringKey::DocxPageBreak,          "Page break" },
     { StringKey::DocxParagraphStyle,     "Paragraph style" },
+    { StringKey::DocxInsertSignature,    "Insert signature" },
     { StringKey::DocxInsertTable,        "Insert table" },
     { StringKey::DocxTableRows,          "Rows" },
     { StringKey::DocxTableCols,          "Columns" },
@@ -953,6 +966,7 @@ static const QMap<StringKey, QString> s_en = {
     { StringKey::DocxImageFromFolder,    "From the document's folder" },
     { StringKey::DocxNoImagesInFolder,   "No images in this folder" },
     { StringKey::DocxImageBrowse,        "Choose file …" },
+    { StringKey::DocxClearBreak,         "Continue below the table" },
     { StringKey::DocxRowInsertAbove,     "Insert row above" },
     { StringKey::DocxRowInsertBelow,     "Insert row below" },
     { StringKey::DocxRowDelete,          "Delete row" },
@@ -976,14 +990,11 @@ static const QMap<StringKey, QString> s_en = {
     { StringKey::DocxImageHeight,        "Height (mm)" },
     { StringKey::DocxKeepAspect,         "Keep aspect ratio" },
     { StringKey::DocxApply,              "Apply" },
-    { StringKey::DocxRegionBody,         "Body" },
-    { StringKey::DocxRegionFootnotes,  "Footnotes" },
-    { StringKey::DocxRegionHeader,       "Header" },
-    { StringKey::DocxRegionFooter,       "Footer" },
-    { StringKey::DocxRegionHint,         "Editing header/footer — press Esc to return to the body" },
-    { StringKey::DocxRegionNone,         "This file has no header or footer" },
-    { StringKey::DocxRegionOpenError,    "Header/footer cannot be opened" },
     { StringKey::DocxInsertToc,          "Insert table of contents" },
+    { StringKey::DocxRevisionsBanner,    "%1 tracked change(s) by %2" },
+    { StringKey::DocxRevisionsHint,      "This shows what others changed: insertions underlined, deletions struck through, one colour per author. Your own edits are not recorded." },
+    { StringKey::DocxRevAcceptAll,       "Accept all" },
+    { StringKey::DocxRevRejectAll,       "Reject all" },
     { StringKey::DocxTocEmpty,           "No headings in the document" },
     { StringKey::DocxHeadingLevel,       "Heading %1" },
     { StringKey::DocxInsertPdfPage,      "Insert PDF page" },
@@ -1165,7 +1176,7 @@ static const QMap<StringKey, QString> s_en = {
     { StringKey::PdfEditToolStamp,           "Insert signature/stamp (image)" },
     { StringKey::PdfStampFileTitle,          "Choose image" },
     { StringKey::PdfStampFailedToast,        "The image could not be inserted" },
-    { StringKey::PdfEditToolRedact,          "Black out text (removes it)" },
+    { StringKey::PdfEditToolRedact,          "Black out" },
     { StringKey::PdfRedactLimitHint,         "The blacked-out text is removed from the document "
                                              "on export — it can no longer be selected, copied "
                                              "or found. The copy is written from scratch for "
@@ -1174,6 +1185,9 @@ static const QMap<StringKey, QString> s_en = {
                                              "out as an image — the text is gone there too, but "
                                              "so is the copy's text layer. Your original is left "
                                              "untouched either way." },
+    { StringKey::PdfRedactNoTextToast,       "This page has no text layer — there is nothing to "
+                                             "black out here. Use “Text recognition” to make it "
+                                             "readable." },
     { StringKey::PdfEditToolMarkup,          "Highlight text (drag)" },
     { StringKey::PdfMarkupHighlight,         "Highlight" },
     { StringKey::PdfMarkupUnderline,         "Underline" },

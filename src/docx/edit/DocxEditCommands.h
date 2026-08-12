@@ -46,10 +46,6 @@ public:
     //  zusätzliche Zeile — und beim Speichern entstünde eine leere Geisterzeile.
     void snapshotTable(int tableId, const Docx::TableDef& before,
                        const Docx::TableDef& after);
-    //  Region (Körper/Kopf-/Fußzeile), in der dieses Kommando gilt. Undo/Redo
-    //  schalten VOR dem Anwenden dorthin um — die Ansicht folgt, genau wie in
-    //  Word. Deshalb genügt EIN Undo-Stapel für alle Regionen.
-    void setRegion(int r) { m_regionId = r; }
 
     void undo() override;
     void redo() override;
@@ -65,7 +61,6 @@ private:
     DocxCursor          m_curAfter;
     int                 m_mergeKind;
     bool                m_firstRedo = true;   // push() ruft redo(); Mutation lief schon
-    int                 m_regionId = 0;       // DocxEditController::Region
     int                 m_tableId = -1;       // −1 = kein Gerüst betroffen
     Docx::TableDef      m_tblBefore, m_tblAfter;
 };

@@ -1,4 +1,5 @@
 #include "app/AppController.h"
+#include "core/PathUtils.h"
 
 #include "core/SpellChecker.h"
 #include "docx/DocxDocument.h"
@@ -559,6 +560,10 @@ QString AppController::uiText(const QString& lang, const QString& key) const {
     const Language l = (lang == QStringLiteral("en")) ? Language::English
                                                        : Language::German;
     return Strings::byName(key, l);
+}
+
+QString AppController::localPath(const QString& urlOrPath) const {
+    return mg::toLocalPath(urlOrPath);
 }
 
 QString AppController::fileUrl(const QString& path) const {

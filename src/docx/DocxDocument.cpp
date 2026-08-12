@@ -331,15 +331,13 @@ bool Document::loadPart(const QString& path, const QString& partPath, QString* e
 
     m_tables.clear();
     m_rels.clear();
-    m_hdrRefs.clear();
-    m_ftrRefs.clear();
 
     DocxZip::Reader zip;
     if (!zip.open(path, err))
         return false;
 
-    //  Beziehungen (Bilder, Kopf-/Fußzeilen-Teile). Fehlt die Datei, bleibt die
-    //  Tabelle leer — dann gibt es eben keine Bilder/Kopfzeilen anzuzeigen.
+    //  Beziehungen (Bilder). Fehlt die Datei, bleibt die Tabelle leer — dann
+    //  gibt es eben keine Bilder anzuzeigen.
     {
         bool rOk = false;
         const QByteArray relBytes = zip.fileData(relsPathOf(m_partPath), &rOk);
@@ -427,19 +425,14 @@ bool Document::parseDocumentXml(QString* err) {
         const auto t = next();
         if (t != QXmlStreamReader::StartElement) continue;
         const QString qn = r.qualifiedName().toString();
-        if (qn == QLatin1String("w:body") || qn == QLatin1String("w:hdr")
-            || qn == QLatin1String("w:ftr")
-            //  Der Fußnoten-Teil: sein Rumpf heißt `w:footnotes` und trägt eine
-            //  Ebene MEHR (je Notiz ein `w:footnote`) — die wird unten flach
-            //  zerlegt, damit der Text editierbar ist.
-            || qn == QLatin1String("w:footnotes")) {
+        if (qn == QLatin1String("w:body")) {
             rootTag = qn;
             bodyContentStart = int(tokEnd);
             break;
         }
     }
     if (bodyContentStart < 0) {
-        if (err) *err = QStringLiteral("Kein <w:body>/<w:hdr>/<w:ftr>/<w:footnotes> gefunden.");
+        if (err) *err = QStringLiteral("Kein <w:body> gefunden.");
         return false;
     }
     m_bodyPrefix = { 0, bodyContentStart };
@@ -514,24 +507,15 @@ bool Document::parseDocumentXml(QString* err) {
                     rr.skipCurrentElement(); e = rr.characterOffset();
                 } else if (n == QLatin1String("w:br")) {
                     const bool page = attr(rr, "w:type") == QLatin1String("page");
-                    run.text += page ? kPageBreak : kLineBreak;
+                    //  `w:clear="all"`: der Text geht UNTER allen Stoerern
+                    //  weiter (Word: "Textumbruch, alle").
+                    const bool clearAll = attr(rr, "w:clear") == QLatin1String("all");
+                    run.text += page ? kPageBreak
+                                     : (clearAll ? kClearBreak : kLineBreak);
                     rr.skipCurrentElement(); e = rr.characterOffset();
                 } else if (n == QLatin1String("w:cr")) {
                     run.text += kLineBreak;
                     rr.skipCurrentElement(); e = rr.characterOffset();
-                } else if (n == QLatin1String("w:footnoteReference")) {
-                    //  Ein Verweis hat KEINEN `w:t` — ohne eigenes Zeichen wäre
-                    //  er in der Anzeige gar nicht vorhanden. Die laufende
-                    //  Nummer setzt die Anzeige ein (sie kennt die Reihenfolge);
-                    //  hier steht zunächst nur, DASS hier einer ist.
-                    bool okId = false;
-                    const int fid = attr(rr, "w:id").toInt(&okId);
-                    if (okId) {
-                        run.footnoteId = fid;
-                        //  Platzhalter; die laufende Nummer setzt der Lauf unten
-                        //  ein, sobald ALLE Blöcke gelesen sind.
-                        run.text += QString(kObjectChar);
-                    }
                 } else if (n == QLatin1String("w:noBreakHyphen")) {
                     run.text += QChar(0x2011);
                     rr.skipCurrentElement(); e = rr.characterOffset();
@@ -842,55 +826,6 @@ bool Document::parseDocumentXml(QString* err) {
         return true;
     };
 
-    //  ── Eine Fußnote flach zerlegen ─────────────────────────────────────────
-    //  `<w:footnote w:id="…"> <w:p/>… </w:footnote>` → die Absätze werden
-    //  reguläre Blöcke (editierbar), der Rahmen bleibt als Spans stehen. Ohne
-    //  das wäre der Text ein opaker Klotz. Schlägt es fehl (fremde Kinder),
-    //  wird NICHT zerlegt und der Aufrufer legt den bisherigen opaken Block an
-    //  — kein Teilverständnis, wie bei `parseTable`.
-    auto parseFootnotePart = [&](int absStart, int absLen) -> bool {
-        const QString frag = m_docXml.mid(absStart, absLen);
-        QXmlStreamReader r2(frag);
-        r2.setNamespaceProcessing(false);
-        qint64 s2 = 0, e2 = 0;
-        auto n2 = [&]() { s2 = e2; const auto t = r2.readNext(); e2 = r2.characterOffset(); return t; };
-        while (!r2.atEnd()) { if (n2() == QXmlStreamReader::StartElement) break; }
-        if (r2.qualifiedName() != QLatin1String("w:footnote")) return false;
-
-        FootnoteDef def;
-        def.id = attr(r2, "w:id").toInt();
-        def.headerSpan = { absStart, int(e2) };
-
-        QList<Block> paras;
-        int lastEnd = int(e2);
-        while (!r2.atEnd()) {
-            const auto t = n2();
-            if (t == QXmlStreamReader::EndElement
-                && r2.qualifiedName() == QLatin1String("w:footnote")) {
-                def.footerSpan = { absStart + int(s2), int(e2 - s2) };
-                break;
-            }
-            if (t != QXmlStreamReader::StartElement) continue;
-            if (r2.qualifiedName() != QLatin1String("w:p")) return false;  // fremdes Kind
-            const int ps = int(s2);
-            r2.skipCurrentElement();
-            e2 = r2.characterOffset();
-            //  Zwischen den Absätzen darf NICHTS stehen, sonst ginge es beim
-            //  Zusammensetzen verloren.
-            if (ps != lastEnd) return false;
-            paras.append(parseParagraph(absStart + ps, int(e2) - ps));
-            lastEnd = int(e2);
-        }
-        if (!def.footerSpan.valid() || paras.isEmpty()) return false;
-        if (lastEnd != def.footerSpan.start - absStart) return false;
-
-        const int partIdx = m_footnoteDefs.size();
-        for (Block& p : paras) { p.footnotePart = partIdx; blocks.append(p); }
-        def.blockCount = int(paras.size());
-        m_footnoteDefs.append(def);
-        return true;
-    };
-
     // Body-Kinder.
     int bodyContentEnd = -1;
     while (!r.atEnd()) {
@@ -917,9 +852,6 @@ bool Document::parseDocumentXml(QString* err) {
         const int blen = int(tokEnd) - bs;
         if (name == QLatin1String("w:p")) {
             blocks.append(parseParagraph(bs, blen));
-        } else if (name == QLatin1String("w:footnote") && parseFootnotePart(bs, blen)) {
-            //  Absätze liegen jetzt FLACH in `blocks`, der Rahmen in
-            //  `m_footnoteDefs` — gleiche Technik wie bei `w:tbl`.
         } else if (name == QLatin1String("w:tbl") && parseTable(bs, blen)) {
             //  Zellinhalt liegt jetzt FLACH in `blocks`, das Gerüst in m_tables.
             //  Schlägt das Zerlegen fehl (verschachtelte Tabelle, sdt, fremde
@@ -946,26 +878,6 @@ bool Document::parseDocumentXml(QString* err) {
         return false;
     }
     m_bodySuffix = { bodyContentEnd, int(m_docXml.size()) - bodyContentEnd };
-
-    //  ── Fußnoten-Verweise durchnummerieren ──────────────────────────────────
-    //  Erst JETZT steht die Reihenfolge fest. Der Verweis-Run bekommt die
-    //  Nummer als Text (vorher war er unsichtbar) und wird OPAK: sein
-    //  Roh-Bereich geht verbatim heraus, die angezeigte Nummer landet also
-    //  niemals in der Datei.
-    {
-        int no = 0;
-        QHash<int, int> seen;
-        for (Block& b : blocks) {
-            for (Run& r : b.runs) {
-                if (r.footnoteId <= 0) continue;
-                const auto it = seen.constFind(r.footnoteId);
-                const int n = (it != seen.cend()) ? it.value()
-                                                  : seen.insert(r.footnoteId, ++no).value();
-                r.text = QString::number(n);
-                r.opaque = true;
-            }
-        }
-    }
 
     //  SELBSTPRÜFUNG (Verlusterhaltungs-Garantie): Prefix + Block-Spans +
     //  Suffix müssen das Original EXAKT rekonstruieren. Bei Abweichung wird
@@ -1057,8 +969,10 @@ void collectRunText(QStringView runFrag, Run* run) {
         } else if (tn == QLatin1String("w:tab")) {
             run->text += QLatin1Char('\t');
         } else if (tn == QLatin1String("w:br")) {
-            run->text += (attr(tr, "w:type") == QLatin1String("page")) ? kPageBreak
-                                                                      : kLineBreak;
+            run->text += (attr(tr, "w:type") == QLatin1String("page"))
+                             ? kPageBreak
+                             : (attr(tr, "w:clear") == QLatin1String("all")
+                                    ? kClearBreak : kLineBreak);
         } else if (tn == QLatin1String("w:cr")) {
             run->text += kLineBreak;
         } else if (tn == QLatin1String("w:noBreakHyphen")) {
@@ -1390,130 +1304,6 @@ bool Document::paragraphImage(const Block& b, InlineImage* out) const {
     return true;
 }
 
-//  ZIP-Pfad des Kopf-/Fußzeilen-Teils; leer, wenn es keinen gibt. Öffentlich,
-//  weil der Editor diesen Teil als EIGENE Document-Instanz lädt (Region).
-QString Document::headerFooterPart(bool footer, bool first) const {
-    const QHash<QString, QString>& refs = footer ? m_ftrRefs : m_hdrRefs;
-    QString id = first ? refs.value(QStringLiteral("first")) : QString();
-    if (id.isEmpty()) id = refs.value(QStringLiteral("default"));
-    if (id.isEmpty()) return {};
-
-    QString target = relTarget(id);
-    if (target.isEmpty() || target.contains(QLatin1String(".."))) return {};
-    while (target.startsWith(QLatin1Char('/'))) target.remove(0, 1);
-    if (!target.startsWith(QLatin1String("word/")))
-        target = QStringLiteral("word/") + target;
-    return target;
-}
-
-//  ── Fußnoten lesen (ANZEIGE) ────────────────────────────────────────────────
-//  `word/footnotes.xml` ist ein eigener Teil; gelesen wird er wie eine
-//  Kopfzeile — Absätze einsammeln, Datei nicht anfassen. Die Wortsonderfälle
-//  `w:type="separator"`/`"continuationSeparator"` (meist `w:id` 0 und −1)
-//  gehören nicht in den Text und fallen hier heraus.
-const QVector<Footnote>& Document::footnotes() const {
-    if (m_footnotesLoaded) return m_footnotes;
-    m_footnotesLoaded = true;
-
-    const QByteArray xml = partBytes(QStringLiteral("word/footnotes.xml"));
-    if (xml.isEmpty()) return m_footnotes;
-    const QString text = QString::fromUtf8(xml);
-    QXmlStreamReader r(text);
-    r.setNamespaceProcessing(false);
-    qint64 tokStart = 0, tokEnd = 0;
-    while (!r.atEnd()) {
-        tokStart = tokEnd;
-        const auto t = r.readNext();
-        tokEnd = r.characterOffset();
-        if (t != QXmlStreamReader::StartElement) continue;
-        if (r.qualifiedName() != QLatin1String("w:footnote")) continue;
-        const QString type = attr(r, "w:type");
-        bool okId = false;
-        const int id = attr(r, "w:id").toInt(&okId);
-        const qint64 s0 = tokStart;
-        r.skipCurrentElement();
-        tokEnd = r.characterOffset();
-        if (!okId) continue;
-        //  Trenner sind keine Fußnoten.
-        if (type == QLatin1String("separator")
-            || type == QLatin1String("continuationSeparator")) continue;
-        if (s0 < 0 || tokEnd <= s0 || tokEnd > text.size()) continue;
-
-        Footnote fn;
-        fn.id = id;
-        //  Absätze des Bereichs einsammeln (gleiche Technik wie Kopfzeilen).
-        const QStringView frag = QStringView(text).mid(int(s0), int(tokEnd - s0));
-        QXmlStreamReader pr(frag.toString());
-        pr.setNamespaceProcessing(false);
-        qint64 ps = 0, pe = 0;
-        while (!pr.atEnd()) {
-            ps = pe;
-            const auto t2 = pr.readNext();
-            pe = pr.characterOffset();
-            if (t2 != QXmlStreamReader::StartElement) continue;
-            if (pr.qualifiedName() != QLatin1String("w:p")) continue;
-            const qint64 a = ps;
-            pr.skipCurrentElement();
-            pe = pr.characterOffset();
-            if (a < 0 || pe <= a || pe > frag.size()) continue;
-            fn.paragraphs.append(parseCellParagraph(frag.mid(int(a), int(pe - a))));
-        }
-        if (!fn.paragraphs.isEmpty()) m_footnotes.append(fn);
-    }
-    return m_footnotes;
-}
-
-//  Laufende NUMMER einer Fußnote: die Reihenfolge ihres Vorkommens IM TEXT —
-//  Word zeigt sie so, und die `w:id` ist dafür kein Ersatz (sie ist beliebig
-//  und beginnt oft bei 2, weil 0/−1 die Trenner sind).
-int Document::footnoteNumber(int id) const {
-    if (m_footnoteNo.isEmpty()) {
-        int no = 0;
-        for (const Block& b : blocks) {
-            for (const Run& r : b.runs) {
-                if (r.footnoteId <= 0) continue;
-                if (m_footnoteNo.contains(r.footnoteId)) continue;
-                m_footnoteNo.insert(r.footnoteId, ++no);
-            }
-        }
-    }
-    return m_footnoteNo.value(id, 0);
-}
-
-HeaderFooter Document::headerFooter(bool footer, bool first) const {
-    HeaderFooter hf;
-    const QString target = headerFooterPart(footer, first);
-    if (target.isEmpty()) return hf;
-    const QByteArray xml = partBytes(target);
-    if (xml.isEmpty()) return hf;
-
-    //  Absätze des Teils einsammeln — gleiche Technik wie bei Tabellenzellen.
-    const QString text = QString::fromUtf8(xml);
-    QXmlStreamReader r(text);
-    r.setNamespaceProcessing(false);
-    qint64 tokStart = 0, tokEnd = 0;
-    int tblDepth = 0;
-    while (!r.atEnd()) {
-        tokStart = tokEnd;
-        const auto t = r.readNext();
-        tokEnd = r.characterOffset();
-        if (t == QXmlStreamReader::EndElement
-            && r.qualifiedName() == QLatin1String("w:tbl")) { --tblDepth; continue; }
-        if (t != QXmlStreamReader::StartElement) continue;
-        if (r.qualifiedName() == QLatin1String("w:tbl")) { ++tblDepth; continue; }
-        if (tblDepth > 0) continue;                  // Tabellen in Kopfzeilen: nein
-        if (r.qualifiedName() != QLatin1String("w:p")) continue;
-        const qint64 s = tokStart;
-        r.skipCurrentElement();
-        tokEnd = r.characterOffset();
-        if (s < 0 || tokEnd <= s || tokEnd > text.size()) continue;
-        hf.paragraphs.append(parseCellParagraph(QStringView(text).mid(int(s),
-                                                                     int(tokEnd - s))));
-    }
-    hf.ok = !hf.paragraphs.isEmpty();
-    return hf;
-}
-
 //  w:sectPr → SectionProps. Bewusst tolerant: fehlende Attribute behalten den
 //  A4-Vorgabewert, unsinnige Werte werden geklemmt (ein Dokument mit
 //  pgSz w="0" würde sonst eine Seite ohne Textbreite ergeben).
@@ -1544,15 +1334,6 @@ void Document::parseSectPr(QStringView xml) {
         } else if (n == QLatin1String("w:cols")) {
             m_section.cols     = num("w:num",   1,   1, 12);
             m_section.colSpace = num("w:space", 708, 0, 14400);
-        } else if (n == QLatin1String("w:headerReference")
-                   || n == QLatin1String("w:footerReference")) {
-            //  w:type = default | first | even; das Ziel steckt in r:id.
-            const QString id = attr(r, "r:id");
-            QString type = attr(r, "w:type");
-            if (type.isEmpty()) type = QStringLiteral("default");
-            if (id.isEmpty()) continue;
-            if (n == QLatin1String("w:headerReference")) m_hdrRefs.insert(type, id);
-            else                                        m_ftrRefs.insert(type, id);
         }
     }
     //  Ränder dürfen die Seite nicht auffressen: mindestens 1 cm Textbreite
@@ -1865,6 +1646,8 @@ QString Document::serializeRunsText(const QString& text) {
         if (c == QLatin1Char('\t'))      { flush(); out += QLatin1String("<w:tab/>"); }
         else if (c == kLineBreak)        { flush(); out += QLatin1String("<w:br/>"); }
         else if (c == kPageBreak)        { flush(); out += QLatin1String("<w:br w:type=\"page\"/>"); }
+        else if (c == kClearBreak)       { flush(); out += QLatin1String(
+            "<w:br w:type=\"textWrapping\" w:clear=\"all\"/>"); }
         else if (c == kObjectChar)       { /* atomare Platzhalter nie serialisieren */ }
         else                             seg += c;
     }
@@ -2101,6 +1884,36 @@ int Document::insertTable(int beforeBlock, int rows, int cols) {
     }
     for (int i = 0; i < newBlocks.size(); ++i)
         blocks.insert(beforeBlock + i, newBlocks.at(i));
+
+    //  ── IMMER EIN ABSATZ HINTER DER TABELLE ─────────────────────────────────
+    //  Word hält dort einen, und zwar aus einem handfesten Grund: eine Tabelle
+    //  füllt die Textbreite, neben ihr ist also nichts anklickbar. Steht sie am
+    //  Dokumentende ohne Absatz dahinter, gibt es KEINE Stelle mehr, an die der
+    //  Cursor außerhalb der Tabelle gehen könnte — man sitzt fest (Nutzerbefund
+    //  2026-08-12: „komme nicht unter die Tabelle").
+    //  Nur anlegen, wenn dort nicht ohnehin schon ein gewöhnlicher Absatz folgt.
+    const int after = beforeBlock + newBlocks.size();
+    //  Es muss ein BESCHREIBBARER Absatz folgen — „keine Zelle" genügt nicht:
+    //  ein Abschnitts-/Sonderblock (z. B. der `sectPr`-Träger) ist kein Ort, an
+    //  dem der Cursor stehen und tippen kann. Genau daran hing der erste Versuch.
+    const Block* next = (after < int(blocks.size())) ? &blocks.at(after) : nullptr;
+    const bool needsTail = !next
+                           || next->kind != Block::Paragraph
+                           || next->tableId >= 0;
+    if (needsTail) {
+        QString tail;
+        const int tp = 0;
+        tail += QStringLiteral("<w:p>");
+        const int tagLen = tail.size() - tp;
+        tail += QStringLiteral("</w:p>");
+        const int tbase = appendPool(tail);
+        Block b;
+        b.kind         = Block::Paragraph;
+        b.rawSpan      = { tbase, int(tail.size()) };
+        b.startTagSpan = { tbase, tagLen };
+        b.tableId      = -1;
+        blocks.insert(after, b);
+    }
     return beforeBlock;
 }
 
@@ -3213,35 +3026,6 @@ QString Document::emitBlocks(bool rawOnly) const {
 
     for (int i = 0; i < blocks.size(); ) {
         const Block& b = blocks.at(i);
-
-        //  ── Fußnote als GRUPPE (Teil `word/footnotes.xml`) ───────────────────
-        //  Wie bei Tabellen: unberührt ⇒ der ganze Bereich als Original-
-        //  Teilstring (byteidentisch), sonst Rahmen wieder darumlegen.
-        if (b.footnotePart >= 0 && b.footnotePart < m_footnoteDefs.size()) {
-            const int fp = b.footnotePart;
-            const FootnoteDef& fd = m_footnoteDefs.at(fp);
-            int j = i, groupSize = 0;
-            bool anyDirty = false;
-            const Span fnRaw = fd.rawSpan();
-            while (j < blocks.size() && blocks.at(j).footnotePart == fp) {
-                const Block& fb = blocks.at(j);
-                if (fb.dirty || fb.pprMaterialized || !fb.rawSpan.valid()) anyDirty = true;
-                else if (fb.rawSpan.start < fnRaw.start
-                         || fb.rawSpan.start + fb.rawSpan.len > fnRaw.start + fnRaw.len)
-                    anyDirty = true;
-                ++groupSize; ++j;
-            }
-            if (fd.blockCount > 0 && groupSize != fd.blockCount) anyDirty = true;
-            if (rawOnly || !anyDirty) {
-                out += doc.mid(fnRaw.start, fnRaw.len);
-            } else {
-                out += doc.mid(fd.headerSpan.start, fd.headerSpan.len);
-                for (int k = i; k < j; ++k) emitOne(blocks.at(k));
-                out += doc.mid(fd.footerSpan.start, fd.footerSpan.len);
-            }
-            i = j;
-            continue;
-        }
 
         if (b.tableId < 0) { emitOne(b); ++i; continue; }
 

@@ -108,6 +108,10 @@ public:
     //  Metadaten (Tags/Datum) mit ab und entfernt die Zeile aus dem Modell.
     Q_INVOKABLE bool deleteItem(const QString& filePath);
     Q_INVOKABLE void toggleTag(const QString& filePath, const QString& tag);
+    //  Tag NUR hinzufügen (nie entfernen) — für das Ablegen einer Kachel auf
+    //  einem Tag: ein Zug ist eine Zuweisung, kein Umschalter. Liegt der Tag
+    //  schon an, passiert nichts.
+    Q_INVOKABLE void addTag(const QString& filePath, const QString& tag);
 
 signals:
     void countChanged();

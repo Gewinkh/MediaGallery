@@ -17,7 +17,7 @@ stores its data are in **[FEATURES.md](FEATURES.md)**.
 - **PDF page extraction** - pick pages from one or many PDFs and save them losslessly as a new file.
 - **PDF editor** - notes, drawings, highlights, redaction, signature stamps, form filling, page reordering and text editing; export keeps the original content byte-for-byte wherever possible.
 - **Image editor** - non-destructive crop, rotate, adjust and draw; the original file is never overwritten.
-- **DOCX editor** - a loss-preserving Word editor: only what you touch is rewritten. Tables, pictures, headers and footers, contents list, footnotes, tracked changes, spell checking, find & replace, and PDF export.
+- **DOCX editor** - a loss-preserving Word editor: only what you touch is rewritten. Tables, pictures, contents list, tracked changes (shown and resolvable), spell checking, find & replace, and PDF export.
 - **Text & HTML** - editor with syntax awareness and a live HTML preview.
 - **Live transliteration** - type Latin, get Arabic, Hiragana or Katakana while you write.
 - **Appearance** - every colour of the interface is adjustable and themes can be exported and shared.
@@ -124,31 +124,28 @@ The `tests/` directory is not included in the published repository. If it is mis
 ## Changelog
 
 ### Latest
-- **Improved DOCX editing** with footnotes, tracked changes, spell checking, and better text wrapping around images and tables
-- **Improved DOCX/PDF compatibility** with footnote export, long-table pagination, and better image positioning
-- **Improved PDF editing/export** with preserved annotations, cleaner page output, and folder-based stamp selection
-- **Improved UI feedback** with temporary status messages and better image selection popups
-- **Fixed** various DOCX layout, rendering, and PDF export issues
-
+* **Improved DOCX/PDF editing** with better tables, text wrapping, redaction, and image positioning
+* **Added experimental drag-and-drop** for assigning files to tags and dragging files out of the gallery
+* **Added text-to-PDF export**
+* **Improved editor icons** with theme-aware SVG icons
+* **Improved tracked changes and document handling**
+* **Removed headers, footers, and footnotes support**
+* **Improved signature and stamp handling**
 
 ---
 
 ## Issues
 
 ### Known limitations
-- **Exported PDF is not page-for-page identical** to the editor: text wraps on one side of a floating image instead of both, and every page reserves the same room for footnotes. Both come from the same cause and are fixed together.
-- **Tracked changes are only shown, not recorded**: you can accept or reject existing changes, but your own edits are never marked.
 - **Spell checking needs an installed Hunspell dictionary**; without one it stays off and says so.
+- **A text-to-PDF page made up only of very short lines cannot be searched in PDFium-based viewers** (Chrome, and this app's own PDF view). Measured: from about 30 characters of line width upwards everything is fine; below that, those viewers read the narrow column as vertically written text and hand out every character on its own line, so a word search finds nothing. The file itself is correct - every character carries its proper Unicode - and other PDF readers are unaffected. Widening the text block from our side did not change the viewer's guess.
 
 ### Known bugs
-- **Selection frame of a table split across pages sits wrong** (the table itself edits normally).
-- **Dragging a table vertically does nothing** - only the width is applied; row height always follows the content.
-- **Blacking out text in a PDF is hard to trigger**: it needs a drag with the tool; an existing text selection is ignored.
+- **A DOCX exported to PDF carries some text twice in its text layer.** A paragraph that runs over a page boundary is drawn on both pages and only *visually* clipped - so the page before shows nothing wrong, but searching or copying finds those words on both pages. Measured on a 900-word test document: 900 words duplicated. What you see on paper is correct; the invisible text layer is not.
 
 ### Planned
-- Create footnotes from the editor (reading, showing and editing them already works).
-- Write next to a table, the way text already flows next to a picture.
-- Proportional-only scaling for signature stamps.
+- **Sorting moves into the Filter popup** - the sort field (date/name/tags/size) and the ascending/descending switch become their own section inside the Filter button's popup, so the top-left of the window holds nothing but the Filter button.
+- **Search files in the main window** - a text field that filters the gallery as you type, updating on every keystroke (no Enter, no search button).
 
 ---
 

@@ -94,6 +94,7 @@ Rectangle {
     component StyleBtn: Rectangle {
         id: sb
         property string glyph: ""
+        property url iconSource: ""
         property bool checked: false
         property bool boldGlyph: false
         property bool italicGlyph: false
@@ -109,13 +110,17 @@ Rectangle {
         Text { anchors.centerIn: parent; text: sb.glyph
                color: App.themeTextPrimary; font.pixelSize: 12
                font.bold: sb.boldGlyph; font.italic: sb.italicGlyph
-               font.underline: sb.underlineGlyph }
+               font.underline: sb.underlineGlyph
+               visible: String(sb.iconSource).length === 0 }
+        ThemedIcon { anchors.centerIn: parent; source: sb.iconSource; size: 16
+                     visible: String(sb.iconSource).length > 0 }
         HoverHandler { id: sbHover }
         TapHandler { onTapped: sb.activated() }
     }
     component AlignBtn: Rectangle {
         id: ab
         property string glyph: ""
+        property url iconSource: ""
         property int alignValue: 0
         readonly property bool checked: panel.info.alignment === alignValue
         width: 30; height: 28; radius: 6
@@ -126,7 +131,10 @@ Rectangle {
         border.color: checked ? App.themeAccent : App.themeBorder
         border.width: 1
         Text { anchors.centerIn: parent; text: ab.glyph
-               color: App.themeTextPrimary; font.pixelSize: 12 }
+               color: App.themeTextPrimary; font.pixelSize: 12
+               visible: String(ab.iconSource).length === 0 }
+        ThemedIcon { anchors.centerIn: parent; source: ab.iconSource; size: 16
+                     visible: String(ab.iconSource).length > 0 }
         HoverHandler { id: abHover }
         TapHandler { onTapped: panel.ctl.setBoxAlignment(panel.targetId, ab.alignValue) }
     }
@@ -135,6 +143,7 @@ Rectangle {
     component VAlignBtn: Rectangle {
         id: vb
         property string glyph: ""
+        property url iconSource: ""
         property int vAlignValue: 0
         readonly property bool checked: panel.info.vAlign === vAlignValue
         width: 30; height: 28; radius: 6
@@ -145,7 +154,10 @@ Rectangle {
         border.color: checked ? App.themeAccent : App.themeBorder
         border.width: 1
         Text { anchors.centerIn: parent; text: vb.glyph
-               color: App.themeTextPrimary; font.pixelSize: 12 }
+               color: App.themeTextPrimary; font.pixelSize: 12
+               visible: String(vb.iconSource).length === 0 }
+        ThemedIcon { anchors.centerIn: parent; source: vb.iconSource; size: 16
+                     visible: String(vb.iconSource).length > 0 }
         HoverHandler { id: vbHover }
         TapHandler { onTapped: panel.ctl.setBoxVAlign(panel.targetId, vb.vAlignValue) }
     }
@@ -154,6 +166,8 @@ Rectangle {
     component ToolBtn: Rectangle {
         id: tb
         property string glyph: ""
+        //  Symbol statt Glyphe (Regel 29). Eingefärbt wird in C++, s. ThemedIcon.
+        property url iconSource: ""
         property int toolValue: 0
         //  Nur für die Markier-Knöpfe: zusätzlich der Stil (0/1/2). −1 = kein
         //  Stil, dann entscheidet allein das Werkzeug über „aktiv".
@@ -173,7 +187,10 @@ Rectangle {
         border.color: checked ? App.themeAccent : App.themeBorder
         border.width: 1
         Text { anchors.centerIn: parent; text: tb.glyph
+               visible: String(tb.iconSource).length === 0
                color: App.themeTextPrimary; font.pixelSize: 13 }
+        ThemedIcon { anchors.centerIn: parent; source: tb.iconSource; size: 16
+                     visible: String(tb.iconSource).length > 0 }
         HoverHandler { id: tbHover }
         TapHandler {
             onTapped: {
@@ -190,6 +207,11 @@ Rectangle {
                 if (tb.toolValue === 6 && panel.surface
                         && panel.surface.replaceSelectionNow)
                     panel.surface.replaceSelectionNow()
+                //  ▮ „Schwärzen": genauso — eine bestehende Textauswahl wird
+                //  direkt zur Schwärzung, ohne Auswahl bleibt der Ziehweg.
+                if (tb.toolValue === 9 && panel.surface
+                        && panel.surface.startRedact)
+                    panel.surface.startRedact()
             }
         }
         ToolTip.text: tb.tip
@@ -289,35 +311,35 @@ Rectangle {
                 Grid {
                     columns: 3
                     spacing: 4
-                    ToolBtn { glyph: "\u2196"; toolValue: 0; tip: App.uiText(App.language, "ImageEditToolSelect") }
+                    ToolBtn { iconSource: "qrc:/qml/icons/select.svg"; toolValue: 0; tip: App.uiText(App.language, "ImageEditToolSelect") }
                     ToolBtn { glyph: "T";      toolValue: 1; tip: App.uiText(App.language, "ImageEditToolText") }
-                    ToolBtn { glyph: "\u270E"; toolValue: 2; tip: App.uiText(App.language, "ImageEditToolPen") }
-                    ToolBtn { glyph: "\u2197"; toolValue: 3; tip: App.uiText(App.language, "ImageEditToolArrow") }
-                    ToolBtn { glyph: "\u25AD"; toolValue: 4; tip: App.uiText(App.language, "ImageEditToolRect") }
-                    ToolBtn { glyph: "\u2B2D"; toolValue: 5; tip: App.uiText(App.language, "ImageEditToolEllipse") }
+                    ToolBtn { iconSource: "qrc:/qml/icons/pen.svg"; toolValue: 2; tip: App.uiText(App.language, "ImageEditToolPen") }
+                    ToolBtn { iconSource: "qrc:/qml/icons/arrow.svg"; toolValue: 3; tip: App.uiText(App.language, "ImageEditToolArrow") }
+                    ToolBtn { iconSource: "qrc:/qml/icons/rect.svg"; toolValue: 4; tip: App.uiText(App.language, "ImageEditToolRect") }
+                    ToolBtn { iconSource: "qrc:/qml/icons/ellipse.svg"; toolValue: 5; tip: App.uiText(App.language, "ImageEditToolEllipse") }
                     // „Text ersetzen" (PDF-exklusiv): weiße Deckfläche + Textbox.
-                    ToolBtn { glyph: "\u21C4"; toolValue: 6; tip: App.uiText(App.language, "PdfEditToolReplace") }
+                    ToolBtn { iconSource: "qrc:/qml/icons/replace.svg"; toolValue: 6; tip: App.uiText(App.language, "PdfEditToolReplace") }
                     // „Text bearbeiten" (PDF-exklusiv): Caret DIREKT in der
                     // eingebetteten Textebene — kein Overlay, die Seite bleibt
                     // vektoriell.
-                    ToolBtn { glyph: "\u2336"; toolValue: 7; tip: App.uiText(App.language, "PdfEditToolCaret") }
+                    ToolBtn { iconSource: "qrc:/qml/icons/caret.svg"; toolValue: 7; tip: App.uiText(App.language, "PdfEditToolCaret") }
                     // Textmarkierung (PDF-exklusiv): Ziehen über Text markiert,
                     // unterstreicht oder streicht durch — je nach Stil-Knopf.
-                    ToolBtn { glyph: "\u25A8"; toolValue: 8; styleValue: 0
+                    ToolBtn { iconSource: "qrc:/qml/icons/markup-highlight.svg"; toolValue: 8; styleValue: 0
                               tip: App.uiText(App.language, "PdfMarkupHighlight") }
-                    ToolBtn { glyph: "\u2581"; toolValue: 8; styleValue: 1
+                    ToolBtn { iconSource: "qrc:/qml/icons/markup-underline.svg"; toolValue: 8; styleValue: 1
                               tip: App.uiText(App.language, "PdfMarkupUnderline") }
-                    ToolBtn { glyph: "\u2015"; toolValue: 8; styleValue: 2
+                    ToolBtn { iconSource: "qrc:/qml/icons/markup-strike.svg"; toolValue: 8; styleValue: 2
                               tip: App.uiText(App.language, "PdfMarkupStrike") }
-                    // „Text schwärzen": deckt ab UND entfernt den Text beim
-                    // Export aus dem Content-Stream (Grenze s. Tooltip).
-                    ToolBtn { glyph: "\u25AE"; toolValue: 9
-                              tip: App.uiText(App.language, "PdfEditToolRedact") + "\n"
-                                   + App.uiText(App.language, "PdfRedactLimitHint") }
+                    // „Schwärzen": deckt ab UND entfernt den Text beim Export
+                    // aus dem Content-Stream. Die Grenzen sagt der einmalige
+                    // Hinweis beim ersten Schwärzen (PdfSurface).
+                    ToolBtn { iconSource: "qrc:/qml/icons/redact.svg"; toolValue: 9
+                              tip: App.uiText(App.language, "PdfEditToolRedact") }
                     // Signatur/Stempel: erst die Bilder im ORDNER anbieten (der
                     // häufige Fall, ganz ohne Dateidialog), „Durchsuchen…"
                     // fällt auf den Dateidialog der Kachel zurück.
-                    ToolBtn { glyph: "\u270D"; toolValue: -1
+                    ToolBtn { iconSource: "qrc:/qml/icons/signature.svg"; toolValue: -1
                               tip: App.uiText(App.language, "PdfEditToolStamp")
                               onClicked: {
                                   stampPickA.entries = panel.ctl.folderImages()
@@ -357,7 +379,7 @@ Rectangle {
                             visible: running
                         }
                         Text {
-                            text: "\u2315  " + App.uiText(App.language, "PdfOcrBtn")
+                            text: App.uiText(App.language, "PdfOcrBtn")
                             color: ocrBtn.ocrOn ? App.themeTextPrimary : App.themeTextMuted
                             font.pixelSize: 12
                             anchors.verticalCenter: parent.verticalCenter
@@ -450,9 +472,9 @@ Rectangle {
                 Row {
                     visible: panel.showText
                     spacing: 4
-                    AlignBtn { glyph: "\u2B05"; alignValue: 0 }
-                    AlignBtn { glyph: "\u2194"; alignValue: 1 }
-                    AlignBtn { glyph: "\u2B95"; alignValue: 2 }
+                    AlignBtn { iconSource: "qrc:/qml/icons/align-left.svg"; alignValue: 0 }
+                    AlignBtn { iconSource: "qrc:/qml/icons/align-center.svg"; alignValue: 1 }
+                    AlignBtn { iconSource: "qrc:/qml/icons/align-right.svg"; alignValue: 2 }
                 }
 
                 // Vertikale Ausrichtung: oben (Word-Textfeld, Standard) / mittig
@@ -462,8 +484,8 @@ Rectangle {
                 Row {
                     visible: panel.showText
                     spacing: 4
-                    VAlignBtn { glyph: "\u2912"; vAlignValue: 0 }
-                    VAlignBtn { glyph: "\u2195"; vAlignValue: 1 }
+                    VAlignBtn { iconSource: "qrc:/qml/icons/valign-top.svg"; vAlignValue: 0 }
+                    VAlignBtn { iconSource: "qrc:/qml/icons/valign-middle.svg"; vAlignValue: 1 }
                 }
 
                 // Farben (wiederverwendeter ColorPicker; Bindung nach Nutzer-
@@ -788,8 +810,9 @@ Rectangle {
                         //  und eine eigene Pfad-Zeile — beides ist entfallen: der
                         //  Weg ist jetzt eine EINSTELLUNG, keine Entscheidung bei
                         //  jedem einzelnen Export.
+                        //  Einzeilig, s. Ribbon-Fassung weiter unten.
                         ToolTip.text: App.uiText(App.language, "PdfEditExportTip")
-                                      + "\n" + panel.ctl.exportTargetPath()
+                                      + " (" + panel.ctl.exportTargetPath().split("/").pop() + ")"
                         ToolTip.visible: expHover.hovered
                     }
                 }
@@ -853,36 +876,36 @@ Rectangle {
                 // ── Werkzeug-Palette (immer sichtbar) ────────────────────────
                 Column {
                     spacing: 2
-                    RibbonLabel { text: App.uiText(App.language, "ImageEditToolsLabel") }
                     Row {
                         spacing: 4
-                        ToolBtn { glyph: "\u2196"; toolValue: 0; tip: App.uiText(App.language, "ImageEditToolSelect") }
+                        ToolBtn { iconSource: "qrc:/qml/icons/select.svg"; toolValue: 0; tip: App.uiText(App.language, "ImageEditToolSelect") }
                         ToolBtn { glyph: "T";      toolValue: 1; tip: App.uiText(App.language, "ImageEditToolText") }
-                        ToolBtn { glyph: "\u270E"; toolValue: 2; tip: App.uiText(App.language, "ImageEditToolPen") }
-                        ToolBtn { glyph: "\u2197"; toolValue: 3; tip: App.uiText(App.language, "ImageEditToolArrow") }
-                        ToolBtn { glyph: "\u25AD"; toolValue: 4; tip: App.uiText(App.language, "ImageEditToolRect") }
-                        ToolBtn { glyph: "\u2B2D"; toolValue: 5; tip: App.uiText(App.language, "ImageEditToolEllipse") }
+                        ToolBtn { iconSource: "qrc:/qml/icons/pen.svg"; toolValue: 2; tip: App.uiText(App.language, "ImageEditToolPen") }
+                        ToolBtn { iconSource: "qrc:/qml/icons/arrow.svg"; toolValue: 3; tip: App.uiText(App.language, "ImageEditToolArrow") }
+                        ToolBtn { iconSource: "qrc:/qml/icons/rect.svg"; toolValue: 4; tip: App.uiText(App.language, "ImageEditToolRect") }
+                        ToolBtn { iconSource: "qrc:/qml/icons/ellipse.svg"; toolValue: 5; tip: App.uiText(App.language, "ImageEditToolEllipse") }
                         // „Text ersetzen" (PDF-exklusiv): weiße Deckfläche + Textbox.
-                        ToolBtn { glyph: "\u21C4"; toolValue: 6; tip: App.uiText(App.language, "PdfEditToolReplace") }
+                        ToolBtn { iconSource: "qrc:/qml/icons/replace.svg"; toolValue: 6; tip: App.uiText(App.language, "PdfEditToolReplace") }
                         // „Text bearbeiten" (PDF-exklusiv): Caret DIREKT in der
                         // eingebetteten Textebene.
-                        ToolBtn { glyph: "\u2336"; toolValue: 7; tip: App.uiText(App.language, "PdfEditToolCaret") }
+                        ToolBtn { iconSource: "qrc:/qml/icons/caret.svg"; toolValue: 7; tip: App.uiText(App.language, "PdfEditToolCaret") }
                         // Textmarkierung (PDF-exklusiv): Ziehen über Text markiert,
                         // unterstreicht oder streicht durch — je nach Stil-Knopf.
-                        ToolBtn { glyph: "\u25A8"; toolValue: 8; styleValue: 0
+                        ToolBtn { iconSource: "qrc:/qml/icons/markup-highlight.svg"; toolValue: 8; styleValue: 0
                                   tip: App.uiText(App.language, "PdfMarkupHighlight") }
-                        ToolBtn { glyph: "\u2581"; toolValue: 8; styleValue: 1
+                        ToolBtn { iconSource: "qrc:/qml/icons/markup-underline.svg"; toolValue: 8; styleValue: 1
                                   tip: App.uiText(App.language, "PdfMarkupUnderline") }
-                        ToolBtn { glyph: "\u2015"; toolValue: 8; styleValue: 2
+                        ToolBtn { iconSource: "qrc:/qml/icons/markup-strike.svg"; toolValue: 8; styleValue: 2
                                   tip: App.uiText(App.language, "PdfMarkupStrike") }
-                        // „Text schwärzen": deckt ab UND entfernt den Text beim
-                        // Export aus dem Content-Stream (Grenze s. Tooltip).
-                        ToolBtn { glyph: "\u25AE"; toolValue: 9
-                                  tip: App.uiText(App.language, "PdfEditToolRedact") + "\n"
-                                       + App.uiText(App.language, "PdfRedactLimitHint") }
+                        // „Schwärzen": deckt ab UND entfernt den Text beim
+                        // Export aus dem Content-Stream. Die Beschriftung
+                        // bleibt kurz — die Grenzen sagt der einmalige Hinweis
+                        // beim ersten Schwärzen (PdfSurface._redactHintOnce).
+                        ToolBtn { iconSource: "qrc:/qml/icons/redact.svg"; toolValue: 9
+                                  tip: App.uiText(App.language, "PdfEditToolRedact") }
                         // Signatur/Stempel: wie in der schmalen Leiste — erst
                         // die Bilder im Ordner, dann der Dateidialog.
-                        ToolBtn { glyph: "\u270D"; toolValue: -1
+                        ToolBtn { iconSource: "qrc:/qml/icons/signature.svg"; toolValue: -1
                                   tip: App.uiText(App.language, "PdfEditToolStamp")
                                   onClicked: {
                                       stampPickB.entries = panel.ctl.folderImages()
@@ -901,11 +924,13 @@ Rectangle {
 
                 // \u2500\u2500 OCR (gescannte PDFs). Ohne Tesseract ausgegraut statt weg \u2014
                 //    der Hover-Text nennt dann die fehlende Bibliothek.
+                //  Kein Beschriftungs-Ausgleich mehr nötig: seit die Gruppen im
+                //  Ribbon ohne Überschriften auskommen, sitzt jeder Knopf direkt
+                //  in der Zeile — und die zentriert senkrecht.
                 Rectangle {
                     id: ocrRibBtn
                     readonly property bool ocrOn: panel.surface && panel.surface.textCtl
                                                   && panel.surface.textCtl.ocrAvailable
-                    anchors.verticalCenter: parent.verticalCenter
                     visible: panel.surface && panel.surface.textCtl
                     opacity: ocrOn ? 1.0 : 0.45
                     width: ocrRibRow.implicitWidth + 16; height: 30; radius: 6
@@ -914,6 +939,12 @@ Rectangle {
                     Row {
                         id: ocrRibRow
                         anchors.centerIn: parent; spacing: 6
+                        //  Symbol statt Glyphe (Regel 29).
+                        ThemedIcon {
+                            anchors.verticalCenter: parent.verticalCenter
+                            source: "qrc:/qml/icons/search.svg"; size: 14
+                            color: ocrRibBtn.ocrOn ? App.themeTextPrimary : App.themeTextMuted
+                        }
                         BusyIndicator {
                             width: 16; height: 16
                             anchors.verticalCenter: parent.verticalCenter
@@ -922,7 +953,7 @@ Rectangle {
                             visible: running
                         }
                         Text {
-                            text: "\u2315  " + App.uiText(App.language, "PdfOcrBtn")
+                            text: App.uiText(App.language, "PdfOcrBtn")
                             color: ocrRibBtn.ocrOn ? App.themeTextPrimary : App.themeTextMuted
                             font.pixelSize: 12
                             anchors.verticalCenter: parent.verticalCenter
@@ -954,7 +985,6 @@ Rectangle {
                 Column {
                     visible: panel.showText
                     spacing: 2
-                    RibbonLabel { text: App.uiText(App.language, "PdfEditFontLabel") }
                     ComboBox {
                         id: fontBoxH
                         width: 150
@@ -966,7 +996,6 @@ Rectangle {
                 Column {
                     visible: panel.showText
                     spacing: 2
-                    RibbonLabel { text: App.uiText(App.language, "PdfEditSizeLabel") }
                     SpinBox {
                         id: sizeBoxH
                         from: 4; to: 200
@@ -978,7 +1007,6 @@ Rectangle {
                 Column {
                     visible: panel.showText
                     spacing: 2
-                    RibbonLabel { text: App.uiText(App.language, "PdfEditStyleLabel") }
                     Row {
                         spacing: 4
                         StyleBtn { glyph: "B"; boldGlyph: true;      checked: panel.info.bold === true
@@ -992,28 +1020,25 @@ Rectangle {
                 Column {
                     visible: panel.showText
                     spacing: 2
-                    RibbonLabel { text: App.uiText(App.language, "PdfEditAlignLabel") }
                     Row {
                         spacing: 4
-                        AlignBtn { glyph: "\u2B05"; alignValue: 0 }
-                        AlignBtn { glyph: "\u2194"; alignValue: 1 }
-                        AlignBtn { glyph: "\u2B95"; alignValue: 2 }
+                        AlignBtn { iconSource: "qrc:/qml/icons/align-left.svg"; alignValue: 0 }
+                        AlignBtn { iconSource: "qrc:/qml/icons/align-center.svg"; alignValue: 1 }
+                        AlignBtn { iconSource: "qrc:/qml/icons/align-right.svg"; alignValue: 2 }
                     }
                 }
                 Column {
                     visible: panel.showText
                     spacing: 2
-                    RibbonLabel { text: App.uiText(App.language, "PdfEditVAlignLabel") }
                     Row {
                         spacing: 4
-                        VAlignBtn { glyph: "\u2912"; vAlignValue: 0 }
-                        VAlignBtn { glyph: "\u2195"; vAlignValue: 1 }
+                        VAlignBtn { iconSource: "qrc:/qml/icons/valign-top.svg"; vAlignValue: 0 }
+                        VAlignBtn { iconSource: "qrc:/qml/icons/valign-middle.svg"; vAlignValue: 1 }
                     }
                 }
                 Column {
                     visible: panel.showText
                     spacing: 2
-                    RibbonLabel { text: App.uiText(App.language, "PdfEditColorLabel") }
                     ColorPicker {
                         showAlpha: false
                         title: App.uiText(App.language, "PdfEditColorLabel")
@@ -1029,8 +1054,6 @@ Rectangle {
                     // Nur Post-its: die Deckfläche von „Text ersetzen" ist fix Weiß.
                     visible: panel.showPaper
                     spacing: 2
-                    RibbonLabel { text: App.uiText(App.language, "PdfEditHighlightLabel")
-                                  + " \u00B7 " + App.uiText(App.language, "PdfEditOpacityLabel") }
                     Row {
                         spacing: 6
                         ColorPicker {
@@ -1057,7 +1080,6 @@ Rectangle {
                 Column {
                     visible: panel.showCover
                     spacing: 2
-                    RibbonLabel { text: App.uiText(App.language, "PdfEditCoverLabel") }
                     ColorPicker {
                         showAlpha: false
                         title: App.uiText(App.language, "PdfEditCoverLabel")
@@ -1101,7 +1123,6 @@ Rectangle {
                 Column {
                     visible: panel.showStroke
                     spacing: 2
-                    RibbonLabel { text: App.uiText(App.language, "ImageEditStrokeLabel") }
                     ColorPicker {
                         showAlpha: false
                         title: App.uiText(App.language, "ImageEditStrokeLabel")
@@ -1116,7 +1137,6 @@ Rectangle {
                 Column {
                     visible: panel.showStroke
                     spacing: 2
-                    RibbonLabel { text: App.uiText(App.language, "ImageEditWidthLabel") }
                     SpinBox {
                         id: lwBoxH
                         from: 1; to: 72
@@ -1128,7 +1148,6 @@ Rectangle {
                 Column {
                     visible: panel.showFill
                     spacing: 2
-                    RibbonLabel { text: App.uiText(App.language, "ImageEditFillLabel") }
                     Row {
                         spacing: 4
                         ColorPicker {
@@ -1286,8 +1305,11 @@ Rectangle {
                     // Der zweite Knopf für den verlustfreien Weg ist entfallen;
                     // welcher Weg läuft, steht in den Einstellungen
                     // (`PdfEdit.exportLossless`, s. `PdfSurface.startExport`).
-                    ToolTip.text: App.uiText(App.language, "PdfEditExportTip") + "\n"
-                                  + panel.ctl.exportTargetPath()
+                    //  EINZEILIG: der volle Pfad in einer zweiten Zeile machte den
+                    //  Hinweis doppelt so hoch wie jeden anderen in der Leiste.
+                    //  Der DATEINAME genügt — der Ordner ist der der Quelldatei.
+                    ToolTip.text: App.uiText(App.language, "PdfEditExportTip")
+                                  + " (" + panel.ctl.exportTargetPath().split("/").pop() + ")"
                     ToolTip.visible: expHoverH.hovered
                 }
             }

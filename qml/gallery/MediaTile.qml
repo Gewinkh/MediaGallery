@@ -111,10 +111,62 @@ Rectangle {
         }
     }
 
+    // ── Datei aus der App HERAUSziehen (in Dateimanager, Mail, Chat, Upload) ─
+    //  `Drag.Automatic` + `startDrag()` ist der EINZIGE Weg, der das Fenster
+    //  verlässt: das sonst im Projekt benutzte `Drag.active` (mit `Drag.keys`
+    //  und `DropArea`) bleibt app-intern. Übergeben wird `text/uri-list` — also
+    //  die DATEI, wie aus einem Dateimanager; damit nimmt sie jedes Ziel an,
+    //  das Dateien annimmt (Anhänge, Uploads, Chat-Fenster).
+    //  **Nur kopieren:** mit `MoveAction` dürfte ein Zielprogramm die Datei aus
+    //  dem Ordner des Nutzers ENTFERNEN.
+    Item {
+        id: dragPayload
+        anchors.fill: parent
+        Drag.active: false
+        Drag.dragType: Drag.Automatic
+        Drag.supportedActions: Qt.CopyAction
+        Drag.mimeData: { "text/uri-list": App.fileUrl(tile.filePath) }
+        //  Am Zeiger hängt die Miniatur der Kachel — sonst zieht man ins Blaue.
+        Drag.imageSource: tile.thumbUrl
+    }
+
     // ── Interaktion (Bildbereich): Aktivieren / Tag-Toggle / Kontextmenü ─────
     MouseArea {
         anchors.fill: parent
         acceptedButtons: Qt.LeftButton | Qt.RightButton
+        //  Ziehen beginnt erst nach einer Schwelle (Muster: der Docking-Drag im
+        //  FullscreenViewer). Ohne sie würde jeder zittrige Klick zum Zug und
+        //  Öffnen/Tag-Umschalten/Kontextmenü gingen verloren.
+        property point pressPos: Qt.point(0, 0)
+        property bool  dragArmed: false
+        onPressed: function(mouse) {
+            pressPos = Qt.point(mouse.x, mouse.y)
+            dragArmed = (mouse.button === Qt.LeftButton) && !tile.unavailable
+        }
+        onReleased: dragArmed = false
+        onPositionChanged: function(mouse) {
+            if (!dragArmed || tile.filePath.length === 0)
+                return
+            const dx = mouse.x - pressPos.x
+            const dy = mouse.y - pressPos.y
+            //  RICHTUNG ENTSCHEIDET (Nutzerentscheidung 2026-08-12): die Galerie
+            //  scrollt SENKRECHT — ein senkrechter Zug muss scrollen dürfen, nur
+            //  ein überwiegend WAAGERECHTER zieht die Datei heraus.
+            //
+            //  ERST AB DER SCHWELLE ENTSCHEIDEN, nicht bei der ersten Bewegung:
+            //  jeder Zug fängt mit ein, zwei Pixeln Zittern an, das zufällig
+            //  senkrecht sein kann. Wer dabei schon abbricht, bekommt NIE einen
+            //  Zug zustande — genau das war der Fehler (Nutzerbefund „Drag and
+            //  Drop klappt nicht").
+            if (Math.abs(dx) < 12 && Math.abs(dy) < 12)
+                return                            // noch unentschieden
+            if (Math.abs(dy) >= Math.abs(dx)) {
+                dragArmed = false                 // senkrecht → der Galerie überlassen
+                return
+            }
+            dragArmed = false
+            dragPayload.Drag.startDrag()
+        }
         onDoubleClicked: function(mouse) {
             // Ohne ZLIB öffnet die DOCX-Kachel nicht — der Editor bliebe leer.
             if (tile.unavailable)

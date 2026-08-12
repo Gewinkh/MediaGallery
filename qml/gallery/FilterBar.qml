@@ -2,6 +2,7 @@ pragma ComponentBehavior: Bound
 import QtQuick
 import QtQuick.Controls
 import MediaGallery 1.0
+import "../common"
 
 // ─────────────────────────────────────────────────────────────────────────────
 //  FilterBar.qml — Filter-/Sortierleiste (ersetzt FilterBar(QWidget)).
@@ -123,9 +124,38 @@ Rectangle {
             id: sortField
             anchors.verticalCenter: parent.verticalCenter
             width: 130
+            height: 30
             model: [App.uiText(App.language, "FilterDate"), App.uiText(App.language, "FilterName"), App.uiText(App.language, "FilterTags"), App.uiText(App.language, "FilterFileSize")]
             currentIndex: galleryModel.sortRole
             onActivated: galleryModel.sortRole = currentIndex
+
+            //  GLEICHE Gestaltung wie der Filter-Knopf daneben. Vorher trug nur
+            //  das Aufklapp-Fenster die Theme-Farben, der Knopfteil kam aus der
+            //  Fusion-Vorgabe — andere Höhe, andere Farben, anderer Pfeil.
+            background: Rectangle {
+                color: sortField.hovered ? Qt.rgba(App.themeTextPrimary.r, App.themeTextPrimary.g,
+                                                   App.themeTextPrimary.b, 0.08)
+                                         : App.themeMenuBarBg
+                border.color: App.themeBorder
+                border.width: 1
+                radius: 4
+            }
+            contentItem: Text {
+                leftPadding: 10
+                rightPadding: sortField.indicator.width + 6
+                text: sortField.displayText
+                color: App.themeTextPrimary
+                font.pixelSize: 13
+                verticalAlignment: Text.AlignVCenter
+                elide: Text.ElideRight
+            }
+            indicator: ThemedIcon {
+                x: sortField.width - width - 8
+                y: (sortField.height - height) / 2
+                source: "qrc:/qml/icons/chevron-down.svg"
+                size: 12
+                color: App.themeTextMuted
+            }
 
             // Dropdown folgt der Menüleisten-Farbe (App.themeMenuBarBg) statt der
             // ungefärbten Fusion-Standardvorgabe — Struktur analog Qt-Doku
@@ -163,15 +193,48 @@ Rectangle {
         ToolSeparator { anchors.verticalCenter: parent.verticalCenter }
 
         // ── Sammel-Button "Filter" (Master-Detail-Popup) ─────────────────────
+        //  Sieht aus wie das Sortierfeld daneben und sitzt auf derselben Höhe:
+        //  vorher war das ein nackter Fusion-`Button` mit einem „▾" IM TEXT —
+        //  andere Höhe, andere Farben, und der Pfeil rutschte mit der
+        //  Textbreite. Jetzt gezeichneter Rahmen wie beim ComboBox, der Pfeil
+        //  als SVG rechts (Regel 29).
         Button {
             id: filterBtn
             anchors.verticalCenter: parent.verticalCenter
-            height: 30
-            font.pixelSize: 13
-            text: bar.filterBadge > 0 ? "Filter (" + bar.filterBadge + ") \u25BE"
-                                      : "Filter \u25BE"
-            palette.buttonText: bar.anyFilterActive ? App.themeAccent : App.themeTextPrimary
+            height: sortField.height
+            padding: 0
             onClicked: filterPopup.opened ? filterPopup.close() : filterPopup.open()
+
+            background: Rectangle {
+                implicitWidth: filterRow.implicitWidth + 20
+                color: filterBtn.down ? App.themeCard
+                     : (filterBtn.hovered ? Qt.rgba(App.themeTextPrimary.r, App.themeTextPrimary.g,
+                                                    App.themeTextPrimary.b, 0.08)
+                                          : App.themeMenuBarBg)
+                border.color: bar.anyFilterActive ? App.themeAccent : App.themeBorder
+                border.width: 1
+                radius: 4
+            }
+            contentItem: Row {
+                id: filterRow
+                spacing: 6
+                leftPadding: 10
+                rightPadding: 10
+                Text {
+                    anchors.verticalCenter: parent.verticalCenter
+                    text: bar.filterBadge > 0
+                          ? App.uiText(App.language, "FilterBtn") + " (" + bar.filterBadge + ")"
+                          : App.uiText(App.language, "FilterBtn")
+                    color: bar.anyFilterActive ? App.themeAccent : App.themeTextPrimary
+                    font.pixelSize: 13
+                }
+                ThemedIcon {
+                    anchors.verticalCenter: parent.verticalCenter
+                    source: "qrc:/qml/icons/chevron-down.svg"
+                    size: 12
+                    color: bar.anyFilterActive ? App.themeAccent : App.themeTextMuted
+                }
+            }
 
             Popup {
                 id: filterPopup

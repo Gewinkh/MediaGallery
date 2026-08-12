@@ -100,6 +100,8 @@ mg_domain(mg_core
         src/core/FolderImages.h
         src/core/SpellChecker.cpp
         src/core/SpellChecker.h
+        src/core/TextPdfExporter.cpp
+        src/core/TextPdfExporter.h
         src/core/PathUtils.h
         src/core/MemoryUtils.h
         src/core/ZCodec.cpp
@@ -250,6 +252,8 @@ mg_domain(mg_app
     SOURCES
         src/app/AppController.cpp
         src/app/AppController.h
+        src/app/IconProvider.cpp
+        src/app/IconProvider.h
         src/app/ViewerController.cpp
         src/app/ViewerController.h
         src/app/WebEngineController.cpp
@@ -258,7 +262,7 @@ mg_domain(mg_app
         src/app/TransliterationController.h
     LIBS
         mg_core mg_media mg_tags mg_pdf mg_pdfedit mg_docx
-        Qt6::Qml Qt6::WebEngineQuick
+        Qt6::Qml Qt6::WebEngineQuick Qt6::Svg Qt6::Quick
 )
 
 if(HUNSPELL_FOUND)

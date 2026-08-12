@@ -579,6 +579,39 @@ Item {
                     if (handle.hx > 0) {                          w = startRect.width  + dxPt }
                     if (handle.hy < 0) { y = startRect.y + dyPt; h = startRect.height - dyPt }
                     if (handle.hy > 0) {                          h = startRect.height + dyPt }
+                    // Signatur/Stempel skaliert IMMER proportional — an allen
+                    // acht Punkten, nicht nur an den Ecken: ein verzerrtes
+                    // Bild sieht nie nach einer echten Unterschrift aus.
+                    // Gerechnet wird über EINEN Faktor, in den auch die
+                    // Seitengrenzen eingehen; das spätere Klemmen an die Seite
+                    // würde das Verhältnis sonst wieder verziehen.
+                    if (box.isStamp && startRect.width > 0 && startRect.height > 0) {
+                        const cx = startRect.x + startRect.width  / 2
+                        const cy = startRect.y + startRect.height / 2
+                        const wMax = handle.hx < 0 ? startRect.x + startRect.width
+                                   : handle.hx > 0 ? box.pageWPt - startRect.x
+                                   : 2 * Math.min(cx, box.pageWPt - cx)
+                        const hMax = handle.hy < 0 ? startRect.y + startRect.height
+                                   : handle.hy > 0 ? box.pageHPt - startRect.y
+                                   : 2 * Math.min(cy, box.pageHPt - cy)
+                        let f = Math.max(handle.hx !== 0 ? w / startRect.width  : 0,
+                                         handle.hy !== 0 ? h / startRect.height : 0)
+                        f = Math.min(f, wMax / startRect.width, hMax / startRect.height)
+                        f = Math.max(f, box.minWPt / startRect.width,
+                                        box.minHPt / startRect.height)
+                        const sw = startRect.width  * f
+                        const sh = startRect.height * f
+                        // Die gegenüberliegende Kante bleibt stehen; eine
+                        // Kantenmitte hält die andere Achse mittig.
+                        box.ctl.updateGeometry(
+                            box.boxId,
+                            handle.hx < 0 ? startRect.x + startRect.width - sw
+                                          : handle.hx > 0 ? startRect.x : cx - sw / 2,
+                            handle.hy < 0 ? startRect.y + startRect.height - sh
+                                          : handle.hy > 0 ? startRect.y : cy - sh / 2,
+                            sw, sh)
+                        return
+                    }
                     // Mindestgröße halten, OHNE die gegenüberliegende Kante zu
                     // bewegen — kind-abhängig (Zeichnungen dürfen kleiner werden).
                     const minW = box.minWPt

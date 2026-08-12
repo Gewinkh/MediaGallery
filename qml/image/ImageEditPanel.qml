@@ -46,6 +46,7 @@ Item {
     component ToolBtn: Rectangle {
         id: tbt
         property string glyph: ""
+        property url iconSource: ""
         property string tip: ""
         property int    toolValue: 0
         readonly property bool checked: panel.ctl.tool === toolValue
@@ -54,7 +55,10 @@ Item {
              : (tbtHover.hovered ? Qt.rgba(App.themeTextPrimary.r, App.themeTextPrimary.g, App.themeTextPrimary.b, 0.14) : "transparent")
         border.color: checked ? App.themeAccent : App.themeBorder
         border.width: 1
-        Text { anchors.centerIn: parent; text: tbt.glyph; color: App.themeTextPrimary; font.pixelSize: 15 }
+        Text { anchors.centerIn: parent; text: tbt.glyph; color: App.themeTextPrimary; font.pixelSize: 15
+               visible: String(tbt.iconSource).length === 0 }
+        ThemedIcon { anchors.centerIn: parent; source: tbt.iconSource; size: 16
+                     visible: String(tbt.iconSource).length > 0 }
         HoverHandler { id: tbtHover }
         TapHandler { onTapped: panel.ctl.tool = tbt.toolValue }
         ToolTip.text: tbt.tip; ToolTip.visible: tbtHover.hovered && tbt.tip.length > 0
@@ -62,6 +66,7 @@ Item {
     component StyleBtn: Rectangle {
         id: sbt
         property string glyph: ""
+        property url iconSource: ""
         property bool checked: false
         property bool boldGlyph: false
         property bool italicGlyph: false
@@ -72,33 +77,44 @@ Item {
              : (sbtHover.hovered ? Qt.rgba(App.themeTextPrimary.r, App.themeTextPrimary.g, App.themeTextPrimary.b, 0.14) : "transparent")
         border.color: checked ? App.themeAccent : App.themeBorder; border.width: 1
         Text { anchors.centerIn: parent; text: sbt.glyph; color: App.themeTextPrimary; font.pixelSize: 13
-               font.bold: sbt.boldGlyph; font.italic: sbt.italicGlyph; font.underline: sbt.underlineGlyph }
+               font.bold: sbt.boldGlyph; font.italic: sbt.italicGlyph; font.underline: sbt.underlineGlyph
+               visible: String(sbt.iconSource).length === 0 }
+        ThemedIcon { anchors.centerIn: parent; source: sbt.iconSource; size: 16
+                     visible: String(sbt.iconSource).length > 0 }
         HoverHandler { id: sbtHover }
         TapHandler { onTapped: sbt.activated() }
     }
     component AlignBtn: Rectangle {
         id: abt
         property string glyph: ""
+        property url iconSource: ""
         property int alignValue: 0
         readonly property bool checked: panel.info.alignment === alignValue
         width: 30; height: 28; radius: 5
         color: checked ? Qt.rgba(App.themeAccent.r, App.themeAccent.g, App.themeAccent.b, 0.30)
              : (abtHover.hovered ? Qt.rgba(App.themeTextPrimary.r, App.themeTextPrimary.g, App.themeTextPrimary.b, 0.14) : "transparent")
         border.color: checked ? App.themeAccent : App.themeBorder; border.width: 1
-        Text { anchors.centerIn: parent; text: abt.glyph; color: App.themeTextPrimary; font.pixelSize: 13 }
+        Text { anchors.centerIn: parent; text: abt.glyph; color: App.themeTextPrimary; font.pixelSize: 13
+               visible: String(abt.iconSource).length === 0 }
+        ThemedIcon { anchors.centerIn: parent; source: abt.iconSource; size: 16
+                     visible: String(abt.iconSource).length > 0 }
         HoverHandler { id: abtHover }
         TapHandler { onTapped: panel.ctl.setAnnAlignment(panel.targetId, abt.alignValue) }
     }
     component VAlignBtn: Rectangle {
         id: vbt
         property string glyph: ""
+        property url iconSource: ""
         property int vAlignValue: 0
         readonly property bool checked: panel.info.vAlign === vAlignValue
         width: 30; height: 28; radius: 5
         color: checked ? Qt.rgba(App.themeAccent.r, App.themeAccent.g, App.themeAccent.b, 0.30)
              : (vbtHover.hovered ? Qt.rgba(App.themeTextPrimary.r, App.themeTextPrimary.g, App.themeTextPrimary.b, 0.14) : "transparent")
         border.color: checked ? App.themeAccent : App.themeBorder; border.width: 1
-        Text { anchors.centerIn: parent; text: vbt.glyph; color: App.themeTextPrimary; font.pixelSize: 13 }
+        Text { anchors.centerIn: parent; text: vbt.glyph; color: App.themeTextPrimary; font.pixelSize: 13
+               visible: String(vbt.iconSource).length === 0 }
+        ThemedIcon { anchors.centerIn: parent; source: vbt.iconSource; size: 16
+                     visible: String(vbt.iconSource).length > 0 }
         HoverHandler { id: vbtHover }
         TapHandler { onTapped: panel.ctl.setAnnVAlign(panel.targetId, vbt.vAlignValue) }
     }
@@ -167,12 +183,12 @@ Item {
             Text { text: App.uiText(App.language, "ImageEditToolsLabel"); color: App.themeTextMuted; font.pixelSize: 11 }
             Grid {
                 columns: 6; spacing: 6
-                ToolBtn { glyph: "\u2196"; toolValue: 0; tip: App.uiText(App.language, "ImageEditToolSelect") }
+                ToolBtn { iconSource: "qrc:/qml/icons/select.svg"; toolValue: 0; tip: App.uiText(App.language, "ImageEditToolSelect") }
                 ToolBtn { glyph: "T";       toolValue: 1; tip: App.uiText(App.language, "ImageEditToolText") }
-                ToolBtn { glyph: "\u270E"; toolValue: 2; tip: App.uiText(App.language, "ImageEditToolPen") }
-                ToolBtn { glyph: "\u2197"; toolValue: 3; tip: App.uiText(App.language, "ImageEditToolArrow") }
-                ToolBtn { glyph: "\u25AD"; toolValue: 4; tip: App.uiText(App.language, "ImageEditToolRect") }
-                ToolBtn { glyph: "\u2B2D"; toolValue: 5; tip: App.uiText(App.language, "ImageEditToolEllipse") }
+                ToolBtn { iconSource: "qrc:/qml/icons/pen.svg"; toolValue: 2; tip: App.uiText(App.language, "ImageEditToolPen") }
+                ToolBtn { iconSource: "qrc:/qml/icons/arrow.svg"; toolValue: 3; tip: App.uiText(App.language, "ImageEditToolArrow") }
+                ToolBtn { iconSource: "qrc:/qml/icons/rect.svg"; toolValue: 4; tip: App.uiText(App.language, "ImageEditToolRect") }
+                ToolBtn { iconSource: "qrc:/qml/icons/ellipse.svg"; toolValue: 5; tip: App.uiText(App.language, "ImageEditToolEllipse") }
             }
 
             Rectangle { width: parent.width; height: 1; color: App.themeBorder }
@@ -224,16 +240,16 @@ Item {
                     Column { spacing: 4
                         Text { text: App.uiText(App.language, "PdfEditAlignLabel"); color: App.themeTextMuted; font.pixelSize: 11 }
                         Row { spacing: 4
-                            AlignBtn { glyph: "\u2B05"; alignValue: 0 }
-                            AlignBtn { glyph: "\u2194"; alignValue: 1 }
-                            AlignBtn { glyph: "\u2B95"; alignValue: 2 }
+                            AlignBtn { iconSource: "qrc:/qml/icons/align-left.svg"; alignValue: 0 }
+                            AlignBtn { iconSource: "qrc:/qml/icons/align-center.svg"; alignValue: 1 }
+                            AlignBtn { iconSource: "qrc:/qml/icons/align-right.svg"; alignValue: 2 }
                         }
                     }
                     Column { spacing: 4
                         Text { text: App.uiText(App.language, "PdfEditVAlignLabel"); color: App.themeTextMuted; font.pixelSize: 11 }
                         Row { spacing: 4
-                            VAlignBtn { glyph: "\u2912"; vAlignValue: 0 }
-                            VAlignBtn { glyph: "\u2195"; vAlignValue: 1 }
+                            VAlignBtn { iconSource: "qrc:/qml/icons/valign-top.svg"; vAlignValue: 0 }
+                            VAlignBtn { iconSource: "qrc:/qml/icons/valign-middle.svg"; vAlignValue: 1 }
                         }
                     }
                 }
@@ -436,12 +452,12 @@ Item {
                 Column { anchors.verticalCenter: parent.verticalCenter; spacing: 2
                     RibbonLabel { text: App.uiText(App.language, "ImageEditToolsLabel"); width: parent.width }
                     Row { spacing: 4
-                        ToolBtn { glyph: "\u2196"; toolValue: 0 }
+                        ToolBtn { iconSource: "qrc:/qml/icons/select.svg"; toolValue: 0 }
                         ToolBtn { glyph: "T";       toolValue: 1 }
-                        ToolBtn { glyph: "\u270E"; toolValue: 2 }
-                        ToolBtn { glyph: "\u2197"; toolValue: 3 }
-                        ToolBtn { glyph: "\u25AD"; toolValue: 4 }
-                        ToolBtn { glyph: "\u2B2D"; toolValue: 5 }
+                        ToolBtn { iconSource: "qrc:/qml/icons/pen.svg"; toolValue: 2 }
+                        ToolBtn { iconSource: "qrc:/qml/icons/arrow.svg"; toolValue: 3 }
+                        ToolBtn { iconSource: "qrc:/qml/icons/rect.svg"; toolValue: 4 }
+                        ToolBtn { iconSource: "qrc:/qml/icons/ellipse.svg"; toolValue: 5 }
                     }
                 }
                 Rectangle { width: 1; height: 40; color: App.themeBorder; anchors.verticalCenter: parent.verticalCenter }

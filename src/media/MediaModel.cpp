@@ -418,6 +418,23 @@ void MediaModel::toggleTag(const QString& filePath, const QString& tag) {
     emitRow(row, { TagsRole });
 }
 
+void MediaModel::addTag(const QString& filePath, const QString& tag) {
+    const int row = rowForPath(filePath);
+    if (row < 0 || tag.isEmpty()) return;
+
+    MediaItem& it = m_items[row];
+    if (it.tags.contains(tag)) return;          // schon dran → nichts zu tun
+
+    //  Wie toggleTag: die eigene Änderung darf den Ordner-Watcher nicht in ein
+    //  reload() treiben (das würde die Auswahl und die Miniaturen wegwerfen).
+    ++m_suppressWatch;
+    m_tagManager.addTagToFile(it.fileName(), tag);
+    --m_suppressWatch;
+
+    it.tags = m_tagManager.tagsForFile(it.fileName());
+    emitRow(row, { TagsRole });
+}
+
 // ─── Watcher ─────────────────────────────────────────────────────────────────
 void MediaModel::onDirectoryChanged() {
     if (m_suppressWatch > 0) return;     // interne Mutation, kein Reload

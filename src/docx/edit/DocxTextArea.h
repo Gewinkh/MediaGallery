@@ -43,6 +43,11 @@ class DocxTextArea : public QQuickPaintedItem {
     Q_PROPERTY(qreal contentY READ contentY WRITE setContentY NOTIFY contentYChanged)
     Q_PROPERTY(qreal contentHeight READ contentHeight NOTIFY contentHeightChanged)
     //  Cursor-Rechteck in INHALTS-Koordinaten (QML scrollt es sichtbar).
+    //  Caret-Lage in ITEM-Pixeln. `cursorX` gab es lange nicht (QML scrollt nur
+    //  senkrecht) — ohne sie ließ sich die WAAGERECHTE Caret-Lage im Treiber
+    //  gar nicht prüfen, und genau dort saß N19 (Caret an der Slotkante statt
+    //  neben der gleitenden Tabelle).
+    Q_PROPERTY(qreal cursorX READ cursorX NOTIFY cursorRectChanged)
     Q_PROPERTY(qreal cursorY READ cursorY NOTIFY cursorRectChanged)
     Q_PROPERTY(qreal cursorH READ cursorH NOTIFY cursorRectChanged)
     //  Höhe EINER Textzeile in ITEM-Pixeln (mit Maßstab). Das Mausrad rechnet
@@ -72,13 +77,17 @@ class DocxTextArea : public QQuickPaintedItem {
     Q_PROPERTY(qreal selImageW READ selImageW NOTIFY imageSelectionChanged)
     Q_PROPERTY(qreal selImageH READ selImageH NOTIFY imageSelectionChanged)
     //  AUSGEWÄHLTE TABELLE — dieselbe Regel wie beim Bild: kein zweiter
-    //  Auswahlzustand, sondern „der Cursor steht in einer Tabelle". Rechteck
+    //  Auswahlzustand, sondern „der Cursor steht in einer Tabelle". Rechtecke
     //  in ITEM-Pixeln, damit QML Rahmen und Ziehpunkte darüberlegen kann.
+    //  `selTableRects` trägt JE SEITENSTÜCK eines — eine getrennte Tabelle
+    //  liegt auf mehreren Seiten und lässt sich nie durch EIN Rechteck fassen;
+    //  `selTableX/Y/W/H` ist davon das Stück am Cursor (dort die Ziehpunkte).
     Q_PROPERTY(int selTableId READ selTableId NOTIFY imageSelectionChanged)
     Q_PROPERTY(qreal selTableX READ selTableX NOTIFY imageSelectionChanged)
     Q_PROPERTY(qreal selTableY READ selTableY NOTIFY imageSelectionChanged)
     Q_PROPERTY(qreal selTableW READ selTableW NOTIFY imageSelectionChanged)
     Q_PROPERTY(qreal selTableH READ selTableH NOTIFY imageSelectionChanged)
+    Q_PROPERTY(QVariantList selTableRects READ selTableRects NOTIFY imageSelectionChanged)
 
 public:
     explicit DocxTextArea(QQuickItem* parent = nullptr);
@@ -91,6 +100,7 @@ public:
     void  setContentY(qreal y);
     qreal contentHeight() const { return m_contentHeight; }
     //  m_cursorRect liegt in Dokument-Pixeln; QML rechnet mit Item-Pixeln.
+    qreal cursorX() const { return m_cursorRect.x() * m_scale; }
     qreal cursorY() const { return m_cursorRect.y() * m_scale; }
     qreal cursorH() const { return m_cursorRect.height() * m_scale; }
     qreal lineStep() const;
@@ -108,6 +118,8 @@ public:
     qreal selTableY() const;
     qreal selTableW() const;
     qreal selTableH() const;
+    //  [{x,y,w,h}] in Item-Pixeln — ein Eintrag je Seitenstück der Tabelle.
+    QVariantList selTableRects() const;
     //  Oberkante einer Seite in ITEM-Pixeln — QML setzt damit contentY, wenn
     //  eine Miniatur angeklickt wird.
     Q_INVOKABLE qreal pageTop(int page);
@@ -131,7 +143,23 @@ public:
     //  EINE Seite in ein Zielrechteck malen (Miniaturen, s. DocxPageThumb).
     //  Nutzt denselben Zeichenweg wie paint() — es gibt keine zweite Darstellung
     //  und keinen Bild-Cache (RAM = Priorität 1).
-    void paintPageInto(QPainter* p, int page, const QRectF& target);
+    //  `withPaperFrame` = Papierfläche + grauer Rand (Anzeige/Miniatur). Für
+    //  den PDF-Export AUS: dort IST die Seite das Papier, ein gezeichneter
+    //  Rahmen wäre ein Strich auf jedem Blatt.
+    void paintPageInto(QPainter* p, int page, const QRectF& target,
+                       bool withPaperFrame = true);
+
+    //  ── DOCX → PDF, gemalt aus DIESER Auslegung (N6/N9) ─────────────────
+    //  Schreibt jede Seite so, wie sie am Bildschirm steht: derselbe
+    //  Zeichenweg (`paintSlot`), dieselben Seitengrenzen. Das PDF ist damit
+    //  seitengleich PER KONSTRUKTION — kein zweites Layout, das auseinander
+    //  laufen könnte (der frühere `QTextDocument`-Weg tat genau das:
+    //  gemessen 4 Anzeige-Seiten gegen 3 Export-Seiten).
+    //  Läuft auf dem GUI-Thread, weil die Auslegung einem QQuickItem gehört —
+    //  sie ist aber bereits fertig (das Dokument steht auf dem Schirm), es
+    //  wird nur noch gezeichnet. Leerer Rückgabewert = Erfolg, sonst der
+    //  Fehlertext.
+    Q_INVOKABLE QString exportPagesToPdf(const QString& targetPath);
 
     void paint(QPainter* p) override;
 
@@ -304,6 +332,13 @@ private:
         //  Unterkante? Genau darum fließen die FOLGENDEN Absätze herum — in
         //  Word endet der Umfluss nicht am Absatz. 0 = kein Überstand.
         qreal   floatOverhang = 0.0;
+        //  GLEITENDE Tabelle: sie gibt ihre Flusshöhe ab und wird für die
+        //  folgenden Absätze zum Störer — daneben lässt sich schreiben, genau
+        //  wie neben einem verankerten Bild. Nur wenn ein lesbarer Streifen
+        //  bleibt UND die Tabelle auf eine Seite passt (s. maybeFloatTable);
+        //  eine über Seiten getrennte Tabelle bleibt im Fluss, ihre Stücke
+        //  hängen an der Blockhöhe.
+        bool    tableFloating = false;
         //  Blöcke, die NICHT umfließen können (Tabelle, Verzeichnis), weichen
         //  einem hereinragenden Bild nach UNTEN aus: `topPad` ist der Versatz,
         //  um den ihr Inhalt dafür nach unten rückt (in `height` enthalten).
@@ -425,27 +460,6 @@ private:
     //  Einen Block auf Slots verteilen (füllt seine Segmente) und das Fluss-y
     //  NACH ihm zurückgeben. Kern der Paginierung.
     qreal paginateBlock(int idx, qreal flowStart, qreal slotH);
-    //  ── FUSSNOTEN am Seitenfuß ───────────────────────────────────────────────
-    //  Die Fluss-Invariante `Fluss-y = slot · slotHeight() + y` bleibt: die
-    //  Slot-HÖHE ist weiter uniform (daran hängen `blockAtY`, `docYForLine` und
-    //  die ganze Paginierung). Gekürzt wird NUR die Kapazität — was in einen
-    //  Slot passt, endet früher, wenn dort Fußnoten stehen.
-    qreal slotCapacity(int slot) const;
-    //  Höhe des Fußnotenbereichs eines Slots (0 = keine Fußnote dort).
-    qreal footHeightOf(int slot) const;
-    //  Nach der Paginierung: welche Fußnote liegt in welchem Slot? Rückgabe
-    //  true, wenn sich die Zuordnung gegenüber der letzten unterscheidet.
-    bool  recomputeFootnoteSlots();
-    //  Mehrpass: paginieren → Zuordnung bestimmen → erneut paginieren, bis sie
-    //  stabil ist (höchstens `kFootPasses` Läufe). Ohne Fußnoten ein No-op.
-    void  settleFootnotes();
-    //  Auslegen einer Fußnote (lazy, gehalten) — Absätze auf Textbreite.
-    struct FootLayout {
-        std::vector<std::unique_ptr<QTextLayout>> paras;
-        qreal height = 0.0;
-    };
-    const FootLayout& footLayout(int fnIndex);
-    void  paintFootnotes(QPainter* p, int slot);
     //  Steht auf `page` VOR Block `idx` schon etwas Sichtbares? Entscheidet, ob
     //  ein Inhaltsverzeichnis auf die nächste Seite springt.
     bool  pageHasInkBefore(int idx, int page) const;
@@ -483,6 +497,9 @@ private:
     //  Einen nicht umfließenden Block unter die hereinragenden Bilder schieben
     //  (setzt `topPad`, erhöht die Höhe, verschiebt Gitter und Zell-Lagen).
     void  shiftBelowForeignFloats(int blockIdx);
+    //  Entscheidet nach dem Auslegen des Gitters, ob die Tabelle GLEITET
+    //  (s. BlockLayout::tableFloating). Setzt Höhe und Überstand entsprechend.
+    void  maybeFloatTable(int blockIdx);
     //  Nach einer Höhen-/Überstands-Änderung die Blöcke im Reichweitenband des
     //  Überstands zum Neuauslegen markieren (nur vorwärts — kein Zyklus).
     void  invalidateFloatFollowers(int i, qreal reach);
@@ -499,8 +516,6 @@ private:
     void  paintToc(QPainter* p, const BlockLayout& L, qreal left, qreal y,
                    qreal width, int firstEntry);
     //  1-basierte Seitenzahl eines Blocks (für die Verzeichnis-Einträge).
-    void  ensureHeaderFooter();                // Kopf-/Fußzeile lazy auslegen
-    void  paintHeaderFooter(QPainter* p, int page);
     //  Gitter und (bei opaken Tabellen) Zelltext EINES Stücks zeichnen —
     //  `rowTo < 0` heißt „alle Zeilen".
     void  paintTable(QPainter* p, const BlockLayout& L, qreal left, qreal y,
@@ -538,14 +553,6 @@ private:
     int    m_offsetsValidTo = 0;               // Offsets [0..N] gültig
     int    m_layChunkAt = 0;                   // Fortschritt Initial-Layout
     int    m_trimLo = -1, m_trimHi = -1;       // zuletzt getrimmtes Layout-Fenster
-    //  Kopf-/Fußzeile des Hauptabschnitts, EINMAL ausgelegt und für jede
-    //  Seite wiederverwendet (sie ist auf allen Seiten dieselbe).
-    struct RunningPart {
-        std::vector<std::unique_ptr<QTextLayout>> paras;
-        qreal height = 0.0;
-        bool  built = false;
-    };
-    RunningPart m_header, m_footer;
     int    m_pageCount = 1;                    // s. pageCount()
     int    m_lastPage = -1;                    // letzter gemeldeter currentPage
     qreal  m_scale = 1.0;                      // Dokument-Pixel → Item-Pixel
@@ -556,18 +563,14 @@ private:
     qreal  m_goalX = -1.0;                     // Wunsch-x für ↑/↓
     int    m_lastCursorBlock = -1;             // s. invalidateEmptyBlock()
     int    m_tblSelId = -1;                    // s. selTableId()
-    QRectF m_tblSelDoc;                        // Tabellenrechteck in Dokument-Px
+    QRectF m_tblSelDoc;                        // Stück am Cursor, Dokument-Px
+    QVector<QRectF> m_tblSelSegs;              // alle Stücke, Dokument-Px
     int    m_imgSelBlock = -1;                 // s. selImageBlock()
     QRectF m_imgSelDoc;                        // Bildrechteck in Dokument-Pixeln
     //  ── Fußnoten (Anzeige am Seitenfuß) ──────────────────────────────────────
-    //  Slot → Indizes in `doc().footnotes()`, in Reihenfolge des Vorkommens.
-    QHash<int, QVector<int>> m_footOfSlot;
     //  Slot → Höhe des Bereichs (Trennlinie + Absätze + Abstände).
-    QHash<int, qreal>        m_footHeight;
     //  Ausgelegte Fußnoten (lazy; klein, deshalb gehalten). KEIN QHash: der
     //  Eintrag hält `unique_ptr` und ist damit nicht kopierbar.
-    std::unordered_map<int, FootLayout> m_footLay;
-    bool                     m_inFootSettle = false;   // Rekursionsschutz
 
 };
 

@@ -25,6 +25,9 @@ Item {
     property string currentPath: ""
     property bool   dirty: false
     property bool   _loading: false
+    //  Läuft gerade ein PDF-Export? (Der Knopf bleibt so lange stumm — der
+    //  Export selbst liegt im Worker, die Oberfläche bleibt bedienbar.)
+    property bool   _pdfBusy: false
 
     // HTML-Quelltext bekommt eine eigene Editor-Hintergrundfarbe (Design-Tab),
     // getrennt von TXT/Code — daher Endungserkennung aus dem aktuellen Pfad.
@@ -91,12 +94,42 @@ Item {
                 TapHandler { enabled: root.dirty; onTapped: root.save() }
             }
 
+            //  Text → PDF: schreibt <Name>.pdf NEBEN die Quelle, die Textdatei
+            //  bleibt unangetastet. Gedruckt wird der STAND IM EDITOR (nicht der
+            //  auf Platte) — ungespeicherte Änderungen sind also mit im PDF.
+            Rectangle {
+                anchors.verticalCenter: parent.verticalCenter
+                width: pdfLbl.implicitWidth + 18; height: 26; radius: 6
+                color: pdfHover.hovered ? App.themeCard : "transparent"
+                border.color: App.themeBorder
+                opacity: (root.currentPath.length > 0 && !root._pdfBusy) ? 1.0 : 0.45
+                Text {
+                    id: pdfLbl
+                    anchors.centerIn: parent
+                    text: App.uiText(App.language, "TextExportPdf")
+                    color: App.themeTextPrimary
+                    font.pixelSize: 12
+                }
+                HoverHandler { id: pdfHover }
+                TapHandler {
+                    onTapped: {
+                        if (root.currentPath.length === 0 || root._pdfBusy)
+                            return
+                        root._pdfBusy = true
+                        Viewer.exportTextToPdf(root.currentPath, editor.text)
+                    }
+                }
+                ToolTip.visible: pdfHover.hovered
+                ToolTip.delay: 600
+                ToolTip.text: App.uiText(App.language, "TextExportPdfTip")
+            }
+
             Text {
                 anchors.verticalCenter: parent.verticalCenter
                 text: (root.dirty ? "\u2022 " : "") + root.currentPath
                 color: root.dirty ? App.themeAccent : App.themeTextMuted
                 font.pixelSize: 11; elide: Text.ElideLeft
-                width: Math.min(implicitWidth, toolbar.width - 220)
+                width: Math.min(implicitWidth, toolbar.width - 300)
             }
         }
 
@@ -191,6 +224,49 @@ Item {
                 }
             }
         }
+    }
+
+    // ── Rückmeldung des PDF-Exports (Muster wie PdfSurface: kurzer Toast, kein
+    //    Dialog — der Export ist eine Nebentätigkeit und soll nicht bestätigt
+    //    werden müssen). Der Pfad wird auf den Dateinamen gekürzt.
+    Connections {
+        target: Viewer
+        function onTextPdfExportFinished(ok, target, error) {
+            root._pdfBusy = false
+            if (ok)
+                root._toast(App.uiText(App.language, "TextExportPdfOk")
+                                .arg(target.split("/").pop()))
+            else
+                root._toast(App.uiText(App.language, "TextExportPdfFail")
+                                .arg(error.length > 0 ? error : "?"))
+        }
+    }
+
+    function _toast(msg) {
+        toastLabel.text = msg
+        toast.visible = true
+        toastTimer.restart()
+    }
+    Rectangle {
+        id: toast
+        anchors { horizontalCenter: parent.horizontalCenter; bottom: parent.bottom
+                  bottomMargin: root.bottomInset + 18 }
+        width: toastLabel.implicitWidth + 28
+        height: 32
+        radius: 16
+        visible: false
+        z: 8
+        color: Qt.rgba(0, 0, 0, 0.78)
+        border.color: App.themeBorder; border.width: 1
+        Text {
+            id: toastLabel
+            anchors.centerIn: parent
+            color: "#ffffff"; font.pixelSize: 12
+            elide: Text.ElideMiddle
+            width: Math.min(implicitWidth, root.width - 80)
+            horizontalAlignment: Text.AlignHCenter
+        }
+        Timer { id: toastTimer; interval: 3500; onTriggered: toast.visible = false }
     }
 
     // Weiches, web-aehnliches Mausrad-Scrollen — als Geschwister der Flickable,

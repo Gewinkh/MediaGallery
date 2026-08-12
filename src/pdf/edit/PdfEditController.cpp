@@ -505,6 +505,21 @@ private:
         //  erzwingt der Task den Rasterweg (dort verschwindet der Text mit der
         //  ganzen Textebene) und meldet es.
         bool forceRaster = false;
+        //  ZWEITE VERTEIDIGUNGSLINIE: Eine Schwärzung, zu der KEIN zu
+        //  entfernender Text vorliegt (die Zeilen-Sonde hat nichts gefunden,
+        //  gescannte Seite, Sonderzeichen), darf niemals vektoriell exportiert
+        //  werden — sonst läge ein Balken über weiterhin markierbarem Text.
+        //  Gemessen genau so am 2026-08-11: `origText` leer ⇒ `m_redactions`
+        //  leer ⇒ nichts entfernt ⇒ Text stand noch in der Ausgabe.
+        {
+            int redactBoxes = 0;
+            for (const PdfEditBox& b : m_boxes)
+                if (b.kind == PdfAnnKind::Redact) ++redactBoxes;
+            if (redactBoxes > m_redactions.size()) {
+                forceRaster = true;
+                reportRedactionFallback();
+            }
+        }
         if (!m_redactions.isEmpty()) {
             m_redacted = std::make_unique<QTemporaryFile>(
                 QDir::tempPath() + QStringLiteral("/mgredactXXXXXX.pdf"));
@@ -527,8 +542,34 @@ private:
                     //     entfernen: Rasterweg, sonst bliebe er unter dem
                     //     Balken lesbar.
                     //  Geprüft wird das an der Datei, nicht vermutet.
+                    //  VERGLICHEN WIRD OHNE LEERRAUM — die beiden Texte stammen
+                    //  aus VERSCHIEDENEN Quellen und sehen deshalb verschieden
+                    //  aus: `ed.original` kommt aus der Auswahl (PDFium,
+                    //  `QPdfSelection::text()`) und trägt an jedem Zeilenende ein
+                    //  CR+LF, die Sonde reiht dagegen bloß die Glyphen der Seite
+                    //  aneinander und kennt weder Zeilenende noch erzeugte
+                    //  Leerzeichen. Ein wörtlicher `contains` scheiterte deshalb,
+                    //  sobald die Auswahl ÜBER EINE ZEILE hinausging — gemessen:
+                    //  Auswahl „ter GmbH<CR><LF>Zweit" wurde auf der Seite nicht
+                    //  gefunden, die Schwärzung ging als Vektor hinaus und der
+                    //  Text blieb unter dem Balken lesbar. Genau der Befund des
+                    //  Nutzers. Ohne Leerraum verglichen, trifft es wieder.
+                    //  Die Richtung des Irrtums ist dabei Absicht: mehr Treffer
+                    //  heißt öfter rastern, und rastern ist die sichere Seite.
+                    const auto squeeze = [](const QString& s) {
+                        QString o;
+                        o.reserve(s.size());
+                        for (const QChar c : s)
+                            if (!c.isSpace()) o += c;
+                        return o;
+                    };
                     bool stillThere = false;
                     for (const mg::PdfTextEdit& ed : m_redactions) {
+                        const QString needle = squeeze(ed.original);
+                        if (needle.isEmpty()) {
+                            stillThere = true;      // nichts Prüfbares → nicht beweisbar
+                            break;
+                        }
                         QVector<mg::PdfGlyph> glyphs;
                         if (!mg::PdfTextLayout::buildForPage(m_source, ed.page, &glyphs, nullptr)) {
                             stillThere = true;      // nicht lesbar → nicht beweisbar
@@ -538,7 +579,7 @@ private:
                         pageText.reserve(glyphs.size());
                         for (const mg::PdfGlyph& g : glyphs)
                             pageText += g.ch;
-                        if (pageText.contains(ed.original)) { stillThere = true; break; }
+                        if (squeeze(pageText).contains(needle)) { stillThere = true; break; }
                     }
                     forceRaster = stillThere;
                     if (!forceRaster)

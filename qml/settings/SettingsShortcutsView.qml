@@ -58,14 +58,12 @@ Item {
             { de: "Ausgewählte Notiz löschen",     en: "Delete selected annotation",  keys: ["Entf"] },
             { de: "Notiz kopieren / einfügen",     en: "Copy / paste annotation",     keys: ["Ctrl+C", "Ctrl+V"] },
             { de: "Rückgängig / Wiederholen",      en: "Undo / redo",                 keys: ["Ctrl+Z", "Ctrl+Shift+Z"] },
-            { de: "Kopf-/Fußzeile verlassen",      en: "Leave header/footer editing", keys: ["Esc"] }
         ] },
         { headerKey: "ShortcutCtxImage", rows: [
             { de: "Notizen ein-/ausblenden",       en: "Toggle note visibility",      keys: ["Alt+Q"] },
             { de: "Ausgewählte Notiz löschen",     en: "Delete selected annotation",  keys: ["Entf"] },
             { de: "Notiz kopieren / einfügen",     en: "Copy / paste annotation",     keys: ["Ctrl+C", "Ctrl+V"] },
             { de: "Rückgängig / Wiederholen",      en: "Undo / redo",                 keys: ["Ctrl+Z", "Ctrl+Shift+Z"] },
-            { de: "Kopf-/Fußzeile verlassen",      en: "Leave header/footer editing", keys: ["Esc"] }
         ] },
         { headerKey: "ShortcutCtxDocx", rows: [
             { de: "Speichern",                     en: "Save",                        keys: ["Ctrl+S"] },
@@ -75,7 +73,6 @@ Item {
               en: "Select all / copy / cut / paste", keys: ["Ctrl+A", "Ctrl+C", "Ctrl+X", "Ctrl+V"] },
             { de: "Zeilenumbruch im Absatz",       en: "Line break inside paragraph", keys: ["Shift+↵"] },
             { de: "Rückgängig / Wiederholen",      en: "Undo / redo",                 keys: ["Ctrl+Z", "Ctrl+Shift+Z"] },
-            { de: "Kopf-/Fußzeile verlassen",      en: "Leave header/footer editing", keys: ["Esc"] }
         ] },
         { headerKey: "ShortcutCtxText", rows: [
             { de: "Speichern",                     en: "Save",                        keys: ["Ctrl+S"] }

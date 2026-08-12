@@ -1320,13 +1320,14 @@ Item {
         if (page < 0 || root.selRects.length === 0) return false
         const pts = root.doc.pagePointSize(page)
         if (!pts || pts.width <= 0 || pts.height <= 0) return false
-        //  Strg+A markiert ohne Zug-Koordinaten (_lastSel = null) → Seitenfläche.
-        const sel = (root._lastSel && root._lastSel.page === page)
-                    ? root._lastSel : { a0: 0, b0: 0, a1: 1, b1: 1 }
-        const id = root.editCtl.beginDraw(5, page,
-                       sel.a0 * pts.width, sel.b0 * pts.height)
+        //  Wie beim Schwärzen: die Zeilen-Rechtecke der Auswahl aufziehen, nicht
+        //  die Zugkoordinaten (Höhe 0 → die Sonde fand nichts und die Box blieb
+        //  unbefüllt).
+        const u = root._selectionUnionPt(page)
+        if (!u) return false
+        const id = root.editCtl.beginDraw(5, page, u.x, u.y)
         if (id < 0) return false
-        root.editCtl.updateDraw(id, sel.a1 * pts.width, sel.b1 * pts.height)
+        root.editCtl.updateDraw(id, u.x + u.w, u.y + u.h)
 
         const info = root.editCtl.boxInfo(id)
         let snapped = false
@@ -1353,6 +1354,93 @@ Item {
             return true
         }
         return false
+    }
+
+    //  Union der AUSWAHL-Rechtecke in PDF-Punkten. Sie ist die richtige Quelle
+    //  für die Zeilen-Sonde: die Zugkoordinaten (`_lastSel`) beschreiben eine
+    //  Bewegung ENTLANG einer Zeile und haben deshalb Höhe 0 — `replaceProbe`
+    //  fand damit nichts, die Schwärzung bekam keinen Originaltext und beim
+    //  Export blieb der Text unter dem Balken stehen (gemessen 2026-08-11).
+    //  `selRects` dagegen sind die erkannten ZEILEN und haben echte Höhe.
+    function _selectionUnionPt(page) {
+        const pts = root.doc.pagePointSize(page)
+        if (!pts || pts.width <= 0 || pts.height <= 0) return null
+        if (root.selRects.length === 0) return null
+        let x0 = 1e9, y0 = 1e9, x1 = -1e9, y1 = -1e9
+        for (let i = 0; i < root.selRects.length; ++i) {
+            const r = root.selRects[i]
+            x0 = Math.min(x0, r.x);          y0 = Math.min(y0, r.y)
+            x1 = Math.max(x1, r.x + r.w);    y1 = Math.max(y1, r.y + r.h)
+        }
+        if (x1 <= x0 || y1 <= y0) return null
+        return { x: x0 * pts.width,          y: y0 * pts.height,
+                 w: (x1 - x0) * pts.width,   h: (y1 - y0) * pts.height }
+    }
+
+    //  Markierung → SCHWÄRZUNG (Arbeitsweise: Text auswählen ▸ ▮ klicken).
+    //  Derselbe Weg wie beim Ersetzen, nur endet er in `endRedactDraw`: die
+    //  Fläche schnappt auf die erkannten Zeilen ein, und genau deren Text
+    //  wandert als `origText` mit — Gedecktes und Entferntes bleiben damit
+    //  deckungsgleich. Ohne Textebene gibt es weder Zeilen noch Text; dann
+    //  bleibt es beim Aufziehen, und der Aufrufer sagt das dem Nutzer.
+    //  Rückgabe: true = Schwärzung angelegt.
+    function redactSelectionNow() {
+        if (!root.docReady || !root.editCtl.editMode) return false
+        const page = root.selPage
+        if (page < 0 || root.selRects.length === 0) return false
+        const pts = root.doc.pagePointSize(page)
+        if (!pts || pts.width <= 0 || pts.height <= 0) return false
+        //  Aufgezogen wird über die AUSWAHL-Rechtecke (echte Zeilenhöhe), nicht
+        //  über die Zugkoordinaten — s. _selectionUnionPt.
+        const u = root._selectionUnionPt(page)
+        if (!u) return false
+        const id = root.editCtl.beginDraw(5, page, u.x, u.y)
+        if (id < 0) return false
+        root.editCtl.updateDraw(id, u.x + u.w, u.y + u.h)
+
+        //  Gedeckt wird GENAU die Auswahl — nicht die ganze Zeile. Früher
+        //  schnappte die Fläche über `replaceProbe` auf die Zeilen-Bounds ein
+        //  (Muster „Text ersetzen"); markierte man drei Wörter, lag der Balken
+        //  über der kompletten Zeile. Entfernt wird entsprechend der WIRKLICH
+        //  markierte Text (`selectedText`), nicht der Zeilentext.
+        const txt = pdfTextCtl.selectedText;
+        const nid = root.editCtl.endRedactDraw(id, true, u.x, u.y, u.w, u.h, txt)
+        root.clearSelection()
+        if (nid >= 0) {
+            root.notesVisible = true
+            root._redactHintOnce()
+            return true
+        }
+        return false
+    }
+
+    //  Der Knopf ▮ — der Hauptweg. Liegt eine Textauswahl vor, wird sie sofort
+    //  geschwärzt; sonst bleibt der Ziehweg, dann aber MIT Rückmeldung, wenn
+    //  die Seite gar keine Textebene hat: dort startet die Geste nicht, und
+    //  früher passierte wortlos nichts (Nutzerbefund „lässt sich nicht
+    //  bedienen").
+    function startRedact() {
+        if (!root.docReady || !root.editCtl.editMode) return
+        if (root.selPage >= 0 && root.selRects.length > 0) {
+            if (!root.redactSelectionNow())
+                root._toast(App.uiText(App.language, "PdfRedactNoTextToast"))
+            return
+        }
+        //  Die Textebene wird lazy geladen; erst wenn sie DA ist, lässt sich
+        //  sagen, dass die Seite keine hat.
+        pdfTextCtl.prepare(root.source)
+        if (pdfTextCtl.ready
+                && pdfTextCtl.textLineRects(root.currentPage).length === 0)
+            root._toast(App.uiText(App.language, "PdfRedactNoTextToast"))
+    }
+
+    //  Die Grenzen der Schwärzung sind wichtig, aber nichts für jeden Tooltip:
+    //  einmal je Kachel-Sitzung als Hinweis, danach nie wieder.
+    property bool _redactHintShown: false
+    function _redactHintOnce() {
+        if (root._redactHintShown) return
+        root._redactHintShown = true
+        root._toast(App.uiText(App.language, "PdfRedactLimitHint"))
     }
 
     function clearSelection() {
@@ -1472,7 +1560,7 @@ Item {
             }
             Item { width: 4; height: 1 }
             PdfToolButton {
-                glyph: "\u25C0"
+                iconSource: "qrc:/qml/icons/chevron-left.svg"
                 enabled: root.currentPage > 0
                 onActivated: root.goToPage(root.currentPage - 1)
             }
@@ -1483,7 +1571,7 @@ Item {
                 width: 96; horizontalAlignment: Text.AlignHCenter
             }
             PdfToolButton {
-                glyph: "\u25B6"
+                iconSource: "qrc:/qml/icons/chevron-right.svg"
                 enabled: root.currentPage < root.pageCount - 1
                 onActivated: root.goToPage(root.currentPage + 1)
             }
@@ -1494,14 +1582,14 @@ Item {
                         anchors.verticalCenter: parent.verticalCenter }
             Item { width: 8; height: 1 }
             PdfToolButton {
-                glyph: "\u25C9"
+                iconSource: "qrc:/qml/icons/eye.svg"
                 visible: root.editCtl.boxCount > 0 || root.editCtl.editMode
                 active: root.notesVisible
                 tip: App.uiText(App.language, "PdfEditNotesToggleTip")
                 onActivated: root.notesVisible = !root.notesVisible
             }
             PdfToolButton {
-                glyph: "\u270E"
+                iconSource: "qrc:/qml/icons/pen.svg"
                 active: root.editCtl.editMode
                 tip: App.uiText(App.language, "PdfEditToggleTip")
                 // commitEditing() VOR dem Umschalten: eine offene Text-Session
@@ -1510,27 +1598,27 @@ Item {
                 onActivated: { root.commitEditing(); root.editCtl.editMode = !root.editCtl.editMode }
             }
             PdfToolButton {
-                glyph: "\u21B6"
+                iconSource: "qrc:/qml/icons/undo.svg"
                 visible: root.editCtl.editMode
                 enabled: root.editCtl.canUndo
                 tip: App.uiText(App.language, "PdfEditUndoTip")
                 onActivated: { root.commitEditing(); root.editCtl.undo() }
             }
             PdfToolButton {
-                glyph: "\u21B7"
+                iconSource: "qrc:/qml/icons/redo.svg"
                 visible: root.editCtl.editMode
                 enabled: root.editCtl.canRedo
                 tip: App.uiText(App.language, "PdfEditRedoTip")
                 onActivated: { root.commitEditing(); root.editCtl.redo() }
             }
             PdfToolButton {
-                glyph: "\uD83D\uDD0D"
+                iconSource: "qrc:/qml/icons/search.svg"
                 active: root.searchVisible
                 tip: App.uiText(App.language, "PdfSearchTip")
                 onActivated: root.toggleSearch()
             }
             PdfToolButton {
-                glyph: "\u2261"
+                iconSource: "qrc:/qml/icons/snap.svg"
                 visible: root.editCtl.editMode
                 active: root.snapEnabled
                 tip: App.uiText(App.language, "PdfEditSnapTip")
@@ -1541,7 +1629,7 @@ Item {
             //  eingetragenen Werte in eine Kopie \u201e\u2026_ausgefuellt.pdf".
             //  Unabh\u00e4ngig vom Editmodus: Formulare f\u00fcllt man beim Lesen aus.
             PdfToolButton {
-                glyph: "\u2611"
+                iconSource: "qrc:/qml/icons/save.svg"
                 visible: root.editCtl.hasForm
                 enabled: root.editCtl.formDirty && !root.editCtl.busy
                 tip: App.uiText(App.language, "PdfFormSaveTip")
@@ -1568,7 +1656,7 @@ Item {
             Item { width: root.editCtl.editMode ? 4 : 0; height: 1 }
             // Audio-Leiste umschalten — nur sichtbar, wenn das PDF Audio enthält.
             PdfToolButton {
-                glyph: "\u266A"
+                iconSource: "qrc:/qml/icons/audio.svg"
                 visible: pdfAudioCtl.documentHasAudio
                 active: root.audioPanelVisible
                 tip: root.audioPanelVisible ? App.uiText(App.language, "PdfHideAudioBar") : App.uiText(App.language, "PdfShowAudioBar")
@@ -1598,14 +1686,14 @@ Item {
                 }
             }
             Item { width: 6; height: 1 }
-            PdfToolButton { glyph: "\u2212"; enabled: root.zoom > 0.26; onActivated: root.zoomOut() }
+            PdfToolButton { iconSource: "qrc:/qml/icons/minus.svg"; enabled: root.zoom > 0.26; onActivated: root.zoomOut() }
             Text {
                 anchors.verticalCenter: parent.verticalCenter
                 text: Math.round(root.zoom * 100) + " %"
                 color: App.themeTextPrimary; font.pixelSize: 12
                 width: 48; horizontalAlignment: Text.AlignHCenter
             }
-            PdfToolButton { glyph: "+"; enabled: root.zoom < 3.99; onActivated: root.zoomIn() }
+            PdfToolButton { iconSource: "qrc:/qml/icons/plus.svg"; enabled: root.zoom < 3.99; onActivated: root.zoomIn() }
         }
     }
 
@@ -1660,17 +1748,17 @@ Item {
                            + (pdfTextCtl.searching ? " …" : ""))
             }
             PdfToolButton {
-                glyph: "\u25B2"
+                iconSource: "qrc:/qml/icons/chevron-up.svg"
                 enabled: pdfTextCtl.searchCount > 0
                 onActivated: root.goToHit(root.searchIndex - 1)
             }
             PdfToolButton {
-                glyph: "\u25BC"
+                iconSource: "qrc:/qml/icons/chevron-down.svg"
                 enabled: pdfTextCtl.searchCount > 0
                 onActivated: root.goToHit(root.searchIndex + 1)
             }
             PdfToolButton {
-                glyph: "\u2715"
+                iconSource: "qrc:/qml/icons/close.svg"
                 onActivated: root.toggleSearch()
             }
         }
@@ -2262,8 +2350,10 @@ Item {
                                 }
                                 const nid = root.editCtl.endRedactDraw(
                                                 _drawId, snapped, sx, sy, sw, sh, txt)
-                                if (nid >= 0)
+                                if (nid >= 0) {
                                     root.notesVisible = true
+                                    root._redactHintOnce()
+                                }
                             }
 
                             function _finishReplace() {
@@ -3173,6 +3263,7 @@ Item {
     component PdfToolButton: Rectangle {
         id: tb
         property string glyph: ""
+        property url iconSource: ""
         property string tip: ""
         property bool active: false
         signal activated()
@@ -3183,7 +3274,10 @@ Item {
                 ? Qt.rgba(App.themeTextPrimary.r, App.themeTextPrimary.g, App.themeTextPrimary.b, 0.16)
                 : Qt.rgba(App.themeTextPrimary.r, App.themeTextPrimary.g, App.themeTextPrimary.b, 0.07))
         border.color: active ? App.themeAccent : App.themeBorder; border.width: 1
-        Text { anchors.centerIn: parent; text: tb.glyph; color: App.themeTextPrimary; font.pixelSize: 13 }
+        Text { anchors.centerIn: parent; text: tb.glyph; color: App.themeTextPrimary; font.pixelSize: 13
+               visible: String(tb.iconSource).length === 0 }
+        ThemedIcon { anchors.centerIn: parent; source: tb.iconSource; size: 16
+                     visible: String(tb.iconSource).length > 0 }
         HoverHandler { id: tbHover; enabled: tb.enabled }
         TapHandler { enabled: tb.enabled; onTapped: tb.activated() }
         ToolTip.text: tb.tip

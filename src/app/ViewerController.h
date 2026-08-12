@@ -49,6 +49,14 @@ public:
     // Bei Cache-Treffer wird das Signal sofort (queued) gefeuert.
     Q_INVOKABLE void requestPdfAnnotations(const QString& filePathOrUrl);
 
+    // Schreibt content als PDF NEBEN die Quelle (<Name>.pdf, bei Kollision
+    // "<Name> (2).pdf"); die Quelldatei bleibt unangetastet. Paginiert wird im
+    // Worker (Regel 8/17), das Ergebnis kommt ueber textPdfExportFinished.
+    //   content KOMMT AUS DEM EDITOR, nicht von Platte: TextSurface ist
+    //   editierbar, ein erneutes Einlesen wuerde ungespeicherte Aenderungen
+    //   verlieren. Festlegungen des Layouts s. core/TextPdfExporter.h.
+    Q_INVOKABLE void exportTextToPdf(const QString& filePathOrUrl, const QString& content);
+
 
     // ── Intern (vom Worker-Thread per QueuedConnection aufgerufen) ────────────
     //  Nimmt das Scan-Ergebnis auf dem GUI-Thread entgegen: Cache pflegen,
@@ -59,6 +67,9 @@ public:
 signals:
     // Feuert (auf dem GUI-Thread), sobald die Annotationen eines PDFs vorliegen.
     void pdfAnnotationsReady(const QString& path, const QVariantList& annotations);
+
+    // Ergebnis von exportTextToPdf (GUI-Thread). target = geschriebene Datei.
+    void textPdfExportFinished(bool ok, const QString& target, const QString& error);
 
 private:
     // LRU-Pflege fuer den Resultcache.

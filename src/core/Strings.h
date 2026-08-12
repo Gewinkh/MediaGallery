@@ -35,6 +35,7 @@ enum class StringKey {
     FilterTagModeOr,
     FilterTagModeNur,
     FilterTagModeInklusiv,
+    FilterBtn,                // Sammel-Knopf „Filter" in der Filterleiste
 
     // SettingsDialog
     SettingsTitle,
@@ -101,6 +102,10 @@ enum class StringKey {
     // Text editor / filter
     EditorAutoSave,
     EditorSave,
+    TextExportPdf,            // Texteditor-Toolbar: Button „→ PDF"
+    TextExportPdfTip,         // Tooltip des „→ PDF"-Buttons
+    TextExportPdfOk,          // Statusmeldung: PDF geschrieben („%1" = Dateiname)
+    TextExportPdfFail,        // Statusmeldung: Export fehlgeschlagen („%1" = Grund)
     // ── Migration: vereinheitlichte UI-Strings (vormals qsTr/hartcodiert) ──
     SettingsGenFullscreenAnim,
     SettingsGenAnimSlide,
@@ -350,6 +355,7 @@ enum class StringKey {
     DocxTablePlaceholder,     // Platzhalterzeile für opake Blöcke
     DocxPageBreak,            // Marker-Beschriftung der gestrichelten Linie
     DocxParagraphStyle,       // Tooltip Formatvorlagen-Combo
+    DocxInsertSignature,      // Toolbar: Unterschrift/Stempel einfuegen
     DocxInsertTable,          // Toolbar: Tabelle einfügen
     DocxTableRows,            // Popup: Zeilen
     DocxTableCols,            // Popup: Spalten
@@ -361,6 +367,7 @@ enum class StringKey {
     DocxNoImagesInFolder,     // Bild-Popup: Ordner enthält keine Bilder
     DocxImageBrowse,          // Bild-Popup: Dateidialog öffnen
     // Kontextmenü der Tabelle (Rechtsklick in der Fläche)
+    DocxClearBreak,           // Kontextmenue: weiter unter der Tabelle
     DocxRowInsertAbove,
     DocxRowInsertBelow,
     DocxRowDelete,
@@ -386,14 +393,11 @@ enum class StringKey {
     DocxKeepAspect,
     DocxApply,                // Übernehmen-Knopf der kleinen Popups
     // Bearbeitungs-Region (Körper / Kopfzeile / Fußzeile)
-    DocxRegionBody,
-    DocxRegionFootnotes,
-    DocxRegionHeader,
-    DocxRegionFooter,
-    DocxRegionHint,           // Banner beim Bearbeiten von Kopf-/Fußzeile
-    DocxRegionNone,           // Status: Datei hat keine Kopf-/Fußzeile
-    DocxRegionOpenError,      // Status: Kopf-/Fußzeile nicht lesbar
     DocxInsertToc,            // Toolbar: Inhaltsverzeichnis einfügen
+    DocxRevisionsBanner,      // Streifen: N nachverfolgte Änderungen von …
+    DocxRevisionsHint,        // Streifen: was Änderungsverfolgung hier tut
+    DocxRevAcceptAll,         // Streifen: alle Änderungen annehmen
+    DocxRevRejectAll,         // Streifen: alle Änderungen verwerfen
     DocxTocEmpty,             // Verzeichnis ohne Überschriften
     DocxHeadingLevel,         // Vorlagenliste: „Überschrift %1"
     DocxInsertPdfPage,        // Titel der Seitenauswahl beim Bild-Einfügen
@@ -560,8 +564,9 @@ enum class StringKey {
     PdfEditToolStamp,           // Werkzeug: Signatur-/Stempelbild einfügen
     PdfStampFileTitle,          // Dateidialog: Bild auswählen
     PdfStampFailedToast,        // Toast: Bild nicht verwendbar
-    PdfEditToolRedact,          // Werkzeug: Text schwärzen (entfernt ihn)
+    PdfEditToolRedact,          // Werkzeug: Schwärzen (kurze Beschriftung)
     PdfRedactLimitHint,         // Hinweis: wogegen die Schwärzung schützt — und wogegen nicht
+    PdfRedactNoTextToast,       // Toast: Seite ohne Textebene — Schwärzen greift dort nicht
     PdfEditToolMarkup,          // Werkzeug: Text markieren
     PdfMarkupHighlight,         // Stil: Markieren (Fläche)
     PdfMarkupUnderline,         // Stil: Unterstreichen

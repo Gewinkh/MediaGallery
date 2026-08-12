@@ -30,6 +30,28 @@ Item {
 
     onSourceChanged: editCtl.source = root.source
 
+    //  Kleiner Textknopf für den Änderungs-Streifen (die Toolbar-`DBtn` ist ein
+    //  Glyphen-Quadrat und liegt in einem anderen Bereich).
+    component RevBtn: Rectangle {
+        property string label: ""
+        signal clicked()
+        width: rbText.implicitWidth + 16
+        height: 22
+        radius: 5
+        anchors.verticalCenter: parent.verticalCenter
+        color: rbHover.hovered ? App.themeAccent : "transparent"
+        border.color: App.themeBorder
+        Text {
+            id: rbText
+            anchors.centerIn: parent
+            text: parent.label
+            color: rbHover.hovered ? "#ffffff" : App.themeTextPrimary
+            font.pixelSize: 11
+        }
+        HoverHandler { id: rbHover }
+        TapHandler { onTapped: parent.clicked() }
+    }
+
     function openFind() {
         root.findVisible = true
         findField.field.forceActiveFocus()
@@ -78,13 +100,6 @@ Item {
             else if (!Docx.saveDirect)
                 statusText.flash(App.uiText(App.language, "DocxExportedTo")
                                  .replace("%1", target.split("/").pop()))
-        }
-        //  Eine vorhandene Kopf-/Fußzeile ließ sich nicht öffnen: das muss man
-        //  SEHEN — vorher wurde die Schaltfläche nur stumm gesperrt.
-        onRegionOpenFailed: (region, error) => {
-            statusText.flash(error.length > 0
-                             ? error
-                             : App.uiText(App.language, "DocxRegionOpenError"))
         }
         onImageInsertFailed: (error) => {
             statusText.flash(error.length > 0
@@ -183,6 +198,16 @@ Item {
         onAccepted: editCtl.insertImage(selectedFile)
     }
 
+    //  Dateidialog des Unterschrift-Knopfes (eigener, damit „Durchsuchen …"
+    //  aus beiden Popups das Richtige einfügt).
+    FileChooser {
+        id: signDialog
+        fileMode: FileChooser.OpenFile
+        title: App.uiText(App.language, "DocxInsertSignature")
+        nameFilters: [ App.uiText(App.language, "DocxImageFilter") ]
+        onAccepted: editCtl.insertSignatureImage(selectedFile)
+    }
+
     Rectangle { anchors.fill: parent; color: App.themeBackground }
 
     // ── Toolbar ───────────────────────────────────────────────────────────────
@@ -241,6 +266,7 @@ Item {
         // ── Gethemte Bausteine ────────────────────────────────────────────────
         component DBtn: Rectangle {
             property string glyph: ""
+        property url iconSource: ""
             property bool   active: false
             property bool   enabledBtn: true
             property bool   boldGlyph: false
@@ -261,7 +287,9 @@ Item {
                 font.bold: parent.boldGlyph
                 font.italic: parent.italicGlyph
                 font.underline: parent.underlineGlyph
-            }
+                   visible: String(parent.iconSource).length === 0 }
+            ThemedIcon { anchors.centerIn: parent; source: parent.iconSource; size: 16
+                         visible: String(parent.iconSource).length > 0 }
             HoverHandler { id: bh }
             TapHandler { enabled: parent.enabledBtn; onTapped: parent.clicked() }
             ToolTip.visible: bh.hovered && tip.length > 0
@@ -538,10 +566,23 @@ Item {
                     }
                     HoverHandler { id: pdfHover }
                     TapHandler {
-                        onTapped: if (editCtl.ready && !editCtl.busy)
-                                      editCtl.exportToPdf(
-                                          App.uiText(App.language, "DocxTablePlaceholder"),
-                                          App.uiText(App.language, "DocxPageBreak"))
+                        //  Gemalt wird aus DER Auslegung, die hier auf dem Schirm
+                        //  steht (`area.exportPagesToPdf`) — dadurch ist das PDF
+                        //  seitengleich. Der frühere Weg baute ein zweites Layout
+                        //  im Worker und lief auseinander (gemessen: 4 Seiten am
+                        //  Schirm gegen 3 im PDF). Das Zeichnen selbst ist kurz,
+                        //  die Auslegung liegt ja schon vor.
+                        onTapped: {
+                            if (!editCtl.ready || editCtl.busy)
+                                return
+                            const tgt = editCtl.pdfExportTargetPath()
+                            const e = area.exportPagesToPdf(tgt)
+                            if (e.length === 0)
+                                statusText.flash(App.uiText(App.language, "DocxPdfExportedTo")
+                                                 .replace("%1", tgt.split("/").pop()))
+                            else
+                                statusText.flash(e)
+                        }
                     }
                     ToolTip.visible: pdfHover.hovered
                     ToolTip.delay: 600
@@ -556,10 +597,10 @@ Item {
                 //  früheren Namen ImageEditUndo/-Redo gab es im String-Katalog
                 //  GAR NICHT — App.uiText gibt bei unbekanntem Namen den Namen
                 //  zurück, im Tooltip stand also wörtlich „ImageEditUndo".
-                DBtn { glyph: "\u21A9"; enabledBtn: editCtl.canUndo
+                DBtn { iconSource: "qrc:/qml/icons/undo.svg"; enabledBtn: editCtl.canUndo
                        tip: App.uiText(App.language, "PdfEditUndoTip")
                        onClicked: editCtl.undo() }
-                DBtn { glyph: "\u21AA"; enabledBtn: editCtl.canRedo
+                DBtn { iconSource: "qrc:/qml/icons/redo.svg"; enabledBtn: editCtl.canRedo
                        tip: App.uiText(App.language, "PdfEditRedoTip")
                        onClicked: editCtl.redo() }
 
@@ -860,87 +901,14 @@ Item {
                     }
                 }
 
-                Rectangle { width: 1; height: 20; color: App.themeBorder
-                            anchors.verticalCenter: parent.verticalCenter }
-
-                //  ── Bearbeitungs-Region: Text / Kopfzeile / Fußzeile ──────
-                //  Die Fläche zeigt IMMER die aktive Region; Esc führt zurück.
-                //  Nicht vorhandene Teile bleiben deaktiviert — eine fehlende
-                //  Kopfzeile ANZULEGEN wäre eine eigene Aufgabe.
-                Row {
-                    spacing: 2
-                    anchors.verticalCenter: parent.verticalCenter
-                    visible: editCtl.ready
-                    Repeater {
-                        model: [
-                            { key: "DocxRegionBody",   rid: 0 },
-                            { key: "DocxRegionHeader", rid: 1 },
-                            { key: "DocxRegionFooter", rid: 2 },
-                            //  Fußnoten sind ein eigener Teil (word/footnotes.xml)
-                            //  und werden wie Kopf-/Fußzeile umgeschaltet.
-                            { key: "DocxRegionFootnotes", rid: 3 }
-                        ]
-                        delegate: Rectangle {
-                            required property var modelData
-                            readonly property bool sel: editCtl.activeRegion === modelData.rid
-                            readonly property bool avail:
-                                modelData.rid === 0
-                                || (modelData.rid === 1 ? editCtl.hasHeader
-                                   : modelData.rid === 2 ? editCtl.hasFooter
-                                                         : editCtl.hasFootnotes)
-                            width: rgLabel.implicitWidth + 16
-                            height: 26
-                            radius: 6
-                            anchors.verticalCenter: parent.verticalCenter
-                            color: sel ? App.themeAccent
-                                       : (rgHover.hovered && avail ? App.themeCard
-                                                                   : "transparent")
-                            opacity: avail ? 1.0 : 0.4
-                            Text {
-                                id: rgLabel
-                                anchors.centerIn: parent
-                                text: App.uiText(App.language, modelData.key)
-                                font.pixelSize: 12
-                                color: parent.sel ? "#ffffff" : App.themeTextPrimary
-                            }
-                            HoverHandler { id: rgHover; enabled: parent.avail }
-                            TapHandler {
-                                enabled: parent.avail
-                                onTapped: {
-                                    editCtl.setRegion(modelData.rid)
-                                    area.forceActiveFocus()
-                                }
-                            }
-                            //  `avail` OHNE `parent.`: die Bindung einer
-                            //  ANGEHÄNGTEN Eigenschaft wird im Geltungsbereich
-                            //  der Kachel selbst ausgewertet — `parent` ist dort
-                            //  die Row, `parent.avail` also undefined und die
-                            //  Bedingung immer wahr. Der Hinweis erschien
-                            //  dadurch an den VERFÜGBAREN Schaltflächen. Der
-                            //  HoverHandler ist davon nicht betroffen: er ist
-                            //  ein KIND der Kachel.
-                            ToolTip.visible: rgHover.hovered && !avail
-                            ToolTip.delay: 500
-                            //  „Gibt es nicht" und „vorhanden, aber nicht lesbar"
-                            //  sind zwei verschiedene Dinge — der Grund steht im
-                            //  Controller, sobald das Öffnen fehlschlug. Die
-                            //  Bindung hängt an `avail` (NOTIFY regionsAvailable),
-                            //  damit sie genau dann neu ausgewertet wird.
-                            ToolTip.text: avail
-                                          ? ""
-                                          : (editCtl.regionError(modelData.rid).length > 0
-                                             ? editCtl.regionError(modelData.rid)
-                                             : App.uiText(App.language, "DocxRegionNone"))
-                        }
-                    }
-                }
-
+                //  EIN Trennstrich, nicht zwei: der zweite gehörte zur entfernten
+                //  Kopf-/Fußzeilen-Gruppe und stand seitdem doppelt da.
                 Rectangle { width: 1; height: 20; color: App.themeBorder
                             anchors.verticalCenter: parent.verticalCenter }
 
                 //  Bild einfügen: Dateidialog → eigener Absatz an der Cursorstelle.
                 DBtn {
-                    glyph: "\u274F"          // ❏ — BMP, monochrom wie die übrigen
+                    iconSource: "qrc:/qml/icons/image.svg"          // ❏ — BMP, monochrom wie die übrigen
                     enabledBtn: editCtl.ready
                     tip: App.uiText(App.language, "DocxInsertImage")
                     //  Erst die Bilder im ORDNER der Datei anbieten (der häufige
@@ -972,7 +940,7 @@ Item {
                 //  Inhaltsverzeichnis einfügen: das Feld bleibt deklarativ,
                 //  die Seitenzahlen kommen aus unserer eigenen Paginierung.
                 DBtn {
-                    glyph: "\u2261"          // ≡
+                    iconSource: "qrc:/qml/icons/toc.svg"          // ≡
                     enabledBtn: editCtl.ready
                     tip: App.uiText(App.language, "DocxInsertToc")
                     onClicked: {
@@ -981,12 +949,37 @@ Item {
                     }
                 }
 
+                //  Unterschrift/Stempel: dasselbe Ordner-Popup wie beim Bild,
+                //  aber das Bild wird SOFORT verankert eingesetzt (frei auf der
+                //  Seite verschiebbar) und ausgewählt — genau wie im PDF-Editor.
+                DBtn {
+                    iconSource: "qrc:/qml/icons/signature.svg"          // ✍
+                    enabledBtn: editCtl.ready
+                    tip: App.uiText(App.language, "DocxInsertSignature")
+                    onClicked: {
+                        signPopup.entries = editCtl.folderImages()
+                        signPopup.open()
+                    }
+                    FolderImagePicker {
+                        id: signPopup
+                        hostWidth: root.width
+                        onPicked: function(u) {
+                            //  Eine PDF ist keine Unterschrift — dafür gibt es
+                            //  den Bild-Knopf mit der Seitenauswahl.
+                            if (!u.toLowerCase().endsWith(".pdf"))
+                                editCtl.insertSignatureImage(u)
+                            area.forceActiveFocus()
+                        }
+                        onBrowseRequested: signDialog.open()
+                    }
+                }
+
                 //  Tabelle einfügen: kleiner Knopf mit Zeilen/Spalten-Popup.
                 //  Eingefügt wird HINTER dem Cursor-Absatz; steht der Cursor in
                 //  einer Zelle, hinter der ganzen Tabelle (keine Verschachtelung).
                 DBtn {
                     id: tblBtn
-                    glyph: "\u25A6"
+                    iconSource: "qrc:/qml/icons/table.svg"
                     enabledBtn: editCtl.ready
                     tip: App.uiText(App.language, "DocxInsertTable")
                     onClicked: tblPopup.open()
@@ -1007,14 +1000,22 @@ Item {
                                 Text { text: App.uiText(App.language, "DocxTableRows")
                                        color: App.themeTextPrimary; font.pixelSize: 12
                                        anchors.verticalCenter: parent.verticalCenter }
-                                DSpin { id: rowSpin; value: 3; from: 1; to: 100 }
+                                //  `DSpin` MELDET nur (`committed`) — den Wert setzt
+                                //  der Aufrufer. Die anderen Steller schicken ihn an
+                                //  den Controller und bekommen ihn über die Bindung
+                                //  zurück; hier gibt es keinen Controller, also hält
+                                //  der Dialog den Wert selbst. Ohne diese Zeile taten
+                                //  „+"/„−" gar nichts (Nutzerbefund 2026-08-12).
+                                DSpin { id: rowSpin; value: 3; from: 1; to: 100
+                                        onCommitted: (v) => value = v }
                             }
                             Row {
                                 spacing: 6
                                 Text { text: App.uiText(App.language, "DocxTableCols")
                                        color: App.themeTextPrimary; font.pixelSize: 12
                                        anchors.verticalCenter: parent.verticalCenter }
-                                DSpin { id: colSpin; value: 3; from: 1; to: 32 }
+                                DSpin { id: colSpin; value: 3; from: 1; to: 32
+                                        onCommitted: (v) => value = v }
                             }
                             Rectangle {
                                 width: 120; height: 26; radius: 6
@@ -1188,25 +1189,51 @@ Item {
             }
         }
 
-        //  ── Hinweis, solange Kopf-/Fußzeile bearbeitet wird ────────────────
-        //  Ohne den wäre nicht zu erkennen, warum die Seite plötzlich nur die
-        //  Kopfzeile zeigt — sie IST in diesem Modus der Inhalt der Fläche.
+        //  ── Änderungsverfolgung: Streifen mit Zahl, Autoren und Erklärung ──
+        //  Ohne ihn sah ein Dokument MIT nachverfolgten Änderungen aus wie eines
+        //  ohne: die Markierungen waren da, aber nichts sagte, was sie bedeuten
+        //  oder was man damit tun kann (Nutzerbefund). Aufgezeichnet wird
+        //  weiterhin NICHT — genau das steht im Hinweis.
         Rectangle {
-            visible: editCtl.ready && editCtl.activeRegion !== 0
+            id: revBar
+            visible: editCtl.ready && editCtl.revisionCount > 0
             anchors.horizontalCenter: parent.horizontalCenter
             anchors.top: parent.top
             anchors.topMargin: 8
             z: 6
             radius: 6
-            color: App.themeAccent
-            width: regionHint.implicitWidth + 20
-            height: 26
-            Text {
-                id: regionHint
+            color: App.themeCard
+            border.color: App.themeBorder
+            width: Math.min(viewport.width - 24, revRow.implicitWidth + 20)
+            height: 30
+
+            Row {
+                id: revRow
                 anchors.centerIn: parent
-                text: App.uiText(App.language, "DocxRegionHint")
-                color: "#ffffff"
-                font.pixelSize: 11
+                spacing: 10
+
+                Text {
+                    anchors.verticalCenter: parent.verticalCenter
+                    text: App.uiText(App.language, "DocxRevisionsBanner")
+                              .arg(editCtl.revisionCount)
+                              .arg(editCtl.revisionAuthorsText.length > 0
+                                   ? editCtl.revisionAuthorsText : "–")
+                    color: App.themeTextPrimary
+                    font.pixelSize: 11
+                    //  Die Erklärung steht im Tooltip — der Streifen soll die
+                    //  Seite nicht zuwachsen.
+                    ToolTip.text: App.uiText(App.language, "DocxRevisionsHint")
+                    ToolTip.visible: revHint.hovered
+                    HoverHandler { id: revHint }
+                }
+                RevBtn {
+                    label: App.uiText(App.language, "DocxRevAcceptAll")
+                    onClicked: { editCtl.acceptAllRevisions(); area.forceActiveFocus() }
+                }
+                RevBtn {
+                    label: App.uiText(App.language, "DocxRevRejectAll")
+                    onClicked: { editCtl.rejectAllRevisions(); area.forceActiveFocus() }
+                }
             }
         }
 
@@ -1380,61 +1407,81 @@ Item {
         //  wie beim Bild). Gezogen wird eine VORSCHAU; beim Loslassen geht EIN
         //  Aufruf an den Controller, der ALLE Spalten mit demselben Faktor
         //  skaliert — die Zellen behalten so ihr Verhältnis zueinander.
+        //  Der Rahmen umfasst die GANZE Tabelle: eine über Seiten getrennte
+        //  bekommt je Stück einen Rahmenteil (`area.selTableRects`), weil
+        //  zwischen den Stücken der Seitenrand liegt. Die Ziehpunkte sitzen am
+        //  Stück des Cursors (`selTableX/Y/W/H`).
         Item {
             id: tblBox
             visible: area.selTableId >= 0 && editCtl.ready && !imgBox.visible
             z: 3
-            x: area.x + area.selTableX
-            y: area.y + area.selTableY
-            width:  dragging ? previewW : Math.max(1, area.selTableW)
-            height: dragging ? previewH : Math.max(1, area.selTableH)
+            anchors.fill: parent
 
             property bool dragging: false
             property real previewW: 0
-            property real previewH: 0
 
-            Rectangle {
-                id: tblFrame
-                anchors.fill: parent
-                anchors.margins: -2
-                color: "transparent"
-                border.color: App.themeAccent
-                border.width: tblBox.dragging ? 2 : 1
-                opacity: tblBox.dragging ? 1.0 : 0.55
+            //  Stück am Cursor — Bezug der Ziehpunkte.
+            readonly property real primX: area.x + area.selTableX
+            readonly property real primY: area.y + area.selTableY
+            readonly property real primW: dragging ? previewW
+                                                   : Math.max(1, area.selTableW)
+            readonly property real primH: Math.max(1, area.selTableH)
 
-                //  Klick auf den RAHMEN wählt die ganze Tabelle aus — danach
-                //  löscht `Entf`/`Rücktaste` sie (`deleteSelectedTable`).
-                //  VIER Randstreifen statt einer Fläche mit `containmentMask`:
-                //  eine Maske aus einem `QtObject` wird von Qt VERWORFEN
-                //  („does not have an invokable contains method") — die Fläche
-                //  hätte dann die ganze Tabelle abgedeckt und jeden Klick in
-                //  eine Zelle verschluckt. Die Ziehpunkte liegen darüber und
-                //  behalten Vorrang.
-                Repeater {
-                    model: [ "top", "bottom", "left", "right" ]
-                    delegate: MouseArea {
-                        required property string modelData
-                        readonly property bool horiz: modelData === "top"
-                                                      || modelData === "bottom"
-                        width:  horiz ? parent.width : 6
-                        height: horiz ? 6 : parent.height
-                        x: modelData === "right" ? parent.width - 6 : 0
-                        y: modelData === "bottom" ? parent.height - 6 : 0
-                        acceptedButtons: Qt.LeftButton
-                        hoverEnabled: true
-                        cursorShape: Qt.PointingHandCursor
-                        onClicked: {
-                            editCtl.selectTable(area.selTableId)
-                            area.forceActiveFocus()
+            //  Ein Rahmenteil je Seitenstück. Beim Ziehen zeigen ALLE die neue
+            //  Breite: skaliert wird die Tabelle als Ganzes.
+            Repeater {
+                model: area.selTableRects
+                delegate: Rectangle {
+                    required property var modelData
+                    x: area.x + modelData.x - 2
+                    y: area.y + modelData.y - 2
+                    width:  (tblBox.dragging ? tblBox.previewW
+                                             : Math.max(1, modelData.w)) + 4
+                    height: Math.max(1, modelData.h) + 4
+                    color: "transparent"
+                    border.color: App.themeAccent
+                    border.width: tblBox.dragging ? 2 : 1
+                    opacity: tblBox.dragging ? 1.0 : 0.55
+
+                    //  Klick auf den RAHMEN wählt die ganze Tabelle aus — danach
+                    //  löscht `Entf`/`Rücktaste` sie (`deleteSelectedTable`).
+                    //  VIER Randstreifen statt einer Fläche mit `containmentMask`:
+                    //  eine Maske aus einem `QtObject` wird von Qt VERWORFEN
+                    //  („does not have an invokable contains method") — die Fläche
+                    //  hätte dann die ganze Tabelle abgedeckt und jeden Klick in
+                    //  eine Zelle verschluckt. Die Ziehpunkte liegen darüber und
+                    //  behalten Vorrang.
+                    Repeater {
+                        model: [ "top", "bottom", "left", "right" ]
+                        delegate: MouseArea {
+                            required property string modelData
+                            readonly property bool horiz: modelData === "top"
+                                                          || modelData === "bottom"
+                            width:  horiz ? parent.width : 6
+                            height: horiz ? 6 : parent.height
+                            x: modelData === "right" ? parent.width - 6 : 0
+                            y: modelData === "bottom" ? parent.height - 6 : 0
+                            acceptedButtons: Qt.LeftButton
+                            hoverEnabled: true
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: {
+                                editCtl.selectTable(area.selTableId)
+                                area.forceActiveFocus()
+                            }
                         }
                     }
                 }
             }
 
+            //  Nur WAAGERECHT wirksame Ziehpunkte: die Höhe einer Tabelle
+            //  ergibt sich aus dem Inhalt ihrer Zellen. Punkte, die nichts
+            //  bewirken (Mitte oben/unten), werden deshalb gar nicht erst
+            //  angeboten — sie sahen wie eine Höhenverstellung aus und ließen
+            //  beim Loslassen alles, wie es war.
             Repeater {
-                model: [ { hx: -1, hy: -1 }, { hx: 0, hy: -1 }, { hx: 1, hy: -1 },
-                         { hx: -1, hy:  0 },                    { hx: 1, hy:  0 },
-                         { hx: -1, hy:  1 }, { hx: 0, hy:  1 }, { hx: 1, hy:  1 } ]
+                model: [ { hx: -1, hy: -1 }, { hx: 1, hy: -1 },
+                         { hx: -1, hy:  0 }, { hx: 1, hy:  0 },
+                         { hx: -1, hy:  1 }, { hx: 1, hy:  1 } ]
                 delegate: Rectangle {
                     id: th
                     required property var modelData
@@ -1443,37 +1490,30 @@ Item {
                     width: 8; height: 8; radius: 2
                     color: App.themeAccent
                     border.color: "#ffffff"; border.width: 1
-                    x: (hx < 0 ? 0 : hx > 0 ? tblBox.width  : tblBox.width  / 2) - width / 2
-                    y: (hy < 0 ? 0 : hy > 0 ? tblBox.height : tblBox.height / 2) - height / 2
+                    x: tblBox.primX + (hx < 0 ? 0 : tblBox.primW) - width / 2
+                    y: tblBox.primY + (hy < 0 ? 0 : hy > 0 ? tblBox.primH
+                                                           : tblBox.primH / 2) - height / 2
 
                     MouseArea {
                         anchors.fill: parent
                         anchors.margins: -4
                         acceptedButtons: Qt.LeftButton
                         preventStealing: true
-                        cursorShape: {
-                            if (th.hx !== 0 && th.hy !== 0)
-                                return (th.hx === th.hy) ? Qt.SizeFDiagCursor
-                                                         : Qt.SizeBDiagCursor
-                            return th.hx !== 0 ? Qt.SizeHorCursor : Qt.SizeVerCursor
-                        }
+                        cursorShape: Qt.SizeHorCursor
                         property real pressX: 0
                         property real startW: 0
                         onPressed: (m) => {
                             pressX = mapToItem(viewport, m.x, m.y).x
                             startW = Math.max(1, area.selTableW)
                             tblBox.previewW = startW
-                            tblBox.previewH = Math.max(1, area.selTableH)
                             tblBox.dragging = true
                         }
                         onPositionChanged: (m) => {
                             if (!tblBox.dragging) return
-                            //  Nur die BREITE ist frei wählbar: die Höhe einer
-                            //  Tabelle ergibt sich aus ihrem Inhalt. Nach außen
-                            //  ziehen vergrößert, wie beim Bild.
+                            //  Nach außen ziehen vergrößert, wie beim Bild.
                             const dx = (mapToItem(viewport, m.x, m.y).x - pressX)
                                        * (th.hx < 0 ? -1 : 1)
-                            tblBox.previewW = Math.max(40, startW + (th.hx !== 0 ? dx : 0))
+                            tblBox.previewW = Math.max(40, startW + dx)
                         }
                         onReleased: {
                             if (!tblBox.dragging) return
@@ -1544,6 +1584,16 @@ Item {
                                 act: () => editCtl.cut() })
                     list.push({ text: App.uiText(App.language, "DocxTableDelete"),
                                 act: () => editCtl.deleteTable(t.tableId) })
+                }
+                //  „Weiter unter der Tabelle": setzt Words Textumbruch mit
+                //  `w:clear="all"` an die Cursorstelle. Neben einer gleitenden
+                //  Tabelle ist das der einzige Weg, bewusst wieder UNTER sie zu
+                //  kommen — angeboten deshalb genau dann, wenn der Cursor NICHT
+                //  in der Tabelle steht (dort gäbe es nichts zu unterlaufen).
+                if (editCtl.ready && !t.table) {
+                    if (list.length > 0) list.push({ sep: true })
+                    list.push({ text: App.uiText(App.language, "DocxClearBreak"),
+                                act: () => editCtl.insertClearBreak() })
                 }
                 //  Einfügen steht auch AUSSERHALB einer Tabelle bereit — sonst
                 //  ließe sich eine ausgeschnittene Tabelle nirgends absetzen.

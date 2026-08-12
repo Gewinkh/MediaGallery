@@ -11,6 +11,42 @@
         <file>qml/viewer/TextSurface.qml</file>
         <file>qml/viewer/HtmlSurface.qml</file>
         <file>qml/viewer/MetadataDateEditor.qml</file>
+        <file>qml/icons/align-center.svg</file>
+        <file>qml/icons/align-left.svg</file>
+        <file>qml/icons/align-right.svg</file>
+        <file>qml/icons/arrow.svg</file>
+        <file>qml/icons/audio.svg</file>
+        <file>qml/icons/caret.svg</file>
+        <file>qml/icons/chevron-down.svg</file>
+        <file>qml/icons/chevron-left.svg</file>
+        <file>qml/icons/chevron-right.svg</file>
+        <file>qml/icons/chevron-up.svg</file>
+        <file>qml/icons/close.svg</file>
+        <file>qml/icons/copy.svg</file>
+        <file>qml/icons/ellipse.svg</file>
+        <file>qml/icons/eye.svg</file>
+        <file>qml/icons/fit-window.svg</file>
+        <file>qml/icons/image.svg</file>
+        <file>qml/icons/markup-highlight.svg</file>
+        <file>qml/icons/markup-strike.svg</file>
+        <file>qml/icons/markup-underline.svg</file>
+        <file>qml/icons/minus.svg</file>
+        <file>qml/icons/pen.svg</file>
+        <file>qml/icons/plus.svg</file>
+        <file>qml/icons/rect.svg</file>
+        <file>qml/icons/redact.svg</file>
+        <file>qml/icons/redo.svg</file>
+        <file>qml/icons/replace.svg</file>
+        <file>qml/icons/save.svg</file>
+        <file>qml/icons/search.svg</file>
+        <file>qml/icons/select.svg</file>
+        <file>qml/icons/signature.svg</file>
+        <file>qml/icons/snap.svg</file>
+        <file>qml/icons/table.svg</file>
+        <file>qml/icons/toc.svg</file>
+        <file>qml/icons/undo.svg</file>
+        <file>qml/icons/valign-middle.svg</file>
+        <file>qml/icons/valign-top.svg</file>
         <file>qml/pdf/PdfSurface.qml</file>
         <file>qml/pdf/PdfEditBox.qml</file>
         <file>qml/pdf/PdfEditToolbar.qml</file>
@@ -40,6 +76,7 @@
         <file>qml/settings/SettingsShortcutsView.qml</file>
         <file>qml/settings/BookmarkEditDialog.qml</file>
         <file>qml/common/ColorPicker.qml</file>
+        <file>qml/common/ThemedIcon.qml</file>
         <file>qml/common/FileChooser.qml</file>
         <file>qml/common/FolderImagePicker.qml</file>
         <file>qml/common/SmoothWheelArea.qml</file>

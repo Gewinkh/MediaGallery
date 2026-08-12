@@ -25,7 +25,6 @@ void DocxReplaceBlocksCommand::redo() {
         m_firstRedo = false;
         return;
     }
-    m_ctl->activateRegionForCommand(m_regionId);
     //  Gerüst VOR den Blöcken: die Anzeige baut das Gitter aus beidem, und
     //  applyBlocks stößt das Neu-Auslegen an.
     if (m_tableId >= 0) m_ctl->applyTableDef(m_tableId, m_tblAfter);
@@ -33,7 +32,6 @@ void DocxReplaceBlocksCommand::redo() {
 }
 
 void DocxReplaceBlocksCommand::undo() {
-    m_ctl->activateRegionForCommand(m_regionId);
     if (m_tableId >= 0) m_ctl->applyTableDef(m_tableId, m_tblBefore);
     m_ctl->applyBlocks(m_first, m_after.size(), m_before, m_curBefore);
 }
@@ -43,7 +41,6 @@ bool DocxReplaceBlocksCommand::mergeWith(const QUndoCommand* other) {
     //  Verschmelzen nur: gleiche Koaleszenz-Klasse, derselbe EINE Block,
     //  1:1-Ersetzung auf beiden Seiten (reines Tippen/Löschen im Absatz).
     if (!o || o->m_mergeKind != m_mergeKind || m_mergeKind < 0
-        || o->m_regionId != m_regionId          // nie über Regionsgrenzen
         || o->m_first != m_first
         || m_before.size() != 1 || m_after.size() != 1
         || o->m_before.size() != 1 || o->m_after.size() != 1)

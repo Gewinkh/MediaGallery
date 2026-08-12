@@ -330,6 +330,38 @@ Rectangle {
                                 }
                             }
 
+                            //  ── Kachel auf den Tag ziehen ⇒ Datei bekommt ihn ──
+                            //  Die Kachel zieht als PLATTFORM-Zug hinaus
+                            //  (`Drag.Automatic`, `text/uri-list`, s. MediaTile) —
+                            //  landet er wieder im eigenen Fenster, kommt er hier
+                            //  als gewöhnlicher Datei-Drop an, genau wie einer aus
+                            //  dem Dateimanager. Deshalb funktioniert dieselbe
+                            //  Fläche auch für von außen hereingezogene Dateien.
+                            //  Zugewiesen wird per `addTag` (nie umgeschaltet):
+                            //  ein Zug ist eine Zuweisung, kein Schalter.
+                            DropArea {
+                                id: chipDrop
+                                anchors.fill: parent
+                                keys: ["text/uri-list"]
+                                onDropped: function(drop) {
+                                    if (!drop.hasUrls) { drop.accepted = false; return }
+                                    for (var i = 0; i < drop.urls.length; ++i)
+                                        mediaModel.addTag(App.localPath(drop.urls[i]),
+                                                          pChip.modelData)
+                                    drop.acceptProposedAction()
+                                }
+                            }
+                            //  Rückmeldung beim Ziehen darüber — sonst rät man,
+                            //  ob der Chip den Zug überhaupt annimmt.
+                            Rectangle {
+                                anchors.fill: parent
+                                radius: parent.radius
+                                visible: chipDrop.containsDrag
+                                color: "transparent"
+                                border.color: App.themeAccent
+                                border.width: 2
+                            }
+
                             TapHandler {
                                 acceptedButtons: Qt.LeftButton
                                 onTapped: panel.toggleTag(pChip.modelData)

@@ -2,6 +2,7 @@
 #include "pdf/PdfMediaHandler.h"
 #include "core/PathUtils.h"
 #include "core/MemoryUtils.h"   // mg::trimHeap — RSS-Rückgabe nach Annotations-LRU-Eviction
+#include "core/TextPdfExporter.h"
 
 #include <QPdfDocument>
 #include <QFile>
@@ -191,6 +192,55 @@ void ViewerController::requestPdfAnnotations(const QString& filePathOrUrl) {
     m_inFlight.insert(path);
 
     QThreadPool::globalInstance()->start(new PdfScanTask(this, path));
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  Text → PDF (Knopf „→ PDF" im Texteditor).
+//
+//  Der Text kommt aus dem EDITOR mit; die Quelldatei wird nur fuer den Zielnamen
+//  gebraucht und nicht angefasst. Paginieren + Zeichnen laufen im Worker, weil
+//  eine grosse Datei sonst den UI-Thread anhielte (Regel 17).
+// ─────────────────────────────────────────────────────────────────────────────
+void ViewerController::exportTextToPdf(const QString& filePathOrUrl,
+                                       const QString& content) {
+    const QString src    = mg::toLocalPath(filePathOrUrl);
+    const QString target = TextPdf::targetPathFor(src);
+    if (target.isEmpty()) {
+        // Defensiv: ohne Quelle gibt es keinen Zielnamen — Fehler queued melden,
+        // damit QML immer denselben (asynchronen) Weg sieht.
+        QMetaObject::invokeMethod(this, [this]() {
+            emit textPdfExportFinished(false, QString(),
+                                       QStringLiteral("Keine Datei geöffnet."));
+        }, Qt::QueuedConnection);
+        return;
+    }
+
+    class TextPdfTask : public QRunnable {
+    public:
+        TextPdfTask(ViewerController* owner, QString text, QString target)
+            : m_owner(owner), m_text(std::move(text)), m_target(std::move(target))
+        { setAutoDelete(true); }
+
+        void run() override {
+            QString err;
+            const bool ok = TextPdf::exportToPdf(m_text, m_target, &err);
+            // Owner als QPointer: er kann waehrend des Exports (App-Ende)
+            // verschwinden — wie bei PdfScanTask.
+            QPointer<ViewerController> owner = m_owner;
+            if (!owner) return;
+            const QString tgt = m_target;
+            QMetaObject::invokeMethod(owner, [owner, ok, tgt, err]() {
+                if (owner)
+                    emit owner->textPdfExportFinished(ok, tgt, err);
+            }, Qt::QueuedConnection);
+        }
+    private:
+        QPointer<ViewerController> m_owner;
+        QString                    m_text;
+        QString                    m_target;
+    };
+
+    QThreadPool::globalInstance()->start(new TextPdfTask(this, content, target));
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

@@ -271,6 +271,10 @@ public:
     // Lokalen Dateipfad in eine korrekt prozent-kodierte file://-URL umwandeln
     // (für Image.source u.ä.; behandelt Sonderzeichen, Leerzeichen, CJK korrekt).
     Q_INVOKABLE QString fileUrl(const QString& path) const;
+    // Umkehrung dazu: file://-URL → lokaler Pfad (für abgelegte Dateien, z. B.
+    // eine Kachel, die auf einen Tag gezogen wurde). Ein bereits lokaler Pfad
+    // kommt unverändert zurück.
+    Q_INVOKABLE QString localPath(const QString& urlOrPath) const;
 
     // Shell-Beschriftungen (reaktiv über languageChanged)
     QString menuFileText()           const;

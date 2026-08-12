@@ -34,15 +34,6 @@
 
 class DocxEditController : public QObject {
     Q_OBJECT
-    //  ── Bearbeitungs-REGION (Aufgabe 3A) ────────────────────────────────────
-    //  Kopf- und Fußzeile sind eigene ZIP-Teile mit eigenem Rumpf. Sie werden
-    //  als eigene `Docx::Document`-Instanz geladen; der Controller kennt die
-    //  aktive Region und die Fläche bindet immer an die aktive (`doc()`).
-    Q_PROPERTY(int activeRegion READ activeRegionInt WRITE setActiveRegionInt
-                   NOTIFY activeRegionChanged)
-    Q_PROPERTY(bool hasHeader READ hasHeader NOTIFY regionsAvailable)
-    Q_PROPERTY(bool hasFooter READ hasFooter NOTIFY regionsAvailable)
-    Q_PROPERTY(bool hasFootnotes READ hasFootnotes NOTIFY regionsAvailable)
     Q_PROPERTY(QString source READ source WRITE setSource NOTIFY sourceChanged)
     Q_PROPERTY(bool ready READ ready NOTIFY readyChanged)
     Q_PROPERTY(bool busy READ busy NOTIFY busyChanged)          // Speichern läuft
@@ -53,9 +44,13 @@ class DocxEditController : public QObject {
     //  Format am Cursor/der Selektion (Toolbar) — rev-getrieben wie boxInfo
     //  im PDF-Editor: bei jeder Cursor-/Formatänderung inkrementiert.
     Q_PROPERTY(int formatRev READ formatRev NOTIFY formatRevChanged)
-    //  Live-Transliteration: QML reicht das Translit-Singleton herein; der
-    //  Controller ruft liveApply() nach jeder Zeichen-Eingabe (Muster
-    //  TextSurface, nur controllerseitig).
+    //  Änderungsverfolgung: Anzahl und Autoren der nachverfolgten Änderungen.
+    Q_PROPERTY(int revisionCount READ revisionCount NOTIFY revisionsChanged)
+    //  Autoren der nachverfolgten Änderungen als fertiger Text („A, B“).
+    //  Ohne diese Property las der Streifen `editCtl.revisionAuthors` — die
+    //  es nie gab: QML meldete „Cannot read property 'length' of undefined“
+    //  und die Zeile blieb ohne Autoren stehen.
+    Q_PROPERTY(QString revisionAuthorsText READ revisionAuthorsText NOTIFY revisionsChanged)
     Q_PROPERTY(QObject* translit READ translit WRITE setTranslit NOTIFY translitChanged)
 
 public:
@@ -91,6 +86,10 @@ public:
     Q_INVOKABLE void deleteForward();                   // Entf (Merge am Ende)
     Q_INVOKABLE void insertParagraphBreak();            // Enter
     Q_INVOKABLE void insertLineBreak();                 // Shift+Enter (<w:br/>)
+    //  "Ab hier unter allem weiter" (Word: Textumbruch mit `w:clear="all"`).
+    //  Der Weg, neben einer gleitenden Tabelle bewusst wieder UNTER sie zu
+    //  kommen — ohne ihn haengt der Text an ihrer Seite fest.
+    Q_INVOKABLE void insertClearBreak();
 
     // ── Zeichenformat (Selektion; ohne Selektion: Format fürs nächste Tippen) ─
     Q_INVOKABLE void toggleBold();
@@ -125,6 +124,11 @@ public:
     //  Bild als eigenen Absatz einfügen (undo-fähig). `fileUrl` darf eine
     //  file://-URL oder ein Pfad sein. Fehler landen im Status über
     //  imageInsertFailed.
+    //  UNTERSCHRIFT/STEMPEL: dasselbe wie `insertImage`, aber das Bild wird
+    //  sofort als VERANKERTES, umflossenes Bild eingesetzt (Word:
+    //  `wp:anchor` + `w:wrapSquare`) und ausgewaehlt — es laesst sich also
+    //  gleich frei auf der Seite ziehen. EIN Undo-Schritt fuer beides.
+    Q_INVOKABLE void insertSignatureImage(const QString& fileUrl);
     Q_INVOKABLE void insertImage(const QString& fileUrl);
     //  Bild aus BYTES einfügen (Zwischenablage): `ext` ist die Zielendung
     //  ("png"/"jpg"/…) und bestimmt Content-Type und Teilname im Container.
@@ -175,6 +179,16 @@ public:
     Q_INVOKABLE QString revisionAuthorAt(int block, int pos) const;
     Q_INVOKABLE bool acceptRevisionAt(int block, int pos);
     Q_INVOKABLE bool rejectRevisionAt(int block, int pos);
+    //  ALLE Änderungen des Dokuments in EINEM Undo-Schritt; Rückgabe = Anzahl.
+    Q_INVOKABLE int  acceptAllRevisions();
+    Q_INVOKABLE int  rejectAllRevisions();
+    //  Zusammenfassung für den Hinweisstreifen: wie viele Änderungen stehen im
+    //  Dokument (aufeinanderfolgende Runs derselben Art und desselben Autors
+    //  zählen als EINE) und von wem. Ohne diese Anzeige sah ein Dokument mit
+    //  Änderungen aus wie eines ohne — der Nutzer wusste nicht, was die
+    //  Markierungen bedeuten (Befund N5).
+    int  revisionCount() const { return m_revCount; }
+    QString revisionAuthorsText() const { return m_revAuthors.join(QStringLiteral(", ")); }
     //  Prüfung an/aus (folgt der Einstellung, QML schaltet sie um).
     Q_INVOKABLE void setSpellCheckEnabled(bool on);
     //  Wörterbuch-Kürzel („de_DE"); leer = die erste gefundene Sprache.
@@ -289,6 +303,11 @@ public:
     //  tablePlaceholder/pageBreakLabel = i18n-Texte aus QML (wie die Anzeige).
     Q_INVOKABLE void exportToPdf(const QString& tablePlaceholder,
                                  const QString& pageBreakLabel);
+    //  Zielpfad des PDF-Exports: <Name>.pdf neben der Quelle, bei Kollision
+    //  „<Name> (2).pdf". MUSS öffentlich stehen — `Q_INVOKABLE` allein genügt
+    //  NICHT: aus dem privaten Teil heraus meldet QML „is not a function", und
+    //  der Aufruf scheitert STILL (der Knopf tat dann gar nichts).
+    Q_INVOKABLE QString pdfExportTargetPath() const;
     Q_INVOKABLE void release();                          // Kachel wird verlassen
 
     //  Format am Cursor (Toolbar): { bold, italic, underline, font, sizePt,
@@ -302,37 +321,12 @@ public:
     //  Änderungen ohne Selektion (die nur als Pending-Format existieren).
     Docx::RunFmt caretFormat() const;
 
-    //  Seiteneinrichtung — IMMER die des Körpers, auch wenn gerade die
-    //  Kopfzeile bearbeitet wird: sie hat keine eigene und würde sonst auf A4
-    //  zurückfallen, die Seite also unter dem Cursor die Größe wechseln.
-    const Docx::SectionProps& section() const { return bodyDoc().section(); }
-
-    // ── Regionen (Körper / Kopfzeile / Fußzeile) ─────────────────────────────
-    //  Bearbeitbare Bereiche des Dokuments. `Footnotes` ist der Teil
-    //  `word/footnotes.xml` — seine Absätze liegen flach im Modell (s.
-    //  `Docx::FootnoteDef`), deshalb ist er editierbar wie jeder andere.
-    enum Region { Body = 0, Header = 1, Footer = 2, Footnotes = 3 };
-    Q_ENUM(Region)
-
-    int  activeRegionInt() const { return int(m_region); }
-    void setActiveRegionInt(int r);
-    bool hasHeader() const { return m_slots[Header].available; }
-    bool hasFooter() const { return m_slots[Footer].available; }
-    bool hasFootnotes() const { return m_slots[Footnotes].available; }
-    //  Region wechseln; lädt den Teil beim ersten Mal nach. Liefert false, wenn
-    //  es den Teil nicht gibt oder er nicht editierbar ist.
-    Q_INVOKABLE bool setRegion(int r);
-    //  Warum eine Kopf-/Fußzeile gesperrt ist. Leer heißt „gibt es nicht" —
-    //  gefüllt heißt „vorhanden, aber nicht lesbar" (Selbstprüfung, Encoding,
-    //  fehlende Bibliothek). Beides sah vorher gleich aus.
-    Q_INVOKABLE QString regionError(int r) const;
+    //  Seiteneinrichtung des Dokuments.
+    const Docx::SectionProps& section() const { return m_doc.section(); }
 
     //  Interner Anwender der Kommandos (public für DocxReplaceBlocksCommand).
     void applyBlocks(int first, int oldCount, const QList<Docx::Block>& blocks,
                      const DocxCursor& cur);
-    //  Undo/Redo eines Kommandos einer ANDEREN Region: erst umschalten (die
-    //  Ansicht folgt), dann anwenden — genau das macht Undo Word-ähnlich.
-    void activateRegionForCommand(int r);
     //  Gerüst einer Tabelle zurücksetzen (Undo/Redo von Struktur-Änderungen).
     void applyTableDef(int tableId, const Docx::TableDef& def);
 
@@ -356,14 +350,8 @@ signals:
     //  Ergebnis des DOCX→PDF-Exports (Aufgabe 2).
     void pdfExportFinished(bool ok, const QString& target, const QString& error);
     void imageInsertFailed(const QString& error);
-    //  Aktive Region gewechselt — die Fläche legt alles neu aus (anderes
-    //  Dokument), die Leiste zeigt die Umschaltung an.
-    void activeRegionChanged();
-    void regionsAvailable();
-    //  Eine vorhandene Kopf-/Fußzeile ließ sich NICHT öffnen (Selbstprüfung,
-    //  Encoding, fehlende Bibliothek). Ohne diese Meldung wurde die Schaltfläche
-    //  nur stumm gesperrt und sah aus wie „gibt es nicht".
-    void regionOpenFailed(int region, const QString& error);
+    //  Zahl/Autoren der nachverfolgten Änderungen haben sich geändert.
+    void revisionsChanged();
 
 private:
     struct EditScope;                                    // s. cpp
@@ -374,6 +362,13 @@ private:
     //  ganze Tabelle + Gerüst-Schnappschuss, dann `op`. Liefert false, wenn die
     //  Operation abgelehnt wurde (dann entsteht auch kein Undo-Schritt).
     bool tableStructOp(int tableId, const std::function<bool()>& op);
+    //  Gemeinsamer Kern von accept/rejectRevisionAt bzw. …AllRevisions.
+    bool applyRevisionAt(int block, int pos, bool accept);
+    int  applyAllRevisions(bool accept);
+    //  Zahl/Autoren neu bestimmen (nach Laden und nach jeder Änderung).
+    void refreshRevisions();
+    int         m_revCount = 0;
+    QStringList m_revAuthors;
     QString blockText(int i) const;
     //  Klartext der aktuellen Selektion (mehrblockig mit „\n" verbunden).
     QString selectionPlainText() const;
@@ -462,42 +457,7 @@ private:
     //  Nach Zeichen-Eingabe: Live-Transliteration am Cursor-Block.
     void runTranslit();
     QString exportTargetPath() const;
-    QString pdfExportTargetPath() const;                 // <Name>.pdf, Kollision → „ (n)"
     void startSaveWorker(const QString& targetPath, bool direct);
-
-    //  ── Regionen ─────────────────────────────────────────────────────────────
-    //  Die AKTIVE Region liegt in `m_doc`/`m_cursor` — dadurch bleibt der
-    //  gesamte übrige Editor-Code unverändert und arbeitet immer auf ihr. Beim
-    //  Umschalten wird der Zustand in den Slot GEPARKT und der andere geholt
-    //  (move, also O(1) je Member).
-    //
-    //  EIN Undo-Stack für ALLE Regionen — bewusst statt je Region einer plus
-    //  Koordinator: jedes Kommando merkt sich seine Region und schaltet beim
-    //  Undo/Redo selbst um. Zwei Stapel könnten auseinanderlaufen (eine
-    //  verworfene Redo-Historie in Region A ist aus Region B heraus nicht mehr
-    //  aus einem QUndoStack zu entfernen); mit einem Stapel ist die Reihenfolge
-    //  per Konstruktion global richtig.
-    struct RegionSlot {
-        Docx::Document doc;
-        DocxCursor     cursor;
-        QString        partPath;          // "word/header1.xml", … ("" = keiner)
-        bool           available = false; // Teil im Container vorhanden
-        bool           loaded    = false; // schon geparst
-        //  Grund, WARUM der Teil nicht editierbar ist (leer = kein Versuch/ok).
-        //  Ohne ihn sah eine defekte Kopfzeile aus wie eine fehlende.
-        QString        error;
-    };
-    RegionSlot m_slots[4];
-    Region     m_region = Body;
-    //  Teil laden, falls nötig; false = nicht vorhanden/nicht editierbar.
-    bool ensureRegionLoaded(Region r);
-    //  Das KÖRPER-Dokument, egal welche Region gerade aktiv ist (PDF-Export,
-    //  Seitengeometrie, Kopfzeilen-Anzeige hängen daran).
-    const Docx::Document& bodyDoc() const {
-        return (m_region == Body) ? m_doc : m_slots[Body].doc;
-    }
-    //  Alle Regionen für das Speichern zusammentragen (Teil-XML + Ersatzteile).
-    QHash<QString, QByteArray> allRegionParts() const;
 
     Docx::Document m_doc;
     QString    m_source;
