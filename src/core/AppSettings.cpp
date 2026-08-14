@@ -428,6 +428,13 @@ bool AppSettings::monoPlay() const {
 void AppSettings::setMonoPlay(bool v) {
     m_settings.setValue("ui/monoPlay", v);
 }
+//  Ziehen auf ein Lesezeichen: verschieben (Standard) oder kopieren.
+bool AppSettings::fileDropMove() const {
+    return m_settings.value("ui/fileDropMove", true).toBool();
+}
+void AppSettings::setFileDropMove(bool v) {
+    m_settings.setValue("ui/fileDropMove", v);
+}
 // Spulschritt der Pfeiltasten im Video-Vollbild (Sekunden, Standard 15).
 // Beim Lesen geklemmt, damit eine von Hand verfälschte Konfiguration nicht in
 // einen 0- oder Riesen-Sprung mündet.

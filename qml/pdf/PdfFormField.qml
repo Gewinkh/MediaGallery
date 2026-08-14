@@ -2,6 +2,7 @@ pragma ComponentBehavior: Bound
 import QtQuick
 import QtQuick.Controls
 import MediaGallery 1.0
+import "../common"
 
 // ─────────────────────────────────────────────────────────────────────────────
 //  PdfFormField.qml — EIN ausfüllbares Formularfeld (Widget-Annotation) über
@@ -267,7 +268,7 @@ Item {
             cursorShape: Qt.PointingHandCursor
             onClicked: choiceMenu.popup()
         }
-        Menu {
+        ThemedMenu {
             id: choiceMenu
             Repeater {
                 model: ff.field.options

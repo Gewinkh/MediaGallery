@@ -77,6 +77,7 @@
         <file>qml/settings/BookmarkEditDialog.qml</file>
         <file>qml/common/ColorPicker.qml</file>
         <file>qml/common/ThemedIcon.qml</file>
+        <file>qml/common/ThemedMenu.qml</file>
         <file>qml/common/FileChooser.qml</file>
         <file>qml/common/FolderImagePicker.qml</file>
         <file>qml/common/SmoothWheelArea.qml</file>
@@ -87,6 +88,7 @@
         <file>qml/style/ComboBox.qml</file>
         <file>qml/style/Dialog.qml</file>
         <file>qml/style/DialogButtonBox.qml</file>
+        <file>qml/style/Menu.qml</file>
         <file>qml/style/MenuItem.qml</file>
         <file>qml/style/RadioButton.qml</file>
         <file>qml/style/ScrollBar.qml</file>

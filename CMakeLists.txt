@@ -139,8 +139,6 @@ mg_domain(mg_docx
         src/docx/DocxDocument.h
         src/docx/DocxController.cpp
         src/docx/DocxController.h
-        src/docx/DocxPdfExporter.cpp
-        src/docx/DocxPdfExporter.h
     LIBS
         mg_core
 )

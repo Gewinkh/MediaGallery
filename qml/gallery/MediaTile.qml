@@ -1,6 +1,7 @@
 import QtQuick
 import QtQuick.Controls
 import MediaGallery 1.0
+import "../common"
 
 // ─────────────────────────────────────────────────────────────────────────────
 //  MediaTile.qml — eine Galerie-Kachel (Delegate-Inhalt).
@@ -122,7 +123,6 @@ Rectangle {
     Item {
         id: dragPayload
         anchors.fill: parent
-        Drag.active: false
         Drag.dragType: Drag.Automatic
         Drag.supportedActions: Qt.CopyAction
         Drag.mimeData: { "text/uri-list": App.fileUrl(tile.filePath) }
@@ -149,23 +149,28 @@ Rectangle {
                 return
             const dx = mouse.x - pressPos.x
             const dy = mouse.y - pressPos.y
-            //  RICHTUNG ENTSCHEIDET (Nutzerentscheidung 2026-08-12): die Galerie
-            //  scrollt SENKRECHT — ein senkrechter Zug muss scrollen dürfen, nur
-            //  ein überwiegend WAAGERECHTER zieht die Datei heraus.
-            //
-            //  ERST AB DER SCHWELLE ENTSCHEIDEN, nicht bei der ersten Bewegung:
-            //  jeder Zug fängt mit ein, zwei Pixeln Zittern an, das zufällig
-            //  senkrecht sein kann. Wer dabei schon abbricht, bekommt NIE einen
-            //  Zug zustande — genau das war der Fehler (Nutzerbefund „Drag and
-            //  Drop klappt nicht").
+            //  REINE BEWEGUNGSSCHWELLE, keine Richtungsprüfung mehr: seit die
+            //  Galerie nicht mehr per Ziehen scrollt (`interactive: false`),
+            //  gehört JEDER Zug auf einer Kachel dem Herausziehen der Datei.
+            //  Vorher musste ein senkrechter Zug dem Scrollen überlassen werden,
+            //  und genau daran scheiterte das Ziehen in der Praxis.
+            //  Die Schwelle bleibt: die ersten Pixel eines Klicks zittern.
             if (Math.abs(dx) < 12 && Math.abs(dy) < 12)
                 return                            // noch unentschieden
-            if (Math.abs(dy) >= Math.abs(dx)) {
-                dragArmed = false                 // senkrecht → der Galerie überlassen
-                return
-            }
             dragArmed = false
-            dragPayload.Drag.startDrag()
+            //  DEN ZUG STARTET `Drag.active = true`, NICHT `startDrag()`.
+            //  Bei `Drag.Automatic` setzt Qt daraufhin selbst einen `QDrag` auf.
+            //  `startDrag()` verlangt umgekehrt, dass `active` BEREITS true ist;
+            //  sonst meldet es nur „startDrag() drag must be active" — eine
+            //  Warnung, die nach journald geht und deshalb unsichtbar blieb.
+            //  Genau daran ist das Ziehen bisher lautlos gescheitert.
+            //  Die Zuweisung BLOCKIERT bis zum Ende des Zuges und setzt `active`
+            //  danach selbst wieder auf false. Genau deshalb kann die Leiste zum
+            //  Ablegen (Lesezeichen) davor eingeblendet und danach wieder
+            //  abgeräumt werden — dazwischen läuft die Ereignisschleife des Zuges.
+            App.beginTileDrag()
+            dragPayload.Drag.active = true
+            App.endTileDrag()
         }
         onDoubleClicked: function(mouse) {
             // Ohne ZLIB öffnet die DOCX-Kachel nicht — der Editor bliebe leer.
@@ -227,7 +232,7 @@ Rectangle {
     Component {
         id: ctxMenuComponent
 
-        Menu {
+        ThemedMenu {
             id: ctxMenu
             property var ctxTags: []       // alle Tags (JSON)
             property var ctxCats: []       // flacher Kategorienbaum [{id,name,color}]
@@ -240,7 +245,7 @@ Rectangle {
                 fileCatIds = Tags.categoryIdsForFile(tile.fileName)
             }
 
-            Menu {
+            ThemedMenu {
                 title: App.uiText(App.language, "CtxAddTag")
                 MenuItem {
                     visible: ctxMenu.ctxTags.length === 0
@@ -259,7 +264,7 @@ Rectangle {
                     }
                 }
             }
-            Menu {
+            ThemedMenu {
                 title: App.uiText(App.language, "CtxAddCategory")
                 MenuItem {
                     visible: ctxMenu.ctxCats.length === 0

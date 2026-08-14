@@ -3,6 +3,7 @@ import QtQuick
 import QtQuick.Controls
 import QtQuick.Dialogs
 import MediaGallery 1.0
+import "../common"
 
 // ─────────────────────────────────────────────────────────────────────────────
 //  TagCategoryPanel.qml — einheitliches Panel-System für Tags UND Kategorien
@@ -187,6 +188,30 @@ Rectangle {
         galleryModel.tagFilter = a          // Spiegel folgt via onFilterChanged
     }
     function moveTag(tag, fromCat, toCat) { Tags.moveTagToCategory(tag, fromCat, toCat) }
+
+    // ── Abgelegte Dateien zuordnen (gemeinsam für beide Abschnitte) ───────────
+    //  Aufgerufen von den Chips DIESES Panels und von CategoryNode; die Regeln
+    //  gehören deshalb an EINE Stelle. Zugewiesen wird immer nur HINZUFÜGEND —
+    //  ein Zug ist eine Zuweisung, kein Umschalter (sonst nähme ein zweiter Zug
+    //  einer Datei ihren Tag wieder weg).
+    function dropFilesOnTag(urls, tag) {
+        //  `mediaModel.addTag` überspringt Dateien, die nicht zum offenen Ordner
+        //  gehören — von außen hereingezogene Fremddateien laufen also ins Leere.
+        for (var i = 0; i < urls.length; i++)
+            mediaModel.addTag(App.localPath(urls[i]), tag)
+    }
+    function dropFilesOnCategory(urls, catId) {
+        for (var i = 0; i < urls.length; i++) {
+            var p = App.localPath(urls[i])
+            //  Kategorien sind über den DATEINAMEN adressiert (wie das
+            //  Tag-System), gespeichert wird im Sidecar des offenen Ordners —
+            //  deshalb hier die Ordnerprüfung, die addTag selbst mitbringt.
+            if (!mediaModel.hasFile(p)) continue
+            var name = String(p).split("/").pop()
+            if (!Tags.fileInCategory(catId, name))
+                Tags.toggleFileInCategory(catId, name)
+        }
+    }
     function requestAddToTagMode(tag) { panel.enterAddToTagMode(tag) }
     function requestGroupMode(tag)    { panel.enterGroupMode(tag) }
 
@@ -345,9 +370,7 @@ Rectangle {
                                 keys: ["text/uri-list"]
                                 onDropped: function(drop) {
                                     if (!drop.hasUrls) { drop.accepted = false; return }
-                                    for (var i = 0; i < drop.urls.length; ++i)
-                                        mediaModel.addTag(App.localPath(drop.urls[i]),
-                                                          pChip.modelData)
+                                    panel.dropFilesOnTag(drop.urls, pChip.modelData)
                                     drop.acceptProposedAction()
                                 }
                             }
@@ -370,7 +393,7 @@ Rectangle {
                                 acceptedButtons: Qt.RightButton
                                 onTapped: pChipMenu.open()
                             }
-                            Menu {
+                            ThemedMenu {
                                 id: pChipMenu
                                 MenuItem { text: App.uiText(App.language, "ModeAddToTag"); onTriggered: panel.requestAddToTagMode(pChip.modelData) }
                                 MenuItem { text: App.uiText(App.language, "ModeGroup");    onTriggered: panel.requestGroupMode(pChip.modelData) }

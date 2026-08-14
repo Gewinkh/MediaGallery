@@ -1,7 +1,7 @@
 #pragma once
 // ─────────────────────────────────────────────────────────────────────────────
 //  TextPdfExporter — schreibt einen Klartext (TXT/Quelltext) als paginiertes
-//  A4-PDF. Gegenstück zu DocxPdf::exportToPdf, aber bewusst EIGENSTÄNDIG: der
+//  A4-PDF. Bewusst EIGENSTÄNDIG und nicht am DOCX-Weg gebaut: der
 //  DOCX-Exporter setzt sein QTextDocument aus dem OOXML-Modell zusammen
 //  (aufgelöste Formate, Tabellen, verankerte Bilder) — davon gibt es bei einer
 //  Textdatei nichts. Gemeinsam wären nur Seiteneinrichtung und Zielnamensfindung,

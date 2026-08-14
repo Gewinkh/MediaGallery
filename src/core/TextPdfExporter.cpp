@@ -20,7 +20,7 @@
 
 namespace {
 
-constexpr int   kResolution = 96;      // Layout-DPI (wie DocxPdfExporter)
+constexpr int   kResolution = 96;      // Layout-DPI
 constexpr qreal kMarginMm   = 20.0;    // Rand rundum
 constexpr qreal kFontPt     = 10.0;    // Textschrift (Monospace)
 constexpr qreal kFooterPt   = 8.0;     // Fußzeile („1/3")
@@ -190,7 +190,7 @@ bool exportToPdf(const QString& text, const QString& targetPath, QString* err) {
             //  deshalb `0.902 0.902 0.902` (= #E6E6E6, `themeTextPrimary`) als
             //  Füllfarbe im PDF — das Papier war weiß, die Schrift fast auch.
             //  Am Prüfstand fiel es nicht auf, weil dort die Standardpalette
-            //  ohnehin schwarz ist. Gleiches Vorgehen wie `DocxPdfExporter`.
+            //  ohnehin schwarz ist.
             //  (Eine wählbare Farbe je Datei ist geplant, s. FEATURES.md.)
             QAbstractTextDocumentLayout::PaintContext ctx;
             ctx.clip = band;

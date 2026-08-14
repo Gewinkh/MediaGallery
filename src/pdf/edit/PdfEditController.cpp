@@ -377,7 +377,8 @@ public:
                   QVector<PdfEditBox> boxes, int generation, CancelFlag cancel,
                   QVector<int> removeAnnots = {},
                   QVector<mg::PdfAnnotation> asAnnots = {},
-                  QVector<mg::PdfTextEdit> redactions = {})
+                  QVector<mg::PdfTextEdit> redactions = {},
+                  QVector<mg::PdfRedactArea> redactAreas = {})
         : m_owner(owner)
         , m_source(std::move(sourcePath))
         , m_target(std::move(targetPath))
@@ -386,7 +387,8 @@ public:
         , m_cancel(std::move(cancel))
         , m_removals(std::move(removeAnnots))
         , m_asAnnots(std::move(asAnnots))
-        , m_redactions(std::move(redactions)) {
+        , m_redactions(std::move(redactions))
+        , m_redactAreas(std::move(redactAreas)) {
         setAutoDelete(true);
     }
 
@@ -505,92 +507,135 @@ private:
         //  erzwingt der Task den Rasterweg (dort verschwindet der Text mit der
         //  ganzen Textebene) und meldet es.
         bool forceRaster = false;
-        //  ZWEITE VERTEIDIGUNGSLINIE: Eine Schwärzung, zu der KEIN zu
-        //  entfernender Text vorliegt (die Zeilen-Sonde hat nichts gefunden,
-        //  gescannte Seite, Sonderzeichen), darf niemals vektoriell exportiert
-        //  werden — sonst läge ein Balken über weiterhin markierbarem Text.
-        //  Gemessen genau so am 2026-08-11: `origText` leer ⇒ `m_redactions`
-        //  leer ⇒ nichts entfernt ⇒ Text stand noch in der Ausgabe.
-        {
-            int redactBoxes = 0;
-            for (const PdfEditBox& b : m_boxes)
-                if (b.kind == PdfAnnKind::Redact) ++redactBoxes;
-            if (redactBoxes > m_redactions.size()) {
-                forceRaster = true;
-                reportRedactionFallback();
-            }
-        }
+
+        //  Wie viele Schwärzungen gibt es überhaupt, und wie viele davon
+        //  kennen ihren Originaltext? Die Differenz ist der gefährliche Rest:
+        //  ohne Text kann der Textweg nichts entfernen.
+        int redactBoxes = 0;
+        for (const PdfEditBox& b : m_boxes)
+            if (b.kind == PdfAnnKind::Redact) ++redactBoxes;
+
+        //  ── (a) TEXTWEG: bekannte Zeichenkette aus dem Strom schneiden ──────
+        //  Er läuft ZUERST, weil nur er Stellen trifft, die über den Balken
+        //  hinausreichen — eine Auswahl über einen Zeilenumbruch etwa. Der
+        //  geometrische Weg darunter würde ihm sonst genau die Zeichen
+        //  wegnehmen, an denen er seine Fundstelle erkennt.
+        bool textRedactOk = false;
+        bool textStillThere = false;
         if (!m_redactions.isEmpty()) {
             m_redacted = std::make_unique<QTemporaryFile>(
                 QDir::tempPath() + QStringLiteral("/mgredactXXXXXX.pdf"));
             QString rerr;
             if (!m_redacted->open()) {
-                forceRaster = true;
+                textStillThere = true;                 // ohne Zwischendatei kein Beweis
             } else {
                 const QString path = m_redacted->fileName();
                 m_redacted->close();
                 if (mg::PdfContentEditor::editText(m_source, path, m_redactions, &rerr)) {
                     m_source = path;
-                } else {
-                    //  Scheitert das Entfernen, ist die Frage: Steht der Text
-                    //  überhaupt (noch) auf der Seite?
-                    //   • NEIN → es gibt nichts zu verbergen. Dann wäre es
-                    //     unverhältnismäßig, das ganze Dokument zu rastern —
-                    //     ein einziger veralteter Schwärzungs-Eintrag machte
-                    //     sonst aus 47 Textseiten 47 Bilder.
-                    //   • JA → der Text ist da und ließ sich nicht sicher
-                    //     entfernen: Rasterweg, sonst bliebe er unter dem
-                    //     Balken lesbar.
-                    //  Geprüft wird das an der Datei, nicht vermutet.
-                    //  VERGLICHEN WIRD OHNE LEERRAUM — die beiden Texte stammen
-                    //  aus VERSCHIEDENEN Quellen und sehen deshalb verschieden
-                    //  aus: `ed.original` kommt aus der Auswahl (PDFium,
-                    //  `QPdfSelection::text()`) und trägt an jedem Zeilenende ein
-                    //  CR+LF, die Sonde reiht dagegen bloß die Glyphen der Seite
-                    //  aneinander und kennt weder Zeilenende noch erzeugte
-                    //  Leerzeichen. Ein wörtlicher `contains` scheiterte deshalb,
-                    //  sobald die Auswahl ÜBER EINE ZEILE hinausging — gemessen:
-                    //  Auswahl „ter GmbH<CR><LF>Zweit" wurde auf der Seite nicht
-                    //  gefunden, die Schwärzung ging als Vektor hinaus und der
-                    //  Text blieb unter dem Balken lesbar. Genau der Befund des
-                    //  Nutzers. Ohne Leerraum verglichen, trifft es wieder.
-                    //  Die Richtung des Irrtums ist dabei Absicht: mehr Treffer
-                    //  heißt öfter rastern, und rastern ist die sichere Seite.
-                    const auto squeeze = [](const QString& s) {
-                        QString o;
-                        o.reserve(s.size());
-                        for (const QChar c : s)
-                            if (!c.isSpace()) o += c;
-                        return o;
-                    };
-                    bool stillThere = false;
-                    for (const mg::PdfTextEdit& ed : m_redactions) {
-                        const QString needle = squeeze(ed.original);
-                        if (needle.isEmpty()) {
-                            stillThere = true;      // nichts Prüfbares → nicht beweisbar
-                            break;
-                        }
-                        QVector<mg::PdfGlyph> glyphs;
-                        if (!mg::PdfTextLayout::buildForPage(m_source, ed.page, &glyphs, nullptr)) {
-                            stillThere = true;      // nicht lesbar → nicht beweisbar
-                            break;
-                        }
-                        QString pageText;
-                        pageText.reserve(glyphs.size());
-                        for (const mg::PdfGlyph& g : glyphs)
-                            pageText += g.ch;
-                        if (squeeze(pageText).contains(needle)) { stillThere = true; break; }
-                    }
-                    forceRaster = stillThere;
-                    if (!forceRaster)
-                        qInfo("PdfExportTask: Schwärzung ohne Fundstelle (%s) — "
-                              "nichts zu entfernen, Export bleibt vektoriell",
-                              qPrintable(rerr));
+                    textRedactOk = true;
                 }
             }
+        }
+
+        //  ── (b) GEOMETRISCHER WEG: entfernt, was unter dem Balken LIEGT ─────
+        //  Er braucht KEINEN erkannten Originaltext und rettet damit die
+        //  Textebene des restlichen Dokuments: Vorher kostete jede Schwärzung,
+        //  deren Text sich nicht als Zeichenkette wiederfinden ließ, ALLE
+        //  Seiten (Raster). Er lehnt selbst ab, wo er die Zusage nicht halten
+        //  kann (Bild unter dem Balken, Form-XObject, gedrehte Seite,
+        //  unlesbarer Strom) — dann greifen unverändert die Netze darunter.
+        bool geoRedactOk = false;
+        if (!m_redactAreas.isEmpty()) {
+            m_redactedGeo = std::make_unique<QTemporaryFile>(
+                QDir::tempPath() + QStringLiteral("/mgredactgeoXXXXXX.pdf"));
+            if (m_redactedGeo->open()) {
+                const QString path = m_redactedGeo->fileName();
+                m_redactedGeo->close();
+                QString gerr;
+                if (mg::PdfContentEditor::redactAreas(m_source, path, m_redactAreas, &gerr)) {
+                    m_source = path;
+                    geoRedactOk = true;
+                } else {
+                    qInfo("PdfExportTask: Schwärzung geometrisch nicht möglich (%s)",
+                          qPrintable(gerr));
+                }
+            }
+        }
+
+        //  ── (c) Steht ein zu entfernender Text noch auf der Seite? ──────────
+        //  Die Sonde läuft NACH beiden Wegen — auf der Datei, die gleich
+        //  hinausgeht. Vorher gemessen war sie der Grund für den Nutzerbefund
+        //  an DOCX_TEST.pdf: Der Textweg scheitert bei einer Auswahl über
+        //  mehrere Zeilen regelmäßig, die Sonde fand den Text (noch) — und das
+        //  Raster-Urteil stand, obwohl der geometrische Weg die Fläche gleich
+        //  danach sauber räumte. Ergebnis: vier Seiten als Bild wegen eines
+        //  geschwärzten Absatzes.
+        //
+        //  VERGLICHEN WIRD OHNE LEERRAUM — die beiden Texte stammen aus
+        //  VERSCHIEDENEN Quellen und sehen deshalb verschieden aus:
+        //  `ed.original` kommt aus der Auswahl (PDFium, `QPdfSelection::text()`)
+        //  und trägt an jedem Zeilenende ein CR+LF, die Sonde reiht dagegen bloß
+        //  die Glyphen der Seite aneinander und kennt weder Zeilenende noch
+        //  erzeugte Leerzeichen. Ein wörtlicher `contains` scheiterte deshalb,
+        //  sobald die Auswahl ÜBER EINE ZEILE hinausging. Die Richtung des
+        //  Irrtums ist Absicht: mehr Treffer heißt öfter rastern, und rastern
+        //  ist die sichere Seite.
+        if (!textRedactOk && !m_redactions.isEmpty()) {
+            const auto squeeze = [](const QString& s2) {
+                QString o;
+                o.reserve(s2.size());
+                for (const QChar c : s2)
+                    if (!c.isSpace()) o += c;
+                return o;
+            };
+            for (const mg::PdfTextEdit& ed : m_redactions) {
+                const QString needle = squeeze(ed.original);
+                if (needle.isEmpty()) {
+                    textStillThere = true;      // nichts Prüfbares → nicht beweisbar
+                    break;
+                }
+                QVector<mg::PdfGlyph> glyphs;
+                if (!mg::PdfTextLayout::buildForPage(m_source, ed.page, &glyphs, nullptr)) {
+                    textStillThere = true;      // nicht lesbar → nicht beweisbar
+                    break;
+                }
+                QString pageText;
+                pageText.reserve(glyphs.size());
+                for (const mg::PdfGlyph& g : glyphs)
+                    pageText += g.ch;
+                if (squeeze(pageText).contains(needle)) { textStillThere = true; break; }
+            }
+        }
+
+        //  ── (d) Reicht das? ─────────────────────────────────────────────────
+        //  **Der geometrische Weg ist der VOLLE Beweis.** Er bearbeitet JEDE
+        //  Schwärzungsfläche und misst danach die Ausgabe nach: bleibt eine
+        //  Glyphe unter einem Balken stehen, meldet er sich als gescheitert.
+        //  Gelingt er, ist die Zusage für alle Flächen gehalten — dann darf der
+        //  Textweg nichts mehr erzwingen.
+        //
+        //  GENAU DAS war der Fehler (Nutzerbefund an DOCX_TEST.pdf): Der
+        //  Textweg scheitert bei einer Auswahl über mehrere Zeilen regelmäßig,
+        //  seine Sonde fand den Text (noch) auf der Seite — und das Raster-Urteil
+        //  stand, obwohl die Fläche längst sauber geräumt war. Ergebnis: alle
+        //  vier Seiten als Bild, obwohl nur ein Absatz geschwärzt war.
+        //
+        //  Ohne den geometrischen Weg gilt unverändert das alte Netz: Balken
+        //  ohne erkannten Text oder nachweislich stehengebliebener Text → Raster.
+        if (redactBoxes > 0) {
+            forceRaster = textStillThere
+                       || (redactBoxes > m_redactions.size() && !geoRedactOk);
             if (forceRaster)
                 reportRedactionFallback();
         }
+
+        //  Wurde ÜBERHAUPT geschwärzt (geometrisch oder textlich)? Dann muss die
+        //  Ausgabe am Ende verdichtet werden: alle Schreibwege hängen
+        //  inkrementell an, die ENTFERNTE Fassung des Stroms stünde sonst
+        //  weiterhin in der Datei — aus jedem Betrachter verschwunden, im
+        //  Hex-Editor lesbar.
+        const bool didRedact = textRedactOk || geoRedactOk;
 
         //  ── NICHTS ZU ZEICHNEN → einfach kopieren ───────────────────────────
         //  Kein Sonderfall der Bequemlichkeit, sondern der einzige verlustfreie
@@ -604,7 +649,7 @@ private:
                 *err = QStringLiteral("Kopie");
                 return false;
             }
-            if (m_redactions.isEmpty() || compactRedacted(m_target)) {
+            if (!didRedact || compactRedacted(m_target)) {
                 reportProgress(1, 1);
                 return true;
             }
@@ -619,7 +664,7 @@ private:
         if (!forceRaster && !m_asAnnots.isEmpty()) {
             QString ae;
             if (mg::PdfAnnotations::write(m_source, m_target, m_asAnnots, {}, &ae)) {
-                if (m_redactions.isEmpty() || compactRedacted(m_target)) {
+                if (!didRedact || compactRedacted(m_target)) {
                     reportProgress(1, 1);
                     return true;
                 }
@@ -641,7 +686,7 @@ private:
             QString vecErr;
             if (mg::PdfVectorExport::exportAnnotations(m_source, m_target, m_boxes,
                                                        &vecErr)) {
-                if (m_redactions.isEmpty() || compactRedacted(m_target)) {
+                if (!didRedact || compactRedacted(m_target)) {
                     reportProgress(1, 1);
                     return true;
                 }
@@ -984,9 +1029,16 @@ private:
     //  Eigene Notizen als ECHTE Annotationen (Einstellung „Interchange").
     //  Leer = der gewohnte Weg, sie zu malen.
     QVector<mg::PdfAnnotation> m_asAnnots;
-    //  Textstellen, die eine Schwärzung entfernen MUSS.
+    //  Textstellen, die eine Schwärzung entfernen MUSS (textbasierter Weg).
     QVector<mg::PdfTextEdit>   m_redactions;
+    //  Dieselben Schwärzungen als FLÄCHEN. Der geometrische Weg braucht den
+    //  Text nicht zu kennen und ist deshalb der erste Versuch; die
+    //  textbasierten Einträge bleiben als Auffangnetz daneben stehen.
+    QVector<mg::PdfRedactArea> m_redactAreas;
     std::unique_ptr<QTemporaryFile> m_redacted;
+    //  Zweite Zwischendatei: der geometrische Weg arbeitet AUF dem Ergebnis des
+    //  Textwegs, beide müssen deshalb gleichzeitig am Leben bleiben.
+    std::unique_ptr<QTemporaryFile> m_redactedGeo;
     //  Lebt so lange wie der Task: Zwischendatei mit gestrichenen Annotationen.
     std::unique_ptr<QTemporaryFile> m_pruned;
 };
@@ -3615,7 +3667,8 @@ void PdfEditController::exportPdf() {
     // die Notizen kommen auf Ansichts-Seiten abgebildet (exportBoxes()).
     m_pool.start(new PdfExportTask(this, renderSourcePath(), target,
                                    exportBoxes(), gen, m_cancel, importRemovals(),
-                                   exportAnnotations(), redactionEdits()));
+                                   exportAnnotations(), redactionEdits(),
+                                   redactionAreas()));
 }
 
 void PdfEditController::exportContentEdited() {
@@ -3666,7 +3719,8 @@ void PdfEditController::exportContentEdited() {
         emit contentEditFellBack();
         m_cancel = std::make_shared<std::atomic<bool>>(false);
         m_pool.start(new PdfExportTask(this, renderSourcePath(), exportTargetPath(),
-                                       exportBoxes(), gen, m_cancel, importRemovals(), {}, redactionEdits()));
+                                       exportBoxes(), gen, m_cancel, importRemovals(), {},
+                                       redactionEdits(), redactionAreas()));
     }
 }
 
@@ -3684,8 +3738,12 @@ void PdfEditController::contentEditTaskFinished(bool ok, const QString& target,
     // Raster-Export als Fallback (gleiche Generation, busy bleibt gesetzt).
     emit contentEditFellBack();
     m_cancel = std::make_shared<std::atomic<bool>>(false);
+    //  Auch dieser Rückfall bekommt die Schwärzungs-FLÄCHEN mit: ohne sie liefe
+    //  er in genau die Falle, die den Nutzerbefund ausmachte — Textweg
+    //  gescheitert ⇒ alles rastern, obwohl der geometrische Weg räumen kann.
     m_pool.start(new PdfExportTask(this, renderSourcePath(), exportTargetPath(),
-                                   exportBoxes(), m_exportGen, m_cancel, importRemovals(), {}, redactionEdits()));
+                                   exportBoxes(), m_exportGen, m_cancel, importRemovals(), {},
+                                   redactionEdits(), redactionAreas()));
 }
 
 void PdfEditController::exportTaskFinished(bool ok, const QString& target,
@@ -3979,6 +4037,15 @@ QVector<mg::PdfAnnotation> PdfEditController::exportAnnotations() const {
             return {};                      // eine reicht → alles malen
         out.push_back(a);
     }
+    return out;
+}
+
+QVector<mg::PdfRedactArea> PdfEditController::redactionAreas() const {
+    QVector<mg::PdfRedactArea> out;
+    const QVector<PdfEditBox> boxes = exportBoxes();     // Seiten = Ansichts-Index
+    for (const PdfEditBox& b : boxes)
+        if (b.kind == PdfAnnKind::Redact && b.rect.isValid())
+            out.push_back({ b.page, b.rect });
     return out;
 }
 

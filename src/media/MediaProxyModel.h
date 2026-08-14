@@ -50,6 +50,8 @@ class MediaProxyModel : public QSortFilterProxyModel {
     Q_PROPERTY(QStringList tagFilter      READ tagFilter      WRITE setTagFilter      NOTIFY filterChanged)
     Q_PROPERTY(int         tagFilterMode  READ tagFilterModeInt WRITE setTagFilterModeInt NOTIFY filterChanged)
     Q_PROPERTY(QStringList categoryFilter READ categoryFilter WRITE setCategoryFilter NOTIFY filterChanged)
+    //  Freitextsuche der Filterleiste — UND-verknüpft mit allen anderen Filtern.
+    Q_PROPERTY(QString     searchText     READ searchText     WRITE setSearchText     NOTIFY filterChanged)
     // Rückwärtskompatibel zu Phase 2: AND/OR-Umschalter (mappt auf den Modus).
     Q_PROPERTY(bool tagFilterAnd   READ tagFilterAnd   WRITE setTagFilterAnd   NOTIFY filterChanged)
 
@@ -94,6 +96,11 @@ public:
 
     bool tagFilterAnd() const { return m_mode == TagMode::And; }
     void setTagFilterAnd(bool v);
+
+    //  Gesucht wird in ANZEIGENAME, DATEINAME und TAGS (Teilstring, ohne Rücksicht
+    //  auf Groß-/Kleinschreibung) — nur im offenen Ordner, kein Dateiinhalt.
+    QString searchText() const { return m_search; }
+    void    setSearchText(const QString& t);
 
     // ── Navigations-Accessoren (für FullscreenViewer; in Proxy-Reihenfolge) ──
     Q_INVOKABLE QString   filePathAt(int proxyRow) const;
@@ -145,6 +152,7 @@ private:
     bool m_showPdfs   = true;
     bool m_showTexts  = true;
 
+    QString       m_search;           // Suchtext, bereits getrimmt
     QStringList   m_tagFilter;        // manuell gewählte Tags
     QStringList   m_categoryFilter;   // aktive Kategorie-IDs
     QSet<QString> m_effectiveTags;    // manuell ∪ Tags aktiver Kategorien (Cache)

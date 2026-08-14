@@ -301,8 +301,6 @@ public:
     //  DOCX → PDF exportieren (Aufgabe 2): schreibt <Name>.pdf NEBEN der
     //  Quelle (Original bleibt erhalten), async im Worker (Muster wie oben).
     //  tablePlaceholder/pageBreakLabel = i18n-Texte aus QML (wie die Anzeige).
-    Q_INVOKABLE void exportToPdf(const QString& tablePlaceholder,
-                                 const QString& pageBreakLabel);
     //  Zielpfad des PDF-Exports: <Name>.pdf neben der Quelle, bei Kollision
     //  „<Name> (2).pdf". MUSS öffentlich stehen — `Q_INVOKABLE` allein genügt
     //  NICHT: aus dem privaten Teil heraus meldet QML „is not a function", und
@@ -348,7 +346,6 @@ signals:
     void cursorChanged();
     void saveFinished(bool ok, const QString& target, const QString& error);
     //  Ergebnis des DOCX→PDF-Exports (Aufgabe 2).
-    void pdfExportFinished(bool ok, const QString& target, const QString& error);
     void imageInsertFailed(const QString& error);
     //  Zahl/Autoren der nachverfolgten Änderungen haben sich geändert.
     void revisionsChanged();

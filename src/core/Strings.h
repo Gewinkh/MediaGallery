@@ -273,7 +273,26 @@ enum class StringKey {
     FilterModeAllDesc,
     FilterModeExclusiveDesc,
     FilterModeInclusiveDesc,
+    FilterSearchPlaceholder,
+    DropBarMove,
+    DropBarCopy,
+    DropMoved,
+    DropCopied,
+    DropFailed,
+    DropCollisionTitle,
+    DropCollisionText,
+    DropCollisionReplace,
+    DropCollisionRename,
+    SettingsDropMoveLabel,
+    SettingsDropMoveDesc,
+    FileUndoRestored,
+    FileRedoDeleted,
+    FileUndoNothing,
+    FileRedoNothing,
+    FilterSearchHits,
     FilterSortLabel,
+    FilterSortField,
+    FilterSortDirection,
     FilterSortDesc,
     FilterSortAsc,
     FilterTagModeLabel,
@@ -418,7 +437,6 @@ enum class StringKey {
     DocxExportPdf,            // DOCX-Toolbar: Button „→ PDF" (Aufgabe 2)
     DocxExportPdfTip,         // Tooltip des „→ PDF"-Buttons
     DocxPdfExportedTo,        // Status nach PDF-Export (%1 = Dateiname)
-    DocxPdfError,             // Status bei fehlgeschlagenem PDF-Export
     DocxFindPlaceholder,      // Suchen&Ersetzen: Platzhalter Suchfeld
     DocxReplacePlaceholder,   // Suchen&Ersetzen: Platzhalter Ersetzungsfeld
     DocxFindPrev,             // Tooltip: vorheriger Treffer

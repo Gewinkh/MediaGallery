@@ -171,33 +171,9 @@ ApplicationWindow {
     //  weiterhin die Fusion-Standardfarbe. Analog zum bereits korrekt
     //  eingefärbten Filter-Popup (FilterBar.qml) bekommt jedes Menu hier
     //  denselben expliziten Hintergrund.
-    component ThemedMenu: Menu {
-        //  Fusion leitet die Menübreite aus der Hintergrund-`implicitWidth`
-        //  (Standard 200) UND der automatisch aggregierten `contentWidth` ab.
-        //  Unser eigener Themen-Hintergrund hat aber KEINE `implicitWidth`, und
-        //  die Auto-`contentWidth` von QQuickMenu liefert in diesem Kontext 0 →
-        //  das Menü kollabierte auf die reine Polsterbreite (2 px), sichtbar nur
-        //  als schmaler senkrechter „Strich". Deshalb berechnen wir die
-        //  Inhaltsbreite reaktiv aus den Items selbst (Fusion-MenuItems sind je
-        //  ≥ 200 px und wachsen bei langem Text) und geben 200 px als Mindestmaß
-        //  vor — QML verfolgt dabei sowohl `count` als auch die gelesene
-        //  `implicitWidth` jedes Items, das Menü wächst also z. B. bei langen
-        //  Lesezeichennamen oder nach Sprachwechsel automatisch mit.
-        implicitWidth: {
-            var w = 0
-            for (var i = 0; i < count; i++) {
-                var it = itemAt(i)
-                if (it && it.implicitWidth > w) w = it.implicitWidth
-            }
-            return Math.max(w, 200) + leftPadding + rightPadding
-        }
-        background: Rectangle {
-            implicitWidth: 200
-            color: App.themeMenuBarBg
-            border.color: App.themeBorder; border.width: 1
-            radius: 6
-        }
-    }
+    //  `ThemedMenu` liegt jetzt als eigene Datei unter `qml/common/` — die
+    //  Kontextmenüs (Kachel, PDF-Seite, Tag-Chips) brauchen dieselbe Fassung,
+    //  und eine Inline-Komponente ist außerhalb dieser Datei nicht erreichbar.
 
     //  EIGENE Menüleiste statt der nativen `MenuBar`: Die Fusion-`MenuBar`
     //  belegt (wie ihr Widgets-Pendant) die ALT-Taste für Menü-Navigation/
@@ -413,6 +389,15 @@ ApplicationWindow {
         Item {
             id: galleryPage
 
+            //  Tastatur-Fokus an die Galerie, sobald die Seite aktiv ist — sonst
+            //  scrollen ihre Pfeiltasten nie. Ein blosses `focus: true` an der
+            //  GalleryView reicht NICHT: gemessen bleibt sie damit auf
+            //  `activeFocus = false`, der Fokus liegt beim Wurzelelement. Gleiche
+            //  Lehre wie bei der geteilten Ansicht (`_focusActivePane`).
+            StackView.onActivated: galleryView.forceActiveFocus()
+            Component.onCompleted: if (StackView.status === StackView.Active)
+                                       galleryView.forceActiveFocus()
+
             // ── Tastenkürzel (nur auf der Galerie-Seite, nicht im Vollbild) ──
             //  Alt+S = Optionen umschalten (einheitlich mit dem Media Viewer),
             //  R = Ordner/Vorschau neu laden, B = Vorschau-Sperre (blockieren ⇄
@@ -435,6 +420,39 @@ ApplicationWindow {
             Shortcut {
                 sequence: "Ctrl+O"; enabled: stack.depth === 1
                 onActivated: folderDialog.open()
+            }
+            //  Strg+F springt ins Suchfeld der Filterleiste (dieselbe Taste wie
+            //  die Suche in der PDF-Ansicht — dort gehört sie der Kachel).
+            Shortcut {
+                sequence: "Ctrl+F"; enabled: stack.depth === 1
+                onActivated: filterBar.focusSearch()
+            }
+            //  ── Rückgängig / Wiederholen für DATEI-Vorgänge ─────────────────
+            //  Gilt NUR auf der Galerie-Seite: in den Editoren gehört Strg+Z dem
+            //  Dokument. Und nicht, während jemand in einem Feld tippt — dort
+            //  gehört die Taste dem Text (dieselbe Prüfung wie die Pfeiltasten
+            //  der Galerie, deshalb ihre Funktion und keine zweite Kopie).
+            Shortcut {
+                sequence: StandardKey.Undo; enabled: stack.depth === 1
+                onActivated: {
+                    if (galleryView._editableTextFocused()) return
+                    const name = mediaModel.undoFileOpName()
+                    shell.statusText = mediaModel.undoFileOp()
+                        ? App.uiText(App.language, "FileUndoRestored") + name
+                        : App.uiText(App.language, "FileUndoNothing")
+                    statusClearTimer.restart()
+                }
+            }
+            Shortcut {
+                sequence: StandardKey.Redo; enabled: stack.depth === 1
+                onActivated: {
+                    if (galleryView._editableTextFocused()) return
+                    const name = mediaModel.redoFileOpName()
+                    shell.statusText = mediaModel.redoFileOp()
+                        ? App.uiText(App.language, "FileRedoDeleted") + name
+                        : App.uiText(App.language, "FileRedoNothing")
+                    statusClearTimer.restart()
+                }
             }
             Shortcut {
                 sequence: "B"; enabled: stack.depth === 1
@@ -1284,12 +1302,176 @@ ApplicationWindow {
     }
 
     // ── Drag & Drop ───────────────────────────────────────────────────────────
+    //  `z: -1` ist PFLICHT, nicht Kosmetik: Ein Zug wird immer nur an die
+    //  OBERSTE annehmende DropArea unter dem Zeiger geliefert (gemessen —
+    //  danach ist Schluss, tiefere Flächen sehen ihn nie). Diese Fläche hier
+    //  füllt das ganze Fenster, steht ohne `keys` für JEDE Nutzlast offen und
+    //  ist als spät deklariertes Kind der Wurzel automatisch obenauf — sie
+    //  verschluckte damit die Ablegeflächen der Tag-/Kategorien-Seitenleiste
+    //  vollständig. Nach unten gelegt greift sie nur noch dort, wo keine
+    //  besondere Fläche zuständig ist.
     DropArea {
+        z: -1
         anchors.fill: parent
         onDropped: (drop) => {
             if (drop.hasUrls) {
                 App.handleDroppedUrls(drop.urls)
                 drop.acceptProposedAction()
+            }
+        }
+    }
+
+    // ── Ablegeleiste für Lesezeichen (nur WÄHREND eines Kachel-Zuges) ────────
+    //  Der Zug einer Kachel ist ein PLATTFORM-Zug; landet er im eigenen Fenster,
+    //  kommt er hier als gewöhnlicher Datei-Drop an. Die Leiste erscheint nur,
+    //  solange gezogen wird (`App.tileDragActive`) — ein Ziel, das keinen
+    //  dauerhaften Platz kostet. Sie liegt über allem, weil ein Zug immer nur an
+    //  die OBERSTE annehmende Fläche geht.
+    Rectangle {
+        id: bookmarkDropBar
+        z: 90
+        visible: App.tileDragActive && App.savedFolders.length > 0
+        anchors { left: parent.left; right: parent.right; bottom: parent.bottom }
+        anchors.bottomMargin: 28
+        height: 70
+        color: App.themeMenuBarBg
+        border.color: App.themeAccent; border.width: 1
+
+        Text {
+            id: dropBarHint
+            anchors { left: parent.left; leftMargin: 14; top: parent.top; topMargin: 6 }
+            text: App.uiText(App.language,
+                             App.fileDropMove ? "DropBarMove" : "DropBarCopy")
+            color: App.themeTextMuted; font.pixelSize: 11
+        }
+        Row {
+            anchors { left: parent.left; leftMargin: 14; bottom: parent.bottom; bottomMargin: 8 }
+            spacing: 8
+            Repeater {
+                model: App.savedFolders
+                delegate: Rectangle {
+                    id: bmTarget
+                    required property var modelData
+                    width: bmLabel.implicitWidth + 24; height: 30; radius: 6
+                    color: bmDrop.containsDrag
+                           ? Qt.rgba(App.themeAccent.r, App.themeAccent.g, App.themeAccent.b, 0.30)
+                           : App.themeCard
+                    border.color: bmDrop.containsDrag ? App.themeAccent : App.themeBorder
+                    border.width: bmDrop.containsDrag ? 2 : 1
+                    Text {
+                        id: bmLabel
+                        anchors.centerIn: parent
+                        text: bmTarget.modelData.name
+                        color: App.themeTextPrimary; font.pixelSize: 12
+                    }
+                    DropArea {
+                        id: bmDrop
+                        anchors.fill: parent
+                        keys: ["text/uri-list"]
+                        onDropped: function(drop) {
+                            if (!drop.hasUrls) { drop.accepted = false; return }
+                            shell._dropOnBookmark(App.localPath(drop.urls[0]),
+                                                  bmTarget.modelData.path)
+                            drop.acceptProposedAction()
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    //  Eine gezogene Datei auf einem Lesezeichen ablegen. Die Regeln stehen im
+    //  Modell (`transferToFolder`); hier bleibt nur die Rückfrage bei einem
+    //  belegten Namen und die Meldung.
+    function _dropOnBookmark(path, destFolder) {
+        if (path.length === 0 || destFolder.length === 0) return
+        const move = App.fileDropMove
+        const r = mediaModel.transferToFolder(path, destFolder, move, 0)
+        if (r === 1) {
+            collisionDialog.srcPath    = path
+            collisionDialog.destFolder = destFolder
+            collisionDialog.moveMode   = move
+            collisionDialog.altName    = mediaModel.transferTargetName(path, destFolder)
+            collisionDialog.open()
+            return
+        }
+        shell._reportTransfer(r, move, path)
+    }
+    function _reportTransfer(result, move, path) {
+        const name = String(path).split("/").pop()
+        if (result === 0)
+            shell.statusText = App.uiText(App.language, move ? "DropMoved" : "DropCopied") + name
+        else
+            shell.statusText = App.uiText(App.language, "DropFailed") + name
+        statusClearTimer.restart()
+    }
+
+    // ── Rückfrage bei belegtem Namen (Ersetzen / Umbenennen / Abbrechen) ─────
+    Dialog {
+        id: collisionDialog
+        property string srcPath: ""
+        property string destFolder: ""
+        property bool   moveMode: true
+        property string altName: ""
+        anchors.centerIn: parent
+        modal: true
+        padding: 18
+        background: Rectangle {
+            color: App.themeCard; radius: 10
+            border.color: App.themeBorder; border.width: 1
+        }
+        contentItem: Column {
+            spacing: 10
+            Text {
+                text: App.uiText(App.language, "DropCollisionTitle")
+                color: App.themeTextPrimary; font.pixelSize: 14; font.bold: true
+            }
+            Text {
+                width: 320
+                text: App.uiText(App.language, "DropCollisionText") + collisionDialog.altName
+                color: App.themeTextMuted; font.pixelSize: 12; wrapMode: Text.WordWrap
+            }
+            Row {
+                anchors.right: parent.right
+                spacing: 8
+                Repeater {
+                    model: [
+                        { key: "SettingsCancel",     mode: 0 },
+                        { key: "DropCollisionRename", mode: 2 },
+                        { key: "DropCollisionReplace", mode: 1 }
+                    ]
+                    delegate: Rectangle {
+                        id: colBtn
+                        required property var modelData
+                        width: colLbl.implicitWidth + 24; height: 30; radius: 6
+                        color: colHover.hovered
+                               ? Qt.rgba(App.themeTextPrimary.r, App.themeTextPrimary.g,
+                                         App.themeTextPrimary.b, 0.16)
+                               : Qt.rgba(App.themeTextPrimary.r, App.themeTextPrimary.g,
+                                         App.themeTextPrimary.b, 0.07)
+                        border.color: App.themeBorder; border.width: 1
+                        Text {
+                            id: colLbl
+                            anchors.centerIn: parent
+                            text: App.uiText(App.language, colBtn.modelData.key)
+                            color: App.themeTextPrimary; font.pixelSize: 12
+                        }
+                        HoverHandler { id: colHover }
+                        TapHandler {
+                            onTapped: {
+                                collisionDialog.close()
+                                if (colBtn.modelData.mode === 0) return
+                                const r = mediaModel.transferToFolder(
+                                              collisionDialog.srcPath,
+                                              collisionDialog.destFolder,
+                                              collisionDialog.moveMode,
+                                              colBtn.modelData.mode)
+                                shell._reportTransfer(r, collisionDialog.moveMode,
+                                                      collisionDialog.srcPath)
+                            }
+                        }
+                    }
+                }
             }
         }
     }

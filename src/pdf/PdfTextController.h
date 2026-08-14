@@ -211,12 +211,24 @@ private:
     //  EIN Treffer. `rect` steht in PDF-Punkten mit Ursprung oben-links —
     //  genau so liefert QPdfSearchModel sie (gemessen), also dieselbe
     //  Konvention wie im ganzen Editor.
+    //  EIN Treffer = EINE Fundstelle, auch wenn sie über mehrere Rechtecke
+    //  gezeichnet wird. PDFium liefert je Fundstelle so viele Rechtecke, wie sie
+    //  Zeige-Operatoren berührt — und manche Erzeuger (dieses DOCX→PDF etwa)
+    //  setzen JEDES Zeichen einzeln. Ein Rechteck = ein Treffer zu zählen ergab
+    //  dort „7 Treffer" für das eine Wort „Stellen" (Nutzerbefund).
     struct SearchHit {
-        int     page = 0;
-        QRectF  rect;
-        QString before;
-        QString after;
-        bool    ocr = false;        // aus der OCR-Zeile, nicht aus der Textebene
+        int             page = 0;
+        QList<QRectF>   rects;      // alle Teilstücke DIESER Fundstelle
+        QString         before;
+        QString         after;
+        bool            ocr = false;  // aus der OCR-Zeile, nicht aus der Textebene
+
+        //  Umschließendes Rechteck — für das Anspringen (▲/▼).
+        QRectF bounds() const {
+            QRectF b;
+            for (const QRectF& r : rects) b = b.isNull() ? r : b.united(r);
+            return b;
+        }
     };
     QVector<SearchHit> m_hits;
     QString            m_searchTerm;

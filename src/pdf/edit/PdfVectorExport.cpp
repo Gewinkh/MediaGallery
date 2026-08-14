@@ -1,4 +1,6 @@
 #include "pdf/edit/PdfVectorExport.h"
+
+#include <array>
 #include "pdf/edit/PdfObjects.h"
 #include "pdf/edit/PdfEncodings.h"
 #include "pdf/extract/PdfPageCopier.h"
@@ -104,6 +106,81 @@ QVector<QString> wrapText(const QString& text, qreal widthPt,
     return lines;
 }
 
+//  ── WAS LÄSST DIE SEITE FÜR UNS STEHEN? ────────────────────────────────────
+//  Die Ströme eines `/Contents`-ARRAYS sind laut Spezifikation EIN Strom: was
+//  der letzte offen lässt, gilt für alles, was wir anhängen. Zwei Dinge tun das:
+//   • offene `q` (Klemme, Farben, Linienbreite bleiben stehen),
+//   • ein **`cm` AUSSERHALB jeder `q`-Klammer** — das lässt sich durch kein `Q`
+//     zurücknehmen und gilt bis zum Ende des Stroms.
+//  Genau daran lag der „zufällige schwarze Block": Diese DOCX→PDF-Datei endet
+//  mit einer stehenden Matrix `[0.24 0 0 −0.24 0 842]` (Skalierung samt
+//  Y-Spiegelung). Ein Balken mit korrekten Seitenkoordinaten landete dadurch
+//  klein und an der falschen Stelle.
+//  Gezählt/gerechnet wird mit einem kleinen Lexer: Zeichenketten, Hex-Strings,
+//  Kommentare und Inline-Bilder dürfen nichts beisteuern.
+struct TrailingState {
+    int   openSaves = 0;              // nicht geschlossene `q`
+    qreal m[6] = { 1, 0, 0, 1, 0, 0 }; // CTM, NACHDEM diese `q` zurückgerollt sind
+};
+
+//  a × b (PDF-Reihenfolge: erst a, dann b).
+inline void matMul(const qreal a[6], const qreal b[6], qreal out[6]) {
+    const qreal r0 = a[0]*b[0] + a[1]*b[2];
+    const qreal r1 = a[0]*b[1] + a[1]*b[3];
+    const qreal r2 = a[2]*b[0] + a[3]*b[2];
+    const qreal r3 = a[2]*b[1] + a[3]*b[3];
+    const qreal r4 = a[4]*b[0] + a[5]*b[2] + b[4];
+    const qreal r5 = a[4]*b[1] + a[5]*b[3] + b[5];
+    out[0]=r0; out[1]=r1; out[2]=r2; out[3]=r3; out[4]=r4; out[5]=r5;
+}
+
+TrailingState trailingState(const QByteArray& c) {
+    TrailingState st;
+    QVector<qreal> nums;
+    QVector<std::array<qreal,6>> stack;
+    const qint64 n = c.size();
+    qint64 i = 0;
+    while (i < n) {
+        const char ch = c[i];
+        if (isWs(ch)) { ++i; continue; }
+        if (ch == '%') { while (i < n && c[i] != '\n' && c[i] != '\r') ++i; continue; }
+        if (ch == '(' || ch == '<' || ch == '[') { i = skipValue(c, i); nums.clear(); continue; }
+        if (isDelim(ch)) { ++i; nums.clear(); continue; }
+        const qint64 s0 = i;
+        while (i < n && !isWs(c[i]) && !isDelim(c[i])) ++i;
+        const QByteArray tok = c.mid(s0, i - s0);
+        bool isNum = false;
+        const qreal v = tok.toDouble(&isNum);
+        if (isNum) { nums.push_back(v); continue; }
+        if (tok == "q") {
+            std::array<qreal,6> a{};
+            for (int k = 0; k < 6; ++k) a[k] = st.m[k];
+            stack.push_back(a);
+        } else if (tok == "Q") {
+            if (!stack.isEmpty()) {
+                const auto a = stack.takeLast();
+                for (int k = 0; k < 6; ++k) st.m[k] = a[k];
+            }
+        } else if (tok == "cm" && nums.size() >= 6) {
+            const qreal a[6] = { nums[nums.size()-6], nums[nums.size()-5], nums[nums.size()-4],
+                                 nums[nums.size()-3], nums[nums.size()-2], nums[nums.size()-1] };
+            qreal out[6];
+            matMul(a, st.m, out);
+            for (int k = 0; k < 6; ++k) st.m[k] = out[k];
+        } else if (tok == "BI") {
+            const qint64 ei = c.indexOf("EI", i);
+            i = (ei < 0) ? n : ei + 2;
+        }
+        nums.clear();
+    }
+    //  Offene `q` zurückrollen: der Zustand VOR der äußersten offenen Klammer
+    //  ist das, was ein vorangestelltes `Q` je Ebene wiederherstellt.
+    st.openSaves = stack.size();
+    if (!stack.isEmpty())
+        for (int k = 0; k < 6; ++k) st.m[k] = stack.first()[k];
+    return st;
+}
+
 // ── Ein Seiten-Auftrag ──────────────────────────────────────────────────────
 struct PageJob {
     int        objNum = -1;        // Objektnummer der Seite
@@ -165,6 +242,35 @@ bool appendAnnotations(const QString& inputPath, const QString& outputPath,
         return (it == objs.constEnd()) ? QByteArray() : objectBody(buf, it->offset);
     };
     auto dictOf = [&](int n) -> QByteArray { return dictOfObject(bodyOf(n)); };
+
+    //  Entpackte Nutzdaten eines Stream-Objekts (roh oder /FlateDecode) — für
+    //  das Zählen der offen gelassenen `q` der Seite (s. unbalancedSaves).
+    auto streamDataOf = [&](int n, bool* ok) -> QByteArray {
+        *ok = false;
+        const QByteArray body = bodyOf(n);
+        if (body.isEmpty()) return {};
+        const QByteArray d = dictOfObject(body);
+        const QByteArray filt = nameValue(d, "Filter");
+        const bool fl = (filt == "/FlateDecode");
+        if (!filt.isEmpty() && !fl) return {};
+        qint64 sp = body.indexOf("stream");
+        if (sp < 0) return {};
+        sp += 6;
+        if (sp < body.size() && body[sp] == '\r') ++sp;
+        if (sp < body.size() && body[sp] == '\n') ++sp;
+        const qint64 ep = body.indexOf("endstream", sp);
+        if (ep < 0) return {};
+        qint64 len = ep - sp;
+        const qint64 dl = streamLength(d, buf, objs);
+        if (dl >= 0 && dl <= len) len = dl;
+        const QByteArray raw = body.mid(sp, len);
+        if (!fl) { *ok = true; return raw; }
+        bool iok = false;
+        const QByteArray inf = zInflate(raw, &iok);
+        if (!iok) return {};
+        *ok = true;
+        return inf;
+    };
 
     int rootNum = -1;
     {
@@ -660,8 +766,65 @@ bool appendAnnotations(const QString& inputPath, const QString& outputPath,
     //  Je betroffener Seite: neuer Content-Stream + aktualisiertes Seiten-Objekt.
     for (auto it = jobs.cbegin(); it != jobs.cend(); ++it) {
         const PageJob& job = it.value();
-        const QByteArray def = zDeflate(job.ops);
-        if (def.isEmpty() && !job.ops.isEmpty()) return fail("Deflate fehlgeschlagen");
+        //  ── Geerbten Grafikzustand zurückrollen ─────────────────────────────
+        //  Erst die offen gelassenen `q` der Seite schließen, dann zeichnen.
+        //  Ohne das erbt jeder Balken/Strich die letzte `cm` der Seite (s.
+        //  unbalancedSaves). Der Deckel ist eine Sicherung gegen einen
+        //  verkorksten Strom — mehr als ein paar Ebenen kommen real nie vor.
+        QByteArray ops;
+        {
+            TrailingState st;
+            bool known = false;
+            const QByteArray pd = dictOf(job.objNum);
+            const qint64 cp = findKey(pd, "Contents");
+            if (cp >= 0) {
+                QVector<int> nums;
+                if (pd[cp] == '[') {
+                    const qint64 ce = skipValue(pd, cp);
+                    static const QRegularExpression cre(QStringLiteral("(\\d+)\\s+(\\d+)\\s+R"));
+                    auto mit = cre.globalMatch(QString::fromLatin1(pd.mid(cp, ce - cp)));
+                    while (mit.hasNext()) nums.push_back(mit.next().captured(1).toInt());
+                } else {
+                    const int n2 = refValue(pd, "Contents");
+                    if (n2 >= 0) nums.push_back(n2);
+                }
+                QByteArray whole;
+                known = !nums.isEmpty();
+                for (int n2 : nums) {
+                    bool sok = false;
+                    const QByteArray part = streamDataOf(n2, &sok);
+                    if (!sok) { known = false; break; }      // nicht lesbar → nichts raten
+                    whole += part;
+                    whole += '\n';
+                }
+                if (known) st = trailingState(whole);
+            }
+            if (known) {
+                //  1) offene `q` schließen (Klemme/Farben/Linienbreite),
+                for (int k = 0; k < qMin(st.openSaves, 32); ++k) ops += "Q\n";
+                //  2) eine stehen gebliebene Matrix INVERTIEREN — sie lässt sich
+                //     durch kein `Q` zurücknehmen (s. trailingState).
+                const qreal det = st.m[0]*st.m[3] - st.m[1]*st.m[2];
+                const bool identity = qFuzzyCompare(st.m[0], qreal(1)) && qFuzzyIsNull(st.m[1])
+                                   && qFuzzyIsNull(st.m[2]) && qFuzzyCompare(st.m[3], qreal(1))
+                                   && qFuzzyIsNull(st.m[4]) && qFuzzyIsNull(st.m[5]);
+                if (!identity) {
+                    if (qAbs(det) < 1e-9)
+                        return fail("Seitenmatrix nicht umkehrbar → Fallback");
+                    const qreal inv[6] = {
+                         st.m[3]/det, -st.m[1]/det,
+                        -st.m[2]/det,  st.m[0]/det,
+                        (st.m[2]*st.m[5] - st.m[3]*st.m[4])/det,
+                        (st.m[1]*st.m[4] - st.m[0]*st.m[5])/det
+                    };
+                    for (int k = 0; k < 6; ++k) ops += num(inv[k]) + " ";
+                    ops += "cm\n";
+                }
+            }
+        }
+        ops += job.ops;
+        const QByteArray def = zDeflate(ops);
+        if (def.isEmpty() && !ops.isEmpty()) return fail("Deflate fehlgeschlagen");
         const int csNum = nextObj++;
         {
             xentries.push_back({ csNum, out.size(), 0 });

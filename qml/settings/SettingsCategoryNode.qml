@@ -93,7 +93,7 @@ Column {
                 width: 24; height: 24
                 text: "\u22EE"
                 onClicked: ctxMenu.open()
-                Menu {
+                ThemedMenu {
                     id: ctxMenu
                     MenuItem { text: App.uiText(App.language, "SettingsCatNodeAddSub"); onTriggered: nodeRoot.tab.promptAddSub(nodeRoot.node.id) }
                     MenuItem { text: App.uiText(App.language, "SettingsCatNodeRename");     onTriggered: nodeRoot.tab.promptRename(nodeRoot.node.id, nodeRoot.node.name) }

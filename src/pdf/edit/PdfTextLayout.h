@@ -53,7 +53,8 @@ struct PdfGlyph {
     QRectF  box;            // Ursprung oben-links, PDF-Punkte (Vorschub × Zeilenhöhe)
     qreal   fontSizePt = 0; // wirksame Schriftgröße (inkl. Matrix-Skalierung)
     int     showIndex  = 0; // Nummer des Zeigeoperators, in dem das Zeichen steht
-    int     byteOffset = 0; // Byte-Position innerhalb dessen Zeichenkette
+    int     byteOffset = 0; // Byte-Position in dessen ZUSAMMENGEFÜGTEN Bytes
+                            // (PdfShowSpan::bytes) — bei TJ über alle Glieder
 };
 
 //  Ein Zeigeoperator (Tj/TJ/'/") mit seiner Lage IM ENTPACKTEN Content-Stream.
@@ -79,6 +80,13 @@ struct PdfShowSpan {
     //  Textmatrix zurück — eine relative Verschiebung wirkt nicht darüber
     //  hinaus.
     int            objIndex = 0;
+    //  SEITEN-PUNKTE, um die ein TJ-Versatz von −1000 hier nach rechts schiebt
+    //  (= `Tfs · Tz/100 · waagerechte Skalierung von Textmatrix und CTM`).
+    //  Wer Zeichen aus einem Zeigeoperator herausschneidet, muss die Lücke mit
+    //  genau so einem Versatz ausgleichen, sonst rutscht der Rest der Zeile
+    //  nach links. Die Umrechnung gehört hierher: nur an dieser Stelle ist der
+    //  vollständige Textzustand (inkl. `Tz`) bekannt.
+    qreal          tjUnitPt = 0;
 };
 
 //  Alles, was eine Seite an Text hergibt.
@@ -93,6 +101,11 @@ struct PdfPageText {
     //  Text verschieben will, muss wissen, was dabei stehen bliebe: Grafik
     //  wandert nicht mit.
     QVector<QRectF>      paints;
+    //  Nur die BILDartigen davon (XObject `Do`, Inline-Bild `BI`, Schattierung
+    //  `sh`). Wer schwärzt, muss sie kennen: Text lässt sich aus dem Strom
+    //  entfernen, Bildpunkte NICHT — unter einem Balken über einem Bild bliebe
+    //  das Original erhalten, sichtbar zu machen durch Entfernen des Balkens.
+    QVector<QRectF>      imagePaints;
 };
 
 class PdfTextLayout {

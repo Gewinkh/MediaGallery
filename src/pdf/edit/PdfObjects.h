@@ -68,6 +68,13 @@ QByteArray dictOfObject(const QByteArray& objBody);
 
 int        refValue (const QByteArray& dict, const char* key);   // "/k N G R" → N, sonst −1
 QByteArray nameValue(const QByteArray& dict, const char* key);   // "/k /Name" → "/Name"
+
+//  /Length eines Stream-Dicts — AUCH als indirekte Referenz („/Length 13 0 R").
+//  Genau so schreibt Qt seine PDFs, und `intValue` las daraus die 13 und
+//  schnitt den Strom nach 13 Bytes ab: die Textebene solcher Dateien war
+//  dadurch gar nicht lesbar („Content-Stream nicht lesbar"). −1 = keine Angabe.
+qint64 streamLength(const QByteArray& dict, const QByteArray& buf,
+                    const QHash<int, ObjLoc>& objs);
 qint64     intValue (const QByteArray& dict, const char* key);   // "/k 42"    → 42, sonst −1
 
 //  Rohes Wert-Stück von `/key` (leer, wenn nicht vorhanden) — anders als die

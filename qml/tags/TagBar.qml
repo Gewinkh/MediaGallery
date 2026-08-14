@@ -2,6 +2,7 @@ pragma ComponentBehavior: Bound
 import QtQuick
 import QtQuick.Controls
 import MediaGallery 1.0
+import "../common"
 
 // ─────────────────────────────────────────────────────────────────────────────
 //  TagBar.qml — Tags einer Datei anzeigen/bearbeiten (ersetzt TagBar/TagPill aus
@@ -104,7 +105,7 @@ Item {
                 width: 26
                 onClicked: tagMenu.open()
 
-                Menu {
+                ThemedMenu {
                     id: tagMenu
                     Repeater {
                         model: App.allTags()

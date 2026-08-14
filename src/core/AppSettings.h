@@ -45,6 +45,8 @@ public:
 
     bool monoPlay() const override;
     void setMonoPlay(bool v) override;
+    bool fileDropMove() const override;
+    void setFileDropMove(bool v) override;
 
     bool spellCheckEnabled() const override;
     void setSpellCheckEnabled(bool v) override;

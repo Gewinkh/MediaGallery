@@ -106,15 +106,6 @@ Item {
                              ? error
                              : App.uiText(App.language, "DocxImageError"))
         }
-        onPdfExportFinished: (ok, target, error) => {
-            if (ok)
-                statusText.flash(App.uiText(App.language, "DocxPdfExportedTo")
-                                 .replace("%1", target.split("/").pop()))
-            else
-                statusText.flash(error.length > 0
-                                 ? error
-                                 : App.uiText(App.language, "DocxPdfError"))
-        }
     }
 
     //  ── PDF-Seiten als Bild einfügen ─────────────────────────────────────

@@ -11,11 +11,12 @@ import "../common"
 //  Filterlogik in QML.
 //
 //  Layout:
-//    • Sortierung (Feld + Richtung) bleibt INLINE links.
-//    • Ein "Filter"-Button oeffnet ein MASTER-DETAIL-Popup: links eine Spalte mit
-//      Kategorie-Buttons (Medien, Tag-Filtermodus, Tags, Kategorien), rechts
-//      daneben die Optionen der jeweils gewaehlten Kategorie. Das haelt jede
-//      Kategorie uebersichtlich getrennt.
+//    • Links steht NUR der "Filter"-Button. Er oeffnet ein MASTER-DETAIL-Popup:
+//      links eine Spalte mit Rubriken (Sortieren, Medien, Tag-Filtermodus, Tags
+//      & Kategorien), rechts daneben die Optionen der gewaehlten Rubrik. Das
+//      haelt jede Rubrik uebersichtlich getrennt.
+//    • Die SORTIERUNG (Feld + Richtung) ist eine Rubrik darin — frueher standen
+//      Sortierfeld und ein Richtungspfeil-Knopf inline in der Leiste.
 //    • Aktive Tag-Chips + "Leeren" bleiben INLINE rechts.
 // ─────────────────────────────────────────────────────────────────────────────
 Rectangle {
@@ -89,10 +90,59 @@ Rectangle {
         + (galleryModel.showAudio ? 1 : 0) + (galleryModel.showPdfs ? 1 : 0)
         + (galleryModel.showTexts ? 1 : 0)
 
+    //  Sortierfelder in der Reihenfolge von MediaProxyModel::sortRole (0..3).
+    readonly property var sortFields: [
+        App.uiText(App.language, "FilterDate"),
+        App.uiText(App.language, "FilterName"),
+        App.uiText(App.language, "FilterTags"),
+        App.uiText(App.language, "FilterFileSize")
+    ]
+
+    //  Eine Sortierung ist KEIN Filter: sie zählt bewusst weder in den Zähler am
+    //  Knopf noch in den Aktiv-Rahmen — sonst sähe der Knopf dauerhaft „aktiv"
+    //  aus, denn sortiert wird immer.
     readonly property bool anyFilterActive:
         mediaActiveCount < mediaTypes.length || activeTags.length > 0
     readonly property int filterBadge:
         (mediaActiveCount < mediaTypes.length ? 1 : 0) + activeTags.length
+
+    //  Auswahlzeile (Radio-Optik) der Sortier-Rubrik — vier Felder und zwei
+    //  Richtungen sähen sonst sechsmal identisch aus.
+    component SortRow: Rectangle {
+        id: sortRow
+        property string label: ""
+        property bool   selected: false
+        signal picked()
+
+        width: 236; height: 34; radius: 6
+        color: selected ? Qt.rgba(App.themeAccent.r, App.themeAccent.g, App.themeAccent.b, 0.18)
+                        : (srHover.hovered ? Qt.rgba(1, 1, 1, 0.06) : "transparent")
+        border.width: 1
+        border.color: selected ? App.themeAccent : App.themeBorder
+
+        Text {
+            id: srDot
+            anchors.left: parent.left; anchors.leftMargin: 10
+            anchors.verticalCenter: parent.verticalCenter
+            width: 14
+            text: sortRow.selected ? "\u25CF" : "\u25CB"   // wie die Modus-Zeilen
+            color: sortRow.selected ? App.themeAccent : App.themeTextMuted
+            font.pixelSize: 15
+            horizontalAlignment: Text.AlignHCenter
+        }
+        Text {
+            anchors.left: srDot.right; anchors.leftMargin: 9
+            anchors.right: parent.right; anchors.rightMargin: 10
+            anchors.verticalCenter: parent.verticalCenter
+            text: sortRow.label
+            color: sortRow.selected ? App.themeAccent : App.themeTextPrimary
+            font.pixelSize: 14
+            font.weight: sortRow.selected ? Font.Bold : Font.Normal
+            elide: Text.ElideRight
+        }
+        HoverHandler { id: srHover }
+        TapHandler { onTapped: sortRow.picked() }
+    }
 
     function toggleTag(tag) {
         var a = activeTags.slice()
@@ -102,6 +152,9 @@ Rectangle {
         galleryModel.tagFilter = a
     }
     function clearTags() { activeTags = []; galleryModel.tagFilter = [] }
+    //  Strg+F aus der Shell: Fokus ins Suchfeld, vorhandener Text markiert —
+    //  ein zweites Strg+F beginnt damit sofort eine neue Suche.
+    function focusSearch() { searchInput.forceActiveFocus(); searchInput.selectAll() }
 
     Rectangle {
         anchors.bottom: parent.bottom
@@ -115,93 +168,15 @@ Rectangle {
         anchors.rightMargin: 10
         spacing: 8
 
-        // ── Sortierfeld (INLINE) ──────────────────────────────────────────────
-        Text {
-            anchors.verticalCenter: parent.verticalCenter
-            text: App.uiText(App.language, "FilterSortLabel"); color: App.themeTextMuted; font.pixelSize: 12
-        }
-        ComboBox {
-            id: sortField
-            anchors.verticalCenter: parent.verticalCenter
-            width: 130
-            height: 30
-            model: [App.uiText(App.language, "FilterDate"), App.uiText(App.language, "FilterName"), App.uiText(App.language, "FilterTags"), App.uiText(App.language, "FilterFileSize")]
-            currentIndex: galleryModel.sortRole
-            onActivated: galleryModel.sortRole = currentIndex
-
-            //  GLEICHE Gestaltung wie der Filter-Knopf daneben. Vorher trug nur
-            //  das Aufklapp-Fenster die Theme-Farben, der Knopfteil kam aus der
-            //  Fusion-Vorgabe — andere Höhe, andere Farben, anderer Pfeil.
-            background: Rectangle {
-                color: sortField.hovered ? Qt.rgba(App.themeTextPrimary.r, App.themeTextPrimary.g,
-                                                   App.themeTextPrimary.b, 0.08)
-                                         : App.themeMenuBarBg
-                border.color: App.themeBorder
-                border.width: 1
-                radius: 4
-            }
-            contentItem: Text {
-                leftPadding: 10
-                rightPadding: sortField.indicator.width + 6
-                text: sortField.displayText
-                color: App.themeTextPrimary
-                font.pixelSize: 13
-                verticalAlignment: Text.AlignVCenter
-                elide: Text.ElideRight
-            }
-            indicator: ThemedIcon {
-                x: sortField.width - width - 8
-                y: (sortField.height - height) / 2
-                source: "qrc:/qml/icons/chevron-down.svg"
-                size: 12
-                color: App.themeTextMuted
-            }
-
-            // Dropdown folgt der Menüleisten-Farbe (App.themeMenuBarBg) statt der
-            // ungefärbten Fusion-Standardvorgabe — Struktur analog Qt-Doku
-            // "Customizing ComboBox": contentItem/ListView bleibt Standardverhalten
-            // (Delegates/Highlight unverändert), nur der Popup-Hintergrund wird ersetzt.
-            popup: Popup {
-                y: sortField.height
-                width: sortField.width
-                implicitHeight: contentItem.implicitHeight
-                padding: 1
-
-                contentItem: ListView {
-                    clip: true
-                    implicitHeight: contentHeight
-                    model: sortField.popup.visible ? sortField.delegateModel : null
-                    currentIndex: sortField.highlightedIndex
-                    ScrollIndicator.vertical: ScrollIndicator {}
-                }
-
-                background: Rectangle {
-                    color: App.themeMenuBarBg
-                    border.color: App.themeBorder; border.width: 1
-                    radius: 4
-                }
-            }
-        }
-        ToolButton {
-            anchors.verticalCenter: parent.verticalCenter
-            text: galleryModel.sortDescending ? "\u2193" : "\u2191"
-            ToolTip.text: galleryModel.sortDescending ? App.uiText(App.language, "FilterSortDesc") : App.uiText(App.language, "FilterSortAsc")
-            ToolTip.visible: hovered
-            onClicked: galleryModel.sortDescending = !galleryModel.sortDescending
-        }
-
-        ToolSeparator { anchors.verticalCenter: parent.verticalCenter }
-
         // ── Sammel-Button "Filter" (Master-Detail-Popup) ─────────────────────
-        //  Sieht aus wie das Sortierfeld daneben und sitzt auf derselben Höhe:
-        //  vorher war das ein nackter Fusion-`Button` mit einem „▾" IM TEXT —
-        //  andere Höhe, andere Farben, und der Pfeil rutschte mit der
-        //  Textbreite. Jetzt gezeichneter Rahmen wie beim ComboBox, der Pfeil
-        //  als SVG rechts (Regel 29).
+        //  EINZIGER Knopf links: Sortierung UND Filter sitzen darin. Vorher
+        //  standen Sortierfeld und Richtungspfeil daneben in der Leiste.
+        //  Gezeichneter Rahmen (kein nackter Fusion-`Button`), der Pfeil als
+        //  SVG rechts (Regel 29) — er rutschte sonst mit der Textbreite.
         Button {
             id: filterBtn
             anchors.verticalCenter: parent.verticalCenter
-            height: sortField.height
+            height: 30
             padding: 0
             onClicked: filterPopup.opened ? filterPopup.close() : filterPopup.open()
 
@@ -252,6 +227,9 @@ Rectangle {
                 // "Tags" und "Kategorien" sind zu EINEM Eintrag zusammengelegt:
                 // Panel-Steuerung (Tag-/Kategorie-Panel individuell) + Tag-Schnellfilter.
                 readonly property var cats: [
+                    { label: App.uiText(App.language, "FilterSortLabel"),
+                      hint: bar.sortFields[galleryModel.sortRole] + " · "
+                            + App.uiText(App.language, galleryModel.sortDescending ? "FilterSortDesc" : "FilterSortAsc") },
                     { label: App.uiText(App.language, "FilterMedia"), hint: bar.mediaActiveCount + "/" + bar.mediaTypes.length },
                     { label: App.uiText(App.language, "FilterTagModeLabel"), hint: bar.modeNames[galleryModel.tagFilterMode] },
                     { label: App.uiText(App.language, "FilterTagsCatsLabel"),
@@ -282,8 +260,11 @@ Rectangle {
                     readonly property real bodyH: Math.min(maxBodyH, Math.max(navH, detailH))
 
                     // ── Master: Kategorie-Buttons ─────────────────────────────
+                    //  200 statt 184: der Hinweis der Sortier-Rubrik trägt Feld
+                    //  UND Richtung („Dateigröße · Absteigend") — schmaler
+                    //  schnitt er ihn ab.
                     Item {
-                        width: 184
+                        width: 200
                         height: popupRow.bodyH
                         Column {
                             id: masterCol
@@ -319,7 +300,7 @@ Rectangle {
                                             Text {
                                                 text: catBtn.modelData.hint
                                                 color: App.themeTextMuted; font.pixelSize: 12
-                                                width: masterCol.width - 44; elide: Text.ElideRight
+                                                width: masterCol.width - 34; elide: Text.ElideRight
                                             }
                                         }
                                     }
@@ -352,8 +333,9 @@ Rectangle {
                             Loader {
                                 id: detailLoader
                                 width: 236
-                                sourceComponent: filterPopup.selectedCat === 0 ? medienComp
-                                               : filterPopup.selectedCat === 1 ? modeComp
+                                sourceComponent: filterPopup.selectedCat === 0 ? sortComp
+                                               : filterPopup.selectedCat === 1 ? medienComp
+                                               : filterPopup.selectedCat === 2 ? modeComp
                                                : tagsCatsComp
                             }
                         }
@@ -361,6 +343,47 @@ Rectangle {
                 }
 
                 // ── Detail-Komponenten ────────────────────────────────────────
+
+                //  Sortieren: Feld UND Richtung als sichtbare Optionen. Die
+                //  Richtung war vorher ein kleiner Pfeil-Knopf neben der Leiste —
+                //  man sah ihr nicht an, was sie gerade bedeutet.
+                Component {
+                    id: sortComp
+                    Column {
+                        spacing: 4
+                        Text {
+                            text: App.uiText(App.language, "FilterSortField"); color: App.themeAccent
+                            font.pixelSize: 13; font.bold: true; bottomPadding: 4
+                        }
+                        Repeater {
+                            model: bar.sortFields
+                            delegate: SortRow {
+                                required property int index
+                                required property var modelData
+                                label: modelData
+                                selected: galleryModel.sortRole === index
+                                onPicked: galleryModel.sortRole = index
+                            }
+                        }
+                        Text {
+                            text: App.uiText(App.language, "FilterSortDirection"); color: App.themeAccent
+                            font.pixelSize: 13; font.bold: true
+                            topPadding: 8; bottomPadding: 4
+                        }
+                        Repeater {
+                            model: [
+                                { key: "FilterSortAsc",  desc: false },
+                                { key: "FilterSortDesc", desc: true }
+                            ]
+                            delegate: SortRow {
+                                required property var modelData
+                                label: App.uiText(App.language, modelData.key)
+                                selected: galleryModel.sortDescending === modelData.desc
+                                onPicked: galleryModel.sortDescending = modelData.desc
+                            }
+                        }
+                    }
+                }
 
                 Component {
                     id: medienComp
@@ -633,6 +656,81 @@ Rectangle {
                 }
 
             }
+        }
+
+        // ── Suchfeld (INLINE, direkt hinter dem Filter-Knopf) ────────────────
+        //  Sucht LIVE bei jeder Änderung — kein Enter, kein Knopf. Gefiltert
+        //  wird im Proxy (`galleryModel.searchText`), nicht in QML; gesucht wird
+        //  in Anzeigename, Dateiname und Tags des OFFENEN Ordners, nicht im
+        //  Dateiinhalt. Die Suche ist UND-verknüpft mit allen anderen Filtern.
+        Rectangle {
+            id: searchBox
+            anchors.verticalCenter: parent.verticalCenter
+            width: 220; height: 30; radius: 6
+            color: App.themeCard
+            border.color: searchInput.activeFocus ? App.themeAccent : App.themeBorder
+            border.width: 1
+
+            ThemedIcon {
+                id: searchIcon
+                anchors.left: parent.left; anchors.leftMargin: 8
+                anchors.verticalCenter: parent.verticalCenter
+                source: "qrc:/qml/icons/search.svg"
+                size: 14
+                color: searchInput.activeFocus ? App.themeAccent : App.themeTextMuted
+            }
+            TextField {
+                id: searchInput
+                anchors.left: searchIcon.right; anchors.leftMargin: 6
+                anchors.right: clearSearch.left; anchors.rightMargin: 4
+                anchors.verticalCenter: parent.verticalCenter
+                height: parent.height - 2
+                padding: 0
+                font.pixelSize: 12
+                color: App.themeTextPrimary
+                placeholderText: App.uiText(App.language, "FilterSearchPlaceholder")
+                //  Der Rahmen gehört dem umgebenden Rechteck — sonst säßen zwei
+                //  Rahmen ineinander.
+                background: null
+                verticalAlignment: TextInput.AlignVCenter
+                //  Live: JEDE Änderung filtert sofort. `onTextChanged` statt
+                //  `onAccepted` ist hier der ganze Punkt der Funktion.
+                onTextChanged: galleryModel.searchText = text
+                //  Escape leert das Feld und gibt den Fokus an die Galerie
+                //  zurück (dort scrollen dann wieder die Pfeiltasten).
+                Keys.onEscapePressed: function(event) {
+                    searchInput.text = ""
+                    searchInput.focus = false
+                    event.accepted = true
+                }
+            }
+            //  Leeren-Knopf; erscheint erst, wenn etwas drinsteht.
+            Item {
+                id: clearSearch
+                anchors.right: parent.right; anchors.rightMargin: 6
+                anchors.verticalCenter: parent.verticalCenter
+                width: searchInput.text.length > 0 ? 14 : 0
+                height: 14
+                visible: searchInput.text.length > 0
+                ThemedIcon {
+                    anchors.centerIn: parent
+                    source: "qrc:/qml/icons/close.svg"
+                    size: 12
+                    color: clearHover.hovered ? App.themeAccent : App.themeTextMuted
+                }
+                HoverHandler { id: clearHover }
+                TapHandler { onTapped: searchInput.text = "" }
+            }
+        }
+
+        //  Trefferzahl neben dem Feld — sonst rät man bei 0 Treffern, ob der
+        //  Ordner leer ist oder die Suche zu eng.
+        Text {
+            anchors.verticalCenter: parent.verticalCenter
+            visible: searchInput.text.trim().length > 0
+            text: galleryModel.count + " " + App.uiText(App.language, "FilterSearchHits")
+            color: galleryModel.count === 0 ? App.themeTextMuted : App.themeAccent
+            font.pixelSize: 12
         }
 
         ToolSeparator { anchors.verticalCenter: parent.verticalCenter }

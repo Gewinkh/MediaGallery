@@ -41,6 +41,15 @@ Rectangle {
     id: panel
 
     property var  surface: null          // PdfSurface-Root (Commit + Export-Start)
+
+    //  „Als PDF exportieren (Zieldatei)" — der Name kommt erst beim Zeigen dazu,
+    //  und wenn es (noch) keinen gibt, entfallen die Klammern ganz statt leer
+    //  dazustehen.
+    function _exportTip() {
+        const tip = App.uiText(App.language, "PdfEditExportTip")
+        const name = panel.ctl ? String(panel.ctl.exportTargetPath()).split("/").pop() : ""
+        return name.length > 0 ? tip + " (" + name + ")" : tip
+    }
     // Dezentraler PDF-Editor-Controller DIESER Kachel (von PdfSurface via
     // surface.editCtl gesetzt) — ersetzt den früheren globalen PdfEdit-Singleton.
     readonly property PdfEditController ctl: surface ? surface.editCtl : null
@@ -811,8 +820,13 @@ Rectangle {
                         //  Weg ist jetzt eine EINSTELLUNG, keine Entscheidung bei
                         //  jedem einzelnen Export.
                         //  Einzeilig, s. Ribbon-Fassung weiter unten.
-                        ToolTip.text: App.uiText(App.language, "PdfEditExportTip")
-                                      + " (" + panel.ctl.exportTargetPath().split("/").pop() + ")"
+                        //  Der Zielname kommt aus einer FUNKTION — eine Bindung
+                        //  darauf wird nie neu ausgewertet und stand deshalb
+                        //  ewig auf dem Stand beim Erzeugen des Panels: leere
+                        //  Klammern „()" (Nutzerbefund). Über `expHover.hovered`
+                        //  hängt sie an etwas, das sich ändert, und wird beim
+                        //  Zeigen frisch gerechnet.
+                        ToolTip.text: expHover.hovered ? panel._exportTip() : ""
                         ToolTip.visible: expHover.hovered
                     }
                 }
@@ -1308,8 +1322,8 @@ Rectangle {
                     //  EINZEILIG: der volle Pfad in einer zweiten Zeile machte den
                     //  Hinweis doppelt so hoch wie jeden anderen in der Leiste.
                     //  Der DATEINAME genügt — der Ordner ist der der Quelldatei.
-                    ToolTip.text: App.uiText(App.language, "PdfEditExportTip")
-                                  + " (" + panel.ctl.exportTargetPath().split("/").pop() + ")"
+                    //  s. Ribbon-Fassung oben: erst beim Zeigen rechnen.
+                    ToolTip.text: expHoverH.hovered ? panel._exportTip() : ""
                     ToolTip.visible: expHoverH.hovered
                 }
             }

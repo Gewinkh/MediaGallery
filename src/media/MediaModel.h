@@ -5,6 +5,8 @@
 #include <QString>
 #include <QStringList>
 #include <QTimer>
+#include <QColor>
+#include <QDateTime>
 #include <QFileInfo>
 #include <memory>
 #include "media/MediaItem.h"
@@ -112,12 +114,48 @@ public:
     //  einem Tag: ein Zug ist eine Zuweisung, kein Umschalter. Liegt der Tag
     //  schon an, passiert nichts.
     Q_INVOKABLE void addTag(const QString& filePath, const QString& tag);
+    //  Gehört die Datei zum aktuell geladenen Ordner? Die Seitenleiste fragt das,
+    //  bevor sie eine gezogene Datei einer Kategorie zuordnet: Kategorien merken
+    //  sich DATEINAMEN im Sidecar DIESES Ordners — der Name einer fremden Datei
+    //  bliebe dort als Waise liegen. `addTag` prüft das intern selbst.
+    Q_INVOKABLE bool hasFile(const QString& filePath) const { return rowForPath(filePath) >= 0; }
+
+    // ── Rückholbare Datei-Vorgänge (Galerie-Undo) ────────────────────────────
+    //  Für das Dateisystem gab es bisher kein Undo: ein Fehlgriff war endgültig.
+    //  Gelöscht wird in den PAPIERKORB — genau das macht den Rückweg möglich.
+    //  Der Stapel lebt nur für die SITZUNG und nur für den offenen Ordner (ein
+    //  Ordnerwechsel leert ihn): eine Rücknahme in einen Ordner, den man gerade
+    //  nicht sieht, wäre nicht nachvollziehbar. Mitgesichert werden Tags,
+    //  Kategorien-Mitgliedschaften und ein eigenes Datum — sie verschwinden beim
+    //  Löschen mit und müssen beim Zurückholen wieder da sein.
+    // ── Kachel auf ein LESEZEICHEN gezogen: verschieben oder kopieren ────────
+    //  `collision`: 0 = fragen (Rückgabe 1, wenn der Name schon vergeben ist),
+    //  1 = ersetzen, 2 = umbenennen („Name (2)").
+    //  Rückgabe: 0 = erledigt · 1 = Namenskollision (Aufrufer fragt nach) ·
+    //  2 = nicht möglich (fremder Pfad, Zielordner fehlt, gleicher Ordner, I/O).
+    //  Beim VERSCHIEBEN wandern Tags, Kategorie-Mitgliedschaft und eigenes Datum
+    //  mit in den Zielordner (die Zuordnungen liegen JE ORDNER im Sidecar);
+    //  beim KOPIEREN nicht — dort entsteht drüben eine unverschlagwortete Kopie
+    //  (Festlegung des Nutzers).
+    Q_INVOKABLE int     transferToFolder(const QString& filePath, const QString& destFolder,
+                                         bool move, int collision = 0);
+    //  Wie hieße die Datei drüben (mit „ (2)" bei Kollision)? Für die Rückfrage.
+    Q_INVOKABLE QString transferTargetName(const QString& filePath,
+                                           const QString& destFolder) const;
+
+    Q_INVOKABLE bool    undoFileOp();
+    Q_INVOKABLE bool    redoFileOp();
+    //  Dateiname des jeweils nächsten Schrittes ("" = nichts vorhanden) — die
+    //  Oberfläche baut daraus ihre Meldung.
+    Q_INVOKABLE QString undoFileOpName() const;
+    Q_INVOKABLE QString redoFileOpName() const;
 
 signals:
     void countChanged();
     void folderChanged();
     void folderContentsChanged();   // externe Änderung (für Statusmeldung)
     void thumbnailsInvalidated();   // Zielgröße gewechselt → Delegates fordern neu an
+    void fileHistoryChanged();      // Undo-/Redo-Stapel der Datei-Vorgänge
 
 private slots:
     void onThumbnailReady(const QString& filePath, const QString& thumbUrl);
@@ -125,6 +163,49 @@ private slots:
     void onDirectoryChanged();
 
 private:
+    //  Ein rückholbarer Datei-Vorgang (heute: Löschen). `trashPath` leer heißt:
+    //  das System hat keinen Papierkorb geboten, die Datei ist endgültig weg —
+    //  ein solcher Vorgang kommt gar nicht erst auf den Stapel.
+    struct FileOp {
+        //  Löschen (Papierkorb) ODER Verschieben in einen anderen Ordner —
+        //  beide sind rückholbar und teilen sich denselben Stapel.
+        enum class Kind { Delete, Move };
+        Kind        kind = Kind::Delete;
+        QString     path;                 // ursprünglicher Pfad im Ordner
+        QString     movedTo;              // nur Kind::Move: neuer Pfad
+        QString     trashPath;            // Ablage im Papierkorb
+        QString     sidecarPath;          // "<pfad>.mgedit.json" (falls vorhanden)
+        QString     sidecarTrashPath;
+        QStringList tags;
+        QStringList categoryIds;          // DIREKTE Mitgliedschaften (IDs, eigener Ordner)
+        QStringList categoryNames;        // dieselben als NAMEN (für einen fremden Ordner)
+        QDateTime   customDate;
+        bool        hasCustomDate = false;
+    };
+    //  Deckel gegen unbegrenztes Wachstum (RAM = Priorität 1): der Stapel hält
+    //  nur Pfade und Metadaten, aber er soll auch bei Massenlöschungen nicht
+    //  ungebremst wachsen.
+    static constexpr int kMaxFileOps = 50;
+
+    bool trashFile(const QString& filePath, FileOp* op);  // Datei + Metadaten weg
+    bool restoreFile(const FileOp& op);                   // Papierkorb → Ordner
+    //  Metadaten einer Datei aus dem OFFENEN Ordner einsammeln bzw. entfernen —
+    //  gemeinsame Grundlage von Löschen und Verschieben.
+    void collectMeta(const QString& fileName, FileOp* op) const;
+    void dropMeta(const QString& fileName, const FileOp& op);
+    void restoreMeta(const QString& fileName, const FileOp& op);
+    //  Metadaten in den Sidecar eines FREMDEN Ordners schreiben bzw. daraus
+    //  entfernen (eigene, kurzlebige JsonStorage-Instanz — die laufende gehört
+    //  dem offenen Ordner und darf dabei nicht umgeschaltet werden).
+    static void writeMetaToFolder(const QString& folder, const QString& fileName,
+                                  const FileOp& op, const QHash<QString, QColor>& tagColors);
+    static void removeMetaFromFolder(const QString& folder, const QString& fileName);
+    bool pushUndo(const FileOp& op);                      // Stapel + Signal
+    bool undoMove(const FileOp& op);                      // Verschiebung zurücknehmen
+    void appendRowFor(const QString& filePath);           // Zeile ans Ende (Proxy sortiert)
+    bool dropRowFor(const QString& filePath);             // Zeile gezielt entfernen
+    void clearFileHistory();
+
     void rebuild(const QString& folderPath);   // startet inkrementelle Befüllung
     void feedChunk(bool firstChunk);           // eine Charge Zeilen einspeisen
     void finishFill();                         // Aufräumen nach letzter Charge
@@ -152,4 +233,7 @@ private:
     QFileSystemWatcher* m_watcher;
     QTimer              m_watchDebounce;
     int                 m_suppressWatch = 0;  // >0 → Watcher-Reload ignorieren
+
+    QVector<FileOp>     m_undoOps;        // zuletzt gelöscht = hinten
+    QVector<FileOp>     m_redoOps;        // zurückgeholt, kann erneut gelöscht werden
 };

@@ -2,6 +2,7 @@ pragma ComponentBehavior: Bound
 import QtQuick
 import QtQuick.Controls
 import MediaGallery 1.0
+import "../common"
 
 // ─────────────────────────────────────────────────────────────────────────────
 //  CategoryNode.qml — ein (rekursiver) Knoten des Kategorie-Baums (ersetzt
@@ -30,12 +31,26 @@ Column {
                                      : (headerHover.hovered ? App.themeCard : "transparent")
         radius: 5
 
+        //  Nimmt ZWEIERLEI an: einen app-intern gezogenen Tag-Chip (→ der Tag
+        //  wechselt die Kategorie) und eine gezogene DATEI (→ sie wird Mitglied
+        //  dieser Kategorie). Bewusst EINE Fläche für beides: zwei
+        //  übereinanderliegende DropAreas würden einander den Zug wegnehmen —
+        //  geliefert wird immer nur an die oberste.
         DropArea {
             id: dropArea
+            objectName: "catHeaderDrop"      // Griff für tests/tags/tst_dropdelivery
             anchors.fill: parent
             onDropped: function(drop) {
-                if (drop.source && drop.source.dragTag !== undefined)
+                if (drop.source && drop.source.dragTag !== undefined) {
                     nodeRoot.panel.moveTag(drop.source.dragTag, drop.source.dragFromCat, nodeRoot.node.id)
+                    return
+                }
+                if (drop.hasUrls) {
+                    nodeRoot.panel.dropFilesOnCategory(drop.urls, nodeRoot.node.id)
+                    drop.acceptProposedAction()
+                    return
+                }
+                drop.accepted = false
             }
         }
 
@@ -82,7 +97,7 @@ Column {
                 width: 22; height: 22
                 text: "\u22EE"
                 onClicked: ctxMenu.open()
-                Menu {
+                ThemedMenu {
                     id: ctxMenu
                     MenuItem { text: App.uiText(App.language, "SettingsCatNodeAddSub"); onTriggered: nodeRoot.panel.promptAddSubcategory(nodeRoot.node.id) }
                     MenuItem { text: App.uiText(App.language, "TagBarPlaceholder"); onTriggered: nodeRoot.panel.promptAddTag(nodeRoot.node.id) }
@@ -166,6 +181,34 @@ Column {
                     onActiveChanged: if (!active) chip.Drag.drop()
                 }
 
+                //  ── Kachel auf den Tag ziehen ⇒ Datei bekommt ihn ──
+                //  Gleiche Fläche wie im Tags-Abschnitt des Panels; ein Tag
+                //  unter einer Kategorie soll sich nicht anders verhalten als
+                //  derselbe Tag in der Liste darüber. `keys` grenzt sauber gegen
+                //  den Chip-Zug ab (der trägt keine Schlüssel) — sonst nähme
+                //  diese Fläche dem Kategorie-Kopf das Verschieben weg.
+                DropArea {
+                    id: chipDrop
+                    objectName: "catTagChipDrop"   // Griff für tests/tags/tst_dropdelivery
+                    anchors.fill: parent
+                    keys: ["text/uri-list"]
+                    onDropped: function(drop) {
+                        if (!drop.hasUrls) { drop.accepted = false; return }
+                        nodeRoot.panel.dropFilesOnTag(drop.urls, chip.modelData)
+                        drop.acceptProposedAction()
+                    }
+                }
+                //  Rückmeldung beim Ziehen darüber — sonst rät man, ob der Chip
+                //  den Zug überhaupt annimmt.
+                Rectangle {
+                    anchors.fill: parent
+                    radius: parent.radius
+                    visible: chipDrop.containsDrag
+                    color: "transparent"
+                    border.color: App.themeAccent
+                    border.width: 2
+                }
+
                 TapHandler {
                     acceptedButtons: Qt.LeftButton
                     onTapped: nodeRoot.panel.toggleTag(chip.modelData)
@@ -174,7 +217,7 @@ Column {
                     acceptedButtons: Qt.RightButton
                     onTapped: chipMenu.open()
                 }
-                Menu {
+                ThemedMenu {
                     id: chipMenu
                     MenuItem { text: App.uiText(App.language, "ModeAddToTag"); onTriggered: nodeRoot.panel.requestAddToTagMode(chip.modelData) }
                     MenuItem { text: App.uiText(App.language, "ModeGroup");    onTriggered: nodeRoot.panel.requestGroupMode(chip.modelData) }

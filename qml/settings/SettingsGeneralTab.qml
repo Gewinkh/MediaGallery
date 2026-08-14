@@ -165,6 +165,30 @@ Item {
                 }
             }
 
+            // ── Ziehen auf ein Lesezeichen: verschieben oder kopieren ─────────
+            SettingsGroup {
+                title: App.uiText(App.language, "SettingsDropMoveLabel")
+                Layout.fillWidth: true
+
+                CheckBox {
+                    checked: App.fileDropMove
+                    onToggled: App.fileDropMove = checked
+                    text: App.uiText(App.language, "SettingsDropMoveLabel")
+                    contentItem: Text {
+                        text: parent.text; color: App.themeTextPrimary
+                        leftPadding: parent.indicator.width + 6
+                        verticalAlignment: Text.AlignVCenter
+                    }
+                }
+                Label {
+                    text: App.uiText(App.language, "SettingsDropMoveDesc")
+                    color: App.themeTextMuted
+                    font.pixelSize: 11
+                    wrapMode: Text.WordWrap
+                    Layout.fillWidth: true
+                }
+            }
+
             // ── Spulschritt der Pfeiltasten im Video-Vollbild ──────────────────
             SettingsGroup {
                 title: App.uiText(App.language, "SettingsGenSeekStep")

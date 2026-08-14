@@ -39,6 +39,12 @@ class AppController : public QObject {
     Q_PROPERTY(QString extractLayout   READ extractLayout   NOTIFY extractLayoutChanged)
     Q_PROPERTY(bool    audioAccentApple READ audioAccentApple NOTIFY audioAccentChanged)
     Q_PROPERTY(bool    monoPlay        READ monoPlay        NOTIFY monoPlayChanged)
+    //  Läuft gerade ein Zug mit einer Galerie-Kachel? Die Lesezeichen-Leiste
+    //  zum Ablegen erscheint NUR währenddessen — ein Zug soll ein Ziel haben,
+    //  ohne dass dauerhaft Platz dafür draufgeht.
+    Q_PROPERTY(bool    tileDragActive  READ tileDragActive  NOTIFY tileDragActiveChanged)
+    //  Ziehen auf ein Lesezeichen: verschieben (Standard) oder kopieren.
+    Q_PROPERTY(bool    fileDropMove    READ fileDropMove    WRITE setFileDropMove NOTIFY fileDropMoveChanged)
     Q_PROPERTY(int     videoSeekStep   READ videoSeekStep   NOTIFY videoSeekStepChanged)
     //  Rechtschreibprüfung: an/aus + Sprache. Die Kacheln lesen beides und
     //  reichen es an ihren Editor-Controller weiter (der kennt die globalen
@@ -145,6 +151,11 @@ public:
 
     // ── Lesezeichen (Delegation an ISettings) ───────────────────────────────
     QVariantList savedFolders() const;
+    //  Der Zug einer Kachel meldet sich an und ab (die Kachel blockiert
+    //  währenddessen in `Drag.active = true`, deshalb umklammert sie den Aufruf).
+    Q_INVOKABLE void beginTileDrag();
+    Q_INVOKABLE void endTileDrag();
+
     Q_INVOKABLE void openBookmark(const QString& path);
     // Phase 4: vollständige Lesezeichen-Verwaltung (für SettingsDialog/Bookmark-Tab)
     Q_INVOKABLE void addBookmark(const QString& name, const QString& path);
@@ -288,6 +299,10 @@ public:
     QString menuVideoPlaybackText()  const;
     QString menuVideoNativeText()    const;
     QString menuVideoExternalText()  const;
+    bool tileDragActive() const { return m_tileDragActive; }
+    bool fileDropMove() const;
+    void setFileDropMove(bool v);
+
     QString menuBookmarksText()      const;
     QString menuBookmarksEmptyText() const;
     QString bookmarkAddText()        const;
@@ -313,6 +328,8 @@ signals:
     void playbackStarted(const QString& token);
     void optionsVisibleChanged();
     void savedFoldersChanged();
+    void tileDragActiveChanged();
+    void fileDropMoveChanged();
     void themeChanged();
     void autoSaveChanged();
     void tileSizeChanged();
@@ -339,6 +356,8 @@ private:
 
     ISettings&     m_settings;
     FolderService& m_folderService;
+    bool           m_tileDragActive = false;
+
     JsonStorage&   m_storage;
     TagManager&    m_tagManager;
 

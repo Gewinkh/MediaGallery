@@ -3064,7 +3064,7 @@ Item {
     //  „Seite extrahieren"           → Namensdialog (Default „<Name> - Page N")
     //  „Mehrere Seiten extrahieren…" → Auswahlraster (PdfPageSelectDialog);
     //  Ziel-Ordner = Ordner der Quelldatei (Controller), Ergebnis via Toast.
-    Menu {
+    ThemedMenu {
         id: pageCtxMenu
         property int ctxPage: 0
         MenuItem {

@@ -124,13 +124,14 @@ The `tests/` directory is not included in the published repository. If it is mis
 ## Changelog
 
 ### Latest
-* **Improved DOCX/PDF editing** with better tables, text wrapping, redaction, and image positioning
-* **Added experimental drag-and-drop** for assigning files to tags and dragging files out of the gallery
-* **Added text-to-PDF export**
-* **Improved editor icons** with theme-aware SVG icons
-* **Improved tracked changes and document handling**
-* **Removed headers, footers, and footnotes support**
-* **Improved signature and stamp handling**
+* Fixed PDF export, redaction, and text layer handling
+* Improved PDF search and fixed incorrect hit counting
+* Improved themed context menus across editors and panels
+* Added gallery search, sorting, and keyboard navigation
+* Added drag-and-drop for bookmarks, tags, categories, and external applications
+* Added undo support for file deletion
+* Fixed gallery scrolling and drag-and-drop behavior
+* Improved DOCX-to-PDF export and text layer handling
 
 ---
 
@@ -140,12 +141,8 @@ The `tests/` directory is not included in the published repository. If it is mis
 - **Spell checking needs an installed Hunspell dictionary**; without one it stays off and says so.
 - **A text-to-PDF page made up only of very short lines cannot be searched in PDFium-based viewers** (Chrome, and this app's own PDF view). Measured: from about 30 characters of line width upwards everything is fine; below that, those viewers read the narrow column as vertically written text and hand out every character on its own line, so a word search finds nothing. The file itself is correct - every character carries its proper Unicode - and other PDF readers are unaffected. Widening the text block from our side did not change the viewer's guess.
 
-### Known bugs
-- **A DOCX exported to PDF carries some text twice in its text layer.** A paragraph that runs over a page boundary is drawn on both pages and only *visually* clipped - so the page before shows nothing wrong, but searching or copying finds those words on both pages. Measured on a 900-word test document: 900 words duplicated. What you see on paper is correct; the invisible text layer is not.
-
 ### Planned
-- **Sorting moves into the Filter popup** - the sort field (date/name/tags/size) and the ascending/descending switch become their own section inside the Filter button's popup, so the top-left of the window holds nothing but the Filter button.
-- **Search files in the main window** - a text field that filters the gallery as you type, updating on every keystroke (no Enter, no search button).
+- :o
 
 ---
 

@@ -90,6 +90,16 @@ void MediaProxyModel::setTagFilter(const QStringList& t) {
     emit filterChanged();
 }
 
+void MediaProxyModel::setSearchText(const QString& t) {
+    //  Getrimmt gespeichert: ein versehentliches Leerzeichen darf die Galerie
+    //  nicht leeren, und „a " soll dasselbe finden wie „a".
+    const QString trimmed = t.trimmed();
+    if (trimmed == m_search) return;
+    m_search = trimmed;
+    refilterRows();
+    emit filterChanged();
+}
+
 void MediaProxyModel::setTagFilterModeInt(int m) {
     const TagMode nm = static_cast<TagMode>(m);
     if (nm == m_mode) return;
@@ -181,6 +191,27 @@ bool MediaProxyModel::filterAcceptsRow(int sourceRow, const QModelIndex& sourceP
     // DOCX läuft bewusst unter dem Text-Filter (Dokumente).
     case MediaType::Docx:  if (!m_showTexts)  return false; break;
     default:               return false;
+    }
+
+    // ── Freitextsuche (UND-verknüpft, deshalb VOR jedem „return true") ───────
+    //  Anzeigename, Dateiname und Tags. Der Dateiname kommt dazu, weil der
+    //  Anzeigename ein anderer sein kann — wer die Endung tippt, sucht die Datei.
+    if (!m_search.isEmpty()) {
+        const QString name = item ? item->displayName
+                                  : idx.data(MediaModel::DisplayNameRole).toString();
+        bool hit = name.contains(m_search, Qt::CaseInsensitive);
+        if (!hit) {
+            const QString file = item ? item->fileName()
+                                      : idx.data(MediaModel::FileNameRole).toString();
+            hit = file.contains(m_search, Qt::CaseInsensitive);
+        }
+        if (!hit) {
+            const QStringList tags = item ? item->tags
+                                          : idx.data(MediaModel::TagsRole).toStringList();
+            for (const QString& tag : tags)
+                if (tag.contains(m_search, Qt::CaseInsensitive)) { hit = true; break; }
+        }
+        if (!hit) return false;
     }
 
     const bool hasTagFilter      = !m_effectiveTags.isEmpty();

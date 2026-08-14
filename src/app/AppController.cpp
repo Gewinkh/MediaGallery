@@ -224,6 +224,26 @@ void AppController::handleDroppedUrls(const QList<QUrl>& urls) {
 }
 
 // ── Lesezeichen ──────────────────────────────────────────────────────────────
+void AppController::beginTileDrag() {
+    if (m_tileDragActive) return;
+    m_tileDragActive = true;
+    emit tileDragActiveChanged();
+}
+
+void AppController::endTileDrag() {
+    if (!m_tileDragActive) return;
+    m_tileDragActive = false;
+    emit tileDragActiveChanged();
+}
+
+bool AppController::fileDropMove() const { return m_settings.fileDropMove(); }
+
+void AppController::setFileDropMove(bool v) {
+    if (m_settings.fileDropMove() == v) return;
+    m_settings.setFileDropMove(v);
+    emit fileDropMoveChanged();
+}
+
 QVariantList AppController::savedFolders() const {
     QVariantList out;
     const QStringList entries = m_settings.savedFolders();

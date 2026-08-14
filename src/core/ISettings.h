@@ -127,6 +127,10 @@ public:
     // laufende automatisch pausiert (nicht gestoppt). Standard: AN.
     virtual bool monoPlay() const = 0;
     virtual void setMonoPlay(bool v) = 0;
+    //  Was passiert, wenn eine Kachel auf ein LESEZEICHEN gezogen wird:
+    //  true = verschieben (Standard), false = kopieren.
+    virtual bool fileDropMove() const = 0;
+    virtual void setFileDropMove(bool v) = 0;
 
     // Spulschritt (Sekunden) der Pfeiltasten im Video-Vollbild. Standard: 15.
     //  Rechtschreibprüfung: an/aus und Sprache (Wörterbuch-Kürzel wie „de_DE").

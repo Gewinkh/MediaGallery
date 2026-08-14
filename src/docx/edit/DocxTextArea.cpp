@@ -399,26 +399,71 @@ int DocxTextArea::imageAtX(const BlockLayout& L, int li, qreal x) const {
     }
     return -1;
 }
+//  Bänder EINZELN zeichnen — der Weg für einen Absatz, der über eine Seitenkante
+//  läuft. `QTextLine::draw` nimmt denselben Ursprung wie `QTextLayout::draw` (die
+//  Zeile versetzt sich selbst um ihre y), es ändert sich also nur, WELCHE Zeilen
+//  in den Textstrom kommen.
+//  Die Selektion muss hier von Hand hinterlegt werden: `QTextLine::draw` kennt
+//  keine `FormatRange`. Bei gemischter Schreibrichtung ist das Rechteck eine
+//  Näherung (der Text selbst bleibt korrekt) — deshalb geht der ungeteilte
+//  Absatz weiter über `QTextLayout::draw`, wo Qt das bidi-fest erledigt.
+void DocxTextArea::drawBlockLines(QPainter* p, const BlockLayout& L,
+                                  const QPointF& origin, int selStart, int selEnd,
+                                  const QColor& selBg, int rowFrom, int rowTo) const {
+    p->save();
+    for (int li = rowFrom; li < rowTo; ++li) {
+        const LineRef r = lineRef(L, li);
+        if (!r.valid()) continue;                  // reines Bild-Band
+        const QTextLine ln = r.textLine();
+        const QPointF at = origin + QPointF(r.dx, r.dy);
+        if (selEnd > selStart) {
+            const int lineStart = r.textStart + ln.textStart();
+            const int lineEnd   = lineStart + ln.textLength();
+            const int a = qMax(selStart, lineStart);
+            const int b = qMin(selEnd,   lineEnd);
+            if (b > a) {
+                qreal x1 = ln.cursorToX(a - r.textStart);
+                qreal x2 = ln.cursorToX(b - r.textStart);
+                if (x1 > x2) std::swap(x1, x2);
+                p->fillRect(QRectF(at.x() + x1, at.y() + ln.y(),
+                                   x2 - x1, ln.height()), selBg);
+            }
+        }
+        ln.draw(p, at);
+    }
+    p->restore();
+}
+
 void DocxTextArea::drawBlockText(QPainter* p, const BlockLayout& L,
                                  const QPointF& origin, int selStart, int selEnd,
-                                 const QColor& selBg) const {
+                                 const QColor& selBg, int rowFrom, int rowTo) const {
     const int n  = L.textLen;
     const int s0 = qBound(0, selStart, n);
     const int s1 = qBound(0, selEnd, n);
-    for (const Piece& pc : L.pieces) {
-        if (!pc.lay) continue;
-        QList<QTextLayout::FormatRange> sel;
-        const int len = int(pc.lay->text().size());
-        const int a = qBound(0, s0 - pc.textStart, len);
-        const int b = qBound(0, s1 - pc.textStart, len);
-        if (b > a) {
-            QTextLayout::FormatRange fr;
-            fr.start  = a;
-            fr.length = b - a;
-            fr.format.setBackground(selBg);
-            sel.append(fr);
+    const int nRows = int(L.rows.size());
+    const int r0 = qBound(0, rowFrom, nRows);
+    const int r1 = (rowTo < 0) ? nRows : qBound(r0, rowTo, nRows);
+    //  Der NORMALFALL ist der ganze Absatz — fast jeder Block hat genau ein
+    //  Segment. Dann bleibt es beim Zeichnen am Stück: Qt legt die Selektion
+    //  bidi-fest über `FormatRange`, und an der Anzeige ändert sich nichts.
+    if (r0 == 0 && r1 >= nRows) {
+        for (const Piece& pc : L.pieces) {
+            if (!pc.lay) continue;
+            QList<QTextLayout::FormatRange> sel;
+            const int len = int(pc.lay->text().size());
+            const int a = qBound(0, s0 - pc.textStart, len);
+            const int b = qBound(0, s1 - pc.textStart, len);
+            if (b > a) {
+                QTextLayout::FormatRange fr;
+                fr.start  = a;
+                fr.length = b - a;
+                fr.format.setBackground(selBg);
+                sel.append(fr);
+            }
+            pc.lay->draw(p, origin + QPointF(pc.dx, pc.dy), sel);
         }
-        pc.lay->draw(p, origin + QPointF(pc.dx, pc.dy), sel);
+    } else {
+        drawBlockLines(p, L, origin, s0, s1, selBg, r0, r1);
     }
     if (L.images.empty()) return;
     p->save();
@@ -2730,7 +2775,8 @@ void DocxTextArea::paintSpell(QPainter* p, const BlockLayout& L, int blockIdx,
 //  Fußnotenbereich EINES Slots: Trennlinie und die Absätze darunter, am
 //  unteren Rand des Textbereichs. Gezeichnet wird in Dokument-Pixeln, wie alles
 //  andere auch.
-void DocxTextArea::paintSlot(QPainter* p, int slot, bool withCaret) {
+void DocxTextArea::paintSlot(QPainter* p, int slot, bool withCaret,
+                             bool withSelection) {
     const Document& d = m_ctl->doc();
     const qreal slotH = slotHeight();
     const qreal sx = slotDocX(slot);
@@ -2759,7 +2805,7 @@ void DocxTextArea::paintSlot(QPainter* p, int slot, bool withCaret) {
     const DocxCursor& cur = m_ctl->cursor();
     b1 = cur.aBlock; p1 = cur.aPos; b2 = cur.block; p2 = cur.pos;
     if (b1 > b2 || (b1 == b2 && p1 > p2)) { std::swap(b1, b2); std::swap(p1, p2); }
-    const bool hasSel = cur.hasSelection();
+    const bool hasSel = cur.hasSelection() && withSelection;
     const QColor selBg(38, 118, 216, 110);
 
     for (; i < int(m_lay.size()); ++i) {
@@ -2839,8 +2885,17 @@ void DocxTextArea::paintSlot(QPainter* p, int slot, bool withCaret) {
         if (!hasText(L))
             continue;
 
-        //  Listenmarker.
-        if (!L.marker.isEmpty() && lineCount(L) > 0) {
+        //  Zeilenband DIESES Stücks: ab seiner ersten Zeile bis zur ersten des
+        //  nächsten. Alles davor/dahinter gehört auf eine andere Seite und darf
+        //  auch nicht in den Textstrom dieser Seite geraten (s. drawBlockLines).
+        const int rowFrom = segFirstLine(L, seg);
+        const int rowTo   = (segIdx + 1 < L.segs.size())
+                                ? segFirstLine(L, L.segs.at(segIdx + 1))
+                                : -1;
+
+        //  Listenmarker — er gehört zur ERSTEN Zeile, steht also nur auf der
+        //  Seite, auf der die auch liegt.
+        if (!L.marker.isEmpty() && lineCount(L) > 0 && rowFrom <= 0) {
             const RunFmt def = d.defaultRun();
             QFont mf; mf.setFamily(def.font); mf.setPointSizeF(def.sizePt);
             p->setFont(mf);
@@ -2861,12 +2916,16 @@ void DocxTextArea::paintSlot(QPainter* p, int slot, bool withCaret) {
             s0 = (i == b1) ? p1 : 0;
             s1 = (i == b2) ? p2 : textLength(L);
         }
-        drawBlockText(p, L, QPointF(left + L.indentPx, y), s0, s1, selBg);
+        drawBlockText(p, L, QPointF(left + L.indentPx, y), s0, s1, selBg,
+                      rowFrom, rowTo);
 
         //  Seitenumbruch-Marker: gestrichelte Linie in der Zeile des Sentinels.
         const QString t = blockText(L);
         for (int pb = t.indexOf(kPageBreak); pb >= 0; pb = t.indexOf(kPageBreak, pb + 1)) {
             const int lb = lineForPos(L, pb);   // Text da ⇒ Zeilen da
+            //  Nur, wenn diese Zeile auf DIESER Seite liegt — die Beschriftung
+            //  ist Text und stünde sonst im Textstrom beider Seiten.
+            if (lb < rowFrom || (rowTo >= 0 && lb >= rowTo)) continue;
             const qreal ly = y + lineTop(L, lb) + lineHeight(L, lb) + 2;
             p->setPen(QPen(QColor(140, 140, 150), 1, Qt::DashLine));
             p->drawLine(QPointF(left, ly), QPointF(left + cw, ly));
@@ -2894,7 +2953,7 @@ void DocxTextArea::paintSlot(QPainter* p, int slot, bool withCaret) {
 // ─────────────────────────────────────────────────────────────────────────────
 //  DOCX → PDF aus DIESER Auslegung (N6/N9).
 //
-//  Der frühere Weg (`DocxPdf::exportToPdf`) baute ein EIGENES `QTextDocument`
+//  Der frühere, inzwischen entfernte Weg baute ein EIGENES `QTextDocument`
 //  und kam damit auf ein anderes Layout als der Bildschirm: an `tests/ER.docx`
 //  gemessen 4 Anzeige-Seiten gegen 3 Export-Seiten, und der Inhalt, den die
 //  Anzeige auf Seite 2 legt, wurde in den Rest von Seite 1 gequetscht. Solange
@@ -2936,7 +2995,9 @@ QString DocxTextArea::exportPagesToPdf(const QString& targetPath) {
         for (int pg = 0; pg < pages; ++pg) {
             if (pg > 0) writer.newPage();
             //  OHNE Papierrahmen: die PDF-Seite IST das Papier.
-            paintPageInto(&p, pg, sheet, false);
+            //  Ohne Auswahl-Hinterlegung: eine beim Export bestehende Markierung
+            //  gehört nicht ins Papier.
+            paintPageInto(&p, pg, sheet, false, false);
         }
         p.end();
     }   // Writer zerstört → PDF finalisiert
@@ -2947,7 +3008,7 @@ QString DocxTextArea::exportPagesToPdf(const QString& targetPath) {
 }
 
 void DocxTextArea::paintPageInto(QPainter* p, int page, const QRectF& target,
-                                 bool withPaperFrame) {
+                                 bool withPaperFrame, bool withSelection) {
     if (!m_ctl || !m_ctl->ready() || pageWpx() <= 0.0 || pageHpx() <= 0.0)
         return;
     ensureOffsetsTo(int(m_lay.size()));
@@ -2971,7 +3032,7 @@ void DocxTextArea::paintPageInto(QPainter* p, int page, const QRectF& target,
 
     const int nCols = colCount();
     for (int c = 0; c < nCols; ++c) {
-        paintSlot(p, page * nCols + c, false);   // Miniatur ohne Caret
+        paintSlot(p, page * nCols + c, false, withSelection);   // ohne Caret
     }
     p->restore();
 }

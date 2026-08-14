@@ -146,8 +146,12 @@ public:
     //  `withPaperFrame` = Papierfläche + grauer Rand (Anzeige/Miniatur). Für
     //  den PDF-Export AUS: dort IST die Seite das Papier, ein gezeichneter
     //  Rahmen wäre ein Strich auf jedem Blatt.
+    //  `withSelection` = die blaue Auswahl-Hinterlegung mitmalen. Für den
+    //  PDF-Export AUS: sonst brennt eine beim Drücken bestehende Markierung als
+    //  blauer Balken in die Datei — der Caret wird schon immer unterdrückt, die
+    //  Auswahl war es nicht.
     void paintPageInto(QPainter* p, int page, const QRectF& target,
-                       bool withPaperFrame = true);
+                       bool withPaperFrame = true, bool withSelection = true);
 
     //  ── DOCX → PDF, gemalt aus DIESER Auslegung (N6/N9) ─────────────────
     //  Schreibt jede Seite so, wie sie am Bildschirm steht: derselbe
@@ -396,8 +400,18 @@ private:
     int     floatingImageAt(const BlockLayout& L, qreal x, qreal y) const;
     //  Inhalt eines Blocks samt Selektion zeichnen (block-lokale Positionen;
     //  selStart ≥ selEnd = keine Selektion). Malt Textstücke UND Bilder.
+    //  `rowFrom`/`rowTo` grenzen die ZEILENBÄNDER ein (rowTo < 0 = bis zum
+    //  Ende): läuft ein Absatz über eine Seitenkante, malt jedes Segment nur
+    //  seine EIGENEN Zeilen. Das Clipping schneidet die fremden zwar optisch
+    //  weg, im PDF blieben sie aber im Textstrom stehen — jede Zeile stünde dann
+    //  im Inhalt BEIDER Seiten (s. drawBlockLines).
     void    drawBlockText(QPainter* p, const BlockLayout& L, const QPointF& origin,
-                          int selStart, int selEnd, const QColor& selBg) const;
+                          int selStart, int selEnd, const QColor& selBg,
+                          int rowFrom = 0, int rowTo = -1) const;
+    //  Zeichnet die Bänder [rowFrom, rowTo) EINZELN (QTextLine statt QTextLayout).
+    void    drawBlockLines(QPainter* p, const BlockLayout& L, const QPointF& origin,
+                           int selStart, int selEnd, const QColor& selBg,
+                           int rowFrom, int rowTo) const;
     //  Deutung eines Segments (s. PageSeg::first).
     int     segFirstLine(const BlockLayout& L, const PageSeg& s) const;
     int     segFirstEntry(const BlockLayout& L, const PageSeg& s) const;
@@ -446,7 +460,7 @@ private:
 
     //  Blöcke eines Slots zeichnen (gemeinsamer Weg von paint() und
     //  paintPageInto(); `p` ist bereits auf Dokument-Pixel gestellt).
-    void  paintSlot(QPainter* p, int slot, bool withCaret);
+    void  paintSlot(QPainter* p, int slot, bool withCaret, bool withSelection = true);
     //  Rote Wellenlinie unter den beanstandeten Stellen (Rechtschreibprüfung).
     //  Farbe der Änderungsmarkierung je Autor (stabil, aus dem Namen).
     static QColor revisionColor(const QString& author);

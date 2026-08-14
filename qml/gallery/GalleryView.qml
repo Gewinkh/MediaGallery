@@ -1,5 +1,6 @@
 import QtQuick
 import QtQuick.Controls
+import QtQuick.Window
 import MediaGallery 1.0
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -30,6 +31,64 @@ Rectangle {
 
     // Vollbild-Anforderung an die Shell (Phase 3 füllt das Ziel).
     signal activated(string filePath)
+
+    //  ── Pfeiltasten scrollen die ANSICHT ────────────────────────────────────
+    //  Bewusst NICHT der eingebaute Tastenfluss des GridView: der bewegt
+    //  `currentIndex`, also eine Auswahl — die Galerie hat keine. Gescrollt wird
+    //  über dieselbe Animation wie das Mausrad, damit sich beides gleich anfühlt.
+    focus: true
+    //  Schreibt der Nutzer gerade (Umbenennen-Feld, Filterleiste), gehören die
+    //  Pfeiltasten IHM. Ein einzeiliges TextField lässt ↑/↓ sonst nach oben
+    //  durch und die Galerie spränge beim Tippen. Muster aus `FullscreenViewer`.
+    function _editableTextFocused() {
+        var f = root.Window.activeFocusItem
+        if (!f) return false
+        return (f.cursorPosition !== undefined) && (f.readOnly !== true)
+    }
+    //  ── Scroll-Grenzen sind ORIGIN-BEWUSST ──────────────────────────────────
+    //  Ein Flickable liegt NICHT zwingend bei 0: entfernt oder ergänzt das
+    //  Modell Zeilen (Filter, Suche, Ordner-Watcher), verschiebt das GridView
+    //  seinen `originY`. Wer trotzdem gegen 0 klemmt, schiebt die Ansicht ÜBER
+    //  den Inhalt hinaus — oben steht ein leerer Streifen, und genau so weit
+    //  sind die letzten Zeilen unten nicht mehr erreichbar. Genau dieser Befund
+    //  („wie ein Shift im Scrolling-Fenster", schmales Fenster = mehr Zeilen).
+    //  Dieselbe Lehre wie in `PdfSurface` (minContentY/maxContentY/clampContentY).
+    readonly property real minContentY: grid.originY
+    readonly property real maxContentY: Math.max(grid.originY,
+                                                 grid.originY + grid.contentHeight - grid.height)
+    function clampContentY(v) {
+        return Math.max(root.minContentY, Math.min(v, root.maxContentY))
+    }
+    function scrollByPixels(dy) {
+        if (root.maxContentY <= root.minContentY) return
+        var base = gridScroll.running ? gridScroll.to : grid.contentY
+        gridScroll.from = grid.contentY
+        gridScroll.to = root.clampContentY(base + dy)
+        gridScroll.restart()
+    }
+    //  Schrittweite: eine halbe Kachelreihe — ein ganzer Kachelsprung überspringt
+    //  bei großen Kacheln fast den ganzen Sichtbereich.
+    readonly property real _keyStep: Math.max(40, root.cellH * 0.5)
+    Keys.onUpPressed: function(event) {
+        if (root._editableTextFocused()) return
+        root.scrollByPixels(-root._keyStep); event.accepted = true
+    }
+    Keys.onDownPressed: function(event) {
+        if (root._editableTextFocused()) return
+        root.scrollByPixels(root._keyStep); event.accepted = true
+    }
+    Keys.onPressed: function(event) {
+        if (root._editableTextFocused()) return
+        if (event.key === Qt.Key_PageDown) {
+            root.scrollByPixels(grid.height * 0.9); event.accepted = true
+        } else if (event.key === Qt.Key_PageUp) {
+            root.scrollByPixels(-grid.height * 0.9); event.accepted = true
+        } else if (event.key === Qt.Key_Home) {
+            root.scrollByPixels(-grid.contentHeight); event.accepted = true
+        } else if (event.key === Qt.Key_End) {
+            root.scrollByPixels(grid.contentHeight); event.accepted = true
+        }
+    }
 
     // Vorschau-Sperre ("B"): blendet alle Thumbnails hinter einer Abdeckung aus
     // (Privatsphäre). Entspricht GalleryView::setCovered(bool) im alten Projekt.
@@ -114,6 +173,28 @@ Rectangle {
         reuseItems: true
         cacheBuffer: root.cellH * 2
         boundsBehavior: Flickable.StopAtBounds
+        //  KEIN Ziehen-zum-Scrollen: gescrollt wird per Rad, Bildlaufleiste und
+        //  Pfeiltasten. Ein Zug mit der Maus gehört der KACHEL — sie zieht die
+        //  Datei nach draußen (`Drag.Automatic`), und beides gleichzeitig ging
+        //  nicht: das GridView riss den Griff an sich. Dasselbe Muster wie in
+        //  `PdfSurface` (dort `pages`-ListView `interactive:false`).
+        interactive: false
+
+        //  ZURÜCK IN DEN GÜLTIGEN BEREICH, sobald sich Inhalt oder Geometrie
+        //  ändern. `interactive: false` heißt: das Flickable holt sich NICHT
+        //  selbst zurück (das täte sonst die Zug-Geste). Ohne diese Klemme blieb
+        //  die Ansicht nach einer Suche, einem Ordnerwechsel oder einer
+        //  Größenänderung außerhalb ihres Inhalts stehen — sichtbar als leerer
+        //  Streifen mit unerreichbaren Kacheln.
+        function _clampNow() {
+            if (gridScroll.running) return          // die Animation klemmt selbst
+            const v = root.clampContentY(contentY)
+            if (Math.abs(v - contentY) > 0.5) contentY = v
+        }
+        onContentHeightChanged: _clampNow()
+        onOriginYChanged:       _clampNow()
+        onHeightChanged:        _clampNow()
+        onCountChanged:         _clampNow()
 
         // Vertikale Scrollbar bündig an den rechten Rand der Galerie (root) statt
         // an den Rand des zentrierten Gitters. Sie bleibt funktional an den
@@ -291,13 +372,12 @@ Rectangle {
                 wheel.accepted = true
                 return
             }
-            var maxY = Math.max(0, grid.contentHeight - grid.height)
-            if (maxY <= 0) { wheel.accepted = true; return }
+            if (root.maxContentY <= root.minContentY) { wheel.accepted = true; return }
             var raw = (wheel.angleDelta.y !== 0)
                       ? (wheel.angleDelta.y / 120) * (grid.height * 0.45)
                       : wheel.pixelDelta.y * 1.6
             var base = gridScroll.running ? gridScroll.to : grid.contentY
-            var tgt = Math.max(0, Math.min(base - raw, maxY))
+            var tgt = root.clampContentY(base - raw)
             gridScroll.from = grid.contentY
             gridScroll.to = tgt
             gridScroll.restart()

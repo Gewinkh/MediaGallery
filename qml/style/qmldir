@@ -4,6 +4,7 @@ CheckBox 1.0 CheckBox.qml
 ComboBox 1.0 ComboBox.qml
 Dialog 1.0 Dialog.qml
 DialogButtonBox 1.0 DialogButtonBox.qml
+Menu 1.0 Menu.qml
 MenuItem 1.0 MenuItem.qml
 RadioButton 1.0 RadioButton.qml
 ScrollBar 1.0 ScrollBar.qml

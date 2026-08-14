@@ -605,16 +605,18 @@ void PdfTextController::stepSearch() {
     for (int p = m_searchPage; p < end; ++p) {
         const QList<QPdfLink> found = m_searchModel->resultsOnPage(p);
         for (const QPdfLink& l : found) {
-            for (const QRectF& r : l.rectangles()) {
-                if (r.width() <= 0.0 || r.height() <= 0.0)
-                    continue;
-                SearchHit h;
-                h.page   = p;
-                h.rect   = r;
-                h.before = l.contextBefore();
-                h.after  = l.contextAfter();
+            //  ALLE Rechtecke einer Fundstelle gehören zu EINEM Treffer — sonst
+            //  zählt ein Wort so oft, wie der Erzeuger es in Zeige-Operatoren
+            //  zerlegt hat (s. SearchHit im Header).
+            SearchHit h;
+            h.page   = p;
+            h.before = l.contextBefore();
+            h.after  = l.contextAfter();
+            for (const QRectF& r : l.rectangles())
+                if (r.width() > 0.0 && r.height() > 0.0)
+                    h.rects.push_back(r);
+            if (!h.rects.isEmpty())
                 m_hits.push_back(h);
-            }
         }
         //  Seiten OHNE eingebettete Textebene, für die OCR vorliegt.
         if (found.isEmpty())
@@ -637,11 +639,12 @@ void PdfTextController::appendOcrHits(int page) {
             continue;
         SearchHit h;
         h.page   = page;
-        h.rect   = line.rectPts;                 // die ganze Zeile ist der Treffer
         h.before = line.text;
         h.ocr    = true;
-        if (h.rect.width() > 0.0 && h.rect.height() > 0.0)
+        if (line.rectPts.width() > 0.0 && line.rectPts.height() > 0.0) {
+            h.rects.push_back(line.rectPts);     // die ganze Zeile ist der Treffer
             m_hits.push_back(h);
+        }
     }
 }
 
@@ -655,12 +658,16 @@ QVariantList PdfTextController::searchHitsOnPage(int page) const {
     for (const SearchHit& h : m_hits) {
         if (h.page != page)
             continue;
-        QVariantMap m;
-        m.insert(QStringLiteral("x"), h.rect.x()      / pts.width());
-        m.insert(QStringLiteral("y"), h.rect.y()      / pts.height());
-        m.insert(QStringLiteral("w"), h.rect.width()  / pts.width());
-        m.insert(QStringLiteral("h"), h.rect.height() / pts.height());
-        out.push_back(m);
+        //  Gezeichnet werden ALLE Teilstücke — gezählt wird die Fundstelle nur
+        //  einmal (s. searchCount).
+        for (const QRectF& r : h.rects) {
+            QVariantMap m;
+            m.insert(QStringLiteral("x"), r.x()      / pts.width());
+            m.insert(QStringLiteral("y"), r.y()      / pts.height());
+            m.insert(QStringLiteral("w"), r.width()  / pts.width());
+            m.insert(QStringLiteral("h"), r.height() / pts.height());
+            out.push_back(m);
+        }
     }
     return out;
 }
@@ -670,11 +677,12 @@ QVariantMap PdfTextController::searchHit(int index) const {
     if (index < 0 || index >= m_hits.size())
         return m;
     const SearchHit& h = m_hits.at(index);
+    const QRectF b = h.bounds();               // umschließt alle Teilstücke
     m.insert(QStringLiteral("page"),   h.page);
-    m.insert(QStringLiteral("x"),      h.rect.x());
-    m.insert(QStringLiteral("y"),      h.rect.y());
-    m.insert(QStringLiteral("w"),      h.rect.width());
-    m.insert(QStringLiteral("h"),      h.rect.height());
+    m.insert(QStringLiteral("x"),      b.x());
+    m.insert(QStringLiteral("y"),      b.y());
+    m.insert(QStringLiteral("w"),      b.width());
+    m.insert(QStringLiteral("h"),      b.height());
     m.insert(QStringLiteral("before"), h.before);
     m.insert(QStringLiteral("after"),  h.after);
     m.insert(QStringLiteral("ocr"),    h.ocr);

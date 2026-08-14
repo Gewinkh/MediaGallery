@@ -115,7 +115,9 @@ bool PdfTextLayout::buildForPage(const QString& pdfPath, int pageIndex,
         const qint64 ep = body.indexOf("endstream", sp);
         if (ep < 0) return {};
         qint64 len = ep - sp;
-        const qint64 dl = intValue(d, "Length");
+        //  /Length darf eine REFERENZ sein (so schreibt Qt) — direkt gelesen
+        //  ergäbe das die Objektnummer und schnitte den Strom ab.
+        const qint64 dl = streamLength(d, buf, objs);
         if (dl >= 0 && dl <= len) len = dl;
         const QByteArray raw = body.mid(sp, len);
         if (!fl) { *ok = true; return raw; }
@@ -392,7 +394,11 @@ bool PdfTextLayout::buildForPage(const QString& pdfPath, int pageIndex,
     };
 
     //  Eine Zeichenkette zeigen und die Glyphen eintragen.
-    auto showBytes = [&](const QByteArray& bytes) {
+    //  `byteBase` = Offset dieser Bytes innerhalb der ZUSAMMENGEFÜGTEN Bytes
+    //  des Zeigeoperators (`PdfShowSpan::bytes`). Bei `Tj` ist er 0, bei `TJ`
+    //  wächst er über die Array-Glieder — nur so zeigt `PdfGlyph::byteOffset`
+    //  auf dieselbe Stelle, an der die Weiterverarbeitung schneidet.
+    auto showBytes = [&](const QByteArray& bytes, qint64 byteBase = 0) {
         if (!fm || !fm->valid) return true;                   // ohne Font nichts zu tun
         const int step = fm->cid ? 2 : 1;
         for (int i = 0; i + step <= bytes.size(); i += step) {
@@ -424,7 +430,7 @@ bool PdfTextLayout::buildForPage(const QString& pdfPath, int pageIndex,
                            qMax(0.0, wPt), qMax(0.0, hPt));
             g.fontSizePt = fsize * trm.scaleY() / qMax(0.0001, fsize);
             g.showIndex  = showIndex;
-            g.byteOffset = i;
+            g.byteOffset = int(byteBase) + i;
             out->push_back(g);
 
             tm = Mat{ 1, 0, 0, 1, adv, 0 }.mul(tm);            // Textmatrix vorrücken
@@ -455,12 +461,12 @@ bool PdfTextLayout::buildForPage(const QString& pdfPath, int pageIndex,
     };
     //  Gemalte Fläche merken (Umrechnung unten-links → oben-links wie bei den
     //  Glyphen). `page` ist optional — nur der ausführliche Aufruf sammelt sie.
-    auto notePaint = [&](const QRectF& userBox) {
+    auto notePaint = [&](const QRectF& userBox, bool isImage = false) {
         if (!page) return;
-        page->paints.push_back(QRectF(userBox.left(),
-                                      pageH - userBox.bottom(),
-                                      qMax(0.0, userBox.width()),
-                                      qMax(0.0, userBox.height())));
+        const QRectF r(userBox.left(), pageH - userBox.bottom(),
+                       qMax(0.0, userBox.width()), qMax(0.0, userBox.height()));
+        page->paints.push_back(r);
+        if (isImage) page->imagePaints.push_back(r);
     };
     auto flushPath = [&](bool painted) {
         if (painted && pathValid) notePaint(pathBox.normalized());
@@ -475,7 +481,7 @@ bool PdfTextLayout::buildForPage(const QString& pdfPath, int pageIndex,
             r.setLeft(qMin(r.left(), p.x()));   r.setRight(qMax(r.right(), p.x()));
             r.setTop(qMin(r.top(), p.y()));     r.setBottom(qMax(r.bottom(), p.y()));
         }
-        notePaint(r.normalized());
+        notePaint(r.normalized(), true);            // Bild/Schattierung
     };
 
     if (page) page->pageHeightPt = pageH;
@@ -593,6 +599,8 @@ bool PdfTextLayout::buildForPage(const QString& pdfPath, int pageIndex,
                 PdfShowSpan sp;
                 sp.operandStart = lastOperandStart; sp.operandEnd = lastOperandEnd;
                 sp.isArray = false; sp.bytes = bytes; sp.fontRes = curFontRes;
+                //  Umrechnung TJ-Versatz → Seiten-Punkte (s. PdfShowSpan).
+                sp.tjUnitPt = fsize * hscale * ctm.scaleX() * tm.scaleX();
                 //  Bei ' und " setzt der Zeigeoperator SELBST die neue Zeile —
                 //  eine eigene Positionierung gibt es dafür nicht.
                 if (op == "Tj") { sp.posStart = posStart; sp.posEnd = posEnd;
@@ -609,6 +617,7 @@ bool PdfTextLayout::buildForPage(const QString& pdfPath, int pageIndex,
                 PdfShowSpan sp;
                 sp.operandStart = lastOperandStart; sp.operandEnd = lastOperandEnd;
                 sp.isArray = true; sp.fontRes = curFontRes;
+                sp.tjUnitPt = fsize * hscale * ctm.scaleX() * tm.scaleX();
                 sp.posStart = posStart; sp.posEnd = posEnd;
                 sp.posOp = posOp; sp.posArgs = posArgs;
                 sp.objIndex = objIndex;
@@ -636,8 +645,9 @@ bool PdfTextLayout::buildForPage(const QString& pdfPath, int pageIndex,
                             hex.replace(" ", "").replace("\n", "").replace("\r", "");
                             bytes = QByteArray::fromHex(hex);
                         }
+                        const qint64 base = sp.bytes.size();
                         sp.bytes += bytes;
-                        if (!showBytes(bytes)) return fail("Glyphenbreite fehlt (kein /Widths)");
+                        if (!showBytes(bytes, base)) return fail("Glyphenbreite fehlt (kein /Widths)");
                         k = e;
                     } else {
                         const int s2 = k;

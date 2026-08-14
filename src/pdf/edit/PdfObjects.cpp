@@ -152,6 +152,22 @@ int refValue(const QByteArray& dict, const char* key) {
     return m.hasMatch() ? m.captured(1).toInt() : -1;
 }
 
+//  /Length — direkt oder als Referenz. Siehe Header: die Referenzform ist der
+//  Normalfall bei Qt-erzeugten Dateien.
+qint64 streamLength(const QByteArray& dict, const QByteArray& buf,
+                    const QHash<int, ObjLoc>& objs) {
+    const int ref = refValue(dict, "Length");
+    if (ref >= 0) {
+        const auto it = objs.constFind(ref);
+        if (it == objs.constEnd()) return -1;
+        const QByteArray body = objectBody(buf, it->offset).trimmed();
+        qint64 e = 0; bool any = false;
+        while (e < body.size() && body[e] >= '0' && body[e] <= '9') { ++e; any = true; }
+        return any ? body.left(e).toLongLong() : -1;
+    }
+    return intValue(dict, "Length");
+}
+
 // Name-Wert "/key /Name" → "/Name" (oder leer).
 QByteArray nameValue(const QByteArray& dict, const char* key) {
     const qint64 i = findKey(dict, key);

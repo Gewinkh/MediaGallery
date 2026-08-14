@@ -40,6 +40,7 @@
 // ══════════════════════════════════════════════════════════════════════════════
 
 #include <QByteArray>
+#include <QRectF>
 #include <QString>
 #include <QVector>
 
@@ -54,6 +55,13 @@ struct PdfTextEdit {
     QString replacement;
 };
 
+//  Eine zu SCHWÄRZENDE Fläche. Anders als `PdfTextEdit` braucht sie den Text
+//  NICHT zu kennen: entfernt wird, was geometrisch darunter liegt.
+struct PdfRedactArea {
+    int    page = 0;       // 0-basiert
+    QRectF rect;           // PDF-Punkte, Ursprung OBEN-LINKS (wie PdfEditBox::rect)
+};
+
 class PdfContentEditor {
 public:
     //  Wendet die Ersetzungen an und schreibt `outputPath` (atomar). Liefert
@@ -63,6 +71,25 @@ public:
     //  einen kurzen Grund.
     static bool editText(const QString& inputPath, const QString& outputPath,
                          const QVector<PdfTextEdit>& edits, QString* err = nullptr);
+
+    //  ── SCHWÄRZEN, GEOMETRISCH statt über den Text ─────────────────────────
+    //  Entfernt jedes Zeichen, dessen Kasten eine der Flächen berührt — ohne zu
+    //  wissen, WELCHER Text dort steht. Das ist der Unterschied zu `editText`:
+    //  dort muss der Originaltext als Zeichenkette wiedergefunden werden, und
+    //  jedes Scheitern (Text über mehrere Zeigeoperatoren, Sonderkodierung,
+    //  Sonde ohne Fund) kostete bisher die GANZE Textebene, weil der Aufrufer
+    //  dann die Seiten rastern musste.
+    //
+    //  Die entstehende Lücke wird mit einem TJ-Versatz exakt ausgeglichen
+    //  (`PdfShowSpan::tjUnitPt`), damit der Rest der Zeile stehen bleibt; die
+    //  Ausgabe ist ein inkrementelles Update wie bei `editText`.
+    //
+    //  SELBSTPRÜFUNG: Nach dem Schreiben wird die Ausgabe neu vermessen; steht
+    //  noch eine Glyphe in einer der Flächen, gilt der Lauf als GESCHEITERT
+    //  (Ausgabe wird gelöscht) — die Zusage „Text ist weg" wird gemessen, nicht
+    //  angenommen. Ein `false` heißt für den Aufrufer wie gehabt: Raster-Weg.
+    static bool redactAreas(const QString& inputPath, const QString& outputPath,
+                            const QVector<PdfRedactArea>& areas, QString* err = nullptr);
 };
 
 }  // namespace mg

@@ -56,7 +56,8 @@ bool encodingForFontImpl(const QByteArray& buf, const QHash<int, ObjLoc>& objs,
         const qint64 ep = body.indexOf("endstream", sp);
         if (ep < 0) return {};
         qint64 len = ep - sp;
-        const qint64 dl = intValue(d, "Length");
+        //  /Length darf eine REFERENZ sein (s. pdfobj::streamLength).
+        const qint64 dl = streamLength(d, buf, objs);
         if (dl >= 0 && dl <= len) len = dl;
         const QByteArray raw = body.mid(sp, len);
         if (!fl) { *ok = true; return raw; }

@@ -1,6 +1,7 @@
 #include "pdf/edit/PdfContentEditor.h"
 #include "pdf/edit/PdfEncodings.h"
 #include "pdf/edit/PdfObjects.h"
+#include "pdf/edit/PdfTextLayout.h"
 
 #include <QFile>
 #include <QSaveFile>
@@ -195,17 +196,69 @@ bool showsAreAdjacent(const QByteArray& c, const ShowHit& a, const ShowHit& b) {
     return true;
 }
 
-}  // namespace
 
 // ══════════════════════════════════════════════════════════════════════════════
-namespace mg {
+//  GEMEINSAME GRUNDLAGE der beiden Einstiege (`editText` und `redactAreas`)
+//
+//  Beide brauchen exakt dasselbe Gerüst: Datei prüfen, klassische xref, Objekte,
+//  Seitenbaum, Content-Stream einer Seite, inkrementelles Update schreiben. Das
+//  steht deshalb EINMAL hier — dieselbe streng geprüfte Byte-Arbeit zweimal zu
+//  pflegen wäre die schlechtere Lösung (gleiche Begründung wie bei PdfObjects.h).
+// ══════════════════════════════════════════════════════════════════════════════
 
-bool PdfContentEditor::editText(const QString& inputPath, const QString& outputPath,
-                                const QVector<PdfTextEdit>& edits, QString* err) {
-    auto fail = [&](const char* m) { if (err) *err = QString::fromLatin1(m); return false; };
-    if (edits.isEmpty()) return fail("keine Ersetzungen");
+using FailFn = std::function<bool(const char*)>;
 
-    QFile in(inputPath);
+struct DocCtx {
+    QByteArray          buf;
+    QHash<int, ObjLoc>  objs;
+    int                 rootNum = -1;
+    int                 rootGen = 0;
+    qint64              prevXref = 0;
+    QVector<int>        pageObjs;    // Objektnummer je Seite (Dokumentreihenfolge)
+    QVector<QByteArray> pageRes;     // vererbtes /Resources-Dict je Seite
+
+    QByteArray bodyOf(int num) const {
+        const auto it = objs.constFind(num);
+        return (it == objs.constEnd()) ? QByteArray() : objectBody(buf, it->offset);
+    }
+    QByteArray dictOf(int num) const { return dictOfObject(bodyOf(num)); }
+
+    //  Entpackte Nutzdaten eines Stream-Objekts (roh oder /FlateDecode).
+    //  Wird für /Contents UND für /ToUnicode-CMaps gebraucht; `ok` bleibt
+    //  false bei fremdem Filter oder defektem Strom.
+    QByteArray streamDataOf(int num, bool* ok) const {
+        *ok = false;
+        const QByteArray body = bodyOf(num);
+        if (body.isEmpty()) return {};
+        const QByteArray d = dictOfObject(body);
+        const QByteArray filt = nameValue(d, "Filter");
+        const bool fl = (filt == "/FlateDecode");
+        if (!filt.isEmpty() && !fl) return {};
+        qint64 sp = body.indexOf("stream");
+        if (sp < 0) return {};
+        sp += 6;
+        if (sp < body.size() && body[sp]=='\r') ++sp;
+        if (sp < body.size() && body[sp]=='\n') ++sp;
+        const qint64 ep = body.indexOf("endstream", sp);
+        if (ep < 0) return {};
+        qint64 len = ep - sp;
+        //  /Length darf eine REFERENZ sein (s. pdfobj::streamLength).
+        const qint64 dl = streamLength(d, buf, objs);
+        if (dl >= 0 && dl <= len) len = dl;
+        const QByteArray raw = body.mid(sp, len);
+        if (!fl) { *ok = true; return raw; }
+        bool infOk = false;
+        const QByteArray inf = zInflate(raw, &infOk);
+        if (!infOk) return {};
+        *ok = true;
+        return inf;
+    }
+};
+
+//  Datei einlesen und das Gerüst prüfen. Bei JEDER Unsicherheit false — der
+//  Aufrufer weicht dann auf den Raster-Weg aus.
+bool loadDoc(const QString& path, DocCtx* d, const FailFn& fail) {
+    QFile in(path);
     if (!in.open(QIODevice::ReadOnly)) return fail("Quelle nicht lesbar");
     const QByteArray buf = in.readAll();
     in.close();
@@ -238,42 +291,12 @@ bool PdfContentEditor::editText(const QString& inputPath, const QString& outputP
     }
     if (rootNum < 0 || !objs.contains(rootNum)) return fail("kein /Root");
 
-    // Objektkörper-Zugriff.
+    // Objektkörper-Zugriff (im Kontext später als DocCtx::bodyOf/dictOf).
     auto bodyOf = [&](int num) -> QByteArray {
         const auto it = objs.constFind(num);
         return (it == objs.constEnd()) ? QByteArray() : objectBody(buf, it->offset);
     };
     auto dictOf = [&](int num) -> QByteArray { return dictOfObject(bodyOf(num)); };
-
-    //  Entpackte Nutzdaten eines Stream-Objekts (roh oder /FlateDecode).
-    //  Wird für /Contents UND für /ToUnicode-CMaps gebraucht; `ok` bleibt
-    //  false bei fremdem Filter oder defektem Strom.
-    auto streamDataOf = [&](int num, bool* ok) -> QByteArray {
-        *ok = false;
-        const QByteArray body = bodyOf(num);
-        if (body.isEmpty()) return {};
-        const QByteArray d = dictOfObject(body);
-        const QByteArray filt = nameValue(d, "Filter");
-        const bool fl = (filt == "/FlateDecode");
-        if (!filt.isEmpty() && !fl) return {};
-        qint64 sp = body.indexOf("stream");
-        if (sp < 0) return {};
-        sp += 6;
-        if (sp < body.size() && body[sp]=='\r') ++sp;
-        if (sp < body.size() && body[sp]=='\n') ++sp;
-        const qint64 ep = body.indexOf("endstream", sp);
-        if (ep < 0) return {};
-        qint64 len = ep - sp;
-        const qint64 dl = intValue(d, "Length");
-        if (dl >= 0 && dl <= len) len = dl;
-        const QByteArray raw = body.mid(sp, len);
-        if (!fl) { *ok = true; return raw; }
-        bool infOk = false;
-        const QByteArray inf = zInflate(raw, &infOk);
-        if (!infOk) return {};
-        *ok = true;
-        return inf;
-    };
 
     // Seitenbaum einsammeln (mit vererbtem /Resources), Reihenfolge = Dokument.
     const int pagesRoot = refValue(dictOf(rootNum), "Pages");
@@ -311,10 +334,246 @@ bool PdfContentEditor::editText(const QString& inputPath, const QString& outputP
         if (!walk(pagesRoot, QByteArray(), 0)) return fail("Seitenbaum nicht lesbar");
     }
     if (pageObjs.isEmpty()) return fail("keine Seiten");
+    d->buf      = buf;
+    d->objs     = objs;
+    d->rootNum  = rootNum;
+    d->rootGen  = rootGen;
+    d->prevXref = prevXrefOffset;
+    d->pageObjs = pageObjs;
+    d->pageRes  = pageRes;
+    return true;
+}
+
+//  Content-Stream EINER Seite: Objektnummer, Generation und die ENTPACKTEN
+//  Bytes. Verlangt genau EINEN Stream (kein /Contents-Array) mit bekannten
+//  Schlüsseln und höchstens /FlateDecode.
+struct PageContent { int num = 0; int gen = 0; QByteArray data; };
+
+bool loadPageContent(const DocCtx& doc, int pageIdx, PageContent* out, const FailFn& fail) {
+    if (pageIdx < 0 || pageIdx >= doc.pageObjs.size()) return fail("Seitenindex außerhalb");
+    const QByteArray pdict = doc.dictOf(doc.pageObjs[pageIdx]);
+    const QByteArray& buf  = doc.buf;
+    const auto& objs       = doc.objs;
+        // /Contents muss EIN Stream sein (kein Array).
+        const qint64 cp = findKey(pdict, "Contents");
+        if (cp < 0) return fail("kein /Contents");
+        if (pdict[cp] == '[') return fail("/Contents-Array → Fallback");
+        const int cnum = refValue(pdict, "Contents");
+        if (cnum < 0 || !objs.contains(cnum)) return fail("/Contents-Ref");
+
+        // Content-Objekt: Dict (nur /Length,/Filter erlaubt) + Stream-Rohdaten.
+        const auto cit = objs.constFind(cnum);
+        const QByteArray cbody = objectBody(buf, cit->offset);
+        const QByteArray cdict = dictOfObject(cbody);
+        // Nur bekannte Schlüssel? (sonst gingen sie beim Neuschreiben verloren)
+        {
+            static const QRegularExpression kre(QStringLiteral("/([A-Za-z0-9]+)"));
+            auto it = kre.globalMatch(QString::fromLatin1(cdict));
+            while (it.hasNext()) { const QString k = it.next().captured(1);
+                if (k!="Length" && k!="Filter" && k!="DecodeParms" && k!="DL" && k!="FlateDecode")
+                    return fail("unbekannte Stream-Schlüssel → Fallback"); }
+        }
+        // Filter
+        const QByteArray filt = nameValue(cdict, "Filter");
+        const bool flate = (filt == "/FlateDecode");
+        if (!filt.isEmpty() && !flate) return fail("fremder Stream-Filter → Fallback");
+
+        // Rohdaten zwischen stream…endstream.
+        qint64 sPos = cbody.indexOf("stream");
+        if (sPos < 0) return fail("kein stream");
+        sPos += 6;
+        if (sPos < cbody.size() && cbody[sPos]=='\r') ++sPos;
+        if (sPos < cbody.size() && cbody[sPos]=='\n') ++sPos;
+        qint64 ePos = cbody.indexOf("endstream", sPos);
+        if (ePos < 0) return fail("kein endstream");
+        // /Length bevorzugen (falls direkte Zahl), sonst bis endstream.
+        qint64 rawLen = ePos - sPos;
+        const qint64 declLen = streamLength(cdict, buf, objs);
+        if (declLen >= 0 && declLen <= rawLen) rawLen = declLen;
+        QByteArray raw = cbody.mid(sPos, rawLen);
+
+        QByteArray content;
+        if (flate) { bool ok=false; content = zInflate(raw, &ok); if (!ok) return fail("Inflate fehlgeschlagen"); }
+        else content = raw;
+    out->num  = cnum;
+    out->gen  = cit->gen;
+    out->data = content;
+    return true;
+}
+
+struct NewObj { int num; int gen; QByteArray data; };  // data = inflatierter Content
+
+//  Die geänderten Content-Objekte als inkrementelles Update ans Original hängen
+//  (append-only): neue Objektfassungen + kleine xref-Sektion + Trailer mit /Prev.
+bool writeIncremental(const DocCtx& doc, const QHash<int, NewObj>& edited,
+                      const QString& outputPath, const FailFn& fail) {
+    const QByteArray& buf = doc.buf;
+    const auto& objs      = doc.objs;
+    const int rootNum     = doc.rootNum;
+    const int rootGen     = doc.rootGen;
+    const qint64 prevXrefOffset = doc.prevXref;
+    // ── Inkrementelles Update anhängen ──────────────────────────────────────
+    QByteArray out = buf;
+    if (!out.endsWith('\n')) out += '\n';
+    int maxObj = 0; for (int num : objs.keys()) maxObj = qMax(maxObj, num);
+
+    struct XEntry { int num; qint64 off; int gen; };
+    QVector<XEntry> xentries;
+    for (auto it = edited.constBegin(); it != edited.constEnd(); ++it) {
+        const NewObj& no = it.value();
+        const QByteArray def = zDeflate(no.data);
+        if (def.isEmpty() && !no.data.isEmpty()) return fail("Deflate fehlgeschlagen");
+        const qint64 off = out.size();
+        xentries.push_back({ no.num, off, no.gen });
+        out += QByteArray::number(no.num) + " " + QByteArray::number(no.gen) + " obj\n";
+        out += "<< /Length " + QByteArray::number(def.size()) + " /Filter /FlateDecode >>\n";
+        out += "stream\n";
+        out += def;
+        out += "\nendstream\nendobj\n";
+    }
+
+    // Neue klassische XRef-Sektion (je Objekt eine Subsektion) + Trailer.
+    std::sort(xentries.begin(), xentries.end(), [](const XEntry&a,const XEntry&b){ return a.num<b.num; });
+    const qint64 xrefOff = out.size();
+    out += "xref\n";
+    for (const XEntry& x : xentries) {
+        out += QByteArray::number(x.num) + " 1\n";
+        char line[24];
+        std::snprintf(line, sizeof(line), "%010lld %05d n \n",
+                      static_cast<long long>(x.off), x.gen);
+        out += line;
+    }
+    out += "trailer\n<< /Size " + QByteArray::number(maxObj + 1)
+         + " /Root " + QByteArray::number(rootNum) + " " + QByteArray::number(rootGen) + " R"
+         + " /Prev " + QByteArray::number(prevXrefOffset) + " >>\n";
+    out += "startxref\n" + QByteArray::number(xrefOff) + "\n%%EOF\n";
+
+    QSaveFile f(outputPath);
+    if (!f.open(QIODevice::WriteOnly | QIODevice::Truncate)) return fail("Ziel nicht schreibbar");
+    if (f.write(out) != out.size()) { f.cancelWriting(); return fail("Schreibfehler"); }
+    if (!f.commit()) return fail("Commit fehlgeschlagen");
+    return true;
+}
+
+
+// ══════════════════════════════════════════════════════════════════════════════
+//  SCHWÄRZEN: Zeichen aus einem Zeigeoperator herausschneiden
+// ══════════════════════════════════════════════════════════════════════════════
+
+//  Ein herausgeschnittener Lauf, gemessen in den ZUSAMMENGEFÜGTEN Bytes eines
+//  Zeigeoperators (so zählt auch `PdfGlyph::byteOffset`).
+struct ByteCut {
+    qint64 from = 0;
+    qint64 to   = 0;        // exklusiv
+    qreal  advancePt = 0.0; // Vorschub der entfernten Zeichen in Seiten-Punkten
+};
+
+//  Den Zeigeoperator neu schreiben. Der Ersatz ist IMMER ein `[…] TJ`-Array —
+//  auch für ein `Tj`: nur ein Array kann den Ausgleichsversatz aufnehmen, der
+//  die entstehende Lücke schließt. Zahlen (Kerning) zwischen den Gliedern
+//  bleiben unangetastet; sie verschieben unabhängig von den entfernten Zeichen.
+//  `ok` bleibt false, wenn der Operand nicht sicher zerlegbar ist.
+QByteArray rebuildShowWithoutCuts(const QByteArray& content, const ShowHit& h,
+                                  const QVector<ByteCut>& cuts, qreal tjUnitPt,
+                                  bool* ok) {
+    *ok = false;
+    if (tjUnitPt <= 0.0) return {};
+
+    //  Ausgleich für EINEN Schnitt: ein TJ-Versatz von −1000 schiebt um
+    //  `tjUnitPt` nach rechts, also gilt n = −1000 · Lücke / tjUnitPt.
+    auto shiftNumber = [&](qreal advPt) {
+        return QByteArray::number(-1000.0 * advPt / tjUnitPt, 'f', 2);
+    };
+
+    //  Ein Element beisteuern: die behaltenen Stücke + Ausgleich je Schnitt.
+    QByteArray out = "[";
+    qint64 base = 0;                       // Offset dieses Elements im Gesamttext
+    auto emitString = [&](const QByteArray& bytes) {
+        const qint64 len = bytes.size();
+        qint64 pos = 0;
+        for (const ByteCut& c : cuts) {
+            if (c.to <= base || c.from >= base + len) continue;      // trifft nicht
+            const qint64 lf = qBound<qint64>(0, c.from - base, len);
+            const qint64 lt = qBound<qint64>(0, c.to   - base, len);
+            if (lf > pos) out += encodeParenBytes(bytes.mid(pos, lf - pos));
+            //  Der Ausgleich gehört genau EINMAL je Schnitt an dessen Anfang —
+            //  auch wenn der Schnitt über mehrere Array-Glieder läuft.
+            if (c.from >= base && c.from < base + len)
+                out += " " + shiftNumber(c.advancePt) + " ";
+            pos = qMax(pos, lt);
+        }
+        if (pos < len) out += encodeParenBytes(bytes.mid(pos, len - pos));
+        base += len;
+    };
+
+    if (!h.isArray) {
+        emitString(h.bytes);
+    } else {
+        //  Array zerlegen wie `scanTextShows`: Strings beisteuern, Zahlen
+        //  wörtlich übernehmen.
+        const QByteArray arr = content.mid(h.start, h.end - h.start);
+        if (!arr.startsWith('[')) return {};
+        qint64 k = 1;
+        while (k < arr.size() - 1) {
+            if (isWs(arr[k])) { ++k; continue; }
+            if (arr[k] == '(') {
+                const qint64 e = skipValue(arr, k);
+                emitString(decodeParenString(arr, k, e));
+                k = e;
+            } else if (arr[k] == '<') {
+                const qint64 e = skipValue(arr, k);
+                QByteArray hex = arr.mid(k + 1, e - 1 - (k + 1));
+                hex.replace(" ", "").replace("\n", "").replace("\r", "");
+                emitString(QByteArray::fromHex(hex));
+                k = e;
+            } else {
+                const qint64 s2 = k;
+                while (k < arr.size() - 1 && !isWs(arr[k]) && arr[k] != '('
+                       && arr[k] != '<') ++k;
+                if (k == s2) return {};                     // kein Fortschritt
+                out += " " + arr.mid(s2, k - s2) + " ";
+            }
+        }
+    }
+    out += "] TJ";
+    *ok = true;
+    return out;
+}
+
+//  Zählt eine Glyphe als „unter dem Balken"? Jede Berührung zählt — eine
+//  Glyphe, die nur halb verdeckt ist, stünde sonst VOLLSTÄNDIG weiter in der
+//  Textebene und wäre auslesbar. Nur ein Hauch von Überlappung (unter 15 % der
+//  Glyphenfläche) zählt nicht: sonst risse ein etwas zu hoch gezogener Balken
+//  die Nachbarzeile mit, deren Zeichen sichtbar NEBEN dem Balken stehen.
+bool glyphIsCovered(const QRectF& glyph, const QRectF& area) {
+    const QRectF sect = glyph.intersected(area);
+    if (sect.isEmpty()) return false;
+    const qreal ga = glyph.width() * glyph.height();
+    if (ga <= 0.0) return area.contains(glyph.center());
+    return (sect.width() * sect.height()) >= 0.15 * ga;
+}
+
+}  // namespace
+
+// ══════════════════════════════════════════════════════════════════════════════
+namespace mg {
+
+bool PdfContentEditor::editText(const QString& inputPath, const QString& outputPath,
+                                const QVector<PdfTextEdit>& edits, QString* err) {
+    auto fail = [&](const char* m) { if (err) *err = QString::fromLatin1(m); return false; };
+    if (edits.isEmpty()) return fail("keine Ersetzungen");
+
+    DocCtx doc;
+    if (!loadDoc(inputPath, &doc, fail)) return false;
+    //  Kurznamen, damit die geprüfte Logik darunter unverändert bleibt.
+    const QVector<int>& pageObjs = doc.pageObjs;
+    const QVector<QByteArray>& pageRes = doc.pageRes;
+    auto bodyOf = [&](int num) { return doc.bodyOf(num); };
+    auto dictOf = [&](int num) { return doc.dictOf(num); };
+    auto streamDataOf = [&](int num, bool* ok) { return doc.streamDataOf(num, ok); };
 
     // Ersetzungen nach Seite gruppieren; Vorbedingungen je betroffener Seite prüfen
     // und die neuen (inflateten) Content-Bytes bilden.
-    struct NewObj { int num; int gen; QByteArray data; };  // data = inflatierter Content
     QHash<int, NewObj> edited;             // Content-ObjNum → neuer Inhalt
 
     for (const PdfTextEdit& ed : edits) {
@@ -430,47 +689,10 @@ bool PdfContentEditor::editText(const QString& inputPath, const QString& outputP
             }
         }
 
-        // /Contents muss EIN Stream sein (kein Array).
-        const qint64 cp = findKey(pdict, "Contents");
-        if (cp < 0) return fail("kein /Contents");
-        if (pdict[cp] == '[') return fail("/Contents-Array → Fallback");
-        const int cnum = refValue(pdict, "Contents");
-        if (cnum < 0 || !objs.contains(cnum)) return fail("/Contents-Ref");
-
-        // Content-Objekt: Dict (nur /Length,/Filter erlaubt) + Stream-Rohdaten.
-        const auto cit = objs.constFind(cnum);
-        const QByteArray cbody = objectBody(buf, cit->offset);
-        const QByteArray cdict = dictOfObject(cbody);
-        // Nur bekannte Schlüssel? (sonst gingen sie beim Neuschreiben verloren)
-        {
-            static const QRegularExpression kre(QStringLiteral("/([A-Za-z0-9]+)"));
-            auto it = kre.globalMatch(QString::fromLatin1(cdict));
-            while (it.hasNext()) { const QString k = it.next().captured(1);
-                if (k!="Length" && k!="Filter" && k!="DecodeParms" && k!="DL" && k!="FlateDecode")
-                    return fail("unbekannte Stream-Schlüssel → Fallback"); }
-        }
-        // Filter
-        const QByteArray filt = nameValue(cdict, "Filter");
-        const bool flate = (filt == "/FlateDecode");
-        if (!filt.isEmpty() && !flate) return fail("fremder Stream-Filter → Fallback");
-
-        // Rohdaten zwischen stream…endstream.
-        qint64 sPos = cbody.indexOf("stream");
-        if (sPos < 0) return fail("kein stream");
-        sPos += 6;
-        if (sPos < cbody.size() && cbody[sPos]=='\r') ++sPos;
-        if (sPos < cbody.size() && cbody[sPos]=='\n') ++sPos;
-        qint64 ePos = cbody.indexOf("endstream", sPos);
-        if (ePos < 0) return fail("kein endstream");
-        // /Length bevorzugen (falls direkte Zahl), sonst bis endstream.
-        qint64 rawLen = ePos - sPos;
-        const qint64 declLen = intValue(cdict, "Length");
-        if (declLen >= 0 && declLen <= rawLen) rawLen = declLen;
-        QByteArray raw = cbody.mid(sPos, rawLen);
-
-        QByteArray content;
-        if (flate) { bool ok=false; content = zInflate(raw, &ok); if (!ok) return fail("Inflate fehlgeschlagen"); }
-        else content = raw;
+        PageContent pc;
+        if (!loadPageContent(doc, ed.page, &pc, fail)) return false;
+        const int cnum = pc.num;
+        QByteArray content = pc.data;
 
         // Auf bereits (für diese Seite) editierten Inhalt weiterarbeiten, falls
         // mehrere Ersetzungen dieselbe Seite betreffen.
@@ -616,7 +838,7 @@ bool PdfContentEditor::editText(const QString& inputPath, const QString& outputP
 
             QByteArray nc = content;
             nc.replace(h.start, h.opEnd - h.start, arr);
-            edited.insert(cnum, { cnum, cit->gen, nc });
+            edited.insert(cnum, { cnum, pc.gen, nc });
             continue;
         }
 
@@ -645,50 +867,227 @@ bool PdfContentEditor::editText(const QString& inputPath, const QString& outputP
                                                   : encodeParenBytes(piece);
             nc.replace(h.start, h.end - h.start, repl);
         }
-        edited.insert(cnum, { cnum, cit->gen, nc });
+        edited.insert(cnum, { cnum, pc.gen, nc });
     }
     if (edited.isEmpty()) return fail("nichts ersetzt");
 
-    // ── Inkrementelles Update anhängen ──────────────────────────────────────
-    QByteArray out = buf;
-    if (!out.endsWith('\n')) out += '\n';
-    int maxObj = 0; for (int num : objs.keys()) maxObj = qMax(maxObj, num);
+    return writeIncremental(doc, edited, outputPath, fail);
+}
 
-    struct XEntry { int num; qint64 off; int gen; };
-    QVector<XEntry> xentries;
-    for (auto it = edited.constBegin(); it != edited.constEnd(); ++it) {
-        const NewObj& no = it.value();
-        const QByteArray def = zDeflate(no.data);
-        if (def.isEmpty() && !no.data.isEmpty()) return fail("Deflate fehlgeschlagen");
-        const qint64 off = out.size();
-        xentries.push_back({ no.num, off, no.gen });
-        out += QByteArray::number(no.num) + " " + QByteArray::number(no.gen) + " obj\n";
-        out += "<< /Length " + QByteArray::number(def.size()) + " /Filter /FlateDecode >>\n";
-        out += "stream\n";
-        out += def;
-        out += "\nendstream\nendobj\n";
+
+// ══════════════════════════════════════════════════════════════════════════════
+//  redactAreas — GEOMETRISCHES Schwärzen (ohne Kenntnis des Textes)
+// ══════════════════════════════════════════════════════════════════════════════
+bool PdfContentEditor::redactAreas(const QString& inputPath, const QString& outputPath,
+                                   const QVector<PdfRedactArea>& areas, QString* err) {
+    auto fail = [&](const char* m) { if (err) *err = QString::fromLatin1(m); return false; };
+    if (areas.isEmpty()) return fail("keine Flächen");
+
+    DocCtx doc;
+    if (!loadDoc(inputPath, &doc, fail)) return false;
+
+    //  Flächen nach Seite bündeln.
+    QHash<int, QVector<QRectF>> byPage;
+    for (const PdfRedactArea& a : areas) {
+        if (a.page < 0 || a.page >= doc.pageObjs.size()) return fail("Seitenindex außerhalb");
+        const QRectF r = a.rect.normalized();
+        if (r.width() <= 0.0 || r.height() <= 0.0) return fail("leere Fläche");
+        byPage[a.page].push_back(r);
     }
 
-    // Neue klassische XRef-Sektion (je Objekt eine Subsektion) + Trailer.
-    std::sort(xentries.begin(), xentries.end(), [](const XEntry&a,const XEntry&b){ return a.num<b.num; });
-    const qint64 xrefOff = out.size();
-    out += "xref\n";
-    for (const XEntry& x : xentries) {
-        out += QByteArray::number(x.num) + " 1\n";
-        char line[24];
-        std::snprintf(line, sizeof(line), "%010lld %05d n \n",
-                      static_cast<long long>(x.off), x.gen);
-        out += line;
-    }
-    out += "trailer\n<< /Size " + QByteArray::number(maxObj + 1)
-         + " /Root " + QByteArray::number(rootNum) + " " + QByteArray::number(rootGen) + " R"
-         + " /Prev " + QByteArray::number(prevXrefOffset) + " >>\n";
-    out += "startxref\n" + QByteArray::number(xrefOff) + "\n%%EOF\n";
+    QHash<int, NewObj> edited;
+    QVector<int> touchedPages;
 
-    QSaveFile f(outputPath);
-    if (!f.open(QIODevice::WriteOnly | QIODevice::Truncate)) return fail("Ziel nicht schreibbar");
-    if (f.write(out) != out.size()) { f.cancelWriting(); return fail("Schreibfehler"); }
-    if (!f.commit()) return fail("Commit fehlgeschlagen");
+    for (auto pit = byPage.constBegin(); pit != byPage.constEnd(); ++pit) {
+        const int page = pit.key();
+        const QVector<QRectF>& rects = pit.value();
+
+        //  ── Gedrehte Seiten ablehnen ────────────────────────────────────────
+        //  Die Flächen kommen in ANZEIGE-Koordinaten; `PdfTextLayout` misst in
+        //  ungedrehtem PDF-Raum. Bei /Rotate ≠ 0 passt beides nicht zusammen —
+        //  lieber der Raster-Weg als ein Balken über der falschen Stelle.
+        {
+            int num = doc.pageObjs[page];
+            for (int depth = 0; depth < 8 && num > 0; ++depth) {
+                const QByteArray d = doc.dictOf(num);
+                const qint64 rp = findKey(d, "Rotate");
+                if (rp >= 0) {
+                    const qint64 rot = intValue(d, "Rotate");
+                    if (rot != 0) return fail("gedrehte Seite → Fallback");
+                    break;
+                }
+                num = refValue(d, "Parent");
+            }
+        }
+
+        PageContent pc;
+        if (!loadPageContent(doc, page, &pc, fail)) return false;
+
+        //  ── Text der Seite vermessen ────────────────────────────────────────
+        mg::PdfPageText pt;
+        QString lerr;
+        if (!mg::PdfTextLayout::buildForPage(inputPath, page, &pt, &lerr))
+            return fail("Textebene nicht vermessbar → Fallback");
+        //  Beide Wege müssen DENSELBEN Strom sehen — sonst zeigen die
+        //  Byte-Offsets der Glyphen woanders hin als der Strom, den wir neu
+        //  schreiben. `contentObj` ist die harte Zusage „genau EIN Strom"
+        //  (−1 = mehrteilig); die Vermessung hängt an jeden Teil noch ein
+        //  Zeilenende an, deshalb wird auf ANFANG verglichen, nicht auf
+        //  Gleichheit.
+        if (pt.contentObj != pc.num || !pt.content.startsWith(pc.data))
+            return fail("Textebene und Content-Strom weichen ab → Fallback");
+
+        //  ── Form-XObjects ablehnen ──────────────────────────────────────────
+        //  `PdfTextLayout` steigt NICHT in XObjects hinab. Zeichnet die Seite
+        //  ein Formular-XObject, könnte darin Text unter dem Balken stehen, den
+        //  wir weder sehen noch entfernen — genau die Lücke, die das Werkzeug
+        //  nicht haben darf.
+        {
+            const QByteArray res = doc.pageRes.value(page);
+            const qint64 xp = findKey(res, "XObject");
+            if (xp >= 0) {
+                QByteArray xdict;
+                if (res[xp] == '<') { const qint64 e = skipValue(res, xp);
+                                      xdict = res.mid(xp + 2, (e - 2) - (xp + 2)); }
+                else { const int xn = refValue(res, "XObject");
+                       if (xn >= 0) xdict = doc.dictOf(xn); }
+                qint64 i = 0;
+                while (i < xdict.size()) {
+                    while (i < xdict.size() && isWs(xdict[i])) ++i;
+                    if (i >= xdict.size() || xdict[i] != '/') { ++i; continue; }
+                    i = skipValue(xdict, i);                 // Name
+                    const qint64 vs = i;
+                    i = skipValue(xdict, vs);
+                    static const QRegularExpression rre(QStringLiteral("^\\s*(\\d+)\\s+(\\d+)\\s+R"));
+                    const auto m = rre.match(QString::fromLatin1(xdict.mid(vs, i - vs)));
+                    if (!m.hasMatch()) continue;
+                    if (nameValue(doc.dictOf(m.captured(1).toInt()), "Subtype") == "/Form")
+                        return fail("Form-XObject auf der Seite → Fallback");
+                }
+            }
+        }
+
+        //  ── Bild unter dem Balken → ABLEHNEN ────────────────────────────────
+        //  Text lässt sich aus dem Strom entfernen, Bildpunkte nicht: Über einem
+        //  Bild wäre der Balken nur eine Decke, und das Original bliebe in der
+        //  Datei. Genau der Fall einer gescannten Seite — dafür ist der
+        //  Raster-Weg da, der die Punkte selbst überschreibt.
+        for (const QRectF& img : pt.imagePaints)
+            for (const QRectF& r : rects)
+                if (!img.intersected(r).isEmpty())
+                    return fail("Bild unter dem Balken → Fallback");
+
+        if (pt.glyphs.isEmpty())
+            continue;                       // nichts Auslesbares unter dem Balken
+
+        //  ── Betroffene Glyphen je Zeigeoperator sammeln ─────────────────────
+        //  `showIndex` zeigt auf `pt.spans`; die Byte-Grenzen einer Glyphe
+        //  ergeben sich aus dem Offset der NÄCHSTEN Glyphe desselben Operators
+        //  (bzw. dem Ende seiner Bytes) — so stimmt es auch bei Zwei-Byte-Codes.
+        QHash<int, QVector<int>> hitGlyphs;         // spanIndex → Glyphen-Indizes
+        for (int gi = 0; gi < pt.glyphs.size(); ++gi) {
+            const mg::PdfGlyph& g = pt.glyphs.at(gi);
+            bool covered = false;
+            for (const QRectF& r : rects)
+                if (glyphIsCovered(g.box, r)) { covered = true; break; }
+            if (covered) hitGlyphs[g.showIndex].push_back(gi);
+        }
+        if (hitGlyphs.isEmpty())
+            continue;
+
+        //  Byte-Ende einer Glyphe innerhalb ihres Operators.
+        auto glyphByteEnd = [&](int gi) -> qint64 {
+            const mg::PdfGlyph& g = pt.glyphs.at(gi);
+            if (gi + 1 < pt.glyphs.size() && pt.glyphs.at(gi + 1).showIndex == g.showIndex)
+                return pt.glyphs.at(gi + 1).byteOffset;
+            const mg::PdfShowSpan& sp = pt.spans.at(g.showIndex);
+            return sp.bytes.size();
+        };
+
+        //  Zeigeoperatoren im ENTPACKTEN Strom (dieselben Bytes wie oben).
+        const QVector<ShowHit> hits = scanTextShows(pc.data);
+        QHash<qint64, int> hitByStart;
+        for (int k = 0; k < hits.size(); ++k) hitByStart.insert(hits[k].start, k);
+
+        //  Ersetzungen sammeln, danach von HINTEN einsetzen (Offsets bleiben gültig).
+        struct Splice { qint64 from; qint64 to; QByteArray text; };
+        QVector<Splice> splices;
+
+        for (auto hit = hitGlyphs.constBegin(); hit != hitGlyphs.constEnd(); ++hit) {
+            const int spanIdx = hit.key();
+            if (spanIdx < 0 || spanIdx >= pt.spans.size()) return fail("Span-Index → Fallback");
+            const mg::PdfShowSpan& sp = pt.spans.at(spanIdx);
+            const auto hi = hitByStart.constFind(sp.operandStart);
+            if (hi == hitByStart.constEnd())
+                return fail("Zeigeoperator nicht wiedergefunden → Fallback");
+            const ShowHit& h = hits.at(hi.value());
+            if (h.bytes != sp.bytes)
+                return fail("Zeigeoperator weicht ab → Fallback");
+            if (sp.tjUnitPt <= 0.0)
+                return fail("Textzustand unbekannt → Fallback");
+
+            //  Zusammenhängende Läufe bilden (Glyphen kommen sortiert an).
+            QVector<int> gidx = hit.value();
+            std::sort(gidx.begin(), gidx.end());
+            QVector<ByteCut> cuts;
+            for (int gi : gidx) {
+                const qint64 from = pt.glyphs.at(gi).byteOffset;
+                const qint64 to   = glyphByteEnd(gi);
+                const qreal  adv  = pt.glyphs.at(gi).box.width();
+                if (to <= from || to > sp.bytes.size()) return fail("Byte-Bereich → Fallback");
+                if (!cuts.isEmpty() && cuts.last().to == from) {
+                    cuts.last().to = to;
+                    cuts.last().advancePt += adv;
+                } else {
+                    cuts.push_back({ from, to, adv });
+                }
+            }
+
+            bool ok = false;
+            const QByteArray repl = rebuildShowWithoutCuts(pc.data, h, cuts, sp.tjUnitPt, &ok);
+            if (!ok) return fail("Zeigeoperator nicht neu schreibbar → Fallback");
+            splices.push_back({ h.start, h.opEnd, repl });
+        }
+
+        std::sort(splices.begin(), splices.end(),
+                  [](const Splice& a, const Splice& b) { return a.from > b.from; });
+        QByteArray nc = pc.data;
+        for (const Splice& sp2 : splices)
+            nc.replace(sp2.from, sp2.to - sp2.from, sp2.text);
+
+        edited.insert(pc.num, { pc.num, pc.gen, nc });
+        touchedPages.push_back(page);
+    }
+
+    if (edited.isEmpty()) {
+        //  Unter den Balken stand nichts Entfernbares — das ist KEIN Fehler,
+        //  aber es gibt auch nichts zu schreiben. Der Aufrufer bekommt trotzdem
+        //  eine Ausgabe, damit der weitere Weg (Balken zeichnen) gleich bleibt.
+        QFile::remove(outputPath);
+        if (!QFile::copy(inputPath, outputPath)) return fail("Kopie fehlgeschlagen");
+        return true;
+    }
+
+    if (!writeIncremental(doc, edited, outputPath, fail))
+        return false;
+
+    //  ── SELBSTPRÜFUNG an der ERGEBNISDATEI ──────────────────────────────────
+    //  Die Zusage lautet „der Text ist weg". Sie wird gemessen, nicht
+    //  angenommen: steht nach dem Schreiben noch eine Glyphe unter einem
+    //  Balken, gilt der Lauf als gescheitert und die Ausgabe wird verworfen.
+    for (int page : touchedPages) {
+        QVector<mg::PdfGlyph> glyphs;
+        if (!mg::PdfTextLayout::buildForPage(outputPath, page, &glyphs, nullptr)) {
+            QFile::remove(outputPath);
+            return fail("Ergebnis nicht nachmessbar → Fallback");
+        }
+        for (const mg::PdfGlyph& g : glyphs)
+            for (const QRectF& r : byPage.value(page))
+                if (glyphIsCovered(g.box, r)) {
+                    QFile::remove(outputPath);
+                    return fail("Text steht nach dem Schwärzen noch da → Fallback");
+                }
+    }
     return true;
 }
 

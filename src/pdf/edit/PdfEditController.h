@@ -748,6 +748,10 @@ private:
     //  Sie sind kein „nice to have" des verlustfreien Weges: Ohne sie wäre die
     //  Schwärzung nur ein schwarzer Balken über weiterhin lesbarem Text.
     QVector<mg::PdfTextEdit> redactionEdits() const;
+    //  Dieselben Schwärzungen als FLÄCHEN (Ansichts-Seite + Rechteck in
+    //  PDF-Punkten). Der geometrische Weg braucht KEINEN erkannten Originaltext
+    //  — deshalb steht hier jede Schwärzungsbox, auch die ohne `origText`.
+    QVector<mg::PdfRedactArea> redactionAreas() const;
     void bakeWorking();                 // Arbeitsdatei aus (pristine + Plan) schreiben
     //  Den Seiten-Plan aus `sourceOverride` (leer = die Plan-Quellen selbst) in
     //  `targetPath` zusammenbauen. Kern von `bakeWorking`, aber ohne dessen
