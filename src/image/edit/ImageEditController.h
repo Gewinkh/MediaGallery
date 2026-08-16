@@ -61,6 +61,10 @@ public:
 
 private:
     Q_PROPERTY(bool editMode READ editMode WRITE setEditMode NOTIFY editModeChanged)
+    //  Nachverfolgte Änderungen — Bedeutung und Bedienung identisch zum
+    //  PDF-Editor (s. Structure.md ▸ ## PdfEdit).
+    Q_PROPERTY(bool recording READ recording WRITE setRecording NOTIFY recordingChanged)
+    Q_PROPERTY(int  trackedCount READ trackedCount NOTIFY trackedChanged)
     Q_PROPERTY(int  tool READ tool WRITE setTool NOTIFY toolChanged)
     Q_PROPERTY(bool canUndo READ canUndo NOTIFY undoStateChanged)
     Q_PROPERTY(bool canRedo READ canRedo NOTIFY undoStateChanged)
@@ -131,6 +135,19 @@ public:
     qreal noteShadowDyPx() const { return kNoteShadowDyPx; }
 
     // ── Dokument-Lebenszyklus ─────────────────────────────────────────────────
+    bool recording() const { return m_recording; }
+    void setRecording(bool on);
+    int  trackedCount() const;
+    //  Alle Notizen/Zeichnungen dieses Bildes verwerfen — wie im PDF-Editor:
+    //  NICHT die Sidecar-Datei löschen (der Editor hielte die Annotationen
+    //  im Speicher und schriebe sie zurück), sondern entfernen (EIN
+    //  Undo-Schritt) und sichern; ein leeres Overlay räumt den Sidecar ab.
+    Q_INVOKABLE void discardAllAnnotations();
+    Q_INVOKABLE void acceptChange(int id);
+    Q_INVOKABLE void rejectChange(int id);
+    Q_INVOKABLE void acceptAllChanges();
+    Q_INVOKABLE void rejectAllChanges();
+
     Q_INVOKABLE void setDocument(const QString& pathOrUrl);
     Q_INVOKABLE void releaseDocument();
     //  Fallback, falls QImageReader das Format nicht messen konnte: QML liefert
@@ -208,6 +225,8 @@ signals:
     void editModeChanged();
     void toolChanged();
     void undoStateChanged();
+    void recordingChanged();
+    void trackedChanged();
     void dirtyChanged();
     void selectedIdChanged();
     void selectionRevChanged();
@@ -234,6 +253,10 @@ private:
     bool loadOverlay(const QString& imgPath);
     static QString sidecarPath(const QString& imgPath);
     static QString uniqueCopyPath(const QString& imgPath, const QString& ext);
+
+    bool           m_recording = false;
+    void           pushAdd(ImageAnnotation& a);
+    void           setTrack(int id, ImageTrackState st);
 
     ImageEditModel m_model;
     QUndoStack     m_stack;

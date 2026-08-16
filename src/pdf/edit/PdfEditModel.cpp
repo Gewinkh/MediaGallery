@@ -43,6 +43,7 @@ QVariant PdfEditModel::data(const QModelIndex& index, int role) const {
     case AnchoredRole:   return b.anchored;
     case MarkupStyleRole: return b.markupStyle;
     case ImagePathRole:  return b.imagePath;
+    case TrackRole:      return static_cast<int>(b.track);
     default:             return {};
     }
 }
@@ -75,6 +76,7 @@ QHash<int, QByteArray> PdfEditModel::roleNames() const {
         { AnchoredRole,   "anchored"       },
         { MarkupStyleRole, "markupStyle"   },
         { ImagePathRole,  "imagePath"     },
+        { TrackRole,      "trackState"    },
     };
     return names;
 }
@@ -214,6 +216,13 @@ bool PdfEditModel::applyField(int id, PdfEditField f, const QVariant& v) {
     PdfEditBox& b = m_boxes[row];
     QList<int> roles;
     switch (f) {
+    case PdfEditField::Track: {
+        const int t = v.toInt();
+        const PdfTrackState ts = (t == 1 || t == 2) ? static_cast<PdfTrackState>(t)
+                                                    : PdfTrackState::None;
+        if (b.track == ts) return false;
+        b.track = ts;                              roles = { TrackRole };      break;
+    }
     case PdfEditField::Stroke:
         if (b.stroke == v.value<QColor>()) return false;
         b.stroke = v.value<QColor>();              roles = { StrokeRole };     break;

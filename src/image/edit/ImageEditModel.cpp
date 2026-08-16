@@ -38,6 +38,7 @@ QVariant ImageEditModel::data(const QModelIndex& index, int role) const {
     case ColorRole:      return a.color;
     case HighlightRole:  return a.highlight;
     case AlignmentRole:  return a.alignment;
+    case TrackRole:      return static_cast<int>(a.track);
     case VAlignRole:     return a.vAlign;
     default:             return {};
     }
@@ -66,6 +67,7 @@ QHash<int, QByteArray> ImageEditModel::roleNames() const {
         { ColorRole,      "textColor"      },
         { HighlightRole,  "highlightColor" },
         { AlignmentRole,  "alignment"      },
+        { TrackRole,      "trackState"     },
         { VAlignRole,     "vAlign"         },
     };
     return names;
@@ -174,6 +176,13 @@ bool ImageEditModel::applyField(int id, ImageAnnField f, const QVariant& v) {
     ImageAnnotation& a = m_anns[row];
     QList<int> roles;
     switch (f) {
+    case ImageAnnField::Track: {
+        const int t = v.toInt();
+        const ImageTrackState ts = (t == 1 || t == 2) ? static_cast<ImageTrackState>(t)
+                                                      : ImageTrackState::None;
+        if (a.track == ts) return false;
+        a.track = ts;                              roles = { TrackRole };      break;
+    }
     case ImageAnnField::Stroke:
         if (a.stroke == v.value<QColor>()) return false;
         a.stroke = v.value<QColor>();              roles = { StrokeRole };     break;

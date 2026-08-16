@@ -64,7 +64,18 @@ enum class PdfAnnKind {
 };
 
 // Welches Feld einer Box ändert sich? (Delta-Undo + gezielte dataChanged-Rollen)
+// Nachverfolgte Änderung („Track Changes"). Der Zustand hängt an der Box, weil
+// eine Änderung IMMER genau eine Annotation betrifft — eine zweite Liste daneben
+// müsste synchron gehalten werden und liefe bei Undo auseinander.
+//   Added   — während der Aufzeichnung entstanden. Annehmen = behalten,
+//             Verwerfen = löschen.
+//   Deleted — während der Aufzeichnung gelöscht. Die Box BLEIBT bis zur
+//             Entscheidung stehen (durchgestrichen dargestellt), sonst ließe
+//             sich das Verwerfen der Löschung nicht mehr zurücknehmen.
+enum class PdfTrackState { None = 0, Added = 1, Deleted = 2 };
+
 enum class PdfEditField {
+    Track,         // Zustand der Nachverfolgung (PdfTrackState)
     Text,
     Geometry,
     Points,        // Freihand/Pfeil-Stützpunkte (eigener Weg: applyPoints)
@@ -152,6 +163,9 @@ struct PdfEditBox {
     int     markupStyle = 0;
     // Nur `Stamp`: Pfad der Bilddatei (lokal, absolut).
     QString imagePath;
+    // Nachverfolgte Änderung (s. PdfTrackState). Wird im Sidecar als "tr"
+    // geführt; alte Sidecars ohne Feld laden als None.
+    PdfTrackState track = PdfTrackState::None;
 
     bool isStroke() const { return kind == PdfAnnKind::Freehand || kind == PdfAnnKind::Arrow; }
     // Textmarkierung (mehrere Bereiche, an den Text gebunden).
@@ -184,6 +198,8 @@ struct PdfEditBox {
     QJsonObject toJson() const {
         QJsonObject o;
         o.insert(QStringLiteral("page"),   page);
+        if (track != PdfTrackState::None)
+            o.insert(QStringLiteral("tr"), static_cast<int>(track));
         o.insert(QStringLiteral("kind"),   static_cast<int>(kind));
         o.insert(QStringLiteral("x"),      rect.x());
         o.insert(QStringLiteral("y"),      rect.y());
@@ -237,6 +253,11 @@ struct PdfEditBox {
         b.page       = o.value(QStringLiteral("page")).toInt(0);
         const int k  = o.value(QStringLiteral("kind")).toInt(0);   // fehlt in Alt-Sidecars → Text
         b.kind       = (k >= 0 && k <= 8) ? static_cast<PdfAnnKind>(k) : PdfAnnKind::Text;
+        //  Unbekannter Wert ⇒ None: eine verfälschte Datei darf keine Box in
+        //  einen Zustand bringen, den die Oberfläche nicht auflösen kann.
+        const int tr = o.value(QStringLiteral("tr")).toInt(0);
+        b.track      = (tr == 1 || tr == 2) ? static_cast<PdfTrackState>(tr)
+                                            : PdfTrackState::None;
         b.rect       = QRectF(o.value(QStringLiteral("x")).toDouble(0.0),
                               o.value(QStringLiteral("y")).toDouble(0.0),
                               o.value(QStringLiteral("w")).toDouble(120.0),

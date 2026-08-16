@@ -6,7 +6,6 @@
 #include <QQmlEngine>
 #include <QQuickStyle>
 #include <QPalette>
-#include "app/IconProvider.h"
 #include <QQuickImageProvider>
 #include <QQuickWindow>              // Laufzeit-Guard: sceneGraphError (GPU-Wechsel/Device-Lost)
 #include <QUrl>
@@ -190,6 +189,14 @@ int main(int argc, char* argv[]) {
     QObject::connect(&appController, &AppController::folderContentsChanged,
                      &mediaModel, &MediaModel::reload);
 
+    //  „Alle Dateien anzeigen": der Schalter lebt in den Einstellungen, die
+    //  Regel im Modell — beim Umschalten liest es den Ordner neu.
+    mediaModel.setShowAllFiles(settings.showAllFiles());
+    QObject::connect(&appController, &AppController::showAllFilesChanged,
+                     &mediaModel, [&settings, &mediaModel]() {
+        mediaModel.setShowAllFiles(settings.showAllFiles());
+    });
+
     // Thumbnail-Zielgröße folgt der Kachelgröße (Stufen 512/1024/2048/4096):
     // Kacheln > 512 px würden sonst aus der 512er-Cache-Datei hochskaliert
     // (unscharf). Initial setzen; bei Stufenwechsel Thumbnails neu anfordern.
@@ -286,8 +293,6 @@ int main(int argc, char* argv[]) {
     //  Suchpfad für den eigenen Control-Stil (liegt in den Ressourcen):
     //  der Stil "style" wird als ":/qml/style/" aufgelöst.
     engine.addImportPath(QStringLiteral(":/qml"));
-    //  Bedien-Symbole (SVG, auf die Theme-Farbe eingefärbt) — s. IconProvider.h.
-    engine.addImageProvider(QStringLiteral("mgicon"), new IconProvider);
     engine.rootContext()->setContextProperty("galleryModel", &galleryModel);
     engine.rootContext()->setContextProperty("mediaModel",   &mediaModel);
 

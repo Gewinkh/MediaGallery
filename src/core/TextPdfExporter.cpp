@@ -64,7 +64,11 @@ QString targetPathFor(const QString& sourcePath) {
     return candidate;
 }
 
-bool exportToPdf(const QString& text, const QString& targetPath, QString* err) {
+bool exportToPdf(const QString& text, const QString& targetPath,
+                 const QColor& textColor, QString* err) {
+    //  Unbrauchbare Farbe ⇒ Schwarz. Nie ungeprüft übernehmen: eine
+    //  ungültige QColor malte sonst schwarz-transparent bis unsichtbar.
+    const QColor ink = textColor.isValid() ? textColor : QColor(Qt::black);
     if (targetPath.isEmpty()) {
         if (err) *err = QStringLiteral("Kein Zielpfad.");
         return false;
@@ -184,19 +188,20 @@ bool exportToPdf(const QString& text, const QString& targetPath, QString* err) {
             const QRectF band(0, sp.top + kEps, paintRect.width(),
                               sp.bottom - sp.top - 2 * kEps);
 
-            //  DER TEXT IST IMMER SCHWARZ — die Farbe kommt aus der PALETTE des
-            //  PaintContext, NICHT aus der Feder des Malers. `drawContents` wäre
-            //  kürzer, nimmt aber die Anwendungspalette: im dunklen Theme stand
-            //  deshalb `0.902 0.902 0.902` (= #E6E6E6, `themeTextPrimary`) als
-            //  Füllfarbe im PDF — das Papier war weiß, die Schrift fast auch.
-            //  Am Prüfstand fiel es nicht auf, weil dort die Standardpalette
-            //  ohnehin schwarz ist.
-            //  (Eine wählbare Farbe je Datei ist geplant, s. FEATURES.md.)
+            //  DIE SCHRIFTFARBE WIRD IMMER GESETZT — über die PALETTE des
+            //  PaintContext, NICHT über die Feder des Malers allein.
+            //  `drawContents` wäre kürzer, nimmt aber die Anwendungspalette: im
+            //  dunklen Theme stand deshalb `0.902 0.902 0.902` (= #E6E6E6,
+            //  `themeTextPrimary`) als Füllfarbe im PDF — das Papier war weiß,
+            //  die Schrift fast auch. Am Prüfstand fiel es nicht auf, weil dort
+            //  die Standardpalette ohnehin schwarz ist. Die Farbe kommt deshalb
+            //  vom AUFRUFER (Datei- bzw. globale Einstellung), nie aus der
+            //  laufenden Anwendung.
             QAbstractTextDocumentLayout::PaintContext ctx;
             ctx.clip = band;
-            ctx.palette.setColor(QPalette::Text, Qt::black);
+            ctx.palette.setColor(QPalette::Text, ink);
             p.setClipRect(band);
-            p.setPen(Qt::black);
+            p.setPen(ink);
             td.documentLayout()->draw(&p, ctx);
             p.restore();
 

@@ -141,6 +141,10 @@ Popup {
     FileBrowseModel {
         id: fs
         dirsOnly: root._dirMode
+        //  Begleitdateien der App nur zeigen, wenn der Nutzer es will — dieselbe
+        //  Einstellung wie in der Galerie, damit dieselbe Datei nicht hier
+        //  auftaucht und dort fehlt.
+        showAllFiles: App.showAllFiles
         nameFilters: (root._dirMode || root.nameFilters.length === 0)
                      ? [] : [ root.nameFilters[Math.min(root._filterIndex,
                                                         root.nameFilters.length - 1)] ]

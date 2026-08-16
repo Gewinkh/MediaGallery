@@ -21,6 +21,8 @@ Item {
 
     // ── Modellrollen (ImageEditModel) ─────────────────────────────────────────
     required property int    annId
+    //  Nachverfolgte Änderung: 0 keine, 1 neu, 2 gelöscht (ImageEditModel).
+    required property int    trackState
     required property int    annKind          // 0 Text,1 Freihand,2 Pfeil,3 Rect,4 Ellipse
     required property real   xPx
     required property real   yPx
@@ -62,6 +64,31 @@ Item {
     width:  Math.max(1, wPx * imgScale)
     height: Math.max(1, hPx * imgScale)
     z: selected ? 3 : 2
+
+    //  ── Kennzeichnung offener Änderungen (wie im PDF-Editor) ─────────────────
+    readonly property bool trackedNew: box.trackState === 1
+    readonly property bool trackedDel: box.trackState === 2
+    opacity: box.trackedDel ? 0.45 : 1.0
+
+    Rectangle {
+        anchors.fill: parent
+        anchors.margins: -2
+        visible: box.trackedNew || box.trackedDel
+        color: "transparent"
+        border.width: 2
+        border.color: App.themeAccent
+        radius: 3
+        z: 5
+    }
+    Rectangle {
+        visible: box.trackedDel
+        anchors.verticalCenter: parent.verticalCenter
+        anchors.left: parent.left
+        anchors.right: parent.right
+        height: 2
+        color: App.themeAccent
+        z: 5
+    }
 
     readonly property int commitRev: surface ? surface.editCommitRev : 0
     onCommitRevChanged: finishEditing()

@@ -106,6 +106,14 @@ void JsonStorage::loadNewFormat(const QJsonObject& root) {
                 meta.hasCustomDate = true;
             }
         }
+
+        if (o.contains("c")) {
+            // Only a colour Qt can parse is taken over; garbage stays "no choice"
+            // so the export falls back to the global default instead of black-on-
+            // black from an unusable value.
+            const QColor c(o["c"].toString());
+            if (c.isValid()) meta.textPdfColor = c;
+        }
     }
 }
 
@@ -138,12 +146,13 @@ void JsonStorage::saveFolder(const QString& folderPath) {
     QJsonObject root;
 
     // ── Compact file-centric section ──────────────────────────────────────────
-    // Only writes entries that have actual data (tags or custom date).
-    // Keys are short ("t", "d") to minimise file size across large collections.
+    // Only writes entries that have actual data (tags, custom date, PDF text
+    // colour). Keys are short ("t", "d", "c") to minimise file size across large
+    // collections.
     QJsonObject filesObj;
     for (auto it = m_fileMeta.cbegin(); it != m_fileMeta.cend(); ++it) {
         const FileMeta& meta = it.value();
-        if (meta.tags.isEmpty() && !meta.hasCustomDate)
+        if (meta.tags.isEmpty() && !meta.hasCustomDate && !meta.textPdfColor.isValid())
             continue;  // skip files with no metadata at all → saves space
 
         QJsonObject o;
@@ -154,6 +163,8 @@ void JsonStorage::saveFolder(const QString& folderPath) {
         }
         if (meta.hasCustomDate)
             o["d"] = meta.customDate.toString(Qt::ISODate);
+        if (meta.textPdfColor.isValid())
+            o["c"] = meta.textPdfColor.name(QColor::HexRgb);
 
         filesObj[it.key()] = o;
     }
@@ -237,6 +248,16 @@ void JsonStorage::setTags(const QString& f, const QStringList& tags) {
     m_fileMeta[f].tags = tags;
     for (const auto& t : tags) ensureTagRegistered(t);
 }
+QColor JsonStorage::textPdfColor(const QString& f) const {
+    return m_fileMeta.value(f).textPdfColor;
+}
+void JsonStorage::setTextPdfColor(const QString& f, const QColor& color) {
+    m_fileMeta[f].textPdfColor = color;
+}
+void JsonStorage::clearTextPdfColor(const QString& f) {
+    m_fileMeta[f].textPdfColor = QColor();
+}
+
 bool JsonStorage::hasCustomDate(const QString& f) const {
     return m_fileMeta.value(f).hasCustomDate;
 }

@@ -250,8 +250,6 @@ mg_domain(mg_app
     SOURCES
         src/app/AppController.cpp
         src/app/AppController.h
-        src/app/IconProvider.cpp
-        src/app/IconProvider.h
         src/app/ViewerController.cpp
         src/app/ViewerController.h
         src/app/WebEngineController.cpp

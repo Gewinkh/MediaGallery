@@ -1,4 +1,5 @@
 #pragma once
+#include <QColor>
 #include <QObject>
 #include <QString>
 #include <QStringList>
@@ -55,7 +56,11 @@ public:
     //   content KOMMT AUS DEM EDITOR, nicht von Platte: TextSurface ist
     //   editierbar, ein erneutes Einlesen wuerde ungespeicherte Aenderungen
     //   verlieren. Festlegungen des Layouts s. core/TextPdfExporter.h.
-    Q_INVOKABLE void exportTextToPdf(const QString& filePathOrUrl, const QString& content);
+    //  textColor: Schriftfarbe des Fließtextes. QML gibt sie mit (Farbe der
+    //  Datei bzw. globale Vorgabe, s. AppController::fileTextPdfColor);
+    //  ungültig ⇒ Schwarz.
+    Q_INVOKABLE void exportTextToPdf(const QString& filePathOrUrl, const QString& content,
+                                     const QColor& textColor = QColor(Qt::black));
 
 
     // ── Intern (vom Worker-Thread per QueuedConnection aufgerufen) ────────────

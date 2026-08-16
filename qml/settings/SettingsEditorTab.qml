@@ -55,6 +55,41 @@ Item {
                     }
                     Item { Layout.fillWidth: true }
                 }
+
+                //  Vorgabe-Schriftfarbe für „Text → PDF". Steht bewusst hier und
+                //  nicht im Design-Tab: sie färbt ein DOKUMENT, nicht die
+                //  Oberfläche, und darf einem Themenwechsel deshalb nicht folgen.
+                RowLayout {
+                    Layout.fillWidth: true
+                    Layout.topMargin: 6
+                    spacing: 10
+
+                    ColumnLayout {
+                        spacing: 2
+                        Label {
+                            text: App.uiText(App.language, "TextPdfColorSetting")
+                            color: App.themeTextPrimary
+                        }
+                        Label {
+                            text: App.uiText(App.language, "TextPdfColorSettingHint")
+                            color: App.themeTextMuted
+                            font.pixelSize: 11
+                            wrapMode: Text.WordWrap
+                            Layout.maximumWidth: 420
+                        }
+                    }
+                    Item { Layout.fillWidth: true }
+                    ColorPicker {
+                        implicitWidth: 44; implicitHeight: 24
+                        showAlpha: false
+                        title: App.uiText(App.language, "TextPdfColorTitle")
+                        selectedColor: App.textPdfColor
+                        onColorPicked: function (c) {
+                            App.textPdfColor = c
+                            selectedColor = Qt.binding(function () { return App.textPdfColor })
+                        }
+                    }
+                }
             }
 
             // ── PDF-Editor ────────────────────────────────────────────────────

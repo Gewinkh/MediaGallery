@@ -238,6 +238,14 @@ void AppController::endTileDrag() {
 
 bool AppController::fileDropMove() const { return m_settings.fileDropMove(); }
 
+bool AppController::showAllFiles() const { return m_settings.showAllFiles(); }
+
+void AppController::setShowAllFiles(bool v) {
+    if (m_settings.showAllFiles() == v) return;
+    m_settings.setShowAllFiles(v);
+    emit showAllFilesChanged();
+}
+
 void AppController::setFileDropMove(bool v) {
     if (m_settings.fileDropMove() == v) return;
     m_settings.setFileDropMove(v);
@@ -567,6 +575,45 @@ void AppController::removeTagFromFile(const QString& f, const QString& tag) { m_
 // ── Datei-Metadaten ──────────────────────────────────────────────────────────
 void      AppController::setCustomDate(const QString& f, const QDateTime& dt) { m_storage.setCustomDate(f, dt); }
 void      AppController::clearCustomDate(const QString& f)      { m_storage.clearCustomDate(f); }
+
+//  ── Schriftfarbe des TXT→PDF-Exports ────────────────────────────────────────
+//  Vorgabe global (AppSettings), Ausnahme je Datei (Ordner-Sidecar). Gespeichert
+//  wird SOFORT (saveCurrentFolder): der Nutzer wählt die Farbe unmittelbar vor
+//  dem Export, ein späteres Sammel-Speichern käme oft zu spät.
+namespace {
+QString fileNameOf(const QString& pathOrUrl) {
+    const QString p = mg::toLocalPath(pathOrUrl);
+    const int cut = qMax(p.lastIndexOf(QLatin1Char('/')), p.lastIndexOf(QLatin1Char('\\')));
+    return (cut >= 0) ? p.mid(cut + 1) : p;
+}
+}  // namespace
+
+QColor AppController::textPdfColor() const { return m_settings.textPdfColor(); }
+
+void AppController::setTextPdfColor(const QColor& c) {
+    if (m_settings.textPdfColor() == c) return;
+    m_settings.setTextPdfColor(c);
+    emit textPdfColorChanged();
+}
+
+QColor AppController::fileTextPdfColor(const QString& filePathOrUrl) const {
+    const QColor own = m_storage.textPdfColor(fileNameOf(filePathOrUrl));
+    return own.isValid() ? own : m_settings.textPdfColor();
+}
+
+bool AppController::hasFileTextPdfColor(const QString& filePathOrUrl) const {
+    return m_storage.textPdfColor(fileNameOf(filePathOrUrl)).isValid();
+}
+
+void AppController::setFileTextPdfColor(const QString& filePathOrUrl, const QColor& c) {
+    m_storage.setTextPdfColor(fileNameOf(filePathOrUrl), c);
+    m_storage.saveCurrentFolder();
+}
+
+void AppController::clearFileTextPdfColor(const QString& filePathOrUrl) {
+    m_storage.clearTextPdfColor(fileNameOf(filePathOrUrl));
+    m_storage.saveCurrentFolder();
+}
 
 // ── i18n ─────────────────────────────────────────────────────────────────────
 QString AppController::text(int key) const {

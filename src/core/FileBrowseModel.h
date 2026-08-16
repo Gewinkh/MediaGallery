@@ -38,6 +38,12 @@ class FileBrowseModel : public QAbstractListModel {
                    NOTIFY nameFiltersChanged)
     Q_PROPERTY(bool showHidden READ showHidden WRITE setShowHidden
                    NOTIFY showHiddenChanged)
+    //  Begleitdateien der App mitzeigen (Ordner-JSON, `.mgedit.json`, `.bak`)?
+    //  Wird in QML an `App.showAllFiles` gebunden — dieselbe Regel wie in der
+    //  Galerie (`mg::isCompanionFile`), damit dieselbe Datei nicht hier auftaucht
+    //  und dort fehlt.
+    Q_PROPERTY(bool showAllFiles READ showAllFiles WRITE setShowAllFiles
+                   NOTIFY showAllFilesChanged)
     //  Nur Ordner zeigen (Ordner-Auswahl).
     Q_PROPERTY(bool dirsOnly READ dirsOnly WRITE setDirsOnly NOTIFY dirsOnlyChanged)
     Q_PROPERTY(int  count READ count NOTIFY countChanged)
@@ -83,6 +89,8 @@ public:
     QStringList nameFilters() const { return m_filters; }
     void        setNameFilters(const QStringList& f);
     bool        showHidden() const { return m_showHidden; }
+    bool        showAllFiles() const { return m_showAllFiles; }
+    void        setShowAllFiles(bool v);
     void        setShowHidden(bool v);
     bool        dirsOnly() const { return m_dirsOnly; }
     void        setDirsOnly(bool v);
@@ -130,6 +138,7 @@ signals:
     void sortChanged();
     void nameFiltersChanged();
     void showHiddenChanged();
+    void showAllFilesChanged();
     void dirsOnlyChanged();
     void countChanged();
     void loadingChanged();
@@ -144,6 +153,7 @@ private:
     QString     m_folder;
     QStringList m_filters;
     bool        m_showHidden = false;
+    bool        m_showAllFiles = false;
     bool        m_dirsOnly   = false;
     bool        m_loading    = false;
     int         m_sortKey    = SortName;

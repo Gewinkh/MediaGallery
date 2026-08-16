@@ -44,7 +44,16 @@ enum class ImageAnnKind {
 };
 
 // Welches Feld ändert sich? (Delta-Undo + gezielte dataChanged-Rollen)
+// Nachverfolgte Änderung („Track Changes") — identisch zum PDF-Editor
+// (`PdfTrackState`), damit Oberfläche und Bedienung dieselbe Semantik teilen.
+//   Added   — während der Aufzeichnung entstanden.
+//   Deleted — während der Aufzeichnung gelöscht; die Annotation BLEIBT bis zur
+//             Entscheidung stehen, sonst ließe sich das Verwerfen der Löschung
+//             nicht mehr zurücknehmen.
+enum class ImageTrackState { None = 0, Added = 1, Deleted = 2 };
+
 enum class ImageAnnField {
+    Track,         // Zustand der Nachverfolgung (ImageTrackState)
     Text,
     Geometry,      // rect (+ bei Strichen zusätzlich points, s. GeometryCommand)
     Points,
@@ -108,9 +117,14 @@ struct ImageAnnotation {
     }
 
     // ── Sidecar-Serialisierung (IDs werden beim Laden neu vergeben) ───────────
+    // Nachverfolgte Änderung (s. ImageTrackState); im Sidecar als "tr".
+    ImageTrackState track = ImageTrackState::None;
+
     QJsonObject toJson() const {
         QJsonObject o;
         o.insert(QStringLiteral("kind"),   static_cast<int>(kind));
+        if (track != ImageTrackState::None)
+            o.insert(QStringLiteral("tr"), static_cast<int>(track));
         o.insert(QStringLiteral("x"),      rect.x());
         o.insert(QStringLiteral("y"),      rect.y());
         o.insert(QStringLiteral("w"),      rect.width());
@@ -145,6 +159,11 @@ struct ImageAnnotation {
         ImageAnnotation a;
         const int k = o.value(QStringLiteral("kind")).toInt(0);
         a.kind = (k >= 0 && k <= 4) ? static_cast<ImageAnnKind>(k) : ImageAnnKind::Text;
+        //  Unbekannter Wert ⇒ None (wie im PDF-Editor): eine verfälschte
+        //  Datei darf keine Annotation unauflösbar machen.
+        const int tr = o.value(QStringLiteral("tr")).toInt(0);
+        a.track = (tr == 1 || tr == 2) ? static_cast<ImageTrackState>(tr)
+                                       : ImageTrackState::None;
         a.rect = QRectF(o.value(QStringLiteral("x")).toDouble(0.0),
                         o.value(QStringLiteral("y")).toDouble(0.0),
                         o.value(QStringLiteral("w")).toDouble(120.0),

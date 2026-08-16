@@ -36,7 +36,8 @@ public:
         VAlignRole,
         AnchoredRole,
         MarkupStyleRole,                // Markierung: 0 Fläche, 1 unter, 2 durch
-        ImagePathRole                   // Stempel: Pfad der Bilddatei                 // Markierung: 0 Fläche, 1 unter, 2 durch
+        ImagePathRole,                  // Stempel: Pfad der Bilddatei
+        TrackRole                       // Nachverfolgung: 0 keine, 1 neu, 2 gelöscht
     };
 
     explicit PdfEditModel(QObject* parent = nullptr);

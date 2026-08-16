@@ -76,6 +76,8 @@ public:
 private:
     // Bearbeitungsmodus (View ⇄ Edit) — reiner Zustandswechsel, KEIN Reload.
     Q_PROPERTY(bool editMode READ editMode WRITE setEditMode NOTIFY editModeChanged)
+    Q_PROPERTY(bool recording READ recording WRITE setRecording NOTIFY recordingChanged)
+    Q_PROPERTY(int  trackedCount READ trackedCount NOTIFY trackedChanged)
     // Aktives Werkzeug (0 Auswahl … 7 Text bearbeiten) — s. Tool-Enum.
     Q_PROPERTY(int  tool READ tool WRITE setTool NOTIFY toolChanged)
     // Zähler: bumpt bei jeder Änderung der „Vorlagen"-Defaults (neue Annotation)
@@ -204,6 +206,30 @@ public:
     explicit PdfEditController(QObject* parent = nullptr);
     explicit PdfEditController(ISettings& settings, QObject* parent = nullptr);
     ~PdfEditController() override;
+
+    //  ── Nachverfolgte Änderungen („Track Changes") ───────────────────────
+    //  `recording` schaltet das Mitschreiben ein: Annotationen, die ab dann
+    //  entstehen, gelten als offene Änderung; Löschen markiert statt zu
+    //  entfernen. Der Schalter lebt IM Sidecar, nicht in den Einstellungen —
+    //  er gehört zum Dokument, wie in einer Textverarbeitung.
+    bool recording() const { return m_recording; }
+    void setRecording(bool on);
+    //  Zahl der offenen (noch nicht angenommenen/verworfenen) Änderungen.
+    int  trackedCount() const;
+    //  Annehmen = die Änderung wird endgültig (neu → bleibt, gelöscht → weg).
+    //  Verwerfen = der Zustand vor der Änderung (neu → weg, gelöscht → bleibt).
+    //  Jede Entscheidung ist EIN Undo-Schritt; die „alle"-Fassungen sind ein
+    //  einziger Schritt für den ganzen Stapel (wie im DOCX-Streifen).
+    //  Alle Notizen/Zeichnungen dieser Datei verwerfen. Bewusst NICHT die
+    //  Sidecar-Datei löschen: der Editor hält die Boxen im Speicher und
+    //  schriebe sie beim nächsten Sichern wieder hin. Stattdessen werden sie
+    //  entfernt (EIN Undo-Schritt) und gesichert — ein leeres Overlay räumt
+    //  den Sidecar von selbst ab.
+    Q_INVOKABLE void discardAllAnnotations();
+    Q_INVOKABLE void acceptChange(int id);
+    Q_INVOKABLE void rejectChange(int id);
+    Q_INVOKABLE void acceptAllChanges();
+    Q_INVOKABLE void rejectAllChanges();
 
     bool editMode() const { return m_editMode; }
     void setEditMode(bool on);
@@ -562,6 +588,8 @@ signals:
     void toolChanged();
     void defaultRevChanged();
     void undoStateChanged();
+    void recordingChanged();
+    void trackedChanged();
     void dirtyChanged();
     void selectedIdChanged();
     void selectionRevChanged();
@@ -722,6 +750,13 @@ private:
     void spliceGlyphsRemove(int index, int count);
 
     ISettings&   m_settings;
+    //  Nachverfolgung läuft (aus dem Sidecar geladen).
+    bool         m_recording = false;
+    //  Setzt die Marke „neu" auf eine gerade entstehende Box und legt sie ab.
+    void         pushAdd(PdfEditBox& b);
+    //  Zustand einer Box als Undo-Schritt setzen (nutzt PdfEditField::Track).
+    void         setTrack(int id, PdfTrackState st);
+
     PdfEditModel m_model;
     QUndoStack   m_stack;
 

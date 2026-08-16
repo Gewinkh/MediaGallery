@@ -132,6 +132,19 @@ public:
     virtual bool fileDropMove() const = 0;
     virtual void setFileDropMove(bool v) = 0;
 
+    //  Zeigt die Galerie (und der eigene Dateiwähler) ALLE Dateien — auch die
+    //  Begleitdateien der App: die Ordner-JSON mit Tags/Kategorien, die
+    //  Editor-Sidecars `<datei>.mgedit.json` und Sicherungskopien `.bak`?
+    //  Standard AUS: sie gehören zur Verwaltung, nicht zur Sammlung.
+    virtual bool showAllFiles() const = 0;
+    virtual void setShowAllFiles(bool v) = 0;
+
+    //  Schriftfarbe beim Export eines Klartextes nach PDF (Texteditor „→ PDF").
+    //  VORGABE für alle Dateien; eine einzelne Datei kann sie im Ordner-Sidecar
+    //  überschreiben (JsonStorage::textPdfColor). Standard: Schwarz.
+    virtual QColor textPdfColor() const = 0;
+    virtual void   setTextPdfColor(const QColor& c) = 0;
+
     // Spulschritt (Sekunden) der Pfeiltasten im Video-Vollbild. Standard: 15.
     //  Rechtschreibprüfung: an/aus und Sprache (Wörterbuch-Kürzel wie „de_DE").
     //  Leere Sprache = automatisch die erste gefundene.

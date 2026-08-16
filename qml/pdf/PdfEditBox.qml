@@ -43,6 +43,8 @@ Item {
 
     // ── Modellrollen (PdfEditModel) ───────────────────────────────────────────
     required property int    boxId
+    //  Nachverfolgte Änderung: 0 keine, 1 neu, 2 gelöscht (PdfEditModel).
+    required property int    trackState
     required property int    page
     required property int    boxKind          // 0 Text,1 Freihand,2 Pfeil,3 Rect,4 Ellipse
     required property real   xPt
@@ -106,6 +108,11 @@ Item {
     //  Signatur/Stempel: eine Bilddatei im Dokument.
     readonly property bool isStamp:  boxKind === 8
     readonly property bool editMode: box.ctl.editMode
+    //  Offene Änderung? Eine als GELÖSCHT markierte Notiz bleibt sichtbar,
+    //  aber blass und durchgestrichen — sie ist noch da, bis jemand
+    //  entscheidet.
+    readonly property bool trackedNew: box.trackState === 1
+    readonly property bool trackedDel: box.trackState === 2
     // Auswahl/Verschieben/Skalieren nur mit dem Auswahl-Werkzeug (wie im
     // Bild-Editor — während des Zeichnens fängt die drawArea der Seite).
     readonly property bool selectTool: box.ctl.tool === 0
@@ -127,6 +134,36 @@ Item {
     width:  Math.max(2, wPt * pageScale)
     height: Math.max(2, hPt * pageScale)
     z: selected ? 3 : 2
+
+    //  ── Kennzeichnung offener Änderungen ─────────────────────────────────────
+    //  Als GELÖSCHT markiert: blass — die Notiz ist noch da, aber auf dem Weg
+    //  hinaus. Die Entscheidung fällt über das Track-Changes-Menü oder das
+    //  Kontextmenü.
+    opacity: box.trackedDel ? 0.45 : 1.0
+
+    //  Rahmen in der Akzentfarbe zeigt „das ist eine offene Änderung"; beim
+    //  Löschen zusätzlich ein Balken quer über die Fläche (wie durchgestrichener
+    //  Text im DOCX-Streifen). Beides liegt ÜBER der Notiz, greift aber keine
+    //  Mausereignisse ab.
+    Rectangle {
+        anchors.fill: parent
+        anchors.margins: -2
+        visible: box.trackedNew || box.trackedDel
+        color: "transparent"
+        border.width: 2
+        border.color: App.themeAccent
+        radius: 3
+        z: 5
+    }
+    Rectangle {
+        visible: box.trackedDel
+        anchors.verticalCenter: parent.verticalCenter
+        anchors.left: parent.left
+        anchors.right: parent.right
+        height: 2
+        color: App.themeAccent
+        z: 5
+    }
 
     // Externe Commit-Anforderung: Zähler-Bump im Surface → alle Boxen schließen
     // eine evtl. offene Textbearbeitung ab, BEVOR die auslösende Aktion läuft.

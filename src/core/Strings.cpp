@@ -122,6 +122,41 @@ static const QMap<StringKey, QString> s_de = {
     { StringKey::TextExportPdfTip,       "Als PDF exportieren (Original bleibt erhalten)" },
     { StringKey::TextExportPdfOk,        "PDF geschrieben: %1" },
     { StringKey::TextExportPdfFail,      "PDF-Export fehlgeschlagen: %1" },
+    { StringKey::TextPdfColorTitle,      "Schriftfarbe im PDF" },
+    { StringKey::TextPdfColorTip,        "Schriftfarbe für den PDF-Export dieser Datei" },
+    { StringKey::TextPdfColorResetTip,   "Zurück auf die Vorgabe aus den Einstellungen" },
+    { StringKey::TextPdfColorSetting,    "Schriftfarbe beim Text-PDF-Export" },
+    { StringKey::TextPdfColorSettingHint,
+      "Vorgabe für alle Textdateien. Im Texteditor lässt sich davon abweichend "
+      "eine eigene Farbe je Datei wählen." },
+    { StringKey::FileMenuTitle,          "Datei" },
+    { StringKey::ViewMenuTitle,          "Ansicht" },
+    { StringKey::ViewMenuImmersive,      "Vollbild (F)" },
+    { StringKey::TrackMenuTitle,         "Änderungen verfolgen" },
+    { StringKey::TrackRecord,            "Aufzeichnen" },
+    { StringKey::TrackRecordHint,
+      "Während der Aufzeichnung gilt jede neue Notiz als offene Änderung, und "
+      "Löschen markiert statt zu entfernen — beides lässt sich einzeln annehmen "
+      "oder verwerfen." },
+    { StringKey::TrackOpenCount,         "%1 offene Änderung(en)" },
+    { StringKey::TrackAcceptAll,         "Alle annehmen" },
+    { StringKey::TrackRejectAll,         "Alle verwerfen" },
+    { StringKey::TrackAcceptOne,         "Änderung annehmen" },
+    { StringKey::TrackRejectOne,         "Änderung verwerfen" },
+    { StringKey::SettingsFilesGroup,     "Dateien" },
+    { StringKey::SettingsShowAllFiles,   "Alle Dateien anzeigen" },
+    { StringKey::SettingsShowAllFilesHint,
+      "Zeigt auch die Begleitdateien der App: die Ordner-Datei mit Tags und "
+      "Kategorien, die Notizen der Editoren (…mgedit.json) und Sicherungskopien "
+      "(.bak). Normalerweise bleiben sie verborgen — gelöscht wird nichts." },
+    { StringKey::CtxRemoveEdits,         "Notizen und Zeichnungen löschen" },
+    { StringKey::CtxRemoveBackup,        "Vorherige Fassung löschen" },
+    { StringKey::CtxRemoveEditsAsk,
+      "Alle Notizen, Zeichnungen und Markierungen dieser Datei löschen? Die "
+      "Datei selbst bleibt unverändert; Strg+Z holt die Notizen zurück." },
+    { StringKey::CtxRemoveBackupAsk,
+      "Die gesicherte Fassung von VOR deinen Änderungen löschen? Die Datei "
+      "selbst bleibt unverändert; Strg+Z holt die Sicherung zurück." },
     // ── Migration: vereinheitlichte UI-Strings ──
     { StringKey::SettingsGenFullscreenAnim,  "Vollbild-Animation" },
     { StringKey::SettingsGenAnimSlide,  "Verschieben (seitlich)" },
@@ -512,7 +547,6 @@ static const QMap<StringKey, QString> s_de = {
     { StringKey::ImageZoomOut,             "Verkleinern" },
     { StringKey::ImageLoadError,           "Bild konnte nicht geladen werden." },
     { StringKey::ImageEditPanelTitle,      "Bild-Editor" },
-    { StringKey::ImageEditToolsLabel,      "Werkzeuge" },
     { StringKey::ImageEditToolSelect,      "Auswählen / Verschieben" },
     { StringKey::ImageEditToolText,        "Textnotiz" },
     { StringKey::ImageEditToolPen,         "Stift (Freihand)" },
@@ -526,7 +560,6 @@ static const QMap<StringKey, QString> s_de = {
     { StringKey::ImageEditFillLabel,       "Füllung" },
     { StringKey::ImageEditCopyBtn,         "Kopieren" },
     { StringKey::ImageEditPasteBtn,        "Einfügen" },
-    { StringKey::ImageEditDocSection,      "Dokument" },
 
     // ── PDF-Seiten-Extraktion ────────────────────────────────────────────────
     { StringKey::CtxExtractPage,           "Seite extrahieren" },
@@ -750,6 +783,41 @@ static const QMap<StringKey, QString> s_en = {
     { StringKey::TextExportPdfTip,       "Export as PDF (keeps the original)" },
     { StringKey::TextExportPdfOk,        "PDF written: %1" },
     { StringKey::TextExportPdfFail,      "PDF export failed: %1" },
+    { StringKey::TextPdfColorTitle,      "Text colour in PDF" },
+    { StringKey::TextPdfColorTip,        "Text colour used when this file is exported to PDF" },
+    { StringKey::TextPdfColorResetTip,   "Back to the default from the settings" },
+    { StringKey::TextPdfColorSetting,    "Text colour for text-to-PDF export" },
+    { StringKey::TextPdfColorSettingHint,
+      "Default for all text files. The text editor can pick a different colour "
+      "for a single file." },
+    { StringKey::FileMenuTitle,          "File" },
+    { StringKey::ViewMenuTitle,          "View" },
+    { StringKey::ViewMenuImmersive,      "Fullscreen (F)" },
+    { StringKey::TrackMenuTitle,         "Track changes" },
+    { StringKey::TrackRecord,            "Record" },
+    { StringKey::TrackRecordHint,
+      "While recording, every new note counts as an open change and deleting "
+      "marks instead of removing - each one can be accepted or rejected on its "
+      "own." },
+    { StringKey::TrackOpenCount,         "%1 open change(s)" },
+    { StringKey::TrackAcceptAll,         "Accept all" },
+    { StringKey::TrackRejectAll,         "Reject all" },
+    { StringKey::TrackAcceptOne,         "Accept change" },
+    { StringKey::TrackRejectOne,         "Reject change" },
+    { StringKey::SettingsFilesGroup,     "Files" },
+    { StringKey::SettingsShowAllFiles,   "Show all files" },
+    { StringKey::SettingsShowAllFilesHint,
+      "Also shows the app's companion files: the folder file holding tags and "
+      "categories, the editors' notes (…mgedit.json) and backups (.bak). They "
+      "normally stay hidden - nothing is deleted." },
+    { StringKey::CtxRemoveEdits,         "Delete notes and drawings" },
+    { StringKey::CtxRemoveBackup,        "Delete previous version" },
+    { StringKey::CtxRemoveEditsAsk,
+      "Delete all notes, drawings and highlights of this file? The file itself "
+      "stays untouched; Ctrl+Z brings the notes back." },
+    { StringKey::CtxRemoveBackupAsk,
+      "Delete the saved version from BEFORE your changes? The file itself stays "
+      "untouched; Ctrl+Z brings the saved version back." },
     // ── Migration: vereinheitlichte UI-Strings ──
     { StringKey::SettingsGenFullscreenAnim,  "Fullscreen Animation" },
     { StringKey::SettingsGenAnimSlide,  "Slide (horizontal)" },
@@ -1140,7 +1208,6 @@ static const QMap<StringKey, QString> s_en = {
     { StringKey::ImageZoomOut,             "Zoom out" },
     { StringKey::ImageLoadError,           "Could not load image." },
     { StringKey::ImageEditPanelTitle,      "Image editor" },
-    { StringKey::ImageEditToolsLabel,      "Tools" },
     { StringKey::ImageEditToolSelect,      "Select / move" },
     { StringKey::ImageEditToolText,        "Text note" },
     { StringKey::ImageEditToolPen,         "Pen (freehand)" },
@@ -1154,7 +1221,6 @@ static const QMap<StringKey, QString> s_en = {
     { StringKey::ImageEditFillLabel,       "Fill" },
     { StringKey::ImageEditCopyBtn,         "Copy" },
     { StringKey::ImageEditPasteBtn,        "Paste" },
-    { StringKey::ImageEditDocSection,      "Document" },
 
     // ── PDF page extraction ──────────────────────────────────────────────────
     { StringKey::CtxExtractPage,           "Extract page" },

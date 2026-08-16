@@ -1506,7 +1506,9 @@ Item {
     Rectangle {
         id: toolbar
         anchors { left: parent.left; right: parent.right; top: parent.top; topMargin: root.topInset }
-        height: 40
+        //  42 px wie im DOCX-Editor — die drei Editor-Leisten sind
+        //  bewusst gleich hoch (Nutzerwunsch: überall konsistent).
+        height: 42
         color: App.themeToolbarBg
         visible: root.docReady
         z: 6
@@ -1560,7 +1562,7 @@ Item {
             }
             Item { width: 4; height: 1 }
             PdfToolButton {
-                iconSource: "qrc:/qml/icons/chevron-left.svg"
+                iconName: "chevron-left"
                 enabled: root.currentPage > 0
                 onActivated: root.goToPage(root.currentPage - 1)
             }
@@ -1571,7 +1573,7 @@ Item {
                 width: 96; horizontalAlignment: Text.AlignHCenter
             }
             PdfToolButton {
-                iconSource: "qrc:/qml/icons/chevron-right.svg"
+                iconName: "chevron-right"
                 enabled: root.currentPage < root.pageCount - 1
                 onActivated: root.goToPage(root.currentPage + 1)
             }
@@ -1582,14 +1584,14 @@ Item {
                         anchors.verticalCenter: parent.verticalCenter }
             Item { width: 8; height: 1 }
             PdfToolButton {
-                iconSource: "qrc:/qml/icons/eye.svg"
+                iconName: "eye"
                 visible: root.editCtl.boxCount > 0 || root.editCtl.editMode
                 active: root.notesVisible
                 tip: App.uiText(App.language, "PdfEditNotesToggleTip")
                 onActivated: root.notesVisible = !root.notesVisible
             }
             PdfToolButton {
-                iconSource: "qrc:/qml/icons/pen.svg"
+                iconName: "pen"
                 active: root.editCtl.editMode
                 tip: App.uiText(App.language, "PdfEditToggleTip")
                 // commitEditing() VOR dem Umschalten: eine offene Text-Session
@@ -1598,27 +1600,27 @@ Item {
                 onActivated: { root.commitEditing(); root.editCtl.editMode = !root.editCtl.editMode }
             }
             PdfToolButton {
-                iconSource: "qrc:/qml/icons/undo.svg"
+                iconName: "undo"
                 visible: root.editCtl.editMode
                 enabled: root.editCtl.canUndo
                 tip: App.uiText(App.language, "PdfEditUndoTip")
                 onActivated: { root.commitEditing(); root.editCtl.undo() }
             }
             PdfToolButton {
-                iconSource: "qrc:/qml/icons/redo.svg"
+                iconName: "redo"
                 visible: root.editCtl.editMode
                 enabled: root.editCtl.canRedo
                 tip: App.uiText(App.language, "PdfEditRedoTip")
                 onActivated: { root.commitEditing(); root.editCtl.redo() }
             }
             PdfToolButton {
-                iconSource: "qrc:/qml/icons/search.svg"
+                iconName: "search"
                 active: root.searchVisible
                 tip: App.uiText(App.language, "PdfSearchTip")
                 onActivated: root.toggleSearch()
             }
             PdfToolButton {
-                iconSource: "qrc:/qml/icons/snap.svg"
+                iconName: "snap"
                 visible: root.editCtl.editMode
                 active: root.snapEnabled
                 tip: App.uiText(App.language, "PdfEditSnapTip")
@@ -1629,7 +1631,7 @@ Item {
             //  eingetragenen Werte in eine Kopie \u201e\u2026_ausgefuellt.pdf".
             //  Unabh\u00e4ngig vom Editmodus: Formulare f\u00fcllt man beim Lesen aus.
             PdfToolButton {
-                iconSource: "qrc:/qml/icons/save.svg"
+                iconName: "save"
                 visible: root.editCtl.hasForm
                 enabled: root.editCtl.formDirty && !root.editCtl.busy
                 tip: App.uiText(App.language, "PdfFormSaveTip")
@@ -1656,7 +1658,7 @@ Item {
             Item { width: root.editCtl.editMode ? 4 : 0; height: 1 }
             // Audio-Leiste umschalten — nur sichtbar, wenn das PDF Audio enthält.
             PdfToolButton {
-                iconSource: "qrc:/qml/icons/audio.svg"
+                iconName: "audio"
                 visible: pdfAudioCtl.documentHasAudio
                 active: root.audioPanelVisible
                 tip: root.audioPanelVisible ? App.uiText(App.language, "PdfHideAudioBar") : App.uiText(App.language, "PdfShowAudioBar")
@@ -1686,14 +1688,14 @@ Item {
                 }
             }
             Item { width: 6; height: 1 }
-            PdfToolButton { iconSource: "qrc:/qml/icons/minus.svg"; enabled: root.zoom > 0.26; onActivated: root.zoomOut() }
+            PdfToolButton { iconName: "minus"; enabled: root.zoom > 0.26; onActivated: root.zoomOut() }
             Text {
                 anchors.verticalCenter: parent.verticalCenter
                 text: Math.round(root.zoom * 100) + " %"
                 color: App.themeTextPrimary; font.pixelSize: 12
                 width: 48; horizontalAlignment: Text.AlignHCenter
             }
-            PdfToolButton { iconSource: "qrc:/qml/icons/plus.svg"; enabled: root.zoom < 3.99; onActivated: root.zoomIn() }
+            PdfToolButton { iconName: "plus"; enabled: root.zoom < 3.99; onActivated: root.zoomIn() }
         }
     }
 
@@ -1748,17 +1750,17 @@ Item {
                            + (pdfTextCtl.searching ? " …" : ""))
             }
             PdfToolButton {
-                iconSource: "qrc:/qml/icons/chevron-up.svg"
+                iconName: "chevron-up"
                 enabled: pdfTextCtl.searchCount > 0
                 onActivated: root.goToHit(root.searchIndex - 1)
             }
             PdfToolButton {
-                iconSource: "qrc:/qml/icons/chevron-down.svg"
+                iconName: "chevron-down"
                 enabled: pdfTextCtl.searchCount > 0
                 onActivated: root.goToHit(root.searchIndex + 1)
             }
             PdfToolButton {
-                iconSource: "qrc:/qml/icons/close.svg"
+                iconName: "close"
                 onActivated: root.toggleSearch()
             }
         }
@@ -3067,6 +3069,38 @@ Item {
     ThemedMenu {
         id: pageCtxMenu
         property int ctxPage: 0
+
+        //  ── Entscheidung über EINE nachverfolgte Änderung ─────────────────────
+        //  Bezieht sich auf die AUSGEWÄHLTE Notiz und erscheint nur, solange die
+        //  eine offene Änderung ist (`track` 1 = neu, 2 = gelöscht).
+        readonly property int ctxTrack: root.editCtl.selectedId >= 0
+            ? (root.editCtl.selectionRev,
+               root.editCtl.boxInfo(root.editCtl.selectedId).track || 0)
+            : 0
+        MenuItem {
+            visible: pageCtxMenu.ctxTrack > 0
+            height: visible ? implicitHeight : 0
+            text: App.uiText(App.language, "TrackAcceptOne")
+            onTriggered: root.editCtl.acceptChange(root.editCtl.selectedId)
+        }
+        MenuItem {
+            visible: pageCtxMenu.ctxTrack > 0
+            height: visible ? implicitHeight : 0
+            text: App.uiText(App.language, "TrackRejectOne")
+            onTriggered: root.editCtl.rejectChange(root.editCtl.selectedId)
+        }
+        MenuSeparator { visible: pageCtxMenu.ctxTrack > 0 }
+
+        //  Alle Notizen/Zeichnungen dieser Datei verwerfen (Strg+Z holt sie
+        //  zurück). Nur im Bearbeiten-Modus und nur, wenn es welche gibt.
+        MenuItem {
+            visible: root.editCtl.editMode && root.editCtl.boxCount > 0
+            height: visible ? implicitHeight : 0
+            text: App.uiText(App.language, "CtxRemoveEdits")
+            onTriggered: root.editCtl.discardAllAnnotations()
+        }
+        MenuSeparator { visible: root.editCtl.editMode && root.editCtl.boxCount > 0 }
+
         MenuItem {
             text: App.uiText(App.language, "CtxExtractPage")
             enabled: !PdfExtract.busy
@@ -3263,7 +3297,7 @@ Item {
     component PdfToolButton: Rectangle {
         id: tb
         property string glyph: ""
-        property url iconSource: ""
+        property string iconName: ""
         property string tip: ""
         property bool active: false
         signal activated()
@@ -3275,9 +3309,9 @@ Item {
                 : Qt.rgba(App.themeTextPrimary.r, App.themeTextPrimary.g, App.themeTextPrimary.b, 0.07))
         border.color: active ? App.themeAccent : App.themeBorder; border.width: 1
         Text { anchors.centerIn: parent; text: tb.glyph; color: App.themeTextPrimary; font.pixelSize: 13
-               visible: String(tb.iconSource).length === 0 }
-        ThemedIcon { anchors.centerIn: parent; source: tb.iconSource; size: 16
-                     visible: String(tb.iconSource).length > 0 }
+               visible: tb.iconName.length === 0 }
+        DrawnIcon { anchors.centerIn: parent; name: tb.iconName; size: 16
+                     visible: tb.iconName.length > 0 }
         HoverHandler { id: tbHover; enabled: tb.enabled }
         TapHandler { enabled: tb.enabled; onTapped: tb.activated() }
         ToolTip.text: tb.tip

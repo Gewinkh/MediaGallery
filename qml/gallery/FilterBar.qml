@@ -203,9 +203,9 @@ Rectangle {
                     color: bar.anyFilterActive ? App.themeAccent : App.themeTextPrimary
                     font.pixelSize: 13
                 }
-                ThemedIcon {
+                DrawnIcon {
                     anchors.verticalCenter: parent.verticalCenter
-                    source: "qrc:/qml/icons/chevron-down.svg"
+                    name: "chevron-down"
                     size: 12
                     color: bar.anyFilterActive ? App.themeAccent : App.themeTextMuted
                 }
@@ -671,11 +671,11 @@ Rectangle {
             border.color: searchInput.activeFocus ? App.themeAccent : App.themeBorder
             border.width: 1
 
-            ThemedIcon {
+            DrawnIcon {
                 id: searchIcon
                 anchors.left: parent.left; anchors.leftMargin: 8
                 anchors.verticalCenter: parent.verticalCenter
-                source: "qrc:/qml/icons/search.svg"
+                name: "search"
                 size: 14
                 color: searchInput.activeFocus ? App.themeAccent : App.themeTextMuted
             }
@@ -712,9 +712,9 @@ Rectangle {
                 width: searchInput.text.length > 0 ? 14 : 0
                 height: 14
                 visible: searchInput.text.length > 0
-                ThemedIcon {
+                DrawnIcon {
                     anchors.centerIn: parent
-                    source: "qrc:/qml/icons/close.svg"
+                    name: "close"
                     size: 12
                     color: clearHover.hovered ? App.themeAccent : App.themeTextMuted
                 }

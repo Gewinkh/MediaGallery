@@ -29,6 +29,25 @@ Item {
     //  Export selbst liegt im Worker, die Oberfläche bleibt bedienbar.)
     property bool   _pdfBusy: false
 
+    //  Schriftfarbe des PDF-Exports. Der Zähler treibt die Neuauswertung: die
+    //  Farbe kommt aus einer Invokable (Ordner-Sidecar), also gibt es kein
+    //  Signal, an dem eine Bindung allein hängen könnte. `App.textPdfColor` steht
+    //  bewusst MIT in der Bindung — ändert sich die globale Vorgabe, zieht eine
+    //  Datei ohne eigene Farbe sofort nach.
+    property int    _inkRev: 0
+    readonly property color _pdfInk: {
+        //  Die globale Vorgabe wird IMMER gelesen, auch wenn sie gleich verworfen
+        //  wird: eine QML-Bindung hängt nur an dem, was sie tatsächlich anfasst —
+        //  stünde sie im else-Zweig, bliebe eine Datei ohne eigene Farbe beim
+        //  Ändern der Vorgabe auf dem alten Wert stehen.
+        var vorgabe = App.textPdfColor
+        return (root._inkRev, root.currentPath.length > 0)
+               ? App.fileTextPdfColor(root.currentPath) : vorgabe
+    }
+    readonly property bool _pdfInkOwn:
+        (root._inkRev, root.currentPath.length > 0)
+        && App.hasFileTextPdfColor(root.currentPath)
+
     // HTML-Quelltext bekommt eine eigene Editor-Hintergrundfarbe (Design-Tab),
     // getrennt von TXT/Code — daher Endungserkennung aus dem aktuellen Pfad.
     readonly property bool _isHtml: {
@@ -94,6 +113,76 @@ Item {
                 TapHandler { enabled: root.dirty; onTapped: root.save() }
             }
 
+            //  Schriftfarbe des PDF-Exports. Vorgabe kommt aus den Einstellungen
+            //  (App.textPdfColor); wählt der Nutzer hier eine Farbe, gilt sie NUR
+            //  für diese Datei und liegt im Ordner-Sidecar neben Tags und Datum.
+            //  Farbfeld und Zurücksetzen stecken in EINEM Rahmen: allein stehend
+            //  war dem Zurücksetzen-Knopf nicht anzusehen, worauf er sich bezieht.
+            Rectangle {
+                id: inkBox
+                anchors.verticalCenter: parent.verticalCenter
+                visible: root.currentPath.length > 0
+                height: 26; radius: 6
+                width: inkRow.width + 12
+                color: "transparent"
+                border.color: App.themeBorder
+                border.width: 1
+
+                Row {
+                    id: inkRow
+                    anchors.centerIn: parent
+                    spacing: 6
+
+                    ColorPicker {
+                        anchors.verticalCenter: parent.verticalCenter
+                        width: 26; height: 18
+                        showAlpha: false
+                        title: App.uiText(App.language, "TextPdfColorTitle")
+                        selectedColor: root._pdfInk
+                        onColorPicked: function (c) {
+                            App.setFileTextPdfColor(root.currentPath, c)
+                            root._inkRev++
+                            selectedColor = Qt.binding(function () { return root._pdfInk })
+                        }
+                        ToolTip.visible: pdfInkHover.hovered
+                        ToolTip.delay: 600
+                        ToolTip.text: App.uiText(App.language, "TextPdfColorTip")
+                        HoverHandler { id: pdfInkHover }
+                    }
+
+                    //  Trenner + Zurücksetzen erscheinen erst, wenn die Datei eine
+                    //  eigene Farbe trägt — vorher gäbe es nichts zurückzusetzen.
+                    Rectangle {
+                        anchors.verticalCenter: parent.verticalCenter
+                        visible: root._pdfInkOwn
+                        width: 1; height: 16
+                        color: App.themeBorder
+                    }
+
+                    Rectangle {
+                        anchors.verticalCenter: parent.verticalCenter
+                        visible: root._pdfInkOwn
+                        width: 18; height: 18; radius: 4
+                        color: inkResetHover.hovered ? App.themeCard : "transparent"
+                        DrawnIcon {
+                            anchors.centerIn: parent
+                            name: "undo"; size: 12
+                            color: inkResetHover.hovered ? App.themeTextPrimary : App.themeTextMuted
+                        }
+                        HoverHandler { id: inkResetHover }
+                        TapHandler {
+                            onTapped: {
+                                App.clearFileTextPdfColor(root.currentPath)
+                                root._inkRev++
+                            }
+                        }
+                        ToolTip.visible: inkResetHover.hovered
+                        ToolTip.delay: 600
+                        ToolTip.text: App.uiText(App.language, "TextPdfColorResetTip")
+                    }
+                }
+            }
+
             //  Text → PDF: schreibt <Name>.pdf NEBEN die Quelle, die Textdatei
             //  bleibt unangetastet. Gedruckt wird der STAND IM EDITOR (nicht der
             //  auf Platte) — ungespeicherte Änderungen sind also mit im PDF.
@@ -116,7 +205,7 @@ Item {
                         if (root.currentPath.length === 0 || root._pdfBusy)
                             return
                         root._pdfBusy = true
-                        Viewer.exportTextToPdf(root.currentPath, editor.text)
+                        Viewer.exportTextToPdf(root.currentPath, editor.text, root._pdfInk)
                     }
                 }
                 ToolTip.visible: pdfHover.hovered

@@ -202,7 +202,8 @@ void ViewerController::requestPdfAnnotations(const QString& filePathOrUrl) {
 //  eine grosse Datei sonst den UI-Thread anhielte (Regel 17).
 // ─────────────────────────────────────────────────────────────────────────────
 void ViewerController::exportTextToPdf(const QString& filePathOrUrl,
-                                       const QString& content) {
+                                       const QString& content,
+                                       const QColor& textColor) {
     const QString src    = mg::toLocalPath(filePathOrUrl);
     const QString target = TextPdf::targetPathFor(src);
     if (target.isEmpty()) {
@@ -217,13 +218,14 @@ void ViewerController::exportTextToPdf(const QString& filePathOrUrl,
 
     class TextPdfTask : public QRunnable {
     public:
-        TextPdfTask(ViewerController* owner, QString text, QString target)
-            : m_owner(owner), m_text(std::move(text)), m_target(std::move(target))
+        TextPdfTask(ViewerController* owner, QString text, QString target, QColor ink)
+            : m_owner(owner), m_text(std::move(text)), m_target(std::move(target)),
+              m_ink(ink)
         { setAutoDelete(true); }
 
         void run() override {
             QString err;
-            const bool ok = TextPdf::exportToPdf(m_text, m_target, &err);
+            const bool ok = TextPdf::exportToPdf(m_text, m_target, m_ink, &err);
             // Owner als QPointer: er kann waehrend des Exports (App-Ende)
             // verschwinden — wie bei PdfScanTask.
             QPointer<ViewerController> owner = m_owner;
@@ -238,9 +240,10 @@ void ViewerController::exportTextToPdf(const QString& filePathOrUrl,
         QPointer<ViewerController> m_owner;
         QString                    m_text;
         QString                    m_target;
+        QColor                     m_ink;
     };
 
-    QThreadPool::globalInstance()->start(new TextPdfTask(this, content, target));
+    QThreadPool::globalInstance()->start(new TextPdfTask(this, content, target, textColor));
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

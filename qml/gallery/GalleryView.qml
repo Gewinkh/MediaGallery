@@ -284,6 +284,11 @@ Rectangle {
                     deleteDialog.targetName = n
                     deleteDialog.open()
                 }
+                onCompanionRemoveRequested: function(p, kind) {
+                    companionDialog.targetPath = p
+                    companionDialog.kind = kind
+                    companionDialog.open()
+                }
             }
         }
     }
@@ -291,6 +296,69 @@ Rectangle {
     // ── Lösch-Bestätigung (EIN gemeinsamer Dialog für alle Kacheln) ──────────
     //  Verschiebt die Datei in den Papierkorb (mediaModel.deleteItem — räumt
     //  auch Sidecar + persistierte Metadaten ab). Themenkonform gestaltet.
+    // ── Begleitdatei entfernen (Notizen/Zeichnungen bzw. Sicherungskopie) ────
+    //  Eigener Dialog statt des Lösch-Dialogs: hier geht NICHT die Datei weg,
+    //  und genau das muss der Text sagen. Rückholbar mit Strg+Z.
+    Dialog {
+        id: companionDialog
+        property string targetPath: ""
+        property int    kind: 1
+        anchors.centerIn: parent
+        modal: true
+        padding: 18
+        background: Rectangle {
+            color: App.themeCard; radius: 10
+            border.color: App.themeBorder; border.width: 1
+        }
+        contentItem: Column {
+            spacing: 10
+            Text {
+                text: companionDialog.kind === 1
+                      ? App.uiText(App.language, "CtxRemoveEdits")
+                      : App.uiText(App.language, "CtxRemoveBackup")
+                color: App.themeTextPrimary
+                font.pixelSize: 14; font.bold: true
+            }
+            Text {
+                width: 320
+                text: companionDialog.kind === 1
+                      ? App.uiText(App.language, "CtxRemoveEditsAsk")
+                      : App.uiText(App.language, "CtxRemoveBackupAsk")
+                color: App.themeTextMuted
+                font.pixelSize: 12
+                wrapMode: Text.WordWrap
+            }
+            Row {
+                anchors.right: parent.right
+                spacing: 8
+                Rectangle {
+                    width: compCancel.implicitWidth + 24; height: 30; radius: 6
+                    color: "transparent"; border.color: App.themeBorder; border.width: 1
+                    Text { id: compCancel; anchors.centerIn: parent
+                           text: App.uiText(App.language, "SettingsCancel")
+                           color: App.themeTextPrimary; font.pixelSize: 12 }
+                    TapHandler { onTapped: companionDialog.close() }
+                }
+                Rectangle {
+                    width: compOk.implicitWidth + 24; height: 30; radius: 6
+                    color: Qt.rgba(App.themeAccent.r, App.themeAccent.g,
+                                   App.themeAccent.b, 0.28)
+                    border.color: App.themeAccent; border.width: 1
+                    Text { id: compOk; anchors.centerIn: parent
+                           text: App.uiText(App.language, "SettingsOk")
+                           color: App.themeTextPrimary; font.pixelSize: 12 }
+                    TapHandler {
+                        onTapped: {
+                            mediaModel.removeCompanion(companionDialog.targetPath,
+                                                       companionDialog.kind)
+                            companionDialog.close()
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     Dialog {
         id: deleteDialog
         property string targetPath: ""

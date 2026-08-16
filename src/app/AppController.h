@@ -45,6 +45,11 @@ class AppController : public QObject {
     Q_PROPERTY(bool    tileDragActive  READ tileDragActive  NOTIFY tileDragActiveChanged)
     //  Ziehen auf ein Lesezeichen: verschieben (Standard) oder kopieren.
     Q_PROPERTY(bool    fileDropMove    READ fileDropMove    WRITE setFileDropMove NOTIFY fileDropMoveChanged)
+    //  Begleitdateien der App in Galerie und Dateiwähler mitzeigen.
+    Q_PROPERTY(bool    showAllFiles    READ showAllFiles    WRITE setShowAllFiles NOTIFY showAllFilesChanged)
+    //  Vorgabe-Schriftfarbe des TXT→PDF-Exports; je Datei überschreibbar
+    //  (fileTextPdfColor & Co. weiter unten).
+    Q_PROPERTY(QColor  textPdfColor    READ textPdfColor    WRITE setTextPdfColor NOTIFY textPdfColorChanged)
     Q_PROPERTY(int     videoSeekStep   READ videoSeekStep   NOTIFY videoSeekStepChanged)
     //  Rechtschreibprüfung: an/aus + Sprache. Die Kacheln lesen beides und
     //  reichen es an ihren Editor-Controller weiter (der kennt die globalen
@@ -271,6 +276,16 @@ public:
     Q_INVOKABLE void      setCustomDate(const QString& fileName, const QDateTime& dt);
     Q_INVOKABLE void      clearCustomDate(const QString& fileName);
 
+    //  Schriftfarbe des TXT→PDF-Exports JE DATEI. `fileTextPdfColor` liefert
+    //  immer eine benutzbare Farbe: die eigene der Datei, sonst die Vorgabe.
+    //  Der Parameter ist ein PFAD oder eine URL — anders als bei setCustomDate,
+    //  weil der Texteditor nur den vollen Pfad kennt; der Dateiname wird hier
+    //  abgetrennt.
+    Q_INVOKABLE QColor fileTextPdfColor(const QString& filePathOrUrl) const;
+    Q_INVOKABLE bool   hasFileTextPdfColor(const QString& filePathOrUrl) const;
+    Q_INVOKABLE void   setFileTextPdfColor(const QString& filePathOrUrl, const QColor& c);
+    Q_INVOKABLE void   clearFileTextPdfColor(const QString& filePathOrUrl);
+
     // ── i18n (Delegation an Strings) ────────────────────────────────────────
     // key == Ganzzahlwert von StringKey (siehe Strings.h). Sugar-Enum-Export
     // für QML folgt in einer späteren Phase; hier nur das Fundament.
@@ -301,6 +316,10 @@ public:
     QString menuVideoExternalText()  const;
     bool tileDragActive() const { return m_tileDragActive; }
     bool fileDropMove() const;
+    bool showAllFiles() const;
+    void setShowAllFiles(bool v);
+    QColor textPdfColor() const;
+    void   setTextPdfColor(const QColor& c);
     void setFileDropMove(bool v);
 
     QString menuBookmarksText()      const;
@@ -330,6 +349,8 @@ signals:
     void savedFoldersChanged();
     void tileDragActiveChanged();
     void fileDropMoveChanged();
+    void showAllFilesChanged();
+    void textPdfColorChanged();
     void themeChanged();
     void autoSaveChanged();
     void tileSizeChanged();

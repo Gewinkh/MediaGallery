@@ -32,6 +32,7 @@ public:
         BoldRole, ItalicRole, UnderlineRole,
         ColorRole, HighlightRole,
         AlignmentRole,
+        TrackRole,                      // Nachverfolgung: 0 keine, 1 neu, 2 gelöscht
         VAlignRole
     };
 

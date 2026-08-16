@@ -95,6 +95,11 @@ public:
     void loadFolder(const QString& folderPath);
     void reload();   // aktuellen Ordner neu einlesen (Drop/Refresh/Watcher)
 
+    //  Begleitdateien der App mitzeigen (Ordner-JSON, `.mgedit.json`, `.bak`)?
+    //  Kommt aus den Einstellungen; das Umschalten liest den Ordner neu.
+    void setShowAllFiles(bool v);
+    bool showAllFiles() const { return m_showAllFiles; }
+
     // Alle Thumbnails auf „ausstehend" zurücksetzen (z. B. nach einem Wechsel
     // der Thumbnail-Zielgröße): sichtbare Delegates fordern via
     // thumbnailsInvalidated → ensureThumbnail neu an; der Rest bleibt lazy.
@@ -109,6 +114,15 @@ public:
     //  ein evtl. PDF-Editor-Sidecar (<pfad>.mgedit.json) und die persistierten
     //  Metadaten (Tags/Datum) mit ab und entfernt die Zeile aus dem Modell.
     Q_INVOKABLE bool deleteItem(const QString& filePath);
+
+    //  Begleitdateien EINER Datei: der Editor-Sidecar `<pfad>.mgedit.json`
+    //  (Notizen/Zeichnungen) und die DOCX-Sicherungskopie `<pfad>.bak`.
+    //  `companionKinds` meldet, was vorhanden ist (Bitmaske 1 = Sidecar,
+    //  2 = Sicherungskopie), damit die Oberfläche nur anbietet, was es gibt.
+    Q_INVOKABLE int  companionKinds(const QString& filePath) const;
+    //  Entfernt eine Begleitdatei — über den PAPIERKORB und auf denselben
+    //  Undo-Stapel wie das Löschen einer Datei (`Strg+Z` holt sie zurück).
+    Q_INVOKABLE bool removeCompanion(const QString& filePath, int kind);
     Q_INVOKABLE void toggleTag(const QString& filePath, const QString& tag);
     //  Tag NUR hinzufügen (nie entfernen) — für das Ablegen einer Kachel auf
     //  einem Tag: ein Zug ist eine Zuweisung, kein Umschalter. Liegt der Tag
@@ -169,7 +183,9 @@ private:
     struct FileOp {
         //  Löschen (Papierkorb) ODER Verschieben in einen anderen Ordner —
         //  beide sind rückholbar und teilen sich denselben Stapel.
-        enum class Kind { Delete, Move };
+        //  Companion = eine Begleitdatei allein (Sidecar/Sicherungskopie);
+        //  `path` ist dann die Begleitdatei selbst, die Medien-Datei bleibt.
+        enum class Kind { Delete, Move, Companion };
         Kind        kind = Kind::Delete;
         QString     path;                 // ursprünglicher Pfad im Ordner
         QString     movedTo;              // nur Kind::Move: neuer Pfad
@@ -227,6 +243,7 @@ private:
     //  jede Charge liest genau so viele, wie sie einspeist (s. rebuild()).
     std::unique_ptr<QDirIterator> m_pendingIt;   // nullptr = keine Befüllung aktiv
     QString       m_pendingSidecar;   // "<Ordner>.json" → überspringen
+    bool          m_showAllFiles = false;   // s. setShowAllFiles
     QTimer        m_fillTimer;        // 0-ms-Timer: speist Chargen, gibt dazwischen ab
 
     QString             m_folder;

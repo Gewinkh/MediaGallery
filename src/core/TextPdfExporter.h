@@ -14,6 +14,9 @@
 //    • Keine Zeilennummern.
 //    • A4 hoch, 20 mm Rand rundum.
 //    • Fußzeile: ausschließlich die Zählung „1/3", mittig — kein Dateiname.
+//    • SCHRIFTFARBE wählbar (Nutzerentscheidung 2026-08-15): der Aufrufer gibt
+//      sie mit; ohne Angabe bleibt es Schwarz. Sie darf NIE aus der
+//      Anwendungspalette kommen — s. Kommentar an der Malstelle im .cpp.
 //
 //  Der Text kommt als Parameter herein und wird NICHT selbst von Platte gelesen:
 //  der Texteditor ist editierbar, ein erneutes Einlesen würde bei ungespeicherten
@@ -25,13 +28,17 @@
 //  Schreiben atomar via QSaveFile.
 // ─────────────────────────────────────────────────────────────────────────────
 
+#include <QColor>
 #include <QString>
 
 namespace TextPdf {
 
 //  Exportiert text nach targetPath (.pdf). Liefert false + *err bei Fehler; die
 //  Zieldatei wird dann nicht angelegt (QSaveFile-Rollback).
+//  textColor: Schriftfarbe des Fließtextes. Ungültige Farbe ⇒ Schwarz (die
+//  Fußzeile bleibt immer gedämpftes Grau, sie gehört nicht zum Inhalt).
 bool exportToPdf(const QString& text, const QString& targetPath,
+                 const QColor& textColor = QColor(Qt::black),
                  QString* err = nullptr);
 
 //  Freier Zielpfad NEBEN der Quelle: <Name>.pdf, bei Kollision <Name> (2).pdf …

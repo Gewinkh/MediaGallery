@@ -1064,6 +1064,13 @@ PdfEditController::PdfEditController(ISettings& settings, QObject* parent)
     connect(&m_stack, &QUndoStack::canRedoChanged, this, [this] { emit undoStateChanged(); });
     connect(&m_stack, &QUndoStack::cleanChanged,   this, [this] { emit dirtyChanged(); });
     connect(&m_model, &PdfEditModel::countChanged, this, [this] { emit boxCountChanged(); });
+    //  Zahl der offenen Änderungen folgt JEDER Modelländerung — auch
+    //  Undo/Redo und dem Laden des Sidecars; sonst zeigte der Streifen
+    //  nach einem Strg+Z die alte Zahl.
+    connect(&m_model, &QAbstractItemModel::dataChanged,   this, [this] { emit trackedChanged(); });
+    connect(&m_model, &QAbstractItemModel::rowsInserted,  this, [this] { emit trackedChanged(); });
+    connect(&m_model, &QAbstractItemModel::rowsRemoved,   this, [this] { emit trackedChanged(); });
+    connect(&m_model, &QAbstractItemModel::modelReset,    this, [this] { emit trackedChanged(); });
     //  Formularfelder tragen QUELLseiten; ihre Ansichts-Seite berechnet
     //  formFields() aus dem Plan → jede Plan-Änderung (Seitenzahl gemeldet,
     //  umsortiert, entfernt, gedreht) muss die Liste neu lesen lassen.
@@ -2263,6 +2270,10 @@ void PdfEditController::setDocument(const QString& pathOrUrl) {
     m_docPath = local;
     setSelectedId(-1);
     setTool(Select);
+    //  Der Aufzeichnungs-Schalter gehört zum DOKUMENT: das nächste bringt seinen
+    //  eigenen mit (aus dem Sidecar) — ohne dieses Zurücksetzen zeichnete eine
+    //  Datei ohne Sidecar den Zustand der vorher geöffneten weiter auf.
+    if (m_recording) { m_recording = false; emit recordingChanged(); }
     m_stack.clear();                                // setzt zugleich auf „clean"
     m_model.clearAll();
     m_nextId = 1;
@@ -2387,7 +2398,7 @@ int PdfEditController::addTextBox(int page, qreal xPt, qreal yPt,
     const qreal y = qMax(2.0, qMin(yPt, qMax(2.0, pageHPt - h - 2.0)));
     b.rect = QRectF(x, y, w, h);
 
-    pushCommand(new PdfEditAddCommand(&m_model, b, m_model.count()));
+    pushAdd(b);
     setSelectedId(b.id);
     return b.id;
 }
@@ -2431,7 +2442,7 @@ int PdfEditController::addStamp(const QString& pathOrUrl, int page,
     const qreal h = qMax(kMinBoxHPt, w * px.height() / double(px.width()));
     b.rect = QRectF(qMax(0.0, xPt), qMax(0.0, yPt), w, h);
 
-    pushCommand(new PdfEditAddCommand(&m_model, b, m_model.count()));
+    pushAdd(b);
     setSelectedId(b.id);
     return b.id;
 }
@@ -2478,7 +2489,7 @@ int PdfEditController::addMarkup(int page, int style, const QVariantList& quads)
         emit defaultRevChanged();
     }
 
-    pushCommand(new PdfEditAddCommand(&m_model, b, m_model.count()));
+    pushAdd(b);
     setSelectedId(b.id);
     return b.id;
 }
@@ -2500,7 +2511,7 @@ int PdfEditController::addAnchoredTextBox(int page, qreal xPt, qreal yPt,
     // Schriftgröße aus der Zeilenhöhe ableiten (typografisch ≈ 72 % der Zeile).
     b.fontSizePt = qBound(6.0, hPt * 0.72, 72.0);
 
-    pushCommand(new PdfEditAddCommand(&m_model, b, m_model.count()));
+    pushAdd(b);
     setSelectedId(b.id);
     return b.id;
 }
@@ -2592,7 +2603,7 @@ void PdfEditController::endDraw(int id) {
     if (tooSmall)
         return;
     // … und als EIN Add-Kommando neu einsetzen (Undo entfernt die Zeichnung).
-    pushCommand(new PdfEditAddCommand(&m_model, copy, m_model.count()));
+    pushAdd(copy);
     // Vorlage nachziehen (Stil-Erben): Replace pflegt die EIGENE Vorlage —
     // dieser Pfad läuft nur, wenn eine Replace-Session unerwartet über das
     // generische endDraw endet (z. B. finishDrawSession bei Moduswechsel);
@@ -2646,7 +2657,7 @@ int PdfEditController::endRedactDraw(int id, bool snapped,
     //  wohl entfernt wird. Umfärben kann der Nutzer sie danach im Panel.
     copy.highlight = QColor(0, 0, 0, 255);
 
-    pushCommand(new PdfEditAddCommand(&m_model, copy, m_model.count()));
+    pushAdd(copy);
     setSelectedId(copy.id);
     return copy.id;
 }
@@ -2698,7 +2709,7 @@ int PdfEditController::endReplaceDraw(int id, bool snapped,
             copy.rect.setHeight(need);
     }
 
-    pushCommand(new PdfEditAddCommand(&m_model, copy, m_model.count()));
+    pushAdd(copy);
     // Replace-Vorlage nachziehen (Stil-Erben für die nächste Box, OHNE Text).
     m_replaceTpl = copy;
     m_replaceTpl.text.clear();
@@ -2722,6 +2733,14 @@ void PdfEditController::removeBox(int id) {
     finishOpenSessions();
     if (m_selectedId == id)
         setSelectedId(-1);
+    //  Bei laufender Aufzeichnung wird nicht entfernt, sondern MARKIERT — sonst
+    //  ließe sich das Verwerfen der Löschung nicht mehr zurücknehmen. Eine Box,
+    //  die in derselben Sitzung erst entstanden ist (`Added`), verschwindet
+    //  dagegen ganz: eine Änderung, die sich selbst aufhebt, ist keine.
+    if (m_recording && copy.track != PdfTrackState::Added) {
+        setTrack(id, PdfTrackState::Deleted);
+        return;
+    }
     pushCommand(new PdfEditRemoveCommand(&m_model, copy, row));
 }
 
@@ -3056,7 +3075,7 @@ void PdfEditController::paste() {
     for (QPointF& p : b.points)
         p += QPointF(14.0, 14.0);
     setTool(Select);
-    pushCommand(new PdfEditAddCommand(&m_model, b, m_model.count()));
+    pushAdd(b);
     setSelectedId(b.id);
 }
 
@@ -3333,6 +3352,9 @@ QVariantMap PdfEditController::boxInfo(int id) const {
     if (!b)
         return m;
     m.insert(QStringLiteral("page"),           b->page);
+    //  Nachverfolgung: 0 keine, 1 neu, 2 gelöscht (QML zeichnet danach,
+    //  das Kontextmenü blendet danach seine Einträge ein).
+    m.insert(QStringLiteral("track"),          static_cast<int>(b->track));
     m.insert(QStringLiteral("kind"),           static_cast<int>(b->kind));
     m.insert(QStringLiteral("isText"),         b->kind == PdfAnnKind::Text);
     m.insert(QStringLiteral("isReplace"),      b->kind == PdfAnnKind::Replace);
@@ -3393,6 +3415,113 @@ QVariantMap PdfEditController::defaultInfo() const {
 // ─────────────────────────────────────────────────────────────────────────────
 //  Undo/Redo
 // ─────────────────────────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────────────
+//  Nachverfolgte Änderungen („Track Changes")
+// ─────────────────────────────────────────────────────────────────────────────
+void PdfEditController::pushAdd(PdfEditBox& b) {
+    if (m_recording)
+        b.track = PdfTrackState::Added;
+    pushCommand(new PdfEditAddCommand(&m_model, b, m_model.count()));
+}
+
+void PdfEditController::setTrack(int id, PdfTrackState st) {
+    const PdfEditBox* b = m_model.boxById(id);
+    if (!b || b->track == st)
+        return;
+    pushCommand(new PdfEditFieldCommand(&m_model, id, PdfEditField::Track,
+                                        static_cast<int>(b->track),
+                                        static_cast<int>(st)));
+}
+
+void PdfEditController::setRecording(bool on) {
+    if (m_recording == on)
+        return;
+    m_recording = on;
+    emit recordingChanged();
+    saveOverlay();          // der Schalter gehört zum Dokument, nicht zur Sitzung
+}
+
+int PdfEditController::trackedCount() const {
+    int n = 0;
+    const QVector<PdfEditBox> boxes = m_model.boxes();
+    for (const PdfEditBox& b : boxes)
+        if (b.track != PdfTrackState::None) ++n;
+    return n;
+}
+
+void PdfEditController::discardAllAnnotations() {
+    if (m_model.count() == 0)
+        return;
+    finishOpenSessions();
+    finishDrawSession();
+    setSelectedId(-1);
+    m_stack.beginMacro(QStringLiteral("discardAllAnnotations"));
+    const QVector<PdfEditBox> boxes = m_model.boxes();
+    for (const PdfEditBox& b : boxes) {
+        const int row = m_model.indexOfId(b.id);
+        if (row >= 0)
+            pushCommand(new PdfEditRemoveCommand(&m_model, b, row));
+    }
+    m_stack.endMacro();
+    saveOverlay();
+}
+
+void PdfEditController::acceptChange(int id) {
+    const PdfEditBox* b = m_model.boxById(id);
+    if (!b || b->track == PdfTrackState::None)
+        return;
+    if (b->track == PdfTrackState::Deleted) {
+        //  Angenommene Löschung = die Box geht jetzt wirklich weg.
+        const int row = m_model.indexOfId(id);
+        const PdfEditBox copy = *b;
+        if (m_selectedId == id)
+            setSelectedId(-1);
+        pushCommand(new PdfEditRemoveCommand(&m_model, copy, row));
+        return;
+    }
+    setTrack(id, PdfTrackState::None);              // angenommene Neuerung bleibt
+}
+
+void PdfEditController::rejectChange(int id) {
+    const PdfEditBox* b = m_model.boxById(id);
+    if (!b || b->track == PdfTrackState::None)
+        return;
+    if (b->track == PdfTrackState::Added) {
+        //  Verworfene Neuerung = die Box verschwindet.
+        const int row = m_model.indexOfId(id);
+        const PdfEditBox copy = *b;
+        if (m_selectedId == id)
+            setSelectedId(-1);
+        pushCommand(new PdfEditRemoveCommand(&m_model, copy, row));
+        return;
+    }
+    setTrack(id, PdfTrackState::None);              // verworfene Löschung bleibt
+}
+
+//  „Alle" ist EIN Undo-Schritt: ein einziges Strg+Z holt den ganzen Stapel
+//  zurück — dasselbe Verhalten wie im DOCX-Änderungsstreifen.
+void PdfEditController::acceptAllChanges() {
+    if (trackedCount() == 0)
+        return;
+    finishOpenSessions();
+    m_stack.beginMacro(QStringLiteral("acceptAllChanges"));
+    const QVector<PdfEditBox> boxes = m_model.boxes();
+    for (const PdfEditBox& b : boxes)
+        if (b.track != PdfTrackState::None) acceptChange(b.id);
+    m_stack.endMacro();
+}
+
+void PdfEditController::rejectAllChanges() {
+    if (trackedCount() == 0)
+        return;
+    finishOpenSessions();
+    m_stack.beginMacro(QStringLiteral("rejectAllChanges"));
+    const QVector<PdfEditBox> boxes = m_model.boxes();
+    for (const PdfEditBox& b : boxes)
+        if (b.track != PdfTrackState::None) rejectChange(b.id);
+    m_stack.endMacro();
+}
+
 void PdfEditController::pushCommand(QUndoCommand* cmd) {
     m_stack.push(cmd);                              // führt redo() sofort aus
 }
@@ -3455,6 +3584,8 @@ bool PdfEditController::saveOverlay() {
         QJsonObject rootObj;
         rootObj.insert(QStringLiteral("format"),  QStringLiteral("mediagallery-pdf-overlay"));
         rootObj.insert(QStringLiteral("version"), 1);
+        if (m_recording)
+            rootObj.insert(QStringLiteral("recording"), true);
         if (hasBoxes) {
             QJsonArray arr;
             const QVector<PdfEditBox> boxes = m_model.boxes();
@@ -3547,6 +3678,12 @@ bool PdfEditController::loadOverlay(const QString& pdfPath) {
     if (o.value(QStringLiteral("format")).toString()
         != QLatin1String("mediagallery-pdf-overlay"))
         return false;
+
+    //  Der Aufzeichnungs-Schalter gehört zum Dokument und kommt aus dem Sidecar.
+    if (m_recording != o.value(QStringLiteral("recording")).toBool(false)) {
+        m_recording = o.value(QStringLiteral("recording")).toBool(false);
+        emit recordingChanged();
+    }
 
     QVector<PdfEditBox> boxes;
     const QJsonArray arr = o.value(QStringLiteral("boxes")).toArray();

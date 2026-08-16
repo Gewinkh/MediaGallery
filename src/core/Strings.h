@@ -106,6 +106,29 @@ enum class StringKey {
     TextExportPdfTip,         // Tooltip des „→ PDF"-Buttons
     TextExportPdfOk,          // Statusmeldung: PDF geschrieben („%1" = Dateiname)
     TextExportPdfFail,        // Statusmeldung: Export fehlgeschlagen („%1" = Grund)
+    TextPdfColorTitle,        // Titel des Farbwählers für die PDF-Schriftfarbe
+    TextPdfColorTip,          // Tooltip des Farbfelds im Texteditor
+    TextPdfColorResetTip,     // Tooltip: zurück auf die Vorgabe aus den Einstellungen
+    TextPdfColorSetting,      // Einstellungen ▸ Editor: Beschriftung der Vorgabe
+    TextPdfColorSettingHint,  // Einstellungen ▸ Editor: Erklärung der Vorgabe
+    FileMenuTitle,            // Kopfleiste der Kachel: Knopf des Datei-Menüs
+    ViewMenuTitle,            // Kopfleiste der Kachel: Knopf des Ansichts-Menüs
+    ViewMenuImmersive,        // Ansichts-Menü: immersives Vollbild (F)
+    TrackMenuTitle,           // Kopfleiste: Knopf „Änderungen verfolgen"
+    TrackRecord,              // Popup: Checkbox „Aufzeichnen"
+    TrackRecordHint,          // Popup: was das Aufzeichnen bedeutet
+    TrackOpenCount,           // Popup: „%1 offene Änderung(en)"
+    TrackAcceptAll,           // Popup: alle annehmen
+    TrackRejectAll,           // Popup: alle verwerfen
+    TrackAcceptOne,           // Kontextmenü: diese Änderung annehmen
+    TrackRejectOne,           // Kontextmenü: diese Änderung verwerfen
+    SettingsFilesGroup,       // Einstellungen ▸ Ansicht: Gruppentitel „Dateien“
+    SettingsShowAllFiles,     // Einstellungen: alle Dateien anzeigen
+    SettingsShowAllFilesHint, // Einstellungen: was das bedeutet
+    CtxRemoveEdits,           // Kontextmenü: Notizen/Zeichnungen löschen
+    CtxRemoveBackup,          // Kontextmenü: vorherige Fassung (.bak) löschen
+    CtxRemoveEditsAsk,        // Rückfrage vor dem Löschen der Notizen
+    CtxRemoveBackupAsk,       // Rückfrage vor dem Löschen der vorherigen Fassung
     // ── Migration: vereinheitlichte UI-Strings (vormals qsTr/hartcodiert) ──
     SettingsGenFullscreenAnim,
     SettingsGenAnimSlide,
@@ -527,7 +550,6 @@ enum class StringKey {
     ImageZoomOut,              // Toolbar: verkleinern
     ImageLoadError,            // Fehlermeldung: Bild nicht ladbar
     ImageEditPanelTitle,       // Panel-Titel
-    ImageEditToolsLabel,       // Panel: Abschnitt „Werkzeuge"
     ImageEditToolSelect,       // Werkzeug: Auswählen
     ImageEditToolText,         // Werkzeug: Text
     ImageEditToolPen,          // Werkzeug: Stift (Freihand)
@@ -541,7 +563,6 @@ enum class StringKey {
     ImageEditFillLabel,        // Füllung
     ImageEditCopyBtn,          // Annotation kopieren
     ImageEditPasteBtn,         // Annotation einfügen
-    ImageEditDocSection,       // Panel: Abschnitt „Dokument"
 
     // ── PDF-Seiten-Extraktion ────────────────────────────────────────────────
     CtxExtractPage,            // Kontextmenü: „Seite extrahieren"

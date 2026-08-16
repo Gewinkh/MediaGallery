@@ -5,6 +5,8 @@
 
 #include <QFileSystemWatcher>
 #include <QDir>
+#include "core/PathUtils.h"
+
 #include <QDirIterator>
 #include <QFileInfo>
 #include <QFile>
@@ -128,10 +130,18 @@ void MediaModel::feedChunk(bool firstChunk) {
     while (m_pendingIt && m_pendingIt->hasNext() && produced < budget) {
         m_pendingIt->next();
         const QFileInfo fi = m_pendingIt->fileInfo();
-        if (fi.fileName() == m_pendingSidecar) continue;   // eigene Konfig überspringen
+        //  Begleitdateien der App (Ordner-JSON, Editor-Sidecar, `.bak`) —
+        //  ausgeblendet, solange der Schalter aus ist. Die Regel steht in
+        //  `mg::isCompanionFile`, damit der Dateiwähler nicht anders filtert.
+        if (!m_showAllFiles && mg::isCompanionFile(fi.fileName(), m_pendingSidecar))
+            continue;
 
         const MediaType t = MediaItem::detectType(fi.filePath());
-        if (t == MediaType::Unknown) continue;
+        //  „Alle Dateien anzeigen" heißt WIRKLICH alle: auch was die App nicht
+        //  als Medium erkennt (`.bak`, Archive, Programme). Sonst hielte der
+        //  Schalter sein Versprechen nur halb — die Sicherungskopie einer DOCX
+        //  bliebe unsichtbar, obwohl sie ausdrücklich gemeint war.
+        if (t == MediaType::Unknown && !m_showAllFiles) continue;
 
         MediaItem item;
         item.filePath    = fi.filePath();
@@ -217,6 +227,16 @@ void MediaModel::loadFolder(const QString& folderPath) {
         m_watcher->addPath(folderPath);
 
     emit folderChanged();
+}
+
+void MediaModel::setShowAllFiles(bool v) {
+    if (m_showAllFiles == v)
+        return;
+    m_showAllFiles = v;
+    //  Der Ordner wird neu gelesen: die Sichtbarkeit entscheidet sich beim
+    //  Einlesen, nicht beim Anzeigen — ein Filter im Proxy müsste die Regel ein
+    //  zweites Mal kennen.
+    reload();
 }
 
 void MediaModel::reload() {
@@ -436,13 +456,19 @@ void MediaModel::appendRowFor(const QString& filePath) {
     const QFileInfo fi(filePath);
     if (!fi.exists()) return;
 
+    //  Eine zurückgeholte BEGLEITdatei darf nur dann als Kachel erscheinen, wenn
+    //  der Nutzer sie sehen will — sonst legte ein `Strg+Z` plötzlich eine
+    //  `.mgedit.json` in die Galerie, die dort nie stand.
+    if (!m_showAllFiles && mg::isCompanionFile(fi.fileName(), m_pendingSidecar))
+        return;
+
     MediaItem item;
     item.filePath    = fi.filePath();
     item.displayName = fi.completeBaseName();
     item.fileSize    = fi.size();
     item.type        = MediaItem::detectType(fi.filePath());
     item.dateTime    = fi.lastModified();
-    if (item.type == MediaType::Unknown) return;
+    if (item.type == MediaType::Unknown && !m_showAllFiles) return;
 
     QVector<MediaItem> batch{ item };
     m_storage.applyToItems(batch);
@@ -707,10 +733,62 @@ bool MediaModel::undoMove(const FileOp& op) {
     return ok;
 }
 
+//  ── Begleitdateien einer Datei ───────────────────────────────────────────────
+namespace {
+QString companionPathOf(const QString& filePath, int kind) {
+    if (kind == 1) return filePath + QStringLiteral(".mgedit.json");
+    if (kind == 2) return filePath + QStringLiteral(".bak");
+    return QString();
+}
+}  // namespace
+
+int MediaModel::companionKinds(const QString& filePath) const {
+    const QString p = mg::toLocalPath(filePath);
+    int mask = 0;
+    if (QFileInfo::exists(companionPathOf(p, 1))) mask |= 1;
+    if (QFileInfo::exists(companionPathOf(p, 2))) mask |= 2;
+    return mask;
+}
+
+bool MediaModel::removeCompanion(const QString& filePath, int kind) {
+    const QString p  = mg::toLocalPath(filePath);
+    const QString cp = companionPathOf(p, kind);
+    if (cp.isEmpty() || !QFileInfo::exists(cp))
+        return false;
+
+    FileOp op;
+    op.kind = FileOp::Kind::Companion;
+    op.path = cp;                       // die BEGLEITdatei ist hier der Vorgang
+
+    //  Watcher unterdrücken: die Begleitdatei taucht in der Galerie gar nicht
+    //  auf (außer bei „Alle Dateien anzeigen"), ein Reload wäre nur Unruhe.
+    ++m_suppressWatch;
+    QString inTrash;
+    bool ok = QFile::moveToTrash(cp, &inTrash);
+    if (ok) op.trashPath = inTrash;
+    else    ok = QFile::remove(cp);
+    if (m_suppressWatch > 0) --m_suppressWatch;
+    if (!ok)
+        return false;
+
+    //  Nur was im Papierkorb liegt, ist zurückholbar (wie beim Löschen einer
+    //  Datei): ohne Papierkorb kommt der Vorgang nicht auf den Stapel.
+    if (!op.trashPath.isEmpty())
+        pushUndo(op);
+    else if (!m_undoOps.isEmpty() || !m_redoOps.isEmpty())
+        clearFileHistory();
+
+    //  Ist die Begleitdatei sichtbar (Schalter an), verschwindet ihre Kachel.
+    if (rowForPath(cp) >= 0)
+        dropRowFor(cp);
+    return true;
+}
+
 bool MediaModel::undoFileOp() {
     while (!m_undoOps.isEmpty()) {
         const FileOp op = m_undoOps.takeLast();
-        const bool back = (op.kind == FileOp::Kind::Move) ? undoMove(op) : restoreFile(op);
+        const bool back = (op.kind == FileOp::Kind::Move) ? undoMove(op)
+                        : restoreFile(op);   // Companion nutzt denselben Rückweg
         if (!back) {
             //  Nicht zurückholbar (Papierkorb geleert, Platz wieder belegt) —
             //  Eintrag verwerfen und den nächsten versuchen, statt hängen zu

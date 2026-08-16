@@ -2,6 +2,7 @@ pragma ComponentBehavior: Bound
 import QtQuick
 import QtQuick.Controls
 import MediaGallery 1.0
+import "../common"
 import "../docx"
 import "../image"
 import "../pdf"
@@ -107,6 +108,14 @@ FocusScope {
     property int    _startType: -1   // Medientyp des Einstiegspfads (schon VOR _loaded bekannt)
 
     // PDF gilt als geladen, sobald das Dokument „Ready" ist (erste Seite kann rendern).
+    //  Editor-Controller der offenen Kachel, sofern es einen gibt (PDF).
+    //  Träger des Track-Changes-Knopfes; der Bild-Editor folgt, sobald er
+    //  dieselbe API trägt.
+    //  PDF (3) und Bild (0) tragen beide einen Editor mit derselben
+    //  Track-Changes-API — der Knopf ist deshalb für beide derselbe.
+    readonly property var _trackCtl: ((root.type === 3 || root.type === 0) && surface.item
+                                      && surface.item.editCtl !== undefined)
+                                     ? surface.item.editCtl : null
     readonly property bool _pdfReady: root._loaded && surface.item !== null && surface.item.docReady === true
     // Ein PDF wird gerade geladen: deckt Öffnen-Animation (Typ aus _startType),
     // Dokument-Parsing (Typ aus root.type) UND Blättern zur nächsten PDF ab.
@@ -338,7 +347,7 @@ FocusScope {
     Binding {
         target: surface.item
         property: "topInset"
-        value: topBar.visible ? topBar.height : 0
+        value: (topBar.visible && !root.immersiveActive) ? topBar.height : 0
         when: surface.item !== null && (root.type === 0 || root.type === 3 || root.type === 4
                                          || root.type === 5)
         restoreMode: Binding.RestoreNone
@@ -433,12 +442,18 @@ FocusScope {
     Rectangle {
         id: topBar
         anchors { left: parent.left; right: parent.right; top: parent.top }
-        height: App.optionsVisible ? 96 : 52
+        //  ~30 % niedriger als früher (52 → 36 bzw. 96 → 67): der Dateiname ist
+        //  in den Fenstertitel gewandert, die Leiste trägt nur noch Bedienung.
+        height: App.optionsVisible ? 67 : 36
         color: Qt.rgba(0, 0, 0, 0.55)
         opacity: root.barOpacity
-        // Im immersiven Vollbild ist die Leiste komplett weg (nicht nur
-        // durchsichtig) — damit fällt auch der topInset der Surface auf 0.
-        visible: opacity > 0.01 && !root.immersiveActive
+        // Im immersiven Vollbild ist die Leiste weg — sie kommt aber zurück,
+        // sobald der Zeiger an den OBEREN RAND fährt (Muster: Videoplayer,
+        // Browser). Ohne das wäre im Vollbild weder das Ansichts-Menü noch der
+        // Zurück-Knopf erreichbar (Nutzerbefund). Sie legt sich dabei ÜBER den
+        // Inhalt: der `topInset` bleibt im Vollbild 0, sonst spränge die Seite
+        // bei jeder Mausbewegung am oberen Rand.
+        visible: opacity > 0.01 && (!root.immersiveActive || root._barPeek)
         Behavior on opacity { NumberAnimation { duration: 180 } }
 
         // ── Docking-Drag-Fläche (UNTER den Bedienelementen) ───────────────────
@@ -482,12 +497,15 @@ FocusScope {
 
         Column {
             anchors.fill: parent
-            anchors.margins: 10
+            anchors.leftMargin: 10
+            anchors.rightMargin: 10
+            anchors.topMargin: 3
+            anchors.bottomMargin: 3
             spacing: 6
 
             Item {
                 width: parent.width
-                height: 34
+                height: 30
 
                 ToolButton {
                     id: backBtn
@@ -508,15 +526,6 @@ FocusScope {
                     active: root.randomNext
                     onActivated: root.randomNext = !root.randomNext
                 }
-                ChromeBtn {
-                    id: calBtn
-                    anchors.right: diceBtn.left; anchors.rightMargin: 8
-                    anchors.verticalCenter: parent.verticalCenter
-                    kind: "calendar"
-                    tip: App.uiText(App.language, "MetaTitle")
-                    onActivated: dateEditor.openWith(root.dateTime)
-                }
-
                 // Datei zur geteilten Ansicht hinzufügen — kleiner „Datei +"-Button
                 // direkt neben dem Datum-Button (gleicher Stil wie Datum/Zufall).
                 // Nur sichtbar, solange < 4 Dateien offen sind (canAddMore); im
@@ -524,7 +533,7 @@ FocusScope {
                 ChromeBtn {
                     id: addBtn
                     visible: root.canAddMore
-                    anchors.right: calBtn.left; anchors.rightMargin: 8
+                    anchors.right: diceBtn.left; anchors.rightMargin: 8
                     anchors.verticalCenter: parent.verticalCenter
                     kind: "addfile"
                     tip: App.uiText(App.language, "SplitAddFile")
@@ -537,7 +546,7 @@ FocusScope {
                     // Nur anzeigen, wenn HTML-Rendering TATSÄCHLICH verfügbar
                     // ist (WebEngine bereit) — sonst gibt es nichts umzuschalten.
                     visible: root._isWebRenderable && WebEngine.ready
-                    anchors.right: addBtn.visible ? addBtn.left : calBtn.left; anchors.rightMargin: 8
+                    anchors.right: addBtn.visible ? addBtn.left : diceBtn.left; anchors.rightMargin: 8
                     anchors.verticalCenter: parent.verticalCenter
                     kind: "html"
                     active: root._htmlPreview
@@ -552,11 +561,244 @@ FocusScope {
                     }
                 }
 
+                //  ── Datei-Menü ───────────────────────────────────────────────
+                //  Steht wie in jeder Menüleiste VOR „Ansicht" und trägt, was die
+                //  DATEI betrifft. Erscheint nur, wo es einen Editor gibt (PDF,
+                //  Bild) — bei Video oder Audio gäbe es nichts hineinzustellen.
+                Rectangle {
+                    id: fileBtn
+                    visible: root._trackCtl !== null
+                    anchors.left: backBtn.right; anchors.leftMargin: 6
+                    anchors.verticalCenter: parent.verticalCenter
+                    width: fileLbl.implicitWidth + 22; height: 26; radius: 6
+                    color: fileMenu.opened ? Qt.rgba(1, 1, 1, 0.18)
+                         : (fileHover.hovered ? Qt.rgba(1, 1, 1, 0.12) : "transparent")
+                    border.width: 1
+                    border.color: fileMenu.opened ? Qt.rgba(1, 1, 1, 0.35)
+                                                  : Qt.rgba(1, 1, 1, 0.18)
+
+                    Row {
+                        id: fileLbl
+                        anchors.centerIn: parent
+                        spacing: 5
+                        Text {
+                            anchors.verticalCenter: parent.verticalCenter
+                            text: App.uiText(App.language, "FileMenuTitle")
+                            color: "white"; font.pixelSize: 12
+                        }
+                        DrawnIcon {
+                            anchors.verticalCenter: parent.verticalCenter
+                            name: "chevron-down"; size: 10; color: "white"
+                        }
+                    }
+                    HoverHandler { id: fileHover }
+                    TapHandler {
+                        onTapped: fileMenu.popup(fileBtn, 0, fileBtn.height + 2)
+                    }
+
+                    ThemedMenu {
+                        id: fileMenu
+                        MenuItem {
+                            text: App.uiText(App.language, "CtxRemoveEdits")
+                            //  Die beiden Editoren zählen ihre Objekte unter
+                            //  verschiedenen Namen (`boxCount` bzw. `annCount`) —
+                            //  hier zählt nur, ob es überhaupt welche gibt.
+                            enabled: root._trackCtl
+                                     && ((root._trackCtl.boxCount !== undefined
+                                          ? root._trackCtl.boxCount
+                                          : root._trackCtl.annCount) > 0)
+                            onTriggered: root._trackCtl.discardAllAnnotations()
+                        }
+                    }
+                }
+
+                //  ── Ansichts-Menü ────────────────────────────────────────────
+                //  Steht dort, wo früher der Dateiname stand (der sitzt jetzt im
+                //  Fenstertitel). Bewusst ein MENÜ und kein weiteres Symbol: die
+                //  Leiste soll wachsen können, ohne in einer Symbolreihe zu enden,
+                //  und jeder Eintrag trägt hier seinen Namen statt nur ein Bild.
+                Rectangle {
+                    id: viewBtn
+                    anchors.left: fileBtn.visible ? fileBtn.right : backBtn.right
+                    anchors.leftMargin: 6
+                    anchors.verticalCenter: parent.verticalCenter
+                    width: viewLbl.implicitWidth + 22; height: 26; radius: 6
+                    color: viewMenu.opened ? Qt.rgba(1, 1, 1, 0.18)
+                         : (viewMenuHover.hovered ? Qt.rgba(1, 1, 1, 0.12) : "transparent")
+                    border.width: 1
+                    border.color: viewMenu.opened ? Qt.rgba(1, 1, 1, 0.35)
+                                                  : Qt.rgba(1, 1, 1, 0.18)
+
+                    Row {
+                        id: viewLbl
+                        anchors.centerIn: parent
+                        spacing: 5
+                        Text {
+                            anchors.verticalCenter: parent.verticalCenter
+                            text: App.uiText(App.language, "ViewMenuTitle")
+                            color: "white"; font.pixelSize: 12
+                        }
+                        DrawnIcon {
+                            anchors.verticalCenter: parent.verticalCenter
+                            name: "chevron-down"; size: 10; color: "white"
+                        }
+                    }
+                    HoverHandler { id: viewMenuHover }
+                    TapHandler {
+                        onTapped: viewMenu.popup(viewBtn, 0, viewBtn.height + 2)
+                    }
+
+                    ThemedMenu {
+                        id: viewMenu
+
+                        MenuItem {
+                            text: App.uiText(App.language, "ViewerRandom")
+                            checkable: true
+                            checked: root.randomNext
+                            onTriggered: root.randomNext = !root.randomNext
+                        }
+                        MenuItem {
+                            text: App.uiText(App.language, "MetaTitle")
+                            onTriggered: dateEditor.openWith(root.dateTime)
+                        }
+                        MenuItem {
+                            text: App.uiText(App.language, "SplitAddFile")
+                            enabled: root.canAddMore
+                            onTriggered: root.addFileRequested()
+                        }
+                        MenuItem {
+                            //  Nur bei HTML und nur, wenn die Vorschau überhaupt
+                            //  verfügbar ist — sonst gibt es nichts umzuschalten.
+                            visible: root._isWebRenderable && WebEngine.ready
+                            height: visible ? implicitHeight : 0
+                            text: root._htmlPreview
+                                  ? App.uiText(App.language, "ViewerShowSource")
+                                  : App.uiText(App.language, "ViewerShowPreview")
+                            onTriggered: {
+                                root.releaseCurrent()
+                                root._htmlPreview = !root._htmlPreview
+                            }
+                        }
+                        MenuSeparator { }
+                        MenuItem {
+                            text: App.uiText(App.language, "MenuToggleOptions")
+                            checkable: true
+                            checked: App.optionsVisible
+                            onTriggered: App.optionsVisible = !App.optionsVisible
+                        }
+                        MenuItem {
+                            text: App.uiText(App.language, "ViewMenuImmersive")
+                            enabled: root.immersiveCapable
+                            checkable: true
+                            checked: root.immersiveActive
+                            onTriggered: root.immersiveToggleRequested()
+                        }
+                    }
+                }
+
+                //  ── Änderungen verfolgen ─────────────────────────────────────
+                //  Nur im Bearbeiten-Modus: außerhalb gibt es nichts aufzuzeichnen.
+                //  Bewusst ein MENÜ, kein Schalter — es soll später mehr tragen
+                //  als das Aufzeichnen.
+                Rectangle {
+                    id: trackBtn
+                    visible: root._trackCtl !== null && root._trackCtl.editMode
+                    anchors.left: viewBtn.right; anchors.leftMargin: 6
+                    anchors.verticalCenter: parent.verticalCenter
+                    width: trackLbl.implicitWidth + 22; height: 26; radius: 6
+                    color: trackMenu.opened ? Qt.rgba(1, 1, 1, 0.18)
+                         : (trackHover.hovered ? Qt.rgba(1, 1, 1, 0.12) : "transparent")
+                    border.width: 1
+                    //  Läuft die Aufzeichnung, trägt der Knopf die Akzentfarbe —
+                    //  sonst wäre am Bildschirm nicht zu sehen, dass mitgeschrieben
+                    //  wird, und man wundert sich über markierte Notizen.
+                    border.color: (root._trackCtl && root._trackCtl.recording)
+                                  ? App.themeAccent
+                                  : (trackMenu.opened ? Qt.rgba(1, 1, 1, 0.35)
+                                                      : Qt.rgba(1, 1, 1, 0.18))
+
+                    Row {
+                        id: trackLbl
+                        anchors.centerIn: parent
+                        spacing: 5
+                        //  Punkt in der Akzentfarbe = es wird aufgezeichnet.
+                        Rectangle {
+                            anchors.verticalCenter: parent.verticalCenter
+                            visible: root._trackCtl && root._trackCtl.recording
+                            width: 7; height: 7; radius: 3.5
+                            color: App.themeAccent
+                        }
+                        Text {
+                            anchors.verticalCenter: parent.verticalCenter
+                            text: App.uiText(App.language, "TrackMenuTitle")
+                            color: "white"; font.pixelSize: 12
+                        }
+                        //  Zahl der offenen Änderungen — nur wenn es welche gibt.
+                        Rectangle {
+                            anchors.verticalCenter: parent.verticalCenter
+                            visible: root._trackCtl && root._trackCtl.trackedCount > 0
+                            width: cntLbl.implicitWidth + 10; height: 16; radius: 8
+                            color: Qt.rgba(App.themeAccent.r, App.themeAccent.g,
+                                           App.themeAccent.b, 0.35)
+                            Text {
+                                id: cntLbl
+                                anchors.centerIn: parent
+                                text: root._trackCtl ? root._trackCtl.trackedCount : 0
+                                color: "white"; font.pixelSize: 10
+                            }
+                        }
+                        DrawnIcon {
+                            anchors.verticalCenter: parent.verticalCenter
+                            name: "chevron-down"; size: 10; color: "white"
+                        }
+                    }
+                    HoverHandler { id: trackHover }
+                    TapHandler {
+                        onTapped: trackMenu.popup(trackBtn, 0, trackBtn.height + 2)
+                    }
+
+                    ThemedMenu {
+                        id: trackMenu
+
+                        MenuItem {
+                            text: App.uiText(App.language, "TrackRecord")
+                            checkable: true
+                            checked: root._trackCtl ? root._trackCtl.recording : false
+                            onTriggered: if (root._trackCtl)
+                                             root._trackCtl.recording = !root._trackCtl.recording
+                        }
+                        MenuSeparator { }
+                        MenuItem {
+                            //  Reine Anzeige: wie viele Entscheidungen offen sind.
+                            enabled: false
+                            visible: root._trackCtl && root._trackCtl.trackedCount > 0
+                            height: visible ? implicitHeight : 0
+                            text: App.uiText(App.language, "TrackOpenCount")
+                                      .arg(root._trackCtl ? root._trackCtl.trackedCount : 0)
+                        }
+                        MenuItem {
+                            text: App.uiText(App.language, "TrackAcceptAll")
+                            enabled: root._trackCtl && root._trackCtl.trackedCount > 0
+                            onTriggered: root._trackCtl.acceptAllChanges()
+                        }
+                        MenuItem {
+                            text: App.uiText(App.language, "TrackRejectAll")
+                            enabled: root._trackCtl && root._trackCtl.trackedCount > 0
+                            onTriggered: root._trackCtl.rejectAllChanges()
+                        }
+                    }
+                }
+
                 TextField {
                     id: nameEdit
-                    anchors.left: backBtn.right; anchors.leftMargin: 8
+                    //  NUR im Optionen-Modus (Alt+S) — dort ist das Feld das
+                    //  Umbenennen-Werkzeug. Als reine Anzeige wird es nicht mehr
+                    //  gebraucht: der Name steht im Fenstertitel.
+                    visible: App.optionsVisible
+                    anchors.left: trackBtn.visible ? trackBtn.right : viewBtn.right
+                    anchors.leftMargin: 8
                     anchors.right: previewBtn.visible ? previewBtn.left
-                                   : (addBtn.visible ? addBtn.left : calBtn.left)
+                                   : (addBtn.visible ? addBtn.left : diceBtn.left)
                     anchors.rightMargin: 12
                     anchors.verticalCenter: parent.verticalCenter
                     text: root.displayName
@@ -605,11 +847,32 @@ FocusScope {
 
     // ── Auto-Hide der oberen Leiste ─────────────────────────────────────────
     //  Betrifft ausschließlich topBar (Zurück/Name/Datum/Tags).
+    //  ── Kopfleiste im Vollbild hervorholen ───────────────────────────────────
+    //  ZWEI verschiedene Grenzen, und das ist der Kern der Sache: Im Vollbild
+    //  beginnt die WERKZEUGleiste des Editors bei y = 0. Ein breiter Auslöse-
+    //  streifen läge komplett über ihr — sie wäre nicht mehr bedienbar, weil sich
+    //  die Kopfleiste beim Hinsteuern davorlegt (Nutzerbefund).
+    //    • AUSLÖSEN nur an der äußersten Kante (`kPeekEdge`): dorthin fährt man
+    //      absichtlich, für einen Knopf zielt man auf dessen Mitte.
+    //    • HALTEN, solange der Zeiger über der eingeblendeten Leiste steht —
+    //      sonst verschwände sie, bevor man ihren Knopf treffen kann.
+    readonly property int kPeekEdge: 3
+    property bool _barPeek: false
     property real barOpacity: 1.0
     HoverHandler {
         id: viewHover
-        onPointChanged: { root.barOpacity = 1.0; barTimer.restart() }
+        onPointChanged: {
+            root.barOpacity = 1.0
+            barTimer.restart()
+            if (!root.immersiveActive) { root._barPeek = false; return }
+            const y = viewHover.point.position.y
+            if (y <= root.kPeekEdge)                 root._barPeek = true
+            else if (y > topBar.height + 8)          root._barPeek = false
+        }
     }
+    //  Vollbild verlassen ⇒ der Zustand gehört zurückgesetzt, sonst bliebe die
+    //  Leiste beim nächsten Eintritt sofort sichtbar.
+    onImmersiveActiveChanged: if (!root.immersiveActive) root._barPeek = false
     Timer {
         id: barTimer
         interval: 2800
@@ -741,18 +1004,6 @@ FocusScope {
         Item {
             anchors.centerIn: parent
             width: 18; height: 18
-
-            // Kalender (Datum)
-            Item {
-                anchors.fill: parent
-                visible: cb.kind === "calendar"
-                Rectangle { anchors.fill: parent; radius: 2; color: "transparent"
-                            border.color: "#e8efed"; border.width: 1.4 }
-                Rectangle { anchors.top: parent.top; anchors.left: parent.left
-                            anchors.right: parent.right; height: 5; radius: 1; color: "#e8efed" }
-                Rectangle { x: 4;  y: -2; width: 2; height: 4; radius: 1; color: "#e8efed" }
-                Rectangle { x: 12; y: -2; width: 2; height: 4; radius: 1; color: "#e8efed" }
-            }
 
             // Würfel (Zufall, 5 Augen)
             Item {

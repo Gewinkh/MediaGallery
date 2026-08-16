@@ -257,7 +257,7 @@ Item {
         // ── Gethemte Bausteine ────────────────────────────────────────────────
         component DBtn: Rectangle {
             property string glyph: ""
-        property url iconSource: ""
+        property string iconName: ""
             property bool   active: false
             property bool   enabledBtn: true
             property bool   boldGlyph: false
@@ -278,9 +278,9 @@ Item {
                 font.bold: parent.boldGlyph
                 font.italic: parent.italicGlyph
                 font.underline: parent.underlineGlyph
-                   visible: String(parent.iconSource).length === 0 }
-            ThemedIcon { anchors.centerIn: parent; source: parent.iconSource; size: 16
-                         visible: String(parent.iconSource).length > 0 }
+                   visible: parent.iconName.length === 0 }
+            DrawnIcon { anchors.centerIn: parent; name: parent.iconName; size: 16
+                         visible: parent.iconName.length > 0 }
             HoverHandler { id: bh }
             TapHandler { enabled: parent.enabledBtn; onTapped: parent.clicked() }
             ToolTip.visible: bh.hovered && tip.length > 0
@@ -588,10 +588,10 @@ Item {
                 //  früheren Namen ImageEditUndo/-Redo gab es im String-Katalog
                 //  GAR NICHT — App.uiText gibt bei unbekanntem Namen den Namen
                 //  zurück, im Tooltip stand also wörtlich „ImageEditUndo".
-                DBtn { iconSource: "qrc:/qml/icons/undo.svg"; enabledBtn: editCtl.canUndo
+                DBtn { iconName: "undo"; enabledBtn: editCtl.canUndo
                        tip: App.uiText(App.language, "PdfEditUndoTip")
                        onClicked: editCtl.undo() }
-                DBtn { iconSource: "qrc:/qml/icons/redo.svg"; enabledBtn: editCtl.canRedo
+                DBtn { iconName: "redo"; enabledBtn: editCtl.canRedo
                        tip: App.uiText(App.language, "PdfEditRedoTip")
                        onClicked: editCtl.redo() }
 
@@ -899,7 +899,7 @@ Item {
 
                 //  Bild einfügen: Dateidialog → eigener Absatz an der Cursorstelle.
                 DBtn {
-                    iconSource: "qrc:/qml/icons/image.svg"          // ❏ — BMP, monochrom wie die übrigen
+                    iconName: "image"          // ❏ — BMP, monochrom wie die übrigen
                     enabledBtn: editCtl.ready
                     tip: App.uiText(App.language, "DocxInsertImage")
                     //  Erst die Bilder im ORDNER der Datei anbieten (der häufige
@@ -931,7 +931,7 @@ Item {
                 //  Inhaltsverzeichnis einfügen: das Feld bleibt deklarativ,
                 //  die Seitenzahlen kommen aus unserer eigenen Paginierung.
                 DBtn {
-                    iconSource: "qrc:/qml/icons/toc.svg"          // ≡
+                    iconName: "toc"          // ≡
                     enabledBtn: editCtl.ready
                     tip: App.uiText(App.language, "DocxInsertToc")
                     onClicked: {
@@ -944,7 +944,7 @@ Item {
                 //  aber das Bild wird SOFORT verankert eingesetzt (frei auf der
                 //  Seite verschiebbar) und ausgewählt — genau wie im PDF-Editor.
                 DBtn {
-                    iconSource: "qrc:/qml/icons/signature.svg"          // ✍
+                    iconName: "signature"          // ✍
                     enabledBtn: editCtl.ready
                     tip: App.uiText(App.language, "DocxInsertSignature")
                     onClicked: {
@@ -970,7 +970,7 @@ Item {
                 //  einer Zelle, hinter der ganzen Tabelle (keine Verschachtelung).
                 DBtn {
                     id: tblBtn
-                    iconSource: "qrc:/qml/icons/table.svg"
+                    iconName: "table"
                     enabledBtn: editCtl.ready
                     tip: App.uiText(App.language, "DocxInsertTable")
                     onClicked: tblPopup.open()

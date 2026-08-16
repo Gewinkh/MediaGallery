@@ -25,9 +25,21 @@ ApplicationWindow {
     x: App.initialWindowX
     y: App.initialWindowY
 
-    title: App.currentFolder.length > 0
-           ? ("MediaGallery — " + folderName(App.currentFolder))
-           : "MediaGallery"
+    //  Fenstertitel: „MediaGallery — <Ordner> / <Datei>". Der Dateiname steht
+    //  hier, weil die Kopfleiste der Kachel ihn nicht mehr trägt (dort sitzt jetzt
+    //  das Ansichts-Menü). Ohne offene Datei bleibt es beim Ordner.
+    title: {
+        const basis = App.currentFolder.length > 0
+                      ? ("MediaGallery — " + folderName(App.currentFolder))
+                      : "MediaGallery"
+        return (stack.depth > 1 && shell.activeFilePath.length > 0)
+               ? (basis + " / " + folderName(shell.activeFilePath))
+               : basis
+    }
+
+    //  Pfad der Datei in der AKTIVEN Kachel; die Kacheln melden ihn über ein
+    //  `Binding` mit `when: paneActive` (s. Repeater der Split-Seite).
+    property string activeFilePath: ""
 
     color: App.themeBackground
 
@@ -1070,6 +1082,7 @@ ApplicationWindow {
                     active: splitPage.pageReady
 
                     sourceComponent: FullscreenViewer {
+                        id: paneViewer
                         startPath: paneLoader.path
                         // Mehr als eine Datei offen → untere Hover-Navigation der Kachel
                         // (Pfeile + Zähler) ausblenden; bei genau einer Datei wieder an.
@@ -1097,6 +1110,19 @@ ApplicationWindow {
                             shell.endPaneDrag(p.x, p.y)
                         }
                         onPaneDragCanceled: shell.cancelPaneDrag()
+
+                        //  Fenstertitel: nur die AKTIVE Kachel schreibt ihren Pfad
+                        //  in die Shell. `when` sorgt dafür, dass beim Wechsel der
+                        //  aktiven Kachel genau eine Bindung gilt; `RestoreNone`
+                        //  verhindert, dass eine inaktiv werdende Kachel den Wert
+                        //  auf ihren alten Stand zurücksetzt.
+                        Binding {
+                            target: shell
+                            property: "activeFilePath"
+                            value: paneViewer.path
+                            when: paneViewer.paneActive
+                            restoreMode: Binding.RestoreNone
+                        }
                     }
                     onLoaded: {
                         item.forceActiveFocus()

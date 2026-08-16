@@ -34,6 +34,9 @@ builds and runs normally and says why the feature is off.
 - **Drag a file out of the app**: grab a gallery tile and drop it into another program - a file manager, a mail draft, a chat window or a file upload in the browser. The file itself is handed over (as any file manager would), one file per drag, and always as a **copy** - a drop target can never move your file out of its folder. Dragging starts only after a short movement, so clicking, tagging and the context menu are unaffected
 - **Live folder watch**: New or deleted files are detected automatically
 - **Folder bookmarks**: Save folders under a custom name for one-click access (Menu -> Folder, and Settings -> Bookmarks). "Add Folder" from the menu **pre-fills the path with the currently open folder** if it is not saved yet (comparison is case-sensitive with trailing separators normalized) - the path stays editable before confirming
+- **Window title shows folder and file**: `MediaGallery - <folder> / <file>`; with several files open side by side it follows the active pane
+- **The header bar comes back in fullscreen**: immersive fullscreen (`F`) hides the header as before, but moving the mouse to the **top edge** brings it back over the content - so the View menu and the back button stay reachable. The page does not jump: in fullscreen the bar overlays instead of pushing the content down
+- **View menu in the header bar**: the header of an open file carries a **View** menu next to the back button - random mode, date/metadata, add a file beside this one, switch HTML source/preview, compact mode (`Alt+S`) and immersive fullscreen, each by name instead of only as an icon. The icons on the right keep the two shortcuts worth one click (add a file beside this one, random mode); the date button moved into the menu. The header itself is about 30 % slimmer than before, because the file name moved into the window title; renaming still happens in the header field, which now appears in compact mode (`Alt+S`) where renaming lives
 - **Fullscreen transitions**: Slide or Fade page animation (Settings -> General)
 
 ## Text Editor
@@ -46,7 +49,8 @@ builds and runs normally and says why the feature is off.
 - **Export as PDF** (`→ PDF` button next to Save): writes `<name>.pdf` **beside the source file**; the text file itself is never touched, and an existing PDF of that name is never overwritten (`<name> (2).pdf`, `(3)`, …)
   - What gets printed is **what stands in the editor**, including unsaved changes
   - Fixed layout: monospace 10 pt in **medium weight** (indentation, ASCII tables and columns keep their alignment), A4 portrait, 20 mm margins all round, footer carrying **only the page count** (`1/3`, centred) - no file name
-  - **The text is always pure black**, whatever theme the app is running in. The medium weight is part of that promise: at 10 pt a regular monospace is so thin that a full page reads grey on screen even though the ink is black. *Planned: a per-file option to choose the colour.*
+  - **Choosable text colour**, with black as the default. A colour swatch sits left of the `→ PDF` button: what you pick there applies **to this file only** and is remembered in the folder's JSON sidecar next to its tags and date. Once a file has its own colour, a reset button appears **inside the same frame**, separated by a thin line, and drops it back to the default. The default itself is one setting for all files (Settings -> Text Editor -> *Text colour for text-to-PDF export*)
+  - **The colour never follows the app theme.** It is written into the document, so a theme switch must not change it - before this was pinned down, a dark theme once printed near-white text onto white paper. An unusable stored value falls back to black rather than to something invisible. The medium weight is part of the same promise: at 10 pt a regular monospace is so thin that a full page reads grey on screen even though the ink is solid
   - Long lines **wrap** (never truncated); tabs are eight characters wide; CRLF and old Mac CR line endings are handled
   - Real text, not an image: the result can be selected, copied and searched (see *Known limitations* for pages made up of very short lines)
   - Runs in the background - the editor stays usable, and a short status message reports the written file or the error
@@ -133,6 +137,8 @@ Everything below is **non-destructive**: your original PDF is never modified. No
 - Where lossless is not provably safe the export falls back to the image path - always correct, and you are told when it happens
 - The formatting panel docks as a **right sidebar** or a **Word-style ribbon** (*Settings -> Text Editor*); `Ctrl` + mouse wheel pans the ribbon sideways when the window is narrow
 
+- **Track changes for your annotations**: a **Track changes** button in the header bar (edit mode only) opens a small menu with a **Record** switch. While recording, every note, drawing, highlight or redaction you add counts as an **open change**, and deleting one only *marks* it as deleted instead of removing it - so the deletion can still be taken back. Open changes are framed in the accent colour; ones marked for deletion stay visible but pale and struck through. The menu shows how many are open and offers **Accept all** / **Reject all**; a single one is decided by right-clicking it (*Accept change* / *Reject change*). Accepting keeps a new note and completes a deletion, rejecting does the opposite. Every decision is one undo step - and *Accept all* / *Reject all* is a single one, so one `Ctrl+Z` brings the whole batch back. **What counts as a change**: adding an annotation and deleting one. Editing an existing annotation (moving it, recolouring it, changing its text) stays a normal edit and is not tracked - tracking that would mean storing the state before every single change. The switch belongs to the document: it is kept in the sidecar and applies to that file the next time you open it. **The image editor has the same feature**, with the same button, wording and shortcuts - what you learn in one editor works in the other
+
 ## Image Editor
 - Opens on any image via the **✎ Edit** button in the image viewer's toolbar - the original file is **never modified**
 - **Tools**: Select/move, Text note, Freehand pen, Arrow, Rectangle, Ellipse (tool palette in the dockable panel)
@@ -201,7 +207,15 @@ Everything below is **non-destructive**: your original PDF is never modified. No
   - Editor background (text / HTML source editor surface)
 - Export / Import custom themes as JSON files
 - All color changes apply live without restarting
+- **Themed icons**: every icon in the interface (toolbars, panels, filter bar) is drawn by the app itself from geometric shapes - there are no icon image files. Icons take the theme's text colour as a live binding, so a colour change repaints them instantly instead of reloading images, and they stay sharp at any interface scaling (100 %, 125 %, 150 %, 200 %) because edges snap to whole device pixels
 - **Themed standard controls**: buttons, checkboxes, radio buttons, combo boxes, spin boxes, text fields, sliders, scrollbars, tooltips, **menus** and dialogs are drawn by the app's own control style - rounded corners, accent-colored checked states, consistent hover/pressed animations. This includes **every menu**: the menu bar, right-click menus on tiles, PDF pages and tags, and even the editing menu Qt itself opens in a text field. They follow the selected theme (including custom colors) instead of the desktop color scheme, so the app looks identical on every platform and under every desktop theme
+
+## Companion Files
+- **The app's own files stay out of the way**: the folder file holding tags and categories, the editors' notes (`<file>.mgedit.json`) and DOCX backups (`.bak`) are **hidden by default** - in the gallery and in the app's own file chooser
+- **Show all files** (Settings -> View -> *Files*): shows them anyway - and then really everything, including file types the app does not recognise. Nothing is deleted or moved by this switch; it only changes what you see
+- **Delete a companion file without touching the file itself**: right-click a tile -> *Delete notes and drawings* or *Delete previous version*. The entries appear only when such a file actually exists, ask before deleting, and the deletion goes to the system trash - `Ctrl+Z` brings it back like any other file operation
+- **File menu in the header bar**: next to *View*, a **File** menu appears for files that have an editor (PDF, images). It carries *Delete notes and drawings*, which discards every note, drawing, highlight and redaction of that file in one undo step - the same action the page context menu offers in the PDF, now reachable for images too
+- **Inside an open PDF**: right-click a page -> *Delete notes and drawings* discards every note, drawing, highlight and redaction of that file in one undo step. Deliberately not a file deletion: the editor still holds the notes in memory and would write them back on the next save
 
 ## Metadata & File Management
 - **Date editor**: Custom date per file, persisted in JSON
@@ -288,7 +302,7 @@ Everything below is **non-destructive**: your original PDF is never modified. No
 
 All settings are stored via `QSettings` (platform-native).
 
-Per-folder metadata (tags, dates, categories) is stored as JSON alongside the media:
+Per-folder metadata (tags, dates, categories, per-file PDF text colour) is stored as JSON alongside the media:
 ```
 MyPhotos/
 ├── photo1.jpg

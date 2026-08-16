@@ -435,6 +435,25 @@ bool AppSettings::fileDropMove() const {
 void AppSettings::setFileDropMove(bool v) {
     m_settings.setValue("ui/fileDropMove", v);
 }
+//  „Alle Dateien anzeigen" — Begleitdateien der App sichtbar machen.
+bool AppSettings::showAllFiles() const {
+    return m_settings.value("ui/showAllFiles", false).toBool();
+}
+void AppSettings::setShowAllFiles(bool v) {
+    m_settings.setValue("ui/showAllFiles", v);
+}
+//  Schriftfarbe des TXT→PDF-Exports (Vorgabe, je Datei überschreibbar).
+//  Als NAME gespeichert und beim Lesen geprüft: ein von Hand verfälschter Wert
+//  ergäbe sonst eine ungültige QColor und damit unsichtbaren Text im Export.
+QColor AppSettings::textPdfColor() const {
+    const QColor c(m_settings.value("editor/textPdfColor",
+                                    QStringLiteral("#000000")).toString());
+    return c.isValid() ? c : QColor(Qt::black);
+}
+void AppSettings::setTextPdfColor(const QColor& c) {
+    m_settings.setValue("editor/textPdfColor",
+                        (c.isValid() ? c : QColor(Qt::black)).name(QColor::HexRgb));
+}
 // Spulschritt der Pfeiltasten im Video-Vollbild (Sekunden, Standard 15).
 // Beim Lesen geklemmt, damit eine von Hand verfälschte Konfiguration nicht in
 // einen 0- oder Riesen-Sprung mündet.

@@ -15,8 +15,8 @@ stores its data are in **[FEATURES.md](FEATURES.md)**.
 - **Tags & categories** - your own categories and tags per file, stored as JSON next to the media, with filtering and search.
 - **PDF viewer** - page thumbnails, search, text selection, and audio/video annotations played in place.
 - **PDF page extraction** - pick pages from one or many PDFs and save them losslessly as a new file.
-- **PDF editor** - notes, drawings, highlights, redaction, signature stamps, form filling, page reordering and text editing; export keeps the original content byte-for-byte wherever possible.
-- **Image editor** - non-destructive crop, rotate, adjust and draw; the original file is never overwritten.
+- **PDF editor** - notes, drawings, highlights, redaction, signature stamps, form filling, page reordering, text editing and **tracked changes** for your own annotations; export keeps the original content byte-for-byte wherever possible.
+- **Image editor** - non-destructive crop, rotate, adjust and draw, with the same **tracked changes** as the PDF editor; the original file is never overwritten.
 - **DOCX editor** - a loss-preserving Word editor: only what you touch is rewritten. Tables, pictures, contents list, tracked changes (shown and resolvable), spell checking, find & replace, and PDF export.
 - **Text & HTML** - editor with syntax awareness and a live HTML preview.
 - **Live transliteration** - type Latin, get Arabic, Hiragana or Katakana while you write.
@@ -116,6 +116,8 @@ The test suite uses plain executables (no external test framework or additional 
 * Path handling
 * Gallery sorting and filtering
 * Tag/category sidecar persistence
+* Tracked changes in the PDF and image editor
+* Companion-file handling (hiding, removing, undo)
 
 The `tests/` directory is not included in the published repository. If it is missing, the build automatically skips the test targets, allowing a fresh clone to configure and compile normally.
 
@@ -124,20 +126,21 @@ The `tests/` directory is not included in the published repository. If it is mis
 ## Changelog
 
 ### Latest
-* Fixed PDF export, redaction, and text layer handling
-* Improved PDF search and fixed incorrect hit counting
-* Improved themed context menus across editors and panels
-* Added gallery search, sorting, and keyboard navigation
-* Added drag-and-drop for bookmarks, tags, categories, and external applications
-* Added undo support for file deletion
-* Fixed gallery scrolling and drag-and-drop behavior
-* Improved DOCX-to-PDF export and text layer handling
+* Added file and view menus to the header bar
+* Added fullscreen header access and slimmer header layout
+* Added hiding and managing companion files
+* Added track changes for PDF and image annotations
+* Added customizable text color for text-to-PDF export
+* Replaced SVG icons with native QML-drawn icons
+* Improved document and editor usability
 
 ---
 
 ## Issues
 
 ### Known limitations
+- **Tracked changes cover adding and deleting an annotation**, not editing an existing one (moving, recolouring, retyping) - tracking that would mean storing the state before every single change.
+- **"Show all files" really shows everything**, including file types the app cannot open (archives, executables). Anything narrower would hide the `.bak` backups it is meant to reveal.
 - **Spell checking needs an installed Hunspell dictionary**; without one it stays off and says so.
 - **A text-to-PDF page made up only of very short lines cannot be searched in PDFium-based viewers** (Chrome, and this app's own PDF view). Measured: from about 30 characters of line width upwards everything is fine; below that, those viewers read the narrow column as vertically written text and hand out every character on its own line, so a word search finds nothing. The file itself is correct - every character carries its proper Unicode - and other PDF readers are unaffected. Widening the text block from our side did not change the viewer's guess.
 

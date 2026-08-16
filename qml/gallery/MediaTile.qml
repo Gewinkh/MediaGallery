@@ -38,6 +38,9 @@ Rectangle {
     // Kontextmenü „Datei löschen…" → GalleryView zeigt EINEN gemeinsamen
     // Bestätigungs-Dialog (kein Dialog je Kachel) und ruft mediaModel.deleteItem.
     signal deleteRequested(string filePath, string displayName)
+    //  Begleitdatei entfernen: kind 1 = Notizen/Zeichnungen (Sidecar),
+    //  2 = Sicherungskopie (.bak). Die Rückfrage führt GalleryView.
+    signal companionRemoveRequested(string filePath, int kind)
 
     readonly property bool tagged: modeTag.length > 0 && tags.indexOf(modeTag) >= 0
     readonly property bool dimmed: tagMode === 1 && modeTag.length > 0 && !tagged
@@ -238,7 +241,10 @@ Rectangle {
             property var ctxCats: []       // flacher Kategorienbaum [{id,name,color}]
             property var fileTags: []      // Tags der Datei
             property var fileCatIds: []    // Kategorie-IDs der Datei
+            //  Bitmaske der vorhandenen Begleitdateien (1 Sidecar, 2 .bak).
+            property int companions: 0
             onAboutToShow: {
+                ctxMenu.companions = mediaModel.companionKinds(tile.filePath)
                 ctxTags    = App.allTags()
                 ctxCats    = Tags.categoriesFlat()
                 fileTags   = App.tagsForFile(tile.fileName)
@@ -290,6 +296,22 @@ Rectangle {
             MenuItem {
                 text: App.uiText(App.language, "CtxDeleteFile")
                 onTriggered: tile.deleteRequested(tile.filePath, tile.displayName)
+            }
+
+            //  ── Begleitdateien dieser Datei ──────────────────────────────────
+            //  Erscheinen nur, wenn es sie gibt (beim Öffnen des Menüs geprüft).
+            //  Die Datei selbst bleibt unangetastet.
+            MenuItem {
+                visible: (ctxMenu.companions & 1) !== 0
+                height: visible ? implicitHeight : 0
+                text: App.uiText(App.language, "CtxRemoveEdits")
+                onTriggered: tile.companionRemoveRequested(tile.filePath, 1)
+            }
+            MenuItem {
+                visible: (ctxMenu.companions & 2) !== 0
+                height: visible ? implicitHeight : 0
+                text: App.uiText(App.language, "CtxRemoveBackup")
+                onTriggered: tile.companionRemoveRequested(tile.filePath, 2)
             }
         }
     }

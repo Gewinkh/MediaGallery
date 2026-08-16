@@ -32,6 +32,13 @@ public:
     void      setCustomDate(const QString& fileName, const QDateTime& dt);
     void      clearCustomDate(const QString& fileName);
 
+    // Text colour this file uses when exported to PDF (text editor "-> PDF").
+    // Invalid colour == no own choice; the caller then falls back to the global
+    // default in AppSettings.
+    QColor textPdfColor(const QString& fileName) const;
+    void   setTextPdfColor(const QString& fileName, const QColor& color);
+    void   clearTextPdfColor(const QString& fileName);
+
     // Global tag registry
     QHash<QString, QColor> tagColors() const { return m_tagColors; }
     QColor tagColor(const QString& tag) const;
@@ -63,6 +70,7 @@ private:
         QStringList tags;
         QDateTime   customDate;
         bool        hasCustomDate = false;
+        QColor      textPdfColor;   // invalid == follow the global default
     };
 
     QHash<QString, FileMeta> m_fileMeta;

@@ -36,6 +36,33 @@ Item {
             width: root.width
             spacing: 14
 
+            // ── Sichtbarkeit der Begleitdateien ───────────────────────────────
+            //  Standard AUS: die Ordner-Datei, die Editor-Notizen und die
+            //  Sicherungskopien gehören zur Verwaltung, nicht zur Sammlung.
+            SettingsGroup {
+                title: App.uiText(App.language, "SettingsFilesGroup")
+                Layout.fillWidth: true
+
+                CheckBox {
+                    text: App.uiText(App.language, "SettingsShowAllFiles")
+                    checked: App.showAllFiles
+                    onToggled: App.showAllFiles = checked
+                    contentItem: Text {
+                        text: parent.text; color: App.themeTextPrimary
+                        leftPadding: parent.indicator.width + 6
+                        verticalAlignment: Text.AlignVCenter
+                    }
+                }
+                Text {
+                    Layout.fillWidth: true
+                    Layout.leftMargin: 24
+                    text: App.uiText(App.language, "SettingsShowAllFilesHint")
+                    color: App.themeTextMuted
+                    font.pixelSize: 11
+                    wrapMode: Text.WordWrap
+                }
+            }
+
             // ── Kachel-Anordnung ──────────────────────────────────────────────
             SettingsGroup {
                 title: App.uiText(App.language, "SettingsViewTileArrangement")

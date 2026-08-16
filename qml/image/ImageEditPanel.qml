@@ -46,7 +46,7 @@ Item {
     component ToolBtn: Rectangle {
         id: tbt
         property string glyph: ""
-        property url iconSource: ""
+        property string iconName: ""
         property string tip: ""
         property int    toolValue: 0
         readonly property bool checked: panel.ctl.tool === toolValue
@@ -56,9 +56,9 @@ Item {
         border.color: checked ? App.themeAccent : App.themeBorder
         border.width: 1
         Text { anchors.centerIn: parent; text: tbt.glyph; color: App.themeTextPrimary; font.pixelSize: 15
-               visible: String(tbt.iconSource).length === 0 }
-        ThemedIcon { anchors.centerIn: parent; source: tbt.iconSource; size: 16
-                     visible: String(tbt.iconSource).length > 0 }
+               visible: tbt.iconName.length === 0 }
+        DrawnIcon { anchors.centerIn: parent; name: tbt.iconName; size: 16
+                     visible: tbt.iconName.length > 0 }
         HoverHandler { id: tbtHover }
         TapHandler { onTapped: panel.ctl.tool = tbt.toolValue }
         ToolTip.text: tbt.tip; ToolTip.visible: tbtHover.hovered && tbt.tip.length > 0
@@ -66,7 +66,7 @@ Item {
     component StyleBtn: Rectangle {
         id: sbt
         property string glyph: ""
-        property url iconSource: ""
+        property string iconName: ""
         property bool checked: false
         property bool boldGlyph: false
         property bool italicGlyph: false
@@ -78,16 +78,16 @@ Item {
         border.color: checked ? App.themeAccent : App.themeBorder; border.width: 1
         Text { anchors.centerIn: parent; text: sbt.glyph; color: App.themeTextPrimary; font.pixelSize: 13
                font.bold: sbt.boldGlyph; font.italic: sbt.italicGlyph; font.underline: sbt.underlineGlyph
-               visible: String(sbt.iconSource).length === 0 }
-        ThemedIcon { anchors.centerIn: parent; source: sbt.iconSource; size: 16
-                     visible: String(sbt.iconSource).length > 0 }
+               visible: sbt.iconName.length === 0 }
+        DrawnIcon { anchors.centerIn: parent; name: sbt.iconName; size: 16
+                     visible: sbt.iconName.length > 0 }
         HoverHandler { id: sbtHover }
         TapHandler { onTapped: sbt.activated() }
     }
     component AlignBtn: Rectangle {
         id: abt
         property string glyph: ""
-        property url iconSource: ""
+        property string iconName: ""
         property int alignValue: 0
         readonly property bool checked: panel.info.alignment === alignValue
         width: 30; height: 28; radius: 5
@@ -95,16 +95,16 @@ Item {
              : (abtHover.hovered ? Qt.rgba(App.themeTextPrimary.r, App.themeTextPrimary.g, App.themeTextPrimary.b, 0.14) : "transparent")
         border.color: checked ? App.themeAccent : App.themeBorder; border.width: 1
         Text { anchors.centerIn: parent; text: abt.glyph; color: App.themeTextPrimary; font.pixelSize: 13
-               visible: String(abt.iconSource).length === 0 }
-        ThemedIcon { anchors.centerIn: parent; source: abt.iconSource; size: 16
-                     visible: String(abt.iconSource).length > 0 }
+               visible: abt.iconName.length === 0 }
+        DrawnIcon { anchors.centerIn: parent; name: abt.iconName; size: 16
+                     visible: abt.iconName.length > 0 }
         HoverHandler { id: abtHover }
         TapHandler { onTapped: panel.ctl.setAnnAlignment(panel.targetId, abt.alignValue) }
     }
     component VAlignBtn: Rectangle {
         id: vbt
         property string glyph: ""
-        property url iconSource: ""
+        property string iconName: ""
         property int vAlignValue: 0
         readonly property bool checked: panel.info.vAlign === vAlignValue
         width: 30; height: 28; radius: 5
@@ -112,9 +112,9 @@ Item {
              : (vbtHover.hovered ? Qt.rgba(App.themeTextPrimary.r, App.themeTextPrimary.g, App.themeTextPrimary.b, 0.14) : "transparent")
         border.color: checked ? App.themeAccent : App.themeBorder; border.width: 1
         Text { anchors.centerIn: parent; text: vbt.glyph; color: App.themeTextPrimary; font.pixelSize: 13
-               visible: String(vbt.iconSource).length === 0 }
-        ThemedIcon { anchors.centerIn: parent; source: vbt.iconSource; size: 16
-                     visible: String(vbt.iconSource).length > 0 }
+               visible: vbt.iconName.length === 0 }
+        DrawnIcon { anchors.centerIn: parent; name: vbt.iconName; size: 16
+                     visible: vbt.iconName.length > 0 }
         HoverHandler { id: vbtHover }
         TapHandler { onTapped: panel.ctl.setAnnVAlign(panel.targetId, vbt.vAlignValue) }
     }
@@ -179,16 +179,16 @@ Item {
                 }
             }
 
-            // Werkzeuge
-            Text { text: App.uiText(App.language, "ImageEditToolsLabel"); color: App.themeTextMuted; font.pixelSize: 11 }
+            //  Ohne Abschnitts-Beschriftung: die Werkzeugreihe erklärt sich selbst,
+            //  und der PDF-/DOCX-Editor führt seine Leiste ebenso schlicht.
             Grid {
                 columns: 6; spacing: 6
-                ToolBtn { iconSource: "qrc:/qml/icons/select.svg"; toolValue: 0; tip: App.uiText(App.language, "ImageEditToolSelect") }
+                ToolBtn { iconName: "select"; toolValue: 0; tip: App.uiText(App.language, "ImageEditToolSelect") }
                 ToolBtn { glyph: "T";       toolValue: 1; tip: App.uiText(App.language, "ImageEditToolText") }
-                ToolBtn { iconSource: "qrc:/qml/icons/pen.svg"; toolValue: 2; tip: App.uiText(App.language, "ImageEditToolPen") }
-                ToolBtn { iconSource: "qrc:/qml/icons/arrow.svg"; toolValue: 3; tip: App.uiText(App.language, "ImageEditToolArrow") }
-                ToolBtn { iconSource: "qrc:/qml/icons/rect.svg"; toolValue: 4; tip: App.uiText(App.language, "ImageEditToolRect") }
-                ToolBtn { iconSource: "qrc:/qml/icons/ellipse.svg"; toolValue: 5; tip: App.uiText(App.language, "ImageEditToolEllipse") }
+                ToolBtn { iconName: "pen"; toolValue: 2; tip: App.uiText(App.language, "ImageEditToolPen") }
+                ToolBtn { iconName: "arrow"; toolValue: 3; tip: App.uiText(App.language, "ImageEditToolArrow") }
+                ToolBtn { iconName: "rect"; toolValue: 4; tip: App.uiText(App.language, "ImageEditToolRect") }
+                ToolBtn { iconName: "ellipse"; toolValue: 5; tip: App.uiText(App.language, "ImageEditToolEllipse") }
             }
 
             Rectangle { width: parent.width; height: 1; color: App.themeBorder }
@@ -240,16 +240,16 @@ Item {
                     Column { spacing: 4
                         Text { text: App.uiText(App.language, "PdfEditAlignLabel"); color: App.themeTextMuted; font.pixelSize: 11 }
                         Row { spacing: 4
-                            AlignBtn { iconSource: "qrc:/qml/icons/align-left.svg"; alignValue: 0 }
-                            AlignBtn { iconSource: "qrc:/qml/icons/align-center.svg"; alignValue: 1 }
-                            AlignBtn { iconSource: "qrc:/qml/icons/align-right.svg"; alignValue: 2 }
+                            AlignBtn { iconName: "align-left"; alignValue: 0 }
+                            AlignBtn { iconName: "align-center"; alignValue: 1 }
+                            AlignBtn { iconName: "align-right"; alignValue: 2 }
                         }
                     }
                     Column { spacing: 4
                         Text { text: App.uiText(App.language, "PdfEditVAlignLabel"); color: App.themeTextMuted; font.pixelSize: 11 }
                         Row { spacing: 4
-                            VAlignBtn { iconSource: "qrc:/qml/icons/valign-top.svg"; vAlignValue: 0 }
-                            VAlignBtn { iconSource: "qrc:/qml/icons/valign-middle.svg"; vAlignValue: 1 }
+                            VAlignBtn { iconName: "valign-top"; vAlignValue: 0 }
+                            VAlignBtn { iconName: "valign-middle"; vAlignValue: 1 }
                         }
                     }
                 }
@@ -380,10 +380,9 @@ Item {
                 }
             }
 
-            Rectangle { width: parent.width; height: 1; color: App.themeBorder }
-
+            //  Es gibt GENAU EINE Trennlinie im Panel — die unter der
+            //  Werkzeugreihe. Die zweite (vor dem Dokument-Bereich) ist entfallen.
             // ── Dokument (Speichern / Export) ─────────────────────────────────
-            Text { text: App.uiText(App.language, "ImageEditDocSection"); color: App.themeTextMuted; font.pixelSize: 11 }
             Row {
                 spacing: 8
                 Rectangle {
@@ -450,14 +449,13 @@ Item {
                 height: parent.height; spacing: 12
                 // Werkzeuge
                 Column { anchors.verticalCenter: parent.verticalCenter; spacing: 2
-                    RibbonLabel { text: App.uiText(App.language, "ImageEditToolsLabel"); width: parent.width }
                     Row { spacing: 4
-                        ToolBtn { iconSource: "qrc:/qml/icons/select.svg"; toolValue: 0 }
+                        ToolBtn { iconName: "select"; toolValue: 0 }
                         ToolBtn { glyph: "T";       toolValue: 1 }
-                        ToolBtn { iconSource: "qrc:/qml/icons/pen.svg"; toolValue: 2 }
-                        ToolBtn { iconSource: "qrc:/qml/icons/arrow.svg"; toolValue: 3 }
-                        ToolBtn { iconSource: "qrc:/qml/icons/rect.svg"; toolValue: 4 }
-                        ToolBtn { iconSource: "qrc:/qml/icons/ellipse.svg"; toolValue: 5 }
+                        ToolBtn { iconName: "pen"; toolValue: 2 }
+                        ToolBtn { iconName: "arrow"; toolValue: 3 }
+                        ToolBtn { iconName: "rect"; toolValue: 4 }
+                        ToolBtn { iconName: "ellipse"; toolValue: 5 }
                     }
                 }
                 Rectangle { width: 1; height: 40; color: App.themeBorder; anchors.verticalCenter: parent.verticalCenter }
@@ -484,10 +482,13 @@ Item {
                     SpinBox { id: lwBoxH; from: 1; to: 200; stepSize: 1; value: 4; width: 100
                               onValueModified: panel.ctl.setAnnLineWidth(panel.targetId, value) }
                 }
-                Rectangle { width: 1; height: 40; color: App.themeBorder; anchors.verticalCenter: parent.verticalCenter }
+                //  KEIN zweiter Trenner vor dem Dokument-Teil: die Eigenschaften
+                //  dazwischen sind ohne Auswahl unsichtbar, dann rückten die
+                //  beiden Striche aneinander und sahen wie eine Doppellinie aus
+                //  (Nutzerbefund). Es bleibt der EINE Trenner hinter den
+                //  Werkzeugen — wie im senkrechten Panel.
                 // Dokument
                 Column { anchors.verticalCenter: parent.verticalCenter; spacing: 2
-                    RibbonLabel { text: App.uiText(App.language, "ImageEditDocSection"); width: parent.width }
                     Row { spacing: 6
                         Rectangle {
                             width: 30; height: 28; radius: 5; opacity: panel.ctl.dirty ? 1.0 : 0.4

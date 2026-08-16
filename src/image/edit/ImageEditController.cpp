@@ -271,6 +271,12 @@ ImageEditController::ImageEditController(QObject* parent) : QObject(parent) {
     connect(&m_stack, &QUndoStack::canRedoChanged, this, [this] { emit undoStateChanged(); });
     connect(&m_stack, &QUndoStack::cleanChanged,   this, [this] { emit dirtyChanged(); });
     connect(&m_model, &ImageEditModel::countChanged, this, [this] { emit annCountChanged(); });
+    //  Zahl der offenen Änderungen folgt JEDER Modelländerung — auch
+    //  Undo/Redo und dem Laden des Sidecars.
+    connect(&m_model, &QAbstractItemModel::dataChanged,  this, [this] { emit trackedChanged(); });
+    connect(&m_model, &QAbstractItemModel::rowsInserted, this, [this] { emit trackedChanged(); });
+    connect(&m_model, &QAbstractItemModel::rowsRemoved,  this, [this] { emit trackedChanged(); });
+    connect(&m_model, &QAbstractItemModel::modelReset,   this, [this] { emit trackedChanged(); });
 
     connect(&m_model, &QAbstractItemModel::dataChanged, this,
             [this](const QModelIndex& tl, const QModelIndex&, const QList<int>&) {
@@ -348,6 +354,8 @@ void ImageEditController::setDocument(const QString& pathOrUrl) {
     m_docPath = local;
     setSelectedId(-1);
     setTool(Select);
+    //  Der Schalter gehört zum BILD: das nächste bringt seinen eigenen mit.
+    if (m_recording) { m_recording = false; emit recordingChanged(); }
     m_stack.clear();
     m_model.clearAll();
     m_nextId = 1;
@@ -456,7 +464,7 @@ int ImageEditController::addText(qreal xPx, qreal yPx) {
     const qreal y = qMax(0.0, qMin(yPx, qMax(0.0, imgH - h)));
     a.rect = QRectF(x, y, w, h);
 
-    pushCommand(new ImageEditAddCommand(&m_model, a, m_model.count()));
+    pushAdd(a);
     setSelectedId(a.id);
     return a.id;
 }
@@ -535,11 +543,114 @@ void ImageEditController::endDraw(int id) {
     if (tooSmall)
         return;
     // … und als EIN Add-Kommando neu einsetzen (Undo entfernt die Zeichnung).
-    pushCommand(new ImageEditAddCommand(&m_model, copy, m_model.count()));
+    pushAdd(copy);
     // Vorlage der Zeichen-Defaults aktualisieren (Stil-Erben).
     m_defStroke = copy.stroke; m_defLineWidth = copy.lineWidth; m_defFill = copy.fill;
     ++m_defaultRev; emit defaultRevChanged();
     setSelectedId(copy.id);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  Nachverfolgte Änderungen — Semantik wie im PDF-Editor (dort ausführlich
+//  begründet, s. Structure.md ▸ ## PdfEdit).
+// ─────────────────────────────────────────────────────────────────────────────
+void ImageEditController::pushAdd(ImageAnnotation& a) {
+    if (m_recording)
+        a.track = ImageTrackState::Added;
+    pushCommand(new ImageEditAddCommand(&m_model, a, m_model.count()));
+}
+
+void ImageEditController::setTrack(int id, ImageTrackState st) {
+    const ImageAnnotation* a = m_model.annById(id);
+    if (!a || a->track == st)
+        return;
+    pushCommand(new ImageEditFieldCommand(&m_model, id, ImageAnnField::Track,
+                                          static_cast<int>(a->track),
+                                          static_cast<int>(st)));
+}
+
+void ImageEditController::setRecording(bool on) {
+    if (m_recording == on)
+        return;
+    m_recording = on;
+    emit recordingChanged();
+    saveOverlay();                 // der Schalter gehört zum Bild, nicht zur Sitzung
+}
+
+int ImageEditController::trackedCount() const {
+    int n = 0;
+    const QVector<ImageAnnotation> anns = m_model.annotations();
+    for (const ImageAnnotation& a : anns)
+        if (a.track != ImageTrackState::None) ++n;
+    return n;
+}
+
+void ImageEditController::discardAllAnnotations() {
+    if (m_model.count() == 0)
+        return;
+    finishOpenSessions();
+    setSelectedId(-1);
+    m_stack.beginMacro(QStringLiteral("discardAllAnnotations"));
+    const QVector<ImageAnnotation> anns = m_model.annotations();
+    for (const ImageAnnotation& a : anns) {
+        const int row = m_model.indexOfId(a.id);
+        if (row >= 0)
+            pushCommand(new ImageEditRemoveCommand(&m_model, a, row));
+    }
+    m_stack.endMacro();
+    saveOverlay();
+}
+
+void ImageEditController::acceptChange(int id) {
+    const ImageAnnotation* a = m_model.annById(id);
+    if (!a || a->track == ImageTrackState::None)
+        return;
+    if (a->track == ImageTrackState::Deleted) {
+        const int row = m_model.indexOfId(id);
+        const ImageAnnotation copy = *a;
+        if (m_selectedId == id)
+            setSelectedId(-1);
+        pushCommand(new ImageEditRemoveCommand(&m_model, copy, row));
+        return;
+    }
+    setTrack(id, ImageTrackState::None);
+}
+
+void ImageEditController::rejectChange(int id) {
+    const ImageAnnotation* a = m_model.annById(id);
+    if (!a || a->track == ImageTrackState::None)
+        return;
+    if (a->track == ImageTrackState::Added) {
+        const int row = m_model.indexOfId(id);
+        const ImageAnnotation copy = *a;
+        if (m_selectedId == id)
+            setSelectedId(-1);
+        pushCommand(new ImageEditRemoveCommand(&m_model, copy, row));
+        return;
+    }
+    setTrack(id, ImageTrackState::None);
+}
+
+void ImageEditController::acceptAllChanges() {
+    if (trackedCount() == 0)
+        return;
+    finishOpenSessions();
+    m_stack.beginMacro(QStringLiteral("acceptAllChanges"));
+    const QVector<ImageAnnotation> anns = m_model.annotations();
+    for (const ImageAnnotation& a : anns)
+        if (a.track != ImageTrackState::None) acceptChange(a.id);
+    m_stack.endMacro();
+}
+
+void ImageEditController::rejectAllChanges() {
+    if (trackedCount() == 0)
+        return;
+    finishOpenSessions();
+    m_stack.beginMacro(QStringLiteral("rejectAllChanges"));
+    const QVector<ImageAnnotation> anns = m_model.annotations();
+    for (const ImageAnnotation& a : anns)
+        if (a.track != ImageTrackState::None) rejectChange(a.id);
+    m_stack.endMacro();
 }
 
 void ImageEditController::removeAnn(int id) {
@@ -551,6 +662,13 @@ void ImageEditController::removeAnn(int id) {
     finishOpenSessions();
     if (m_selectedId == id)
         setSelectedId(-1);
+    //  Wie im PDF-Editor: bei laufender Aufzeichnung wird MARKIERT statt
+    //  entfernt (sonst ließe sich das Verwerfen nicht zurücknehmen); eine in
+    //  derselben Aufzeichnung entstandene Annotation verschwindet ganz.
+    if (m_recording && copy.track != ImageTrackState::Added) {
+        setTrack(id, ImageTrackState::Deleted);
+        return;
+    }
     pushCommand(new ImageEditRemoveCommand(&m_model, copy, row));
 }
 
@@ -584,7 +702,7 @@ void ImageEditController::paste() {
         p += QPointF(dx, dy);
 
     setTool(Select);
-    pushCommand(new ImageEditAddCommand(&m_model, a, m_model.count()));
+    pushAdd(a);
     setSelectedId(a.id);
 }
 
@@ -759,6 +877,8 @@ QVariantMap ImageEditController::annInfo(int id) const {
     if (!a)
         return m;
     m.insert(QStringLiteral("kind"),           static_cast<int>(a->kind));
+    //  Nachverfolgung: 0 keine, 1 neu, 2 gelöscht (Kontextmenü/Anzeige).
+    m.insert(QStringLiteral("track"),          static_cast<int>(a->track));
     m.insert(QStringLiteral("isStroke"),       a->isStroke());
     m.insert(QStringLiteral("isText"),         a->kind == ImageAnnKind::Text);
     m.insert(QStringLiteral("isShape"),        a->kind == ImageAnnKind::Rect
@@ -850,6 +970,8 @@ bool ImageEditController::saveOverlay() {
         rootObj.insert(QStringLiteral("format"),  QStringLiteral("mediagallery-image-overlay"));
         rootObj.insert(QStringLiteral("version"), 1);
         rootObj.insert(QStringLiteral("anns"),    arr);
+        if (m_recording)
+            rootObj.insert(QStringLiteral("recording"), true);
 
         QSaveFile f(sc);
         if (f.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
@@ -882,6 +1004,11 @@ bool ImageEditController::loadOverlay(const QString& imgPath) {
     if (o.value(QStringLiteral("format")).toString()
         != QLatin1String("mediagallery-image-overlay"))
         return false;
+
+    if (m_recording != o.value(QStringLiteral("recording")).toBool(false)) {
+        m_recording = o.value(QStringLiteral("recording")).toBool(false);
+        emit recordingChanged();
+    }
 
     QVector<ImageAnnotation> anns;
     const QJsonArray arr = o.value(QStringLiteral("anns")).toArray();

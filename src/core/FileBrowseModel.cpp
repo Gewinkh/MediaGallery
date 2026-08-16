@@ -2,6 +2,8 @@
 
 #include <QCollator>
 #include <QDir>
+#include "core/PathUtils.h"
+
 #include <QDirIterator>
 #include <QFileInfo>
 #include <QLocale>
@@ -18,11 +20,11 @@ namespace {
 //  QueuedConnection zurück in den GUI-Thread (Hausmuster, CLAUDE.md Regel 8).
 class ScanTask : public QRunnable {
 public:
-    ScanTask(FileBrowseModel* owner, QString dir, QStringList globs, bool hidden,
+    ScanTask(FileBrowseModel* owner, QString dir, QStringList globs, bool hidden, bool showAll,
              bool dirsOnly, quint64 gen, std::shared_ptr<std::atomic<bool>> cancel,
              std::function<void(std::vector<FileBrowseModel::Row>, quint64)> sink)
         : m_owner(owner), m_dir(std::move(dir)), m_globs(std::move(globs)),
-          m_hidden(hidden), m_dirsOnly(dirsOnly), m_gen(gen),
+          m_hidden(hidden), m_showAll(showAll), m_dirsOnly(dirsOnly), m_gen(gen),
           m_cancel(std::move(cancel)), m_sink(std::move(sink)) {
         setAutoDelete(true);
     }
@@ -33,6 +35,7 @@ private:
     QString          m_dir;
     QStringList      m_globs;
     bool             m_hidden;
+    bool             m_showAll;
     bool             m_dirsOnly;
     quint64          m_gen;
     std::shared_ptr<std::atomic<bool>> m_cancel;
@@ -54,6 +57,9 @@ void ScanTask::run() {
         const QFileInfo fi = it.fileInfo();
         FileBrowseModel::Row r;
         r.isDir = fi.isDir();
+        //  Begleitdateien der App ausblenden — dieselbe Regel wie in der Galerie.
+        if (!r.isDir && !m_showAll && mg::isCompanionFile(fi.fileName()))
+            continue;
         //  Der Namensfilter gilt NUR für Dateien — ein Ordner muss immer
         //  betretbar bleiben, sonst käme man nirgendwo hin.
         if (!r.isDir && !m_globs.isEmpty()) {
@@ -143,6 +149,14 @@ void FileBrowseModel::setNameFilters(const QStringList& f) {
     startLoad();
 }
 
+void FileBrowseModel::setShowAllFiles(bool v) {
+    if (m_showAllFiles == v)
+        return;
+    m_showAllFiles = v;
+    emit showAllFilesChanged();
+    startLoad();
+}
+
 void FileBrowseModel::setShowHidden(bool v) {
     if (v == m_showHidden) return;
     m_showHidden = v;
@@ -185,7 +199,7 @@ void FileBrowseModel::startLoad() {
     auto sink = [this](std::vector<Row> rows, quint64 gen) {
         applyRows(std::move(rows), gen);
     };
-    m_pool.start(new ScanTask(this, m_folder, globs, m_showHidden, m_dirsOnly,
+    m_pool.start(new ScanTask(this, m_folder, globs, m_showHidden, m_showAllFiles, m_dirsOnly,
                               m_gen, m_cancel, sink));
 }
 

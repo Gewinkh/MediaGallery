@@ -103,7 +103,7 @@ Rectangle {
     component StyleBtn: Rectangle {
         id: sb
         property string glyph: ""
-        property url iconSource: ""
+        property string iconName: ""
         property bool checked: false
         property bool boldGlyph: false
         property bool italicGlyph: false
@@ -120,16 +120,16 @@ Rectangle {
                color: App.themeTextPrimary; font.pixelSize: 12
                font.bold: sb.boldGlyph; font.italic: sb.italicGlyph
                font.underline: sb.underlineGlyph
-               visible: String(sb.iconSource).length === 0 }
-        ThemedIcon { anchors.centerIn: parent; source: sb.iconSource; size: 16
-                     visible: String(sb.iconSource).length > 0 }
+               visible: sb.iconName.length === 0 }
+        DrawnIcon { anchors.centerIn: parent; name: sb.iconName; size: 16
+                     visible: sb.iconName.length > 0 }
         HoverHandler { id: sbHover }
         TapHandler { onTapped: sb.activated() }
     }
     component AlignBtn: Rectangle {
         id: ab
         property string glyph: ""
-        property url iconSource: ""
+        property string iconName: ""
         property int alignValue: 0
         readonly property bool checked: panel.info.alignment === alignValue
         width: 30; height: 28; radius: 6
@@ -141,9 +141,9 @@ Rectangle {
         border.width: 1
         Text { anchors.centerIn: parent; text: ab.glyph
                color: App.themeTextPrimary; font.pixelSize: 12
-               visible: String(ab.iconSource).length === 0 }
-        ThemedIcon { anchors.centerIn: parent; source: ab.iconSource; size: 16
-                     visible: String(ab.iconSource).length > 0 }
+               visible: ab.iconName.length === 0 }
+        DrawnIcon { anchors.centerIn: parent; name: ab.iconName; size: 16
+                     visible: ab.iconName.length > 0 }
         HoverHandler { id: abHover }
         TapHandler { onTapped: panel.ctl.setBoxAlignment(panel.targetId, ab.alignValue) }
     }
@@ -152,7 +152,7 @@ Rectangle {
     component VAlignBtn: Rectangle {
         id: vb
         property string glyph: ""
-        property url iconSource: ""
+        property string iconName: ""
         property int vAlignValue: 0
         readonly property bool checked: panel.info.vAlign === vAlignValue
         width: 30; height: 28; radius: 6
@@ -164,9 +164,9 @@ Rectangle {
         border.width: 1
         Text { anchors.centerIn: parent; text: vb.glyph
                color: App.themeTextPrimary; font.pixelSize: 12
-               visible: String(vb.iconSource).length === 0 }
-        ThemedIcon { anchors.centerIn: parent; source: vb.iconSource; size: 16
-                     visible: String(vb.iconSource).length > 0 }
+               visible: vb.iconName.length === 0 }
+        DrawnIcon { anchors.centerIn: parent; name: vb.iconName; size: 16
+                     visible: vb.iconName.length > 0 }
         HoverHandler { id: vbHover }
         TapHandler { onTapped: panel.ctl.setBoxVAlign(panel.targetId, vb.vAlignValue) }
     }
@@ -175,8 +175,8 @@ Rectangle {
     component ToolBtn: Rectangle {
         id: tb
         property string glyph: ""
-        //  Symbol statt Glyphe (Regel 29). Eingefärbt wird in C++, s. ThemedIcon.
-        property url iconSource: ""
+        //  Symbol statt Glyphe (Regel 28) — gezeichnet, s. DrawnIcon.
+        property string iconName: ""
         property int toolValue: 0
         //  Nur für die Markier-Knöpfe: zusätzlich der Stil (0/1/2). −1 = kein
         //  Stil, dann entscheidet allein das Werkzeug über „aktiv".
@@ -196,10 +196,10 @@ Rectangle {
         border.color: checked ? App.themeAccent : App.themeBorder
         border.width: 1
         Text { anchors.centerIn: parent; text: tb.glyph
-               visible: String(tb.iconSource).length === 0
+               visible: tb.iconName.length === 0
                color: App.themeTextPrimary; font.pixelSize: 13 }
-        ThemedIcon { anchors.centerIn: parent; source: tb.iconSource; size: 16
-                     visible: String(tb.iconSource).length > 0 }
+        DrawnIcon { anchors.centerIn: parent; name: tb.iconName; size: 16
+                     visible: tb.iconName.length > 0 }
         HoverHandler { id: tbHover }
         TapHandler {
             onTapped: {
@@ -312,43 +312,41 @@ Rectangle {
                 width: parent.width
                 spacing: 10
 
-                // ═══ Sektion: Werkzeuge (Muster Bild-Editor) ══════════════════
-                Text {
-                    text: App.uiText(App.language, "ImageEditToolsLabel")
-                    color: App.themeTextMuted; font.pixelSize: 11
-                }
+                // ═══ Sektion: Werkzeuge ═══════════════════════════════════════
+                //  Ohne Beschriftung — die Werkzeugreihe erklärt sich selbst
+                //  (Nutzerentscheidung, gilt für Bild- UND PDF-Editor).
                 Grid {
                     columns: 3
                     spacing: 4
-                    ToolBtn { iconSource: "qrc:/qml/icons/select.svg"; toolValue: 0; tip: App.uiText(App.language, "ImageEditToolSelect") }
+                    ToolBtn { iconName: "select"; toolValue: 0; tip: App.uiText(App.language, "ImageEditToolSelect") }
                     ToolBtn { glyph: "T";      toolValue: 1; tip: App.uiText(App.language, "ImageEditToolText") }
-                    ToolBtn { iconSource: "qrc:/qml/icons/pen.svg"; toolValue: 2; tip: App.uiText(App.language, "ImageEditToolPen") }
-                    ToolBtn { iconSource: "qrc:/qml/icons/arrow.svg"; toolValue: 3; tip: App.uiText(App.language, "ImageEditToolArrow") }
-                    ToolBtn { iconSource: "qrc:/qml/icons/rect.svg"; toolValue: 4; tip: App.uiText(App.language, "ImageEditToolRect") }
-                    ToolBtn { iconSource: "qrc:/qml/icons/ellipse.svg"; toolValue: 5; tip: App.uiText(App.language, "ImageEditToolEllipse") }
+                    ToolBtn { iconName: "pen"; toolValue: 2; tip: App.uiText(App.language, "ImageEditToolPen") }
+                    ToolBtn { iconName: "arrow"; toolValue: 3; tip: App.uiText(App.language, "ImageEditToolArrow") }
+                    ToolBtn { iconName: "rect"; toolValue: 4; tip: App.uiText(App.language, "ImageEditToolRect") }
+                    ToolBtn { iconName: "ellipse"; toolValue: 5; tip: App.uiText(App.language, "ImageEditToolEllipse") }
                     // „Text ersetzen" (PDF-exklusiv): weiße Deckfläche + Textbox.
-                    ToolBtn { iconSource: "qrc:/qml/icons/replace.svg"; toolValue: 6; tip: App.uiText(App.language, "PdfEditToolReplace") }
+                    ToolBtn { iconName: "replace"; toolValue: 6; tip: App.uiText(App.language, "PdfEditToolReplace") }
                     // „Text bearbeiten" (PDF-exklusiv): Caret DIREKT in der
                     // eingebetteten Textebene — kein Overlay, die Seite bleibt
                     // vektoriell.
-                    ToolBtn { iconSource: "qrc:/qml/icons/caret.svg"; toolValue: 7; tip: App.uiText(App.language, "PdfEditToolCaret") }
+                    ToolBtn { iconName: "caret"; toolValue: 7; tip: App.uiText(App.language, "PdfEditToolCaret") }
                     // Textmarkierung (PDF-exklusiv): Ziehen über Text markiert,
                     // unterstreicht oder streicht durch — je nach Stil-Knopf.
-                    ToolBtn { iconSource: "qrc:/qml/icons/markup-highlight.svg"; toolValue: 8; styleValue: 0
+                    ToolBtn { iconName: "markup-highlight"; toolValue: 8; styleValue: 0
                               tip: App.uiText(App.language, "PdfMarkupHighlight") }
-                    ToolBtn { iconSource: "qrc:/qml/icons/markup-underline.svg"; toolValue: 8; styleValue: 1
+                    ToolBtn { iconName: "markup-underline"; toolValue: 8; styleValue: 1
                               tip: App.uiText(App.language, "PdfMarkupUnderline") }
-                    ToolBtn { iconSource: "qrc:/qml/icons/markup-strike.svg"; toolValue: 8; styleValue: 2
+                    ToolBtn { iconName: "markup-strike"; toolValue: 8; styleValue: 2
                               tip: App.uiText(App.language, "PdfMarkupStrike") }
                     // „Schwärzen": deckt ab UND entfernt den Text beim Export
                     // aus dem Content-Stream. Die Grenzen sagt der einmalige
                     // Hinweis beim ersten Schwärzen (PdfSurface).
-                    ToolBtn { iconSource: "qrc:/qml/icons/redact.svg"; toolValue: 9
+                    ToolBtn { iconName: "redact"; toolValue: 9
                               tip: App.uiText(App.language, "PdfEditToolRedact") }
                     // Signatur/Stempel: erst die Bilder im ORDNER anbieten (der
                     // häufige Fall, ganz ohne Dateidialog), „Durchsuchen…"
                     // fällt auf den Dateidialog der Kachel zurück.
-                    ToolBtn { iconSource: "qrc:/qml/icons/signature.svg"; toolValue: -1
+                    ToolBtn { iconName: "signature"; toolValue: -1
                               tip: App.uiText(App.language, "PdfEditToolStamp")
                               onClicked: {
                                   stampPickA.entries = panel.ctl.folderImages()
@@ -481,9 +479,9 @@ Rectangle {
                 Row {
                     visible: panel.showText
                     spacing: 4
-                    AlignBtn { iconSource: "qrc:/qml/icons/align-left.svg"; alignValue: 0 }
-                    AlignBtn { iconSource: "qrc:/qml/icons/align-center.svg"; alignValue: 1 }
-                    AlignBtn { iconSource: "qrc:/qml/icons/align-right.svg"; alignValue: 2 }
+                    AlignBtn { iconName: "align-left"; alignValue: 0 }
+                    AlignBtn { iconName: "align-center"; alignValue: 1 }
+                    AlignBtn { iconName: "align-right"; alignValue: 2 }
                 }
 
                 // Vertikale Ausrichtung: oben (Word-Textfeld, Standard) / mittig
@@ -493,8 +491,8 @@ Rectangle {
                 Row {
                     visible: panel.showText
                     spacing: 4
-                    VAlignBtn { iconSource: "qrc:/qml/icons/valign-top.svg"; vAlignValue: 0 }
-                    VAlignBtn { iconSource: "qrc:/qml/icons/valign-middle.svg"; vAlignValue: 1 }
+                    VAlignBtn { iconName: "valign-top"; vAlignValue: 0 }
+                    VAlignBtn { iconName: "valign-middle"; vAlignValue: 1 }
                 }
 
                 // Farben (wiederverwendeter ColorPicker; Bindung nach Nutzer-
@@ -892,34 +890,34 @@ Rectangle {
                     spacing: 2
                     Row {
                         spacing: 4
-                        ToolBtn { iconSource: "qrc:/qml/icons/select.svg"; toolValue: 0; tip: App.uiText(App.language, "ImageEditToolSelect") }
+                        ToolBtn { iconName: "select"; toolValue: 0; tip: App.uiText(App.language, "ImageEditToolSelect") }
                         ToolBtn { glyph: "T";      toolValue: 1; tip: App.uiText(App.language, "ImageEditToolText") }
-                        ToolBtn { iconSource: "qrc:/qml/icons/pen.svg"; toolValue: 2; tip: App.uiText(App.language, "ImageEditToolPen") }
-                        ToolBtn { iconSource: "qrc:/qml/icons/arrow.svg"; toolValue: 3; tip: App.uiText(App.language, "ImageEditToolArrow") }
-                        ToolBtn { iconSource: "qrc:/qml/icons/rect.svg"; toolValue: 4; tip: App.uiText(App.language, "ImageEditToolRect") }
-                        ToolBtn { iconSource: "qrc:/qml/icons/ellipse.svg"; toolValue: 5; tip: App.uiText(App.language, "ImageEditToolEllipse") }
+                        ToolBtn { iconName: "pen"; toolValue: 2; tip: App.uiText(App.language, "ImageEditToolPen") }
+                        ToolBtn { iconName: "arrow"; toolValue: 3; tip: App.uiText(App.language, "ImageEditToolArrow") }
+                        ToolBtn { iconName: "rect"; toolValue: 4; tip: App.uiText(App.language, "ImageEditToolRect") }
+                        ToolBtn { iconName: "ellipse"; toolValue: 5; tip: App.uiText(App.language, "ImageEditToolEllipse") }
                         // „Text ersetzen" (PDF-exklusiv): weiße Deckfläche + Textbox.
-                        ToolBtn { iconSource: "qrc:/qml/icons/replace.svg"; toolValue: 6; tip: App.uiText(App.language, "PdfEditToolReplace") }
+                        ToolBtn { iconName: "replace"; toolValue: 6; tip: App.uiText(App.language, "PdfEditToolReplace") }
                         // „Text bearbeiten" (PDF-exklusiv): Caret DIREKT in der
                         // eingebetteten Textebene.
-                        ToolBtn { iconSource: "qrc:/qml/icons/caret.svg"; toolValue: 7; tip: App.uiText(App.language, "PdfEditToolCaret") }
+                        ToolBtn { iconName: "caret"; toolValue: 7; tip: App.uiText(App.language, "PdfEditToolCaret") }
                         // Textmarkierung (PDF-exklusiv): Ziehen über Text markiert,
                         // unterstreicht oder streicht durch — je nach Stil-Knopf.
-                        ToolBtn { iconSource: "qrc:/qml/icons/markup-highlight.svg"; toolValue: 8; styleValue: 0
+                        ToolBtn { iconName: "markup-highlight"; toolValue: 8; styleValue: 0
                                   tip: App.uiText(App.language, "PdfMarkupHighlight") }
-                        ToolBtn { iconSource: "qrc:/qml/icons/markup-underline.svg"; toolValue: 8; styleValue: 1
+                        ToolBtn { iconName: "markup-underline"; toolValue: 8; styleValue: 1
                                   tip: App.uiText(App.language, "PdfMarkupUnderline") }
-                        ToolBtn { iconSource: "qrc:/qml/icons/markup-strike.svg"; toolValue: 8; styleValue: 2
+                        ToolBtn { iconName: "markup-strike"; toolValue: 8; styleValue: 2
                                   tip: App.uiText(App.language, "PdfMarkupStrike") }
                         // „Schwärzen": deckt ab UND entfernt den Text beim
                         // Export aus dem Content-Stream. Die Beschriftung
                         // bleibt kurz — die Grenzen sagt der einmalige Hinweis
                         // beim ersten Schwärzen (PdfSurface._redactHintOnce).
-                        ToolBtn { iconSource: "qrc:/qml/icons/redact.svg"; toolValue: 9
+                        ToolBtn { iconName: "redact"; toolValue: 9
                                   tip: App.uiText(App.language, "PdfEditToolRedact") }
                         // Signatur/Stempel: wie in der schmalen Leiste — erst
                         // die Bilder im Ordner, dann der Dateidialog.
-                        ToolBtn { iconSource: "qrc:/qml/icons/signature.svg"; toolValue: -1
+                        ToolBtn { iconName: "signature"; toolValue: -1
                                   tip: App.uiText(App.language, "PdfEditToolStamp")
                                   onClicked: {
                                       stampPickB.entries = panel.ctl.folderImages()
@@ -953,10 +951,10 @@ Rectangle {
                     Row {
                         id: ocrRibRow
                         anchors.centerIn: parent; spacing: 6
-                        //  Symbol statt Glyphe (Regel 29).
-                        ThemedIcon {
+                        //  Symbol statt Glyphe (Regel 28).
+                        DrawnIcon {
                             anchors.verticalCenter: parent.verticalCenter
-                            source: "qrc:/qml/icons/search.svg"; size: 14
+                            name: "search"; size: 14
                             color: ocrRibBtn.ocrOn ? App.themeTextPrimary : App.themeTextMuted
                         }
                         BusyIndicator {
@@ -1036,9 +1034,9 @@ Rectangle {
                     spacing: 2
                     Row {
                         spacing: 4
-                        AlignBtn { iconSource: "qrc:/qml/icons/align-left.svg"; alignValue: 0 }
-                        AlignBtn { iconSource: "qrc:/qml/icons/align-center.svg"; alignValue: 1 }
-                        AlignBtn { iconSource: "qrc:/qml/icons/align-right.svg"; alignValue: 2 }
+                        AlignBtn { iconName: "align-left"; alignValue: 0 }
+                        AlignBtn { iconName: "align-center"; alignValue: 1 }
+                        AlignBtn { iconName: "align-right"; alignValue: 2 }
                     }
                 }
                 Column {
@@ -1046,8 +1044,8 @@ Rectangle {
                     spacing: 2
                     Row {
                         spacing: 4
-                        VAlignBtn { iconSource: "qrc:/qml/icons/valign-top.svg"; vAlignValue: 0 }
-                        VAlignBtn { iconSource: "qrc:/qml/icons/valign-middle.svg"; vAlignValue: 1 }
+                        VAlignBtn { iconName: "valign-top"; vAlignValue: 0 }
+                        VAlignBtn { iconName: "valign-middle"; vAlignValue: 1 }
                     }
                 }
                 Column {

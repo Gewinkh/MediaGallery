@@ -220,7 +220,9 @@ Item {
     Rectangle {
         id: toolbar
         anchors { left: parent.left; right: parent.right; top: parent.top; topMargin: root.topInset }
-        height: 40
+        //  42 px wie im DOCX-Editor — die drei Editor-Leisten sind
+        //  bewusst gleich hoch (Nutzerwunsch: überall konsistent).
+        height: 42
         color: App.themeToolbarBg
         visible: root.docReady
         z: 10
@@ -230,7 +232,7 @@ Item {
         component TBtn: Rectangle {
             id: tb
             property string glyph: ""
-        property url iconSource: ""
+        property string iconName: ""
             property string tip: ""
             property bool checked: false
             property bool danger: false
@@ -243,50 +245,56 @@ Item {
             border.color: checked ? App.themeAccent : "transparent"; border.width: 1
             Text { anchors.centerIn: parent; text: tb.glyph
                    color: tb.danger ? "#e05a5a" : App.themeTextPrimary; font.pixelSize: 14
-                   visible: String(tb.iconSource).length === 0 }
-            ThemedIcon { anchors.centerIn: parent; source: tb.iconSource; size: 16
-                         visible: String(tb.iconSource).length > 0 }
+                   visible: tb.iconName.length === 0 }
+            DrawnIcon { anchors.centerIn: parent; name: tb.iconName; size: 16
+                         visible: tb.iconName.length > 0 }
             HoverHandler { id: tbHover; enabled: !tb.disabledLook }
             TapHandler { enabled: !tb.disabledLook; onTapped: tb.activated() }
             ToolTip.text: tb.tip; ToolTip.visible: tbHover.hovered && tb.tip.length > 0
         }
 
+        //  LINKS die Werkzeuge (Nutzerentscheidung 2026-08-16): das Bearbeiten
+        //  liegt damit auf derselben Seite wie im PDF- und DOCX-Editor; die
+        //  Ansicht (Zoom) sitzt rechts. Die Transliteration bleibt bewusst
+        //  rechts — sie gehört zur Eingabe, nicht zum Werkzeugkasten.
         Row {
             anchors { left: parent.left; leftMargin: 10; verticalCenter: parent.verticalCenter }
             spacing: 4
-            TBtn { iconSource: "qrc:/qml/icons/minus.svg"; tip: App.uiText(App.language, "ImageZoomOut"); onActivated: root.zoomOut() }
-            TBtn { iconSource: "qrc:/qml/icons/fit-window.svg"; tip: App.uiText(App.language, "ImageFitWindow"); checked: root._fitMode
-                   onActivated: root.fitToWindow() }
-            TBtn { glyph: "1:1"; tip: App.uiText(App.language, "ImageActualSize")
-                   onActivated: root.actualSize() }
-            TBtn { iconSource: "qrc:/qml/icons/plus.svg"; tip: App.uiText(App.language, "ImageZoomIn"); onActivated: root.zoomIn() }
-            Text { anchors.verticalCenter: parent.verticalCenter; width: 46; horizontalAlignment: Text.AlignHCenter
-                   text: Math.round(root.dispScale * 100) + "%"; color: App.themeTextMuted; font.pixelSize: 11 }
-        }
-
-        Row {
-            anchors { right: parent.right; rightMargin: 10; verticalCenter: parent.verticalCenter }
-            spacing: 4
-            // Editor-Regler (nur im Edit-Modus)
-            TranslitButton { visible: root.editCtl.editMode; anchors.verticalCenter: parent.verticalCenter }
-            TBtn { visible: root.editCtl.editMode; iconSource: "qrc:/qml/icons/eye.svg"; checked: !root.notesVisible
+            TBtn { visible: root.editCtl.editMode; iconName: "eye"; checked: !root.notesVisible
                    tip: App.uiText(App.language, "PdfEditNotesToggleTip")
                    onActivated: root.notesVisible = !root.notesVisible }
-            TBtn { visible: root.editCtl.editMode; iconSource: "qrc:/qml/icons/undo.svg"; tip: App.uiText(App.language, "PdfEditUndoTip")
+            TBtn { visible: root.editCtl.editMode; iconName: "undo"; tip: App.uiText(App.language, "PdfEditUndoTip")
                    disabledLook: !root.editCtl.canUndo; onActivated: root.editCtl.undo() }
-            TBtn { visible: root.editCtl.editMode; iconSource: "qrc:/qml/icons/redo.svg"; tip: App.uiText(App.language, "PdfEditRedoTip")
+            TBtn { visible: root.editCtl.editMode; iconName: "redo"; tip: App.uiText(App.language, "PdfEditRedoTip")
                    disabledLook: !root.editCtl.canRedo; onActivated: root.editCtl.redo() }
-            TBtn { visible: root.editCtl.editMode; iconSource: "qrc:/qml/icons/copy.svg"; tip: App.uiText(App.language, "ImageEditPasteBtn")
+            TBtn { visible: root.editCtl.editMode; iconName: "copy"; tip: App.uiText(App.language, "ImageEditPasteBtn")
                    disabledLook: !root.editCtl.hasClipboard; onActivated: root.editCtl.paste() }
             Rectangle { visible: root.editCtl.editMode; width: 1; height: 18; color: App.themeBorder
                         anchors.verticalCenter: parent.verticalCenter }
             // Edit-Modus umschalten
-            TBtn { iconSource: "qrc:/qml/icons/pen.svg"; checked: root.editCtl.editMode
+            TBtn { iconName: "pen"; checked: root.editCtl.editMode
                    tip: App.uiText(App.language, "ImageEditToggle")
                    onActivated: {
                        root.editCtl.editMode = !root.editCtl.editMode
                        if (!root.editCtl.editMode) root.editPanelVisible = false
                    } }
+        }
+
+        Row {
+            anchors { right: parent.right; rightMargin: 10; verticalCenter: parent.verticalCenter }
+            spacing: 4
+            TBtn { iconName: "minus"; tip: App.uiText(App.language, "ImageZoomOut"); onActivated: root.zoomOut() }
+            TBtn { iconName: "fit-window"; tip: App.uiText(App.language, "ImageFitWindow"); checked: root._fitMode
+                   onActivated: root.fitToWindow() }
+            TBtn { glyph: "1:1"; tip: App.uiText(App.language, "ImageActualSize")
+                   onActivated: root.actualSize() }
+            TBtn { iconName: "plus"; tip: App.uiText(App.language, "ImageZoomIn"); onActivated: root.zoomIn() }
+            Text { anchors.verticalCenter: parent.verticalCenter; width: 46; horizontalAlignment: Text.AlignHCenter
+                   text: Math.round(root.dispScale * 100) + "%"; color: App.themeTextMuted; font.pixelSize: 11 }
+            Rectangle { visible: root.editCtl.editMode; width: 1; height: 18; color: App.themeBorder
+                        anchors.verticalCenter: parent.verticalCenter }
+            //  Transliteration bleibt rechts (Nutzerwunsch).
+            TranslitButton { visible: root.editCtl.editMode; anchors.verticalCenter: parent.verticalCenter }
         }
     }
 
@@ -298,7 +306,7 @@ Item {
         horizontal: false
         surface: root
         width: implicitWidth
-        anchors { right: parent.right; top: parent.top; topMargin: root.topInset + 40
+        anchors { right: parent.right; top: parent.top; topMargin: root.topInset + toolbar.height
                   bottom: parent.bottom; bottomMargin: root.bottomInset }
         z: 11
         onCloseRequested: root.editPanelVisible = false
@@ -310,7 +318,7 @@ Item {
         horizontal: true
         surface: root
         height: implicitHeight
-        anchors { left: parent.left; right: parent.right; top: parent.top; topMargin: root.topInset + 40 }
+        anchors { left: parent.left; right: parent.right; top: parent.top; topMargin: root.topInset + toolbar.height }
         z: 11
         onCloseRequested: root.editPanelVisible = false
     }

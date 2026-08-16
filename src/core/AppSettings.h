@@ -47,6 +47,10 @@ public:
     void setMonoPlay(bool v) override;
     bool fileDropMove() const override;
     void setFileDropMove(bool v) override;
+    bool showAllFiles() const override;
+    void setShowAllFiles(bool v) override;
+    QColor textPdfColor() const override;
+    void   setTextPdfColor(const QColor& c) override;
 
     bool spellCheckEnabled() const override;
     void setSpellCheckEnabled(bool v) override;
