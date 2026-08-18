@@ -9,6 +9,7 @@
 #include <QList>
 #include <QVariantList>
 #include <QVariantMap>
+#include <QHash>
 
 #include "core/ISettings.h"
 
@@ -28,6 +29,8 @@ class AppController : public QObject {
 
     // ── Ordner-Status ───────────────────────────────────────────────────────
     Q_PROPERTY(QString currentFolder READ currentFolder NOTIFY folderChanged)
+    //  Gibt es einen Rueckweg (Alt+←)? s. openSubfolder/navigateBack.
+    Q_PROPERTY(bool canNavigateBack READ canNavigateBack NOTIFY folderHistoryChanged)
 
     // ── Einstellungen (lesbar; Setter sind Q_INVOKABLE) ─────────────────────
     Q_PROPERTY(QColor  backgroundColor READ backgroundColor NOTIFY backgroundColorChanged)
@@ -43,12 +46,14 @@ class AppController : public QObject {
     //  zum Ablegen erscheint NUR währenddessen — ein Zug soll ein Ziel haben,
     //  ohne dass dauerhaft Platz dafür draufgeht.
     Q_PROPERTY(bool    tileDragActive  READ tileDragActive  NOTIFY tileDragActiveChanged)
+    Q_PROPERTY(bool    dragLogging     READ dragLogging     CONSTANT)
     //  Ziehen auf ein Lesezeichen: verschieben (Standard) oder kopieren.
     Q_PROPERTY(bool    fileDropMove    READ fileDropMove    WRITE setFileDropMove NOTIFY fileDropMoveChanged)
     //  Begleitdateien der App in Galerie und Dateiwähler mitzeigen.
     Q_PROPERTY(bool    showAllFiles    READ showAllFiles    WRITE setShowAllFiles NOTIFY showAllFilesChanged)
     //  Vorgabe-Schriftfarbe des TXT→PDF-Exports; je Datei überschreibbar
-    //  (fileTextPdfColor & Co. weiter unten).
+    //  (MediaModel::fileTextPdfColor & Co. — die Ausnahme liegt im Sidecar des
+    //  Ordners, dem die Datei gehört).
     Q_PROPERTY(QColor  textPdfColor    READ textPdfColor    WRITE setTextPdfColor NOTIFY textPdfColorChanged)
     Q_PROPERTY(int     videoSeekStep   READ videoSeekStep   NOTIFY videoSeekStepChanged)
     //  Rechtschreibprüfung: an/aus + Sprache. Die Kacheln lesen beides und
@@ -140,6 +145,18 @@ public:
     Q_INVOKABLE void openFolderUrl(const QUrl& url);
     Q_INVOKABLE void refreshCurrentFolder();
 
+    // ── Hinein und zurueck (Unterordner) ────────────────────────────────────
+    //  `openSubfolder` ist der EINZIGE Weg, der etwas auf den Rueckweg legt:
+    //  nur ein Abstieg in einen Unterordner ist ein Schritt, den man zuruecknehmen
+    //  will. Jeder andere Ordnerwechsel (Lesezeichen, Menue, Drop, letzter
+    //  Ordner beim Start) verlaesst den Baum und LEERT den Stapel — sonst
+    //  wuechse waehrend einer Sitzung eine lange Liste, durch die niemand
+    //  zurueckgehen moechte (Festlegung des Nutzers).
+    //  Ein Vorwaerts gibt es bewusst nicht: hinein fuehrt der Doppelklick.
+    Q_INVOKABLE void openSubfolder(const QString& path);
+    Q_INVOKABLE bool navigateBack();
+    bool canNavigateBack() const { return !m_folderBackStack.isEmpty(); }
+
     // Erstellt eine leere Datei im AKTUELLEN Ordner (FilterBar „Erstellen").
     // kind: "pdf" (eine leere A4-Seite via QPdfWriter) | "html" (Minimal-
     // Skelett, UTF-8) | "txt" (leer). baseName ohne Endung; Pfadtrenner werden
@@ -148,18 +165,38 @@ public:
     // folderContentsChanged das Neuladen der Galerie an (Kachel erscheint
     // sofort, ohne auf den FileSystemWatcher zu warten). Liefert den vollen
     // Pfad der neuen Datei oder "" bei Fehler.
-    Q_INVOKABLE QString createEmptyFile(const QString& kind, const QString& baseName);
+    //  `targetFolder` leer = der geoeffnete Ordner. Sonst muss er UNTERHALB
+    //  davon liegen (Praefix-Pruefung) — die Kopfzeile eines aufgeklappten
+    //  Bereichs legt so in IHREM Ordner an, ein Knopf kann aber nichts an
+    //  beliebiger Stelle im Dateisystem erzeugen.
+    Q_INVOKABLE QString createEmptyFile(const QString& kind, const QString& baseName,
+                                        const QString& targetFolder = QString());
     Q_INVOKABLE void restoreLastFolder();
 
     // ── Drag & Drop von Ordnern/Dateien auf das Fenster ─────────────────────
-    Q_INVOKABLE void handleDroppedUrls(const QList<QUrl>& urls);
+    //  `targetFolder` leer = der geoeffnete Ordner. Sonst muss er UNTERHALB
+    //  davon liegen (dieselbe Praefix-Pruefung wie `createEmptyFile`): ein
+    //  Fremd-Drop darf ueber die Galerie nicht an beliebige Stellen schreiben.
+    //  Faellt die Pruefung durch, wird still auf den offenen Ordner
+    //  zurueckgefallen statt abzubrechen.
+    Q_INVOKABLE void handleDroppedUrls(const QList<QUrl>& urls,
+                                       const QString& targetFolder = QString());
 
     // ── Lesezeichen (Delegation an ISettings) ───────────────────────────────
     QVariantList savedFolders() const;
     //  Der Zug einer Kachel meldet sich an und ab (die Kachel blockiert
     //  währenddessen in `Drag.active = true`, deshalb umklammert sie den Aufruf).
+    //  Ein Zug meldet sich an und ab. Waehrend er laeuft, haengt hier auch der
+    //  RAD-Filter (s. eventFilter): waehrend eines `QDrag` liefert Qt keine
+    //  Radereignisse mehr an die QML-Elemente — die Zug-Maschinerie filtert sie
+    //  vorher ab. Nur ein Filter auf der Anwendung kann sie noch sehen.
     Q_INVOKABLE void beginTileDrag();
     Q_INVOKABLE void endTileDrag();
+
+protected:
+    bool eventFilter(QObject* watched, QEvent* event) override;
+
+public:
 
     Q_INVOKABLE void openBookmark(const QString& path);
     // Phase 4: vollständige Lesezeichen-Verwaltung (für SettingsDialog/Bookmark-Tab)
@@ -268,23 +305,14 @@ public:
     // ── Tags (Delegation an TagManager) ─────────────────────────────────────
     Q_INVOKABLE QStringList allTags() const;
     Q_INVOKABLE QColor      tagColor(const QString& tag) const;
-    Q_INVOKABLE QStringList tagsForFile(const QString& fileName) const;
-    Q_INVOKABLE void addTagToFile(const QString& fileName, const QString& tag);
-    Q_INVOKABLE void removeTagFromFile(const QString& fileName, const QString& tag);
-
-    // ── Datei-Metadaten (Delegation an JsonStorage) ─────────────────────────
-    Q_INVOKABLE void      setCustomDate(const QString& fileName, const QDateTime& dt);
-    Q_INVOKABLE void      clearCustomDate(const QString& fileName);
-
-    //  Schriftfarbe des TXT→PDF-Exports JE DATEI. `fileTextPdfColor` liefert
-    //  immer eine benutzbare Farbe: die eigene der Datei, sonst die Vorgabe.
-    //  Der Parameter ist ein PFAD oder eine URL — anders als bei setCustomDate,
-    //  weil der Texteditor nur den vollen Pfad kennt; der Dateiname wird hier
-    //  abgetrennt.
-    Q_INVOKABLE QColor fileTextPdfColor(const QString& filePathOrUrl) const;
-    Q_INVOKABLE bool   hasFileTextPdfColor(const QString& filePathOrUrl) const;
-    Q_INVOKABLE void   setFileTextPdfColor(const QString& filePathOrUrl, const QColor& c);
-    Q_INVOKABLE void   clearFileTextPdfColor(const QString& filePathOrUrl);
+    //  ENTFALLEN — alles, was EINE DATEI betrifft, liegt jetzt im Modell:
+    //  `tagsForFile`/`addTagToFile`/`removeTagFromFile`, `setCustomDate`/
+    //  `clearCustomDate` und `fileTextPdfColor` & Co. nahmen den blanken
+    //  DATEINAMEN und trafen damit immer das Sidecar des GEOEFFNETEN Ordners.
+    //  Fuer eine Datei aus einem aufgeklappten Unterordner war das das falsche.
+    //  Der Ersatz nimmt den PFAD und routet auf den richtigen Ordner:
+    //  `MediaModel::tagsOfFile`/`addTag`/`removeTag`/`setCustomDate`/
+    //  `clearCustomDate`/`fileTextPdfColor` & Co. (s. `## Media`).
 
     // ── i18n (Delegation an Strings) ────────────────────────────────────────
     // key == Ganzzahlwert von StringKey (siehe Strings.h). Sugar-Enum-Export
@@ -315,6 +343,8 @@ public:
     QString menuVideoNativeText()    const;
     QString menuVideoExternalText()  const;
     bool tileDragActive() const { return m_tileDragActive; }
+    //  Nur fuer die Fehlersuche: schaltet die QML-Seite ihre Protokollzeilen an.
+    bool dragLogging() const { return qEnvironmentVariableIsSet("MG_DRAGLOG"); }
     bool fileDropMove() const;
     bool showAllFiles() const;
     void setShowAllFiles(bool v);
@@ -329,6 +359,7 @@ public:
 
 signals:
     void folderOpened(const QString& path);
+    void folderHistoryChanged();
     void folderChanged();
     void folderContentsChanged();   // Inhalt änderte sich (Drop/Refresh) → Galerie neu laden (Phase 2)
     void statusMessage(const QString& text);
@@ -348,6 +379,10 @@ signals:
     void optionsVisibleChanged();
     void savedFoldersChanged();
     void tileDragActiveChanged();
+    //  Mausrad WAEHREND eines Zuges — `angleDelta().y()`. Die Galerie scrollt
+    //  daraufhin selbst. Kommt nichts an, hat die Plattform das Rad im Zug
+    //  ueberhaupt nicht weitergereicht (dann bleibt das Randscrollen).
+    void dragWheel(int angleDeltaY);
     void fileDropMoveChanged();
     void showAllFilesChanged();
     void textPdfColorChanged();
@@ -360,6 +395,13 @@ signals:
     void categoriesChanged();
 
 private:
+    //  Rueckweg fuer Alt+← — nur Abstiege in Unterordner, gedeckelt. Ein Deckel
+    //  ist noetig, weil sonst jeder Abstieg einer langen Sitzung liegen bliebe.
+    static constexpr int kMaxFolderBack = 64;
+    QStringList m_folderBackStack;
+    void clearFolderHistory();
+
+
     // Theme-Lese-Helfer
     QColor themeBackground()  const;
     QColor themeCard()        const;
@@ -378,6 +420,10 @@ private:
     ISettings&     m_settings;
     FolderService& m_folderService;
     bool           m_tileDragActive = false;
+    //  Nur fuer die Fehlersuche (Umgebungsvariable MG_DRAGLOG=1): zaehlt, welche
+    //  Ereignistypen waehrend eines Zuges ueberhaupt bei der Anwendung ankommen.
+    bool               m_dragLog = false;
+    QHash<int, int>    m_dragEventCounts;
 
     JsonStorage&   m_storage;
     TagManager&    m_tagManager;

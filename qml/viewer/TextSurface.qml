@@ -40,13 +40,17 @@ Item {
         //  wird: eine QML-Bindung hängt nur an dem, was sie tatsächlich anfasst —
         //  stünde sie im else-Zweig, bliebe eine Datei ohne eigene Farbe beim
         //  Ändern der Vorgabe auf dem alten Wert stehen.
+        //  Über den PFAD ans Modell: die Ausnahme je Datei liegt im Sidecar des
+        //  Ordners, dem die Datei gehört. Kennt das Modell sie nicht (oder hat
+        //  sie keine eigene Wahl), gilt die globale Vorgabe.
         var vorgabe = App.textPdfColor
-        return (root._inkRev, root.currentPath.length > 0)
-               ? App.fileTextPdfColor(root.currentPath) : vorgabe
+        if (!(root._inkRev, root.currentPath.length > 0)) return vorgabe
+        var own = mediaModel.fileTextPdfColor(root.currentPath)
+        return (own && own.a > 0) ? own : vorgabe
     }
     readonly property bool _pdfInkOwn:
         (root._inkRev, root.currentPath.length > 0)
-        && App.hasFileTextPdfColor(root.currentPath)
+        && mediaModel.hasFileTextPdfColor(root.currentPath)
 
     // HTML-Quelltext bekommt eine eigene Editor-Hintergrundfarbe (Design-Tab),
     // getrennt von TXT/Code — daher Endungserkennung aus dem aktuellen Pfad.
@@ -140,7 +144,7 @@ Item {
                         title: App.uiText(App.language, "TextPdfColorTitle")
                         selectedColor: root._pdfInk
                         onColorPicked: function (c) {
-                            App.setFileTextPdfColor(root.currentPath, c)
+                            mediaModel.setFileTextPdfColor(root.currentPath, c)
                             root._inkRev++
                             selectedColor = Qt.binding(function () { return root._pdfInk })
                         }
@@ -172,7 +176,7 @@ Item {
                         HoverHandler { id: inkResetHover }
                         TapHandler {
                             onTapped: {
-                                App.clearFileTextPdfColor(root.currentPath)
+                                mediaModel.clearFileTextPdfColor(root.currentPath)
                                 root._inkRev++
                             }
                         }

@@ -8,7 +8,12 @@
 
 // Docx steht VOR Unknown (Viewer-Typtabelle: 5 = DOCX-Editor); Typen werden
 // stets frisch aus der Endung erkannt — keine numerische Persistenz.
-enum class MediaType { Image, Video, Audio, Pdf, Text, Docx, Unknown };
+//
+// Folder steht am ENDE, obwohl Ordner in der Galerie ZUERST erscheinen: die
+// Zahlen sind in QML festgeschrieben (MediaTile: 5 = Docx, 6 = Unknown), ein
+// Einschub davor haette jede dieser Stellen verschoben. Die Reihenfolge der
+// Anzeige macht ohnehin MediaProxyModel::lessThan, nicht der Enum-Wert.
+enum class MediaType { Image, Video, Audio, Pdf, Text, Docx, Unknown, Folder };
 
 // ─────────────────────────────────────────────────────────────────────────────
 //  Rein lexikalische Pfad-Zerlegung (kein QFileInfo, kein Dateisystemzugriff).
@@ -54,6 +59,15 @@ struct MediaItem {
     bool hasCustomDate = false;
     qint64 fileSize = 0;
     MediaType type = MediaType::Unknown;
+
+    //  Ordner-GELTUNGSBEREICH dieser Zeile: Index in die Bereichstabelle von
+    //  MediaModel (0 = der geoeffnete Ordner, >0 = ein aufgeklappter
+    //  Unterordner). Bewusst ein int und kein Pfad-String: Filter und
+    //  Sortierung brauchen ihn bei JEDEM Vergleich, und nur der Index fuehrt in
+    //  O(1) zur Elternkette (der Pfad allein taete das nicht).
+    int scope = 0;
+
+    bool isFolder() const { return type == MediaType::Folder; }
 
     QString fileName() const { return mg::baseNameView(filePath).toString(); }
     QString extension() const { return mg::suffixView(filePath).toString().toLower(); }

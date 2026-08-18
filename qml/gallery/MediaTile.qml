@@ -20,7 +20,12 @@ Rectangle {
     // Model-Rollen (vom Delegate gesetzt)
     property string filePath: ""
     property string displayName: ""
-    property int    mediaType: 6      // 0 Image,1 Video,2 Audio,3 Pdf,4 Text,5 Docx,6 Unknown
+    property int    mediaType: 6      // 0 Image,1 Video,2 Audio,3 Pdf,4 Text,5 Docx,6 Unknown,7 Folder
+    //  Nur Ordnerkacheln: aufgeklappt? (Modellrolle `expanded`)
+    property bool   expanded: false
+    //  Nur Ordnerkacheln: Medien darin. −1 = noch nicht gezaehlt (die Zeile
+    //  bleibt dann leer, statt kurz „0 Medien" zu behaupten).
+    property int    childCount: -1
     property string typeLabel: ""
     property var    tags: []
     property var    dateTime
@@ -41,6 +46,14 @@ Rectangle {
     //  Begleitdatei entfernen: kind 1 = Notizen/Zeichnungen (Sidecar),
     //  2 = Sicherungskopie (.bak). Die Rückfrage führt GalleryView.
     signal companionRemoveRequested(string filePath, int kind)
+    //  Ordnerkachel: Doppelklick oeffnet den Ordner als neue Hauptebene.
+    signal folderOpenRequested(string folderPath)
+    signal folderRenameRequested(string folderPath, string currentName)
+    signal folderDeleteRequested(string folderPath, string displayName, int itemCount)
+    //  Zielhinweis beim Ablegen — gesetzt von der EINEN Ablegefläche der
+    //  Galerie (s. GalleryView ▸ hoverFolder). Eine eigene `DropArea` je Kachel
+    //  war messbar teurer und wuchs mit der Kachelzahl (bench_dnd).
+    property bool dropTarget: false
 
     readonly property bool tagged: modeTag.length > 0 && tags.indexOf(modeTag) >= 0
     readonly property bool dimmed: tagMode === 1 && modeTag.length > 0 && !tagged
@@ -52,20 +65,31 @@ Rectangle {
     //  Verschlagworten, Umbenennen und Löschen funktionieren weiter.
     readonly property bool unavailable: mediaType === 5 && !App.docxAvailable
 
+    //  Eine Ordnerkachel ist KEIN Medium: kein Thumbnail, kein Play-Glyph, kein
+    //  Herausziehen. Sie zeichnet sich selbst (Regel 28) und traegt ihren Namen
+    //  dauerhaft — ein Ordner ohne sichtbaren Namen waere nicht unterscheidbar.
+    readonly property bool isFolder: mediaType === 7
+
     // Rundum gleichmaessig abgerundet (oben wie unten).
     radius: 10
-    color: App.themeCard
+    color: (tile.isFolder && tile.expanded)
+           ? Qt.rgba(App.themeAccent.r, App.themeAccent.g, App.themeAccent.b, 0.13)
+           : App.themeCard
     clip: true
     opacity: (dimmed || unavailable) ? 0.45 : 1.0
     Behavior on opacity { NumberAnimation { duration: 120 } }
 
-    border.width: tagged ? 2 : 1
-    border.color: tagged ? App.themeAccent : App.themeBorder
+    //  Ein AUFGEKLAPPTER Ordner hebt sich ab: Akzentrahmen, angehobener
+    //  Kachelgrund und ein anderes Symbol (offener Ordner). Ohne das war nicht
+    //  zu sehen, welcher Ordner die Flaeche darunter geoeffnet hat.
+    border.width: (tagged || (tile.isFolder && tile.expanded)) ? 2 : 1
+    border.color: (tagged || (tile.isFolder && tile.expanded)) ? App.themeAccent
+                                                               : App.themeBorder
 
     // ── Platzhalter (während/!= ready) ──────────────────────────────────────
     Text {
         anchors.centerIn: parent
-        visible: tile.thumbState !== 1 && !tile.covered
+        visible: !tile.isFolder && tile.thumbState !== 1 && !tile.covered
         text: tile.thumbState === 2 ? "\u26A0" : "\u2026"
         color: App.themeTextMuted
         font.pixelSize: 22
@@ -76,7 +100,8 @@ Rectangle {
         id: thumb
         anchors.fill: parent
         anchors.margins: 1
-        visible: tile.thumbState === 1 && status === Image.Ready && !tile.covered
+        visible: !tile.isFolder && tile.thumbState === 1
+                 && status === Image.Ready && !tile.covered
         source: tile.thumbUrl
         asynchronous: true
         cache: true
@@ -84,6 +109,76 @@ Rectangle {
         sourceSize.width: App.tileWidth
         sourceSize.height: App.tileHeight
         mipmap: true
+    }
+
+    // ── Ordnerkachel ────────────────────────────────────────────────────────
+    Column {
+        visible: tile.isFolder
+        anchors.centerIn: parent
+        width: parent.width - 16
+        spacing: Math.max(4, tile.height * 0.04)
+
+        DrawnIcon {
+            anchors.horizontalCenter: parent.horizontalCenter
+            name: tile.expanded ? "folder-open" : "folder"
+            //  Etwas kleiner als die Kachel — Rand, Name und Anzahl brauchen
+            //  Platz; darunter darf das Symbol aber ruhig gross sein.
+            size: Math.max(28, Math.min(tile.width, tile.height) * 0.56)
+            color: App.themeAccent
+        }
+
+        Text {
+            width: parent.width
+            horizontalAlignment: Text.AlignHCenter
+            text: tile.displayName
+            color: App.themeTextPrimary
+            font.pixelSize: Math.max(11, Math.min(16, tile.height * 0.09))
+            elide: Text.ElideMiddle
+            maximumLineCount: 2
+            wrapMode: Text.WrapAtWordBoundaryOrAnywhere
+        }
+
+        Text {
+            width: parent.width
+            horizontalAlignment: Text.AlignHCenter
+            //  Solange nicht gezaehlt wurde (−1), bleibt die Zeile leer.
+            visible: tile.childCount >= 0
+            text: tile.childCount === 0
+                  ? App.uiText(App.language, "FolderEmpty")
+                  : App.uiText(App.language, "FolderMediaCount").arg(tile.childCount)
+            color: App.themeTextMuted
+            font.pixelSize: Math.max(9, Math.min(13, tile.height * 0.07))
+            elide: Text.ElideRight
+        }
+    }
+
+    //  Die Anzahl wird sichtbarkeitsgesteuert geholt — wie ein Thumbnail, und
+    //  wie dort asynchron (s. MediaModel::ensureFolderCount).
+    onFilePathChanged: if (tile.isFolder) mediaModel.ensureFolderCount(tile.filePath)
+    Component.onCompleted: if (tile.isFolder) mediaModel.ensureFolderCount(tile.filePath)
+
+    // ── Typ-Marke, wenn es KEIN Bild gibt ───────────────────────────────────
+    //  Die Endung steckt sonst nur im erzeugten Thumbnail (dort malt sie der
+    //  ThumbnailLoader hinein). Eine `.bak` oder ein Archiv hat aber gar keins:
+    //  die Kachel blieb leer und war von nichts zu unterscheiden.
+    Rectangle {
+        visible: !tile.isFolder && !tile.covered
+                 && tile.thumbState !== 1 && tile.typeLabel.length > 0
+        anchors.right: parent.right
+        anchors.top: parent.top
+        anchors.margins: 6
+        width: badgeText.implicitWidth + 10
+        height: badgeText.implicitHeight + 4
+        radius: 4
+        color: Qt.rgba(App.themeAccent.r, App.themeAccent.g, App.themeAccent.b, 0.85)
+        Text {
+            id: badgeText
+            anchors.centerIn: parent
+            text: tile.typeLabel
+            color: "#0b0f10"
+            font.pixelSize: 10
+            font.bold: true
+        }
     }
 
     // ── Video-Play-Glyph (zentral) ──────────────────────────────────────────
@@ -115,22 +210,23 @@ Rectangle {
         }
     }
 
-    // ── Datei aus der App HERAUSziehen (in Dateimanager, Mail, Chat, Upload) ─
-    //  `Drag.Automatic` + `startDrag()` ist der EINZIGE Weg, der das Fenster
-    //  verlässt: das sonst im Projekt benutzte `Drag.active` (mit `Drag.keys`
-    //  und `DropArea`) bleibt app-intern. Übergeben wird `text/uri-list` — also
-    //  die DATEI, wie aus einem Dateimanager; damit nimmt sie jedes Ziel an,
-    //  das Dateien annimmt (Anhänge, Uploads, Chat-Fenster).
-    //  **Nur kopieren:** mit `MoveAction` dürfte ein Zielprogramm die Datei aus
-    //  dem Ordner des Nutzers ENTFERNEN.
-    Item {
-        id: dragPayload
+    // ── Datei aus der App HERAUSziehen ──────────────────────────────────────
+    //  Der Zug-Träger liegt NICHT mehr hier, sondern EINMAL in der GalleryView.
+    //  Grund: `Drag.active = true` blockiert bis zum Loslassen. Stand dieser
+    //  Aufruf im Handler der Kachel, lag deren JavaScript-Rahmen die ganze Zeit
+    //  auf dem Stapel — und sobald die Ansicht während des Zuges scrollte
+    //  (Randscrollen), räumte die ListView genau diese Kachel weg. Die App
+    //  stürzte ab (vom Nutzer gemeldet). Die Kachel bittet deshalb nur noch.
+    signal dragStartRequested(string filePath, string thumbUrl)
+
+    //  Waehrend ein Zug ueber diesem Ordner steht, hebt er sich hervor.
+    Rectangle {
+        visible: tile.dropTarget
         anchors.fill: parent
-        Drag.dragType: Drag.Automatic
-        Drag.supportedActions: Qt.CopyAction
-        Drag.mimeData: { "text/uri-list": App.fileUrl(tile.filePath) }
-        //  Am Zeiger hängt die Miniatur der Kachel — sonst zieht man ins Blaue.
-        Drag.imageSource: tile.thumbUrl
+        radius: tile.radius
+        color: Qt.rgba(App.themeAccent.r, App.themeAccent.g, App.themeAccent.b, 0.22)
+        border.width: 2
+        border.color: App.themeAccent
     }
 
     // ── Interaktion (Bildbereich): Aktivieren / Tag-Toggle / Kontextmenü ─────
@@ -144,7 +240,10 @@ Rectangle {
         property bool  dragArmed: false
         onPressed: function(mouse) {
             pressPos = Qt.point(mouse.x, mouse.y)
-            dragArmed = (mouse.button === Qt.LeftButton) && !tile.unavailable
+            //  Ordner werden (noch) nicht herausgezogen — ein Ordner-Zug ins
+            //  Fremdprogramm ist eine eigene Zusage, keine Nebenwirkung.
+            dragArmed = (mouse.button === Qt.LeftButton)
+                        && !tile.unavailable && !tile.isFolder
         }
         onReleased: dragArmed = false
         onPositionChanged: function(mouse) {
@@ -171,14 +270,29 @@ Rectangle {
             //  danach selbst wieder auf false. Genau deshalb kann die Leiste zum
             //  Ablegen (Lesezeichen) davor eingeblendet und danach wieder
             //  abgeräumt werden — dazwischen läuft die Ereignisschleife des Zuges.
-            App.beginTileDrag()
-            dragPayload.Drag.active = true
-            App.endTileDrag()
+            //  Werte HERAUSLÖSEN und die Kachel verlassen: der Zug läuft dann
+            //  in der GalleryView, nicht in diesem Handler.
+            tile.dragStartRequested(tile.filePath, tile.thumbUrl)
         }
         onDoubleClicked: function(mouse) {
             // Ohne ZLIB öffnet die DOCX-Kachel nicht — der Editor bliebe leer.
             if (tile.unavailable)
                 return
+            //  Ein Ordner ist keine Datei: `activated` fuehrt in den Vollbild-
+            //  Betrachter. Der Doppelklick oeffnet ihn stattdessen als neue
+            //  Hauptebene — und nimmt dem einfachen Klick sein Aufklappen
+            //  wieder ab (der ist beim Doppelklick zwangslaeufig schon
+            //  gelaufen; deshalb wartet er auf `folderClickTimer`).
+            if (tile.isFolder) {
+                //  Der einfache Klick ist schon gelaufen und hat umgeschaltet —
+                //  hier wieder zurueck, damit der Zustand stimmt, falls das
+                //  Oeffnen nicht zustande kommt.
+                if (mouse.button === Qt.LeftButton) {
+                    mediaModel.toggleFolder(tile.filePath)
+                    tile.folderOpenRequested(tile.filePath)
+                }
+                return
+            }
             if (mouse.button === Qt.LeftButton)
                 tile.activated(tile.filePath)
         }
@@ -186,6 +300,17 @@ Rectangle {
             // Ohne aktiven View-Modus öffnet Rechtsklick das Kontextmenü
             // (Tag/Kategorie hinzufügen). Die Modus-Interaktionen (Group/
             // Add-to-Tag) bleiben unverändert und haben Vorrang.
+            //  Linksklick klappt SOFORT auf bzw. zu. Auf die Doppelklick-Frist
+            //  zu warten war zwar sauber, fuehlte sich aber wie eine halbe
+            //  Sekunde Haenger an (Nutzerbefund) — der Doppelklick nimmt das
+            //  Aufklappen stattdessen zurueck, bevor er den Ordner oeffnet.
+            if (tile.isFolder) {
+                if (mouse.button === Qt.LeftButton)
+                    mediaModel.toggleFolder(tile.filePath)
+                else if (mouse.button === Qt.RightButton)
+                    tile.openFolderMenu()
+                return
+            }
             if (tile.modeTag.length === 0) {
                 if (mouse.button === Qt.RightButton)
                     tile.openContextMenu()
@@ -232,6 +357,40 @@ Rectangle {
             ctxLoader.item.popup()
     }
 
+    //  Ordner haben ihr eigenes, kurzes Menü — Tags und Kategorien gehören
+    //  Dateien, ein Ordner will geöffnet, umbenannt oder gelöscht werden.
+    //  Ebenfalls lazy: sonst entstünde je Ordnerkachel ein Popup.
+    Loader {
+        id: folderCtxLoader
+        active: false
+        sourceComponent: folderMenuComponent
+    }
+    function openFolderMenu() {
+        folderCtxLoader.active = true
+        if (folderCtxLoader.item)
+            folderCtxLoader.item.popup()
+    }
+
+    Component {
+        id: folderMenuComponent
+        ThemedMenu {
+            MenuItem {
+                text: App.uiText(App.language, "CtxFolderOpen")
+                onTriggered: tile.folderOpenRequested(tile.filePath)
+            }
+            MenuItem {
+                text: App.uiText(App.language, "CtxFolderRename")
+                onTriggered: tile.folderRenameRequested(tile.filePath, tile.displayName)
+            }
+            MenuSeparator {}
+            MenuItem {
+                text: App.uiText(App.language, "CtxFolderDelete")
+                onTriggered: tile.folderDeleteRequested(tile.filePath, tile.displayName,
+                                                        tile.childCount)
+            }
+        }
+    }
+
     Component {
         id: ctxMenuComponent
 
@@ -247,7 +406,7 @@ Rectangle {
                 ctxMenu.companions = mediaModel.companionKinds(tile.filePath)
                 ctxTags    = App.allTags()
                 ctxCats    = Tags.categoriesFlat()
-                fileTags   = App.tagsForFile(tile.fileName)
+                fileTags   = mediaModel.tagsOfFile(tile.filePath)
                 fileCatIds = Tags.categoryIdsForFile(tile.fileName)
             }
 
@@ -318,6 +477,9 @@ Rectangle {
 
     // ── Info-Overlay (Name/Datum/Tags, Inline-Rename) ───────────────────────
     MediaOverlay {
+        //  Ordner tragen ihren Namen selbst; Umbenennen, Tags und Datum
+        //  gehoeren zu den Ordner-Operationen, nicht hierher.
+        visible: !tile.isFolder
         anchors.left: parent.left
         anchors.right: parent.right
         anchors.bottom: parent.bottom

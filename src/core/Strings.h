@@ -476,6 +476,26 @@ enum class StringKey {
     PdfOcrTip,                 // Tooltip des OCR-Buttons
     LibMissingTesseract,       // Hover-Hinweis: Feature braucht Tesseract
     LibMissingZlib,            // Hover-Hinweis: Feature braucht ZLIB
+
+    //  ── Unterordner in der Galerie ─────────────────────────────────────────
+    FolderMediaCount,          // Ordnerkachel: „%1 Medien"
+    FolderEmpty,               // Ordnerkachel: leerer Ordner
+    FolderNew,                 // Knopf „+ Ordner"
+    FolderNewTitle,            // Dialog: neuen Ordner anlegen
+    FolderNamePlaceholder,     // Eingabefeld: Ordnername
+    FolderNameInvalid,         // Meldung: Name unbrauchbar
+    FolderExists,              // Meldung: Name schon vergeben
+    FolderCreateFailed,        // Meldung: Anlegen fehlgeschlagen
+    FolderRenameTitle,         // Dialog: Ordner umbenennen
+    CtxFolderOpen,             // Kontextmenue: Ordner oeffnen
+    CtxFolderRename,           // Kontextmenue: Ordner umbenennen
+    CtxFolderDelete,           // Kontextmenue: Ordner loeschen
+    DeleteFolderTitle,         // Rueckfrage: Ordner loeschen
+    DeleteFolderText,          // Rueckfrage: Text mit Name und Anzahl
+    DeleteFolderNoTrash,       // Meldung: ohne Papierkorb kein Loeschen
+    FolderDropBar,             // Ablegeleiste: „Ordner hier"
+    FolderDropMoved,           // Meldung: Datei in den Ordner verschoben
+    FolderDropCopied,          // Meldung: Datei in den Ordner kopiert
     PdfOcrBusy,                // Toast: OCR läuft
     PdfOcrDone,                // Toast: %1 Zeilen erkannt
     PdfOcrNone,                // Toast: kein Text erkannt

@@ -127,7 +127,7 @@ Item {
 
         // ── Optionen-Modus (S): „Tags anzeigen" / „Kategorien anzeigen" ─────
         //  Zwei Buttons je Kachel; Klick zeigt die Liste der jeweiligen Werte
-        //  DIESES Mediums (Tags via App.tagsForFile, Kategorien via
+        //  DIESES Mediums (Tags via mediaModel.tagsOfFile, Kategorien via
         //  Tags.categoriesForFile — beides frisch aus der JSON-Persistenz).
         Row {
             id: optRow
@@ -139,7 +139,7 @@ Item {
                          overlay.filePath.lastIndexOf("\\")) + 1)
 
             // ── „+"-Button (S-Modus): neuen Tag erstellen — LINKS vom Tags-Button ──
-            //  Bindet an die bestehende Daten-Logik an: App.addTagToFile registriert
+            //  Bindet an die bestehende Daten-Logik an: mediaModel.addTag registriert
             //  den Tag (falls neu) und weist ihn diesem Medium zu.
             Rectangle {
                 width: 18; height: 18; radius: 9
@@ -168,7 +168,7 @@ Item {
                 TapHandler {
                     onTapped: {
                         valuesPopup.title  = App.uiText(App.language, "OverlayShowTags")
-                        valuesPopup.values = App.tagsForFile(optRow.fileName)
+                        valuesPopup.values = mediaModel.tagsOfFile(overlay.filePath)
                         valuesPopup.open()
                     }
                 }
@@ -238,7 +238,7 @@ Item {
                     Math.max(overlay.filePath.lastIndexOf("/"),
                              overlay.filePath.lastIndexOf("\\")) + 1)
                 if (addPopup.mode === "tag") {
-                    App.addTagToFile(fn, v)
+                    mediaModel.addTag(overlay.filePath, v)
                 } else {
                     var newId = Tags.addRootCategory(v, Qt.rgba(0, 0.7, 0.63, 1), false)
                     if (newId && newId.length > 0)

@@ -413,6 +413,15 @@ Item {
         "fit-window":   { lines: [[8,9,6,9], [6,9,6,7], [16,9,18,9], [18,9,18,7],
                                   [8,15,6,15], [6,15,6,17], [16,15,18,15], [18,15,18,17]],
                           boxes: [[3.5,4.5,17,15,1]] },
+        //  Ordner: Reiter + Korpus als gefuellte Flaechen. Bewusst gefuellt und
+        //  nicht als Rahmen — die Ordnerkachel zeigt das Symbol gross, und ein
+        //  2-px-Rahmen wirkt in dieser Groesse duenn und leer.
+        "folder":       { fills: [[3,5.5,8.5,3,1], [3,7,18,12.5,1.5]] },
+        //  Offener Ordner: Rueckwand blasser (Alpha), Vorderblatt tiefer und
+        //  breiter davor — die Stufe dazwischen liest sich als „aufgeklappt".
+        //  Zwei Toene aus EINER Farbe, weil `fills` einen Alpha-Wert kennt.
+        "folder-open":  { fills: [[3,5.5,8.5,3,1,0.5], [3,7,17,7,1.5,0.5],
+                                  [4.5,11,18.5,8.5,1.5,1]] },
         "image":        { lines: [[4,17,9,12], [9,12,13,16], [13,16,16,14], [16,14,20,17]],
                           boxes: [[3.5,5,17,14,1.5]], rings: [[8.5,10,1.6]] },
         "markup-highlight": { lines: [[3.5,18,20.5,18,3]], boxes: [[3.5,6,17,8,1]] },

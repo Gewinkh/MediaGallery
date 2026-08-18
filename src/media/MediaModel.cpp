@@ -1,5 +1,7 @@
 #include "media/MediaModel.h"
 #include "core/JsonStorage.h"
+#include "media/MediaProxyModel.h"
+#include "tags/TagCategory.h"
 #include "tags/TagManager.h"
 #include "media/ThumbnailLoader.h"
 
@@ -11,8 +13,179 @@
 #include <QFileInfo>
 #include <QFile>
 #include <QUuid>
+#include <functional>
+#include <algorithm>
+#include <QPointer>
+#include <QRunnable>
+#include <QThreadPool>
 
 #include "core/MemoryUtils.h"   // mg::trimHeap — RSS-Rückgabe nach Ordnerwechsel
+
+namespace {
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  Ein Verzeichnis ZAEHLEN — im Worker, nach dem Hausmuster (Regel 8).
+//  Gezaehlt wird, was die Galerie dort zeigen wuerde: Unterordner und erkannte
+//  Mediendateien. Ein Verzeichnis kann Zehntausende Eintraege haben; auf dem
+//  GUI-Thread waere das ein Ruckler je sichtbarer Ordnerkachel.
+class FolderCountTask : public QRunnable {
+public:
+    FolderCountTask(QPointer<MediaModel> owner, QString folder, QString sidecar,
+                    bool showAll, int generation)
+        : m_owner(std::move(owner)), m_folder(std::move(folder))
+        , m_sidecar(std::move(sidecar)), m_showAll(showAll), m_generation(generation) {
+        setAutoDelete(true);
+    }
+
+    void run() override {
+        int n = 0;
+        QDirIterator it(m_folder, QDir::Files | QDir::Dirs | QDir::NoDotAndDotDot,
+                        QDirIterator::NoIteratorFlags);
+        while (it.hasNext()) {
+            it.next();
+            const QFileInfo fi = it.fileInfo();
+            if (fi.isDir()) { ++n; continue; }
+            if (!m_showAll && mg::isCompanionFile(fi.fileName(), m_sidecar)) continue;
+            if (!m_showAll && MediaItem::detectType(fi.filePath()) == MediaType::Unknown)
+                continue;
+            ++n;
+        }
+        //  Zugestellt wird am BESITZER, nicht an `qApp`: das `qApp`-Makro
+        //  castet `QCoreApplication::instance()` auf `QGuiApplication` — in
+        //  einem Prozess ohne GUI (jeder Testtreiber) ist das ein ungueltiger
+        //  Downcast und damit undefiniertes Verhalten. UBSan meldet genau das
+        //  („downcast of address … which does not point to an object of type
+        //  'QGuiApplication'").
+        //
+        //  Der Zeiger ist gueltig, weil `~MediaModel` den Pool vorher leert und
+        //  auslaufen laesst — es kann also kein Auftrag mehr laufen, waehrend
+        //  der Besitzer stirbt. Der QPointer bleibt als zweite Sicherung im
+        //  GUI-Thread (Muster PdfScanTask).
+        MediaModel* owner = m_owner.data();
+        if (!owner) return;
+        const QString folder = m_folder;
+        const int gen = m_generation;
+        //  KEIN zweiter QPointer im Lambda: er waere ueberfluessig (der Pool
+        //  laeuft vor der Zerstoerung aus, und Qt entfernt gepostete Ereignisse
+        //  eines sterbenden QObject ohnehin) und traegt einen Referenzzaehler
+        //  ueber die Thread-Grenze, den Helgrind als Rennen meldet.
+        QMetaObject::invokeMethod(owner, [owner, folder, n, gen]() {
+            owner->noteFolderCount(folder, n, gen);
+        }, Qt::QueuedConnection);
+    }
+
+private:
+    QPointer<MediaModel> m_owner;
+    QString m_folder;
+    QString m_sidecar;
+    bool    m_showAll = false;
+    int     m_generation = 0;
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  Den Baum unterhalb des offenen Ordners nach Treffern durchsuchen.
+//
+//  Je Ordner wird EINMAL sein Sidecar gelesen (Tags und Kategorien liegen dort)
+//  und dann jede Datei mit `MediaProxyModel::acceptsFile` geprueft — derselben
+//  Funktion wie in der Anzeige. Ein Ordner zaehlt auch dann als Treffer, wenn
+//  sein eigener NAME passt: sonst waere ein tief liegender Ordner mit
+//  passendem Namen nicht erreichbar.
+//
+//  Symlinks werden NICHT verfolgt: das schuetzt vor Verzeichnisschleifen und
+//  spart je Eintrag ein `realpath` (Festlegung des Nutzers: sicher UND schnell).
+// ─────────────────────────────────────────────────────────────────────────────
+class DeepScanTask : public QRunnable {
+public:
+    DeepScanTask(QPointer<MediaModel> owner, QString root,
+                 MediaProxyModel::FilterCriteria crit, QStringList categoryNames,
+                 bool showAll, int generation,
+                 std::shared_ptr<std::atomic<bool>> cancel)
+        : m_owner(std::move(owner)), m_root(std::move(root))
+        , m_crit(std::move(crit)), m_categoryNames(std::move(categoryNames))
+        , m_showAll(showAll), m_generation(generation), m_cancel(std::move(cancel)) {
+        setAutoDelete(true);
+    }
+
+    void run() override {
+        QStringList hits;
+        QStringList stack{ m_root };
+        //  Deckel gegen einen versehentlich riesigen Baum: die Suche soll
+        //  Ordner finden, nicht das halbe Dateisystem indizieren.
+        int visited = 0;
+        while (!stack.isEmpty() && visited < 20000) {
+            if (m_cancel && m_cancel->load()) return;
+            const QString dir = stack.takeLast();
+            ++visited;
+
+            const bool isRoot = (dir == m_root);
+            const QString sidecar = mg::folderSidecarName(dir);
+
+            //  Sidecar dieses Ordners: Tags, eigenes Datum, Kategorien.
+            //  Eine EIGENE Instanz im Worker; sie liest nur.
+            JsonStorage st;
+            st.loadFolder(dir);
+
+            MediaProxyModel::FilterCriteria crit = m_crit;
+            if (crit.categoryActive) {
+                QSet<QString> files;
+                std::function<void(const QList<TagCategory>&)> walk =
+                    [&](const QList<TagCategory>& list) {
+                        for (const TagCategory& c : list) {
+                            if (m_categoryNames.contains(c.name))
+                                for (const QString& f : c.files) files.insert(f);
+                            walk(c.children);
+                        }
+                    };
+                walk(st.categoriesRef());
+                crit.catFiles = files;
+            }
+
+            bool hit = !isRoot && !crit.search.isEmpty()
+                    && QFileInfo(dir).fileName().contains(crit.search, Qt::CaseInsensitive);
+
+            QDirIterator it(dir, QDir::Files | QDir::Dirs | QDir::NoDotAndDotDot,
+                            QDirIterator::NoIteratorFlags);
+            while (it.hasNext()) {
+                if (m_cancel && m_cancel->load()) return;
+                it.next();
+                const QFileInfo fi = it.fileInfo();
+                if (fi.isDir()) {
+                    if (!fi.isSymLink()) stack.append(fi.filePath());
+                    continue;
+                }
+                if (isRoot || hit) continue;   // Wurzel ist ohnehin sichtbar
+                if (!m_showAll && mg::isCompanionFile(fi.fileName(), sidecar)) continue;
+                const MediaType t = MediaItem::detectType(fi.filePath());
+                if (t == MediaType::Unknown && !m_showAll) continue;
+
+                const QString name = fi.completeBaseName();
+                if (MediaProxyModel::acceptsFile(static_cast<int>(t), name, fi.fileName(),
+                                                 st.getTags(fi.fileName()), crit)) {
+                    hit = true;
+                }
+            }
+            if (hit) hits.append(dir);
+        }
+
+        MediaModel* owner = m_owner.data();
+        if (!owner) return;
+        const int gen = m_generation;
+        QMetaObject::invokeMethod(owner, [owner, hits, gen]() {
+            owner->noteDeepMatches(hits, gen);
+        }, Qt::QueuedConnection);
+    }
+
+private:
+    QPointer<MediaModel> m_owner;
+    QString              m_root;
+    MediaProxyModel::FilterCriteria m_crit;
+    QStringList          m_categoryNames;
+    bool                 m_showAll = false;
+    int                  m_generation = 0;
+    std::shared_ptr<std::atomic<bool>> m_cancel;
+};
+
+} // namespace
 
 namespace {
 // Größe der ersten (synchronen) Charge: genug, um typische Viewports sofort zu
@@ -44,35 +217,71 @@ MediaModel::MediaModel(JsonStorage& storage,
     m_watchDebounce.setInterval(400);
     connect(&m_watchDebounce, &QTimer::timeout, this, &MediaModel::onDirectoryChanged);
 
+    // ── Abbestellungen erst am Ende des Durchlaufs ausfuehren ────────────────
+    m_cancelTimer.setSingleShot(true);
+    m_cancelTimer.setInterval(0);
+    connect(&m_cancelTimer, &QTimer::timeout, this, [this]() {
+        for (const QString& p : std::as_const(m_cancelPending)) {
+            const int row = rowForPath(p);
+            if (row >= 0 && m_thumbState[row] == 1) continue;   // inzwischen da
+            m_loader.cancelThumbnail(p);
+        }
+        m_cancelPending.clear();
+    });
+
     // ── Inkrementelle Befüllung: 0-ms-Timer speist je Tick eine Charge ein ───
     m_fillTimer.setSingleShot(false);
     m_fillTimer.setInterval(0);   // „sobald die Event-Loop atmet“ — kein Blockieren
     connect(&m_fillTimer, &QTimer::timeout, this, [this]() {
         feedChunk(/*firstChunk=*/false);
-        if (!m_pendingIt || !m_pendingIt->hasNext()) {
+        if (!hasMoreToFill()) {
             m_fillTimer.stop();
             finishFill();
         }
     });
 
     // Tag-Änderungen aus anderen Quellen (z. B. Tag-Manager) → sichtbare Tags neu.
+    //
+    //  NUR Zeilen des geoeffneten Ordners: `m_tagManager` haengt an dessen
+    //  Sidecar und schluesselt nach DATEINAMEN. Eine gleichnamige Datei in einem
+    //  aufgeklappten Unterordner bekaeme sonst fremde Tags untergeschoben.
     connect(&m_tagManager, &TagManager::tagsChanged, this, [this]() {
         if (m_items.isEmpty()) return;
-        for (auto& it : m_items)
+        for (auto& it : m_items) {
+            if (it.scope != 0 || it.isFolder()) continue;
             it.tags = m_tagManager.tagsForFile(it.fileName());
+        }
         emit dataChanged(index(0), index(m_items.size() - 1), { TagsRole });
     });
 }
 
 //  s. Header: hier ist QDirIterator vollständig bekannt.
-MediaModel::~MediaModel() = default;
+//
+//  Der Zaehl-Pool wird HIER geleert und ausgelaufen — nicht erst als Kind in
+//  `~QObject`. Kinder sterben nach dem Rumpf dieses Destruktors; ein noch
+//  laufender Auftrag haette dann einen halb zerstoerten Besitzer vor sich.
+MediaModel::~MediaModel() {
+    if (m_deepCancel) m_deepCancel->store(true);
+    if (m_countPool) {
+        m_countPool->clear();
+        m_countPool->waitForDone();
+    }
+    if (m_deepPool) {
+        m_deepPool->clear();
+        m_deepPool->waitForDone();
+    }
+}
 
 // ─── Enumeration / inkrementelle Befüllung ───────────────────────────────────
 void MediaModel::rebuild(const QString& folderPath) {
     // Laufende Befüllung abbrechen.
     m_fillTimer.stop();
     m_pendingIt.reset();
-    m_pendingSidecar.clear();
+    m_pendingScope = -1;
+    m_scanQueue.clear();
+    //  Vormerkungen gehoeren zum alten Bestand.
+    m_cancelTimer.stop();
+    m_cancelPending.clear();
 
     // Leeres Modell SOFORT publizieren → die UI rendert ohne Verzögerung den
     // Leerzustand bzw. beginnt unmittelbar mit der ersten Charge.
@@ -81,16 +290,41 @@ void MediaModel::rebuild(const QString& folderPath) {
     m_thumbUrls.clear();
     m_thumbState.clear();
     m_pathToRow.clear();
+    //  Die Bereichstabelle wird beim Neuaufbau geleert, `m_expanded` NICHT:
+    //  daraus setzt sich der aufgeklappte Unterbaum waehrend des Einlesens von
+    //  selbst wieder zusammen (queueExpandedFolders) — ein Watcher-Reload
+    //  klappt also nicht alles zu.
+    m_scopes.clear();
+    m_scopeOfPath.clear();
+    qDeleteAll(m_scopeStorage);
+    m_scopeStorage.clear();
+    //  Gezaehlte Ordnerstaende sind nach einem Neuaufbau nicht mehr zu trauen
+    //  (der Watcher laeuft ja genau dann, wenn sich etwas geaendert hat).
+    ++m_countGeneration;
+    m_folderCounts.clear();
+    m_countPending.clear();
     endResetModel();
     emit countChanged();
 
     if (folderPath.isEmpty())
         return;
 
-    // Die Ordner-Konfiguration liegt als Sidecar "<Ordnername>.json" IM Ordner
-    // (siehe JsonStorage) — diese Datei ist keine Mediendatei und wird nicht als
-    // Kachel angezeigt.
-    m_pendingSidecar = QFileInfo(folderPath).fileName() + QStringLiteral(".json");
+    // Wurzelbereich anlegen. Die Ordner-Konfiguration liegt als Sidecar
+    // "<Ordnername>.json" IM Ordner (siehe JsonStorage) — diese Datei ist keine
+    // Mediendatei und wird nicht als Kachel angezeigt. Der Name gehoert deshalb
+    // zum BEREICH: jeder aufgeklappte Unterordner hat seinen eigenen.
+    FolderScope root;
+    root.path      = folderPath;
+    //  Ueber den Helfer, NICHT ueber `QFileInfo::fileName()`: bei einem Pfad
+    //  mit abschliessendem Trenner liefert der einen Leerstring, und die
+    //  Ordner-JSON stand als Kachel in der Galerie (vom Nutzer gemeldet).
+    root.sidecar   = mg::folderSidecarName(folderPath);
+    root.parent    = -1;
+    root.depth     = 0;
+    root.folderRow = -1;
+    root.active    = true;
+    m_scopes.append(root);
+    m_scopeOfPath.insert(folderPath, 0);
 
     // ── Verzeichnis STREAMEND lesen (QDirIterator) statt vorab als Liste ─────
     //  Vorher materialisierte `QDir::entryInfoList` den GESAMTEN Ordner als
@@ -108,32 +342,96 @@ void MediaModel::rebuild(const QString& folderPath) {
     //  `dynamicSortFilter`), dessen `lessThan` bei Gleichstand deterministisch
     //  über den Anzeigenamen entscheidet. Damit ist die Anzeige unverändert,
     //  eine Voll-Sortierung aller Namen entfällt aber.
-    m_pendingIt = std::make_unique<QDirIterator>(folderPath, QDir::Files,
-                                                 QDirIterator::NoIteratorFlags);
+    //  ALLE Miniaturen sind jetzt „ausstehend" — das muss die Ansicht erfahren.
+    //  Seit das Zeilenmodell als DIFF einspielt, ueberleben die Kacheln einen
+    //  Reset und behalten ihr `requestedPath`; sie halten sich fuer fertig und
+    //  fordern von selbst nie wieder an.
+    //
+    //  Das Signal darf aber ERST kommen, wenn die Zeilen wieder da sind: die
+    //  Kacheln antworten darauf mit `ensureThumbnail(pfad)`, und das laeuft ins
+    //  Leere, solange `rowForPath` den Pfad nicht kennt. Genau daran scheiterte
+    //  der erste Versuch — nach einem Reload kam ohne Fenstergroesse-Aendern
+    //  oder Scrollen KEINE einzige Miniatur zurueck (am Pruefstand als
+    //  „0 von 40" reproduziert). Vorgemerkt hier, gesendet in `finishFill`.
+    m_pendingInvalidate = true;
+
+    startScan(0);
 
     // Erste Charge SYNCHRON → Viewport ist sofort gefüllt (kein Flackern),
     // der Rest folgt gechunkt über den Timer.
     feedChunk(/*firstChunk=*/true);
-    if (m_pendingIt && m_pendingIt->hasNext())
+    if (hasMoreToFill())
         m_fillTimer.start();
     else
         finishFill();
 }
 
+//  Iterator fuer GENAU EINEN Bereich. Verzeichnisse kommen mit (`QDir::Dirs`),
+//  denn Unterordner sind jetzt Kacheln; `QDir::Hidden` bleibt bewusst aussen vor
+//  (wie bisher bei Dateien).
+void MediaModel::startScan(int scope) {
+    m_pendingIt.reset();
+    m_pendingScope = -1;
+    if (scope < 0 || scope >= m_scopes.size()) return;
+    const QString path = m_scopes.at(scope).path;
+    if (path.isEmpty()) return;
+    m_pendingIt = std::make_unique<QDirIterator>(
+        path, QDir::Files | QDir::Dirs | QDir::NoDotAndDotDot,
+        QDirIterator::NoIteratorFlags);
+    m_pendingScope = scope;
+}
+
+bool MediaModel::hasMoreToFill() const {
+    return (m_pendingIt && m_pendingIt->hasNext()) || !m_scanQueue.isEmpty();
+}
+
+QString MediaModel::sidecarOfScope(int scope) const {
+    return (scope >= 0 && scope < m_scopes.size()) ? m_scopes.at(scope).sidecar
+                                                   : QString();
+}
+
 void MediaModel::feedChunk(bool firstChunk) {
     const int budget = firstChunk ? kFirstChunk : kChunk;
+
+    //  Immer nur EIN Bereich je Charge: die Zeilen einer Charge teilen sich den
+    //  Bereich, und nur so laesst sich fuer die ganze Charge auf einen Schlag
+    //  entscheiden, ob die Sidecar-Metadaten des offenen Ordners gelten.
+    if (!m_pendingIt || !m_pendingIt->hasNext()) {
+        if (m_scanQueue.isEmpty()) return;
+        startScan(m_scanQueue.takeFirst());
+        if (!m_pendingIt) return;
+    }
+
+    const int     scope   = m_pendingScope;
+    const QString sidecar = sidecarOfScope(scope);
 
     QVector<MediaItem> batch;
     batch.reserve(budget);
 
     int produced = 0;
-    while (m_pendingIt && m_pendingIt->hasNext() && produced < budget) {
+    while (m_pendingIt->hasNext() && produced < budget) {
         m_pendingIt->next();
         const QFileInfo fi = m_pendingIt->fileInfo();
+
+        if (fi.isDir()) {
+            MediaItem item;
+            item.filePath = fi.filePath();
+            //  fileName(), NICHT completeBaseName(): ein Ordner „Urlaub 2025.alt"
+            //  heisst so und nicht „Urlaub 2025".
+            item.displayName = fi.fileName();
+            item.type        = MediaType::Folder;
+            item.dateTime    = fi.lastModified();
+            item.fileSize    = 0;
+            item.scope       = scope;
+            batch.append(std::move(item));
+            ++produced;
+            continue;
+        }
+
         //  Begleitdateien der App (Ordner-JSON, Editor-Sidecar, `.bak`) —
         //  ausgeblendet, solange der Schalter aus ist. Die Regel steht in
         //  `mg::isCompanionFile`, damit der Dateiwähler nicht anders filtert.
-        if (!m_showAllFiles && mg::isCompanionFile(fi.fileName(), m_pendingSidecar))
+        if (!m_showAllFiles && mg::isCompanionFile(fi.fileName(), sidecar))
             continue;
 
         const MediaType t = MediaItem::detectType(fi.filePath());
@@ -149,6 +447,7 @@ void MediaModel::feedChunk(bool firstChunk) {
         item.fileSize    = fi.size();
         item.type        = t;
         item.dateTime    = fi.lastModified();
+        item.scope       = scope;
         batch.append(std::move(item));
         ++produced;
     }
@@ -156,13 +455,19 @@ void MediaModel::feedChunk(bool firstChunk) {
     if (batch.isEmpty())
         return;   // diese Runde enthielt nur übersprungene Einträge
 
-    // Persistierte Metadaten (Tags + ggf. Custom-Datum) für die Charge anwenden.
-    m_storage.applyToItems(batch);
-    for (auto& item : batch) {
-        const QString name = item.fileName();
-        if (m_storage.hasCustomDate(name)) {
-            item.dateTime      = m_storage.getCustomDate(name);
-            item.hasCustomDate = true;
+    //  Persistierte Metadaten (Tags + ggf. Custom-Datum) aus dem Sidecar DIESES
+    //  Bereichs. Ein aufgeklappter Unterordner hat sein eigenes — nur so tragen
+    //  seine Dateien ihre echten Zuordnungen, statt die eines gleichnamigen
+    //  Nachbarn im Elternordner zu erben.
+    if (JsonStorage* st = storageForScope(scope)) {
+        st->applyToItems(batch);
+        for (auto& item : batch) {
+            if (item.isFolder()) continue;
+            const QString name = item.fileName();
+            if (st->hasCustomDate(name)) {
+                item.dateTime      = st->getCustomDate(name);
+                item.hasCustomDate = true;
+            }
         }
     }
 
@@ -177,11 +482,38 @@ void MediaModel::feedChunk(bool firstChunk) {
     }
     endInsertRows();
     emit countChanged();
+
+    //  Ordnerzeilen dieser Charge, die offen sein SOLLEN, gleich einreihen.
+    queueExpandedFolders(first);
+}
+
+//  Nach dem Einspeisen: alles ab `firstRow` durchsehen und jeden Ordner, der in
+//  `m_expanded` steht, mit einem Bereich versehen und zum Einlesen vormerken.
+//  Dadurch stellt sich ein ganzer aufgeklappter Unterbaum nach einem reload()
+//  von selbst wieder her — Ebene fuer Ebene, wie er gefunden wird.
+void MediaModel::queueExpandedFolders(int firstRow) {
+    if (m_expanded.isEmpty()) return;
+    for (int r = qMax(0, firstRow); r < m_items.size(); ++r) {
+        const MediaItem& it = m_items.at(r);
+        if (!it.isFolder()) continue;
+        if (!m_expanded.contains(it.filePath)) continue;
+        const int existing = m_scopeOfPath.value(it.filePath, -1);
+        if (existing >= 0 && m_scopes.at(existing).active) continue;
+        const int s = ensureScope(it.filePath, it.scope, r);
+        if (s > 0) m_scanQueue.append(s);
+    }
 }
 
 void MediaModel::finishFill() {
     m_pendingIt.reset();
-    m_pendingSidecar.clear();
+    m_pendingScope = -1;
+
+    //  Jetzt stehen die Zeilen — jetzt kann die Ansicht ihre Miniaturen neu
+    //  anfordern (s. rebuild()).
+    if (m_pendingInvalidate) {
+        m_pendingInvalidate = false;
+        emit thumbnailsInvalidated();
+    }
 
     //  Trim GENAU HIER: erst jetzt ist die inkrementelle Befuellung wirklich
     //  fertig. Der Trim in loadFolder() laeuft schon nach der ERSTEN Charge und
@@ -200,7 +532,274 @@ int MediaModel::rowForPath(const QString& filePath) const {
     return m_pathToRow.value(filePath, -1);
 }
 
-void MediaModel::loadFolder(const QString& folderPath) {
+// ─── Bereiche & Aufklappen ───────────────────────────────────────────────────
+int MediaModel::scopeDepthOf(int scope) const {
+    return (scope > 0 && scope < m_scopes.size()) ? m_scopes.at(scope).depth : 0;
+}
+
+int MediaModel::scopeParentOf(int scope) const {
+    if (scope <= 0 || scope >= m_scopes.size()) return -1;
+    return m_scopes.at(scope).parent;
+}
+
+QString MediaModel::folderOfScope(int scope) const {
+    if (scope < 0 || scope >= m_scopes.size()) return {};
+    return m_scopes.at(scope).path;
+}
+
+const MediaItem* MediaModel::folderItemOfScope(int scope) const {
+    if (scope <= 0 || scope >= m_scopes.size()) return nullptr;
+    return itemAt(m_scopes.at(scope).folderRow);
+}
+
+int MediaModel::ensureScope(const QString& folderPath, int parentScope, int folderRow) {
+    if (folderPath.isEmpty()) return -1;
+    int idx = m_scopeOfPath.value(folderPath, -1);
+    if (idx < 0) {
+        FolderScope sc;
+        sc.path    = folderPath;
+        sc.sidecar = mg::folderSidecarName(folderPath);
+        idx = m_scopes.size();
+        m_scopes.append(sc);
+        m_scopeOfPath.insert(folderPath, idx);
+    }
+    const int depth = scopeDepthOf(parentScope) + 1;
+    FolderScope& sc  = m_scopes[idx];
+    sc.parent    = parentScope;
+    sc.depth     = depth;
+    sc.folderRow = folderRow;
+    sc.active    = true;
+    return idx;
+}
+
+void MediaModel::collectDescendantScopes(int scope, QSet<int>& out) const {
+    for (int i = 1; i < m_scopes.size(); ++i) {
+        if (!m_scopes.at(i).active || i == scope) continue;
+        for (int p = m_scopes.at(i).parent; p > 0; p = m_scopes.at(p).parent) {
+            if (p == scope) { out.insert(i); break; }
+        }
+    }
+}
+
+//  Bereiche vom Modell ABHAENGEN: wartende und laufende Einlesevorgaenge
+//  verwerfen, ihre Zeilen entfernen, Beobachtung beenden, Bereiche stilllegen.
+//  Die Bereiche selbst bleiben in der Tabelle stehen (s. FolderScope).
+void MediaModel::removeRowsOfScopes(const QSet<int>& scopes) {
+    if (scopes.isEmpty()) return;
+
+    for (auto it = m_scanQueue.begin(); it != m_scanQueue.end(); ) {
+        if (scopes.contains(*it)) it = m_scanQueue.erase(it);
+        else                      ++it;
+    }
+    //  Ein LAUFENDER Iterator dieses Bereichs muss sofort weg — sonst speiste
+    //  die naechste Charge Zeilen in einen Bereich ein, den es nicht mehr gibt.
+    if (m_pendingScope >= 0 && scopes.contains(m_pendingScope)) {
+        m_pendingIt.reset();
+        m_pendingScope = -1;
+    }
+
+    int removed = 0;
+    int i = m_items.size() - 1;
+    while (i >= 0) {
+        if (!scopes.contains(m_items.at(i).scope)) { --i; continue; }
+        const int last = i;
+        while (i >= 0 && scopes.contains(m_items.at(i).scope)) --i;
+        const int first = i + 1;
+        const int n     = last - first + 1;
+        beginRemoveRows(QModelIndex(), first, last);
+        for (int r = first; r <= last; ++r)
+            m_loader.cancelThumbnail(m_items.at(r).filePath);
+        m_items.remove(first, n);
+        m_thumbUrls.remove(first, n);
+        m_thumbState.remove(first, n);
+        endRemoveRows();
+        removed += n;
+    }
+
+    for (int s : scopes) {
+        if (s <= 0 || s >= m_scopes.size()) continue;
+        m_scopes[s].active    = false;
+        m_scopes[s].folderRow = -1;
+        //  Das Sidecar dieses Bereichs wird nicht mehr gebraucht — es kann
+        //  gross sein und wird beim Wiederaufklappen frisch gelesen.
+        if (JsonStorage* st = m_scopeStorage.take(s)) {
+            st->saveCurrentFolder();
+            delete st;
+        }
+        const QString& p = m_scopes.at(s).path;
+        if (m_watcher->directories().contains(p))
+            m_watcher->removePath(p);
+    }
+
+    if (removed > 0) {
+        rebuildPathIndex();
+        emit countChanged();
+    }
+    if (!hasMoreToFill())
+        m_fillTimer.stop();
+}
+
+void MediaModel::rebuildPathIndex() {
+    m_pathToRow.clear();
+    m_pathToRow.reserve(m_items.size());
+    for (int i = 0; i < m_items.size(); ++i)
+        m_pathToRow.insert(m_items.at(i).filePath, i);
+    //  Bereiche zeigen auf ZEILEN — nach jeder Verschiebung nachziehen, sonst
+    //  klettert lessThan die Elternkette ins Leere.
+    for (int s = 1; s < m_scopes.size(); ++s)
+        m_scopes[s].folderRow = m_scopes.at(s).active
+                                    ? m_pathToRow.value(m_scopes.at(s).path, -1)
+                                    : -1;
+}
+
+bool MediaModel::expandFolder(const QString& folderPath) {
+    const int row = rowForPath(folderPath);
+    if (row < 0) return false;
+    const MediaItem& it = m_items.at(row);
+    if (!it.isFolder()) return false;
+    if (m_expanded.contains(folderPath)) return false;
+
+    //  Schleifenschutz: ein Symlink, der auf einen Vorfahren zeigt, schachtelte
+    //  die Ansicht endlos. Verglichen wird der KANONISCHE Pfad — und nur hier,
+    //  beim Aufklappen; je Verzeichniseintrag waere das ein realpath() zu viel.
+    const QString canon = QFileInfo(folderPath).canonicalFilePath();
+    if (!canon.isEmpty()) {
+        for (int s = it.scope; s >= 0; s = m_scopes.at(s).parent) {
+            if (QFileInfo(m_scopes.at(s).path).canonicalFilePath() == canon)
+                return false;
+        }
+    }
+
+    m_expanded.insert(folderPath);
+    const int scope = ensureScope(folderPath, it.scope, row);
+    if (scope <= 0) { m_expanded.remove(folderPath); return false; }
+    m_scanQueue.append(scope);
+    if (!m_fillTimer.isActive())
+        m_fillTimer.start();
+
+    if (!m_watcher->directories().contains(folderPath))
+        m_watcher->addPath(folderPath);
+
+    emitRow(row, { ExpandedRole });
+    emit expansionChanged();
+    return true;
+}
+
+bool MediaModel::collapseFolder(const QString& folderPath) {
+    //  Nur DIESER Ordner wird vergessen — die Enkel bleiben vorgemerkt. Klappt
+    //  man ihn wieder auf, steht sein Unterbaum wieder so da wie vorher.
+    if (!m_expanded.remove(folderPath)) return false;
+
+    const int scope = m_scopeOfPath.value(folderPath, -1);
+    if (scope > 0 && m_scopes.at(scope).active) {
+        QSet<int> gone;
+        gone.insert(scope);
+        collectDescendantScopes(scope, gone);
+        removeRowsOfScopes(gone);
+    }
+
+    const int row = rowForPath(folderPath);
+    if (row >= 0) emitRow(row, { ExpandedRole });
+    emit expansionChanged();
+    return true;
+}
+
+bool MediaModel::toggleFolder(const QString& folderPath) {
+    return m_expanded.contains(folderPath) ? collapseFolder(folderPath)
+                                           : expandFolder(folderPath);
+}
+
+void MediaModel::ensureFolderCount(const QString& folderPath) {
+    if (folderPath.isEmpty()) return;
+    if (m_folderCounts.contains(folderPath)) return;   // schon gezaehlt
+    if (m_countPending.contains(folderPath)) return;   // laeuft gerade
+    const int row = rowForPath(folderPath);
+    const MediaItem* it = itemAt(row);
+    if (!it || !it->isFolder()) return;
+
+    if (!m_countPool) {
+        //  EIN Thread: die Zaehlung ist reine Platten-Arbeit, mehrere Threads
+        //  wuerden nur den Kopf der Platte hin- und herschicken.
+        m_countPool = new QThreadPool(this);
+        m_countPool->setMaxThreadCount(1);
+    }
+    m_countPending.insert(folderPath);
+    const QString sidecar = mg::folderSidecarName(folderPath);
+    m_countPool->start(new FolderCountTask(QPointer<MediaModel>(this), folderPath,
+                                           sidecar, m_showAllFiles, m_countGeneration));
+}
+
+void MediaModel::noteFolderCount(const QString& folderPath, int count, int generation) {
+    m_countPending.remove(folderPath);
+    if (generation != m_countGeneration) return;    // veraltet (Ordner gewechselt)
+    m_folderCounts.insert(folderPath, count);
+    const int row = rowForPath(folderPath);
+    if (row >= 0) emitRow(row, { ChildCountRole });
+}
+
+void MediaModel::collapseAll() {
+    if (m_expanded.isEmpty()) return;
+    m_expanded.clear();
+    QSet<int> gone;
+    for (int i = 1; i < m_scopes.size(); ++i)
+        if (m_scopes.at(i).active) gone.insert(i);
+    removeRowsOfScopes(gone);
+    if (!m_items.isEmpty())
+        emit dataChanged(index(0), index(m_items.size() - 1), { ExpandedRole });
+    emit expansionChanged();
+}
+
+//  Momentaufnahme eines Ordners ins Sitzungs-Gedaechtnis legen. Ein leerer
+//  Zustand wird geloescht statt gespeichert — sonst wuechse die Tabelle mit
+//  jedem durchquerten Ordner, ohne etwas zu tragen.
+void MediaModel::rememberExpansion(const QString& folderPath) {
+    if (folderPath.isEmpty()) return;
+    m_memoryOrder.removeAll(folderPath);
+    if (m_expanded.isEmpty()) {
+        m_expandedMemory.remove(folderPath);
+        return;
+    }
+    m_expandedMemory.insert(folderPath, expandedFolders());
+    m_memoryOrder.append(folderPath);
+    while (m_memoryOrder.size() > kMaxFolderMemory)
+        m_expandedMemory.remove(m_memoryOrder.takeFirst());
+}
+
+QStringList MediaModel::expandedFolders() const {
+    QStringList list(m_expanded.begin(), m_expanded.end());
+    //  Sortiert, damit eine Momentaufnahme reproduzierbar ist (QSet hat keine
+    //  Reihenfolge) — der Rueckweg soll denselben Baum ergeben.
+    list.sort();
+    return list;
+}
+
+void MediaModel::setExpandedFolders(const QStringList& folderPaths) {
+    const QSet<QString> want(folderPaths.begin(), folderPaths.end());
+    if (want == m_expanded) return;
+    m_expanded = want;
+
+    //  Der aufgeklappte Teil wird komplett neu aufgebaut: welche der genannten
+    //  Ordner es ueberhaupt (noch) gibt, weiss erst das Einlesen.
+    QSet<int> gone;
+    for (int i = 1; i < m_scopes.size(); ++i)
+        if (m_scopes.at(i).active) gone.insert(i);
+    removeRowsOfScopes(gone);
+
+    queueExpandedFolders(0);
+    if (hasMoreToFill() && !m_fillTimer.isActive())
+        m_fillTimer.start();
+
+    if (!m_items.isEmpty())
+        emit dataChanged(index(0), index(m_items.size() - 1), { ExpandedRole });
+    emit expansionChanged();
+}
+
+void MediaModel::loadFolder(const QString& rawFolderPath) {
+    //  EINMAL normalisieren, dann gilt ueberall derselbe Pfad: der Vergleich
+    //  mit `m_folder`, die Praefix-Pruefungen der Zielordner und die
+    //  Bereichstabelle. Ein „…/ordner/" und ein „…/ordner" waren sonst zwei
+    //  verschiedene Ordner.
+    const QString folderPath = mg::normalizedFolder(rawFolderPath);
     if (folderPath == m_folder && !m_items.isEmpty()) return;
 
     m_loader.cancelAll();
@@ -209,10 +808,27 @@ void MediaModel::loadFolder(const QString& folderPath) {
     if (!watched.isEmpty())
         m_watcher->removePaths(watched);
 
+    //  Aufklapp-Zustand des BISHERIGEN Ordners merken, den des neuen holen.
+    //  Er beschreibt Ordner unterhalb eines bestimmten Ordners und ergibt
+    //  woanders keinen Sinn — verlassen und zurueckkehren soll ihn aber
+    //  wiederbringen (Rueckweg Alt+←).
+    rememberExpansion(m_folder);
     m_folder = folderPath;
     //  Der Undo-Stapel gehört zum OFFENEN Ordner: eine Rücknahme in einen
     //  Ordner, den man gerade nicht sieht, wäre nicht nachvollziehbar.
     clearFileHistory();
+    {
+        //  Die Liste MUSS zuerst in eine eigene Variable: `QHash::value` liefert
+        //  eine KOPIE, zwei Aufrufe also zwei verschiedene Temporaries —
+        //  `begin()` des einen mit `end()` des anderen zu paaren, laeuft ins
+        //  Leere (im Test reproduzierbar als Absturz).
+        const QStringList remembered = m_expandedMemory.value(folderPath);
+        const QSet<QString> restored(remembered.begin(), remembered.end());
+        if (restored != m_expanded) {
+            m_expanded = restored;
+            emit expansionChanged();
+        }
+    }
     rebuild(folderPath);
 
     // Ordnerwechsel = große Freigabe (alte Item-Liste, Thumb-URLs, Sidecar-
@@ -266,6 +882,11 @@ QVariant MediaModel::data(const QModelIndex& index, int role) const {
     case FileSizeRole:    return it.fileSize;
     case ThumbUrlRole:    return m_thumbUrls[r];
     case ThumbStateRole:  return m_thumbState[r];
+    case OwnerFolderRole: return (it.scope >= 0 && it.scope < m_scopes.size())
+                                     ? m_scopes.at(it.scope).path : QString();
+    case DepthRole:       return scopeDepthOf(it.scope);
+    case ExpandedRole:    return it.isFolder() && m_expanded.contains(it.filePath);
+    case ChildCountRole:  return it.isFolder() ? m_folderCounts.value(it.filePath, -1) : -1;
     default:              return {};
     }
 }
@@ -282,6 +903,10 @@ QHash<int, QByteArray> MediaModel::roleNames() const {
         { FileSizeRole,    "fileSize"    },
         { ThumbUrlRole,    "thumbUrl"    },
         { ThumbStateRole,  "thumbState"  },
+        { OwnerFolderRole, "ownerFolder" },
+        { DepthRole,       "depth"       },
+        { ExpandedRole,    "expanded"    },
+        { ChildCountRole,  "childCount"  },
     };
 }
 
@@ -291,6 +916,10 @@ QString MediaModel::typeLabel(const MediaItem& item) {
     case MediaType::Audio: return item.audioFormatLabel();
     case MediaType::Pdf:   return QStringLiteral("PDF");
     case MediaType::Text:  return item.extension().toUpper();
+    //  Nicht erkannte Typen (`.bak`, Archive, Programme) stehen nur bei „Alle
+    //  Dateien anzeigen" in der Galerie — und waren dort an NICHTS zu erkennen:
+    //  kein Thumbnail, kein Badge. Die Endung ist genau die Auskunft, die fehlt.
+    case MediaType::Unknown: return item.extension().toUpper();
     default:               return {};
     }
 }
@@ -315,8 +944,14 @@ void MediaModel::refreshThumbnails() {
 }
 
 void MediaModel::ensureThumbnail(const QString& filePath) {
+    //  Wer anfordert, hebt eine vorgemerkte Abbestellung auf — auch wenn es
+    //  eine ANDERE Kachel war, die eben noch abbestellt hat.
+    m_cancelPending.remove(filePath);
     const int row = rowForPath(filePath);
     if (row < 0) return;
+    //  Ordnerkacheln zeichnen sich selbst (Regel 28) — der Loader kennt für sie
+    //  keinen Erzeuger und liefe nur in seinen Fehlpfad.
+    if (m_items.at(row).isFolder()) return;
     if (m_thumbState[row] == 1) return;          // bereits geliefert
     m_loader.requestThumbnail(filePath);          // Treffer/Miss klärt der Loader
 }
@@ -324,7 +959,11 @@ void MediaModel::ensureThumbnail(const QString& filePath) {
 void MediaModel::cancelThumbnail(const QString& filePath) {
     const int row = rowForPath(filePath);
     if (row >= 0 && m_thumbState[row] == 1) return;  // schon fertig → nichts abbrechen
-    m_loader.cancelThumbnail(filePath);
+    //  NICHT sofort: eine andere Kachel kann denselben Pfad im selben Durchlauf
+    //  uebernommen und schon angefordert haben (s. Header).
+    m_cancelPending.insert(filePath);
+    if (!m_cancelTimer.isActive())
+        m_cancelTimer.start();
 }
 
 void MediaModel::onThumbnailReady(const QString& filePath, const QString& thumbUrl) {
@@ -343,9 +982,147 @@ void MediaModel::onThumbnailFailed(const QString& filePath) {
 }
 
 // ─── Mutationen ──────────────────────────────────────────────────────────────
+//  ── Wer darf mutiert werden? ────────────────────────────────────────────────
+//  Alles unten Folgende arbeitet mit `m_storage`/`m_tagManager` — und die
+//  gehoeren dem GEOEFFNETEN Ordner und schluesseln nach DATEINAMEN. Eine Zeile
+//  aus einem aufgeklappten Unterordner wuerde dort die Metadaten ihres
+//  gleichnamigen Nachbarn treffen. Bis die Sidecar-Sammlung steht, bleiben
+//  solche Zeilen unangetastet; Ordnerzeilen ebenso (ihre Vorgaenge kommen mit
+//  den Ordner-Operationen).
+bool MediaModel::isFileRow(int row) const {
+    const MediaItem* it = itemAt(row);
+    return it && !it->isFolder();
+}
+
+bool MediaModel::isRootFileRow(int row) const {
+    const MediaItem* it = itemAt(row);
+    return it && it->scope == 0 && !it->isFolder();
+}
+
+// ─── Sidecar-Sammlung ────────────────────────────────────────────────────────
+JsonStorage* MediaModel::storageForScope(int scope) {
+    if (scope <= 0) return &m_storage;
+    if (scope >= m_scopes.size()) return &m_storage;
+    const auto it = m_scopeStorage.constFind(scope);
+    if (it != m_scopeStorage.constEnd()) return it.value();
+    //  Lazy: erst beim ersten Zugriff lesen. `this` als Elternteil — beim Ende
+    //  des Modells verschwinden die Instanzen mit.
+    auto* st = new JsonStorage(this);
+    st->loadFolder(m_scopes.at(scope).path);
+    m_scopeStorage.insert(scope, st);
+    return st;
+}
+
+JsonStorage* MediaModel::storageForFolder(const QString& folder) {
+    if (folder.isEmpty()) return nullptr;
+    if (folder == m_folder) return &m_storage;
+    const int s = m_scopeOfPath.value(folder, -1);
+    if (s > 0 && s < m_scopes.size() && m_scopes.at(s).active)
+        return storageForScope(s);
+    return nullptr;      // nicht offen → kurzlebiger Weg (writeMetaToFolder)
+}
+
+//  ── Kategorien eines fremden Sidecars ueber NAMEN ──────────────────────────
+//  Die IDs eines anderen Ordners sind andere; der Name ist das, was der Nutzer
+//  sieht. Fehlt drueben eine Kategorie dieses Namens, entsteht sie auf der
+//  HAUPTEBENE — den ganzen Baumpfad nachzubilden waere Raten.
+QStringList MediaModel::categoryNamesOf(JsonStorage& st, const QString& fileName) {
+    QStringList out;
+    std::function<void(const QList<TagCategory>&)> walk =
+        [&](const QList<TagCategory>& list) {
+            for (const TagCategory& c : list) {
+                if (c.files.contains(fileName) && !out.contains(c.name))
+                    out.append(c.name);
+                walk(c.children);
+            }
+        };
+    walk(st.categoriesRef());
+    return out;
+}
+
+void MediaModel::attachCategories(JsonStorage& st, const QString& fileName,
+                                  const QStringList& names) {
+    if (names.isEmpty()) return;
+    QList<TagCategory>& cats = st.categoriesRef();
+    for (const QString& wanted : names) {
+        TagCategory* found = nullptr;
+        std::function<void(QList<TagCategory>&)> walk = [&](QList<TagCategory>& list) {
+            for (TagCategory& c : list) {
+                if (!found && c.name == wanted) { found = &c; return; }
+                if (!found) walk(c.children);
+            }
+        };
+        walk(cats);
+        if (!found) {
+            TagCategory fresh;
+            fresh.id    = QUuid::createUuid().toString(QUuid::WithoutBraces);
+            fresh.name  = wanted;
+            fresh.color = QColor(0, 179, 161);
+            cats.append(fresh);
+            found = &cats.last();
+        }
+        if (!found->files.contains(fileName))
+            found->files.append(fileName);
+    }
+}
+
+void MediaModel::stripCategories(JsonStorage& st, const QString& fileName) {
+    std::function<void(QList<TagCategory>&)> strip = [&](QList<TagCategory>& list) {
+        for (TagCategory& c : list) {
+            c.files.removeAll(fileName);
+            strip(c.children);
+        }
+    };
+    strip(st.categoriesRef());
+}
+
+//  ── Metadaten einer Zeile — aus dem Sidecar IHRES Ordners ──────────────────
+void MediaModel::collectMetaAt(const QString& folder, const QString& fileName,
+                               FileOp* op) const {
+    if (folder == m_folder) { collectMeta(fileName, op); return; }
+    auto* st = const_cast<MediaModel*>(this)->storageForFolder(folder);
+    if (!st) return;
+    op->tags          = st->getTags(fileName);
+    op->categoryIds.clear();                       // IDs gelten nur im eigenen Baum
+    op->categoryNames = categoryNamesOf(*st, fileName);
+    op->hasCustomDate = st->hasCustomDate(fileName);
+    if (op->hasCustomDate) op->customDate = st->getCustomDate(fileName);
+}
+
+void MediaModel::dropMetaAt(const QString& folder, const QString& fileName,
+                            const FileOp& op) {
+    if (folder == m_folder) { dropMeta(fileName, op); return; }
+    JsonStorage* st = storageForFolder(folder);
+    if (!st) { removeMetaFromFolder(folder, fileName); return; }
+    st->removeFile(fileName);
+    stripCategories(*st, fileName);
+    st->saveCurrentFolder();
+}
+
+void MediaModel::restoreMetaAt(const QString& folder, const QString& fileName,
+                               const FileOp& op) {
+    if (folder == m_folder) { restoreMeta(fileName, op); return; }
+    JsonStorage* st = storageForFolder(folder);
+    if (!st) { writeMetaToFolder(folder, fileName, op, m_storage.tagColors()); return; }
+    if (!op.tags.isEmpty()) {
+        QStringList tags = st->getTags(fileName);
+        const QHash<QString, QColor> colors = m_storage.tagColors();
+        for (const QString& t : op.tags) {
+            if (!tags.contains(t)) tags.append(t);
+            st->ensureTagRegistered(t);
+            const auto c = colors.constFind(t);
+            if (c != colors.constEnd()) st->setTagColor(t, c.value());
+        }
+        st->setTags(fileName, tags);
+    }
+    attachCategories(*st, fileName, op.categoryNames);
+    if (op.hasCustomDate) st->setCustomDate(fileName, op.customDate);
+    st->saveCurrentFolder();
+}
+
 void MediaModel::renameItem(const QString& filePath, const QString& newBaseName) {
     const int row = rowForPath(filePath);
-    if (row < 0) return;
+    if (row < 0 || !isFileRow(row)) return;
 
     const QString trimmed = newBaseName.trimmed();
     if (trimmed.isEmpty()) return;
@@ -363,9 +1140,12 @@ void MediaModel::renameItem(const QString& filePath, const QString& newBaseName)
     const bool ok = QFile::rename(filePath, newPath);
     if (!ok) { --m_suppressWatch; return; }
 
-    // Persistierte Metadaten (Tags/Datum) auf neuen Dateinamen umziehen.
-    m_storage.renameFile(oldName, newName);
-    m_storage.saveCurrentFolder();
+    // Persistierte Metadaten (Tags/Datum) auf neuen Dateinamen umziehen — im
+    // Sidecar DES ORDNERS, dem die Datei gehoert.
+    if (JsonStorage* st = storageForScope(m_items.at(row).scope)) {
+        st->renameFile(oldName, newName);
+        st->saveCurrentFolder();
+    }
     --m_suppressWatch;
 
     MediaItem& it = m_items[row];
@@ -384,15 +1164,18 @@ void MediaModel::renameItem(const QString& filePath, const QString& newBaseName)
 //  mit allem, was zum Zurückholen nötig ist. Kein Zeilen-/Modell-Anteil — den
 //  macht der Aufrufer, damit Löschen und Wiederholen denselben Kern nutzen.
 bool MediaModel::trashFile(const QString& filePath, FileOp* op) {
-    const QString name = QFileInfo(filePath).fileName();
+    const QFileInfo info(filePath);
+    const QString name   = info.fileName();
+    const QString folder = info.absolutePath();
 
     op->kind = FileOp::Kind::Delete;
     op->path = filePath;
     op->trashPath.clear();
     op->sidecarPath.clear();
     op->sidecarTrashPath.clear();
-    //  VOR dem Löschen sichern — danach sind sie weg.
-    collectMeta(name, op);
+    //  VOR dem Löschen sichern — danach sind sie weg. Aus dem Sidecar DES
+    //  Ordners, dem die Datei gehoert (Unterordner haben ihr eigenes).
+    collectMetaAt(folder, name, op);
 
     // Watcher unterdrücken: das Löschen löst sonst einen kompletten
     // Ordner-Reload aus — die Zeile entfernt der Aufrufer gezielt selbst.
@@ -417,7 +1200,7 @@ bool MediaModel::trashFile(const QString& filePath, FileOp* op) {
             else
                 QFile::remove(sidecar);
         }
-        dropMeta(name, *op);
+        dropMetaAt(folder, name, *op);
     }
     --m_suppressWatch;
     return ok;
@@ -444,7 +1227,8 @@ bool MediaModel::restoreFile(const FileOp& op) {
             if (!QFile::rename(op.sidecarTrashPath, op.sidecarPath))
                 QFile::copy(op.sidecarTrashPath, op.sidecarPath);
         }
-        restoreMeta(QFileInfo(op.path).fileName(), op);
+        restoreMetaAt(QFileInfo(op.path).absolutePath(),
+                      QFileInfo(op.path).fileName(), op);
     }
     --m_suppressWatch;
     return ok;
@@ -459,23 +1243,45 @@ void MediaModel::appendRowFor(const QString& filePath) {
     //  Eine zurückgeholte BEGLEITdatei darf nur dann als Kachel erscheinen, wenn
     //  der Nutzer sie sehen will — sonst legte ein `Strg+Z` plötzlich eine
     //  `.mgedit.json` in die Galerie, die dort nie stand.
-    if (!m_showAllFiles && mg::isCompanionFile(fi.fileName(), m_pendingSidecar))
+    //  In WELCHEN Bereich gehoert die Zeile? Eine zurueckgeholte Datei aus
+    //  einem aufgeklappten Unterordner gehoert dorthin, nicht in den offenen
+    //  Ordner. Ist ihr Ordner gerade nicht sichtbar, entsteht auch keine Kachel.
+    const QString parent = fi.absolutePath();
+    int scope = 0;
+    if (parent != m_folder) {
+        scope = m_scopeOfPath.value(parent, -1);
+        if (scope <= 0 || scope >= m_scopes.size() || !m_scopes.at(scope).active)
+            return;
+    }
+
+    //  Der Sidecar-Name kommt aus dem BEREICH, nicht mehr aus einem Feld der
+    //  laufenden Befuellung: das war zu diesem Zeitpunkt laengst geleert, die
+    //  Ordner-JSON also nicht als Begleitdatei erkennbar.
+    if (!m_showAllFiles && mg::isCompanionFile(fi.fileName(), sidecarOfScope(scope)))
         return;
 
     MediaItem item;
     item.filePath    = fi.filePath();
     item.displayName = fi.completeBaseName();
     item.fileSize    = fi.size();
-    item.type        = MediaItem::detectType(fi.filePath());
+    item.type        = fi.isDir() ? MediaType::Folder
+                                  : MediaItem::detectType(fi.filePath());
     item.dateTime    = fi.lastModified();
+    item.scope       = scope;
+    if (item.isFolder()) {
+        item.displayName = fi.fileName();      // nicht completeBaseName
+        item.fileSize    = 0;
+    }
     if (item.type == MediaType::Unknown && !m_showAllFiles) return;
 
     QVector<MediaItem> batch{ item };
-    m_storage.applyToItems(batch);
-    const QString name = batch.first().fileName();
-    if (m_storage.hasCustomDate(name)) {
-        batch.first().dateTime      = m_storage.getCustomDate(name);
-        batch.first().hasCustomDate = true;
+    if (JsonStorage* st = storageForScope(scope)) {
+        st->applyToItems(batch);
+        const QString name = batch.first().fileName();
+        if (st->hasCustomDate(name)) {
+            batch.first().dateTime      = st->getCustomDate(name);
+            batch.first().hasCustomDate = true;
+        }
     }
 
     const int at = m_items.size();
@@ -497,9 +1303,7 @@ bool MediaModel::dropRowFor(const QString& filePath) {
     m_items.removeAt(row);
     m_thumbUrls.removeAt(row);
     m_thumbState.removeAt(row);
-    m_pathToRow.clear();
-    for (int i = 0; i < m_items.size(); ++i)
-        m_pathToRow.insert(m_items.at(i).filePath, i);
+    rebuildPathIndex();
     endRemoveRows();
     emit countChanged();
     return true;
@@ -560,10 +1364,18 @@ void MediaModel::writeMetaToFolder(const QString& folder, const QString& fileNam
     if (!op.tags.isEmpty()) {
         QStringList tags = dest.getTags(fileName);
         for (const QString& t : op.tags) {
+            //  Kennt der ZIELordner den Tag schon, behaelt er seine eigene Farbe.
+            //  Sonst faerbte eine hereingeschobene Datei alle Dateien um, die
+            //  drueben denselben Tag tragen — die Farbe ist eine Entscheidung
+            //  des Zielordners, die Mitschrift soll nur eine Luecke fuellen.
+            //  Vor `ensureTagRegistered` fragen: das traegt selbst eine
+            //  Zufallsfarbe ein und machte den Tag sonst sofort „bekannt".
+            const bool knownThere = dest.tagColors().contains(t);
             if (!tags.contains(t)) tags.append(t);
             dest.ensureTagRegistered(t);
             const auto it = tagColors.constFind(t);
-            if (it != tagColors.constEnd()) dest.setTagColor(t, it.value());
+            if (!knownThere && it != tagColors.constEnd())
+                dest.setTagColor(t, it.value());
         }
         dest.setTags(fileName, tags);
     }
@@ -609,6 +1421,279 @@ void MediaModel::removeMetaFromFolder(const QString& folder, const QString& file
     dest.saveFolder(folder);
 }
 
+// ─── Rekursive Suche ─────────────────────────────────────────────────────────
+namespace {
+//  Aendert sich am Filter ueberhaupt etwas, das eine neue Suche rechtfertigt?
+bool sameCriteria(const MediaProxyModel::FilterCriteria& a,
+                  const MediaProxyModel::FilterCriteria& b) {
+    return a.search == b.search && a.tags == b.tags && a.mode == b.mode
+        && a.categoryActive == b.categoryActive
+        && a.showImages == b.showImages && a.showVideos == b.showVideos
+        && a.showAudio  == b.showAudio  && a.showPdfs   == b.showPdfs
+        && a.showTexts  == b.showTexts;
+}
+}  // namespace
+
+void MediaModel::applyDeepFilter(const MediaProxyModel::FilterCriteria& c,
+                                 const QStringList& categoryNames) {
+    if (!m_deepTimer.isSingleShot()) {
+        m_deepTimer.setSingleShot(true);
+        //  Entprellt das Tippen: bei jedem Zeichen den Baum zu durchsuchen
+        //  waere Verschwendung, und die Treffer sprangen im Takt der Tastatur.
+        m_deepTimer.setInterval(250);
+        connect(&m_deepTimer, &QTimer::timeout, this, &MediaModel::startDeepScan);
+    }
+
+    if (c.isEmpty()) {
+        //  Filter weg → zurueck auf den Stand VOR der Suche. Von Hand
+        //  geoeffnete Ordner stehen darin und bleiben damit offen; was die
+        //  Suche aufgeklappt hat, schliesst sich.
+        m_deepTimer.stop();
+        ++m_deepGeneration;
+        if (m_deepCancel) m_deepCancel->store(true);
+        if (m_deepActive) {
+            m_deepActive = false;
+            m_deepChain.clear();
+            const QStringList back = m_deepSnapshot;
+            m_deepSnapshot.clear();
+            setExpandedFolders(back);
+            //  Die Ordner, die waehrend der Suche ausgeblendet waren, muessen
+            //  wieder auftauchen — der Proxy bewertet nur neu, was sich meldet.
+            if (!m_items.isEmpty())
+                emit dataChanged(index(0), index(m_items.size() - 1));
+        }
+        return;
+    }
+
+    if (!m_deepActive) {
+        m_deepActive   = true;
+        m_deepChain.clear();
+        m_deepSnapshot = expandedFolders();     // Stand vor der Suche merken
+        //  Bis der Lauf Ergebnisse bringt, gehoert noch kein Ordner zum
+        //  Ergebnis — die Ansicht muss das sofort erfahren.
+        if (!m_items.isEmpty())
+            emit dataChanged(index(0), index(m_items.size() - 1));
+    } else if (sameCriteria(m_deepCriteria, c)
+               && m_deepCategoryNames == categoryNames) {
+        return;                                  // nichts Neues zu suchen
+    }
+    m_deepCriteria      = c;
+    m_deepCategoryNames = categoryNames;
+    m_deepTimer.start();
+}
+
+void MediaModel::startDeepScan() {
+    if (m_folder.isEmpty() || !m_deepActive) return;
+    if (!m_deepPool) {
+        //  EIN Thread: die Suche ist Platten-Arbeit (ein Sidecar je Ordner).
+        m_deepPool = new QThreadPool(this);
+        m_deepPool->setMaxThreadCount(1);
+    }
+    //  Einen noch laufenden Lauf abbrechen — er gehoert zu einem aelteren
+    //  Suchtext und wuerde nur Arbeit verbrennen.
+    if (m_deepCancel) m_deepCancel->store(true);
+    m_deepCancel = std::make_shared<std::atomic<bool>>(false);
+    ++m_deepGeneration;
+    m_deepPool->start(new DeepScanTask(QPointer<MediaModel>(this), m_folder,
+                                       m_deepCriteria, m_deepCategoryNames,
+                                       m_showAllFiles, m_deepGeneration, m_deepCancel));
+}
+
+void MediaModel::noteDeepMatches(const QStringList& folders, int generation) {
+    if (generation != m_deepGeneration || !m_deepActive) return;
+    if (folders.isEmpty()) return;
+
+    //  Jeder Treffer-Ordner UND seine ganze Kette bis zum offenen Ordner —
+    //  sonst waere der Treffer zwar aufgeklappt, aber nicht zu sehen.
+    //  Diese Kette wird SEPARAT gehalten: sie entscheidet, welche Ordner im
+    //  Ergebnis stehen duerfen. Ein von Hand geoeffneter Ordner ohne Treffer
+    //  bleibt zwar aufgeklappt, gehoert aber nicht dazu.
+    QSet<QString> chain;
+    for (const QString& f : folders) {
+        QString p = f;
+        while (p.size() > m_folder.size() && p.startsWith(m_folder)) {
+            chain.insert(p);
+            const int cut = p.lastIndexOf(QLatin1Char('/'));
+            if (cut <= 0) break;
+            p = p.left(cut);
+        }
+    }
+    m_deepChain = chain;
+
+    const QSet<QString> next = m_expanded + chain;
+    if (next != m_expanded)
+        setExpandedFolders(QStringList(next.begin(), next.end()));
+    //  Auch ohne neue Zeilen muss die Sichtbarkeit der Ordner neu bewertet
+    //  werden — `filterAcceptsRow` fragt `isOnDeepChain`.
+    if (!m_items.isEmpty())
+        emit dataChanged(index(0), index(m_items.size() - 1));
+}
+
+// ─── Tags über den sichtbaren Baum ───────────────────────────────────────────
+QStringList MediaModel::visibleTags() const {
+    QStringList out = m_storage.allTags();
+    QSet<QString> seen(out.begin(), out.end());
+    for (int scope = 1; scope < m_scopes.size(); ++scope) {
+        if (!m_scopes.at(scope).active) continue;
+        JsonStorage* st = m_scopeStorage.value(scope, nullptr);
+        if (!st) continue;
+        for (const QString& t : st->allTags())
+            if (!seen.contains(t)) { seen.insert(t); out.append(t); }
+    }
+    //  Deterministisch: der offene Ordner bringt seine Reihenfolge mit, die
+    //  Ergaenzungen aus Unterordnern haengen sich in fester Ordnung an — sonst
+    //  spraengen die Chips der Filterleiste bei jedem Aufklappen umher.
+    std::sort(out.begin() + m_storage.allTags().size(), out.end());
+    return out;
+}
+
+QColor MediaModel::visibleTagColor(const QString& tag) const {
+    //  NICHT ueber `JsonStorage::tagColor` — das liefert fuer einen unbekannten
+    //  Tag eine gueltige Ersatzfarbe, und dann waere „kennt ihn niemand" nicht
+    //  mehr von „kennt ihn, Farbe ist der Standard" zu unterscheiden. Gefragt
+    //  wird deshalb die Registry selbst.
+    const QHash<QString, QColor> rootColors = m_storage.tagColors();
+    const auto own = rootColors.constFind(tag);
+    if (own != rootColors.constEnd()) return own.value();
+
+    //  Ueber den BEREICHS-INDEX laufen, nicht ueber `m_scopeStorage` — dessen
+    //  QHash-Reihenfolge ist je Programmlauf anders ausgewuerfelt. Kennen zwei
+    //  Unterordner denselben Tag mit verschiedenen Farben, bekam der Chip der
+    //  Filterleiste sonst bei jedem Start eine andere Farbe (gemessen: in 12
+    //  Laeufen sprang sie zwischen zwei Werten). Der Index folgt der Reihenfolge,
+    //  in der die Ordner aufgeklappt wurden — also dem, was der Betrachter sieht.
+    for (int scope = 1; scope < m_scopes.size(); ++scope) {
+        if (!m_scopes.at(scope).active) continue;
+        JsonStorage* st = m_scopeStorage.value(scope, nullptr);
+        if (!st) continue;
+        const QHash<QString, QColor> cols = st->tagColors();
+        const auto c = cols.constFind(tag);
+        if (c != cols.constEnd()) return c.value();
+    }
+    return {};      // ungueltig = niemand im sichtbaren Baum kennt ihn
+}
+
+void MediaModel::fillCategoryFilesByScope(const QStringList& categoryNames,
+                                          QHash<int, QSet<QString>>& out) const {
+    if (categoryNames.isEmpty()) return;
+    for (auto it = m_scopeStorage.constBegin(); it != m_scopeStorage.constEnd(); ++it) {
+        const int scope = it.key();
+        if (scope <= 0 || scope >= m_scopes.size() || !m_scopes.at(scope).active)
+            continue;
+        QSet<QString> files;
+        std::function<void(const QList<TagCategory>&)> walk =
+            [&](const QList<TagCategory>& list) {
+                for (const TagCategory& c : list) {
+                    if (categoryNames.contains(c.name))
+                        for (const QString& f : c.files) files.insert(f);
+                    walk(c.children);
+                }
+            };
+        walk(it.value()->categoriesRef());
+        out.insert(scope, files);
+    }
+}
+
+// ─── Ordner-Operationen ──────────────────────────────────────────────────────
+bool MediaModel::isVisibleFolder(const QString& folderPath) const {
+    if (folderPath.isEmpty()) return false;
+    if (folderPath == m_folder) return true;
+    const int s = m_scopeOfPath.value(folderPath, -1);
+    return s > 0 && s < m_scopes.size() && m_scopes.at(s).active;
+}
+
+void MediaModel::remapExpanded(const QString& oldPath, const QString& newPath) {
+    if (m_expanded.isEmpty() || oldPath.isEmpty()) return;
+    const QString prefix = oldPath + QLatin1Char('/');
+    QSet<QString> next;
+    next.reserve(m_expanded.size());
+    for (const QString& p : std::as_const(m_expanded)) {
+        if (p == oldPath)                next.insert(newPath);
+        else if (p.startsWith(prefix))   next.insert(newPath + p.mid(oldPath.size()));
+        else                             next.insert(p);
+    }
+    m_expanded = next;
+}
+
+//  Ein NAME, kein Pfad: Trenner, `.` und `..` sind abzulehnen, sonst legte ein
+//  Knopf in der Galerie Ordner an beliebiger Stelle an (dieselbe Regel wie in
+//  FileBrowseModel::createFolder).
+static bool usableFolderName(const QString& name) {
+    const QString t = name.trimmed();
+    if (t.isEmpty() || t == QStringLiteral(".") || t == QStringLiteral(".."))
+        return false;
+    return !t.contains(QLatin1Char('/')) && !t.contains(QLatin1Char('\\'));
+}
+
+int MediaModel::createFolder(const QString& parentFolder, const QString& name) {
+    const QString parent = parentFolder.isEmpty() ? m_folder : parentFolder;
+    if (!isVisibleFolder(parent))    return 3;
+    if (!usableFolderName(name))     return 1;
+
+    const QString target = QDir(parent).filePath(name.trimmed());
+    //  Ein gleichnamiger Eintrag JEDER Art zaehlt als „gibt es schon".
+    if (QFileInfo::exists(target))   return 2;
+    if (!QDir(parent).mkdir(name.trimmed())) return 3;
+
+    reload();
+    return 0;
+}
+
+int MediaModel::renameFolder(const QString& folderPath, const QString& newName) {
+    const int row = rowForPath(folderPath);
+    const MediaItem* it = itemAt(row);
+    if (!it || !it->isFolder())      return 3;
+    if (!usableFolderName(newName))  return 1;
+
+    const QFileInfo fi(folderPath);
+    const QString trimmed = newName.trimmed();
+    if (trimmed == fi.fileName())    return 0;      // nichts zu tun
+    const QString target = QDir(fi.absolutePath()).filePath(trimmed);
+    if (QFileInfo::exists(target))   return 2;
+
+    ++m_suppressWatch;
+    const bool ok = QDir().rename(folderPath, target);
+    --m_suppressWatch;
+    if (!ok) return 3;
+
+    //  Der Aufklapp-Zustand haengt an PFADEN — mitsamt der Enkel umhaengen,
+    //  sonst waere der ganze Unterbaum nach dem Umbenennen zu.
+    remapExpanded(folderPath, target);
+    reload();
+    return 0;
+}
+
+bool MediaModel::deleteFolder(const QString& folderPath) {
+    const int row = rowForPath(folderPath);
+    const MediaItem* it = itemAt(row);
+    if (!it || !it->isFolder()) return false;
+
+    FileOp op;
+    op.kind = FileOp::Kind::Folder;
+    op.path = folderPath;
+
+    ++m_suppressWatch;
+    QString inTrash;
+    bool ok = QFile::moveToTrash(folderPath, &inTrash);
+    if (ok) op.trashPath = inTrash;
+    //  KEIN Fallback auf rekursives Loeschen. Ein Ordner kann beliebig viel
+    //  enthalten; ohne Papierkorb gibt es keinen Rueckweg, und ein
+    //  unwiderrufliches `removeRecursively` waere hier die falsche Zusage.
+    --m_suppressWatch;
+    if (!ok) return false;
+
+    //  Der Ordner ist weg — sein Aufklapp-Zustand (und der seiner Enkel) auch.
+    const QString prefix = folderPath + QLatin1Char('/');
+    QSet<QString> keep;
+    for (const QString& p : std::as_const(m_expanded))
+        if (p != folderPath && !p.startsWith(prefix)) keep.insert(p);
+    m_expanded = keep;
+
+    reload();
+    pushUndo(op);
+    return true;
+}
+
 bool MediaModel::pushUndo(const FileOp& op) {
     m_undoOps.push_back(op);
     if (m_undoOps.size() > kMaxFileOps)
@@ -640,7 +1725,7 @@ QString MediaModel::transferTargetName(const QString& filePath,
 
 int MediaModel::transferToFolder(const QString& filePath, const QString& destFolder,
                                  bool move, int collision) {
-    if (rowForPath(filePath) < 0)      return 2;      // fremde Datei
+    if (!isFileRow(rowForPath(filePath))) return 2;     // fremde Datei / Ordner
     const QFileInfo src(filePath);
     if (!src.exists() || !QFileInfo(destFolder).isDir()) return 2;
     //  Derselbe Ordner: es gibt nichts zu tun (und ein „Ersetzen" würde die
@@ -660,10 +1745,13 @@ int MediaModel::transferToFolder(const QString& filePath, const QString& destFol
     op.kind    = move ? FileOp::Kind::Move : FileOp::Kind::Delete;
     op.path    = filePath;
     op.movedTo = target;
-    collectMeta(name, &op);
-    //  Die Kategorien wandern über ihre NAMEN (die IDs des Zielordners sind
-    //  andere) — vor dem Entfernen einsammeln.
-    op.categoryNames = m_tagManager.categoriesForFile(name);
+    //  Aus dem Sidecar des Ordners, dem die Datei gehoert. Die Kategorien
+    //  wandern über ihre NAMEN (die IDs des Zielordners sind andere) — vor dem
+    //  Entfernen einsammeln.
+    const QString srcFolder = src.absolutePath();
+    collectMetaAt(srcFolder, name, &op);
+    if (srcFolder == m_folder)
+        op.categoryNames = m_tagManager.categoriesForFile(name);
 
     ++m_suppressWatch;
     bool ok = false;
@@ -677,7 +1765,7 @@ int MediaModel::transferToFolder(const QString& filePath, const QString& destFol
         ok = QFile::copy(filePath, target);
     }
     if (ok && move) {
-        dropMeta(name, op);
+        dropMetaAt(srcFolder, name, op);
         writeMetaToFolder(destFolder, QFileInfo(target).fileName(), op,
                           m_storage.tagColors());
     }
@@ -692,7 +1780,7 @@ int MediaModel::transferToFolder(const QString& filePath, const QString& destFol
 }
 
 bool MediaModel::deleteItem(const QString& filePath) {
-    if (rowForPath(filePath) < 0)
+    if (!isFileRow(rowForPath(filePath)))
         return false;
 
     FileOp op;
@@ -727,7 +1815,8 @@ bool MediaModel::undoMove(const FileOp& op) {
     if (ok) {
         removeMetaFromFolder(QFileInfo(op.movedTo).absolutePath(),
                              QFileInfo(op.movedTo).fileName());
-        restoreMeta(QFileInfo(op.path).fileName(), op);
+        restoreMetaAt(QFileInfo(op.path).absolutePath(),
+                      QFileInfo(op.path).fileName(), op);
     }
     --m_suppressWatch;
     return ok;
@@ -752,6 +1841,8 @@ int MediaModel::companionKinds(const QString& filePath) const {
 
 bool MediaModel::removeCompanion(const QString& filePath, int kind) {
     const QString p  = mg::toLocalPath(filePath);
+    if (!isFileRow(rowForPath(p)))
+        return false;
     const QString cp = companionPathOf(p, kind);
     if (cp.isEmpty() || !QFileInfo::exists(cp))
         return false;
@@ -784,10 +1875,25 @@ bool MediaModel::removeCompanion(const QString& filePath, int kind) {
     return true;
 }
 
+//  Einen Ordner aus dem Papierkorb zurueckholen. Anders als bei einer Datei
+//  gibt es keine Metadaten einzusammeln: die liegen im Sidecar IM Ordner und
+//  sind mitgewandert.
+bool MediaModel::restoreFolder(const FileOp& op) {
+    if (op.trashPath.isEmpty() || !QFileInfo::exists(op.trashPath)) return false;
+    if (QFileInfo::exists(op.path)) return false;      // Platz wieder belegt
+
+    ++m_suppressWatch;
+    const bool ok = QDir().rename(op.trashPath, op.path);
+    --m_suppressWatch;
+    if (ok) reload();
+    return ok;
+}
+
 bool MediaModel::undoFileOp() {
     while (!m_undoOps.isEmpty()) {
         const FileOp op = m_undoOps.takeLast();
-        const bool back = (op.kind == FileOp::Kind::Move) ? undoMove(op)
+        const bool back = (op.kind == FileOp::Kind::Move)   ? undoMove(op)
+                        : (op.kind == FileOp::Kind::Folder) ? restoreFolder(op)
                         : restoreFile(op);   // Companion nutzt denselben Rückweg
         if (!back) {
             //  Nicht zurückholbar (Papierkorb geleert, Platz wieder belegt) —
@@ -796,7 +1902,10 @@ bool MediaModel::undoFileOp() {
             emit fileHistoryChanged();
             continue;
         }
-        appendRowFor(op.path);
+        //  Der Ordner ist ueber `reload()` schon wieder da; eine Datei kommt
+        //  gezielt als Zeile zurueck (kein Reload, keine neuen Miniaturen).
+        if (op.kind != FileOp::Kind::Folder)
+            appendRowFor(op.path);
         m_redoOps.push_back(op);
         emit fileHistoryChanged();
         return true;
@@ -810,6 +1919,17 @@ bool MediaModel::redoFileOp() {
         if (rowForPath(op.path) < 0) { emit fileHistoryChanged(); continue; }
 
         bool ok = false;
+        if (op.kind == FileOp::Kind::Folder) {
+            if (deleteFolder(op.path)) {
+                //  `deleteFolder` legt den Vorgang selbst auf den Undo-Stapel
+                //  und leert dabei den Redo-Zweig — der Eintrag ist damit
+                //  bereits verbucht.
+                emit fileHistoryChanged();
+                return true;
+            }
+            emit fileHistoryChanged();
+            continue;
+        }
         if (op.kind == FileOp::Kind::Move) {
             //  Erneut verschieben — über denselben Weg wie beim ersten Mal,
             //  damit auch die Metadaten wieder mitwandern.
@@ -844,39 +1964,161 @@ QString MediaModel::redoFileOpName() const {
                                : QFileInfo(m_redoOps.last().path).fileName();
 }
 
-void MediaModel::toggleTag(const QString& filePath, const QString& tag) {
-    const int row = rowForPath(filePath);
-    if (row < 0 || tag.isEmpty()) return;
-
+//  Tag setzen/entfernen im Sidecar DES ORDNERS, dem die Datei gehoert.
+//  Fuer den geoeffneten Ordner laeuft das ueber den TagManager (nur so erfahren
+//  Seitenleiste und Filter davon); ein aufgeklappter Unterordner hat keinen
+//  eigenen TagManager und wird direkt bedient.
+//
+//  DIE DEFINITION WANDERT MIT: Name und Farbe des Tags werden im Sidecar des
+//  Unterordners eingetragen. Sonst stuende dort ein Tag ohne Farbe, sobald man
+//  den Unterordner spaeter direkt oeffnet — die Zuordnung waere da, ihre
+//  Bedeutung nicht.
+void MediaModel::setTagOnRow(int row, const QString& tag, bool on) {
     MediaItem& it = m_items[row];
     const QString name = it.fileName();
 
+    //  Die eigene Änderung darf den Ordner-Watcher nicht in ein reload() treiben
+    //  (das würde die Auswahl und die Miniaturen wegwerfen).
     ++m_suppressWatch;
-    if (it.tags.contains(tag))
-        m_tagManager.removeTagFromFile(name, tag);
-    else
-        m_tagManager.addTagToFile(name, tag);
+    if (it.scope == 0) {
+        if (on) m_tagManager.addTagToFile(name, tag);
+        else    m_tagManager.removeTagFromFile(name, tag);
+        it.tags = m_tagManager.tagsForFile(name);
+    } else if (JsonStorage* st = storageForScope(it.scope)) {
+        QStringList tags = st->getTags(name);
+        bool changed = false;
+        if (on && !tags.contains(tag)) {
+            tags.append(tag);
+            st->ensureTagRegistered(tag);
+            const QHash<QString, QColor> colors = m_storage.tagColors();
+            const auto c = colors.constFind(tag);
+            if (c != colors.constEnd()) st->setTagColor(tag, c.value());
+            changed = true;
+        } else if (!on && tags.removeAll(tag) > 0) {
+            changed = true;
+        }
+        if (changed) {
+            st->setTags(name, tags);
+            st->saveCurrentFolder();
+        }
+        it.tags = st->getTags(name);
+    }
     --m_suppressWatch;
 
-    it.tags = m_tagManager.tagsForFile(name);
     emitRow(row, { TagsRole });
+}
+
+// ─── Datei-Metadaten über den Pfad (Sidecar DES eigenen Ordners) ─────────────
+//  Das Sidecar einer Zeile, oder nullptr wenn die Datei nicht zur Ansicht
+//  gehoert. `row` liefert nebenbei die Zeile fuer das Auffrischen der Anzeige.
+JsonStorage* MediaModel::storageOfFile(const QString& filePath, int* row) {
+    const int r = rowForPath(filePath);
+    if (row) *row = r;
+    if (!isFileRow(r)) return nullptr;
+    return storageForScope(m_items.at(r).scope);
+}
+
+QStringList MediaModel::tagsOfFile(const QString& filePath) const {
+    const int r = rowForPath(filePath);
+    return isFileRow(r) ? m_items.at(r).tags : QStringList();
+}
+
+void MediaModel::removeTag(const QString& filePath, const QString& tag) {
+    const int row = rowForPath(filePath);
+    if (row < 0 || tag.isEmpty() || !isFileRow(row)) return;
+    if (!m_items.at(row).tags.contains(tag)) return;
+    setTagOnRow(row, tag, false);
+}
+
+bool MediaModel::hasCustomDate(const QString& filePath) const {
+    const int r = rowForPath(filePath);
+    return isFileRow(r) && m_items.at(r).hasCustomDate;
+}
+
+QDateTime MediaModel::customDate(const QString& filePath) const {
+    const int r = rowForPath(filePath);
+    return isFileRow(r) ? m_items.at(r).dateTime : QDateTime();
+}
+
+void MediaModel::setCustomDate(const QString& filePath, const QDateTime& dt) {
+    int row = -1;
+    JsonStorage* st = storageOfFile(filePath, &row);
+    if (!st) return;
+    const QString name = m_items.at(row).fileName();
+
+    ++m_suppressWatch;
+    st->setCustomDate(name, dt);
+    st->saveCurrentFolder();
+    --m_suppressWatch;
+
+    //  Die Anzeige mitziehen — sonst zeigte die Kachel das alte Datum, und die
+    //  Sortierung nach Datum stimmte bis zum naechsten Neuladen nicht.
+    m_items[row].dateTime      = dt;
+    m_items[row].hasCustomDate = true;
+    emitRow(row, { DateTimeRole });
+}
+
+void MediaModel::clearCustomDate(const QString& filePath) {
+    int row = -1;
+    JsonStorage* st = storageOfFile(filePath, &row);
+    if (!st) return;
+    const QString name = m_items.at(row).fileName();
+
+    ++m_suppressWatch;
+    st->clearCustomDate(name);
+    st->saveCurrentFolder();
+    --m_suppressWatch;
+
+    //  Zurueck auf das DATEIdatum.
+    m_items[row].dateTime      = QFileInfo(filePath).lastModified();
+    m_items[row].hasCustomDate = false;
+    emitRow(row, { DateTimeRole });
+}
+
+QColor MediaModel::fileTextPdfColor(const QString& filePath) const {
+    const QString p = mg::toLocalPath(filePath);
+    const int r = rowForPath(p);
+    if (!isFileRow(r)) return {};
+    auto* self = const_cast<MediaModel*>(this);
+    JsonStorage* st = self->storageForScope(m_items.at(r).scope);
+    return st ? st->textPdfColor(m_items.at(r).fileName()) : QColor();
+}
+
+bool MediaModel::hasFileTextPdfColor(const QString& filePath) const {
+    return fileTextPdfColor(filePath).isValid();
+}
+
+void MediaModel::setFileTextPdfColor(const QString& filePath, const QColor& c) {
+    int row = -1;
+    JsonStorage* st = storageOfFile(mg::toLocalPath(filePath), &row);
+    if (!st) return;
+    ++m_suppressWatch;
+    st->setTextPdfColor(m_items.at(row).fileName(), c);
+    st->saveCurrentFolder();
+    --m_suppressWatch;
+}
+
+void MediaModel::clearFileTextPdfColor(const QString& filePath) {
+    int row = -1;
+    JsonStorage* st = storageOfFile(mg::toLocalPath(filePath), &row);
+    if (!st) return;
+    ++m_suppressWatch;
+    st->clearTextPdfColor(m_items.at(row).fileName());
+    st->saveCurrentFolder();
+    --m_suppressWatch;
+}
+
+void MediaModel::toggleTag(const QString& filePath, const QString& tag) {
+    const int row = rowForPath(filePath);
+    if (row < 0 || tag.isEmpty() || !isFileRow(row)) return;
+    setTagOnRow(row, tag, !m_items.at(row).tags.contains(tag));
 }
 
 void MediaModel::addTag(const QString& filePath, const QString& tag) {
     const int row = rowForPath(filePath);
-    if (row < 0 || tag.isEmpty()) return;
-
-    MediaItem& it = m_items[row];
-    if (it.tags.contains(tag)) return;          // schon dran → nichts zu tun
-
-    //  Wie toggleTag: die eigene Änderung darf den Ordner-Watcher nicht in ein
-    //  reload() treiben (das würde die Auswahl und die Miniaturen wegwerfen).
-    ++m_suppressWatch;
-    m_tagManager.addTagToFile(it.fileName(), tag);
-    --m_suppressWatch;
-
-    it.tags = m_tagManager.tagsForFile(it.fileName());
-    emitRow(row, { TagsRole });
+    if (row < 0 || tag.isEmpty() || !isFileRow(row)) return;
+    if (m_items.at(row).tags.contains(tag)) return;   // schon dran
+    setTagOnRow(row, tag, true);
 }
 
 // ─── Watcher ─────────────────────────────────────────────────────────────────

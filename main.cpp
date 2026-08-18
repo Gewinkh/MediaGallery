@@ -35,6 +35,7 @@
 #include "app/WebEngineController.h"
 #include "media/MediaModel.h"
 #include "media/MediaProxyModel.h"
+#include "media/GalleryRowModel.h"
 
 int main(int argc, char* argv[]) {
     // ── RHI-Backend setzen ────────────────────────────────────────────────────
@@ -186,6 +187,17 @@ int main(int argc, char* argv[]) {
 
     QObject::connect(&appController, &AppController::folderOpened,
                      &mediaModel, &MediaModel::loadFolder);
+
+    //  ── Rekursive Suche ────────────────────────────────────────────────────
+    //  Aendert sich der Filter, durchsucht das Modell den Baum unterhalb des
+    //  offenen Ordners und klappt Treffer-Ordner samt ihrer Kette auf; beim
+    //  Leeren kehrt der Aufklapp-Zustand auf den Stand davor zurueck.
+    //  Verdrahtet HIER, damit weder Proxy noch Modell einander kennen muessen.
+    QObject::connect(&galleryModel, &MediaProxyModel::filterChanged,
+                     &mediaModel, [&galleryModel, &mediaModel]() {
+        mediaModel.applyDeepFilter(galleryModel.criteria(),
+                                   galleryModel.activeCategoryNames());
+    });
     QObject::connect(&appController, &AppController::folderContentsChanged,
                      &mediaModel, &MediaModel::reload);
 
@@ -285,6 +297,9 @@ int main(int argc, char* argv[]) {
     //  (`qml/common/FileChooser.qml`) — ein Modell je Wähler, damit zwei
     //  geöffnete Wähler nicht im selben Verzeichnis stehen.
     qmlRegisterType<FileBrowseModel>   ("MediaGallery", 1, 0, "FileBrowseModel");
+    //  Zeilenmodell der Galerie — je Ansicht eine Instanz, gespeist aus
+    //  `galleryModel` (s. src/media/GalleryRowModel.h).
+    qmlRegisterType<GalleryRowModel>   ("MediaGallery", 1, 0, "GalleryRowModel");
     qmlRegisterSingletonInstance("MediaGallery", 1, 0, "Translit",  &translit);
     qmlRegisterSingletonInstance("MediaGallery", 1, 0, "WebEngine", &webEngine);
 

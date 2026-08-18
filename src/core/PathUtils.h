@@ -32,6 +32,17 @@ inline bool isCompanionFile(const QString& fileName,
         || fileName.endsWith(QLatin1String(".bak"), Qt::CaseInsensitive);
 }
 
+//  Ordnerpfad OHNE abschliessenden Trenner. Ein „/pfad/zum/ordner/" macht
+//  `QFileInfo::fileName()` zu einem LEERSTRING — daraus wurde der Sidecar-Name
+//  „.json", der nichts mehr traf, und die Ordner-JSON stand plötzlich als
+//  Kachel in der Galerie. Die Wurzel „/" bleibt erhalten.
+inline QString normalizedFolder(const QString& folderPath) {
+    QString n = folderPath;
+    while (n.size() > 1 && (n.endsWith(QLatin1Char('/')) || n.endsWith(QLatin1Char('\\'))))
+        n.chop(1);
+    return n;
+}
+
 //  Name der Ordner-JSON eines Ordners: „<Ordnername>.json".
 inline QString folderSidecarName(const QString& folderPath) {
     QString n = folderPath;

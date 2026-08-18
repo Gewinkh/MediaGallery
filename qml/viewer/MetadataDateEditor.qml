@@ -6,7 +6,7 @@ import MediaGallery 1.0
 // ─────────────────────────────────────────────────────────────────────────────
 //  MetadataDateEditor.qml — Inline-Editor für das benutzerdefinierte Datum eines
 //  Mediums (ersetzt MetadataEditor(QDialog)). Speichern/Löschen laufen als
-//  Bridge-Calls (App.setCustomDate / App.clearCustomDate) über den Aufrufer.
+//  Modell-Aufrufe (mediaModel.setCustomDate / clearCustomDate) über den Aufrufer.
 // ─────────────────────────────────────────────────────────────────────────────
 Popup {
     id: editor

@@ -23,6 +23,9 @@
 #include <QVariantMap>
 #include <QSize>
 #include <QPoint>
+#include <QTimer>
+#include <QWheelEvent>
+#include <QGuiApplication>
 
 AppController::AppController(ISettings& settings,
                             FolderService& folderService,
@@ -59,12 +62,57 @@ AppController::AppController(ISettings& settings,
 
 // ── Ordner ───────────────────────────────────────────────────────────────────
 QString AppController::currentFolder() const { return m_folderService.currentFolder(); }
-void    AppController::restoreLastFolder()              { m_folderService.restoreLastFolder(); }
+void    AppController::restoreLastFolder()              {
+    clearFolderHistory();
+    m_folderService.restoreLastFolder();
+}
 
 void AppController::openFolderUrl(const QUrl& url) {
     const QString path = url.isLocalFile() ? url.toLocalFile() : url.toString();
-    if (!path.isEmpty())
-        m_folderService.openFolder(path);
+    if (path.isEmpty()) return;
+    //  Ein Ordner, den der Nutzer AUSGEWAEHLT hat, ist kein Abstieg — der
+    //  Rueckweg bezieht sich auf den vorherigen Baum und ist damit hinfaellig.
+    clearFolderHistory();
+    m_folderService.openFolder(path);
+}
+
+// ── Hinein und zurueck ───────────────────────────────────────────────────────
+void AppController::openSubfolder(const QString& path) {
+    if (path.isEmpty()) return;
+    const QString current = m_folderService.currentFolder();
+    if (path == current) return;
+    if (!QFileInfo(path).isDir()) return;
+
+    if (!current.isEmpty()) {
+        m_folderBackStack.append(current);
+        while (m_folderBackStack.size() > kMaxFolderBack)
+            m_folderBackStack.removeFirst();
+        emit folderHistoryChanged();
+    }
+    m_folderService.openFolder(path);
+}
+
+bool AppController::navigateBack() {
+    //  Eintraege, die nicht mehr taugen (Ordner geloescht, schon offen), werden
+    //  verworfen statt den Rueckweg zu blockieren — dieselbe Linie wie beim
+    //  Datei-Undo in MediaModel.
+    while (!m_folderBackStack.isEmpty()) {
+        const QString prev = m_folderBackStack.takeLast();
+        if (prev.isEmpty() || prev == m_folderService.currentFolder()
+            || !QFileInfo(prev).isDir())
+            continue;
+        emit folderHistoryChanged();
+        m_folderService.openFolder(prev);
+        return true;
+    }
+    emit folderHistoryChanged();
+    return false;
+}
+
+void AppController::clearFolderHistory() {
+    if (m_folderBackStack.isEmpty()) return;
+    m_folderBackStack.clear();
+    emit folderHistoryChanged();
 }
 
 void AppController::refreshCurrentFolder() {
@@ -80,11 +128,22 @@ void AppController::refreshCurrentFolder() {
 //  QSaveFile; die leere PDF ist eine EINZELNE weiße A4-Seite aus QPdfWriter
 //  (72 dpi, Ränder 0 — dieselbe Punkt-Skala wie der PDF-Editor-Export, damit
 //  neu erstellte PDFs sofort editierbar sind und WYSIWYG bleiben).
-QString AppController::createEmptyFile(const QString& kind, const QString& baseName) {
-    const QString folder = m_folderService.currentFolder();
-    if (folder.isEmpty()) {
+QString AppController::createEmptyFile(const QString& kind, const QString& baseName,
+                                       const QString& targetFolder) {
+    const QString open = m_folderService.currentFolder();
+    if (open.isEmpty()) {
         emit statusMessage(Strings::get(StringKey::CreateFileFailed));
         return {};
+    }
+    //  Ein Zielordner ist nur INNERHALB des geoeffneten Ordners zulaessig.
+    QString folder = open;
+    if (!targetFolder.isEmpty() && targetFolder != open) {
+        if (!targetFolder.startsWith(open + QLatin1Char('/'))
+            || !QFileInfo(targetFolder).isDir()) {
+            emit statusMessage(Strings::get(StringKey::CreateFileFailed));
+            return {};
+        }
+        folder = targetFolder;
     }
 
     // Endung aus dem Typ ableiten (Whitelist).
@@ -177,19 +236,27 @@ QString AppController::createEmptyFile(const QString& kind, const QString& baseN
 }
 
 // ── Drag & Drop ──────────────────────────────────────────────────────────────
-void AppController::handleDroppedUrls(const QList<QUrl>& urls) {
+void AppController::handleDroppedUrls(const QList<QUrl>& urls,
+                                      const QString& targetFolder) {
     // 1) Verzeichnis im Drop → als Galerie-Ordner öffnen (erstes gewinnt).
     for (const QUrl& url : urls) {
         const QString path = url.toLocalFile();
         if (path.isEmpty()) continue;
         if (QFileInfo(path).isDir()) {
+            clearFolderHistory();   // Sprung aus dem Baum heraus
             m_folderService.openFolder(path);
             return;
         }
     }
 
-    // 2) Mediendateien → in den aktuellen Ordner kopieren.
-    const QString folder = m_folderService.currentFolder();
+    // 2) Mediendateien → in den Zielordner kopieren (leer = der offene).
+    const QString open = m_folderService.currentFolder();
+    QString folder = open;
+    if (!targetFolder.isEmpty() && targetFolder != open
+        && targetFolder.startsWith(open + QLatin1Char('/'))
+        && QFileInfo(targetFolder).isDir()) {
+        folder = targetFolder;
+    }
     const bool de = (m_settings.language() == Language::German);
     if (folder.isEmpty()) {
         emit statusMessage(de ? QStringLiteral("Kein Ordner geöffnet — Dateien können nicht hinzugefügt werden.")
@@ -211,8 +278,13 @@ void AppController::handleDroppedUrls(const QList<QUrl>& urls) {
     }
 
     if (copied > 0) {
-        m_storage.loadFolder(folder);   // Metadaten für neuen Bestand anwenden
-        emit folderContentsChanged();   // Galerie lädt neu (Phase 2)
+        //  NUR fuer den offenen Ordner: `m_storage` IST dessen Sidecar — es auf
+        //  einen Unterordner umzuschalten haenge Modell, Tag-Panel und Filter
+        //  an die falsche Datei. Der Unterordner fuehrt sein eigenes Sidecar
+        //  (s. MediaModel ▸ Sidecar-Sammlung) und liest beim Reload selbst neu.
+        if (folder == open)
+            m_storage.loadFolder(folder);   // Metadaten für neuen Bestand anwenden
+        emit folderContentsChanged();       // Galerie lädt neu (Phase 2)
     }
 
     if (copied > 0)
@@ -224,13 +296,68 @@ void AppController::handleDroppedUrls(const QList<QUrl>& urls) {
 }
 
 // ── Lesezeichen ──────────────────────────────────────────────────────────────
+//  ── Mausrad waehrend eines Zuges ────────────────────────────────────────────
+//  GEMESSEN auf Wayland (MG_DRAGLOG, echter Zug): waehrend eines Zuges erreichen
+//  die Anwendung 892 `DragMove`, aber **kein einziges `Wheel`** und kein
+//  `MouseMove`. Unter Wayland gehoert der Zeiger waehrend eines Zuges dem
+//  Compositor (`wl_data_device`); Achsen-Ereignisse sind kein Teil des
+//  Drag-Protokolls und werden gar nicht erst gesendet. Auf dieser Plattform ist
+//  das Rad im Zug also NICHT zu haben — dort bleibt das Randscrollen der Galerie.
+//
+//  Der Filter bleibt trotzdem: auf X11 und Windows kann das Rad ankommen, und er
+//  kostet nichts. Anwendungsfilter laufen in UMGEKEHRTER Installationsreihenfolge
+//  — deshalb wird unserer nicht sofort gesetzt, sondern ueber einen 0-ms-Timer:
+//  der feuert bereits INNERHALB der Ereignisschleife des Zuges, also nachdem Qt
+//  seinen eigenen Filter gesetzt hat, und liegt damit davor.
+//
+//  Verbraucht wird nichts (`return false`) — der Filter schaut nur zu.
+bool AppController::eventFilter(QObject* watched, QEvent* event) {
+    if (m_tileDragActive) {
+        //  DIAGNOSE (nur mit MG_DRAGLOG=1): welche Ereignisse erreichen die
+        //  Anwendung waehrend eines Zuges ueberhaupt? Unter Wayland gehoert der
+        //  Zeiger waehrend eines Zuges dem Compositor, und Achsen-Ereignisse
+        //  sind kein Teil des Drag-Protokolls — dann kommt hier nie ein
+        //  QEvent::Wheel an, und kein Filter kann daran etwas aendern.
+        if (m_dragLog) {
+            const int t = static_cast<int>(event->type());
+            m_dragEventCounts[t] = m_dragEventCounts.value(t, 0) + 1;
+        }
+        if (event->type() == QEvent::Wheel) {
+            const auto* we = static_cast<QWheelEvent*>(event);
+            const int dy = we->angleDelta().y();
+            if (m_dragLog)
+                qInfo("[MG_DRAGLOG] Wheel waehrend des Zuges: angleDelta.y=%d", dy);
+            if (dy != 0) emit dragWheel(dy);
+        }
+    }
+    return QObject::eventFilter(watched, event);
+}
+
 void AppController::beginTileDrag() {
     if (m_tileDragActive) return;
     m_tileDragActive = true;
+    m_dragLog = qEnvironmentVariableIsSet("MG_DRAGLOG");
+    m_dragEventCounts.clear();
+    if (m_dragLog) qInfo("[MG_DRAGLOG] Zug beginnt");
+    QTimer::singleShot(0, this, [this]() {
+        if (m_tileDragActive) qApp->installEventFilter(this);
+    });
     emit tileDragActiveChanged();
 }
 
 void AppController::endTileDrag() {
+    qApp->removeEventFilter(this);
+    if (m_dragLog) {
+        //  Nach Haeufigkeit sortiert waere schoener; die Zahl allein genuegt.
+        QStringList seen;
+        for (auto it = m_dragEventCounts.constBegin();
+             it != m_dragEventCounts.constEnd(); ++it)
+            seen << QStringLiteral("%1x Typ %2").arg(it.value()).arg(it.key());
+        qInfo("[MG_DRAGLOG] Zug endet. Gesehene Ereignisse: %s",
+              seen.isEmpty() ? "KEINE" : qPrintable(seen.join(QStringLiteral(", "))));
+        qInfo("[MG_DRAGLOG]   (QEvent::Wheel = %d, MouseMove = %d, DragMove = %d)",
+              int(QEvent::Wheel), int(QEvent::MouseMove), int(QEvent::DragMove));
+    }
     if (!m_tileDragActive) return;
     m_tileDragActive = false;
     emit tileDragActiveChanged();
@@ -277,8 +404,9 @@ QVariantList AppController::savedFolders() const {
 }
 
 void AppController::openBookmark(const QString& path) {
-    if (!path.isEmpty())
-        m_folderService.openFolder(path);
+    if (path.isEmpty()) return;
+    clearFolderHistory();      // Sprung aus dem Baum heraus (s. openSubfolder)
+    m_folderService.openFolder(path);
 }
 
 // ── Lesezeichen-Verwaltung (Phase 4) ─────────────────────────────────────────
@@ -567,52 +695,24 @@ void AppController::saveWindowState(int w, int h, int x, int y, bool maximized) 
 // ── Tags ─────────────────────────────────────────────────────────────────────
 QStringList AppController::allTags() const                       { return m_tagManager.allTags(); }
 QColor      AppController::tagColor(const QString& tag) const     { return m_tagManager.tagColor(tag); }
-QStringList AppController::tagsForFile(const QString& f) const    { return m_tagManager.tagsForFile(f); }
+//  ENTFALLEN: tagsForFile / addTagToFile / removeTagFromFile / setCustomDate /
+//  clearCustomDate / fileTextPdfColor & Co. Sie nahmen den blanken DATEINAMEN
+//  und trafen damit immer das Sidecar des GEOEFFNETEN Ordners — fuer eine Datei
+//  aus einem aufgeklappten Unterordner also das falsche. Den Ordner einer Datei
+//  kennt das Modell; die Wege liegen jetzt dort (`MediaModel::tagsOfFile`,
+//  `addTag`/`removeTag`, `setCustomDate`/`clearCustomDate`,
+//  `fileTextPdfColor` & Co.) und routen auf das richtige Sidecar.
 
-void AppController::addTagToFile(const QString& f, const QString& tag)      { m_tagManager.addTagToFile(f, tag); }
-void AppController::removeTagFromFile(const QString& f, const QString& tag) { m_tagManager.removeTagFromFile(f, tag); }
-
-// ── Datei-Metadaten ──────────────────────────────────────────────────────────
-void      AppController::setCustomDate(const QString& f, const QDateTime& dt) { m_storage.setCustomDate(f, dt); }
-void      AppController::clearCustomDate(const QString& f)      { m_storage.clearCustomDate(f); }
-
-//  ── Schriftfarbe des TXT→PDF-Exports ────────────────────────────────────────
-//  Vorgabe global (AppSettings), Ausnahme je Datei (Ordner-Sidecar). Gespeichert
-//  wird SOFORT (saveCurrentFolder): der Nutzer wählt die Farbe unmittelbar vor
-//  dem Export, ein späteres Sammel-Speichern käme oft zu spät.
-namespace {
-QString fileNameOf(const QString& pathOrUrl) {
-    const QString p = mg::toLocalPath(pathOrUrl);
-    const int cut = qMax(p.lastIndexOf(QLatin1Char('/')), p.lastIndexOf(QLatin1Char('\\')));
-    return (cut >= 0) ? p.mid(cut + 1) : p;
-}
-}  // namespace
-
+//  ── Schriftfarbe des TXT→PDF-Exports: nur noch die GLOBALE Vorgabe ─────────
+//  Die Ausnahme JE DATEI liegt im Sidecar des Ordners, dem die Datei gehoert —
+//  und den kennt das Modell, nicht diese Fassade (s. `MediaModel::
+//  fileTextPdfColor` & Co.).
 QColor AppController::textPdfColor() const { return m_settings.textPdfColor(); }
 
 void AppController::setTextPdfColor(const QColor& c) {
     if (m_settings.textPdfColor() == c) return;
     m_settings.setTextPdfColor(c);
     emit textPdfColorChanged();
-}
-
-QColor AppController::fileTextPdfColor(const QString& filePathOrUrl) const {
-    const QColor own = m_storage.textPdfColor(fileNameOf(filePathOrUrl));
-    return own.isValid() ? own : m_settings.textPdfColor();
-}
-
-bool AppController::hasFileTextPdfColor(const QString& filePathOrUrl) const {
-    return m_storage.textPdfColor(fileNameOf(filePathOrUrl)).isValid();
-}
-
-void AppController::setFileTextPdfColor(const QString& filePathOrUrl, const QColor& c) {
-    m_storage.setTextPdfColor(fileNameOf(filePathOrUrl), c);
-    m_storage.saveCurrentFolder();
-}
-
-void AppController::clearFileTextPdfColor(const QString& filePathOrUrl) {
-    m_storage.clearTextPdfColor(fileNameOf(filePathOrUrl));
-    m_storage.saveCurrentFolder();
 }
 
 // ── i18n ─────────────────────────────────────────────────────────────────────

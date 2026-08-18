@@ -83,7 +83,10 @@ private:
     QThreadPool*                   m_pool;
     int                            m_targetDim = kThumbDim;  // nur GUI-Thread
     QMutex                         m_mutex;
-    QSet<QString>                  m_pending;   // verhindert Doppel-Submits
+    QSet<QString>                  m_pending;
+    //  Pfade, die WAEHREND eines laufenden Abbruchs erneut angefordert wurden.
+    //  `done` reiht sie danach neu ein — sonst ginge die Anforderung verloren.
+    QSet<QString>  m_rearm;   // verhindert Doppel-Submits
     QHash<QString, ThumbnailTask*> m_queued;    // path → noch nicht beendeter Task
     QHash<QString, CancelFlag>     m_flags;     // path → kooperatives Abbruch-Flag
     std::atomic<uint64_t>          m_generation{0};

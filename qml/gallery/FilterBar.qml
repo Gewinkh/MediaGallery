@@ -32,7 +32,31 @@ Rectangle {
     signal tagPanelToggled()
     signal categoryPanelToggled()
     // „Extrahieren": globale Seiten-Extraktion anstoßen (Dialog hostet die Shell).
-    signal extractPagesRequested()
+    //  Farbe eines Tags — erst der offene Ordner, dann die aufgeklappten
+    //  Unterordner (s. MediaModel::visibleTagColor). Kennt ihn niemand, bleibt
+    //  es bei der Vorgabe des Themes.
+    function tagColorOf(tag) {
+        var c = mediaModel.visibleTagColor(tag)
+        return (c && c.a > 0) ? c : App.tagColor(tag)
+    }
+
+    //  Ordner, in dem „+ Erstellen" und „PDF-Seiten…" arbeiten. Leer = der
+    //  geoeffnete Ordner; die Kopfzeile eines aufgeklappten Bereichs setzt hier
+    //  ihren eigenen Ordner, bevor sie das Popup oeffnet.
+    property string actionFolder: ""
+    signal extractPagesRequested(string folder)
+    //  „+ Ordner" für den GEÖFFNETEN Ordner — die Kopfzeile eines aufgeklappten
+    //  Bereichs hat ihren eigenen Knopf für ihren Ordner.
+    signal newFolderRequested(string folder)
+
+    //  Von der Kopfzeile eines aufgeklappten Bereichs aufgerufen.
+    function openCreateFor(folder) {
+        bar.actionFolder = folder
+        createNameField.text = ""
+        createPopup.kind = "pdf"
+        createPopup.open()
+        createNameField.forceActiveFocus()
+    }
     property bool tagPanelVisible: false
     property bool categoryPanelVisible: false
 
@@ -220,9 +244,13 @@ Rectangle {
 
                 // Aktuell gewaehlte Kategorie (Master-Spalte): 0..3
                 property int selectedCat: 0
-                // Tag-Liste beim Oeffnen auffrischen (App.allTags() ist eine Funktion).
+                //  Tag-Liste beim Öffnen auffrischen. `mediaModel.visibleTags()`
+                //  statt `App.allTags()`: jeder Ordner führt seine eigene
+                //  Liste — angeboten wird, was gerade zu SEHEN ist, also auch
+                //  die Tags aufgeklappter Unterordner. Sonst gäbe es dort
+                //  einen Tag, nach dem man nicht filtern kann.
                 property var popupTags: []
-                onAboutToShow: popupTags = App.allTags()
+                onAboutToShow: popupTags = mediaModel.visibleTags()
 
                 // "Tags" und "Kategorien" sind zu EINEM Eintrag zusammengelegt:
                 // Panel-Steuerung (Tag-/Kategorie-Panel individuell) + Tag-Schnellfilter.
@@ -617,7 +645,7 @@ Rectangle {
                                 id: tagRow
                                 required property var modelData
                                 readonly property bool on: bar.activeTags.indexOf(modelData) >= 0
-                                readonly property color tagCol: App.tagColor(modelData)
+                                readonly property color tagCol: bar.tagColorOf(modelData)
                                 width: 236; height: 30; radius: 6
                                 color: on ? Qt.rgba(tagCol.r, tagCol.g, tagCol.b, 0.22)
                                           : (tHover.hovered ? Qt.rgba(1,1,1,0.06) : "transparent")
@@ -735,6 +763,19 @@ Rectangle {
 
         ToolSeparator { anchors.verticalCenter: parent.verticalCenter }
 
+        // ── „+ Ordner": einen Unterordner im aktuellen Ordner anlegen ─────────
+        //  Denselben Dialog führt die Galerie (sie kennt `mediaModel`); hier
+        //  steht nur der Knopf. Ohne offenen Ordner deaktiviert.
+        Button {
+            id: newFolderBtn
+            anchors.verticalCenter: parent.verticalCenter
+            height: 30
+            font.pixelSize: 13
+            enabled: App.currentFolder.length > 0
+            text: App.uiText(App.language, "FolderNew")
+            onClicked: bar.newFolderRequested("")
+        }
+
         // ── „Erstellen": leere PDF/HTML/TXT im aktuellen Ordner ───────────────
         //  Öffnet ein kompaktes Popup: Typ wählen (3 Zeilen, radio-artig) +
         //  Dateiname → App.createEmptyFile schreibt atomar, aktualisiert die
@@ -751,10 +792,8 @@ Rectangle {
                 if (createPopup.opened) {
                     createPopup.close()
                 } else {
-                    createNameField.text = ""
-                    createPopup.kind = "pdf"
-                    createPopup.open()
-                    createNameField.forceActiveFocus()
+                    bar.actionFolder = ""      // dieser Knopf meint den offenen Ordner
+                    bar.openCreateFor("")
                 }
             }
 
@@ -768,7 +807,8 @@ Rectangle {
                 function doCreate() {
                     if (createNameField.text.trim().length === 0)
                         return
-                    App.createEmptyFile(createPopup.kind, createNameField.text)
+                    App.createEmptyFile(createPopup.kind, createNameField.text,
+                                        bar.actionFolder)
                     createPopup.close()
                 }
 
@@ -879,7 +919,7 @@ Rectangle {
             font.pixelSize: 13
             enabled: App.currentFolder.length > 0
             text: App.uiText(App.language, "FilterExtractBtn")
-            onClicked: bar.extractPagesRequested()
+            onClicked: bar.extractPagesRequested("")   // der offene Ordner
         }
 
         ToolSeparator { anchors.verticalCenter: parent.verticalCenter }
@@ -895,9 +935,9 @@ Rectangle {
                     required property var modelData
                     height: 24; radius: 12
                     width: chipRow.implicitWidth + 16
-                    color: Qt.rgba(App.tagColor(chip.modelData).r, App.tagColor(chip.modelData).g,
-                                   App.tagColor(chip.modelData).b, 0.25)
-                    border.color: App.tagColor(chip.modelData); border.width: 1
+                    readonly property color chipCol: bar.tagColorOf(chip.modelData)
+                    color: Qt.rgba(chipCol.r, chipCol.g, chipCol.b, 0.25)
+                    border.color: chipCol; border.width: 1
                     Row {
                         id: chipRow
                         anchors.centerIn: parent; spacing: 5

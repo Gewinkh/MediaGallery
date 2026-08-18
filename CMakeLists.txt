@@ -162,6 +162,8 @@ mg_domain(mg_media
         src/media/MediaModel.h
         src/media/MediaProxyModel.cpp
         src/media/MediaProxyModel.h
+        src/media/GalleryRowModel.cpp
+        src/media/GalleryRowModel.h
         src/media/FolderService.cpp
         src/media/FolderService.h
         src/media/ThumbnailLoader.cpp

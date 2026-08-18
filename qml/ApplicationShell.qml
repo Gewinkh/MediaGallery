@@ -128,6 +128,14 @@ ApplicationWindow {
     //  reagiert die Shell auf die Ergebnis-Signale.
     property bool _scanPending: false
     property bool _extractPending: false
+    //  Ordner, in dem die laufende Seiten-Extraktion arbeitet. Leer = der
+    //  geoeffnete Ordner; die Kopfzeile eines aufgeklappten Bereichs setzt
+    //  hier ihren eigenen.
+    property string _extractFolder: ""
+    function _extractTarget() {
+        return shell._extractFolder.length > 0 ? shell._extractFolder
+                                               : App.currentFolder
+    }
     property string _extractName: ""
 
     Component.onCompleted: {
@@ -433,6 +441,16 @@ ApplicationWindow {
                 sequence: "Ctrl+O"; enabled: stack.depth === 1
                 onActivated: folderDialog.open()
             }
+            //  ── Alt+← : zurueck aus einem Unterordner ───────────────────────
+            //  Nur der Rueckweg, kein Vorwaerts: hinein fuehrt der Doppelklick
+            //  auf die Ordnerkachel. Auf den Stapel kommt ausschliesslich ein
+            //  Abstieg (App.openSubfolder) — ein Lesezeichen oder ein Drop
+            //  verlaesst den Baum und leert ihn.
+            Shortcut {
+                sequence: "Alt+Left"
+                enabled: stack.depth === 1 && App.canNavigateBack
+                onActivated: App.navigateBack()
+            }
             //  Strg+F springt ins Suchfeld der Filterleiste (dieselbe Taste wie
             //  die Suche in der PDF-Ansicht — dort gehört sie der Kachel).
             Shortcut {
@@ -505,9 +523,13 @@ ApplicationWindow {
                 // „Extrahieren": Ordner asynchron nach PDFs durchsuchen; das
                 // Ergebnis öffnet unten (onFolderPdfsReady) den Auswahldialog.
                 // Das Flag grenzt uns gegen Scans anderer Aufrufer ab (Singleton).
-                onExtractPagesRequested: {
+                onNewFolderRequested: function(folder) {
+                    galleryView.promptNewFolder(folder)
+                }
+                onExtractPagesRequested: function(folder) {
+                    shell._extractFolder = folder
                     shell._scanPending = true
-                    PdfExtract.scanFolder(App.currentFolder)
+                    PdfExtract.scanFolder(shell._extractTarget())
                 }
             }
 
@@ -524,6 +546,32 @@ ApplicationWindow {
                     if (shell.pendingAddFile) shell.addFileFromGallery(filePath)
                     else pushFullscreen(filePath)
                 }
+                //  Doppelklick auf eine Ordnerkachel: hinein. Waehrend der Modus
+                //  „Datei zur geteilten Ansicht waehlen" laeuft, wird NICHT der
+                //  Ordner gewechselt — der Modus wartet auf eine DATEI.
+                onFolderOpenRequested: function(folderPath) {
+                    if (shell.pendingAddFile) return
+                    App.openSubfolder(folderPath)
+                }
+                //  Aktionen aus der Kopfzeile eines aufgeklappten Bereichs —
+                //  sie zielen auf DESSEN Ordner.
+                onCreateFileRequested: function(folderPath) {
+                    filterBar.openCreateFor(folderPath)
+                }
+                onExtractPagesRequested: function(folderPath) {
+                    shell._extractFolder = folderPath
+                    shell._scanPending = true
+                    PdfExtract.scanFolder(shell._extractTarget())
+                }
+                onFolderDropRequested: function(sourcePath, folderPath) {
+                    shell._dropIntoFolder(sourcePath, folderPath)
+                }
+                //  Dateien von AUSSEN landen in dem Ordner, ueber dem
+                //  losgelassen wurde (geprueft in AppController).
+                onExternalDropRequested: function(urls, folderPath) {
+                    App.handleDroppedUrls(urls, folderPath)
+                }
+                onStatusRequested: function(text) { shell.statusText = text }
             }
 
             TagCategoryPanel {
@@ -1347,6 +1395,138 @@ ApplicationWindow {
         }
     }
 
+    // ── Ablegeleiste für die ORDNER dieser Ansicht (nur während eines Zuges) ─
+    //  Warum es sie gibt: während eines Zuges gehört der Zeiger dem Compositor,
+    //  das Mausrad erreicht die Anwendung gar nicht (gemessen, s. `config.md` ▸
+    //  „Ziehen"). Um einen Ordner zu erreichen, der aus dem Bild gescrollt ist,
+    //  bliebe nur das Randscrollen. Diese Leiste bringt statt dessen die Ziele
+    //  zum Zeiger: sie zeigt den geöffneten Ordner und jeden Ordner, der gerade
+    //  in der Galerie steht — eingerückt nach Tiefe.
+    //
+    //  Dasselbe Muster wie die Lesezeichen-Leiste darunter; sie kostet keinen
+    //  dauerhaften Platz.
+    Rectangle {
+        id: folderDropBar
+        z: 91
+        //  Nur auf der Galerie-Seite und nur, wenn es überhaupt Ordner gibt.
+        visible: App.tileDragActive && stack.depth === 1
+                 && folderDropRepeater.count > 0
+        anchors { left: parent.left; right: parent.right; bottom: bookmarkDropBar.top }
+        anchors.bottomMargin: bookmarkDropBar.visible ? 6 : 0
+        height: 70
+        color: App.themeMenuBarBg
+        border.color: App.themeAccent; border.width: 1
+
+        //  Die Ziele werden EINMAL beim Beginn des Zuges eingesammelt — während
+        //  des Zuges ändert sich die Galerie nicht, und eine Bindung über alle
+        //  Zeilen liefe bei jedem Ereignis neu.
+        //  NICHT an `visible` hängen: `visible` fragt `folderDropRepeater.count`
+        //  ab, der wiederum an `targets` hängt — die Leiste käme nie hoch.
+        property var targets: []
+        Connections {
+            target: App
+            function onTileDragActiveChanged() {
+                if (App.tileDragActive)
+                    folderDropBar.targets = shell._visibleFolders()
+            }
+        }
+
+        Text {
+            anchors { left: parent.left; leftMargin: 14; top: parent.top; topMargin: 6 }
+            text: App.uiText(App.language, "FolderDropBar")
+            color: App.themeTextMuted; font.pixelSize: 11
+        }
+        Flickable {
+            anchors { left: parent.left; leftMargin: 14; right: parent.right
+                      rightMargin: 14; bottom: parent.bottom; bottomMargin: 8 }
+            height: 30
+            contentWidth: folderRow.width
+            clip: true
+            Row {
+                id: folderRow
+                spacing: 8
+                Repeater {
+                    id: folderDropRepeater
+                    model: folderDropBar.targets
+                    delegate: Rectangle {
+                        id: fTarget
+                        required property var modelData
+                        width: fLabel.implicitWidth + 34 + fTarget.modelData.depth * 10
+                        height: 30
+                        radius: 6
+                        color: fDrop.containsDrag
+                               ? Qt.rgba(App.themeAccent.r, App.themeAccent.g,
+                                         App.themeAccent.b, 0.30)
+                               : App.themeCard
+                        border.color: fDrop.containsDrag ? App.themeAccent : App.themeBorder
+                        border.width: fDrop.containsDrag ? 2 : 1
+
+                        DrawnIcon {
+                            id: fIcon
+                            anchors { left: parent.left
+                                      leftMargin: 8 + fTarget.modelData.depth * 10
+                                      verticalCenter: parent.verticalCenter }
+                            name: "folder"
+                            size: 14
+                            color: App.themeAccent
+                        }
+                        Text {
+                            id: fLabel
+                            anchors { left: fIcon.right; leftMargin: 6
+                                      verticalCenter: parent.verticalCenter }
+                            text: fTarget.modelData.name
+                            color: App.themeTextPrimary; font.pixelSize: 12
+                        }
+                        DropArea {
+                            id: fDrop
+                            anchors.fill: parent
+                            keys: ["text/uri-list"]
+                            onDropped: function(drop) {
+                                if (!drop.hasUrls) { drop.accepted = false; return }
+                                shell._dropUrlsOnFolder(drop.urls,
+                                                        fTarget.modelData.path)
+                                drop.acceptProposedAction()
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    //  Der geöffnete Ordner und jeder Ordner, der gerade in der Galerie steht —
+    //  in der sichtbaren Reihenfolge, mit ihrer Tiefe.
+    function _visibleFolders() {
+        var out = []
+        if (App.currentFolder.length > 0)
+            out.push({ path: App.currentFolder,
+                       name: shell.folderName(App.currentFolder),
+                       depth: 0 })
+        for (var i = 0; i < galleryModel.count; ++i) {
+            if (galleryModel.mediaTypeAt(i) !== 7) continue
+            out.push({ path: galleryModel.filePathAt(i),
+                       name: galleryModel.displayNameAt(i),
+                       depth: galleryModel.depthAt(i) + 1 })
+        }
+        return out
+    }
+
+    //  Eine abgelegte Nutzlast in einen Ordner geben — app-intern verschieben
+    //  bzw. kopieren, von aussen kopieren. Dieselbe Unterscheidung wie in der
+    //  Galerie (`mediaModel.ownsFile`).
+    function _dropUrlsOnFolder(urls, destFolder) {
+        if (!urls || urls.length === 0 || destFolder.length === 0) return
+        const src = App.localPath(urls[0])
+        if (mediaModel.ownsFile(src)) {
+            //  In den EIGENEN Ordner abzulegen ist keine Bewegung.
+            const cut = Math.max(src.lastIndexOf("/"), src.lastIndexOf("\\"))
+            if (cut > 0 && src.substring(0, cut) === destFolder) return
+            shell._dropIntoFolder(src, destFolder)
+        } else {
+            App.handleDroppedUrls(urls, destFolder)
+        }
+    }
+
     // ── Ablegeleiste für Lesezeichen (nur WÄHREND eines Kachel-Zuges) ────────
     //  Der Zug einer Kachel ist ein PLATTFORM-Zug; landet er im eigenen Fenster,
     //  kommt er hier als gewöhnlicher Datei-Drop an. Die Leiste erscheint nur,
@@ -1396,7 +1576,7 @@ ApplicationWindow {
                         keys: ["text/uri-list"]
                         onDropped: function(drop) {
                             if (!drop.hasUrls) { drop.accepted = false; return }
-                            shell._dropOnBookmark(App.localPath(drop.urls[0]),
+                            shell._dropIntoFolder(App.localPath(drop.urls[0]),
                                                   bmTarget.modelData.path)
                             drop.acceptProposedAction()
                         }
@@ -1406,10 +1586,11 @@ ApplicationWindow {
         }
     }
 
-    //  Eine gezogene Datei auf einem Lesezeichen ablegen. Die Regeln stehen im
-    //  Modell (`transferToFolder`); hier bleibt nur die Rückfrage bei einem
-    //  belegten Namen und die Meldung.
-    function _dropOnBookmark(path, destFolder) {
+    //  Eine gezogene Datei in einen Ordner ablegen — auf einem LESEZEICHEN oder
+    //  auf einer ORDNERKACHEL der Galerie; beide Wege sind derselbe Vorgang.
+    //  Die Regeln stehen im Modell (`transferToFolder`); hier bleibt nur die
+    //  Rückfrage bei einem belegten Namen und die Meldung.
+    function _dropIntoFolder(path, destFolder) {
         if (path.length === 0 || destFolder.length === 0) return
         const move = App.fileDropMove
         const r = mediaModel.transferToFolder(path, destFolder, move, 0)
@@ -1518,7 +1699,7 @@ ApplicationWindow {
             shell._extractName    = name
             // items = [{path,page}] in Auswahlreihenfolge (Werkbank) bzw.
             // Originalreihenfolge (kompakt) → extractOrdered erhält die Reihenfolge.
-            PdfExtract.extractOrdered(items, App.currentFolder, name)
+            PdfExtract.extractOrdered(items, shell._extractTarget(), name)
         }
     }
 

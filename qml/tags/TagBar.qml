@@ -6,24 +6,29 @@ import "../common"
 
 // ─────────────────────────────────────────────────────────────────────────────
 //  TagBar.qml — Tags einer Datei anzeigen/bearbeiten (ersetzt TagBar/TagPill aus
-//  TagWidget.cpp). Reine QML-Items; Mutationen via Bridge (App.addTagToFile/
+//  TagWidget.cpp). Reine QML-Items; Mutationen via Modell (mediaModel.addTag/
 //  removeTagFromFile). Tag-Auswahl-Dropdown speist sich aus Tags.allTags().
 //
 //  Reaktiv: lokale tagModel wird bei fileName-Wechsel und Tags.tagsChanged neu
-//  aus App.tagsForFile() gezogen (App.* sind Funktionen, keine Bindings).
+//  aus mediaModel.tagsOfFile() gezogen (Funktionen, keine Bindings).
 // ─────────────────────────────────────────────────────────────────────────────
 Item {
     id: bar
 
-    property string fileName: ""
+    //  Der PFAD, nicht der Name: jede Datei führt ihre Zuordnungen im Sidecar
+    //  IHRES Ordners. Der blanke Name traf immer den geöffneten Ordner — für
+    //  eine Datei aus einem aufgeklappten Unterordner also das falsche.
+    property string filePath: ""
     property bool   editable: true
     property var    tagModel: []
 
     implicitHeight: flow.implicitHeight
 
-    function refresh() { tagModel = fileName.length > 0 ? App.tagsForFile(fileName) : [] }
+    function refresh() {
+        tagModel = filePath.length > 0 ? mediaModel.tagsOfFile(filePath) : []
+    }
 
-    onFileNameChanged: refresh()
+    onFilePathChanged: refresh()
     Component.onCompleted: refresh()
 
     Connections {
@@ -44,9 +49,15 @@ Item {
                 height: 22
                 radius: 11
                 width: pillRow.implicitWidth + 16
-                color: Qt.rgba(App.tagColor(pill.modelData).r, App.tagColor(pill.modelData).g,
-                               App.tagColor(pill.modelData).b, 0.22)
-                border.color: App.tagColor(pill.modelData)
+                //  Farbe erst aus dem offenen Ordner, dann aus den aufgeklappten
+                //  Unterordnern: eine Datei von dort trägt ihre eigenen Tags,
+                //  und deren Definition liegt in IHREM Sidecar.
+                readonly property color pillCol: {
+                    var c = mediaModel.visibleTagColor(pill.modelData)
+                    return (c && c.a > 0) ? c : App.tagColor(pill.modelData)
+                }
+                color: Qt.rgba(pillCol.r, pillCol.g, pillCol.b, 0.22)
+                border.color: pillCol
                 border.width: 1
 
                 Row {
@@ -56,7 +67,7 @@ Item {
                     Rectangle {
                         anchors.verticalCenter: parent.verticalCenter
                         width: 8; height: 8; radius: 4
-                        color: App.tagColor(pill.modelData)
+                        color: pill.pillCol
                     }
                     Text {
                         anchors.verticalCenter: parent.verticalCenter
@@ -71,7 +82,7 @@ Item {
                         color: App.themeTextMuted
                         font.pixelSize: 10
                         TapHandler {
-                            onTapped: { App.removeTagFromFile(bar.fileName, pill.modelData); bar.refresh() }
+                            onTapped: { mediaModel.removeTag(bar.filePath, pill.modelData); bar.refresh() }
                         }
                     }
                 }
@@ -95,7 +106,7 @@ Item {
                 }
                 onAccepted: {
                     var t = text.trim()
-                    if (t.length > 0) { App.addTagToFile(bar.fileName, t); bar.refresh() }
+                    if (t.length > 0) { mediaModel.addTag(bar.filePath, t); bar.refresh() }
                     text = ""
                 }
             }
@@ -112,7 +123,7 @@ Item {
                         delegate: MenuItem {
                             required property var modelData
                             text: modelData
-                            onTriggered: { App.addTagToFile(bar.fileName, modelData); bar.refresh() }
+                            onTriggered: { mediaModel.addTag(bar.filePath, modelData); bar.refresh() }
                         }
                     }
                 }

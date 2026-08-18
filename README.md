@@ -126,13 +126,12 @@ The `tests/` directory is not included in the published repository. If it is mis
 ## Changelog
 
 ### Latest
-* Added file and view menus to the header bar
-* Added fullscreen header access and slimmer header layout
-* Added hiding and managing companion files
-* Added track changes for PDF and image annotations
-* Added customizable text color for text-to-PDF export
-* Replaced SVG icons with native QML-drawn icons
-* Improved document and editor usability
+* Added subfolder support with navigation, folder actions, and drag-and-drop
+* Added recursive search and per-folder file tags
+* Improved folder tiles, previews, file type indicators, and drag behavior
+* Added folder creation, renaming, and deletion
+* Fixed preview loading and file visibility issues
+* Fixed tag colors when moving files between folders
 
 ---
 
@@ -140,7 +139,8 @@ The `tests/` directory is not included in the published repository. If it is mis
 
 ### Known limitations
 - **Tracked changes cover adding and deleting an annotation**, not editing an existing one (moving, recolouring, retyping) - tracking that would mean storing the state before every single change.
-- **"Show all files" really shows everything**, including file types the app cannot open (archives, executables). Anything narrower would hide the `.bak` backups it is meant to reveal.
+- **"Show all files" really shows everything**, including file types the app cannot open (archives, executables). They now carry an extension badge, but the app still cannot open them - anything narrower would hide the `.bak` backups the switch is meant to reveal.
+- **The mouse wheel does not scroll the gallery while you drag a file on Wayland**. During a drag the compositor owns the pointer and no wheel event reaches the application at all (measured: 892 drag events, 0 wheel events). Instead, the pointer edges scroll the view and a bar of the visible folders appears at the bottom. On X11 the wheel works.
 - **Spell checking needs an installed Hunspell dictionary**; without one it stays off and says so.
 - **A text-to-PDF page made up only of very short lines cannot be searched in PDFium-based viewers** (Chrome, and this app's own PDF view). Measured: from about 30 characters of line width upwards everything is fine; below that, those viewers read the narrow column as vertically written text and hand out every character on its own line, so a word search finds nothing. The file itself is correct - every character carries its proper Unicode - and other PDF readers are unaffected. Widening the text block from our side did not change the viewer's guess.
 

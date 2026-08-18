@@ -190,14 +190,25 @@ FocusScope {
             surface.item.release()
     }
 
+    //  Geblaettert wird INNERHALB des Ordners, aus dem die offene Datei stammt:
+    //  seit aufgeklappte Unterordner in derselben Liste stehen, waere „naechste
+    //  Zeile" sonst ein Sprung ueber die Ordnergrenze. Ordnerkacheln werden
+    //  uebersprungen — sie sind keine Datei. Beides entscheidet der Proxy
+    //  (galleryModel.stepRow); −1 heisst „hier ist nichts anzusteuern".
     function nextRow() {
         if (galleryModel.count === 0) return
-        if (randomNext) { loadRow(galleryModel.randomRow(currentRow)); return }
-        loadRow(currentRow + 1 < galleryModel.count ? currentRow + 1 : 0)
+        if (randomNext) {
+            var rnd = galleryModel.randomRow(currentRow)
+            if (rnd >= 0) loadRow(rnd)
+            return
+        }
+        var n = galleryModel.stepRow(currentRow, 1)
+        if (n >= 0) loadRow(n)
     }
     function prevRow() {
         if (galleryModel.count === 0) return
-        loadRow(currentRow - 1 >= 0 ? currentRow - 1 : galleryModel.count - 1)
+        var p = galleryModel.stepRow(currentRow, -1)
+        if (p >= 0) loadRow(p)
     }
 
     Rectangle { anchors.fill: parent; color: "#0a0a0a" }
@@ -838,8 +849,7 @@ FocusScope {
 
                 TagBar {
                     width: parent.width - 200
-                    fileName: root.path.length > 0 ? root.path.substring(
-                                  Math.max(root.path.lastIndexOf("/"), root.path.lastIndexOf("\\")) + 1) : ""
+                    filePath: root.path
                 }
             }
         }
@@ -885,17 +895,14 @@ FocusScope {
     // ── Datum-Editor ───────────────────────────────────────────────────────────
     MetadataDateEditor {
         id: dateEditor
+        //  Über den PFAD: das Datum gehört ins Sidecar des Ordners, dem die
+        //  Datei gehört. Das Modell zieht dabei auch die Kachel nach (Anzeige
+        //  und Sortierung), was der frühere Weg über den Namen nicht tat.
         onAccepted: function(dt) {
-            var fn = root.path.substring(Math.max(root.path.lastIndexOf("/"),
-                                                  root.path.lastIndexOf("\\")) + 1)
-            App.setCustomDate(fn, dt)
+            mediaModel.setCustomDate(root.path, dt)
             root.dateTime = dt
         }
-        onCleared: {
-            var fn = root.path.substring(Math.max(root.path.lastIndexOf("/"),
-                                                  root.path.lastIndexOf("\\")) + 1)
-            App.clearCustomDate(fn)
-        }
+        onCleared: mediaModel.clearCustomDate(root.path)
     }
 
     // ── Tastatur ────────────────────────────────────────────────────────────

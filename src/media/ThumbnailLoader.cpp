@@ -117,7 +117,19 @@ void ThumbnailLoader::requestThumbnail(const QString& filePath) {
     if (filePath.isEmpty()) return;
     {
         QMutexLocker lk(&m_mutex);
-        if (m_pending.contains(filePath)) return;   // bereits in Arbeit
+        if (m_pending.contains(filePath)) {
+            //  Schon in Arbeit — aber ist er inzwischen ABBESTELLT? Dann wirft
+            //  der laufende Auftrag sein Ergebnis weg, und ein blosses
+            //  „bereits in Arbeit" verloere die Anforderung fuer immer: die
+            //  Kachel bliebe leer, bis irgendetwas sie erneut anstoesst (vom
+            //  Nutzer als „Vorschau laedt manchmal nicht" gemeldet).
+            //  Deshalb vormerken: `done` fordert danach von selbst neu an.
+            const auto it = m_flags.constFind(filePath);
+            const bool cancelled = (it != m_flags.constEnd()) && it.value()
+                                   && it.value()->load(std::memory_order_relaxed);
+            if (cancelled) m_rearm.insert(filePath);
+            return;
+        }
     }
 
     // ── Schneller Pfad: Cache-Datei existiert bereits ────────────────────────
@@ -148,7 +160,7 @@ void ThumbnailLoader::requestThumbnail(const QString& filePath) {
 
     connect(task, &ThumbnailTask::done, this,
             [this](const QString& path, const QString& thumbPath, bool ok, uint64_t taskGen) {
-        bool stale, cancelled;
+        bool stale, cancelled, rearm;
         {
             QMutexLocker lk(&m_mutex);
             const auto it = m_flags.constFind(path);
@@ -157,7 +169,15 @@ void ThumbnailLoader::requestThumbnail(const QString& filePath) {
             m_pending.remove(path);
             m_queued.remove(path);
             m_flags.remove(path);
+            rearm = m_rearm.remove(path);
             stale = (taskGen != m_generation.load(std::memory_order_relaxed));
+        }
+        //  Waehrend der Abbruch lief, hat ihn jemand wieder angefordert — jetzt
+        //  ist der Pfad frei, also neu einreihen. Ohne das bliebe die
+        //  Anforderung auf der Strecke.
+        if (rearm && !stale) {
+            requestThumbnail(path);
+            return;
         }
         // Nach cancelAll() (stale) oder gezieltem Abbruch: still verwerfen,
         // damit die Modell-Zeile NICHT als „failed“ markiert wird.
@@ -215,6 +235,7 @@ void ThumbnailLoader::cancelAll() {
     m_flags.clear();
     m_queued.clear();   // Zeiger gehören nun dem Pool (gelöscht) bzw. laufen aus
     m_pending.clear();
+    m_rearm.clear();
 }
 
 // ─── ThumbnailTask ───────────────────────────────────────────────────────────

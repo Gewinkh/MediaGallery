@@ -23,7 +23,7 @@ public:
 
     // Opens the folder at path.  No-op if path == currentFolder().
     // Saves current folder's JSON before switching.
-    void openFolder(const QString& path);
+    void openFolder(const QString& rawPath);
 
     // Saves the current folder's JSON (if any is open).
     void saveCurrentFolder();
