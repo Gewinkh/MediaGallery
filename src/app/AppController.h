@@ -10,17 +10,21 @@
 #include <QVariantList>
 #include <QVariantMap>
 #include <QHash>
+#include <vector>
 
 #include "core/ISettings.h"
 
 class FolderService;
 class JsonStorage;
 class TagManager;
+class PaneController;
+class ThumbnailLoader;
+class TagController;
 
 // ─────────────────────────────────────────────────────────────────────────────
-//  AppController — zentrale C++→QML-Bridge (Singleton).
+//  AppController - zentrale C++->QML-Bridge (Singleton).
 //
-//  Registrierung ausschließlich über qmlRegisterSingletonInstance in main.cpp —
+//  Registrierung ausschließlich über qmlRegisterSingletonInstance in main.cpp -
 //  keine QML_ELEMENT/QML_SINGLETON-Makros. Alle Referenzen sind nicht-besitzend;
 //  die Backends leben in main().
 // ─────────────────────────────────────────────────────────────────────────────
@@ -29,7 +33,7 @@ class AppController : public QObject {
 
     // ── Ordner-Status ───────────────────────────────────────────────────────
     Q_PROPERTY(QString currentFolder READ currentFolder NOTIFY folderChanged)
-    //  Gibt es einen Rueckweg (Alt+←)? s. openSubfolder/navigateBack.
+    //  Gibt es einen Rueckweg (Alt+<-)? s. openSubfolder/navigateBack.
     Q_PROPERTY(bool canNavigateBack READ canNavigateBack NOTIFY folderHistoryChanged)
 
     // ── Einstellungen (lesbar; Setter sind Q_INVOKABLE) ─────────────────────
@@ -43,7 +47,7 @@ class AppController : public QObject {
     Q_PROPERTY(bool    audioAccentApple READ audioAccentApple NOTIFY audioAccentChanged)
     Q_PROPERTY(bool    monoPlay        READ monoPlay        NOTIFY monoPlayChanged)
     //  Läuft gerade ein Zug mit einer Galerie-Kachel? Die Lesezeichen-Leiste
-    //  zum Ablegen erscheint NUR währenddessen — ein Zug soll ein Ziel haben,
+    //  zum Ablegen erscheint NUR währenddessen - ein Zug soll ein Ziel haben,
     //  ohne dass dauerhaft Platz dafür draufgeht.
     Q_PROPERTY(bool    tileDragActive  READ tileDragActive  NOTIFY tileDragActiveChanged)
     Q_PROPERTY(bool    dragLogging     READ dragLogging     CONSTANT)
@@ -51,8 +55,8 @@ class AppController : public QObject {
     Q_PROPERTY(bool    fileDropMove    READ fileDropMove    WRITE setFileDropMove NOTIFY fileDropMoveChanged)
     //  Begleitdateien der App in Galerie und Dateiwähler mitzeigen.
     Q_PROPERTY(bool    showAllFiles    READ showAllFiles    WRITE setShowAllFiles NOTIFY showAllFilesChanged)
-    //  Vorgabe-Schriftfarbe des TXT→PDF-Exports; je Datei überschreibbar
-    //  (MediaModel::fileTextPdfColor & Co. — die Ausnahme liegt im Sidecar des
+    //  Vorgabe-Schriftfarbe des TXT->PDF-Exports; je Datei überschreibbar
+    //  (MediaModel::fileTextPdfColor & Co. - die Ausnahme liegt im Sidecar des
     //  Ordners, dem die Datei gehört).
     Q_PROPERTY(QColor  textPdfColor    READ textPdfColor    WRITE setTextPdfColor NOTIFY textPdfColorChanged)
     Q_PROPERTY(int     videoSeekStep   READ videoSeekStep   NOTIFY videoSeekStepChanged)
@@ -72,8 +76,25 @@ class AppController : public QObject {
     Q_PROPERTY(int designProfile READ designProfile NOTIFY themeChanged)
 
     // ── Lesezeichen (gespeicherte Ordner) ───────────────────────────────────
-    // Liste von { "name": QString, "path": QString } für die QML-Repeater.
+    // FLACH, in Anzeigereihenfolge: { name, path, group, index } je Eintrag -
+    // `index` ist der Platz in der gespeicherten Liste (Identität für
+    // updateBookmark/removeBookmark/moveBookmark).
     Q_PROPERTY(QVariantList savedFolders READ savedFolders NOTIFY savedFoldersChanged)
+
+    // ── Zwei-Fenster-Modus ──────────────────────────────────────────────────
+    //  Die Hälften des Hauptfensters (1 oder 2) und die fokussierte davon.
+    Q_PROPERTY(QVariantList panes READ panes NOTIFY panesChanged)
+    Q_PROPERTY(int paneCount READ paneCount NOTIFY panesChanged)
+    Q_PROPERTY(int focusedPaneIndex READ focusedPaneIndex NOTIFY panesChanged)
+    //  Teilungsverhältnis der beiden Hälften (0,15…0,85), bleibt erhalten.
+    Q_PROPERTY(qreal paneSplit READ paneSplit WRITE setPaneSplit NOTIFY paneSplitChanged)
+    //  Hälfte, auf die die ordnerbezogenen Einstellungen wirken (−1 = fokussierte).
+    Q_PROPERTY(int settingsPaneIndex READ settingsPaneIndex NOTIFY panesChanged)
+    // NACH GRUPPEN gegliedert, in Anzeigereihenfolge: je Abschnitt
+    // { group, collapsed, items: [ { name, path, group, index } ] }. Der ERSTE
+    // Abschnitt ist immer die Gruppe "" (ohne Gruppe) - auch wenn sie leer ist,
+    // damit die Einstellungen ein Ablegeziel dafür haben.
+    Q_PROPERTY(QVariantList bookmarkTree READ bookmarkTree NOTIFY savedFoldersChanged)
 
     // ── Galerie-View-State (Phase 2): Kachelgröße / Anordnung / Zoom ─────────
     // Persistiert über ISettings; GalleryView.qml bindet direkt an diese Props.
@@ -134,11 +155,46 @@ class AppController : public QObject {
     Q_PROPERTY(QColor themeEditorBgHtml READ themeEditorBgHtml NOTIFY themeChanged)
 
 public:
-    AppController(ISettings& settings,
-                  FolderService& folderService,
-                  JsonStorage& storage,
-                  TagManager& tagManager,
-                  QObject* parent = nullptr);
+    //  Der ordnerbezogene Zustand gehört der HÄLFTE (`PaneController`), nicht
+    //  mehr dieser Fassade: `setFocusedPane` sagt, welche Hälfte gerade gemeint
+    //  ist. Alle Ordner-, Tag- und Datei-Wege unten reichen an sie weiter -
+    //  bestehendes QML (`App.currentFolder` & Co.) bleibt damit gültig.
+    explicit AppController(ISettings& settings, QObject* parent = nullptr);
+
+    void setFocusedPane(PaneController* pane);
+    PaneController* focusedPane() const { return m_pane; }
+
+    // ── Die Hälften des Hauptfensters (Zwei-Fenster-Modus) ──────────────────
+    //  `PaneController` braucht Einstellungen und den gemeinsamen Miniatur-Lader
+    //  und lässt sich deshalb nicht aus QML heraus erzeugen. Die Fassade legt
+    //  sie an, hält sie und gibt sie als Liste heraus.
+    void setThumbnailLoader(ThumbnailLoader* loader) { m_loader = loader; }
+    //  Die appweite `Tags`-Fassade (Einstellungen, Konverter) folgt der
+    //  fokussierten Hälfte - innerhalb einer Hälfte gilt deren eigener
+    //  `TagController` (s. PaneHost).
+    void setTagsFacade(TagController* facade);
+    //  Legt eine Hälfte an (bis `kMaxPanes`) und gibt sie zurück; ohne Platz
+    //  oder ohne Lader `nullptr`.
+    Q_INVOKABLE QObject* addPane();
+    //  Schließt die Hälfte an dieser Stelle. Die letzte lässt sich nicht
+    //  schließen - dann wäre gar keine Galerie mehr da.
+    Q_INVOKABLE bool closePane(int index);
+    //  Diese Hälfte ist jetzt gemeint (Fokus folgt dem Zeiger, s. GalleryPane).
+    Q_INVOKABLE void focusPane(int index);
+    //  Die beiden Hälften TAUSCHEN (Zug an der Leiste einer Hälfte). Ordner,
+    //  Tags und offene Dateien wandern mit - es wechselt nur der Platz.
+    Q_INVOKABLE bool swapPanes();
+    //  Auf welche Hälfte sollen die ORDNERBEZOGENEN Einstellungen (Tags,
+    //  Kategorien, Konverter) wirken? −1 = die fokussierte. Nur im
+    //  Zwei-Fenster-Modus sinnvoll; der Dialog setzt es beim Öffnen zurück.
+    Q_INVOKABLE void setSettingsPaneIndex(int index);
+    int settingsPaneIndex() const { return m_settingsPane; }
+    Q_INVOKABLE int  indexOfPane(QObject* pane) const;
+    //  Der Ordner der zweiten Hälfte aus der letzten Sitzung ("" = es gab keine).
+    Q_INVOKABLE QString secondFolder() const;
+    QVariantList panes() const;
+    int paneCount() const { return int(m_panes.size()); }
+    int focusedPaneIndex() const;
 
     // ── Ordner (Delegation an FolderService) ────────────────────────────────
     QString currentFolder() const;
@@ -149,13 +205,13 @@ public:
     //  `openSubfolder` ist der EINZIGE Weg, der etwas auf den Rueckweg legt:
     //  nur ein Abstieg in einen Unterordner ist ein Schritt, den man zuruecknehmen
     //  will. Jeder andere Ordnerwechsel (Lesezeichen, Menue, Drop, letzter
-    //  Ordner beim Start) verlaesst den Baum und LEERT den Stapel — sonst
+    //  Ordner beim Start) verlaesst den Baum und LEERT den Stapel - sonst
     //  wuechse waehrend einer Sitzung eine lange Liste, durch die niemand
     //  zurueckgehen moechte (Festlegung des Nutzers).
     //  Ein Vorwaerts gibt es bewusst nicht: hinein fuehrt der Doppelklick.
     Q_INVOKABLE void openSubfolder(const QString& path);
     Q_INVOKABLE bool navigateBack();
-    bool canNavigateBack() const { return !m_folderBackStack.isEmpty(); }
+    bool canNavigateBack() const;
 
     // Erstellt eine leere Datei im AKTUELLEN Ordner (FilterBar „Erstellen").
     // kind: "pdf" (eine leere A4-Seite via QPdfWriter) | "html" (Minimal-
@@ -166,7 +222,7 @@ public:
     // sofort, ohne auf den FileSystemWatcher zu warten). Liefert den vollen
     // Pfad der neuen Datei oder "" bei Fehler.
     //  `targetFolder` leer = der geoeffnete Ordner. Sonst muss er UNTERHALB
-    //  davon liegen (Praefix-Pruefung) — die Kopfzeile eines aufgeklappten
+    //  davon liegen (Praefix-Pruefung) - die Kopfzeile eines aufgeklappten
     //  Bereichs legt so in IHREM Ordner an, ein Knopf kann aber nichts an
     //  beliebiger Stelle im Dateisystem erzeugen.
     Q_INVOKABLE QString createEmptyFile(const QString& kind, const QString& baseName,
@@ -184,11 +240,12 @@ public:
 
     // ── Lesezeichen (Delegation an ISettings) ───────────────────────────────
     QVariantList savedFolders() const;
+    QVariantList bookmarkTree() const;
     //  Der Zug einer Kachel meldet sich an und ab (die Kachel blockiert
     //  währenddessen in `Drag.active = true`, deshalb umklammert sie den Aufruf).
     //  Ein Zug meldet sich an und ab. Waehrend er laeuft, haengt hier auch der
     //  RAD-Filter (s. eventFilter): waehrend eines `QDrag` liefert Qt keine
-    //  Radereignisse mehr an die QML-Elemente — die Zug-Maschinerie filtert sie
+    //  Radereignisse mehr an die QML-Elemente - die Zug-Maschinerie filtert sie
     //  vorher ab. Nur ein Filter auf der Anwendung kann sie noch sehen.
     Q_INVOKABLE void beginTileDrag();
     Q_INVOKABLE void endTileDrag();
@@ -200,9 +257,25 @@ public:
 
     Q_INVOKABLE void openBookmark(const QString& path);
     // Phase 4: vollständige Lesezeichen-Verwaltung (für SettingsDialog/Bookmark-Tab)
-    Q_INVOKABLE void addBookmark(const QString& name, const QString& path);
-    Q_INVOKABLE void updateBookmark(int index, const QString& name, const QString& path);
+    Q_INVOKABLE void addBookmark(const QString& name, const QString& path,
+                                 const QString& group = QString());
+    Q_INVOKABLE void updateBookmark(int index, const QString& name, const QString& path,
+                                    const QString& group = QString());
     Q_INVOKABLE void removeBookmark(int index);
+
+    // ── Lesezeichen-Gruppen (Ordnung im Menü „Ordner" + Einstellungen) ───────
+    //  Eine Gruppe ist reine Anzeige-Ordnung: sie hält keine Pfade, jeder
+    //  Eintrag nennt SEINE Gruppe. Namen sind eindeutig (Vergleich ohne
+    //  Rücksicht auf Groß-/Kleinschreibung); "" heißt „ohne Gruppe".
+    Q_INVOKABLE void addBookmarkGroup(const QString& name);
+    Q_INVOKABLE void renameBookmarkGroup(const QString& oldName, const QString& newName);
+    //  Löscht NUR die Gruppe; ihre Lesezeichen bleiben und rücken nach „ohne Gruppe".
+    Q_INVOKABLE void removeBookmarkGroup(const QString& name);
+    Q_INVOKABLE void setBookmarkGroupCollapsed(const QString& name, bool collapsed);
+    Q_INVOKABLE void moveBookmarkGroup(int from, int to);
+    //  Einen Eintrag in eine Gruppe geben und dort einsortieren. `pos` < 0 oder
+    //  über der Mitgliederzahl = ans Ende der Gruppe.
+    Q_INVOKABLE void moveBookmark(int index, const QString& targetGroup, int pos);
 
     // ── Editor / Auto-Save (Phase 4) ────────────────────────────────────────
     bool autoSaveEnabled()  const;
@@ -244,7 +317,7 @@ public:
     int  maxTileWidth()  const { return m_maxTileW; }
     int  maxTileHeight() const { return m_maxTileH; }
     // Von der Shell bei jeder Größenänderung der Galeriefläche gemeldet.
-    // Klemmt NUR künftige setTileSize-Aufrufe — eine bereits gespeicherte
+    // Klemmt NUR künftige setTileSize-Aufrufe - eine bereits gespeicherte
     // größere Kachelgröße wird nicht zerstörerisch mitverkleinert (ein nur
     // vorübergehend kleines Fenster soll die Einstellung nicht überschreiben).
     Q_INVOKABLE void setTileSizeLimit(int w, int h);
@@ -281,7 +354,7 @@ public:
     // ── Mono-Play: Wiedergabe-Koordination ──────────────────────────────────
     // Jede Wiedergabestelle (VideoSurface-Player, PDF-Audio-Fassade je Kachel)
     // meldet ihren Play-START mit einem eindeutigen Token; alle anderen Stellen
-    // pausieren sich auf playbackStarted(fremdes Token) — Position bleibt
+    // pausieren sich auf playbackStarted(fremdes Token) - Position bleibt
     // erhalten (Pause, kein Stop). Sendet NUR bei aktivem Mono-Play; ist die
     // Option aus, laufen Wiedergaben unkoordiniert (parallel) weiter.
     Q_INVOKABLE void announcePlayback(const QString& token);
@@ -305,7 +378,7 @@ public:
     // ── Tags (Delegation an TagManager) ─────────────────────────────────────
     Q_INVOKABLE QStringList allTags() const;
     Q_INVOKABLE QColor      tagColor(const QString& tag) const;
-    //  ENTFALLEN — alles, was EINE DATEI betrifft, liegt jetzt im Modell:
+    //  ENTFALLEN - alles, was EINE DATEI betrifft, liegt jetzt im Modell:
     //  `tagsForFile`/`addTagToFile`/`removeTagFromFile`, `setCustomDate`/
     //  `clearCustomDate` und `fileTextPdfColor` & Co. nahmen den blanken
     //  DATEINAMEN und trafen damit immer das Sidecar des GEOEFFNETEN Ordners.
@@ -325,7 +398,7 @@ public:
     // Lokalen Dateipfad in eine korrekt prozent-kodierte file://-URL umwandeln
     // (für Image.source u.ä.; behandelt Sonderzeichen, Leerzeichen, CJK korrekt).
     Q_INVOKABLE QString fileUrl(const QString& path) const;
-    // Umkehrung dazu: file://-URL → lokaler Pfad (für abgelegte Dateien, z. B.
+    // Umkehrung dazu: file://-URL -> lokaler Pfad (für abgelegte Dateien, z. B.
     // eine Kachel, die auf einen Tag gezogen wurde). Ein bereits lokaler Pfad
     // kommt unverändert zurück.
     Q_INVOKABLE QString localPath(const QString& urlOrPath) const;
@@ -361,7 +434,7 @@ signals:
     void folderOpened(const QString& path);
     void folderHistoryChanged();
     void folderChanged();
-    void folderContentsChanged();   // Inhalt änderte sich (Drop/Refresh) → Galerie neu laden (Phase 2)
+    void folderContentsChanged();   // Inhalt änderte sich (Drop/Refresh) -> Galerie neu laden (Phase 2)
     void statusMessage(const QString& text);
     void backgroundColorChanged();
     void accentColorChanged();
@@ -378,8 +451,10 @@ signals:
     void playbackStarted(const QString& token);
     void optionsVisibleChanged();
     void savedFoldersChanged();
+    void panesChanged();
+    void paneSplitChanged();
     void tileDragActiveChanged();
-    //  Mausrad WAEHREND eines Zuges — `angleDelta().y()`. Die Galerie scrollt
+    //  Mausrad WAEHREND eines Zuges - `angleDelta().y()`. Die Galerie scrollt
     //  daraufhin selbst. Kommt nichts an, hat die Plattform das Rad im Zug
     //  ueberhaupt nicht weitergereicht (dann bleibt das Randscrollen).
     void dragWheel(int angleDeltaY);
@@ -395,11 +470,11 @@ signals:
     void categoriesChanged();
 
 private:
-    //  Rueckweg fuer Alt+← — nur Abstiege in Unterordner, gedeckelt. Ein Deckel
-    //  ist noetig, weil sonst jeder Abstieg einer langen Sitzung liegen bliebe.
-    static constexpr int kMaxFolderBack = 64;
-    QStringList m_folderBackStack;
-    void clearFolderHistory();
+    //  Der Rückweg (Alt+<-) gehört zur Hälfte - s. `PaneController`.
+
+    //  Der Abschnitt, in dem ein Gruppenname landet: der Name selbst, wenn es
+    //  die Gruppe gibt - sonst "" (ohne Gruppe).
+    QString bookmarkSection(const QString& group) const;
 
 
     // Theme-Lese-Helfer
@@ -418,15 +493,27 @@ private:
     QColor themeEditorBgHtml() const;
 
     ISettings&     m_settings;
-    FolderService& m_folderService;
+    //  Die FOKUSSIERTE Hälfte (nicht besitzend). Alle ordnerbezogenen Aufrufe
+    //  gehen dorthin; ohne Hälfte tun sie nichts, statt ins Leere zu greifen.
+    PaneController* m_pane = nullptr;
+    //  Die Hälften gehören dieser Fassade (sie überleben QML-Neuaufbauten).
+    static constexpr int kMaxPanes = 2;
+    std::vector<PaneController*> m_panes;
+    ThumbnailLoader* m_loader = nullptr;
+    TagController*   m_tagsFacade = nullptr;
+    int              m_settingsPane = -1;
+
+public:
+    qreal paneSplit() const;
+    void  setPaneSplit(qreal v);
+private:
     bool           m_tileDragActive = false;
     //  Nur fuer die Fehlersuche (Umgebungsvariable MG_DRAGLOG=1): zaehlt, welche
     //  Ereignistypen waehrend eines Zuges ueberhaupt bei der Anwendung ankommen.
     bool               m_dragLog = false;
     QHash<int, int>    m_dragEventCounts;
 
-    JsonStorage&   m_storage;
-    TagManager&    m_tagManager;
+
 
     // Kachelgrößen-Obergrenze (Galeriefläche; von der Shell gemeldet).
     // Startwert = großzügiger Fallback, bis die Shell die reale Fläche meldet.

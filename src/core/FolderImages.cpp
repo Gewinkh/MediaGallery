@@ -22,7 +22,7 @@ QVariantList folderImages(const QString& fileOrFolder, int maxCount,
     filters.reserve(fmts.size() + 1);
     for (const QByteArray& f : fmts) {
         const QString ext = QString::fromLatin1(f).toLower();
-        //  Ob „pdf" in der Liste steht, hängt an den installierten Qt-Plugins —
+        //  Ob „pdf" in der Liste steht, hängt an den installierten Qt-Plugins -
         //  die Aufnahme darf nicht davon abhängen, sondern von der Absicht des
         //  Aufrufers. Deshalb hier IMMER heraus und unten gezielt wieder rein.
         if (ext == QLatin1String("pdf")) continue;

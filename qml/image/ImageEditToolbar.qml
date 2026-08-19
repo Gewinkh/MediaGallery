@@ -5,13 +5,13 @@ import MediaGallery 1.0
 import "../common"
 
 // ─────────────────────────────────────────────────────────────────────────────
-//  ImageEditToolbar.qml — schwebende Kompakt-Toolbar des Bild-Editors.
+//  ImageEditToolbar.qml - schwebende Kompakt-Toolbar des Bild-Editors.
 //
-//  Liegt EINMAL in der Bild-Ebene von ImageSurface (Kind der content-Ebene →
+//  Liegt EINMAL in der Bild-Ebene von ImageSurface (Kind der content-Ebene ->
 //  folgt Zoom/Pan positionsmäßig, bleibt aber selbst feste Chrome-Größe) und
 //  erscheint über der ausgewählten Annotation. Inhalt passt sich der Art an:
-//   • Text  → B/I/U, Größe, Ausrichtung, Vertikal, Textfarbe, Hervorhebung
-//   • Strich/Form → Linienfarbe, Linienbreite, (Form:) Füllung
+//   • Text  -> B/I/U, Größe, Ausrichtung, Vertikal, Textfarbe, Hervorhebung
+//   • Strich/Form -> Linienfarbe, Linienbreite, (Form:) Füllung
 //  gemeinsam: Kopieren, Löschen.
 //
 //  DATENFLUSS wie PdfEditToolbar: `info` liest ctl.annInfo(selectedId)

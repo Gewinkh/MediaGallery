@@ -9,7 +9,7 @@ import "../common"
 import "../viewer"
 
 // ─────────────────────────────────────────────────────────────────────────────
-//  PdfSurface.qml — PDF-Anzeige in 100% QML (ersetzt PdfViewer(QWidget)).
+//  PdfSurface.qml - PDF-Anzeige in 100% QML (ersetzt PdfViewer(QWidget)).
 //
 //  Eigener vertikaler ListView aus PdfPageImage (kein PdfMultiPageView) für volle
 //  Kontrolle über Seitengeometrie und das Annotations-Overlay (asynchron via
@@ -20,9 +20,9 @@ import "../viewer"
 //     Puffer je Richtung instanziiert+gerendert. Hoch-/Runterscrollen innerhalb
 //     dieses Fensters laedt NICHT neu. Da QtQuick seinen internen Bild-Cache nicht
 //     oeffentlich deckeln laesst, ist dieser delegate-basierte Puffer der einzige
-//     wirklich kontrollierbare RAM-Deckel — wir nutzen bewusst IHN (cache:false).
+//     wirklich kontrollierbare RAM-Deckel - wir nutzen bewusst IHN (cache:false).
 //   • PDF-WECHSEL: Ein kleiner LRU-Pool (`pdfPoolSize`) haelt die zuletzt
-//     geoeffneten PDFs GEPARST → Hin-und-Her-Wechseln muss nicht neu parsen. Ein
+//     geoeffneten PDFs GEPARST -> Hin-und-Her-Wechseln muss nicht neu parsen. Ein
 //     warmes Dokument haelt v. a. die Seitenstruktur, NICHT die Seitenbitmaps.
 // ─────────────────────────────────────────────────────────────────────────────
 Item {
@@ -31,7 +31,7 @@ Item {
     property string source: ""
     property var    annotations: []
     //  Nur die aktive Split-View-Kachel darf ihre fensterweiten Kürzel
-    //  (Ctrl+C/A/V, Alt+Q, Entf, Ctrl+Z/Shift+Z) feuern — sonst sind sie bei
+    //  (Ctrl+C/A/V, Alt+Q, Entf, Ctrl+Z/Shift+Z) feuern - sonst sind sie bei
     //  mehreren offenen PDFs mehrdeutig und Qt feuert keines. Einzel-View=true.
     property bool   paneActive: true
 
@@ -43,17 +43,17 @@ Item {
     property int    _stablePage: 0           // zuletzt SICHER erkannte Seite (Quelle für _savePage)
     property real   _saveFrac: 0             // … samt Innerseiten-Scrollanteil (0..1)
     property real   _stableFrac: 0           // zuletzt sicher erkannter Innerseiten-Anteil
-    property bool   _resizing: false         // Resize-Phase aktiv → updateCurrentPage gesperrt
+    property bool   _resizing: false         // Resize-Phase aktiv -> updateCurrentPage gesperrt
     property bool   _restoring: false        // … und danach deterministisch wiederherstellen
 
     property real   topInset: 0
     property real   bottomInset: 0
     //  Höhe der oben liegenden Word-Leiste (Ribbon). Sie ist ein OVERLAY über
-    //  den Seiten (z: 4) und verdeckte deren Oberkante — unerreichbar, weil
+    //  den Seiten (z: 4) und verdeckte deren Oberkante - unerreichbar, weil
     //  contentY nicht über den Listenanfang hinausgeht. Die Seitenliste
     //  bekommt daher einen gleich hohen Kopfraum: die Seite lässt sich
     //  vollständig unter die Leiste scrollen und ist ganz bearbeitbar
-    //  (2026-07-17). Der Seiten-Fit bleibt bewusst unangetastet — sonst würde
+    //  (2026-07-17). Der Seiten-Fit bleibt bewusst unangetastet - sonst würde
     //  jedes Ein-/Ausblenden der Leiste die Seite neu skalieren (teuer, s.
     //  bottomInset-Kommentar am contentArea).
     readonly property real ribbonInset:
@@ -63,13 +63,13 @@ Item {
 
     // ── Textauswahl-Zustand (recycling-sicher im Root gehalten) ───────────────
     //  Die Highlights leben hier (nicht im wiederverwendeten Delegate); nur die
-    //  Seite mit selPage zeichnet selRects → Recycling verliert nichts.
+    //  Seite mit selPage zeichnet selRects -> Recycling verliert nichts.
     property int    selPage: -1              // Seite mit aktiver Auswahl (-1 = keine)
     property var    selRects: []             // normalisierte Highlight-Rechtecke {x,y,w,h}
     property bool   _selecting: false        // gerade am Ziehen?
     property var    _lastSel: null           // letzte Drag-Brüche (für Re-Query bei Ready)
-    property bool   _pendingSelectAll: false // Strg+A vor Abschluss des Lazy-Loads → nachziehen
-    property int    _ocrWantedPage: -1       // OCR angefordert, aber Textdoc noch nicht bereit → nachziehen
+    property bool   _pendingSelectAll: false // Strg+A vor Abschluss des Lazy-Loads -> nachziehen
+    property int    _ocrWantedPage: -1       // OCR angefordert, aber Textdoc noch nicht bereit -> nachziehen
     property int    _linkFromId: 0           // Reflow-Verkettung: Ausgangsbox, wartet auf Zielbox-Klick
 
     // ── Audio (PdfAudio-Singleton) ────────────────────────────────────────────
@@ -83,7 +83,7 @@ Item {
     property var    _audioPos:  ({})         // id -> zuletzt gehoerte Position (ms, Resume)
     property int    activeClipId: -1         // aktuell geladener/spielender Clip
     property string _activeTitle: ""         // Anzeigetitel des Mini-Players
-    property int    _audioRev: 0             // Counter → erzwingt Binding-Refresh (Dauer/Resume)
+    property int    _audioRev: 0             // Counter -> erzwingt Binding-Refresh (Dauer/Resume)
     property int    _pendingSeekMs: -1       // Seek nach Medienladen anwenden
     property bool   _pendingPlay: false
     // Akzentfarbe der Audio-UI: Theme-Akzent oder Apple-Systemblau (Einstellung).
@@ -98,9 +98,9 @@ Item {
     function _audioLabel(clip, idxOnPage) { return App.uiText(App.language, "PdfAudioItemLabel").arg(idxOnPage + 1) }
 
     // ── Dezentrale Editor/Text/Audio-Controller (EIGENE Instanzen je Kachel) ──
-    //  Früher globale Singletons (PdfEdit/PdfText/PdfAudio) → in der geteilten
+    //  Früher globale Singletons (PdfEdit/PdfText/PdfAudio) -> in der geteilten
     //  Ansicht teilten sich mehrere PDF-Kacheln DENSELBEN Editmodus/Boxen/Text/
-    //  Audio. Jetzt besitzt JEDE PdfSurface eigene Controller → Boxen, Editmodus,
+    //  Audio. Jetzt besitzt JEDE PdfSurface eigene Controller -> Boxen, Editmodus,
     //  Auswahl, Text-Selektion und Audio sind pro geöffneter Datei getrennt.
     //  editCtl ist als Property exponiert, damit die Kinder (PdfEditBox/-Toolbar/
     //  -Panel) über surface.editCtl darauf zugreifen. Die globale Einstellung
@@ -108,18 +108,18 @@ Item {
     property PdfEditController editCtl: PdfEditController {}
     PdfTextController  { id: pdfTextCtl }
     PdfAudioController { id: pdfAudioCtl }
-    //  Für Kinder (PdfEditPanel: OCR-Button) — der Textcontroller dieser Kachel.
+    //  Für Kinder (PdfEditPanel: OCR-Button) - der Textcontroller dieser Kachel.
     property alias textCtl: pdfTextCtl
 
     // ── PDF-Editor (dezentraler Controller: root.editCtl) ─────────────────────
     //  Overlay-Textboxen über den Seiten: Modell/Undo/Sidecar/Export leben im
     //  Controller; hier nur UI-Zustand + drei Brücken-Mechanismen:
-    //   • editCommitRev  — Zähler-Bump zwingt alle Box-Delegates, eine offene
+    //   • editCommitRev  - Zähler-Bump zwingt alle Box-Delegates, eine offene
     //     Textbearbeitung DETERMINISTISCH abzuschließen (vor Undo/Redo/Export/
-    //     Moduswechsel/Löschen) — synchron, ohne Delegate-Registry.
-    //   • _snapCache     — Zeilenrechtecke je Seite (pdfTextCtl.textLineRects) für
+    //     Moduswechsel/Löschen) - synchron, ohne Delegate-Registry.
+    //   • _snapCache     - Zeilenrechtecke je Seite (pdfTextCtl.textLineRects) für
     //     den Zeilenfang; einmal je Seite geholt, bei Dokumentwechsel geleert.
-    //   • _autoEditId    — frisch erstellte Box startet direkt die Bearbeitung
+    //   • _autoEditId    - frisch erstellte Box startet direkt die Bearbeitung
     //     (das Delegate prüft die ID in Component.onCompleted).
     property bool editPanelVisible: false
     property bool snapEnabled: true          // Zeilenfang (Toolbar-Toggle)
@@ -134,7 +134,7 @@ Item {
     // ÜBER den Seitenrand hinaus sichtbar über die Lücke auf die Nachbarseite
     // gleitet (sonst malte die später erzeugte Nachbarseite sie zu).
     property int  editDragPage: -1
-    // „Text bearbeiten" ist aktiv UND ein Caret steht — dann gehören Tasten
+    // „Text bearbeiten" ist aktiv UND ein Caret steht - dann gehören Tasten
     // (auch „+"/„−") dem Text und nicht den Ansichts-Kürzeln.
     readonly property bool caretActive: editCtl.editMode && editCtl.tool === 7
                                         && editCtl.caretPage >= 0
@@ -145,7 +145,7 @@ Item {
     //  hinausgezogene Oberkante (yPt auf Seite page) in Zielseite + lokale
     //  y-Koordinate. Kriterium: Box-MITTE hat den Rand überschritten; die
     //  Lücke zwischen den Seiten (pages.spacing + 4 px Delegate-Puffer) wird
-    //  über die aktuelle Skala in Punkte umgerechnet. Läuft iterativ — auch
+    //  über die aktuelle Skala in Punkte umgerechnet. Läuft iterativ - auch
     //  ein Drag über mehrere Seiten hinweg landet korrekt. Ergebnis ist in
     //  die Zielseite geklemmt.
     function resolveCrossPage(page, yPt, hPt, scale) {
@@ -176,7 +176,7 @@ Item {
     }
 
     //  Oberkante yPt an die nächste erkannte Textzeile fangen (Toleranz: max aus
-    //  7 pt und 75 % der Zeilenhöhe). Ohne Textebene/deaktiviert → unverändert.
+    //  7 pt und 75 % der Zeilenhöhe). Ohne Textebene/deaktiviert -> unverändert.
     function snapYPt(page, yPt, hPt) {
         if (!snapEnabled || !pdfTextCtl.ready || !root.docReady)
             return yPt
@@ -196,7 +196,7 @@ Item {
         return best
     }
 
-    //  Zeilenrechtecke einer Seite (normalisiert) — je Seite EINMAL geholt.
+    //  Zeilenrechtecke einer Seite (normalisiert) - je Seite EINMAL geholt.
     function _snapLines(page) {
         var c = _snapCache[page]
         if (c !== undefined)
@@ -208,7 +208,7 @@ Item {
     }
 
     //  Export starten. Ziel ist IMMER eine neue Kopie „…_bearbeitet(.n).pdf"
-    //  neben dem Original — das Original (und damit die Anzeige-Handles)
+    //  neben dem Original - das Original (und damit die Anzeige-Handles)
     //  bleibt unangetastet, die Notizen bleiben über das Sidecar reversibel.
     function startPdfExport() {
         if (root.editCtl.busy || !root.docReady)
@@ -217,7 +217,7 @@ Item {
         root.editCtl.exportPdf()
     }
     //  Verlustfreies Content-Stream-Editing (Text ersetzen direkt in der
-    //  Textebene) — fällt im Controller automatisch auf den Raster-Export zurück.
+    //  Textebene) - fällt im Controller automatisch auf den Raster-Export zurück.
     function startContentExport() {
         if (root.editCtl.busy || !root.docReady)
             return
@@ -227,11 +227,11 @@ Item {
 
     //  EIN Export-Weg für die Oberfläche: welcher der beiden oben tatsächlich
     //  läuft, entscheidet die Einstellung `PdfEdit.exportLossless`
-    //  (Einstellungen → Editor → PDF-Editor → Export). Vorher gab es dafür zwei
+    //  (Einstellungen -> Editor -> PDF-Editor -> Export). Vorher gab es dafür zwei
     //  Knöpfe nebeneinander, was die Wahl bei JEDEM Export erzwang, obwohl sie
     //  eine Grundsatzentscheidung ist. Der verlustfreie Weg fällt im Controller
     //  ohnehin selbsttätig auf den Raster-Export zurück, wo er nicht sicher
-    //  anwendbar ist — die Einstellung kann also nichts unmöglich machen.
+    //  anwendbar ist - die Einstellung kann also nichts unmöglich machen.
     function startExport() {
         if (PdfEdit.exportLossless) root.startContentExport()
         else                        root.startPdfExport()
@@ -252,14 +252,14 @@ Item {
     // ── Gestaffeltes Laden (das Kern-Performance-Muster) ──────────────────────
     //  Problem: Wuerden Hauptseiten UND Thumbnail-Leiste beim Oeffnen gleichzeitig
     //  rendern, konkurrierten ~8 Thumbnails + mehrere Vorab-Hauptseiten mit der
-    //  einen sichtbaren Seite um denselben PDFium-Render-Mutex → spuerbare
+    //  einen sichtbaren Seite um denselben PDFium-Render-Mutex -> spuerbare
     //  Oeffnen-Latenz, besonders bei schweren Seiten (Vektorgrafik/Bilder), wo
     //  jedes render() unabhaengig von der Zielgroesse teuer ist.
     //
     //  Loesung (wie die bewaehrte QPdfView-Version): zuerst NUR die sichtbare
     //  Seite rendern; Vorhalte-Puffer und Thumbnail-Leiste erst nach einer kurzen
-    //  Verzoegerung freischalten — dann ist die erste Seite schon auf dem Schirm.
-    property bool   _warm: false                 // false → nur sichtbare Seite rendern
+    //  Verzoegerung freischalten - dann ist die erste Seite schon auf dem Schirm.
+    property bool   _warm: false                 // false -> nur sichtbare Seite rendern
     property int    warmupDelayMs: 160           // Verzoegerung bis Puffer+Thumbnails
 
     // docId des aktiven PDFs im RAM-Thumbnail-Provider (0 = noch keine).
@@ -283,10 +283,10 @@ Item {
         repeat: false
         onTriggered: {
             // Vorrendern der Seitenleiste anstossen, BEVOR die Delegates ueber
-            // _warm entstehen → sie binden sofort die korrekte docId. Sichtbare
+            // _warm entstehen -> sie binden sofort die korrekte docId. Sichtbare
             // Seite (currentPage) wird im Provider zuerst gerendert.
             //  Vorschauen der Datei, die auch die Seiten zeigt: Bei geändertem
-            //  Seiten-Plan ist das die gebackene Arbeitsdatei — sonst zeigte die
+            //  Seiten-Plan ist das die gebackene Arbeitsdatei - sonst zeigte die
             //  Leiste die Originalreihenfolge, während die Ansicht längst
             //  umsortiert ist.
             if (root.source.length > 0)
@@ -349,10 +349,10 @@ Item {
 
     function release() {
         // Leichtgewichtig: nur Overlays stoppen. Das RENDER-Dokument bleibt im Pool
-        // warm (kein doc.source="" mehr) → Zurueckwechseln muss nicht neu parsen.
+        // warm (kein doc.source="" mehr) -> Zurueckwechseln muss nicht neu parsen.
         mediaLoader.active = false
         _saveActivePos()
-        // Player-Instanz restlos zerstören — releaseDocument() (bzw. der nächste
+        // Player-Instanz restlos zerstören - releaseDocument() (bzw. der nächste
         // prepare()) löscht die Temp-WAVs; eine noch lebende Instanz würde Handle
         // und Alt-Zustand behalten (Windows-Dateisperre, verworfenes play()).
         audioPlayer.reset()
@@ -382,7 +382,7 @@ Item {
             clearSelection()                 // evtl. Auswahl des vorherigen PDFs verwerfen
             // Audio-Zustand des vorherigen PDFs verwerfen + neuen Scan anstoßen (lazy).
             // WICHTIG: Player-Instanz vollständig zerstören, BEVOR pdfAudioCtl.prepare()
-            // (→ releaseDocument) die Temp-WAVs des alten Dokuments löscht — sonst
+            // (-> releaseDocument) die Temp-WAVs des alten Dokuments löscht - sonst
             // hält der Player noch ein offenes Handle auf die letzte WAV.
             audioPlayer.reset()
             root.audioClips = []
@@ -401,7 +401,7 @@ Item {
             root.editPanelVisible = false
             root.editCtl.setDocument(root.source)
             _activateDoc(root.source)
-            // Bei einem bereits warmen (Ready) Dokument feuert kein statusChanged →
+            // Bei einem bereits warmen (Ready) Dokument feuert kein statusChanged ->
             // Scrollposition hier zuruecksetzen und den Warmlauf direkt starten.
             if (root.docReady) {
                 // Origin-bewusst an den Dokumentanfang (s. clampContentY).
@@ -409,7 +409,7 @@ Item {
                 _beginWarmup()
                 _ensurePlanInit()           // Aufgabe 3: Seiten-Plan initialisieren
             }
-            // Annotationen NICHT blockierend holen → der PDF-Wechsel laggt nicht
+            // Annotationen NICHT blockierend holen -> der PDF-Wechsel laggt nicht
             // mehr. Die Badges erscheinen, sobald pdfAnnotationsReady feuert.
             Viewer.requestPdfAnnotations(root.source)
         } else {
@@ -432,7 +432,7 @@ Item {
         }
     }
 
-    // file://-Praefix abstreifen → robuster Vergleich gegen den vom Viewer
+    // file://-Praefix abstreifen -> robuster Vergleich gegen den vom Viewer
     // emittierten lokalen Pfad (toLocalPath), plattformuebergreifend.
     function _localPath(s) {
         return s.indexOf("file://") === 0 ? s.substring(7) : s
@@ -441,7 +441,7 @@ Item {
     // ── Aufgabe 3: Seiten-Plan ────────────────────────────────────────────────
     //  Sobald das PRISTINE Dokument bereit ist, die Quell-Seitenzahl an den
     //  Controller melden (initialisiert bzw. validiert den Plan). Nur solange
-    //  noch kein Plan steht (viewPageCount==0) — nach dem Reload der gebackenen
+    //  noch kein Plan steht (viewPageCount==0) - nach dem Reload der gebackenen
     //  Arbeitsdatei ist er gesetzt und wird nicht überschrieben.
     function _ensurePlanInit() {
         if (root.docReady && root.editCtl.viewPageCount === 0)
@@ -451,7 +451,7 @@ Item {
     //  Nach einer Seiten-Plan-Änderung rendert die Ansicht die gebackene
     //  Arbeitsdatei (renderSourcePath(): nicht-destruktiv .mgpreview.pdf,
     //  destruktiv die .pdf selbst; bei Identität wieder das Original). Die Datei
-    //  kann sich in-place geändert haben → gepooltes Dokument verwerfen und neu
+    //  kann sich in-place geändert haben -> gepooltes Dokument verwerfen und neu
     //  laden. So bleibt „Ansichts-Index == Seitenindex der Datei" erhalten und
     //  die gesamte Scroll-/Thumbnail-/Overlay-Logik gilt unverändert.
     function _reloadRenderDoc() {
@@ -468,7 +468,7 @@ Item {
         if (old && old !== root.doc) { old.source = ""; old.destroy() }
     }
 
-    // Ergebnis des asynchronen Scans entgegennehmen — nur uebernehmen, wenn es
+    // Ergebnis des asynchronen Scans entgegennehmen - nur uebernehmen, wenn es
     // zum aktuell angezeigten PDF gehoert (schnelles Vor/Zurueck ist sicher).
     Connections {
         target: Viewer
@@ -478,7 +478,7 @@ Item {
         }
     }
 
-    // Auswahl-Dokument wurde (asynchron) fertig geladen → eine evtl. noch laufende
+    // Auswahl-Dokument wurde (asynchron) fertig geladen -> eine evtl. noch laufende
     // Drag-Auswahl nachholen, deren fruehe Abfragen mangels Dokument leer blieben
     // (relevant nur bei grossen PDFs, deren Laden laenger als der erste Drag dauert).
     Connections {
@@ -486,7 +486,7 @@ Item {
         function onReadyChanged() {
             if (!pdfTextCtl.ready)
                 return
-            // Editor: frisch geladenes Auswahl-Dokument → Zeilenfang-Cache neu
+            // Editor: frisch geladenes Auswahl-Dokument -> Zeilenfang-Cache neu
             // aufbauen (der alte könnte leere Fallback-Listen enthalten).
             root._snapCache = ({})
             if (root._selecting && root._lastSel) {
@@ -497,13 +497,13 @@ Item {
                 root.selPage = root.currentPage
                 root.selRects = pdfTextCtl.selectAllOnPage(root.currentPage)
             }
-            // OCR wurde angefordert, bevor das Textdoc bereit war → jetzt starten.
+            // OCR wurde angefordert, bevor das Textdoc bereit war -> jetzt starten.
             if (root._ocrWantedPage >= 0) {
                 pdfTextCtl.ocrPage(root._ocrWantedPage)
                 root._ocrWantedPage = -1
             }
         }
-        //  Suchlauf hat neue Treffer (er läuft stückweise) → Anzeige nachziehen
+        //  Suchlauf hat neue Treffer (er läuft stückweise) -> Anzeige nachziehen
         //  und beim ERSTEN Treffer gleich dorthin springen.
         function onSearchChanged() {
             root._searchRev++
@@ -525,9 +525,9 @@ Item {
     // ── PDF-Editor: Reaktionen auf Controller-Ereignisse ──────────────────────
     Connections {
         target: root.editCtl
-        // Aufgabe 3: Seiten-Plan geändert → gebackene Arbeitsdatei neu rendern.
+        // Aufgabe 3: Seiten-Plan geändert -> gebackene Arbeitsdatei neu rendern.
         function onDocumentRewritten() { root._reloadRenderDoc() }
-        //  Seitenstruktur geändert (umsortiert/gedreht/eingefügt/entfernt) →
+        //  Seitenstruktur geändert (umsortiert/gedreht/eingefügt/entfernt) ->
         //  Vorschauleiste neu rendern. BEWUSST nicht an documentRewritten
         //  gehängt: Ein Neubau der Textebene lässt die Struktur unberührt und
         //  würde die Vorschauen bei jedem Tippen verwerfen.
@@ -539,14 +539,14 @@ Item {
         function onEditModeChanged() {
             if (root.editCtl.editMode) {
                 //  2026-07-17: Die Text-Auswahl BLEIBT beim Betreten des
-                //  Editiermodus erhalten (vorher wurde sie verworfen — man
+                //  Editiermodus erhalten (vorher wurde sie verworfen - man
                 //  markierte Text und verlor ihn beim Umschalten). Mit dem
                 //  Auswahl-Werkzeug lässt sich auch IM Editiermodus markieren
                 //  (createArea reicht Tool 0 an die Auswahl weiter); ein Klick
                 //  auf ⇄ verwandelt die Markierung direkt in eine Ersetzen-Box.
-                //  Auswahl-Dokument lazy laden — es liefert die Zeilen-
+                //  Auswahl-Dokument lazy laden - es liefert die Zeilen-
                 //  rechtecke für den Zeilenfang.
-                // Ausgeblendete Notizen (Alt+Q) wieder zeigen — man will sie
+                // Ausgeblendete Notizen (Alt+Q) wieder zeigen - man will sie
                 // ja bearbeiten.
                 root.notesVisible = true
                 if (root.source.length > 0)
@@ -568,7 +568,7 @@ Item {
         //  Formular in eine Kopie geschrieben (bzw. gescheitert).
         function onFormSaved(ok, targetPath, errorText, flattened) {
             if (ok && flattened === true)
-                //  Kopie trägt die geänderte Seitenfolge — dafür sind die
+                //  Kopie trägt die geänderte Seitenfolge - dafür sind die
                 //  Felder darin festgeschrieben. Das muss gesagt werden.
                 root._toast(App.uiText(App.language, "PdfFormSavedFlattenedToast")
                                 .arg(targetPath))
@@ -578,15 +578,15 @@ Item {
                 root._toast(App.uiText(App.language, "PdfFormSaveFailedToast")
                                 .arg(errorText.length > 0 ? errorText : "?"))
         }
-        // Content-Stream-Editing nicht (vollständig) möglich → Raster-Export.
+        // Content-Stream-Editing nicht (vollständig) möglich -> Raster-Export.
         function onContentEditFellBack() {
             root._toast(App.uiText(App.language, "PdfContentFallbackToast"))
         }
         // Text-Eigenschaften öffnen sich AUTOMATISCH, sobald eine Notiz
-        // erstellt oder ausgewählt wird (Erstellen setzt die Auswahl → ein
+        // erstellt oder ausgewählt wird (Erstellen setzt die Auswahl -> ein
         // Pfad genügt); der frühere ⚙-Toolbar-Button entfällt. Im
         // Seitenleisten-Modus verdrängt das Panel die Audio-Leiste
-        // (Exklusivität wie zuvor); Abwählen lässt das Panel offen — es
+        // (Exklusivität wie zuvor); Abwählen lässt das Panel offen - es
         // schließt über sein ✕ und öffnet bei der nächsten Auswahl erneut.
         function onSelectedIdChanged() {
             if (root.editCtl.editMode && root.editCtl.selectedId >= 0) {
@@ -595,7 +595,7 @@ Item {
                     root.audioPanelVisible = false
             }
             // Reflow-Verkettung: wartet der Link-Modus auf ein Ziel und wird eine
-            // ANDERE Box gewählt → beide verketten und den Modus verlassen.
+            // ANDERE Box gewählt -> beide verketten und den Modus verlassen.
             if (root._linkFromId !== 0) {
                 var to = root.editCtl.selectedId
                 if (to >= 0 && to !== root._linkFromId) {
@@ -613,10 +613,10 @@ Item {
                                    ok ? "PdfEditSavedToast" : "PdfEditSaveFailedToast"))
         }
         // „Text bearbeiten": Die Änderung ließ sich nicht in den Content-Stream
-        // schreiben (z. B. Zeichen nicht in der Kodierung der Schrift) — der
+        // schreiben (z. B. Zeichen nicht in der Kodierung der Schrift) - der
         // Controller hat sie verworfen, der Nutzer erfährt WARUM.
         //  Der Absatz-Umbruch nach dem Tippen hat den Rest nicht mehr
-        //  unterbringen können — das wird gesagt, statt ihn still über den
+        //  unterbringen können - das wird gesagt, statt ihn still über den
         //  Rand laufen zu lassen.
         function onReflowOverflow() {
             root._toast(App.uiText(App.language, "PdfReflowOverflow"))
@@ -625,26 +625,26 @@ Item {
             root._toast(App.uiText(App.language, "PdfEditTextOpFailed")
                             .arg(reason.length > 0 ? reason : "?"))
         }
-        // Zeichen-Layout der angeklickten Seite ist da — ist sie nicht
+        // Zeichen-Layout der angeklickten Seite ist da - ist sie nicht
         // bearbeitbar, wird das gesagt statt still nichts zu tun.
         function onCaretReadyChanged() {
             if (root.editCtl.tool !== 7 || root.editCtl.caretReady)
                 return
             //  Eingefügte/gedrehte Seite: Der Controller lehnt das Caret dort
             //  bewusst ab (die Ops adressieren die ungedrehte Quellseite) und
-            //  meldet das über caretError — dann DIESEN Grund nennen.
+            //  meldet das über caretError - dann DIESEN Grund nennen.
             if (root.editCtl.caretError === "pagenotext") {
                 root._toast(App.uiText(App.language, "PdfCaretPageNotEditable"))
                 return
             }
             //  Seite gelesen, aber ohne Text: das ist kein Fehler, sondern eine
-            //  andere Lage — und ein Klick, der gar nichts meldet, wirkt kaputt.
+            //  andere Lage - und ein Klick, der gar nichts meldet, wirkt kaputt.
             if (root.editCtl.caretError === "pagenotext_empty") {
                 root._toast(App.uiText(App.language, "PdfCaretPageNoText"))
                 return
             }
             //  Sonst: den WIRKLICHEN Grund nennen. Ein Pauschalsatz macht aus
-            //  einem behebbaren Fall ein Rätsel — auch für Fehlermeldungen.
+            //  einem behebbaren Fall ein Rätsel - auch für Fehlermeldungen.
             if (root.editCtl.caretPage >= 0 && root.editCtl.caretError.length > 0)
                 root._toast(App.uiText(App.language, "PdfEditCaretUnavailable")
                                 .arg(root.editCtl.caretError))
@@ -654,7 +654,7 @@ Item {
     // ── Audio-Wiedergabe (EIN Player; Mini-Player + seitenbezogene Leiste) ─────
     function playClip(id) {
         if (id < 0) return
-        if (root.activeClipId === id) {                 // gleicher Clip → Play/Pause
+        if (root.activeClipId === id) {                 // gleicher Clip -> Play/Pause
             if (audioPlayer.playbackState === MediaPlayer.PlayingState) audioPlayer.pause()
             else audioPlayer.play()
             return
@@ -670,7 +670,7 @@ Item {
         }
         var meta = root._audioMeta[id]
         if (meta && meta.url) _startActive(meta.url)
-        else { root._pendingPlay = true; pdfAudioCtl.requestClip(id) }   // async → onClipReady startet
+        else { root._pendingPlay = true; pdfAudioCtl.requestClip(id) }   // async -> onClipReady startet
     }
 
     function _startActive(url) {
@@ -680,14 +680,14 @@ Item {
         root._pendingSeekMs = root._audioPos[root.activeClipId] || 0
         root._pendingPlay = true
         // Vollständige Neu-Initialisierung: die neue Quelle wird in eine FRISCHE
-        // MediaPlayer-Instanz geladen (loadFresh zerstört die alte restlos) —
+        // MediaPlayer-Instanz geladen (loadFresh zerstört die alte restlos) -
         // kein wiederverwendeter Demuxer-/Handle-/Sink-Zustand, der die
         // Wiedergabe auf jedem zweiten Wechsel verwerfen könnte.
         audioPlayer.loadFresh(url)
         // FFmpeg-Backend (Linux): das erste play() direkt bei LoadedMedia wird auf
-        // jedem zweiten Quellenwechsel VERWORFEN (Player bleibt Stopped, kein Ton) —
+        // jedem zweiten Quellenwechsel VERWORFEN (Player bleibt Stopped, kein Ton) -
         // exakt das, was ein zweiter manueller Klick heilt. playRetry ruft play()
-        // wiederholt auf, bis playbackState wirklich Playing ist → automatisiert den
+        // wiederholt auf, bis playbackState wirklich Playing ist -> automatisiert den
         // zweiten Klick und beseitigt das "jede zweite stumm"-Muster.
         playRetry.tries = 0
         playRetry.start()
@@ -723,7 +723,7 @@ Item {
     //  Objekt-Identität macht es je Instanz verschieden). Der Play-Start meldet
     //  sich in playerComponent.onPlaybackStateChanged via App.announcePlayback;
     //  startet eine ANDERE Stelle (fremdes Token), pausiert die Wiedergabe hier
-    //  — Position bleibt erhalten (Pause, kein Stop). App sendet playbackStarted
+    //  - Position bleibt erhalten (Pause, kein Stop). App sendet playbackStarted
     //  NUR bei aktivierter Mono-Play-Option (Einstellungen ▸ Allgemein).
     readonly property string _playToken: "pdfaudio-" + root
 
@@ -731,11 +731,11 @@ Item {
         target: App
         function onPlaybackStarted(token) {
             if (token === root._playToken) return
-            // Läuft hier gerade Audio → pausieren (Position bleibt erhalten).
+            // Läuft hier gerade Audio -> pausieren (Position bleibt erhalten).
             if (audioPlayer.playbackState === MediaPlayer.PlayingState)
                 audioPlayer.pause()
             // Wartet hier noch ein asynchroner Play (Clip-Extraktion/playRetry),
-            // hat der FREMDE Start zuletzt gewonnen → schwebenden Play abbrechen,
+            // hat der FREMDE Start zuletzt gewonnen -> schwebenden Play abbrechen,
             // sonst „stiehlt" der verspätete Retry die Wiedergabe zurück.
             root._pendingPlay = false
         }
@@ -745,11 +745,11 @@ Item {
     //  Stabiler Zugriffspunkt (id: audioPlayer) für die gesamte UI (Slider/
     //  Buttons binden weiter an audioPlayer.position/duration/playbackState).
     //  Die eigentliche MediaPlayer+AudioOutput-Instanz wird für jede Wiedergabe
-    //  KOMPLETT NEU erzeugt und die alte restlos zerstört — keine Wieder-
+    //  KOMPLETT NEU erzeugt und die alte restlos zerstört - keine Wieder-
     //  verwendung von Demuxer, Datei-Handle oder Audio-Sink. Hintergrund: das
     //  FFmpeg-Backend behält nach einem Quellenwechsel AUF DERSELBEN Instanz
     //  internen Pipeline-Zustand und verwirft die Wiedergabe auf jedem zweiten
-    //  Wechsel (Datei wird korrekt geprobt/geladen — „Input #0, wav, …" — aber
+    //  Wechsel (Datei wird korrekt geprobt/geladen - „Input #0, wav, …" - aber
     //  es startet kein Ton). Mit einer frischen Instanz existiert dieser
     //  Alt-Zustand gar nicht erst; zusätzlich sind die Temp-WAVs nach reset()
     //  garantiert ungesperrt (löschbar).
@@ -757,12 +757,12 @@ Item {
         id: audioPlayer
         visible: false
 
-        // Aktive Instanz (playerComponent) — null, wenn nichts geladen ist.
+        // Aktive Instanz (playerComponent) - null, wenn nichts geladen ist.
         property var _inst: null
 
         // PERSISTENTER Audio-Sink: EINMAL geöffnet, für JEDE Wiedergabe
         // wiederverwendet. Nur der MediaPlayer (Demuxer/Pipeline) wird je
-        // Wiedergabe neu erzeugt — der eigentliche Grund für die frische Instanz.
+        // Wiedergabe neu erzeugt - der eigentliche Grund für die frische Instanz.
         // Vorher trug jeder MediaPlayer seinen EIGENEN AudioOutput; dessen
         // schnelles Öffnen/Schließen bei jedem Quellenwechsel ließ das
         // Audiogerät (PipeWire/Pulse) reproduzierbar bei JEDER ZWEITEN
@@ -792,15 +792,15 @@ Item {
         // Instanz vollständig zerstören: erst Fassade abkoppeln (Bindings fallen
         // auf Ruhewerte), dann stoppen, den gemeinsamen Sink lösen (er darf NICHT
         // mit dem Player sterben), Quelle leeren (Datei-Handle/Demuxer SOFORT
-        // freigeben — destroy() ist verzögert) und Objekt zerstören.
+        // freigeben - destroy() ist verzögert) und Objekt zerstören.
         function reset() {
             var old = _inst
             _inst = null
             if (old) {
                 // ZUERST abkoppeln: stop() einer SPIELENDEN Instanz durchläuft
-                // mediaStatus → LoadedMedia; deren Handler sah _pendingPlay
+                // mediaStatus -> LoadedMedia; deren Handler sah _pendingPlay
                 // (vom bereits eingeleiteten Wechsel), startete die ALTE Quelle
-                // erneut und konsumierte _pendingPlay — der NEUE Clip wurde
+                // erneut und konsumierte _pendingPlay - der NEUE Clip wurde
                 // dann nie gestartet (deterministisch „jeder zweite Wechsel
                 // stumm"). detached schaltet alle Handler der alten Instanz ab
                 // (auch positionChanged(0), das sonst die Resume-Position des
@@ -838,7 +838,7 @@ Item {
                     if (playbackState === MediaPlayer.PlayingState) {
                         root._pendingPlay = false
                         if (root._pendingSeekMs > 0) { position = root._pendingSeekMs; root._pendingSeekMs = -1 }
-                        // Mono-Play: Start (auch Resume) melden — andere
+                        // Mono-Play: Start (auch Resume) melden - andere
                         // Wiedergabestellen pausieren sich daraufhin.
                         App.announcePlayback(root._playToken)
                     }
@@ -846,7 +846,7 @@ Item {
                 onErrorOccurred: function(err, errStr) {
                     if (err !== MediaPlayer.NoError) console.log("MediaGallery Audio-Fehler:", err, errStr)
                 }
-                // Nur in das einfache Objekt schreiben (Resume) — KEIN Reassign → keine
+                // Nur in das einfache Objekt schreiben (Resume) - KEIN Reassign -> keine
                 // Binding-Last je Tick. Der aktive Slider liest audioPlayer.position direkt.
                 onPositionChanged: if (!detached && root.activeClipId >= 0) root._audioPos[root.activeClipId] = position
             }
@@ -896,7 +896,7 @@ Item {
     }
 
     // ── Tastenkuerzel: Kopieren / Seite komplett markieren ─────────────────────
-    //  WindowShortcut-Kontext (Standard) → feuert, solange dieses PDF im Vollbild
+    //  WindowShortcut-Kontext (Standard) -> feuert, solange dieses PDF im Vollbild
     //  aktiv ist. Copy ist nur scharf, wenn wirklich Text markiert ist (kein
     //  mehrdeutiger Konflikt). Explizite Sequenzen statt StandardKey, damit keine
     //  Zweitbindung den Shortcut mehrdeutig macht.
@@ -906,7 +906,7 @@ Item {
         onActivated: pdfTextCtl.copyToClipboard()
     }
     // Notizen-Toggle (Alt+Q blendet die Post-its aus, erneutes Drücken wieder
-    // ein). Wirkt in BEIDEN Modi — der Eintritt in den Editmodus erzwingt
+    // ein). Wirkt in BEIDEN Modi - der Eintritt in den Editmodus erzwingt
     // notesVisible=true, danach kann auch dort ausgeblendet werden (das
     // Erstellen einer Notiz blendet wieder ein, s. createArea).
     //  Suchen wie überall: Strg+F (bzw. was die Plattform dafür vorsieht).
@@ -920,9 +920,9 @@ Item {
         enabled: root.paneActive && root.docReady
         onActivated: root.notesVisible = !root.notesVisible
     }
-    // Notiz KOPIEREN (Edit-Modus, Auswahl vorhanden, nicht beim Tippen) — greift
+    // Notiz KOPIEREN (Edit-Modus, Auswahl vorhanden, nicht beim Tippen) - greift
     // vor dem Textebenen-Ctrl+C oben (dessen enabled verlangt markierten Text,
-    // sich gegenseitig ausschließend → keine Mehrdeutigkeit).
+    // sich gegenseitig ausschließend -> keine Mehrdeutigkeit).
     Shortcut {
         sequence: "Ctrl+C"
         enabled: root.paneActive && root.docReady && root.editCtl.editMode
@@ -942,7 +942,7 @@ Item {
         onActivated: root.selectAllCurrentPage()
     }
     // Entf löscht die AUSGEWÄHLTE Notiz (nur im Editmodus). Gesperrt, solange
-    // eine Inline-Textbearbeitung läuft — dort gehört Entf dem TextEdit
+    // eine Inline-Textbearbeitung läuft - dort gehört Entf dem TextEdit
     // (Zeichen löschen), nicht der Box (root.editCtl.textEditing).
     Shortcut {
         sequence: "Delete"
@@ -954,7 +954,7 @@ Item {
         }
     }
     // Undo/Redo des Editors (nur im Editmodus). Gesperrt während einer
-    // Inline-Textbearbeitung — dort gehört Strg+Z dem TextEdit (zeichenweises
+    // Inline-Textbearbeitung - dort gehört Strg+Z dem TextEdit (zeichenweises
     // Undo beim Tippen); das Editor-Undo greift wieder nach dem Commit.
     Shortcut {
         sequence: "Ctrl+Z"
@@ -968,7 +968,7 @@ Item {
     }
     //  +/- = herein-/herauszoomen (ohne Modifikator; die Kachelgröße der Galerie
     //  liegt auf Ctrl++/- und ist ohnehin nur auf der Galerie-Seite scharf).
-    //  „=" liegt auf derselben Taste wie „+" (ohne Shift) → als Zweit-Sequenz.
+    //  „=" liegt auf derselben Taste wie „+" (ohne Shift) -> als Zweit-Sequenz.
     Shortcut {
         sequences: ["+", "="]
         enabled: root.paneActive && root.docReady && !root.caretActive
@@ -1007,7 +1007,7 @@ Item {
             // Steuerkürzel (Strg+Z/C/V …) bleiben den Shortcuts überlassen.
             if (e.modifiers & (Qt.ControlModifier | Qt.AltModifier | Qt.MetaModifier))
                 return
-            // Nur DRUCKBARE Zeichen einfügen — Rest (F-Tasten, Tab …) durchlassen.
+            // Nur DRUCKBARE Zeichen einfügen - Rest (F-Tasten, Tab …) durchlassen.
             if (e.text.length > 0 && e.text.charCodeAt(0) >= 0x20
                     && e.text.charCodeAt(0) !== 0x7f) {
                 c.insertAtCaret(e.text)
@@ -1027,14 +1027,14 @@ Item {
     }
 
     // ── Zoom mit SEITEN-Verankerung ───────────────────────────────────────────
-    //  Der Punkt in der Viewport-MITTE bleibt beim Zoomen stehen — verankert
+    //  Der Punkt in der Viewport-MITTE bleibt beim Zoomen stehen - verankert
     //  als Seite + Innerseiten-Anteil (dieselbe Mechanik wie die Resize-
     //  Wiederherstellung). Die frühere reine contentY-Verhältnisrechnung
     //  (`anchor·ratio`) war Relayout-anfällig: der Zoom ändert ALLE Delegate-
     //  Höhen, die ListView schätzt nicht instanziierte Seiten und korrigiert
-    //  asynchron (originY-Verschiebung) → die Verhältnisrechnung sprang durch
-    //  die Seiten. Ablauf jetzt: Anker sichern → Zoom setzen → forceLayout
-    //  (neue Höhen deterministisch) → Seite anspringen → Anteil anlegen.
+    //  asynchron (originY-Verschiebung) -> die Verhältnisrechnung sprang durch
+    //  die Seiten. Ablauf jetzt: Anker sichern -> Zoom setzen -> forceLayout
+    //  (neue Höhen deterministisch) -> Seite anspringen -> Anteil anlegen.
     function setZoom(z) {
         var nz = Math.max(0.25, Math.min(4.0, z))
         if (Math.abs(nz - root.zoom) < 0.0001) return
@@ -1062,7 +1062,7 @@ Item {
     function zoomOut() { setZoom(root.zoom - 0.15) }
 
     // ── Horizontaler Schwenk (Zoom-Pan) ───────────────────────────────────────
-    //  Anzeigebreite der aktuellen Seite (Pixel) — spiegelt die Delegate-Formel.
+    //  Anzeigebreite der aktuellen Seite (Pixel) - spiegelt die Delegate-Formel.
     function _curPageW() {
         if (!root.docReady) return 0
         var pts = root.doc.pagePointSize(root.currentPage)
@@ -1108,7 +1108,7 @@ Item {
     //  ListView kann nach positionViewAtIndex auf eine MITTLERE Seite einen
     //  verschobenen Content-Ursprung haben (originY ≠ 0): oberhalb liegende,
     //  noch nicht instanziierte Seiten werden geschätzt und beim Nachladen
-    //  korrigiert — der gültige contentY-Bereich ist dann
+    //  korrigiert - der gültige contentY-Bereich ist dann
     //  [originY … originY + contentHeight − height]. Klemmen auf [0 … cH−h]
     //  blockieren das Hochscrollen (y < 0 unerreichbar) und stoppen das
     //  Runterscrollen zu früh. ALLE manuellen contentY-Zuweisungen laufen
@@ -1121,16 +1121,16 @@ Item {
         return Math.max(minContentY(), Math.min(y, maxContentY()))
     }
     function updateCurrentPage() {
-        // Während Resize/Wiederherstellung NICHT überschreiben — sonst driftet die
+        // Während Resize/Wiederherstellung NICHT überschreiben - sonst driftet die
         // Seite durch die transienten contentY-Änderungen des Relayouts.
         if (root._restoring || root._resizing) return
         if (pages.count <= 0) { root.currentPage = 0; return }
         var idx = pages.indexAt(pages.width / 2, pages.contentY + pages.height / 2)
         if (idx >= 0) root.currentPage = idx
-        // Innerseiten-Scrollanteil (0..1) der stabilen Seite fortschreiben —
+        // Innerseiten-Scrollanteil (0..1) der stabilen Seite fortschreiben -
         // Grundlage, um nach einem Resize nicht nur die SEITE, sondern auch
         // die POSITION innerhalb der Seite wiederherzustellen (das Seiten-
-        // Layout skaliert proportional → der Anteil bleibt gültig).
+        // Layout skaliert proportional -> der Anteil bleibt gültig).
         var it = pages.itemAtIndex(root._stablePage)
         if (it && it.height > 0)
             root._stableFrac = Math.max(0, Math.min(1,
@@ -1139,7 +1139,7 @@ Item {
     // Fenster-Resize (auch Split-View: Datei hinzufügen ändert die Kachelgröße):
     // die STABILE Seite (nur außerhalb von Resizes fortgeschrieben, s.
     // onCurrentPageChanged) samt Innerseiten-Anteil merken und nach dem Relayout
-    // wiederherstellen → KEIN Zurückspringen, KEIN Verlust der Scrollposition
+    // wiederherstellen -> KEIN Zurückspringen, KEIN Verlust der Scrollposition
     // innerhalb langer Seiten. `_resizing` sperrt updateCurrentPage für die
     // GANZE Resize-Phase; der Timer feuert erst, wenn die Größenänderung
     // ausläuft.
@@ -1154,7 +1154,7 @@ Item {
     }
     // Solange die Kachel VERSTECKT ist (abgepoppte, persistente Split-Seite
     // während des Datei-Hinzufügens), ist die ListView-Geometrie nicht
-    // verlässlich (kein Fenster, keine Polish-Läufe) — die Wiederherstellung
+    // verlässlich (kein Fenster, keine Polish-Läufe) - die Wiederherstellung
     // wartet dann auf das Wieder-Sichtbarwerden; `_resizing` bleibt gesetzt
     // und sperrt updateCurrentPage (kein Drift durch transiente Zustände).
     onVisibleChanged: if (visible && _resizing) restorePageTimer.restart()
@@ -1163,7 +1163,7 @@ Item {
         interval: 90                              // erst nach Ende des Resize-Bursts
         onTriggered: {
             if (!root.visible || pages.width <= 0 || pages.height <= 0)
-                return                            // versteckt → onVisibleChanged holt nach
+                return                            // versteckt -> onVisibleChanged holt nach
             root._restoring = true
             pages.forceLayout()                   // Geometrie deterministisch machen
             pages.positionViewAtIndex(root._savePage, ListView.Beginning)
@@ -1184,9 +1184,9 @@ Item {
     }
 
     // ── Textauswahl-Steuerung ─────────────────────────────────────────────────
-    //  beginSelection lädt das Auswahl-Dokument LAZY (erst bei echtem Markieren →
+    //  beginSelection lädt das Auswahl-Dokument LAZY (erst bei echtem Markieren ->
     //  reines Ansehen kostet kein zusätzliches QPdfDocument). Bei großen PDFs ist
-    //  der asynchrone Ladevorgang ggf. erst während des Ziehens fertig — dann holt
+    //  der asynchrone Ladevorgang ggf. erst während des Ziehens fertig - dann holt
     //  der pdfTextCtl.onReadyChanged-Handler die Auswahl nach (Catch-up).
     function beginSelection(page) {
         root._selecting = true
@@ -1235,7 +1235,7 @@ Item {
         stampFileDlg.open()
     }
 
-    //  Ein gewähltes Bild als Stempel setzen — EIN Weg für Dateidialog und
+    //  Ein gewähltes Bild als Stempel setzen - EIN Weg für Dateidialog und
     //  Ordner-Wähler. Das Bild landet mittig auf der aktuellen Seite; Größe =
     //  ein Drittel der Seitenbreite, Höhe folgt dem Seitenverhältnis.
     function insertStampImage(fileUrl) {
@@ -1280,11 +1280,11 @@ Item {
     }
     function endSelection(wasDrag) {
         root._selecting = false
-        if (!wasDrag) root.clearSelection()   // reiner Klick → Auswahl aufheben
+        if (!wasDrag) root.clearSelection()   // reiner Klick -> Auswahl aufheben
     }
-    //  Auswahl → TEXTMARKIERUNG. Die Zeilenrechtecke der Textauswahl
+    //  Auswahl -> TEXTMARKIERUNG. Die Zeilenrechtecke der Textauswahl
     //  (`selRects`, von PdfText geliefert) sind exakt das, was eine Markierung
-    //  braucht — je Zeile ein Bereich, alle zusammen EIN Objekt. Ohne Textebene
+    //  braucht - je Zeile ein Bereich, alle zusammen EIN Objekt. Ohne Textebene
     //  (gescannte Seite) gibt es keine Zeilen; dann markiert `fallback` genau
     //  den aufgezogenen Bereich.
     function markSelectionNow(style, fallback) {
@@ -1308,10 +1308,10 @@ Item {
         return id >= 0
     }
 
-    //  Markierung → Ersetzen-Box (Arbeitsweise: Text auswählen ▸ ⇄ klicken).
+    //  Markierung -> Ersetzen-Box (Arbeitsweise: Text auswählen ▸ ⇄ klicken).
     //  Bewusst auf ROOT-Ebene und über die Panel-Schaltfläche AUFGERUFEN statt
     //  über onToolChanged: war ⇄ bereits das aktive Werkzeug, feuert
-    //  toolChanged nicht — der Klick blieb dann wirkungslos (Nutzerbefund
+    //  toolChanged nicht - der Klick blieb dann wirkungslos (Nutzerbefund
     //  2026-07-17). Seitenmaße kommen direkt aus root.doc, es braucht also
     //  kein instanziiertes Seiten-Delegate.
     function replaceSelectionNow() {
@@ -1321,7 +1321,7 @@ Item {
         const pts = root.doc.pagePointSize(page)
         if (!pts || pts.width <= 0 || pts.height <= 0) return false
         //  Wie beim Schwärzen: die Zeilen-Rechtecke der Auswahl aufziehen, nicht
-        //  die Zugkoordinaten (Höhe 0 → die Sonde fand nichts und die Box blieb
+        //  die Zugkoordinaten (Höhe 0 -> die Sonde fand nichts und die Box blieb
         //  unbefüllt).
         const u = root._selectionUnionPt(page)
         if (!u) return false
@@ -1358,7 +1358,7 @@ Item {
 
     //  Union der AUSWAHL-Rechtecke in PDF-Punkten. Sie ist die richtige Quelle
     //  für die Zeilen-Sonde: die Zugkoordinaten (`_lastSel`) beschreiben eine
-    //  Bewegung ENTLANG einer Zeile und haben deshalb Höhe 0 — `replaceProbe`
+    //  Bewegung ENTLANG einer Zeile und haben deshalb Höhe 0 - `replaceProbe`
     //  fand damit nichts, die Schwärzung bekam keinen Originaltext und beim
     //  Export blieb der Text unter dem Balken stehen (gemessen 2026-08-11).
     //  `selRects` dagegen sind die erkannten ZEILEN und haben echte Höhe.
@@ -1377,10 +1377,10 @@ Item {
                  w: (x1 - x0) * pts.width,   h: (y1 - y0) * pts.height }
     }
 
-    //  Markierung → SCHWÄRZUNG (Arbeitsweise: Text auswählen ▸ ▮ klicken).
+    //  Markierung -> SCHWÄRZUNG (Arbeitsweise: Text auswählen ▸ ▮ klicken).
     //  Derselbe Weg wie beim Ersetzen, nur endet er in `endRedactDraw`: die
     //  Fläche schnappt auf die erkannten Zeilen ein, und genau deren Text
-    //  wandert als `origText` mit — Gedecktes und Entferntes bleiben damit
+    //  wandert als `origText` mit - Gedecktes und Entferntes bleiben damit
     //  deckungsgleich. Ohne Textebene gibt es weder Zeilen noch Text; dann
     //  bleibt es beim Aufziehen, und der Aufrufer sagt das dem Nutzer.
     //  Rückgabe: true = Schwärzung angelegt.
@@ -1391,14 +1391,14 @@ Item {
         const pts = root.doc.pagePointSize(page)
         if (!pts || pts.width <= 0 || pts.height <= 0) return false
         //  Aufgezogen wird über die AUSWAHL-Rechtecke (echte Zeilenhöhe), nicht
-        //  über die Zugkoordinaten — s. _selectionUnionPt.
+        //  über die Zugkoordinaten - s. _selectionUnionPt.
         const u = root._selectionUnionPt(page)
         if (!u) return false
         const id = root.editCtl.beginDraw(5, page, u.x, u.y)
         if (id < 0) return false
         root.editCtl.updateDraw(id, u.x + u.w, u.y + u.h)
 
-        //  Gedeckt wird GENAU die Auswahl — nicht die ganze Zeile. Früher
+        //  Gedeckt wird GENAU die Auswahl - nicht die ganze Zeile. Früher
         //  schnappte die Fläche über `replaceProbe` auf die Zeilen-Bounds ein
         //  (Muster „Text ersetzen"); markierte man drei Wörter, lag der Balken
         //  über der kompletten Zeile. Entfernt wird entsprechend der WIRKLICH
@@ -1414,7 +1414,7 @@ Item {
         return false
     }
 
-    //  Der Knopf ▮ — der Hauptweg. Liegt eine Textauswahl vor, wird sie sofort
+    //  Der Knopf ▮ - der Hauptweg. Liegt eine Textauswahl vor, wird sie sofort
     //  geschwärzt; sonst bleibt der Ziehweg, dann aber MIT Rückmeldung, wenn
     //  die Seite gar keine Textebene hat: dort startet die Geste nicht, und
     //  früher passierte wortlos nichts (Nutzerbefund „lässt sich nicht
@@ -1459,7 +1459,7 @@ Item {
             root.selRects = pdfTextCtl.selectAllOnPage(root.currentPage)
             root._pendingSelectAll = false
         } else {
-            // Auswahl-Dokument laedt noch (lazy) → nach dem Laden nachholen.
+            // Auswahl-Dokument laedt noch (lazy) -> nach dem Laden nachholen.
             root._pendingSelectAll = true
         }
     }
@@ -1502,11 +1502,11 @@ Item {
         z: 5
     }
 
-    // ── Toolbar (unter der globalen Leiste → kein Overlap) ────────────────────
+    // ── Toolbar (unter der globalen Leiste -> kein Overlap) ────────────────────
     Rectangle {
         id: toolbar
         anchors { left: parent.left; right: parent.right; top: parent.top; topMargin: root.topInset }
-        //  42 px wie im DOCX-Editor — die drei Editor-Leisten sind
+        //  42 px wie im DOCX-Editor - die drei Editor-Leisten sind
         //  bewusst gleich hoch (Nutzerwunsch: überall konsistent).
         height: 42
         color: App.themeToolbarBg
@@ -1514,47 +1514,24 @@ Item {
         z: 6
         Rectangle { anchors.bottom: parent.bottom; width: parent.width; height: 1; color: App.themeBorder }
 
-        //  Die linke Werkzeuggruppe liegt in einem klemmenden Feld, das VOR
-        //  der rechten Gruppe endet (2026-07-17): vorher waren beide Reihen
-        //  nur verankert — bei schmaler (Split-)Kachel lagen die Knöpfe
-        //  ÜBEREINANDER. Passt die Gruppe nicht, schiebt das Mausrad (mit oder
-        //  ohne Umschalt) sie waagerecht — animiert wie überall in der App.
-        Item {
+        //  Die linke Werkzeuggruppe endet VOR der rechten (2026-07-17): vorher
+        //  waren beide Reihen nur verankert - bei schmaler (Split-)Kachel lagen
+        //  die Knöpfe ÜBEREINANDER. Passt die Gruppe nicht, schwenkt das
+        //  Mausrad sie waagerecht. Seit 2026-08-19 macht das die gemeinsame
+        //  `ScrollableBar` (dieselbe Bedienung wie im DOCX-Editor und in den
+        //  Menüleisten) statt einer eigenen Klemm-/Animationslösung.
+        ScrollableBar {
             id: toolbarLeftClip
             anchors.left: parent.left; anchors.leftMargin: 12
             anchors.right: toolbarRight.left; anchors.rightMargin: 8
             anchors.top: parent.top; anchors.bottom: parent.bottom
-            clip: true
-            readonly property real maxScroll: Math.max(0, toolbarLeftRow.width - width)
-            NumberAnimation {
-                id: toolbarLeftAnim
-                target: toolbarLeftRow
-                property: "x"
-                duration: 180
-                easing.type: Easing.OutCubic
-            }
-            WheelHandler {
-                onWheel: (w) => {
-                    if (toolbarLeftClip.maxScroll <= 0) return
-                    const d = (w.angleDelta.y !== 0 ? w.angleDelta.y : w.angleDelta.x)
-                    const base = toolbarLeftAnim.running ? toolbarLeftAnim.to
-                                                         : toolbarLeftRow.x
-                    toolbarLeftAnim.to = Math.max(-toolbarLeftClip.maxScroll,
-                                            Math.min(0, base + (d > 0 ? -1 : 1)
-                                                            * toolbarLeftClip.width / 2))
-                    toolbarLeftAnim.restart()
-                }
-            }
-
-        Row {
-            id: toolbarLeftRow
-            anchors.verticalCenter: parent.verticalCenter
             spacing: 6
+
             PdfToolButton {
-                // ← = einklappen (Panel offen), → = ausklappen (Panel zu).
-                // Bewusst Pfeile (\u2190/\u2192) statt der soliden Seiten-Nav-
-                // Dreiecke (\u25C0/\u25B6) → optisch klar unterscheidbar.
-                glyph: root.thumbsVisible ? "\u2190" : "\u2192"
+                // <- = einklappen (Panel offen), -> = ausklappen (Panel zu).
+                // Bewusst Pfeile (<-/->) statt der soliden Seiten-Nav-
+                // Dreiecke (\u25C0/\u25B6) -> optisch klar unterscheidbar.
+                glyph: root.thumbsVisible ? "<-" : "->"
                 active: root.thumbsVisible
                 tip: root.thumbsVisible ? App.uiText(App.language, "PdfCollapsePreview")
                                         : App.uiText(App.language, "PdfExpandPreview")
@@ -1596,7 +1573,7 @@ Item {
                 tip: App.uiText(App.language, "PdfEditToggleTip")
                 // commitEditing() VOR dem Umschalten: eine offene Text-Session
                 // schließt sauber ab, bevor der Modus (und damit die Auswahl)
-                // fällt — reiner Zustandswechsel, KEIN Dokument-Reload.
+                // fällt - reiner Zustandswechsel, KEIN Dokument-Reload.
                 onActivated: { root.commitEditing(); root.editCtl.editMode = !root.editCtl.editMode }
             }
             PdfToolButton {
@@ -1641,13 +1618,18 @@ Item {
             // Panel öffnet automatisch beim Erstellen/Auswählen einer Notiz
             // (s. Connections auf root.editCtl.onSelectedIdChanged) und schließt
             // über sein eigenes ✕.
-        }
-        }   // Ende toolbarLeftClip
+        }   // Ende toolbarLeftClip (ScrollableBar)
 
-        Row {
+        //  Auch die rechte Gruppe ist blätterbar UND gedeckelt (höchstens die
+        //  halbe Leiste): sie ist nach links gewachsen, bis sie die linke Gruppe
+        //  vollständig verdeckte - dann war dort nichts mehr erreichbar
+        //  (Nutzerbefund). Jetzt stehen beide nebeneinander, und jede lässt sich
+        //  für sich schwenken.
+        ScrollableBar {
             id: toolbarRight
             anchors.right: parent.right; anchors.rightMargin: 12
-            anchors.verticalCenter: parent.verticalCenter
+            anchors.top: parent.top; anchors.bottom: parent.bottom
+            width: Math.min(contentWidth, toolbar.width * 0.55)
             spacing: 6
             // Live-Transliteration (oben rechts): nur im Editmodus sinnvoll,
             // da Notizen hier getippt werden. Zustand/Schema global (Translit).
@@ -1656,7 +1638,7 @@ Item {
                 visible: root.editCtl.editMode
             }
             Item { width: root.editCtl.editMode ? 4 : 0; height: 1 }
-            // Audio-Leiste umschalten — nur sichtbar, wenn das PDF Audio enthält.
+            // Audio-Leiste umschalten - nur sichtbar, wenn das PDF Audio enthält.
             PdfToolButton {
                 iconName: "audio"
                 visible: pdfAudioCtl.documentHasAudio
@@ -1773,14 +1755,14 @@ Item {
             left: parent.left; right: parent.right
             top: toolbar.visible ? toolbar.bottom : parent.top
             bottom: parent.bottom
-            // "Ganze Seite": Der Fit haengt von der Viewport-HOEHE ab — jede
+            // "Ganze Seite": Der Fit haengt von der Viewport-HOEHE ab - jede
             // bottomInset-Aenderung (Ein-/Ausblenden der unteren Datei-Navigation
             // per Hover) wuerde die Seite sonst neu skalieren und verschieben
             // (teures Re-Rendern + visuelles Springen). Daher wird das Inset im
-            // Seiten-Fit-Modus IGNORIERT: Die Navigation liegt dann — wie im
-            // "Breite"-Modus — als reines Overlay UEBER der statisch gerenderten
+            // Seiten-Fit-Modus IGNORIERT: Die Navigation liegt dann - wie im
+            // "Breite"-Modus - als reines Overlay UEBER der statisch gerenderten
             // PDF-Seite. Im "Breite"-Modus bleibt das Inset erhalten (Fit haengt
-            // nur von der Breite ab → kein Re-Rendern, nur Viewport-Hoehe).
+            // nur von der Breite ab -> kein Re-Rendern, nur Viewport-Hoehe).
             bottomMargin: root.fitMode === "page" ? 0 : root.bottomInset
         }
 
@@ -1792,28 +1774,28 @@ Item {
             // Browser-artige Textauswahl ist IMMER aktiv: Linksziehen markiert.
             // Damit der Flickable das Ziehen nicht als Schwenken stiehlt, ist das
             // eigene Dragging der Liste deaktiviert. Gescrollt wird ueber das
-            // Mausrad (NoButton-Wheel-MouseArea) und die ScrollBar — beide
+            // Mausrad (NoButton-Wheel-MouseArea) und die ScrollBar - beide
             // funktionieren bei interactive:false unveraendert (sie setzen contentY
             // direkt). Programmatische contentY/positionViewAtIndex bleiben gueltig.
             interactive: false
             model: root.docReady ? root.doc.pageCount : 0
             spacing: 10
             //  Kopfraum unter der Word-Leiste (s. root.ribbonInset): bewusst
-            //  als HEADER statt topMargin — so bleibt der gültige contentY-
+            //  als HEADER statt topMargin - so bleibt der gültige contentY-
             //  Bereich [0 … contentHeight−height] und sämtliche vorhandene
             //  Scroll-/ScrollBar-/positionViewAtIndex-Logik gilt unverändert.
             header: Item { width: 1; height: root.ribbonInset }
             // Scroll-Cache: pageCacheScreens Viewporthoehen je Richtung bleiben
-            // gerendert → Hoch-/Runterscrollen innerhalb des Fensters laedt nicht
-            // neu. cache:false an den PdfPageImage → ausserhalb dieses Fensters
+            // gerendert -> Hoch-/Runterscrollen innerhalb des Fensters laedt nicht
+            // neu. cache:false an den PdfPageImage -> ausserhalb dieses Fensters
             // wird wieder freigegeben (deterministischer RAM-Deckel).
             //
-            // GESTAFFELT: Bis der Warmlauf greift, ist der Puffer fast 0 → beim
+            // GESTAFFELT: Bis der Warmlauf greift, ist der Puffer fast 0 -> beim
             // Oeffnen rendert NUR die sichtbare Seite (kein Vorab-Rendern von
             // Nachbarseiten, die sie sonst hinter dem Render-Mutex blockierten).
             // Danach klappt der volle Vorhalte-Puffer fuer fluessiges Scrollen auf.
             //  max(0, …): vor dem ersten Layout ist die Höhe negativ (Inset
-            //  minus Null-Höhe) — ein negativer cacheBuffer ist ungültig und
+            //  minus Null-Höhe) - ein negativer cacheBuffer ist ungültig und
             //  wurde beim Öffnen als Warnung gemeldet (wie bei der
             //  Vorschauleiste unten).
             cacheBuffer: Math.max(0, Math.round(pages.height *
@@ -1849,7 +1831,7 @@ Item {
                 z: index === root.editDragPage ? 1 : 0
 
                 readonly property size pts: root.doc.pagePointSize(index)
-                // Skalierung unabhaengig vom Overlay-Panel → Umschalten loest KEIN
+                // Skalierung unabhaengig vom Overlay-Panel -> Umschalten loest KEIN
                 // teures Neu-Rendern aus (Panel liegt nur ueber dem linken Rand).
                 readonly property real wFit: pts.width  > 0 ? (pages.width  - 24) / pts.width  : 1.0
                 readonly property real hFit: pts.height > 0 ? (pages.height - 24) / pts.height : 1.0
@@ -1864,16 +1846,16 @@ Item {
                 Rectangle {
                     id: pageBg
                     // Horizontal grundsätzlich zentriert; bei Zoom-Überlauf um
-                    // root.panX verschiebbar (Links-Drag-Schwenk → sonst nicht
+                    // root.panX verschiebbar (Links-Drag-Schwenk -> sonst nicht
                     // erreichbarer Inhalt am Rand wird sichtbar).
                     x: Math.round((pages.width - width) / 2 + root.panX)
                     width: pageCell.pageW; height: pageCell.pageH
                     color: "white"
 
                     // ── Textauswahl-Fänger (UNTERSTE Ebene der Seite) ──────────
-                    //  Das PdfPageImage darueber faengt keine Maus → ein Linkspress
+                    //  Das PdfPageImage darueber faengt keine Maus -> ein Linkspress
                     //  faellt hierher durch. Ausnahme: ein Badge (eigene MouseArea,
-                    //  liegt oben) verbraucht den Press → Annotation-Klicks bleiben
+                    //  liegt oben) verbraucht den Press -> Annotation-Klicks bleiben
                     //  erhalten und starten KEINE Markierung.
                     //  Ziehen markiert; reiner Klick hebt die Auswahl auf.
                     MouseArea {
@@ -1973,7 +1955,7 @@ Item {
                         // ── Caret des Werkzeugs „Text bearbeiten" ─────────────
                         //  Sitzt DIREKT in der eingebetteten Textebene (kein
                         //  Overlay): Position kommt aus PdfTextLayout über den
-                        //  Controller, in PDF-Punkten der Seite — hier nur auf
+                        //  Controller, in PDF-Punkten der Seite - hier nur auf
                         //  die aktuelle Darstellungsgröße skaliert.
                         Rectangle {
                             id: caretBar
@@ -2005,7 +1987,7 @@ Item {
                             delegate: Rectangle {
                                 id: badge
                                 required property var modelData
-                                // Audio (type 0) NICHT hier — das übernimmt PdfAudio
+                                // Audio (type 0) NICHT hier - das übernimmt PdfAudio
                                 // (eigene Hotspots + Leiste). Hier nur Video/Link.
                                 visible: modelData.page === pageCell.index && modelData.type !== 0
                                 x: modelData.x * pageImg.width
@@ -2016,10 +1998,11 @@ Item {
                                 color: badgeHover.hovered ? Qt.rgba(0.0, 0.78, 0.70, 0.35)
                                                           : Qt.rgba(0.0, 0.78, 0.70, 0.18)
                                 border.color: "#00c8b4"; border.width: 1
-                                Text {
+                                DrawnIcon {
                                     anchors.centerIn: parent
-                                    text: badge.modelData.type === 1 ? "\u25B6" : "\u2197"
-                                    color: "#e0fffb"; font.pixelSize: 13
+                                    name: badge.modelData.type === 1 ? "play" : "arrow"
+                                    size: 13
+                                    color: "#e0fffb"
                                 }
                                 HoverHandler { id: badgeHover }
                                 ToolTip.visible: badgeHover.hovered && badge.modelData.label.length > 0
@@ -2057,11 +2040,12 @@ Item {
                                           : Qt.rgba(root.audioAccent.r, root.audioAccent.g, root.audioAccent.b, 0.12))
                                 border.color: root.audioAccent
                                 border.width: aspot.isActive ? 2 : 1
-                                Text {
+                                DrawnIcon {
                                     anchors.centerIn: parent
-                                    text: (aspot.isActive && audioPlayer.playbackState === MediaPlayer.PlayingState)
-                                          ? "\u23F8" : "\u266A"
-                                    color: "#ffffff"; font.pixelSize: 12
+                                    name: (aspot.isActive && audioPlayer.playbackState === MediaPlayer.PlayingState)
+                                          ? "pause" : "audio"
+                                    size: 13
+                                    color: "#ffffff"
                                 }
                                 HoverHandler { id: aspotHover }
                                 MouseArea {
@@ -2073,27 +2057,27 @@ Item {
 
                         // ── PDF-Editor: Werkzeug-Fänger der Seite (nur Edit-
                         //    Modus). Liegt ÜBER Auswahl-Fänger, Badges und Audio-
-                        //    Hotspots (Editmodus hat Vorrang — Annotationen sind
+                        //    Hotspots (Editmodus hat Vorrang - Annotationen sind
                         //    dann bewusst nicht klickbar), aber UNTER den Box-
                         //    Delegates: Klick auf eine Box trifft die Box (nur
-                        //    Auswahl-Werkzeug — sonst haben deren MouseAreas
+                        //    Auswahl-Werkzeug - sonst haben deren MouseAreas
                         //    enabled:false und die Gesten fallen hierher durch).
                         //    Routing nach aktivem Werkzeug (Muster Bild-Editor):
-                        //     • Auswählen  → Klick auf freie Fläche wählt ab
-                        //     • Textnotiz  → Klick erstellt eine Notiz; Zeilen-
+                        //     • Auswählen  -> Klick auf freie Fläche wählt ab
+                        //     • Textnotiz  -> Klick erstellt eine Notiz; Zeilen-
                         //       fang: Trifft der Klick das Fenster einer
                         //       erkannten Textzeile (−35 %…+135 % der Zeilenhöhe
                         //       um ihre Oberkante), entsteht eine VERANKERTE Box
                         //       exakt auf der Zeile (Größe/Schrift aus der
-                        //       Zeile) — sonst eine freie Box am Klickpunkt
-                        //     • Stift/Pfeil/Rechteck/Ellipse → Ziehen zeichnet
+                        //       Zeile) - sonst eine freie Box am Klickpunkt
+                        //     • Stift/Pfeil/Rechteck/Ellipse -> Ziehen zeichnet
                         //       live (Controller-Session; Koordinaten in
                         //       PDF-Punkten, an die Seite geklemmt)
-                        //     • Text ersetzen → Aufziehen erzeugt eine weiße
+                        //     • Text ersetzen -> Aufziehen erzeugt eine weiße
                         //       Deckfläche + Textbox als EIN Objekt; beim
                         //       Loslassen schnappt die Box auf die erkannten
                         //       Textzeilen (pdfTextCtl.replaceProbe) und über-
-                        //       nimmt Schriftgröße + eingebetteten Text — ohne
+                        //       nimmt Schriftgröße + eingebetteten Text - ohne
                         //       Textebene bleibt sie STILL unbefüllt (Vorlage)
                         MouseArea {
                             id: createArea
@@ -2112,15 +2096,15 @@ Item {
                             //  Fängers. Diese Bezeichner waren nirgends deklariert:
                             //  QML wirft beim Lesen eines unbekannten Namens eine
                             //  ReferenceError und beim Schreiben „Invalid write to
-                            //  global property" — beides bricht den Handler SOFORT
+                            //  global property" - beides bricht den Handler SOFORT
                             //  ab. Folge: (a) „Text ersetzen" komplett tot, (b)
                             //  Markieren im Editmodus unmöglich, (c) jedes Zeichnen
                             //  endete am Druckpunkt, weil schon die erste Zeile von
                             //  onPositionChanged/onReleased warf (updateDraw/endDraw
-                            //  wurden nie erreicht → nur der Stummel blieb stehen).
-                            //   • _textSel/_textSelDrag/_selSx/_selSy → Markieren
+                            //  wurden nie erreicht -> nur der Stummel blieb stehen).
+                            //   • _textSel/_textSelDrag/_selSx/_selSy -> Markieren
                             //     mit dem Auswahl-Werkzeug (wie in der Leseansicht)
-                            //   • _repStart/_repLast → aufgezogener Bereich des
+                            //   • _repStart/_repLast -> aufgezogener Bereich des
                             //     „Text ersetzen"-Werkzeugs (seiten-normiert 0..1)
                             property bool _textSel: false
                             property bool _textSelDrag: false
@@ -2128,23 +2112,23 @@ Item {
                             property real _selSy: 0
                             property var  _repStart: null
                             property var  _repLast: null
-                            //  Werkzeugwechsel auf ⇄ → Textebene (nach)laden,
+                            //  Werkzeugwechsel auf ⇄ -> Textebene (nach)laden,
                             //  falls die editMode-Vorbereitung verworfen wurde
-                            //  (Quellenwechsel/Race) — prepare() ist idempotent.
+                            //  (Quellenwechsel/Race) - prepare() ist idempotent.
                             Connections {
                                 target: root.editCtl
                                 function onToolChanged() {
                                     //  Nur die Textebene vorbereiten; die
                                     //  Umwandlung einer bestehenden Markierung
                                     //  läuft über root.replaceSelectionNow()
-                                    //  (vom ⇄-Knopf aufgerufen — feuert auch,
+                                    //  (vom ⇄-Knopf aufgerufen - feuert auch,
                                     //  wenn ⇄ schon aktiv war).
                                     if ((root.editCtl.tool === 6 || root.editCtl.tool === 8)
                                             && root.source.length > 0)
                                         pdfTextCtl.prepare(root.source)
                                 }
                             }
-                            // Mausposition → PDF-Punkte, an die Seite geklemmt.
+                            // Mausposition -> PDF-Punkte, an die Seite geklemmt.
                             function _toPt(mx, my) {
                                 var pts = pageCell.pts
                                 if (pts.width <= 0 || pts.height <= 0)
@@ -2160,7 +2144,7 @@ Item {
                                 //  Auswahl nach. Mit der Wache blieb der erste
                                 //  Markierversuch im Editmodus wirkungslos, solange
                                 //  die Ebene noch nie geladen war (selArea in der
-                                //  Leseansicht kennt die Wache ebenfalls nicht —
+                                //  Leseansicht kennt die Wache ebenfalls nicht -
                                 //  daher „Markieren geht nur außerhalb des
                                 //  Editmodus").
                                 if (root.editCtl.tool === 0
@@ -2184,7 +2168,7 @@ Item {
                                         root.editCtl.placeCaret(pageCell.index, cp.x, cp.y)
                                         caretInput.forceActiveFocus()
                                         // Beim ersten Klick auf eine Seite wird die
-                                        // Textebene asynchron gelesen — das dauert
+                                        // Textebene asynchron gelesen - das dauert
                                         // sichtbar, also sagen wir es.
                                         if (first && !root.editCtl.caretReady)
                                             root._toast(App.uiText(App.language,
@@ -2226,7 +2210,7 @@ Item {
                                         _repStart.x, _repStart.y, _repStart.x, _repStart.y)
                                     return
                                 }
-                                // Tool 2..6 → PdfAnnKind 1..5 (Freihand…Text ersetzen).
+                                // Tool 2..6 -> PdfAnnKind 1..5 (Freihand…Text ersetzen).
                                 _drawId = root.editCtl.beginDraw(root.editCtl.tool - 1,
                                                                  pageCell.index, p.x, p.y)
                             }
@@ -2323,12 +2307,12 @@ Item {
                             // höhe und den eingebetteten Text unter der auf-
                             // gezogenen Fläche; der Controller schnappt die
                             // Box darauf ein und befüllt sie vor. Ohne Text-
-                            // ebene/Treffer (gescannte PDF) → snapped=false,
+                            // ebene/Treffer (gescannte PDF) -> snapped=false,
                             // die Box bleibt STILL unbefüllt (Anforderung:
                             // kein Hinweis-Dialog/Toast). Die neue Box startet
                             // wie Notizen direkt in der Textbearbeitung.
                             //  Abschluss der Schwärzung: dieselbe Zeilen-Sonde
-                            //  wie beim Ersetzen — nur wandert der erkannte
+                            //  wie beim Ersetzen - nur wandert der erkannte
                             //  Text NICHT in die Box, sondern in `origText`,
                             //  damit der Export ihn aus dem Strom entfernt.
                             function _finishRedact() {
@@ -2424,18 +2408,18 @@ Item {
                             }
                         }
 
-                        // ── PDF-Editor: Overlay-Textboxen — sichtbar in beiden
+                        // ── PDF-Editor: Overlay-Textboxen - sichtbar in beiden
                         //    Modi, solange der Notizen-Toggle (Alt+Q/◉) sie
                         //    nicht ausblendet; interaktiv nur im Editmodus.
                         //    Ein Repeater über ALLE Boxen je Seite; das
                         //    Delegate blendet sich über page===pageIndex selbst
-                        //    ein (Boxzahl ist klein — kein Proxy-Filter nötig).
+                        //    ein (Boxzahl ist klein - kein Proxy-Filter nötig).
                         Repeater {
                             model: root.editCtl.boxModel
                             delegate: PdfEditBox {
                                 //  Die Notiz findet ihre Seite über den STABILEN
                                 //  Seiten-Key (viewPageKey), nicht über die
-                                //  Position — deshalb bleibt sie beim
+                                //  Position - deshalb bleibt sie beim
                                 //  Umsortieren/Einfügen an ihrer Seite.
                                 //  (viewPageCount als Reaktiv-Trigger bei Plan-Änd.)
                                 pageIndex: (root.editCtl.viewPageCount,
@@ -2450,7 +2434,7 @@ Item {
                         }
 
                         // ── Formularfelder (AcroForm) dieser Seite ────────────
-                        //  Qt PDF zeichnet Widget-Annotationen NICHT — dieses
+                        //  Qt PDF zeichnet Widget-Annotationen NICHT - dieses
                         //  Overlay ist die EINZIGE Darstellung der Felder und
                         //  deshalb in BEIDEN Modi aktiv (ein Formular gehört
                         //  dem Dokument, nicht dem Editor). Die Liste ändert
@@ -2488,7 +2472,7 @@ Item {
                         //  selArea/createArea/Boxen: die Linksklick-Logik bleibt
                         //  unberührt (acceptedButtons filtert), Rechtsklick war
                         //  bisher ungenutzt. Das Menü lebt EINMAL im Root
-                        //  (pageCtxMenu) — kein Menü je Delegate.
+                        //  (pageCtxMenu) - kein Menü je Delegate.
                         MouseArea {
                             anchors.fill: parent
                             acceptedButtons: Qt.RightButton
@@ -2504,9 +2488,9 @@ Item {
                     //  Klick fügt eine leere A4-Seite NACH dieser Ansichts-Seite ein.
                     Item {
                         visible: pageCell.showAddLine
-                        // Kind von pageBg → in SEITEN-Koordinaten positionieren
+                        // Kind von pageBg -> in SEITEN-Koordinaten positionieren
                         // (nicht nochmal über pages.width zentrieren, sonst
-                        //  doppelter Seiten-Offset → nach rechts versetzt).
+                        //  doppelter Seiten-Offset -> nach rechts versetzt).
                         x: 0
                         width: parent.width          // = Seitenbreite
                         height: 26
@@ -2538,7 +2522,7 @@ Item {
             }
         }
 
-        // ── Wheel-Fänger über den Seiten (NoButton → Klicks/Badges bleiben aktiv) ──
+        // ── Wheel-Fänger über den Seiten (NoButton -> Klicks/Badges bleiben aktiv) ──
         MouseArea {
             anchors.fill: parent
             acceptedButtons: Qt.NoButton
@@ -2561,18 +2545,18 @@ Item {
                 anchors.fill: parent
                 anchors.margins: 8
                 clip: true
-                // Erst NACH dem Warmlauf befuellen → die Thumbnail-Renderings
+                // Erst NACH dem Warmlauf befuellen -> die Thumbnail-Renderings
                 // konkurrieren nicht mehr mit der ersten sichtbaren Hauptseite um
                 // den PDFium-Render-Mutex (entspricht dem 120-ms-Deferral der
                 // alten QPdfView-Version).
                 model: (root.docReady && root._warm) ? root.doc.pageCount : 0
                 spacing: 10
-                // Vorschauen kommen jetzt JPEG-komprimiert aus dem RAM-Provider —
+                // Vorschauen kommen jetzt JPEG-komprimiert aus dem RAM-Provider -
                 // Scrollen kostet nur einen winzigen Dekode, kein PDFium-Render.
                 // Etwas mehr Vorhalt haelt die Leiste auch bei schnellem Scrollen
                 // luecken­frei, ohne nennenswerten RAM (wenige KB je Vorschau).
                 // max(0, …): vor dem ersten Layout ist die Höhe negativ
-                // (Panel-Höhe 0 minus 2×8 px Rand) — ein negativer cacheBuffer
+                // (Panel-Höhe 0 minus 2×8 px Rand) - ein negativer cacheBuffer
                 // ist ungültig und wurde beim Start als Warnung gemeldet.
                 cacheBuffer: Math.max(0, Math.round(thumbs.height * 1.5))
                 boundsBehavior: Flickable.StopAtBounds
@@ -2580,7 +2564,7 @@ Item {
 
                 // ── Seiten umsortieren (Ziehen in der Vorschauleiste) ──────────
                 //  Nur im Editmodus. Gezogen wird die VORSCHAU, umsortiert wird
-                //  der Seiten-Plan im Controller (movePage → EIN Undo-Schritt);
+                //  der Seiten-Plan im Controller (movePage -> EIN Undo-Schritt);
                 //  die Notizen folgen ihrer Seite über den Seiten-Key.
                 //  dragIndex = gezogene Seite, dropIndex = Zielposition.
                 property int dragIndex: -1
@@ -2590,7 +2574,7 @@ Item {
 
                 //  Zielposition aus einer y-Koordinate IN der Liste (Inhalts-
                 //  koordinaten). Zwischen zwei Kacheln (Lücke) liefert indexAt
-                //  −1 — dann entscheidet die Nähe: oberhalb der ersten Kachel
+                //  −1 - dann entscheidet die Nähe: oberhalb der ersten Kachel
                 //  die 0, unterhalb der letzten die letzte Position.
                 function indexForContentY(cy) {
                     var i = thumbs.indexAt(thumbs.width / 2, cy)
@@ -2612,7 +2596,7 @@ Item {
                     return -1
                 }
 
-                //  Randnähe beim Ziehen scrollt die Leiste weiter — sonst wäre
+                //  Randnähe beim Ziehen scrollt die Leiste weiter - sonst wäre
                 //  nur innerhalb des sichtbaren Ausschnitts umsortierbar.
                 Timer {
                     id: thumbAutoScroll
@@ -2633,7 +2617,7 @@ Item {
                     id: thumbCell
                     required property int index
                     // Cache-Buster: hochzaehlen, sobald die Vorschau gerendert ist
-                    // → die Image-source wird neu angefordert und aus dem RAM-Store
+                    // -> die Image-source wird neu angefordert und aus dem RAM-Store
                     //   geliefert.
                     property int rev: 0
                     readonly property size pts: root.doc.pagePointSize(index)
@@ -2661,7 +2645,7 @@ Item {
                                                                            : App.themeBorder
                         border.width: thumbCell.index === root.currentPage ? 2 : 1
                         // Vorschau kommt JPEG-komprimiert aus dem RAM-Provider:
-                        // KEIN PdfPageImage mehr → kein PDFium-Render am Haupt-Mutex,
+                        // KEIN PdfPageImage mehr -> kein PDFium-Render am Haupt-Mutex,
                         // Scrollen dekodiert nur winzige JPEGs (asynchron, < 1 ms).
                         Image {
                             id: thumbImg
@@ -2715,13 +2699,13 @@ Item {
                             onCentroidChanged: {
                                 if (!active)
                                     return
-                                //  Randnähe → Leiste mitscrollen (Sichtfenster-
+                                //  Randnähe -> Leiste mitscrollen (Sichtfenster-
                                 //  Koordinaten).
                                 const ly = thumbs.mapFromItem(null, centroid.scenePosition).y
                                 thumbAutoScroll.dir = ly < 24 ? -1
                                                    : ly > thumbs.height - 24 ? 1 : 0
                                 //  Zielposition: indexAt() erwartet INHALTS-
-                                //  koordinaten → direkt über das contentItem
+                                //  koordinaten -> direkt über das contentItem
                                 //  abbilden (originY-sicher).
                                 const cy = thumbs.contentItem.mapFromItem(
                                                null, centroid.scenePosition).y
@@ -2741,7 +2725,7 @@ Item {
                         anchors.horizontalCenter: parent.horizontalCenter
                         width: thumbCell.thumbW; height: 3; radius: 1.5
                         color: App.themeAccent
-                        //  Von oben gezogen → Marke unter die Zielkachel, sonst darüber.
+                        //  Von oben gezogen -> Marke unter die Zielkachel, sonst darüber.
                         y: thumbs.dragIndex < thumbCell.index ? thumbFrame.height + 1 : -2
                         z: 5
                     }
@@ -2756,7 +2740,7 @@ Item {
                                                                         : App.themeTextMuted
                             font.pixelSize: 10
                         }
-                        //  Marke für eingefügte (fremde) Seiten — im Editmodus
+                        //  Marke für eingefügte (fremde) Seiten - im Editmodus
                         //  sichtbar, damit erkennbar bleibt, was nicht aus dem
                         //  Originaldokument stammt (dort ist auch kein
                         //  zeichenweises Bearbeiten möglich).
@@ -2809,7 +2793,7 @@ Item {
         //  Dokument-Scrollleiste sichtbar. Zeigt NUR die Audios der aktuellen Seite
         //  („Audios nur da, wo sie herkommen"); der Mini-Player unten spielt
         //  unabhängig vom gerade angezeigten Seitenausschnitt weiter.
-        // ── PDF-Editor: Text-Eigenschaften — Position je Einstellung ──────────
+        // ── PDF-Editor: Text-Eigenschaften - Position je Einstellung ──────────
         //  Rechts (Seitenleiste, Standard) ODER oben (Leiste wie Word). Beide
         //  Instanzen teilen sich dieselbe PdfEditPanel-Datei (horizontal-Flag);
         //  sichtbar ist je nach PdfEdit.panelOnTop genau eine.
@@ -2838,7 +2822,7 @@ Item {
             color: App.themeSidebarBg
 
             // Clips der aktuellen Seite (hängt an audioClips + currentPage, NICHT an
-            // _audioRev → kein Delegate-Neuaufbau bei Positions-/Dauer-Updates).
+            // _audioRev -> kein Delegate-Neuaufbau bei Positions-/Dauer-Updates).
             readonly property var pageClips: root._clipsOnPage(root.currentPage)
 
             Rectangle { anchors.left: parent.left; width: 1; height: parent.height; color: App.themeBorder }
@@ -2913,10 +2897,12 @@ Item {
                         width: 36; height: 36; radius: 18
                         color: root.audioAccent
                         opacity: arowBtnHover.hovered ? 0.85 : 1.0
-                        Text {
+                        DrawnIcon {
                             anchors.centerIn: parent
-                            text: (arow.isActive && audioPlayer.playbackState === MediaPlayer.PlayingState) ? "\u23F8" : "\u25B6"
-                            color: "white"; font.pixelSize: 14
+                            name: (arow.isActive && audioPlayer.playbackState === MediaPlayer.PlayingState)
+                                  ? "pause" : "play"
+                            size: 15
+                            color: "white"
                         }
                         HoverHandler { id: arowBtnHover }
                         TapHandler { onTapped: root.playClip(arow.cid) }
@@ -2935,7 +2921,7 @@ Item {
                     }
 
                     // Fortschritts-/Seek-Slider (wie YouTube/Spotify): zeigt Gehörtes,
-                    // an beliebige Stelle ziehbar → ab dort weiter/starten.
+                    // an beliebige Stelle ziehbar -> ab dort weiter/starten.
                     Slider {
                         id: arowSlider
                         anchors { left: arowBtn.right; leftMargin: 10; right: parent.right; rightMargin: 12; bottom: parent.bottom; bottomMargin: 8 }
@@ -2984,10 +2970,11 @@ Item {
                     width: 44; height: 44; radius: 22
                     color: root.audioAccent
                     opacity: miniBtnHover.hovered ? 0.85 : 1.0
-                    Text {
+                    DrawnIcon {
                         anchors.centerIn: parent
-                        text: audioPlayer.playbackState === MediaPlayer.PlayingState ? "\u23F8" : "\u25B6"
-                        color: "white"; font.pixelSize: 17
+                        name: audioPlayer.playbackState === MediaPlayer.PlayingState ? "pause" : "play"
+                        size: 18
+                        color: "white"
                     }
                     HoverHandler { id: miniBtnHover }
                     TapHandler { onTapped: root.playClip(root.activeClipId) }
@@ -3063,8 +3050,8 @@ Item {
     }
 
     // ── Seiten-Kontextmenü: PDF-Seiten extrahieren ─────────────────────────────
-    //  „Seite extrahieren"           → Namensdialog (Default „<Name> - Page N")
-    //  „Mehrere Seiten extrahieren…" → Auswahlraster (PdfPageSelectDialog);
+    //  „Seite extrahieren"           -> Namensdialog (Default „<Name> - Page N")
+    //  „Mehrere Seiten extrahieren…" -> Auswahlraster (PdfPageSelectDialog);
     //  Ziel-Ordner = Ordner der Quelldatei (Controller), Ergebnis via Toast.
     ThemedMenu {
         id: pageCtxMenu
@@ -3206,7 +3193,7 @@ Item {
         }
     }
 
-    //  Drehen: Die Seitenmaße in Punkten kennt nur die Ansicht — der Controller
+    //  Drehen: Die Seitenmaße in Punkten kennt nur die Ansicht - der Controller
     //  dreht damit auch die Notizen der Seite mit (EIN Undo-Schritt).
     function _rotatePage(viewIndex, delta) {
         if (!root.docReady || viewIndex < 0)
@@ -3232,13 +3219,13 @@ Item {
         requireName: false
         onExtractRequested: (items, name) => {
             root._extractPending = true
-            // Leerer Ziel-Ordner → extractOrdered nutzt den Ordner der Quelle
+            // Leerer Ziel-Ordner -> extractOrdered nutzt den Ordner der Quelle
             // (das offene PDF); Reihenfolge = Auswahlreihenfolge/Original.
             PdfExtract.extractOrdered(items, "", name)
         }
     }
 
-    //  PdfExtract ist ein Singleton (auch die Shell nutzt es global) → nur die
+    //  PdfExtract ist ein Singleton (auch die Shell nutzt es global) -> nur die
     //  Surface, die den Auftrag GESTARTET hat, meldet das Ergebnis (Flag).
     property bool _extractPending: false
     Connections {
@@ -3253,7 +3240,7 @@ Item {
             root._extractPending = false
             if (ok) {
                 // Neue Datei sofort in der Galerie zeigen (deterministisch,
-                // nicht nur über den Datei-Watcher — wie createEmptyFile).
+                // nicht nur über den Datei-Watcher - wie createEmptyFile).
                 App.refreshCurrentFolder()
                 root._toast(App.uiText(App.language, "ExtractOkToast")
                                 .arg(String(targetPath).split("/").pop()))
@@ -3264,7 +3251,7 @@ Item {
     }
 
     // ── Kompakter Toolbar-Button (wiederverwendbar, theme-konform) ────────────
-    // ── Toast (unten mittig): Rückmeldungen des Editors — Speichern, Export-
+    // ── Toast (unten mittig): Rückmeldungen des Editors - Speichern, Export-
     //    Fortschritt („Seite x/y") und -Ergebnis. Jede Meldung startet die
     //    Ausblend-Uhr neu; während des Exports wirkt das wie eine Live-Anzeige.
     function _toast(msg) {

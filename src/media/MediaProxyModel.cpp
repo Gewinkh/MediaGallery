@@ -13,7 +13,7 @@ MediaProxyModel::MediaProxyModel(QObject* parent)
 {
     setDynamicSortFilter(true);
     //  IMMER aufsteigend sortieren lassen. Die Richtung dreht `fieldLess`
-    //  selbst: `Qt::DescendingOrder` kehrt JEDEN Vergleich um — damit stuenden
+    //  selbst: `Qt::DescendingOrder` kehrt JEDEN Vergleich um - damit stuenden
     //  Ordner hinten und, schlimmer, der Inhalt eines aufgeklappten Ordners VOR
     //  seiner Kachel. Die Baumordnung darf die Richtung nicht sehen.
     sort(0, Qt::AscendingOrder);
@@ -60,7 +60,7 @@ void MediaProxyModel::setSortFieldInt(int f) {
     const Field nf = static_cast<Field>(f);
     if (nf == m_field) return;
     m_field = nf;
-    // Nur neu sortieren — der Zeilenfilter bleibt unberührt (kein Full-Reset).
+    // Nur neu sortieren - der Zeilenfilter bleibt unberührt (kein Full-Reset).
     invalidate();
     reapplySort();
     emit sortChanged();
@@ -70,14 +70,14 @@ void MediaProxyModel::setSortDescending(bool d) {
     if (d == m_descending) return;
     m_descending = d;
     //  Die Sortierordnung des Proxys aendert sich NICHT mehr (sie bleibt
-    //  aufsteigend), deshalb genuegt `reapplySort()` allein nicht — ohne
+    //  aufsteigend), deshalb genuegt `reapplySort()` allein nicht - ohne
     //  invalidate() bemerkte der Proxy gar keinen Anlass, neu zu ordnen.
     invalidate();
     reapplySort();
     emit sortChanged();
 }
 
-// Typ-Umschalter berühren nur den Zeilenfilter → refilterRows() statt
+// Typ-Umschalter berühren nur den Zeilenfilter -> refilterRows() statt
 // invalidate() (kein Re-Sort, keine Spalten-Neubewertung).
 #define PROXY_BOOL_SETTER(Setter, Member)            \
     void MediaProxyModel::Setter(bool v) {           \
@@ -201,7 +201,7 @@ bool MediaProxyModel::acceptsFile(int mediaType, const QString& displayName,
     default:               return false;   // Ordner haben eigene Regeln
     }
 
-    //  Freitextsuche — UND-verknüpft, deshalb VOR jedem frühen `return true`.
+    //  Freitextsuche - UND-verknüpft, deshalb VOR jedem frühen `return true`.
     if (!c.search.isEmpty()) {
         bool hit = displayName.contains(c.search, Qt::CaseInsensitive)
                 || fileName.contains(c.search, Qt::CaseInsensitive);
@@ -301,7 +301,7 @@ bool MediaProxyModel::filterAcceptsRow(int sourceRow, const QModelIndex& sourceP
 
     // ── Ordnerkacheln: eigene Regeln fuer Suche und Tag-/Kategorie-Filter ────
     //  Ein Ordner traegt keine Tags. Waere er trotzdem an jeden Filter
-    //  gebunden, verschwaende der Weg nach unten, sobald man filtert — und ein
+    //  gebunden, verschwaende der Weg nach unten, sobald man filtert - und ein
     //  AUFGEKLAPPTER Ordner haette ploetzlich Inhalt ohne Kachel darueber.
     if (type == MediaType::Folder) {
         if (!m_showFolders) return false;
@@ -310,7 +310,7 @@ bool MediaProxyModel::filterAcceptsRow(int sourceRow, const QModelIndex& sourceP
                             || !m_activeCatIds.isEmpty();
         if (!filtering) return true;          // ohne Filter steht jeder Ordner da
 
-        //  Der eigene NAME zaehlt immer — so findet man einen Ordner auch dann,
+        //  Der eigene NAME zaehlt immer - so findet man einen Ordner auch dann,
         //  wenn nichts darin passt.
         const QString name = item ? item->displayName
                                   : idx.data(MediaModel::DisplayNameRole).toString();
@@ -321,7 +321,7 @@ bool MediaProxyModel::filterAcceptsRow(int sourceRow, const QModelIndex& sourceP
                                   : idx.data(MediaModel::FilePathRole).toString();
         //  Mit Tiefensuche steht nur der WEG zu einem Treffer im Ergebnis. Ein
         //  von Hand geoeffneter Ordner ohne Treffer bleibt zwar aufgeklappt,
-        //  gehoert aber nicht dazu — sonst haenge er leer im Suchergebnis
+        //  gehoert aber nicht dazu - sonst haenge er leer im Suchergebnis
         //  (vom Nutzer gemeldet).
         if (m_src && m_src->deepFilterActive())
             return m_src->isOnDeepChain(path);
@@ -335,7 +335,7 @@ bool MediaProxyModel::filterAcceptsRow(int sourceRow, const QModelIndex& sourceP
     // ── Dateien: das gemeinsame Urteil (dieselbe Funktion wie die Tiefensuche)
     FilterCriteria c = criteria();
     //  Die Kategorien eines aufgeklappten Unterordners liegen in SEINEM
-    //  Sidecar — die Dateinamen des offenen Ordners gelten dort nicht.
+    //  Sidecar - die Dateinamen des offenen Ordners gelten dort nicht.
     const int scope = item ? item->scope : 0;
     if (c.categoryActive)
         c.catFiles = m_catFilesByScope.value(scope, scope == 0 ? m_activeCatFiles
@@ -354,7 +354,7 @@ bool MediaProxyModel::filterAcceptsRow(int sourceRow, const QModelIndex& sourceP
 
 // ── Ordnung ──────────────────────────────────────────────────────────────────
 //  Vergleich nach dem gewaehlten Sortierfeld, IMMER aufsteigend. Gleichstand
-//  bricht ueber Datum und Anzeigename — deterministisch, damit dieselbe Liste
+//  bricht ueber Datum und Anzeigename - deterministisch, damit dieselbe Liste
 //  nicht bei jedem Lauf anders steht.
 bool MediaProxyModel::fieldLess(const MediaItem* a, const MediaItem* b) const {
     switch (m_field) {
@@ -382,7 +382,7 @@ bool MediaProxyModel::fieldLess(const MediaItem* a, const MediaItem* b) const {
 
 //  Zwei Zeilen DESSELBEN Ordners.
 bool MediaProxyModel::sameScopeLess(const MediaItem* a, const MediaItem* b) const {
-    //  Ordner stehen immer vorn — in BEIDEN Sortierrichtungen. Sie sind der Weg
+    //  Ordner stehen immer vorn - in BEIDEN Sortierrichtungen. Sie sind der Weg
     //  nach unten, nicht ein Medium unter anderen.
     if (a->isFolder() != b->isFolder()) return a->isFolder();
     return m_descending ? fieldLess(b, a) : fieldLess(a, b);
@@ -425,19 +425,19 @@ bool MediaProxyModel::flatLessThan(const QModelIndex& left, const QModelIndex& r
 // ─────────────────────────────────────────────────────────────────────────────
 //  Sortierung ist HIERARCHISCH, seit aufgeklappte Unterordner ihre Dateien in
 //  dasselbe Modell einspeisen. Die Ordnung ist die eines Pfades: Zeilen werden
-//  an der Stelle verglichen, an der sich ihre Ordnerketten TRENNEN — dadurch
+//  an der Stelle verglichen, an der sich ihre Ordnerketten TRENNEN - dadurch
 //  bleibt der Inhalt eines Ordners geschlossen hinter seiner Kachel stehen,
 //  egal nach welchem Feld sortiert wird.
 //
 //  Die Kette wird ueber Bereichs-Indizes geklettert (MediaModel::
 //  folderItemOfScope), nicht ueber Pfad-Zerlegung: das ist O(Tiefe) mit
 //  Ganzzahlen statt String-Arbeit je Vergleich. Liegen beide Zeilen im selben
-//  Ordner — der Normalfall, solange nichts aufgeklappt ist — kostet der
+//  Ordner - der Normalfall, solange nichts aufgeklappt ist - kostet der
 //  Baumanteil genau einen int-Vergleich.
 // ─────────────────────────────────────────────────────────────────────────────
 bool MediaProxyModel::lessThan(const QModelIndex& left, const QModelIndex& right) const {
     // Schneller Pfad wie in filterAcceptsRow: Sortieren laeuft O(n log n) mal
-    // durch diese Funktion — je Vergleich zwei QVariants (inkl. QDateTime-/
+    // durch diese Funktion - je Vergleich zwei QVariants (inkl. QDateTime-/
     // QStringList-Kopien) waren der Loewenanteil der Sortierkosten.
     if (m_src) {
         const MediaItem* a = m_src->itemAt(left.row());
@@ -502,7 +502,7 @@ int MediaProxyModel::depthAt(int proxyRow) const {
 }
 
 int MediaProxyModel::rowForPath(const QString& filePath) const {
-    // O(1) ueber den Pfad→Zeile-Hash des Quellmodells + mapFromSource statt
+    // O(1) ueber den Pfad->Zeile-Hash des Quellmodells + mapFromSource statt
     // eines linearen Scans mit QVariant-Konvertierung je Zeile (die Funktion
     // laeuft bei JEDEM Oeffnen/Weiterblaettern im Vollbild).
     if (m_src) {
@@ -522,7 +522,7 @@ int MediaProxyModel::rowForPath(const QString& filePath) const {
 //  Seit aufgeklappte Unterordner in derselben Liste stehen, waere ein flaches
 //  „naechste Zeile" ein Sprung ueber die Ordnergrenze: aus der letzten Datei
 //  eines Unterordners rutschte man in den Elternordner. Gemessen wird deshalb
-//  am BEREICH — ein int-Vergleich, keine Pfadarbeit.
+//  am BEREICH - ein int-Vergleich, keine Pfadarbeit.
 int MediaProxyModel::scopeOfProxyRow(int proxyRow) const {
     if (!m_src || proxyRow < 0 || proxyRow >= rowCount()) return -1;
     const QModelIndex src = mapToSource(index(proxyRow, 0));
@@ -557,7 +557,7 @@ int MediaProxyModel::stepRow(int proxyRow, int delta) const {
 int MediaProxyModel::randomRow(int exceptRow) const {
     const int n = rowCount();
     if (n <= 0) return -1;
-    //  Der Zufall bleibt im selben Ordner und trifft nie eine Ordnerkachel —
+    //  Der Zufall bleibt im selben Ordner und trifft nie eine Ordnerkachel -
     //  sonst spraenge „Zufall" aus dem Unterordner heraus oder in eine Zeile,
     //  die der Betrachter gar nicht anzeigen kann.
     const int scope = scopeOfProxyRow(exceptRow);

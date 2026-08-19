@@ -2,13 +2,13 @@ import QtQuick
 import MediaGallery 1.0
 
 // ─────────────────────────────────────────────────────────────────────────────
-//  SettingsShortcutsView.qml — gethemte Tastenkürzel-Übersicht (Einstellungen ▸
+//  SettingsShortcutsView.qml - gethemte Tastenkürzel-Übersicht (Einstellungen ▸
 //  Allgemein). Zeigt je Kontext (Galerie, Medienansicht, PDF-/Bild-/DOCX-/
 //  Texteditor) die WIRKLICH implementierten Kürzel mit Funktion + Tasten.
 //
 //  Datenquelle ist ein reines JS-Modell (unten). Die Funktionsbeschreibungen
 //  sind hier BEWUSST zweisprachig inline (de/en) statt über eigene String-Keys:
-//  eine Kürzel-Referenz ist EINE zusammenhängende Tabelle — Funktion + Tasten
+//  eine Kürzel-Referenz ist EINE zusammenhängende Tabelle - Funktion + Tasten
 //  stehen so an einer Stelle beisammen, ohne den (gezählten) Strings-Katalog um
 //  ~35 Einzweck-Labels aufzublähen. Die Kontext-Überschriften laufen dagegen
 //  über String-Keys (wiederverwendbar, s. ShortcutCtx*).
@@ -20,7 +20,7 @@ import MediaGallery 1.0
 // ─────────────────────────────────────────────────────────────────────────────
 //  Wurzel ist bewusst ein Item mit einer inneren Column: Eine Column als
 //  Layout-Kind würde ihre implicitWidth aus der Breite ihrer Kinder ableiten,
-//  die ihrerseits an die von der ColumnLayout gesetzte Breite gebunden ist —
+//  die ihrerseits an die von der ColumnLayout gesetzte Breite gebunden ist -
 //  eine Rückkopplung, die bei jeder Geometrieänderung eine komplette
 //  Neuberechnung der Einstellungsseite anstößt. Das Item meldet implicitWidth 0
 //  (Layout.fillWidth bestimmt die Breite) und nur die Höhe nach oben.
@@ -37,16 +37,18 @@ Item {
             { de: "Ordner öffnen",                 en: "Open folder",                 keys: ["Ctrl+O"] },
             { de: "Neu laden / Vorschau erneuern", en: "Reload / refresh thumbnails", keys: ["F5", "R"] },
             { de: "Optionen-Modus umschalten",     en: "Toggle options mode",         keys: ["Alt+S"] },
+            { de: "Audio-Player-Modus umschalten", en: "Toggle audio player mode",    keys: ["Alt+A"] },
+            { de: "Vollbild ein-/ausschalten",     en: "Toggle fullscreen",           keys: ["F"] },
             { de: "Vorschau-Sperre umschalten",    en: "Toggle cover mode",           keys: ["B"] },
             { de: "Kachelgröße größer / kleiner",  en: "Tile size larger / smaller",  keys: ["Ctrl++", "Ctrl+-"] },
             { de: "Vollbild öffnen",               en: "Open fullscreen",             keys: ["Doppelklick"] }
         ] },
         { headerKey: "ShortcutCtxViewer", rows: [
-            { de: "Nächste / vorherige Datei",     en: "Next / previous item",        keys: ["→", "←"] },
+            { de: "Nächste / vorherige Datei",     en: "Next / previous item",        keys: ["->", "<-"] },
             { de: "Vollbild ein-/ausschalten",     en: "Toggle fullscreen",           keys: ["F"] },
             { de: "Video vor-/zurückspulen (Vollbild)",
-              en: "Seek video forward / back (fullscreen)",                           keys: ["→", "←"] },
-            { de: "Zurück zur Galerie",            en: "Back to gallery",             keys: ["Esc", "Alt+←"] },
+              en: "Seek video forward / back (fullscreen)",                           keys: ["->", "<-"] },
+            { de: "Zurück zur Galerie",            en: "Back to gallery",             keys: ["Esc", "Alt+<-"] },
             { de: "Optionen-Modus umschalten",     en: "Toggle options mode",         keys: ["Alt+S"] },
             { de: "Datum bearbeiten",              en: "Edit date",                   keys: ["D"] }
         ] },

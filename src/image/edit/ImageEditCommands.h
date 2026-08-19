@@ -1,15 +1,15 @@
 #pragma once
 // ══════════════════════════════════════════════════════════════════════════════
-//  ImageEditCommands.h — Delta-Kommandos des Undo/Redo-Systems (Bild-Editor).
+//  ImageEditCommands.h - Delta-Kommandos des Undo/Redo-Systems (Bild-Editor).
 // ══════════════════════════════════════════════════════════════════════════════
 //
 //  RAM-EFFIZIENZ (analog PdfEditCommands): KEINE vollständigen Snapshots. Jedes
 //  Kommando speichert nur das DELTA genau EINER Annotation:
-//   • Add/Remove  → die eine Annotation (ihr minimales Delta) + Zeile
-//   • Geometry    → id + altes/neues Rechteck + alte/neue Punkte (Striche)
-//   • Text        → id + alter/neuer String
-//   • Field       → id + Feld + alter/neuer QVariant (mergefähig)
-//  Der QUndoStack (QtGui seit Qt 6 — kein Widgets-Bezug) hält damit selbst bei
+//   • Add/Remove  -> die eine Annotation (ihr minimales Delta) + Zeile
+//   • Geometry    -> id + altes/neues Rechteck + alte/neue Punkte (Striche)
+//   • Text        -> id + alter/neuer String
+//   • Field       -> id + Feld + alter/neuer QVariant (mergefähig)
+//  Der QUndoStack (QtGui seit Qt 6 - kein Widgets-Bezug) hält damit selbst bei
 //  langen Sitzungen nur Kilobytes. Kontinuierliche Gesten (Ziehen/Zeichnen/
 //  Tippen) erzeugen über die Session-API des Controllers ohnehin nur EIN Kommando.
 // ══════════════════════════════════════════════════════════════════════════════
@@ -24,7 +24,7 @@
 class ImageEditModel;
 
 // ─────────────────────────────────────────────────────────────────────────────
-//  Annotation hinzufügen (undo entfernt sie wieder — Zeile bleibt stabil).
+//  Annotation hinzufügen (undo entfernt sie wieder - Zeile bleibt stabil).
 // ─────────────────────────────────────────────────────────────────────────────
 class ImageEditAddCommand : public QUndoCommand {
 public:
@@ -52,7 +52,7 @@ private:
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
-//  Verschieben/Skalieren — EIN Kommando je Drag-Session (Delta alt→neu).
+//  Verschieben/Skalieren - EIN Kommando je Drag-Session (Delta alt->neu).
 //  Trägt neben dem Rechteck auch die PUNKTE (Freihand/Pfeil werden beim
 //  Verschieben/Skalieren mit-transformiert; Undo stellt beides wieder her).
 // ─────────────────────────────────────────────────────────────────────────────
@@ -73,7 +73,7 @@ private:
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
-//  Textänderung — EIN Kommando je Bearbeitungs-Session (Delta alt→neu).
+//  Textänderung - EIN Kommando je Bearbeitungs-Session (Delta alt->neu).
 // ─────────────────────────────────────────────────────────────────────────────
 class ImageEditTextCommand : public QUndoCommand {
 public:
@@ -91,7 +91,7 @@ private:
 // ─────────────────────────────────────────────────────────────────────────────
 //  Stil-/Formatfeld (Bold/Italic/Underline/Größe/Farbe/Hervorhebung/
 //  Ausrichtung/Schriftart/Linienfarbe/-breite/Füllung). Aufeinanderfolgende
-//  Änderungen DESSELBEN Feldes derselben Annotation verschmelzen (mergeWith) —
+//  Änderungen DESSELBEN Feldes derselben Annotation verschmelzen (mergeWith) -
 //  Slider-/SpinBox-Serien erzeugen so einen einzigen Undo-Schritt; hebt sich
 //  eine Serie exakt auf, verwirft setObsolete() das Kommando ganz.
 // ─────────────────────────────────────────────────────────────────────────────

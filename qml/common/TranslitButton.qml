@@ -3,14 +3,14 @@ import QtQuick.Controls
 import MediaGallery 1.0
 
 // ─────────────────────────────────────────────────────────────────────────────
-//  TranslitButton.qml — Umschalter der Live-Transliteration (oben rechts in
+//  TranslitButton.qml - Umschalter der Live-Transliteration (oben rechts in
 //  TextSurface und in der PDF-Editor-Toolbar).
 //
 //  • Klick öffnet ein kleines Popup: „Aus" + die drei Schemata (Arabisch mit
 //    Harakat, Japanisch–Hiragana, Japanisch–Katakana). Die Auswahl setzt
 //    Translit.scheme UND aktiviert; „Aus" deaktiviert nur (Schema bleibt).
 //  • Der Glyph zeigt das aktive Schema (ع / あ / ア); Akzent-Rahmen = aktiv.
-//  • Zustand + Schema sind global (Translit-Singleton, persistiert) — der
+//  • Zustand + Schema sind global (Translit-Singleton, persistiert) - der
 //    Button ist überall nur eine Sicht darauf.
 // ─────────────────────────────────────────────────────────────────────────────
 Rectangle {

@@ -8,7 +8,7 @@ import "../common"
 Item {
     id: root
 
-    // Signal nach oben: Backend gespeichert → Dialog schließen
+    // Signal nach oben: Backend gespeichert -> Dialog schließen
     signal rhiSwitchSucceeded()
 
     readonly property var backendOptions: {
@@ -262,7 +262,7 @@ Item {
                     Item { Layout.fillWidth: true }
                 }
                 Label {
-                    //  Ohne Wörterbuch ist der Schalter wirkungslos — dann steht
+                    //  Ohne Wörterbuch ist der Schalter wirkungslos - dann steht
                     //  hier, warum (dasselbe Muster wie bei fehlendem ZLIB).
                     text: App.spellLanguages().length > 0
                           ? App.uiText(App.language, "SettingsGenSpellHint")
@@ -345,7 +345,7 @@ Item {
                 title: App.uiText(App.language, "SettingsGenShortcuts")
                 Layout.fillWidth: true
 
-                //  Kein zusätzliches `width:` — die Breite kommt allein von der
+                //  Kein zusätzliches `width:` - die Breite kommt allein von der
                 //  ColumnLayout (Layout.fillWidth); eine eigene Bindung würde mit
                 //  ihr um dieselbe Eigenschaft konkurrieren.
                 SettingsShortcutsView {

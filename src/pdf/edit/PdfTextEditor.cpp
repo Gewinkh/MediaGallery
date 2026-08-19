@@ -15,7 +15,7 @@ using namespace mg::pdfobj;
 
 namespace {
 
-//  Bytes → PDF-Paren-String; ( ) \ escapt, alles ausserhalb des druckbaren
+//  Bytes -> PDF-Paren-String; ( ) \ escapt, alles ausserhalb des druckbaren
 //  ASCII oktal (7-Bit-sicher, wie im übrigen PDF-Teil des Projekts).
 QByteArray parenBytes(const QByteArray& b) {
     QByteArray out = "(";
@@ -32,7 +32,7 @@ QByteArray parenBytes(const QByteArray& b) {
 }
 
 //  Kodierung der Schrift `fontRes` auf der Seite ermitteln. Dieselbe Auflösung
-//  wie in PdfContentEditor/PdfTextLayout — hier nur für EINEN Namen gebraucht.
+//  wie in PdfContentEditor/PdfTextLayout - hier nur für EINEN Namen gebraucht.
 bool encodingForFontImpl(const QByteArray& buf, const QHash<int, ObjLoc>& objs,
                          int pageIndex, const QByteArray& fontRes,
                          mg::pdfenc::Encoding* out) {
@@ -190,7 +190,7 @@ bool spliceAt(const QString& inputPath, const QString& outputPath,
     mg::PdfPageText page;
     if (!mg::PdfTextLayout::buildForPage(inputPath, pageIndex, &page, err))
         return false;
-    if (page.contentObj < 0) return fail("mehrteiliger /Contents → nicht bearbeitbar");
+    if (page.contentObj < 0) return fail("mehrteiliger /Contents -> nicht bearbeitbar");
     if (page.glyphs.isEmpty()) return fail("kein Text auf der Seite");
     if (glyphIndex < 0 || glyphIndex > page.glyphs.size())
         return fail("Zeichenindex außerhalb");
@@ -209,7 +209,7 @@ bool spliceAt(const QString& inputPath, const QString& outputPath,
     for (int k = glyphIndex; k < glyphIndex + deleteCount; ++k) {
         if (k >= page.glyphs.size()) return fail("Löschbereich außerhalb");
         if (page.glyphs.at(k).showIndex != spanIdx)
-            return fail("Änderung über mehrere Zeige-Anweisungen → nicht bearbeitbar");
+            return fail("Änderung über mehrere Zeige-Anweisungen -> nicht bearbeitbar");
     }
 
     //  Kodierung der dort aktiven Schrift.
@@ -235,7 +235,7 @@ bool spliceAt(const QString& inputPath, const QString& outputPath,
     newBytes.remove(cutStart, cutLen);
     newBytes.insert(cutStart, insBytes);
 
-    //  Operanden ersetzen. Bei TJ wird das ganze Array zu EINEM String — die
+    //  Operanden ersetzen. Bei TJ wird das ganze Array zu EINEM String - die
     //  Kerning-Abstände DIESES Operanden entfallen dabei (s. Header).
     QByteArray repl = parenBytes(newBytes);
     if (span.isArray) repl = "[" + repl + "]";

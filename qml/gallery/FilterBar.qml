@@ -5,7 +5,7 @@ import MediaGallery 1.0
 import "../common"
 
 // ─────────────────────────────────────────────────────────────────────────────
-//  FilterBar.qml — Filter-/Sortierleiste (ersetzt FilterBar(QWidget)).
+//  FilterBar.qml - Filter-/Sortierleiste (ersetzt FilterBar(QWidget)).
 //
 //  Bindet ausschließlich serverseitig an den Proxy (galleryModel). Keine
 //  Filterlogik in QML.
@@ -15,7 +15,7 @@ import "../common"
 //      links eine Spalte mit Rubriken (Sortieren, Medien, Tag-Filtermodus, Tags
 //      & Kategorien), rechts daneben die Optionen der gewaehlten Rubrik. Das
 //      haelt jede Rubrik uebersichtlich getrennt.
-//    • Die SORTIERUNG (Feld + Richtung) ist eine Rubrik darin — frueher standen
+//    • Die SORTIERUNG (Feld + Richtung) ist eine Rubrik darin - frueher standen
 //      Sortierfeld und ein Richtungspfeil-Knopf inline in der Leiste.
 //    • Aktive Tag-Chips + "Leeren" bleiben INLINE rechts.
 // ─────────────────────────────────────────────────────────────────────────────
@@ -28,16 +28,16 @@ Rectangle {
     // Panel-Steuerung (Seitenpanel rechts): beide Abschnitte INDIVIDUELL
     // schaltbar. Der Zustand lebt im TagCategoryPanel (showTagsSection/
     // showCategoriesSection) und wird von der Shell in diese Properties
-    // gespiegelt → die Toggle-Zeilen im Filter-Popup zeigen den Aktiv-Zustand.
+    // gespiegelt -> die Toggle-Zeilen im Filter-Popup zeigen den Aktiv-Zustand.
     signal tagPanelToggled()
     signal categoryPanelToggled()
     // „Extrahieren": globale Seiten-Extraktion anstoßen (Dialog hostet die Shell).
-    //  Farbe eines Tags — erst der offene Ordner, dann die aufgeklappten
+    //  Farbe eines Tags - erst der offene Ordner, dann die aufgeklappten
     //  Unterordner (s. MediaModel::visibleTagColor). Kennt ihn niemand, bleibt
     //  es bei der Vorgabe des Themes.
     function tagColorOf(tag) {
         var c = mediaModel.visibleTagColor(tag)
-        return (c && c.a > 0) ? c : App.tagColor(tag)
+        return (c && c.a > 0) ? c : Tags.tagColor(tag)
     }
 
     //  Ordner, in dem „+ Erstellen" und „PDF-Seiten…" arbeiten. Leer = der
@@ -45,7 +45,7 @@ Rectangle {
     //  ihren eigenen Ordner, bevor sie das Popup oeffnet.
     property string actionFolder: ""
     signal extractPagesRequested(string folder)
-    //  „+ Ordner" für den GEÖFFNETEN Ordner — die Kopfzeile eines aufgeklappten
+    //  „+ Ordner" für den GEÖFFNETEN Ordner - die Kopfzeile eines aufgeklappten
     //  Bereichs hat ihren eigenen Knopf für ihren Ordner.
     signal newFolderRequested(string folder)
 
@@ -64,8 +64,8 @@ Rectangle {
 
     // ── Referenzbasierte Konsistenz ──────────────────────────────────────────
     //  Referenzquelle des Tag-Filters ist der Proxy (galleryModel.tagFilter).
-    //  Externe Änderungen — Tag-Toggle im Kategorie-Panel, Kaskaden-
-    //  Deaktivierung beim Abwählen von Kategorien — spiegeln sich hier, damit
+    //  Externe Änderungen - Tag-Toggle im Kategorie-Panel, Kaskaden-
+    //  Deaktivierung beim Abwählen von Kategorien - spiegeln sich hier, damit
     //  die Inline-Chips und das Filter-Badge nie veralten.
     Component.onCompleted: activeTags = galleryModel.tagFilter
     Connections {
@@ -84,13 +84,21 @@ Rectangle {
         App.uiText(App.language, "FilterModeInclusiveDesc")
     ]
 
-    readonly property var mediaTypes: [
-        { label: "Bilder", key: 0 },
-        { label: "Videos", key: 1 },
-        { label: App.uiText(App.language, "FilterAudio"),  key: 2 },
-        { label: "PDF",    key: 3 },
-        { label: "Text",   key: 4 }
-    ]
+    //  Im Player-Modus (Alt+A) gibt es nur Ton: Bilder, PDF und Text stehen dort
+    //  nicht zur Wahl - sie wären in dieser Ansicht ohnehin ausgefiltert.
+    property bool audioOnly: false
+    readonly property var mediaTypes: bar.audioOnly
+        ? [
+            { label: "Videos", key: 1 },
+            { label: App.uiText(App.language, "FilterAudio"), key: 2 }
+          ]
+        : [
+            { label: "Bilder", key: 0 },
+            { label: "Videos", key: 1 },
+            { label: App.uiText(App.language, "FilterAudio"),  key: 2 },
+            { label: "PDF",    key: 3 },
+            { label: "Text",   key: 4 }
+          ]
     function mediaShown(key) {
         switch (key) {
         case 0: return galleryModel.showImages
@@ -109,10 +117,11 @@ Rectangle {
         default: galleryModel.showTexts = v
         }
     }
-    readonly property int mediaActiveCount:
-        (galleryModel.showImages ? 1 : 0) + (galleryModel.showVideos ? 1 : 0)
-        + (galleryModel.showAudio ? 1 : 0) + (galleryModel.showPdfs ? 1 : 0)
-        + (galleryModel.showTexts ? 1 : 0)
+    readonly property int mediaActiveCount: bar.audioOnly
+        ? ((galleryModel.showVideos ? 1 : 0) + (galleryModel.showAudio ? 1 : 0))
+        : ((galleryModel.showImages ? 1 : 0) + (galleryModel.showVideos ? 1 : 0)
+           + (galleryModel.showAudio ? 1 : 0) + (galleryModel.showPdfs ? 1 : 0)
+           + (galleryModel.showTexts ? 1 : 0))
 
     //  Sortierfelder in der Reihenfolge von MediaProxyModel::sortRole (0..3).
     readonly property var sortFields: [
@@ -123,14 +132,14 @@ Rectangle {
     ]
 
     //  Eine Sortierung ist KEIN Filter: sie zählt bewusst weder in den Zähler am
-    //  Knopf noch in den Aktiv-Rahmen — sonst sähe der Knopf dauerhaft „aktiv"
+    //  Knopf noch in den Aktiv-Rahmen - sonst sähe der Knopf dauerhaft „aktiv"
     //  aus, denn sortiert wird immer.
     readonly property bool anyFilterActive:
         mediaActiveCount < mediaTypes.length || activeTags.length > 0
     readonly property int filterBadge:
         (mediaActiveCount < mediaTypes.length ? 1 : 0) + activeTags.length
 
-    //  Auswahlzeile (Radio-Optik) der Sortier-Rubrik — vier Felder und zwei
+    //  Auswahlzeile (Radio-Optik) der Sortier-Rubrik - vier Felder und zwei
     //  Richtungen sähen sonst sechsmal identisch aus.
     component SortRow: Rectangle {
         id: sortRow
@@ -176,7 +185,7 @@ Rectangle {
         galleryModel.tagFilter = a
     }
     function clearTags() { activeTags = []; galleryModel.tagFilter = [] }
-    //  Strg+F aus der Shell: Fokus ins Suchfeld, vorhandener Text markiert —
+    //  Strg+F aus der Shell: Fokus ins Suchfeld, vorhandener Text markiert -
     //  ein zweites Strg+F beginnt damit sofort eine neue Suche.
     function focusSearch() { searchInput.forceActiveFocus(); searchInput.selectAll() }
 
@@ -186,7 +195,10 @@ Rectangle {
         color: App.themeBorder
     }
 
-    Row {
+    //  Blätterbar statt abgeschnitten (Strg + Rad, Muster aus dem PDF-Editor):
+    //  in einer schmalen Hälfte passten Filter, Suche, „+" und „Extrahieren"
+    //  nicht mehr nebeneinander, und die rechten waren unerreichbar.
+    ScrollableBar {
         anchors.fill: parent
         anchors.leftMargin: 10
         anchors.rightMargin: 10
@@ -196,7 +208,7 @@ Rectangle {
         //  EINZIGER Knopf links: Sortierung UND Filter sitzen darin. Vorher
         //  standen Sortierfeld und Richtungspfeil daneben in der Leiste.
         //  Gezeichneter Rahmen (kein nackter Fusion-`Button`), der Pfeil als
-        //  SVG rechts (Regel 29) — er rutschte sonst mit der Textbreite.
+        //  SVG rechts (Regel 29) - er rutschte sonst mit der Textbreite.
         Button {
             id: filterBtn
             anchors.verticalCenter: parent.verticalCenter
@@ -246,7 +258,7 @@ Rectangle {
                 property int selectedCat: 0
                 //  Tag-Liste beim Öffnen auffrischen. `mediaModel.visibleTags()`
                 //  statt `App.allTags()`: jeder Ordner führt seine eigene
-                //  Liste — angeboten wird, was gerade zu SEHEN ist, also auch
+                //  Liste - angeboten wird, was gerade zu SEHEN ist, also auch
                 //  die Tags aufgeklappter Unterordner. Sonst gäbe es dort
                 //  einen Tag, nach dem man nicht filtern kann.
                 property var popupTags: []
@@ -261,7 +273,7 @@ Rectangle {
                     { label: App.uiText(App.language, "FilterMedia"), hint: bar.mediaActiveCount + "/" + bar.mediaTypes.length },
                     { label: App.uiText(App.language, "FilterTagModeLabel"), hint: bar.modeNames[galleryModel.tagFilterMode] },
                     { label: App.uiText(App.language, "FilterTagsCatsLabel"),
-                      hint: bar.activeTags.length > 0 ? bar.activeTags.length + App.uiText(App.language, "FilterActiveSuffix") : "—" }
+                      hint: bar.activeTags.length > 0 ? bar.activeTags.length + App.uiText(App.language, "FilterActiveSuffix") : "-" }
                 ]
 
                 background: Rectangle {
@@ -282,14 +294,14 @@ Rectangle {
                     // Natürliche Höhe des aktuell geladenen Detail-Inhalts (+ Padding).
                     readonly property real detailH:
                         detailLoader.item ? detailLoader.item.implicitHeight + 20 : 0
-                    // Höhe = größerer der beiden Inhalte, gedeckelt → kein Leerraum,
+                    // Höhe = größerer der beiden Inhalte, gedeckelt -> kein Leerraum,
                     // aber scrollbar sobald es zu groß wird. (Als Property statt
                     // height der Row, damit das Popup-Sizing nicht kollidiert.)
                     readonly property real bodyH: Math.min(maxBodyH, Math.max(navH, detailH))
 
                     // ── Master: Kategorie-Buttons ─────────────────────────────
                     //  200 statt 184: der Hinweis der Sortier-Rubrik trägt Feld
-                    //  UND Richtung („Dateigröße · Absteigend") — schmaler
+                    //  UND Richtung („Dateigröße · Absteigend") - schmaler
                     //  schnitt er ihn ab.
                     Item {
                         width: 200
@@ -373,7 +385,7 @@ Rectangle {
                 // ── Detail-Komponenten ────────────────────────────────────────
 
                 //  Sortieren: Feld UND Richtung als sichtbare Optionen. Die
-                //  Richtung war vorher ein kleiner Pfeil-Knopf neben der Leiste —
+                //  Richtung war vorher ein kleiner Pfeil-Knopf neben der Leiste -
                 //  man sah ihr nicht an, was sie gerade bedeutet.
                 Component {
                     id: sortComp
@@ -594,7 +606,7 @@ Rectangle {
                         }
                         // ── Tag manuell zur Filterliste hinzufügen ────────────
                         //  Eingabe + "Hinzufügen": fügt den eingegebenen Tag der
-                        //  bestehenden Filterliste (bar.activeTags → Proxy) hinzu.
+                        //  bestehenden Filterliste (bar.activeTags -> Proxy) hinzu.
                         Row {
                             spacing: 4
                             function addTypedTag() {
@@ -687,7 +699,7 @@ Rectangle {
         }
 
         // ── Suchfeld (INLINE, direkt hinter dem Filter-Knopf) ────────────────
-        //  Sucht LIVE bei jeder Änderung — kein Enter, kein Knopf. Gefiltert
+        //  Sucht LIVE bei jeder Änderung - kein Enter, kein Knopf. Gefiltert
         //  wird im Proxy (`galleryModel.searchText`), nicht in QML; gesucht wird
         //  in Anzeigename, Dateiname und Tags des OFFENEN Ordners, nicht im
         //  Dateiinhalt. Die Suche ist UND-verknüpft mit allen anderen Filtern.
@@ -717,7 +729,7 @@ Rectangle {
                 font.pixelSize: 12
                 color: App.themeTextPrimary
                 placeholderText: App.uiText(App.language, "FilterSearchPlaceholder")
-                //  Der Rahmen gehört dem umgebenden Rechteck — sonst säßen zwei
+                //  Der Rahmen gehört dem umgebenden Rechteck - sonst säßen zwei
                 //  Rahmen ineinander.
                 background: null
                 verticalAlignment: TextInput.AlignVCenter
@@ -751,7 +763,7 @@ Rectangle {
             }
         }
 
-        //  Trefferzahl neben dem Feld — sonst rät man bei 0 Treffern, ob der
+        //  Trefferzahl neben dem Feld - sonst rät man bei 0 Treffern, ob der
         //  Ordner leer ist oder die Suche zu eng.
         Text {
             anchors.verticalCenter: parent.verticalCenter
@@ -763,43 +775,123 @@ Rectangle {
 
         ToolSeparator { anchors.verticalCenter: parent.verticalCenter }
 
-        // ── „+ Ordner": einen Unterordner im aktuellen Ordner anlegen ─────────
-        //  Denselben Dialog führt die Galerie (sie kennt `mediaModel`); hier
-        //  steht nur der Knopf. Ohne offenen Ordner deaktiviert.
+        // ── „+": Anlegen-Knopf (Ordner ODER Datei) ────────────────────────────
+        //  Beide Aktionen legen etwas im GEÖFFNETEN Ordner an und standen als
+        //  zwei Knöpfe („+ Ordner", „+ Erstellen") nebeneinander in der Leiste.
+        //  Jetzt EIN Knopf mit kleinem Menü: gleiche Aktionen, weniger Breite in
+        //  einer Leiste, die mit Tag-Chips ohnehin um Platz ringt. Ohne offenen
+        //  Ordner deaktiviert - beide Aktionen brauchen ein Ziel.
         Button {
-            id: newFolderBtn
+            id: plusBtn
             anchors.verticalCenter: parent.verticalCenter
             height: 30
-            font.pixelSize: 13
+            padding: 0
             enabled: App.currentFolder.length > 0
-            text: App.uiText(App.language, "FolderNew")
-            onClicked: bar.newFolderRequested("")
-        }
-
-        // ── „Erstellen": leere PDF/HTML/TXT im aktuellen Ordner ───────────────
-        //  Öffnet ein kompaktes Popup: Typ wählen (3 Zeilen, radio-artig) +
-        //  Dateiname → App.createEmptyFile schreibt atomar, aktualisiert die
-        //  Galerie (folderContentsChanged) und meldet den Erfolg über die
-        //  Statuszeile. Ohne offenen Ordner deaktiviert.
-        Button {
-            id: createBtn
-            anchors.verticalCenter: parent.verticalCenter
-            height: 30
-            font.pixelSize: 13
-            enabled: App.currentFolder.length > 0
-            text: "+ " + App.uiText(App.language, "CreateFileBtn")
+            //  Zweiter Druck schließt wieder - wie beim Filter-Knopf. Das gilt
+            //  auch für das bereits geöffnete Erstellen-Popup, sonst stünde der
+            //  Knopf ohne Wirkung da.
             onClicked: {
-                if (createPopup.opened) {
+                if (plusMenu.opened || createPopup.opened) {
+                    plusMenu.close()
                     createPopup.close()
                 } else {
                     bar.actionFolder = ""      // dieser Knopf meint den offenen Ordner
-                    bar.openCreateFor("")
+                    plusMenu.open()
                 }
             }
 
+            background: Rectangle {
+                implicitWidth: 34
+                color: plusBtn.down ? App.themeCard
+                     : (plusBtn.hovered ? Qt.rgba(App.themeTextPrimary.r, App.themeTextPrimary.g,
+                                                  App.themeTextPrimary.b, 0.08)
+                                        : App.themeMenuBarBg)
+                border.color: (plusMenu.opened || createPopup.opened) ? App.themeAccent : App.themeBorder
+                border.width: 1
+                radius: 4
+            }
+            //  Gezeichnetes Symbol statt eines „+"-Zeichens (Regel 28) - es
+            //  folgt damit Theme und Strichstärke der übrigen Bedienelemente.
+            contentItem: Item {
+                DrawnIcon {
+                    anchors.centerIn: parent
+                    name: "plus"
+                    size: 14
+                    color: plusBtn.enabled ? App.themeTextPrimary : App.themeTextMuted
+                }
+            }
+            ToolTip.visible: plusBtn.hovered && !plusMenu.opened && !createPopup.opened
+            ToolTip.delay: 500
+            ToolTip.text: App.uiText(App.language, "FolderNewTitle") + " · "
+                          + App.uiText(App.language, "CreateFileTitle")
+
+            // ── Das Menü hinter dem „+" ───────────────────────────────────────
+            //  Zwei Zeilen im Stil der übrigen Popup-Zeilen (Hover-Fläche,
+            //  Symbol + Text). „Ordner" ruft denselben Dialog wie zuvor der
+            //  eigene Knopf, „Erstellen" öffnet das Popup darunter.
+            Popup {
+                id: plusMenu
+                y: plusBtn.height + 4
+                width: 210
+                padding: 6
+
+                background: Rectangle {
+                    color: App.themeMenuBarBg
+                    border.color: App.themeBorder; border.width: 1
+                    radius: 6
+                }
+
+                contentItem: Column {
+                    spacing: 2
+                    Repeater {
+                        model: [ { act: "folder", icon: "folder", key: "FolderNewTitle" },
+                                 { act: "file",   icon: "file",   key: "CreateFileBtn"  } ]
+                        delegate: Rectangle {
+                            id: actRow
+                            required property var modelData
+                            width: parent.width; height: 30; radius: 5
+                            color: acHover.hovered
+                                   ? Qt.rgba(App.themeTextPrimary.r, App.themeTextPrimary.g,
+                                             App.themeTextPrimary.b, 0.10)
+                                   : "transparent"
+                            Row {
+                                anchors.fill: parent
+                                anchors.leftMargin: 10; anchors.rightMargin: 10
+                                spacing: 8
+                                DrawnIcon {
+                                    anchors.verticalCenter: parent.verticalCenter
+                                    name: actRow.modelData.icon
+                                    size: 14
+                                    color: App.themeTextMuted
+                                }
+                                Text {
+                                    anchors.verticalCenter: parent.verticalCenter
+                                    text: App.uiText(App.language, actRow.modelData.key)
+                                    color: App.themeTextPrimary; font.pixelSize: 12
+                                }
+                            }
+                            HoverHandler { id: acHover }
+                            TapHandler {
+                                onTapped: {
+                                    plusMenu.close()
+                                    if (actRow.modelData.act === "folder")
+                                        bar.newFolderRequested("")
+                                    else
+                                        bar.openCreateFor(bar.actionFolder)
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // ── „Erstellen": leere PDF/HTML/TXT/DOCX im aktuellen Ordner ───────
+            //  Kompaktes Popup: Typ wählen (4 Zeilen, radio-artig) + Dateiname ->
+            //  App.createEmptyFile schreibt atomar, aktualisiert die Galerie
+            //  (folderContentsChanged) und meldet den Erfolg über die Statuszeile.
             Popup {
                 id: createPopup
-                y: createBtn.height + 4
+                y: plusBtn.height + 4
                 width: 260
                 padding: 12
                 property string kind: "pdf"    // "pdf" | "html" | "txt" | "docx"
@@ -837,7 +929,7 @@ Rectangle {
                             required property var modelData
                             readonly property bool on: createPopup.kind === modelData.kind
                             //  DOCX braucht ZLIB (s. src/core/ZCodec.h). Fehlt sie,
-                            //  bleibt die Zeile stehen, ist aber ausgegraut — der
+                            //  bleibt die Zeile stehen, ist aber ausgegraut - der
                             //  Hover-Text nennt die fehlende Bibliothek.
                             readonly property bool avail: modelData.kind !== "docx"
                                                           || App.docxAvailable
@@ -909,7 +1001,7 @@ Rectangle {
         }
 
         // ── „Extrahieren": globale Seiten-Extraktion über alle PDFs des ───────
-        //    aktuellen Ordners. Der Button meldet nur die Absicht — Scan und
+        //    aktuellen Ordners. Der Button meldet nur die Absicht - Scan und
         //    Auswahldialog hostet die ApplicationShell (sie kennt Overlay und
         //    Statuszeile). Ohne offenen Ordner deaktiviert (wie „Erstellen").
         Button {

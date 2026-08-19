@@ -1,14 +1,14 @@
 #pragma once
 // ══════════════════════════════════════════════════════════════════════════════
-//  PdfExtractController.h — QML-Singleton „PdfExtract"
+//  PdfExtractController.h - QML-Singleton „PdfExtract"
 // ══════════════════════════════════════════════════════════════════════════════
 //
 //  ZWECK
 //  ─────
-//  Extrahiert ausgewählte PDF-Seiten in eine NEUE PDF-Datei — für beide Wege:
+//  Extrahiert ausgewählte PDF-Seiten in eine NEUE PDF-Datei - für beide Wege:
 //   • aus der GEÖFFNETEN PDF (Kontextmenü der PdfSurface: eine oder mehrere
 //     Seiten), Ziel = Ordner der Quelldatei;
-//   • GLOBAL aus allen PDFs des aktuellen Ordners (FilterBar → Auswahldialog),
+//   • GLOBAL aus allen PDFs des aktuellen Ordners (FilterBar -> Auswahldialog),
 //     Seiten mehrerer Quellen in EINER Ausgabedatei.
 //
 //  VERFAHREN (Entscheidung nach §0-Prioritätenliste)
@@ -16,7 +16,7 @@
 //  Primär VERLUSTFREI über den PdfPageCopier (Roh-Kopie auf Objektebene:
 //  Textebene/Vektoren/Fonts/Annotationen bleiben erhalten). Scheitert eine
 //  Quelle (verschlüsselt, exotisch, defekt), rastert der Worker NUR DEREN
-//  Seiten mit kRasterDpi als JPEG-Bildseiten in dieselbe Ausgabe — Degradations-
+//  Seiten mit kRasterDpi als JPEG-Bildseiten in dieselbe Ausgabe - Degradations-
 //  kette wie beim RHI-Backend (RhiProber): bestmöglich, aber garantiert ein
 //  Ergebnis. Geschrieben wird atomar über QSaveFile.
 //
@@ -35,7 +35,7 @@
 //  Rückmeldungen via QMetaObject::invokeMethod(…, Qt::QueuedConnection).
 //
 //  scanFolder() liefert die PDF-Liste des Ordners für den globalen Dialog
-//  asynchron ([{path,name,pageCount}]) — die Seitenzahl kommt aus dem leicht-
+//  asynchron ([{path,name,pageCount}]) - die Seitenzahl kommt aus dem leicht-
 //  gewichtigen Struktur-Parse (PdfAssembler::probePageCount, kein Rendern);
 //  nur wenn der scheitert (z. B. verschlüsselt), lädt der Worker QPdfDocument.
 //
@@ -72,7 +72,7 @@ public:
                                           int pageIndex) const;
     Q_INVOKABLE QString defaultMultiName(const QString& pathOrUrl) const;
 
-    // ── Extraktion (baseName leer → Default; Ziel = Ordner der Quelle) ───────
+    // ── Extraktion (baseName leer -> Default; Ziel = Ordner der Quelle) ───────
     Q_INVOKABLE void extractSingle(const QString& pathOrUrl, int page,
                                    const QString& baseName);
     Q_INVOKABLE void extractSelection(const QString& pathOrUrl,
@@ -87,7 +87,7 @@ public:
     // in EXAKT dieser Reihenfolge = Ausgabereihenfolge. Aufeinanderfolgende
     // Seiten derselben Quelle werden zu einem Job zusammengefasst (weniger
     // Struktur-Parses), die Reihenfolge bleibt erhalten; (path,page)-Duplikate
-    // werden verworfen (erstes Vorkommen gewinnt). baseName leer → Default aus
+    // werden verworfen (erstes Vorkommen gewinnt). baseName leer -> Default aus
     // der ersten Quelle („<Name>-Selected"). Ziel-Ordner explizit.
     Q_INVOKABLE void extractOrdered(const QVariantList& items,
                                     const QString& folderOrUrl,
@@ -96,7 +96,7 @@ public:
     // ── Ordner-Scan für den globalen Dialog ──────────────────────────────────
     Q_INVOKABLE void scanFolder(const QString& folderOrUrl);
 
-    // Nur für die Worker-Tasks (queued Rückweg) — nicht aus QML aufrufen.
+    // Nur für die Worker-Tasks (queued Rückweg) - nicht aus QML aufrufen.
     void extractTaskFinished(bool ok, const QString& target,
                              const QString& error, int generation);
     void extractTaskProgress(int done, int total, int generation);
@@ -120,10 +120,10 @@ private:
 
     void    startExtract(QVector<Job> jobs, const QString& targetPath);
     void    setBusy(bool b);
-    // Säubern + Kollisionsauflösung „ (1)", „ (2)" … → absoluter Zielpfad.
+    // Säubern + Kollisionsauflösung „ (1)", „ (2)" … -> absoluter Zielpfad.
     static QString makeTargetPath(const QString& folder, QString base,
                                   const QString& fallbackBase);
-    // QML-Seitenliste → sortierte, deduplizierte 0-basierte Indizes.
+    // QML-Seitenliste -> sortierte, deduplizierte 0-basierte Indizes.
     static QVector<int> normalizePages(const QVariantList& pages);
 
     QThreadPool m_pool;                                   // 1 Worker (RAM-Deckel)

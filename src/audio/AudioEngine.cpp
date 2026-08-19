@@ -1,0 +1,449 @@
+#include "audio/AudioEngine.h"
+
+#include "audio/AudioEqualizer.h"
+
+#include <QAudioBuffer>
+#include <QAudioDecoder>
+#include <QAudioSink>
+#include <QFileInfo>
+#include <QMediaDevices>
+#include <QUrl>
+#include <QDebug>
+
+#include <algorithm>
+#include <cmath>
+#include <cstring>
+
+namespace {
+//  Vorrat im Ring: ~200 ms. Genug, um jede Nachschub-Verzögerung einer Platte
+//  zu überbrücken, und klein genug, dass der Speicher nicht auffällt
+//  (Stereo/48 kHz ≈ 38 kB).
+constexpr int kRingMs = 200;
+
+//  Diagnose-Schalter (Muster wie MG_LOG_THUMBS in MediaModel): meldet, was der
+//  Dekoder liefert und was die Ausgabe abholt. Der Audio-Pfad selbst zahlt dafür
+//  nur einen Vergleich gegen eine statische Konstante.
+const bool kLog = qEnvironmentVariableIntValue("MG_LOG_AUDIO") == 1;
+}  // namespace
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  Der Zuliefer-Ruf der Ausgabe. Qt zieht daraus in SEINEM Audio-Thread; hier
+//  darf deshalb nichts passieren außer: lesen, filtern, zurückgeben.
+// ─────────────────────────────────────────────────────────────────────────────
+//
+//  ZWEI PFLICHTEN, ohne die im Zieh-Betrieb NICHTS läuft (gemessen mit
+//  `MG_BENCH_PLAY=1 MG_LOG_AUDIO=1 bench_audio`: der Dekoder füllte den Ring,
+//  `readData` wurde aber kein einziges Mal gerufen):
+//   • **`bytesAvailable()` muss der Wahrheit entsprechen.** `QAudioSink` fragt
+//     erst, wenn das Gerät Nachschub meldet; die Vorgabe eines sequentiellen
+//     `QIODevice` ist 0 - die Ausgabe bleibt dann für immer im Leerlauf.
+//   • **`readyRead()` muss kommen**, wenn wieder etwas da ist: aus dem
+//     Leerlauf holt die Senke sich nur durch dieses Signal zurück.
+class AudioPull : public QIODevice {
+public:
+    explicit AudioPull(AudioEngine* owner) : m_owner(owner) {}
+    //  Der Dekoder hat nachgelegt (GUI-Thread) - die Ausgabe darf wieder ziehen.
+    void notifyData() { emit readyRead(); }
+    qint64 bytesAvailable() const override {
+        return (m_owner ? m_owner->pullBytesAvailable() : 0) + QIODevice::bytesAvailable();
+    }
+protected:
+    qint64 readData(char* data, qint64 maxSize) override {
+        return m_owner ? m_owner->pullAudio(data, maxSize) : 0;
+    }
+    qint64 writeData(const char*, qint64) override { return 0; }
+    bool isSequential() const override { return true; }
+private:
+    AudioEngine* m_owner;
+};
+
+AudioEngine::AudioEngine(AudioEqualizer& eq, QObject* parent)
+    : QObject(parent), m_eq(eq)
+{
+    //  Positionsanzeige und Ende-Erkennung: der Dekoder ist längst fertig,
+    //  während die Ausgabe noch spielt - „zu Ende" ist erst, wenn der Ring
+    //  leer ist UND nichts mehr nachkommt.
+    //  Nachschub-Takt. Der Dekoder meldet `bufferReady` nur bei EINEM Übergang
+    //  von „nichts da" auf „etwas da": lag beim letzten Ruf schon etwas bereit
+    //  und war der Ring voll, kommt kein weiteres Signal - der Ring lief dann
+    //  leer und die Wiedergabe blieb nach ~300 ms stehen (gemessen mit
+    //  `MG_BENCH_PLAY=1`). 30 ms sind gegenüber 200 ms Ring reichlich Vorlauf
+    //  und kosten nur eine Abfrage je Takt.
+    m_feed.setInterval(30);
+    connect(&m_feed, &QTimer::timeout, this, &AudioEngine::onBufferReady);
+
+    m_tick.setInterval(100);
+    connect(&m_tick, &QTimer::timeout, this, [this] {
+        if (m_state == State::Playing) emit positionChanged();
+        if (!m_decodeDone || m_state != State::Playing || !m_sink) return;
+        if (m_ring.available() != 0) return;
+        if (m_pendingAt < m_pending.size()) return;      // Rest wartet noch
+        //  Der leere Ring heißt NUR: alles ist an die Senke übergeben. Die hat
+        //  ihren eigenen Puffer (gemessen ~280 ms) - würde hier schon „fertig"
+        //  gemeldet, bräche der Titel vor seinem Ende ab und der nächste käme
+        //  zu früh. Gespielt ist erst, was die Senke wirklich ausgegeben hat.
+        const qint64 rate = std::max(1, m_format.sampleRate());
+        const qint64 neededUs = m_framesIn * 1000000 / rate;
+        if (m_sink->processedUSecs() < neededUs) return;
+
+        const QString done = m_path;
+        teardown();
+        setState(State::Stopped);
+        if (!done.isEmpty()) emit finished();
+    });
+}
+
+AudioEngine::~AudioEngine() { teardown(); }
+
+void AudioEngine::setState(State s) {
+    if (m_state == s) return;
+    m_state = s;
+    emit stateChanged();
+}
+
+qint64 AudioEngine::position() const {
+    if (!m_format.isValid()) return 0;
+    const qint64 frames = m_baseFrames + m_framesOut.load(std::memory_order_relaxed);
+    return m_format.durationForFrames(int(std::min<qint64>(frames, INT32_MAX))) / 1000;
+}
+
+//  Alles abbauen: erst die Ausgabe (sie zieht sonst weiter), dann den Dekoder.
+void AudioEngine::teardown() {
+    m_tick.stop();
+    m_feed.stop();
+    if (m_sink) {
+        m_sink->stop();
+        m_sink->deleteLater();
+        m_sink = nullptr;
+    }
+    if (m_pull) {
+        m_pull->close();
+        m_pull->deleteLater();
+        m_pull = nullptr;
+    }
+    if (m_dump) {
+        m_dump->close();
+        m_dump->deleteLater();
+        m_dump = nullptr;
+    }
+    if (m_decoder) {
+        m_decoder->stop();
+        m_decoder->deleteLater();
+        m_decoder = nullptr;
+    }
+    m_ring.clear();
+    m_pending.clear();
+    m_pendingAt = 0;
+    m_decodeDone = false;
+    m_framesOut.store(0, std::memory_order_relaxed);
+    m_underruns.store(0, std::memory_order_relaxed);
+    m_skipFrames = 0;
+    m_framesIn = 0;
+}
+
+void AudioEngine::play(const QString& path) {
+    const QString local = path.startsWith(QStringLiteral("file:"))
+                          ? QUrl(path).toLocalFile() : path;
+    if (local.isEmpty() || !QFileInfo::exists(local)) {
+        emit error(QStringLiteral("Datei nicht gefunden: %1").arg(local));
+        return;
+    }
+    teardown();
+    m_path = local;
+    m_baseFrames = 0;
+    m_durationMs = 0;
+    emit currentPathChanged();
+    emit durationChanged();
+    startDecode(local, 0);
+}
+
+//  Der Dekoder liefert immer VON VORN - für einen Sprung wird er neu gestartet
+//  und bis zur Zielstelle verworfen (`m_skipFrames`).
+void AudioEngine::startDecode(const QString& path, qint64 skipMs) {
+    //  Zwei Formate festlegen. GERECHNET wird immer in Gleitkomma; die SENKE
+    //  bekommt, was sie kann. Nimmt sie Float, ist die Wandlung ein `memcpy`.
+    const QAudioDevice dev = QMediaDevices::defaultAudioOutput();
+    QAudioFormat fmt = dev.preferredFormat();
+    if (fmt.sampleRate() <= 0) fmt.setSampleRate(48000);
+    if (fmt.channelCount() <= 0) fmt.setChannelCount(2);
+    QAudioFormat asFloat = fmt;
+    asFloat.setSampleFormat(QAudioFormat::Float);
+    if (dev.isFormatSupported(asFloat)) fmt = asFloat;
+    m_format = fmt;
+    m_work = fmt;
+    m_work.setSampleFormat(QAudioFormat::Float);
+    if (kLog) qDebug("audio: Senke %d Hz, %d Kanäle, Format %d (Float=%d)",
+                     m_format.sampleRate(), m_format.channelCount(),
+                     int(m_format.sampleFormat()), int(QAudioFormat::Float));
+
+    m_eq.configure(m_format.sampleRate(), m_format.channelCount());
+    m_eq.resetState();
+
+    const qint64 ringSamples = qint64(m_format.sampleRate()) * m_format.channelCount()
+                               * kRingMs / 1000;
+    m_ring.resize(size_t(std::max<qint64>(ringSamples, 4096)));
+    m_skipFrames = skipMs > 0 ? m_format.framesForDuration(skipMs * 1000) : 0;
+    //  Der Zwischenpuffer des Zieh-Rufs wird HIER bemessen: im Audio-Thread
+    //  darf nichts mehr angefordert werden. Ein Ruf holt nie mehr als den Ring.
+    m_convBuf.assign(m_ring.capacity() + 4096, 0.0f);
+
+    //  Diagnose-Mitschnitt (nur mit gesetzter Umgebungsvariablen).
+    const QString dumpPath = qEnvironmentVariable("MG_AUDIO_DUMP");
+    if (!dumpPath.isEmpty()) {
+        m_dump = new QFile(dumpPath, this);
+        if (!m_dump->open(QIODevice::WriteOnly | QIODevice::Truncate)) {
+            delete m_dump;
+            m_dump = nullptr;
+        } else {
+            qDebug("audio: Mitschnitt nach %s (%d Hz, %d Kanäle, Format %d)",
+                   qPrintable(dumpPath), m_format.sampleRate(),
+                   m_format.channelCount(), int(m_format.sampleFormat()));
+        }
+    }
+    m_framesOut.store(0, std::memory_order_relaxed);
+    m_framesIn = 0;
+    m_decodeDone = false;
+
+    m_decoder = new QAudioDecoder(this);
+    //  Der Dekoder liefert IMMER Float - daran hängen Ring und Equalizer.
+    m_decoder->setAudioFormat(m_work);
+    m_decoder->setSource(QUrl::fromLocalFile(path));
+    connect(m_decoder, &QAudioDecoder::bufferReady, this, &AudioEngine::onBufferReady);
+    connect(m_decoder, &QAudioDecoder::finished,    this, &AudioEngine::onDecodeFinished);
+    connect(m_decoder, &QAudioDecoder::durationChanged, this, [this](qint64 ms) {
+        if (ms > 0 && ms != m_durationMs) { m_durationMs = ms; emit durationChanged(); }
+    });
+    //  In Qt 6 heißt das Signal schlicht `error(QAudioDecoder::Error)`; den Text
+    //  holt man sich beim Dekoder ab.
+    //  `error` gibt es zweimal: als Abfrage und als Signal - deshalb die
+    //  ausdrückliche Auswahl.
+    connect(m_decoder, QOverload<QAudioDecoder::Error>::of(&QAudioDecoder::error),
+            this, [this](QAudioDecoder::Error) {
+        const QString msg = m_decoder ? m_decoder->errorString() : QString();
+        emit error(msg);
+        teardown();
+        setState(State::Stopped);
+    });
+
+    m_pull = new AudioPull(this);
+    m_pull->open(QIODevice::ReadOnly);
+    //  Die Senke kommt erst, wenn Vorrat da ist (s. `startSinkIfReady`).
+    m_decoder->start();
+    m_feed.start();
+    m_tick.start();
+    setState(State::Playing);
+}
+
+//  Anlauf: erst mit Vorrat starten. Vorher zöge die Senke Stille - hörbar als
+//  Verzögerung zwischen Klick und Ton.
+void AudioEngine::startSinkIfReady() {
+    if (m_sink || !m_pull || m_state != State::Playing) return;
+    //  60 ms genügen: der Nachschub-Takt läuft alle 30 ms.
+    const qint64 needed = qint64(m_work.sampleRate()) * m_work.channelCount() * 60 / 1000;
+    if (!m_decodeDone && qint64(m_ring.available()) < needed) return;
+
+    m_sink = new QAudioSink(QMediaDevices::defaultAudioOutput(), m_format, this);
+    m_sink->setVolume(float(m_volume));
+    m_sink->start(m_pull);
+}
+
+//  Der Dekoder meldet fertige Stücke. Passt nichts mehr in den Ring, wird
+//  gewartet: `bufferReady` bleibt anstehen, der nächste Aufruf holt es ab.
+void AudioEngine::onBufferReady() {
+    const int chOut = std::max(1, m_work.channelCount());
+
+    //  EINE Stelle, die in den Ring schreibt - und die den REST behält. Früher
+    //  wurde der Rückgabewert von `write` verworfen: beim vollen Ring fiel der
+    //  überzählige Teil jedes Stücks weg, und genau das rauschte.
+    const auto push = [&](const float* src, qint64 values) -> qint64 {
+        const size_t took = m_ring.write(src, size_t(values));
+        m_framesIn += qint64(took) / chOut;
+        if (took > 0 && m_pull) m_pull->notifyData();
+        return values - qint64(took);
+    };
+
+    //  Erst den Rest der letzten Runde loswerden, sonst käme er nach dem
+    //  nächsten Stück - die Wiedergabe spränge zurück.
+    if (m_pendingAt < m_pending.size()) {
+        const qint64 left = qint64(m_pending.size() - m_pendingAt);
+        const qint64 rest = push(m_pending.data() + m_pendingAt, left);
+        m_pendingAt = m_pending.size() - size_t(rest);
+        if (rest > 0) return;                       // Ring immer noch voll
+        m_pending.clear();
+        m_pendingAt = 0;
+    }
+
+    while (m_decoder && m_decoder->bufferAvailable()) {
+        if (m_ring.space() == 0) { startSinkIfReady(); return; }   // Ring voll
+        const QAudioBuffer buf = m_decoder->read();
+        if (!buf.isValid()) continue;
+
+        const int ch = std::max(1, buf.format().channelCount());
+        //  Der Dekoder BEKAM `m_work` (Float) vorgegeben; liefert er trotzdem
+        //  etwas anderes, wären die Bytes als Float gelesen reines Rauschen.
+        if (buf.format().sampleFormat() != QAudioFormat::Float) {
+            if (kLog) qDebug("audio: Dekoder liefert Format %d statt Float - verworfen",
+                             int(buf.format().sampleFormat()));
+            continue;
+        }
+        if (kLog) qDebug("audio: Stück %d Hz, %d Kanäle (gewünscht %d Hz, %d)",
+                         buf.format().sampleRate(), ch,
+                         m_work.sampleRate(), m_work.channelCount());
+        const float* src = buf.constData<float>();
+        qint64 frames = buf.frameCount();
+        if (!src || frames <= 0) continue;
+
+        //  Sprung: die ersten Frames gehören zur übersprungenen Strecke.
+        if (m_skipFrames > 0) {
+            const qint64 drop = std::min(m_skipFrames, frames);
+            m_skipFrames -= drop;
+            src    += drop * ch;
+            frames -= drop;
+            if (frames <= 0) continue;
+        }
+
+        const qint64 values = frames * ch;
+        const qint64 rest = push(src, values);
+        if (kLog) qDebug("audio: dekodiert %lld Frames, Ring %zu/%zu, Rest %lld",
+                         frames, m_ring.available(), m_ring.capacity(), rest);
+        if (rest > 0) {
+            //  Was nicht mehr hineinpasste, wartet auf den nächsten Takt.
+            m_pending.assign(src + (values - rest), src + values);
+            m_pendingAt = 0;
+            startSinkIfReady();
+            return;
+        }
+        startSinkIfReady();
+    }
+}
+
+void AudioEngine::onDecodeFinished() {
+    m_decodeDone = true;
+    startSinkIfReady();          // sehr kurze Datei: nie 60 ms Vorrat erreicht
+}
+
+void AudioEngine::pause() {
+    if (m_state != State::Playing) return;
+    //  Auch gültig, BEVOR die Senke steht (kurzer Moment nach dem Start): der
+    //  Zustand zählt, `startSinkIfReady` legt dann nicht los.
+    if (m_sink) m_sink->suspend();
+    setState(State::Paused);
+}
+
+void AudioEngine::resume() {
+    if (m_state != State::Paused) return;
+    setState(State::Playing);
+    if (m_sink) m_sink->resume();
+    else        startSinkIfReady();
+}
+
+void AudioEngine::stop() {
+    if (m_state == State::Stopped) return;
+    teardown();
+    setState(State::Stopped);
+    emit positionChanged();
+}
+
+void AudioEngine::forgetCurrent() {
+    if (m_path.isEmpty() && m_durationMs == 0) return;
+    m_path.clear();
+    m_durationMs = 0;
+    m_baseFrames = 0;
+    m_framesOut.store(0, std::memory_order_relaxed);
+    emit currentPathChanged();
+    emit durationChanged();
+    emit positionChanged();
+}
+
+void AudioEngine::seek(qint64 ms) {
+    if (m_path.isEmpty()) return;
+    const qint64 target = std::max<qint64>(0, ms);
+    const QString path = m_path;
+    teardown();
+    m_baseFrames = m_format.isValid() ? m_format.framesForDuration(target * 1000) : 0;
+    startDecode(path, target);
+    emit positionChanged();
+}
+
+void AudioEngine::setVolume(qreal v) {
+    const qreal nv = std::clamp<qreal>(v, 0.0, 1.0);
+    if (qFuzzyCompare(m_volume + 1.0, nv + 1.0)) return;
+    m_volume = nv;
+    if (m_sink) m_sink->setVolume(float(m_volume));
+    emit volumeChanged();
+}
+
+//  Was die Ausgabe jetzt holen könnte. Bei Unterlauf wird bewusst NICHT 0
+//  gemeldet: der Ruf füllt dann mit Stille auf: fiele die Senke stattdessen in
+//  den Leerlauf, bliebe die Wiedergabe bei der ersten Verzögerung stehen.
+qint64 AudioEngine::pullBytesAvailable() const {
+    if (m_state == State::Stopped || !m_format.isValid()) return 0;
+    const int bps = m_format.bytesPerSample() > 0 ? m_format.bytesPerSample() : 4;
+    //  Mindestens 20 ms, damit auch der erste Ruf vor dem ersten Dekodier-Stück
+    //  zustande kommt.
+    const qint64 floorVals = qint64(m_format.sampleRate()) * m_format.channelCount() / 50;
+    return std::max<qint64>(qint64(m_ring.available()), floorVals) * bps;
+}
+
+// ── Im AUDIO-Thread ──────────────────────────────────────────────────────────
+qint64 AudioEngine::pullAudio(char* data, qint64 maxSize) {
+    if (!data || maxSize <= 0) return 0;
+    const int ch  = std::max(1, m_format.channelCount());
+    const int bpf = m_format.bytesPerFrame() > 0 ? m_format.bytesPerFrame() : ch * 4;
+    const int bps = m_format.bytesPerSample() > 0 ? m_format.bytesPerSample() : 4;
+    qint64 wanted = (maxSize / bpf) * ch;              // Einzelwerte, frame-genau
+    if (wanted <= 0) return 0;
+    if (wanted > qint64(m_convBuf.size())) wanted = (qint64(m_convBuf.size()) / ch) * ch;
+
+    //  Bei einer Float-Senke wird IM Zielpuffer gerechnet (kein Umweg), sonst
+    //  im Zwischenpuffer und danach gewandelt.
+    const bool direct = m_format.sampleFormat() == QAudioFormat::Float;
+    float* work = direct ? reinterpret_cast<float*>(data) : m_convBuf.data();
+
+    const qint64 got = qint64(m_ring.read(work, size_t(wanted)));
+    if (kLog) qDebug("audio: Ausgabe will %lld, bekommt %lld", wanted, got);
+
+    //  KEINE Stille auffüllen. Ein kurzer Ruf ist im Zieh-Betrieb erlaubt; die
+    //  Senke fragt gleich wieder. Aufgefüllt wurde früher - und weil sie beim
+    //  Start ihren GANZEN Puffer auf einmal holt, standen dadurch 200–250 ms
+    //  Stille vor dem ersten Ton (gemessen). Nichts zu liefern heißt 0: aus dem
+    //  Leerlauf holt `readyRead()` sie zurück.
+    if (got <= 0) {
+        if (m_state == State::Playing) m_underruns.fetch_add(1, std::memory_order_relaxed);
+        return 0;
+    }
+
+    m_eq.process(work, int(got / ch));
+    if (!direct) convertOut(work, data, got);
+    m_framesOut.fetch_add(got / ch, std::memory_order_relaxed);
+    if (m_dump) m_dump->write(data, got * bps);
+    return got * bps;
+}
+
+//  Float -> Zielformat. Geklemmt wird HIER (nicht im Equalizer): eine Anhebung
+//  darf den Wertebereich der Senke nicht verlassen, sonst knackt es.
+void AudioEngine::convertOut(const float* in, char* out, qint64 values) const {
+    const auto clamp1 = [](float v) { return v < -1.0f ? -1.0f : (v > 1.0f ? 1.0f : v); };
+    switch (m_format.sampleFormat()) {
+    case QAudioFormat::Int16: {
+        auto* d = reinterpret_cast<qint16*>(out);
+        for (qint64 i = 0; i < values; ++i) d[i] = qint16(clamp1(in[i]) * 32767.0f);
+        break;
+    }
+    case QAudioFormat::Int32: {
+        auto* d = reinterpret_cast<qint32*>(out);
+        for (qint64 i = 0; i < values; ++i)
+            d[i] = qint32(double(clamp1(in[i])) * 2147483647.0);
+        break;
+    }
+    case QAudioFormat::UInt8: {
+        auto* d = reinterpret_cast<quint8*>(out);
+        for (qint64 i = 0; i < values; ++i)
+            d[i] = quint8(std::lround(clamp1(in[i]) * 127.0f) + 128);
+        break;
+    }
+    default:
+        std::memcpy(out, in, size_t(values) * sizeof(float));
+        break;
+    }
+}

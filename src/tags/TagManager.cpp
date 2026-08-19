@@ -53,7 +53,7 @@ void TagManager::deleteTag(const QString& tag) {
     for (auto& cat : m_storage->categoriesRef())
         cat.tags.removeAll(tag);
     m_storage->deleteTag(tag);
-    // Sofort persistieren — nicht erst beim nächsten anderweitigen Save.
+    // Sofort persistieren - nicht erst beim nächsten anderweitigen Save.
     // JsonStorage::saveFolder prüft dabei selbst, ob danach noch Tags/
     // Kategorien/Datei-Metadaten übrig sind, und entfernt andernfalls die
     // JSON-Datei komplett statt eines leeren Stubs.
@@ -139,7 +139,7 @@ void TagManager::moveCategory(const QString& id, const QString& newParentId) {
     removeById(m_storage->categoriesRef(), id);
 
     if (newParentId.isEmpty()) {
-        m_storage->categoriesRef().append(moved); // → Hauptebene (Wurzel)
+        m_storage->categoriesRef().append(moved); // -> Hauptebene (Wurzel)
     } else {
         // Parent NACH dem Entfernen frisch suchen (Container kann realloziert sein).
         TagCategory* parent = findById(m_storage->categoriesRef(), newParentId);
@@ -161,7 +161,7 @@ void TagManager::setCategoryUniformColor(const QString& id, bool uniform, const 
         cat->color = color;
     // NICHT destruktiv: die Eigenfarben der Kinder werden NICHT überschrieben.
     // Die Vererbung wird beim Aufbau des Baums (TagController::buildNodes) rein
-    // rechnerisch angewandt → beim Deaktivieren kehrt jede Farbe automatisch
+    // rechnerisch angewandt -> beim Deaktivieren kehrt jede Farbe automatisch
     // zur Eigenfarbe zurück (Anforderung: "restore original color").
     m_storage->saveCurrentFolder();
     emit categoriesChanged();
@@ -172,7 +172,7 @@ void TagManager::addTagToCategory(const QString& catId, const QString& tag) {
     TagCategory* cat = findById(m_storage->categoriesRef(), catId);
     if (!cat) return;
     if (!cat->tags.contains(tag)) cat->tags.append(tag);
-    // Emit first so UI updates, then save — prevents any signal-triggered
+    // Emit first so UI updates, then save - prevents any signal-triggered
     // rebuild from racing with the write.
     emit tagsChanged();
     emit categoriesChanged();

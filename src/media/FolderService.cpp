@@ -9,7 +9,7 @@ FolderService::FolderService(ISettings& settings, JsonStorage& storage,
     : QObject(parent), m_settings(settings), m_storage(storage) {}
 
 void FolderService::openFolder(const QString& rawPath) {
-    //  Ohne abschliessenden Trenner — sonst waeren „…/ordner/" und „…/ordner"
+    //  Ohne abschliessenden Trenner - sonst waeren „…/ordner/" und „…/ordner"
     //  zwei verschiedene Ordner, und der Sidecar-Name daraus waere leer
     //  (s. mg::normalizedFolder).
     const QString path = mg::normalizedFolder(rawPath);

@@ -1,11 +1,11 @@
 #pragma once
 
 // ─────────────────────────────────────────────────────────────────────────────
-//  FileBrowseModel — Verzeichnis-Inhalt für den EIGENEN Datei-/Ordnerwähler
+//  FileBrowseModel - Verzeichnis-Inhalt für den EIGENEN Datei-/Ordnerwähler
 //  (`qml/common/FileChooser.qml`).
 //
 //  WARUM überhaupt: Qts `FileDialog`/`FolderDialog` öffnen ein eigenes Fenster,
-//  dessen `ListView` in Qts eigener `FileDialog.qml` steckt — dort ist weder
+//  dessen `ListView` in Qts eigener `FileDialog.qml` steckt - dort ist weder
 //  `SmoothWheelArea` einhängbar noch das Aussehen vollständig bestimmbar. Der
 //  Wähler wird deshalb selbst gebaut; dieses Modell liefert ihm die Daten.
 //
@@ -13,7 +13,7 @@
 //  `QThreadPool` + `std::atomic<bool>`-Cancel + `QueuedConnection`): auf einem
 //  Netzlaufwerk blockiert schon das Auflisten eines Verzeichnisses spürbar.
 //
-//  Ein Typ je Wähler (`qmlRegisterType`), kein Singleton — zwei offene Wähler
+//  Ein Typ je Wähler (`qmlRegisterType`), kein Singleton - zwei offene Wähler
 //  stehen sonst im selben Verzeichnis.
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -30,7 +30,7 @@
 
 class FileBrowseModel : public QAbstractListModel {
     Q_OBJECT
-    //  Aktuelles Verzeichnis als LOKALER Pfad (nicht als URL — QML rechnet an
+    //  Aktuelles Verzeichnis als LOKALER Pfad (nicht als URL - QML rechnet an
     //  den Rändern um, innen bleibt es ein Pfad).
     Q_PROPERTY(QString folder READ folder WRITE setFolder NOTIFY folderChanged)
     //  Glob-Muster wie "*.png" (leer = alles). Ordner sind nie gefiltert.
@@ -39,7 +39,7 @@ class FileBrowseModel : public QAbstractListModel {
     Q_PROPERTY(bool showHidden READ showHidden WRITE setShowHidden
                    NOTIFY showHiddenChanged)
     //  Begleitdateien der App mitzeigen (Ordner-JSON, `.mgedit.json`, `.bak`)?
-    //  Wird in QML an `App.showAllFiles` gebunden — dieselbe Regel wie in der
+    //  Wird in QML an `App.showAllFiles` gebunden - dieselbe Regel wie in der
     //  Galerie (`mg::isCompanionFile`), damit dieselbe Datei nicht hier auftaucht
     //  und dort fehlt.
     Q_PROPERTY(bool showAllFiles READ showAllFiles WRITE setShowAllFiles
@@ -49,7 +49,7 @@ class FileBrowseModel : public QAbstractListModel {
     Q_PROPERTY(int  count READ count NOTIFY countChanged)
     Q_PROPERTY(bool loading READ loading NOTIFY loadingChanged)
     Q_PROPERTY(bool canGoUp READ canGoUp NOTIFY folderChanged)
-    //  Sortierung der Liste — Ordner stehen IMMER zuerst (wie in jedem
+    //  Sortierung der Liste - Ordner stehen IMMER zuerst (wie in jedem
     //  Dateiverwalter); die Richtung dreht nur die Reihenfolge INNERHALB der
     //  Gruppen. Umschalten liest NICHT neu, es sortiert die vorhandenen Zeilen.
     Q_PROPERTY(int  sortKey READ sortKey WRITE setSortKey NOTIFY sortChanged)
@@ -64,7 +64,7 @@ public:
     enum SortKey { SortName = 0, SortSize = 1, SortDate = 2 };
     Q_ENUM(SortKey)
 
-    //  Eine Zeile — öffentlich, weil der Lese-Worker sie füllt.
+    //  Eine Zeile - öffentlich, weil der Lese-Worker sie füllt.
     struct Row {
         QString   name;
         bool      isDir = false;
@@ -105,7 +105,7 @@ public:
     Q_INVOKABLE bool    entryIsDir(int row) const;
 
     // ── Auskünfte für die Oberfläche ─────────────────────────────────────────
-    //  Standard-Orte (Zuhause, Dokumente, Bilder …) als [{name, path}] — nur
+    //  Standard-Orte (Zuhause, Dokumente, Bilder …) als [{name, path}] - nur
     //  die, die es auf diesem System wirklich gibt.
     Q_INVOKABLE QVariantList places() const;
     //  Pfad in Segmente für die Brotkrumen-Zeile: [{name, path}], Wurzel zuerst.
@@ -118,7 +118,7 @@ public:
     //  Unterordner im AKTUELLEN Verzeichnis anlegen. Liefert 0 = angelegt,
     //  1 = Name unbrauchbar (leer, Pfadtrenner, „.."), 2 = gibt es schon,
     //  3 = Anlegen fehlgeschlagen (Rechte, Nur-Lesen). Die Meldung dazu wählt
-    //  die Oberfläche — das Modell kennt keine Sprache.
+    //  die Oberfläche - das Modell kennt keine Sprache.
     //  Bei Erfolg wird neu gelesen, der neue Ordner steht danach in der Liste.
     Q_INVOKABLE int      createFolder(const QString& name);
     int  sortKey() const { return m_sortKey; }
@@ -127,7 +127,7 @@ public:
     void setSortDescending(bool d);
     //  Endung ergänzen, wenn der Name keine trägt (Speichern-Modus).
     Q_INVOKABLE QString  withSuffix(const QString& name, const QString& suffix) const;
-    //  Pfad ⇄ URL — die Aufrufstellen reichen `file://`-URLs weiter.
+    //  Pfad ⇄ URL - die Aufrufstellen reichen `file://`-URLs weiter.
     Q_INVOKABLE QUrl     toUrl(const QString& path) const;
     Q_INVOKABLE QString  fromUrl(const QUrl& url) const;
     //  Glob-Muster aus einem Filtertext der Form "Bilder (*.png *.jpg)".
@@ -160,7 +160,7 @@ private:
     bool        m_sortDesc   = false;
     std::vector<Row> m_rows;
 
-    //  Ein Worker genügt — zwei Verzeichnisse gleichzeitig braucht niemand,
+    //  Ein Worker genügt - zwei Verzeichnisse gleichzeitig braucht niemand,
     //  und seriell bleibt die Reihenfolge der Ergebnisse eindeutig.
     QThreadPool m_pool;
     quint64     m_gen = 0;                       // verwirft veraltete Läufe

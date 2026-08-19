@@ -3,40 +3,40 @@ import QtQuick
 import MediaGallery 1.0
 
 // ─────────────────────────────────────────────────────────────────────────────
-//  PdfEditBox.qml — EINE Overlay-Annotation des PDF-Editors (Delegate im
+//  PdfEditBox.qml - EINE Overlay-Annotation des PDF-Editors (Delegate im
 //  Boxen-Repeater jeder Seite von PdfSurface). Deckt alle sechs Arten ab:
-//  Text-Notiz (Post-it), Freihand, Pfeil, Rechteck, Ellipse — analog zum
-//  Bild-Editor (ImageEditBox), nur in PDF-Punkten statt Bild-Pixeln — sowie
+//  Text-Notiz (Post-it), Freihand, Pfeil, Rechteck, Ellipse - analog zum
+//  Bild-Editor (ImageEditBox), nur in PDF-Punkten statt Bild-Pixeln - sowie
 //  „Text ersetzen" (PDF-exklusiv): deckende, fix weiße Fläche + Textbox als
 //  EIN Objekt, ohne Post-it-Optik (kein Schatten, kein Eselsohr).
 //
 //  KOORDINATEN: Das Modell führt Position/Größe in PDF-PUNKTEN (Ursprung
 //  oben-links); dieses Item rechnet über `pageScale` (Pixel je Punkt) in
 //  Bildschirm-Pixel um. Zoom/Resize der Seite skaliert die Box damit
-//  automatisch korrekt mit — WYSIWYG zum Export (72-dpi-Schreiber).
+//  automatisch korrekt mit - WYSIWYG zum Export (72-dpi-Schreiber).
 //
 //  SICHTBARKEIT: Annotationen sind in BEIDEN Modi sichtbar (Teil des
 //  Dokument-Eindrucks); Rahmen, Handles und Maus-Interaktion existieren nur
-//  im Edit-Modus MIT dem Auswahl-Werkzeug (ctl.tool === Select) — während
+//  im Edit-Modus MIT dem Auswahl-Werkzeug (ctl.tool === Select) - während
 //  des Zeichnens fängt die drawArea der Seite alle Gesten.
 //
-//  TEXT-SYNC (bewusst KEINE text-Bindung — Zweiweg-Konflikt beim Tippen):
-//   • Modell → Anzeige: imperativ (Component.onCompleted + onBoxTextChanged),
+//  TEXT-SYNC (bewusst KEINE text-Bindung - Zweiweg-Konflikt beim Tippen):
+//   • Modell -> Anzeige: imperativ (Component.onCompleted + onBoxTextChanged),
 //     aber NUR solange nicht editiert wird (Undo/Redo/Sidecar-Load).
-//   • Anzeige → Modell: während der Bearbeitung fließt jede Änderung live über
+//   • Anzeige -> Modell: während der Bearbeitung fließt jede Änderung live über
 //     box.ctl.updateText() (Session; genau EIN Undo-Kommando am Ende).
 //  Externe Aktionen (Undo/Redo/Export/Löschen/Moduswechsel) schließen eine
 //  offene Bearbeitung DETERMINISTISCH über surface.editCommitRev ab.
 //
 //  GESTEN (Word-artig, Auswahl-Werkzeug):
-//   • Klick        → auswählen (schwebende Format-Toolbar erscheint)
-//   • Ziehen       → verschieben (Text: optionaler Zeilenfang über
-//                    surface.snapYPt); über den Seitenrand hinaus → wechselt
-//                    beim Loslassen auf die Nachbarseite (resolveCrossPage) —
+//   • Klick        -> auswählen (schwebende Format-Toolbar erscheint)
+//   • Ziehen       -> verschieben (Text: optionaler Zeilenfang über
+//                    surface.snapYPt); über den Seitenrand hinaus -> wechselt
+//                    beim Loslassen auf die Nachbarseite (resolveCrossPage) -
 //                    Strich-Punkte wandern über die Controller-Session mit
-//   • Doppelklick  → Textbearbeitung (nur Text-Notizen)
-//   • 8 Handles    → skalieren (Ecken + Kantenmitten; Striche transformieren
-//                    ihre Punkte proportional — Controller-Session)
+//   • Doppelklick  -> Textbearbeitung (nur Text-Notizen)
+//   • 8 Handles    -> skalieren (Ecken + Kantenmitten; Striche transformieren
+//                    ihre Punkte proportional - Controller-Session)
 // ─────────────────────────────────────────────────────────────────────────────
 Item {
     id: box
@@ -84,12 +84,12 @@ Item {
     property real pageHPt: 792
     property var  surface: null          // PdfSurface-Root (Commit, Snapping, AutoEdit)
     // Dezentraler PDF-Editor-Controller DIESER Kachel (von PdfSurface via
-    // surface.editCtl gesetzt) — ersetzt den früheren globalen PdfEdit-Singleton.
+    // surface.editCtl gesetzt) - ersetzt den früheren globalen PdfEdit-Singleton.
     readonly property PdfEditController ctl: surface ? surface.editCtl : null
 
     readonly property bool onThisPage: page === pageIndex
     readonly property bool isText:    boxKind === 0
-    // „Text ersetzen" (kind 5): weiße Deckfläche + Textbox als EIN Objekt —
+    // „Text ersetzen" (kind 5): weiße Deckfläche + Textbox als EIN Objekt -
     // volle Text-Pipeline, aber OHNE Post-it-Optik (kein Schatten/Eselsohr).
     readonly property bool isReplace: boxKind === 5
     // Textführende Arten (Notiz + Text ersetzen): TextEdit, Platzhalter,
@@ -98,7 +98,7 @@ Item {
     readonly property bool isStroke: boxKind === 1 || boxKind === 2
     //  Textmarkierung (Markieren/Unterstreichen/Durchstreichen): EIN Objekt mit
     //  MEHREREN Bereichen (paarweise in boxPoints). Sie hängt am Text darunter
-    //  — deshalb bewusst NICHT verschieb- oder skalierbar: Auswählen, umfärben
+    //  - deshalb bewusst NICHT verschieb- oder skalierbar: Auswählen, umfärben
     //  und löschen ja, herumziehen nein (so verhält sie sich in jedem
     //  PDF-Betrachter).
     readonly property bool isMarkup: boxKind === 6
@@ -109,12 +109,12 @@ Item {
     readonly property bool isStamp:  boxKind === 8
     readonly property bool editMode: box.ctl.editMode
     //  Offene Änderung? Eine als GELÖSCHT markierte Notiz bleibt sichtbar,
-    //  aber blass und durchgestrichen — sie ist noch da, bis jemand
+    //  aber blass und durchgestrichen - sie ist noch da, bis jemand
     //  entscheidet.
     readonly property bool trackedNew: box.trackState === 1
     readonly property bool trackedDel: box.trackState === 2
     // Auswahl/Verschieben/Skalieren nur mit dem Auswahl-Werkzeug (wie im
-    // Bild-Editor — während des Zeichnens fängt die drawArea der Seite).
+    // Bild-Editor - während des Zeichnens fängt die drawArea der Seite).
     readonly property bool selectTool: box.ctl.tool === 0
     readonly property bool selected: editMode && box.ctl.selectedId === boxId
     // Kind-abhängige Mindestgrößen: Zeichnungen dürfen deutlich kleiner
@@ -125,7 +125,7 @@ Item {
 
     // Sichtbar auf der eigenen Seite UND solange die Notizen nicht über den
     // Alt+Q-/◉-Toggle (surface.notesVisible) ausgeblendet sind. Der Toggle
-    // wirkt bewusst in BEIDEN Modi — vorher übersteuerte „|| editMode" die
+    // wirkt bewusst in BEIDEN Modi - vorher übersteuerte „|| editMode" die
     // Ausblendung im Editmodus komplett (Toggle wirkungslos). Der Eintritt in
     // den Editmodus setzt notesVisible ohnehin auf true (PdfSurface).
     visible: onThisPage && (surface ? surface.notesVisible : true)
@@ -136,7 +136,7 @@ Item {
     z: selected ? 3 : 2
 
     //  ── Kennzeichnung offener Änderungen ─────────────────────────────────────
-    //  Als GELÖSCHT markiert: blass — die Notiz ist noch da, aber auf dem Weg
+    //  Als GELÖSCHT markiert: blass - die Notiz ist noch da, aber auf dem Weg
     //  hinaus. Die Entscheidung fällt über das Track-Changes-Menü oder das
     //  Kontextmenü.
     opacity: box.trackedDel ? 0.45 : 1.0
@@ -165,7 +165,7 @@ Item {
         z: 5
     }
 
-    // Externe Commit-Anforderung: Zähler-Bump im Surface → alle Boxen schließen
+    // Externe Commit-Anforderung: Zähler-Bump im Surface -> alle Boxen schließen
     // eine evtl. offene Textbearbeitung ab, BEVOR die auslösende Aktion läuft.
     readonly property int commitRev: surface ? surface.editCommitRev : 0
     onCommitRevChanged: finishEditing()
@@ -174,7 +174,7 @@ Item {
     onSelectedChanged: if (!selected) finishEditing()
 
     // Frisch erstellte Box (Klick auf die Seite) direkt in die Textbearbeitung
-    // schicken — callLater, damit Fokus erst NACH der Instanziierung greift.
+    // schicken - callLater, damit Fokus erst NACH der Instanziierung greift.
     Component.onCompleted: {
         if (surface && surface._autoEditId === boxId) {
             surface._autoEditId = -1
@@ -200,12 +200,12 @@ Item {
             edit.focus = false
     }
 
-    // ── Post-it-Optik: Schatten → Papier → Eselsohr ───────────────────────────
+    // ── Post-it-Optik: Schatten -> Papier -> Eselsohr ───────────────────────────
     //  Alles hängt am Papier (highlightColor.a > 0; „Keine"/Deckkraft 0 = reiner
     //  Text ohne Zettel). Geometrie und Farben sind mit dem Export identisch:
     //  Schattenversatz/Eselsohr-Größe kommen aus PdfEdit-Konstanten (PDF-Punkte
     //  × pageScale), Schatten-Alpha 52/255, Flap = Papier ×1.18 dunkler,
-    //  Faltlinie ×1.5 dunkler mit 0.7-pt-Strich → WYSIWYG.
+    //  Faltlinie ×1.5 dunkler mit 0.7-pt-Strich -> WYSIWYG.
     readonly property bool hasPaper: isText && highlightColor.a > 0
 
     Rectangle {                                     // weicher Schattenwurf
@@ -222,7 +222,7 @@ Item {
         visible: box.hasPaper
     }
     Rectangle {                                     // „Text ersetzen": deckende
-        anchors.fill: parent                        // weiße Fläche — bewusst
+        anchors.fill: parent                        // weiße Fläche - bewusst
         color: box.highlightColor                   // OHNE Schatten/Eselsohr
         visible: box.isReplace                      // Cover-Farbe (Controller erzwingt Deckung)
     }
@@ -243,7 +243,7 @@ Item {
         opacity: box.fillColor.a
     }
     // ── Textmarkierung: je Bereich eine Fläche bzw. eine Linie ───────────────
-    //  Die Bereiche stehen in PDF-Punkten und BEZIEHEN SICH AUF DIE SEITE —
+    //  Die Bereiche stehen in PDF-Punkten und BEZIEHEN SICH AUF DIE SEITE -
     //  hier also relativ zur Box-Ecke rechnen (box.xPt/yPt), nicht absolut.
     Repeater {
         model: box.isMarkup ? box.boxPoints.length / 2 : 0
@@ -304,13 +304,13 @@ Item {
 
     // ══ ZEICHNUNG (Freihand / Pfeil / Rechteck / Ellipse) ═════════════════════
     //  Canvas deckt die Bounding-Box PLUS Linienbreiten-Rand ab (die äußere
-    //  Stifthälfte darf nicht abgeschnitten werden — der Export zeichnet
-    //  mittig). Geometrie in PDF-Punkten × pageScale — identisch zum Export
-    //  (drawBox im PdfExportTask) → WYSIWYG.
+    //  Stifthälfte darf nicht abgeschnitten werden - der Export zeichnet
+    //  mittig). Geometrie in PDF-Punkten × pageScale - identisch zum Export
+    //  (drawBox im PdfExportTask) -> WYSIWYG.
     Canvas {
         id: shape
         //  Nur die ZEICHNUNGEN (Strich/Pfeil/Rechteck/Ellipse). Textarten
-        //  bringen ihre eigene Darstellung mit — und die neuen Arten
+        //  bringen ihre eigene Darstellung mit - und die neuen Arten
         //  Markierung/Schwärzung/Stempel ebenso; ohne diese Ausnahme malte
         //  der Formen-Canvas seine Füllung ÜBER das Stempelbild (im echten
         //  Fenster als schwarzes Rechteck aufgefallen).
@@ -412,7 +412,7 @@ Item {
         visible: box.isTextual
         anchors.fill: parent
         padding: box.ctl.boxPaddingPt * box.pageScale   // gleiche Konstante wie Export
-        clip: false                        // Überlauf sichtbar — wie im Export
+        clip: false                        // Überlauf sichtbar - wie im Export
         textFormat: TextEdit.PlainText
         wrapMode: TextEdit.Wrap
         enabled: box.editing
@@ -420,7 +420,7 @@ Item {
         selectByMouse: true
         persistentSelection: false
         //  ↓ in der letzten Zeile springt ans Zeilenende (einheitlich in allen
-        //  Editoren der App — 2026-07-17).
+        //  Editoren der App - 2026-07-17).
         Keys.onDownPressed: (e) => {
             const yCur = edit.positionToRectangle(edit.cursorPosition).y
             const yEnd = edit.positionToRectangle(edit.length).y
@@ -436,7 +436,7 @@ Item {
         }
         // Gewählte Familie führt (Latein); arabische Glyphen fallen auf Naskh
         // zurück. QFont-Familienliste aus C++ (QML kennt in Qt 6.4 kein
-        // font.families) — Größe/Stil werden mit übergeben und ersetzen die
+        // font.families) - Größe/Stil werden mit übergeben und ersetzen die
         // einzelnen font.*-Bindings.
         font: App.fallbackFont(box.fontFamily,
                                Math.max(1, box.fontSizePt * box.pageScale),
@@ -446,7 +446,7 @@ Item {
                            : box.alignment === 2 ? TextEdit.AlignRight
                                                  : TextEdit.AlignLeft
         // Vertikal je Box-Einstellung: 0 = OBEN-links wie ein Word-Textfeld
-        // (Standard), 1 = zentriert. Der Export rechnet denselben Offset —
+        // (Standard), 1 = zentriert. Der Export rechnet denselben Offset -
         // bei zentriertem Überlauf beidseitig symmetrisch (clip:false).
         verticalAlignment: box.vAlign === 1 ? TextEdit.AlignVCenter
                                             : TextEdit.AlignTop
@@ -478,7 +478,7 @@ Item {
         onActiveFocusChanged: if (!activeFocus) box.finishEditing()
         Keys.onEscapePressed: (e) => { box.finishEditing(); e.accepted = true }
     }
-    // Modell → Anzeige (Undo/Redo/Sidecar), nur außerhalb einer Bearbeitung.
+    // Modell -> Anzeige (Undo/Redo/Sidecar), nur außerhalb einer Bearbeitung.
     onBoxTextChanged: if (isTextual && !editing && edit.text !== boxText) edit.text = boxText
 
     // ── Platzhalter in leerer Box (fester Grauton: lesbar auf weißer Seite) ───
@@ -497,7 +497,7 @@ Item {
     // ── Verschieben + Auswahl + Doppelklick (nur außerhalb der Bearbeitung) ───
     //  Live-Updates laufen über den Controller (Modell bleibt einzige Wahrheits-
     //  quelle; die x/y-Bindungen oben folgen automatisch). Der Cursor-Punkt wird
-    //  je Move in ELTERN-Koordinaten aufgelöst — robust, obwohl sich die Box
+    //  je Move in ELTERN-Koordinaten aufgelöst - robust, obwohl sich die Box
     //  (und damit diese MouseArea) unter dem Zeiger mitbewegt.
     MouseArea {
         id: moveArea
@@ -534,7 +534,7 @@ Item {
             if (!moved && Math.abs(nx - box.xPt) + Math.abs(ny - box.yPt) < 1.5)
                 return
             moved = true
-            // Zeilenfang (falls aktiv): Oberkante an erkannte PDF-Textzeile —
+            // Zeilenfang (falls aktiv): Oberkante an erkannte PDF-Textzeile -
             // nur für TEXT-Notizen sinnvoll (Zeichnungen bewegen sich frei).
             if (box.surface && box.isTextual)
                 ny = box.surface.snapYPt(box.viewIndex, ny, box.hPt)
@@ -545,7 +545,7 @@ Item {
             box.ctl.updatePlacement(box.boxId, box.viewIndex, nx, ny, box.wPt, box.hPt)
         }
         onReleased: {
-            // Über den Seitenrand gezogen? → Zielseite + lokale y-Koordinate
+            // Über den Seitenrand gezogen? -> Zielseite + lokale y-Koordinate
             // auflösen (PdfSurface kennt Seitenmaße + Lückenbreite) und die
             // Session mit der finalen Platzierung abschließen (EIN Undo-Schritt
             // inkl. Seitenwechsel).
@@ -616,7 +616,7 @@ Item {
                     if (handle.hx > 0) {                          w = startRect.width  + dxPt }
                     if (handle.hy < 0) { y = startRect.y + dyPt; h = startRect.height - dyPt }
                     if (handle.hy > 0) {                          h = startRect.height + dyPt }
-                    // Signatur/Stempel skaliert IMMER proportional — an allen
+                    // Signatur/Stempel skaliert IMMER proportional - an allen
                     // acht Punkten, nicht nur an den Ecken: ein verzerrtes
                     // Bild sieht nie nach einer echten Unterschrift aus.
                     // Gerechnet wird über EINEN Faktor, in den auch die
@@ -650,7 +650,7 @@ Item {
                         return
                     }
                     // Mindestgröße halten, OHNE die gegenüberliegende Kante zu
-                    // bewegen — kind-abhängig (Zeichnungen dürfen kleiner werden).
+                    // bewegen - kind-abhängig (Zeichnungen dürfen kleiner werden).
                     const minW = box.minWPt
                     const minH = box.minHPt
                     if (w < minW) { if (handle.hx < 0) x = startRect.x + startRect.width  - minW; w = minW }

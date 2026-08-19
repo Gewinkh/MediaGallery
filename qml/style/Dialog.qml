@@ -3,10 +3,10 @@ import QtQuick.Templates as T
 import MediaGallery 1.0
 
 // ─────────────────────────────────────────────────────────────────────────────
-//  Dialog.qml — gethemter Dialograhmen (Stil "style").
+//  Dialog.qml - gethemter Dialograhmen (Stil "style").
 //
 //  Fusion zeichnete die Titelzeile mit eigenem Hintergrund in `palette.window`
-//  und Radius 2 — in den App-Dialogen (Karten-Hintergrund, Radius 8) ergab das
+//  und Radius 2 - in den App-Dialogen (Karten-Hintergrund, Radius 8) ergab das
 //  ein andersfarbiges Band mit eckigen Ecken über der abgerundeten Kante. Hier
 //  ist die Titelzeile transparent (der Dialoghintergrund trägt sie) und der
 //  Fuß-Bereich existiert nur, wenn er wirklich Schaltflächen enthält.
@@ -40,7 +40,7 @@ T.Dialog {
         bottomPadding: 4
     }
 
-    //  Nur anlegen, wenn der Dialog Standard-Schaltflächen nutzt — sonst bliebe
+    //  Nur anlegen, wenn der Dialog Standard-Schaltflächen nutzt - sonst bliebe
     //  ein leerer, ungenutzter Streifen am Fuß des Dialogs stehen.
     footer: DialogButtonBox {
         visible: count > 0

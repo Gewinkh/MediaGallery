@@ -27,8 +27,8 @@
 // Zusaetzlich werden klassische /Subtype /Sound-Annotationen unterstuetzt.
 //
 // RAM/Disk-Strategie (Prio 1):
-//   • prepare()  scannt nur METADATEN (Seite/Rechteck/Stream-Offset/Format) — es
-//                wird NICHTS inflated → Oeffnen bleibt billig (auch bei 60+ Clips).
+//   • prepare()  scannt nur METADATEN (Seite/Rechteck/Stream-Offset/Format) - es
+//                wird NICHTS inflated -> Oeffnen bleibt billig (auch bei 60+ Clips).
 //   • requestClip() extrahiert genau EINEN Clip async (eigener QThreadPool) und
 //                cached das Ergebnis in einem LRU mit Byte-Deckel.
 //   • Generationszahl verwirft Ergebnisse veralteter Dokumente (schnelles
@@ -48,7 +48,7 @@
 #include <memory>
 
 // ─────────────────────────────────────────────────────
-// PdfAudioClip — ein extrahierbarer Audio-Treffer (Metadaten, kein PCM)
+// PdfAudioClip - ein extrahierbarer Audio-Treffer (Metadaten, kein PCM)
 //   Auf Namespace-Ebene, damit die Worker-Tasks (in der .cpp) ihn bilden koennen.
 // ─────────────────────────────────────────────────────
 struct PdfAudioClip {
@@ -86,10 +86,10 @@ public:
     Q_INVOKABLE void prepare(const QString& filePathOrUrl);
 
     // Alle Clips des aktuellen Dokuments fuer QML:
-    //   [{ id, page, x, y, w, h, label }]  — sortiert nach (Seite, y, x).
+    //   [{ id, page, x, y, w, h, label }]  - sortiert nach (Seite, y, x).
     Q_INVOKABLE QVariantList clips() const;
 
-    // Lazy-Extraktion EINES Clips (inflate → byteswap → WAV-Temp). Idempotent:
+    // Lazy-Extraktion EINES Clips (inflate -> byteswap -> WAV-Temp). Idempotent:
     // bei Cache-Treffer kommt clipReady sofort (queued). Sonst async im Pool.
     Q_INVOKABLE void requestClip(int id);
 
@@ -108,7 +108,7 @@ signals:
 private:
     //  Kooperativer Abbruch (Muster wie PdfEditController/ImageEditController/
     //  ThumbnailLoader). OHNE dieses Flag wartete ~PdfAudioController im
-    //  GUI-Thread, bis ein laufender Scan fertig war — bei einer 363-MB-PDF
+    //  GUI-Thread, bis ein laufender Scan fertig war - bei einer 363-MB-PDF
     //  gemessen 745 ms Freeze allein fürs Schließen der Kachel. Der Scan liest
     //  die GESAMTE Datei ein und läuft mehrfach über den Puffer; beides ist
     //  jetzt in Abschnitte unterteilt, die das Flag prüfen.
@@ -125,7 +125,7 @@ private:
     int                   m_gen   = 0;  // Generationszahl (verwirft veraltete Tasks)
     bool                  m_scanInFlight = false;
 
-    // ── Extraktions-Cache (LRU, GUI-Thread → keine Synchronisation noetig) ─────
+    // ── Extraktions-Cache (LRU, GUI-Thread -> keine Synchronisation noetig) ─────
     struct WavEntry { QString path; int durationMs = 0; qint64 bytes = 0; };
     QHash<int, WavEntry>  m_wavCache;   // id -> extrahierte WAV
     QList<int>            m_wavOrder;    // LRU-Reihenfolge (alt -> neu)

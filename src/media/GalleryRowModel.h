@@ -3,24 +3,25 @@
 #include <QPointer>
 #include <QTimer>
 #include <QVector>
+#include <limits>
 #include <QVariantMap>
 
 class MediaModel;
 class MediaProxyModel;
 
 // ─────────────────────────────────────────────────────────────────────────────
-//  GalleryRowModel — die SICHTBAREN ZEILEN der Galerie.
+//  GalleryRowModel - die SICHTBAREN ZEILEN der Galerie.
 //
 //  Warum es das gibt: Ein `GridView` hat gleich hohe Zellen und kann eine Zeile
 //  nicht umbrechen. Sobald ein Unterordner an Ort und Stelle aufklappt, braucht
-//  die Galerie aber genau das — sein Inhalt beginnt auf einer neuen Zeile, und
+//  die Galerie aber genau das - sein Inhalt beginnt auf einer neuen Zeile, und
 //  hinter ihm liegt eine Flaeche, die exakt seinen Inhalt abdeckt.
 //
 //  Statt die Kacheln frei zu positionieren (das kostet das Delegate-Recycling
 //  und damit die RAM-Obergrenze bei 10–50k Dateien) rechnet dieses Modell aus
 //  der Proxy-Reihenfolge, der Spaltenzahl und dem Aufklapp-Zustand eine Liste
 //  visueller ZEILEN. Die Galerie ist damit eine `ListView` darueber und
-//  recycelt weiter — nur eben Zeilen statt Kacheln.
+//  recycelt weiter - nur eben Zeilen statt Kacheln.
 //
 //  Eine Zeile enthaelt ausschliesslich Kacheln DESSELBEN Ordners. Ein Wechsel
 //  des Bereichs bricht die Zeile um, auch wenn sie noch nicht voll ist: sonst
@@ -29,11 +30,11 @@ class MediaProxyModel;
 //  BAENDER (die helleren Flaechen): Jede Zeile weiss, wie tief sie liegt und
 //  welche Baender bei ihr BEGINNEN bzw. ENDEN (`openMask`/`closeMask`, Bit k =
 //  Ebene k). Die Ansicht malt daraus je Ebene ein Rechteck und rundet es oben
-//  bzw. unten ab. Dadurch deckt die Flaeche immer genau den Inhalt ab — kommt
+//  bzw. unten ab. Dadurch deckt die Flaeche immer genau den Inhalt ab - kommt
 //  eine Datei dazu oder faellt weg, aendert sich einfach die Zeilenliste.
 //
 //  Die Kacheldaten kommen als `tiles` (Liste von Objekten) heraus. Das ist der
-//  einzige Ort im Projekt, an dem je Kachel QVariants gebaut werden — bewusst:
+//  einzige Ort im Projekt, an dem je Kachel QVariants gebaut werden - bewusst:
 //  es betrifft nur SICHTBARE Zeilen (die Ansicht liest die Rolle nur fuer ihre
 //  Delegates), waehrend Filter und Sortierung weiterhin direkt auf den Structs
 //  arbeiten.
@@ -89,7 +90,7 @@ public:
 
     //  Welche visuelle Zeile zeigt eine bestimmte Proxy-Zeile? −1 = keine.
     Q_INVOKABLE int rowOfIndex(int proxyRow) const;
-    //  Alles ueber eine Zeile in EINEM Zugriff — die Ansicht braucht das beim
+    //  Alles ueber eine Zeile in EINEM Zugriff - die Ansicht braucht das beim
     //  Ablegen, um aus einem Punkt den Zielordner zu bestimmen.
     //  Schluessel: kind · first · count · depth · ownerFolder
     Q_INVOKABLE QVariantMap rowInfo(int row) const;
@@ -112,7 +113,7 @@ private:
 
     void scheduleRebuild();
     void rebuildNow();
-    //  Neue Zeilenliste als Diff einspielen (kein Reset — s. .cpp).
+    //  Neue Zeilenliste als Diff einspielen (kein Reset - s. .cpp).
     void applyRows(const QVector<Row>& next);
     //  Kette der Bereiche von der Wurzel bis `scope` (Index 0 = Wurzel).
     bool isAncestorOrSame(int maybeAncestor, int scope) const;
@@ -127,13 +128,17 @@ private:
     int                       m_levelInset   = 0;
     //  Sammelt die vielen kleinen Einfuegungen der inkrementellen Befuellung zu
     //  EINEM Neuaufbau je Ereignisschleifen-Durchlauf. Ohne das liefe der
-    //  Aufbau je Charge einmal ueber alle Zeilen — quadratisch beim Oeffnen
+    //  Aufbau je Charge einmal ueber alle Zeilen - quadratisch beim Oeffnen
     //  eines grossen Ordners.
     QTimer m_rebuildTimer;
     //  Hat die QUELLE ihren Inhalt komplett getauscht (Ordnerwechsel, Reload,
     //  neue Sortierung)? Dann reicht der Struktur-Diff NICHT: die Zeilen koennen
-    //  zufaellig dieselbe Gestalt haben, tragen aber ganz andere Kacheln — die
+    //  zufaellig dieselbe Gestalt haben, tragen aber ganz andere Kacheln - die
     //  Ansicht erfuehre nichts und zeigte den alten Ordner weiter (vom Nutzer
     //  gemeldet: „Ordner wechseln klappt nicht mehr").
     bool m_sourceReset = false;
+    //  Ab WELCHER Proxy-Zeile hat sich der Bestand geaendert (Einfuegen/
+    //  Entfernen)? Alles ab dort traegt danach andere Kacheln - auch wenn die
+    //  Zeilenliste gleich AUSSIEHT. `INT_MAX` = nichts offen.
+    int  m_dirtyFrom = std::numeric_limits<int>::max();
 };

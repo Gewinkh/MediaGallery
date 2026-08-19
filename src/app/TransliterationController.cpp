@@ -12,13 +12,13 @@
 //  Standard-Zuordnungen
 // ─────────────────────────────────────────────────────────────────────────────
 //  ARABISCH: Buckwalter-nahe Konsonanten (inkl. gebräuchlicher Digraphen wie
-//  sh/kh/th) + Harakat als Kurzvokale — gemäß Wunsch: „a" = Fatha, „aa" = Alif,
+//  sh/kh/th) + Harakat als Kurzvokale - gemäß Wunsch: „a" = Fatha, „aa" = Alif,
 //  „>aa" = Alif mit Hamza UND Fatha. Tanwīn über Großbuchstaben-N (aN/iN/uN),
 //  damit „a"+„n" (Fatha + Nūn) eindeutig bleibt. Alles vom Nutzer editierbar.
 //
-//  JAPANISCH: Standard-Rōmaji → Hiragana (inkl. Yōon, Varianten shi/si usw.,
-//  x-Serie für kleine Kana, „nn" → ん, „-" → ー). Katakana wird aus derselben
-//  Tabelle ABGELEITET (Codepoint-Versatz +0x60 für ぁ…ゖ; ー bleibt) — eine
+//  JAPANISCH: Standard-Rōmaji -> Hiragana (inkl. Yōon, Varianten shi/si usw.,
+//  x-Serie für kleine Kana, „nn" -> ん, „-" -> ー). Katakana wird aus derselben
+//  Tabelle ABGELEITET (Codepoint-Versatz +0x60 für ぁ…ゖ; ー bleibt) - eine
 //  Quelle, kein Duplikat. Sokuon (っ/ッ) ist eine Motor-Regel, kein Key.
 // ─────────────────────────────────────────────────────────────────────────────
 namespace {
@@ -27,7 +27,7 @@ namespace {
 // Maps (kArabic/kHiragana) hochzählen. load() gleicht eine ältere gespeicherte
 // Datei dann EINMALIG mit den aktuellen Standards ab (fehlende Default-Keys werden
 // ergänzt) und stempelt die neue Version zurück. So verdeckt eine alte
-// transliteration.json nie neu hinzugekommene Keys wie „<"→ع.
+// transliteration.json nie neu hinzugekommene Keys wie „<"->ع.
 //  v1 (implizit, kein Feld): vor Einführung dieser Versionierung.
 //  v2: „ar" enthält jetzt „<"/„<a"/„<i"/„<u" (ع) sowie „gh" (statt früher „<g").
 constexpr int kMapsVersion = 2;
@@ -42,7 +42,7 @@ const Pair kArabic[] = {
     { ">",    u"\u0621" },   // ء
     { ">a",   u"\u0623" },   // أ
     { ">i",   u"\u0625" },   // إ
-    { ">u",   u"\u0623" },   // أ (Wortanfang → أُ; symmetrisch zu >a/>i)
+    { ">u",   u"\u0623" },   // أ (Wortanfang -> أُ; symmetrisch zu >a/>i)
     { ">ia",  u"\u0625\u0650" }, // إِ (Alif mit Hamza unten + sichtbare Kasra)
     { ">aa",  u"\u0622" },   // آ
     { ">w",   u"\u0624" },   // ؤ
@@ -83,7 +83,7 @@ const Pair kArabic[] = {
     { "uu", u"\u0648" },   // و (lang)
     { "w", u"\u0648" },    // و (lang)
     { "y", u"\u064A" },   // ي (lang)
-    { "\u00F6", u"\u0629" }, // ة  ← „ö" (die zwei Punkte spiegeln die Tā' marbūṭa)
+    { "\u00F6", u"\u0629" }, // ة  <- „ö" (die zwei Punkte spiegeln die Tā' marbūṭa)
     { "Y",  u"\u0649" },   // ى
 
     // =========================
@@ -92,7 +92,7 @@ const Pair kArabic[] = {
     { "a",  u"\u064E" },   // َ
     { "i",  u"\u0650" },   // ِ
     { "u",  u"\u064F" },   // ُ
-    // Tanwīn über GROSSES N — so bleibt „min" (مِن, echtes Nūn) von „…uN"
+    // Tanwīn über GROSSES N - so bleibt „min" (مِن, echtes Nūn) von „…uN"
     // (Tanwīn, KEIN Nūn-Buchstabe) eindeutig getrennt. Klein „an/in/un" ist
     // damit wieder Fatha/Kasra/Damma + Nūn.
     { "aN", u"\u064B" },   // ً
@@ -156,7 +156,7 @@ const Pair kHiragana[] = {
 
 // Sonnenbuchstaben (الحُروف الشَّمْسِيَّة): nach dem Artikel „al-" bekommt DIESER
 // Buchstabe eine Shadda und das Lām bleibt zeichenlos (الشَّمْس). Alle übrigen sind
-// Mondbuchstaben (الحُروف القَمَرِيَّة) → Sukun auf dem Lām (الْقَمَر).
+// Mondbuchstaben (الحُروف القَمَرِيَّة) -> Sukun auf dem Lām (الْقَمَر).
 bool isSunLetter(QChar c) {
     switch (c.unicode()) {
     case 0x062A: case 0x062B: case 0x062F: case 0x0630: // ت ث د ذ
@@ -170,7 +170,7 @@ bool isSunLetter(QChar c) {
 }
 
 // Buchstabe, auf dem eine Shadda sitzen darf (Verdopplungs-Merge B):
-// arabischer Konsonant ب…ي — Alif (ا, Langvokal-Träger) ausgenommen.
+// arabischer Konsonant ب…ي - Alif (ا, Langvokal-Träger) ausgenommen.
 bool isShaddaMergeable(QChar c) {
     const ushort u = c.unicode();
     return u >= 0x0628 && u <= 0x064A;   // ب … ي (0x0627 = ا liegt darunter)
@@ -183,7 +183,7 @@ bool isConsonantValue(const QString& v) {
     return u >= 0x0621 && u <= 0x064A;   // ء … ي (Harakat beginnen ab 0x064B)
 }
 
-// Hiragana-Ausgabe → Katakana (ぁ U+3041 … ゖ U+3096 → +0x60; ー unverändert).
+// Hiragana-Ausgabe -> Katakana (ぁ U+3041 … ゖ U+3096 -> +0x60; ー unverändert).
 QString toKatakana(const QString& hira) {
     QString out;
     out.reserve(hira.size());
@@ -213,7 +213,7 @@ TransliterationController::TransliterationController(QObject* parent)
 
 QHash<QString, QString> TransliterationController::defaultMap(const QString& scheme) {
     QHash<QString, QString> m;
-    // Keys als UTF-8 (statt Latin-1) — nötig für Nicht-ASCII-Keys wie „ö";
+    // Keys als UTF-8 (statt Latin-1) - nötig für Nicht-ASCII-Keys wie „ö";
     // ASCII bleibt unverändert, da UTF-8 dessen Obermenge ist.
     if (scheme == QLatin1String("ar")) {
         for (const Pair& p : kArabic)
@@ -245,7 +245,7 @@ void TransliterationController::rebuildDerived(SchemeData& sd) {
     }
     // Bindestrich gehört zum Lauf, obwohl er kein eigener Key ist: nur so bleibt
     // „al-shams" ein zusammenhängender Lauf für die Artikel-Erkennung. (Im
-    // Japanisch-Schema ist „-" ohnehin Key → hier redundant, aber unschädlich.)
+    // Japanisch-Schema ist „-" ohnehin Key -> hier redundant, aber unschädlich.)
     sd.alphabet.insert(QLatin1Char('-'));
 }
 
@@ -267,13 +267,13 @@ void TransliterationController::load() {
     const QString sc = o.value(QStringLiteral("scheme")).toString();
     if (schemes().contains(sc))
         m_scheme = sc;
-    // Versionsstand der Datei (fehlt bei v1-Dateien → 0, also älter als kMapsVersion).
+    // Versionsstand der Datei (fehlt bei v1-Dateien -> 0, also älter als kMapsVersion).
     const int fileVersion = o.value(QStringLiteral("mapsVersion")).toInt(0);
     const bool migrate    = (fileVersion < kMapsVersion);
     const QJsonObject maps = o.value(QStringLiteral("maps")).toObject();
     for (const QString& s : schemes()) {
         if (!maps.contains(s))
-            continue;                                // Schema unverändert → Standard
+            continue;                                // Schema unverändert -> Standard
         QHash<QString, QString> m;
         const QJsonArray arr = maps.value(s).toArray();
         for (const QJsonValue& v : arr) {
@@ -284,8 +284,8 @@ void TransliterationController::load() {
         }
         // Migration (einmalig, solange fileVersion < kMapsVersion): neu hinzugekommene
         // Standard-Keys ergänzen, die in der alten Datei fehlen. Nutzer-Änderungen an
-        // bestehenden Keys bleiben unangetastet (nur echte Lücken werden gefüllt) —
-        // so erscheint „<"→ع wieder, ohne die persönliche Tabelle zu überschreiben.
+        // bestehenden Keys bleiben unangetastet (nur echte Lücken werden gefüllt) -
+        // so erscheint „<"->ع wieder, ohne die persönliche Tabelle zu überschreiben.
         if (migrate) {
             const QHash<QString, QString> def = defaultMap(s);
             for (auto it = def.cbegin(); it != def.cend(); ++it)
@@ -296,7 +296,7 @@ void TransliterationController::load() {
         sd.map = m;
         rebuildDerived(sd);
     }
-    // Migrierten Stand samt neuer Versionsnummer zurückschreiben → der Abgleich
+    // Migrierten Stand samt neuer Versionsnummer zurückschreiben -> der Abgleich
     // läuft genau einmal, nicht bei jedem Start.
     if (migrate)
         save();
@@ -306,7 +306,7 @@ void TransliterationController::save() const {
     QJsonObject maps;
     for (auto it = m_schemes.cbegin(); it != m_schemes.cend(); ++it) {
         QJsonArray arr;
-        // Sortiert schreiben → stabile, diff-freundliche Datei.
+        // Sortiert schreiben -> stabile, diff-freundliche Datei.
         QStringList keys = it.value().map.keys();
         keys.sort();
         for (const QString& k : keys) {
@@ -393,11 +393,11 @@ QVariantMap TransliterationController::liveApply(const QString& text, int cursor
         --start;
 
     if (start == cursorPos) {
-        // Direkt vor dem Cursor steht KEIN mappbares Zeichen — typischerweise ein
+        // Direkt vor dem Cursor steht KEIN mappbares Zeichen - typischerweise ein
         // frisch getipptes Grenzzeichen (Leerzeichen/Zeilenumbruch/Satzzeichen).
         // Damit ist das vorige Wort abgeschlossen: den Lauf DAVOR „flushen", d. h.
         // noch wartende Präfix-Keys (z. B. schließendes „d" vor möglichem „dh",
-        // oder „a"→Fatḥa vor möglichem „aa") jetzt festschreiben.
+        // oder „a"->Fatḥa vor möglichem „aa") jetzt festschreiben.
         const int bpos = cursorPos - 1;              // Position des Grenzzeichens
         if (bpos < 0 || sd->alphabet.contains(text.at(bpos)))
             return r;
@@ -433,14 +433,14 @@ QVariantMap TransliterationController::liveApply(const QString& text, int cursor
 
     // Verdopplungs-Merge (B, nur „ar"): Beginnt die Ausgabe mit demselben
     // Konsonanten, der UNMITTELBAR vor dem Lauf steht, verschmelzen beide zu einem
-    // Buchstaben + Shadda („m" nach م → مّ). Greift nicht bei bereits gesetzter
+    // Buchstaben + Shadda („m" nach م -> مّ). Greift nicht bei bereits gesetzter
     // Shadda (kein Verdreifachen) und nicht bei Alif/Artikel-Ausgabe (beginnt mit ا).
     int repStart = start;
     if (m_scheme == QLatin1String("ar") && !out.isEmpty()
         && isShaddaMergeable(out.at(0)) && start > 0
         && text.at(start - 1) == out.at(0)
         && !(out.size() >= 2 && out.at(1) == QChar(0x0651))) {
-        out = QString(text.at(start - 1)) + QChar(0x0651) + out.mid(1);  // ← Shadda
+        out = QString(text.at(start - 1)) + QChar(0x0651) + out.mid(1);  // <- Shadda
         repStart = start - 1;
     }
 
@@ -466,11 +466,11 @@ int TransliterationController::longestConsonantKeyLen(const SchemeData& sd,
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-//  Kurzvokal am WORTANFANG → Alif-Träger (+ ggf. Hamza) + sichtbarer Kurzvokal.
+//  Kurzvokal am WORTANFANG -> Alif-Träger (+ ggf. Hamza) + sichtbarer Kurzvokal.
 //  Ein bloßes Harakat (Fatḥa/Kasra/Ḍamma) hat am Wortanfang keinen Träger; ein
 //  Alif springt ein. „>" verlangt zusätzlich eine Hamza (Hamzat al-qaṭʿ).
-//   „a"→اَ  „i"→اِ  „u"→اُ   „>a"→أَ  „>i"→إِ  „>u"→أُ
-//  (Langvokale „aa/ii/uu" und „>aa" tragen ihren Träger selbst → hier NICHT
+//   „a"->اَ  „i"->اِ  „u"->اُ   „>a"->أَ  „>i"->إِ  „>u"->أُ
+//  (Langvokale „aa/ii/uu" und „>aa" tragen ihren Träger selbst -> hier NICHT
 //   gelistet; sie laufen als normale Keys.)
 // ─────────────────────────────────────────────────────────────────────────────
 QString TransliterationController::wordInitialVowelCarrier(const QString& key) {
@@ -487,14 +487,14 @@ QString TransliterationController::wordInitialVowelCarrier(const QString& key) {
 
 // ─────────────────────────────────────────────────────────────────────────────
 //  Bestimmter Artikel „ال" am Wortanfang (nur Schema „ar").
-//  Eingabeformen (alle → identisches Ergebnis, bis auf die Hamza-Variante):
-//    • literal    „al-<Kons>"       z. B. al-shams → الشّ… , al-qamar → الْق…
+//  Eingabeformen (alle -> identisches Ergebnis, bis auf die Hamza-Variante):
+//    • literal    „al-<Kons>"       z. B. al-shams -> الشّ… , al-qamar -> الْق…
 //    • assimiliert „a<Sonne>-<Sonne>" z. B. ash-shams / ar-rahman / an-nur
-//    • mit „>" davor („>al-…"/„>as-s…") → das Alif trägt eine Hamza: أل statt ال.
-//  Regel: Sonnenbuchstabe → Shadda auf ihm (Lām zeichenlos);
-//         Mondbuchstabe   → Sukun auf dem Lām.
+//    • mit „>" davor („>al-…"/„>as-s…") -> das Alif trägt eine Hamza: أل statt ال.
+//  Regel: Sonnenbuchstabe -> Shadda auf ihm (Lām zeichenlos);
+//         Mondbuchstabe   -> Sukun auf dem Lām.
 //  Der Bindestrich ist reine Eingabesteuerung und erscheint nicht im Text.
-//  flush=true (Wortende): unfertige Zwischenformen NICHT abwarten → als „None"
+//  flush=true (Wortende): unfertige Zwischenformen NICHT abwarten -> als „None"
 //  zurückgeben (der Aufrufer verarbeitet den Lauf dann normal weiter).
 // ─────────────────────────────────────────────────────────────────────────────
 TransliterationController::ArticleMatch
@@ -502,13 +502,13 @@ TransliterationController::matchArticle(const SchemeData& sd, const QString& seg
                                         bool flush) const {
     ArticleMatch r;
     const int n = seg.size();
-    // Führendes „>" (optional) → Hamza auf dem Artikel-Alif.
+    // Führendes „>" (optional) -> Hamza auf dem Artikel-Alif.
     int off = 0;
     QChar alef(0x0627);                              // ا
     if (n > 0 && seg.at(0) == QLatin1Char('>')) { off = 1; alef = QChar(0x0623); } // أ
     if (off >= n || seg.at(off) != QLatin1Char('a'))
         return r;                                    // None
-    // „a" (bzw. „>a") allein — noch offen. Beim Flush kein Artikel.
+    // „a" (bzw. „>a") allein - noch offen. Beim Flush kein Artikel.
     if (off + 1 >= n) { if (!flush) r.state = ArticleMatch::Wait; return r; }
 
     // C1: Konsonant direkt nach „a".
@@ -549,7 +549,7 @@ TransliterationController::matchArticle(const SchemeData& sd, const QString& seg
     out.reserve(4);
     out.append(alef);                                // ا bzw. أ (bei „>")
     out.append(kLam);
-    // Literal „al-" + fremder Buchstabe: Lām ist real, Sonne→Shadda / Mond→Sukun.
+    // Literal „al-" + fremder Buchstabe: Lām ist real, Sonne->Shadda / Mond->Sukun.
     if (c1glyph == kLam && c2glyph != kLam) {
         if (isSunLetter(c2glyph)) { out.append(c2glyph); out.append(kShadda); }
         else                      { out.append(kSukun);  out.append(c2glyph); }
@@ -557,7 +557,7 @@ TransliterationController::matchArticle(const SchemeData& sd, const QString& seg
         // Assimiliert („aš-š…") oder „al-l…": C1 wird geschluckt, C2 mit Shadda.
         // Nur gültig, wenn C1==C2 (gleiche Sonnen-Einheit); sonst kein Artikel.
         if (c1glyph != c2glyph)
-            return ArticleMatch{};                   // None → normal weiterverarbeiten
+            return ArticleMatch{};                   // None -> normal weiterverarbeiten
         out.append(c2glyph);
         out.append(kShadda);
     }
@@ -577,7 +577,7 @@ QString TransliterationController::convertRun(const SchemeData& sd, const QStrin
     int i = 0;
     const int n = seg.size();
 
-    // Wortanfang (nur „ar"): erst Artikel, sonst führender Kurzvokal → Alif-Träger.
+    // Wortanfang (nur „ar"): erst Artikel, sonst führender Kurzvokal -> Alif-Träger.
     if (ar && wordStart) {
         const ArticleMatch am = matchArticle(sd, seg, flush);
         if (am.state == ArticleMatch::Wait)
@@ -586,8 +586,8 @@ QString TransliterationController::convertRun(const SchemeData& sd, const QStrin
             out += am.out;
             i = am.consumed;                         // Rest des Wortes läuft normal weiter
         } else {
-            // Kein Artikel → beginnt der Lauf mit einem Kurzvokal-Key (a/i/u bzw.
-            // >a/>i/>u), fehlt ihm am Wortanfang der Träger → Alif (+ ggf. Hamza)
+            // Kein Artikel -> beginnt der Lauf mit einem Kurzvokal-Key (a/i/u bzw.
+            // >a/>i/>u), fehlt ihm am Wortanfang der Träger -> Alif (+ ggf. Hamza)
             // voranstellen. Längeren Standard-Key (aa/>aa/ii/uu …) NICHT anfassen.
             int bestLen = 0;
             for (int len = qMin(sd.maxKeyLen, n); len >= 1; --len) {
@@ -596,7 +596,7 @@ QString TransliterationController::convertRun(const SchemeData& sd, const QStrin
             if (bestLen > 0) {
                 const QString k = seg.left(bestLen);
                 if (bestLen == n && sd.prefixes.contains(k) && !flush)
-                    return seg;                      // könnte noch wachsen → warten
+                    return seg;                      // könnte noch wachsen -> warten
                 const QString carrier = wordInitialVowelCarrier(k);
                 if (!carrier.isEmpty()) {
                     out += carrier;
@@ -616,14 +616,14 @@ QString TransliterationController::convertRun(const SchemeData& sd, const QStrin
             const QString k = seg.mid(i, bestLen);
             const bool reachesEnd = (i + bestLen == n);
             if (reachesEnd && sd.prefixes.contains(k) && !flush) {
-                // Könnte noch länger werden („a" vor möglichem „aa") → warten.
+                // Könnte noch länger werden („a" vor möglichem „aa") -> warten.
                 // Beim Flush (Wortende) NICHT warten, sondern den Key festschreiben.
                 out += seg.mid(i);
                 i = n;
                 continue;
             }
             // Verdopplung innerhalb des Laufs (B): derselbe Konsonant-Key folgt
-            // direkt (auch Digraphe: „shsh" → شّ). Langvokale aa/ii/uu sind KEINE
+            // direkt (auch Digraphe: „shsh" -> شّ). Langvokale aa/ii/uu sind KEINE
             // Konsonanten und bleiben unberührt.
             if (ar && isConsonantValue(sd.map.value(k))
                 && i + 2 * bestLen <= n && seg.mid(i + bestLen, bestLen) == k) {
@@ -636,22 +636,22 @@ QString TransliterationController::convertRun(const SchemeData& sd, const QStrin
             i += bestLen;
             continue;
         }
-        // Japanisch: Sokuon — verdoppelter Konsonant vor gültigem Key-Anfang
-        // („kka" → っか). „n" ausgenommen (Key „nn" → ん übernimmt das).
+        // Japanisch: Sokuon - verdoppelter Konsonant vor gültigem Key-Anfang
+        // („kka" -> っか). „n" ausgenommen (Key „nn" -> ん übernimmt das).
         if (ja && i + 1 < n && seg.at(i) == seg.at(i + 1)
             && seg.at(i) != QLatin1Char('n') && sd.starts.contains(seg.at(i))) {
             out += kata ? QStringLiteral("\u30C3") : QStringLiteral("\u3063");
             ++i;
             continue;
         }
-        // Rest ist Präfix eines Keys (z. B. „ky" vor „kya") → warten (außer Flush).
+        // Rest ist Präfix eines Keys (z. B. „ky" vor „kya") -> warten (außer Flush).
         const QString tail = seg.mid(i);
         if (sd.prefixes.contains(tail) && !flush) {
             out += tail;
             i = n;
             continue;
         }
-        // Kein Key, kein Präfix → Zeichen unverändert übernehmen.
+        // Kein Key, kein Präfix -> Zeichen unverändert übernehmen.
         out += seg.at(i);
         ++i;
     }

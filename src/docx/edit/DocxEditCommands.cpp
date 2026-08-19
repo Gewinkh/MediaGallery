@@ -18,7 +18,7 @@ void DocxReplaceBlocksCommand::snapshotTable(int tableId,
 }
 
 void DocxReplaceBlocksCommand::redo() {
-    //  QUndoStack::push ruft redo() sofort — die Mutation ist zu diesem
+    //  QUndoStack::push ruft redo() sofort - die Mutation ist zu diesem
     //  Zeitpunkt aber bereits am Dokument vollzogen (Scope-Muster des
     //  Controllers). Erst ECHTE Redos wenden den Nachher-Zustand an.
     if (m_firstRedo) {

@@ -3,7 +3,7 @@
 #include <QtEndian>
 
 // ─────────────────────────────────────────────────────────────────────────────
-//  CRC-32 — für BEIDE Bauarten dieselbe Eigenimplementierung. zlibs crc32()
+//  CRC-32 - für BEIDE Bauarten dieselbe Eigenimplementierung. zlibs crc32()
 //  wäre gleichwertig, aber dann liefen zwei Rechenwege durch die Tests statt
 //  einem; die Tabelle kostet 1 KB und ist bitgleich (tst_zcodec prüft das
 //  gegen zlib, wenn zlib da ist).
@@ -124,7 +124,7 @@ QByteArray deflate(const QByteArray& src, Wrap wrap, int level, bool* ok) {
 #else
 // ─────────────────────────────────────────────────────────────────────────────
 //  Ohne zlib: Qt-Codecs. qCompress/qUncompress stecken in QtCore und benutzen
-//  das zlib, das Qt ohnehin mitbringt — es fehlt nur dessen Kopf-Datei.
+//  das zlib, das Qt ohnehin mitbringt - es fehlt nur dessen Kopf-Datei.
 //
 //  Rahmenkunde, auf der beide Richtungen beruhen:
 //      qCompress-Ausgabe = [4 B Größe, big-endian][2 B zlib-Kopf][Deflate][4 B Adler-32]
@@ -140,7 +140,7 @@ QByteArray inflate(const QByteArray& src, Wrap wrap, qint64 sizeHint,
     if (src.isEmpty() || sizeHint > kMaxOutput) return {};
 
     //  Roh-Deflate ist ohne zlib nicht entpackbar: qUncompress prüft am Ende
-    //  einen Adler-32 über den entpackten Daten — der lässt sich vorher nicht
+    //  einen Adler-32 über den entpackten Daten - der lässt sich vorher nicht
     //  bilden. Betrifft ZIP-Einträge (DOCX-Lesen).
     if (wrap == Wrap::Raw) return {};
     //  gzip-Kopf (1F 8B) kann qUncompress ebenfalls nicht; in PDF kommt er
@@ -149,7 +149,7 @@ QByteArray inflate(const QByteArray& src, Wrap wrap, qint64 sizeHint,
         && quint8(src[0]) == 0x1Fu && quint8(src[1]) == 0x8Bu)
         return {};
 
-    //  Größenangabe ist für qUncompress nur der ERSTE Puffer — ist sie zu
+    //  Größenangabe ist für qUncompress nur der ERSTE Puffer - ist sie zu
     //  klein, verdoppelt Qt selbst und entpackt erneut. Zu großzügig raten
     //  kostet RAM, zu knapp kostet Durchläufe; Faktor 6 trifft die üblichen
     //  Verhältnisse von PDF-Inhaltsströmen.
@@ -173,7 +173,7 @@ QByteArray deflate(const QByteArray& src, Wrap wrap, int level, bool* ok) {
     const bool raw = (wrap == Wrap::Raw);
 
     //  Sonderfall leere Eingabe: qCompress liefert dann NUR die 4 Byte
-    //  Größenangabe und gar keinen Deflate-Strom. Beide Rahmen von Hand —
+    //  Größenangabe und gar keinen Deflate-Strom. Beide Rahmen von Hand -
     //  03 00 ist der leere Endblock, 00 00 00 01 der Adler-32 von "nichts",
     //  78 01 ein gültiger zlib-Kopf (0x7801 % 31 == 0).
     if (src.isEmpty()) {

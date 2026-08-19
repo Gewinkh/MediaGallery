@@ -1,28 +1,28 @@
 #pragma once
 // ─────────────────────────────────────────────────────────────────────────────
-//  DocxDocument — verlusterhaltendes Absatz-/Textlauf-Modell einer .docx-Datei.
+//  DocxDocument - verlusterhaltendes Absatz-/Textlauf-Modell einer .docx-Datei.
 //
 //  VERLUSTERHALTUNGS-PRINZIP (bindend, §0): word/document.xml wird EINMAL
 //  dekodiert (m_docXml) und jeder Absatz/Textlauf merkt sich seine Herkunft
 //  als SPAN [start,len) in diesem Original. Beim Speichern werden:
 //   • unangetastete Blöcke/Runs als ORIGINAL-TEILSTRING re-emittiert
-//     (→ byteidentisch nach UTF-8-Re-Encoding),
+//     (-> byteidentisch nach UTF-8-Re-Encoding),
 //   • geänderte Absätze aus ihren Teilen zusammengesetzt, wobei unberührte
 //     Fragmente (Start-Tag, pPr, rPr, opake Runs) VERBATIM aus dem Original
-//     stammen — nur die tatsächlich betroffenen Knoten ändern sich,
+//     stammen - nur die tatsächlich betroffenen Knoten ändern sich,
 //   • alle übrigen ZIP-Einträge byteidentisch roh kopiert (DocxZip::addRaw).
 //  Das Dokument wird NIE komplett aus dem Editier-Modell neu generiert.
 //
 //  SELBSTPRÜFUNG: Direkt nach dem Parsen wird das Original aus Prefix +
 //  Block-Spans + Suffix rekonstruiert und mit m_docXml verglichen. Nur bei
-//  exakter Übereinstimmung ist die Datei editierbar — sonst schlägt load()
+//  exakter Übereinstimmung ist die Datei editierbar - sonst schlägt load()
 //  fehl (lieber nicht editieren als still Inhalte verlieren).
 //
 //  Text-Sentinels im entkodierten Run-Text (Rückabbildung beim Serialisieren):
 //   '\t' = <w:tab/> · U+2028 = <w:br/>/<w:cr/> (QTextLayout-Zeilenumbruch) ·
 //   U+E000 = <w:br w:type="page"/> (Seitenumbruch-MARKER, Aufgabe 2) ·
 //   U+E001 = <w:br w:clear="all"/> (weiter UNTER allen Stoerern) ·
-//   U+FFFC = atomarer opaker Run (Zeichnung/Feld — Raw bleibt verbatim).
+//   U+FFFC = atomarer opaker Run (Zeichnung/Feld - Raw bleibt verbatim).
 // ─────────────────────────────────────────────────────────────────────────────
 
 #include <QString>
@@ -93,13 +93,13 @@ struct Run {
 
     QString text;               // entkodiert (inkl. Sentinels)
     RunFmt  fmt;                // direkte Formatierung (geparst)
-    bool    opaque = false;     // nicht verstandener Run — Raw bleibt verbatim
-    bool    dirty  = false;     // Text/Format geändert → aus Teilen serialisieren
+    bool    opaque = false;     // nicht verstandener Run - Raw bleibt verbatim
+    bool    dirty  = false;     // Text/Format geändert -> aus Teilen serialisieren
 
     //  ── Änderungsverfolgung (nur ANZEIGE, „Dekorator") ───────────────────────
     //  Word markiert Einfügungen mit `w:ins`, Löschungen mit `w:del`. Gedeutet
     //  wird hier NUR, wie es aussieht: eingefügter Text unterstrichen,
-    //  gelöschter durchgestrichen. Die Struktur bleibt unangetastet — beim
+    //  gelöschter durchgestrichen. Die Struktur bleibt unangetastet - beim
     //  Speichern geht der Roh-Bereich verbatim heraus.
     enum Revision { RevNone = 0, RevInserted, RevDeleted };
     Revision revision = RevNone;
@@ -107,7 +107,7 @@ struct Run {
 
     //  ── Ersatz-ROHFORM (Änderungsverfolgung annehmen/verwerfen) ──────────────
     //  Ein opaker Run geht sonst BYTEGLEICH heraus. Wird eine Änderung
-    //  angenommen oder verworfen, ändert sich genau dieser Roh-Bereich —
+    //  angenommen oder verworfen, ändert sich genau dieser Roh-Bereich -
     //  darüber, nicht über eine Mutation der Dokument-XML: die Spans ALLER
     //  späteren Blöcke hängen an deren Offsets. Leer = unverändert.
     QString rawOverride;
@@ -123,8 +123,8 @@ struct Run {
 struct Block {
     enum Kind {
         Paragraph = 0,
-        OpaqueVisible,          // z. B. w:tbl — Platzhalter in der Anzeige
-        OpaqueHidden            // z. B. w:sectPr, bookmarkStart — unsichtbar
+        OpaqueVisible,          // z. B. w:tbl - Platzhalter in der Anzeige
+        OpaqueHidden            // z. B. w:sectPr, bookmarkStart - unsichtbar
     };
     Kind    kind = Paragraph;
     Span    rawSpan;            // gesamter Block im Original
@@ -136,12 +136,12 @@ struct Block {
 
     QList<Run> runs;
     ParFmt  pfmt;
-    bool    dirty = false;      // Struktur/Text geändert → Absatz serialisieren
+    bool    dirty = false;      // Struktur/Text geändert -> Absatz serialisieren
 
     //  Tabellen-Zugehörigkeit (Option A: Zellinhalt liegt FLACH in `blocks`).
     //  tableId = Index in Document::tables(), −1 = kein Tabellenblock.
     //  `col` ist der laufende Index der Zelle IN IHRER ZEILE (dicht, 0-basiert)
-    //  — nicht die Gitterspalte; w:gridSpan wird erst im Layout aufgelöst.
+    //  - nicht die Gitterspalte; w:gridSpan wird erst im Layout aufgelöst.
     int     tableId = -1;
     int     row = -1, col = -1;
 
@@ -162,7 +162,7 @@ struct Block {
     }
 };
 
-// ── Seiteneinrichtung (w:sectPr) — Grundlage der Paginierung ─────────────────
+// ── Seiteneinrichtung (w:sectPr) - Grundlage der Paginierung ─────────────────
 //  Alle Längen in TWIPS (1/1440 Zoll), also genau so, wie sie im OOXML stehen;
 //  die Umrechnung in Pixel gehört in die Anzeige (DocxTextArea::kPtToPx).
 struct SectionProps {
@@ -178,15 +178,15 @@ struct SectionProps {
 //  Nur Anzeige-Daten: die Formatwerte selbst bleiben privat (StyleDef) und
 //  werden ausschließlich über resolveRun/resolvePar wirksam.
 struct StyleInfo {
-    QString id;                 // w:styleId — steht so im w:pStyle
+    QString id;                 // w:styleId - steht so im w:pStyle
     QString name;               // w:name (Anzeige; bei Bedarf = id)
-    bool    isDefault = false;  // w:default="1" → pStyle wird ENTFERNT
+    bool    isDefault = false;  // w:default="1" -> pStyle wird ENTFERNT
 };
 
-// ── Tabellen-GERÜST (w:tbl) — die Klammern um den Zellinhalt ─────────────────
+// ── Tabellen-GERÜST (w:tbl) - die Klammern um den Zellinhalt ─────────────────
 //  Der Zellinhalt selbst sind reguläre `Paragraph`-Blöcke in `Document::blocks`
 //  (Option A). Hier stehen nur die XML-Klammern, die beim Serialisieren wieder
-//  darum gelegt werden — als Spans ins Original, also verlusterhaltend.
+//  darum gelegt werden - als Spans ins Original, also verlusterhaltend.
 //
 //  WARUM AUCH DIE SCHLUSS-TAGS als Span und nicht als Literal "</w:tc>": zwischen
 //  zwei Zellen dürfen Leerraum, Kommentare und Verarbeitungsanweisungen stehen.
@@ -204,35 +204,35 @@ struct TableDef {
     QVector<Span> rowEndSpans;   // je Zeile: "</w:tr>"
     QVector<Span> cellSpans;     // je Zelle: "<w:tc>" + tcPr
     QVector<Span> cellEndSpans;  // je Zelle: "</w:tc>"
-    QVector<int>  cellRow;       // Zelle → Zeilenindex
-    QVector<int>  rowFirstCell;  // Zeile → erster Zellindex (Zelle = rowFirstCell+col)
+    QVector<int>  cellRow;       // Zelle -> Zeilenindex
+    QVector<int>  rowFirstCell;  // Zeile -> erster Zellindex (Zelle = rowFirstCell+col)
     //  Gitter-Maße: beim Parsen mitgenommen, damit das LAYOUT die Tabelle ohne
     //  erneutes XML-Parsen aus den lebenden Zell-Blöcken bauen kann.
-    QVector<int>  gridTw;        // w:tblGrid/w:gridCol — Spaltenbreiten in Twips
+    QVector<int>  gridTw;        // w:tblGrid/w:gridCol - Spaltenbreiten in Twips
     QVector<int>  cellGridSpan;  // je Zelle: w:gridSpan (1 = keine Spanne)
     QVector<int>  cellWidthTw;   // je Zelle: w:tcW (0 = aus dem Gitter ableiten)
     int parentTableId = -1;      // −1 = oberste Ebene
     int parentCellIndex = -1;    // Zelle des Elternteils, die diese Tabelle enthält
 
     //  MATERIALISIERTE Gerüst-Teile (Muster Block::pprXml): sobald das Gerüst
-    //  selbst geändert wird — w:tblGrid beim Spaltenwechsel, w:tcW je Zelle —
+    //  selbst geändert wird - w:tblGrid beim Spaltenwechsel, w:tcW je Zelle -
     //  emittiert emitBlocks diesen String statt des Spans. Leer = Span nehmen.
     //  Solange nichts berührt wurde, bleibt der Schnellpfad „ganzer w:tbl als
     //  Original-Teilstring" und damit die Byte-Identität erhalten.
     QString headerXml;
     QVector<QString> cellXml;    // je Zelle (Größe == cellSpans oder leer)
-    //  Gerüst geändert → emitBlocks darf den Schnellpfad NICHT nehmen, auch
+    //  Gerüst geändert -> emitBlocks darf den Schnellpfad NICHT nehmen, auch
     //  wenn keine einzige Zelle „dirty" ist (Zeile eingefügt/gelöscht usw.).
     bool structDirty = false;
     //  Zahl der Zellblöcke beim Zerlegen bzw. Bauen. Wird ein Block in eine
     //  Zelle EINGEFÜGT oder daraus ENTFERNT, ohne dass eine Zelle „dirty" wird
     //  (Bild/PDF-Seite/Verzeichnis einfügen, Bild löschen), stimmt die Zahl
-    //  nicht mehr — und der Schnellpfad muss entfallen, sonst emittiert er den
+    //  nicht mehr - und der Schnellpfad muss entfallen, sonst emittiert er den
     //  alten Original-Teilstring und der neue Inhalt geht beim Speichern
     //  verloren. Zusätzlich prüft emitBlocks die Span-Lage jedes Blocks.
     int blockCount = 0;
 
-    //  Gesamter <w:tbl>…</w:tbl>-Bereich — Schnellpfad beim Speichern.
+    //  Gesamter <w:tbl>…</w:tbl>-Bereich - Schnellpfad beim Speichern.
     Span rawSpan() const {
         const int end = footerSpan.start + footerSpan.len;
         return { headerSpan.start, end - headerSpan.start };
@@ -243,7 +243,7 @@ struct TableDef {
 //  Reine Darstellungssicht: die Tabelle bleibt im Blockmodell EIN
 //  `OpaqueVisible`-Block und wird beim Speichern byteidentisch aus dem Original
 //  übernommen. Diese Struktur wird nur zum Auslegen/Zeichnen gebaut (und mit dem
-//  Layout wieder freigegeben) — sie ist NICHT die Bearbeitungsdarstellung.
+//  Layout wieder freigegeben) - sie ist NICHT die Bearbeitungsdarstellung.
 struct TableCell {
     QList<Block> paragraphs;    // nur pfmt + runs gefüllt (Spans nicht nötig)
     int gridSpan = 1;
@@ -253,16 +253,16 @@ struct TableRow {
     QList<TableCell> cells;
 };
 struct TableView {
-    QList<int> gridTw;          // w:tblGrid — Spaltenbreiten in Twips
+    QList<int> gridTw;          // w:tblGrid - Spaltenbreiten in Twips
     QList<TableRow> rows;
-    bool ok = false;            // false → Platzhalter zeichnen wie bisher
+    bool ok = false;            // false -> Platzhalter zeichnen wie bisher
 };
 
 // ── Eintrag eines Inhaltsverzeichnisses ──────────────────────────────────────
 //  Die Einträge werden NICHT in der Datei gespeichert: das Feld bleibt
 //  deklarativ (`w:fldSimple` mit der TOC-Anweisung, ohne eingebackene
 //  Seitenzahlen), Word rechnet die Zahlen selbst. Unsere Anzeige leitet sie aus
-//  der eigenen Paginierung ab — deshalb reicht hier Text, Ebene und der Block,
+//  der eigenen Paginierung ab - deshalb reicht hier Text, Ebene und der Block,
 //  auf den der Eintrag zeigt.
 struct TocEntry {
     QString text;
@@ -270,7 +270,7 @@ struct TocEntry {
     int     block = -1;         // Index in Document::blocks
     //  Zeichenposition des ZEILENANFANGS in `Block::plainText()`. Ein Absatz
     //  kann mehrere Überschriften tragen (nur durch `w:br` getrennt) und über
-    //  eine Seitengrenze laufen — dann gilt die Seitenzahl des Blocks nicht mehr
+    //  eine Seitengrenze laufen - dann gilt die Seitenzahl des Blocks nicht mehr
     //  für jeden Eintrag. Verbraucher: `DocxTextArea::pageOfEntry` und der
     //  PDF-Export.
     int     pos   = 0;
@@ -280,13 +280,13 @@ struct TocEntry {
 //  Der Run bleibt ein atomarer opaker Run (Bytes unangetastet); das hier ist
 //  nur, was die ANZEIGE braucht.
 struct InlineImage {
-    QString relId;              // r:embed → Beziehung → word/media/…
+    QString relId;              // r:embed -> Beziehung -> word/media/…
     int cxEmu = 0, cyEmu = 0;   // wp:extent (EMU: 1 Zoll = 914400)
     int run = -1;               // Index des Bild-Runs im Block
     int pos = 0;                // Zeichenposition des U+FFFC im Absatztext
     //  ── Verankert statt „in der Zeile" (wp:anchor statt wp:inline) ──────────
     //  Ein verankertes Bild steht NICHT im Zeilenfluss: der Text fließt um sein
-    //  Rechteck herum. `wrap` sagt, wie — nur `Square` wird ausgelegt, alles
+    //  Rechteck herum. `wrap` sagt, wie - nur `Square` wird ausgelegt, alles
     //  Übrige (durchlaufend/hinter dem Text) verhält sich wie `None`.
     enum Wrap { WrapNone = 0, WrapSquare = 1 };
     //  Auf WELCHER Seite des Bildes der Text laufen darf (`w:wrapSquare`
@@ -323,12 +323,12 @@ public:
     //  Speichern über gezieltes XML-Splicing + ZIP-Roh-Kopie: newDocumentXml()
     //  baut das neue document.xml, replacementParts() liefert zusätzlich zu
     //  ersetzende/neue ZIP-Einträge (numbering.xml, [Content_Types].xml,
-    //  word/_rels/document.xml.rels — nur wenn Listen-Infrastruktur nötig
+    //  word/_rels/document.xml.rels - nur wenn Listen-Infrastruktur nötig
     //  wurde). writeTo() schreibt den kompletten Container auf ein QIODevice.
     QString newDocumentXml() const;
     QHash<QString, QByteArray> replacementParts() const;
     bool writeTo(QIODevice* target, QString* err = nullptr) const;
-    //  Wie oben, zusätzlich mit FREMDEN Ersatzteilen — so schreibt der
+    //  Wie oben, zusätzlich mit FREMDEN Ersatzteilen - so schreibt der
     //  Controller weitere Teile mit (Nummerierung, Medien, Vorlagen).
     bool writeTo(QIODevice* target, const QHash<QString, QByteArray>& extraParts,
                  QString* err) const;
@@ -342,7 +342,7 @@ public:
     RunFmt resolveRun(const Block& b, const Run& r) const;
     //  Zeichenformat der ABSATZMARKE (`w:pPr/w:rPr`), über das aufgelöste
     //  Absatzformat gelegt. Word legt dort das Format der Marke ab und
-    //  wendet es auf ein Feldergebnis an — der Editor stellt darüber
+    //  wendet es auf ein Feldergebnis an - der Editor stellt darüber
     //  Schriftart und -größe des Inhaltsverzeichnisses ein.
     RunFmt paragraphMarkFormat(const Block& b) const;
     ParFmt resolvePar(const Block& b) const;
@@ -350,7 +350,7 @@ public:
 
     //  true, wenn IRGENDEINE Absatzvorlage (oder docDefaults) eine Nummerierung
     //  mitbringt. Ist es false, kann resolvePar(b).numId ausschliesslich aus
-    //  b.pfmt stammen — Aufrufer, die nur an der Nummerierung interessiert
+    //  b.pfmt stammen - Aufrufer, die nur an der Nummerierung interessiert
     //  sind (DocxTextArea::rebuildMarkers, laeuft ueber ALLE Bloecke bei jedem
     //  Tastendruck), duerfen die Vorlagenaufloesung dann komplett ueberspringen.
     bool stylesMayNumber() const { return m_stylesMayNumber; }
@@ -358,16 +358,16 @@ public:
     // ── Absatzvorlagen (Formatvorlagen) ──────────────────────────────────────
     //  Die im Dokument definierten ABSATZ-Vorlagen in Reihenfolge der
     //  styles.xml, gefiltert auf die dem Nutzer zumutbaren (s. .cpp). Leer,
-    //  wenn die Datei keine styles.xml mitbringt → die Auswahlliste entfällt.
+    //  wenn die Datei keine styles.xml mitbringt -> die Auswahlliste entfällt.
     const QList<StyleInfo>& paragraphStyles() const { return m_parStyles; }
     //  w:styleId der Standard-Absatzvorlage (w:default="1"), sonst leer.
     QString defaultParagraphStyleId() const { return m_defaultParStyle; }
     //  Kennt das Dokument diese Vorlage überhaupt? (w:pStyle auf eine
-    //  undefinierte id löst wie eine fehlende Vorlage auf — also gar nicht.)
+    //  undefinierte id löst wie eine fehlende Vorlage auf - also gar nicht.)
     bool hasStyle(const QString& id) const { return m_styles.contains(id); }
     //  Überschriftvorlage `Heading<level>` SICHERSTELLEN (level 1…9) und ihre
     //  styleId liefern; leer bei unsinnigem Level. Die meisten .docx bringen
-    //  keine mit — ohne das ließe sich in ihnen keine Überschrift schreiben.
+    //  keine mit - ohne das ließe sich in ihnen keine Überschrift schreiben.
     //  Neu angelegte Vorlagen gehen beim Speichern nach `word/styles.xml`
     //  (s. stylesParts()); ein Undo lässt sie stehen, sie sind dann inert.
     QString ensureHeadingStyle(int level);
@@ -379,8 +379,8 @@ public:
     //  trotzdem trägt, wird es an `m_docXml` ANGEHÄNGT und die neuen Spans
     //  zeigen dorthin: bestehende Offsets bleiben gültig (es wird nur
     //  angehängt), Emission und Undo brauchen keinen Sonderfall. Der Anhang
-    //  wird NIE als Ganzes emittiert — er ist reiner Textspeicher.
-    int appendPool(const QString& xml);          // → Start-Offset im Pool
+    //  wird NIE als Ganzes emittiert - er ist reiner Textspeicher.
+    int appendPool(const QString& xml);          // -> Start-Offset im Pool
 
     //  Leere Tabelle VOR `beforeBlock` einfügen (rows×cols, gleichmäßiges
     //  Gitter über die Textbreite). Liefert den Index des ersten neuen
@@ -392,10 +392,10 @@ public:
     bool isTocParagraph(const Block& b) const;
     //  Überschriften des Dokuments als Verzeichnis-Einträge, in Lesereihenfolge.
     //  Erkannt wird die Absatzvorlage `HeadingN` (so heißt sie in JEDER
-    //  Sprachfassung von Word — der Anzeigename ist übersetzt, die styleId
+    //  Sprachfassung von Word - der Anzeigename ist übersetzt, die styleId
     //  nicht). Blöcke in Tabellenzellen bleiben außen vor.
     QList<TocEntry> tocEntries(int maxLevel = 3) const;
-    //  Inhaltsverzeichnis VOR `beforeBlock` einfügen — als `w:fldSimple` OHNE
+    //  Inhaltsverzeichnis VOR `beforeBlock` einfügen - als `w:fldSimple` OHNE
     //  eingebackene Seitenzahlen: die Datei bleibt deklarativ und Word rechnet
     //  die Zahlen selbst; unsere Anzeige füllt sie aus der eigenen Paginierung.
     //  Liefert den Blockindex, −1 bei unbrauchbaren Maßen.
@@ -416,7 +416,7 @@ public:
                         qint64 cxEmu = 0, qint64 cyEmu = 0);
     //  Bild MITTEN in einen Absatz setzen: als `w:drawing`-Run VOR `runIdx`
     //  (der Aufrufer hat dort bereits eine Run-Grenze erzeugt). Das ist der
-    //  Weg, auf dem zwei Bilder nebeneinander und Text daneben entstehen —
+    //  Weg, auf dem zwei Bilder nebeneinander und Text daneben entstehen -
     //  in der Datei ganz normales `wp:inline`, wie Word es schreibt.
     //  Liefert den Run-Index, −1 bei Fehler (Text in `err`).
     int insertImageRunAt(int blockIdx, int runIdx, const QByteArray& bytes,
@@ -424,7 +424,7 @@ public:
                          qint64 cxEmu = 0, qint64 cyEmu = 0);
     //  Größe eines EINGEBETTETEN Bildes ändern (wp:extent + a:ext in pic:spPr).
     //  Der Bild-Run bleibt opak; geschrieben wird eine NEUE Zeichnung in den
-    //  Anhang-Pool, auf die der Run zeigt — das Original bleibt unangetastet.
+    //  Anhang-Pool, auf die der Run zeigt - das Original bleibt unangetastet.
     //  false, wenn der Block kein reiner Bild-Absatz ist.
     bool setImageSizeEmu(int blockIdx, qint64 cxEmu, qint64 cyEmu);
     //  Dasselbe für EIN Bild eines Absatzes, der auch Text tragen kann.
@@ -432,24 +432,24 @@ public:
     //  UMBRUCHART eines Bildes: `wp:inline` (in der Zeile) ⇄ `wp:anchor` +
     //  `w:wrapSquare` (Text fließt daneben). Umgeschrieben wird wie bei der
     //  Größe: der Roh-Span des Bild-Runs wird materialisiert, die neue
-    //  Zeichnung kommt in den Anhang-Pool, der Run zeigt dorthin — alles
+    //  Zeichnung kommt in den Anhang-Pool, der Run zeigt dorthin - alles
     //  Übrige am Bild (Zuschnitt, Effekte, Alternativtext) bleibt unangetastet.
     //  false, wenn der Run kein deutbares `w:drawing` trägt.
     bool setImageWrap(int blockIdx, int runIdx, bool floating);
     //  Bild-RUN in einen ANDEREN Absatz umhängen (Anker wechselt den Absatz,
     //  wie in Word beim Ablegen über einem anderen Absatz). Der Run wandert
-    //  unverändert mit seinem Roh-Span — Zeichnung, Zuschnitt und Größe bleiben
+    //  unverändert mit seinem Roh-Span - Zeichnung, Zuschnitt und Größe bleiben
     //  also byteweise erhalten; nur seine LAGE ist danach relativ zum neuen
     //  Absatz und wird vom Aufrufer über `setImageAnchorEmu` nachgezogen.
     //  Liefert den Run-Index im Zielabsatz, −1 wenn nicht möglich.
     int moveImageRun(int srcBlock, int runIdx, int dstBlock);
     //  LAGE eines verankerten Bildes (`wp:positionH/V` ▸ `wp:posOffset`, EMU,
-    //  relativ zu Textspalte und Absatz) — das, was Ziehen mit der Maus
+    //  relativ zu Textspalte und Absatz) - das, was Ziehen mit der Maus
     //  schreibt. false, wenn das Bild in der Zeile steht oder sich nichts ändert.
     bool setImageAnchorEmu(int blockIdx, int runIdx, int posXEmu, int posYEmu);
     //  UMBRUCHSEITE eines verankerten Bildes (`InlineImage::WrapSide`).
     bool setImageWrapSide(int blockIdx, int runIdx, int side);
-    //  Das Bild EINES Runs (Lage/Umbruchseite/Maße) — false, wenn dieser Run
+    //  Das Bild EINES Runs (Lage/Umbruchseite/Maße) - false, wenn dieser Run
     //  keine deutbare Zeichnung trägt.
     bool imageOfRun(int blockIdx, int runIdx, InlineImage* out) const;
 
@@ -467,7 +467,7 @@ public:
     int  tableColumnCount(int tableId) const;   // Zellen der ersten Zeile
     //  Nur gleichmäßige Gitter sind strukturell änderbar: verbundene Zellen
     //  (w:gridSpan/w:vMerge/w:hMerge) oder Zeilen mit ungleicher Zellzahl
-    //  werden NICHT angefasst — lieber ablehnen als das Gitter zerreißen.
+    //  werden NICHT angefasst - lieber ablehnen als das Gitter zerreißen.
     bool tableStructEditable(int tableId) const;
     //  Spaltenbreiten in Twips (Gitter + je Zelle w:tcW). Größe muss der
     //  Spaltenzahl entsprechen.
@@ -493,16 +493,16 @@ public:
 
     // ── Bilder & weitere ZIP-Teile (ANZEIGE) ─────────────────────────────────
     //  Enthält der Absatz GENAU ein eingebettetes Bild (und sonst keinen
-    //  sichtbaren Text)? Nur dieser Fall wird dargestellt — ein Bild MITTEN im
+    //  sichtbaren Text)? Nur dieser Fall wird dargestellt - ein Bild MITTEN im
     //  Text bräuchte einen Inline-Objekt-Handler, den QTextLayout ohne
     //  QTextDocument nicht kennt; es bleibt dann der graue Platzhalter.
     bool paragraphImage(const Block& b, InlineImage* out) const;
     //  ALLE Bilder eines Absatzes in Textreihenfolge (Run-Index + Zeichenstelle
     //  des Objekt-Zeichens). Grundlage der Anzeige „Bild im Fließtext".
     QVector<InlineImage> paragraphImages(const Block& b) const;
-    //  Beziehungsziel (`rId…` → z. B. "media/bild1.png"), leer wenn unbekannt.
+    //  Beziehungsziel (`rId…` -> z. B. "media/bild1.png"), leer wenn unbekannt.
     QString relTarget(const QString& relId) const;
-    //  EINEN Eintrag aus dem Container nachladen (öffnet das ZIP erneut — die
+    //  EINEN Eintrag aus dem Container nachladen (öffnet das ZIP erneut - die
     //  Bytes werden bewusst NICHT gehalten, s. RAM-Priorität).
     QByteArray partBytes(const QString& zipPath) const;
     //  Bilddaten hinter einer Beziehung; leer bei unbekannter/fremder Zielart.
@@ -513,13 +513,13 @@ public:
     //  eine Löschung wird ausgeführt. `!accept` = zurücknehmen: die Einfügung
     //  verschwindet, der gelöschte Text kommt zurück.
     //  Gearbeitet wird über `Run::rawOverride` und Entfernen von Runs, NICHT
-    //  über eine Mutation der Dokument-XML — sonst verschöben sich die Spans
+    //  über eine Mutation der Dokument-XML - sonst verschöben sich die Spans
     //  aller späteren Blöcke. false = an dieser Stelle steht keine Änderung.
     bool applyRevision(int blockIdx, int runIdx, bool accept);
 
     // ── Seiteneinrichtung ────────────────────────────────────────────────────
     //  Die Werte des LETZTEN w:sectPr im Körper (das für den Hauptteil gilt).
-    //  Abschnittswechsel mitten im Dokument werden bewusst nicht abgebildet —
+    //  Abschnittswechsel mitten im Dokument werden bewusst nicht abgebildet -
     //  eine Seitengeometrie je Dokument; ohne w:sectPr bleibt es bei A4.
     const SectionProps& section() const { return m_section; }
 
@@ -534,14 +534,14 @@ public:
     static QByteArray emptyDocxBytes(const QString& title);   // leeres A4-Dokument
     static QString    plainTextPreview(const QString& path, int maxLines);
     static QString    xmlEscape(const QString& s);
-    static QString    serializeRunsText(const QString& text); // Text → <w:t>/…
+    static QString    serializeRunsText(const QString& text); // Text -> <w:t>/…
     //  <w:rPr>-Fragment aus einem RunFmt (öffentlich: der Controller schreibt
     //  damit das Zeichenformat des Inhaltsverzeichnis-Absatzes in dessen
-    //  w:pPr/w:rPr — der Feld-Run selbst bleibt opak und unangetastet).
+    //  w:pPr/w:rPr - der Feld-Run selbst bleibt opak und unangetastet).
     QString buildRPrXml(const RunFmt& f) const;
 
     //  Kanonisch geordnetes Einfügen/Ersetzen EINES Property-Elements in einem
-    //  bestehenden <w:rPr>/<w:pPr>-Fragment — alle übrigen Kinder bleiben
+    //  bestehenden <w:rPr>/<w:pPr>-Fragment - alle übrigen Kinder bleiben
     //  verbatim erhalten (öffentlich für gezielte Tests).
     static QString upsertProp(const QString& prXml, const QString& wrapTag,
                               const QString& propName, const QString& newXml,
@@ -566,18 +566,18 @@ private:
                              bool requireModeChange);
 
     bool parseDocumentXml(QString* err);
-    void parseSectPr(QStringView xml);       // w:pgSz/w:pgMar/w:cols → m_section
+    void parseSectPr(QStringView xml);       // w:pgSz/w:pgMar/w:cols -> m_section
     bool parseStylesXml(const QByteArray& xml);
     bool parseNumberingXml(const QByteArray& xml);
 
     QString buildParagraphXml(const Block& b) const;
     //  Gemeinsamer Lauf über die Blöcke: Tabellen werden als GRUPPE
-    //  emittiert (Gerüst + Zellinhalt). `rawOnly` = nur Original-Spans —
+    //  emittiert (Gerüst + Zellinhalt). `rawOnly` = nur Original-Spans -
     //  damit prüft die Selbstprüfung genau den Weg, den auch das
     //  Speichern unangetasteter Teile nimmt.
     QString emitBlocks(bool rawOnly) const;
 public:
-    //  Der geladene TEIL als vollständiges XML (Prefix + Blöcke + Suffix) —
+    //  Der geladene TEIL als vollständiges XML (Prefix + Blöcke + Suffix) -
     //  genau das, was `writeTo` in den Container legt. Öffentlich, damit der
     //  Fußnoten-Teil einzeln geprüft und geschrieben werden kann.
     QString buildPartXml() const {
@@ -594,7 +594,7 @@ private:
     QHash<QString, QByteArray> stylesParts(
         const QHash<QString, QByteArray>& base) const;   // neu angelegte Vorlagen
     QString buildRunXml(const Run& r) const;
-    //  Bild als ZIP-Teil vormerken und den `w:drawing`-Run bauen — gemeinsamer
+    //  Bild als ZIP-Teil vormerken und den `w:drawing`-Run bauen - gemeinsamer
     //  Kern von `insertImageData` (eigener Absatz) und `insertImageRunAt`
     //  (Bild im Fließtext). Leerer Rückgabewert = Fehler (Text in `err`).
     QString buildImageRunXml(const QByteArray& bytes, const QString& ext,
@@ -623,7 +623,7 @@ private:
     SectionProps m_section;              // s. section()
     QVector<TableDef> m_tables;          // s. tables()
     //  Noch nicht geschriebene Medien-Teile (Einfügen). Die Bytes bleiben bis
-    //  zum Speichern im Zugriff, damit die ANZEIGE das Bild sofort zeigen kann —
+    //  zum Speichern im Zugriff, damit die ANZEIGE das Bild sofort zeigen kann -
     //  im Container liegt es ja noch nicht.
     struct PendingMedia {
         QString    zipName;              // "word/media/mg1.png"
@@ -633,12 +633,12 @@ private:
     };
     QList<PendingMedia> m_pendingMedia;
     int m_nextMediaId = 1;
-    QHash<QString, QString> m_rels;      // rId → Ziel (relativ zu word/)
-    //  w:headerReference/w:footerReference des Hauptabschnitts: Art → rId.
+    QHash<QString, QString> m_rels;      // rId -> Ziel (relativ zu word/)
+    //  w:headerReference/w:footerReference des Hauptabschnitts: Art -> rId.
     QHash<QString, QString> m_hdrRefs;   // "default"/"first"/"even"
     QHash<QString, QString> m_ftrRefs;
 
-    QHash<int, QHash<int, NumLevel>> m_numLevels;    // numId → ilvl → Level
+    QHash<int, QHash<int, NumLevel>> m_numLevels;    // numId -> ilvl -> Level
     QHash<int, int> m_numToAbstract;
     //  Lazy erzeugte eigene Listen-Definitionen (beim Speichern gespliced):
     mutable int m_ownAbstractBullet = -1;
@@ -652,7 +652,7 @@ private:
     bool m_hadStylesPart = false;
     QString m_stylesXml;         // dekodierter Bestand (für Splice), sonst leer
     //  XML der per ensureHeadingStyle() neu angelegten Vorlagen, in
-    //  Anlegereihenfolge — beim Speichern vor </w:styles> gespliced.
+    //  Anlegereihenfolge - beim Speichern vor </w:styles> gespliced.
     QStringList m_pendingStyles;
 
 };

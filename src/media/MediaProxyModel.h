@@ -12,7 +12,7 @@ class MediaModel;
 struct MediaItem;
 
 // ─────────────────────────────────────────────────────────────────────────────
-//  MediaProxyModel — QSortFilterProxyModel vor dem MediaModel.
+//  MediaProxyModel - QSortFilterProxyModel vor dem MediaModel.
 //
 //  Phase 3 erweitert die Filterung um den vollständigen Tag-Modus-Satz
 //  (OR/AND/NUR/INKLUSIV) und den Kategorie-Filter. Die Semantik ist 1:1 aus dem
@@ -49,12 +49,12 @@ class MediaProxyModel : public QSortFilterProxyModel {
     Q_PROPERTY(bool showAudio      READ showAudio      WRITE setShowAudio      NOTIFY filterChanged)
     Q_PROPERTY(bool showPdfs       READ showPdfs       WRITE setShowPdfs       NOTIFY filterChanged)
     Q_PROPERTY(bool showTexts      READ showTexts      WRITE setShowTexts      NOTIFY filterChanged)
-    //  Ordnerkacheln der Unterordner — eigener Eintrag in der Medien-Rubrik.
+    //  Ordnerkacheln der Unterordner - eigener Eintrag in der Medien-Rubrik.
     Q_PROPERTY(bool showFolders    READ showFolders    WRITE setShowFolders    NOTIFY filterChanged)
     Q_PROPERTY(QStringList tagFilter      READ tagFilter      WRITE setTagFilter      NOTIFY filterChanged)
     Q_PROPERTY(int         tagFilterMode  READ tagFilterModeInt WRITE setTagFilterModeInt NOTIFY filterChanged)
     Q_PROPERTY(QStringList categoryFilter READ categoryFilter WRITE setCategoryFilter NOTIFY filterChanged)
-    //  Freitextsuche der Filterleiste — UND-verknüpft mit allen anderen Filtern.
+    //  Freitextsuche der Filterleiste - UND-verknüpft mit allen anderen Filtern.
     Q_PROPERTY(QString     searchText     READ searchText     WRITE setSearchText     NOTIFY filterChanged)
     // Rückwärtskompatibel zu Phase 2: AND/OR-Umschalter (mappt auf den Modus).
     Q_PROPERTY(bool tagFilterAnd   READ tagFilterAnd   WRITE setTagFilterAnd   NOTIFY filterChanged)
@@ -89,7 +89,7 @@ public:
 
     //  Momentaufnahme des aktuellen Filters (fuer die rekursive Suche).
     FilterCriteria criteria() const;
-    //  NAMEN der aktiven Kategorien — die IDs eines fremden Ordners sind andere.
+    //  NAMEN der aktiven Kategorien - die IDs eines fremden Ordners sind andere.
     QStringList activeCategoryNames() const;
 
     // Korrespondiert mit ISettings::SortField (Date/Name/Tags/FileSize).
@@ -99,7 +99,7 @@ public:
 
     explicit MediaProxyModel(QObject* parent = nullptr);
 
-    // Merkt sich das Quellmodell zusaetzlich typisiert (m_src) — Filter und
+    // Merkt sich das Quellmodell zusaetzlich typisiert (m_src) - Filter und
     // Sortierung greifen darueber direkt auf die MediaItem-Structs zu, statt je
     // Zeile QVariants zu bauen. Faellt auf den QVariant-Pfad zurueck, falls je
     // ein anderes Quellmodell gesetzt wird.
@@ -135,7 +135,7 @@ public:
     void setTagFilterAnd(bool v);
 
     //  Gesucht wird in ANZEIGENAME, DATEINAME und TAGS (Teilstring, ohne Rücksicht
-    //  auf Groß-/Kleinschreibung) — nur im offenen Ordner, kein Dateiinhalt.
+    //  auf Groß-/Kleinschreibung) - nur im offenen Ordner, kein Dateiinhalt.
     QString searchText() const { return m_search; }
     void    setSearchText(const QString& t);
 
@@ -149,13 +149,13 @@ public:
     Q_INVOKABLE int       randomRow(int exceptRow = -1) const;
     //  Nachbar-Zeile im Vollbild: `delta` = +1/−1. Bleibt IM ORDNER der
     //  Ausgangszeile (Unterordner-Inhalt blaettert nicht in den Elternordner
-    //  hinueber) und ueberspringt Ordnerkacheln — die sind keine Datei.
+    //  hinueber) und ueberspringt Ordnerkacheln - die sind keine Datei.
     //  Laeuft innerhalb dieses Ordners um; −1 = nichts anzusteuern.
     Q_INVOKABLE int       stepRow(int proxyRow, int delta) const;
     //  Ordner-Bereich einer Proxy-Zeile (MediaItem::scope); −1 wenn unbekannt.
     //  Das Zeilenmodell bricht daran seine Zeilen um.
     Q_INVOKABLE int       scopeAt(int proxyRow) const { return scopeOfProxyRow(proxyRow); }
-    //  Tiefe einer Proxy-Zeile (0 = geoeffneter Ordner) — die Ablegeleiste
+    //  Tiefe einer Proxy-Zeile (0 = geoeffneter Ordner) - die Ablegeleiste
     //  rueckt Unterordner danach ein.
     Q_INVOKABLE int       depthAt(int proxyRow) const;
 
@@ -167,7 +167,7 @@ signals:
 protected:
     //  Zeilenfilter neu auswerten. `invalidateRowsFilter()` ist ab Qt 6.9
     //  veraltet (Ersatz: `beginFilterChange()` + `endFilterChange(Rows)`), das
-    //  Projekt baut aber ab Qt 6.4 — deshalb EINE Stelle mit Weiche statt
+    //  Projekt baut aber ab Qt 6.4 - deshalb EINE Stelle mit Weiche statt
     //  neun Aufrufe mit `#if` drumherum.
     void refilterRows() {
 #if QT_VERSION >= QT_VERSION_CHECK(6, 9, 0)
@@ -184,7 +184,7 @@ protected:
 private:
     void reapplySort();
     //  Ordnung ZWISCHEN zwei Zeilen desselben Bereichs: Ordner zuerst, dann das
-    //  gewaehlte Sortierfeld. Die Richtung (auf-/absteigend) wird HIER gedreht —
+    //  gewaehlte Sortierfeld. Die Richtung (auf-/absteigend) wird HIER gedreht -
     //  s. lessThan().
     bool sameScopeLess(const MediaItem* a, const MediaItem* b) const;
     //  Vergleich nach dem Sortierfeld, immer aufsteigend.

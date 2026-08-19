@@ -5,7 +5,7 @@
 #include <QVector>
 
 // ══════════════════════════════════════════════════════════════════════════════
-//  PdfEncodings.cpp — Tabellen der einfachen PDF-Textkodierungen.
+//  PdfEncodings.cpp - Tabellen der einfachen PDF-Textkodierungen.
 //
 //  REIN MECHANISCHE DATEN (Adobe: WinAnsiEncoding, MacRomanEncoding, Adobe
 //  Glyph List). Sie stehen bewusst hier statt im Content-Editor: die
@@ -70,8 +70,8 @@ const char16_t kMacRomanHigh[128] = {
     0x00AF, 0x02D8, 0x02D9, 0x02DA, 0x00B8, 0x02DD, 0x02DB, 0x02C7,
 };
 
-// Adobe-Glyphennamen → Unicode (Teilmenge: alles, was WinAnsi/MacRoman/
-// Standard und Latin-1 brauchen). Unbekannte Namen → Ersetzung wird
+// Adobe-Glyphennamen -> Unicode (Teilmenge: alles, was WinAnsi/MacRoman/
+// Standard und Latin-1 brauchen). Unbekannte Namen -> Ersetzung wird
 // abgelehnt (Aufrufer faellt auf Raster zurueck) statt zu raten.
 struct GlyphUni { const char* name; char16_t uni; };
 const GlyphUni kGlyphs[] = {
@@ -304,11 +304,11 @@ const GlyphUni kGlyphs[] = {
 };
 } // namespace
 
-// ── Glyphenname → Unicode ────────────────────────────────────────────────────
+// ── Glyphenname -> Unicode ────────────────────────────────────────────────────
 QChar glyphToUnicode(const QByteArray& glyphName) {
     if (glyphName.isEmpty())
         return {};
-    //  AGL-Konventionen `uniXXXX` und `uXXXX` (4–6 Hex-Ziffern) zuerst — sie
+    //  AGL-Konventionen `uniXXXX` und `uXXXX` (4–6 Hex-Ziffern) zuerst - sie
     //  sind eindeutig und decken alles ab, was in der Namensliste fehlt.
     auto hexToChar = [](const QByteArray& hex) -> QChar {
         bool ok = false;
@@ -323,7 +323,7 @@ QChar glyphToUnicode(const QByteArray& glyphName) {
         && !glyphName.startsWith("uni"))
         return hexToChar(glyphName.mid(1));
 
-    //  Namensliste (sortiert erzeugt → binäre Suche).
+    //  Namensliste (sortiert erzeugt -> binäre Suche).
     int lo = 0, hi = int(std::size(kGlyphs)) - 1;
     while (lo <= hi) {
         const int mid = (lo + hi) / 2;
@@ -384,7 +384,7 @@ bool Encoding::fromUnicode(QChar c, quint8* code) const {
 QString Encoding::decode(const QByteArray& bytes) const {
     if (m_base == Base::IdentityCid) {
         //  2-Byte-Codes, big-endian. Ein ungerades Restbyte bzw. ein unbekannter
-        //  Code ergibt U+FFFD — der Vergleich mit dem Originaltext scheitert
+        //  Code ergibt U+FFFD - der Vergleich mit dem Originaltext scheitert
         //  dann sicher, statt zufaellig zu passen.
         QString out;
         out.reserve(bytes.size() / 2);
@@ -400,7 +400,7 @@ QString Encoding::decode(const QByteArray& bytes) const {
     out.reserve(bytes.size());
     for (char ch : bytes) {
         const QChar c = toUnicode(quint8(ch));
-        //  Unbelegter Code → U+FFFD. Der Vergleich mit dem gesuchten
+        //  Unbelegter Code -> U+FFFD. Der Vergleich mit dem gesuchten
         //  Originaltext scheitert dann sicher, statt zufällig zu passen.
         out += c.isNull() ? QChar(0xFFFD) : c;
     }
@@ -414,7 +414,7 @@ bool Encoding::encode(const QString& text, QByteArray* out) const {
         for (QChar c : text) {
             const auto it = m_uniToCid.constFind(c);
             //  Nicht in der CMap = die (Teilmengen-)Schrift hat keine Glyphe
-            //  dafuer → ablehnen statt einen Leerkasten zu erzeugen.
+            //  dafuer -> ablehnen statt einen Leerkasten zu erzeugen.
             if (it == m_uniToCid.constEnd())
                 return false;
             const quint16 code = it.value();
@@ -427,7 +427,7 @@ bool Encoding::encode(const QString& text, QByteArray* out) const {
     for (QChar c : text) {
         quint8 code = 0;
         if (!fromUnicode(c, &code))
-            return false;                       // nicht darstellbar → ablehnen
+            return false;                       // nicht darstellbar -> ablehnen
         out->append(char(code));
     }
     return true;
@@ -517,7 +517,7 @@ Encoding Encoding::fromEncodingValue(const QByteArray& encValue, bool* ok) {
 // ── Type0 / Identity-H: /ToUnicode-CMap ─────────────────────────────────────
 namespace {
 
-//  Ein Hex-String "<0041>" → Bytes. Liefert false bei ungerader Ziffernzahl
+//  Ein Hex-String "<0041>" -> Bytes. Liefert false bei ungerader Ziffernzahl
 //  oder Fremdzeichen (dann ist die CMap nicht vertrauenswürdig).
 bool hexStringBytes(const QByteArray& tok, QByteArray* out) {
     if (tok.size() < 2 || tok.front() != '<' || tok.back() != '>')
@@ -533,7 +533,7 @@ bool hexStringBytes(const QByteArray& tok, QByteArray* out) {
     return true;
 }
 
-//  UTF-16BE-Bytes → QString (die CMap-Zielwerte sind immer UTF-16BE).
+//  UTF-16BE-Bytes -> QString (die CMap-Zielwerte sind immer UTF-16BE).
 QString utf16beToString(const QByteArray& b) {
     if (b.isEmpty() || (b.size() % 2) != 0)
         return {};
@@ -580,7 +580,7 @@ Encoding Encoding::fromCidToUnicode(const QByteArray& cmap, bool* ok) {
 
     const QVector<QByteArray> t = cmapTokens(cmap);
     //  Eine Zuordnung eintragen. Mehrzeichen-Ziele (Ligaturen) gelten NUR in
-    //  Leserichtung — rückwärts wären sie mehrdeutig.
+    //  Leserichtung - rückwärts wären sie mehrdeutig.
     auto put = [&e](quint16 code, const QString& text) {
         if (text.isEmpty()) return;
         e.m_cidToUni.insert(code, text);
@@ -621,7 +621,7 @@ Encoding Encoding::fromCidToUnicode(const QByteArray& cmap, bool* ok) {
                     return e;
                 quint16 lo = 0, hi = 0;
                 if (!codeOf(lob, &lo) || !codeOf(hib, &hi) || hi < lo) return e;
-                //  Bereichsgröße deckeln — eine absurd große Angabe wäre ein
+                //  Bereichsgröße deckeln - eine absurd große Angabe wäre ein
                 //  Zeichen für eine defekte/feindliche Datei.
                 if (int(hi) - int(lo) > 65535) return e;
                 if (t[j+2] == "[") {
@@ -657,7 +657,7 @@ Encoding Encoding::fromCidToUnicode(const QByteArray& cmap, bool* ok) {
         }
     }
 
-    //  Ohne jede Zuordnung ist die CMap wertlos → ablehnen.
+    //  Ohne jede Zuordnung ist die CMap wertlos -> ablehnen.
     if (e.m_cidToUni.isEmpty())
         return e;
     if (ok) *ok = true;

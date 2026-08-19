@@ -1,14 +1,14 @@
 #pragma once
 // ─────────────────────────────────────────────────────────────────────────────
-//  DocxZip — minimaler ZIP-Reader/-Writer für den DOCX-Editor (OOXML-Container).
+//  DocxZip - minimaler ZIP-Reader/-Writer für den DOCX-Editor (OOXML-Container).
 //
-//  Abhängigkeiten: Qt6::Core + mg::zcodec (src/core/ZCodec.h) — keine neue
-//  Bibliothek; Muster PdfPageCopier. Kein Q_OBJECT/moc → isoliert testbar.
+//  Abhängigkeiten: Qt6::Core + mg::zcodec (src/core/ZCodec.h) - keine neue
+//  Bibliothek; Muster PdfPageCopier. Kein Q_OBJECT/moc -> isoliert testbar.
 //  ZLIB ist dadurch OPTIONAL; ohne sie weist Reader::open Einträge mit
 //  Methode 8 ab, also praktisch jedes DOCX (Begründung in ZCodec.h).
 //
 //  Kernprinzip (Verlusterhaltung, §0): Der Writer übernimmt ALLE nicht
-//  angefassten Einträge als ROH-KOPIE — die komprimierten Datenbytes, CRC,
+//  angefassten Einträge als ROH-KOPIE - die komprimierten Datenbytes, CRC,
 //  Größen und Methode stammen 1:1 aus der Quelle (KEIN Neu-Komprimieren).
 //  Nur gezielt ersetzte Einträge (z. B. word/document.xml) werden neu
 //  deflatiert. Die Container-Rahmung (lokale Header/Zentralverzeichnis) wird

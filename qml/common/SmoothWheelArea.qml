@@ -1,24 +1,24 @@
 import QtQuick
 
 // ─────────────────────────────────────────────────────────────────────────────
-//  SmoothWheelArea.qml — weiches, schnelles Mausrad-Scrollen für ein `Flickable`
+//  SmoothWheelArea.qml - weiches, schnelles Mausrad-Scrollen für ein `Flickable`
 //  (z. B. das `contentItem` eines `ScrollView`).
 //
 //  WARUM: Qts `Flickable` scrollt je Rastung fest
-//  `QStyleHints::wheelScrollLines() * 20 px` — gemessen **60 px**, unabhängig von
+//  `QStyleHints::wheelScrollLines() * 20 px` - gemessen **60 px**, unabhängig von
 //  der Sichthöhe. Bei den langen Einstellungsseiten (Allgemein: ~1835 px Inhalt
 //  auf ~448 px Sichtfläche) sind das über 20 Rastungen bis zum Ende; das Scrollen
 //  wirkt zäh. Galerie, PDF-Seitenraster und PDF-Liste ersetzen dieses Verhalten
-//  längst durch „~45 % Sichthöhe je Rastung + kurze Animation" — diese Komponente
+//  längst durch „~45 % Sichthöhe je Rastung + kurze Animation" - diese Komponente
 //  bündelt genau dieses etablierte Muster zum Wiederverwenden.
 //
 //  WIE: Eine `MouseArea` mit `acceptedButtons: Qt.NoButton` über der Sichtfläche
 //  fängt NUR Radereignisse ab; Klicks, Doppelklicks, Hover und Ziehen laufen
-//  ungehindert an die Controls darunter. (Ein `WheelHandler` genügt nicht — ein
+//  ungehindert an die Controls darunter. (Ein `WheelHandler` genügt nicht - ein
 //  interaktives `Flickable` verarbeitet Radereignisse vorher selbst, s.
 //  „Bekannte Workarounds" in Structure.md.)
 //
-//  NUTZUNG — irgendwo im selben Dokument deklarieren, die Komponente hängt sich
+//  NUTZUNG - irgendwo im selben Dokument deklarieren, die Komponente hängt sich
 //  selbst als DIREKTES Kind des Flickable ein (nicht in dessen `contentItem`, sie
 //  scrollt also nicht mit) und liegt über dem Inhalt:
 //      ScrollView { id: sv; anchors.fill: parent }
@@ -34,17 +34,17 @@ MouseArea {
     property real stepFactor: 0.45
 
     //  Achse: false = vertikal (`contentY`), true = HORIZONTAL (`contentX`).
-    //  Horizontal gilt „Rad hoch = nach rechts" — dieselbe Richtung, die auch
+    //  Horizontal gilt „Rad hoch = nach rechts" - dieselbe Richtung, die auch
     //  Browser und Editoren für seitliches Scrollen benutzen.
     property bool horizontal: false
 
     //  Erforderlicher Modifikator (`Qt.NoModifier` = keiner). Ist einer gesetzt,
-    //  laufen Radereignisse OHNE ihn UNVERÄNDERT weiter nach unten durch — die
+    //  laufen Radereignisse OHNE ihn UNVERÄNDERT weiter nach unten durch - die
     //  bestehende Bedeutung des Rades an dieser Stelle bleibt also erhalten
     //  (im PDF-Editor z. B. Strg+Rad = Ribbon seitlich, Rad allein = Seiten).
     property int requiredModifier: Qt.NoModifier
 
-    //  Direktes Kind des Flickable (NICHT dessen `contentItem`) → bleibt beim
+    //  Direktes Kind des Flickable (NICHT dessen `contentItem`) -> bleibt beim
     //  Scrollen an Ort und Stelle und deckt genau die Sichtfläche ab.
     parent: flickable
     anchors.fill: parent
@@ -63,7 +63,7 @@ MouseArea {
         var fl = wheelArea.flickable
         if (!fl) { wheel.accepted = false; return }
 
-        //  Modifikator verlangt, aber nicht gedrückt → Ereignis unangetastet
+        //  Modifikator verlangt, aber nicht gedrückt -> Ereignis unangetastet
         //  weiterreichen (accepted=false propagiert es an die Items darunter).
         if (wheelArea.requiredModifier !== Qt.NoModifier
             && !(wheel.modifiers & wheelArea.requiredModifier)) {
@@ -84,7 +84,7 @@ MouseArea {
         var cur  = wheelArea.horizontal ? fl.contentX : fl.contentY
         var base = scrollAnim.running ? scrollAnim.to : cur
         //  Vertikal: Rad hoch = Inhalt nach oben (contentY kleiner).
-        //  Horizontal: Rad hoch = nach RECHTS (contentX größer) — so werden die
+        //  Horizontal: Rad hoch = nach RECHTS (contentX größer) - so werden die
         //  rechts abgeschnittenen Bedienelemente hereingeholt.
         var tgt  = wheelArea.horizontal
                    ? Math.max(0, Math.min(base + raw, maxPos))

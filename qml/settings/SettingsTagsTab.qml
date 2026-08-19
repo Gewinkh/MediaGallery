@@ -10,7 +10,7 @@ Item {
     id: root
 
     property var tagList: []
-    function refresh() { tagList = App.allTags() }
+    function refresh() { tagList = Tags.allTags() }
 
     Component.onCompleted: refresh()
     Connections {
@@ -69,12 +69,12 @@ Item {
 
                             Rectangle {
                                 width: 10; height: 10; radius: 5
-                                color: App.tagColor(tagRow.modelData)
+                                color: Tags.tagColor(tagRow.modelData)
                             }
                             Text {
                                 Layout.fillWidth: true
                                 text: tagRow.modelData
-                                color: App.tagColor(tagRow.modelData)
+                                color: Tags.tagColor(tagRow.modelData)
                                 font.pixelSize: 13
                                 font.bold: true
                                 elide: Text.ElideRight
@@ -84,7 +84,7 @@ Item {
                                 width: 30; height: 22
                                 title: App.uiText(App.language, "SettingsTagColorTitle")
                                 showAlpha: false
-                                selectedColor: App.tagColor(tagRow.modelData)
+                                selectedColor: Tags.tagColor(tagRow.modelData)
                                 onColorPicked: (c) => Tags.setTagColor(tagRow.modelData, c)
                             }
                             ToolButton {

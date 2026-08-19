@@ -17,21 +17,21 @@
 using namespace Docx;
 
 namespace {
-constexpr qreal kPtToPx     = 96.0 / 72.0;    // Punkt → logische Pixel
-constexpr qreal kTwipToPx   = kPtToPx / 20.0; // Twips (1/1440") → logische Pixel
+constexpr qreal kPtToPx     = 96.0 / 72.0;    // Punkt -> logische Pixel
+constexpr qreal kTwipToPx   = kPtToPx / 20.0; // Twips (1/1440") -> logische Pixel
 constexpr qreal kPadV       = 28.0;           // Rand über/unter dem Seitenstapel
 constexpr qreal kPageGap    = 20.0;           // Lücke zwischen zwei Seiten
 constexpr qreal kSideMargin = 14.0;           // Mindestrand neben der Seite
 constexpr qreal kListIndent = 28.0;           // Einzug je Listenebene
 constexpr int   kChunk      = 300;            // Blöcke je Initial-Layout-Tick
-//  Bleibt neben einem Bild weniger Platz als das, fängt der Text darunter an —
+//  Bleibt neben einem Bild weniger Platz als das, fängt der Text darunter an -
 //  eine Spalte von zwei Zeichen Breite ist unlesbar.
 constexpr qreal kMinTextBesideImage = 60.0;
 //  Luft zwischen einer gleitenden Tabelle und dem Text daneben.
 constexpr qreal kTableWrapGap = 10.0;
 
 //  Layout-Fenster (RAM): Ein vermessener QTextLayout haelt die komplette
-//  Glyphen-/Zeilenstruktur seines Absatzes — bei einem 400-Seiten-Dokument mit
+//  Glyphen-/Zeilenstruktur seines Absatzes - bei einem 400-Seiten-Dokument mit
 //  ~10.000 Absaetzen summiert sich das auf zweistellige Megabyte, obwohl nie
 //  mehr als ein Bildschirm davon gebraucht wird. Ab kLayoutCap Bloecken werden
 //  daher Layouts ausserhalb des Fensters (sichtbarer Bereich ± kKeepMargin)
@@ -56,7 +56,7 @@ DocxTextArea::DocxTextArea(QQuickItem* parent) : QQuickPaintedItem(parent) {
     //  Der Blinktakt laeuft NUR, solange der Caret ueberhaupt sichtbar sein kann
     //  (Fokus, keine Selektion). Jedes update() dieses QQuickPaintedItem malt den
     //  gesamten Viewport samt aller sichtbaren QTextLayouts neu und laedt die
-    //  Textur wieder zur GPU — vorher geschah das zweimal je Sekunde dauerhaft,
+    //  Textur wieder zur GPU - vorher geschah das zweimal je Sekunde dauerhaft,
     //  auch bei fokusloser, unsichtbarer oder gar nicht editierter Ansicht.
     m_blinkTimer.setInterval(530);
     connect(&m_blinkTimer, &QTimer::timeout, this, [this]() {
@@ -98,7 +98,7 @@ void DocxTextArea::setCtl(DocxEditController* c) {
                 [this](int first, int oldCount, int newCount) {
                     invalidateFrom(first, oldCount, newCount);
                 });
-        //  Ergebnis der Rechtschreibprüfung liegt vor → nur neu ZEICHNEN.
+        //  Ergebnis der Rechtschreibprüfung liegt vor -> nur neu ZEICHNEN.
         //  Das Layout ändert sich dadurch nicht (die Wellenlinie liegt unter
         //  dem Text), deshalb kein invalidateFrom.
         connect(m_ctl, &DocxEditController::spellRangesChanged, this,
@@ -106,7 +106,7 @@ void DocxTextArea::setCtl(DocxEditController* c) {
         connect(m_ctl, &DocxEditController::cursorChanged, this, [this]() {
             m_caretOn = true;
             //  Der zuletzt besuchte LEERE Absatz wurde mit dem Cursor-Format
-            //  vermessen — verlässt der Cursor ihn, gilt wieder sein Stil-Format.
+            //  vermessen - verlässt der Cursor ihn, gilt wieder sein Stil-Format.
             const int now = m_ctl->cursor().block;
             if (m_lastCursorBlock != now) {
                 invalidateEmptyBlock(m_lastCursorBlock);
@@ -114,11 +114,11 @@ void DocxTextArea::setCtl(DocxEditController* c) {
                 m_lastCursorBlock = now;
             }
             updateCursorRect();
-            syncCaretBlink();   // Selektion begonnen/aufgehoben → Blinken an/aus
+            syncCaretBlink();   // Selektion begonnen/aufgehoben -> Blinken an/aus
             update();
         });
         //  Format-Änderung OHNE Selektion existiert nur als Pending-Format im
-        //  Controller — sie erzeugt weder blocksReplaced noch cursorChanged.
+        //  Controller - sie erzeugt weder blocksReplaced noch cursorChanged.
         //  Ohne diese Verbindung blieb der Caret (und die Höhe einer leeren
         //  Zeile) auf der alten Schriftgröße stehen (Nutzerbefund).
         //  Anderes Dokument geladen:
@@ -145,7 +145,7 @@ void DocxTextArea::setContentY(qreal y) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-//  Seitengeometrie — alles in DOKUMENT-Pixeln aus der Seiteneinrichtung des
+//  Seitengeometrie - alles in DOKUMENT-Pixeln aus der Seiteneinrichtung des
 //  Dokuments (w:sectPr). Bewusst UNABHÄNGIG von der Fensterbreite: die
 //  Zeilenbreite ist die echte Textbreite der Seite, damit der Umbruch dort
 //  fällt, wo er auch in Word fällt. Zu schmale Kacheln werden beim ZEICHNEN
@@ -188,7 +188,7 @@ qreal DocxTextArea::docHeight() const {
     return pageDocY(qMax(0, m_pageCount - 1)) + pageHpx() + kPadV;
 }
 
-//  Maßstab: eine A4-Seite ist ~794 px breit — in einer halben Split-View-Kachel
+//  Maßstab: eine A4-Seite ist ~794 px breit - in einer halben Split-View-Kachel
 //  hätte sie keinen Platz. Statt neu umzubrechen (dann wäre die Ansicht nicht
 //  mehr seitengenau) wird die Seite VERKLEINERT gezeichnet.
 void DocxTextArea::updateScale() {
@@ -204,11 +204,11 @@ void DocxTextArea::updateScale() {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-//  Layout-STÜCKE eines Blocks — die einzige Lesesicht auf seine Zeilen.
+//  Layout-STÜCKE eines Blocks - die einzige Lesesicht auf seine Zeilen.
 //
 //  Heute hat ein Block genau EIN Stück: sein QTextLayout, über die volle
 //  Textbreite, ohne Versatz. Diese Schicht ist trotzdem schon da, weil ein
-//  Absatz später mehrere Stücke tragen soll (Text NEBEN einem Bild) — dann
+//  Absatz später mehrere Stücke tragen soll (Text NEBEN einem Bild) - dann
 //  ändert sich nur, was hier steht, und nicht die fünf Stellen, die Zeilen
 //  lesen. Zeilen zählen block-global, x/y sind block-lokal (Stück-Versatz
 //  eingerechnet), Zeichenpositionen block-lokal.
@@ -257,7 +257,7 @@ qreal DocxTextArea::lineTop(const BlockLayout& L, int li) const {
     return L.rows[size_t(li)].y;
 }
 //  Oberkante der TEXTZEILE eines Bandes (das Band selbst kann höher sein, wenn
-//  ein Bild darin steht — der Text sitzt dann an dessen Unterkante).
+//  ein Bild darin steht - der Text sitzt dann an dessen Unterkante).
 qreal DocxTextArea::lineTextTop(const BlockLayout& L, int li) const {
     if (li < 0 || li >= int(L.rows.size())) return 0.0;
     return L.rows[size_t(li)].y + L.rows[size_t(li)].textDy;
@@ -276,7 +276,7 @@ qreal DocxTextArea::linesBottom(const BlockLayout& L) const {
         b = qMax(b, R.y + R.visH);
     return b;
 }
-//  Zeichenposition → Zeilenband. Ohne Bänder (leerer Absatz) ist 0 die Antwort.
+//  Zeichenposition -> Zeilenband. Ohne Bänder (leerer Absatz) ist 0 die Antwort.
 int DocxTextArea::lineForPos(const BlockLayout& L, int pos) const {
     const int n = int(L.rows.size());
     if (n == 0) return 0;
@@ -287,12 +287,12 @@ int DocxTextArea::lineForPos(const BlockLayout& L, int pos) const {
     return n - 1;
 }
 //  Ein Band kann ZWEI Zeilen tragen: Text links UND rechts eines umflossenen
-//  Bildes (`wrapText="bothSides"`). Beide liegen auf derselben y — welche
+//  Bildes (`wrapText="bothSides"`). Beide liegen auf derselben y - welche
 //  gemeint ist, sagt x. Ohne geteiltes Band bleibt es bei `li`.
 int DocxTextArea::rowAtX(const BlockLayout& L, int li, qreal x) const {
     if (li < 0 || li >= int(L.rows.size())) return li;
     const qreal y = L.rows[size_t(li)].y;
-    //  Auf den ANFANG des Bandes zurückgehen — `li` kann schon das rechte Stück
+    //  Auf den ANFANG des Bandes zurückgehen - `li` kann schon das rechte Stück
     //  sein (etwa beim Sprung aus dem Band darunter).
     int first = li;
     while (first > 0 && qFuzzyIsNull(L.rows[size_t(first - 1)].y - y)) --first;
@@ -310,7 +310,7 @@ int DocxTextArea::rowAtX(const BlockLayout& L, int li, qreal x) const {
     }
     return best;
 }
-//  Block-lokale y → Zeilenband (das erste, dessen Unterkante darunter liegt).
+//  Block-lokale y -> Zeilenband (das erste, dessen Unterkante darunter liegt).
 int DocxTextArea::lineForLocalY(const BlockLayout& L, qreal y) const {
     const int n = int(L.rows.size());
     for (int li = 0; li < n; ++li)
@@ -329,7 +329,7 @@ qreal DocxTextArea::xForPos(const BlockLayout& L, int li, int pos) const {
     if (li < 0 || li >= int(L.rows.size())) return 0.0;
     const RowInfo& R = L.rows[size_t(li)];
     const int p = qBound(0, pos, L.textLen);
-    //  Textzeile des Bandes zuerst — eine Stelle IM Text schlägt die Bildkante.
+    //  Textzeile des Bandes zuerst - eine Stelle IM Text schlägt die Bildkante.
     const LineRef r = lineRef(L, li);
     if (r.valid()) {
         const int n = int(r.lay->text().size());
@@ -350,7 +350,7 @@ qreal DocxTextArea::xForPos(const BlockLayout& L, int li, int pos) const {
 int DocxTextArea::posForX(const BlockLayout& L, int li, qreal x) const {
     if (li < 0 || li >= int(L.rows.size())) return 0;
     const RowInfo& R = L.rows[size_t(li)];
-    //  Klick AUF ein Bild setzt den Cursor auf sein Objekt-Zeichen — damit ist
+    //  Klick AUF ein Bild setzt den Cursor auf sein Objekt-Zeichen - damit ist
     //  es über die Selektion genau eines Zeichens auswählbar.
     const int hit = imageAtX(L, li, x);
     if (hit >= 0) return L.images[size_t(hit)].pos;
@@ -369,7 +369,7 @@ int DocxTextArea::imageAtPos(const BlockLayout& L, int pos) const {
         if (L.images[k].pos == pos) return int(k);
     return -1;
 }
-//  Verankertes Bild an einer block-lokalen Stelle (x,y) — die Lage ist seine
+//  Verankertes Bild an einer block-lokalen Stelle (x,y) - die Lage ist seine
 //  einzige Bindung, es hängt an keinem Zeilenband.
 int DocxTextArea::floatingImageAt(const BlockLayout& L, qreal x, qreal y) const {
     for (size_t k = 0; k < L.images.size(); ++k) {
@@ -388,7 +388,7 @@ int DocxTextArea::imageAtX(const BlockLayout& L, int li, qreal x) const {
         const ImageBox& B = L.images[size_t(k)];
         if (x >= B.x && x < B.x + B.w) return k;
     }
-    //  Verankerte Bilder gehören keinem Band — sie decken alle, die ihr
+    //  Verankerte Bilder gehören keinem Band - sie decken alle, die ihr
     //  Rechteck schneidet.
     for (size_t k = 0; k < L.images.size(); ++k) {
         const ImageBox& B = L.images[k];
@@ -399,13 +399,13 @@ int DocxTextArea::imageAtX(const BlockLayout& L, int li, qreal x) const {
     }
     return -1;
 }
-//  Bänder EINZELN zeichnen — der Weg für einen Absatz, der über eine Seitenkante
+//  Bänder EINZELN zeichnen - der Weg für einen Absatz, der über eine Seitenkante
 //  läuft. `QTextLine::draw` nimmt denselben Ursprung wie `QTextLayout::draw` (die
 //  Zeile versetzt sich selbst um ihre y), es ändert sich also nur, WELCHE Zeilen
 //  in den Textstrom kommen.
 //  Die Selektion muss hier von Hand hinterlegt werden: `QTextLine::draw` kennt
 //  keine `FormatRange`. Bei gemischter Schreibrichtung ist das Rechteck eine
-//  Näherung (der Text selbst bleibt korrekt) — deshalb geht der ungeteilte
+//  Näherung (der Text selbst bleibt korrekt) - deshalb geht der ungeteilte
 //  Absatz weiter über `QTextLayout::draw`, wo Qt das bidi-fest erledigt.
 void DocxTextArea::drawBlockLines(QPainter* p, const BlockLayout& L,
                                   const QPointF& origin, int selStart, int selEnd,
@@ -443,7 +443,7 @@ void DocxTextArea::drawBlockText(QPainter* p, const BlockLayout& L,
     const int nRows = int(L.rows.size());
     const int r0 = qBound(0, rowFrom, nRows);
     const int r1 = (rowTo < 0) ? nRows : qBound(r0, rowTo, nRows);
-    //  Der NORMALFALL ist der ganze Absatz — fast jeder Block hat genau ein
+    //  Der NORMALFALL ist der ganze Absatz - fast jeder Block hat genau ein
     //  Segment. Dann bleibt es beim Zeichnen am Stück: Qt legt die Selektion
     //  bidi-fest über `FormatRange`, und an der Anzeige ändert sich nichts.
     if (r0 == 0 && r1 >= nRows) {
@@ -472,7 +472,7 @@ void DocxTextArea::drawBlockText(QPainter* p, const BlockLayout& L,
         if (!B.img.isNull()) {
             p->drawImage(box.topLeft(), B.img);
         } else {
-            //  Beziehung/Format unbekannt → Rahmen in Sollgröße statt Fehlanzeige.
+            //  Beziehung/Format unbekannt -> Rahmen in Sollgröße statt Fehlanzeige.
             p->setPen(QPen(QColor(150, 150, 150), 1, Qt::DashLine));
             p->setBrush(QColor(0, 0, 0, 8));
             p->drawRect(box);
@@ -485,7 +485,7 @@ void DocxTextArea::drawBlockText(QPainter* p, const BlockLayout& L,
 }
 
 //  Eine Tabelle zählt TABELLENZEILEN, ein Verzeichnis EINTRÄGE, alles andere
-//  Textzeilen — dieselbe Zahl, drei Bedeutungen (s. PageSeg::first).
+//  Textzeilen - dieselbe Zahl, drei Bedeutungen (s. PageSeg::first).
 bool DocxTextArea::segCountsTableRows(const BlockLayout& L) const {
     return L.isTable && L.table && !L.table->rows.empty();
 }
@@ -532,7 +532,7 @@ int DocxTextArea::tableSegOfRow(const BlockLayout& A, int row) const {
 QPointF DocxTextArea::tableSegOrigin(const BlockLayout& A, int segIdx) const {
     if (segIdx < 0 || segIdx >= A.segs.size()) return QPointF(slotDocX(0), slotDocY(0));
     const PageSeg& s = A.segs.at(segIdx);
-    //  Dieselbe Rechnung wie in paintSlot — die erste Zeile des Stücks landet
+    //  Dieselbe Rechnung wie in paintSlot - die erste Zeile des Stücks landet
     //  auf seiner Slot-y, alles davor liegt (rechnerisch) darüber.
     return QPointF(slotDocX(s.slot),
                    slotDocY(s.slot) + s.yInSlot - segOriginY(A, s));
@@ -546,7 +546,7 @@ const DocxTextArea::PageSeg& DocxTextArea::segAt(int i, int lineIdx) const {
     const BlockLayout& L = m_lay[size_t(i)];
     if (L.segs.isEmpty()) return zero;
     //  Die Stücke eines Verzeichnisses sind über eine ZEILE nicht adressierbar
-    //  (sie tragen Eintragsindizes) — seine Lage ist die des ersten Stücks.
+    //  (sie tragen Eintragsindizes) - seine Lage ist die des ersten Stücks.
     //  Für eine Tabelle gilt dasselbe: ihre Stücke zählen Tabellenzeilen, und
     //  „die Tabelle" liegt dort, wo ihr erstes Stück beginnt. Wer eine ZELLE
     //  meint, geht über tableSegOfRow (s. docYForLine).
@@ -559,10 +559,10 @@ const DocxTextArea::PageSeg& DocxTextArea::segAt(int i, int lineIdx) const {
     return L.segs.at(k);
 }
 
-//  Dokument-y AUS DEM FLUSS (Segmente) — ohne Zell-Sonderfall. Für den Anker
+//  Dokument-y AUS DEM FLUSS (Segmente) - ohne Zell-Sonderfall. Für den Anker
 //  ist das die Oberkante der TABELLE; jede Zelle rechnet von dort weiter. Der
 //  Zell-Zweig darf deshalb NICHT docYForLine(anchor) rufen (der Anker ist selbst
-//  eine Zelle → Endlosrekursion).
+//  eine Zelle -> Endlosrekursion).
 qreal DocxTextArea::flowDocYForLine(int i, int lineIdx) {
     if (i < 0 || i >= int(m_lay.size())) return slotDocY(0);
     ensureOffsetsTo(i + 1);
@@ -581,7 +581,7 @@ qreal DocxTextArea::flowDocXForBlock(int i, int lineIdx) {
 //  Dokument-Lage eines Blocks. Zellblöcke (auch der Anker!) liegen explizit
 //  relativ zur Tabellen-Oberkante, alle anderen im Fluss.
 //  Ursprung des Tabellenstücks, auf dem ein Zellblock liegt. Eine über Seiten
-//  getrennte Tabelle hat je Stück einen eigenen — ohne das rechnete jede Zelle
+//  getrennte Tabelle hat je Stück einen eigenen - ohne das rechnete jede Zelle
 //  weiter von der Oberkante der Tabelle und läge damit auf der ersten Seite.
 QPointF DocxTextArea::cellOrigin(int cellBlock, int anchor) {
     if (anchor < 0 || anchor >= int(m_lay.size())) return QPointF(slotDocX(0), slotDocY(0));
@@ -598,7 +598,7 @@ qreal DocxTextArea::docYForLine(int i, int lineIdx) {
     const int anchor = tableAnchorOf(i);
     if (anchor >= 0 && m_lay[size_t(i)].isCell) {
         const BlockLayout& C = m_lay[size_t(i)];
-        //  Zell-Absätze tragen keinen Abstand davor — die Zeile 0 liegt bei 0.
+        //  Zell-Absätze tragen keinen Abstand davor - die Zeile 0 liegt bei 0.
         return cellOrigin(i, anchor).y() + C.cellRelY + lineTop(C, lineIdx);
     }
     return flowDocYForLine(i, lineIdx);
@@ -616,7 +616,7 @@ int DocxTextArea::currentPage() const {
     if (!m_ctl || !m_ctl->ready() || m_lay.empty()) return 0;
     const int bi = qBound(0, m_ctl->cursor().block, int(m_lay.size()) - 1);
     const BlockLayout& L = m_lay[size_t(bi)];
-    //  Ein Zellblock trägt keine Höhe und damit keine eigene Fluss-Lage — seine
+    //  Ein Zellblock trägt keine Höhe und damit keine eigene Fluss-Lage - seine
     //  Seite ist die des Tabellenstücks, auf dem SEINE Zeile liegt. Ohne das
     //  meldete der Cursor in einer über Seiten getrennten Tabelle stets die
     //  Seite hinter ihr.
@@ -630,7 +630,7 @@ int DocxTextArea::currentPage() const {
     }
     if (L.segs.isEmpty()) return 0;
     //  Die ZEILE des Cursors zählt, nicht der Blockanfang: ein Absatz darf über
-    //  Seitengrenzen laufen — steht der Cursor in seiner unteren Hälfte, ist er
+    //  Seitengrenzen laufen - steht der Cursor in seiner unteren Hälfte, ist er
     //  auf der FOLGESEITE. Mit `segs.constFirst()` meldete die Anzeige dort die
     //  Seite, auf der der Absatz beginnt.
     return segAt(bi, lineForPos(L, m_ctl->cursor().pos)).slot / colCount();
@@ -648,12 +648,12 @@ void DocxTextArea::rebuildAll() {
     m_offsets.clear();
     m_offsetsValidTo = 0;
     m_layChunkAt = 0;
-    m_trimLo = m_trimHi = -1;   // Indizes verschoben → Layout-Fenster neu bestimmen
+    m_trimLo = m_trimHi = -1;   // Indizes verschoben -> Layout-Fenster neu bestimmen
     m_contentHeight = 0;
     m_lastCursorBlock = (m_ctl && m_ctl->ready()) ? m_ctl->cursor().block : -1;
     if (m_ctl && m_ctl->ready()) {
         m_lay.resize(size_t(m_ctl->doc().blocks.size()));
-        //  Schätzhöhen (eine Zeile je ~90 Zeichen) — vom Chunk-Layout ersetzt.
+        //  Schätzhöhen (eine Zeile je ~90 Zeichen) - vom Chunk-Layout ersetzt.
         for (int i = 0; i < int(m_lay.size()); ++i) {
             const Block& b = m_ctl->doc().blocks.at(i);
             if (b.kind == Block::OpaqueHidden)      m_lay[i].height = 0;
@@ -663,7 +663,7 @@ void DocxTextArea::rebuildAll() {
         rebuildMarkers();
         m_chunkTimer.start();
     }
-    //  Seitengröße kommt aus dem Dokument → Einpass-Maßstab neu bestimmen.
+    //  Seitengröße kommt aus dem Dokument -> Einpass-Maßstab neu bestimmen.
     updateScale();
     updateContentHeight();
     updateCursorRect();
@@ -676,7 +676,7 @@ void DocxTextArea::invalidateFrom(int first, int oldCount, int newCount) {
     if (m_lay.empty() && newCount > 0) { rebuildAll(); return; }
     first = qBound(0, first, int(m_lay.size()));
     //  Wird in einer Zelle getippt, ändert sich Zeilen- und damit Tabellenhöhe.
-    //  Die trägt der ANKER — er muss also mit invalidiert werden, sonst bliebe
+    //  Die trägt der ANKER - er muss also mit invalidiert werden, sonst bliebe
     //  die Tabelle auf ihrer alten Höhe stehen und alle Umbrüche danach falsch.
     {
         const int anchor = tableAnchorOf(qMin(first, int(m_lay.size()) - 1));
@@ -693,9 +693,9 @@ void DocxTextArea::invalidateFrom(int first, int oldCount, int newCount) {
     for (int i = 0; i < newCount; ++i)
         ensureLaid(first + i);
     m_offsetsValidTo = qMin(m_offsetsValidTo, first);
-    m_trimLo = m_trimHi = -1;   // Indizes verschoben → Layout-Fenster neu bestimmen
+    m_trimLo = m_trimHi = -1;   // Indizes verschoben -> Layout-Fenster neu bestimmen
     //  Ein Inhaltsverzeichnis hängt am GANZEN Dokument, nicht nur an den
-    //  Blöcken hinter der Änderung — es steht ja meist davor. Also immer
+    //  Blöcken hinter der Änderung - es steht ja meist davor. Also immer
     //  verwerfen; der Neuaufbau kostet einen Lauf über die Blöcke, genau wie
     //  rebuildMarkers direkt darunter.
     for (size_t k = 0; k < m_lay.size(); ++k) {
@@ -705,7 +705,7 @@ void DocxTextArea::invalidateFrom(int first, int oldCount, int newCount) {
         m_offsetsValidTo = qMin(m_offsetsValidTo, int(k));
     }
     rebuildMarkers();
-    //  Marker können sich hinter der Änderung geändert haben (Listenzähler) —
+    //  Marker können sich hinter der Änderung geändert haben (Listenzähler) -
     //  betroffene Layouts dort NICHT wegwerfen (nur Marker-Strings neu).
     updateContentHeight();
     updateCursorRect();
@@ -714,17 +714,17 @@ void DocxTextArea::invalidateFrom(int first, int oldCount, int newCount) {
 }
 
 //  Läuft über das GESAMTE Dokument und wird bei JEDER Blockänderung (also bei
-//  jedem Tastendruck) aufgerufen — die Listenzähler sind global. Der teure Teil
+//  jedem Tastendruck) aufgerufen - die Listenzähler sind global. Der teure Teil
 //  war bisher resolvePar() je Absatz: Vorlagenkette ablaufen, ParFmt bauen.
 //  Kann laut Vorlagen keine Nummerierung entstehen (Normalfall), genügt ein
 //  Bit-Test am Absatz selbst und die Schleife wird pro Block O(1) ohne
-//  Allokation — bei einem 400-Seiten-Dokument der Unterschied zwischen
+//  Allokation - bei einem 400-Seiten-Dokument der Unterschied zwischen
 //  spürbarem Tipp-Ruckeln und gar nicht messbar.
 void DocxTextArea::rebuildMarkers() {
     if (!m_ctl) return;
     const Document& d = m_ctl->doc();
     const bool mayNumber = d.stylesMayNumber();
-    QHash<int, int> counters;                       // numId → laufende Nummer
+    QHash<int, int> counters;                       // numId -> laufende Nummer
     for (int i = 0; i < d.blocks.size() && i < int(m_lay.size()); ++i) {
         const Block& b = d.blocks.at(i);
         QString marker;
@@ -765,7 +765,7 @@ void DocxTextArea::rebuildMarkers() {
 //  Grundschrift eines Absatzes = SEIN aufgelöstes Stil-Format (nicht die
 //  docDefaults): nur so ist eine leere Überschriftzeile auch so hoch wie eine
 //  Überschrift. Steht der Cursor in dieser LEEREN Zeile, gilt das am Cursor
-//  wirksame Format inkl. Pending — sonst hätte eine Schriftgrößen-Änderung in
+//  wirksame Format inkl. Pending - sonst hätte eine Schriftgrößen-Änderung in
 //  einer leeren Zeile sichtbar keinerlei Wirkung.
 QFont DocxTextArea::blockBaseFont(const Block& b, int blockIdx) const {
     const Document& d = m_ctl->doc();
@@ -798,10 +798,10 @@ void DocxTextArea::buildLayout(int i) {
         L.height = 0; L.laid = true; return;
     }
     if (b.kind == Block::OpaqueVisible) {
-        //  Tabellen werden als echtes Gitter ausgelegt (richtige HÖHE → richtige
+        //  Tabellen werden als echtes Gitter ausgelegt (richtige HÖHE -> richtige
         //  Seitenumbrüche danach); alles andere bleibt eine Platzhalterzeile.
         //  Dieser Zweig gilt nur noch für Tabellen, die NICHT flach zerlegt
-        //  werden konnten (verschachtelt, sdt …) — sie bleiben ein opaker Block.
+        //  werden konnten (verschachtelt, sdt …) - sie bleiben ein opaker Block.
         if (b.opaqueName == QLatin1String("w:tbl")) { buildTableLayout(i); return; }
         L.height = 34; L.laid = true;
         shiftBelowForeignFloats(i);          // auch er weicht nach unten aus
@@ -811,19 +811,19 @@ void DocxTextArea::buildLayout(int i) {
     //  Flach zerlegte Tabelle: der ERSTE Zellblock ist der Anker und trägt das
     //  Gitter samt Gesamthöhe; alle weiteren Zellblöcke sind 0 hoch. Damit bleibt
     //  der Fluss streng monoton (nebeneinanderliegende Zellen teilen sonst
-    //  dasselbe y-Band) — die Auflösung dieser Vereinfachung ist Schritt 1A.2.
+    //  dasselbe y-Band) - die Auflösung dieser Vereinfachung ist Schritt 1A.2.
     if (b.tableId >= 0) {
         const int anchor = d.tableFirstBlock(b.tableId);
         if (anchor == i) { buildFlatTableLayout(i); return; }
         //  Zellblöcke werden VOM ANKER mitausgelegt (die Zeilenhöhe hängt von
-        //  allen Zellen der Zeile ab) — hier nur sicherstellen, dass er es tat.
+        //  allen Zellen der Zeile ab) - hier nur sicherstellen, dass er es tat.
         if (anchor >= 0 && anchor < int(m_lay.size()) && !m_lay[size_t(anchor)].table)
             buildFlatTableLayout(anchor);
         L.laid = true;
         return;
     }
 
-    //  Inhaltsverzeichnis-Feld → eine Zeile je Überschrift.
+    //  Inhaltsverzeichnis-Feld -> eine Zeile je Überschrift.
     if (buildTocLayout(i))
         return;
 
@@ -847,14 +847,14 @@ void DocxTextArea::buildLayout(int i) {
 //  Ein `w:drawing`-Run ist in Word ein Zeichen IN der Zeile (`wp:inline`):
 //  zwei Bilder hintereinander stehen NEBENEINANDER, Text dahinter steht daneben,
 //  und erst wenn die Breite nicht mehr reicht, beginnt ein neues Band. Genau das
-//  bildet diese Funktion nach — QTextLayout kann Inline-Objekte ohne
+//  bildet diese Funktion nach - QTextLayout kann Inline-Objekte ohne
 //  QTextDocument nicht vermessen, also wird der Absatz an jedem Objekt-Zeichen
 //  in Stücke zerlegt und der Platz für das Bild ausgespart.
 // ─────────────────────────────────────────────────────────────────────────────
 //  Störer aus den Blöcken DAVOR, umgerechnet in die block-lokalen Koordinaten
 //  von `blockIdx`. Gelesen werden ausschließlich `height` und die Bildkästen der
-//  Vorgänger — KEINE Offsets und keine Paginierung, sonst liefe das Auslegen in
-//  eine Rekursion (ensureOffsetsTo → paginateBlock → ensureLaid → buildLayout).
+//  Vorgänger - KEINE Offsets und keine Paginierung, sonst liefe das Auslegen in
+//  eine Rekursion (ensureOffsetsTo -> paginateBlock -> ensureLaid -> buildLayout).
 //  Weiter zurück als eine Slot-Höhe wird nicht gesucht: was so weit reicht,
 //  liegt ohnehin auf einer anderen Seite.
 QVector<DocxTextArea::FloatObstacle> DocxTextArea::foreignFloats(int blockIdx) const {
@@ -911,7 +911,7 @@ bool DocxTextArea::canWrapAroundFloats(int blockIdx) const {
     if (blockIdx < 0 || blockIdx >= m_ctl->doc().blocks.size()) return false;
     //  Gelesen wird das DOKUMENT, nicht das Layout: gefragt wird beim Auslegen
     //  eines FRÜHEREN Blocks, und die Layout-Flags der späteren (`isCell`,
-    //  `isToc`) stehen dann noch gar nicht — ein Zellblock sah damit wie ein
+    //  `isToc`) stehen dann noch gar nicht - ein Zellblock sah damit wie ein
     //  gewöhnlicher Absatz aus und der Deckel griff nie.
     const Docx::Block& b = m_ctl->doc().blocks.at(blockIdx);
     if (b.kind != Docx::Block::Paragraph) return false;   // opak/unsichtbar
@@ -924,7 +924,7 @@ void DocxTextArea::invalidateFloatFollowers(int i, qreal reach) {
     qreal acc = 0.0;
     for (int k = i + 1; k < int(m_lay.size()) && acc < reach; ++k) {
         BlockLayout& F = m_lay[size_t(k)];
-        //  Nur das Auslegen verwerfen — Höhe/Offsets bleiben gültig, bis
+        //  Nur das Auslegen verwerfen - Höhe/Offsets bleiben gültig, bis
         //  ensureLaid sie neu vermisst (dasselbe Muster wie trimLayouts).
         F.laid = false;
         acc += F.height;
@@ -936,7 +936,7 @@ qreal DocxTextArea::buildInlineRows(BlockLayout& L, const Block& b,
                                     qreal width, int blockIdx) {
     const Document& d  = m_ctl->doc();
     const RunFmt    def = d.defaultRun();
-    //  Der Clear-Umbruch bricht die Zeile wie ein `w:br` — QTextLayout kennt
+    //  Der Clear-Umbruch bricht die Zeile wie ein `w:br` - QTextLayout kennt
     //  dafür nur U+2028. Fürs AUSLEGEN wird er deshalb 1:1 darauf abgebildet
     //  (gleiche Länge, alle Positionen bleiben gültig); die Stellen merkt sich
     //  `clearAt`, damit das Band danach UNTER alle Störer rutscht.
@@ -947,7 +947,7 @@ qreal DocxTextArea::buildInlineRows(BlockLayout& L, const Block& b,
     const qreal     W = qMax(20.0, width);
     const qreal     spacing = qMax(0.5, pf.lineSpacing);
 
-    //  Diese Funktion BAUT den Block — sie muss ihn deshalb selbst leeren.
+    //  Diese Funktion BAUT den Block - sie muss ihn deshalb selbst leeren.
     //  Der Zellpfad (buildFlatTableLayout) ruft sie direkt auf; ohne das blieb
     //  ein gelöschtes Bild in `images` stehen und wurde weitergezeichnet,
     //  obwohl es im Dokument nicht mehr existierte (Nutzerbefund: „Geisterbild"
@@ -973,12 +973,12 @@ qreal DocxTextArea::buildInlineRows(BlockLayout& L, const Block& b,
         cf.setForeground(rf.color.isValid() ? rf.color : QColor(0, 0, 0));
         if (r.opaque && r.revision == Run::RevNone) {
             //  Atomare Fremdinhalte dezent hinterlegen (Hyperlink-Blau wäre
-            //  irreführend — es sind auch Felder/Zeichnungen).
+            //  irreführend - es sind auch Felder/Zeichnungen).
             cf.setBackground(QColor(0, 0, 0, 14));
         }
         //  ── Änderungsverfolgung als DEKORATOR ────────────────────────────────
         //  Eingefügt = unterstrichen, gelöscht = durchgestrichen, beides in der
-        //  Farbe des Autors — wie in Word. Das Dokument selbst bleibt
+        //  Farbe des Autors - wie in Word. Das Dokument selbst bleibt
         //  unangetastet; die Markierung ist reine Darstellung.
         if (r.revision != Run::RevNone) {
             const QColor rc = revisionColor(r.revAuthor);
@@ -1037,7 +1037,7 @@ qreal DocxTextArea::buildInlineRows(BlockLayout& L, const Block& b,
     int   leftRowIdx = -1;      // linkes Stück, dessen Höhen noch nachzuziehen sind
     qreal pendingRightX = -1.0; // ≥ 0: nächste Zeile gehört rechts neben das Bild
 
-    //  Band abschließen: Höhen festschreiben und — falls ein Bild darin steht —
+    //  Band abschließen: Höhen festschreiben und - falls ein Bild darin steht -
     //  Bild und Textzeile auf die UNTERKANTE ausrichten (Word setzt den Text
     //  auf die Grundlinie unter das Bild). `advance == false` schließt nur das
     //  linke Stück eines geteilten Bandes: die y bleibt stehen.
@@ -1059,7 +1059,7 @@ qreal DocxTextArea::buildInlineRows(BlockLayout& L, const Block& b,
                 QTextLayout* lp = L.pieces[size_t(R.piece)].lay.get();
                 if (R.line >= 0 && R.line < lp->lineCount()) {
                     QTextLine ln = lp->lineAt(R.line);
-                    //  Versatz MERKEN — Caret und Listenmarker folgen ihm.
+                    //  Versatz MERKEN - Caret und Listenmarker folgen ihm.
                     R.textDy = qMax(0.0, rowVis - ln.height());
                     ln.setPosition(QPointF(ln.x(), R.y + R.textDy));
                 }
@@ -1067,7 +1067,7 @@ qreal DocxTextArea::buildInlineRows(BlockLayout& L, const Block& b,
         }
         if (advance) {
             y += rowAdv;
-            //  Höhen des linken Stücks nachziehen — beide Stücke eines Bandes
+            //  Höhen des linken Stücks nachziehen - beide Stücke eines Bandes
             //  melden dieselbe Höhe, sonst trennte die Paginierung sie.
             if (leftRowIdx >= 0 && leftRowIdx < int(L.rows.size())) {
                 L.rows[size_t(leftRowIdx)].h    = rowAdv;
@@ -1087,7 +1087,7 @@ qreal DocxTextArea::buildInlineRows(BlockLayout& L, const Block& b,
 
     //  Bilder des Absatzes: im Zeilenfluss (`wp:inline`) oder VERANKERT mit
     //  Textumfluss (`wp:anchor` + `w:wrapSquare`). Verankerte belegen keinen
-    //  Platz in der Zeile — der Text weicht ihrem Rechteck aus.
+    //  Platz in der Zeile - der Text weicht ihrem Rechteck aus.
     const QVector<InlineImage> allImgs = d.paragraphImages(b);
     QVector<InlineImage> floats;
     for (const InlineImage& ii : allImgs)
@@ -1120,7 +1120,7 @@ qreal DocxTextArea::buildInlineRows(BlockLayout& L, const Block& b,
     //  Waagerecht nutzbarer Bereich einer Zeile: verankerte Bilder, die ihr
     //  Höhenband schneiden, drängen sie zur Seite. WOHIN, sagt die Umbruchseite
     //  des Dokuments (`w:wrapSquare` ▸ `wrapText`); nur `largest`/`bothSides`
-    //  dürfen selbst wählen — dann gewinnt die breitere Seite.
+    //  dürfen selbst wählen - dann gewinnt die breitere Seite.
     //  `pushTo` meldet, bis wohin die Zeile ausweichen MUSS, wenn daneben keine
     //  lesbare Spalte übrig bleibt (= Unterkante des breitesten Störers).
     //  `gapL`/`gapR` melden zusätzlich die LÜCKE eines `bothSides`-Bildes: dort
@@ -1141,7 +1141,7 @@ qreal DocxTextArea::buildInlineRows(BlockLayout& L, const Block& b,
         qreal bothL = 0.0, bothR = 0.0;
         //  EIN Durchlauf über eigene UND fremde Störer: für die Zeile macht es
         //  keinen Unterschied, ob das Bild in diesem Absatz verankert ist oder
-        //  im vorherigen — sie muss ihm so oder so ausweichen.
+        //  im vorherigen - sie muss ihm so oder so ausweichen.
         auto consider = [&](qreal by, qreal bh, qreal bx, qreal bw,
                             qreal bpadL, qreal bpadR, int side) {
             if (top >= by + bh || top + h <= by) return;        // kein Überlapp
@@ -1166,7 +1166,7 @@ qreal DocxTextArea::buildInlineRows(BlockLayout& L, const Block& b,
         for (const FloatObstacle& O : foreign)
             consider(O.y, O.h, O.x, O.w, O.padL, O.padR, O.wrapSide);
         //  Die Lücke gilt nur, wenn auf BEIDEN Seiten eine lesbare Spalte übrig
-        //  bleibt — sonst verhält sich das Bild wie `largest` (breitere Seite).
+        //  bleibt - sonst verhält sich das Bild wie `largest` (breitere Seite).
         //  Erst hier zu prüfen ist nötig: andere Bilder desselben Bandes können
         //  die Ränder vorher noch verschoben haben.
         if (haveBoth) {
@@ -1233,7 +1233,7 @@ qreal DocxTextArea::buildInlineRows(BlockLayout& L, const Block& b,
                 if (toRight) leftRowIdx = cur;
                 closeRow(!toRight);
                 //  Stand vor dieser Zeile ein Clear-Umbruch, beginnt sie UNTER
-                //  allem, was hereinragt — sonst liefe der Text neben der
+                //  allem, was hereinragt - sonst liefe der Text neben der
                 //  Tabelle weiter, obwohl der Nutzer ausdrücklich darunter will.
                 if (clearAt.contains(from + ln.textStart() - 1)) {
                     qreal below = y;
@@ -1252,15 +1252,15 @@ qreal DocxTextArea::buildInlineRows(BlockLayout& L, const Block& b,
             ln.setLineWidth(qMax(8.0, W - x));
             qreal availL = 0.0, availR = W, gapL = -1.0, gapR = -1.0;
             //  Auch FREMDE Störer (Bild aus einem vorherigen Absatz, das
-            //  hereinragt) lösen den Umfluss aus — ohne `|| !foreign.isEmpty()`
+            //  hereinragt) lösen den Umfluss aus - ohne `|| !foreign.isEmpty()`
             //  lief der Text quer durch das Bild, weil `usableSpan` gar nicht
             //  erst gefragt wurde.
             if (!floats.isEmpty() || !foreign.isEmpty()) {
                 //  Reicht der Platz daneben nicht, rutscht das BAND unter das
-                //  Bild — volle Breite an derselben y wäre Text ÜBER dem Bild.
+                //  Bild - volle Breite an derselben y wäre Text ÜBER dem Bild.
                 //  Nur solange das Band noch leer ist; sonst müssten die schon
                 //  gesetzten Zeilen-Bilder mitwandern. Das rechte Stück eines
-                //  geteilten Bandes darf nie schieben — sein linkes Stück steht
+                //  geteilten Bandes darf nie schieben - sein linkes Stück steht
                 //  schon.
                 const bool bandEmpty = (!toRight && x <= 0.0
                                         && L.rows[size_t(cur)].imgCount == 0);
@@ -1314,7 +1314,7 @@ qreal DocxTextArea::buildInlineRows(BlockLayout& L, const Block& b,
         const InlineImage& info = allImgs.at(imgIdx);
         ++imgIdx;
         at = qMax(at, info.pos + 1);
-        //  Ein VERANKERTES Bild steht schon an seiner Stelle — hier ist nur
+        //  Ein VERANKERTES Bild steht schon an seiner Stelle - hier ist nur
         //  sein Objekt-Zeichen auszusparen. Bliebe es im Text, malte
         //  QTextLayout dafür ein Ersatzkästchen mitten in die Zeile und
         //  belegte dessen Breite (am Beleg neben dem umfließenden Bild zu
@@ -1331,7 +1331,7 @@ qreal DocxTextArea::buildInlineRows(BlockLayout& L, const Block& b,
         box.pos = info.pos;
         box.run = info.run;
         if (cur >= 0 && x > 0.0 && x + box.w > W + 0.5)
-            closeRow();                       // passt nicht mehr → neues Band
+            closeRow();                       // passt nicht mehr -> neues Band
         ensureRow(info.pos);
         box.x = x;
         box.y = y;
@@ -1349,7 +1349,7 @@ qreal DocxTextArea::buildInlineRows(BlockLayout& L, const Block& b,
     //  darf darüber hinausragen; der Überstand wird gemerkt, und die folgenden
     //  Absätze fließen darum herum (s. foreignFloats). Zog der Block früher
     //  seine Unterkante bis unter das Bild, begann der Folgeabsatz IMMER
-    //  darunter — auch wenn daneben eine halbe Seite frei war.
+    //  darunter - auch wenn daneben eine halbe Seite frei war.
     qreal bottom = L.rows.empty()
                        ? L.beforePx + QFontMetricsF(base).height() * spacing
                        : y;
@@ -1369,7 +1369,7 @@ qreal DocxTextArea::buildInlineRows(BlockLayout& L, const Block& b,
 // ─────────────────────────────────────────────────────────────────────────────
 //  Tabellen-Anzeige (read-only): Gitter auslegen und zeichnen
 // ─────────────────────────────────────────────────────────────────────────────
-//  Einen Absatz vermessen, ohne die Block-Layout-Verwaltung zu berühren — wird
+//  Einen Absatz vermessen, ohne die Block-Layout-Verwaltung zu berühren - wird
 //  für ZELL-Absätze gebraucht (dieselben Schrift-/Ausrichtungsregeln wie
 //  buildLayout, nur ohne Listenmarker und Absatzabstände).
 std::unique_ptr<QTextLayout> DocxTextArea::layoutParagraph(const Block& b, qreal width,
@@ -1441,7 +1441,7 @@ std::unique_ptr<QTextLayout> DocxTextArea::layoutParagraph(const Block& b, qreal
 bool DocxTextArea::makeImageBox(const InlineImage& info, qreal avail,
                                 ImageBox* out) const {
     if (!out || !m_ctl || !m_ctl->ready()) return false;
-    //  Sollmaß aus wp:extent (EMU → Punkt → Pixel).
+    //  Sollmaß aus wp:extent (EMU -> Punkt -> Pixel).
     constexpr qreal kEmuToPx = kPtToPx / 12700.0;     // 1 pt = 12700 EMU
     const qreal av = avail > 0.0 ? avail : contentWidth();
     qreal w = info.cxEmu > 0 ? info.cxEmu * kEmuToPx : 0.0;
@@ -1452,10 +1452,10 @@ bool DocxTextArea::makeImageBox(const InlineImage& info, qreal avail,
     if (!bytes.isEmpty()) src.loadFromData(bytes);
 
     if (src.isNull()) {
-        //  Beziehung/Format unbekannt → Rahmen in Sollgröße statt Fehlanzeige.
+        //  Beziehung/Format unbekannt -> Rahmen in Sollgröße statt Fehlanzeige.
         if (w <= 0.0) w = qMin(av, 160.0);
         if (h <= 0.0) h = 90.0;
-    } else if (w <= 0.0 || h <= 0.0) {               // kein extent → native Größe
+    } else if (w <= 0.0 || h <= 0.0) {               // kein extent -> native Größe
         w = src.width()  * (96.0 / qMax(1, src.dotsPerMeterX() > 0
                                             ? qRound(src.dotsPerMeterX() * 0.0254) : 96));
         h = src.height() * (96.0 / qMax(1, src.dotsPerMeterY() > 0
@@ -1486,7 +1486,7 @@ bool DocxTextArea::makeImageBox(const InlineImage& info, qreal avail,
 //  Das FELD in der Datei bleibt deklarativ (keine eingebackenen Seitenzahlen).
 //  Hier wird je Überschrift eine Zeile reserviert; die SEITENZAHL trägt erst
 //  `paintToc` ein. Das geht auf, weil die Höhe nur an der ANZAHL der Einträge
-//  hängt, nicht an den Zahlen — es braucht also keinen zweiten Layout-Pass.
+//  hängt, nicht an den Zahlen - es braucht also keinen zweiten Layout-Pass.
 // ─────────────────────────────────────────────────────────────────────────────
 bool DocxTextArea::buildTocLayout(int i) {
     BlockLayout& L = m_lay[size_t(i)];
@@ -1505,7 +1505,7 @@ bool DocxTextArea::buildTocLayout(int i) {
     L.images.clear();
 
     //  Schriftart/-größe des Verzeichnisses: aufgelöstes Format des Absatzes
-    //  (der Nutzer setzt es über die Leiste, es landet in w:pPr/w:rPr) — mehr
+    //  (der Nutzer setzt es über die Leiste, es landet in w:pPr/w:rPr) - mehr
     //  ist am Verzeichnis bewusst nicht einstellbar.
     const RunFmt def = d.defaultRun();
     const RunFmt tf  = d.paragraphMarkFormat(b);
@@ -1519,7 +1519,7 @@ bool DocxTextArea::buildTocLayout(int i) {
 
     //  Das Verzeichnis bekommt EIGENE Seiten: es beginnt oben auf einer Seite
     //  und der Text danach fängt auf der nächsten an (s. paginateBlock). Passt
-    //  es nicht auf eine Seite, läuft es seitenweise weiter — deshalb die Zahl
+    //  es nicht auf eine Seite, läuft es seitenweise weiter - deshalb die Zahl
     //  der Einträge je Seite.
     const qreal usable = qMax(L.tocLineH, slotHeight() - 8.0);
     L.tocPerPage = qMax(1, int(usable / L.tocLineH));
@@ -1534,7 +1534,7 @@ bool DocxTextArea::buildTocLayout(int i) {
     L.laid     = true;
     //  Auch das Verzeichnis legt sich nicht um ein Bild herum. In der Praxis
     //  beginnt es auf einer eigenen Seite, aber verlassen wird sich darauf
-    //  nicht — steht ein Bild darüber, das hereinragt, rückt es nach unten.
+    //  nicht - steht ein Bild darüber, das hereinragt, rückt es nach unten.
     shiftBelowForeignFloats(i);
     return true;
 }
@@ -1544,10 +1544,10 @@ int DocxTextArea::pageOfBlock(int i) {
     return pageOfEntry(i, 0);
 }
 
-//  Dasselbe für EINE STELLE im Block: Zeichenposition → Zeilenband → Stück →
-//  Slot → Seite. Nötig, weil ein Überschrift-Absatz mehrere Verzeichnis-Einträge
+//  Dasselbe für EINE STELLE im Block: Zeichenposition -> Zeilenband -> Stück ->
+//  Slot -> Seite. Nötig, weil ein Überschrift-Absatz mehrere Verzeichnis-Einträge
 //  tragen kann (nur durch `w:br` getrennt) und dabei über eine Seitengrenze
-//  laufen darf — die Zeilen liegen dann in verschiedenen Stücken.
+//  laufen darf - die Zeilen liegen dann in verschiedenen Stücken.
 int DocxTextArea::pageOfEntry(int i, int pos) {
     if (i < 0 || i >= int(m_lay.size())) return 1;
     ensureOffsetsTo(i + 1);
@@ -1587,7 +1587,7 @@ void DocxTextArea::dropSelectedImage(int block, qreal xMm, qreal yMm) {
 
     if (top > textHeight(src)) {
         //  Nach UNTEN: den überstehenden Rest durch die folgenden Absätze
-        //  reichen. Reicht er über den letzten hinaus, gilt der letzte — sonst
+        //  reichen. Reicht er über den letzten hinaus, gilt der letzte - sonst
         //  bliebe ein Ablegen unterhalb des Textes wirkungslos.
         qreal rest = top - textHeight(src);
         for (int i = src + 1; i < n; ++i) {
@@ -1614,7 +1614,7 @@ void DocxTextArea::dropSelectedImage(int block, qreal xMm, qreal yMm) {
     //  ── O7b: auf das SEGMENT des Ablegepunkts klemmen ───────────────────────
     //  Die Bildlage ist ABSATZrelativ, die Seitenaufteilung ZEILENrelativ.
     //  Läuft der Zielabsatz über eine Seitenkante, steht sein Anfang oben auf
-    //  der vorherigen Seite — ein Versatz, der auf der Folgeseite abgelegt
+    //  der vorherigen Seite - ein Versatz, der auf der Folgeseite abgelegt
     //  wurde, schob das Bild dann unter den Textbereich, wo der Seiten-Clip es
     //  abschnitt (sichtbar erst beim erneuten Ziehen). Also die Ziel-y so
     //  klemmen, dass das Bild im Stück seines Ablegepunkts bleibt.
@@ -1637,7 +1637,7 @@ void DocxTextArea::dropSelectedImage(int block, qreal xMm, qreal yMm) {
     }
 
     if (dst == src) {
-        //  Auch ohne Absatzwechsel gilt die Klemmung — sonst rutschte das Bild
+        //  Auch ohne Absatzwechsel gilt die Klemmung - sonst rutschte das Bild
         //  im eigenen, über die Seitenkante laufenden Absatz aus dem Textbereich.
         const qreal yClamped = (top - m_lay[size_t(src)].beforePx) / kMmToPx;
         m_ctl->setImagePositionMm(block, xMm, qMax(0.0, yClamped));
@@ -1666,7 +1666,7 @@ void DocxTextArea::paintToc(QPainter* p, const BlockLayout& L, qreal left,
     }
 
     //  Nur die Einträge DIESER Seite (das Verzeichnis kann über mehrere
-    //  laufen — s. paginateBlock).
+    //  laufen - s. paginateBlock).
     const int from = qBound(0, firstEntry, int(L.tocEntries.size()));
     const int to   = qMin(int(L.tocEntries.size()),
                           from + qMax(1, L.tocPerPage));
@@ -1677,7 +1677,7 @@ void DocxTextArea::paintToc(QPainter* p, const BlockLayout& L, qreal left,
         const QString page = QString::number(pageOfEntry(e.block, e.pos));
         const qreal pw = fm.horizontalAdvance(page);
         //  Text links (bei Bedarf gekürzt), Seitenzahl rechtsbündig, dazwischen
-        //  eine Punktreihe — wie in Word.
+        //  eine Punktreihe - wie in Word.
         const qreal availText = qMax(20.0, width - indent - pw - 24.0);
         const QString text = fm.elidedText(e.text, Qt::ElideRight, availText);
         const qreal tw = fm.horizontalAdvance(text);
@@ -1707,7 +1707,7 @@ int DocxTextArea::tableAnchorOf(int i) const {
 //  Gitter einer FLACH zerlegten Tabelle aus ihren lebenden Zellblöcken bauen.
 //  Der Anker trägt die Gesamthöhe (Fluss bleibt monoton, die Tabelle ist damit
 //  für die Paginierung ein Stück); jeder Zellblock bekommt seine Lage RELATIV
-//  zum Anker. Bearbeiten einer Zelle ändert deren Höhe → Zeilenhöhe →
+//  zum Anker. Bearbeiten einer Zelle ändert deren Höhe -> Zeilenhöhe ->
 //  Tabellenhöhe; deshalb wird bei jeder Änderung der ANKER neu ausgelegt
 //  (s. invalidateFrom).
 void DocxTextArea::buildFlatTableLayout(int anchor) {
@@ -1783,7 +1783,7 @@ void DocxTextArea::buildFlatTableLayout(int anchor) {
                 BlockLayout& CB = m_lay[size_t(blockAt)];
                 qreal ph = 0.0;
                 //  Zell-Absätze laufen über DENSELBEN Weg wie der Fließtext:
-                //  auf die Zellbreite eingepasste Zeilenbänder samt Bildern —
+                //  auf die Zellbreite eingepasste Zeilenbänder samt Bildern -
                 //  sonst stünde dort das nackte Objekt-Zeichen und die Zelle
                 //  hätte die falsche Höhe.
                 {
@@ -1824,7 +1824,7 @@ void DocxTextArea::buildFlatTableLayout(int anchor) {
     }
 
     //  Der Anker hat ZWEI Rollen: er trägt das Gitter (isTable) UND ist der
-    //  erste Absatz der ersten Zelle (isCell) — die Zellschleife oben hat seine
+    //  erste Absatz der ersten Zelle (isCell) - die Zellschleife oben hat seine
     //  Flags dabei überschrieben, deshalb hier wiederherstellen. Genau das war
     //  der Grund, warum jeder Klick in der Tabelle im Anker landete.
     A.isTable = true;
@@ -1838,7 +1838,7 @@ void DocxTextArea::buildFlatTableLayout(int anchor) {
 //  Ein Block, der NICHT umfließen kann, weicht einem hereinragenden Bild nach
 //  UNTEN aus (Word schiebt eine Tabelle unter das Bild, statt sie darum
 //  herumzulegen). Gerechnet wird erst HIER, beim Auslegen des Blocks selbst:
-//  dann stehen die Höhen aller Vorgänger fest — ein Deckeln beim Bild-Absatz
+//  dann stehen die Höhen aller Vorgänger fest - ein Deckeln beim Bild-Absatz
 //  hätte mit deren SCHÄTZhöhen gerechnet und die Folgeabsätze zu weit
 //  nach unten geschoben (gemessen).
 void DocxTextArea::shiftBelowForeignFloats(int i) {
@@ -1848,7 +1848,7 @@ void DocxTextArea::shiftBelowForeignFloats(int i) {
     L.topPad = qMax(0.0, pad);
     if (L.topPad <= 0.0) return;
     L.height += L.topPad;
-    //  Gitter und Zelltext tragen ihre Lage explizit — beide mitschieben,
+    //  Gitter und Zelltext tragen ihre Lage explizit - beide mitschieben,
     //  dann folgen Zeichnen, Treffersuche und `docYForLine` von allein.
     if (L.table)
         for (RowLayout& r : L.table->rows) r.y += L.topPad;
@@ -1866,7 +1866,7 @@ void DocxTextArea::buildTableLayout(int i) {
     BlockLayout& L = m_lay[size_t(i)];
     L.table.reset();
     const Block& b = m_ctl->doc().blocks.at(i);
-    //  Gezeichnet wird immer aus dem ROH-Bereich der Tabelle — egal ob sie flach
+    //  Gezeichnet wird immer aus dem ROH-Bereich der Tabelle - egal ob sie flach
     //  zerlegt wurde (dann liefert das Gerüst den Bereich) oder als opaker Block
     //  vorliegt. So gibt es genau EINEN Tabellen-Renderer.
     Block src = b;
@@ -1878,7 +1878,7 @@ void DocxTextArea::buildTableLayout(int i) {
     }
     const TableView tv = m_ctl->doc().parseTableForDisplay(src);
     if (!tv.ok) {
-        //  Nicht deutbar → wie bisher eine Platzhalterzeile.
+        //  Nicht deutbar -> wie bisher eine Platzhalterzeile.
         L.isTable = false;
         L.height  = 34;
         L.laid    = true;
@@ -1887,7 +1887,7 @@ void DocxTextArea::buildTableLayout(int i) {
     L.isTable = true;
 
     //  Spaltenbreiten: Gitter aus w:tblGrid, sonst gleichmäßig. Ist die Tabelle
-    //  breiter als die Textspalte, wird sie proportional eingepasst — eine
+    //  breiter als die Textspalte, wird sie proportional eingepasst - eine
     //  Tabelle, die über den Seitenrand hinausläuft, wäre schlimmer als eine
     //  leicht gestauchte.
     const qreal avail = contentWidth();
@@ -1967,7 +1967,7 @@ void DocxTextArea::buildTableLayout(int i) {
 //  ── Text NEBEN einer Tabelle ────────────────────────────────────────────────
 //  Bleibt neben der Tabelle eine LESBARE Spalte und passt sie auf eine Seite,
 //  gibt sie ihre Flusshöhe ab und tritt für die folgenden Absätze als Störer
-//  auf — dieselbe Mechanik wie beim verankerten Bild (`foreignFloats` →
+//  auf - dieselbe Mechanik wie beim verankerten Bild (`foreignFloats` ->
 //  `usableSpan`). Standardverhalten, keine Einstellung: wo Platz ist, wird
 //  geschrieben.
 //  NICHT gleiten darf eine Tabelle, die über Seiten getrennt wird: ihre Stücke
@@ -2014,7 +2014,7 @@ void DocxTextArea::paintTable(QPainter* p, const BlockLayout& L, qreal left, qre
             p->drawRect(cr);
 
             qreal py = cr.y() + pad;
-            //  Bei flach zerlegten Tabellen ist `paras` leer — der Zelltext kommt
+            //  Bei flach zerlegten Tabellen ist `paras` leer - der Zelltext kommt
             //  dann aus den echten Blöcken (s. paintSlot).
             for (size_t k = 0; k < cell.paras.size(); ++k) {
                 if (k < cell.paraIsPlaceholder.size() && cell.paraIsPlaceholder[k]) {
@@ -2041,12 +2041,12 @@ void DocxTextArea::paintTable(QPainter* p, const BlockLayout& L, qreal left, qre
 void DocxTextArea::ensureLaid(int i) {
     if (!m_ctl || i < 0 || i >= int(m_lay.size())) return;
     //  Ein Zellblock ohne Layout heißt: der Anker seiner Tabelle ist nicht (mehr)
-    //  ausgelegt. Der Anker baut ALLE Zellen — einzeln ginge es nicht, weil die
+    //  ausgelegt. Der Anker baut ALLE Zellen - einzeln ginge es nicht, weil die
     //  Zeilenhöhe von den Nachbarzellen abhängt.
     {
         const int anchor = tableAnchorOf(i);
         if (anchor >= 0 && anchor != i) {
-            //  Ein BILD-Absatz in der Zelle hat bewusst kein QTextLayout — ohne
+            //  Ein BILD-Absatz in der Zelle hat bewusst kein QTextLayout - ohne
             //  diese Ausnahme würde hier bei jedem Aufruf die ganze Tabelle neu
             //  ausgelegt (paint ruft ensureLaid je Block).
             if (!m_lay[size_t(anchor)].table || m_lay[size_t(i)].trimmed)
@@ -2062,7 +2062,7 @@ void DocxTextArea::ensureLaid(int i) {
         if (!qFuzzyCompare(oldH + 1, m_lay[i].height + 1))
             m_offsetsValidTo = qMin(m_offsetsValidTo, i);
         //  Der Überstand eines verankerten Bildes bestimmt das Layout der
-        //  FOLGENDEN Blöcke mit — ändert er sich, sind deren Zeilen veraltet.
+        //  FOLGENDEN Blöcke mit - ändert er sich, sind deren Zeilen veraltet.
         //  Nur vorwärts markieren (kein Zyklus), das Neuauslegen bleibt lazy.
         if (!qFuzzyCompare(oldOver + 1, m_lay[i].floatOverhang + 1)) {
             invalidateFloatFollowers(i, qMax(oldOver, m_lay[i].floatOverhang));
@@ -2073,7 +2073,7 @@ void DocxTextArea::ensureLaid(int i) {
 
 //  Verteilt EINEN Block auf Spalten-Slots. Rückgabe: Fluss-y direkt nach ihm.
 //  Ein Absatz, der die Slot-Grenze überschreitet, wird ZEILENWEISE getrennt
-//  (mehrere Segmente) — genau das macht die Ansicht seitengenau. Ist er nicht
+//  (mehrere Segmente) - genau das macht die Ansicht seitengenau. Ist er nicht
 //  trennbar (Platzhalter, noch nicht vermessen, einzeilig), wandert er
 //  vollständig in den nächsten Slot; ist er höher als ein Slot, läuft er über
 //  (der Fluss bleibt dabei monoton, s. Koordinaten-Kommentar im Header).
@@ -2081,20 +2081,20 @@ void DocxTextArea::ensureLaid(int i) {
 //  Fußnoten am Seitenfuß
 // ─────────────────────────────────────────────────────────────────────────────
 //  Abstände des Bereichs: Luft über der Trennlinie, die Linie selbst, Luft
-//  darunter. Bewusst klein — der Bereich soll den Textbereich nicht auffressen.
+//  darunter. Bewusst klein - der Bereich soll den Textbereich nicht auffressen.
 qreal DocxTextArea::paginateBlock(int idx, qreal flowStart, qreal slotH) {
     //  Ein Block, der die Slot-Grenze überschreitet, muss zeilenweise getrennt
-    //  werden KÖNNEN — dafür braucht er sein Layout. `trimLayouts` gibt Layouts
+    //  werden KÖNNEN - dafür braucht er sein Layout. `trimLayouts` gibt Layouts
     //  außerhalb des Fensters frei; hinge die Trennung daran, ob eines gerade
     //  da ist, wäre die Seitenzahl von Lauf zu Lauf eine andere (im Prüfstand
     //  beobachtet: 18 vs. 19 Seiten fürs selbe Dokument). Deshalb wird hier
-    //  notfalls nachvermessen — das trifft ~einen Block je Seitengrenze, nicht
+    //  notfalls nachvermessen - das trifft ~einen Block je Seitengrenze, nicht
     //  das Dokument.
     {
         const BlockLayout& L0 = m_lay[size_t(idx)];
         const int slot0 = int(flowStart / slotH);
         const qreal yInSlot0 = flowStart - slot0 * slotH;
-        //  Maßgeblich ist, ob die ZEILEN vorliegen — nicht, ob der Block je
+        //  Maßgeblich ist, ob die ZEILEN vorliegen - nicht, ob der Block je
         //  vermessen wurde. `trimLayouts` leert `rows` und lässt `isText`/`laid`
         //  stehen (Höhe und Offsets sollen ja gültig bleiben); ein so
         //  freigegebener Absatz galt hier deshalb als untrennbar und wanderte
@@ -2102,7 +2102,7 @@ qreal DocxTextArea::paginateBlock(int idx, qreal flowStart, qreal slotH) {
         //  die dieser Zweig verhindern soll.
         //  Für eine TABELLE gilt dasselbe eine Ebene höher: `trimLayouts` gibt
         //  auch das Gitter frei, und ohne Gitter kennt die Trennung unten keine
-        //  Zeilengrenzen — die Tabelle wanderte wieder als Ganzes weiter.
+        //  Zeilengrenzen - die Tabelle wanderte wieder als Ganzes weiter.
         const bool needsGrid = L0.isTable && !L0.table;
         const bool needsLines = (!hasText(L0) || L0.rows.empty())
                                 && m_ctl && m_ctl->ready()
@@ -2127,7 +2127,7 @@ qreal DocxTextArea::paginateBlock(int idx, qreal flowStart, qreal slotH) {
 
     //  ── GLEITENDE Tabelle ───────────────────────────────────────────────────
     //  Sie gibt ihre Flusshöhe ab (der Text daneben beginnt auf ihrer Höhe),
-    //  MUSS aber als Ganzes auf die Seite passen — sonst wüchse sie über den
+    //  MUSS aber als Ganzes auf die Seite passen - sonst wüchse sie über den
     //  Papierrand hinaus. Passt sie nicht mehr, rückt sie als Ganzes auf die
     //  nächste Seite; getrennt wird eine gleitende Tabelle NIE (das entscheidet
     //  `maybeFloatTable` vorher an ihrer Höhe).
@@ -2143,14 +2143,14 @@ qreal DocxTextArea::paginateBlock(int idx, qreal flowStart, qreal slotH) {
     //  ── Inhaltsverzeichnis: EIGENE Seiten ───────────────────────────────────
     //  Es beginnt oben auf einer frischen Seite, belegt sie allein und schiebt
     //  den Text danach auf die nächste. Passt es nicht auf eine Seite, läuft es
-    //  seitenweise weiter — jede dieser Seiten trägt nur Verzeichnis.
+    //  seitenweise weiter - jede dieser Seiten trägt nur Verzeichnis.
     if (L.isToc) {
         const int pageSlots = qMax(1, nCols);
-        //  An den Seitenanfang, falls wir nicht ohnehin dort stehen — aber NUR,
+        //  An den Seitenanfang, falls wir nicht ohnehin dort stehen - aber NUR,
         //  wenn auf dieser Seite schon etwas Sichtbares steht. Ein leerer
         //  Absatz davor (der Normalfall: das Verzeichnis wird ganz oben
         //  eingefügt, über ihm bleibt die alte Leerzeile) hat zwar Höhe, aber
-        //  keine Tinte — ohne diese Prüfung schöbe er das Verzeichnis auf
+        //  keine Tinte - ohne diese Prüfung schöbe er das Verzeichnis auf
         //  Seite 2 und ließe Seite 1 leer (Nutzerbefund).
         if (!(slot % pageSlots == 0 && qFuzzyIsNull(y))
             && pageHasInkBefore(idx, slot / pageSlots)) {
@@ -2176,7 +2176,7 @@ qreal DocxTextArea::paginateBlock(int idx, qreal flowStart, qreal slotH) {
 
     //  Einfachster und häufigster Fall: passt komplett, kein erzwungener Umbruch.
     //  Gemessen wird gegen die KAPAZITÄT des Slots (Slot-Höhe minus
-    //  Fußnotenbereich) — die Slot-HÖHE selbst bleibt uniform, sonst bräche die
+    //  Fußnotenbereich) - die Slot-HÖHE selbst bleibt uniform, sonst bräche die
     //  Fluss-Invariante `Fluss-y = slot · slotHeight() + y`.
     if (y + h <= slotHeight() && !hasExplicitBreak) {
         L.segs.append({ slot, 0, y });
@@ -2187,7 +2187,7 @@ qreal DocxTextArea::paginateBlock(int idx, qreal flowStart, qreal slotH) {
     //  Der Anker trägt die ganze Tabelle in EINEM Block; für die Zeilen-Logik
     //  unten ist er einzeilig und wäre damit „nicht trennbar". Ohne diesen
     //  Zweig reserviert der Fluss den Platz, gezeichnet würde aber nur das
-    //  erste Stück — dahinter blieben Seiten vollständig leer.
+    //  erste Stück - dahinter blieben Seiten vollständig leer.
     if (segCountsTableRows(L)) {
         const std::vector<RowLayout>& rows = L.table->rows;
         const int nRows = int(rows.size());
@@ -2199,7 +2199,7 @@ qreal DocxTextArea::paginateBlock(int idx, qreal flowStart, qreal slotH) {
             const qreal rBot = rTop + rows[size_t(r)].h;
             const bool first = (r == segFirstRow(L, L.segs.constLast()));
             //  Steht das laufende Stück noch bei seiner ersten Zeile, wird es
-            //  ganz verschoben statt ein leeres zurückzulassen — wie beim Text.
+            //  ganz verschoben statt ein leeres zurückzulassen - wie beim Text.
             if (rBot > slotHeight() && !(first && segTop <= 0.0)) {
                 ++slot;
                 segTop = 0.0;
@@ -2216,7 +2216,7 @@ qreal DocxTextArea::paginateBlock(int idx, qreal flowStart, qreal slotH) {
                + (tableBottom - segOriginY(L, lastSeg)) + trailing;
     }
 
-    //  Nicht trennbar → ganz in den nächsten Slot.
+    //  Nicht trennbar -> ganz in den nächsten Slot.
     if (nLines <= 1) {
         if (y > 0.0) { ++slot; y = 0.0; }
         L.segs.append({ slot, 0, y });
@@ -2224,7 +2224,7 @@ qreal DocxTextArea::paginateBlock(int idx, qreal flowStart, qreal slotH) {
     }
 
     //  Zeilenweise verteilen. `segFirstY` ist die Layout-y der ersten Zeile des
-    //  laufenden Segments — daraus ergibt sich die Slot-y jeder Folgezeile.
+    //  laufenden Segments - daraus ergibt sich die Slot-y jeder Folgezeile.
     L.segs.append({ slot, 0, y });
     qreal segTop = y;
     qreal segFirstY = 0.0;                 // Zeile 0 liegt bei y = beforePx
@@ -2269,7 +2269,7 @@ qreal DocxTextArea::paginateBlock(int idx, qreal flowStart, qreal slotH) {
 
 //  Gefragt ist TINTE, nicht Höhe: ein leerer Absatz belegt Platz, ist aber
 //  nichts, wofür sich eine eigene Seite lohnt. Gelesen wird deshalb das
-//  DOKUMENT (Textlänge, Art), nicht das Layout — die Blöcke davor sind zwar
+//  DOKUMENT (Textlänge, Art), nicht das Layout - die Blöcke davor sind zwar
 //  paginiert, aber nicht zwingend schon vermessen.
 bool DocxTextArea::pageHasInkBefore(int idx, int page) const {
     if (!m_ctl || !m_ctl->ready()) return true;   // im Zweifel wie bisher
@@ -2345,7 +2345,7 @@ void DocxTextArea::layoutChunk() {
         //  Fluss auf den Schätzwerten stehen (rebuildAll paginiert das
         //  Dokument einmal mit ihnen), das Dokument lag beim ersten Öffnen
         //  zusammengeschoben da und rückte erst durch die erste Änderung an
-        //  seinen Platz — die invalidiert die Offsets ohnehin.
+        //  seinen Platz - die invalidiert die Offsets ohnehin.
         if (!m_lay[m_layChunkAt].laid) { ensureLaid(m_layChunkAt); ++done; }
         ++m_layChunkAt;
     }
@@ -2371,17 +2371,17 @@ void DocxTextArea::trimLayouts(int firstVisible, int lastVisible) {
     const int lo = qMax(0, firstVisible - kKeepMargin);
     const int hi = qMin(n - 1, lastVisible + kKeepMargin);
     if (lo == m_trimLo && hi == m_trimHi)
-        return;                       // Fenster unveraendert → nichts zu tun
+        return;                       // Fenster unveraendert -> nichts zu tun
     m_trimLo = lo;
     m_trimHi = hi;
 
     //  Cursor-Block ausnehmen: updateCursorRect/moveCursorVertical brauchen sein
-    //  Layout bei jedem Tastendruck — ihn wegzuwerfen kostete mehr, als er belegt.
+    //  Layout bei jedem Tastendruck - ihn wegzuwerfen kostete mehr, als er belegt.
     const int cursorBlock = (m_ctl && m_ctl->ready()) ? m_ctl->cursor().block : -1;
     for (int i = 0; i < n; ++i) {
         if ((i >= lo && i <= hi) || i == cursorBlock)
             continue;
-        //  NUR das Layout freigeben — `laid`/`height` bleiben gueltig, damit
+        //  NUR das Layout freigeben - `laid`/`height` bleiben gueltig, damit
         //  weder Praefix-Offsets noch die Inhaltshoehe neu berechnet werden.
         //  Fuer Tabellen gilt dasselbe: das Gitter-Layout haelt je Zelle
         //  QTextLayouts und ist damit der groesste Einzelposten im Fenster.
@@ -2398,7 +2398,7 @@ void DocxTextArea::trimLayouts(int firstVisible, int lastVisible) {
 //  Höhe EINER Zeile der Grundschrift, in ITEM-Pixeln. Grundlage der
 //  Rad-Schrittweite: ein Textdokument scrollt in ZEILEN. Ein Anteil der
 //  Fensterhöhe war viermal so weit wie in jedem Texteditor (Nutzerbefund
-//  „Scrollen ist zu schnell") und hing außerdem an der Fenstergröße — auf einem
+//  „Scrollen ist zu schnell") und hing außerdem an der Fenstergröße - auf einem
 //  großen Schirm raste dasselbe Rad schneller.
 qreal DocxTextArea::lineStep() const {
     qreal h = 0.0;
@@ -2415,7 +2415,7 @@ qreal DocxTextArea::lineStep() const {
 
 void DocxTextArea::updateContentHeight() {
     ensureOffsetsTo(int(m_lay.size()));
-    //  Fußnoten setzen die Kapazität der Seiten herab — das ändert die
+    //  Fußnoten setzen die Kapazität der Seiten herab - das ändert die
     //  Aufteilung und damit die Seitenzahl. Der Mehrpass läuft hier, weil hier
     //  ohnehin über das ganze Dokument paginiert wird; ohne Fußnoten ist er ein
     //  No-op und kostet einen Vergleich.
@@ -2431,7 +2431,7 @@ void DocxTextArea::updateContentHeight() {
 }
 
 //  Ein leerer Absatz wird mit dem am Cursor geltenden Format vermessen
-//  (s. buildLayout) — ändert sich dieser Bezug, muss sein Layout neu entstehen.
+//  (s. buildLayout) - ändert sich dieser Bezug, muss sein Layout neu entstehen.
 void DocxTextArea::invalidateEmptyBlock(int i) {
     if (!m_ctl || !m_ctl->ready() || i < 0 || i >= int(m_lay.size()))
         return;
@@ -2456,7 +2456,7 @@ void DocxTextArea::updateCursorRect() {
 
     //  Höhe/Grundlinie aus dem am Cursor WIRKSAMEN Zeichenformat (inkl.
     //  Pending) statt aus der Zeilenhöhe: Die Zeile ist so hoch wie ihr
-    //  größtes Zeichen — der Caret muss aber die Größe zeigen, in der das
+    //  größtes Zeichen - der Caret muss aber die Größe zeigen, in der das
     //  NÄCHSTE Zeichen erscheint. Genau das fehlte (Nutzerbefund: „Caret wird
     //  bei Schriftgrößen-Wechsel nicht aktualisiert").
     const RunFmt cf = m_ctl->caretFormat();
@@ -2468,7 +2468,7 @@ void DocxTextArea::updateCursorRect() {
     const QFontMetricsF fm(f);
 
     //  Caret in DOKUMENT-Koordinaten aufbauen (Seite + Spalte des Cursors, s.
-    //  Segmente) und erst am Ende in Item-Pixel umrechnen — die Property wird
+    //  Segmente) und erst am Ende in Item-Pixel umrechnen - die Property wird
     //  von QML zum Mitscrollen benutzt und muss dieselbe Einheit wie contentY
     //  haben.
     const int li = lineForPos(L, c.pos);
@@ -2477,7 +2477,7 @@ void DocxTextArea::updateCursorRect() {
     qreal h = fm.height();
     if (lineCount(L) == 0) {
         //  LEERER ABSATZ neben einem Störer (gleitende Tabelle, umflossenes
-        //  Bild): Er hat KEINE Zeile — also greift `xForPos` nicht, und am
+        //  Bild): Er hat KEINE Zeile - also greift `xForPos` nicht, und am
         //  Textstück steht auch nichts, weil nie eine Zeile ausgelegt wurde.
         //  Ohne Nachhilfe stünde der Caret an der linken Slotkante, also
         //  mitten neben/über dem Störer; erst das erste getippte Zeichen
@@ -2510,7 +2510,7 @@ void DocxTextArea::updateCursorRect() {
     if (lineCount(L) > 0) {
         x += xForPos(L, li, c.pos);
         //  An der GRUNDLINIE der Zeile ausrichten (nicht an der Bandoberkante)
-        //  — sonst „schwebt" ein kleiner Caret in einer hohen Mischzeile, und
+        //  - sonst „schwebt" ein kleiner Caret in einer hohen Mischzeile, und
         //  neben einem Bild stünde er oben, während der Text unten erscheint.
         y = docYForLine(bi, li) + (lineTextTop(L, li) - lineTop(L, li))
             + lineAscent(L, li) - fm.ascent();
@@ -2528,10 +2528,10 @@ void DocxTextArea::updateCursorRect() {
 
 // ─────────────────────────────────────────────────────────────────────────────
 //  Bild-Auswahl: ausgewählt ist ein Bild, wenn der Absatz NUR aus ihm besteht
-//  (Cursor darin) oder wenn die Selektion genau sein Objekt-Zeichen deckt — so
+//  (Cursor darin) oder wenn die Selektion genau sein Objekt-Zeichen deckt - so
 //  wählt ein Klick auf ein Bild im Fließtext genau dieses aus. Das Rechteck
 //  wird in DOKUMENT-Pixeln gemerkt und erst in den Gettern auf Item-Pixel
-//  umgerechnet — wie beim Caret, damit Scrollen und Maßstabswechsel keinen
+//  umgerechnet - wie beim Caret, damit Scrollen und Maßstabswechsel keinen
 //  Neuaufbau brauchen.
 // ─────────────────────────────────────────────────────────────────────────────
 void DocxTextArea::updateImageSelection() {
@@ -2560,7 +2560,7 @@ void DocxTextArea::updateImageSelection() {
     //  Tabelle: JE SEITENSTÜCK ein Rechteck (der Anker trägt Gitter und
     //  Zeilen). Ein einzelnes Rechteck aus „Lage des ersten Stücks + Gesamt-
     //  höhe" säße bei einer getrennten Tabelle über der ersten Seite in der
-    //  Luft — die Stücke liegen auf verschiedenen Seiten. Gerechnet wird
+    //  Luft - die Stücke liegen auf verschiedenen Seiten. Gerechnet wird
     //  deshalb aus den ZEILEN des Stücks, wie `paintSlot` zeichnet; damit
     //  fällt `topPad` (s. shiftBelowForeignFloats) von selbst heraus, weil er
     //  schon in den Zeilen-y steckt.
@@ -2595,7 +2595,7 @@ void DocxTextArea::updateImageSelection() {
                     tsegs.append(sr);
                     if (s == primary) tr = sr;
                 }
-                //  Noch nicht paginiert (keine Stücke) → Fluss-Lage des Ankers.
+                //  Noch nicht paginiert (keine Stücke) -> Fluss-Lage des Ankers.
                 if (tsegs.isEmpty()) {
                     tr = QRectF(flowDocXForBlock(anchor, 0), flowDocYForLine(anchor, 0),
                                 A.table->width, qMax(1.0, A.height - A.topPad - 6.0));
@@ -2627,7 +2627,7 @@ qreal DocxTextArea::selTableY() const {
 qreal DocxTextArea::selTableW() const { return m_tblSelDoc.width() * m_scale; }
 qreal DocxTextArea::selTableH() const { return m_tblSelDoc.height() * m_scale; }
 
-//  Alle Stücke in Item-Pixeln — dieselbe Umrechnung wie die vier Getter oben.
+//  Alle Stücke in Item-Pixeln - dieselbe Umrechnung wie die vier Getter oben.
 //  Gebaut wird erst beim Lesen: die Liste hängt an Maßstab und contentY und
 //  wird beim Scrollen neu ausgewertet (imageSelectionChanged), gehalten werden
 //  nur die Dokument-Rechtecke.
@@ -2645,7 +2645,7 @@ QVariantList DocxTextArea::selTableRects() const {
     return out;
 }
 
-//  Waagerechter Versatz der Seite im Item — identisch zu paint().
+//  Waagerechter Versatz der Seite im Item - identisch zu paint().
 qreal DocxTextArea::itemOffsetX() const {
     return qMax(kSideMargin * m_scale, (width() - pageWpx() * m_scale) / 2.0);
 }
@@ -2672,7 +2672,7 @@ void DocxTextArea::paint(QPainter* p) {
 
     ensureOffsetsTo(int(m_lay.size()));
 
-    //  Item-Pixel → Dokument-Pixel: waagerecht zentrieren, senkrecht scrollen,
+    //  Item-Pixel -> Dokument-Pixel: waagerecht zentrieren, senkrecht scrollen,
     //  dann auf den Einpass-Maßstab stellen. Alles Weitere rechnet in
     //  Dokument-Pixeln (Seitengeometrie).
     const qreal s = m_scale;
@@ -2693,7 +2693,7 @@ void DocxTextArea::paint(QPainter* p) {
         if (pTop > viewBot) break;
         if (pTop + pageHpx() < viewTop) continue;
 
-        //  Papier mit Schattenkante — jetzt als EINZELNE Seite.
+        //  Papier mit Schattenkante - jetzt als EINZELNE Seite.
         const QRectF paper(0, pTop, pageWpx(), pageHpx());
         p->fillRect(paper.translated(3.0 / s, 3.0 / s), QColor(0, 0, 0, 45));
         p->fillRect(paper, QColor(255, 255, 255));
@@ -2716,8 +2716,8 @@ void DocxTextArea::paint(QPainter* p) {
 //  Absatz, der auf der nächsten Seite weiterläuft, hier nicht überstehen kann.
 //  Rote Wellenlinie unter den falsch geschriebenen Stellen eines Absatzes.
 //  Gezeichnet wird je ZEILE, damit ein über mehrere Zeilen gebrochenes Wort
-//  auch mehrfach unterstrichen wird — und in Bild-Absätzen gar nicht.
-//  Farbe je Autor — dieselbe Idee wie in Word: stabil über die Sitzung, aus dem
+//  auch mehrfach unterstrichen wird - und in Bild-Absätzen gar nicht.
+//  Farbe je Autor - dieselbe Idee wie in Word: stabil über die Sitzung, aus dem
 //  Namen abgeleitet, damit zwei Bearbeiter nicht dieselbe bekommen. Bewusst
 //  gedeckte Töne (die Markierung soll den Text lesbar lassen).
 QColor DocxTextArea::revisionColor(const QString& author) {
@@ -2743,7 +2743,7 @@ void DocxTextArea::paintSpell(QPainter* p, const BlockLayout& L, int blockIdx,
     for (const mg::SpellRange& r : bad) {
         const int from = r.start;
         const int to   = r.start + r.length;
-        //  Die Stelle kann über mehrere Zeilen laufen — je Zeile ein Stück.
+        //  Die Stelle kann über mehrere Zeilen laufen - je Zeile ein Stück.
         int li = lineForPos(L, from);
         while (li >= 0 && li < lineCount(L)) {
             int ls = 0, ll = 0;
@@ -2756,7 +2756,7 @@ void DocxTextArea::paintSpell(QPainter* p, const BlockLayout& L, int blockIdx,
                 //  Knapp unter der Grundlinie, wie in jedem Textprogramm.
                 const qreal yy = origin.y() + lineTextTop(L, li)
                                  + lineAscent(L, li) + 2.0;
-                //  Wellenlinie aus kurzen Strichen — eine gepunktete Linie wäre
+                //  Wellenlinie aus kurzen Strichen - eine gepunktete Linie wäre
                 //  von einer Unterstreichung nicht zu unterscheiden.
                 const qreal step = 2.0;
                 bool up = true;
@@ -2793,7 +2793,7 @@ void DocxTextArea::paintSlot(QPainter* p, int slot, bool withCaret,
     int i = blockAtY(flowLo);
     if (i < 0) { p->restore(); return; }
     //  Zellblöcke tragen keine Höhe: fällt die Slot-Oberkante genau auf das
-    //  Ende einer Tabelle, liefert die Fluss-Suche einen von ihnen — der Anker
+    //  Ende einer Tabelle, liefert die Fluss-Suche einen von ihnen - der Anker
     //  läge dann VOR dem Startindex und die Tabelle bliebe auf dieser Seite
     //  ungezeichnet. Also auf den Anker zurückgehen.
     {
@@ -2815,7 +2815,7 @@ void DocxTextArea::paintSlot(QPainter* p, int slot, bool withCaret,
         const BlockLayout& L = m_lay[i];
         if (L.height <= 0)
             continue;
-        //  Ob ein Block hierher gehört, entscheiden ALLEIN seine Segmente —
+        //  Ob ein Block hierher gehört, entscheiden ALLEIN seine Segmente -
         //  nicht seine Fluss-Lage. Ein Inhaltsverzeichnis springt auf den
         //  nächsten Seitenanfang, sein Fluss-y bleibt aber davor: eine Abkürzung
         //  über „liegt komplett vor diesem Slot" hat es deshalb verschluckt und
@@ -2837,7 +2837,7 @@ void DocxTextArea::paintSlot(QPainter* p, int slot, bool withCaret,
         //  der Anker selbst ist AUCH ein Zellblock und muss hier durch.
         if (L.isCell && !L.isTable)
             continue;
-        //  Tabellen-Anker zeichnet Gitter UND — bei flach zerlegten Tabellen —
+        //  Tabellen-Anker zeichnet Gitter UND - bei flach zerlegten Tabellen -
         //  den Text seiner Zellblöcke an deren expliziten Lagen.
         if (L.isTable && L.table) {
             //  Nur das Stück, das auf diesem Slot liegt (Zeilenbereich).
@@ -2866,7 +2866,7 @@ void DocxTextArea::paintSlot(QPainter* p, int slot, bool withCaret,
             continue;
         }
         if (b.kind == Block::OpaqueVisible) {
-            //  Platzhalter (nicht deutbare Fremdblöcke) — Inhalt bleibt intakt.
+            //  Platzhalter (nicht deutbare Fremdblöcke) - Inhalt bleibt intakt.
             const QRectF r(left, y + L.topPad + 5, cw, 24);
             p->setPen(QPen(QColor(150, 150, 150), 1, Qt::DashLine));
             p->setBrush(QColor(0, 0, 0, 8));
@@ -2893,7 +2893,7 @@ void DocxTextArea::paintSlot(QPainter* p, int slot, bool withCaret,
                                 ? segFirstLine(L, L.segs.at(segIdx + 1))
                                 : -1;
 
-        //  Listenmarker — er gehört zur ERSTEN Zeile, steht also nur auf der
+        //  Listenmarker - er gehört zur ERSTEN Zeile, steht also nur auf der
         //  Seite, auf der die auch liegt.
         if (!L.marker.isEmpty() && lineCount(L) > 0 && rowFrom <= 0) {
             const RunFmt def = d.defaultRun();
@@ -2906,7 +2906,7 @@ void DocxTextArea::paintSlot(QPainter* p, int slot, bool withCaret,
         }
 
         //  Rechtschreibung: rote Wellenlinie UNTER den beanstandeten Stellen.
-        //  Gezeichnet wird nur, was ohnehin sichtbar ist — die Fundstellen
+        //  Gezeichnet wird nur, was ohnehin sichtbar ist - die Fundstellen
         //  liegen im Controller und kosten hier nichts als ein Nachschlagen.
         paintSpell(p, L, i, QPointF(left + L.indentPx, y));
 
@@ -2923,7 +2923,7 @@ void DocxTextArea::paintSlot(QPainter* p, int slot, bool withCaret,
         const QString t = blockText(L);
         for (int pb = t.indexOf(kPageBreak); pb >= 0; pb = t.indexOf(kPageBreak, pb + 1)) {
             const int lb = lineForPos(L, pb);   // Text da ⇒ Zeilen da
-            //  Nur, wenn diese Zeile auf DIESER Seite liegt — die Beschriftung
+            //  Nur, wenn diese Zeile auf DIESER Seite liegt - die Beschriftung
             //  ist Text und stünde sonst im Textstrom beider Seiten.
             if (lb < rowFrom || (rowTo >= 0 && lb >= rowTo)) continue;
             const qreal ly = y + lineTop(L, lb) + lineHeight(L, lb) + 2;
@@ -2936,7 +2936,7 @@ void DocxTextArea::paintSlot(QPainter* p, int slot, bool withCaret,
         }
     }
 
-    //  Caret — nur in dem Slot, in dem der Cursor auch steht (m_cursorRect
+    //  Caret - nur in dem Slot, in dem der Cursor auch steht (m_cursorRect
     //  liegt in Dokument-Pixeln, der Painter ebenfalls).
     if (withCaret && m_caretOn && hasActiveFocus() && !hasSel
         && !m_cursorRect.isNull()
@@ -2947,22 +2947,22 @@ void DocxTextArea::paintSlot(QPainter* p, int slot, bool withCaret,
     p->restore();
 }
 
-//  Eine EINZELNE Seite in ein Zielrechteck malen — der Weg der Miniaturen.
+//  Eine EINZELNE Seite in ein Zielrechteck malen - der Weg der Miniaturen.
 //  Bewusst derselbe Zeichencode wie paint() (keine zweite Darstellung, kein
 //  Bild-Cache): das Zielrechteck bestimmt nur den Maßstab.
 // ─────────────────────────────────────────────────────────────────────────────
-//  DOCX → PDF aus DIESER Auslegung (N6/N9).
+//  DOCX -> PDF aus DIESER Auslegung (N6/N9).
 //
 //  Der frühere, inzwischen entfernte Weg baute ein EIGENES `QTextDocument`
 //  und kam damit auf ein anderes Layout als der Bildschirm: an `tests/ER.docx`
 //  gemessen 4 Anzeige-Seiten gegen 3 Export-Seiten, und der Inhalt, den die
 //  Anzeige auf Seite 2 legt, wurde in den Rest von Seite 1 gequetscht. Solange
-//  zwei Auslegungen nebeneinander stehen, laufen sie auseinander — hier malt
+//  zwei Auslegungen nebeneinander stehen, laufen sie auseinander - hier malt
 //  deshalb die Anzeige selbst, Seite für Seite, mit `paintSlot`.
 //
-//  Seitengröße kommt aus `w:sectPr` (Twips → Punkte); Ränder am Writer sind 0,
+//  Seitengröße kommt aus `w:sectPr` (Twips -> Punkte); Ränder am Writer sind 0,
 //  weil die Seite HIER das Papier ist und die Ränder schon im Layout stecken.
-//  Der Maler auf einem `QPdfWriter` erzeugt echten Vektortext — keine Bilder.
+//  Der Maler auf einem `QPdfWriter` erzeugt echten Vektortext - keine Bilder.
 // ─────────────────────────────────────────────────────────────────────────────
 QString DocxTextArea::exportPagesToPdf(const QString& targetPath) {
     if (!m_ctl || !m_ctl->ready())
@@ -3000,7 +3000,7 @@ QString DocxTextArea::exportPagesToPdf(const QString& targetPath) {
             paintPageInto(&p, pg, sheet, false, false);
         }
         p.end();
-    }   // Writer zerstört → PDF finalisiert
+    }   // Writer zerstört -> PDF finalisiert
 
     if (!out.commit())
         return QStringLiteral("Schreiben fehlgeschlagen.");
@@ -3045,13 +3045,13 @@ void DocxTextArea::hitTest(const QPointF& itemPos, int* block, int* pos) {
     if (!m_ctl || m_lay.empty()) return;
     ensureOffsetsTo(int(m_lay.size()));
 
-    //  Item-Pixel → Dokument-Pixel (Umkehrung der Transformation in paint()).
+    //  Item-Pixel -> Dokument-Pixel (Umkehrung der Transformation in paint()).
     const qreal s = qMax(0.05, m_scale);
     const qreal offX = qMax(kSideMargin * s, (width() - pageWpx() * s) / 2.0);
     const qreal docX = (itemPos.x() - offX) / s;
     const qreal docY = (itemPos.y() + m_contentY) / s;
 
-    //  Seite und Spalte aus der Dokument-Position ableiten, daraus den Slot —
+    //  Seite und Spalte aus der Dokument-Position ableiten, daraus den Slot -
     //  erst der Slot macht aus dem Klick eine Stelle im FLUSS.
     const qreal pageStride = pageHpx() + kPageGap;
     const int page = qBound(0, int((docY - kPadV) / pageStride), qMax(0, m_pageCount - 1));
@@ -3067,7 +3067,7 @@ void DocxTextArea::hitTest(const QPointF& itemPos, int* block, int* pos) {
     //  ── ZWEITE Verfeinerungsstufe: liegt der Klick IN einer Tabelle? ─────────
     //  Zellblöcke haben keine eigene Fluss-Lage (die Tabelle hängt am Anker), ihre
     //  Dokument-Lage steht aber explizit. Es genügt also, die Zellen der
-    //  sichtbaren Tabelle direkt zu prüfen: Zeile über y, Zelle über x — und
+    //  sichtbaren Tabelle direkt zu prüfen: Zeile über y, Zelle über x - und
     //  zwar BEVOR die Fluss-Suche greift, die hier nur den Anker fände.
     for (int t = 0; t < m_ctl->doc().tables().size(); ++t) {
         const int anchor = m_ctl->doc().tableFirstBlock(t);
@@ -3075,7 +3075,7 @@ void DocxTextArea::hitTest(const QPointF& itemPos, int* block, int* pos) {
         const BlockLayout& A = m_lay[size_t(anchor)];
         if (!A.isTable || !A.table) continue;
         //  Eine getrennte Tabelle hat je Seite ein eigenes Stück mit eigenem
-        //  Ursprung. Geprüft wird deshalb NUR das Stück im geklickten Slot —
+        //  Ursprung. Geprüft wird deshalb NUR das Stück im geklickten Slot -
         //  ohne das rechnete die Suche von der Oberkante der Tabelle weiter und
         //  fände auf Seite 3 die Zeilen von Seite 1.
         int segIdx = -1;
@@ -3094,15 +3094,15 @@ void DocxTextArea::hitTest(const QPointF& itemPos, int* block, int* pos) {
         //  … UND waagerecht innerhalb der Tabelle (plus der Umfluss-Lücke).
         //  Ohne diese Zeile entschied allein das y-Band: `x` ging nur in den
         //  Abstand ein und konnte einen Treffer nie verwerfen. Solange neben
-        //  einer Tabelle nichts stand, war das richtig — seit Text dort
+        //  einer Tabelle nichts stand, war das richtig - seit Text dort
         //  umfließt, landete ein Klick in diesen Streifen IN der Tabelle
         //  (Nutzerbefund: „grob auf Höhe des Klicks, rechte Spalte").
         //  Die Toleranz `kTableWrapGap` hält den Klick auf den Zellrand am
-        //  Leben — dafür ist die „nächstgelegene Zelle" unten gedacht.
+        //  Leben - dafür ist die „nächstgelegene Zelle" unten gedacht.
         if (docX < ax - kTableWrapGap
             || docX > ax + A.table->width + kTableWrapGap) continue;
         //  Nächstgelegener Zellblock dieses Stücks (rechteckige Trefferprüfung,
-        //  sonst der mit dem kleinsten Abstand — ein Klick in den Zellrand soll
+        //  sonst der mit dem kleinsten Abstand - ein Klick in den Zellrand soll
         //  nicht ins Leere gehen).
         int best = -1;
         qreal bestDist = 0.0;
@@ -3159,7 +3159,7 @@ void DocxTextArea::hitTest(const QPointF& itemPos, int* block, int* pos) {
     const BlockLayout& L = m_lay[bi];
     *block = bi;
     if (lineCount(L) == 0) { *pos = 0; return; }
-    //  Dokument-y → Layout-y des Blocks: über das Segment, das an dieser Stelle
+    //  Dokument-y -> Layout-y des Blocks: über das Segment, das an dieser Stelle
     //  liegt (bei einem über die Seitengrenze getrennten Absatz gehört dieselbe
     //  Layout-Zeile zu einer anderen Slot-y).
     int segIdx = 0;
@@ -3170,9 +3170,9 @@ void DocxTextArea::hitTest(const QPointF& itemPos, int* block, int* pos) {
                          + segOriginY(L, seg);
     const qreal localX = docX - slotDocX(seg.slot) - L.indentPx;
     //  `rowAtX`: bei einem geteilten Band (Text links UND rechts eines Bildes)
-    //  liegen zwei Zeilen auf derselben y — x entscheidet.
+    //  liegen zwei Zeilen auf derselben y - x entscheidet.
     const int li = rowAtX(L, lineForLocalY(L, localY), localX);
-    //  Ein VERANKERTES Bild gehört keinem Zeilenband — getroffen wird es über
+    //  Ein VERANKERTES Bild gehört keinem Zeilenband - getroffen wird es über
     //  seine LAGE. `imageAtX` findet es nur, solange ein Band sein Rechteck
     //  schneidet; läuft der Text vollständig darunter (breites Bild), war es
     //  sonst nicht mehr anklickbar und damit auch nicht mehr auswählbar.
@@ -3186,7 +3186,7 @@ void DocxTextArea::mousePressEvent(QMouseEvent* e) {
     int b, p;
     hitTest(e->position(), &b, &p);
 
-    //  Traf der Klick ein BILD, wird genau sein Objekt-Zeichen ausgewählt —
+    //  Traf der Klick ein BILD, wird genau sein Objekt-Zeichen ausgewählt -
     //  das ist die Bild-Auswahl (Ziehpunkte, Kopieren, Löschen). Ohne das
     //  bliebe ein Bild im Fließtext unauswählbar.
     const bool onImage = b >= 0 && b < int(m_lay.size())
@@ -3194,7 +3194,7 @@ void DocxTextArea::mousePressEvent(QMouseEvent* e) {
 
     if (e->button() == Qt::RightButton) {
         //  Wie in Word: der Rechtsklick verschiebt den Cursor NUR, wenn er
-        //  außerhalb der bestehenden Selektion liegt — sonst bliebe das Menü
+        //  außerhalb der bestehenden Selektion liegt - sonst bliebe das Menü
         //  ohne die Auswahl, auf die es sich beziehen soll.
         if (b >= 0) {
             const DocxCursor& c = m_ctl->cursor();
@@ -3302,7 +3302,7 @@ void DocxTextArea::moveCursorVertical(int dir, bool keepAnchor) {
         while (nb < d.blocks.size() && !editable(nb)) ++nb;
         if (nb >= d.blocks.size()) {
             //  Letzte Zeile des letzten Absatzes: ↓ springt ans ZEILENENDE
-            //  (statt wirkungslos zu bleiben) — einheitlich mit den übrigen
+            //  (statt wirkungslos zu bleiben) - einheitlich mit den übrigen
             //  Editoren der App.
             m_ctl->setCursor(bi, INT_MAX, keepAnchor);
             return;
@@ -3393,7 +3393,7 @@ QVariant DocxTextArea::inputMethodQuery(Qt::InputMethodQuery q) const {
 }
 
 //  Solange diese Fläche den Fokus hat, gehört JEDE Taste, die Text erzeugt,
-//  dem Editor — auch ohne Modifikator. Ohne das öffnete ein Tippen von „d" den
+//  dem Editor - auch ohne Modifikator. Ohne das öffnete ein Tippen von „d" den
 //  Datum-Editor des Viewers, statt ein „d" zu schreiben (Nutzerbefund).
 //  Modifizierte Kürzel (Strg/Alt/Meta) bleiben unangetastet, damit Strg+S,
 //  Alt+Q & Co. weiterhin die App erreichen.
@@ -3414,7 +3414,7 @@ void DocxTextArea::geometryChange(const QRectF& n, const QRectF& o) {
     QQuickPaintedItem::geometryChange(n, o);
     if (!qFuzzyCompare(n.width() + 1, o.width() + 1)) {
         //  Die Zeilenbreite ist jetzt die TEXTBREITE DER SEITE und damit von der
-        //  Kachelbreite unabhängig — ein Breitenwechsel ändert also nur noch den
+        //  Kachelbreite unabhängig - ein Breitenwechsel ändert also nur noch den
         //  Einpass-Maßstab, KEIN Umbruch und kein Neu-Vermessen (früher wurde
         //  hier das komplette Dokument neu ausgelegt).
         updateScale();
@@ -3435,7 +3435,7 @@ void DocxPageThumb::setArea(DocxTextArea* a) {
     if (m_area) disconnect(m_area, nullptr, this, nullptr);
     m_area = a;
     if (m_area) {
-        //  Inhalt/Seitenzahl geändert → Miniatur neu zeichnen.
+        //  Inhalt/Seitenzahl geändert -> Miniatur neu zeichnen.
         connect(m_area, &DocxTextArea::documentChanged, this, [this]() { update(); });
         connect(m_area, &DocxTextArea::pageCountChanged, this, [this]() { update(); });
     }

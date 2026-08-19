@@ -67,7 +67,7 @@ QStringList onStatesOf(const PdfDoc& doc, const QByteArray& widgetDict) {
     if (!n.startsWith("<<")) return {};
     const QByteArray nd = dictOfObject(n);
     //  Ein Formstrom (also EIN Erscheinungsbild statt eines Zustands-Dicts)
-    //  trägt immer eine /BBox — dann gibt es hier keine Zustände.
+    //  trägt immer eine /BBox - dann gibt es hier keine Zustände.
     if (findKey(nd, "BBox") >= 0) return {};
     QStringList states;
     for (const QByteArray& k : dictKeys(nd))
@@ -136,7 +136,7 @@ mg::PdfFormField makeField(const PdfDoc& doc, int fieldObj, int widgetObj,
     }
 
     //  Wert: bei Knöpfen ein Name, sonst ein Textstring (bei Mehrfachauswahl
-    //  ein Array — dann zählt der erste Eintrag).
+    //  ein Array - dann zählt der erste Eintrag).
     if (f.type == mg::PdfFieldType::Checkbox || f.type == mg::PdfFieldType::Radio) {
         f.value = inh.v.startsWith('/') ? nameToString(inh.v) : QStringLiteral("Off");
         const QStringList st = onStatesOf(doc, widgetDict);
@@ -280,7 +280,7 @@ DaInfo parseDa(const QByteArray& da) {
     return info;
 }
 
-//  Grobe mittlere Zeichenbreite der Standardschriften — sie genügt für Umbruch
+//  Grobe mittlere Zeichenbreite der Standardschriften - sie genügt für Umbruch
 //  und Auto-Größe. Sie liegt bewusst leicht ZU GROSS, damit nichts über den
 //  Rand läuft (dieselbe Zusage wie in PdfVectorExport).
 qreal avgCharWidth(const QByteArray& fontName, qreal sizePt) {
@@ -352,7 +352,7 @@ bool PdfFormFields::fillAndSave(const QString& inputPath, const QString& outputP
     if (fields.isEmpty()) return fail(QStringLiteral("keine Formularfelder"));
 
     //  Schrift des Formulars: der in /DA genannte Name im /DR-Ressourcen-Dict.
-    //  Fehlt er, wird weiter unten eine eigene Helvetica angelegt — dann ist
+    //  Fehlt er, wird weiter unten eine eigene Helvetica angelegt - dann ist
     //  das Erscheinungsbild garantiert vollständig und hängt an nichts Fremdem.
     const QByteArray formDa = [&] {
         QByteArray raw;
@@ -380,7 +380,7 @@ bool PdfFormFields::fillAndSave(const QString& inputPath, const QString& outputP
         QByteArray da;
     };
 
-    QHash<int, QByteArray> newDicts;                 // Objektnummer → neuer Dict-Inhalt
+    QHash<int, QByteArray> newDicts;                 // Objektnummer -> neuer Dict-Inhalt
     QVector<ApJob>         apJobs;
     bool                   needAppearances = false;  // Notnagel (s. Header)
     bool                   touched = false;
@@ -391,22 +391,22 @@ bool PdfFormFields::fillAndSave(const QString& inputPath, const QString& outputP
         return it.value();
     };
 
-    //  Felder nach Namen bündeln — ein Optionsfeld hat mehrere Widgets.
-    QHash<QString, QVector<int>> byName;             // Name → Indizes in `fields`
+    //  Felder nach Namen bündeln - ein Optionsfeld hat mehrere Widgets.
+    QHash<QString, QVector<int>> byName;             // Name -> Indizes in `fields`
     for (int i = 0; i < fields.size(); ++i) byName[fields.at(i).name].push_back(i);
 
     for (auto vit = values.constBegin(); vit != values.constEnd(); ++vit) {
         const auto nit = byName.constFind(vit.key());
-        if (nit == byName.constEnd()) continue;      // Name gibt es nicht → ignorieren
+        if (nit == byName.constEnd()) continue;      // Name gibt es nicht -> ignorieren
         const QVector<int>& idx = nit.value();
         const PdfFormField& first = fields.at(idx.first());
-        if (first.readOnly) continue;                // schreibgeschützt → unangetastet
+        if (first.readOnly) continue;                // schreibgeschützt -> unangetastet
         if (first.type == PdfFieldType::Push
             || first.type == PdfFieldType::Unknown) continue;
 
         if (first.type == PdfFieldType::Checkbox || first.type == PdfFieldType::Radio) {
             const QString state = vit.value();
-            //  Nur „Off" oder ein tatsächlich vorhandener Zustand — ein
+            //  Nur „Off" oder ein tatsächlich vorhandener Zustand - ein
             //  erfundener Name würde das Feld unsichtbar kaputtmachen.
             bool known = (state == QLatin1String("Off"));
             for (int i : idx) if (fields.at(i).onState == state) known = true;
@@ -432,7 +432,7 @@ bool PdfFormFields::fillAndSave(const QString& inputPath, const QString& outputP
 
         dictFor(first.fieldObj) =
             setDictKey(dictFor(first.fieldObj), "V", toPdfTextString(text));
-        //  Eine Auswahlliste merkt sich zusätzlich den Index — er wäre nach der
+        //  Eine Auswahlliste merkt sich zusätzlich den Index - er wäre nach der
         //  Änderung falsch, also entfällt er (der Wert allein ist maßgeblich).
         if (first.type == PdfFieldType::Choice && findKey(dictFor(first.fieldObj), "I") >= 0)
             dictFor(first.fieldObj) = setDictKey(dictFor(first.fieldObj), "I", "[]");
@@ -476,7 +476,7 @@ bool PdfFormFields::fillAndSave(const QString& inputPath, const QString& outputP
     };
 
     //  Ist die in /DA genannte Schrift nicht im /DR zu finden, legen wir eine
-    //  eigene Helvetica an — nur dann. Sonst bliebe der Formstrom ohne Schrift
+    //  eigene Helvetica an - nur dann. Sonst bliebe der Formstrom ohne Schrift
     //  und der Text unsichtbar.
     int  ownFontObj = -1;
     auto ensureOwnFont = [&]() -> int {
@@ -583,7 +583,7 @@ bool PdfFormFields::fillAndSave(const QString& inputPath, const QString& outputP
         }
         ops += "ET\nQ\nEMC\n";
 
-        //  Der Formstrom bleibt UNKOMPRIMIERT — er ist wenige hundert Bytes
+        //  Der Formstrom bleibt UNKOMPRIMIERT - er ist wenige hundert Bytes
         //  groß, Deflate spart hier nichts und erschwert nur die Fehlersuche.
         const int apNum = up.reserveObjNum();
         up.addStream(apNum, 0,
@@ -603,7 +603,7 @@ bool PdfFormFields::fillAndSave(const QString& inputPath, const QString& outputP
         if (formObj >= 0) {
             dictFor(formObj) = setDictKey(dictFor(formObj), "NeedAppearances", "true");
         } else {
-            //  /AcroForm steht inline im Katalog → den Katalog neu schreiben.
+            //  /AcroForm steht inline im Katalog -> den Katalog neu schreiben.
             QByteArray root = dictFor(doc.rootNum);
             QByteArray af   = rawValue(root, "AcroForm");
             if (af.startsWith("<<")) {
@@ -616,7 +616,7 @@ bool PdfFormFields::fillAndSave(const QString& inputPath, const QString& outputP
     }
 
     //  Geänderte Objekte anhängen (die Objektnummer bleibt, nur der Inhalt ist
-    //  neu — der Brute-Scan beim nächsten Lesen nimmt das LETZTE Vorkommen).
+    //  neu - der Brute-Scan beim nächsten Lesen nimmt das LETZTE Vorkommen).
     for (auto it = newDicts.constBegin(); it != newDicts.constEnd(); ++it) {
         if (it.value().isEmpty()) return fail(QStringLiteral("Objekt-Dict leer"));
         addObject(it.key(), doc.genOf(it.key()), "<<" + it.value() + ">>");
@@ -631,7 +631,7 @@ bool PdfFormFields::fillAndSave(const QString& inputPath, const QString& outputP
 //  Erläuterung des Zwecks im Header. Gezeichnet wird je Widget sein eigener
 //  `/AP /N`-Strom mit der Matrix aus PDF 32000-1, 12.5.5 („Algorithm:
 //  appearance streams"): /BBox mit /Matrix abbilden, die Hülle davon auf
-//  /Rect strecken. Das `Do` wendet /Matrix selbst noch einmal an — deshalb
+//  /Rect strecken. Das `Do` wendet /Matrix selbst noch einmal an - deshalb
 //  wird NUR die Streckung als CTM gesetzt.
 bool PdfFormFields::flatten(const QString& inputPath, const QString& outputPath,
                             QString* err) {
@@ -664,7 +664,7 @@ bool PdfFormFields::flatten(const QString& inputPath, const QString& outputPath,
         int         n = 0;                     // Zähler für die Ressourcennamen
         bool        removed = false;           // irgendein Widget entfernt?
 
-        //  Die Ressourcen der Seite — ggf. aus dem Seitenbaum geerbt. Sie
+        //  Die Ressourcen der Seite - ggf. aus dem Seitenbaum geerbt. Sie
         //  werden gleich materialisiert; hier zählen erst einmal die bereits
         //  vergebenen /XObject-Namen.
         QByteArray resInner;
@@ -689,14 +689,14 @@ bool PdfFormFields::flatten(const QString& inputPath, const QString& outputPath,
                 continue;
             }
             removed = true;
-            //  Ab hier verschwindet das Widget in jedem Fall aus /Annots —
+            //  Ab hier verschwindet das Widget in jedem Fall aus /Annots -
             //  ein zurückbleibendes Widget ohne /AcroForm wäre genau der
             //  Zustand, den dieser Schritt vermeiden soll.
             const qint64 flags = intValue(annDict, "F");
             if (flags > 0 && (flags & 0x22))    // 2 = Hidden, 32 = NoView
                 continue;
 
-            //  /AP → /N; ist /N ein Zustands-Dict, entscheidet /AS.
+            //  /AP -> /N; ist /N ein Zustands-Dict, entscheidet /AS.
             const QByteArray ap = doc.resolved(annDict, "AP");
             if (!ap.startsWith("<<")) continue;
             const QByteArray apInner = dictOfObject(ap);
@@ -737,7 +737,7 @@ bool PdfFormFields::flatten(const QString& inputPath, const QString& outputPath,
             const double sy = (bh > 1e-6) ? (ry1 - ry0) / bh : 1.0;
 
             //  Ressourcenname: der Name darf keinen bestehenden Eintrag der
-            //  Seite überschreiben — sonst zeichnete die Seite plötzlich unser
+            //  Seite überschreiben - sonst zeichnete die Seite plötzlich unser
             //  Widget an der Stelle ihres eigenen XObjects.
             if (usedNames.isEmpty()) {
                 for (const QByteArray& k : dictKeys(pageXObjInner))
@@ -759,7 +759,7 @@ bool PdfFormFields::flatten(const QString& inputPath, const QString& outputPath,
         //  (1) Ressourcen: die Seite bekommt ihre EIGENE Kopie samt der neuen
         //      XObjects. Ein von mehreren Seiten geteiltes Ressourcen-Objekt
         //      zu ändern wäre der Weg, auf dem eine Seite die Namen einer
-        //      anderen erbt — und geerbte /Resources aus dem Seitenbaum
+        //      anderen erbt - und geerbte /Resources aus dem Seitenbaum
         //      werden hier ohnehin materialisiert.
         if (!xobjs.isEmpty()) {
             next = setDictKey(next, "Resources",
@@ -799,7 +799,7 @@ bool PdfFormFields::flatten(const QString& inputPath, const QString& outputPath,
     }
 
     //  (4) Das Formular selbst auflösen: ohne /Fields ist es keines mehr.
-    //      Die Feldobjekte bleiben als Leichen in der Datei — ein neuer
+    //      Die Feldobjekte bleiben als Leichen in der Datei - ein neuer
     //      Katalog (PdfAssembler) nimmt sie nicht mit.
     if (formObj >= 0) {
         up.replaceDict(formObj, QByteArray(" /Fields [] "));

@@ -3,9 +3,9 @@ import QtQuick.Controls
 import MediaGallery 1.0
 
 // ─────────────────────────────────────────────────────────────────────────────
-//  MediaOverlay.qml — leichtgewichtige Info-/Interaktionsschicht über einer
+//  MediaOverlay.qml - leichtgewichtige Info-/Interaktionsschicht über einer
 //  Kachel (ersetzt MediaOverlayWidget/Tag-Overlay aus dem Widget-Pfad; KEIN
-//  QWidget, kein eigenes QObject pro Tag — reine QML-Items).
+//  QWidget, kein eigenes QObject pro Tag - reine QML-Items).
 //
 //  Zeigt: Datei-/Anzeigename (inline umbenennbar), Datum, Tag-Punkte. Im Compact-
 //  Modus (App.optionsVisible == false) nur eine schmale Namenszeile.
@@ -20,7 +20,7 @@ Item {
     property var    dateTime
     property bool   compact: false
 
-    // Wird true, solange das Namensfeld editiert wird → Tile unterdrückt Klicks.
+    // Wird true, solange das Namensfeld editiert wird -> Tile unterdrückt Klicks.
     readonly property bool editing: nameLoader.item ? nameLoader.item.visible : false
 
     implicitHeight: infoColumn.implicitHeight + 12
@@ -114,7 +114,7 @@ Item {
                 delegate: Rectangle {
                     required property var modelData
                     width: 10; height: 10; radius: 5
-                    color: App.tagColor(modelData)
+                    color: Tags.tagColor(modelData)
                     border.width: 1
                     border.color: Qt.rgba(1, 1, 1, 0.4)
 
@@ -128,7 +128,7 @@ Item {
         // ── Optionen-Modus (S): „Tags anzeigen" / „Kategorien anzeigen" ─────
         //  Zwei Buttons je Kachel; Klick zeigt die Liste der jeweiligen Werte
         //  DIESES Mediums (Tags via mediaModel.tagsOfFile, Kategorien via
-        //  Tags.categoriesForFile — beides frisch aus der JSON-Persistenz).
+        //  Tags.categoriesForFile - beides frisch aus der JSON-Persistenz).
         Row {
             id: optRow
             visible: !overlay.compact
@@ -138,7 +138,7 @@ Item {
                 Math.max(overlay.filePath.lastIndexOf("/"),
                          overlay.filePath.lastIndexOf("\\")) + 1)
 
-            // ── „+"-Button (S-Modus): neuen Tag erstellen — LINKS vom Tags-Button ──
+            // ── „+"-Button (S-Modus): neuen Tag erstellen - LINKS vom Tags-Button ──
             //  Bindet an die bestehende Daten-Logik an: mediaModel.addTag registriert
             //  den Tag (falls neu) und weist ihn diesem Medium zu.
             Rectangle {
@@ -173,7 +173,7 @@ Item {
                     }
                 }
             }
-            // ── „+"-Button (S-Modus): neue Kategorie erstellen — LINKS vom
+            // ── „+"-Button (S-Modus): neue Kategorie erstellen - LINKS vom
             //  Kategorien-Button. Tags.addRootCategory liefert die neue
             //  Kategorie-ID; anschließend wird das Medium via
             //  Tags.toggleFileInCategory direkt zugeordnet.

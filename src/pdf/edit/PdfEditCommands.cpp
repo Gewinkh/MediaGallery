@@ -111,7 +111,7 @@ bool PdfEditFieldCommand::mergeWith(const QUndoCommand* other) {
     if (o->m_id != m_id || o->m_field != m_field)
         return false;
     m_new = o->m_new;
-    // Serie hebt sich exakt auf (z. B. Bold an→aus) → Kommando komplett
+    // Serie hebt sich exakt auf (z. B. Bold an->aus) -> Kommando komplett
     // verwerfen, statt einen wirkungslosen Undo-Schritt zu hinterlassen.
     if (m_new == m_old)
         setObsolete(true);

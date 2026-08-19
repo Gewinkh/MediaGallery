@@ -3,14 +3,14 @@ import QtQuick
 import MediaGallery 1.0
 
 // ─────────────────────────────────────────────────────────────────────────────
-//  ImageEditBox.qml — EINE Overlay-Annotation des Bild-Editors (Delegate im
+//  ImageEditBox.qml - EINE Overlay-Annotation des Bild-Editors (Delegate im
 //  Annotations-Repeater von ImageSurface). Deckt alle fünf Arten ab:
 //  Text-Notiz (Post-it, volle Parität zum PDF-Editor), Freihand, Pfeil,
 //  Rechteck, Ellipse.
 //
 //  KOORDINATEN: Das Modell führt Geometrie in BILD-PIXELN (Ursprung oben-links);
 //  dieses Item rechnet über `imgScale` (angezeigte Pixel je Bild-Pixel) in
-//  Bildschirm-Pixel um → WYSIWYG zum Export (1:1 in native Auflösung).
+//  Bildschirm-Pixel um -> WYSIWYG zum Export (1:1 in native Auflösung).
 //
 //  SICHTBARKEIT: in BEIDEN Modi sichtbar (Teil des Bild-Eindrucks); Rahmen,
 //  Handles und Maus-Interaktion existieren nur im Edit-Modus mit dem
@@ -164,7 +164,7 @@ Item {
 
     // ══ ZEICHNUNG (Freihand / Pfeil / Rechteck / Ellipse) ═════════════════════
     //  Canvas deckt die Bounding-Box PLUS Linienbreiten-Rand ab (die äußere
-    //  Stifthälfte darf nicht abgeschnitten werden — Export zeichnet mittig).
+    //  Stifthälfte darf nicht abgeschnitten werden - Export zeichnet mittig).
     Canvas {
         id: shape
         visible: !box.isText
@@ -272,7 +272,7 @@ Item {
         selectByMouse: true
         persistentSelection: false
         //  ↓ in der letzten Zeile springt ans Zeilenende (einheitlich in allen
-        //  Editoren der App — 2026-07-17).
+        //  Editoren der App - 2026-07-17).
         Keys.onDownPressed: (e) => {
             const yCur = edit.positionToRectangle(edit.cursorPosition).y
             const yEnd = edit.positionToRectangle(edit.length).y

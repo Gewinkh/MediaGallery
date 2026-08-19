@@ -4,7 +4,7 @@ import QtQuick.Layouts
 import MediaGallery 1.0
 
 // ─────────────────────────────────────────────────────────────────────────────
-//  TileSizeDialog.qml — Kachelgröße per Live-Drag-Vorschau einstellen
+//  TileSizeDialog.qml - Kachelgröße per Live-Drag-Vorschau einstellen
 //  (ersetzt TileSizeDialog/DragResizePreview (QWidget)).
 //
 //  Verwendung im Shell:
@@ -26,14 +26,14 @@ Dialog {
     anchors.centerIn: Overlay.overlay
     standardButtons: Dialog.NoButton
 
-    // Geometrie-Konstanten — identisch zu GalleryView
+    // Geometrie-Konstanten - identisch zu GalleryView
     readonly property int gMargin: 12
     readonly property int gSpacing: 8
     readonly property int minDim: 40
     readonly property int handleHit: 14
     // Dynamische Obergrenze = darstellbare Galeriefläche (meldet GalleryView
     // an den AppController; das Fenster ist seinerseits durch den Bildschirm
-    // begrenzt) — größer als die App kann keine Kachel angezeigt werden.
+    // begrenzt) - größer als die App kann keine Kachel angezeigt werden.
     readonly property int maxW: App.maxTileWidth
     readonly property int maxH: App.maxTileHeight
 
@@ -95,7 +95,7 @@ Dialog {
                 //  der Kachelgröße): Spalten/Zeilen entsprechen dadurch exakt
                 //  der echten Galerie, und der Griff folgt der Maus auch bei
                 //  großen Kacheln. (Früher wuchs die Kachel nur bis zu einem
-                //  62-%-Deckel und „fror" dann sichtbar ein — ab dieser Größe
+                //  62-%-Deckel und „fror" dann sichtbar ein - ab dieser Größe
                 //  war die Vorschau nicht mehr originalgetreu.)
                 readonly property real winW: Overlay.overlay ? Overlay.overlay.width  : 1280
                 readonly property real winH: Overlay.overlay ? Overlay.overlay.height : 800
@@ -105,7 +105,7 @@ Dialog {
                 //  Miniatur-Fensterrechteck (zentriert im Canvas).
                 readonly property real offX: (width  - winW * fitScale) / 2
                 readonly property real offY: (height - winH * fitScale) / 2
-                // Gezeichnete (skalierte) Maße — Basis für ALLE Zeichenrechnungen.
+                // Gezeichnete (skalierte) Maße - Basis für ALLE Zeichenrechnungen.
                 readonly property real stw: tw * fitScale
                 readonly property real sth: th * fitScale
                 readonly property real ssp: dlg.gSpacing * fitScale
@@ -198,7 +198,7 @@ Dialog {
                         }
                     }
 
-                    // Größen-Anzeige auf erster Kachel — zeigt die REALE Pixelgröße
+                    // Größen-Anzeige auf erster Kachel - zeigt die REALE Pixelgröße
                     // (nicht die skalierte), plus den Maßstab, wenn verkleinert.
                     ctx.fillStyle = textC
                     ctx.font = "bold 11px sans-serif"
@@ -340,5 +340,5 @@ Dialog {
     }
 
     // SpinBoxen folgen dem Arbeits-Zustand bereits über value: dlg.workW /
-    // dlg.workH (deklarative Bindung) — Drag aktualisiert sie automatisch.
+    // dlg.workH (deklarative Bindung) - Drag aktualisiert sie automatisch.
 }

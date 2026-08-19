@@ -219,6 +219,16 @@ mg_domain(mg_pdfedit
         mg_core mg_pdfextract Qt6::Pdf
 )
 
+#  Zwei Quellen dürfen NICHT in eine Sammel-Übersetzungseinheit (Unity-Build):
+#  sie führen gleichnamige Symbole im anonymen Namensraum (`parenBytes`,
+#  `kTables`) wie ihre Nachbarn. Die Eigenschaft kostet nichts, solange
+#  CMAKE_UNITY_BUILD aus ist, und hält den Unity-Bau übersetzbar, wenn er
+#  eingeschaltet wird (Messung s. Structure.md §1 ▸ Build).
+set_source_files_properties(
+    src/pdf/edit/PdfTextReflow.cpp
+    src/pdf/edit/PdfFontEmbed.cpp
+    PROPERTIES SKIP_UNITY_BUILD_INCLUSION ON)
+
 mg_domain(mg_pdf
     SOURCES
         src/pdf/PdfThumbnailProvider.cpp
@@ -233,6 +243,25 @@ mg_domain(mg_pdf
         src/pdf/PdfAudioController.h
     LIBS
         mg_core Qt6::Pdf Qt6::Multimedia
+)
+
+#  Audio-Wiedergabe mit Equalizer (README ▸ Planned). Eigene Kette, weil
+#  QMediaPlayer seine Samples nicht herausgibt — s. src/audio/AudioEqualizer.h.
+mg_domain(mg_audio
+    SOURCES
+        src/audio/Xoshiro.h
+        src/audio/PlayQueue.cpp
+        src/audio/PlayQueue.h
+        src/audio/AudioEqualizer.cpp
+        src/audio/AudioEqualizer.h
+        src/audio/AudioRing.cpp
+        src/audio/AudioRing.h
+        src/audio/AudioEngine.cpp
+        src/audio/AudioEngine.h
+        src/audio/AudioController.cpp
+        src/audio/AudioController.h
+    LIBS
+        mg_core Qt6::Multimedia
 )
 
 mg_domain(mg_imageedit
@@ -252,6 +281,10 @@ mg_domain(mg_app
     SOURCES
         src/app/AppController.cpp
         src/app/AppController.h
+        src/app/PaneController.cpp
+        src/app/PaneController.h
+        src/app/PaneHost.cpp
+        src/app/PaneHost.h
         src/app/ViewerController.cpp
         src/app/ViewerController.h
         src/app/WebEngineController.cpp
@@ -283,6 +316,7 @@ qt_add_executable(MediaGallery main.cpp qml.qrc)
 
 target_link_libraries(MediaGallery PRIVATE
     mg_app
+    mg_audio
     mg_core
     mg_media
     mg_tags

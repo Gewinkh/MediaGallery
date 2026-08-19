@@ -23,7 +23,7 @@ public:
     void saveFolder(const QString& folderPath);
     void saveCurrentFolder();
 
-    // Per-file metadata (displayName is NOT persisted — derived from filename)
+    // Per-file metadata (displayName is NOT persisted - derived from filename)
     QStringList getTags(const QString& fileName) const;
     void        setTags(const QString& fileName, const QStringList& tags);
 
@@ -76,6 +76,19 @@ private:
     QHash<QString, FileMeta> m_fileMeta;
     QHash<QString, QColor>   m_tagColors;
     QList<TagCategory>       m_categories;
+
+    //  ── Zwei Fassungen DERSELBEN Datei ──────────────────────────────────────
+    //  Seit dem Zwei-Fenster-Modus kann derselbe Ordner zweimal offen sein; dann
+    //  hält jede Hälfte ihre eigene Fassung dieses Sidecars im Speicher. Wer
+    //  zuletzt schreibt, würde die Änderung der anderen Seite überschreiben.
+    //  Deshalb merkt sich das Objekt den Stand der Datei beim Lesen und
+    //  Schreiben und übernimmt vor dem Schreiben fremde Änderungen (dasselbe
+    //  schützt gegen Änderungen von außen).
+    QDateTime m_diskMTime;
+    qint64    m_diskSize = -1;
+    void noteDiskStamp(const QString& path);
+    bool diskChangedSince(const QString& path) const;
+    void mergeForeignChanges(const QString& path);
 
     static QColor randomTagColor();
 

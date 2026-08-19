@@ -6,28 +6,28 @@
 //  ZWECK
 //  ─────
 //  QML-TYP („ImageEditController", via qmlRegisterType je ImageSurface-Kachel
-//  instanziiert — dezentral wie der PDF-Editor, s. PdfEditController) des
+//  instanziiert - dezentral wie der PDF-Editor, s. PdfEditController) des
 //  Bild-Editors: verwaltet den Bearbeitungsmodus, das aktive Werkzeug, das
 //  Overlay-Modell (ImageEditModel), die Auswahl, das delta-basierte Undo/Redo
-//  (QUndoStack — QtGui, KEINE Widgets), Copy/Paste, die Sidecar-Persistenz und
+//  (QUndoStack - QtGui, KEINE Widgets), Copy/Paste, die Sidecar-Persistenz und
 //  den asynchronen Bild-Export.
 //
 //  OVERLAY-ARCHITEKTUR (analog PDF-Editor)
 //  ───────────────────────────────────────
 //   • Das Original-BILD wird NIE verändert. Alle Bearbeitungen sind
 //     ImageAnnotation-Objekte über dem gerenderten Bild (Anzeige: QML).
-//   • SPEICHERN  → Sidecar „<bild>.mgedit.json" (QSaveFile, atomar). Beim
-//     nächsten Öffnen lädt setDocument() das Sidecar → dauerhaft editierbar.
-//   • EXPORT     → rendert Original + Overlay in eine NEUE Bildkopie
+//   • SPEICHERN  -> Sidecar „<bild>.mgedit.json" (QSaveFile, atomar). Beim
+//     nächsten Öffnen lädt setDocument() das Sidecar -> dauerhaft editierbar.
+//   • EXPORT     -> rendert Original + Overlay in eine NEUE Bildkopie
 //     (QImage+QPainter, Worker-Task). Ziel ist IMMER eine Kopie
-//     „…_bearbeitet(.n).<ext>" im QUELLFORMAT (JPG→JPG, PNG→PNG, sonst PNG).
+//     „…_bearbeitet(.n).<ext>" im QUELLFORMAT (JPG->JPG, PNG->PNG, sonst PNG).
 //
 //  KOORDINATEN: Bild-PIXEL (Ursprung oben-links). QML rechnet über `imgScale`
 //  (angezeigte Pixel je Bild-Pixel) in Bildschirm-Pixel; der Export zeichnet
-//  1:1 in die native Auflösung → WYSIWYG. Font-/Linienbreite ebenfalls Bild-px.
+//  1:1 in die native Auflösung -> WYSIWYG. Font-/Linienbreite ebenfalls Bild-px.
 //
 //  STIL-ERBEN: Eine neu erzeugte Annotation übernimmt die zuletzt benutzten
-//  Einstellungen ihrer Art (Text: Schrift/Farben/Deckkraft/Ausrichtung — OHNE
+//  Einstellungen ihrer Art (Text: Schrift/Farben/Deckkraft/Ausrichtung - OHNE
 //  Text; Strich/Form: Linienfarbe/-breite/Füllung). Stiländerungen an einer
 //  Auswahl aktualisieren zugleich die Vorlage.
 //
@@ -61,7 +61,7 @@ public:
 
 private:
     Q_PROPERTY(bool editMode READ editMode WRITE setEditMode NOTIFY editModeChanged)
-    //  Nachverfolgte Änderungen — Bedeutung und Bedienung identisch zum
+    //  Nachverfolgte Änderungen - Bedeutung und Bedienung identisch zum
     //  PDF-Editor (s. Structure.md ▸ ## PdfEdit).
     Q_PROPERTY(bool recording READ recording WRITE setRecording NOTIFY recordingChanged)
     Q_PROPERTY(int  trackedCount READ trackedCount NOTIFY trackedChanged)
@@ -74,17 +74,17 @@ private:
     Q_PROPERTY(bool busy READ busy NOTIFY busyChanged)
     Q_PROPERTY(bool textEditing READ textEditing NOTIFY textEditingChanged)
     Q_PROPERTY(bool hasClipboard READ hasClipboard NOTIFY clipboardChanged)
-    // Natürliche Bildmaße (Pixel) — Klemm-Grenzen + Platzierung. Aus QImageReader
+    // Natürliche Bildmaße (Pixel) - Klemm-Grenzen + Platzierung. Aus QImageReader
     // (Header) beim setDocument; QML kann sie via setImageSize() überschreiben,
     // falls QImageReader ein Format nicht messen kann (Fallback).
     Q_PROPERTY(int  imageWidth  READ imageWidth  NOTIFY imageSizeChanged)
     Q_PROPERTY(int  imageHeight READ imageHeight NOTIFY imageSizeChanged)
     // Zähler: bumpt bei jeder Änderung der „Vorlagen"-Defaults (neue Annotation)
-    // → Panel/Toolbar lesen defaultInfo() rev-getrieben, wenn nichts ausgewählt.
+    // -> Panel/Toolbar lesen defaultInfo() rev-getrieben, wenn nichts ausgewählt.
     Q_PROPERTY(int  defaultRev READ defaultRev NOTIFY defaultRevChanged)
     Q_PROPERTY(QObject* annModel READ annModel CONSTANT)
     Q_PROPERTY(int  annCount READ annCount NOTIFY annCountChanged)
-    // Layout-Konstanten (einzige Quelle — Anzeige = Export = WYSIWYG).
+    // Layout-Konstanten (einzige Quelle - Anzeige = Export = WYSIWYG).
     Q_PROPERTY(qreal boxPaddingPx READ boxPaddingPx CONSTANT)
     Q_PROPERTY(qreal minAnnPx READ minAnnPx CONSTANT)
     Q_PROPERTY(qreal noteFoldPx READ noteFoldPx CONSTANT)
@@ -96,7 +96,7 @@ public:
     static constexpr qreal kBoxPaddingPx   = 6.0;
     // Mindest-Annotationsgröße (Bild-Pixel).
     static constexpr qreal kMinAnnPx       = 8.0;
-    // Undo-Deckel (Delta-Kommandos sind winzig — reine Hygiene).
+    // Undo-Deckel (Delta-Kommandos sind winzig - reine Hygiene).
     static constexpr int   kUndoLimit      = 200;
     // Sidecar-Größenschutz beim Laden (wie ViewerController::readTextFile).
     static constexpr qint64 kMaxSidecarBytes = 8LL * 1024 * 1024;
@@ -138,7 +138,7 @@ public:
     bool recording() const { return m_recording; }
     void setRecording(bool on);
     int  trackedCount() const;
-    //  Alle Notizen/Zeichnungen dieses Bildes verwerfen — wie im PDF-Editor:
+    //  Alle Notizen/Zeichnungen dieses Bildes verwerfen - wie im PDF-Editor:
     //  NICHT die Sidecar-Datei löschen (der Editor hielte die Annotationen
     //  im Speicher und schriebe sie zurück), sondern entfernen (EIN
     //  Undo-Schritt) und sichern; ein leeres Overlay räumt den Sidecar ab.
@@ -161,7 +161,7 @@ public:
     //  Zeichen-Session (Freihand/Pfeil/Rechteck/Ellipse):
     //   beginDraw() legt die Annotation LIVE an (sichtbare Vorschau, KEIN
     //   Kommando), updateDraw() erweitert/skaliert live, endDraw() finalisiert
-    //   → genau EIN Add-Kommando (Undo entfernt die ganze Zeichnung).
+    //   -> genau EIN Add-Kommando (Undo entfernt die ganze Zeichnung).
     Q_INVOKABLE int  beginDraw(int kind, qreal xPx, qreal yPx);
     Q_INVOKABLE void updateDraw(int id, qreal xPx, qreal yPx);
     Q_INVOKABLE void endDraw(int id);
@@ -171,21 +171,21 @@ public:
     Q_INVOKABLE void copySelected();
     Q_INVOKABLE void paste();
 
-    // ── Geometrie-Session (Verschieben/Skalieren → EIN Undo-Schritt) ──────────
+    // ── Geometrie-Session (Verschieben/Skalieren -> EIN Undo-Schritt) ──────────
     //  Für Striche werden die Punkte proportional in das neue Rechteck
     //  transformiert (Verschieben = Translation, Skalieren = Streckung).
     Q_INVOKABLE void beginGeometryEdit(int id);
     Q_INVOKABLE void updateGeometry(int id, qreal xPx, qreal yPx, qreal wPx, qreal hPx);
     Q_INVOKABLE void endGeometryEdit(int id);
 
-    // ── Text-Session (Tippen → EIN Undo-Schritt) ──────────────────────────────
+    // ── Text-Session (Tippen -> EIN Undo-Schritt) ──────────────────────────────
     Q_INVOKABLE void beginTextEdit(int id);
     Q_INVOKABLE void updateText(int id, const QString& text);
     Q_INVOKABLE void endTextEdit(int id);
 
     // ── Stil/Format (Einzel-Kommandos, mergefähig) ────────────────────────────
-    //  id < 0 → setzt NUR die Vorlage/Default für neue Annotationen (kein
-    //  Kommando); id >= 0 → ändert die Annotation UND aktualisiert die Vorlage.
+    //  id < 0 -> setzt NUR die Vorlage/Default für neue Annotationen (kein
+    //  Kommando); id >= 0 -> ändert die Annotation UND aktualisiert die Vorlage.
     Q_INVOKABLE void setAnnStroke(int id, const QColor& c);
     Q_INVOKABLE void setAnnLineWidth(int id, qreal w);
     Q_INVOKABLE void setAnnFill(int id, const QColor& c);
@@ -217,7 +217,7 @@ public:
     Q_INVOKABLE QStringList standardFonts() const;
     Q_INVOKABLE QString resolvedFont(const QString& family) const;
 
-    // ── Intern (Worker → GUI via QueuedConnection; NICHT aus QML rufen) ───────
+    // ── Intern (Worker -> GUI via QueuedConnection; NICHT aus QML rufen) ───────
     void exportTaskFinished(bool ok, const QString& target,
                             const QString& error, int generation);
 
@@ -290,7 +290,7 @@ private:
     qreal           m_defLineWidth = 4.0;
     QColor          m_defFill      = QColor(0, 0, 0, 0);
 
-    // Export (1 Worker → RAM-Peak gedeckelt; Generationszahl verwirft Veraltetes).
+    // Export (1 Worker -> RAM-Peak gedeckelt; Generationszahl verwirft Veraltetes).
     QThreadPool m_pool;
     bool        m_busy      = false;
     int         m_exportGen = 0;

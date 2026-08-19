@@ -3,13 +3,13 @@ import QtQuick.Templates as T
 import MediaGallery 1.0
 
 // ─────────────────────────────────────────────────────────────────────────────
-//  MenuItem.qml — gethemter Menüeintrag (Stil "style").
+//  MenuItem.qml - gethemter Menüeintrag (Stil "style").
 //
 //  Ersetzt Fusions hellgraues Kästchen mit Bitmap-Haken durch dieselbe
 //  abgerundete Akzent-Markierung wie `CheckBox.qml` und zeichnet den
 //  Untermenü-Pfeil selbst (schriftart-/atlasfrei).
 //
-//  WICHTIG — `background.implicitWidth: 200`: `ThemedMenu` in
+//  WICHTIG - `background.implicitWidth: 200`: `ThemedMenu` in
 //  `ApplicationShell.qml` berechnet die Menübreite aus `max(item.implicitWidth)`
 //  mit 200 px als Mindestmaß (Fusion-Verhalten, s. Runde 2026-07-25, 2). Ohne
 //  diese implizite Breite kollabieren die Menü-Popups wieder zum „Strich".
@@ -29,7 +29,7 @@ T.MenuItem {
     spacing: 8
     font.pixelSize: 13
 
-    //  Häkchen-Markierung (nur bei `checkable`) — Geometrie wie CheckBox.qml,
+    //  Häkchen-Markierung (nur bei `checkable`) - Geometrie wie CheckBox.qml,
     //  nur eine Spur kleiner, damit die Zeilenhöhe eines Menüs erhalten bleibt.
     indicator: Rectangle {
         x: control.mirrored ? control.width - width - control.rightPadding : control.leftPadding
@@ -111,7 +111,7 @@ T.MenuItem {
     }
 
     background: Rectangle {
-        //  s. Kopfkommentar — Mindestbreite für ThemedMenu.
+        //  s. Kopfkommentar - Mindestbreite für ThemedMenu.
         implicitWidth: 200
         implicitHeight: 26
         radius: 4

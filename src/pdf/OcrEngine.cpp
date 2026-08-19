@@ -83,7 +83,7 @@ QList<OcrLine> recognize(const QImage& img, double dpi) {
     if (api.Init(dir.isEmpty() ? nullptr : dir.constData(), lang.constData()) != 0)
         return out;
 
-    //  Graustufen-8 = ein Byte je Pixel → direkt an Tesseract übergebbar.
+    //  Graustufen-8 = ein Byte je Pixel -> direkt an Tesseract übergebbar.
     const QImage gray = img.convertToFormat(QImage::Format_Grayscale8);
     if (gray.isNull()) { api.End(); return out; }
     api.SetImage(gray.constBits(), gray.width(), gray.height(), 1,

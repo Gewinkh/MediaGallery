@@ -1,12 +1,12 @@
 #pragma once
 // ─────────────────────────────────────────────────────────────────────────────
-//  DocxEditController — DEZENTRALER Editor-Kern des DOCX-Editors: je geöffneter
+//  DocxEditController - DEZENTRALER Editor-Kern des DOCX-Editors: je geöffneter
 //  DOCX-Kachel (DocxSurface) erzeugt QML eine EIGENE Instanz (qmlRegisterType,
-//  Muster PdfEditController) → getrennter Cursor/Undo/Dirty-Zustand pro Datei,
+//  Muster PdfEditController) -> getrennter Cursor/Undo/Dirty-Zustand pro Datei,
 //  Split-View-tauglich ohne globalen Zustand.
 //
 //  Besitzt das Docx::Document (Verlusterhaltungs-Modell), den Undo-Stack,
-//  Cursor + Selektion (EINE Quelle der Wahrheit — Toolbar und DocxTextArea
+//  Cursor + Selektion (EINE Quelle der Wahrheit - Toolbar und DocxTextArea
 //  lesen beide hier) sowie Laden/Speichern:
 //   • Laden ASYNC (QRunnable + QThreadPool + Generationszähler, Regel 8/17).
 //   • Speichern ASYNC: das neue document.xml + Ersatzteile entstehen auf dem
@@ -16,7 +16,7 @@
 //     <Name>_edited(.n).docx (Vorgabe des Auftrags).
 //
 //  Alle Text-Operationen laufen über EIN Kommando-Muster (DocxReplaceBlocks-
-//  Command): Bereich kopieren → mutieren → Kommando mit Vorher/Nachher pushen.
+//  Command): Bereich kopieren -> mutieren -> Kommando mit Vorher/Nachher pushen.
 // ─────────────────────────────────────────────────────────────────────────────
 
 #include "core/SpellChecker.h"
@@ -41,13 +41,13 @@ class DocxEditController : public QObject {
     Q_PROPERTY(bool canUndo READ canUndo NOTIFY undoChanged)
     Q_PROPERTY(bool canRedo READ canRedo NOTIFY undoChanged)
     Q_PROPERTY(QString loadError READ loadError NOTIFY readyChanged)
-    //  Format am Cursor/der Selektion (Toolbar) — rev-getrieben wie boxInfo
+    //  Format am Cursor/der Selektion (Toolbar) - rev-getrieben wie boxInfo
     //  im PDF-Editor: bei jeder Cursor-/Formatänderung inkrementiert.
     Q_PROPERTY(int formatRev READ formatRev NOTIFY formatRevChanged)
     //  Änderungsverfolgung: Anzahl und Autoren der nachverfolgten Änderungen.
     Q_PROPERTY(int revisionCount READ revisionCount NOTIFY revisionsChanged)
     //  Autoren der nachverfolgten Änderungen als fertiger Text („A, B“).
-    //  Ohne diese Property las der Streifen `editCtl.revisionAuthors` — die
+    //  Ohne diese Property las der Streifen `editCtl.revisionAuthors` - die
     //  es nie gab: QML meldete „Cannot read property 'length' of undefined“
     //  und die Zeile blieb ohne Autoren stehen.
     Q_PROPERTY(QString revisionAuthorsText READ revisionAuthorsText NOTIFY revisionsChanged)
@@ -88,7 +88,7 @@ public:
     Q_INVOKABLE void insertLineBreak();                 // Shift+Enter (<w:br/>)
     //  "Ab hier unter allem weiter" (Word: Textumbruch mit `w:clear="all"`).
     //  Der Weg, neben einer gleitenden Tabelle bewusst wieder UNTER sie zu
-    //  kommen — ohne ihn haengt der Text an ihrer Seite fest.
+    //  kommen - ohne ihn haengt der Text an ihrer Seite fest.
     Q_INVOKABLE void insertClearBreak();
 
     // ── Zeichenformat (Selektion; ohne Selektion: Format fürs nächste Tippen) ─
@@ -112,13 +112,13 @@ public:
     //  (Standardvorlage zuerst). Leer, wenn das Dokument keine styles.xml hat.
     Q_INVOKABLE QVariantList paragraphStyles() const;
     //  Vorlage auf alle Absätze der Selektion anwenden. Die Standardvorlage
-    //  (oder eine leere id) ENTFERNT das w:pStyle — direkte Formatierung des
+    //  (oder eine leere id) ENTFERNT das w:pStyle - direkte Formatierung des
     //  Absatzes bleibt in beiden Fällen erhalten.
     Q_INVOKABLE void setParagraphStyle(const QString& styleId);
 
     // ── Einfügen ─────────────────────────────────────────────────────────────
     //  Leere Tabelle NACH dem aktuellen Absatz einfügen (undo-fähig). Steht der
-    //  Cursor in einer Zelle, landet sie hinter der GANZEN Tabelle — verschachtelte
+    //  Cursor in einer Zelle, landet sie hinter der GANZEN Tabelle - verschachtelte
     //  Tabellen werden bewusst nicht erzeugt (der Parser deutet sie auch nicht).
     Q_INVOKABLE void insertTable(int rows, int cols);
     //  Bild als eigenen Absatz einfügen (undo-fähig). `fileUrl` darf eine
@@ -126,7 +126,7 @@ public:
     //  imageInsertFailed.
     //  UNTERSCHRIFT/STEMPEL: dasselbe wie `insertImage`, aber das Bild wird
     //  sofort als VERANKERTES, umflossenes Bild eingesetzt (Word:
-    //  `wp:anchor` + `w:wrapSquare`) und ausgewaehlt — es laesst sich also
+    //  `wp:anchor` + `w:wrapSquare`) und ausgewaehlt - es laesst sich also
     //  gleich frei auf der Seite ziehen. EIN Undo-Schritt fuer beides.
     Q_INVOKABLE void insertSignatureImage(const QString& fileUrl);
     Q_INVOKABLE void insertImage(const QString& fileUrl);
@@ -136,14 +136,14 @@ public:
     //  kopierten Bildes); 0 = aus den nativen Pixeln rechnen.
     Q_INVOKABLE void insertImageData(const QByteArray& bytes, const QString& ext,
                                      qint64 cxEmu = 0, qint64 cyEmu = 0);
-    //  Bilder im ORDNER der geöffneten Datei — als [{name, url}] für das
+    //  Bilder im ORDNER der geöffneten Datei - als [{name, url}] für das
     //  Auswahl-Popup. Filter ist QImageReader::supportedImageFormats(), also
     //  jedes Format, das Qt lesen kann (keine feste Endungsliste).
     Q_INVOKABLE QVariantList folderImages() const;
 
     //  ── Rechtschreib-PRÜFUNG (unterkringeln + Vorschläge) ────────────────────
     //  Geprüft wird ABSATZWEISE und ASYNCHRON (Regel 8): ein `QRunnable` je
-    //  Auftrag auf einem eigenen Pool mit EINEM Thread — die Reihenfolge bleibt
+    //  Auftrag auf einem eigenen Pool mit EINEM Thread - die Reihenfolge bleibt
     //  damit die Tippreihenfolge, und der GUI-Thread sieht nie ein Wörterbuch.
     //  Der Text wird NIE von selbst geändert; „Korrektur" ist ein Menüpunkt.
     Q_PROPERTY(bool spellAvailable READ spellAvailable NOTIFY spellChanged)
@@ -162,10 +162,10 @@ public:
     Q_INVOKABLE bool spellHasIssueAt(int block, int pos) const {
         return spellWordAt(block, pos, nullptr) != 0;
     }
-    //  Cursorstelle für QML — das Kontextmenü fragt genau dort nach.
+    //  Cursorstelle für QML - das Kontextmenü fragt genau dort nach.
     Q_INVOKABLE int cursorBlock() const { return m_cursor.block; }
     Q_INVOKABLE int cursorPos() const   { return m_cursor.pos; }
-    //  Das beanstandete Wort an einer Stelle durch `replacement` ersetzen —
+    //  Das beanstandete Wort an einer Stelle durch `replacement` ersetzen -
     //  EIN Undo-Schritt, wie jede andere Textänderung.
     Q_INVOKABLE bool spellReplaceAt(int block, int pos, const QString& replacement);
     //  Für diese Sitzung durchgehen lassen (alle Absätze werden neu geprüft).
@@ -173,7 +173,7 @@ public:
 
     //  ── Änderungsverfolgung annehmen / verwerfen ─────────────────────────────
     //  An der Cursorstelle: `revisionAt` sagt, was dort steht (0 = nichts,
-    //  1 = Einfügung, 2 = Löschung) — das Kontextmenü zeigt die Einträge nur
+    //  1 = Einfügung, 2 = Löschung) - das Kontextmenü zeigt die Einträge nur
     //  dann. `acceptRevisionAt`/`rejectRevisionAt` sind EIN Undo-Schritt.
     Q_INVOKABLE int  revisionAt(int block, int pos) const;
     Q_INVOKABLE QString revisionAuthorAt(int block, int pos) const;
@@ -185,7 +185,7 @@ public:
     //  Zusammenfassung für den Hinweisstreifen: wie viele Änderungen stehen im
     //  Dokument (aufeinanderfolgende Runs derselben Art und desselben Autors
     //  zählen als EINE) und von wem. Ohne diese Anzeige sah ein Dokument mit
-    //  Änderungen aus wie eines ohne — der Nutzer wusste nicht, was die
+    //  Änderungen aus wie eines ohne - der Nutzer wusste nicht, was die
     //  Markierungen bedeuten (Befund N5).
     int  revisionCount() const { return m_revCount; }
     QString revisionAuthorsText() const { return m_revAuthors.join(QStringLiteral(", ")); }
@@ -197,16 +197,16 @@ public:
     Q_INVOKABLE static QStringList spellLanguages() {
         return mg::SpellChecker::availableLanguages();
     }
-    //  Ordner der geöffneten Datei (Pfad, leer wenn nichts geladen) — der
+    //  Ordner der geöffneten Datei (Pfad, leer wenn nichts geladen) - der
     //  PDF-Seitenwähler scannt damit denselben Ordner wie folderImages().
     Q_INVOKABLE QString folderPath() const;
     //  Seitenzahl einer PDF (für den Seitenwähler); 0 = keine lesbare PDF.
     Q_INVOKABLE int pdfPageCount(const QString& fileUrl) const;
-    //  EINE Seite einer PDF als Bild einfügen. Gerendert wird bei 150 dpi —
+    //  EINE Seite einer PDF als Bild einfügen. Gerendert wird bei 150 dpi -
     //  fein genug zum Drucken, ohne den Container zu sprengen.
     Q_INVOKABLE void insertPdfPage(const QString& fileUrl, int page);
     //  Inhaltsverzeichnis NACH dem aktuellen Absatz einfügen (undo-fähig).
-    //  Das Feld bleibt deklarativ — die Einträge zeigt die Fläche aus der
+    //  Das Feld bleibt deklarativ - die Einträge zeigt die Fläche aus der
     //  eigenen Paginierung, Word rechnet sie beim Öffnen selbst.
     Q_INVOKABLE void insertTableOfContents();
 
@@ -224,9 +224,9 @@ public:
     Q_INVOKABLE void tableSetColumnWidthsMm(int tableId, const QVariantList& mm);
     Q_INVOKABLE void deleteTable(int tableId);
     //  Ganze Tabelle AUSWÄHLEN (erster bis letzter Zellblock). Danach löscht
-    //  Entf/Rücktaste sie — der Tastaturweg zum Entfernen einer Tabelle.
+    //  Entf/Rücktaste sie - der Tastaturweg zum Entfernen einer Tabelle.
     Q_INVOKABLE void selectTable(int tableId);
-    //  ALLE Spalten mit demselben Faktor skalieren (Ziehen an Rahmen/Ecke) —
+    //  ALLE Spalten mit demselben Faktor skalieren (Ziehen an Rahmen/Ecke) -
     //  die Zellen behalten dadurch ihr Größenverhältnis zueinander.
     Q_INVOKABLE void scaleTableWidths(int tableId, qreal factor);
 
@@ -236,7 +236,7 @@ public:
     Q_INVOKABLE QVariantMap imageInfoAt(int block) const;
     //  Ausgewähltes Bild (= Cursor steht in einem reinen Bild-Absatz) in die
     //  Zwischenablage legen bzw. entfernen. `copy()`/`cut()` rufen das selbst
-    //  auf, wenn keine TEXT-Selektion besteht — damit wirken Strg+C/Strg+X
+    //  auf, wenn keine TEXT-Selektion besteht - damit wirken Strg+C/Strg+X
     //  auch auf ein Bild.
     Q_INVOKABLE bool copyImageAtCursor();
     //  Ganze Tabelle am Cursor in die Zwischenablage (eigener Typ + Klartext);
@@ -254,10 +254,10 @@ public:
     //  (`wp:inline`), true = umfließend (`wp:anchor` + `w:wrapSquare`).
     Q_INVOKABLE void setImageFloating(int block, bool floating);
     //  LAGE eines umfließenden Bildes in Millimetern, relativ zur linken
-    //  Textkante und zur Oberkante seines Absatzes — das schreibt das Ziehen.
+    //  Textkante und zur Oberkante seines Absatzes - das schreibt das Ziehen.
     Q_INVOKABLE void setImagePositionMm(int block, qreal xMm, qreal yMm);
     //  Dasselbe, aber der Anker wechselt den ABSATZ (Word hängt ein abgelegtes
-    //  Bild an den Absatz, über dem es liegt — erst dadurch umfließt dessen
+    //  Bild an den Absatz, über dem es liegt - erst dadurch umfließt dessen
     //  Text es). `yMm` zählt ab der Oberkante des ZIELabsatzes. Umhängen und
     //  neue Lage sind EIN Undo-Schritt. Den Zielabsatz bestimmt die Anzeige
     //  (`DocxTextArea::dropSelectedImage`), sie kennt die Geometrie.
@@ -298,11 +298,11 @@ public:
     //  exportCopy(): immer <Name>_edited(.n).docx daneben.
     Q_INVOKABLE void save();
     Q_INVOKABLE void exportCopy();
-    //  DOCX → PDF exportieren (Aufgabe 2): schreibt <Name>.pdf NEBEN der
+    //  DOCX -> PDF exportieren (Aufgabe 2): schreibt <Name>.pdf NEBEN der
     //  Quelle (Original bleibt erhalten), async im Worker (Muster wie oben).
     //  tablePlaceholder/pageBreakLabel = i18n-Texte aus QML (wie die Anzeige).
     //  Zielpfad des PDF-Exports: <Name>.pdf neben der Quelle, bei Kollision
-    //  „<Name> (2).pdf". MUSS öffentlich stehen — `Q_INVOKABLE` allein genügt
+    //  „<Name> (2).pdf". MUSS öffentlich stehen - `Q_INVOKABLE` allein genügt
     //  NICHT: aus dem privaten Teil heraus meldet QML „is not a function", und
     //  der Aufruf scheitert STILL (der Knopf tat dann gar nichts).
     Q_INVOKABLE QString pdfExportTargetPath() const;
@@ -312,7 +312,7 @@ public:
     //  color, align, lineSpacing, beforePt, afterPt, list (0/1/2) }.
     Q_INVOKABLE QVariantMap currentFormat() const;
 
-    //  Aufgelöstes ZEICHENformat an der Cursorstelle (inkl. Pending-Overlay) —
+    //  Aufgelöstes ZEICHENformat an der Cursorstelle (inkl. Pending-Overlay) -
     //  EINE Quelle für die Toolbar (currentFormat) UND die Caret-Geometrie der
     //  DocxTextArea. Ohne diese gemeinsame Auflösung zeigte der Caret stets die
     //  Zeilenhöhe des Layouts und reagierte gar nicht auf Schriftgrößen-
@@ -345,7 +345,7 @@ signals:
     void spellChanged();
     void cursorChanged();
     void saveFinished(bool ok, const QString& target, const QString& error);
-    //  Ergebnis des DOCX→PDF-Exports (Aufgabe 2).
+    //  Ergebnis des DOCX->PDF-Exports (Aufgabe 2).
     void imageInsertFailed(const QString& error);
     //  Zahl/Autoren der nachverfolgten Änderungen haben sich geändert.
     void revisionsChanged();
@@ -369,7 +369,7 @@ private:
     QString blockText(int i) const;
     //  Klartext der aktuellen Selektion (mehrblockig mit „\n" verbunden).
     QString selectionPlainText() const;
-    //  Treffer [start, start+len) in Block `bi` auswählen (Anker → Ende).
+    //  Treffer [start, start+len) in Block `bi` auswählen (Anker -> Ende).
     void selectRange(int bi, int start, int len);
     int  blockLen(int i) const;
     bool isEditableParagraph(int i) const;
@@ -391,15 +391,15 @@ private:
     void orderedSelection(int& b1, int& p1, int& b2, int& p2) const;
     //  Run-Index + Offset im Run zu einer Absatzposition.
     void runAt(const Docx::Block& b, int pos, int* runIdx, int* runOfs) const;
-    //  Bild AM CURSOR — dieselbe Regel wie in der Anzeige: entweder der Absatz
+    //  Bild AM CURSOR - dieselbe Regel wie in der Anzeige: entweder der Absatz
     //  besteht nur aus diesem Bild, oder die Selektion deckt genau sein
     //  Objekt-Zeichen (so wählt ein Klick ein Bild im Fließtext aus).
     bool imageAtCursor(int* block, int* run, Docx::InlineImage* info) const;
-    //  Block+Run des gemeinten Bildes nach derselben Regel — Lage/Umbruchseite
+    //  Block+Run des gemeinten Bildes nach derselben Regel - Lage/Umbruchseite
     //  brauchen die Auskunft ohne die `InlineImage` selbst.
     bool selectedImage(int block, int* blockOut, int* runOut) const;
     //  Gemeinsamer Weg von insertImage/insertImageData/paste: das Bild kommt
-    //  AN DIE CURSOR-STELLE in den laufenden Absatz (wie in Word) — nur so
+    //  AN DIE CURSOR-STELLE in den laufenden Absatz (wie in Word) - nur so
     //  können zwei Bilder nebeneinander und Text daneben stehen.
     void insertImageBytes(const QByteArray& bytes, const QString& ext,
                           qint64 cxEmu, qint64 cyEmu);
@@ -410,7 +410,7 @@ private:
     void removeRangeInBlock(Docx::Block& b, int p1, int p2) const;
     //  Absatz an `pos` teilen: alles ab dort wandert in einen NEUEN Absatz
     //  DAHINTER (gleiche Zelle, gleiches pPr/pfmt). Steht an `pos` ein
-    //  `w:br`-Zeichen, wird es dabei geschluckt — aus dem Zeilenumbruch wird
+    //  `w:br`-Zeichen, wird es dabei geschluckt - aus dem Zeilenumbruch wird
     //  die Absatzgrenze. Liefert den Index des neuen Absatzes.
     int  splitParagraphAt(int blockIdx, int pos, bool dropBreakAtPos);
     //  Zeilenbereich [from,to) eines `w:br`-Absatzes als EIGENEN Absatz
@@ -420,10 +420,10 @@ private:
     //  Wendet das Pending-Format auf einen frisch getippten Run an.
     void applyPendingTo(Docx::Run& r) const;
     //  Pending-Format verwerfen (Cursor verlässt die Stelle / Merge in einen
-    //  anderen Absatz). setCursor() macht das implizit — Pfade, die m_cursor
+    //  anderen Absatz). setCursor() macht das implizit - Pfade, die m_cursor
     //  DIREKT setzen (Löschen/Verschmelzen), brauchen den expliziten Aufruf.
     void clearPending();
-    //  Aufgelöstes Zeichenformat der Stelle (block,pos) — Zeichen LINKS vom
+    //  Aufgelöstes Zeichenformat der Stelle (block,pos) - Zeichen LINKS vom
     //  Cursor; im leeren Absatz das Stil-Format des Absatzes selbst.
     Docx::RunFmt resolvedFormatAt(int block, int pos) const;
     //  Word-Verhalten nach dem Löschen des LETZTEN Zeichens einer Zeile: Die
@@ -433,13 +433,13 @@ private:
     //  werden nur die Felder, die sich vom Stil-Format des leeren Absatzes
     //  unterscheiden (minimales rPr beim nächsten Tippen).
     void keepFormatOnEmptiedBlock(int bi, const Docx::RunFmt& had);
-    //  Fügt fertige Runs (Zwischenablage) absatzweise an der Cursorstelle ein —
+    //  Fügt fertige Runs (Zwischenablage) absatzweise an der Cursorstelle ein -
     //  Gegenstück zu insertText, nur mit MITGEBRACHTEM Zeichenformat.
     void insertRunParagraphs(const QList<QList<Docx::Run>>& paras);
-    //  Interne Zwischenablage: Selektion → Blob / Blob → Absätze mit Runs.
+    //  Interne Zwischenablage: Selektion -> Blob / Blob -> Absätze mit Runs.
     QByteArray serializeSelection() const;
     //  Tabelle aus dem eigenen Zwischenablage-Typ einsetzen (EIN Undo-Schritt);
-    //  false bei fremdem/defektem Blob — dann greifen die übrigen Formate.
+    //  false bei fremdem/defektem Blob - dann greifen die übrigen Formate.
     bool pasteTableBlob(const QByteArray& blob);
     static bool deserializeRuns(const QByteArray& blob,
                                 QList<QList<Docx::Run>>* out);
@@ -477,7 +477,7 @@ private:
     //  ── Rechtschreibprüfung ──────────────────────────────────────────────────
     //  Eigener Pool mit EINEM Thread (Regel 8): die Aufträge laufen in der
     //  Reihenfolge, in der getippt wurde, und der Cache bleibt konsistent.
-    //  Der `SpellChecker` gehört DIESEM Pool-Thread — er wird dort erzeugt.
+    //  Der `SpellChecker` gehört DIESEM Pool-Thread - er wird dort erzeugt.
     void   spellStart();                 // Wörterbuch (neu) öffnen
     void   spellInvalidate(int first, int count);   // Absätze neu prüfen
     void   spellRequest(int block);      // einen Absatz einreihen
@@ -487,7 +487,7 @@ public:
 private:
     QThreadPool* m_spellPool = nullptr;
     std::shared_ptr<mg::SpellChecker> m_spell;      // nur im Pool-Thread benutzt
-    QHash<int, QVector<mg::SpellRange>> m_spellBad; // Absatz → Fundstellen
+    QHash<int, QVector<mg::SpellRange>> m_spellBad; // Absatz -> Fundstellen
     QSet<int>  m_spellPending;           // eingereiht, Ergebnis steht aus
     QStringList m_spellIgnored;          // Sitzungswörter (GUI-Thread hält sie)
     bool       m_spellOn = false;

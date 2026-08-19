@@ -6,15 +6,15 @@ import MediaGallery 1.0
 import "../common"
 
 // ─────────────────────────────────────────────────────────────────────────────
-//  TagCategoryPanel.qml — einheitliches Panel-System für Tags UND Kategorien
+//  TagCategoryPanel.qml - einheitliches Panel-System für Tags UND Kategorien
 //  (rechte Seitenleiste; ersetzt TagCategoryPanel(QWidget)).
 //
 //  Aufbau (ein Panel, zwei strukturell gleichwertige Abschnitte, gemeinsamer
-//  SectionHeader — keine UI-Duplikation):
+//  SectionHeader - keine UI-Duplikation):
 //    • Abschnitt „Tags":       ALLE Tags als Chips mit klarem Aktiv-/Inaktiv-
 //                              Zustand (Toggle gegen galleryModel.tagFilter).
 //                              „+" im Kopf erstellt einen neuen Tag.
-//    • Abschnitt „Kategorien": bestehender Baum aus Tags.categoriesTree() über
+//    • Abschnitt „Kategorien": bestehender Baum aus panel.tagsCtl.categoriesTree() über
 //                              rekursive CategoryNode-Knoten. „+" im Kopf
 //                              erstellt eine neue Wurzelkategorie.
 //
@@ -22,7 +22,7 @@ import "../common"
 //    Referenzquelle für den Tag-Filter ist AUSSCHLIESSLICH der Proxy
 //    (galleryModel.tagFilter); activeTagFilter ist nur ein reaktiver Spiegel.
 //    Beim ABWÄHLEN einer Kategorie werden abhängige aktive Unterkategorien und
-//    deren Tags mit deaktiviert — außer sie werden von einem anderen weiterhin
+//    deren Tags mit deaktiviert - außer sie werden von einem anderen weiterhin
 //    aktiven Filter referenziert (siehe toggleCategory).
 // ─────────────────────────────────────────────────────────────────────────────
 Rectangle {
@@ -40,31 +40,41 @@ Rectangle {
     property bool showTagsSection: true
     property bool showCategoriesSection: true
 
+    //  WELCHE Tags/Kategorien? Die des EIGENEN Ordners - nicht die der gerade
+    //  fokussierten Hälfte. `Tags` ist appweit und folgt dem Fokus; da der Fokus
+    //  dem Mauszeiger folgt, wechselte der Inhalt des Panels, sobald die Maus
+    //  über die andere Hälfte fuhr (Nutzerbefund). Die Galerie reicht deshalb
+    //  ihren eigenen `PaneCtl.tags` herein; in den Einstellungen bleibt die
+    //  Vorgabe stehen, dort IST die Fassade gemeint.
+    property var tagsCtl: Tags
+    //  Ebenso der Ordnerwechsel: der EIGENE zählt.
+    property var folderSource: App
+
     property var tree: []
     property var allTagsModel: []
     property var activeCategories: []
-    // Reaktiver Spiegel von galleryModel.tagFilter (NIE direkt mutieren —
+    // Reaktiver Spiegel von galleryModel.tagFilter (NIE direkt mutieren -
     // Mutationen laufen immer über den Proxy, der Spiegel folgt via Connections).
     property var activeTagFilter: []
 
     function refresh() {
-        tree = Tags.categoriesTree()
-        allTagsModel = Tags.allTags()
+        tree = panel.tagsCtl.categoriesTree()
+        allTagsModel = panel.tagsCtl.allTags()
     }
     Component.onCompleted: {
         refresh()
         activeTagFilter = galleryModel.tagFilter
     }
     Connections {
-        target: Tags
+        target: panel.tagsCtl
         function onCategoriesChanged() { panel.refresh() }
         function onTagsChanged()       { panel.refresh() }
     }
     // Beim Ordnerwechsel/-start neu ziehen: JsonStorage lädt die Tags/Kategorien
-    // eines Ordners OHNE tagsChanged/categoriesChanged zu emittieren — ohne
+    // eines Ordners OHNE tagsChanged/categoriesChanged zu emittieren - ohne
     // diesen Hook bliebe das Panel bis zur ersten Mutation leer.
     Connections {
-        target: App
+        target: panel.folderSource
         function onFolderOpened(path) { panel.refresh() }
     }
     Connections {
@@ -76,8 +86,28 @@ Rectangle {
     function isCategoryActive(id) { return activeCategories.indexOf(id) >= 0 }
     function isTagActive(tag)     { return activeTagFilter.indexOf(tag) >= 0 }
 
+    //  Namensliste nach Suchbegriff filtern (Groß-/Kleinschreibung egal).
+    function filterList(names, needle) {
+        const n = (needle || "").trim().toLowerCase()
+        if (n.length === 0) return names
+        var out = []
+        for (var i = 0; i < names.length; ++i)
+            if (String(names[i]).toLowerCase().indexOf(n) >= 0) out.push(names[i])
+        return out
+    }
+    //  Dasselbe für die flache Kategorienliste (Einträge mit `name`/`id`).
+    function filterCats(needle) {
+        const all = panel.tagsCtl.categoriesFlat()
+        const n = (needle || "").trim().toLowerCase()
+        var out = []
+        for (var i = 0; i < all.length; ++i)
+            if (n.length === 0 || String(all[i].name).toLowerCase().indexOf(n) >= 0)
+                out.push(all[i])
+        return out
+    }
+
     // ── Referenz-Helfer für die Kaskadenlogik ─────────────────────────────────
-    //  Alle Prüfungen laufen über den aktuellen Baum (tree) — per ID, nicht per
+    //  Alle Prüfungen laufen über den aktuellen Baum (tree) - per ID, nicht per
     //  Name (Referenzbasis: TagCategory.id).
     function _findNode(nodes, id) {
         for (var i = 0; i < nodes.length; i++) {
@@ -104,7 +134,7 @@ Rectangle {
         }
         return out
     }
-    // Vorfahren-IDs (Wurzel → …) eines Knotens; null, wenn nicht gefunden.
+    // Vorfahren-IDs (Wurzel -> …) eines Knotens; null, wenn nicht gefunden.
     function _ancestorIds(nodes, id) {
         for (var i = 0; i < nodes.length; i++) {
             if (nodes[i].id === id) return []
@@ -151,7 +181,7 @@ Rectangle {
             a = kept
 
             // 2) Tag-Kaskade: Tags des abgewählten Teilbaums aus dem Tag-Filter
-            //    entfernen — AUSSER ein verbleibender aktiver Kategorie-Teilbaum
+            //    entfernen - AUSSER ein verbleibender aktiver Kategorie-Teilbaum
             //    referenziert den Tag weiterhin (Referenzzählung über die
             //    Teilbaum-Tags aller noch aktiven Kategorien).
             var removedTags = _subtreeTags(node)
@@ -187,16 +217,16 @@ Rectangle {
         if (i >= 0) a.splice(i, 1); else a.push(tag)
         galleryModel.tagFilter = a          // Spiegel folgt via onFilterChanged
     }
-    function moveTag(tag, fromCat, toCat) { Tags.moveTagToCategory(tag, fromCat, toCat) }
+    function moveTag(tag, fromCat, toCat) { panel.tagsCtl.moveTagToCategory(tag, fromCat, toCat) }
 
     // ── Abgelegte Dateien zuordnen (gemeinsam für beide Abschnitte) ───────────
     //  Aufgerufen von den Chips DIESES Panels und von CategoryNode; die Regeln
-    //  gehören deshalb an EINE Stelle. Zugewiesen wird immer nur HINZUFÜGEND —
+    //  gehören deshalb an EINE Stelle. Zugewiesen wird immer nur HINZUFÜGEND -
     //  ein Zug ist eine Zuweisung, kein Umschalter (sonst nähme ein zweiter Zug
     //  einer Datei ihren Tag wieder weg).
     function dropFilesOnTag(urls, tag) {
         //  `mediaModel.addTag` überspringt Dateien, die nicht zum offenen Ordner
-        //  gehören — von außen hereingezogene Fremddateien laufen also ins Leere.
+        //  gehören - von außen hereingezogene Fremddateien laufen also ins Leere.
         for (var i = 0; i < urls.length; i++)
             mediaModel.addTag(App.localPath(urls[i]), tag)
     }
@@ -204,12 +234,12 @@ Rectangle {
         for (var i = 0; i < urls.length; i++) {
             var p = App.localPath(urls[i])
             //  Kategorien sind über den DATEINAMEN adressiert (wie das
-            //  Tag-System), gespeichert wird im Sidecar des offenen Ordners —
+            //  Tag-System), gespeichert wird im Sidecar des offenen Ordners -
             //  deshalb hier die Ordnerprüfung, die addTag selbst mitbringt.
             if (!mediaModel.hasFile(p)) continue
             var name = String(p).split("/").pop()
-            if (!Tags.fileInCategory(catId, name))
-                Tags.toggleFileInCategory(catId, name)
+            if (!panel.tagsCtl.fileInCategory(catId, name))
+                panel.tagsCtl.toggleFileInCategory(catId, name)
         }
     }
     function requestAddToTagMode(tag) { panel.enterAddToTagMode(tag) }
@@ -217,30 +247,90 @@ Rectangle {
 
     function promptAddSubcategory(parentId) {
         namePrompt.title = App.uiText(App.language, "CatPanelNewSubcategory"); namePrompt.value = ""
-        namePrompt.onAcceptFn = function(v) { Tags.addSubcategory(parentId, v, Qt.rgba(0,0.7,0.63,1), false) }
+        namePrompt.onAcceptFn = function(v) { panel.tagsCtl.addSubcategory(parentId, v, Qt.rgba(0,0.7,0.63,1), false) }
         namePrompt.open()
     }
     function promptAddTag(catId) {
         namePrompt.title = App.uiText(App.language, "TagBarDropdownHeader"); namePrompt.value = ""
-        namePrompt.onAcceptFn = function(v) { Tags.addTagToCategory(catId, v) }
+        namePrompt.onAcceptFn = function(v) { panel.tagsCtl.addTagToCategory(catId, v) }
         namePrompt.open()
     }
     function promptRename(id, oldName) {
         namePrompt.title = App.uiText(App.language, "CatPanelRename"); namePrompt.value = oldName
-        namePrompt.onAcceptFn = function(v) { Tags.renameCategory(id, v) }
+        namePrompt.onAcceptFn = function(v) { panel.tagsCtl.renameCategory(id, v) }
         namePrompt.open()
     }
     function promptUniformColor(id) {
         colorDialog.targetCat = id
-        colorDialog.selectedColor = Tags.categoryColor(id)
+        colorDialog.selectedColor = panel.tagsCtl.categoryColor(id)
         colorDialog.open()
     }
     function promptDelete(id) { deleteCatId = id; confirmDelete.open() }
     property string deleteCatId: ""
+    //  Derselbe Weg für Tags: erst fragen. Ein gelöschter Tag verschwindet aus
+    //  ALLEN Dateien des Ordners - das darf kein Versehen sein.
+    function promptDeleteTag(name) { deleteTagName = name; confirmDeleteTag.open() }
+    property string deleteTagName: ""
 
     // ── Gemeinsamer Abschnittskopf (Titel + „+"-Button) ───────────────────────
-    //  EIN Kopf-Baustein für beide Abschnitte → einheitliche Steuerung ohne
+    //  EIN Kopf-Baustein für beide Abschnitte -> einheitliche Steuerung ohne
     //  UI-Duplikation.
+    //  Einen neuen Tag anlegen (Kopf-Knopf UND Kontextmenü nutzen denselben Weg).
+    function promptNewTag() {
+        namePrompt.title = App.uiText(App.language, "CatPanelNewTag")
+        namePrompt.value = ""
+        namePrompt.onAcceptFn = function(v) { panel.tagsCtl.createTag(v, Qt.rgba(0, 0.7, 0.63, 1)) }
+        namePrompt.open()
+    }
+    function promptNewCategory() {
+        namePrompt.title = App.uiText(App.language, "CatPanelAddCategory")
+        namePrompt.value = ""
+        namePrompt.onAcceptFn = function(v) { panel.tagsCtl.addRootCategory(v, Qt.rgba(0, 0.7, 0.63, 1), false) }
+        namePrompt.open()
+    }
+
+    //  Suchfeld eines Abschnitts - dieselbe Optik wie die Suche der Filterleiste.
+    component SectionSearch: Rectangle {
+        id: sf
+        property alias text: sfInput.text
+        property string placeholder: ""
+        height: 26; radius: 6
+        color: App.themeCard
+        border.color: sfInput.activeFocus ? App.themeAccent : App.themeBorder
+        border.width: 1
+
+        DrawnIcon {
+            id: sfIcon
+            anchors { left: parent.left; leftMargin: 7; verticalCenter: parent.verticalCenter }
+            name: "search"; size: 12
+            color: sfInput.activeFocus ? App.themeAccent : App.themeTextMuted
+        }
+        TextField {
+            id: sfInput
+            anchors { left: sfIcon.right; leftMargin: 5; right: sfClear.left; rightMargin: 4
+                      verticalCenter: parent.verticalCenter }
+            height: parent.height - 2
+            padding: 0
+            font.pixelSize: 11
+            color: App.themeTextPrimary
+            placeholderText: sf.placeholder
+            background: null
+        }
+        //  Leeren - solange etwas drinsteht, ist die „hinzufügen"-Zeile weg,
+        //  der Knopf ist also der Weg zurück (Festlegung des Nutzers).
+        Rectangle {
+            id: sfClear
+            anchors { right: parent.right; rightMargin: 5; verticalCenter: parent.verticalCenter }
+            visible: sfInput.text.length > 0
+            width: 16; height: 16; radius: 8
+            color: sfClearHover.hovered ? Qt.rgba(1, 1, 1, 0.16) : "transparent"
+            DrawnIcon { anchors.centerIn: parent; name: "close"; size: 9
+                        color: App.themeTextMuted }
+            HoverHandler { id: sfClearHover }
+            TapHandler { onTapped: sfInput.text = "" }
+        }
+    }
+
     component SectionHeader: Rectangle {
         id: hdr
         property string title: ""
@@ -287,11 +377,7 @@ Rectangle {
             width: parent.width
             title: App.uiText(App.language, "PanelSectionTags")
             addTip: App.uiText(App.language, "PanelAddTagTip")
-            onAddClicked: {
-                namePrompt.title = App.uiText(App.language, "CatPanelNewTag"); namePrompt.value = ""
-                namePrompt.onAcceptFn = function(v) { Tags.createTag(v, Qt.rgba(0, 0.7, 0.63, 1)) }
-                namePrompt.open()
-            }
+            onAddClicked: panel.promptNewTag()
         }
 
         ScrollView {
@@ -311,6 +397,13 @@ Rectangle {
                 width: panel.width - 12
                 x: 6
                 topPadding: 6; bottomPadding: 6
+                spacing: 6
+
+                SectionSearch {
+                    id: tagSearch
+                    width: parent.width
+                    placeholder: App.uiText(App.language, "PanelSearchTag")
+                }
 
                 Flow {
                     id: tagsFlow
@@ -318,12 +411,12 @@ Rectangle {
                     spacing: 4
 
                     Repeater {
-                        model: panel.allTagsModel
+                        model: panel.filterList(panel.allTagsModel, tagSearch.text)
                         delegate: Rectangle {
                             id: pChip
                             required property var modelData
 
-                            readonly property color tc: App.tagColor(pChip.modelData)
+                            readonly property color tc: panel.tagsCtl.tagColor(pChip.modelData)
                             // Klarer Toggle-Zustand: aktiv = gefüllt + Häkchen + kräftiger Rand.
                             readonly property bool active: panel.isTagActive(pChip.modelData)
 
@@ -357,7 +450,7 @@ Rectangle {
 
                             //  ── Kachel auf den Tag ziehen ⇒ Datei bekommt ihn ──
                             //  Die Kachel zieht als PLATTFORM-Zug hinaus
-                            //  (`Drag.Automatic`, `text/uri-list`, s. MediaTile) —
+                            //  (`Drag.Automatic`, `text/uri-list`, s. MediaTile) -
                             //  landet er wieder im eigenen Fenster, kommt er hier
                             //  als gewöhnlicher Datei-Drop an, genau wie einer aus
                             //  dem Dateimanager. Deshalb funktioniert dieselbe
@@ -374,7 +467,7 @@ Rectangle {
                                     drop.acceptProposedAction()
                                 }
                             }
-                            //  Rückmeldung beim Ziehen darüber — sonst rät man,
+                            //  Rückmeldung beim Ziehen darüber - sonst rät man,
                             //  ob der Chip den Zug überhaupt annimmt.
                             Rectangle {
                                 anchors.fill: parent
@@ -397,6 +490,11 @@ Rectangle {
                                 id: pChipMenu
                                 MenuItem { text: App.uiText(App.language, "ModeAddToTag"); onTriggered: panel.requestAddToTagMode(pChip.modelData) }
                                 MenuItem { text: App.uiText(App.language, "ModeGroup");    onTriggered: panel.requestGroupMode(pChip.modelData) }
+                                MenuSeparator {}
+                                MenuItem { text: "+  " + App.uiText(App.language, "CatPanelNewTag")
+                                           onTriggered: panel.promptNewTag() }
+                                MenuItem { text: App.uiText(App.language, "SettingsTagDelete")
+                                           onTriggered: panel.promptDeleteTag(pChip.modelData) }
                             }
                         }
                     }
@@ -404,8 +502,32 @@ Rectangle {
 
                 Text {
                     visible: panel.allTagsModel.length === 0
-                    text: App.uiText(App.language, "PanelNoTags")
+                             || (tagSearch.text.length > 0
+                                 && panel.filterList(panel.allTagsModel, tagSearch.text).length === 0)
+                    text: tagSearch.text.length > 0
+                          ? App.uiText(App.language, "PanelSearchNoHit")
+                          : App.uiText(App.language, "PanelNoTags")
                     color: App.themeTextMuted; font.pixelSize: 12
+                }
+
+                //  Rechtsklick auf die FREIE Fläche des Abschnitts legt ebenfalls
+                //  an - dort steht man, wenn noch kein Tag da ist. Liegt dagegen
+                //  ein Chip unter dem Zeiger, gehört der Klick IHM (er bietet
+                //  zusätzlich „Tag löschen"); ohne diese Prüfung öffnete sich
+                //  hier das falsche Menü (Nutzerbild `deleteTag.png`).
+                TapHandler {
+                    acceptedButtons: Qt.RightButton
+                    onTapped: function(point) {
+                        const p = tagsCol.mapToItem(tagsFlow, point.position.x,
+                                                    point.position.y)
+                        if (tagsFlow.childAt(p.x, p.y)) return
+                        tagAreaMenu.open()
+                    }
+                }
+                ThemedMenu {
+                    id: tagAreaMenu
+                    MenuItem { text: "+  " + App.uiText(App.language, "CatPanelNewTag")
+                               onTriggered: panel.promptNewTag() }
                 }
             }
         }
@@ -422,11 +544,7 @@ Rectangle {
             width: parent.width
             title: App.uiText(App.language, "SettingsTabCategories")
             addTip: App.uiText(App.language, "PanelAddCategoryTip")
-            onAddClicked: {
-                namePrompt.title = App.uiText(App.language, "CatPanelAddCategory"); namePrompt.value = ""
-                namePrompt.onAcceptFn = function(v) { Tags.addRootCategory(v, Qt.rgba(0,0.7,0.63,1), false) }
-                namePrompt.open()
-            }
+            onAddClicked: panel.promptNewCategory()
         }
 
         ScrollView {
@@ -443,10 +561,59 @@ Rectangle {
                 id: treeColumn
                 width: panel.width - 12
                 x: 6
-                spacing: 3
+                //  Gleiche Luft wie im Tag-Abschnitt darüber: dort stand das
+                //  Suchfeld frei, hier klebte es an Kopfzeile und Baum.
+                topPadding: 6; bottomPadding: 6
+                spacing: 6
+
+                SectionSearch {
+                    id: catSearch
+                    width: parent.width
+                    placeholder: App.uiText(App.language, "PanelSearchCategory")
+                }
+
+                //  WÄHREND der Suche eine flache Trefferliste statt des Baums:
+                //  wer sucht, will den Treffer anklicken und nicht erst den Pfad
+                //  aufklappen. Ein Klick wählt die Kategorie wie im Baum.
+                Repeater {
+                    model: catSearch.text.length > 0 ? panel.filterCats(catSearch.text) : []
+                    delegate: Rectangle {
+                        id: hitRow
+                        required property var modelData
+                        width: treeColumn.width
+                        height: 26
+                        radius: 6
+                        readonly property bool on: panel.activeCategories.indexOf(hitRow.modelData.id) >= 0
+                        color: hitRow.on ? Qt.rgba(App.themeAccent.r, App.themeAccent.g,
+                                                   App.themeAccent.b, 0.28)
+                             : (hitHover.hovered ? Qt.rgba(1, 1, 1, 0.06) : "transparent")
+                        border.color: hitRow.on ? App.themeAccent : App.themeBorder
+                        border.width: 1
+                        Text {
+                            anchors { left: parent.left; leftMargin: 8; right: parent.right
+                                      rightMargin: 8; verticalCenter: parent.verticalCenter }
+                            text: hitRow.modelData.name
+                            color: App.themeTextPrimary
+                            font.pixelSize: 12
+                            elide: Text.ElideRight
+                        }
+                        HoverHandler { id: hitHover }
+                        TapHandler {
+                            onTapped: panel.toggleCategory(hitRow.modelData.id, !hitRow.on)
+                        }
+                    }
+                }
+
+                Text {
+                    visible: catSearch.text.length > 0
+                             && panel.filterCats(catSearch.text).length === 0
+                    text: App.uiText(App.language, "PanelSearchNoHit")
+                    color: App.themeTextMuted; font.pixelSize: 12
+                    topPadding: 8
+                }
 
                 Repeater {
-                    model: panel.tree
+                    model: catSearch.text.length > 0 ? [] : panel.tree
                     delegate: CategoryNode {
                         required property var modelData
                         width: treeColumn.width
@@ -457,10 +624,27 @@ Rectangle {
                 }
 
                 Text {
-                    visible: panel.tree.length === 0
+                    visible: panel.tree.length === 0 && catSearch.text.length === 0
                     text: App.uiText(App.language, "TagPanelEmpty")
                     color: App.themeTextMuted; font.pixelSize: 12
                     topPadding: 12
+                }
+
+                //  Rechtsklick auf die freie Fläche legt eine Kategorie an -
+                //  derselbe Griff wie im Tag-Abschnitt darüber, mit derselben
+                //  Prüfung: liegt eine Kategorie (oder das Suchfeld) unter dem
+                //  Zeiger, gehört der Klick dorthin.
+                TapHandler {
+                    acceptedButtons: Qt.RightButton
+                    onTapped: function(point) {
+                        if (treeColumn.childAt(point.position.x, point.position.y)) return
+                        catAreaMenu.open()
+                    }
+                }
+                ThemedMenu {
+                    id: catAreaMenu
+                    MenuItem { text: "+  " + App.uiText(App.language, "CatPanelAddCategory")
+                               onTriggered: panel.promptNewCategory() }
                 }
             }
         }
@@ -503,8 +687,33 @@ Rectangle {
         id: colorDialog
         property string targetCat: ""
         // Einheitsfarbe aus dem Panel vererbt an den gesamten Teilbaum (Tags,
-        // Unter- und verschachtelte Unterkategorien) — die erwartete Wirkung.
-        onAccepted: Tags.setCategoryUniformColor(targetCat, true, selectedColor, true)
+        // Unter- und verschachtelte Unterkategorien) - die erwartete Wirkung.
+        onAccepted: panel.tagsCtl.setCategoryUniformColor(targetCat, true, selectedColor, true)
+    }
+
+    //  Rückfrage vor dem Löschen eines TAGS (s. `promptDeleteTag`). Ein
+    //  gelöschter Tag verschwindet aus ALLEN Dateien des Ordners.
+    Popup {
+        id: confirmDeleteTag
+        modal: true; focus: true; anchors.centerIn: Overlay.overlay; padding: 16
+        background: Rectangle { color: App.themeCard; radius: 10; border.color: App.themeBorder }
+        contentItem: Column {
+            spacing: 12
+            Text {
+                text: App.uiText(App.language, "SettingsTagDelete") + ": " + panel.deleteTagName
+                color: App.themeTextPrimary; font.pixelSize: 14; font.bold: true
+            }
+            Row {
+                spacing: 8
+                Button {
+                    text: App.uiText(App.language, "BookmarkDelete")
+                    onClicked: { panel.tagsCtl.deleteTag(panel.deleteTagName)
+                                 confirmDeleteTag.close() }
+                }
+                Button { text: App.uiText(App.language, "SettingsCancel")
+                         onClicked: confirmDeleteTag.close() }
+            }
+        }
     }
 
     // ── Löschbestätigung ──────────────────────────────────────────────────────
@@ -517,7 +726,7 @@ Rectangle {
             Text { text: App.uiText(App.language, "TagPanelDeleteTitle"); color: App.themeTextPrimary; font.pixelSize: 14; font.bold: true }
             Row {
                 spacing: 8
-                Button { text: App.uiText(App.language, "BookmarkDelete"); onClicked: { Tags.deleteCategory(panel.deleteCatId); confirmDelete.close() } }
+                Button { text: App.uiText(App.language, "BookmarkDelete"); onClicked: { panel.tagsCtl.deleteCategory(panel.deleteCatId); confirmDelete.close() } }
                 Button { text: App.uiText(App.language, "SettingsCancel"); onClicked: confirmDelete.close() }
             }
         }

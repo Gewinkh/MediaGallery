@@ -19,21 +19,29 @@
 #include <QRunnable>
 #include <QThreadPool>
 
-#include "core/MemoryUtils.h"   // mg::trimHeap — RSS-Rückgabe nach Ordnerwechsel
+#include "core/MemoryUtils.h"   // mg::trimHeap - RSS-Rückgabe nach Ordnerwechsel
+
+//  Diagnose-Protokoll fuer die Miniaturen: `MG_LOG_THUMBS=1` schreibt jeden
+//  Anforderungs-, Abbestell- und Liefervorgang nach stderr. Kostet ohne die
+//  Umgebungsvariable nichts (ein `const bool`, einmal beim Start gelesen) und
+//  beantwortet die einzige Frage, die von aussen nicht zu sehen ist: Wurde eine
+//  Vorschau nie angefordert, unterwegs abbestellt oder nie geliefert?
+static const bool kLogThumbs = qEnvironmentVariableIntValue("MG_LOG_THUMBS") == 1;
 
 namespace {
 
 // ─────────────────────────────────────────────────────────────────────────────
-//  Ein Verzeichnis ZAEHLEN — im Worker, nach dem Hausmuster (Regel 8).
+//  Ein Verzeichnis ZAEHLEN - im Worker, nach dem Hausmuster (Regel 8).
 //  Gezaehlt wird, was die Galerie dort zeigen wuerde: Unterordner und erkannte
 //  Mediendateien. Ein Verzeichnis kann Zehntausende Eintraege haben; auf dem
 //  GUI-Thread waere das ein Ruckler je sichtbarer Ordnerkachel.
 class FolderCountTask : public QRunnable {
 public:
     FolderCountTask(QPointer<MediaModel> owner, QString folder, QString sidecar,
-                    bool showAll, int generation)
+                    bool showAll, int generation, int ticket)
         : m_owner(std::move(owner)), m_folder(std::move(folder))
-        , m_sidecar(std::move(sidecar)), m_showAll(showAll), m_generation(generation) {
+        , m_sidecar(std::move(sidecar)), m_showAll(showAll), m_generation(generation)
+        , m_ticket(ticket) {
         setAutoDelete(true);
     }
 
@@ -51,26 +59,27 @@ public:
             ++n;
         }
         //  Zugestellt wird am BESITZER, nicht an `qApp`: das `qApp`-Makro
-        //  castet `QCoreApplication::instance()` auf `QGuiApplication` — in
+        //  castet `QCoreApplication::instance()` auf `QGuiApplication` - in
         //  einem Prozess ohne GUI (jeder Testtreiber) ist das ein ungueltiger
         //  Downcast und damit undefiniertes Verhalten. UBSan meldet genau das
         //  („downcast of address … which does not point to an object of type
         //  'QGuiApplication'").
         //
         //  Der Zeiger ist gueltig, weil `~MediaModel` den Pool vorher leert und
-        //  auslaufen laesst — es kann also kein Auftrag mehr laufen, waehrend
+        //  auslaufen laesst - es kann also kein Auftrag mehr laufen, waehrend
         //  der Besitzer stirbt. Der QPointer bleibt als zweite Sicherung im
         //  GUI-Thread (Muster PdfScanTask).
         MediaModel* owner = m_owner.data();
         if (!owner) return;
         const QString folder = m_folder;
         const int gen = m_generation;
+        const int ticket = m_ticket;
         //  KEIN zweiter QPointer im Lambda: er waere ueberfluessig (der Pool
         //  laeuft vor der Zerstoerung aus, und Qt entfernt gepostete Ereignisse
         //  eines sterbenden QObject ohnehin) und traegt einen Referenzzaehler
         //  ueber die Thread-Grenze, den Helgrind als Rennen meldet.
-        QMetaObject::invokeMethod(owner, [owner, folder, n, gen]() {
-            owner->noteFolderCount(folder, n, gen);
+        QMetaObject::invokeMethod(owner, [owner, folder, n, gen, ticket]() {
+            owner->noteFolderCount(folder, n, gen, ticket);
         }, Qt::QueuedConnection);
     }
 
@@ -80,13 +89,14 @@ private:
     QString m_sidecar;
     bool    m_showAll = false;
     int     m_generation = 0;
+    int     m_ticket = 0;
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
 //  Den Baum unterhalb des offenen Ordners nach Treffern durchsuchen.
 //
 //  Je Ordner wird EINMAL sein Sidecar gelesen (Tags und Kategorien liegen dort)
-//  und dann jede Datei mit `MediaProxyModel::acceptsFile` geprueft — derselben
+//  und dann jede Datei mit `MediaProxyModel::acceptsFile` geprueft - derselben
 //  Funktion wie in der Anzeige. Ein Ordner zaehlt auch dann als Treffer, wenn
 //  sein eigener NAME passt: sonst waere ein tief liegender Ordner mit
 //  passendem Namen nicht erreichbar.
@@ -224,14 +234,30 @@ MediaModel::MediaModel(JsonStorage& storage,
         for (const QString& p : std::as_const(m_cancelPending)) {
             const int row = rowForPath(p);
             if (row >= 0 && m_thumbState[row] == 1) continue;   // inzwischen da
+            //  In diesem Durchlauf hat jemand denselben Pfad angefordert - das
+            //  ist die uebernehmende Kachel. Ihre Anforderung darf die
+            //  abgebende Kachel nicht wegraeumen (s. Header).
+            //  In diesem Durchlauf hat jemand denselben Pfad angefordert - das
+            //  ist die uebernehmende Kachel. Ihre Anforderung darf die
+            //  abgebende Kachel nicht wegraeumen (s. Header).
+            if (m_thumbWanted.contains(p)) {
+                if (kLogThumbs)
+                    qInfo("[thumb] abbestellen VERWORFEN (uebernommen) %s",
+                          qPrintable(QFileInfo(p).fileName()));
+                continue;
+            }
+            if (kLogThumbs)
+                qInfo("[thumb] abbestellen AUSGEFUEHRT %s",
+                      qPrintable(QFileInfo(p).fileName()));
             m_loader.cancelThumbnail(p);
         }
         m_cancelPending.clear();
+        m_thumbWanted.clear();
     });
 
     // ── Inkrementelle Befüllung: 0-ms-Timer speist je Tick eine Charge ein ───
     m_fillTimer.setSingleShot(false);
-    m_fillTimer.setInterval(0);   // „sobald die Event-Loop atmet“ — kein Blockieren
+    m_fillTimer.setInterval(0);   // „sobald die Event-Loop atmet“ - kein Blockieren
     connect(&m_fillTimer, &QTimer::timeout, this, [this]() {
         feedChunk(/*firstChunk=*/false);
         if (!hasMoreToFill()) {
@@ -240,7 +266,7 @@ MediaModel::MediaModel(JsonStorage& storage,
         }
     });
 
-    // Tag-Änderungen aus anderen Quellen (z. B. Tag-Manager) → sichtbare Tags neu.
+    // Tag-Änderungen aus anderen Quellen (z. B. Tag-Manager) -> sichtbare Tags neu.
     //
     //  NUR Zeilen des geoeffneten Ordners: `m_tagManager` haengt an dessen
     //  Sidecar und schluesselt nach DATEINAMEN. Eine gleichnamige Datei in einem
@@ -257,7 +283,7 @@ MediaModel::MediaModel(JsonStorage& storage,
 
 //  s. Header: hier ist QDirIterator vollständig bekannt.
 //
-//  Der Zaehl-Pool wird HIER geleert und ausgelaufen — nicht erst als Kind in
+//  Der Zaehl-Pool wird HIER geleert und ausgelaufen - nicht erst als Kind in
 //  `~QObject`. Kinder sterben nach dem Rumpf dieses Destruktors; ein noch
 //  laufender Auftrag haette dann einen halb zerstoerten Besitzer vor sich.
 MediaModel::~MediaModel() {
@@ -282,8 +308,9 @@ void MediaModel::rebuild(const QString& folderPath) {
     //  Vormerkungen gehoeren zum alten Bestand.
     m_cancelTimer.stop();
     m_cancelPending.clear();
+    m_thumbWanted.clear();
 
-    // Leeres Modell SOFORT publizieren → die UI rendert ohne Verzögerung den
+    // Leeres Modell SOFORT publizieren -> die UI rendert ohne Verzögerung den
     // Leerzustand bzw. beginnt unmittelbar mit der ersten Charge.
     beginResetModel();
     m_items.clear();
@@ -292,7 +319,7 @@ void MediaModel::rebuild(const QString& folderPath) {
     m_pathToRow.clear();
     //  Die Bereichstabelle wird beim Neuaufbau geleert, `m_expanded` NICHT:
     //  daraus setzt sich der aufgeklappte Unterbaum waehrend des Einlesens von
-    //  selbst wieder zusammen (queueExpandedFolders) — ein Watcher-Reload
+    //  selbst wieder zusammen (queueExpandedFolders) - ein Watcher-Reload
     //  klappt also nicht alles zu.
     m_scopes.clear();
     m_scopeOfPath.clear();
@@ -303,6 +330,8 @@ void MediaModel::rebuild(const QString& folderPath) {
     ++m_countGeneration;
     m_folderCounts.clear();
     m_countPending.clear();
+    //  Die Marken bleiben stehen (sie steigen nur) - zuruecksetzen koennte
+    //  einen noch laufenden Auftrag wieder gueltig machen.
     endResetModel();
     emit countChanged();
 
@@ -310,7 +339,7 @@ void MediaModel::rebuild(const QString& folderPath) {
         return;
 
     // Wurzelbereich anlegen. Die Ordner-Konfiguration liegt als Sidecar
-    // "<Ordnername>.json" IM Ordner (siehe JsonStorage) — diese Datei ist keine
+    // "<Ordnername>.json" IM Ordner (siehe JsonStorage) - diese Datei ist keine
     // Mediendatei und wird nicht als Kachel angezeigt. Der Name gehoert deshalb
     // zum BEREICH: jeder aufgeklappte Unterordner hat seinen eigenen.
     FolderScope root;
@@ -331,7 +360,7 @@ void MediaModel::rebuild(const QString& folderPath) {
     //  QFileInfoList, bevor die erste Kachel sichtbar wurde: je Eintrag ein
     //  QFileInfoPrivate samt QFileSystemEntry und QFileSystemMetaData. Bei
     //  20 000 Dateien waren das ~20 MB, die bis zum Ende der Befüllung liegen
-    //  blieben — und der Nutzer wartete auf die Enumeration ALLER Einträge,
+    //  blieben - und der Nutzer wartete auf die Enumeration ALLER Einträge,
     //  obwohl der Viewport nur die ersten paar Dutzend zeigt.
     //  Der Iterator hält dagegen immer nur EINEN Eintrag; jede Charge liest
     //  genau so viele Einträge, wie sie einspeist.
@@ -342,7 +371,7 @@ void MediaModel::rebuild(const QString& folderPath) {
     //  `dynamicSortFilter`), dessen `lessThan` bei Gleichstand deterministisch
     //  über den Anzeigenamen entscheidet. Damit ist die Anzeige unverändert,
     //  eine Voll-Sortierung aller Namen entfällt aber.
-    //  ALLE Miniaturen sind jetzt „ausstehend" — das muss die Ansicht erfahren.
+    //  ALLE Miniaturen sind jetzt „ausstehend" - das muss die Ansicht erfahren.
     //  Seit das Zeilenmodell als DIFF einspielt, ueberleben die Kacheln einen
     //  Reset und behalten ihr `requestedPath`; sie halten sich fuer fertig und
     //  fordern von selbst nie wieder an.
@@ -350,14 +379,14 @@ void MediaModel::rebuild(const QString& folderPath) {
     //  Das Signal darf aber ERST kommen, wenn die Zeilen wieder da sind: die
     //  Kacheln antworten darauf mit `ensureThumbnail(pfad)`, und das laeuft ins
     //  Leere, solange `rowForPath` den Pfad nicht kennt. Genau daran scheiterte
-    //  der erste Versuch — nach einem Reload kam ohne Fenstergroesse-Aendern
+    //  der erste Versuch - nach einem Reload kam ohne Fenstergroesse-Aendern
     //  oder Scrollen KEINE einzige Miniatur zurueck (am Pruefstand als
     //  „0 von 40" reproduziert). Vorgemerkt hier, gesendet in `finishFill`.
     m_pendingInvalidate = true;
 
     startScan(0);
 
-    // Erste Charge SYNCHRON → Viewport ist sofort gefüllt (kein Flackern),
+    // Erste Charge SYNCHRON -> Viewport ist sofort gefüllt (kein Flackern),
     // der Rest folgt gechunkt über den Timer.
     feedChunk(/*firstChunk=*/true);
     if (hasMoreToFill())
@@ -428,7 +457,7 @@ void MediaModel::feedChunk(bool firstChunk) {
             continue;
         }
 
-        //  Begleitdateien der App (Ordner-JSON, Editor-Sidecar, `.bak`) —
+        //  Begleitdateien der App (Ordner-JSON, Editor-Sidecar, `.bak`) -
         //  ausgeblendet, solange der Schalter aus ist. Die Regel steht in
         //  `mg::isCompanionFile`, damit der Dateiwähler nicht anders filtert.
         if (!m_showAllFiles && mg::isCompanionFile(fi.fileName(), sidecar))
@@ -437,7 +466,7 @@ void MediaModel::feedChunk(bool firstChunk) {
         const MediaType t = MediaItem::detectType(fi.filePath());
         //  „Alle Dateien anzeigen" heißt WIRKLICH alle: auch was die App nicht
         //  als Medium erkennt (`.bak`, Archive, Programme). Sonst hielte der
-        //  Schalter sein Versprechen nur halb — die Sicherungskopie einer DOCX
+        //  Schalter sein Versprechen nur halb - die Sicherungskopie einer DOCX
         //  bliebe unsichtbar, obwohl sie ausdrücklich gemeint war.
         if (t == MediaType::Unknown && !m_showAllFiles) continue;
 
@@ -456,7 +485,7 @@ void MediaModel::feedChunk(bool firstChunk) {
         return;   // diese Runde enthielt nur übersprungene Einträge
 
     //  Persistierte Metadaten (Tags + ggf. Custom-Datum) aus dem Sidecar DIESES
-    //  Bereichs. Ein aufgeklappter Unterordner hat sein eigenes — nur so tragen
+    //  Bereichs. Ein aufgeklappter Unterordner hat sein eigenes - nur so tragen
     //  seine Dateien ihre echten Zuordnungen, statt die eines gleichnamigen
     //  Nachbarn im Elternordner zu erben.
     if (JsonStorage* st = storageForScope(scope)) {
@@ -490,7 +519,7 @@ void MediaModel::feedChunk(bool firstChunk) {
 //  Nach dem Einspeisen: alles ab `firstRow` durchsehen und jeden Ordner, der in
 //  `m_expanded` steht, mit einem Bereich versehen und zum Einlesen vormerken.
 //  Dadurch stellt sich ein ganzer aufgeklappter Unterbaum nach einem reload()
-//  von selbst wieder her — Ebene fuer Ebene, wie er gefunden wird.
+//  von selbst wieder her - Ebene fuer Ebene, wie er gefunden wird.
 void MediaModel::queueExpandedFolders(int firstRow) {
     if (m_expanded.isEmpty()) return;
     for (int r = qMax(0, firstRow); r < m_items.size(); ++r) {
@@ -508,11 +537,29 @@ void MediaModel::finishFill() {
     m_pendingIt.reset();
     m_pendingScope = -1;
 
-    //  Jetzt stehen die Zeilen — jetzt kann die Ansicht ihre Miniaturen neu
+    //  Jetzt stehen die Zeilen - jetzt kann die Ansicht ihre Miniaturen neu
     //  anfordern (s. rebuild()).
     if (m_pendingInvalidate) {
         m_pendingInvalidate = false;
         emit thumbnailsInvalidated();
+    }
+
+    //  … und jetzt die MEDIEN-ANZAHL der Ordnerkacheln. `rebuild()` wirft die
+    //  gezaehlten Staende weg - zu Recht, denn ein Reload laeuft genau dann,
+    //  wenn sich etwas geaendert hat. Angefordert hat sie aber nur die Kachel
+    //  selbst (`Component.onCompleted`/`onFilePathChanged`), und die ueberlebt
+    //  den Reload mit unveraendertem Pfad: niemand fragte mehr, die Zeile blieb
+    //  leer, bis ein Ordnerwechsel die Kacheln neu baute (Nutzerbefund).
+    //  Gezaehlt wird weiterhin nur, wonach schon einmal gefragt wurde - die
+    //  Sichtbarkeitssteuerung bleibt also erhalten.
+    if (!m_countWanted.isEmpty()) {
+        //  Ueber eine KOPIE laufen: `ensureFolderCount` traegt selbst in die
+        //  Menge ein.
+        const QStringList wanted(m_countWanted.cbegin(), m_countWanted.cend());
+        for (const QString& folder : wanted) {
+            if (rowForPath(folder) < 0) continue;   // in diesem Bestand nicht (mehr) da
+            ensureFolderCount(folder);
+        }
     }
 
     //  Trim GENAU HIER: erst jetzt ist die inkrementelle Befuellung wirklich
@@ -522,7 +569,7 @@ void MediaModel::finishFill() {
     //
     //  BEWUSST KEIN squeeze() auf den Parallel-Vektoren: gemessen (20 000
     //  Dateien) betraegt die Wachstums-Reserve nur ~93 kB von 9,2 MB Nutzdaten
-    //  (unter 1 %) — Qts Wachstumsstrategie ist keine reine Verdopplung. Dafuer
+    //  (unter 1 %) - Qts Wachstumsstrategie ist keine reine Verdopplung. Dafuer
     //  wuerde squeeze() den gesamten Item-Vektor umkopieren und damit die
     //  SPITZE kurzzeitig verdoppeln. Schlechter Tausch (§0-Prio 2 vor 4).
     mg::trimHeap();
@@ -591,7 +638,7 @@ void MediaModel::removeRowsOfScopes(const QSet<int>& scopes) {
         if (scopes.contains(*it)) it = m_scanQueue.erase(it);
         else                      ++it;
     }
-    //  Ein LAUFENDER Iterator dieses Bereichs muss sofort weg — sonst speiste
+    //  Ein LAUFENDER Iterator dieses Bereichs muss sofort weg - sonst speiste
     //  die naechste Charge Zeilen in einen Bereich ein, den es nicht mehr gibt.
     if (m_pendingScope >= 0 && scopes.contains(m_pendingScope)) {
         m_pendingIt.reset();
@@ -620,7 +667,7 @@ void MediaModel::removeRowsOfScopes(const QSet<int>& scopes) {
         if (s <= 0 || s >= m_scopes.size()) continue;
         m_scopes[s].active    = false;
         m_scopes[s].folderRow = -1;
-        //  Das Sidecar dieses Bereichs wird nicht mehr gebraucht — es kann
+        //  Das Sidecar dieses Bereichs wird nicht mehr gebraucht - es kann
         //  gross sein und wird beim Wiederaufklappen frisch gelesen.
         if (JsonStorage* st = m_scopeStorage.take(s)) {
             st->saveCurrentFolder();
@@ -644,7 +691,7 @@ void MediaModel::rebuildPathIndex() {
     m_pathToRow.reserve(m_items.size());
     for (int i = 0; i < m_items.size(); ++i)
         m_pathToRow.insert(m_items.at(i).filePath, i);
-    //  Bereiche zeigen auf ZEILEN — nach jeder Verschiebung nachziehen, sonst
+    //  Bereiche zeigen auf ZEILEN - nach jeder Verschiebung nachziehen, sonst
     //  klettert lessThan die Elternkette ins Leere.
     for (int s = 1; s < m_scopes.size(); ++s)
         m_scopes[s].folderRow = m_scopes.at(s).active
@@ -660,7 +707,7 @@ bool MediaModel::expandFolder(const QString& folderPath) {
     if (m_expanded.contains(folderPath)) return false;
 
     //  Schleifenschutz: ein Symlink, der auf einen Vorfahren zeigt, schachtelte
-    //  die Ansicht endlos. Verglichen wird der KANONISCHE Pfad — und nur hier,
+    //  die Ansicht endlos. Verglichen wird der KANONISCHE Pfad - und nur hier,
     //  beim Aufklappen; je Verzeichniseintrag waere das ein realpath() zu viel.
     const QString canon = QFileInfo(folderPath).canonicalFilePath();
     if (!canon.isEmpty()) {
@@ -686,7 +733,7 @@ bool MediaModel::expandFolder(const QString& folderPath) {
 }
 
 bool MediaModel::collapseFolder(const QString& folderPath) {
-    //  Nur DIESER Ordner wird vergessen — die Enkel bleiben vorgemerkt. Klappt
+    //  Nur DIESER Ordner wird vergessen - die Enkel bleiben vorgemerkt. Klappt
     //  man ihn wieder auf, steht sein Unterbaum wieder so da wie vorher.
     if (!m_expanded.remove(folderPath)) return false;
 
@@ -711,6 +758,10 @@ bool MediaModel::toggleFolder(const QString& folderPath) {
 
 void MediaModel::ensureFolderCount(const QString& folderPath) {
     if (folderPath.isEmpty()) return;
+    //  Der Wunsch wird gemerkt, BEVOR abgekuerzt wird: nach einem Neuaufbau
+    //  stoesst `finishFill` die Zaehlung daraus erneut an (die Kachel fragt
+    //  kein zweites Mal, s. dort).
+    m_countWanted.insert(folderPath);
     if (m_folderCounts.contains(folderPath)) return;   // schon gezaehlt
     if (m_countPending.contains(folderPath)) return;   // laeuft gerade
     const int row = rowForPath(folderPath);
@@ -726,12 +777,38 @@ void MediaModel::ensureFolderCount(const QString& folderPath) {
     m_countPending.insert(folderPath);
     const QString sidecar = mg::folderSidecarName(folderPath);
     m_countPool->start(new FolderCountTask(QPointer<MediaModel>(this), folderPath,
-                                           sidecar, m_showAllFiles, m_countGeneration));
+                                           sidecar, m_showAllFiles, m_countGeneration,
+                                           m_countTicket.value(folderPath)));
 }
 
-void MediaModel::noteFolderCount(const QString& folderPath, int count, int generation) {
+//  Ein Vorgang hat den Inhalt dieses Ordners geaendert (Datei hinein, heraus,
+//  geloescht). Ein Reload laeuft dabei NICHT immer - eine Verschiebung zwischen
+//  zwei aufgeklappten Unterordnern laesst den offenen Ordner unberuehrt, der
+//  Watcher schweigt also. Ohne diesen Weg bliebe die Kachel auf ihrer alten
+//  Zahl stehen.
+void MediaModel::invalidateFolderCount(const QString& folderPath) {
+    if (folderPath.isEmpty()) return;
+    const bool known = m_folderCounts.contains(folderPath);
+    const bool running = m_countPending.contains(folderPath);
+    if (!known && !running) return;               // nie gezaehlt: nichts zu verwerfen
+    m_folderCounts.remove(folderPath);
+    //  Die Marke steigt: das Ergebnis eines noch laufenden Auftrags faellt
+    //  durch, und der Ordner gilt nicht mehr als „laeuft gerade".
+    ++m_countTicket[folderPath];
     m_countPending.remove(folderPath);
-    if (generation != m_countGeneration) return;    // veraltet (Ordner gewechselt)
+    const int row = rowForPath(folderPath);
+    if (m_countWanted.contains(folderPath) && row >= 0) {
+        ensureFolderCount(folderPath);            // sofort neu zaehlen
+    } else if (row >= 0) {
+        emitRow(row, { ChildCountRole });         // Zeile leeren (−1)
+    }
+}
+
+void MediaModel::noteFolderCount(const QString& folderPath, int count, int generation,
+                                 int ticket) {
+    if (generation != m_countGeneration) return;    // veraltet (Neuaufbau)
+    if (ticket != m_countTicket.value(folderPath)) return;   // veraltet (Inhalt geaendert)
+    m_countPending.remove(folderPath);
     m_folderCounts.insert(folderPath, count);
     const int row = rowForPath(folderPath);
     if (row >= 0) emitRow(row, { ChildCountRole });
@@ -750,7 +827,7 @@ void MediaModel::collapseAll() {
 }
 
 //  Momentaufnahme eines Ordners ins Sitzungs-Gedaechtnis legen. Ein leerer
-//  Zustand wird geloescht statt gespeichert — sonst wuechse die Tabelle mit
+//  Zustand wird geloescht statt gespeichert - sonst wuechse die Tabelle mit
 //  jedem durchquerten Ordner, ohne etwas zu tragen.
 void MediaModel::rememberExpansion(const QString& folderPath) {
     if (folderPath.isEmpty()) return;
@@ -768,7 +845,7 @@ void MediaModel::rememberExpansion(const QString& folderPath) {
 QStringList MediaModel::expandedFolders() const {
     QStringList list(m_expanded.begin(), m_expanded.end());
     //  Sortiert, damit eine Momentaufnahme reproduzierbar ist (QSet hat keine
-    //  Reihenfolge) — der Rueckweg soll denselben Baum ergeben.
+    //  Reihenfolge) - der Rueckweg soll denselben Baum ergeben.
     list.sort();
     return list;
 }
@@ -810,16 +887,19 @@ void MediaModel::loadFolder(const QString& rawFolderPath) {
 
     //  Aufklapp-Zustand des BISHERIGEN Ordners merken, den des neuen holen.
     //  Er beschreibt Ordner unterhalb eines bestimmten Ordners und ergibt
-    //  woanders keinen Sinn — verlassen und zurueckkehren soll ihn aber
-    //  wiederbringen (Rueckweg Alt+←).
+    //  woanders keinen Sinn - verlassen und zurueckkehren soll ihn aber
+    //  wiederbringen (Rueckweg Alt+<-).
     rememberExpansion(m_folder);
+    //  Die Merkliste der Zaehl-Wuensche gehoert zum verlassenen Ordner; im
+    //  neuen fragen die Kacheln beim Erscheinen ohnehin selbst.
+    m_countWanted.clear();
     m_folder = folderPath;
     //  Der Undo-Stapel gehört zum OFFENEN Ordner: eine Rücknahme in einen
     //  Ordner, den man gerade nicht sieht, wäre nicht nachvollziehbar.
     clearFileHistory();
     {
         //  Die Liste MUSS zuerst in eine eigene Variable: `QHash::value` liefert
-        //  eine KOPIE, zwei Aufrufe also zwei verschiedene Temporaries —
+        //  eine KOPIE, zwei Aufrufe also zwei verschiedene Temporaries -
         //  `begin()` des einen mit `end()` des anderen zu paaren, laeuft ins
         //  Leere (im Test reproduzierbar als Absturz).
         const QStringList remembered = m_expandedMemory.value(folderPath);
@@ -832,10 +912,10 @@ void MediaModel::loadFolder(const QString& rawFolderPath) {
     rebuild(folderPath);
 
     // Ordnerwechsel = große Freigabe (alte Item-Liste, Thumb-URLs, Sidecar-
-    // Puffer des vorherigen Ordners) → freigegebenen Heap aktiv ans OS
+    // Puffer des vorherigen Ordners) -> freigegebenen Heap aktiv ans OS
     // zurückgeben. Bewusst NICHT in reload() (gleicher Ordner, kleine Deltas).
     // Der zweite, wichtigere Trim sitzt in finishFill(): DORT ist die
-    // inkrementelle Befüllung tatsächlich abgeschlossen — hier läuft erst die
+    // inkrementelle Befüllung tatsächlich abgeschlossen - hier läuft erst die
     // erste Charge, der Rest folgt über den Timer.
     mg::trimHeap();
 
@@ -850,7 +930,7 @@ void MediaModel::setShowAllFiles(bool v) {
         return;
     m_showAllFiles = v;
     //  Der Ordner wird neu gelesen: die Sichtbarkeit entscheidet sich beim
-    //  Einlesen, nicht beim Anzeigen — ein Filter im Proxy müsste die Regel ein
+    //  Einlesen, nicht beim Anzeigen - ein Filter im Proxy müsste die Regel ein
     //  zweites Mal kennen.
     reload();
 }
@@ -917,7 +997,7 @@ QString MediaModel::typeLabel(const MediaItem& item) {
     case MediaType::Pdf:   return QStringLiteral("PDF");
     case MediaType::Text:  return item.extension().toUpper();
     //  Nicht erkannte Typen (`.bak`, Archive, Programme) stehen nur bei „Alle
-    //  Dateien anzeigen" in der Galerie — und waren dort an NICHTS zu erkennen:
+    //  Dateien anzeigen" in der Galerie - und waren dort an NICHTS zu erkennen:
     //  kein Thumbnail, kein Badge. Die Endung ist genau die Auskunft, die fehlt.
     case MediaType::Unknown: return item.extension().toUpper();
     default:               return {};
@@ -944,12 +1024,23 @@ void MediaModel::refreshThumbnails() {
 }
 
 void MediaModel::ensureThumbnail(const QString& filePath) {
-    //  Wer anfordert, hebt eine vorgemerkte Abbestellung auf — auch wenn es
+    if (kLogThumbs)
+        qInfo("[thumb] anfordern  %s (Zeile %d, Zustand %d)",
+              qPrintable(QFileInfo(filePath).fileName()), rowForPath(filePath),
+              rowForPath(filePath) >= 0 ? m_thumbState[rowForPath(filePath)] : -1);
+    //  Wer anfordert, hebt eine vorgemerkte Abbestellung auf - auch wenn es
     //  eine ANDERE Kachel war, die eben noch abbestellt hat.
     m_cancelPending.remove(filePath);
+    //  … und schuetzt sich gegen ein Abbestellen, das ERST NOCH kommt: die
+    //  abgebende Kachel meldet sich nach der uebernehmenden (s. Header). Der
+    //  Timer raeumt beide Mengen wieder ab; er laeuft ohnehin im selben
+    //  Durchlauf, wird hier aber angestossen, falls gar nicht abbestellt wird.
+    m_thumbWanted.insert(filePath);
+    if (!m_cancelTimer.isActive())
+        m_cancelTimer.start();
     const int row = rowForPath(filePath);
     if (row < 0) return;
-    //  Ordnerkacheln zeichnen sich selbst (Regel 28) — der Loader kennt für sie
+    //  Ordnerkacheln zeichnen sich selbst (Regel 28) - der Loader kennt für sie
     //  keinen Erzeuger und liefe nur in seinen Fehlpfad.
     if (m_items.at(row).isFolder()) return;
     if (m_thumbState[row] == 1) return;          // bereits geliefert
@@ -957,8 +1048,10 @@ void MediaModel::ensureThumbnail(const QString& filePath) {
 }
 
 void MediaModel::cancelThumbnail(const QString& filePath) {
+    if (kLogThumbs)
+        qInfo("[thumb] abbestellen %s", qPrintable(QFileInfo(filePath).fileName()));
     const int row = rowForPath(filePath);
-    if (row >= 0 && m_thumbState[row] == 1) return;  // schon fertig → nichts abbrechen
+    if (row >= 0 && m_thumbState[row] == 1) return;  // schon fertig -> nichts abbrechen
     //  NICHT sofort: eine andere Kachel kann denselben Pfad im selben Durchlauf
     //  uebernommen und schon angefordert haben (s. Header).
     m_cancelPending.insert(filePath);
@@ -968,6 +1061,9 @@ void MediaModel::cancelThumbnail(const QString& filePath) {
 
 void MediaModel::onThumbnailReady(const QString& filePath, const QString& thumbUrl) {
     const int row = rowForPath(filePath);
+    if (kLogThumbs)
+        qInfo("[thumb] geliefert  %s (Zeile %d)",
+              qPrintable(QFileInfo(filePath).fileName()), row);
     if (row < 0) return;
     m_thumbUrls[row]  = thumbUrl;
     m_thumbState[row] = 1;
@@ -976,6 +1072,9 @@ void MediaModel::onThumbnailReady(const QString& filePath, const QString& thumbU
 
 void MediaModel::onThumbnailFailed(const QString& filePath) {
     const int row = rowForPath(filePath);
+    if (kLogThumbs)
+        qInfo("[thumb] FEHLGESCHLAGEN %s (Zeile %d)",
+              qPrintable(QFileInfo(filePath).fileName()), row);
     if (row < 0) return;
     m_thumbState[row] = 2;
     emitRow(row, { ThumbStateRole });
@@ -983,7 +1082,7 @@ void MediaModel::onThumbnailFailed(const QString& filePath) {
 
 // ─── Mutationen ──────────────────────────────────────────────────────────────
 //  ── Wer darf mutiert werden? ────────────────────────────────────────────────
-//  Alles unten Folgende arbeitet mit `m_storage`/`m_tagManager` — und die
+//  Alles unten Folgende arbeitet mit `m_storage`/`m_tagManager` - und die
 //  gehoeren dem GEOEFFNETEN Ordner und schluesseln nach DATEINAMEN. Eine Zeile
 //  aus einem aufgeklappten Unterordner wuerde dort die Metadaten ihres
 //  gleichnamigen Nachbarn treffen. Bis die Sidecar-Sammlung steht, bleiben
@@ -1005,7 +1104,7 @@ JsonStorage* MediaModel::storageForScope(int scope) {
     if (scope >= m_scopes.size()) return &m_storage;
     const auto it = m_scopeStorage.constFind(scope);
     if (it != m_scopeStorage.constEnd()) return it.value();
-    //  Lazy: erst beim ersten Zugriff lesen. `this` als Elternteil — beim Ende
+    //  Lazy: erst beim ersten Zugriff lesen. `this` als Elternteil - beim Ende
     //  des Modells verschwinden die Instanzen mit.
     auto* st = new JsonStorage(this);
     st->loadFolder(m_scopes.at(scope).path);
@@ -1019,13 +1118,13 @@ JsonStorage* MediaModel::storageForFolder(const QString& folder) {
     const int s = m_scopeOfPath.value(folder, -1);
     if (s > 0 && s < m_scopes.size() && m_scopes.at(s).active)
         return storageForScope(s);
-    return nullptr;      // nicht offen → kurzlebiger Weg (writeMetaToFolder)
+    return nullptr;      // nicht offen -> kurzlebiger Weg (writeMetaToFolder)
 }
 
 //  ── Kategorien eines fremden Sidecars ueber NAMEN ──────────────────────────
 //  Die IDs eines anderen Ordners sind andere; der Name ist das, was der Nutzer
 //  sieht. Fehlt drueben eine Kategorie dieses Namens, entsteht sie auf der
-//  HAUPTEBENE — den ganzen Baumpfad nachzubilden waere Raten.
+//  HAUPTEBENE - den ganzen Baumpfad nachzubilden waere Raten.
 QStringList MediaModel::categoryNamesOf(JsonStorage& st, const QString& fileName) {
     QStringList out;
     std::function<void(const QList<TagCategory>&)> walk =
@@ -1076,7 +1175,7 @@ void MediaModel::stripCategories(JsonStorage& st, const QString& fileName) {
     strip(st.categoriesRef());
 }
 
-//  ── Metadaten einer Zeile — aus dem Sidecar IHRES Ordners ──────────────────
+//  ── Metadaten einer Zeile - aus dem Sidecar IHRES Ordners ──────────────────
 void MediaModel::collectMetaAt(const QString& folder, const QString& fileName,
                                FileOp* op) const {
     if (folder == m_folder) { collectMeta(fileName, op); return; }
@@ -1140,7 +1239,7 @@ void MediaModel::renameItem(const QString& filePath, const QString& newBaseName)
     const bool ok = QFile::rename(filePath, newPath);
     if (!ok) { --m_suppressWatch; return; }
 
-    // Persistierte Metadaten (Tags/Datum) auf neuen Dateinamen umziehen — im
+    // Persistierte Metadaten (Tags/Datum) auf neuen Dateinamen umziehen - im
     // Sidecar DES ORDNERS, dem die Datei gehoert.
     if (JsonStorage* st = storageForScope(m_items.at(row).scope)) {
         st->renameFile(oldName, newName);
@@ -1154,14 +1253,14 @@ void MediaModel::renameItem(const QString& filePath, const QString& newBaseName)
     it.displayName = QFileInfo(newPath).completeBaseName();
     m_pathToRow.insert(newPath, row);
 
-    // Thumbnail-Cache-Key hängt am Pfad → neu anfordern.
+    // Thumbnail-Cache-Key hängt am Pfad -> neu anfordern.
     m_thumbUrls[row]  = QString();
     m_thumbState[row] = 0;
     emitRow(row, { FilePathRole, FileNameRole, DisplayNameRole, ThumbUrlRole, ThumbStateRole });
 }
 
 //  Datei in den Papierkorb + alle Metadaten sichern und entfernen. Füllt `op`
-//  mit allem, was zum Zurückholen nötig ist. Kein Zeilen-/Modell-Anteil — den
+//  mit allem, was zum Zurückholen nötig ist. Kein Zeilen-/Modell-Anteil - den
 //  macht der Aufrufer, damit Löschen und Wiederholen denselben Kern nutzen.
 bool MediaModel::trashFile(const QString& filePath, FileOp* op) {
     const QFileInfo info(filePath);
@@ -1173,16 +1272,16 @@ bool MediaModel::trashFile(const QString& filePath, FileOp* op) {
     op->trashPath.clear();
     op->sidecarPath.clear();
     op->sidecarTrashPath.clear();
-    //  VOR dem Löschen sichern — danach sind sie weg. Aus dem Sidecar DES
+    //  VOR dem Löschen sichern - danach sind sie weg. Aus dem Sidecar DES
     //  Ordners, dem die Datei gehoert (Unterordner haben ihr eigenes).
     collectMetaAt(folder, name, op);
 
     // Watcher unterdrücken: das Löschen löst sonst einen kompletten
-    // Ordner-Reload aus — die Zeile entfernt der Aufrufer gezielt selbst.
+    // Ordner-Reload aus - die Zeile entfernt der Aufrufer gezielt selbst.
     ++m_suppressWatch;
     // Bevorzugt in den Papierkorb (reversibel); nur wenn das System keinen
     // bietet (moveToTrash schlägt fehl), endgültig löschen. Der Rückgabepfad
-    // ist der ganze Rückweg — ohne ihn gäbe es kein Undo.
+    // ist der ganze Rückweg - ohne ihn gäbe es kein Undo.
     QString inTrash;
     bool ok = QFile::moveToTrash(filePath, &inTrash);
     if (ok)
@@ -1217,7 +1316,7 @@ bool MediaModel::restoreFile(const FileOp& op) {
     ++m_suppressWatch;
     bool ok = QFile::rename(op.trashPath, op.path);
     if (!ok) {
-        //  Papierkorb auf einem anderen Dateisystem → kopieren und aufräumen.
+        //  Papierkorb auf einem anderen Dateisystem -> kopieren und aufräumen.
         ok = QFile::copy(op.trashPath, op.path);
         if (ok) QFile::remove(op.trashPath);
     }
@@ -1229,19 +1328,20 @@ bool MediaModel::restoreFile(const FileOp& op) {
         }
         restoreMetaAt(QFileInfo(op.path).absolutePath(),
                       QFileInfo(op.path).fileName(), op);
+        invalidateFolderCount(QFileInfo(op.path).absolutePath());
     }
     --m_suppressWatch;
     return ok;
 }
 
-//  Zeile ans ENDE hängen — die Reihenfolge macht der Proxy (er sortiert), die
+//  Zeile ans ENDE hängen - die Reihenfolge macht der Proxy (er sortiert), die
 //  Datei erscheint also sofort an ihrem richtigen Platz.
 void MediaModel::appendRowFor(const QString& filePath) {
     const QFileInfo fi(filePath);
     if (!fi.exists()) return;
 
     //  Eine zurückgeholte BEGLEITdatei darf nur dann als Kachel erscheinen, wenn
-    //  der Nutzer sie sehen will — sonst legte ein `Strg+Z` plötzlich eine
+    //  der Nutzer sie sehen will - sonst legte ein `Strg+Z` plötzlich eine
     //  `.mgedit.json` in die Galerie, die dort nie stand.
     //  In WELCHEN Bereich gehoert die Zeile? Eine zurueckgeholte Datei aus
     //  einem aufgeklappten Unterordner gehoert dorthin, nicht in den offenen
@@ -1294,7 +1394,7 @@ void MediaModel::appendRowFor(const QString& filePath) {
     emit countChanged();
 }
 
-//  Zeile + Parallelvektoren entfernen; Pfad→Zeile-Hash neu aufbauen
+//  Zeile + Parallelvektoren entfernen; Pfad->Zeile-Hash neu aufbauen
 //  (alle nachfolgenden Zeilenindizes verschieben sich).
 bool MediaModel::dropRowFor(const QString& filePath) {
     const int row = rowForPath(filePath);
@@ -1353,7 +1453,7 @@ void MediaModel::restoreMeta(const QString& fileName, const FileOp& op) {
 //
 //  KATEGORIEN wandern über den NAMEN: gibt es drüben keine Kategorie dieses
 //  Namens, entsteht sie auf der HAUPTEBENE. Den ganzen Baumpfad nachzubilden
-//  wäre Rätselraten — der Name ist das, was der Nutzer sieht.
+//  wäre Rätselraten - der Name ist das, was der Nutzer sieht.
 void MediaModel::writeMetaToFolder(const QString& folder, const QString& fileName,
                                    const FileOp& op,
                                    const QHash<QString, QColor>& tagColors) {
@@ -1366,7 +1466,7 @@ void MediaModel::writeMetaToFolder(const QString& folder, const QString& fileNam
         for (const QString& t : op.tags) {
             //  Kennt der ZIELordner den Tag schon, behaelt er seine eigene Farbe.
             //  Sonst faerbte eine hereingeschobene Datei alle Dateien um, die
-            //  drueben denselben Tag tragen — die Farbe ist eine Entscheidung
+            //  drueben denselben Tag tragen - die Farbe ist eine Entscheidung
             //  des Zielordners, die Mitschrift soll nur eine Luecke fuellen.
             //  Vor `ensureTagRegistered` fragen: das traegt selbst eine
             //  Zufallsfarbe ein und machte den Tag sonst sofort „bekannt".
@@ -1445,7 +1545,7 @@ void MediaModel::applyDeepFilter(const MediaProxyModel::FilterCriteria& c,
     }
 
     if (c.isEmpty()) {
-        //  Filter weg → zurueck auf den Stand VOR der Suche. Von Hand
+        //  Filter weg -> zurueck auf den Stand VOR der Suche. Von Hand
         //  geoeffnete Ordner stehen darin und bleiben damit offen; was die
         //  Suche aufgeklappt hat, schliesst sich.
         m_deepTimer.stop();
@@ -1458,7 +1558,7 @@ void MediaModel::applyDeepFilter(const MediaProxyModel::FilterCriteria& c,
             m_deepSnapshot.clear();
             setExpandedFolders(back);
             //  Die Ordner, die waehrend der Suche ausgeblendet waren, muessen
-            //  wieder auftauchen — der Proxy bewertet nur neu, was sich meldet.
+            //  wieder auftauchen - der Proxy bewertet nur neu, was sich meldet.
             if (!m_items.isEmpty())
                 emit dataChanged(index(0), index(m_items.size() - 1));
         }
@@ -1470,7 +1570,7 @@ void MediaModel::applyDeepFilter(const MediaProxyModel::FilterCriteria& c,
         m_deepChain.clear();
         m_deepSnapshot = expandedFolders();     // Stand vor der Suche merken
         //  Bis der Lauf Ergebnisse bringt, gehoert noch kein Ordner zum
-        //  Ergebnis — die Ansicht muss das sofort erfahren.
+        //  Ergebnis - die Ansicht muss das sofort erfahren.
         if (!m_items.isEmpty())
             emit dataChanged(index(0), index(m_items.size() - 1));
     } else if (sameCriteria(m_deepCriteria, c)
@@ -1489,7 +1589,7 @@ void MediaModel::startDeepScan() {
         m_deepPool = new QThreadPool(this);
         m_deepPool->setMaxThreadCount(1);
     }
-    //  Einen noch laufenden Lauf abbrechen — er gehoert zu einem aelteren
+    //  Einen noch laufenden Lauf abbrechen - er gehoert zu einem aelteren
     //  Suchtext und wuerde nur Arbeit verbrennen.
     if (m_deepCancel) m_deepCancel->store(true);
     m_deepCancel = std::make_shared<std::atomic<bool>>(false);
@@ -1503,7 +1603,7 @@ void MediaModel::noteDeepMatches(const QStringList& folders, int generation) {
     if (generation != m_deepGeneration || !m_deepActive) return;
     if (folders.isEmpty()) return;
 
-    //  Jeder Treffer-Ordner UND seine ganze Kette bis zum offenen Ordner —
+    //  Jeder Treffer-Ordner UND seine ganze Kette bis zum offenen Ordner -
     //  sonst waere der Treffer zwar aufgeklappt, aber nicht zu sehen.
     //  Diese Kette wird SEPARAT gehalten: sie entscheidet, welche Ordner im
     //  Ergebnis stehen duerfen. Ein von Hand geoeffneter Ordner ohne Treffer
@@ -1524,7 +1624,7 @@ void MediaModel::noteDeepMatches(const QStringList& folders, int generation) {
     if (next != m_expanded)
         setExpandedFolders(QStringList(next.begin(), next.end()));
     //  Auch ohne neue Zeilen muss die Sichtbarkeit der Ordner neu bewertet
-    //  werden — `filterAcceptsRow` fragt `isOnDeepChain`.
+    //  werden - `filterAcceptsRow` fragt `isOnDeepChain`.
     if (!m_items.isEmpty())
         emit dataChanged(index(0), index(m_items.size() - 1));
 }
@@ -1541,14 +1641,14 @@ QStringList MediaModel::visibleTags() const {
             if (!seen.contains(t)) { seen.insert(t); out.append(t); }
     }
     //  Deterministisch: der offene Ordner bringt seine Reihenfolge mit, die
-    //  Ergaenzungen aus Unterordnern haengen sich in fester Ordnung an — sonst
+    //  Ergaenzungen aus Unterordnern haengen sich in fester Ordnung an - sonst
     //  spraengen die Chips der Filterleiste bei jedem Aufklappen umher.
     std::sort(out.begin() + m_storage.allTags().size(), out.end());
     return out;
 }
 
 QColor MediaModel::visibleTagColor(const QString& tag) const {
-    //  NICHT ueber `JsonStorage::tagColor` — das liefert fuer einen unbekannten
+    //  NICHT ueber `JsonStorage::tagColor` - das liefert fuer einen unbekannten
     //  Tag eine gueltige Ersatzfarbe, und dann waere „kennt ihn niemand" nicht
     //  mehr von „kennt ihn, Farbe ist der Standard" zu unterscheiden. Gefragt
     //  wird deshalb die Registry selbst.
@@ -1556,12 +1656,12 @@ QColor MediaModel::visibleTagColor(const QString& tag) const {
     const auto own = rootColors.constFind(tag);
     if (own != rootColors.constEnd()) return own.value();
 
-    //  Ueber den BEREICHS-INDEX laufen, nicht ueber `m_scopeStorage` — dessen
+    //  Ueber den BEREICHS-INDEX laufen, nicht ueber `m_scopeStorage` - dessen
     //  QHash-Reihenfolge ist je Programmlauf anders ausgewuerfelt. Kennen zwei
     //  Unterordner denselben Tag mit verschiedenen Farben, bekam der Chip der
     //  Filterleiste sonst bei jedem Start eine andere Farbe (gemessen: in 12
     //  Laeufen sprang sie zwischen zwei Werten). Der Index folgt der Reihenfolge,
-    //  in der die Ordner aufgeklappt wurden — also dem, was der Betrachter sieht.
+    //  in der die Ordner aufgeklappt wurden - also dem, was der Betrachter sieht.
     for (int scope = 1; scope < m_scopes.size(); ++scope) {
         if (!m_scopes.at(scope).active) continue;
         JsonStorage* st = m_scopeStorage.value(scope, nullptr);
@@ -1656,7 +1756,7 @@ int MediaModel::renameFolder(const QString& folderPath, const QString& newName) 
     --m_suppressWatch;
     if (!ok) return 3;
 
-    //  Der Aufklapp-Zustand haengt an PFADEN — mitsamt der Enkel umhaengen,
+    //  Der Aufklapp-Zustand haengt an PFADEN - mitsamt der Enkel umhaengen,
     //  sonst waere der ganze Unterbaum nach dem Umbenennen zu.
     remapExpanded(folderPath, target);
     reload();
@@ -1682,7 +1782,7 @@ bool MediaModel::deleteFolder(const QString& folderPath) {
     --m_suppressWatch;
     if (!ok) return false;
 
-    //  Der Ordner ist weg — sein Aufklapp-Zustand (und der seiner Enkel) auch.
+    //  Der Ordner ist weg - sein Aufklapp-Zustand (und der seiner Enkel) auch.
     const QString prefix = folderPath + QLatin1Char('/');
     QSet<QString> keep;
     for (const QString& p : std::as_const(m_expanded))
@@ -1698,7 +1798,7 @@ bool MediaModel::pushUndo(const FileOp& op) {
     m_undoOps.push_back(op);
     if (m_undoOps.size() > kMaxFileOps)
         m_undoOps.removeFirst();
-    m_redoOps.clear();          // neue Tat → der Redo-Zweig ist überholt
+    m_redoOps.clear();          // neue Tat -> der Redo-Zweig ist überholt
     emit fileHistoryChanged();
     return true;
 }
@@ -1746,7 +1846,7 @@ int MediaModel::transferToFolder(const QString& filePath, const QString& destFol
     op.path    = filePath;
     op.movedTo = target;
     //  Aus dem Sidecar des Ordners, dem die Datei gehoert. Die Kategorien
-    //  wandern über ihre NAMEN (die IDs des Zielordners sind andere) — vor dem
+    //  wandern über ihre NAMEN (die IDs des Zielordners sind andere) - vor dem
     //  Entfernen einsammeln.
     const QString srcFolder = src.absolutePath();
     collectMetaAt(srcFolder, name, &op);
@@ -1775,7 +1875,10 @@ int MediaModel::transferToFolder(const QString& filePath, const QString& destFol
     if (move) {
         dropRowFor(filePath);
         pushUndo(op);
+        invalidateFolderCount(srcFolder);
     }
+    //  Auch beim KOPIEREN waechst der Zielordner.
+    invalidateFolderCount(mg::normalizedFolder(destFolder));
     return 0;
 }
 
@@ -1787,9 +1890,10 @@ bool MediaModel::deleteItem(const QString& filePath) {
     if (!trashFile(filePath, &op))
         return false;
     dropRowFor(filePath);
+    invalidateFolderCount(QFileInfo(filePath).absolutePath());
 
     //  Nur was im Papierkorb liegt, ist zurückholbar. Ohne Papierkorb (Fallback
-    //  „endgültig") kommt der Vorgang gar nicht erst auf den Stapel — ein Undo,
+    //  „endgültig") kommt der Vorgang gar nicht erst auf den Stapel - ein Undo,
     //  das nichts finden kann, wäre ein Versprechen ohne Deckung.
     if (!op.trashPath.isEmpty()) {
         pushUndo(op);
@@ -1817,6 +1921,8 @@ bool MediaModel::undoMove(const FileOp& op) {
                              QFileInfo(op.movedTo).fileName());
         restoreMetaAt(QFileInfo(op.path).absolutePath(),
                       QFileInfo(op.path).fileName(), op);
+        invalidateFolderCount(QFileInfo(op.movedTo).absolutePath());
+        invalidateFolderCount(QFileInfo(op.path).absolutePath());
     }
     --m_suppressWatch;
     return ok;
@@ -1896,7 +2002,7 @@ bool MediaModel::undoFileOp() {
                         : (op.kind == FileOp::Kind::Folder) ? restoreFolder(op)
                         : restoreFile(op);   // Companion nutzt denselben Rückweg
         if (!back) {
-            //  Nicht zurückholbar (Papierkorb geleert, Platz wieder belegt) —
+            //  Nicht zurückholbar (Papierkorb geleert, Platz wieder belegt) -
             //  Eintrag verwerfen und den nächsten versuchen, statt hängen zu
             //  bleiben.
             emit fileHistoryChanged();
@@ -1922,7 +2028,7 @@ bool MediaModel::redoFileOp() {
         if (op.kind == FileOp::Kind::Folder) {
             if (deleteFolder(op.path)) {
                 //  `deleteFolder` legt den Vorgang selbst auf den Undo-Stapel
-                //  und leert dabei den Redo-Zweig — der Eintrag ist damit
+                //  und leert dabei den Redo-Zweig - der Eintrag ist damit
                 //  bereits verbucht.
                 emit fileHistoryChanged();
                 return true;
@@ -1931,7 +2037,7 @@ bool MediaModel::redoFileOp() {
             continue;
         }
         if (op.kind == FileOp::Kind::Move) {
-            //  Erneut verschieben — über denselben Weg wie beim ersten Mal,
+            //  Erneut verschieben - über denselben Weg wie beim ersten Mal,
             //  damit auch die Metadaten wieder mitwandern.
             const QString destFolder = QFileInfo(op.movedTo).absolutePath();
             ok = (transferToFolder(op.path, destFolder, /*move=*/true, /*collision=*/2) == 0);
@@ -1971,7 +2077,7 @@ QString MediaModel::redoFileOpName() const {
 //
 //  DIE DEFINITION WANDERT MIT: Name und Farbe des Tags werden im Sidecar des
 //  Unterordners eingetragen. Sonst stuende dort ein Tag ohne Farbe, sobald man
-//  den Unterordner spaeter direkt oeffnet — die Zuordnung waere da, ihre
+//  den Unterordner spaeter direkt oeffnet - die Zuordnung waere da, ihre
 //  Bedeutung nicht.
 void MediaModel::setTagOnRow(int row, const QString& tag, bool on) {
     MediaItem& it = m_items[row];
@@ -2051,7 +2157,7 @@ void MediaModel::setCustomDate(const QString& filePath, const QDateTime& dt) {
     st->saveCurrentFolder();
     --m_suppressWatch;
 
-    //  Die Anzeige mitziehen — sonst zeigte die Kachel das alte Datum, und die
+    //  Die Anzeige mitziehen - sonst zeigte die Kachel das alte Datum, und die
     //  Sortierung nach Datum stimmte bis zum naechsten Neuladen nicht.
     m_items[row].dateTime      = dt;
     m_items[row].hasCustomDate = true;

@@ -1,6 +1,6 @@
 #include "pdf/PdfAudioController.h"
 #include "core/PathUtils.h"
-#include "core/MemoryUtils.h"   // mg::trimHeap — RSS-Rückgabe nach WAV-Cache-Eviction
+#include "core/MemoryUtils.h"   // mg::trimHeap - RSS-Rückgabe nach WAV-Cache-Eviction
 
 #include <QFile>
 #include <QFileInfo>
@@ -19,7 +19,7 @@
 //  Roh-PDF-Parser-Helfer (frei, im anonymen Namespace) + Worker-Tasks.
 //  Bewusst KEIN QPdfDocument: Seitengroessen kommen aus /MediaBox, alles andere
 //  aus dem rohen Bytestrom. Voraussetzung (von den Ziel-PDFs erfuellt): KLASSISCHE
-//  Objekte (kein /ObjStm-komprimiertes Objekt-/XRef-Stream-Layout) → per „N G obj"
+//  Objekte (kein /ObjStm-komprimiertes Objekt-/XRef-Stream-Layout) -> per „N G obj"
 //  scanbar.
 // ══════════════════════════════════════════════════════════════════════════════
 namespace {
@@ -31,7 +31,7 @@ inline bool aborted(const CancelFlag& c) {
 }
 
 //  Datei ABSCHNITTSWEISE lesen und zwischen den Abschnitten den Abbruch prüfen.
-//  QFile::readAll() auf eine 363-MB-PDF dauerte gemessen 225 ms — in dieser Zeit
+//  QFile::readAll() auf eine 363-MB-PDF dauerte gemessen 225 ms - in dieser Zeit
 //  war der Scan nicht unterbrechbar und der Destruktor blockierte den GUI-Thread.
 QByteArray readAllCancellable(QFile& f, const CancelFlag& cancel) {
     constexpr qint64 kChunk = 4 * 1024 * 1024;
@@ -60,7 +60,7 @@ long readUInt(const QByteArray& d, qsizetype& i) {
     return ok ? v : -1;
 }
 
-// Position eines Namens-SCHLUESSELS (Token-Grenze: Folgezeichen ist Delimiter →
+// Position eines Namens-SCHLUESSELS (Token-Grenze: Folgezeichen ist Delimiter ->
 // „/A" matcht NICHT „/AA"/„/Annot").
 qsizetype keyPos(const QByteArray& d, const char* key, qsizetype from = 0) {
     const QByteArray k(key);
@@ -168,7 +168,7 @@ long lengthValue(const QByteArray& d, const QHash<int,qsizetype>& off, const QBy
     const long a = readUInt(dict, v); if (a < 0) return -1;
     qsizetype v2 = v; skipWs(dict, v2);
     const long b = readUInt(dict, v2); skipWs(dict, v2);
-    if (b >= 0 && v2 < dict.size() && dict[v2] == 'R') {           // „N G R" → Objekt lesen
+    if (b >= 0 && v2 < dict.size() && dict[v2] == 'R') {           // „N G R" -> Objekt lesen
         if (off.contains((int)a)) { qsizetype o = off.value((int)a); skipWs(d, o); const long val = readUInt(d, o); if (val >= 0) return val; }
         return -1;
     }
@@ -199,7 +199,7 @@ QSizeF mediaBoxSize(const QByteArray& pageDict) {
     return QSizeF(qAbs(v[2] - v[0]), qAbs(v[3] - v[1]));
 }
 
-// Normalisiertes Rechteck [0..1], y=0 oben (PDF-Ursprung unten links → gespiegelt).
+// Normalisiertes Rechteck [0..1], y=0 oben (PDF-Ursprung unten links -> gespiegelt).
 QRectF parseNormalisedRect(const QByteArray& rectBytes, const QSizeF& ps) {
     if (rectBytes.size() < 2) return {};
     const QByteArray inner = rectBytes.mid(1, rectBytes.size() - 2).trimmed();
@@ -221,13 +221,13 @@ QVector<qsizetype> findAll(const QByteArray& d, const char* pat) {
     return r;
 }
 
-// Objektnummer → Byte-Offset HINTER „obj" (Start des Objektkoerpers). „endobj"
+// Objektnummer -> Byte-Offset HINTER „obj" (Start des Objektkoerpers). „endobj"
 // wird nicht als Deklaration gewertet (Zeichen vor „obj" muss Whitespace sein).
 QHash<int,qsizetype> buildObjectOffsets(const QByteArray& d, const CancelFlag& cancel) {
     QHash<int,qsizetype> map; qsizetype p = 0;
     int tick = 0;
     while ((p = d.indexOf("obj", p)) >= 0) {
-        //  Nicht bei jedem Treffer prüfen (atomarer Load in der heißen Schleife) —
+        //  Nicht bei jedem Treffer prüfen (atomarer Load in der heißen Schleife) -
         //  alle 4096 Objekte genügt für eine Reaktionszeit im Millisekundenbereich.
         if (((++tick) & 0xFFF) == 0 && aborted(cancel)) return {};
         const qsizetype after = p + 3;
@@ -254,7 +254,7 @@ QByteArray enclosingObjDict(const QByteArray& d, qsizetype pos) {
     return readDictAt(d, lt);
 }
 
-// Aufloesung Annotation/Widget → Objektnummer des Sound-Streams (-1 wenn keiner).
+// Aufloesung Annotation/Widget -> Objektnummer des Sound-Streams (-1 wenn keiner).
 int resolveSoundObj(const QByteArray& d, const QHash<int,qsizetype>& off, const QByteArray& annotDict) {
     // (a) Klassische /Subtype /Sound-Annotation: /Sound zeigt direkt auf den Stream.
     const int direct = firstRefForKey(annotDict, "/Sound");
@@ -316,7 +316,7 @@ QVector<int> kidsRefs(const QByteArray& dict) {
     return r;
 }
 
-// Wurzel-/Pages-Objekt ermitteln: Trailer /Root → Catalog → /Pages (autoritativ),
+// Wurzel-/Pages-Objekt ermitteln: Trailer /Root -> Catalog -> /Pages (autoritativ),
 // Fallback letztes /Type /Catalog-Objekt.
 int findRootPagesObj(const QByteArray& d, const QHash<int,qsizetype>& off) {
     int catalog = -1;
@@ -349,7 +349,7 @@ QVector<PdfAudioClip> scanClips(const QByteArray& d, const CancelFlag& cancel) {
     const QHash<int,qsizetype> off = buildObjectOffsets(d, cancel);
     if (aborted(cancel)) return {};
 
-    // Seitenobjekte in AUTORITATIVER Lesereihenfolge (Seitenbaum /Pages→/Kids).
+    // Seitenobjekte in AUTORITATIVER Lesereihenfolge (Seitenbaum /Pages->/Kids).
     // Reines Byte-Offset-Scannen waere falsch: Illustrator-Inkrement-Saves
     // hinterlassen verwaiste /Type/Page-Objekte und die Datei-Reihenfolge ist
     // nicht die Seitenfolge.
@@ -426,7 +426,7 @@ QByteArray zlibInflate(const QByteArray& in) {
                                /*tolerant*/ true, &ok);
 }
 
-// 16-bit-Samples Big-Endian → Little-Endian (PDF-/Sound-Reihenfolge → WAV).
+// 16-bit-Samples Big-Endian -> Little-Endian (PDF-/Sound-Reihenfolge -> WAV).
 void byteswap16(QByteArray& b) {
     char* p = b.data(); const qsizetype n = b.size() - (b.size() & 1);
     for (qsizetype i = 0; i + 1 < n; i += 2) std::swap(p[i], p[i+1]);
@@ -460,8 +460,8 @@ QString writeTempWav(const QString& pdfPath, int id, int gen, const QByteArray& 
     // Generationszahl im Namen: JEDE Dokument-Session schreibt in FRISCHE Dateien
     // (keine Pfad-Wiederverwendung). Beim erneuten Öffnen desselben PDFs kann die
     // Extraktion damit nie mit einer evtl. noch offenen/gesperrten WAV der
-    // vorherigen Session kollidieren (Windows-Dateisperre → open(WriteOnly)
-    // schlug fehl → clipReady mit leerer URL → „jede zweite Datei stumm").
+    // vorherigen Session kollidieren (Windows-Dateisperre -> open(WriteOnly)
+    // schlug fehl -> clipReady mit leerer URL -> „jede zweite Datei stumm").
     const QString path = dir + QString("/mgaudio_%1_%2_g%3_%4.wav")
                                    .arg(base, tag).arg(gen).arg(id);
     QFile f(path); if (!f.open(QIODevice::WriteOnly)) return {};
@@ -492,7 +492,7 @@ private:
     PdfAudioController* m_owner; QString m_path; int m_gen; CancelFlag m_cancel;
 };
 
-// ── Worker: Einzel-Clip-Extraktion (inflate → swap → WAV) ─────────────────────
+// ── Worker: Einzel-Clip-Extraktion (inflate -> swap -> WAV) ─────────────────────
 class PdfAudioExtractTask : public QRunnable {
 public:
     PdfAudioExtractTask(PdfAudioController* o, QString path, PdfAudioClip c, int gen,
@@ -518,7 +518,7 @@ public:
         if (aborted(m_cancel)) {
             //  Abgebrochen NACH dem Schreiben: die WAV landet nie im Cache und
             //  wuerde von dessen Aufraeumen (Destruktor/evictCache) nie erfasst
-            //  — sie bliebe bis zum naechsten Neustart im Temp-Verzeichnis liegen.
+            //  - sie bliebe bis zum naechsten Neustart im Temp-Verzeichnis liegen.
             if (!wav.isEmpty()) QFile::remove(wav);
             return;
         }
@@ -534,7 +534,7 @@ private:
 } // namespace
 
 // ══════════════════════════════════════════════════════════════════════════════
-//  PdfAudioController — alle Member laufen auf dem GUI-Thread (keine Sync noetig).
+//  PdfAudioController - alle Member laufen auf dem GUI-Thread (keine Sync noetig).
 // ══════════════════════════════════════════════════════════════════════════════
 PdfAudioController::PdfAudioController(QObject* parent)
     : QObject(parent), m_cancel(std::make_shared<std::atomic<bool>>(false)) {
@@ -591,7 +591,7 @@ QVariantList PdfAudioController::clips() const {
 void PdfAudioController::requestClip(int id) {
     if (id < 0 || id >= m_clips.size()) return;
 
-    // Cache-Treffer → sofort (queued, damit QML einheitlich asynchron reagiert).
+    // Cache-Treffer -> sofort (queued, damit QML einheitlich asynchron reagiert).
     if (m_wavCache.contains(id)) {
         m_wavOrder.removeAll(id); m_wavOrder.append(id);
         const WavEntry e = m_wavCache.value(id); const int gen = m_gen;
@@ -608,7 +608,7 @@ void PdfAudioController::requestClip(int id) {
 
 void PdfAudioController::releaseDocument() {
     ++m_gen;                                  // laufende Tasks werden verworfen
-    //  Die Generationszahl verwarf bisher nur das ERGEBNIS — der Task lief
+    //  Die Generationszahl verwarf bisher nur das ERGEBNIS - der Task lief
     //  vollständig weiter und belegte den 1-Thread-Pool. Beim schnellen Blättern
     //  durch mehrere PDFs stauten sich so komplette Datei-Scans hintereinander.
     //  Jetzt bricht der laufende Task auch tatsächlich ab.
@@ -619,7 +619,7 @@ void PdfAudioController::releaseDocument() {
     for (const WavEntry& e : std::as_const(m_wavCache)) QFile::remove(e.path);
     m_wavCache.clear(); m_wavOrder.clear(); m_wavBytes = 0; m_clipInFlight.clear();
     // Kompletter WAV-Cache + Clip-Metadaten freigegeben (große Freigabe beim
-    // Dokumentwechsel) → Heap aktiv ans OS zurückgeben.
+    // Dokumentwechsel) -> Heap aktiv ans OS zurückgeben.
     if (hadWavs)
         mg::trimHeap();
     const bool was = m_ready;
@@ -656,7 +656,7 @@ void PdfAudioController::evictCache() {
         if (it != m_wavCache.end()) { m_wavBytes -= it->bytes; QFile::remove(it->path); m_wavCache.erase(it); evicted = true; }
     }
     // Nur bei TATSÄCHLICHER Eviction: die Inflate-/WAV-Puffer der Extraktion
-    // liegen im MB-Bereich — freigegebenen Heap aktiv ans OS zurückgeben.
+    // liegen im MB-Bereich - freigegebenen Heap aktiv ans OS zurückgeben.
     if (evicted)
         mg::trimHeap();
 }

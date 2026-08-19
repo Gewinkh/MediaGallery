@@ -1,6 +1,6 @@
 #include "pdf/PdfThumbnailProvider.h"
 #include "core/PathUtils.h"
-#include "core/MemoryUtils.h"   // mg::trimHeap — RSS-Rückgabe nach LRU-Verdrängung
+#include "core/MemoryUtils.h"   // mg::trimHeap - RSS-Rückgabe nach LRU-Verdrängung
 
 #include <QQuickImageProvider>
 #include <QPdfDocument>
@@ -72,10 +72,10 @@ QByteArray PdfThumbStore::previewJpeg() const {
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
-//  PdfThumbImageProvider — liefert die Vorschauen aus dem Store an QML.
+//  PdfThumbImageProvider - liefert die Vorschauen aus dem Store an QML.
 //
 //  Laeuft (bei Image{asynchronous:true}) im QML-Image-Worker-Thread. Es wird NUR
-//  ein winziges JPEG aus dem Store dekodiert — KEIN PDFium-Render. Fehlt die
+//  ein winziges JPEG aus dem Store dekodiert - KEIN PDFium-Render. Fehlt die
 //  Seite noch, liefert ein transparenter Platzhalter; sobald der Task die Seite
 //  nachreicht, fordert QML das Bild ueber pageReady erneut an.
 // ══════════════════════════════════════════════════════════════════════════════
@@ -95,7 +95,7 @@ public:
         if (q >= 0) core.truncate(q);
 
         // Sonder-ID "preview": liefert die Großvorschau aus dem Einzelslot.
-        // Der QML-Aufrufer bindet die source erst NACH largePreviewReady →
+        // Der QML-Aufrufer bindet die source erst NACH largePreviewReady ->
         // der Slot enthaelt hier immer die angeforderte Seite.
         if (core.startsWith(QLatin1String("preview"))) {
             const QByteArray jpeg = m_store->previewJpeg();
@@ -161,7 +161,7 @@ PdfThumbRenderTask::PdfThumbRenderTask(int docId, QString localPath, int startPa
 void PdfThumbRenderTask::run() {
     if (cancelled()) return;
 
-    // EIGENE Instanz → eigener PDFium-Render-Mutex (entkoppelt von der Hauptansicht).
+    // EIGENE Instanz -> eigener PDFium-Render-Mutex (entkoppelt von der Hauptansicht).
     QPdfDocument doc;
     if (doc.load(m_path) != QPdfDocument::Error::None)
         return;
@@ -183,7 +183,7 @@ void PdfThumbRenderTask::run() {
 
     for (int page : std::as_const(order)) {
         // Bei Abbruch (z. B. LRU-Verdraengung dieses Dokuments) die bereits
-        // geschriebenen Seiten wieder freigeben → kein verwaister Store-Eintrag.
+        // geschriebenen Seiten wieder freigeben -> kein verwaister Store-Eintrag.
         if (cancelled()) { m_store->dropDocument(m_docId); return; }
 
         const QSizeF pts = doc.pagePointSize(page);
@@ -197,7 +197,7 @@ void PdfThumbRenderTask::run() {
         if (rendered.isNull()) continue;
         if (cancelled()) { m_store->dropDocument(m_docId); return; }
 
-        // Auf weissen Hintergrund komponieren → JPEG hat kein Alpha, keine
+        // Auf weissen Hintergrund komponieren -> JPEG hat kein Alpha, keine
         // schwarzen Raender bei transparenten Seitenbereichen.
         QImage flat(rendered.size(), QImage::Format_RGB32);
         flat.fill(Qt::white);
@@ -222,7 +222,7 @@ void PdfThumbRenderTask::run() {
     // Abschliessender Abbruch-Check: wurde das Dokument waehrend der letzten Seite
     // verdraengt, dessen Seiten ebenfalls freigeben.
     if (cancelled()) { m_store->dropDocument(m_docId); return; }
-    // doc geht hier out of scope → die grosse Instanz wird sofort geschlossen.
+    // doc geht hier out of scope -> die grosse Instanz wird sofort geschlossen.
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
@@ -261,7 +261,7 @@ void PdfPreviewRenderTask::run() {
     QImage rendered = doc.render(m_page, QSize(w, h));
     if (rendered.isNull() || cancelled()) return;
 
-    // Weisse Komposit-Basis (JPEG hat kein Alpha — wie beim Thumb-Task).
+    // Weisse Komposit-Basis (JPEG hat kein Alpha - wie beim Thumb-Task).
     QImage flat(rendered.size(), QImage::Format_RGB32);
     flat.fill(Qt::white);
     {
@@ -278,7 +278,7 @@ void PdfPreviewRenderTask::run() {
 
     m_store->setPreview(m_key, jpeg);
     emit previewReady(m_path, m_page);
-    // doc geht hier out of scope → transiente Instanz sofort geschlossen.
+    // doc geht hier out of scope -> transiente Instanz sofort geschlossen.
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
@@ -292,7 +292,7 @@ PdfThumbnailProvider::PdfThumbnailProvider(QObject* parent)
     m_pool.setMaxThreadCount(1);
     m_pool.setExpiryTimeout(30000);
     // Großvorschau-Pool (Strg+Hover): ebenfalls 1 Worker, aber GETRENNT vom
-    // Thumb-Pool — Hover-Vorschauen dürfen nicht hinter dem Volldokument-
+    // Thumb-Pool - Hover-Vorschauen dürfen nicht hinter dem Volldokument-
     // Rendern eines frisch geöffneten PDFs hängen (Details s. Task-Kommentar).
     m_previewPool.setMaxThreadCount(1);
     m_previewPool.setExpiryTimeout(30000);
@@ -360,7 +360,7 @@ void PdfThumbnailProvider::enforceBudget() {
         evicted = true;
     }
     // Nur bei TATSÄCHLICHER Verdrängung: dropDocument gibt ganze JPEG-Seiten-
-    // sätze (MB-Bereich) frei — glibc behält den Heap sonst im RSS.
+    // sätze (MB-Bereich) frei - glibc behält den Heap sonst im RSS.
     if (evicted)
         mg::trimHeap();
 }

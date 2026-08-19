@@ -22,7 +22,7 @@ class QDirIterator;
 class QThreadPool;
 
 // ─────────────────────────────────────────────────────────────────────────────
-//  MediaModel — QAbstractListModel (Phase 2/3, RAM-kritisch).
+//  MediaModel - QAbstractListModel (Phase 2/3, RAM-kritisch).
 //
 //  Hält reine MediaItem-DATEN (KEINE QPixmaps, KEINE Widgets, 1 Struct/Datei).
 //  QML liest über Rollen; es werden keine Datenkopien nach QML geschoben.
@@ -33,14 +33,14 @@ class QThreadPool;
 //  Performance (Ordner öffnen):
 //   Statt eines einzigen beginResetModel/endResetModel über den GESAMTEN Ordner
 //   wird INKREMENTELL befüllt: ein leeres Modell wird sofort publiziert, danach
-//   werden Zeilen in Chargen (beginInsertRows) eingespeist — die erste Charge
+//   werden Zeilen in Chargen (beginInsertRows) eingespeist - die erste Charge
 //   synchron (Viewport sofort sichtbar), der Rest gechunkt über einen 0-ms-Timer,
 //   der zwischen den Chargen an die Event-Loop zurückgibt. Dadurch erscheinen die
 //   ersten Kacheln nahezu sofort, auch bei 10–50k Dateien, statt erst nach der
 //   kompletten Enumeration.
 //
 //  Mutationen werden per Dateipfad adressiert (robust gegen Proxy-Sortierung/
-//  Filterung): renameItem / toggleTag suchen die Zeile über einen Pfad→Row-Hash.
+//  Filterung): renameItem / toggleTag suchen die Zeile über einen Pfad->Row-Hash.
 //
 //  Ein QFileSystemWatcher beobachtet den Ordner und löst (entprellt) ein Reload
 //  aus; interne Mutationen unterdrücken diesen Reload kurzzeitig.
@@ -56,7 +56,7 @@ public:
         FileNameRole,
         DisplayNameRole,
         MediaTypeRole,     // int (MediaType)
-        TypeLabelRole,     // "MP4"/"MP3"/"PDF"/… — Badge-Text, sonst ""
+        TypeLabelRole,     // "MP4"/"MP3"/"PDF"/… - Badge-Text, sonst ""
         TagsRole,          // QStringList
         DateTimeRole,      // QDateTime (effektiv: custom > Dateidatum)
         FileSizeRole,      // qint64
@@ -73,13 +73,13 @@ public:
     //  aufgeklappter Unterordner. Jede Zeile traegt den Index ihres Bereichs
     //  (MediaItem::scope); Sortierung und Filter lesen die Elternkette darueber.
     //
-    //  Bereiche werden NIE aus der Tabelle entfernt, auch nicht beim Zuklappen —
+    //  Bereiche werden NIE aus der Tabelle entfernt, auch nicht beim Zuklappen -
     //  sonst verschoeben sich alle Indizes und jede Zeile muesste umgeschrieben
     //  werden. Ein zugeklappter Bereich hat `active == false`; klappt derselbe
     //  Ordner wieder auf, bekommt er seinen alten Index zurueck.
     struct FolderScope {
         QString path;            // absoluter Ordnerpfad
-        QString sidecar;         // "<Ordnername>.json" — beim Einlesen uebergehen
+        QString sidecar;         // "<Ordnername>.json" - beim Einlesen uebergehen
         int     parent    = -1;  // Elternbereich; −1 nur fuer die Wurzel
         int     depth     = 0;   // 0 = geoeffneter Ordner
         int     folderRow = -1;  // Zeile der ORDNERKACHEL (−1 fuer die Wurzel)
@@ -91,7 +91,7 @@ public:
                         ThumbnailLoader& loader,
                         QObject* parent = nullptr);
     //  Out-of-line: m_pendingIt ist ein unique_ptr auf den nur VORWÄRTS
-    //  deklarierten QDirIterator — der implizite Destruktor bräuchte hier den
+    //  deklarierten QDirIterator - der implizite Destruktor bräuchte hier den
     //  vollständigen Typ und würde <QDirIterator> in jede einbindende
     //  Übersetzungseinheit ziehen.
     ~MediaModel() override;
@@ -113,18 +113,18 @@ public:
         return (row >= 0 && row < m_items.size()) ? &m_items.at(row) : nullptr;
     }
 
-    // Quellzeile zu einem Dateipfad (O(1) ueber den Pfad→Zeile-Hash), −1 wenn
+    // Quellzeile zu einem Dateipfad (O(1) ueber den Pfad->Zeile-Hash), −1 wenn
     // nicht vorhanden. Auch von MediaProxyModel::rowForPath genutzt.
     int rowForPath(const QString& filePath) const;
 
     // ── Bereichs-Auskunft (fuer MediaProxyModel::lessThan) ───────────────────
     //  Tiefe eines Bereichs; 0 fuer die Wurzel und fuer unbekannte Indizes.
     int scopeDepthOf(int scope) const;
-    //  Die ORDNERKACHEL, unter der ein Bereich haengt — nullptr fuer die Wurzel.
+    //  Die ORDNERKACHEL, unter der ein Bereich haengt - nullptr fuer die Wurzel.
     //  Damit klettert der Vergleich die Elternkette hoch, ohne Pfade zu zerlegen.
     const MediaItem* folderItemOfScope(int scope) const;
     //  Elternbereich (−1 nur oberhalb der Wurzel) und Ordnerpfad eines Bereichs
-    //  — das Zeilenmodell baut daraus die Kette fuer die Baender.
+    //  - das Zeilenmodell baut daraus die Kette fuer die Baender.
     int     scopeParentOf(int scope) const;
     QString folderOfScope(int scope) const;
     //  Ist die Zeile eine DATEI (keine Ordnerkachel)? Ordner-Vorgaenge sind
@@ -133,7 +133,7 @@ public:
     //  Gehoert die Zeile zum geoeffneten Ordner SELBST (Bereich 0)? Nur dort
     //  greifen `m_tagManager` und der Kategorienbaum der Seitenleiste.
     bool isRootFileRow(int row) const;
-    //  Tag einer Zeile setzen/entfernen — routet auf das Sidecar ihres Ordners.
+    //  Tag einer Zeile setzen/entfernen - routet auf das Sidecar ihres Ordners.
     void setTagOnRow(int row, const QString& tag, bool on);
 
     // ── Ordner-Steuerung (von AppController-Signalen getrieben) ──────────────
@@ -148,11 +148,11 @@ public:
     // ── Unterordner AN ORT UND STELLE aufklappen ─────────────────────────────
     //  Ein aufgeklappter Ordner bleibt eine Kachel; sein Inhalt kommt als
     //  weitere Zeilen DESSELBEN Modells dazu (eigener Bereich, eigene Tiefe).
-    //  Angehaengt wird immer am Ende — die Reihenfolge macht der Proxy.
+    //  Angehaengt wird immer am Ende - die Reihenfolge macht der Proxy.
     //
     //  `m_expanded` ist die Wahrheitsquelle und haelt PFADE, nicht Bereiche:
     //  dadurch ueberlebt der Zustand ein reload() (Watcher, Ansichtswechsel),
-    //  und das Zuklappen eines Ordners vergisst die Enkel NICHT — klappt man
+    //  und das Zuklappen eines Ordners vergisst die Enkel NICHT - klappt man
     //  ihn wieder auf, steht der Unterbaum wieder so da wie vorher.
     Q_INVOKABLE bool expandFolder(const QString& folderPath);
     Q_INVOKABLE bool collapseFolder(const QString& folderPath);
@@ -165,10 +165,10 @@ public:
     //  ── Wie viele Medien liegen in diesem Unterordner? ──────────────────────
     //  Sichtbarkeitsgesteuert wie ein Thumbnail: die Kachel fragt beim
     //  Erscheinen, gezaehlt wird ASYNCHRON (ein Verzeichnis kann Zehntausende
-    //  Eintraege haben — auf dem GUI-Thread waere das ein Ruckler je Kachel).
+    //  Eintraege haben - auf dem GUI-Thread waere das ein Ruckler je Kachel).
     //  Das Ergebnis kommt als `ChildCountRole` zurueck.
     Q_INVOKABLE void ensureFolderCount(const QString& folderPath);
-    //  Bereits gezaehlter Stand (−1 = noch unbekannt) — die Loesch-Rueckfrage
+    //  Bereits gezaehlter Stand (−1 = noch unbekannt) - die Loesch-Rueckfrage
     //  nennt damit die Anzahl, ohne selbst zu zaehlen.
     Q_INVOKABLE int  folderCount(const QString& folderPath) const {
         return m_folderCounts.value(folderPath, -1);
@@ -177,20 +177,20 @@ public:
     // ── Ordner-Operationen ───────────────────────────────────────────────────
     //  Alle drei lesen den Ordner danach neu ein (`reload`): das kostet bei
     //  2000 Dateien ~10 ms und erspart es, Bereichstabelle, Aufklapp-Zustand,
-    //  Beobachtung und Zeilen einzeln nachzuziehen — Ordner-Vorgaenge sind
+    //  Beobachtung und Zeilen einzeln nachzuziehen - Ordner-Vorgaenge sind
     //  selten, ein Fehler darin waere teuer.
     //  `parentFolder` muss der geoeffnete Ordner oder ein AUFGEKLAPPTER
     //  Unterordner sein; sonst legte ein Knopf Ordner an beliebiger Stelle an.
     //  Rueckgabe: 0 ok · 1 Name unbrauchbar · 2 gibt es schon · 3 fehlgeschlagen
     Q_INVOKABLE int  createFolder(const QString& parentFolder, const QString& name);
     Q_INVOKABLE int  renameFolder(const QString& folderPath, const QString& newName);
-    //  In den PAPIERKORB — mitsamt Inhalt, und ueber denselben Stapel wie eine
+    //  In den PAPIERKORB - mitsamt Inhalt, und ueber denselben Stapel wie eine
     //  geloeschte Datei zuruecknehmbar.
     Q_INVOKABLE bool deleteFolder(const QString& folderPath);
 
     // ── Tags über den SICHTBAREN Baum ────────────────────────────────────────
     //  Jeder Ordner fuehrt seine eigene Tag-Liste. Was die Filterleiste
-    //  anbietet, muss aber das sein, was gerade zu sehen IST — sonst gaebe es
+    //  anbietet, muss aber das sein, was gerade zu sehen IST - sonst gaebe es
     //  einen Tag in einem aufgeklappten Unterordner, nach dem man nicht filtern
     //  kann. Beides vereinigt ueber den offenen Ordner und alle aufgeklappten.
     // ── Rekursive Suche (Stufe 5) ────────────────────────────────────────────
@@ -199,7 +199,7 @@ public:
     //  aufgeklappt. Beim Leeren des Filters kehrt der Aufklapp-Zustand auf den
     //  Stand von VOR der Suche zurueck.
     //
-    //  Geurteilt wird mit `MediaProxyModel::acceptsFile` — derselben Funktion,
+    //  Geurteilt wird mit `MediaProxyModel::acceptsFile` - derselben Funktion,
     //  die auch die Anzeige benutzt. Eine eigene, „ungefaehre" Regel im Worker
     //  liesse Ordner mit leerem Band aufgehen oder Treffer verborgen bleiben.
     void applyDeepFilter(const MediaProxyModel::FilterCriteria& c,
@@ -209,14 +209,14 @@ public:
     //  Laeuft gerade eine gefilterte Ansicht mit Tiefensuche?
     bool deepFilterActive() const { return m_deepActive; }
     //  Liegt der Ordner auf dem WEG zu einem Treffer? Nur diese duerfen bei
-    //  aktiver Suche stehen bleiben — ein von Hand geoeffneter Ordner ohne
+    //  aktiver Suche stehen bleiben - ein von Hand geoeffneter Ordner ohne
     //  Treffer gehoert nicht ins Ergebnis (vom Nutzer gemeldet).
     bool isOnDeepChain(const QString& folderPath) const {
         return m_deepChain.contains(folderPath);
     }
 
     Q_INVOKABLE QStringList visibleTags() const;
-    //  Farbe eines Tags — erst der offene Ordner, dann die aufgeklappten.
+    //  Farbe eines Tags - erst der offene Ordner, dann die aufgeklappten.
     //  Ungueltig, wenn ihn niemand kennt (der Aufrufer nimmt dann seine Vorgabe).
     Q_INVOKABLE QColor      visibleTagColor(const QString& tag) const;
     //  Fuer den Kategorie-Filter: je AUFGEKLAPPTEM Bereich die Dateinamen, die
@@ -225,29 +225,36 @@ public:
     void fillCategoryFilesByScope(const QStringList& categoryNames,
                                   QHash<int, QSet<QString>>& out) const;
     //  Ergebnis eines Zaehl-Auftrags (nur vom Worker, ueber die Ereignisschleife).
-    void noteFolderCount(const QString& folderPath, int count, int generation);
-    //  Momentaufnahme fuer den Rueckweg (Alt+←) und fuer die Suche, die den
+    void noteFolderCount(const QString& folderPath, int count, int generation, int ticket);
+    //  Momentaufnahme fuer den Rueckweg (Alt+<-) und fuer die Suche, die den
     //  Zustand vor ihrem Auto-Aufklappen wiederherstellen muss.
     Q_INVOKABLE QStringList expandedFolders() const;
     Q_INVOKABLE void        setExpandedFolders(const QStringList& folderPaths);
 
     // Alle Thumbnails auf „ausstehend" zurücksetzen (z. B. nach einem Wechsel
     // der Thumbnail-Zielgröße): sichtbare Delegates fordern via
-    // thumbnailsInvalidated → ensureThumbnail neu an; der Rest bleibt lazy.
+    // thumbnailsInvalidated -> ensureThumbnail neu an; der Rest bleibt lazy.
     void refreshThumbnails();
 
     // ── QML-Invokables (per Dateipfad) ───────────────────────────────────────
     //  ── Miniaturen: anfordern und abbestellen ────────────────────────────
-    //  Beide arbeiten ueber den PFAD, nicht ueber die Kachel — und genau daraus
+    //  Beide arbeiten ueber den PFAD, nicht ueber die Kachel - und genau daraus
     //  entstand ein Wettlauf: wandert eine Datei beim Neuaufbau von Kachel A zu
     //  Kachel B, fordert B sie an und A bestellt sie unmittelbar danach ab. B
     //  haelt sich fuer fertig und fragt nie wieder; die Miniatur blieb bis zum
     //  naechsten Ordnerwechsel leer (vom Nutzer gemeldet, am Pruefstand als
     //  „39 von 40" reproduziert).
     //  Deshalb ist das Abbestellen VERZOEGERT: es wird vorgemerkt und erst im
-    //  naechsten Durchlauf der Ereignisschleife ausgefuehrt — fordert bis dahin
-    //  jemand denselben Pfad an, faellt die Vormerkung weg. Der Zweck des
-    //  Abbestellens (kein Dekodieren fuer weggescrollte Kacheln) bleibt.
+    //  naechsten Durchlauf der Ereignisschleife ausgefuehrt. Dabei zaehlt der
+    //  ganze Durchlauf, nicht die Reihenfolge darin: `ensureThumbnail` traegt
+    //  den Pfad in `m_thumbWanted` ein, und die Vormerkung wird nur ausgefuehrt,
+    //  wenn ihn in DEMSELBEN Durchlauf niemand angefordert hat - egal, ob die
+    //  Anforderung vor oder nach dem Abbestellen kam. Nur „erst abbestellen,
+    //  dann anfordern" abzufangen genuegte nicht: die uebernehmende Kachel
+    //  fordert ZUERST an (sie merkt sich das und fragt nie wieder), die
+    //  abgebende bestellt danach ab - genau diese Reihenfolge liess die
+    //  Miniatur verschwinden. Der Zweck des Abbestellens (kein Dekodieren fuer
+    //  weggescrollte Kacheln) bleibt: ohne neue Anforderung wirkt es wie zuvor.
     Q_INVOKABLE void ensureThumbnail(const QString& filePath);
     Q_INVOKABLE void cancelThumbnail(const QString& filePath);   // weggescrollte Kachel
     Q_INVOKABLE void renameItem(const QString& filePath, const QString& newBaseName);
@@ -262,13 +269,13 @@ public:
     //  `companionKinds` meldet, was vorhanden ist (Bitmaske 1 = Sidecar,
     //  2 = Sicherungskopie), damit die Oberfläche nur anbietet, was es gibt.
     Q_INVOKABLE int  companionKinds(const QString& filePath) const;
-    //  Entfernt eine Begleitdatei — über den PAPIERKORB und auf denselben
+    //  Entfernt eine Begleitdatei - über den PAPIERKORB und auf denselben
     //  Undo-Stapel wie das Löschen einer Datei (`Strg+Z` holt sie zurück).
     Q_INVOKABLE bool removeCompanion(const QString& filePath, int kind);
     // ── Datei-Metadaten ÜBER DEN PFAD ────────────────────────────────────────
     //  Alles hier routet auf das Sidecar des Ordners, dem die Datei GEHOERT.
     //  Die frueheren Wege ueber `App.*` nahmen den blanken DATEINAMEN und
-    //  trafen damit immer den geoeffneten Ordner — fuer eine Datei aus einem
+    //  trafen damit immer den geoeffneten Ordner - fuer eine Datei aus einem
     //  aufgeklappten Unterordner also das falsche Sidecar.
     //  Kennt das Modell die Datei nicht, passiert nichts (Lesen: leer/ungueltig).
     Q_INVOKABLE QStringList tagsOfFile(const QString& filePath) const;
@@ -277,7 +284,7 @@ public:
     Q_INVOKABLE QDateTime   customDate(const QString& filePath) const;
     Q_INVOKABLE void        setCustomDate(const QString& filePath, const QDateTime& dt);
     Q_INVOKABLE void        clearCustomDate(const QString& filePath);
-    //  Schriftfarbe des TXT→PDF-Exports je Datei. UNGUELTIG = keine eigene Wahl;
+    //  Schriftfarbe des TXT->PDF-Exports je Datei. UNGUELTIG = keine eigene Wahl;
     //  der Aufrufer nimmt dann die globale Vorgabe (`App.textPdfColor`).
     Q_INVOKABLE QColor      fileTextPdfColor(const QString& filePath) const;
     Q_INVOKABLE bool        hasFileTextPdfColor(const QString& filePath) const;
@@ -285,13 +292,13 @@ public:
     Q_INVOKABLE void        clearFileTextPdfColor(const QString& filePath);
 
     Q_INVOKABLE void toggleTag(const QString& filePath, const QString& tag);
-    //  Tag NUR hinzufügen (nie entfernen) — für das Ablegen einer Kachel auf
+    //  Tag NUR hinzufügen (nie entfernen) - für das Ablegen einer Kachel auf
     //  einem Tag: ein Zug ist eine Zuweisung, kein Umschalter. Liegt der Tag
     //  schon an, passiert nichts.
     Q_INVOKABLE void addTag(const QString& filePath, const QString& tag);
     //  Gehört die Datei zum aktuell geladenen Ordner? Die Seitenleiste fragt das,
     //  bevor sie eine gezogene Datei einer Kategorie zuordnet: Kategorien merken
-    //  sich DATEINAMEN im Sidecar DIESES Ordners — der Name einer fremden Datei
+    //  sich DATEINAMEN im Sidecar DIESES Ordners - der Name einer fremden Datei
     //  bliebe dort als Waise liegen. `addTag` prüft das intern selbst.
     //  Gehoert die Datei zur ANSICHT (offener Ordner ODER ein aufgeklappter
     //  Unterordner)? Damit unterscheidet die Galerie beim Ablegen einen
@@ -305,11 +312,11 @@ public:
 
     // ── Rückholbare Datei-Vorgänge (Galerie-Undo) ────────────────────────────
     //  Für das Dateisystem gab es bisher kein Undo: ein Fehlgriff war endgültig.
-    //  Gelöscht wird in den PAPIERKORB — genau das macht den Rückweg möglich.
+    //  Gelöscht wird in den PAPIERKORB - genau das macht den Rückweg möglich.
     //  Der Stapel lebt nur für die SITZUNG und nur für den offenen Ordner (ein
     //  Ordnerwechsel leert ihn): eine Rücknahme in einen Ordner, den man gerade
     //  nicht sieht, wäre nicht nachvollziehbar. Mitgesichert werden Tags,
-    //  Kategorien-Mitgliedschaften und ein eigenes Datum — sie verschwinden beim
+    //  Kategorien-Mitgliedschaften und ein eigenes Datum - sie verschwinden beim
     //  Löschen mit und müssen beim Zurückholen wieder da sein.
     // ── Kachel auf ein LESEZEICHEN gezogen: verschieben oder kopieren ────────
     //  `collision`: 0 = fragen (Rückgabe 1, wenn der Name schon vergeben ist),
@@ -318,7 +325,7 @@ public:
     //  2 = nicht möglich (fremder Pfad, Zielordner fehlt, gleicher Ordner, I/O).
     //  Beim VERSCHIEBEN wandern Tags, Kategorie-Mitgliedschaft und eigenes Datum
     //  mit in den Zielordner (die Zuordnungen liegen JE ORDNER im Sidecar);
-    //  beim KOPIEREN nicht — dort entsteht drüben eine unverschlagwortete Kopie
+    //  beim KOPIEREN nicht - dort entsteht drüben eine unverschlagwortete Kopie
     //  (Festlegung des Nutzers).
     Q_INVOKABLE int     transferToFolder(const QString& filePath, const QString& destFolder,
                                          bool move, int collision = 0);
@@ -328,7 +335,7 @@ public:
 
     Q_INVOKABLE bool    undoFileOp();
     Q_INVOKABLE bool    redoFileOp();
-    //  Dateiname des jeweils nächsten Schrittes ("" = nichts vorhanden) — die
+    //  Dateiname des jeweils nächsten Schrittes ("" = nichts vorhanden) - die
     //  Oberfläche baut daraus ihre Meldung.
     Q_INVOKABLE QString undoFileOpName() const;
     Q_INVOKABLE QString redoFileOpName() const;
@@ -337,7 +344,7 @@ signals:
     void countChanged();
     void folderChanged();
     void folderContentsChanged();   // externe Änderung (für Statusmeldung)
-    void thumbnailsInvalidated();   // Zielgröße gewechselt → Delegates fordern neu an
+    void thumbnailsInvalidated();   // Zielgröße gewechselt -> Delegates fordern neu an
     void fileHistoryChanged();      // Undo-/Redo-Stapel der Datei-Vorgänge
     void expansionChanged();        // ein Unterordner wurde auf-/zugeklappt
 
@@ -348,10 +355,10 @@ private slots:
 
 private:
     //  Ein rückholbarer Datei-Vorgang (heute: Löschen). `trashPath` leer heißt:
-    //  das System hat keinen Papierkorb geboten, die Datei ist endgültig weg —
+    //  das System hat keinen Papierkorb geboten, die Datei ist endgültig weg -
     //  ein solcher Vorgang kommt gar nicht erst auf den Stapel.
     struct FileOp {
-        //  Löschen (Papierkorb) ODER Verschieben in einen anderen Ordner —
+        //  Löschen (Papierkorb) ODER Verschieben in einen anderen Ordner -
         //  beide sind rückholbar und teilen sich denselben Stapel.
         //  Companion = eine Begleitdatei allein (Sidecar/Sicherungskopie);
         //  `path` ist dann die Begleitdatei selbst, die Medien-Datei bleibt.
@@ -376,15 +383,15 @@ private:
     static constexpr int kMaxFileOps = 50;
 
     bool trashFile(const QString& filePath, FileOp* op);  // Datei + Metadaten weg
-    bool restoreFile(const FileOp& op);                   // Papierkorb → Ordner
-    bool restoreFolder(const FileOp& op);                 // Papierkorb → Ordner (Verzeichnis)
-    //  Metadaten einer Datei aus dem OFFENEN Ordner einsammeln bzw. entfernen —
+    bool restoreFile(const FileOp& op);                   // Papierkorb -> Ordner
+    bool restoreFolder(const FileOp& op);                 // Papierkorb -> Ordner (Verzeichnis)
+    //  Metadaten einer Datei aus dem OFFENEN Ordner einsammeln bzw. entfernen -
     //  gemeinsame Grundlage von Löschen und Verschieben.
     void collectMeta(const QString& fileName, FileOp* op) const;
     void dropMeta(const QString& fileName, const FileOp& op);
     void restoreMeta(const QString& fileName, const FileOp& op);
     //  Metadaten in den Sidecar eines FREMDEN Ordners schreiben bzw. daraus
-    //  entfernen (eigene, kurzlebige JsonStorage-Instanz — die laufende gehört
+    //  entfernen (eigene, kurzlebige JsonStorage-Instanz - die laufende gehört
     //  dem offenen Ordner und darf dabei nicht umgeschaltet werden).
     static void writeMetaToFolder(const QString& folder, const QString& fileName,
                                   const FileOp& op, const QHash<QString, QColor>& tagColors);
@@ -436,7 +443,7 @@ private:
     // ── Inkrementelle Befüllung ──────────────────────────────────────────────
     //  STREAMEND statt als Liste: der Iterator hält immer nur EINEN Eintrag,
     //  jede Charge liest genau so viele, wie sie einspeist (s. rebuild()).
-    //  Es laeuft immer nur EIN Iterator — die weiteren Ordner warten als
+    //  Es laeuft immer nur EIN Iterator - die weiteren Ordner warten als
     //  Bereichs-Indizes in der Schlange. Anders liefen beim Aufklappen mehrerer
     //  Ordner mehrere Iteratoren gleichzeitig, und jeder haette seinen eigenen
     //  Verzeichnis-Deskriptor offen gehalten.
@@ -450,18 +457,21 @@ private:
     //  „Nach dem Befuellen die Miniaturen neu anfordern lassen" (s. rebuild).
     bool          m_pendingInvalidate = false;
     QSet<QString> m_cancelPending;
+    //  Was in DIESEM Durchlauf angefordert wurde (s. oben). Wird zusammen mit
+    //  den Vormerkungen geleert, sobald der Timer feuert.
+    QSet<QString> m_thumbWanted;
     QTimer        m_cancelTimer;
 
     //  ── Sidecar-SAMMLUNG ────────────────────────────────────────────────────
     //  Der geoeffnete Ordner behaelt `m_storage` (daran haengen TagManager,
     //  Filter und Seitenleiste). Jeder AUFGEKLAPPTE Unterordner bekommt eine
-    //  eigene, lazy erzeugte Instanz auf sein eigenes Sidecar — so tragen seine
+    //  eigene, lazy erzeugte Instanz auf sein eigenes Sidecar - so tragen seine
     //  Dateien ihre echten Zuordnungen, und wer den Unterordner spaeter direkt
     //  oeffnet, findet sie unveraendert vor. Beim Zuklappen wird die Instanz
     //  wieder abgeraeumt (ein Sidecar kann gross sein).
     QHash<int, JsonStorage*> m_scopeStorage;   // nur Bereiche > 0
     JsonStorage* storageForScope(int scope);
-    //  Sidecar zu einem ORDNERPFAD — nullptr, wenn der Ordner gerade nicht
+    //  Sidecar zu einem ORDNERPFAD - nullptr, wenn der Ordner gerade nicht
     //  offen ist (dann nimmt der Aufrufer den kurzlebigen Weg, s. writeMetaToFolder).
     JsonStorage* storageForFolder(const QString& folder);
     //  Sidecar einer DATEI (ueber ihren Bereich); nullptr, wenn unbekannt.
@@ -473,32 +483,44 @@ private:
     void dropMetaAt(const QString& folder, const QString& fileName, const FileOp& op);
     void restoreMetaAt(const QString& folder, const QString& fileName, const FileOp& op);
     //  Kategorie-Mitgliedschaften eines Sidecars ueber NAMEN lesen/setzen/loeschen
-    //  (die IDs eines fremden Ordners sind andere — s. writeMetaToFolder).
+    //  (die IDs eines fremden Ordners sind andere - s. writeMetaToFolder).
     static QStringList categoryNamesOf(JsonStorage& st, const QString& fileName);
     static void        attachCategories(JsonStorage& st, const QString& fileName,
                                         const QStringList& names);
     static void        stripCategories(JsonStorage& st, const QString& fileName);
 
     QVector<FolderScope> m_scopes;        // [0] = geoeffneter Ordner
-    QHash<QString, int>  m_scopeOfPath;   // Ordnerpfad → Bereichs-Index
+    QHash<QString, int>  m_scopeOfPath;   // Ordnerpfad -> Bereichs-Index
     QSet<QString>        m_expanded;      // aufgeklappte Ordner (Wahrheitsquelle)
 
     //  Aufklapp-Gedaechtnis JE ORDNER, nur fuer die Sitzung. Wer einen Ordner
-    //  verlaesst und (per Alt+← oder auf jedem anderen Weg) zurueckkehrt, findet
+    //  verlaesst und (per Alt+<- oder auf jedem anderen Weg) zurueckkehrt, findet
     //  ihn so vor, wie er ihn verlassen hat. Bewusst NICHT auf Platte: das
     //  schriebe bei jedem Auf- und Zuklappen in einen fremden Ordner.
     static constexpr int kMaxFolderMemory = 32;
     //  Ergebnis und laufende Auftraege der Ordner-Zaehlung. Die Generation
     //  verwirft Antworten, die zu einem frueheren Ordnerstand gehoeren.
     QHash<QString, int> m_folderCounts;
+    //  Ordner, nach deren Anzahl schon einmal gefragt wurde. Überlebt einen
+    //  Neuaufbau - die Kachel fragt danach nämlich NICHT erneut (sie überlebt
+    //  ihn ja auch, mit unverändertem Pfad), s. finishFill().
+    QSet<QString>       m_countWanted;
     QSet<QString>       m_countPending;
     int                 m_countGeneration = 0;
+    //  Je Ordner eine Marke. Sie steigt, sobald ein bereits gezaehlter Stand
+    //  ungueltig wird (Datei hinein/heraus) - das Ergebnis eines noch laufenden
+    //  Auftrags faellt damit durch, ohne dass alle anderen Ordner ihren Stand
+    //  verlieren (das taete die globale Generation).
+    QHash<QString, int> m_countTicket;
+    //  Der gespeicherte Stand eines Ordners stimmt nicht mehr: wegwerfen und -
+    //  wenn eine Kachel je danach gefragt hat - sofort neu zaehlen.
+    void invalidateFolderCount(const QString& folderPath);
     QThreadPool*        m_countPool = nullptr;
 
     //  ── Zustand der rekursiven Suche ───────────────────────────────────────
     bool         m_deepActive = false;     // laeuft gerade eine gefilterte Ansicht?
     QStringList  m_deepSnapshot;           // Aufklapp-Zustand VOR der Suche
-    //  Die Treffer-Ordner UND ihre Kette — ohne die von Hand geoeffneten.
+    //  Die Treffer-Ordner UND ihre Kette - ohne die von Hand geoeffneten.
     QSet<QString> m_deepChain;
     int          m_deepGeneration = 0;
     QThreadPool* m_deepPool = nullptr;
@@ -515,7 +537,7 @@ private:
     QString             m_folder;
     QFileSystemWatcher* m_watcher;
     QTimer              m_watchDebounce;
-    int                 m_suppressWatch = 0;  // >0 → Watcher-Reload ignorieren
+    int                 m_suppressWatch = 0;  // >0 -> Watcher-Reload ignorieren
 
     QVector<FileOp>     m_undoOps;        // zuletzt gelöscht = hinten
     QVector<FileOp>     m_redoOps;        // zurückgeholt, kann erneut gelöscht werden

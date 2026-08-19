@@ -3,7 +3,7 @@ import QtQuick.Templates as T
 import MediaGallery 1.0
 
 // ─────────────────────────────────────────────────────────────────────────────
-//  ToolTip.qml — gethemte Kurzinfo (Stil "style").
+//  ToolTip.qml - gethemte Kurzinfo (Stil "style").
 //
 //  Dieselbe Karten-/Rahmenoptik wie Menüs und Popups der App, damit die vielen
 //  ToolTips der Editor-Leisten nicht als systemgelbe Fremdkörper erscheinen.

@@ -7,7 +7,7 @@
 #include <QSet>
 
 // Docx steht VOR Unknown (Viewer-Typtabelle: 5 = DOCX-Editor); Typen werden
-// stets frisch aus der Endung erkannt — keine numerische Persistenz.
+// stets frisch aus der Endung erkannt - keine numerische Persistenz.
 //
 // Folder steht am ENDE, obwohl Ordner in der Galerie ZUERST erscheinen: die
 // Zahlen sind in QML festgeschrieben (MediaTile: 5 = Docx, 6 = Unknown), ein
@@ -37,9 +37,9 @@ inline QStringView baseNameView(QStringView path) {
     return path.mid(sep + 1);
 }
 
-// Endung OHNE Punkt — identisch zu QFileInfo::suffix(): alles nach dem LETZTEN
+// Endung OHNE Punkt - identisch zu QFileInfo::suffix(): alles nach dem LETZTEN
 // Punkt des Dateinamens. Ein fuehrender Punkt zaehlt dabei sehr wohl mit
-// (".gitignore" → "gitignore"); genau darauf beruht die Erkennung der
+// (".gitignore" -> "gitignore"); genau darauf beruht die Erkennung der
 // endungslos wirkenden Textdateien in detectType (txtExts enthaelt "gitignore",
 // "gitattributes", "env"). Nur ein Name ganz OHNE Punkt hat keine Endung.
 inline QStringView suffixView(QStringView path) {

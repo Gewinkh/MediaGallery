@@ -229,7 +229,7 @@ bool PdfEditModel::applyField(int id, PdfEditField f, const QVariant& v) {
     case PdfEditField::LineWidth:
         if (qFuzzyCompare(b.lineWidth, v.toReal())) return false;
         b.lineWidth = v.toReal();
-        // Striche tragen einen Linienbreiten-Rand in der Bounding-Box →
+        // Striche tragen einen Linienbreiten-Rand in der Bounding-Box ->
         // neu berechnen und die Rechteck-Rollen mitfeuern.
         if (b.isStroke()) { b.recomputeBounds();   roles = { LineWidthRole, XRole, YRole, WRole, HRole }; }
         else                                       roles = { LineWidthRole };

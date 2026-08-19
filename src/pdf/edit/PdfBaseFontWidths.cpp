@@ -6,19 +6,19 @@
 //  Quelle sind die devps-Metriken von groff (`/usr/share/groff/*/font/devps/`),
 //  die per `afmtodit` aus den Adobe-AFM-Dateien der 14 Standardschriften
 //  stammen. Von Hand abgeschriebene Breiten wären genau die Art Datenmenge, in
-//  der sich ein falscher Wert lautlos versteckt — und eine falsche Breite
+//  der sich ein falscher Wert lautlos versteckt - und eine falsche Breite
 //  verschiebt die Schreibmarke Zeichen für Zeichen weiter aus der Zeile.
 //  Stichproben stehen im Testtreiber (`tests/pdf/tst_pdfbasewidths.cpp`).
 //
 //  Schlüssel ist der UNICODE-Wert des Zeichens: Die Kodierung (WinAnsi,
 //  MacRoman, Standard, /Differences) löst `PdfEncodings` bereits nach Unicode
-//  auf — so braucht es hier keine zweite Kodierungstabelle.
+//  auf - so braucht es hier keine zweite Kodierungstabelle.
 // ══════════════════════════════════════════════════════════════════════════════
 
 namespace mg {
 namespace {
 
-//  Helvetica — 226 Zeichen
+//  Helvetica - 226 Zeichen
 const BaseWidth kHelvetica[] = {
     {0x0020,278}, {0x0021,278}, {0x0022,355}, {0x0023,556}, {0x0024,556}, {0x0025,889},
     {0x0026,667}, {0x0027,191}, {0x0028,333}, {0x0029,333}, {0x002A,389}, {0x002B,584},
@@ -60,7 +60,7 @@ const BaseWidth kHelvetica[] = {
     {0x203A,333}, {0x2044,167}, {0x20AC,556}, {0x2122,1000},
 };
 
-//  Helvetica-Bold — 226 Zeichen
+//  Helvetica-Bold - 226 Zeichen
 const BaseWidth kHelvetica_Bold[] = {
     {0x0020,278}, {0x0021,333}, {0x0022,474}, {0x0023,556}, {0x0024,556}, {0x0025,889},
     {0x0026,722}, {0x0027,238}, {0x0028,333}, {0x0029,333}, {0x002A,389}, {0x002B,584},
@@ -102,7 +102,7 @@ const BaseWidth kHelvetica_Bold[] = {
     {0x203A,333}, {0x2044,167}, {0x20AC,556}, {0x2122,1000},
 };
 
-//  Helvetica-Oblique — 226 Zeichen
+//  Helvetica-Oblique - 226 Zeichen
 const BaseWidth kHelvetica_Oblique[] = {
     {0x0020,278}, {0x0021,278}, {0x0022,355}, {0x0023,556}, {0x0024,556}, {0x0025,889},
     {0x0026,667}, {0x0027,191}, {0x0028,333}, {0x0029,333}, {0x002A,389}, {0x002B,584},
@@ -144,7 +144,7 @@ const BaseWidth kHelvetica_Oblique[] = {
     {0x203A,333}, {0x2044,167}, {0x20AC,556}, {0x2122,1000},
 };
 
-//  Helvetica-BoldOblique — 226 Zeichen
+//  Helvetica-BoldOblique - 226 Zeichen
 const BaseWidth kHelvetica_BoldOblique[] = {
     {0x0020,278}, {0x0021,333}, {0x0022,474}, {0x0023,556}, {0x0024,556}, {0x0025,889},
     {0x0026,722}, {0x0027,238}, {0x0028,333}, {0x0029,333}, {0x002A,389}, {0x002B,584},
@@ -186,7 +186,7 @@ const BaseWidth kHelvetica_BoldOblique[] = {
     {0x203A,333}, {0x2044,167}, {0x20AC,556}, {0x2122,1000},
 };
 
-//  Times-Roman — 226 Zeichen
+//  Times-Roman - 226 Zeichen
 const BaseWidth kTimes_Roman[] = {
     {0x0020,250}, {0x0021,333}, {0x0022,408}, {0x0023,500}, {0x0024,500}, {0x0025,833},
     {0x0026,778}, {0x0027,180}, {0x0028,333}, {0x0029,333}, {0x002A,500}, {0x002B,564},
@@ -228,7 +228,7 @@ const BaseWidth kTimes_Roman[] = {
     {0x203A,333}, {0x2044,167}, {0x20AC,500}, {0x2122,980},
 };
 
-//  Times-Bold — 226 Zeichen
+//  Times-Bold - 226 Zeichen
 const BaseWidth kTimes_Bold[] = {
     {0x0020,250}, {0x0021,333}, {0x0022,555}, {0x0023,500}, {0x0024,500}, {0x0025,1000},
     {0x0026,833}, {0x0027,278}, {0x0028,333}, {0x0029,333}, {0x002A,500}, {0x002B,570},
@@ -270,7 +270,7 @@ const BaseWidth kTimes_Bold[] = {
     {0x203A,333}, {0x2044,167}, {0x20AC,500}, {0x2122,1000},
 };
 
-//  Times-Italic — 226 Zeichen
+//  Times-Italic - 226 Zeichen
 const BaseWidth kTimes_Italic[] = {
     {0x0020,250}, {0x0021,333}, {0x0022,420}, {0x0023,500}, {0x0024,500}, {0x0025,833},
     {0x0026,778}, {0x0027,214}, {0x0028,333}, {0x0029,333}, {0x002A,500}, {0x002B,675},
@@ -312,7 +312,7 @@ const BaseWidth kTimes_Italic[] = {
     {0x203A,333}, {0x2044,167}, {0x20AC,500}, {0x2122,980},
 };
 
-//  Times-BoldItalic — 226 Zeichen
+//  Times-BoldItalic - 226 Zeichen
 const BaseWidth kTimes_BoldItalic[] = {
     {0x0020,250}, {0x0021,389}, {0x0022,555}, {0x0023,500}, {0x0024,500}, {0x0025,833},
     {0x0026,778}, {0x0027,278}, {0x0028,333}, {0x0029,333}, {0x002A,500}, {0x002B,570},

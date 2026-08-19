@@ -1,34 +1,34 @@
 #pragma once
 // ══════════════════════════════════════════════════════════════════════════════
-//  PdfTextLayout.h — WO steht welches Zeichen auf einer PDF-Seite?
+//  PdfTextLayout.h - WO steht welches Zeichen auf einer PDF-Seite?
 // ══════════════════════════════════════════════════════════════════════════════
 //
 //  ZWECK
 //  ─────
 //  Liefert für jedes gezeigte Zeichen einer Seite seinen Platz: Ursprung,
-//  Vorschubbreite, Höhe, Schriftgröße — in PDF-Punkten mit Ursprung
+//  Vorschubbreite, Höhe, Schriftgröße - in PDF-Punkten mit Ursprung
 //  OBEN-LINKS (also so, wie die App rechnet).
 //
 //  Das ist die im README als Voraussetzung genannte Grundlage für das direkte
 //  Bearbeiten der Textebene: Ohne zu wissen, wo ein Zeichen anfängt und wie
 //  breit es ist, lässt sich weder ein Caret setzen noch eine Zeile nach einer
 //  Änderung neu umbrechen. Genutzt wird sie für
-//   • Treffersuche  (Punkt → Zeichenposition, `hitTest`)
-//   • Caret-Geometrie (Zeichenposition → Rechteck, `caretRect`)
+//   • Treffersuche  (Punkt -> Zeichenposition, `hitTest`)
+//   • Caret-Geometrie (Zeichenposition -> Rechteck, `caretRect`)
 //   • künftig: zeichenweises Einfügen/Löschen im Content-Stream.
 //
 //  WOHER DIE BREITEN KOMMEN
 //  ────────────────────────
 //  Ausschließlich aus dem Dokument selbst:
-//   • einfache Fonts → `/FirstChar` + `/Widths` (Glyphenraum, 1/1000 em),
-//   • Type0/CID      → `/W`-Array des Nachfahren-Fonts, sonst `/DW` (Standard 1000),
-//   • Courier*       → fest 600 (die Schrift ist per Definition dicktengleich).
+//   • einfache Fonts -> `/FirstChar` + `/Widths` (Glyphenraum, 1/1000 em),
+//   • Type0/CID      -> `/W`-Array des Nachfahren-Fonts, sonst `/DW` (Standard 1000),
+//   • Courier*       -> fest 600 (die Schrift ist per Definition dicktengleich).
 //
 //  Fehlen die Breiten (z. B. eine Standard-14-Schrift ohne `/Widths`), wird
 //  ABGELEHNT statt geschätzt: eine falsche Breite verschiebt jedes folgende
 //  Zeichen, der Caret stünde sichtbar daneben. Eingebaute AFM-Tabellen aus
 //  dem Gedächtnis nachzubilden wäre genau die Art Halbwissen, die hier nichts
-//  zu suchen hat — reale Erzeuger (Word, LaTeX, InDesign) schreiben `/Widths`
+//  zu suchen hat - reale Erzeuger (Word, LaTeX, InDesign) schreiben `/Widths`
 //  ohnehin immer mit.
 //
 //  BERÜCKSICHTIGT den vollständigen Textzustand: `Tf` `Tm` `Td` `TD` `T*` `TL`
@@ -54,7 +54,7 @@ struct PdfGlyph {
     qreal   fontSizePt = 0; // wirksame Schriftgröße (inkl. Matrix-Skalierung)
     int     showIndex  = 0; // Nummer des Zeigeoperators, in dem das Zeichen steht
     int     byteOffset = 0; // Byte-Position in dessen ZUSAMMENGEFÜGTEN Bytes
-                            // (PdfShowSpan::bytes) — bei TJ über alle Glieder
+                            // (PdfShowSpan::bytes) - bei TJ über alle Glieder
 };
 
 //  Ein Zeigeoperator (Tj/TJ/'/") mit seiner Lage IM ENTPACKTEN Content-Stream.
@@ -68,7 +68,7 @@ struct PdfShowSpan {
     QByteArray bytes;              // entschlüsselte Rohbytes (TJ: zusammengefügt)
     QByteArray fontRes;            // Ressourcenname der aktiven Schrift
     //  ── Positionierung, die diese Zeile gesetzt hat ─────────────────────────
-    //  Ohne sie lässt sich Text nur ÄNDERN, nicht VERSCHIEBEN — und genau das
+    //  Ohne sie lässt sich Text nur ÄNDERN, nicht VERSCHIEBEN - und genau das
     //  braucht ein Absatz, der um eine Zeile wächst (alles darunter muss nach
     //  unten). `posStart/posEnd` umschließen die vollständige Anweisung
     //  (Operanden + Operatorname), sind also direkt ersetzbar.
@@ -77,7 +77,7 @@ struct PdfShowSpan {
     QByteArray     posOp;          // "Tm" | "Td" | "TD" | "T*" | leer
     QVector<qreal> posArgs;        // Operanden in Schreibreihenfolge
     //  Laufende Nummer des Textobjekts (`BT`): Ein neues Textobjekt setzt die
-    //  Textmatrix zurück — eine relative Verschiebung wirkt nicht darüber
+    //  Textmatrix zurück - eine relative Verschiebung wirkt nicht darüber
     //  hinaus.
     int            objIndex = 0;
     //  SEITEN-PUNKTE, um die ein TJ-Versatz von −1000 hier nach rechts schiebt
@@ -103,7 +103,7 @@ struct PdfPageText {
     QVector<QRectF>      paints;
     //  Nur die BILDartigen davon (XObject `Do`, Inline-Bild `BI`, Schattierung
     //  `sh`). Wer schwärzt, muss sie kennen: Text lässt sich aus dem Strom
-    //  entfernen, Bildpunkte NICHT — unter einem Balken über einem Bild bliebe
+    //  entfernen, Bildpunkte NICHT - unter einem Balken über einem Bild bliebe
     //  das Original erhalten, sichtbar zu machen durch Entfernen des Balkens.
     QVector<QRectF>      imagePaints;
 };
@@ -117,7 +117,7 @@ public:
                              QVector<PdfGlyph>* out, QString* err = nullptr);
 
     //  Wie oben, liefert zusätzlich die Zeigeoperator-Bereiche und den
-    //  entpackten Stream — die Grundlage fürs zeichenweise Bearbeiten.
+    //  entpackten Stream - die Grundlage fürs zeichenweise Bearbeiten.
     static bool buildForPage(const QString& pdfPath, int pageIndex,
                              PdfPageText* out, QString* err = nullptr);
 

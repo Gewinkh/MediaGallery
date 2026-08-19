@@ -3,7 +3,7 @@ import QtQuick.Templates as T
 import MediaGallery 1.0
 
 // ─────────────────────────────────────────────────────────────────────────────
-//  DialogButtonBox.qml — Schaltflächenleiste der Standard-Dialoge (Stil
+//  DialogButtonBox.qml - Schaltflächenleiste der Standard-Dialoge (Stil
 //  "style"). `Button` löst hier auf die Datei desselben Moduls auf,
 //  die Ok/Abbrechen/Ja/Nein-Knöpfe bekommen also automatisch die gethemte Optik.
 // ─────────────────────────────────────────────────────────────────────────────

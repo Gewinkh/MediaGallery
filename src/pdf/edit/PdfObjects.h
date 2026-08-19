@@ -1,6 +1,6 @@
 #pragma once
 // ══════════════════════════════════════════════════════════════════════════════
-//  PdfObjects.h — gemeinsame Bausteine für das Arbeiten AN einer PDF-Datei
+//  PdfObjects.h - gemeinsame Bausteine für das Arbeiten AN einer PDF-Datei
 // ══════════════════════════════════════════════════════════════════════════════
 //
 //  Byte-nahe Helfer, die sowohl das verlustfreie Text-Splicing
@@ -11,7 +11,7 @@
 //  WARUM ALS EIGENE EINHEIT: beide Nutzer arbeiten auf demselben
 //  Dateiformat und derselben Sicherheitszusage („bei jeder Unsicherheit
 //  abbrechen"). Zwei Kopien dieser bewusst streng geprüften Byte-Arbeit
-//  wären die schlechtere Lösung — ein Fehler müsste an zwei Stellen
+//  wären die schlechtere Lösung - ein Fehler müsste an zwei Stellen
 //  gefunden und behoben werden.
 //
 //  GRUNDSATZ: Jede Funktion ist gutmütig gegenüber Müll-Eingaben und liefert
@@ -32,7 +32,7 @@
 namespace mg::pdfobj {
 
 // ── zlib ────────────────────────────────────────────────────────────────────
-//  Versucht zuerst den zlib-Header, dann „raw" (−15) — PDFs enthalten beides.
+//  Versucht zuerst den zlib-Header, dann „raw" (−15) - PDFs enthalten beides.
 //  Der zweite Versuch trägt nur mit einkompiliertem ZLIB (s. core/ZCodec.h).
 QByteArray zInflate(const QByteArray& src, bool* ok);
 QByteArray zDeflate(const QByteArray& src);
@@ -46,7 +46,7 @@ inline bool isDelim(char c) {
 }
 
 // ── Objekt-Tabelle ──────────────────────────────────────────────────────────
-//  Brute-Scan „N G obj" → Byte-Offset + Generation. Das LETZTE Vorkommen
+//  Brute-Scan „N G obj" -> Byte-Offset + Generation. Das LETZTE Vorkommen
 //  gewinnt, entspricht also dem jüngsten inkrementellen Save.
 struct ObjLoc { qint64 offset; int gen; };
 QHash<int, ObjLoc> scanObjects(const QByteArray& b);
@@ -66,18 +66,18 @@ qint64 findKey(const QByteArray& dict, const char* key);
 //  Der `<< … >>`-Inhalt eines Objektkörpers (ohne die äußeren Klammern).
 QByteArray dictOfObject(const QByteArray& objBody);
 
-int        refValue (const QByteArray& dict, const char* key);   // "/k N G R" → N, sonst −1
-QByteArray nameValue(const QByteArray& dict, const char* key);   // "/k /Name" → "/Name"
+int        refValue (const QByteArray& dict, const char* key);   // "/k N G R" -> N, sonst −1
+QByteArray nameValue(const QByteArray& dict, const char* key);   // "/k /Name" -> "/Name"
 
-//  /Length eines Stream-Dicts — AUCH als indirekte Referenz („/Length 13 0 R").
+//  /Length eines Stream-Dicts - AUCH als indirekte Referenz („/Length 13 0 R").
 //  Genau so schreibt Qt seine PDFs, und `intValue` las daraus die 13 und
 //  schnitt den Strom nach 13 Bytes ab: die Textebene solcher Dateien war
 //  dadurch gar nicht lesbar („Content-Stream nicht lesbar"). −1 = keine Angabe.
 qint64 streamLength(const QByteArray& dict, const QByteArray& buf,
                     const QHash<int, ObjLoc>& objs);
-qint64     intValue (const QByteArray& dict, const char* key);   // "/k 42"    → 42, sonst −1
+qint64     intValue (const QByteArray& dict, const char* key);   // "/k 42"    -> 42, sonst −1
 
-//  Rohes Wert-Stück von `/key` (leer, wenn nicht vorhanden) — anders als die
+//  Rohes Wert-Stück von `/key` (leer, wenn nicht vorhanden) - anders als die
 //  drei Typ-Helfer oben ohne jede Deutung.
 QByteArray rawValue(const QByteArray& dict, const char* key);
 //  Setzt/ersetzt `/key` im Dict-INHALT (ohne die äußeren `<< >>`).
@@ -85,7 +85,7 @@ QByteArray setDictKey(QByteArray dict, const char* key, const QByteArray& value)
 //  Alle Schlüsselnamen auf Ebene 0 eines Dict-Inhalts, in Dokumentreihenfolge.
 QList<QByteArray> dictKeys(const QByteArray& dict);
 //  Alle Zahlen eines `[ … ]`-Stücks (auch verschachtelte Klammern werden als
-//  Zahlenfolge gelesen — der Aufrufer weiß, wie viele er erwartet).
+//  Zahlenfolge gelesen - der Aufrufer weiß, wie viele er erwartet).
 QVector<double> numbersOfArray(const QByteArray& arr);
 
 // ── Zahlen / Strings / Namen schreiben und lesen ────────────────────────────
@@ -93,24 +93,24 @@ QVector<double> numbersOfArray(const QByteArray& arr);
 //  Dezimaltrenner (locale-unabhängig).
 QByteArray num(qreal v);
 //  Literal-String `( … )`; `(`, `)`, `\` escaped, alles außerhalb des
-//  druckbaren ASCII oktal — 7-Bit-sicher.
+//  druckbaren ASCII oktal - 7-Bit-sicher.
 QByteArray parenString(const QByteArray& bytes);
 //  Liest den STRING-Wert ab `i` (Literal `(…)` oder Hex `<…>`) als ROHBYTES.
 //  Liefert false, wenn dort kein String steht oder er unabgeschlossen ist.
 bool readPdfStringBytes(const QByteArray& b, qint64 i, QByteArray* out);
-//  PDF-Textstring-Rohbytes → Text (UTF-16BE am BOM erkannt, sonst PDFDoc-
+//  PDF-Textstring-Rohbytes -> Text (UTF-16BE am BOM erkannt, sonst PDFDoc-
 //  Encoding, das für die belegten Codes mit Latin-1 übereinstimmt).
 QString pdfTextToString(const QByteArray& raw);
-//  Text → PDF-Textstring (reines ASCII bleibt lesbares Literal, alles andere
+//  Text -> PDF-Textstring (reines ASCII bleibt lesbares Literal, alles andere
 //  wird UTF-16BE mit BOM).
 QByteArray toPdfTextString(const QString& s);
-//  PDF-Name → Text ohne führenden Schrägstrich; `#xx` wird aufgelöst.
+//  PDF-Name -> Text ohne führenden Schrägstrich; `#xx` wird aufgelöst.
 QString nameToString(const QByteArray& name);
-//  Text → PDF-Name mit führendem Schrägstrich; Sonderzeichen als `#xx`.
+//  Text -> PDF-Name mit führendem Schrägstrich; Sonderzeichen als `#xx`.
 QByteArray toPdfName(const QString& s);
 
 // ══════════════════════════════════════════════════════════════════════════════
-//  PdfDoc — eine GEÖFFNETE Datei mit Objekt- und Seitentabelle
+//  PdfDoc - eine GEÖFFNETE Datei mit Objekt- und Seitentabelle
 // ══════════════════════════════════════════════════════════════════════════════
 //
 //  Gemeinsame Grundlage aller Einheiten, die eine PDF an der Byte-Ebene lesen
@@ -124,7 +124,7 @@ struct PdfDoc {
     int                rootNum  = -1;
     qint64             prevXref = -1;         // Offset der bisherigen xref (für /Prev)
     QVector<int>       pageObjs;              // Objektnummer je Seitenindex
-    //  Annotation → Seitenindex, aus den `/Annots` der Seiten gewonnen. Das ist
+    //  Annotation -> Seitenindex, aus den `/Annots` der Seiten gewonnen. Das ist
     //  die verlässliche Richtung; `/P` in der Annotation ist optional.
     QHash<int, int>    annotPage;
 
@@ -147,7 +147,7 @@ struct PdfDoc {
 };
 
 // ══════════════════════════════════════════════════════════════════════════════
-//  IncrementalUpdate — eine PDF FORTSCHREIBEN, ohne sie neu zu schreiben
+//  IncrementalUpdate - eine PDF FORTSCHREIBEN, ohne sie neu zu schreiben
 // ══════════════════════════════════════════════════════════════════════════════
 //
 //  Verfahren aller schreibenden Einheiten des Projekts (`PdfContentEditor`,
@@ -158,7 +158,7 @@ struct PdfDoc {
 //  keine halbe Datei (`commit` schreibt atomar über `QSaveFile`).
 //
 //  ERSETZEN heißt hier: dasselbe Objekt noch einmal anhängen. Der Brute-Scan
-//  in `scanObjects` nimmt beim nächsten Lesen das LETZTE Vorkommen — genau die
+//  in `scanObjects` nimmt beim nächsten Lesen das LETZTE Vorkommen - genau die
 //  Semantik eines inkrementellen Updates.
 class IncrementalUpdate {
 public:
@@ -168,7 +168,7 @@ public:
 
     //  Nächste freie Objektnummer (fortlaufend ab der höchsten belegten).
     int reserveObjNum();
-    //  Objekt anhängen — `body` ist der vollständige Objektinhalt (z. B.
+    //  Objekt anhängen - `body` ist der vollständige Objektinhalt (z. B.
     //  `<< … >>` oder `[ … ]`), OHNE „N G obj"/„endobj".
     void addObject(int num, int gen, const QByteArray& body);
     //  Strom anhängen: `dictExtra` sind die Schlüssel neben `/Length`.
@@ -193,12 +193,12 @@ private:
     QHash<int,int> m_gens;
 };
 
-//  Anzeigekoordinaten: PDF-Benutzerraum (Ursprung unten-links, ungedreht) →
+//  Anzeigekoordinaten: PDF-Benutzerraum (Ursprung unten-links, ungedreht) ->
 //  Editor-Raum (Ursprung OBEN-LINKS der ANGEZEIGTEN, also gedrehten Seite).
-//  Umkehrung der `cm`-Abbildung aus PdfVectorExport — dieselbe Konvention im
+//  Umkehrung der `cm`-Abbildung aus PdfVectorExport - dieselbe Konvention im
 //  ganzen Projekt.
 QPointF toDisplay(double ux, double uy, const QSizeF& box, int rot);
-//  Gegenrichtung von `toDisplay` (Editor-Raum → PDF-Benutzerraum).
+//  Gegenrichtung von `toDisplay` (Editor-Raum -> PDF-Benutzerraum).
 QPointF toUser(double dx, double dy, const QSizeF& box, int rot);
 
 } // namespace mg::pdfobj

@@ -30,7 +30,7 @@ QString Document::xmlEscape(const QString& s) {
 namespace {
 
 //  Direkte Kinder eines XML-Fragments "<wrap …>…</wrap>" als (Name,Start,Länge)
-//  — quote-bewusster Balancierungs-Scanner (kein voller Parser nötig; die
+//  - quote-bewusster Balancierungs-Scanner (kein voller Parser nötig; die
 //  Fragmente stammen aus bereits validiertem XML). Grundlage von upsertProp,
 //  damit Ersetzen/Einfügen NIE in verschachtelte Kinder (z. B. w:rPr in w:pPr)
 //  hineingreift.
@@ -138,7 +138,7 @@ bool findElement(const QString& xml, const QString& localName, int* start,
     return false;
 }
 
-//  Namensraum-Deklarationen des Start-Tags erhalten — unsere eigene Zeichnung
+//  Namensraum-Deklarationen des Start-Tags erhalten - unsere eigene Zeichnung
 //  trägt `xmlns:wp` AM `wp:inline`; ginge das beim Umschreiben verloren, wäre
 //  die Datei kaputt.
 QString keepXmlnsAttrs(const QString& xml, int lt, int gt) {
@@ -197,7 +197,7 @@ QString Document::upsertProp(const QString& prXml, const QString& wrapTag,
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-//  Property-Fragmente parsen (rPr/pPr) — über einen frischen Stream-Reader auf
+//  Property-Fragmente parsen (rPr/pPr) - über einen frischen Stream-Reader auf
 //  dem Teilstring (Namespace-Verarbeitung aus: wir arbeiten mit "w:"-Präfixen,
 //  document.xml deklariert sie ohnehin erst am Wurzelelement).
 // ─────────────────────────────────────────────────────────────────────────────
@@ -310,7 +310,7 @@ bool Document::load(const QString& path, QString* err) {
     return loadPart(path, QStringLiteral("word/document.xml"), err);
 }
 
-//  Beziehungs-Datei EINES Teils: "word/header1.xml" → "word/_rels/header1.xml.rels".
+//  Beziehungs-Datei EINES Teils: "word/header1.xml" -> "word/_rels/header1.xml.rels".
 static QString relsPathOf(const QString& partPath) {
     const int slash = partPath.lastIndexOf(QLatin1Char('/'));
     const QString dir  = (slash > 0) ? partPath.left(slash + 1) : QString();
@@ -336,7 +336,7 @@ bool Document::loadPart(const QString& path, const QString& partPath, QString* e
     if (!zip.open(path, err))
         return false;
 
-    //  Beziehungen (Bilder). Fehlt die Datei, bleibt die Tabelle leer — dann
+    //  Beziehungen (Bilder). Fehlt die Datei, bleibt die Tabelle leer - dann
     //  gibt es eben keine Bilder anzuzeigen.
     {
         bool rOk = false;
@@ -368,7 +368,7 @@ bool Document::loadPart(const QString& path, const QString& partPath, QString* e
     //  Exoten fallen hier bewusst mit Fehler heraus statt still zu mutieren.
     m_docXml = QString::fromUtf8(docBytes);
     if (m_docXml.toUtf8() != docBytes) {
-        if (err) *err = QStringLiteral("document.xml ist nicht UTF-8 — Bearbeitung nicht möglich.");
+        if (err) *err = QStringLiteral("document.xml ist nicht UTF-8 - Bearbeitung nicht möglich.");
         return false;
     }
 
@@ -418,7 +418,7 @@ bool Document::parseDocumentXml(QString* err) {
     };
 
     //  Bis in den Rumpf laufen. Der heißt im Hauptdokument <w:body>, in einem
-    //  Kopf-/Fußzeilen-Teil <w:hdr>/<w:ftr> — sonst ist alles identisch.
+    //  Kopf-/Fußzeilen-Teil <w:hdr>/<w:ftr> - sonst ist alles identisch.
     QString rootTag;
     int bodyContentStart = -1;
     while (!r.atEnd()) {
@@ -457,7 +457,7 @@ bool Document::parseDocumentXml(QString* err) {
 
         // Erstes Token = StartElement <w:p …>. WICHTIG: Sub-Reader auf
         // Fragmenten (ohne XML-Deklaration) melden für das StartDocument-
-        // Token verschobene Offsets — der Start-Tag beginnt aber per
+        // Token verschobene Offsets - der Start-Tag beginnt aber per
         // Konstruktion bei Fragment-Offset 0; nur das Token-ENDE ist
         // verlässlich (die Folge-Token sind wieder exakt).
         while (!pr.atEnd()) {
@@ -564,13 +564,13 @@ bool Document::parseDocumentXml(QString* err) {
                 pEnd = pr.characterOffset();
                 b.runs.append(parseRun(absStart + cs, int(pEnd - cs)));
             } else {
-                //  Hyperlink/Feld/Bookmark/ins/del/… — als opaker atomarer Run
+                //  Hyperlink/Feld/Bookmark/ins/del/… - als opaker atomarer Run
                 //  erhalten; sichtbaren Text (innere <w:t>) für die Anzeige
                 //  extrahieren (z. B. Hyperlink-Beschriftung).
                 Run op;
                 op.opaque = true;
                 //  ÄNDERUNGSVERFOLGUNG als DEKORATOR: gekennzeichnet wird nur,
-                //  WIE es aussieht (eingefügt/gelöscht + Autor) — die Struktur
+                //  WIE es aussieht (eingefügt/gelöscht + Autor) - die Struktur
                 //  bleibt opak und geht beim Speichern verbatim heraus.
                 if (n == QLatin1String("w:ins") || n == QLatin1String("w:del")) {
                     op.revision = (n == QLatin1String("w:del")) ? Run::RevDeleted
@@ -585,7 +585,7 @@ bool Document::parseDocumentXml(QString* err) {
                     if (t2 == QXmlStreamReader::StartElement) {
                         ++depth;
                         //  GELÖSCHTER Text steht in `w:delText`, nicht in `w:t`
-                        //  — ohne das fehlte er in der Anzeige ganz, obwohl
+                        //  - ohne das fehlte er in der Anzeige ganz, obwohl
                         //  Word ihn durchgestrichen zeigt.
                         if (pr.qualifiedName() == QLatin1String("w:t")
                             || pr.qualifiedName() == QLatin1String("w:delText")) {
@@ -613,7 +613,7 @@ bool Document::parseDocumentXml(QString* err) {
     //  Zell-Absätze werden reguläre Blöcke in `blocks`, das XML-Gerüst landet als
     //  Spans in `m_tables`. Rückgabe false = nicht vollständig verstanden; dann
     //  bleibt die Tabelle EIN opaker Block (Verhalten wie bisher). Nichts wird
-    //  angefasst, solange nicht der ganze Baum sauber zerlegt ist — deshalb wird
+    //  angefasst, solange nicht der ganze Baum sauber zerlegt ist - deshalb wird
     //  erst in Zwischenspeicher gesammelt und am Ende gemeinsam übernommen.
     auto parseTable = [&](int absStart, int absLen) -> bool {
         const QString frag = m_docXml.mid(absStart, absLen);
@@ -781,7 +781,7 @@ bool Document::parseDocumentXml(QString* err) {
                             }
                         }
                     } else {
-                        //  Verschachtelte Tabelle, sdt, altChunk … → nicht deuten.
+                        //  Verschachtelte Tabelle, sdt, altChunk … -> nicht deuten.
                         cellOk = false;
                         break;
                     }
@@ -815,7 +815,7 @@ bool Document::parseDocumentXml(QString* err) {
             return false;
         def.headerSpan = { absStart, firstRowStart };
 
-        //  Übernehmen — ab hier ist die Zerlegung vollständig.
+        //  Übernehmen - ab hier ist die Zerlegung vollständig.
         const int tableId = m_tables.size();
         for (Block& cb : cellBlocks) {
             cb.tableId = tableId;
@@ -855,7 +855,7 @@ bool Document::parseDocumentXml(QString* err) {
         } else if (name == QLatin1String("w:tbl") && parseTable(bs, blen)) {
             //  Zellinhalt liegt jetzt FLACH in `blocks`, das Gerüst in m_tables.
             //  Schlägt das Zerlegen fehl (verschachtelte Tabelle, sdt, fremde
-            //  Kinder), fällt es unten auf den bisherigen opaken Block zurück —
+            //  Kinder), fällt es unten auf den bisherigen opaken Block zurück -
             //  dann bleibt alles wie vorher, statt Inhalt zu riskieren.
         } else {
             Block ob;
@@ -883,7 +883,7 @@ bool Document::parseDocumentXml(QString* err) {
     //  Suffix müssen das Original EXAKT rekonstruieren. Bei Abweichung wird
     //  das Laden verweigert (lieber gar nicht editieren als still verlieren).
     //  Seit Tabellen flach zerlegt werden, reicht ein Aneinanderhängen der
-    //  Block-Spans nicht mehr — das Gerüst (w:tbl/w:tr/w:tc) liegt in m_tables.
+    //  Block-Spans nicht mehr - das Gerüst (w:tbl/w:tr/w:tc) liegt in m_tables.
     //  Geprüft wird deshalb über denselben Gruppen-Lauf, den auch das Speichern
     //  nimmt (emitBlocks, nur-Roh-Variante).
     {
@@ -893,13 +893,13 @@ bool Document::parseDocumentXml(QString* err) {
         rebuilt += emitBlocks(true);
         rebuilt += QStringView(m_docXml).mid(m_bodySuffix.start, m_bodySuffix.len);
         if (rebuilt != m_docXml) {
-            if (err) *err = QStringLiteral("Struktur-Selbstprüfung fehlgeschlagen — "
+            if (err) *err = QStringLiteral("Struktur-Selbstprüfung fehlgeschlagen - "
                                            "Datei wird zum Schutz nicht bearbeitet.");
             return false;
         }
     }
     //  SELBSTPRÜFUNG, Stufe 2 (Absatz-Innenstruktur): StartTag + pPr + Runs
-    //  (+ „</w:p>") müssen JEDEN Absatz exakt rekonstruieren — exakt die
+    //  (+ „</w:p>") müssen JEDEN Absatz exakt rekonstruieren - exakt die
     //  Fragmente, die ein Dirty-Neuaufbau verbatim wiederverwendet. Damit ist
     //  garantiert, dass buildParagraphXml nie Bytes erfindet oder verliert.
     for (const Block& b : std::as_const(blocks)) {
@@ -919,7 +919,7 @@ bool Document::parseDocumentXml(QString* err) {
                             : (raw.startsWith(inner)
                                && raw.mid(inner.size()) == QLatin1String("</w:p>"));
         if (!ok) {
-            if (err) *err = QStringLiteral("Absatz-Selbstprüfung fehlgeschlagen — "
+            if (err) *err = QStringLiteral("Absatz-Selbstprüfung fehlgeschlagen - "
                                            "Datei wird zum Schutz nicht bearbeitet.");
             return false;
         }
@@ -940,13 +940,13 @@ bool Document::parseDocumentXml(QString* err) {
 //  styles.xml (nur Anzeige): docDefaults + Vorlagen-Kette (basedOn)
 // ─────────────────────────────────────────────────────────────────────────────
 // ─────────────────────────────────────────────────────────────────────────────
-//  Tabellen-ANZEIGE: w:tbl → Zeilen/Zellen/Absätze.
+//  Tabellen-ANZEIGE: w:tbl -> Zeilen/Zellen/Absätze.
 //
 //  Bewusst ein EIGENER, schlanker Parser statt einer Erweiterung von
 //  parseDocumentXml: die Tabelle bleibt im Blockmodell ein unangetasteter
 //  OpaqueVisible-Block (beim Speichern byteidentisch), diese Sicht dient
 //  ausschließlich dem Auslegen und Zeichnen. Sie füllt daher nur `pfmt` und
-//  `runs` der Zell-Absätze — genau das, was resolvePar/resolveRun brauchen.
+//  `runs` der Zell-Absätze - genau das, was resolvePar/resolveRun brauchen.
 // ─────────────────────────────────────────────────────────────────────────────
 namespace {
 
@@ -962,7 +962,7 @@ void collectRunText(QStringView runFrag, Run* run) {
         if (tn == QLatin1String("w:t")) {
             run->text += tr.readElementText();
         } else if (tn == QLatin1String("w:delText")) {
-            //  Gelöschter Text steht in `w:delText`, nicht in `w:t` — ohne das
+            //  Gelöschter Text steht in `w:delText`, nicht in `w:t` - ohne das
             //  war er in der Anzeige schlicht nicht vorhanden, obwohl Word ihn
             //  durchgestrichen zeigt.
             run->text += tr.readElementText();
@@ -1022,7 +1022,7 @@ Block parseCellParagraph(QStringView frag) {
             collectRunText(f, &run);
             if (!run.text.isEmpty()) b.runs.append(run);
         } else if (n == QLatin1String("w:ins") || n == QLatin1String("w:del")) {
-            //  ÄNDERUNGSVERFOLGUNG — als Dekorator: der Text wird angezeigt und
+            //  ÄNDERUNGSVERFOLGUNG - als Dekorator: der Text wird angezeigt und
             //  markiert, die Struktur NICHT gedeutet. `w:del` wird zusätzlich
             //  als opak geführt: sein Roh-Bereich geht verbatim heraus, damit
             //  gelöschter Text beim Speichern nicht als lebender Text
@@ -1064,8 +1064,8 @@ TableView Document::parseTableForDisplay(const Block& b) const {
 
     const QString all = QStringView(m_docXml).mid(b.rawSpan.start, b.rawSpan.len).toString();
 
-    //  Ein Fragment-Leser mit mitgeführten Token-Grenzen — dreimal gebraucht
-    //  (Tabelle → Zeile → Zelle), deshalb als Lambda-Fabrik.
+    //  Ein Fragment-Leser mit mitgeführten Token-Grenzen - dreimal gebraucht
+    //  (Tabelle -> Zeile -> Zelle), deshalb als Lambda-Fabrik.
     struct Scan {
         QXmlStreamReader r;
         qint64 tokStart = 0, tokEnd = 0;
@@ -1130,7 +1130,7 @@ TableView Document::parseTableForDisplay(const Block& b) const {
                     if (t3.next() != QXmlStreamReader::StartElement) continue;
                     const auto cn = t3.r.qualifiedName();
                     if (cn == QLatin1String("w:tbl")) {
-                        //  VERSCHACHTELTE Tabelle → Platzhalter-Absatz in dieser
+                        //  VERSCHACHTELTE Tabelle -> Platzhalter-Absatz in dieser
                         //  Zelle (Inhalt bleibt in der Datei, nur nicht gedeutet).
                         Block nested;
                         nested.kind = Block::OpaqueVisible;
@@ -1187,7 +1187,7 @@ QByteArray Document::partBytes(const QString& zipPath) const {
 }
 
 QByteArray Document::imageBytes(const QString& relId) const {
-    //  Frisch eingefügte Bilder liegen noch NICHT im Container — sonst zeigte
+    //  Frisch eingefügte Bilder liegen noch NICHT im Container - sonst zeigte
     //  die Anzeige bis zum Speichern nur einen leeren Rahmen.
     for (const PendingMedia& m : m_pendingMedia)
         if (m.relId == relId) return m.bytes;
@@ -1204,7 +1204,7 @@ QByteArray Document::imageBytes(const QString& relId) const {
     return partBytes(QStringLiteral("word/") + target);
 }
 
-//  Ein `w:drawing`-Run → Bild (Beziehung + Sollmaß). Der Run bleibt opak, hier
+//  Ein `w:drawing`-Run -> Bild (Beziehung + Sollmaß). Der Run bleibt opak, hier
 //  wird nur GELESEN, was die Anzeige braucht.
 static bool parseDrawingRun(QStringView frag, InlineImage* img) {
     QXmlStreamReader r(frag.toString());
@@ -1222,7 +1222,7 @@ static bool parseDrawingRun(QStringView frag, InlineImage* img) {
             }
             continue;
         }
-        //  Präfixe sind nicht garantiert (a:blip, wp:extent) → lokaler Name.
+        //  Präfixe sind nicht garantiert (a:blip, wp:extent) -> lokaler Name.
         const QString qn = r.qualifiedName().toString();
         const QString local = qn.section(QLatin1Char(':'), -1);
         if (local == QLatin1String("anchor")) {
@@ -1262,7 +1262,7 @@ static bool parseDrawingRun(QStringView frag, InlineImage* img) {
             bool okx = false, oky = false;
             const int cx = attr(r, "cx").toInt(&okx);
             const int cy = attr(r, "cy").toInt(&oky);
-            //  Grenzen: 0 … 200 Zoll. Unsinnige Werte → Vorgabe über das Bild.
+            //  Grenzen: 0 … 200 Zoll. Unsinnige Werte -> Vorgabe über das Bild.
             if (okx && cx > 0) img->cxEmu = qMin(cx, 182880000);
             if (oky && cy > 0) img->cyEmu = qMin(cy, 182880000);
         }
@@ -1271,7 +1271,7 @@ static bool parseDrawingRun(QStringView frag, InlineImage* img) {
 }
 
 //  ALLE Bilder eines Absatzes in Textreihenfolge. `pos` ist die Stelle des
-//  Objekt-Zeichens im Absatztext — daran hängt die Anzeige das Bild auf.
+//  Objekt-Zeichens im Absatztext - daran hängt die Anzeige das Bild auf.
 QVector<InlineImage> Document::paragraphImages(const Block& b) const {
     QVector<InlineImage> out;
     if (b.kind != Block::Paragraph) return out;
@@ -1294,7 +1294,7 @@ QVector<InlineImage> Document::paragraphImages(const Block& b) const {
     return out;
 }
 
-//  Sonderfall „der Absatz IST das Bild" — daran hängen Bildgröße, Kopieren und
+//  Sonderfall „der Absatz IST das Bild" - daran hängen Bildgröße, Kopieren und
 //  der Bild-Absatz in einer Tabellenzelle.
 bool Document::paragraphImage(const Block& b, InlineImage* out) const {
     if (b.kind != Block::Paragraph || b.textLength() != 1) return false;
@@ -1304,14 +1304,14 @@ bool Document::paragraphImage(const Block& b, InlineImage* out) const {
     return true;
 }
 
-//  w:sectPr → SectionProps. Bewusst tolerant: fehlende Attribute behalten den
+//  w:sectPr -> SectionProps. Bewusst tolerant: fehlende Attribute behalten den
 //  A4-Vorgabewert, unsinnige Werte werden geklemmt (ein Dokument mit
 //  pgSz w="0" würde sonst eine Seite ohne Textbreite ergeben).
 void Document::parseSectPr(QStringView xml) {
     QXmlStreamReader r(xml.toString());
     r.setNamespaceProcessing(false);
     //  Twips: 1/1440 Zoll. Grenzen = 0,5 cm … 2 m Seitenmaß bzw. 0 … halbe
-    //  Seite Rand — großzügig, aber nicht mehr zerstörerisch.
+    //  Seite Rand - großzügig, aber nicht mehr zerstörerisch.
     auto num = [&r](const char* name, int fallback, int lo, int hi) {
         const QString v = attr(r, name);
         if (v.isEmpty()) return fallback;
@@ -1355,7 +1355,7 @@ bool Document::parseStylesXml(const QByteArray& xml) {
 
     //  Anzeige-Daten der ABSATZ-Vorlagen, in Reihenfolge der styles.xml
     //  gesammelt und erst am Ende gefiltert (semiHidden fällt weg, sofern die
-    //  Vorlage nicht per qFormat ausdrücklich in die Auswahl gehört — genau
+    //  Vorlage nicht per qFormat ausdrücklich in die Auswahl gehört - genau
     //  die Menge, die auch Word im Formatvorlagen-Katalog zeigt).
     struct UiStyle { StyleInfo info; bool semiHidden = false; bool quick = false; };
     QList<UiStyle> uiStyles;
@@ -1459,7 +1459,7 @@ bool Document::parseStylesXml(const QByteArray& xml) {
 
     //  Merken, ob ueberhaupt EINE Vorlage eine Nummerierung mitbringt. Ist das
     //  nicht der Fall (der Normalfall), kann resolvePar(b).numId nur aus dem
-    //  Absatz selbst stammen — die Listenmarker-Berechnung darf dann jeden
+    //  Absatz selbst stammen - die Listenmarker-Berechnung darf dann jeden
     //  Absatz ohne eigenes w:numPr per Bit-Test ueberspringen, statt fuer ihn
     //  die komplette Vorlagenkette abzulaufen (s. stylesMayNumber()).
     m_stylesMayNumber = (m_defPar.set & ParFmt::FNum) != 0;
@@ -1467,7 +1467,7 @@ bool Document::parseStylesXml(const QByteArray& xml) {
         m_stylesMayNumber = (it.value().pf.set & ParFmt::FNum) != 0;
 
     //  Auswahlliste: semiHidden bleibt draußen, es sei denn qFormat holt die
-    //  Vorlage ausdrücklich in den Katalog. Die Standardvorlage steht vorn —
+    //  Vorlage ausdrücklich in den Katalog. Die Standardvorlage steht vorn -
     //  sie ist der Weg ZURÜCK (Anwenden entfernt das w:pStyle wieder).
     m_parStyles.reserve(uiStyles.size());
     for (const UiStyle& u : uiStyles)
@@ -1531,10 +1531,10 @@ RunFmt Document::resolveRun(const Block& b, const Run& r) const {
     //  Vorlagen-Kette des Absatzstils (max. 8 Stufen, Zyklus-Schutz).
     //  Feste Stack-Reihung statt QList: resolveRun/resolvePar laufen im
     //  heissesten Pfad des Editors (je Run beim Layout, je Absatz beim
-    //  Markeraufbau) — die QList kostete dort eine Heap-Allokation pro Aufruf.
+    //  Markeraufbau) - die QList kostete dort eine Heap-Allokation pro Aufruf.
     const StyleDef* chain[8];
     int depth = 0;
-    QString id = b.pfmt.styleId;      // implizit geteilt → keine Kopie
+    QString id = b.pfmt.styleId;      // implizit geteilt -> keine Kopie
     while (depth < 8 && !id.isEmpty()) {
         auto it = m_styles.constFind(id);
         if (it == m_styles.constEnd()) break;
@@ -1583,7 +1583,7 @@ ParFmt Document::resolvePar(const Block& b) const {
     out.styleId = b.pfmt.styleId;
     const StyleDef* chain[8];
     int depth = 0;
-    QString id = b.pfmt.styleId;      // implizit geteilt → keine Kopie
+    QString id = b.pfmt.styleId;      // implizit geteilt -> keine Kopie
     while (depth < 8 && !id.isEmpty()) {
         auto it = m_styles.constFind(id);
         if (it == m_styles.constEnd()) break;
@@ -1628,7 +1628,7 @@ int Document::newListNum(bool bullet) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-//  Serialisierung — nur GEÄNDERTE Knoten entstehen neu; alles Unberührte
+//  Serialisierung - nur GEÄNDERTE Knoten entstehen neu; alles Unberührte
 //  stammt verbatim aus dem Original (Spans) bzw. materialisierten Fragmenten.
 // ─────────────────────────────────────────────────────────────────────────────
 QString Document::serializeRunsText(const QString& text) {
@@ -1636,7 +1636,7 @@ QString Document::serializeRunsText(const QString& text) {
     QString seg;
     auto flush = [&]() {
         if (seg.isEmpty()) return;
-        // xml:space="preserve" immer setzen — führende/mehrfache Leerzeichen
+        // xml:space="preserve" immer setzen - führende/mehrfache Leerzeichen
         // überleben so jeden Konsumenten (Word-üblich).
         out += QLatin1String("<w:t xml:space=\"preserve\">")
                + xmlEscape(seg) + QLatin1String("</w:t>");
@@ -1677,7 +1677,7 @@ QString Document::buildRPrXml(const RunFmt& f) const {
 }
 
 // Selbstschließenden Start-Tag ("<w:p/>", "<w:r a=\"b\"/>") in einen offenen
-// Tag normalisieren — nötig, sobald ein leerer Absatz/Run Inhalt bekommt und
+// Tag normalisieren - nötig, sobald ein leerer Absatz/Run Inhalt bekommt und
 // mit explizitem End-Tag neu aufgebaut wird.
 static QString openedStartTag(QString tag) {
     if (tag.endsWith(QLatin1String("/>")))
@@ -1688,10 +1688,10 @@ static QString openedStartTag(QString tag) {
 //  ── Änderungsverfolgung annehmen / verwerfen ────────────────────────────────
 //  Vier Fälle, zwei Formen: das Element BEHALTEN (aber ohne Markierung) oder es
 //  ganz WEGLASSEN.
-//    Einfügung + annehmen  → Inhalt bleibt, `w:ins`-Rahmen fällt weg
-//    Einfügung + verwerfen → alles weg
-//    Löschung  + annehmen  → alles weg (der Text ist wirklich gelöscht)
-//    Löschung  + verwerfen → Inhalt bleibt, `w:del`-Rahmen weg, `w:delText`
+//    Einfügung + annehmen  -> Inhalt bleibt, `w:ins`-Rahmen fällt weg
+//    Einfügung + verwerfen -> alles weg
+//    Löschung  + annehmen  -> alles weg (der Text ist wirklich gelöscht)
+//    Löschung  + verwerfen -> Inhalt bleibt, `w:del`-Rahmen weg, `w:delText`
 //                            wird wieder `w:t` (sonst zeigte Word nichts an)
 bool Document::applyRevision(int blockIdx, int runIdx, bool accept) {
     if (blockIdx < 0 || blockIdx >= blocks.size()) return false;
@@ -1710,7 +1710,7 @@ bool Document::applyRevision(int blockIdx, int runIdx, bool accept) {
     }
 
     //  Inneres des Elements herausschälen: hinter dem Start-Tag beginnen, vor
-    //  dem Ende-Tag aufhören. Beides mit Bounds-Check (Regel 22) — ein
+    //  dem Ende-Tag aufhören. Beides mit Bounds-Check (Regel 22) - ein
     //  selbstschließendes oder abgeschnittenes Element liefert leeres Inneres
     //  statt eines Zugriffs daneben.
     const QString raw = m_docXml.mid(r.rawSpan.start, r.rawSpan.len);
@@ -1796,7 +1796,7 @@ int Document::insertTable(int beforeBlock, int rows, int cols) {
     const int textW = qMax(1000, m_section.pageW - m_section.marLeft - m_section.marRight);
     const int colW  = qMax(200, textW / cols);
 
-    //  XML in EINEM Stück bauen und dabei die lokalen Offsets mitschreiben —
+    //  XML in EINEM Stück bauen und dabei die lokalen Offsets mitschreiben -
     //  wir erzeugen es selbst, es muss also nicht zurückgeparst werden.
     QString xml;
     xml.reserve(256 + rows * cols * 64);
@@ -1889,11 +1889,11 @@ int Document::insertTable(int beforeBlock, int rows, int cols) {
     //  Word hält dort einen, und zwar aus einem handfesten Grund: eine Tabelle
     //  füllt die Textbreite, neben ihr ist also nichts anklickbar. Steht sie am
     //  Dokumentende ohne Absatz dahinter, gibt es KEINE Stelle mehr, an die der
-    //  Cursor außerhalb der Tabelle gehen könnte — man sitzt fest (Nutzerbefund
+    //  Cursor außerhalb der Tabelle gehen könnte - man sitzt fest (Nutzerbefund
     //  2026-08-12: „komme nicht unter die Tabelle").
     //  Nur anlegen, wenn dort nicht ohnehin schon ein gewöhnlicher Absatz folgt.
     const int after = beforeBlock + newBlocks.size();
-    //  Es muss ein BESCHREIBBARER Absatz folgen — „keine Zelle" genügt nicht:
+    //  Es muss ein BESCHREIBBARER Absatz folgen - „keine Zelle" genügt nicht:
     //  ein Abschnitts-/Sonderblock (z. B. der `sectPr`-Träger) ist kein Ort, an
     //  dem der Cursor stehen und tippen kann. Genau daran hing der erste Versuch.
     const Block* next = (after < int(blocks.size())) ? &blocks.at(after) : nullptr;
@@ -1963,7 +1963,7 @@ QHash<QString, QByteArray> Document::mediaParts() const {
     }
 
     //  Beziehungen ergänzen (auf einer evtl. schon von numberingParts()
-    //  geänderten Fassung würde hier der Bestand gewinnen — deshalb liest diese
+    //  geänderten Fassung würde hier der Bestand gewinnen - deshalb liest diese
     //  Funktion IMMER den Originalstand und fügt beide Ergänzungen zusammen).
     const QString relsName = relsPathOf(m_partPath);
     QByteArray rels = zip.fileData(relsName, &ok);
@@ -2003,7 +2003,7 @@ QHash<QString, QByteArray> Document::mediaParts() const {
 //  eingebackene Seitenzahlen. Damit rechnet Word die Zahlen selbst (und aktua-
 //  lisiert sie beim Drucken), und wir müssen beim Speichern keine Zahlen
 //  pflegen, die schon beim nächsten Tippen falsch wären. Unsere ANZEIGE füllt
-//  sie aus der eigenen Paginierung — s. DocxTextArea.
+//  sie aus der eigenen Paginierung - s. DocxTextArea.
 // ─────────────────────────────────────────────────────────────────────────────
 bool Document::isTocParagraph(const Block& b) const {
     if (b.kind != Block::Paragraph || !b.rawSpan.valid()) return false;
@@ -2017,7 +2017,7 @@ bool Document::isTocParagraph(const Block& b) const {
     if (gt < 0) return false;
     if (!frag.mid(fld, gt - fld).contains(QLatin1String("TOC")))
         return false;
-    //  Der Absatz muss AUS dem Feld bestehen — Felder tragen ihren Inhalt im
+    //  Der Absatz muss AUS dem Feld bestehen - Felder tragen ihren Inhalt im
     //  Roh-Bereich, im Absatztext steht dafür nur das Objekt-Zeichen. Steht
     //  daneben ECHTER Text, ist es kein Verzeichnis(-Absatz) mehr, sondern ein
     //  Absatz, in den ein Feld geraten ist: dann muss sein Text wieder sichtbar
@@ -2044,7 +2044,7 @@ QList<TocEntry> Document::tocEntries(int maxLevel) const {
         //  Ein Überschrift-Absatz kann MEHRERE Überschriften tragen: viele
         //  Dokumente trennen sie nur durch Zeilenumbrüche (`w:br`) statt durch
         //  eigene Absätze. Jede Zeile ist dann eine eigene Überschrift und
-        //  bekommt ihre eigene Zeile im Verzeichnis — alles in EINEM Eintrag
+        //  bekommt ihre eigene Zeile im Verzeichnis - alles in EINEM Eintrag
         //  zusammenzuziehen ergibt kein Inhaltsverzeichnis, sondern eine
         //  Textwurst (Nutzerbefund an `tests/ER.docx`).
         //  Selbst zerlegt statt `QStringView::split`: der Eintrag braucht die
@@ -2077,7 +2077,7 @@ int Document::insertToc(int beforeBlock, int maxLevel) {
     //  wäre das fldSimple laut Schema unzulässig.
     //  `w:pageBreakBefore` gibt dem Verzeichnis auch in Word eine eigene Seite;
     //  die Anzeige erzwingt sie zusätzlich selbst (paginateBlock kennt isToc).
-    //  Der Absatz DANACH bekommt sie ebenfalls — sonst liefe der Text in Word
+    //  Der Absatz DANACH bekommt sie ebenfalls - sonst liefe der Text in Word
     //  direkt hinter dem Verzeichnis weiter.
     const QString xml =
         QStringLiteral("<w:p><w:pPr><w:pageBreakBefore/></w:pPr>"
@@ -2113,7 +2113,7 @@ int Document::insertToc(int beforeBlock, int maxLevel) {
 
 //  Bild IM Fließtext: der `w:drawing`-Run wird an einer bestehenden Run-Grenze
 //  eingesetzt. Der Absatz wird dadurch dirty und beim Speichern aus seinen
-//  Teilen serialisiert — der neue Run trägt einen echten Span in den
+//  Teilen serialisiert - der neue Run trägt einen echten Span in den
 //  Anhang-Pool, alle übrigen bleiben ihre Original-Spans.
 int Document::insertImageRunAt(int blockIdx, int runIdx, const QByteArray& bytes,
                                const QString& ext, QString* err,
@@ -2159,7 +2159,7 @@ QString Document::buildImageRunXml(const QByteArray& bytes, const QString& extIn
 
     QString ext = extIn.toLower();
     if (ext == QLatin1String("jpe")) ext = QStringLiteral("jpg");
-    //  Nur Endungen, für die mediaParts() einen Content-Type kennt — sonst
+    //  Nur Endungen, für die mediaParts() einen Content-Type kennt - sonst
     //  landete ein Teil ohne <Default> im Container und Word verweigerte ihn.
     static const QStringList kKnown = {
         QStringLiteral("png"),  QStringLiteral("jpg"), QStringLiteral("jpeg"),
@@ -2177,7 +2177,7 @@ QString Document::buildImageRunXml(const QByteArray& bytes, const QString& extIn
     m_pendingMedia.append(pm);
     m_rels.insert(pm.relId, pm.zipName.mid(QStringLiteral("word/").size()));
 
-    //  Größe: vorgegeben (Kopieren im Editor — sonst käme das Bild in voller
+    //  Größe: vorgegeben (Kopieren im Editor - sonst käme das Bild in voller
     //  Auflösung zurück statt in der Größe, die es im Dokument hatte) oder aus
     //  den nativen Pixeln bei 96 dpi. Gedeckelt wird auf die Textbreite.
     constexpr qint64 kEmuPerPx = 914400 / 96;
@@ -2185,7 +2185,7 @@ QString Document::buildImageRunXml(const QByteArray& bytes, const QString& extIn
     qint64 cx = given ? cxEmu : qint64(probe.width())  * kEmuPerPx;
     qint64 cy = given ? cyEmu : qint64(probe.height()) * kEmuPerPx;
     const qint64 maxCx = qint64(qMax(1000, m_section.pageW - m_section.marLeft
-                                           - m_section.marRight)) * 635;  // Twip→EMU
+                                           - m_section.marRight)) * 635;  // Twip->EMU
     if (cx > maxCx && cx > 0) {
         cy = cy * maxCx / cx;
         cx = maxCx;
@@ -2252,7 +2252,7 @@ int Document::insertImageData(int beforeBlock, const QByteArray& bytes,
 //  Geändert wird deshalb nach dem bewährten Muster Block::pprXml: die betroffene
 //  Stelle wird EINMAL materialisiert (headerXml/cellXml) und ab dann statt des
 //  Spans emittiert. Neu hinzukommende Zeilen/Zellen bekommen echte Spans in den
-//  Anhang-Pool — sie brauchen keine Sonderbehandlung.
+//  Anhang-Pool - sie brauchen keine Sonderbehandlung.
 // ─────────────────────────────────────────────────────────────────────────────
 namespace {
 
@@ -2455,7 +2455,7 @@ QVector<int> Document::tableColumnWidths(int tableId) const {
         if (w <= 0) w = d.cellWidthTw.value(d.rowFirstCell.value(0, 0) + c, 0);
         out.append(w);
     }
-    //  Kein brauchbares Gitter → gleichmäßig über die Textbreite.
+    //  Kein brauchbares Gitter -> gleichmäßig über die Textbreite.
     bool anyZero = false;
     for (int w : out) if (w <= 0) anyZero = true;
     if (anyZero) {
@@ -2751,7 +2751,7 @@ bool Document::tableSetColumnWidths(int tableId, const QVector<int>& widthsTw) {
 //  Zuschnitt, Effekte, Alternativtext und Umbruchangaben eines von Word
 //  erzeugten Bildes zu verlieren) wird der bestehende Roh-Text kopiert, darin
 //  werden NUR wp:extent und a:ext umgeschrieben, und das Ergebnis kommt in den
-//  Anhang-Pool. Der Run zeigt danach dorthin — das Original bleibt unberührt.
+//  Anhang-Pool. Der Run zeigt danach dorthin - das Original bleibt unberührt.
 // ─────────────────────────────────────────────────────────────────────────────
 namespace {
 
@@ -2806,7 +2806,7 @@ bool Document::setImageSizeEmu(int blockIdx, int runIdx, qint64 cxEmu,
     QString xml = m_docXml.mid(run->rawSpan.start, run->rawSpan.len);
     const bool a = setExtentAttrs(xml, QStringLiteral("wp:extent"), cxEmu, cyEmu);
     //  a:ext steckt in pic:spPr/a:xfrm; fehlt es (manche Erzeuger lassen es
-    //  weg), reicht wp:extent — Word skaliert dann darüber.
+    //  weg), reicht wp:extent - Word skaliert dann darüber.
     setExtentAttrs(xml, QStringLiteral("a:ext"), cxEmu, cyEmu);
     if (!a) return false;
 
@@ -2819,10 +2819,10 @@ bool Document::setImageSizeEmu(int blockIdx, int runIdx, qint64 cxEmu,
 // ─────────────────────────────────────────────────────────────────────────────
 //  Umbruchart: `wp:inline` ⇄ `wp:anchor` + `w:wrapSquare`
 //
-//  Beide Elemente tragen DIESELBEN Kinder — der Anker hat nur zusätzlich seine
+//  Beide Elemente tragen DIESELBEN Kinder - der Anker hat nur zusätzlich seine
 //  Lage (`wp:simplePos`/`positionH`/`positionV`) und die Umbruchart davor bzw.
 //  dazwischen. Umgeschrieben wird deshalb nicht die Zeichnung, sondern nur ihr
-//  Rahmen: Kinder werden ÜBERNOMMEN, nicht neu gebaut — Zuschnitt, Effekte und
+//  Rahmen: Kinder werden ÜBERNOMMEN, nicht neu gebaut - Zuschnitt, Effekte und
 //  Alternativtext eines von Word erzeugten Bildes überleben das unverändert.
 //  Kindreihenfolge nach ECMA-376 (CT_Anchor): simplePos · positionH ·
 //  positionV · extent · effectExtent · wrap* · docPr · cNvGraphicFramePr ·
@@ -2830,11 +2830,11 @@ bool Document::setImageSizeEmu(int blockIdx, int runIdx, qint64 cxEmu,
 //
 //  DIESELBE Funktion trägt auch Lage und Umbruchseite eines bereits
 //  verankerten Bildes ein (Ziehen mit der Maus, Menüeintrag „links/rechts
-//  umfließen") — dafür wird der Rahmen genauso neu gebaut, nur mit anderen
+//  umfließen") - dafür wird der Rahmen genauso neu gebaut, nur mit anderen
 //  Werten. Ein zweiter Schreibweg hätte dieselben Fallen (xmlns am Start-Tag,
 //  Kindreihenfolge) ein zweites Mal lösen müssen.
 // ─────────────────────────────────────────────────────────────────────────────
-//  `w:wrapSquare` ▸ `wrapText` — die vier Werte, die ECMA-376 kennt.
+//  `w:wrapSquare` ▸ `wrapText` - die vier Werte, die ECMA-376 kennt.
 static QLatin1String wrapTextValue(int side) {
     switch (side) {
     case InlineImage::SideLeft:    return QLatin1String("left");
@@ -2845,7 +2845,7 @@ static QLatin1String wrapTextValue(int side) {
 }
 
 bool Document::setImageWrap(int blockIdx, int runIdx, bool floating) {
-    //  Vorgabe `bothSides` — wie in Word: der Text läuft links UND rechts am
+    //  Vorgabe `bothSides` - wie in Word: der Text läuft links UND rechts am
     //  Bild vorbei. Die Anzeige teilt ein Band dafür in zwei Stücke
     //  (`DocxTextArea`, `usableSpan`/`pendingRightX`); Datei und Anzeige sagen
     //  damit dasselbe. Ist eine Seite zu schmal, weicht die Anzeige von selbst
@@ -2867,7 +2867,7 @@ int Document::moveImageRun(int srcBlock, int runIdx, int dstBlock) {
     InlineImage info;
     if (!imageOfRun(srcBlock, runIdx, &info) || !info.anchored) return -1;
 
-    //  Der Run wandert unverändert — sein Roh-Span zeigt weiter auf dieselbe
+    //  Der Run wandert unverändert - sein Roh-Span zeigt weiter auf dieselbe
     //  Zeichnung (Original-XML oder Anhang-Pool), beide sind absolute Stellen.
     const Run r = src.runs.at(runIdx);
     src.runs.removeAt(runIdx);
@@ -2882,7 +2882,7 @@ int Document::moveImageRun(int srcBlock, int runIdx, int dstBlock) {
 bool Document::setImageAnchorEmu(int blockIdx, int runIdx, int posXEmu, int posYEmu) {
     InlineImage cur;
     if (!imageOfRun(blockIdx, runIdx, &cur) || !cur.anchored) return false;
-    //  Weit außerhalb der Seite hätte niemand etwas davon — 200 Zoll ist
+    //  Weit außerhalb der Seite hätte niemand etwas davon - 200 Zoll ist
     //  dieselbe Grenze, die auch das Lesen klemmt.
     posXEmu = qBound(-182880000, posXEmu, 182880000);
     posYEmu = qBound(-182880000, posYEmu, 182880000);
@@ -2900,7 +2900,7 @@ bool Document::setImageWrapSide(int blockIdx, int runIdx, int side) {
                                side, /*requireModeChange=*/false);
 }
 
-//  Das Bild EINES Runs — die Auskunft, aus der Lage und Umbruchseite kommen.
+//  Das Bild EINES Runs - die Auskunft, aus der Lage und Umbruchseite kommen.
 bool Document::imageOfRun(int blockIdx, int runIdx, InlineImage* out) const {
     if (blockIdx < 0 || blockIdx >= blocks.size()) return false;
     for (const InlineImage& ii : paragraphImages(blocks.at(blockIdx)))
@@ -3009,7 +3009,7 @@ int Document::tableLastBlock(int tableId) const {
 }
 
 //  Ein Lauf für BEIDES: Speichern (rawOnly=false) und Selbstprüfung
-//  (rawOnly=true). Dass die Prüfung denselben Code nimmt, ist der Punkt — sie
+//  (rawOnly=true). Dass die Prüfung denselben Code nimmt, ist der Punkt - sie
 //  prüft damit genau den Weg, den unangetastete Teile beim Speichern gehen.
 QString Document::emitBlocks(bool rawOnly) const {
     const QStringView doc(m_docXml);
@@ -3040,9 +3040,9 @@ QString Document::emitBlocks(bool rawOnly) const {
             const Block& cb = blocks.at(j);
             if (cb.dirty || cb.pprMaterialized || !cb.rawSpan.valid()) anyDirty = true;
             //  Ein Block, der NICHT im Originalbereich der Tabelle liegt, ist neu
-            //  (Bild/PDF-Seite/Verzeichnis in eine Zelle eingefügt — sein Span
+            //  (Bild/PDF-Seite/Verzeichnis in eine Zelle eingefügt - sein Span
             //  zeigt in den Anhang-Pool). Er ist weder dirty noch span-los, würde
-            //  den Schnellpfad also nicht auslösen — und ginge beim Speichern
+            //  den Schnellpfad also nicht auslösen - und ginge beim Speichern
             //  spurlos verloren, weil der Schnellpfad den ALTEN Original-
             //  Teilstring der Tabelle ausgibt.
             else if (cb.rawSpan.start < tblRaw.start
@@ -3059,7 +3059,7 @@ QString Document::emitBlocks(bool rawOnly) const {
         //  Originalbereich, der Schnellpfad brächte den gelöschten zurück.
         if (def.blockCount > 0 && groupSize != def.blockCount) anyDirty = true;
         if (rawOnly || !anyDirty) {
-            //  SCHNELLPFAD: nichts berührt → der ganze <w:tbl>-Bereich als
+            //  SCHNELLPFAD: nichts berührt -> der ganze <w:tbl>-Bereich als
             //  Original-Teilstring, also byteidentisch und ohne Gerüst-Aufbau.
             const Span raw = def.rawSpan();
             out += doc.mid(raw.start, raw.len);
@@ -3135,19 +3135,19 @@ const char* kStylesContentType =
 const char* kStylesRelType =
     "http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles";
 
-//  Maße der erzeugten Überschriftvorlagen — bewusst die Word-Vorgaben, damit
+//  Maße der erzeugten Überschriftvorlagen - bewusst die Word-Vorgaben, damit
 //  ein so ausgezeichnetes Dokument in Word genauso aussieht wie hier.
 struct HeadingSpec { int halfPt; const char* color; int beforeTw; int afterTw; };
 constexpr HeadingSpec kHeadingSpecs[Docx::Document::kMaxHeadingLevel] = {
-    { 32, "2F5496", 240, 120 },   // Heading1 — 16 pt
-    { 26, "2F5496", 200, 100 },   // Heading2 — 13 pt
-    { 24, "1F3763", 200,  80 },   // Heading3 — 12 pt
+    { 32, "2F5496", 240, 120 },   // Heading1 - 16 pt
+    { 26, "2F5496", 200, 100 },   // Heading2 - 13 pt
+    { 24, "1F3763", 200,  80 },   // Heading3 - 12 pt
 };
 
 } // namespace
 
 //  Überschriftvorlage bei Bedarf ANLEGEN. Die meisten .docx bringen keine mit
-//  (auch die eigene Fabrik emptyDocxBytes nicht) — die Auswahlliste hätte dann
+//  (auch die eigene Fabrik emptyDocxBytes nicht) - die Auswahlliste hätte dann
 //  nur die Standardvorlage und es ließe sich gar keine Überschrift schreiben.
 QString Document::ensureHeadingStyle(int level) {
     if (level < 1 || level > kMaxHeadingLevel)
@@ -3157,7 +3157,7 @@ QString Document::ensureHeadingStyle(int level) {
         return id;
 
     const HeadingSpec& s = kHeadingSpecs[level - 1];
-    //  `w:name` ist der EINGEBAUTE englische Name — nur daran erkennt Word die
+    //  `w:name` ist der EINGEBAUTE englische Name - nur daran erkennt Word die
     //  Vorlage als Überschrift (Navigationsbereich, eigenes Verzeichnis). Die
     //  Anzeige übersetzt ihn, s. DocxSurface.
     const QString basedOn = m_defaultParStyle.isEmpty()
@@ -3166,7 +3166,7 @@ QString Document::ensureHeadingStyle(int level) {
                                                  "<w:next w:val=\"%1\"/>")
                                       .arg(xmlEscape(m_defaultParStyle));
     //  pPr/rPr als eigene Fragmente: genau die reicht die Auflösung unten an
-    //  parseParProps/parseRunProps weiter — die erwarten den Wrapper, nicht das
+    //  parseParProps/parseRunProps weiter - die erwarten den Wrapper, nicht das
     //  ganze w:style (dessen erstes Element würden sie samt Inhalt überspringen).
     const QString pPr = QStringLiteral("<w:pPr><w:keepNext/><w:keepLines/>"
                                        "<w:spacing w:before=\"%1\" w:after=\"%2\"/>"
@@ -3181,7 +3181,7 @@ QString Document::ensureHeadingStyle(int level) {
                        "<w:name w:val=\"heading %2\"/>%3<w:qFormat/>%4%5</w:style>")
             .arg(id).arg(level).arg(basedOn, pPr, rPr));
 
-    //  Sofort in die Auflösung übernehmen — die Anzeige soll nicht erst nach
+    //  Sofort in die Auflösung übernehmen - die Anzeige soll nicht erst nach
     //  dem Speichern folgen. Geparst wird dasselbe XML, das gespeichert wird.
     StyleDef def;
     def.basedOn = m_defaultParStyle;
@@ -3198,7 +3198,7 @@ QString Document::ensureHeadingStyle(int level) {
 
 //  Neu angelegte Vorlagen in word/styles.xml splicen. Wie bei numberingParts()
 //  wird der Bestand VERBATIM übernommen und nur ergänzt. `base` sind die
-//  bereits von den anderen Ketten geänderten Teile — gemeinsame Dateien
+//  bereits von den anderen Ketten geänderten Teile - gemeinsame Dateien
 //  ([Content_Types].xml, die .rels) werden von dort statt aus dem Container
 //  gelesen, damit sich die Ketten nicht gegenseitig überschreiben.
 QHash<QString, QByteArray> Document::stylesParts(
@@ -3218,7 +3218,7 @@ QHash<QString, QByteArray> Document::stylesParts(
         return out;
     }
 
-    //  styles.xml fehlt → komplette Teile-Kette anlegen (Muster numberingParts).
+    //  styles.xml fehlt -> komplette Teile-Kette anlegen (Muster numberingParts).
     out.insert(QStringLiteral("word/styles.xml"),
                QStringLiteral(
                    "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\r\n"
@@ -3277,13 +3277,13 @@ QHash<QString, QByteArray> Document::replacementParts() const {
     QHash<QString, QByteArray> out = numberingParts();
     const QHash<QString, QByteArray> media = mediaParts();
     for (auto it = media.cbegin(); it != media.cend(); ++it) {
-        //  [Content_Types].xml und die .rels können von BEIDEN stammen —
+        //  [Content_Types].xml und die .rels können von BEIDEN stammen -
         //  dann gewinnt die Medien-Fassung, weil sie auf der anderen aufbaut.
         out.insert(it.key(), it.value());
     }
     //  Vorlagen ZULETZT und auf dem bisherigen Stand aufbauend: fehlt sowohl
     //  numbering.xml als auch styles.xml, ändern beide Ketten dieselbe
-    //  [Content_Types].xml — die zweite muss die Fassung der ersten fortführen,
+    //  [Content_Types].xml - die zweite muss die Fassung der ersten fortführen,
     //  sonst geht deren Override verloren.
     const QHash<QString, QByteArray> styles = stylesParts(out);
     for (auto it = styles.cbegin(); it != styles.cend(); ++it)
@@ -3315,7 +3315,7 @@ QHash<QString, QByteArray> Document::numberingParts() const {
 
     if (m_hadNumberingPart) {
         //  Gezieltes Splicing in den Bestand: abstractNum VOR das erste
-        //  <w:num> (Schema-Reihenfolge!), num vor </w:numbering> — alles
+        //  <w:num> (Schema-Reihenfolge!), num vor </w:numbering> - alles
         //  Übrige bleibt verbatim.
         QString xml = m_numberingXml;
         int numPos = xml.indexOf(QLatin1String("<w:num "));
@@ -3330,7 +3330,7 @@ QHash<QString, QByteArray> Document::numberingParts() const {
         return out;
     }
 
-    //  numbering.xml existiert noch nicht → komplette Teile-Kette anlegen.
+    //  numbering.xml existiert noch nicht -> komplette Teile-Kette anlegen.
     const QString numberingXml = QStringLiteral(
         "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\r\n"
         "<w:numbering xmlns:w=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\">"
@@ -3378,9 +3378,9 @@ QHash<QString, QByteArray> Document::numberingParts() const {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-//  Container schreiben: Quelle Eintrag für Eintrag durchgehen — ersetzte Teile
+//  Container schreiben: Quelle Eintrag für Eintrag durchgehen - ersetzte Teile
 //  neu deflatieren, ALLES andere byteidentisch roh kopieren; neue Teile hinten
-//  anfügen. Ziel-Device liefert der Aufrufer (QSaveFile → atomar).
+//  anfügen. Ziel-Device liefert der Aufrufer (QSaveFile -> atomar).
 // ─────────────────────────────────────────────────────────────────────────────
 bool Document::writeTo(QIODevice* target, QString* err) const {
     return writeTo(target, {}, err);
@@ -3428,7 +3428,7 @@ bool Document::writeTo(QIODevice* target,
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-//  Fabrik: leeres A4-Dokument (FilterBar „+ Erstellen" → DOCX)
+//  Fabrik: leeres A4-Dokument (FilterBar „+ Erstellen" -> DOCX)
 // ─────────────────────────────────────────────────────────────────────────────
 QByteArray Document::emptyDocxBytes(const QString& title) {
     Q_UNUSED(title)
@@ -3486,7 +3486,7 @@ QByteArray Document::emptyDocxBytes(const QString& title) {
 
 // ─────────────────────────────────────────────────────────────────────────────
 //  Thumbnail-Vorschau: erste Zeilen als Klartext (läuft im Thumbnail-Worker;
-//  eigener Reader je Aufruf → threadsicher, kein geteilter Zustand).
+//  eigener Reader je Aufruf -> threadsicher, kein geteilter Zustand).
 // ─────────────────────────────────────────────────────────────────────────────
 QString Document::plainTextPreview(const QString& path, int maxLines) {
     DocxZip::Reader zip;
@@ -3518,7 +3518,7 @@ QString Document::plainTextPreview(const QString& path, int maxLines) {
                 //  Zeilenumbruch IM Absatz beendet auch die Vorschauzeile.
                 //  Ohne das lief ein ganzes Dokument, das mit Umschalt+Enter
                 //  statt Enter gesetzt ist, in EINER Zeile zusammen
-                //  („1 NFJedes Attribut nur ein…" — Nutzerbefund).
+                //  („1 NFJedes Attribut nur ein…" - Nutzerbefund).
                 push(cur);
                 cur.clear();
             }

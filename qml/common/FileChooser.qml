@@ -3,11 +3,11 @@ import QtQuick.Controls
 import MediaGallery 1.0
 
 // ─────────────────────────────────────────────────────────────────────────────
-//  FileChooser.qml — der EIGENE Datei-/Ordnerwähler der App.
+//  FileChooser.qml - der EIGENE Datei-/Ordnerwähler der App.
 //
 //  WARUM: Qts `FileDialog`/`FolderDialog` öffnen ein eigenes Fenster, dessen
 //  Liste in Qts eigener `FileDialog.qml` steckt. Dort ist `SmoothWheelArea`
-//  nicht einhängbar — die Liste sprang deshalb in Stufen, während alles andere
+//  nicht einhängbar - die Liste sprang deshalb in Stufen, während alles andere
 //  in der App animiert scrollt; auch das Aussehen war nur über die Palette
 //  steuerbar. Dieser Wähler ist ein `Popup` IM Fenster: gleiche Farben, gleiches
 //  Scrollen, gleiche Tastaturbedienung wie der Rest der App.
@@ -33,16 +33,16 @@ Popup {
     property var    nameFilters: []
     property int    fileMode: FileChooser.OpenFile
     property string defaultSuffix: ""
-    //  Startverzeichnis (URL wie bei Qts Dialog) — leer = zuletzt benutztes
+    //  Startverzeichnis (URL wie bei Qts Dialog) - leer = zuletzt benutztes
     //  bzw. das Heimatverzeichnis.
     property url    currentFolder
     //  Ergebnis. `selectedFiles` trägt bei MEHRFACHAUSWAHL alle gewählten
-    //  Dateien (sonst genau eine); `selectedFile` bleibt die erste — die
+    //  Dateien (sonst genau eine); `selectedFile` bleibt die erste - die
     //  bestehenden Aufrufstellen ändern sich dadurch nicht.
     property url    selectedFile
     property url    selectedFolder
     property var    selectedFiles: []
-    //  Mehrfachauswahl zulassen (nur beim ÖFFNEN sinnvoll — beim Speichern und
+    //  Mehrfachauswahl zulassen (nur beim ÖFFNEN sinnvoll - beim Speichern und
     //  bei der Ordnerwahl gibt es genau ein Ziel).
     property bool   multiSelect: false
     readonly property bool _multi: multiSelect && fileMode === FileChooser.OpenFile
@@ -51,7 +51,7 @@ Popup {
     signal rejected()
 
     //  Der Wähler gehört über ALLES (Menüs, Leisten) und lebt so lange wie das
-    //  Fenster — deshalb das Overlay als Elternteil und nicht der Aufrufer.
+    //  Fenster - deshalb das Overlay als Elternteil und nicht der Aufrufer.
     parent: Overlay.overlay
     modal: true
     focus: true
@@ -64,7 +64,7 @@ Popup {
 
     readonly property bool _saveMode: fileMode === FileChooser.SaveFile
     readonly property bool _dirMode:  fileMode === FileChooser.Directory
-    //  Der gewählte Name (Datei ODER Unterordner) — leer heißt „der Ordner selbst".
+    //  Der gewählte Name (Datei ODER Unterordner) - leer heißt „der Ordner selbst".
     property string _chosenName: ""
     property int    _filterIndex: 0
     //  „Neuer Ordner": Eingabe läuft IN der Pfadleiste (s. dort), damit kein
@@ -72,8 +72,8 @@ Popup {
     property bool   _dirEditActive: false
     property string _dirError: ""
     //  Zeilen der Mehrfachauswahl (Indizes im Modell). `currentIndex` bleibt
-    //  daneben bestehen — er führt die Tastatur.
-    //  Orte der Seitenleiste: Standard-Orte PLUS die Lesezeichen der App — wer
+    //  daneben bestehen - er führt die Tastatur.
+    //  Orte der Seitenleiste: Standard-Orte PLUS die Lesezeichen der App - wer
     //  einen Ordner gespeichert hat, will ihn auch hier mit einem Klick
     //  erreichen. Doppelte und verschwundene Pfade fallen heraus.
     readonly property var _places: {
@@ -98,7 +98,7 @@ Popup {
     property int    _anchorRow: -1
     function _isPicked(i) { return _picked.indexOf(i) >= 0 }
     function _clearPicked() { _picked = []; _anchorRow = -1 }
-    //  Klick mit Umschalt/Strg — die Regeln, die jeder Dateiverwalter hat.
+    //  Klick mit Umschalt/Strg - die Regeln, die jeder Dateiverwalter hat.
     function _pickRow(i, ctrl, shift) {
         if (!_multi || fs.entryIsDir(i)) { _clearPicked(); return }
         let out = _picked.slice()
@@ -121,13 +121,13 @@ Popup {
 
     //  Anlegen und Ergebnis melden. Die Rückgabewerte kommen aus
     //  `FileBrowseModel::createFolder` (0 ok · 1 Name unbrauchbar · 2 gibt es
-    //  schon · 3 fehlgeschlagen) — die Sprache wählt hier die Oberfläche.
+    //  schon · 3 fehlgeschlagen) - die Sprache wählt hier die Oberfläche.
     function _createFolder(name) {
         const rc = fs.createFolder(name)
         if (rc === 0) {
             _dirEditActive = false
             _dirError = ""
-            //  Frisch angelegten Ordner gleich auswählen — man legt ihn an, um
+            //  Frisch angelegten Ordner gleich auswählen - man legt ihn an, um
             //  hineinzugehen oder darin zu speichern.
             _chosenName = name.trim()
             for (let i = 0; i < fs.count; ++i)
@@ -141,7 +141,7 @@ Popup {
     FileBrowseModel {
         id: fs
         dirsOnly: root._dirMode
-        //  Begleitdateien der App nur zeigen, wenn der Nutzer es will — dieselbe
+        //  Begleitdateien der App nur zeigen, wenn der Nutzer es will - dieselbe
         //  Einstellung wie in der Galerie, damit dieselbe Datei nicht hier
         //  auftaucht und dort fehlt.
         showAllFiles: App.showAllFiles
@@ -150,7 +150,7 @@ Popup {
                                                         root.nameFilters.length - 1)] ]
     }
 
-    //  Zwischen zwei Aufrufen soll der Wähler dort stehen, wo er zuletzt war —
+    //  Zwischen zwei Aufrufen soll der Wähler dort stehen, wo er zuletzt war -
     //  sonst fängt jedes Öffnen wieder im Heimatverzeichnis an.
     property string _lastFolder: ""
 
@@ -296,7 +296,7 @@ Popup {
                           right: parent.right; bottom: parent.bottom; bottomMargin: 8 }
                 clip: true
                 //  Die Liste steht als benannte Eigenschaft am Wähler (s.
-                //  `_places`) — sonst wäre sie nur ein Ausdruck an dieser Stelle
+                //  `_places`) - sonst wäre sie nur ein Ausdruck an dieser Stelle
                 //  und weder lesbar noch prüfbar.
                 model: root._places
                 interactive: false          // das Rad übernimmt SmoothWheelArea
@@ -436,7 +436,7 @@ Popup {
                 contentWidth: crumbRow.width
                 clip: true
                 interactive: true
-                //  Immer das ENDE zeigen — dort steht der aktuelle Ordner.
+                //  Immer das ENDE zeigen - dort steht der aktuelle Ordner.
                 onContentWidthChanged: contentX = Math.max(0, contentWidth - width)
                 Row {
                     id: crumbRow
@@ -488,7 +488,7 @@ Popup {
             color: App.themeBackground
 
             //  ── Spaltenköpfe: klicken sortiert, nochmal klicken dreht um ──
-            //  Ordner bleiben in jeder Richtung vorn (das macht das Modell) —
+            //  Ordner bleiben in jeder Richtung vorn (das macht das Modell) -
             //  sonst müsste man zum Hochgehen erst durch alle Dateien scrollen.
             Rectangle {
                 id: colHead

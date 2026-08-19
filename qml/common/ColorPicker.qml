@@ -3,7 +3,7 @@ import QtQuick.Controls
 import MediaGallery 1.0
 
 // ─────────────────────────────────────────────────────────────────────────────
-//  ColorPicker.qml — eigenständiger HSV+Alpha-Farbwähler (ersetzt
+//  ColorPicker.qml - eigenständiger HSV+Alpha-Farbwähler (ersetzt
 //  ColorPickerButton (QWidget) + QColorDialog).
 //
 //  Verwendung:
@@ -100,7 +100,7 @@ Item {
         id: popup
         // Größe ergibt sich automatisch aus dem Inhalt (contentItem = Column,
         // implicitWidth/-Height aus deren Kindern) statt einer hartcodierten
-        // Höhen-Formel — die bisherige feste Höhe (250 + evtl. 26 für Alpha)
+        // Höhen-Formel - die bisherige feste Höhe (250 + evtl. 26 für Alpha)
         // war zu knapp bemessen (Titel + SV-Feld + Hue + Vorschau/Hex + Buttons
         // brauchen mehr Platz als veranschlagt), wodurch der untere Teil des
         // Popups (Buttons) über den vorgesehenen Rahmen hinausragte. Automatische
@@ -146,13 +146,13 @@ Item {
                         // Basis: voller Farbton
                         ctx.fillStyle = Qt.hsva(hue < 0 ? 0 : hue, 1, 1, 1)
                         ctx.fillRect(0, 0, width, height)
-                        // Weiß (links) → transparent (rechts) = Sättigung
+                        // Weiß (links) -> transparent (rechts) = Sättigung
                         var gx = ctx.createLinearGradient(0, 0, width, 0)
                         gx.addColorStop(0, "rgba(255,255,255,1)")
                         gx.addColorStop(1, "rgba(255,255,255,0)")
                         ctx.fillStyle = gx
                         ctx.fillRect(0, 0, width, height)
-                        // Transparent (oben) → schwarz (unten) = Helligkeit
+                        // Transparent (oben) -> schwarz (unten) = Helligkeit
                         var gy = ctx.createLinearGradient(0, 0, 0, height)
                         gy.addColorStop(0, "rgba(0,0,0,0)")
                         gy.addColorStop(1, "rgba(0,0,0,1)")

@@ -5,10 +5,10 @@ import MediaGallery 1.0
 import "../common"
 
 // ─────────────────────────────────────────────────────────────────────────────
-//  PdfFormField.qml — EIN ausfüllbares Formularfeld (Widget-Annotation) über
+//  PdfFormField.qml - EIN ausfüllbares Formularfeld (Widget-Annotation) über
 //  einer PDF-Seite. Delegate des Formular-Repeaters jeder Seite in PdfSurface.
 //
-//  WARUM ES DIESES OVERLAY GIBT: Qt PDF zeichnet Widget-Annotationen NICHT —
+//  WARUM ES DIESES OVERLAY GIBT: Qt PDF zeichnet Widget-Annotationen NICHT -
 //  PDFium malt sie ausschließlich über FPDF_FFLDraw, das Qt PDF nicht anbietet
 //  (RenderFlag::Annotations ändert daran nichts). Dieses Item ist deshalb die
 //  EINZIGE Darstellung der Felder, nicht bloß eine Eingabehilfe: Ohne es sähe
@@ -17,14 +17,14 @@ import "../common"
 //  KOORDINATEN: `field` liefert Position/Größe in PDF-PUNKTEN mit Ursprung
 //  oben-links der ANGEZEIGTEN Quellseite; `pageScale` (Pixel je Punkt) rechnet
 //  auf die Anzeige um. Eine zusätzliche Drehung aus dem Seiten-Plan (`rot`)
-//  wird hier gerechnet — die Feldrechtecke stehen in der Datei ungedreht.
+//  wird hier gerechnet - die Feldrechtecke stehen in der Datei ungedreht.
 //
 //  WYSIWYG: Schriftgröße, Innenabstand (2 pt) und die senkrechte Ausrichtung
 //  entsprechen exakt dem Erscheinungsbild, das PdfFormFields::fillAndSave in
 //  die gespeicherte PDF schreibt.
 //
-//  WERT-SYNC (bewusst KEINE text-Bindung — Zweiweg-Konflikt beim Tippen, s.
-//  PdfEditBox): Anzeige → Modell läuft live über ctl.setFormValue(); Modell →
+//  WERT-SYNC (bewusst KEINE text-Bindung - Zweiweg-Konflikt beim Tippen, s.
+//  PdfEditBox): Anzeige -> Modell läuft live über ctl.setFormValue(); Modell ->
 //  Anzeige nur, solange das Feld NICHT den Fokus hat (Optionsgruppen und
 //  dasselbe Feld auf mehreren Seiten ziehen sich so gegenseitig nach).
 // ─────────────────────────────────────────────────────────────────────────────
@@ -42,7 +42,7 @@ Item {
     // ── Feld-Eigenschaften ────────────────────────────────────────────────────
     //  type: 0 unbekannt, 1 Text, 2 Ankreuzfeld, 3 Optionsfeld, 4 Auswahl,
     //        5 Druckknopf (s. mg::PdfFieldType). Unterschriftenfelder kommen
-    //        gar nicht erst an — sie werden schon beim Lesen übergangen.
+    //        gar nicht erst an - sie werden schon beim Lesen übergangen.
     readonly property string fieldName: ff.field.name
     readonly property int    fieldType: ff.field.type
     readonly property bool   readOnly:  ff.field.readOnly === true
@@ -56,7 +56,7 @@ Item {
                                         && !ff.isChoice
     readonly property bool   editable:  !ff.readOnly && !ff.inert
 
-    //  Aktueller Wert — rev-getrieben (formValueRev), damit Optionsgruppen und
+    //  Aktueller Wert - rev-getrieben (formValueRev), damit Optionsgruppen und
     //  mehrfach platzierte Felder sofort folgen, ohne dass die Feldliste (und
     //  damit dieses Delegate) neu erzeugt wird.
     readonly property string currentValue:
@@ -132,7 +132,7 @@ Item {
         maximumLength: ff.field.maxLen > 0 ? ff.field.maxLen : 32767
         echoMode: ff.field.password === true ? TextInput.Password : TextInput.Normal
         onTextEdited: if (ff.ctl) ff.ctl.setFormValue(ff.fieldName, text)
-        //  Modell → Anzeige nur ohne Fokus (sonst Zweiweg-Konflikt beim Tippen).
+        //  Modell -> Anzeige nur ohne Fokus (sonst Zweiweg-Konflikt beim Tippen).
         Component.onCompleted: text = ff.currentValue
         Connections {
             target: ff
@@ -171,7 +171,7 @@ Item {
     // ── Ankreuzfeld / Optionsfeld ─────────────────────────────────────────────
     //  Selbst gezeichnet (Häkchen bzw. Punkt): Die Zustände liegen als fertige
     //  Erscheinungsbilder in der Datei, sichtbar macht sie aber erst dieses
-    //  Overlay — und es muss auf JEDER Seitengröße mitskalieren.
+    //  Overlay - und es muss auf JEDER Seitengröße mitskalieren.
     Item {
         anchors.fill: parent
         visible: ff.isCheck || ff.isRadio

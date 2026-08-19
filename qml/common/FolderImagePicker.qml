@@ -1,24 +1,24 @@
 // ─────────────────────────────────────────────────────────────────────────────
-//  FolderImagePicker — Bilder aus dem Ordner des Dokuments als Miniaturen,
+//  FolderImagePicker - Bilder aus dem Ordner des Dokuments als Miniaturen,
 //  daneben der Weg in den Dateidialog. Beide Editoren (DOCX und PDF) bieten
 //  dieselbe Abkürzung an, deshalb liegt sie EINMAL hier.
 //
 //  Vertrag:
-//   • `entries`         — `[{name, url}]`, kommt aus `folderImages()` des
+//   • `entries`         - `[{name, url}]`, kommt aus `folderImages()` des
 //                          jeweiligen Controllers.
-//   • `hostWidth`       — Breite, in die das Popup passen muss (die Kachel,
+//   • `hostWidth`       - Breite, in die das Popup passen muss (die Kachel,
 //                          nicht der Bildschirm). Daraus ergibt sich die
 //                          SPALTENZAHL; feste 396 px ragten in der geteilten
 //                          Ansicht über den sichtbaren Bereich hinaus.
-//   • `picked(url)`     — eine Miniatur wurde gewählt.
-//   • `browseRequested()` — „Durchsuchen…"; der Aufrufer öffnet seinen Dialog.
+//   • `picked(url)`     - eine Miniatur wurde gewählt.
+//   • `browseRequested()` - „Durchsuchen…"; der Aufrufer öffnet seinen Dialog.
 //  Die Miniaturen laden ASYNCHRON und nur für sichtbare Delegates;
 //  `sourceSize` deckelt die dekodierte Größe (RAM = Priorität 1).
 // ─────────────────────────────────────────────────────────────────────────────
 import QtQuick
 import QtQuick.Controls
 //  Ohne diesen Import ist `App` in einer AUSGELAGERTEN Komponente unbekannt
-//  (im eingebetteten Zustand kam er vom umgebenden Surface) — alle Farben und
+//  (im eingebetteten Zustand kam er vom umgebenden Surface) - alle Farben und
 //  Texte blieben dann leer.
 import MediaGallery 1.0
 
@@ -28,7 +28,7 @@ Popup {
     property var  entries: []
     //  NICHT `availableWidth` nennen: das ist bei `Popup` eine FINAL-
     //  Eigenschaft (Breite minus Innenabstand). Ein Überschreiben lässt die
-    //  ganze Komponente nicht mehr laden — „Cannot override FINAL property".
+    //  ganze Komponente nicht mehr laden - „Cannot override FINAL property".
     property real hostWidth: 420
     //  Kantenlänge einer Zelle; die Miniatur sitzt darin.
     readonly property int cellW: 98
@@ -79,7 +79,7 @@ Popup {
             //  Ohne das scrollt Qt in ~60-px-Rastungen (Nutzerbefund
             //  „Scrollen ist langsam"). `flickable` MUSS über die id gesetzt
             //  werden, nicht über `parent`: SmoothWheelArea setzt selbst
-            //  `parent: flickable` — mit `flickable: parent` entsteht eine
+            //  `parent: flickable` - mit `flickable: parent` entsteht eine
             //  BINDUNGSSCHLEIFE und die Komponente bleibt wirkungslos.
             SmoothWheelArea { flickable: grid }
             delegate: Rectangle {

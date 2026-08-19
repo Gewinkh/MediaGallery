@@ -1,13 +1,13 @@
 #pragma once
 // ══════════════════════════════════════════════════════════════════════════════
-//  PdfFontEmbed.h — eine installierte TrueType-Schrift in ein PDF einbetten
+//  PdfFontEmbed.h - eine installierte TrueType-Schrift in ein PDF einbetten
 // ══════════════════════════════════════════════════════════════════════════════
 //
 //  ZWECK
 //  ─────
 //  Der Vektor-Export kannte bisher nur die 14 Standard-PDF-Schriften. Eine
 //  Notiz in einer anderen Familie wurde dabei STILLSCHWEIGEND durch Helvetica
-//  ersetzt — die exportierte Datei sah anders aus als der Bildschirm. Mit
+//  ersetzt - die exportierte Datei sah anders aus als der Bildschirm. Mit
 //  dieser Einheit reist die tatsächliche Schrift mit.
 //
 //  WAS ERZEUGT WIRD
@@ -20,13 +20,13 @@
 //
 //  BEWUSST NICHT GETAN: Teilmengen-Bildung (Subsetting). Eingebettet wird das
 //  GANZE Schriftprogramm. Subsetting müsste `glyf`/`loca`/`cmap`/`hmtx`
-//  konsistent neu aufbauen — ein eigenes Vorhaben, bei dem ein Fehler eine
+//  konsistent neu aufbauen - ein eigenes Vorhaben, bei dem ein Fehler eine
 //  unlesbare Datei erzeugt. Der Preis ist Dateigröße; deshalb bettet der
 //  Aufrufer NUR ein, wenn die Familie wirklich keine Standard-14-Entsprechung
 //  hat (s. `needsEmbedding`).
 //
 //  Schlägt irgendetwas fehl (Tabellen nicht lesbar, Schrift nicht gefunden),
-//  liefert `build` false — der Aufrufer weicht dann auf die Ersetzung bzw. den
+//  liefert `build` false - der Aufrufer weicht dann auf die Ersetzung bzw. den
 //  Raster-Export aus, statt eine kaputte Datei zu schreiben.
 //
 //  ABHÄNGIGKEITEN: Qt6::Core + Qt6::Gui (QRawFont). Kein Q_OBJECT/moc.

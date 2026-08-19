@@ -37,11 +37,11 @@ QByteArray inflateRaw(const QByteArray& comp, quint32 expectedSize, bool* ok) {
     if (expectedSize > mg::zcodec::kMaxOutput)
         return {};
     bool zOk = false;
-    // Ohne ZLIB liefert das immer leer (roher Deflate-Strom, s. ZCodec.h) —
+    // Ohne ZLIB liefert das immer leer (roher Deflate-Strom, s. ZCodec.h) -
     // deshalb weist Reader::open Archive mit Methode 8 vorher ab.
     QByteArray out = mg::zcodec::inflate(comp, mg::zcodec::Wrap::Raw,
                                          expectedSize, /*tolerant*/ false, &zOk);
-    // Die Größe MUSS auf das Zentralverzeichnis passen — weicht sie ab, ist
+    // Die Größe MUSS auf das Zentralverzeichnis passen - weicht sie ab, ist
     // der Eintrag inkonsistent (manipuliert oder defekt).
     if (!zOk || out.size() != qsizetype(expectedSize))
         return {};
@@ -170,7 +170,7 @@ bool Reader::open(const QString& path, QString* err) {
         }
         // Ohne ZLIB gebaut: ZIP-Einträge sind ROHES Deflate, das der
         // Qt-Fallback nicht entpacken kann (s. ZCodec.h). Hier abweisen statt
-        // später an einem CRC-Fehler — der Grund wäre dann nicht mehr zu
+        // später an einem CRC-Fehler - der Grund wäre dann nicht mehr zu
         // erkennen. Store(0) bleibt lesbar.
         if (en.method == 8 && !mg::zcodec::available()) {
             if (err) *err = QStringLiteral(
@@ -187,7 +187,7 @@ bool Reader::open(const QString& path, QString* err) {
         en.comment      = cd.mid(pos + 46 + nameLen + extraLen, commLen);
 
         // Datenoffset über den LOKALEN Header ermitteln (dessen Namens-/Extra-
-        // Längen können vom Zentralverzeichnis abweichen — Extra-Felder!).
+        // Längen können vom Zentralverzeichnis abweichen - Extra-Felder!).
         if (qint64(localOfs) + 30 > fileSize) {
             if (err) *err = QStringLiteral("Lokaler Header außerhalb der Datei.");
             close(); return false;
@@ -244,7 +244,7 @@ QByteArray Reader::fileData(int index, bool* ok) const {
     QByteArray plain;
     if (e.method == 0) {                       // Store: 1:1
         // Bei Store MUSS die unkomprimierte Größe der komprimierten
-        // entsprechen — weicht sie ab, ist das Zentralverzeichnis
+        // entsprechen - weicht sie ab, ist das Zentralverzeichnis
         // inkonsistent (manipuliert oder defekt).
         if (e.uncompSize != e.compSize)
             return {};
@@ -256,7 +256,7 @@ QByteArray Reader::fileData(int index, bool* ok) const {
             return {};
     }
     // Integrität: CRC muss stimmen (schützt vor stiller Korruption).
-    // Gilt für BEIDE Methoden — gespeicherte (unkomprimierte) Einträge kamen
+    // Gilt für BEIDE Methoden - gespeicherte (unkomprimierte) Einträge kamen
     // vorher ungeprüft durch, obwohl gerade sie durch einen Bytefehler in der
     // Datei unbemerkt verfälscht werden können (Deflate wäre dabei mit hoher
     // Wahrscheinlichkeit schon am Strom selbst gescheitert).

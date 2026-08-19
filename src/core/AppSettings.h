@@ -105,6 +105,41 @@ public:
     QStringList savedFolders() const override;
     void        setSavedFolders(const QStringList& paths) override;
 
+    bool        audioEqEnabled() const override;
+    void        setAudioEqEnabled(bool on) override;
+    QList<double> audioEqBands() const override;
+    void        setAudioEqBands(const QList<double>& db) override;
+    double      audioEqPreamp() const override;
+    void        setAudioEqPreamp(double db) override;
+    QStringList audioEqPresets() const override;
+    void        setAudioEqPresets(const QStringList& presets) override;
+    bool        audioPlayerMode() const override;
+    void        setAudioPlayerMode(bool on) override;
+    bool        audioListLayout() const override;
+    void        setAudioListLayout(bool on) override;
+    bool        audioShowVideos() const override;
+    void        setAudioShowVideos(bool on) override;
+    bool        audioRememberLast() const override;
+    void        setAudioRememberLast(bool on) override;
+    QString     audioLastFile() const override;
+    void        setAudioLastFile(const QString& path) override;
+    qint64      audioLastPosition() const override;
+    void        setAudioLastPosition(qint64 ms) override;
+    double      audioVolume() const override;
+    void        setAudioVolume(double v) override;
+    bool        audioShuffle() const override;
+    void        setAudioShuffle(bool on) override;
+    int         audioRepeat() const override;
+    void        setAudioRepeat(int mode) override;
+
+    qreal   paneSplit() const override;
+    void    setPaneSplit(qreal v) override;
+    QString secondFolder() const override;
+    void    setSecondFolder(const QString& path) override;
+
+    QStringList bookmarkGroups() const override;
+    void        setBookmarkGroups(const QStringList& groups) override;
+
     static ThemeColors themeForProfile(DesignProfile p);
 
     void sync() override;

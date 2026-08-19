@@ -13,7 +13,7 @@
 
 // ══════════════════════════════════════════════════════════════════════════════
 //  Interne Helfer (Datei-lokal): Lexer, Objektmodell, Quelldokument, Plan.
-//  Alles bewusst in einem anonymen Namespace — nach außen existiert nur der
+//  Alles bewusst in einem anonymen Namespace - nach außen existiert nur der
 //  PdfAssembler (Header). Kommentare erklären die PDF-Spezifika (ISO 32000).
 // ══════════════════════════════════════════════════════════════════════════════
 namespace {
@@ -32,13 +32,13 @@ inline bool isDigit(char c)   { return c >= '0' && c <= '9'; }
 // ── zlib-Inflate (FlateDecode) ───────────────────────────────────────────────
 //  Nur für XRef-/Objekt-Streams nötig (normale Streams werden verbatim
 //  kopiert). Erst zlib-Header versuchen, bei kaputtem Header roh-Deflate
-//  (windowBits −15) — manche Erzeuger schreiben fehlerhafte Header.
+//  (windowBits −15) - manche Erzeuger schreiben fehlerhafte Header.
 QByteArray zlibInflate(const char* src, qint64 len, bool* ok) {
     *ok = false;
     if (!src || len <= 0) return {};
     const QByteArray in = QByteArray::fromRawData(src, len);
     // Ohne ZLIB gebaut trägt nur der erste Versuch, und `tolerant` (also das
-    // Verwerten abgeschnittener Ströme) entfällt — s. ZCodec.h.
+    // Verwerten abgeschnittener Ströme) entfällt - s. ZCodec.h.
     QByteArray out = mg::zcodec::inflate(in, mg::zcodec::Wrap::Zlib, 0,
                                          /*tolerant*/ true, ok);
     if (*ok) return out;
@@ -54,7 +54,7 @@ QByteArray applyPngPredictor(const QByteArray& in, int colors, int bpc, int colu
     const int rowLen = (colors * bpc * columns + 7) / 8;
     const int bpp    = qMax(1, (colors * bpc + 7) / 8);
     if (rowLen <= 0 || in.size() % (rowLen + 1) != 0) {
-        // Zeilenraster passt nicht exakt → defensiv trotzdem zeilenweise lesen,
+        // Zeilenraster passt nicht exakt -> defensiv trotzdem zeilenweise lesen,
         // solange volle Zeilen vorhanden sind.
         if (in.size() < rowLen + 1) return {};
     }
@@ -83,7 +83,7 @@ QByteArray applyPngPredictor(const QByteArray& in, int colors, int bpc, int colu
                 v += (pa <= pb && pa <= pc) ? left : (pb <= pc ? up : ul);
                 break;
             }
-            default: return {};                              // unbekannt → Fehler
+            default: return {};                              // unbekannt -> Fehler
             }
             dst[i] = static_cast<uchar>(v & 0xFF);
         }
@@ -99,7 +99,7 @@ struct PObj {
     T t = Null;
 
     qint64      i   = 0;   // Int-Wert bzw. Ref-Objektnummer
-    QByteArray  raw;       // Skalar-Rohtext (Bool/Int/Real/Str/Name) — verbatim
+    QByteArray  raw;       // Skalar-Rohtext (Bool/Int/Real/Str/Name) - verbatim
     QList<PObj> arr;                              // Arr
     QList<QPair<QByteArray, PObj>> dict;          // Dict/Stream: (dekodierter Key, Wert)
     qint64      streamPos = -1;                   // Stream: Rohdaten-Offset in der Quelle
@@ -158,7 +158,7 @@ struct Lexer {
     }
 };
 
-// PDF-Name dekodieren (#xx-Escapes) — nur für den Key-VERGLEICH; der Rohtext
+// PDF-Name dekodieren (#xx-Escapes) - nur für den Key-VERGLEICH; der Rohtext
 // bleibt für die Ausgabe erhalten.
 QByteArray decodeName(const QByteArray& rawWithSlash) {
     QByteArray out;
@@ -259,7 +259,7 @@ bool parseValue(Lexer& lx, PObj* out, int depth) {
         }
         const QByteArray numRaw(lx.d + s, static_cast<int>(lx.p - s));
         if (!real && c != '+' && c != '-') {
-            // Lookahead auf „G R" → indirekte Referenz (zerstörungsfrei).
+            // Lookahead auf „G R" -> indirekte Referenz (zerstörungsfrei).
             const qint64 save = lx.p;
             qint64 gen = 0;
             if (lx.readInt(&gen)) {
@@ -296,7 +296,7 @@ struct XEntry {
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
-//  SourceDoc — EIN Quell-PDF: mmap, XRef-Kette, Objektauflösung, Seitenbaum.
+//  SourceDoc - EIN Quell-PDF: mmap, XRef-Kette, Objektauflösung, Seitenbaum.
 // ─────────────────────────────────────────────────────────────────────────────
 class SourceDoc {
 public:
@@ -309,7 +309,7 @@ public:
 
     // Objekt auflösen (Cache; type1 direkt, type2 aus Objekt-Stream). Liefert
     // nullptr bei STRUKTURELLEM Fehler; ein fehlender XRef-Eintrag ist laut
-    // Spezifikation dagegen ein legitimes `null` (→ *legalNull = true).
+    // Spezifikation dagegen ein legitimes `null` (-> *legalNull = true).
     const PObj* getObject(qint64 num, bool* legalNull);
 
     // Seitenbaum abflachen: Objektnummern + materialisierte Vererbung.
@@ -322,7 +322,7 @@ public:
 
     const char* data() const { return m_data; }
     qint64      size() const { return m_size; }
-    int declaredPageCount();     // /Root→/Pages→/Count (−1 wenn nicht lesbar)
+    int declaredPageCount();     // /Root->/Pages->/Count (−1 wenn nicht lesbar)
 
 private:
     bool parseXrefChain(QString* err);
@@ -389,7 +389,7 @@ void SourceDoc::close() {
 
 void SourceDoc::insertEntry(qint64 num, const XEntry& e) {
     // Erste Sichtung gewinnt (jüngste XRef zuerst gelesen). Freie Einträge
-    // werden gar nicht erst eingetragen — so füllt bei Hybrid-Dateien der
+    // werden gar nicht erst eingetragen - so füllt bei Hybrid-Dateien der
     // /XRefStm die im klassischen Teil als „frei" markierten ObjStm-Objekte.
     if (num <= 0 || m_xref.contains(num)) return;
     m_xref.insert(num, e);
@@ -438,7 +438,7 @@ bool SourceDoc::parseXrefChain(QString* err) {
 }
 
 bool SourceDoc::parseXrefAt(qint64 offset, QSet<qint64>* visited, QString* err) {
-    if (visited->contains(offset)) return true;    // Zyklus → still beenden
+    if (visited->contains(offset)) return true;    // Zyklus -> still beenden
     visited->insert(offset);
     if (visited->size() > 64) return false;        // Ketten-Deckel
 
@@ -490,7 +490,7 @@ bool SourceDoc::parseXrefAt(qint64 offset, QSet<qint64>* visited, QString* err) 
     QByteArray data;
     if (!decodeStream(obj, &data)) return false;
 
-    // /Index (Standard: [0 /Size]) → (start,count)-Paare.
+    // /Index (Standard: [0 /Size]) -> (start,count)-Paare.
     QVector<QPair<qint64, qint64>> ranges;
     if (const PObj* idx = obj.find("Index"); idx && idx->t == PObj::Arr) {
         for (int k = 0; k + 1 < idx->arr.size(); k += 2)
@@ -513,7 +513,7 @@ bool SourceDoc::parseXrefAt(qint64 offset, QSet<qint64>* visited, QString* err) 
     for (const auto& r : ranges) {
         for (qint64 k = 0; k < r.second; ++k) {
             if (pos + rec > data.size()) break;                // defensiv
-            const qint64 type = (w1 == 0) ? 1 : beField(w1);   // w1=0 → Typ 1
+            const qint64 type = (w1 == 0) ? 1 : beField(w1);   // w1=0 -> Typ 1
             const qint64 f2   = beField(w2);
             const qint64 f3   = (w3 > 0) ? beField(w3) : 0;
             const qint64 onum = r.first + k;
@@ -557,7 +557,7 @@ bool SourceDoc::parseIndirectAt(qint64 offset, qint64* numOut, PObj* out) {
                     if (lo->t == PObj::Int) len = lo->i;
             }
         }
-        // Validierung: hinter den Daten muss `endstream` folgen — sonst
+        // Validierung: hinter den Daten muss `endstream` folgen - sonst
         // Recovery über die Suche nach dem Keyword (defekte /Length-Angaben).
         auto endstreamAt = [&](qint64 dataEnd) -> bool {
             Lexer probe{m_data, m_size, dataEnd};
@@ -587,7 +587,7 @@ bool SourceDoc::parseIndirectAt(qint64 offset, qint64* numOut, PObj* out) {
 
 bool SourceDoc::decodeStream(const PObj& streamObj, QByteArray* out) {
     // Nur für XRef-/Objekt-Streams: FlateDecode (+ optionale PNG-Prädiktoren)
-    // oder ungefiltert. Alles andere → Fehler (Aufrufer fällt zurück).
+    // oder ungefiltert. Alles andere -> Fehler (Aufrufer fällt zurück).
     if (streamObj.t != PObj::Stream || streamObj.streamPos < 0) return false;
     const char*  src = m_data + streamObj.streamPos;
     const qint64 len = streamObj.streamLen;
@@ -692,7 +692,7 @@ const PObj* SourceDoc::getObject(qint64 num, bool* legalNull) {
             && stm.second[it->b].first == num) {
             off = stm.second[it->b].second;
         } else {
-            for (const auto& p : stm.second)          // Index defekt → Suche
+            for (const auto& p : stm.second)          // Index defekt -> Suche
                 if (p.first == num) { off = p.second; break; }
         }
         if (off < 0 || off >= stm.first.size()) return nullptr;
@@ -818,7 +818,7 @@ bool SourceDoc::flattenPages(QVector<PageInfo>* out, QString* err) {
         return false;
     }
 
-    // Iterativ (expliziter Stapel) statt rekursiv — tiefe/kaputte Bäume sicher.
+    // Iterativ (expliziter Stapel) statt rekursiv - tiefe/kaputte Bäume sicher.
     struct Frame {
         qint64 objNum;
         PObj inhRes, inhMedia, inhCrop, inhRot;
@@ -854,7 +854,7 @@ bool SourceDoc::flattenPages(QVector<PageInfo>* out, QString* err) {
                             || (!kids && (!type || type->t != PObj::Name
                                           || decodeName(type->raw) != "Pages"));
         if (kids && kids->t == PObj::Arr && !isPage) {
-            // Kinder in UMGEKEHRTER Reihenfolge stapeln → Dokumentreihenfolge.
+            // Kinder in UMGEKEHRTER Reihenfolge stapeln -> Dokumentreihenfolge.
             for (int k = kids->arr.size() - 1; k >= 0; --k)
                 if (kids->arr[k].t == PObj::Ref)
                     stack.append({kids->arr[k].i, nx.inhRes, nx.inhMedia,
@@ -878,9 +878,9 @@ bool SourceDoc::flattenPages(QVector<PageInfo>* out, QString* err) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-//  CopyPlan — plant die verlustfreie Übernahme EINER Quelle vollständig im
+//  CopyPlan - plant die verlustfreie Übernahme EINER Quelle vollständig im
 //  Speicher (Segmente), damit ein Fehlschlag die Ausgabe nicht fragmentiert.
-//  Stream-ROHDATEN bleiben als (Offset,Länge)-Spans auf dem Quell-Mapping —
+//  Stream-ROHDATEN bleiben als (Offset,Länge)-Spans auf dem Quell-Mapping -
 //  kein Byte-Kopieren großer Inhalte vor dem eigentlichen Schreiben.
 // ─────────────────────────────────────────────────────────────────────────────
 struct Segment {
@@ -917,7 +917,7 @@ private:
 
     SourceDoc*             m_doc;
     int                    m_next;
-    QHash<qint64, int>     m_map;          // Quell-Objnr. → neue Objnr.
+    QHash<qint64, int>     m_map;          // Quell-Objnr. -> neue Objnr.
     QSet<qint64>           m_allPageNums;  // ALLE Seiten der Quelle (Kappen)
     QVector<qint64>        m_queue;        // noch zu planende Quell-Objekte
     QVector<PlannedObject> m_objects;
@@ -974,7 +974,7 @@ bool CopyPlan::serializeValue(const PObj& v, QByteArray* out, int depth) {
             if (v.t == PObj::Stream && kv.first == "Length")
                 continue;                        // wird als Literal neu geschrieben
             out->append('/');
-            // Key-Rohtext ist dekodiert gespeichert → re-escapen, falls nötig.
+            // Key-Rohtext ist dekodiert gespeichert -> re-escapen, falls nötig.
             for (const char c : kv.first) {
                 if (isRegular(c) && c != '#' && static_cast<uchar>(c) > 0x20) {
                     out->append(c);
@@ -1005,7 +1005,7 @@ bool CopyPlan::planObject(qint64 srcNum, int newNum) {
     bool legalNull = false;
     const PObj* obj = m_doc->getObject(srcNum, &legalNull);
     if (!obj) {
-        if (!legalNull) return false;            // struktureller Fehler → Abbruch
+        if (!legalNull) return false;            // struktureller Fehler -> Abbruch
         // Referenz auf nicht existierendes Objekt = laut Spezifikation `null`.
         PlannedObject po;
         po.newNum = newNum;
@@ -1031,7 +1031,7 @@ bool CopyPlan::planObject(qint64 srcNum, int newNum) {
 
 bool CopyPlan::planPage(const SourceDoc::PageInfo& pi, int newNum, int rotDelta) {
     // Zusätzliche Drehung (Seite drehen im Editor): Die Eigendrehung der
-    // Quellseite — eigenes /Rotate oder ein vom Seitenbaum geerbtes — wird um
+    // Quellseite - eigenes /Rotate oder ein vom Seitenbaum geerbtes - wird um
     // `rotDelta` weitergedreht und als EIN materialisierter Wert geschrieben.
     // Das Original bleibt dabei unangetastet (es wird nur kopiert), und der
     // Seiteninhalt selbst bleibt byteweise erhalten.
@@ -1101,7 +1101,7 @@ bool CopyPlan::plan(const QVector<int>& pageIndices, const QVector<int>& rotatio
     for (const auto& p : pages)
         m_allPageNums.insert(p.objNum);
 
-    // Gewählten Seiten ZUERST neue Nummern geben → Querverweise zwischen
+    // Gewählten Seiten ZUERST neue Nummern geben -> Querverweise zwischen
     // gewählten Seiten (Links) bleiben funktionsfähig.
     QVector<QPair<const SourceDoc::PageInfo*, int>> chosen;
     QVector<int> chosenRot;
@@ -1186,7 +1186,7 @@ bool PdfAssembler::addSourcePages(const QString& sourcePath,
     SourceDoc doc;
     if (!doc.open(sourcePath, err)) return false;
 
-    // Erst VOLLSTÄNDIG planen — schlägt hier etwas fehl, wurde noch kein Byte
+    // Erst VOLLSTÄNDIG planen - schlägt hier etwas fehl, wurde noch kein Byte
     // geschrieben und der Aufrufer kann für DIESE Quelle rastern.
     CopyPlan plan(&doc, m_nextObj);
     if (!plan.plan(pages, rotations, err)) return false;
@@ -1269,7 +1269,7 @@ bool PdfAssembler::addBlankPage(const QSizeF& pagePt, QString* err) {
     const int cntObj  = m_nextObj++;
     const int pageObj = m_nextObj++;
 
-    // Leerer Inhaltsstrom — nichts zu zeichnen; der Seitengrund ist weiß.
+    // Leerer Inhaltsstrom - nichts zu zeichnen; der Seitengrund ist weiß.
     if (!beginObject(cntObj, err)) return false;
     if (!writeRaw(QByteArrayLiteral("<< /Length 0 >>\nstream\n\nendstream\nendobj\n"), err))
         return false;
@@ -1342,7 +1342,7 @@ bool PdfAssembler::rebuild(const QString& sourcePath, const QString& outputPath,
         pages.append(i);
 
     //  QSaveFile: entweder es steht am Ende die vollständige neue Datei da
-    //  oder gar keine — eine halb geschriebene Ausgabe wäre hier besonders
+    //  oder gar keine - eine halb geschriebene Ausgabe wäre hier besonders
     //  bösartig, weil der Aufrufer sie für die geschwärzte Fassung hielte.
     QSaveFile out(outputPath);
     if (!out.open(QIODevice::WriteOnly))

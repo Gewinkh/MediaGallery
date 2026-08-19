@@ -4,13 +4,13 @@ import QtQuick.Controls
 import MediaGallery 1.0
 
 // ─────────────────────────────────────────────────────────────────────────────
-//  PdfPageSelectDialog.qml — Seitenauswahl der PDF-Extraktion.
+//  PdfPageSelectDialog.qml - Seitenauswahl der PDF-Extraktion.
 //
 //  EINE Komponente für BEIDE Aufrufwege …
 //   • in-PDF   (PdfSurface):        files = [ { path, pageCount } ]
 //   • global   (ApplicationShell):  files = alle PDFs des Ordners (scanFolder)
 //  … und ZWEI Layouts (Einstellungen ▸ Ansicht ▸ Extraktions-Layout):
-//   • "workbench" (Standard): Drei-Panel-Werkbank — links PDF-Liste, rechts das
+//   • "workbench" (Standard): Drei-Panel-Werkbank - links PDF-Liste, rechts das
 //     Seitenraster des AKTIVEN PDFs, unten eine Auswahlleiste, deren
 //     Reihenfolge die Ausgabereihenfolge ist (Drag&Drop-Umsortieren; aus der
 //     Leiste ziehen entfernt; ganze PDFs aus der Liste hineinziehen fügt alle
@@ -20,12 +20,12 @@ import MediaGallery 1.0
 //
 //  Gemeinsames Auswahlmodell: barModel (ListModel) hält die AUSGEWÄHLTEN Seiten
 //  in GEWÄHLTER REIHENFOLGE {path, page, fileIdx, fileName}. _inSel ist die
-//  schnelle Mitgliedschaftsmenge ("fileIdx:page"→true). Beide Layouts arbeiten
+//  schnelle Mitgliedschaftsmenge ("fileIdx:page"->true). Beide Layouts arbeiten
 //  darauf; nur die Werkbank rendert daraus die untere Leiste und nutzt die
 //  Reihenfolge, der Kompaktmodus gibt in Originalreihenfolge aus.
 //
 //  Ausgabe: extractRequested(orderedItems, baseName) mit
-//  orderedItems = [{path, page}] in AUSGABEREIHENFOLGE → PdfExtract.extractOrdered.
+//  orderedItems = [{path, page}] in AUSGABEREIHENFOLGE -> PdfExtract.extractOrdered.
 //
 //  Thumbnails: bestehende PdfThumbs-Pipeline (ensureDocument idempotent, LRU
 //  RAM-gedeckelt); image://pdfthumb/<docId>/<page>?r=<rev> mit Cache-Buster.
@@ -34,13 +34,13 @@ import MediaGallery 1.0
 Item {
     id: root
 
-    // [{ path, pageCount, name? }] — Reihenfolge = Ordnerreihenfolge.
+    // [{ path, pageCount, name? }] - Reihenfolge = Ordnerreihenfolge.
     property var    files: []
     property bool   requireName: false     // global: Name ist Pflicht
     property string titleText: ""
     property string defaultName: ""        // Platzhalter des Namensdialogs
     //  Zweitverwendung „Seiten einfügen" (PDF-Editor): Dort entsteht KEINE neue
-    //  Datei, also wird auch kein Name abgefragt — der Knopf übergibt direkt.
+    //  Datei, also wird auch kein Name abgefragt - der Knopf übergibt direkt.
     //  askName=false zieht zugleich die Bindung an den Extraktionsauftrag
     //  (PdfExtract.busy) heraus, der bei diesem Weg gar nicht läuft.
     property bool   askName: true
@@ -53,7 +53,7 @@ Item {
 
     // ── Auswahlmodell (gemeinsam) ──────────────────────────────────────────────
     ListModel { id: barModel }             // gewählte Seiten in Reihenfolge
-    property var  _inSel: ({})             // "fileIdx:page" → true
+    property var  _inSel: ({})             // "fileIdx:page" -> true
     property int  _selRev: 0               // Binding-Refresh (Kachel-Optik)
     property int  _activeFileIdx: 0        // links gewähltes PDF (rechtes Raster)
 
@@ -64,7 +64,7 @@ Item {
     property bool   _previewOk: false
     property int    _prevRev: 0
 
-    //  `activeIdx` (optional) wählt die links vorausgewählte Datei — der DOCX-Weg
+    //  `activeIdx` (optional) wählt die links vorausgewählte Datei - der DOCX-Weg
     //  reicht ALLE PDFs des Ordners herein, öffnet aber auf der angeklickten.
     function openWith(fileList, activeIdx) {
         files = fileList || []
@@ -157,7 +157,7 @@ Item {
             }
         } else {
             // Kompakt: IMMER Originalreihenfolge (Dateien in Listenreihenfolge,
-            // Seiten aufsteigend) — unabhängig von der Klickreihenfolge.
+            // Seiten aufsteigend) - unabhängig von der Klickreihenfolge.
             for (var f = 0; f < files.length; f++)
                 for (var p = 0; p < files[f].pageCount; p++)
                     if (_inSel[_key(f, p)]) items.push({ path: files[f].path, page: p })
@@ -185,7 +185,7 @@ Item {
         Component.onCompleted: thumb._docId = PdfThumbs.ensureDocument(thumb.path, thumb.page)
         Connections {
             target: PdfThumbs
-            // In Connections ist `parent` NICHT das Item → thumb per id ansprechen.
+            // In Connections ist `parent` NICHT das Item -> thumb per id ansprechen.
             function onPageReady(d, p) { if (d === thumb._docId && p === thumb.page) thumb._rev++ }
         }
         Image {
@@ -308,7 +308,7 @@ Item {
             anchors.fill: parent
 
             readonly property int barH: 108
-            //  Die Auswahlleiste ist in der Werkbank IMMER da (auch leer) — sonst
+            //  Die Auswahlleiste ist in der Werkbank IMMER da (auch leer) - sonst
             //  gäbe es beim ersten Ziehen kein Drop-Ziel. Leer = schlanke Zone mit
             //  Hinweis; sobald ≥1 Seite gewählt ist, wächst sie zur vollen Leiste.
             readonly property bool barHasItems: barModel.count > 0
@@ -356,7 +356,7 @@ Item {
                             //  Die vorausgewählte Datei muss auch SICHTBAR sein.
                             //  Beim ERSTEN Öffnen entsteht dieser Baum erst nach
                             //  `openWith` (Popup-Inhalt wird lazy erzeugt), bei
-                            //  jedem weiteren steht er schon — deshalb beides.
+                            //  jedem weiteren steht er schon - deshalb beides.
                             currentIndex: root._activeFileIdx
                             onCurrentIndexChanged: positionViewAtIndex(currentIndex,
                                                                        ListView.Contain)
@@ -473,7 +473,7 @@ Item {
                                     width: 120; height: 34
                                     property int dragFileIdx: -1
                                     property string dragKind: "file"
-                                    // Zentroid (fileRow-Koordinaten) → dlgContentRoot.
+                                    // Zentroid (fileRow-Koordinaten) -> dlgContentRoot.
                                     readonly property point _p: dlgContentRoot.mapFromItem(
                                         fileRow, fileDrag.centroid.position.x, fileDrag.centroid.position.y)
                                     x: _p.x - width / 2
@@ -486,7 +486,7 @@ Item {
                                         color: Qt.rgba(App.themeAccent.r, App.themeAccent.g, App.themeAccent.b, 0.9)
                                         Text {
                                             anchors.centerIn: parent
-                                            text: "PDF →"; color: "white"
+                                            text: "PDF ->"; color: "white"
                                             font.pixelSize: 12; font.bold: true
                                         }
                                     }
@@ -601,10 +601,10 @@ Item {
                                             //  Klick = an-/abwählen; Ziehen ab Schwelle =
                                             //  Seite in die Leiste. Kein drag.target (das
                                             //  bewegte den Geist im falschen Koordinaten-
-                                            //  system) → manuelle Positionierung.
+                                            //  system) -> manuelle Positionierung.
                                             //  preventStealing: der umgebende GridView
                                             //  (Flickable) darf den Grab NICHT übernehmen,
-                                            //  sobald die Geste auf einer Seite beginnt →
+                                            //  sobald die Geste auf einer Seite beginnt ->
                                             //  ein Seiten-Drag wird nie zum Scrollen. Auf
                                             //  Leerflächen (ohne diese MouseArea) flickt der
                                             //  Grid weiterhin normal.
@@ -616,7 +616,7 @@ Item {
                                             onPressed: (m) => { dragging = false; _px = m.x; _py = m.y }
                                             onPositionChanged: (m) => {
                                                 //  WICHTIG: positionChanged feuert bei
-                                                //  hoverEnabled AUCH ohne gedrückte Taste →
+                                                //  hoverEnabled AUCH ohne gedrückte Taste ->
                                                 //  ohne diesen Guard „folgte" der Zieh-Geist
                                                 //  schon beim bloßen Hovern und blieb kleben.
                                                 if (!pressed) return
@@ -633,7 +633,7 @@ Item {
                                                 dragging = false
                                             }
                                             //  Wird der Grab gestohlen (Flick/anderer
-                                            //  Handler), feuert KEIN onReleased → sonst
+                                            //  Handler), feuert KEIN onReleased -> sonst
                                             //  bliebe der Geist „in der Luft" hängen.
                                             onCanceled: dragging = false
                                             onClicked: {
@@ -655,12 +655,12 @@ Item {
                                         font.pixelSize: 10
                                     }
 
-                                    // Zieh-Geist (Seite → Auswahlleiste), im dlgContentRoot
+                                    // Zieh-Geist (Seite -> Auswahlleiste), im dlgContentRoot
                                     // (nicht im Raster mit clip:true), manuell positioniert.
                                     Item {
                                         id: pageGhost
                                         //  An pma.pressed GEKOPPELT: sobald die Taste
-                                        //  los ist, verschwindet der Geist SOFORT — auch
+                                        //  los ist, verschwindet der Geist SOFORT - auch
                                         //  wenn onReleased/onCanceled mal ausbleibt
                                         //  (kein „hängt in der Luft").
                                         visible: pma.pressed && pma.dragging
@@ -757,7 +757,7 @@ Item {
 
                         // Aufnahme-Zone für externe Drops (Seite/PDF) + Rückfang
                         // für Leisten-Items (verhindert versehentliches Entfernen
-                        // beim Loslassen über der Leiste). IMMER aktiv — auch bei
+                        // beim Loslassen über der Leiste). IMMER aktiv - auch bei
                         // leerer Leiste, damit das ERSTE Element hineingezogen
                         // werden kann.
                         DropArea {
@@ -769,7 +769,7 @@ Item {
                                 if (!s) return
                                 if (s.dragKind === "page") root._addSel(s.dragFileIdx, s.dragPage)
                                 else if (s.dragKind === "file") root._addWholePdf(s.dragFileIdx)
-                                // "bar-item": bereits per onEntered umsortiert → nichts.
+                                // "bar-item": bereits per onEntered umsortiert -> nichts.
                                 drop.accept()
                             }
                         }
@@ -807,7 +807,7 @@ Item {
                                 height: barList.height
                                 property bool held: false
                                 drag.target: held ? barCard : undefined
-                                //  Hover für die Strg-Großvorschau — auch AUSGEWÄHLTE
+                                //  Hover für die Strg-Großvorschau - auch AUSGEWÄHLTE
                                 //  Seiten (in der Leiste) lassen sich so mit Strg
                                 //  vorschauen, genau wie die Rasterseiten.
                                 hoverEnabled: true
@@ -820,13 +820,13 @@ Item {
                                 onPressed: held = true
                                 onReleased: {
                                     //  Loslasspunkt der gezogenen Karte relativ zur Leiste
-                                    //  bestimmen — VOR dem Zurücksetzen von held (danach
+                                    //  bestimmen - VOR dem Zurücksetzen von held (danach
                                     //  springt die Karte via ParentChange an ihren
                                     //  Listenplatz zurück). Während des Ziehens ist barCard
-                                    //  Kind von barContainer → x/y sind Leisten-Koordinaten.
+                                    //  Kind von barContainer -> x/y sind Leisten-Koordinaten.
                                     //  Robuste Geometrie STATT barCard.Drag.drop(): Letzteres
                                     //  lieferte durch das Umparenten/Live-Umsortieren
-                                    //  unzuverlässig Qt.IgnoreAction → ein INNERHALB der
+                                    //  unzuverlässig Qt.IgnoreAction -> ein INNERHALB der
                                     //  Leiste losgelassenes Item wurde fälschlich entfernt
                                     //  statt umsortiert.
                                     var cx = barCard.x + barCard.width / 2
@@ -834,7 +834,7 @@ Item {
                                     var wasHeld = held
                                     held = false
                                     if (!wasHeld) return
-                                    //  Innerhalb der Leiste → Umsortierung (onEntered)
+                                    //  Innerhalb der Leiste -> Umsortierung (onEntered)
                                     //  beibehalten. Nur bewusstes Herausziehen entfernt.
                                     var inside = cx >= 0 && cx <= barContainer.width
                                                  && cy >= -14 && cy <= barContainer.height + 14
@@ -907,7 +907,7 @@ Item {
                                 // Umsortieren: zieht ein anderes Leisten-Item über
                                 // dieses, wandert es live an diese Position. Das
                                 // Entfernen/Beibehalten entscheidet jetzt onReleased
-                                // geometrisch (s. o.) — daher hier kein onDropped nötig.
+                                // geometrisch (s. o.) - daher hier kein onDropped nötig.
                                 DropArea {
                                     anchors.fill: parent
                                     keys: ["bar-item"]

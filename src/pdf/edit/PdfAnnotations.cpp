@@ -13,8 +13,8 @@ using namespace mg::pdfobj;
 namespace {
 
 // ── Arten ───────────────────────────────────────────────────────────────────
-//  /Subtype → Art. Alles, was hier NICHT auftaucht, gehört entweder einer
-//  anderen Einheit (Widget/Link/Medien) oder ist uns unbekannt — beides führt
+//  /Subtype -> Art. Alles, was hier NICHT auftaucht, gehört entweder einer
+//  anderen Einheit (Widget/Link/Medien) oder ist uns unbekannt - beides führt
 //  zum Überspringen, nie zum Raten.
 mg::PdfAnnotKind kindOf(const QByteArray& subtype) {
     if (subtype == "/Text")      return mg::PdfAnnotKind::Text;
@@ -75,7 +75,7 @@ QVector<QVector<double>> groupsOfArray(const QByteArray& arr) {
 }
 
 // ── /DA (nur /FreeText) ─────────────────────────────────────────────────────
-//  „/Helv 12 Tf 0 0 1 rg" → Größe und Textfarbe. Fehlt etwas, bleibt es beim
+//  „/Helv 12 Tf 0 0 1 rg" -> Größe und Textfarbe. Fehlt etwas, bleibt es beim
 //  Standardwert; geraten wird nicht.
 void parseDa(const QByteArray& da, qreal* sizePt, QColor* color) {
     static const QRegularExpression tf(
@@ -103,7 +103,7 @@ void parseDa(const QByteArray& da, qreal* sizePt, QColor* color) {
 }
 
 // ── Rechteck ────────────────────────────────────────────────────────────────
-//  /Rect ist ein Paar GEGENÜBERLIEGENDER Ecken in beliebiger Reihenfolge —
+//  /Rect ist ein Paar GEGENÜBERLIEGENDER Ecken in beliebiger Reihenfolge -
 //  erst normalisieren, dann beide Ecken in Anzeigekoordinaten abbilden und
 //  daraus wieder ein normalisiertes Rechteck bauen (bei 90°/270° tauschen
 //  Breite und Höhe, deshalb nicht einfach Punkt + Größe).
@@ -146,7 +146,7 @@ qreal borderWidthOf(const mg::pdfobj::PdfDoc& doc, const QByteArray& dict) {
 
 
 // ── Schreiben: Bausteine ────────────────────────────────────────────────────
-//  Farbe → PDF-Array „[r g b]" (leer, wenn ungültig = „keine Farbe").
+//  Farbe -> PDF-Array „[r g b]" (leer, wenn ungültig = „keine Farbe").
 QByteArray colorArray(const QColor& c) {
     if (!c.isValid())
         return {};
@@ -173,7 +173,7 @@ QByteArray subtypeName(mg::PdfAnnotKind k) {
     }
 }
 
-//  Ellipse aus vier kubischen Bézier-Bögen (k = 0.5523 · r) — dieselbe
+//  Ellipse aus vier kubischen Bézier-Bögen (k = 0.5523 · r) - dieselbe
 //  Mathematik wie im Vektor-Export, damit Anzeige und Datei übereinstimmen.
 QByteArray ellipsePath(qreal x, qreal y, qreal w, qreal h) {
     const qreal cx = x + w/2, cy = y + h/2, rx = w/2, ry = h/2;
@@ -223,7 +223,7 @@ QVector<QString> wrapText(const QString& text, qreal widthPt, qreal sizePt) {
 //  Der Inhalt EINES Erscheinungsbildes, gezeichnet im LOKALEN Raum der
 //  Annotation: (0|0) ist die untere linke Ecke ihres Rechtecks. `w`/`h` sind
 //  seine Maße in Punkten. `fontRes` ist true, wenn der Strom eine Schrift
-//  braucht (nur FreeText/Text) — der Aufrufer hängt sie dann in /Resources.
+//  braucht (nur FreeText/Text) - der Aufrufer hängt sie dann in /Resources.
 QByteArray appearanceOps(const mg::PdfAnnotation& a, qreal w, qreal h,
                          const QVector<QPointF>& localLine,
                          const QVector<QVector<QPointF>>& localInk,
@@ -382,7 +382,7 @@ bool PdfAnnotations::read(const QString& path, QVector<PdfAnnotation>* out,
             const int objNum = it.next().captured(1).toInt();
             const QByteArray dict = doc.dictOf(objNum);
             if (dict.isEmpty())
-                continue;                   // tote Referenz — überspringen
+                continue;                   // tote Referenz - überspringen
 
             const PdfAnnotKind kind = kindOf(nameValue(dict, "Subtype"));
             if (kind == PdfAnnotKind::Unknown)
@@ -451,7 +451,7 @@ bool PdfAnnotations::read(const QString& path, QVector<PdfAnnotation>* out,
             if (kind == PdfAnnotKind::Highlight || kind == PdfAnnotKind::Underline
                 || kind == PdfAnnotKind::StrikeOut) {
                 //  /QuadPoints: je markiertem Bereich VIER Eckpunkte (Reihenfolge
-                //  ist in der Praxis uneinheitlich) — deshalb Hülle statt Ecken.
+                //  ist in der Praxis uneinheitlich) - deshalb Hülle statt Ecken.
                 const QVector<double> v = numbersOfArray(doc.resolved(dict, "QuadPoints"));
                 for (int k = 0; k + 7 < v.size(); k += 8) {
                     double lo_x = v[k], hi_x = v[k], lo_y = v[k+1], hi_y = v[k+1];
@@ -499,7 +499,7 @@ bool PdfAnnotations::write(const QString& inputPath, const QString& outputPath,
     pdfobj::IncrementalUpdate up(doc);
 
     //  Genau EINE Schrift und EIN Transparenz-Zustand für alle neuen
-    //  Erscheinungsbilder — lazy, damit ein Dokument ohne Text/Deckkraft auch
+    //  Erscheinungsbilder - lazy, damit ein Dokument ohne Text/Deckkraft auch
     //  keine ungenutzten Objekte bekommt.
     int fontObj = -1;
     auto ensureFont = [&]() {
@@ -562,7 +562,7 @@ bool PdfAnnotations::write(const QString& inputPath, const QString& outputPath,
             res += " /Font << /MGF " + QByteArray::number(ensureFont()) + " 0 R >>";
         if (needsAlpha) {
             //  Deckkraft (und beim Markieren zusätzlich Multiplizieren) als
-            //  Grafikzustand — inline im /Resources, das spart ein Objekt.
+            //  Grafikzustand - inline im /Resources, das spart ein Objekt.
             res += " /ExtGState << /GSa << /Type /ExtGState /ca "
                  + num(qBound(0.0, a.opacity, 1.0)) + " /CA "
                  + num(qBound(0.0, a.opacity, 1.0));
@@ -628,7 +628,7 @@ bool PdfAnnotations::write(const QString& inputPath, const QString& outputPath,
             d += q + "]";
         }
         if (a.kind == PdfAnnotKind::FreeText) {
-            //  /DA ist für FreeText Pflicht — auch wenn wir das Aussehen selbst
+            //  /DA ist für FreeText Pflicht - auch wenn wir das Aussehen selbst
             //  liefern, richten sich Betrachter beim NACHbearbeiten danach.
             const qreal size = a.fontSizePt > 0.0 ? a.fontSizePt : 11.0;
             const QColor tc  = a.textColor.isValid() ? a.textColor : QColor(Qt::black);
@@ -650,14 +650,14 @@ bool PdfAnnotations::write(const QString& inputPath, const QString& outputPath,
             continue;
         const auto it = doc.annotPage.constFind(n);
         if (it == doc.annotPage.constEnd())
-            continue;                       // steht auf keiner Seite → nichts zu tun
+            continue;                       // steht auf keiner Seite -> nichts zu tun
         drop.insert(n);
         if (!perPage.contains(it.value()))
             perPage.insert(it.value(), {});
     }
 
     //  Je betroffener Seite das /Annots-Array fortschreiben. Ist es eine
-    //  REFERENZ, wird das Array-Objekt ersetzt — sonst die Seite selbst; so
+    //  REFERENZ, wird das Array-Objekt ersetzt - sonst die Seite selbst; so
     //  bleibt eine von mehreren Seiten geteilte Liste unangetastet.
     for (auto it = perPage.constBegin(); it != perPage.constEnd(); ++it) {
         const int pageObj = doc.pageObjs.at(it.key());
@@ -667,7 +667,7 @@ bool PdfAnnotations::write(const QString& inputPath, const QString& outputPath,
         for (int n : it.value())
             refs += QByteArray::number(n) + " 0 R ";
 
-        //  Bestehende Einträge übernehmen — ohne die gestrichenen.
+        //  Bestehende Einträge übernehmen - ohne die gestrichenen.
         auto keptOf = [&](const QByteArray& arr) {
             QByteArray kept;
             static const QRegularExpression re(QStringLiteral("(\\d+)\\s+(\\d+)\\s+R"));

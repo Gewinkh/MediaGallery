@@ -9,13 +9,13 @@ import "../pdf"
 import "../tags"
 
 // ─────────────────────────────────────────────────────────────────────────────
-//  FullscreenViewer.qml — Vollbild-Anzeige-Verbund (ersetzt FullscreenView/
+//  FullscreenViewer.qml - Vollbild-Anzeige-Verbund (ersetzt FullscreenView/
 //  ImageViewerWindow/ImageViewer.qml). StackView-Seite "fullscreen" (Phase 1).
 //
-//  • Dispatch nach Medientyp über EINEN Loader → nur das aktive Medium ist
+//  • Dispatch nach Medientyp über EINEN Loader -> nur das aktive Medium ist
 //    dekodiert; beim Wechsel/Verlassen release() (RAM-Prio 1).
 //  • Navigation prev/next/zufall ausschließlich über die Proxy-Reihenfolge
-//    (galleryModel.*At / rowForPath / randomRow) — keine eigene Liste.
+//    (galleryModel.*At / rowForPath / randomRow) - keine eigene Liste.
 //  • Metadaten-Overlay (Name/Datum/Tags) + Inline-Edit via Bridge.
 //  • Video-Mode "external": Medium wird im Systemplayer geöffnet (Viewer.bridge).
 // ─────────────────────────────────────────────────────────────────────────────
@@ -30,41 +30,61 @@ FocusScope {
     //  Bei mehr als einer offenen Datei (splitActive) lässt sich diese Kachel
     //  über ihre obere Leiste per Klick+Ziehen verschieben; die Drop-Zonen und
     //  das Anwenden des Layouts übernimmt die Shell (ApplicationShell). Die
-    //  Koordinaten sind Viewer-lokal — die Shell mappt sie auf die Split-Seite.
+    //  Koordinaten sind Viewer-lokal - die Shell mappt sie auf die Split-Seite.
     signal paneDragStarted()
     signal paneDragMoved(real x, real y)
     signal paneDragEnded(real x, real y)
     signal paneDragCanceled()
 
     // ── Geteilte Ansicht (vom Shell gesetzt) ──────────────────────────────────
-    //  splitActive = mehr als eine Datei gleichzeitig offen → die Kopfleiste
+    //  splitActive = mehr als eine Datei gleichzeitig offen -> die Kopfleiste
     //    dieser Kachel wird zur Ziehfläche fürs Docking und das immersive
     //    Vollbild (F) entfällt; bei genau einer Datei ist es wieder verfügbar.
-    //  canAddMore  = es lassen sich noch weitere Dateien hinzufügen (< 4) →
+    //  canAddMore  = es lassen sich noch weitere Dateien hinzufügen (< 4) ->
     //    steuert die Sichtbarkeit des „+"-Buttons in der Kopfleiste.
     property bool splitActive: false
     property bool canAddMore: true
 
     // ── Immersives Vollbild (Taste F) ─────────────────────────────────────────
     //  Vom Shell gesetzt (er schaltet zusätzlich das Fenster auf Vollbild und
-    //  blendet die Menüleiste aus). Hier bedeutet es: KEINE Kachel-Chrome mehr —
+    //  blendet die Menüleiste aus). Hier bedeutet es: KEINE Kachel-Chrome mehr -
     //  die obere Leiste (Zurück/Name/Datum/Tags) verschwindet, übrig bleibt
     //  allein die Steuerleiste der Surface
     //  (bei Video/Audio der Fortschrittsregler).
-    //  Nur im Einzel-View: in der geteilten Ansicht ist die Kopfleiste zugleich
-    //  die Ziehfläche fürs Docking und darf nicht verschwinden.
+    //  Gilt AUCH in der geteilten Ansicht (Nutzerbefund: dort war `F` tot).
+    //  Der Preis ist bekannt und gewollt: die Kopfleiste ist zugleich die
+    //  Ziehfläche fürs Docking - solange die Chrome weg ist, lässt sich eine
+    //  Kachel nicht umsortieren. Ein `F`/`Esc` holt sie zurück.
+    //  Optionen-Modus (Alt+S) der HÄLFTE, zu der diese Kachel gehört - nicht
+    //  appweit (s. PaneController::optionsVisible).
+    property bool optionsVisible: App.optionsVisible
+
     property bool immersive: false
-    readonly property bool immersiveCapable: !root.splitActive && root.path.length > 0
-    //  Wirksam nur im Einzel-View — käme in der geteilten Ansicht doch einmal
-    //  ein gesetztes `immersive` an, bleibt die Kopfleiste (Drag-Fläche) da.
-    readonly property bool immersiveActive: root.immersive && !root.splitActive
+    readonly property bool immersiveCapable: root.path.length > 0
+    readonly property bool immersiveActive: root.immersive
     signal immersiveToggleRequested()
+
+    //  Wo steht die Wiedergabe dieser Kachel? (Nur Video/Audio-Flächen können
+    //  das beantworten; sonst −1.) Der Player-Modus übernimmt damit die Stelle,
+    //  statt den Titel von vorn zu beginnen.
+    function mediaPositionMs() {
+        return (surface.item && surface.item.playbackPositionMs !== undefined)
+               ? surface.item.playbackPositionMs : -1
+    }
+    function mediaRunning() {
+        return !!(surface.item && surface.item.playbackRunning === true)
+    }
+    //  Wiedergabe dieser Kachel anhalten (Übergabe an den Player-Modus).
+    function pauseMedia() {
+        if (surface.item && typeof surface.item.pausePlayback === "function")
+            surface.item.pausePlayback()
+    }
 
     //  paneActive = diese Kachel ist die AKTIVE (fokussierte) im Split-View.
     //  Im Einzel-View immer true. Alle fensterweiten Tastenkürzel dieser Kachel
     //  (Alt+S hier, plus die der geladenen Surface) sind an paneActive gebunden:
     //  ohne diese Bindung definieren bei 2–4 offenen Kacheln ALLE dieselben
-    //  Qt.WindowShortcut-Sequenzen (Ctrl+C, Alt+Q, Entf …) → Qt meldet
+    //  Qt.WindowShortcut-Sequenzen (Ctrl+C, Alt+Q, Entf …) -> Qt meldet
     //  Mehrdeutigkeit und feuert KEINES. Der Shell setzt paneActive über den
     //  activePaneIndex; paneActivated meldet einen Klick/Fokuswechsel zurück.
     property bool paneActive: true
@@ -96,13 +116,13 @@ FocusScope {
     }
     readonly property bool _isWebRenderable: root.type === 4 && root._isHtmlPath(root.path)
     // WebEngine ist LAZY (WebEngineController): die Vorschau existiert nur,
-    // wenn WebEngine.ready — vorher fällt HTML IMMER auf TextSurface zurück
+    // wenn WebEngine.ready - vorher fällt HTML IMMER auf TextSurface zurück
     // und es wird garantiert keine WebEngineView instanziiert.
     readonly property bool _showWebPreview:  root._isWebRenderable && root._htmlPreview
                                              && WebEngine.ready
 
     // Lade-Gating: Die schwere Medien-/PDF-Last erst NACH dem StackView-Übergang
-    // anstoßen (Status Active) → die Öffnen-Animation läuft flüssig über einen
+    // anstoßen (Status Active) -> die Öffnen-Animation läuft flüssig über einen
     // leichten Platzhalter statt gegen das synchrone PDF-Laden/Erstrendern.
     property bool   _loaded: false
     property int    _startType: -1   // Medientyp des Einstiegspfads (schon VOR _loaded bekannt)
@@ -112,7 +132,7 @@ FocusScope {
     //  Träger des Track-Changes-Knopfes; der Bild-Editor folgt, sobald er
     //  dieselbe API trägt.
     //  PDF (3) und Bild (0) tragen beide einen Editor mit derselben
-    //  Track-Changes-API — der Knopf ist deshalb für beide derselbe.
+    //  Track-Changes-API - der Knopf ist deshalb für beide derselbe.
     readonly property var _trackCtl: ((root.type === 3 || root.type === 0) && surface.item
                                       && surface.item.editCtl !== undefined)
                                      ? surface.item.editCtl : null
@@ -126,8 +146,8 @@ FocusScope {
     Timer { id: skelDelay; interval: 300; repeat: false
             onTriggered: root._skelVisible = root.pdfLoading }
     onPdfLoadingChanged: {
-        if (root.pdfLoading) { root._skelVisible = false; skelDelay.restart() }   // (neu) am Laden → 300ms warten
-        else { skelDelay.stop(); root._skelVisible = false }                       // fertig / kein PDF → weg
+        if (root.pdfLoading) { root._skelVisible = false; skelDelay.restart() }   // (neu) am Laden -> 300ms warten
+        else { skelDelay.stop(); root._skelVisible = false }                       // fertig / kein PDF -> weg
     }
 
     function _maybeLoad() {
@@ -172,13 +192,13 @@ FocusScope {
 
         // Trigger der lazy WebEngine-Initialisierung: das Öffnen einer
         // .html/.htm-Datei fordert HTML-Rendering an. Der Aufruf ist synchron
-        // und idempotent — danach ist WebEngine.ready und der Loader unten
+        // und idempotent - danach ist WebEngine.ready und der Loader unten
         // wählt die gerenderte Vorschau (sonst Quelltext-Fallback).
         if (root._isWebRenderable)
             WebEngine.ensureInitializedForHtml()
 
         // Inhalt explizit nachziehen: Bei Navigation zwischen Medien GLEICHEN Typs
-        // bleibt das Loader-Item dasselbe (onItemChanged feuert nicht) — sonst
+        // bleibt das Loader-Item dasselbe (onItemChanged feuert nicht) - sonst
         // bliebe der alte Inhalt stehen. Der Loader ist synchron, d. h. nach dem
         // Setzen von 'type' ist surface.item bereits das passende Item.
         if (surface.item && surface.item.hasOwnProperty("source"))
@@ -193,7 +213,7 @@ FocusScope {
     //  Geblaettert wird INNERHALB des Ordners, aus dem die offene Datei stammt:
     //  seit aufgeklappte Unterordner in derselben Liste stehen, waere „naechste
     //  Zeile" sonst ein Sprung ueber die Ordnergrenze. Ordnerkacheln werden
-    //  uebersprungen — sie sind keine Datei. Beides entscheidet der Proxy
+    //  uebersprungen - sie sind keine Datei. Beides entscheidet der Proxy
     //  (galleryModel.stepRow); −1 heisst „hier ist nichts anzusteuern".
     function nextRow() {
         if (galleryModel.count === 0) return
@@ -214,7 +234,7 @@ FocusScope {
     Rectangle { anchors.fill: parent; color: "#0a0a0a" }
 
     //  Klick/Antippen irgendwo in dieser Kachel meldet sie als aktive Kachel
-    //  (Split-View). Passiver Grab (TapHandler) → nimmt den darunterliegenden
+    //  (Split-View). Passiver Grab (TapHandler) -> nimmt den darunterliegenden
     //  MouseAreas/Handlern NICHTS weg; reagiert nur auf den Druck-Beginn.
     TapHandler {
         acceptedButtons: Qt.LeftButton | Qt.RightButton | Qt.MiddleButton
@@ -233,7 +253,7 @@ FocusScope {
     // ── PDF-Ladeanzeige: zuerst leere (weiße) Seite, ab 300 ms das Skeleton ──────
     //  Beim Öffnen erscheint SOFORT eine leere PDF-Seite (kein Blackscreen). Dauert
     //  das Laden länger als 300 ms, blenden Inhalts-Balken + Shimmer darüber ein
-    //  (Skeleton). Größe/Position UND das Seitenweiß spiegeln die spätere PDF-Seite →
+    //  (Skeleton). Größe/Position UND das Seitenweiß spiegeln die spätere PDF-Seite ->
     //  nahtloser Übergang. Leicht genug, dass die Öffnen-Animation flüssig bleibt.
     Item {
         id: pdfSkeleton
@@ -242,7 +262,7 @@ FocusScope {
         visible: opacity > 0.01
         opacity: root.pdfLoading ? 1 : 0          // leere Seite SOFORT beim Laden; weg, sobald fertig
 
-        // Viewport, in dem die PDF-Seite NACH dem Laden erscheint — spiegelt die
+        // Viewport, in dem die PDF-Seite NACH dem Laden erscheint - spiegelt die
         // PdfSurface-Geometrie: unter Metadaten-Leiste + PdfSurface-Toolbar (40 px,
         // erscheint mit docReady) bis zum unteren Rand. Seiten-Fit
         // wie fitMode "page": min(wFit,hFit) gegen (Viewport − 24); Standardmaß A4
@@ -253,7 +273,7 @@ FocusScope {
         readonly property real _vpH:      Math.max(0, _vpBottom - _vpTop)
         readonly property real _fit:      Math.max(0, Math.min((_vpW - 24) / 595, (_vpH - 24) / 842))
 
-        // Leere PDF-Seite (Seitenweiß) — Größe/Position wie die spätere A4-Seite.
+        // Leere PDF-Seite (Seitenweiß) - Größe/Position wie die spätere A4-Seite.
         Rectangle {
             id: skelPage
             width:  595 * pdfSkeleton._fit
@@ -263,7 +283,7 @@ FocusScope {
             color: "#fbfbfa"
             clip: true
 
-            // Skeleton-Schicht (Inhalts-Balken + Shimmer) — ERST nach 300 ms, weich ein.
+            // Skeleton-Schicht (Inhalts-Balken + Shimmer) - ERST nach 300 ms, weich ein.
             Item {
                 id: skelContent
                 anchors.fill: parent
@@ -292,7 +312,7 @@ FocusScope {
                                 0.98, 0.94, 0.80]
                         Rectangle {
                             //  `pragma ComponentBehavior: Bound` (Zeile 1) verlangt die
-                            //  ausdrückliche Deklaration — ohne sie blieb `modelData`
+                            //  ausdrückliche Deklaration - ohne sie blieb `modelData`
                             //  undefiniert (ReferenceError, Balkenbreite NaN).
                             required property real modelData
                             width: parent.width * modelData
@@ -303,7 +323,7 @@ FocusScope {
                     }
                 }
 
-                // Shimmer: heller, leicht geneigter Streifen — sichtbar auf den Balken.
+                // Shimmer: heller, leicht geneigter Streifen - sichtbar auf den Balken.
                 Rectangle {
                     id: skelSheen
                     height: skelPage.height * 1.5
@@ -352,7 +372,7 @@ FocusScope {
     //  Reserviert die Hoehe der oberen Leiste (topBar) in der
     //  jeweiligen Surface, sodass deren eigene Toolbar/Steuerleiste NICHT mit
     //  der globalen FullscreenViewer-Chrome ueberlappen. Betrifft nur noch
-    //  topInset (topBar): eine globale UNTERE Chrome gibt es nicht mehr — die
+    //  topInset (topBar): eine globale UNTERE Chrome gibt es nicht mehr - die
     //  Vor/Zurueck-Schaltflaechen sind entfallen, die Navigation laeuft ueber
     //  die Pfeiltasten. `bottomInset` bleibt Teil des Surface-Vertrags (0).
     Binding {
@@ -364,7 +384,7 @@ FocusScope {
         restoreMode: Binding.RestoreNone
     }
     //  Aktiv-Zustand dieser Kachel an die Surfaces mit fensterweiten Kürzeln
-    //  (Bild/PDF/DOCX) durchreichen → deren Shortcuts feuern nur in der
+    //  (Bild/PDF/DOCX) durchreichen -> deren Shortcuts feuern nur in der
     //  fokussierten Kachel (keine Split-View-Mehrdeutigkeit).
     Binding {
         target: surface.item
@@ -391,7 +411,7 @@ FocusScope {
 
     // ── HTML (gerenderte Vorschau über WebEngine) ─────────────────────────────
     //  Indirektion statt direkter HtmlSurface-Instanz: HtmlSurface.qml wird per
-    //  URL-Loader erst zur LAUFZEIT kompiliert — der QtWebEngine-Import (und
+    //  URL-Loader erst zur LAUFZEIT kompiliert - der QtWebEngine-Import (und
     //  damit die WebEngineView) wird also niemals angefasst, solange WebEngine
     //  nicht Ready ist. Der innere Loader ist hart auf WebEngine.ready gegated.
     Component {
@@ -409,7 +429,7 @@ FocusScope {
                 id: htmlInner
                 anchors.fill: parent
                 // Harte Garantie: ohne Ready wird HtmlSurface (und damit die
-                // WebEngineView) nie erzeugt — dieser Zweig wird ohnehin nur
+                // WebEngineView) nie erzeugt - dieser Zweig wird ohnehin nur
                 // bei _showWebPreview (inkl. WebEngine.ready) gewählt.
                 source: WebEngine.ready ? "qrc:/qml/viewer/HtmlSurface.qml" : ""
             }
@@ -453,12 +473,12 @@ FocusScope {
     Rectangle {
         id: topBar
         anchors { left: parent.left; right: parent.right; top: parent.top }
-        //  ~30 % niedriger als früher (52 → 36 bzw. 96 → 67): der Dateiname ist
+        //  ~30 % niedriger als früher (52 -> 36 bzw. 96 -> 67): der Dateiname ist
         //  in den Fenstertitel gewandert, die Leiste trägt nur noch Bedienung.
-        height: App.optionsVisible ? 67 : 36
+        height: root.optionsVisible ? 67 : 36
         color: Qt.rgba(0, 0, 0, 0.55)
         opacity: root.barOpacity
-        // Im immersiven Vollbild ist die Leiste weg — sie kommt aber zurück,
+        // Im immersiven Vollbild ist die Leiste weg - sie kommt aber zurück,
         // sobald der Zeiger an den OBEREN RAND fährt (Muster: Videoplayer,
         // Browser). Ohne das wäre im Vollbild weder das Ansichts-Menü noch der
         // Zurück-Knopf erreichbar (Nutzerbefund). Sie legt sich dabei ÜBER den
@@ -468,11 +488,11 @@ FocusScope {
         Behavior on opacity { NumberAnimation { duration: 180 } }
 
         // ── Docking-Drag-Fläche (UNTER den Bedienelementen) ───────────────────
-        //  Erstes Kind der Leiste → Buttons und (im Alt+S-Modus) das aktive
+        //  Erstes Kind der Leiste -> Buttons und (im Alt+S-Modus) das aktive
         //  Namensfeld liegen darüber und behalten ihre Klicks; Press+Ziehen auf
         //  freien Leistenbereichen (und auf dem außerhalb des Alt+S-Modus
         //  deaktivierten Namensfeld) startet den Kachel-Drag. Ein Drag beginnt
-        //  erst nach einer kleinen Bewegungsschwelle — ein einfacher Klick
+        //  erst nach einer kleinen Bewegungsschwelle - ein einfacher Klick
         //  bleibt folgenlos und stört den Edit-Modus nicht.
         MouseArea {
             id: paneDragArea
@@ -518,46 +538,36 @@ FocusScope {
                 width: parent.width
                 height: 30
 
-                ToolButton {
-                    id: backBtn
-                    anchors.left: parent.left
-                    anchors.verticalCenter: parent.verticalCenter
-                    text: "\u2190"
-                    font.pixelSize: 18
-                    onClicked: root.backRequested()
-                }
-
-                // Buttons bündig am rechten Rand
-                ChromeBtn {
-                    id: diceBtn
+                //  Rechte Knopfgruppe: eigene, gedeckelte Leiste (höchstens die
+                //  halbe Zeile). Vorher hingen die Knöpfe einzeln am Rand und
+                //  wuchsen nach links, bis sie die linke Gruppe verdeckten.
+                ScrollableBar {
+                    id: headRightBar
                     anchors.right: parent.right
                     anchors.verticalCenter: parent.verticalCenter
-                    kind: "dice"
-                    tip: App.uiText(App.language, "ViewerRandom")
-                    active: root.randomNext
-                    onActivated: root.randomNext = !root.randomNext
-                }
-                // Datei zur geteilten Ansicht hinzufügen — kleiner „Datei +"-Button
+                    height: 30
+                    width: Math.min(contentWidth, parent.width * 0.5)
+                    spacing: 6
+
+                // Datei zur geteilten Ansicht hinzufügen - kleiner „Datei +"-Button
                 // direkt neben dem Datum-Button (gleicher Stil wie Datum/Zufall).
                 // Nur sichtbar, solange < 4 Dateien offen sind (canAddMore); im
                 // 4er-Splitscreen entfällt er.
                 ChromeBtn {
                     id: addBtn
                     visible: root.canAddMore
-                    anchors.right: diceBtn.left; anchors.rightMargin: 8
                     anchors.verticalCenter: parent.verticalCenter
                     kind: "addfile"
                     tip: App.uiText(App.language, "SplitAddFile")
                     onActivated: root.addFileRequested()
                 }
 
-                // Quelltext ⇄ gerenderte HTML-Vorschau — nur sichtbar bei .html/.htm.
+                // Quelltext ⇄ gerenderte HTML-Vorschau - nur sichtbar bei .html/.htm.
                 ChromeBtn {
                     id: previewBtn
                     // Nur anzeigen, wenn HTML-Rendering TATSÄCHLICH verfügbar
-                    // ist (WebEngine bereit) — sonst gibt es nichts umzuschalten.
+                    // ist (WebEngine bereit) - sonst gibt es nichts umzuschalten.
                     visible: root._isWebRenderable && WebEngine.ready
-                    anchors.right: addBtn.visible ? addBtn.left : diceBtn.left; anchors.rightMargin: 8
                     anchors.verticalCenter: parent.verticalCenter
                     kind: "html"
                     active: root._htmlPreview
@@ -566,59 +576,61 @@ FocusScope {
                     onActivated: {
                         // Vor dem Komponentenwechsel die aktuelle Surface freigeben:
                         // TextSurface sichert dabei ungespeicherte Änderungen, HtmlSurface
-                        // stoppt das Laden. Danach kippt der Modus → Loader tauscht die Surface.
+                        // stoppt das Laden. Danach kippt der Modus -> Loader tauscht die Surface.
                         root.releaseCurrent()
                         root._htmlPreview = !root._htmlPreview
                     }
                 }
-
-                //  ── Datei-Menü ───────────────────────────────────────────────
-                //  Steht wie in jeder Menüleiste VOR „Ansicht" und trägt, was die
-                //  DATEI betrifft. Erscheint nur, wo es einen Editor gibt (PDF,
-                //  Bild) — bei Video oder Audio gäbe es nichts hineinzustellen.
-                Rectangle {
-                    id: fileBtn
-                    visible: root._trackCtl !== null
-                    anchors.left: backBtn.right; anchors.leftMargin: 6
+                ChromeBtn {
+                    id: diceBtn
                     anchors.verticalCenter: parent.verticalCenter
-                    width: fileLbl.implicitWidth + 22; height: 26; radius: 6
-                    color: fileMenu.opened ? Qt.rgba(1, 1, 1, 0.18)
-                         : (fileHover.hovered ? Qt.rgba(1, 1, 1, 0.12) : "transparent")
-                    border.width: 1
-                    border.color: fileMenu.opened ? Qt.rgba(1, 1, 1, 0.35)
-                                                  : Qt.rgba(1, 1, 1, 0.18)
+                    kind: "dice"
+                    tip: App.uiText(App.language, "ViewerRandom")
+                    active: root.randomNext
+                    onActivated: root.randomNext = !root.randomNext
+                }
+                }   // Ende headRightBar
 
-                    Row {
-                        id: fileLbl
-                        anchors.centerIn: parent
-                        spacing: 5
-                        Text {
-                            anchors.verticalCenter: parent.verticalCenter
-                            text: App.uiText(App.language, "FileMenuTitle")
-                            color: "white"; font.pixelSize: 12
-                        }
+                //  ── (früher „Datei") ─────────────────────────────────────────
+                //  Der Knopf ist ENTFALLEN: sein einziger Eintrag („Bearbeitungen
+                //  entfernen") steht jetzt im Menü „Dokument". Zwei Menüs desselben
+                //  Namens in einem Fenster - oben appweit, hier dateibezogen -
+                //  waren nicht auseinanderzuhalten (Nutzerbefund).
+                //  Alles Linke steht in EINER blätterbaren Leiste (Strg + Rad):
+                //  sie endet vor der rechten Knopfgruppe, kann also nie darüber
+                //  laufen, und bei zu wenig Platz bleibt jeder Knopf über das
+                //  Rad erreichbar. Vorher hingen die Knöpfe in einer Kette und
+                //  das Namensfeld spannte bis zur rechten Gruppe: im schmalen
+                //  Fenster wurde seine Breite negativ und die Gruppen
+                //  überlappten (Nutzerbild `tests/Viewer.png`).
+                ScrollableBar {
+                    id: headLeftBar
+                    anchors.left: parent.left
+                    anchors.right: headRightBar.left
+                    anchors.rightMargin: 10
+                    anchors.verticalCenter: parent.verticalCenter
+                    height: 30
+                    spacing: 6
+
+                //  Feste Größe wie die Menüknöpfe daneben (26 px hoch): ein
+                //  `ToolButton` ohne Maße bringt ~40 px mit und war damit HÖHER
+                //  als die 30-px-Zeile - alles daneben rutschte dadurch nach
+                //  oben (Nutzerbild `Dokument.png`).
+                ToolButton {
+                    id: backBtn
+                    anchors.verticalCenter: parent.verticalCenter
+                    implicitWidth: 32; implicitHeight: 26
+                    padding: 0
+                    onClicked: root.backRequested()
+                    //  Der Inhalt eines `ToolButton` füllt seine Fläche - ein
+                    //  Symbol mit fester Größe säße darin links. Deshalb ein
+                    //  füllendes `Item` mit zentriertem Symbol.
+                    contentItem: Item {
                         DrawnIcon {
-                            anchors.verticalCenter: parent.verticalCenter
-                            name: "chevron-down"; size: 10; color: "white"
-                        }
-                    }
-                    HoverHandler { id: fileHover }
-                    TapHandler {
-                        onTapped: fileMenu.popup(fileBtn, 0, fileBtn.height + 2)
-                    }
-
-                    ThemedMenu {
-                        id: fileMenu
-                        MenuItem {
-                            text: App.uiText(App.language, "CtxRemoveEdits")
-                            //  Die beiden Editoren zählen ihre Objekte unter
-                            //  verschiedenen Namen (`boxCount` bzw. `annCount`) —
-                            //  hier zählt nur, ob es überhaupt welche gibt.
-                            enabled: root._trackCtl
-                                     && ((root._trackCtl.boxCount !== undefined
-                                          ? root._trackCtl.boxCount
-                                          : root._trackCtl.annCount) > 0)
-                            onTriggered: root._trackCtl.discardAllAnnotations()
+                            anchors.centerIn: parent
+                            name: "chevron-left"
+                            size: 16
+                            color: "white"
                         }
                     }
                 }
@@ -630,8 +642,6 @@ FocusScope {
                 //  und jeder Eintrag trägt hier seinen Namen statt nur ein Bild.
                 Rectangle {
                     id: viewBtn
-                    anchors.left: fileBtn.visible ? fileBtn.right : backBtn.right
-                    anchors.leftMargin: 6
                     anchors.verticalCenter: parent.verticalCenter
                     width: viewLbl.implicitWidth + 22; height: 26; radius: 6
                     color: viewMenu.opened ? Qt.rgba(1, 1, 1, 0.18)
@@ -646,7 +656,10 @@ FocusScope {
                         spacing: 5
                         Text {
                             anchors.verticalCenter: parent.verticalCenter
-                            text: App.uiText(App.language, "ViewMenuTitle")
+                            //  „Dokument", nicht „Ansicht": das Menü betrifft DIESE
+                            //  Datei. Was Fenster und App angeht (Optionen-Modus,
+                            //  Kachelgröße, Teilen, Vollbild), steht oben.
+                            text: App.uiText(App.language, "MenuDocument")
                             color: "white"; font.pixelSize: 12
                         }
                         DrawnIcon {
@@ -662,24 +675,18 @@ FocusScope {
                     ThemedMenu {
                         id: viewMenu
 
-                        MenuItem {
-                            text: App.uiText(App.language, "ViewerRandom")
-                            checkable: true
-                            checked: root.randomNext
-                            onTriggered: root.randomNext = !root.randomNext
-                        }
+                        //  Was mit DIESER Datei zu tun hat - nach Bedeutung
+                        //  gruppiert statt nach Gewohnheit. Zufallsmodus und
+                        //  „Datei danebenlegen" stehen nicht mehr hier: dafür gibt
+                        //  es die beiden Knöpfe rechts in derselben Leiste, und
+                        //  zweimal derselbe Befehl in Sichtweite hilft niemandem.
                         MenuItem {
                             text: App.uiText(App.language, "MetaTitle")
                             onTriggered: dateEditor.openWith(root.dateTime)
                         }
                         MenuItem {
-                            text: App.uiText(App.language, "SplitAddFile")
-                            enabled: root.canAddMore
-                            onTriggered: root.addFileRequested()
-                        }
-                        MenuItem {
                             //  Nur bei HTML und nur, wenn die Vorschau überhaupt
-                            //  verfügbar ist — sonst gibt es nichts umzuschalten.
+                            //  verfügbar ist - sonst gibt es nichts umzuschalten.
                             visible: root._isWebRenderable && WebEngine.ready
                             height: visible ? implicitHeight : 0
                             text: root._htmlPreview
@@ -691,36 +698,38 @@ FocusScope {
                             }
                         }
                         MenuSeparator { }
+                        //  Bearbeitungen dieser Datei verwerfen (war das ganze
+                        //  frühere „Datei"-Menü). Erscheint nur, wo es einen
+                        //  Editor gibt (PDF, Bild).
                         MenuItem {
-                            text: App.uiText(App.language, "MenuToggleOptions")
-                            checkable: true
-                            checked: App.optionsVisible
-                            onTriggered: App.optionsVisible = !App.optionsVisible
-                        }
-                        MenuItem {
-                            text: App.uiText(App.language, "ViewMenuImmersive")
-                            enabled: root.immersiveCapable
-                            checkable: true
-                            checked: root.immersiveActive
-                            onTriggered: root.immersiveToggleRequested()
+                            visible: root._trackCtl !== null
+                            height: visible ? implicitHeight : 0
+                            text: App.uiText(App.language, "CtxRemoveEdits")
+                            //  Die beiden Editoren zählen ihre Objekte unter
+                            //  verschiedenen Namen (`boxCount` bzw. `annCount`) -
+                            //  hier zählt nur, ob es überhaupt welche gibt.
+                            enabled: root._trackCtl
+                                     && ((root._trackCtl.boxCount !== undefined
+                                          ? root._trackCtl.boxCount
+                                          : root._trackCtl.annCount) > 0)
+                            onTriggered: root._trackCtl.discardAllAnnotations()
                         }
                     }
                 }
 
                 //  ── Änderungen verfolgen ─────────────────────────────────────
                 //  Nur im Bearbeiten-Modus: außerhalb gibt es nichts aufzuzeichnen.
-                //  Bewusst ein MENÜ, kein Schalter — es soll später mehr tragen
+                //  Bewusst ein MENÜ, kein Schalter - es soll später mehr tragen
                 //  als das Aufzeichnen.
                 Rectangle {
                     id: trackBtn
                     visible: root._trackCtl !== null && root._trackCtl.editMode
-                    anchors.left: viewBtn.right; anchors.leftMargin: 6
                     anchors.verticalCenter: parent.verticalCenter
                     width: trackLbl.implicitWidth + 22; height: 26; radius: 6
                     color: trackMenu.opened ? Qt.rgba(1, 1, 1, 0.18)
                          : (trackHover.hovered ? Qt.rgba(1, 1, 1, 0.12) : "transparent")
                     border.width: 1
-                    //  Läuft die Aufzeichnung, trägt der Knopf die Akzentfarbe —
+                    //  Läuft die Aufzeichnung, trägt der Knopf die Akzentfarbe -
                     //  sonst wäre am Bildschirm nicht zu sehen, dass mitgeschrieben
                     //  wird, und man wundert sich über markierte Notizen.
                     border.color: (root._trackCtl && root._trackCtl.recording)
@@ -744,7 +753,7 @@ FocusScope {
                             text: App.uiText(App.language, "TrackMenuTitle")
                             color: "white"; font.pixelSize: 12
                         }
-                        //  Zahl der offenen Änderungen — nur wenn es welche gibt.
+                        //  Zahl der offenen Änderungen - nur wenn es welche gibt.
                         Rectangle {
                             anchors.verticalCenter: parent.verticalCenter
                             visible: root._trackCtl && root._trackCtl.trackedCount > 0
@@ -802,27 +811,25 @@ FocusScope {
 
                 TextField {
                     id: nameEdit
-                    //  NUR im Optionen-Modus (Alt+S) — dort ist das Feld das
+                    //  NUR im Optionen-Modus (Alt+S) - dort ist das Feld das
                     //  Umbenennen-Werkzeug. Als reine Anzeige wird es nicht mehr
                     //  gebraucht: der Name steht im Fenstertitel.
-                    visible: App.optionsVisible
-                    anchors.left: trackBtn.visible ? trackBtn.right : viewBtn.right
-                    anchors.leftMargin: 8
-                    anchors.right: previewBtn.visible ? previewBtn.left
-                                   : (addBtn.visible ? addBtn.left : diceBtn.left)
-                    anchors.rightMargin: 12
+                    visible: root.optionsVisible
+                    //  Feste Breite statt „bis zur rechten Gruppe": in der Reihe
+                    //  gibt es kein Dehnen, dafür kann nichts mehr überlappen.
+                    width: Math.min(320, Math.max(140, headLeftBar.width - 260))
                     anchors.verticalCenter: parent.verticalCenter
                     text: root.displayName
                     color: "white"
                     font.pixelSize: 14; font.bold: true
                     // Umbenennen NUR im Optionen-/Edit-Modus (Alt+S): außerhalb
-                    // ist das Feld deaktiviert (readOnly + keine Mauseingabe) —
+                    // ist das Feld deaktiviert (readOnly + keine Mauseingabe) -
                     // damit bleibt die Kopfleiste dort eine freie Drag-Fläche
                     // fürs Docking und versehentliche Fokus-Klicks entfallen.
-                    // Die Textfarbe ist explizit gesetzt (color) → kein
+                    // Die Textfarbe ist explizit gesetzt (color) -> kein
                     // Ausgrauen im deaktivierten Zustand.
-                    readOnly: !App.optionsVisible
-                    enabled: App.optionsVisible
+                    readOnly: !root.optionsVisible
+                    enabled: root.optionsVisible
                     background: Rectangle {
                         color: "transparent"
                         border.color: nameEdit.activeFocus ? App.themeAccent : "transparent"
@@ -834,10 +841,11 @@ FocusScope {
                             mediaModel.renameItem(root.path, t)
                     }
                 }
+                }   // ScrollableBar (linke Gruppe der Kopfleiste)
             }
 
             Row {
-                visible: App.optionsVisible
+                visible: root.optionsVisible
                 width: parent.width
                 spacing: 12
 
@@ -860,11 +868,11 @@ FocusScope {
     //  ── Kopfleiste im Vollbild hervorholen ───────────────────────────────────
     //  ZWEI verschiedene Grenzen, und das ist der Kern der Sache: Im Vollbild
     //  beginnt die WERKZEUGleiste des Editors bei y = 0. Ein breiter Auslöse-
-    //  streifen läge komplett über ihr — sie wäre nicht mehr bedienbar, weil sich
+    //  streifen läge komplett über ihr - sie wäre nicht mehr bedienbar, weil sich
     //  die Kopfleiste beim Hinsteuern davorlegt (Nutzerbefund).
     //    • AUSLÖSEN nur an der äußersten Kante (`kPeekEdge`): dorthin fährt man
     //      absichtlich, für einen Knopf zielt man auf dessen Mitte.
-    //    • HALTEN, solange der Zeiger über der eingeblendeten Leiste steht —
+    //    • HALTEN, solange der Zeiger über der eingeblendeten Leiste steht -
     //      sonst verschwände sie, bevor man ihren Knopf treffen kann.
     readonly property int kPeekEdge: 3
     property bool _barPeek: false
@@ -908,7 +916,7 @@ FocusScope {
     // ── Tastatur ────────────────────────────────────────────────────────────
     //  Pfeiltasten-Guard: Liegt der Fokus in einem EDITIERBAREN Textfeld
     //  (TextInput/TextEdit-basiert: TextField, TextArea, Editor, PDF-Notizen,
-    //  Namensfeld), gehören ←/→ ausschließlich der Cursor-Bewegung im Feld —
+    //  Namensfeld), gehören <-/-> ausschließlich der Cursor-Bewegung im Feld -
     //  der Dateiwechsel darf dann nicht ausgelöst werden. Erkennung über die
     //  gemeinsame API der Text-Items (cursorPosition + nicht readOnly).
     function _editableTextFocused() {
@@ -927,7 +935,7 @@ FocusScope {
 
     Keys.onPressed: function(event) {
         if (event.key === Qt.Key_Escape) {
-            // Im immersiven Vollbild verlässt Esc zuerst das Vollbild —
+            // Im immersiven Vollbild verlässt Esc zuerst das Vollbild -
             // erst der zweite Druck schließt die Datei.
             if (root.immersiveActive) root.immersiveToggleRequested()
             else                root.backRequested()
@@ -958,43 +966,46 @@ FocusScope {
 
     // ── S-Modus im Viewer (Alt+S) ─────────────────────────────────────────────
     //  Schaltet den Optionen-/S-Modus (App.optionsVisible) auch im geöffneten
-    //  Media Viewer um — sichtbar an der erweiterten Metadaten-Zeile der oberen
+    //  Media Viewer um - sichtbar an der erweiterten Metadaten-Zeile der oberen
     //  Leiste (Datum + Tags) und an den Kachel-Overlays nach der Rückkehr.
     //  Einheitliches Kürzel mit der Galerie-Seite: deren Alt+S-Shortcut ist per
-    //  stack.depth-Guard hier inaktiv — keine Kollision; ebenso wenig mit
+    //  stack.depth-Guard hier inaktiv - keine Kollision; ebenso wenig mit
     //  Ctrl+S (Text speichern, TextSurface) oder den übrigen Viewer-Kürzeln
-    //  (Esc/←/→/+/-/Ctrl+C/Ctrl+A). Beim Umschalten wird
+    //  (Esc/<-/->/+/-/Ctrl+C/Ctrl+A). Beim Umschalten wird
     //  die obere Leiste kurz eingeblendet, damit die Wirkung sofort sichtbar ist.
     Shortcut {
         sequence: "Alt+S"
         enabled: root.paneActive
         onActivated: {
+            //  Schaltet die HÄLFTE um (die Kachel gehört zu einer): `App`
+            //  reicht es an die fokussierte Hälfte weiter - und die ist beim
+            //  Tastendruck genau diese.
             App.toggleOptions()
             root.barOpacity = 1.0
             barTimer.restart()
         }
     }
-    //  Alt+← = zurück zur Galerie (Standard-Rücksprung, zusätzlich zu Esc);
-    //  nur in der aktiven Kachel. Kein Konflikt mit dem reinen ← (Dateiwechsel),
+    //  Alt+<- = zurück zur Galerie (Standard-Rücksprung, zusätzlich zu Esc);
+    //  nur in der aktiven Kachel. Kein Konflikt mit dem reinen <- (Dateiwechsel),
     //  da dieses ohne Alt-Modifikator läuft.
     Shortcut {
         sequence: "Alt+Left"
         enabled: root.paneActive
         onActivated: root.backRequested()
     }
-    //  D = Datum-Editor dieser Datei öffnen — NUR im Optionen-Modus (Alt+S).
+    //  D = Datum-Editor dieser Datei öffnen - NUR im Optionen-Modus (Alt+S).
     //  Ohne diese Bedingung kaperte die Einzeltaste in jedem Editor die
     //  Texteingabe; der reguläre Weg ist und bleibt der Kalender-Knopf oben
     //  rechts. (Zusätzlich unterdrücken fokussierte Eingabeflächen Einzeltasten
-    //  via ShortcutOverride — QML-Textfelder von selbst, DocxTextArea explizit.)
+    //  via ShortcutOverride - QML-Textfelder von selbst, DocxTextArea explizit.)
     Shortcut {
         sequence: "D"
-        enabled: root.paneActive && root.path.length > 0 && App.optionsVisible
+        enabled: root.paneActive && root.path.length > 0 && root.optionsVisible
         onActivated: dateEditor.openWith(root.dateTime)
     }
 
     // ── Minimalistischer Chrome-Button (flach, monochrom, theme-Akzent) ───────
-    //  Zeichnet sein Icon intern (kind) — bewusst keine farbigen Emoji mehr und
+    //  Zeichnet sein Icon intern (kind) - bewusst keine farbigen Emoji mehr und
     //  kein default-children-Alias (vermeidet Selbstreferenz).
     component ChromeBtn: Rectangle {
         id: cb

@@ -3,7 +3,7 @@ import QtQuick.Templates as T
 import MediaGallery 1.0
 
 // ─────────────────────────────────────────────────────────────────────────────
-//  RadioButton.qml — gethemter Auswahlknopf (Stil "style").
+//  RadioButton.qml - gethemter Auswahlknopf (Stil "style").
 //
 //  Ring in Themenfarbe, im Zustand „an" Ring + Punkt in der Akzentfarbe (statt
 //  des grauen Fusion-Punkts). Geometrie und Abstände wie CheckBox.qml, damit

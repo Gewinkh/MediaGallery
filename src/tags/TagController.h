@@ -8,19 +8,21 @@
 #include "tags/TagManager.h"
 
 // ─────────────────────────────────────────────────────────────────────────────
-//  TagController — C++→QML-Bridge (Singleton) für das Tag-/Kategorie-System.
+//  TagController - C++->QML-Bridge (Singleton) für das Tag-/Kategorie-System.
 //
 //  Reine Delegation an TagManager (Backend bleibt unverändert). Ersetzt die
 //  Widget-Klassen TagCategoryPanel/TagWidget als Datenquelle: QML rendert den
 //  Baum aus categoriesTree() und mutiert über die Q_INVOKABLE-Methoden.
 //
 //  Registrierung via qmlRegisterSingletonInstance("MediaGallery",1,0,"Tags",…)
-//  in main.cpp — keine QML_ELEMENT-Makros.
+//  in main.cpp - keine QML_ELEMENT-Makros.
 // ─────────────────────────────────────────────────────────────────────────────
 class TagController : public QObject {
     Q_OBJECT
 public:
     explicit TagController(TagManager& mgr, QObject* parent = nullptr);
+    //  Auf einen anderen Manager umhängen (Fokuswechsel zwischen den Hälften).
+    void setTagManager(TagManager& mgr);
 
     // ── Tags ────────────────────────────────────────────────────────────────
     Q_INVOKABLE QStringList allTags() const;
@@ -34,13 +36,13 @@ public:
     // Knoten: { id, name, color, uniform, inherit, tagUniform, tagColor,
     //          tags:[…], fileCount, children:[…] }
     //  `color`      = effektive Anzeigefarbe des Knotens (Kaskade oder Eigenfarbe).
-    //  `tagUniform` = true → die Tag-Chips dieses Knotens tragen `tagColor` statt
+    //  `tagUniform` = true -> die Tag-Chips dieses Knotens tragen `tagColor` statt
     //                 ihrer Eigenfarbe (Einheitsfarbe/Vererbung aktiv).
     Q_INVOKABLE QVariantList categoriesTree() const;
     Q_INVOKABLE QColor       categoryColor(const QString& id) const;
 
     // Liefert die ID der neu erstellten Wurzelkategorie (leer bei ungültigem
-    // Namen) — ermöglicht QML, die Kategorie direkt weiterzuverwenden (z. B.
+    // Namen) - ermöglicht QML, die Kategorie direkt weiterzuverwenden (z. B.
     // S-Modus: Kategorie erstellen UND Datei sofort zuordnen).
     Q_INVOKABLE QString addRootCategory(const QString& name, const QColor& color, bool uniform);
     Q_INVOKABLE void addSubcategory(const QString& parentId, const QString& name,
@@ -70,11 +72,11 @@ public:
     Q_INVOKABLE QStringList categoryIdsForFile(const QString& fileName) const;  // IDs
 
     // ── Converter: Tag ↔ Unterkategorie (Phase 4) ────────────────────────────
-    // Kombinierte Mehrschritt-Mutationen — bleiben als Geschäftslogik in C++.
+    // Kombinierte Mehrschritt-Mutationen - bleiben als Geschäftslogik in C++.
     Q_INVOKABLE void convertTagToSubcategory(const QString& tag,
                                              const QString& parentCatId,
                                              const QString& newSubcatName);
-    // Tag → eigenständige Hauptkategorie (Wurzelebene).
+    // Tag -> eigenständige Hauptkategorie (Wurzelebene).
     Q_INVOKABLE void convertTagToRootCategory(const QString& tag,
                                               const QString& newName);
     // Funktioniert für JEDE Kategorie-ID (Unter- wie Hauptkategorie);
@@ -87,11 +89,15 @@ signals:
 
 private:
     // `inherited` = gültige Farbe, wenn ein Vorfahr seine Einheitsfarbe an die
-    // Kinder weitergibt (Vererbung). Der Vorfahr gewinnt → der gesamte Teilbaum
+    // Kinder weitergibt (Vererbung). Der Vorfahr gewinnt -> der gesamte Teilbaum
     // (Unterkategorien, verschachtelte Unterkategorien und alle Tags) trägt
     // dieselbe Farbe. Ungültig = keine Kaskade aktiv.
     QVariantList buildNodes(const QList<TagCategory>& cats,
                             const QColor& inherited = QColor()) const;
 
-    TagManager& m_mgr;
+    //  ZEIGER, nicht Referenz: die Fassade `Tags` (Einstellungen, Konverter)
+    //  folgt der fokussierten Galerie-Hälfte - sie zeigt also mal auf den einen,
+    //  mal auf den anderen Manager. Er ist NIE null (es gibt immer eine Hälfte).
+    TagManager* m_mgr;
+    bool        m_wired = false;
 };

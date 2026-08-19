@@ -1,13 +1,13 @@
 #pragma once
 // ══════════════════════════════════════════════════════════════════════════════
-//  PdfVectorExport.h — VERLUSTFREIER Export des PDF-Editors
+//  PdfVectorExport.h - VERLUSTFREIER Export des PDF-Editors
 // ══════════════════════════════════════════════════════════════════════════════
 //
 //  ZWECK
 //  ─────
 //  Schreibt die Overlay-Anmerkungen (Notizen, Freihand, Pfeile, Rechtecke,
 //  Ellipsen, „Text ersetzen"-Deckflächen) als ECHTE VEKTOR-Inhalte in die
-//  Seiten-Content-Streams — statt jede Seite als 150-dpi-Bild neu zu rendern.
+//  Seiten-Content-Streams - statt jede Seite als 150-dpi-Bild neu zu rendern.
 //
 //  Der bisherige Weg (QPdfWriter + QPainter) rasterte AUSNAHMSLOS jede Seite,
 //  auch völlig unberührte: das Dokument verlor dabei seine Textebene, die
@@ -15,7 +15,7 @@
 //  Originalinhalt jeder Seite BYTEGLEICH erhalten; angehängt wird nur, was der
 //  Nutzer gezeichnet hat.
 //
-//  VERFAHREN: INKREMENTELLES UPDATE (append-only) — wie PdfContentEditor
+//  VERFAHREN: INKREMENTELLES UPDATE (append-only) - wie PdfContentEditor
 //  ────────────────────────────────────────────────────────────────────
 //  Originalbytes 1:1, danach angehängt: je betroffener Seite ein NEUER
 //  Content-Stream mit den Zeichenbefehlen, ein aktualisiertes Seiten-Objekt
@@ -27,11 +27,11 @@
 //  die Anzeige), PDF selbst hat den Ursprung UNTEN-links. Umgerechnet wird
 //  ausschließlich hier, an genau einer Stelle (`toPdfY`).
 //
-//  BEWUSST BEGRENZT (sonst false → Aufrufer nutzt den Raster-Export):
+//  BEWUSST BEGRENZT (sonst false -> Aufrufer nutzt den Raster-Export):
 //   • unverschlüsselt (kein /Encrypt), klassische xref-Tabelle,
 //   • je Seite EIN /Contents-Stream oder ein Array (beides wird unterstützt),
 //   • Textnotizen nur in den 14 Standard-Schriften (Helvetica/Times/Courier
-//     samt Fett/Kursiv) und nur mit Zeichen, die WinAnsiEncoding kennt —
+//     samt Fett/Kursiv) und nur mit Zeichen, die WinAnsiEncoding kennt -
 //     eine fremde Schrift müsste sonst eingebettet werden,
 //   • ein NICHT-identischer Seiten-Plan (eingefügte/entfernte Seiten) wird
 //     hier NICHT abgebildet; dafür bleibt der Raster-Weg zuständig.
@@ -54,9 +54,9 @@ public:
     //  PDF-Punkten mit Ursprung oben-links der ANGEZEIGTEN Seite; `page` zählt
     //  die Seiten von `inputPath`. Der Seiten-Plan des Editors ist in
     //  `inputPath` bereits enthalten (der Aufrufer übergibt die gebackene
-    //  Arbeitsdatei) — hier wird nur noch angehängt. Gedrehte Seiten (/Rotate,
+    //  Arbeitsdatei) - hier wird nur noch angehängt. Gedrehte Seiten (/Rotate,
     //  auch geerbt) werden berücksichtigt.
-    //  Liefert false, wenn irgendeine Vorbedingung nicht SICHER erfüllt ist —
+    //  Liefert false, wenn irgendeine Vorbedingung nicht SICHER erfüllt ist -
     //  dann bleibt `outputPath` ungeschrieben und der Aufrufer weicht auf den
     //  Raster-Export aus. `err` erhält einen kurzen Grund.
     static bool exportAnnotations(const QString& inputPath, const QString& outputPath,

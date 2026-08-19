@@ -1,9 +1,9 @@
 #pragma once
 // ─────────────────────────────────────────────────────────────────────────────
-//  SpellChecker — Rechtschreib-PRÜFUNG (unterkringeln + Vorschläge), NICHT
+//  SpellChecker - Rechtschreib-PRÜFUNG (unterkringeln + Vorschläge), NICHT
 //  Autokorrektur: der Text wird nie von selbst verändert.
 //
-//  Hunspell ist eine OPTIONALE Abhängigkeit — dasselbe Muster wie ZLIB
+//  Hunspell ist eine OPTIONALE Abhängigkeit - dasselbe Muster wie ZLIB
 //  (s. `core/ZCodec`): fehlt die Bibliothek ODER das Wörterbuch, meldet
 //  `available()` false, jedes Wort gilt als richtig und die Oberfläche zeigt
 //  den Grund an. Ohne dieses Muster hinge der ganze Editor an einem Paket, das
@@ -39,7 +39,7 @@ public:
     //  „de_DE", sortiert.) Gesucht wird in den üblichen Verzeichnissen und in
     //  `extraDir`, falls gesetzt.
     static QStringList availableLanguages(const QString& extraDir = QString());
-    //  Verzeichnisse, in denen gesucht wird — für Fehlermeldungen und Tests.
+    //  Verzeichnisse, in denen gesucht wird - für Fehlermeldungen und Tests.
     static QStringList searchPaths(const QString& extraDir = QString());
 
     //  Wörterbuch laden. `language` ist ein Kürzel („de_DE") ODER der volle
@@ -48,7 +48,7 @@ public:
     bool available() const;
     QString language() const { return m_lang; }
 
-    //  Ein einzelnes Wort. Unbekannt = false. Ohne Wörterbuch IMMER true —
+    //  Ein einzelnes Wort. Unbekannt = false. Ohne Wörterbuch IMMER true -
     //  ohne Wissen wird nichts angestrichen.
     bool isCorrect(const QString& word) const;
     //  Verbesserungsvorschläge (leer, wenn keine oder kein Wörterbuch).

@@ -75,9 +75,9 @@ TagCategory JsonStorage::categoryFromJson(const QJsonObject& obj) {
 //     "categories": [...]
 //   }
 // Schlüssel sind abgekürzt: "t" = Tags, "d" = Datum.
-// Nur nicht-leere Felder werden geschrieben → minimale JSON auch bei großen
+// Nur nicht-leere Felder werden geschrieben -> minimale JSON auch bei großen
 // Sammlungen. Ein Versions-Marker ("v") wird seit 2026-07 weder geschrieben
-// noch ausgewertet — das Legacy-Format (tag-zentrisch) und die zugehörige
+// noch ausgewertet - das Legacy-Format (tag-zentrisch) und die zugehörige
 // Migration wurden entfernt; ältere Dateien mit "v"-Feld laden weiterhin,
 // das Feld wird schlicht ignoriert und beim nächsten Speichern entfernt.
 void JsonStorage::loadNewFormat(const QJsonObject& root) {
@@ -131,6 +131,7 @@ void JsonStorage::loadFolder(const QString& folderPath) {
 
     QJsonDocument doc = QJsonDocument::fromJson(f.readAll());
     f.close();
+    noteDiskStamp(m_jsonPath);
     if (!doc.isObject()) return;
 
     QJsonObject root = doc.object();
@@ -142,7 +143,58 @@ void JsonStorage::loadFolder(const QString& folderPath) {
     for (const auto& c : cats) m_categories.append(categoryFromJson(c.toObject()));
 }
 
+// ── Stand der Datei merken / prüfen / fremde Änderungen übernehmen ───────────
+void JsonStorage::noteDiskStamp(const QString& path) {
+    const QFileInfo fi(path);
+    m_diskMTime = fi.exists() ? fi.lastModified() : QDateTime();
+    m_diskSize  = fi.exists() ? fi.size() : -1;
+}
+
+bool JsonStorage::diskChangedSince(const QString& path) const {
+    const QFileInfo fi(path);
+    if (!fi.exists()) return false;                 // nichts, was wir verlieren könnten
+    if (m_diskSize < 0) return true;                // wir haben nie gelesen
+    return fi.size() != m_diskSize || fi.lastModified() != m_diskMTime;
+}
+
+//  Die Datei hat sich seit unserem Lesen geändert - also hat jemand anderes
+//  geschrieben (die zweite Hälfte auf demselben Ordner, ein anderes Programm).
+//  Übernommen wird, was wir NICHT kennen; wo beide etwas wissen, gewinnt das
+//  HINZUFÜGEN: Tags werden vereinigt. Das kann im Grenzfall ein soeben
+//  entferntes Tag zurückbringen - der umgekehrte Fehler wäre der Verlust einer
+//  fremden Verschlagwortung, und Verlust wiegt schwerer.
+void JsonStorage::mergeForeignChanges(const QString& path) {
+    if (!diskChangedSince(path)) return;
+
+    JsonStorage disk;
+    disk.loadFolder(m_folderPath);
+
+    for (auto it = disk.m_fileMeta.cbegin(); it != disk.m_fileMeta.cend(); ++it) {
+        const FileMeta& theirs = it.value();
+        if (!m_fileMeta.contains(it.key())) { m_fileMeta.insert(it.key(), theirs); continue; }
+        FileMeta& ours = m_fileMeta[it.key()];
+        for (const QString& t : theirs.tags)
+            if (!ours.tags.contains(t)) ours.tags.append(t);
+        if (!ours.hasCustomDate && theirs.hasCustomDate) {
+            ours.customDate    = theirs.customDate;
+            ours.hasCustomDate = true;
+        }
+        if (!ours.textPdfColor.isValid() && theirs.textPdfColor.isValid())
+            ours.textPdfColor = theirs.textPdfColor;
+    }
+    for (auto it = disk.m_tagColors.cbegin(); it != disk.m_tagColors.cend(); ++it)
+        if (!m_tagColors.contains(it.key())) m_tagColors.insert(it.key(), it.value());
+    //  Kategorien sind ein BAUM; ihn zu verschmelzen wäre Raten. Kennen wir
+    //  keinen, übernehmen wir den fremden - sonst bleibt unserer stehen.
+    if (m_categories.isEmpty()) m_categories = disk.m_categories;
+}
+
 void JsonStorage::saveFolder(const QString& folderPath) {
+    //  Erst fremde Änderungen übernehmen (s. oben), dann das Ganze schreiben.
+    mergeForeignChanges(m_jsonPath.isEmpty()
+                            ? folderPath + "/" + QFileInfo(folderPath).fileName() + ".json"
+                            : m_jsonPath);
+
     QJsonObject root;
 
     // ── Compact file-centric section ──────────────────────────────────────────
@@ -153,7 +205,7 @@ void JsonStorage::saveFolder(const QString& folderPath) {
     for (auto it = m_fileMeta.cbegin(); it != m_fileMeta.cend(); ++it) {
         const FileMeta& meta = it.value();
         if (meta.tags.isEmpty() && !meta.hasCustomDate && !meta.textPdfColor.isValid())
-            continue;  // skip files with no metadata at all → saves space
+            continue;  // skip files with no metadata at all -> saves space
 
         QJsonObject o;
         if (!meta.tags.isEmpty()) {
@@ -205,23 +257,24 @@ void JsonStorage::saveFolder(const QString& folderPath) {
                        : m_jsonPath;
 
     // Keine tatsächlichen Daten vorhanden (weder Datei-Metadaten noch Tags
-    // noch Kategorien) → KEINE Leerdatei ("{}") anlegen. Das verhindert,
+    // noch Kategorien) -> KEINE Leerdatei ("{}") anlegen. Das verhindert,
     // dass allein durch das Öffnen/Wechseln eines Ordners eine JSON entsteht.
-    // Existiert bereits eine (nun leere gewordene) Datei — z. B. weil der
-    // letzte Tag/die letzte Kategorie gerade gelöscht wurde — wird sie entfernt,
+    // Existiert bereits eine (nun leere gewordene) Datei - z. B. weil der
+    // letzte Tag/die letzte Kategorie gerade gelöscht wurde - wird sie entfernt,
     // statt einen leeren Stub zu hinterlassen.
     const bool hasContent = root.contains("files") || root.contains("tagColors")
                              || root.contains("categories");
     if (!hasContent) {
         if (QFile::exists(path))
             QFile::remove(path);
+        noteDiskStamp(path);
         return;
     }
 
     // ATOMAR schreiben (QSaveFile: Temp-Datei + Rename). Diese Datei ist die
     // EINZIGE Quelle aller Tags, Kategorien und Custom-Daten eines Ordners und
     // wird bei jeder Mutation komplett neu geschrieben. Mit open(WriteOnly)
-    // wurde sie dabei zuerst auf 0 Bytes gekuerzt — ein Absturz, ein voller
+    // wurde sie dabei zuerst auf 0 Bytes gekuerzt - ein Absturz, ein voller
     // Datentraeger oder ein Stromausfall im Schreibfenster hinterliess eine
     // leere/halbe Datei und damit den TOTALVERLUST der Verschlagwortung.
     // Wie bei ViewerController::writeTextFile und den Editor-Exporten.
@@ -234,6 +287,7 @@ void JsonStorage::saveFolder(const QString& folderPath) {
         return;
     }
     f.commit();
+    noteDiskStamp(path);     // ab jetzt sind WIR der Stand der Datei
 }
 
 void JsonStorage::saveCurrentFolder() {

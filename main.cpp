@@ -15,6 +15,10 @@
 #include "core/RhiProber.h"
 #include "core/FileBrowseModel.h"
 #include "core/AppSettings.h"
+#include "audio/AudioController.h"
+#include "app/PaneController.h"
+#include "app/PaneHost.h"
+#include "tags/TagController.h"
 #include "media/FolderService.h"
 #include "core/JsonStorage.h"
 #include "tags/TagManager.h"
@@ -41,7 +45,7 @@ int main(int argc, char* argv[]) {
     // ── RHI-Backend setzen ────────────────────────────────────────────────────
     // Muss VOR allen Qt-Klassen aufgerufen werden.
     // Liest das gewählte Backend aus QSettings, prüft den Crash-Guard
-    // (→ automatischer Software-Fallback nach Crash) und ruft
+    // (-> automatischer Software-Fallback nach Crash) und ruft
     // QQuickWindow::setGraphicsApi() auf.
     RhiProber::applyStoredBackend();
 
@@ -50,18 +54,18 @@ int main(int argc, char* argv[]) {
 
     //  Eigener, vollständig gethemter Control-Stil (qml/style).
     //  Der Stilname MUSS dem Verzeichnisnamen entsprechen, in dem die Stil-
-    //  Dateien liegen — deshalb "style" (Suchpfad ":/qml", s. addImportPath).
+    //  Dateien liegen - deshalb "style" (Suchpfad ":/qml", s. addImportPath).
     //  Nicht abgedeckte Controls fallen auf Fusion zurück (setFallbackStyle).
     QQuickStyle::setStyle(QStringLiteral("style"));
     QQuickStyle::setFallbackStyle(QStringLiteral("Fusion"));
 
     //  Datei-/Ordnerdialoge NICHT nativ öffnen.
     //  Der native Dialog (auf dem Linux-Desktop der GTK-/Portal-Dialog) folgt
-    //  ausschließlich den Systemfarben — im dunklen App-Theme sitzt dann ein
+    //  ausschließlich den Systemfarben - im dunklen App-Theme sitzt dann ein
     //  helles Fremdfenster mitten in der Anwendung, und seine Liste scrollt in
     //  festen Rastungen. Er liest KEINE Qt-Palette, ist also von hier aus
     //  überhaupt nicht einfärbbar. Qts eigene QML-Fassung dagegen erbt die
-    //  Palette ihres Elternfensters — und die setzt ApplicationShell.qml
+    //  Palette ihres Elternfensters - und die setzt ApplicationShell.qml
     //  bereits aus dem App-Theme. EINE Zeile deckt damit alle sieben
     //  Dialog-Stellen ab (Ordner öffnen, Lesezeichen, Design-Import/-Export,
     //  PDF-Bild/-Anhang, DOCX-Bild).
@@ -70,7 +74,7 @@ int main(int argc, char* argv[]) {
     QCoreApplication::setAttribute(Qt::AA_DontUseNativeDialogs);
 
     // ── Qt WebEngine: NICHT mehr beim Start initialisieren (RAM-Baseline) ────
-    // Viele Nutzer öffnen nie eine HTML-Datei — die Chromium-Grundkosten von
+    // Viele Nutzer öffnen nie eine HTML-Datei - die Chromium-Grundkosten von
     // QtWebEngineQuick::initialize() beim Start wären reine Verschwendung.
     // Hier wird nur das kostenlose Kontext-Sharing-Attribut gesetzt (MUSS vor
     // der QGuiApplication passieren, lädt KEIN Chromium). Die eigentliche
@@ -82,12 +86,12 @@ int main(int argc, char* argv[]) {
     //  Eine Zwischenstufe erzwang hier `QT_QPA_PLATFORMTHEME=generic`, um die
     //  Alt-Mnemoniks der Qt-Quick-`MenuBar` loszuwerden. Das ist nicht mehr nötig:
     //  die Menüleiste ist inzwischen eine eigene, per Klick bediente Button-Reihe
-    //  (s. ApplicationShell.qml) — die Alt-Taste gehört damit ohnehin allein den
+    //  (s. ApplicationShell.qml) - die Alt-Taste gehört damit ohnehin allein den
     //  App-Kürzeln, und die App vergibt selbst keine „&"-Mnemoniks.
     //  Das generische Theme hatte zwei unerwünschte Nebenwirkungen:
     //    • Datei-/Farbdialoge fielen auf Qts eingebaute QML-Variante zurück
     //      (fremde Optik, ungenutzte Leerflächen) statt der desktop-nativen;
-    //    • die Anwendungspalette kam aus Qts hellem Standardschema — helle
+    //    • die Anwendungspalette kam aus Qts hellem Standardschema - helle
     //      Standard-Controls in der dunklen App.
     //  Beides entfällt mit dem Desktop-Theme. Von dessen Palette ist die App
     //  unabhängig: sie setzt ihre QPalette weiter unten aus dem eigenen
@@ -103,7 +107,7 @@ int main(int argc, char* argv[]) {
     // seine Dateiliste ist eine schlichte QQuickListView und kroch mit Qts
     // Vorgabe von 3 Zeilen je Rastung durch lange Ordner. Gemessen an genau
     // dieser Liste (Höhe 329, contentHeight 5400): 3 Zeilen = 72 px, 6 = 144 px,
-    // 12 = 288 px je Rastung — der Wert wirkt also linear.
+    // 12 = 288 px je Rastung - der Wert wirkt also linear.
     // MUSS nach der QGuiApplication stehen (vorher gibt es keine styleHints).
     // Die Einstellung gilt GLOBAL für jedes Qt-Flickable; die Listen der App
     // selbst sind davon unberührt, soweit sie `SmoothWheelArea` benutzen (die
@@ -120,7 +124,7 @@ int main(int argc, char* argv[]) {
     // (Arch: `noto-fonts-cjk`).
     //
     // ARABISCH: ohne explizite arabische Familie greift fontconfig oft „Noto
-    // Nastaliq Urdu" (schräger, kalligrafischer Urdu-Stil) — daher hängen wir hier
+    // Nastaliq Urdu" (schräger, kalligrafischer Urdu-Stil) - daher hängen wir hier
     // eine saubere Naskh-Druckschrift VOR den generischen Fallback. Amiri sitzt bei
     // voll vokalisiertem Text (viele Harakat) am besten, Noto Naskh/Sans Arabic als
     // breite Absicherung. Voraussetzung (Arch): `noto-fonts` (Naskh + Sans Arabic)
@@ -148,21 +152,26 @@ int main(int argc, char* argv[]) {
         app.setFont(appFont);
     }
 
-    // Settings — einzige konkrete Instanz, als ISettings& weitergereicht
+    // Settings - einzige konkrete Instanz, als ISettings& weitergereicht
     AppSettings& settings = AppSettings::instance();
 
-    // Persistenz- und Service-Schicht
-    JsonStorage   storage;
-    FolderService folderService(settings, storage);
-    TagManager    tagManager(&storage);
+    //  ── Der Zustand EINER Galerie-Hälfte ────────────────────────────────
+    //  Sidecar, Tags, Ordnerdienst und Modelle gehören zusammen und liegen im
+    //  `PaneController` (s. src/app/PaneController.h). Der Miniatur-Lader bleibt
+    //  bewusst EINER für die ganze App: ein Pool, eine Zielgröße.
+    ThumbnailLoader thumbLoader;
 
     // QML-Bridges
-    AppController       appController(settings, folderService, storage, tagManager);
-    TagController       tagController(tagManager);
+    AppController       appController(settings);
+    //  Die Hälften gehören der Fassade (QML kann sie nicht selbst erzeugen -
+    //  sie brauchen Einstellungen und den gemeinsamen Lader). Beim Start gibt
+    //  es eine; die zweite kommt über „Ansicht ▸ Teilen".
+    appController.setThumbnailLoader(&thumbLoader);
+    auto* pane0 = qobject_cast<PaneController*>(appController.addPane());
     ViewerController    viewerController;
     PdfThumbnailProvider pdfThumbs;
     // PDF-Editor/-Text/-Audio sind jetzt DEZENTRAL: je geöffneter PDF-Kachel
-    // (PdfSurface) erzeugt QML eine EIGENE Instanz (qmlRegisterType unten) →
+    // (PdfSurface) erzeugt QML eine EIGENE Instanz (qmlRegisterType unten) ->
     // getrennter Editmodus/Boxen/Auswahl/Text-Selektion/Audio pro Datei. Der
     // PdfEdit-Singleton bleibt allein für die globale Einstellung panelOnTop
     // (Einstellungen ▸ Editor) erhalten.
@@ -175,35 +184,22 @@ int main(int argc, char* argv[]) {
     //  Kachel via qmlRegisterType unten); das Docx-Singleton trägt allein die
     //  globale Speicherverhalten-Einstellung (direkt / Kopie exportieren).
     DocxController       docx(settings);
-    TransliterationController translit;   // Live-Transliteration (Latein → Arabisch/Kana)
+    //  Audio-Player mit Equalizer: EINE Wiedergabe für die ganze App (wie
+    //  `monoPlay`), deshalb ein Singleton - welche Hälfte ihn zeigt, entscheidet
+    //  die Oberfläche (s. src/audio/AudioController.h).
+    AudioController      audio(settings);
+    TransliterationController translit;   // Live-Transliteration (Latein -> Arabisch/Kana)
     WebEngineController  webEngine;       // lazy WebEngine-Init (nur bei HTML-Bedarf)
 
     // ── Galerie-Backend ──────────────────────────────────────────────────────
-    ThumbnailLoader  thumbLoader;
-    MediaModel       mediaModel(storage, tagManager, thumbLoader);
-    MediaProxyModel  galleryModel;
-    galleryModel.setSourceModel(&mediaModel);
-    galleryModel.setTagManager(&tagManager);
-
-    QObject::connect(&appController, &AppController::folderOpened,
-                     &mediaModel, &MediaModel::loadFolder);
-
-    //  ── Rekursive Suche ────────────────────────────────────────────────────
-    //  Aendert sich der Filter, durchsucht das Modell den Baum unterhalb des
-    //  offenen Ordners und klappt Treffer-Ordner samt ihrer Kette auf; beim
-    //  Leeren kehrt der Aufklapp-Zustand auf den Stand davor zurueck.
-    //  Verdrahtet HIER, damit weder Proxy noch Modell einander kennen muessen.
-    QObject::connect(&galleryModel, &MediaProxyModel::filterChanged,
-                     &mediaModel, [&galleryModel, &mediaModel]() {
-        mediaModel.applyDeepFilter(galleryModel.criteria(),
-                                   galleryModel.activeCategoryNames());
-    });
-    QObject::connect(&appController, &AppController::folderContentsChanged,
-                     &mediaModel, &MediaModel::reload);
+    //  Ordnerdienst, Sidecar, Tags und Modelle liegen in `pane0`; ihre
+    //  Verdrahtung untereinander macht der `PaneController` selbst. Hier bleibt
+    //  nur, was APPWEIT gilt und alle Hälften betrifft.
+    MediaModel&      mediaModel   = pane0->mediaModel();
+    MediaProxyModel& galleryModel = pane0->galleryModel();
 
     //  „Alle Dateien anzeigen": der Schalter lebt in den Einstellungen, die
-    //  Regel im Modell — beim Umschalten liest es den Ordner neu.
-    mediaModel.setShowAllFiles(settings.showAllFiles());
+    //  Regel im Modell - beim Umschalten liest es den Ordner neu.
     QObject::connect(&appController, &AppController::showAllFilesChanged,
                      &mediaModel, [&settings, &mediaModel]() {
         mediaModel.setShowAllFiles(settings.showAllFiles());
@@ -236,7 +232,7 @@ int main(int argc, char* argv[]) {
         const QColor muted  = t.textMuted;
         const QColor border = t.border;
         const QColor accent = t.accent;
-        //  Heller Text auf dunklem Grund (oder umgekehrt) → passende Kontrastfarbe
+        //  Heller Text auf dunklem Grund (oder umgekehrt) -> passende Kontrastfarbe
         //  für gefüllte Akzentflächen.
         const QColor onAccent = accent.lightnessF() > 0.55 ? QColor(Qt::black) : QColor(Qt::white);
 
@@ -273,14 +269,20 @@ int main(int argc, char* argv[]) {
 
     qmlRegisterSingletonInstance("MediaGallery", 1, 0, "App",       &appController);
     qmlRegisterSingletonInstance("MediaGallery", 1, 0, "Settings",  &settings);
-    qmlRegisterSingletonInstance("MediaGallery", 1, 0, "Tags",      &tagController);
+    //  `Tags` als APPWEITE Fassade: sie folgt der fokussierten Hälfte. Innerhalb
+    //  einer Hälfte überdeckt deren eigener `TagController` diesen Namen
+    //  (Kontext-Eigenschaft, s. src/app/PaneHost.h) - der Singleton bedient
+    //  damit genau das, was AUSSERHALB der Hälften liegt: die Einstellungen.
+    static TagController tagsFacade(pane0->tagManager());
+    appController.setTagsFacade(&tagsFacade);
+    qmlRegisterSingletonInstance("MediaGallery", 1, 0, "Tags",      &tagsFacade);
     qmlRegisterSingletonInstance("MediaGallery", 1, 0, "Viewer",    &viewerController);
     qmlRegisterSingletonInstance("MediaGallery", 1, 0, "PdfThumbs", &pdfThumbs);
     qmlRegisterSingletonInstance("MediaGallery", 1, 0, "PdfEdit",   &pdfEdit);
     qmlRegisterSingletonInstance("MediaGallery", 1, 0, "PdfExtract", &pdfExtract);
     qmlRegisterSingletonInstance("MediaGallery", 1, 0, "Docx",      &docx);
 
-    // Dezentrale, pro PdfSurface (PDF-Kachel) instanziierbare Editor-Controller —
+    // Dezentrale, pro PdfSurface (PDF-Kachel) instanziierbare Editor-Controller -
     // eigener Zustand je geöffneter Datei (kein QML_ELEMENT-Makro, manuelle
     // Registrierung wie die übrigen Typen).
     qmlRegisterType<PdfTextController> ("MediaGallery", 1, 0, "PdfTextController");
@@ -294,12 +296,17 @@ int main(int argc, char* argv[]) {
     //  über DocxTextArea::paintPageInto, hält also selbst kein Bild).
     qmlRegisterType<DocxPageThumb>     ("MediaGallery", 1, 0, "DocxPageThumb");
     //  Verzeichnis-Inhalt für den eigenen Datei-/Ordnerwähler
-    //  (`qml/common/FileChooser.qml`) — ein Modell je Wähler, damit zwei
+    //  (`qml/common/FileChooser.qml`) - ein Modell je Wähler, damit zwei
     //  geöffnete Wähler nicht im selben Verzeichnis stehen.
     qmlRegisterType<FileBrowseModel>   ("MediaGallery", 1, 0, "FileBrowseModel");
-    //  Zeilenmodell der Galerie — je Ansicht eine Instanz, gespeist aus
+    //  Zeilenmodell der Galerie - je Ansicht eine Instanz, gespeist aus
     //  `galleryModel` (s. src/media/GalleryRowModel.h).
     qmlRegisterType<GalleryRowModel>   ("MediaGallery", 1, 0, "GalleryRowModel");
+    //  Zwei-Fenster-Modus: `PaneController` je Hälfte, `PaneHost` erzeugt deren
+    //  QML-Teilbaum mit eigenem Kontext (s. src/app/PaneHost.h).
+    qmlRegisterType<PaneController>    ("MediaGallery", 1, 0, "PaneController");
+    qmlRegisterType<PaneHost>          ("MediaGallery", 1, 0, "PaneHost");
+    qmlRegisterSingletonInstance("MediaGallery", 1, 0, "Audio",     &audio);
     qmlRegisterSingletonInstance("MediaGallery", 1, 0, "Translit",  &translit);
     qmlRegisterSingletonInstance("MediaGallery", 1, 0, "WebEngine", &webEngine);
 
@@ -324,9 +331,9 @@ int main(int argc, char* argv[]) {
     // Scene-Graph-Fehler hart (qFatal). Mit Slot behalten wir die Kontrolle:
     // der Fehler wird geloggt und über RhiProber::noteRuntimeFailure() fürs
     // NÄCHSTE Programm-Start ein sichereres Backend persistiert
-    // (Degradationskette vulkan/d3d11/metal → opengl → software). Die laufende
+    // (Degradationskette vulkan/d3d11/metal -> opengl -> software). Die laufende
     // Sitzung kann das verlorene Gerät zwar nicht mehr nutzen (das Fenster
-    // rendert ggf. nicht weiter), aber der Neustart läuft garantiert wieder —
+    // rendert ggf. nicht weiter), aber der Neustart läuft garantiert wieder -
     // ergänzt den Start-Crash-Guard, der bewusst nur die ersten ~4 s abdeckt.
 
     if (auto* rootWin = qobject_cast<QQuickWindow*>(engine.rootObjects().first())) {
@@ -334,23 +341,23 @@ int main(int argc, char* argv[]) {
                          [](QQuickWindow::SceneGraphError, const QString& message) {
                              qWarning().noquote()
                                  << "MediaGallery: Scene-Graph-Fehler:" << message
-                                 << "— der nächste Start nutzt ein sichereres Render-Backend.";
+                                 << "- der nächste Start nutzt ein sichereres Render-Backend.";
                              RhiProber::noteRuntimeFailure();
                          });
     }
 
     // ── Crash-Guard früh entschärfen (WICHTIG seit WebEngine-Vorschau) ────────
     // Der RHI-Crash-Guard soll NUR Backends abfangen, die gar nicht starten/
-    // rendern können — solche Defekte schlagen sofort beim Start zu (< wenige
+    // rendern können - solche Defekte schlagen sofort beim Start zu (< wenige
     // Sekunden). Ein SPÄTERER Crash ist kein Backend-Defekt und darf den Guard
     // nicht auslösen. Qt WebEngine stürzt auf manchen Linux-Grafikstacks beim
-    // Teardown (App schließen) ab; läge das Löschen des Guards — wie zuvor —
+    // Teardown (App schließen) ab; läge das Löschen des Guards - wie zuvor -
     // erst NACH app.exec(), bliebe der Guard nach so einem Crash gesetzt und der
     // nächste Start würde fälschlich auf Software-Rendering zurückfallen
     // (= massiver Lag der HTML-Vorschau, Endlosschleife). Deshalb den Guard
     //   (a) kurz nach erfolgreichem Start  und
     //   (b) beim regulären Beenden (aboutToQuit, VOR dem Teardown)
-    // löschen — ein WebEngine-Schließen-Crash oder ein per kill beendeter
+    // löschen - ein WebEngine-Schließen-Crash oder ein per kill beendeter
     // Hänger kann dann nie wieder Software erzwingen.
     QTimer::singleShot(4000, &app, [] { RhiProber::markCleanShutdown(); });
     QObject::connect(&app, &QGuiApplication::aboutToQuit,

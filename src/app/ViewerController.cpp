@@ -1,7 +1,7 @@
 #include "app/ViewerController.h"
 #include "pdf/PdfMediaHandler.h"
 #include "core/PathUtils.h"
-#include "core/MemoryUtils.h"   // mg::trimHeap — RSS-Rückgabe nach Annotations-LRU-Eviction
+#include "core/MemoryUtils.h"   // mg::trimHeap - RSS-Rückgabe nach Annotations-LRU-Eviction
 #include "core/TextPdfExporter.h"
 
 #include <QPdfDocument>
@@ -19,7 +19,7 @@
 #include <utility>
 
 // ─────────────────────────────────────────────────────────────────────────────
-//  Hilfsfunktion: MediaAnnotation-Vektor → QVariantList (QML-tauglich).
+//  Hilfsfunktion: MediaAnnotation-Vektor -> QVariantList (QML-tauglich).
 //  Frei (static), damit Worker-Task und synchrone Variante sie teilen.
 // ─────────────────────────────────────────────────────────────────────────────
 static QVariantList annotationsToVariant(const QVector<MediaAnnotation>& anns) {
@@ -42,7 +42,7 @@ static QVariantList annotationsToVariant(const QVector<MediaAnnotation>& anns) {
 
 // ─────────────────────────────────────────────────────────────────────────────
 //  Roh-Scan eines PDFs ohne GUI-Thread. Laedt das Dokument LOKAL (lebt nur fuer
-//  die Dauer des Scans → kein RAM-Wachstum), scannt die Annotationen und reicht
+//  die Dauer des Scans -> kein RAM-Wachstum), scannt die Annotationen und reicht
 //  das Ergebnis per QueuedConnection an den ViewerController zurueck.
 // ─────────────────────────────────────────────────────────────────────────────
 namespace {
@@ -120,7 +120,7 @@ bool ViewerController::writeTextFile(const QString& filePathOrUrl, const QString
     if (path.isEmpty())
         return false;
 
-    // Atomar schreiben (QSaveFile: erst Temp-Datei, dann atomarer Rename) — bei
+    // Atomar schreiben (QSaveFile: erst Temp-Datei, dann atomarer Rename) - bei
     // einem Fehler bleibt die Originaldatei unangetastet.
     QSaveFile f(path);
     if (!f.open(QIODevice::WriteOnly | QIODevice::Truncate))
@@ -141,7 +141,7 @@ bool ViewerController::openExternally(const QString& filePathOrUrl) const {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-//  LRU-Pflege (nur GUI-Thread → keine Synchronisation noetig).
+//  LRU-Pflege (nur GUI-Thread -> keine Synchronisation noetig).
 // ─────────────────────────────────────────────────────────────────────────────
 void ViewerController::touchCache(const QString& path) {
     m_cacheOrder.removeAll(path);
@@ -158,7 +158,7 @@ void ViewerController::insertIntoCache(const QString& path, const QVariantList& 
         evicted = true;
     }
     // Nur bei TATSÄCHLICHER Eviction: Annotationslisten enthalten eingebettete
-    // Medien-Payloads (QByteArray, potenziell MB) — Heap ans OS zurückgeben.
+    // Medien-Payloads (QByteArray, potenziell MB) - Heap ans OS zurückgeben.
     if (evicted)
         mg::trimHeap();
 }
@@ -169,14 +169,14 @@ void ViewerController::insertIntoCache(const QString& path, const QVariantList& 
 void ViewerController::requestPdfAnnotations(const QString& filePathOrUrl) {
     const QString path = mg::toLocalPath(filePathOrUrl);
     if (path.isEmpty() || !QFileInfo::exists(path)) {
-        // Defensiv: leeres Ergebnis (queued) → QML kann Badges einheitlich leeren.
+        // Defensiv: leeres Ergebnis (queued) -> QML kann Badges einheitlich leeren.
         QMetaObject::invokeMethod(this, [this, path]() {
             emit pdfAnnotationsReady(path, QVariantList{});
         }, Qt::QueuedConnection);
         return;
     }
 
-    // Cache-Treffer → sofort (queued, damit der Aufrufer immer asynchron reagiert).
+    // Cache-Treffer -> sofort (queued, damit der Aufrufer immer asynchron reagiert).
     if (m_annCache.contains(path)) {
         touchCache(path);
         const QVariantList cached = m_annCache.value(path);
@@ -195,7 +195,7 @@ void ViewerController::requestPdfAnnotations(const QString& filePathOrUrl) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-//  Text → PDF (Knopf „→ PDF" im Texteditor).
+//  Text -> PDF (Knopf „-> PDF" im Texteditor).
 //
 //  Der Text kommt aus dem EDITOR mit; die Quelldatei wird nur fuer den Zielnamen
 //  gebraucht und nicht angefasst. Paginieren + Zeichnen laufen im Worker, weil
@@ -207,7 +207,7 @@ void ViewerController::exportTextToPdf(const QString& filePathOrUrl,
     const QString src    = mg::toLocalPath(filePathOrUrl);
     const QString target = TextPdf::targetPathFor(src);
     if (target.isEmpty()) {
-        // Defensiv: ohne Quelle gibt es keinen Zielnamen — Fehler queued melden,
+        // Defensiv: ohne Quelle gibt es keinen Zielnamen - Fehler queued melden,
         // damit QML immer denselben (asynchronen) Weg sieht.
         QMetaObject::invokeMethod(this, [this]() {
             emit textPdfExportFinished(false, QString(),
@@ -227,7 +227,7 @@ void ViewerController::exportTextToPdf(const QString& filePathOrUrl,
             QString err;
             const bool ok = TextPdf::exportToPdf(m_text, m_target, m_ink, &err);
             // Owner als QPointer: er kann waehrend des Exports (App-Ende)
-            // verschwinden — wie bei PdfScanTask.
+            // verschwinden - wie bei PdfScanTask.
             QPointer<ViewerController> owner = m_owner;
             if (!owner) return;
             const QString tgt = m_target;

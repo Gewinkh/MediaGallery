@@ -3,31 +3,47 @@
 #include <functional>
 
 TagController::TagController(TagManager& mgr, QObject* parent)
-    : QObject(parent), m_mgr(mgr)
+    : QObject(parent), m_mgr(&mgr)
 {
-    connect(&m_mgr, &TagManager::tagsChanged,       this, &TagController::tagsChanged);
-    connect(&m_mgr, &TagManager::categoriesChanged, this, &TagController::categoriesChanged);
+    setTagManager(mgr);
+}
+
+//  Umhängen: die alten Verbindungen lösen, die neuen knüpfen und die Anzeige
+//  auffrischen - sonst zeigte die Fassade weiter die Tags der alten Hälfte.
+void TagController::setTagManager(TagManager& mgr) {
+    if (m_mgr == &mgr) {
+        //  Erstaufbau (Konstruktor): Verbindungen fehlen noch.
+        if (!m_wired) m_wired = true;
+        else return;
+    } else {
+        disconnect(m_mgr, nullptr, this, nullptr);
+        m_mgr = &mgr;
+    }
+    connect(m_mgr, &TagManager::tagsChanged,       this, &TagController::tagsChanged);
+    connect(m_mgr, &TagManager::categoriesChanged, this, &TagController::categoriesChanged);
     // Tag-Farbänderungen sind auch ein "tagsChanged" für reine Listen-Bindings.
-    connect(&m_mgr, &TagManager::tagColorChanged,   this, [this](const QString&, const QColor&) {
+    connect(m_mgr, &TagManager::tagColorChanged,   this, [this](const QString&, const QColor&) {
         emit tagsChanged();
     });
+    emit tagsChanged();
+    emit categoriesChanged();
 }
 
 // ── Tags ─────────────────────────────────────────────────────────────────────
-QStringList TagController::allTags() const            { return m_mgr.allTags(); }
-QColor      TagController::tagColor(const QString& t) const { return m_mgr.tagColor(t); }
+QStringList TagController::allTags() const            { return m_mgr->allTags(); }
+QColor      TagController::tagColor(const QString& t) const { return m_mgr->tagColor(t); }
 
-void TagController::setTagColor(const QString& tag, const QColor& c) { m_mgr.setTagColor(tag, c); }
+void TagController::setTagColor(const QString& tag, const QColor& c) { m_mgr->setTagColor(tag, c); }
 void TagController::createTag(const QString& name, const QColor& color) {
     const QString n = name.trimmed();
     if (n.isEmpty()) return;
-    m_mgr.createTag(n, color);
+    m_mgr->createTag(n, color);
 }
-void TagController::deleteTag(const QString& tag)                       { m_mgr.deleteTag(tag); }
+void TagController::deleteTag(const QString& tag)                       { m_mgr->deleteTag(tag); }
 void TagController::renameTag(const QString& oldName, const QString& newName) {
     const QString n = newName.trimmed();
     if (n.isEmpty() || n == oldName) return;
-    m_mgr.renameTag(oldName, n);
+    m_mgr->renameTag(oldName, n);
 }
 
 // ── Kategorie-Baum ────────────────────────────────────────────────────────────
@@ -37,10 +53,10 @@ QVariantList TagController::buildNodes(const QList<TagCategory>& cats,
     out.reserve(cats.size());
     for (const TagCategory& c : cats) {
         // Kaskade: Erbt dieser Knoten eine Farbe von einem Vorfahren, gewinnt
-        // der Vorfahr — der gesamte Teilbaum trägt dann dieselbe Farbe
+        // der Vorfahr - der gesamte Teilbaum trägt dann dieselbe Farbe
         // (Anforderung: "alle Tags, Unter- und verschachtelten Unterkategorien").
         const bool   cascaded  = inherited.isValid();
-        const QColor own       = c.uniformColor ? c.color : m_mgr.categoryColor(c.id);
+        const QColor own       = c.uniformColor ? c.color : m_mgr->categoryColor(c.id);
         const QColor nodeColor = cascaded ? inherited : own;
         // Tag-Chips dieses Knotens tragen die Einheitsfarbe, wenn eine Kaskade
         // wirkt ODER die Kategorie selbst eine Einheitsfarbe gesetzt hat.
@@ -48,7 +64,7 @@ QVariantList TagController::buildNodes(const QList<TagCategory>& cats,
         const QColor tagColor   = cascaded ? inherited : c.color;
         // An die Kinder weitergereichte Kaskade: bestehende fortsetzen, sonst
         // nur starten, wenn diese Kategorie uniform UND vererbend ist. Nicht
-        // destruktiv — die Eigenfarben der Kinder bleiben unangetastet und
+        // destruktiv - die Eigenfarben der Kinder bleiben unangetastet und
         // kehren beim Deaktivieren automatisch zurück.
         const QColor childCascade = cascaded
             ? inherited
@@ -70,8 +86,8 @@ QVariantList TagController::buildNodes(const QList<TagCategory>& cats,
     return out;
 }
 
-QVariantList TagController::categoriesTree() const { return buildNodes(m_mgr.categories()); }
-QColor       TagController::categoryColor(const QString& id) const { return m_mgr.categoryColor(id); }
+QVariantList TagController::categoriesTree() const { return buildNodes(m_mgr->categories()); }
+QColor       TagController::categoryColor(const QString& id) const { return m_mgr->categoryColor(id); }
 
 QString TagController::addRootCategory(const QString& name, const QColor& color, bool uniform) {
     const QString n = name.trimmed();
@@ -79,7 +95,7 @@ QString TagController::addRootCategory(const QString& name, const QColor& color,
     TagCategory cat = TagCategory::create(n);
     cat.uniformColor = uniform;
     if (color.isValid()) cat.color = color;
-    m_mgr.addCategory(cat);
+    m_mgr->addCategory(cat);
     return cat.id;    // fuer QML-Aufrufer, die die neue Kategorie direkt referenzieren
 }
 
@@ -90,36 +106,36 @@ void TagController::addSubcategory(const QString& parentId, const QString& name,
     TagCategory sub = TagCategory::create(n);
     sub.uniformColor = uniform;
     if (color.isValid()) sub.color = color;
-    m_mgr.addSubcategory(parentId, sub);
+    m_mgr->addSubcategory(parentId, sub);
 }
 
 void TagController::renameCategory(const QString& id, const QString& newName) {
     const QString n = newName.trimmed();
     if (n.isEmpty()) return;
-    m_mgr.renameCategory(id, n);
+    m_mgr->renameCategory(id, n);
 }
-void TagController::deleteCategory(const QString& id) { m_mgr.deleteCategory(id); }
+void TagController::deleteCategory(const QString& id) { m_mgr->deleteCategory(id); }
 
 void TagController::setCategoryUniformColor(const QString& id, bool uniform,
                                             const QColor& color, bool inheritToChildren) {
-    m_mgr.setCategoryUniformColor(id, uniform, color, inheritToChildren);
+    m_mgr->setCategoryUniformColor(id, uniform, color, inheritToChildren);
 }
 
 void TagController::moveCategory(const QString& id, const QString& newParentId) {
-    m_mgr.moveCategory(id, newParentId);
+    m_mgr->moveCategory(id, newParentId);
 }
 
 // ── Tag ↔ Kategorie ───────────────────────────────────────────────────────────
 void TagController::addTagToCategory(const QString& catId, const QString& tag) {
-    m_mgr.addTagToCategory(catId, tag);
+    m_mgr->addTagToCategory(catId, tag);
 }
 void TagController::removeTagFromCategory(const QString& catId, const QString& tag) {
-    m_mgr.removeTagFromCategory(catId, tag);
+    m_mgr->removeTagFromCategory(catId, tag);
 }
 void TagController::moveTagToCategory(const QString& tag, const QString& fromCatId,
                                       const QString& toCatId) {
     if (fromCatId == toCatId) return;
-    m_mgr.moveTagToCategory(tag, fromCatId, toCatId);
+    m_mgr->moveTagToCategory(tag, fromCatId, toCatId);
 }
 
 // ── Datei ↔ Kategorie ─────────────────────────────────────────────────────────
@@ -136,7 +152,7 @@ QVariantList TagController::categoriesFlat() const {
                                                       : prefix + QStringLiteral(" / ") + c.name;
                 const bool   cascaded = inherited.isValid();
                 const QColor col = cascaded ? inherited
-                                            : (c.uniformColor ? c.color : m_mgr.categoryColor(c.id));
+                                            : (c.uniformColor ? c.color : m_mgr->categoryColor(c.id));
                 const QColor childCascade = cascaded
                     ? inherited
                     : (c.uniformColor && c.inheritColorToChildren ? c.color : QColor());
@@ -148,27 +164,27 @@ QVariantList TagController::categoriesFlat() const {
                 walk(c.children, path, childCascade);
             }
         };
-    walk(m_mgr.categories(), QString(), QColor());
+    walk(m_mgr->categories(), QString(), QColor());
     return out;
 }
 
 void TagController::toggleFileInCategory(const QString& catId, const QString& fileName) {
-    if (m_mgr.fileInCategory(catId, fileName))
-        m_mgr.removeFileFromCategory(catId, fileName);
+    if (m_mgr->fileInCategory(catId, fileName))
+        m_mgr->removeFileFromCategory(catId, fileName);
     else
-        m_mgr.addFileToCategory(catId, fileName);
+        m_mgr->addFileToCategory(catId, fileName);
 }
 
 bool TagController::fileInCategory(const QString& catId, const QString& fileName) const {
-    return m_mgr.fileInCategory(catId, fileName);
+    return m_mgr->fileInCategory(catId, fileName);
 }
 
 QStringList TagController::categoriesForFile(const QString& fileName) const {
-    return m_mgr.categoriesForFile(fileName);
+    return m_mgr->categoriesForFile(fileName);
 }
 
 QStringList TagController::categoryIdsForFile(const QString& fileName) const {
-    return m_mgr.categoryIdsForFile(fileName);
+    return m_mgr->categoryIdsForFile(fileName);
 }
 
 // ── Converter: Tag ↔ Unterkategorie (Phase 4) ────────────────────────────────
@@ -184,20 +200,20 @@ void TagController::convertTagToSubcategory(const QString& tag,
 
     // 1. Unterkategorie unter parentCatId mit der Tag-Farbe anlegen.
     TagCategory sub  = TagCategory::create(name);
-    sub.color        = m_mgr.tagColor(t);
+    sub.color        = m_mgr->tagColor(t);
     sub.uniformColor = true;
-    m_mgr.addSubcategory(parentCatId, sub);
+    m_mgr->addSubcategory(parentCatId, sub);
 
     // 2. Neu erstellte Unterkategorie (letztes Kind des Parents) finden.
-    const TagCategory* parent = m_mgr.categoryById(parentCatId);
+    const TagCategory* parent = m_mgr->categoryById(parentCatId);
     if (!parent || parent->children.isEmpty()) return;
     const QString newSubId = parent->children.last().id;
 
     // 3. Tag als Mitglied der neuen Unterkategorie eintragen.
-    m_mgr.addTagToCategory(newSubId, t);
+    m_mgr->addTagToCategory(newSubId, t);
 
     // 4. Tag aus der globalen Registry entfernen (lebt jetzt als Unterkategorie).
-    m_mgr.deleteTag(t);
+    m_mgr->deleteTag(t);
 }
 
 void TagController::convertTagToRootCategory(const QString& tag, const QString& newName) {
@@ -209,34 +225,34 @@ void TagController::convertTagToRootCategory(const QString& tag, const QString& 
 
     // 1. Hauptkategorie mit der Tag-Farbe anlegen (ID ist vorab bekannt: create()).
     TagCategory cat  = TagCategory::create(name);
-    cat.color        = m_mgr.tagColor(t);
+    cat.color        = m_mgr->tagColor(t);
     cat.uniformColor = true;
-    m_mgr.addCategory(cat);
+    m_mgr->addCategory(cat);
 
     // 2. Tag ERST aus der globalen Registry entfernen, DANACH als Kategorie-Tag
-    //    eintragen — deleteTag() räumt die Tag-Listen der WURZEL-Kategorien auf
+    //    eintragen - deleteTag() räumt die Tag-Listen der WURZEL-Kategorien auf
     //    und würde den soeben gesetzten Eintrag sonst gleich wieder löschen
     //    (beim Unterkategorie-Konverter unkritisch, da dort ein Kind-Knoten).
-    m_mgr.deleteTag(t);
-    m_mgr.addTagToCategory(cat.id, t);
+    m_mgr->deleteTag(t);
+    m_mgr->addTagToCategory(cat.id, t);
 }
 
 void TagController::convertSubcategoryToTag(const QString& subcatId) {
     if (subcatId.isEmpty()) return;
 
-    const TagCategory* subcat = m_mgr.categoryById(subcatId);
+    const TagCategory* subcat = m_mgr->categoryById(subcatId);
     if (!subcat) return;
 
     const QString tagName  = subcat->name;
     const QColor  tagColor = subcat->color;
 
     // 1. Neuen Tag mit der Farbe der Unterkategorie registrieren.
-    m_mgr.setTagColor(tagName, tagColor);
+    m_mgr->setTagColor(tagName, tagColor);
 
     // 2. Alle Dateien der Unterkategorie erhalten diesen Tag.
     for (const QString& fileName : subcat->files)
-        m_mgr.addTagToFile(fileName, tagName);
+        m_mgr->addTagToFile(fileName, tagName);
 
     // 3. Unterkategorie löschen.
-    m_mgr.deleteCategory(subcatId);
+    m_mgr->deleteCategory(subcatId);
 }

@@ -6,7 +6,7 @@
 #include "core/ISettings.h"
 #include "core/AppSettings.h"      // AppSettings::instance() für den Default-Ctor (QML-Instanzen)
 #include "core/PathUtils.h"
-#include "pdf/extract/PdfPageCopier.h"   // PdfAssembler — destruktiver Seiten-Neuschrieb
+#include "pdf/extract/PdfPageCopier.h"   // PdfAssembler - destruktiver Seiten-Neuschrieb
 #include "pdf/edit/PdfContentEditor.h" // verlustfreies Content-Stream-Editing (Aufgabe)
 #include "pdf/edit/PdfTextEditor.h"   // zeichenweises Bearbeiten (Caret-Werkzeug)
 #include "pdf/edit/PdfTextReflow.h"   // Absatz-Umbruch nach dem Tippen
@@ -42,27 +42,27 @@
 #include <utility>
 
 // ─────────────────────────────────────────────────────────────────────────────
-//  PdfExportTask — rendert Original + Overlay in ein NEUES PDF (Worker-Thread).
+//  PdfExportTask - rendert Original + Overlay in ein NEUES PDF (Worker-Thread).
 //
 //  Öffnet eine EIGENE QPdfDocument-Instanz (der PDFium-Render-Mutex der
 //  sichtbaren Anzeige bleibt unberührt) und schreibt über QPdfWriter in eine
-//  QSaveFile → der Commit ist ATOMAR (bei Fehlern entsteht keine halbe Datei);
-//  Ziel ist stets eine NEUE Kopie — das Original wird nie angefasst.
+//  QSaveFile -> der Commit ist ATOMAR (bei Fehlern entsteht keine halbe Datei);
+//  Ziel ist stets eine NEUE Kopie - das Original wird nie angefasst.
 //
-//  KOORDINATEN/WYSIWYG: writer.setResolution(72) → 1 Painter-Einheit = 1
+//  KOORDINATEN/WYSIWYG: writer.setResolution(72) -> 1 Painter-Einheit = 1
 //  PDF-Punkt. Schriftgrößen werden als Punktgrößen gesetzt (72-dpi-Gerät:
-//  1 pt = 1 Einheit) — exakt die Skala, mit der QML die Boxen anzeigt
+//  1 pt = 1 Einheit) - exakt die Skala, mit der QML die Boxen anzeigt
 //  (fontSizePt · Pixel-je-Punkt).
 //
 //  RAM: Seiten werden SEQUENZIELL verarbeitet; zu jedem Zeitpunkt existiert
 //  genau EIN Seitenbild (kExportRenderDpi) transient. Keine PDF-Kopie im RAM.
 //
-//  Reihenfolge am Ende (Windows-fest): painter.end() → doc.close() (Lese-
-//  Handle frei) → out.commit() (Rename über das ggf. identische Original).
+//  Reihenfolge am Ende (Windows-fest): painter.end() -> doc.close() (Lese-
+//  Handle frei) -> out.commit() (Rename über das ggf. identische Original).
 // ─────────────────────────────────────────────────────────────────────────────
 namespace {
 // ─────────────────────────────────────────────────────────────────────────────
-//  PdfCaretLayoutTask — Zeichen-Layout EINER Seite bauen (Werkzeug „Text
+//  PdfCaretLayoutTask - Zeichen-Layout EINER Seite bauen (Werkzeug „Text
 //  bearbeiten"). Das Parsen des Content-Streams gehört nicht in den GUI-Thread:
 //  eine dichte Seite kostet einige Millisekunden, und der Nutzer klickt beim
 //  Setzen des Carets genau dann, wenn die Ansicht flüssig bleiben muss.
@@ -71,7 +71,7 @@ class PdfCaretLayoutTask : public QRunnable {
 public:
     //  `srcPage` ist die Seite in der QUELLDATEI, `viewPage` die Ansichts-Seite,
     //  auf der das Caret steht (bei geändertem Seiten-Plan fallen die
-    //  auseinander). Zurückgemeldet wird die ANSICHTS-Seite — nur sie
+    //  auseinander). Zurückgemeldet wird die ANSICHTS-Seite - nur sie
     //  identifiziert den Auftrag gegenüber dem Controller-Zustand.
     PdfCaretLayoutTask(PdfEditController* owner, QString source,
                        int srcPage, int viewPage, int generation)
@@ -100,13 +100,13 @@ private:
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
-//  PdfTextOpsTask — gibt die Textebenen-Ops auf der PRISTINEN Datei wieder und
+//  PdfTextOpsTask - gibt die Textebenen-Ops auf der PRISTINEN Datei wieder und
 //  schreibt das Ergebnis in die Arbeitsdatei.
 //
 //  WARUM VON VORNE statt inkrementell? Jede Änderung ist ein inkrementelles
 //  PDF-Update: Sie hängt ein neues Content-Objekt an und lässt das alte als
 //  Leiche liegen. Würde je Tastendruck auf dem VORIGEN Ergebnis aufgebaut,
-//  wüchse die Datei unbegrenzt mit toten Objekten — und genau diese Datei wird
+//  wüchse die Datei unbegrenzt mit toten Objekten - und genau diese Datei wird
 //  exportiert. Die Wiedergabe ab pristine hält die Anzahl der Leichen bei der
 //  Anzahl der Ops (Tipp-Sessions), nicht der Tastendrücke.
 //
@@ -165,7 +165,7 @@ private:
 
         //  ── ZWEITER GANG: Absatz-Umbruch ────────────────────────────────────
         //  Erst jetzt trägt auch jedes eben getippte Zeichen seine im Dokument
-        //  gemessene Breite — der Umbruch muss nichts schätzen (s.
+        //  gemessene Breite - der Umbruch muss nichts schätzen (s.
         //  PdfTextReflow). Er ist eine VERBESSERUNG, keine Bedingung: Gelingt
         //  er nicht (fremde Struktur, zwei Schriften im Absatz, nichts zu tun),
         //  bleibt schlicht das bisherige Ergebnis stehen.
@@ -176,7 +176,7 @@ private:
                                                 : last.index;
             //  Zwischendatei NEBEN die Arbeitsdatei (nicht nach /tmp): Nur im
             //  selben Verzeichnis ist das anschließende rename ein atomarer
-            //  Austausch. Über Dateisystemgrenzen hinweg kann es scheitern —
+            //  Austausch. Über Dateisystemgrenzen hinweg kann es scheitern -
             //  und dann stünde die Arbeitsdatei nicht mehr zur Verfügung.
             const QString rp = part + QStringLiteral(".rf");
             QFile::remove(rp);
@@ -191,7 +191,7 @@ private:
                     m_overflow  = plan.overflow;
                 } else {
                     //  Austausch gescheitert: Die Arbeitsdatei ist jetzt weg,
-                    //  das lässt sich nicht mehr überspielen — ehrlich melden,
+                    //  das lässt sich nicht mehr überspielen - ehrlich melden,
                     //  statt eine halbe Datei zu hinterlassen.
                     QFile::remove(rp);
                     QFile::remove(scratch[0]);
@@ -206,7 +206,7 @@ private:
 
         QFile::remove(scratch[0]);
         QFile::remove(scratch[1]);
-        // Rename im selben Verzeichnis → atomarer Austausch der Arbeitsdatei.
+        // Rename im selben Verzeichnis -> atomarer Austausch der Arbeitsdatei.
         QFile::remove(m_target);
         if (!QFile::rename(part, m_target)) {
             QFile::remove(part);
@@ -228,7 +228,7 @@ private:
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
-//  PdfFormReadTask — AcroForm-Felder EINER Datei lesen (Datei-I/O + Parsen des
+//  PdfFormReadTask - AcroForm-Felder EINER Datei lesen (Datei-I/O + Parsen des
 //  Objektbaums). Läuft aus demselben Grund im Pool wie das Caret-Layout: ein
 //  großes Formular kostet spürbar Zeit, und gelesen wird genau in dem Moment,
 //  in dem die Seite erscheinen soll.
@@ -257,7 +257,7 @@ private:
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
-//  PdfAnnotReadTask — Standard-Annotationen EINER Datei lesen (Interchange).
+//  PdfAnnotReadTask - Standard-Annotationen EINER Datei lesen (Interchange).
 //  Gleicher Grund wie beim Formular-Lesen: Datei-I/O + Objektbaum gehören nicht
 //  in den GUI-Thread.
 // ─────────────────────────────────────────────────────────────────────────────
@@ -283,14 +283,14 @@ private:
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
-//  PdfFormSaveTask — gepufferte Feldwerte in eine KOPIE schreiben (inkrementelles
+//  PdfFormSaveTask - gepufferte Feldwerte in eine KOPIE schreiben (inkrementelles
 //  Update; die Quelle bleibt byteweise unangetastet, das Ziel entsteht atomar).
 // ─────────────────────────────────────────────────────────────────────────────
 class PdfFormSaveTask : public QRunnable {
 public:
     //  `applyPlan` = die angezeigte Seitenfolge weicht vom Original ab; dann
     //  wird die ausgefüllte Datei anschließend nach dem Plan zusammengebaut.
-    //  Das GESCHIEHT im GUI-Thread (der Plan gehört dem Controller) — der Task
+    //  Das GESCHIEHT im GUI-Thread (der Plan gehört dem Controller) - der Task
     //  meldet dafür zurück, dass noch ein Schritt aussteht.
     PdfFormSaveTask(PdfEditController* owner, QString source, QString target,
                     QHash<QString, QString> values, int generation, bool applyPlan)
@@ -304,7 +304,7 @@ public:
         bool ok = mg::PdfFormFields::fillAndSave(m_source, m_target, m_values, &err);
         //  Vor dem Umbau FESTSCHREIBEN: `PdfAssembler` baut einen neuen Katalog
         //  und nimmt `/AcroForm` nicht mit. Ohne diesen Schritt trüge die Kopie
-        //  Widgets ohne Formular — in unserer eigenen Anzeige (Qt PDF zeichnet
+        //  Widgets ohne Formular - in unserer eigenen Anzeige (Qt PDF zeichnet
         //  Widgets nie) wäre sie leer. Danach steht der Wert im Seiteninhalt.
         if (ok && m_applyPlan) {
             const QString flat = m_target + QStringLiteral(".flat");
@@ -335,7 +335,7 @@ private:
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
-//  PdfContentEditTask — verlustfreies Content-Stream-Editing OHNE GUI-Thread
+//  PdfContentEditTask - verlustfreies Content-Stream-Editing OHNE GUI-Thread
 //  (Datei-I/O + Parsing). Meldet nur Erfolg/Misserfolg zurück; bei Misserfolg
 //  startet der Controller den Raster-Export (Fallback).
 // ─────────────────────────────────────────────────────────────────────────────
@@ -371,7 +371,7 @@ public:
     //  `sourcePath` ist die Datei, die der Nutzer SIEHT (PdfEditController::
     //  renderSourcePath): bei geändertem Seiten-Plan die gebackene Arbeitsdatei
     //  mit fertiger Reihenfolge/Drehung/Importen, sonst das Original bzw. die
-    //  Textebenen-Arbeitsdatei. Der Plan ist damit hier bereits ANGEWENDET —
+    //  Textebenen-Arbeitsdatei. Der Plan ist damit hier bereits ANGEWENDET -
     //  die Boxen kommen auf Ansichts-Seiten abgebildet an (exportBoxes()).
     PdfExportTask(PdfEditController* owner, QString sourcePath, QString targetPath,
                   QVector<PdfEditBox> boxes, int generation, CancelFlag cancel,
@@ -418,7 +418,7 @@ private:
     }
 
     //  Müssen übernommene Annotationen aus der Ausgabe verschwinden, entsteht
-    //  ZUERST eine Zwischendatei ohne sie — beide Ausgabewege (Vektor und
+    //  ZUERST eine Zwischendatei ohne sie - beide Ausgabewege (Vektor und
     //  Raster) arbeiten danach auf ihr. Schlägt das fehl, wird NICHT still
     //  weitergemacht: sonst stünde die alte Fassung unter der neuen.
     bool pruneAnnotations(QString* err) {
@@ -437,7 +437,7 @@ private:
         return true;
     }
 
-    //  „Die Schwärzung ließ sich verlustfrei nicht halten" — dieselbe Meldung
+    //  „Die Schwärzung ließ sich verlustfrei nicht halten" - dieselbe Meldung
     //  für beide Gründe (Text nicht entfernbar / Ausgabe nicht verdichtbar).
     void reportRedactionFallback() {
         PdfEditController* owner = m_owner;
@@ -450,7 +450,7 @@ private:
     //  ── Nach dem verlustfreien Weg: die Ausgabe NEU SCHREIBEN ───────────────
     //  Alle schreibenden Einheiten des Projekts arbeiten inkrementell: sie
     //  hängen an, die alten Bytes bleiben stehen. Für geschwärzten Text ist
-    //  genau das die Lücke — aus jedem Betrachter verschwunden, im Hex-Editor
+    //  genau das die Lücke - aus jedem Betrachter verschwunden, im Hex-Editor
     //  weiterhin lesbar. `PdfAssembler::rebuild` schreibt die fertige Datei
     //  deshalb ein letztes Mal vollständig neu; was nicht mehr am Seitengraphen
     //  hängt, wird nicht mitkopiert.
@@ -460,7 +460,7 @@ private:
     //  Seiten-Plan). Die Zwischendateien liegen NEBEN dem Ziel, nicht in /tmp:
     //  nur im selben Verzeichnis ist das abschließende Umbenennen ein
     //  Austausch und kein Kopieren über Dateisystemgrenzen.
-    //  Misslingt das Ganze, darf die Ausgabe NICHT stehen bleiben — sie sähe
+    //  Misslingt das Ganze, darf die Ausgabe NICHT stehen bleiben - sie sähe
     //  geschwärzt aus, wäre es aber nicht. Dann übernimmt der Rasterweg.
     bool compactRedacted(const QString& path) {
         const QString tmpFlat    = path + QStringLiteral(".mgflat");
@@ -502,7 +502,7 @@ private:
         //  ── SCHWÄRZUNGEN ZUERST: Text WIRKLICH entfernen ────────────────────
         //  Das ist keine Kür des verlustfreien Weges. Läuft der Export ohne
         //  diesen Schritt durch, liegt am Ende ein schwarzer Balken über
-        //  weiterhin lesbarem Text — die Zusage des Werkzeugs wäre gebrochen.
+        //  weiterhin lesbarem Text - die Zusage des Werkzeugs wäre gebrochen.
         //  Gelingt das Entfernen nicht, wird NICHT still weitergemacht: dann
         //  erzwingt der Task den Rasterweg (dort verschwindet der Text mit der
         //  ganzen Textebene) und meldet es.
@@ -517,7 +517,7 @@ private:
 
         //  ── (a) TEXTWEG: bekannte Zeichenkette aus dem Strom schneiden ──────
         //  Er läuft ZUERST, weil nur er Stellen trifft, die über den Balken
-        //  hinausreichen — eine Auswahl über einen Zeilenumbruch etwa. Der
+        //  hinausreichen - eine Auswahl über einen Zeilenumbruch etwa. Der
         //  geometrische Weg darunter würde ihm sonst genau die Zeichen
         //  wegnehmen, an denen er seine Fundstelle erkennt.
         bool textRedactOk = false;
@@ -544,7 +544,7 @@ private:
         //  deren Text sich nicht als Zeichenkette wiederfinden ließ, ALLE
         //  Seiten (Raster). Er lehnt selbst ab, wo er die Zusage nicht halten
         //  kann (Bild unter dem Balken, Form-XObject, gedrehte Seite,
-        //  unlesbarer Strom) — dann greifen unverändert die Netze darunter.
+        //  unlesbarer Strom) - dann greifen unverändert die Netze darunter.
         bool geoRedactOk = false;
         if (!m_redactAreas.isEmpty()) {
             m_redactedGeo = std::make_unique<QTemporaryFile>(
@@ -564,15 +564,15 @@ private:
         }
 
         //  ── (c) Steht ein zu entfernender Text noch auf der Seite? ──────────
-        //  Die Sonde läuft NACH beiden Wegen — auf der Datei, die gleich
+        //  Die Sonde läuft NACH beiden Wegen - auf der Datei, die gleich
         //  hinausgeht. Vorher gemessen war sie der Grund für den Nutzerbefund
         //  an DOCX_TEST.pdf: Der Textweg scheitert bei einer Auswahl über
-        //  mehrere Zeilen regelmäßig, die Sonde fand den Text (noch) — und das
+        //  mehrere Zeilen regelmäßig, die Sonde fand den Text (noch) - und das
         //  Raster-Urteil stand, obwohl der geometrische Weg die Fläche gleich
         //  danach sauber räumte. Ergebnis: vier Seiten als Bild wegen eines
         //  geschwärzten Absatzes.
         //
-        //  VERGLICHEN WIRD OHNE LEERRAUM — die beiden Texte stammen aus
+        //  VERGLICHEN WIRD OHNE LEERRAUM - die beiden Texte stammen aus
         //  VERSCHIEDENEN Quellen und sehen deshalb verschieden aus:
         //  `ed.original` kommt aus der Auswahl (PDFium, `QPdfSelection::text()`)
         //  und trägt an jedem Zeilenende ein CR+LF, die Sonde reiht dagegen bloß
@@ -592,12 +592,12 @@ private:
             for (const mg::PdfTextEdit& ed : m_redactions) {
                 const QString needle = squeeze(ed.original);
                 if (needle.isEmpty()) {
-                    textStillThere = true;      // nichts Prüfbares → nicht beweisbar
+                    textStillThere = true;      // nichts Prüfbares -> nicht beweisbar
                     break;
                 }
                 QVector<mg::PdfGlyph> glyphs;
                 if (!mg::PdfTextLayout::buildForPage(m_source, ed.page, &glyphs, nullptr)) {
-                    textStillThere = true;      // nicht lesbar → nicht beweisbar
+                    textStillThere = true;      // nicht lesbar -> nicht beweisbar
                     break;
                 }
                 QString pageText;
@@ -612,17 +612,17 @@ private:
         //  **Der geometrische Weg ist der VOLLE Beweis.** Er bearbeitet JEDE
         //  Schwärzungsfläche und misst danach die Ausgabe nach: bleibt eine
         //  Glyphe unter einem Balken stehen, meldet er sich als gescheitert.
-        //  Gelingt er, ist die Zusage für alle Flächen gehalten — dann darf der
+        //  Gelingt er, ist die Zusage für alle Flächen gehalten - dann darf der
         //  Textweg nichts mehr erzwingen.
         //
         //  GENAU DAS war der Fehler (Nutzerbefund an DOCX_TEST.pdf): Der
         //  Textweg scheitert bei einer Auswahl über mehrere Zeilen regelmäßig,
-        //  seine Sonde fand den Text (noch) auf der Seite — und das Raster-Urteil
+        //  seine Sonde fand den Text (noch) auf der Seite - und das Raster-Urteil
         //  stand, obwohl die Fläche längst sauber geräumt war. Ergebnis: alle
         //  vier Seiten als Bild, obwohl nur ein Absatz geschwärzt war.
         //
         //  Ohne den geometrischen Weg gilt unverändert das alte Netz: Balken
-        //  ohne erkannten Text oder nachweislich stehengebliebener Text → Raster.
+        //  ohne erkannten Text oder nachweislich stehengebliebener Text -> Raster.
         if (redactBoxes > 0) {
             forceRaster = textStillThere
                        || (redactBoxes > m_redactions.size() && !geoRedactOk);
@@ -633,15 +633,15 @@ private:
         //  Wurde ÜBERHAUPT geschwärzt (geometrisch oder textlich)? Dann muss die
         //  Ausgabe am Ende verdichtet werden: alle Schreibwege hängen
         //  inkrementell an, die ENTFERNTE Fassung des Stroms stünde sonst
-        //  weiterhin in der Datei — aus jedem Betrachter verschwunden, im
+        //  weiterhin in der Datei - aus jedem Betrachter verschwunden, im
         //  Hex-Editor lesbar.
         const bool didRedact = textRedactOk || geoRedactOk;
 
-        //  ── NICHTS ZU ZEICHNEN → einfach kopieren ───────────────────────────
+        //  ── NICHTS ZU ZEICHNEN -> einfach kopieren ───────────────────────────
         //  Kein Sonderfall der Bequemlichkeit, sondern der einzige verlustfreie
         //  Weg: Ohne Anmerkungen lehnt der Vektor-Export ab („keine
         //  Anmerkungen"), und der Raster-Weg würde jede Seite zu einem Bild
-        //  backen — Textebene und die VORHANDENEN Annotationen (die hier gerade
+        //  backen - Textebene und die VORHANDENEN Annotationen (die hier gerade
         //  unangetastet bleiben sollen) wären dahin.
         if (m_boxes.isEmpty() && !forceRaster) {
             QFile::remove(m_target);                 // Ziel ist ein frischer Pfad
@@ -660,7 +660,7 @@ private:
         //  ── Notizen als ECHTE Annotationen? ─────────────────────────────────
         //  Nur wenn die Einstellung es verlangt UND der Controller ALLE Notizen
         //  abbilden konnte (sonst wäre die Ausgabe halb Annotation, halb
-        //  gemalt — eine Mischung, die niemand erwartet).
+        //  gemalt - eine Mischung, die niemand erwartet).
         if (!forceRaster && !m_asAnnots.isEmpty()) {
             QString ae;
             if (mg::PdfAnnotations::write(m_source, m_target, m_asAnnots, {}, &ae)) {
@@ -672,7 +672,7 @@ private:
                 reportRedactionFallback();
             } else {
             //  Kein Fehler nach außen: der gemalte Weg kann immer.
-            qInfo("PdfAnnotations::write: %s → gemalter Export", qPrintable(ae));
+            qInfo("PdfAnnotations::write: %s -> gemalter Export", qPrintable(ae));
             }
         }
 
@@ -680,7 +680,7 @@ private:
         //  Der Vektor-Weg lässt den Originalinhalt jeder Seite BYTEGLEICH und
         //  hängt nur die Zeichenbefehle an. Gelingt er nicht (verschlüsselt,
         //  XRef-Stream, Notizschrift nicht in den Standard-14 darstellbar …),
-        //  bleibt der bisherige Raster-Weg als Sicherheitsnetz — er kann IMMER,
+        //  bleibt der bisherige Raster-Weg als Sicherheitsnetz - er kann IMMER,
         //  kostet aber die Textebene.
         if (!forceRaster) {
             QString vecErr;
@@ -695,12 +695,12 @@ private:
             } else {
                 //  Kein Fehler nach außen: der Fallback ist der Normalfall,
                 //  nicht die Ausnahme. Der Grund landet nur im Log.
-                qInfo("PdfVectorExport: %s → Raster-Export", qPrintable(vecErr));
+                qInfo("PdfVectorExport: %s -> Raster-Export", qPrintable(vecErr));
             }
         }
 
         //  Rasterweg: Annotationen MITRENDERN. Qt PDF zeichnet sie sonst gar
-        //  nicht (gemessen) — vorhandene Fremdnotizen fielen beim Raster-Export
+        //  nicht (gemessen) - vorhandene Fremdnotizen fielen beim Raster-Export
         //  stillschweigend aus dem Dokument. Verdoppeln kann das nichts:
         //  Übernahmen, die der Editor zeichnet, sind vorher gestrichen worden.
         QPdfDocumentRenderOptions annOpts;
@@ -768,7 +768,7 @@ private:
 
             // ── Basisseite als Bild (genau EIN Bild transient im RAM) ─────────
             //  Eine eingefügte Leerseite ist in der Quelle eine echte (leere)
-            //  Seite — sie rendert weiß, ohne Sonderfall.
+            //  Seite - sie rendert weiß, ohne Sonderfall.
             const QSize px(qMax(1, qRound(pts.width()  / 72.0 * PdfEditController::kExportRenderDpi)),
                            qMax(1, qRound(pts.height() / 72.0 * PdfEditController::kExportRenderDpi)));
             const QImage img = doc.render(vi, px, annOpts);
@@ -815,10 +815,10 @@ private:
     // Eselsohr unten rechts), dann der Text via QTextLayout (gleiche Text-
     // Engine wie QML TextEdit; Umbruch WrapAtWordBoundaryOrAnywhere =
     // TextEdit.Wrap). Vertikal je b.vAlign OBEN (Standard, wie Word-Text-
-    // felder) oder ZENTRIERT. KEIN Clipping — QML zeigt Überlauf ebenfalls an
-    // (clip:false) → WYSIWYG; bei zentriertem Überlauf wird der Offset negativ
+    // felder) oder ZENTRIERT. KEIN Clipping - QML zeigt Überlauf ebenfalls an
+    // (clip:false) -> WYSIWYG; bei zentriertem Überlauf wird der Offset negativ
     // (symmetrisch wie Anzeige). Zeichnungen (Freihand/Pfeil/Rechteck/Ellipse)
-    // laufen 1:1 in PDF-Punkten — dieselbe Geometrie wie der Canvas im
+    // laufen 1:1 in PDF-Punkten - dieselbe Geometrie wie der Canvas im
     // PdfEditBox-Delegate (Bild-Editor-Muster).
     void drawBox(QPainter& p, const PdfEditBox& b) {
         p.save();
@@ -893,7 +893,7 @@ private:
             //  Schwärzung: EINE deckende Fläche, sonst nichts. Der Text darunter
             //  ist beim Rasterweg ohnehin mit der Textebene verschwunden; die
             //  Fläche macht sichtbar, DASS hier etwas entfernt wurde. Ohne
-            //  eigenen Zweig lief eine Schwärzung in die Notiz-Zeichnung —
+            //  eigenen Zweig lief eine Schwärzung in die Notiz-Zeichnung -
             //  Post-it mit Schatten und Eselsohr statt Balken.
             const QColor cover = b.highlight.alpha() > 0 ? b.highlight
                                                          : QColor(0, 0, 0);
@@ -905,7 +905,7 @@ private:
             //  Textmarkierung: MEHRERE Bereiche in EINEM Objekt (je zwei Ecken
             //  in `points`). Markieren multipliziert, damit der Text darunter
             //  lesbar bleibt; Unterstreichen zieht die Linie knapp über der
-            //  Unterkante, Durchstreichen auf halber Höhe — identisch zum
+            //  Unterkante, Durchstreichen auf halber Höhe - identisch zum
             //  Vektorweg (`PdfVectorExport`).
             if (b.points.size() >= 2) {
                 if (b.markupStyle == 0) {
@@ -934,7 +934,7 @@ private:
         }
         case PdfAnnKind::Replace:
             // „Text ersetzen": deckende, fix weiße Fläche EXAKT über dem
-            // Box-Rechteck — bewusst OHNE Post-it-Optik (kein Schatten, kein
+            // Box-Rechteck - bewusst OHNE Post-it-Optik (kein Schatten, kein
             // Eselsohr); danach derselbe Text-Pfad wie die Notizen.
             p.fillRect(b.rect, b.highlight);
             break;
@@ -942,7 +942,7 @@ private:
             break;                                   // fällt in die Notiz-Zeichnung
         }
 
-        // Post-it-Optik (Schatten/Papier/Eselsohr) NUR für klassische Notizen —
+        // Post-it-Optik (Schatten/Papier/Eselsohr) NUR für klassische Notizen -
         // die Replace-Deckfläche wurde oben bereits flach gezeichnet.
         const bool paper = b.kind == PdfAnnKind::Text && b.highlight.alpha() > 0;
         if (paper) {
@@ -953,7 +953,7 @@ private:
             // Papier.
             p.fillRect(b.rect, b.highlight);
             // Eselsohr: abgedunkeltes Dreieck + feine Faltlinie entlang der
-            // Hypotenuse — identische Geometrie wie der QML-Canvas.
+            // Hypotenuse - identische Geometrie wie der QML-Canvas.
             const qreal fold = qMin(PdfEditController::kNoteFoldPt,
                                     qMin(b.rect.width(), b.rect.height()) / 3.0);
             if (fold > 2.0) {
@@ -1006,7 +1006,7 @@ private:
         layout.endLayout();
 
         // Vertikale Ausrichtung je Box: 0 = OBEN (Word-Textfeld, Text startet
-        // an der oberen Innenkante — kein Offset), 1 = zentriert (Offset bei
+        // an der oberen Innenkante - kein Offset), 1 = zentriert (Offset bei
         // Überlauf bewusst NICHT geklemmt, symmetrisch wie die Anzeige).
         const qreal availH = b.rect.height() - 2.0 * pad;
         const qreal yOff   = (b.vAlign == 1) ? (availH - totalH) / 2.0 : 0.0;
@@ -1057,14 +1057,14 @@ PdfEditController::PdfEditController(ISettings& settings, QObject* parent)
     : QObject(parent), m_settings(settings) {
     m_stack.setUndoLimit(kUndoLimit);
     // 1 Worker: nie zwei Export-Läufe (je eine QPdfDocument-Instanz + Seitenbild)
-    // gleichzeitig → RAM-Peak gedeckelt.
+    // gleichzeitig -> RAM-Peak gedeckelt.
     m_pool.setMaxThreadCount(1);
 
     connect(&m_stack, &QUndoStack::canUndoChanged, this, [this] { emit undoStateChanged(); });
     connect(&m_stack, &QUndoStack::canRedoChanged, this, [this] { emit undoStateChanged(); });
     connect(&m_stack, &QUndoStack::cleanChanged,   this, [this] { emit dirtyChanged(); });
     connect(&m_model, &PdfEditModel::countChanged, this, [this] { emit boxCountChanged(); });
-    //  Zahl der offenen Änderungen folgt JEDER Modelländerung — auch
+    //  Zahl der offenen Änderungen folgt JEDER Modelländerung - auch
     //  Undo/Redo und dem Laden des Sidecars; sonst zeigte der Streifen
     //  nach einem Strg+Z die alte Zahl.
     connect(&m_model, &QAbstractItemModel::dataChanged,   this, [this] { emit trackedChanged(); });
@@ -1072,12 +1072,12 @@ PdfEditController::PdfEditController(ISettings& settings, QObject* parent)
     connect(&m_model, &QAbstractItemModel::rowsRemoved,   this, [this] { emit trackedChanged(); });
     connect(&m_model, &QAbstractItemModel::modelReset,    this, [this] { emit trackedChanged(); });
     //  Formularfelder tragen QUELLseiten; ihre Ansichts-Seite berechnet
-    //  formFields() aus dem Plan → jede Plan-Änderung (Seitenzahl gemeldet,
+    //  formFields() aus dem Plan -> jede Plan-Änderung (Seitenzahl gemeldet,
     //  umsortiert, entfernt, gedreht) muss die Liste neu lesen lassen.
     connect(this, &PdfEditController::planChanged,
             this, &PdfEditController::formFieldsChanged);
 
-    // Datenänderung an der AUSGEWÄHLTEN Box → Toolbar/Panel rev-getrieben
+    // Datenänderung an der AUSGEWÄHLTEN Box -> Toolbar/Panel rev-getrieben
     // neu binden lassen; verschwundene Auswahl (Undo eines Hinzufügens,
     // Sidecar-Reset) aufräumen.
     connect(&m_model, &QAbstractItemModel::dataChanged, this,
@@ -1098,7 +1098,7 @@ PdfEditController::PdfEditController(ISettings& settings, QObject* parent)
 
     // Entprellung der Textebenen-Wiedergabe: Tippen erzeugt KEINEN Neubau je
     // Taste (jeder Neubau schreibt die ganze Datei und lädt sie in der Anzeige
-    // neu) — erst die Tipp-Pause materialisiert das Ergebnis.
+    // neu) - erst die Tipp-Pause materialisiert das Ergebnis.
     m_textFlush.setSingleShot(true);
     m_textFlush.setInterval(kTextFlushMs);
     connect(&m_textFlush, &QTimer::timeout, this, [this] { startTextRebuild(); });
@@ -1107,7 +1107,7 @@ PdfEditController::PdfEditController(ISettings& settings, QObject* parent)
 PdfEditController::~PdfEditController() {
     // Laufenden Export kooperativ stoppen, bevor der Controller verschwindet
     // (der Task hält Referenzen nur über Werte + diesen Zeiger via invokeMethod-
-    // Kontext — QueuedConnection auf ein zerstörtes Objekt wird verworfen).
+    // Kontext - QueuedConnection auf ein zerstörtes Objekt wird verworfen).
     if (m_cancel)
         m_cancel->store(true, std::memory_order_relaxed);
     m_pool.clear();
@@ -1128,7 +1128,7 @@ void PdfEditController::setEditMode(bool on) {
 }
 
 void PdfEditController::setTool(int t) {
-    //  Obergrenze IMMER am letzten Enum-Wert festmachen — hier stand einmal
+    //  Obergrenze IMMER am letzten Enum-Wert festmachen - hier stand einmal
     //  `CaretTool` fest verdrahtet, und das neue Markier-Werkzeug (8) wurde
     //  still verworfen: die Knöpfe waren wirkungslos, ohne dass ein Test es
     //  merkte (die C++-Tests rufen `addMarkup` direkt auf).
@@ -1137,7 +1137,7 @@ void PdfEditController::setTool(int t) {
     finishOpenSessions();
     finishDrawSession();
     if (m_tool == CaretTool)
-        clearCaret();                   // Werkzeug verlassen → Tipp-Session zu
+        clearCaret();                   // Werkzeug verlassen -> Tipp-Session zu
     m_tool = t;
     // Beim Wechsel auf ein Zeichen-/Text-Werkzeug die Auswahl aufheben (keine
     // schwebende Toolbar über einer alten Auswahl während des Zeichnens).
@@ -1206,7 +1206,7 @@ void PdfEditController::setPageEditDestructive(bool v) {
         return;
     m_settings.setPdfPageEditDestructive(v);
     emit pageEditDestructiveChanged();
-    // Modewechsel bei bereits geändertem Plan → Arbeitsdatei neu am richtigen Ort.
+    // Modewechsel bei bereits geändertem Plan -> Arbeitsdatei neu am richtigen Ort.
     if (!m_docPath.isEmpty() && !planIsIdentity())
         bakeWorking();
 }
@@ -1236,7 +1236,7 @@ QString PdfEditController::renderSourcePath() const {
     // Datei, die die ANZEIGE rendert: bei geändertem Plan die gebackene
     // Arbeitsdatei (destruktiv = die .pdf selbst, sonst die temporäre
     // .mgpreview.pdf), sonst die pristine Quelle. So bleibt „Ansichts-Index ==
-    // Seitenindex der gerenderten Datei" erhalten — die Ansicht muss den Plan
+    // Seitenindex der gerenderten Datei" erhalten - die Ansicht muss den Plan
     // NICHT selbst anwenden.
     if (m_docPath.isEmpty() || planIsIdentity())
         return textSourcePath();            // ggf. mit bearbeiteter Textebene
@@ -1263,7 +1263,7 @@ int PdfEditController::keyOfView(int viewIndex) const {
 int PdfEditController::pageKeyForView(int viewIndex) const {
     if (viewIndex < 0)
         return -1;
-    //  Solange QML die Seitenzahl noch nicht gemeldet hat, steht kein Plan —
+    //  Solange QML die Seitenzahl noch nicht gemeldet hat, steht kein Plan -
     //  dann IST die Ansichts-Seite der Key (Identität, wie beim Identitätsplan).
     if (m_plan.isEmpty())
         return viewIndex;
@@ -1313,7 +1313,7 @@ void PdfEditController::setSourcePageCount(int n) {
     } else {
         // Geladenen Sidecar-Plan absichern: Seiten des Hauptdokuments außerhalb
         // [0,n) verwerfen (die Datei hat sich hinter unserem Rücken geändert),
-        // Leer- und Importseiten behalten; leert sich alles → Identität.
+        // Leer- und Importseiten behalten; leert sich alles -> Identität.
         const int assetPages = QFile::exists(assetPath(m_docPath))
                                    ? PdfAssembler::probePageCount(assetPath(m_docPath))
                                    : 0;
@@ -1331,7 +1331,7 @@ void PdfEditController::setSourcePageCount(int n) {
         assignPlanKeys();
     }
     emit planChanged();
-    // Geladener Nicht-Identitäts-Plan (Sidecar) → Arbeitsdatei erzeugen, damit
+    // Geladener Nicht-Identitäts-Plan (Sidecar) -> Arbeitsdatei erzeugen, damit
     // die Anzeige sie sofort rendern kann (renderSourcePath()).
     if (!planIsIdentity()) {
         bakeWorking();
@@ -1424,7 +1424,7 @@ void PdfEditController::rotatePage(int viewIndex, int deltaDeg,
     PdfPlanPage& e = next[viewIndex];
     e.rot = (e.rot + delta) % 360;
 
-    //  Die Notizen der Seite drehen MIT ihr — sonst stünde eine Anmerkung nach
+    //  Die Notizen der Seite drehen MIT ihr - sonst stünde eine Anmerkung nach
     //  dem Drehen quer zum Inhalt, auf den sie sich bezieht. Geometrie und
     //  Plan werden zu EINEM Undo-Schritt zusammengefasst (Makro): Strg+Z stellt
     //  Drehung und Notizlage gemeinsam wieder her.
@@ -1442,7 +1442,7 @@ void PdfEditController::rotatePage(int viewIndex, int deltaDeg,
     if (macro) {
         //  Schrittweise um 90° drehen: Nach jedem Viertel tauschen Breite und
         //  Höhe der Seite die Rolle. Die Abbildung ist exakt (keine Rundung)
-        //  und damit verlustfrei umkehrbar — Undo trifft die alte Lage genau.
+        //  und damit verlustfrei umkehrbar - Undo trifft die alte Lage genau.
         for (int id : std::as_const(affected)) {
             const PdfEditBox* b = m_model.boxById(id);
             if (!b)
@@ -1452,7 +1452,7 @@ void PdfEditController::rotatePage(int viewIndex, int deltaDeg,
             qreal w = pageWPt, h = pageHPt;
             for (int step = 0; step < delta / 90; ++step) {
                 //  90° im Uhrzeigersinn, Ursprung oben links, y nach unten:
-                //  (x|y) → (h − y | x); die Seite wird h × w groß.
+                //  (x|y) -> (h − y | x); die Seite wird h × w groß.
                 const QRectF nr(h - (r.y() + r.height()), r.x(),
                                 r.height(), r.width());
                 for (QPointF& p : pts)
@@ -1511,7 +1511,7 @@ void PdfEditController::insertPagesFrom(const QString& pathOrUrl,
     }
 
     //  Begleitdatei fortschreiben: bisherige Importseiten + die neuen. Sie ist
-    //  BEWUSST append-only — die Plan-Einträge (und damit Undo/Redo) verweisen
+    //  BEWUSST append-only - die Plan-Einträge (und damit Undo/Redo) verweisen
     //  über feste Indizes hinein, die sich dadurch nie verschieben. Eine
     //  entfernte Importseite kostet so etwas Plattenplatz, bleibt aber per
     //  Strg+Z zurückholbar.
@@ -1564,7 +1564,7 @@ int PdfEditController::probePageCount(const QString& pathOrUrl) const {
 
 void PdfEditController::applyPlan(const QVector<PdfPlanPage>& plan) {
     m_plan = plan;
-    // Keys werden NICHT neu vergeben (sie sind Teil des Deltas) — nur der
+    // Keys werden NICHT neu vergeben (sie sind Teil des Deltas) - nur der
     // Zähler bleibt oberhalb aller vergebenen Keys, damit Redo nach einem Undo
     // keine Kollision erzeugt.
     for (const PdfPlanPage& p : std::as_const(m_plan))
@@ -1577,7 +1577,7 @@ void PdfEditController::applyPlan(const QVector<PdfPlanPage>& plan) {
 
 QVector<PdfEditBox> PdfEditController::exportBoxes() const {
     //  Notizen für Export/Bildausgabe: `page` trägt intern den STABILEN Key der
-    //  Seite — die Ausgabe zählt aber Ansichts-Seiten. Notizen entfernter Seiten
+    //  Seite - die Ausgabe zählt aber Ansichts-Seiten. Notizen entfernter Seiten
     //  fallen dabei weg (ihre Seite steht nicht im Plan), Undo bringt sie mit
     //  der Seite zurück.
     QVector<PdfEditBox> out;
@@ -1591,7 +1591,7 @@ QVector<PdfEditBox> PdfEditController::exportBoxes() const {
         const int vi = keyToView.value(b.page, -1);
         if (vi < 0)
             continue;
-        //  UNVERÄNDERT übernommene Annotation: sie steht bereits in der Datei —
+        //  UNVERÄNDERT übernommene Annotation: sie steht bereits in der Datei -
         //  noch einmal zeichnen hieße, sie zu verdoppeln.
         if (b.srcObjNum > 0 && !importChanged(b))
             continue;
@@ -1616,7 +1616,7 @@ void PdfEditController::bakeWorking() {
     const bool destructive = m_settings.pdfPageEditDestructive();
 
     if (planIsIdentity()) {
-        // Kein Plan (mehr) → Arbeitsdatei = pristine.
+        // Kein Plan (mehr) -> Arbeitsdatei = pristine.
         if (destructive) {
             const QString bak = backupPath(m_docPath);
             if (QFile::exists(bak)) {           // gebackene .pdf aufs Original zurück
@@ -1637,7 +1637,7 @@ void PdfEditController::bakeWorking() {
             return;                             // ohne Sicherung nicht schreiben
     }
     // Die Quelle je Plan-Eintrag liefert planSourceFile(): das pristine
-    // Hauptdokument (bzw. die Textebenen-Arbeitsdatei — die Ops beziehen sich
+    // Hauptdokument (bzw. die Textebenen-Arbeitsdatei - die Ops beziehen sich
     // auf die pristinen Seitenindizes, der Plan ordnet danach um) oder die
     // Begleitdatei der importierten Seiten.
     const QString target = destructive ? m_docPath : previewPath(m_docPath);
@@ -1662,7 +1662,7 @@ bool PdfEditController::assemblePlanTo(const QString& targetPath,
 
     //  Aufeinanderfolgende, AUFSTEIGENDE Seiten derselben Quelle werden zu EINEM
     //  addSourcePages-Aufruf gebündelt (wie im Vektor-Export). Jeder Aufruf
-    //  parst die Quelle neu — ohne Bündelung kostete das Umsortieren einer
+    //  parst die Quelle neu - ohne Bündelung kostete das Umsortieren einer
     //  300-seitigen Datei 300 vollständige Struktur-Parses (§0-Priorität 2).
     //  Die Drehung bricht den Lauf NICHT: sie reist je Seite mit.
     int runDoc = -2;
@@ -1671,7 +1671,7 @@ bool PdfEditController::assemblePlanTo(const QString& targetPath,
     auto flush = [&]() -> bool {
         if (runPages.isEmpty())
             return true;
-        //  `sourceOverride` ersetzt NUR das Hauptdokument (doc 0) — die
+        //  `sourceOverride` ersetzt NUR das Hauptdokument (doc 0) - die
         //  Begleitdatei importierter Seiten bleibt, was sie ist.
         const QString from = (!sourceOverride.isEmpty() && runDoc == 0)
                                  ? sourceOverride : planSourceFile(runDoc, true);
@@ -1705,17 +1705,17 @@ bool PdfEditController::assemblePlanTo(const QString& targetPath,
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-//  Caret — direktes Bearbeiten der EINGEBETTETEN Textebene (Werkzeug 7)
+//  Caret - direktes Bearbeiten der EINGEBETTETEN Textebene (Werkzeug 7)
 //
 //  ZUSTANDSMODELL (der Grund, warum es hier so und nicht einfacher steht)
 //  ─────────────────────────────────────────────────────────────────────
 //  `m_caretGlyphs` ist stets das Layout des Textes, den der Nutzer GERADE
-//  sieht bzw. gleich sehen wird — auch zwischen zwei Neubauten der
+//  sieht bzw. gleich sehen wird - auch zwischen zwei Neubauten der
 //  Arbeitsdatei. Beim Tippen wird es deshalb LOKAL fortgeschrieben
 //  (Platzhalter-Glyphen einfügen, gelöschte entfernen, Folgeglyphen der Zeile
 //  verschieben). Dadurch bleiben die Glyphen-INDIZES jederzeit deckungsgleich
 //  mit dem Dokumentzustand, auf den sich die Ops beziehen; ohne das müsste
-//  jede Op ihre Position in ein veraltetes Koordinatensystem zurückrechnen —
+//  jede Op ihre Position in ein veraltetes Koordinatensystem zurückrechnen -
 //  die klassische Quelle von Ein-Zeichen-Versätzen. Der Neubau ersetzt die
 //  Näherung später durch die echte Geometrie.
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1755,7 +1755,7 @@ QRectF PdfEditController::caretRectPt() const {
     if (m_caretPage < 0 || m_caretIndex < 0 || m_caretGlyphs.isEmpty())
         return {};
     // Der Index darf logisch hinter der Näherung liegen (z. B. unmittelbar nach
-    // einer Einfügung am Textende) — dann zeigt das Caret ans Ende, statt zu
+    // einer Einfügung am Textende) - dann zeigt das Caret ans Ende, statt zu
     // verschwinden.
     const int idx = qBound(0, m_caretIndex, m_caretGlyphs.size());
     return mg::PdfTextLayout::caretRect(m_caretGlyphs, idx);
@@ -1764,7 +1764,7 @@ QRectF PdfEditController::caretRectPt() const {
 void PdfEditController::requestCaretLayout(int page) {
     if (m_docPath.isEmpty() || page < 0)
         return;
-    //  Das Layout kommt aus der QUELLDATEI — bei geändertem Seiten-Plan ist das
+    //  Das Layout kommt aus der QUELLDATEI - bei geändertem Seiten-Plan ist das
     //  eine andere Seitennummer als die angezeigte.
     const int src = m_plan.isEmpty() ? page : srcOfView(page);
     if (src < 0)
@@ -1822,7 +1822,7 @@ void PdfEditController::caretLayoutFinished(int page, const QVector<mg::PdfGlyph
     m_caretGlyphs = glyphs;
     m_caretReady  = !glyphs.isEmpty();
     //  DREI Ausgänge, nicht zwei: gelesen · gelesen, aber ohne Text · nicht
-    //  lesbar. Der mittlere Fall lief bisher als leerer Fehlertext durch — die
+    //  lesbar. Der mittlere Fall lief bisher als leerer Fehlertext durch - die
     //  Oberfläche sagte dann GAR NICHTS, und der Klick wirkte wie verschluckt.
     if (m_caretReady)
         m_caretError.clear();
@@ -1831,7 +1831,7 @@ void PdfEditController::caretLayoutFinished(int page, const QVector<mg::PdfGlyph
     if (!m_caretReady) {
         //  Der Grund gehört ins Log: Wer ihn im Fenster nur als Satz sieht,
         //  kann ihn nicht weitermelden.
-        qInfo("PdfEditController: Seite %d nicht zeichenweise bearbeitbar — %s",
+        qInfo("PdfEditController: Seite %d nicht zeichenweise bearbeitbar - %s",
               page, qPrintable(m_caretError));
     }
     if (m_caretReady)
@@ -1849,7 +1849,7 @@ void PdfEditController::caretLayoutFinished(int page, const QVector<mg::PdfGlyph
 }
 
 //  Glyphen-Index für einen Klickpunkt: `hitTest` liefert das nächstliegende
-//  ZEICHEN — das Caret gehört davor oder dahinter, je nachdem, welche Hälfte
+//  ZEICHEN - das Caret gehört davor oder dahinter, je nachdem, welche Hälfte
 //  getroffen wurde (Verhalten jedes Texteditors).
 int PdfEditController::hitIndexAt(const QPointF& ptPt) const {
     const int g = mg::PdfTextLayout::hitTest(m_caretGlyphs, ptPt);
@@ -1986,7 +1986,7 @@ void PdfEditController::spliceGlyphsInsert(int index, const QString& text) {
         return;
     const int n = m_caretGlyphs.size();
     index = qBound(0, index, n);
-    // Vorlage: linker Nachbar, sonst rechter — ohne Nachbarn ist keine
+    // Vorlage: linker Nachbar, sonst rechter - ohne Nachbarn ist keine
     // sinnvolle Näherung möglich (leere Seite kann nicht bearbeitet werden).
     const int refIdx = (index > 0) ? index - 1 : (n > 0 ? 0 : -1);
     if (refIdx < 0)
@@ -2005,7 +2005,7 @@ void PdfEditController::spliceGlyphsInsert(int index, const QString& text) {
         x += advance;
         add.append(g);
     }
-    // Folgeglyphen DERSELBEN Zeile mitschieben — sonst überlagert der neue
+    // Folgeglyphen DERSELBEN Zeile mitschieben - sonst überlagert der neue
     // Text den alten, bis der Neubau eintrifft.
     const qreal shift = advance * text.size();
     for (int i = index; i < n; ++i) {
@@ -2043,7 +2043,7 @@ void PdfEditController::insertAtCaret(const QString& text) {
     if (srcPage < 0)
         return;
     const int at = qBound(0, m_caretIndex, m_caretGlyphs.size());
-    // Fortlaufendes Tippen sammelt sich in EINER Op → EIN Undo-Schritt.
+    // Fortlaufendes Tippen sammelt sich in EINER Op -> EIN Undo-Schritt.
     if (m_pendingValid && m_pending.page == srcPage && m_pending.isInsert()
         && m_pending.index + m_pending.text.size() == at) {
         m_pending.text += text;
@@ -2098,7 +2098,7 @@ void PdfEditController::deleteAtCaret(int dir) {
 //  Die schwebende Op wird ERST zum Undo-Kommando, wenn sie nachweislich
 //  schreibbar ist (der Neubau hat sie akzeptiert). Andernfalls stünde nach
 //  einem Fehlschlag ein Kommando auf dem Stack, dessen Op gar nicht in der
-//  Liste liegt — sein undo() würde eine fremde Op entfernen.
+//  Liste liegt - sein undo() würde eine fremde Op entfernen.
 void PdfEditController::commitPendingTextOp() {
     if (!m_pendingValid)
         return;
@@ -2174,10 +2174,10 @@ void PdfEditController::textOpsTaskFinished(bool ok, const QString& err, int gen
         m_builtOps      = m_buildingOps;
         m_textWorkValid = true;
         m_textOpsLoaded = false;                // geladene Ops sind bestätigt
-        //  Der Absatz-Umbruch hat Zeichen verschoben → die Schreibmarke wandert
+        //  Der Absatz-Umbruch hat Zeichen verschoben -> die Schreibmarke wandert
         //  mit, sonst stünde sie plötzlich vor einem anderen Zeichen.
         //  Bedingungen: Es wurde seither NICHT weitergetippt (`textRebuildNeeded`
-        //  ist dann false — der gebaute Stand ist der aktuelle; sonst gilt die
+        //  ist dann false - der gebaute Stand ist der aktuelle; sonst gilt die
         //  lokal fortgeschriebene Position, und der nächste Neubau richtet es),
         //  und die Marke steht auf DER Seite, die umgebrochen wurde.
         if (caretTo >= 0 && caretPage >= 0 && caretPage == caretSrcPage()
@@ -2189,7 +2189,7 @@ void PdfEditController::textOpsTaskFinished(bool ok, const QString& err, int gen
             commitPendingTextOp();
     } else {
         // Nicht schreibbar (z. B. Zeichen fehlt in der Kodierung der Schrift).
-        // Die schwebende Op wird verworfen — der Undo-Stack kennt sie noch
+        // Die schwebende Op wird verworfen - der Undo-Stack kennt sie noch
         // nicht, Modell und Anzeige bleiben also konsistent.
         m_pendingCommit = false;
         if (m_pendingValid) {
@@ -2212,7 +2212,7 @@ void PdfEditController::textOpsTaskFinished(bool ok, const QString& err, int gen
 
 //  Export darf erst starten, wenn die Textebene materialisiert ist. Ist sie es
 //  noch nicht, wird der Neubau sofort angestoßen und der Export in
-//  resumePendingExport() fortgesetzt (der UI-Thread blockiert nie — Regel 17).
+//  resumePendingExport() fortgesetzt (der UI-Thread blockiert nie - Regel 17).
 bool PdfEditController::flushTextForExport(int kind) {
     commitPendingTextOp();
     if (!textRebuildNeeded() && !m_textOpsBusy)
@@ -2257,7 +2257,7 @@ void PdfEditController::setDocument(const QString& pathOrUrl) {
     finishOpenSessions();
     finishDrawSession();
     // Auto-Sicherung: ungesicherte Änderungen des VORHERIGEN Dokuments landen
-    // im Sidecar — Navigation verliert nie stillschweigend Bearbeitungen.
+    // im Sidecar - Navigation verliert nie stillschweigend Bearbeitungen.
     // Gepufferte Formularwerte zählen dazu: sie stehen (noch) in keiner PDF.
     if (!m_docPath.isEmpty() && (!m_stack.isClean() || !m_formEdits.isEmpty()))
         saveOverlay();
@@ -2271,7 +2271,7 @@ void PdfEditController::setDocument(const QString& pathOrUrl) {
     setSelectedId(-1);
     setTool(Select);
     //  Der Aufzeichnungs-Schalter gehört zum DOKUMENT: das nächste bringt seinen
-    //  eigenen mit (aus dem Sidecar) — ohne dieses Zurücksetzen zeichnete eine
+    //  eigenen mit (aus dem Sidecar) - ohne dieses Zurücksetzen zeichnete eine
     //  Datei ohne Sidecar den Zustand der vorher geöffneten weiter auf.
     if (m_recording) { m_recording = false; emit recordingChanged(); }
     m_stack.clear();                                // setzt zugleich auf „clean"
@@ -2297,7 +2297,7 @@ void PdfEditController::setDocument(const QString& pathOrUrl) {
         startFormRead();                            // Felder der pristinen Datei
         startAnnotRead();                           // vorhandene Annotationen übernehmen
         // Aus dem Sidecar geladene Textebenen-Ops kommen als Kommandos auf den
-        // Stack (danach „clean") — anders als Notizen lässt sich eine
+        // Stack (danach „clean") - anders als Notizen lässt sich eine
         // Textebenen-Änderung sonst NICHT mehr entfernen: Sie liegt in der
         // Datei, es gibt kein anklickbares Objekt dafür. Mit den Kommandos
         // nimmt Strg+Z sie zurück, ohne dass das Dokument beim Öffnen als
@@ -2350,7 +2350,7 @@ void PdfEditController::releaseDocument() {
         saveOverlay();
     QFile::remove(previewPath(m_docPath));      // temporäre Vorschau verwerfen
     // Die Textebenen-Arbeitsdatei ist ableitbar (Sidecar-Ops + Original) und
-    // bleibt daher NICHT neben dem PDF liegen — beim nächsten Öffnen wird sie
+    // bleibt daher NICHT neben dem PDF liegen - beim nächsten Öffnen wird sie
     // aus den Ops neu erzeugt.
     QFile::remove(textWorkPath(m_docPath));
     resetTextState();
@@ -2381,7 +2381,7 @@ int PdfEditController::addTextBox(int page, qreal xPt, qreal yPt,
     if (m_docPath.isEmpty() || page < 0)
         return -1;
     //  `page` ist eine ANSICHTS-Seite; gespeichert wird der stabile Seiten-Key
-    //  (s. PdfPlanPage) — so bleibt die Notiz beim Umsortieren an ihrer Seite.
+    //  (s. PdfPlanPage) - so bleibt die Notiz beim Umsortieren an ihrer Seite.
     const int key = pageKeyForView(page);
     if (key < 0)
         return -1;
@@ -2424,7 +2424,7 @@ int PdfEditController::addStamp(const QString& pathOrUrl, int page,
     if (local.isEmpty() || !QFile::exists(local))
         return -1;
 
-    //  Seitenverhältnis aus dem Bild — ein verzerrter Stempel fiele sofort auf.
+    //  Seitenverhältnis aus dem Bild - ein verzerrter Stempel fiele sofort auf.
     //  Gelesen wird nur der KOPF der Datei (QImageReader::size), nicht das Bild.
     const QSize px = QImageReader(local).size();
     if (!px.isValid() || px.width() <= 0 || px.height() <= 0)
@@ -2516,7 +2516,7 @@ int PdfEditController::addAnchoredTextBox(int page, qreal xPt, qreal yPt,
     return b.id;
 }
 
-// ── Zeichen-Session (Freihand/Pfeil/Rechteck/Ellipse — analog Bild-Editor) ───
+// ── Zeichen-Session (Freihand/Pfeil/Rechteck/Ellipse - analog Bild-Editor) ───
 int PdfEditController::beginDraw(int kind, int page, qreal xPt, qreal yPt) {
     if (m_docPath.isEmpty() || page < 0
         || kind < static_cast<int>(PdfAnnKind::Freehand)
@@ -2551,7 +2551,7 @@ int PdfEditController::beginDraw(int kind, int page, qreal xPt, qreal yPt) {
         b.rect = QRectF(xPt, yPt, 0.0, 0.0);
         break;
     }
-    // LIVE einfügen (Vorschau) — KEIN Kommando; das kommt erst bei endDraw().
+    // LIVE einfügen (Vorschau) - KEIN Kommando; das kommt erst bei endDraw().
     m_model.insertBoxAt(m_model.count(), b);
     m_drawId = b.id;
     return b.id;
@@ -2604,7 +2604,7 @@ void PdfEditController::endDraw(int id) {
         return;
     // … und als EIN Add-Kommando neu einsetzen (Undo entfernt die Zeichnung).
     pushAdd(copy);
-    // Vorlage nachziehen (Stil-Erben): Replace pflegt die EIGENE Vorlage —
+    // Vorlage nachziehen (Stil-Erben): Replace pflegt die EIGENE Vorlage -
     // dieser Pfad läuft nur, wenn eine Replace-Session unerwartet über das
     // generische endDraw endet (z. B. finishDrawSession bei Moduswechsel);
     // der reguläre Abschluss ist endReplaceDraw.
@@ -2634,7 +2634,7 @@ int PdfEditController::endRedactDraw(int id, bool snapped,
     m_model.removeById(id);                          // Live-Instanz weg (kein Kommando)
 
     if (snapped) {
-        //  Auf die erkannten Zeilen einschnappen — die Fläche deckt genau das,
+        //  Auf die erkannten Zeilen einschnappen - die Fläche deckt genau das,
         //  was auch aus dem Strom verschwindet.
         copy.rect = QRectF(qMax(0.0, xPt), qMax(0.0, yPt),
                            qMax(kMinBoxWPt, wPt), qMax(kMinBoxHPt, hPt));
@@ -2652,7 +2652,7 @@ int PdfEditController::endRedactDraw(int id, bool snapped,
     copy.stroke    = QColor(0, 0, 0, 0);             // kein Rahmen
     copy.lineWidth = 0.0;
     //  IMMER schwarz und deckend. Die Vorlage stammt vom „Text ersetzen"-
-    //  Werkzeug und trägt deckendes WEISS — geerbt hätte die Schwärzung damit
+    //  Werkzeug und trägt deckendes WEISS - geerbt hätte die Schwärzung damit
     //  eine weiße Fläche auf weißem Papier: unsichtbar, obwohl der Text sehr
     //  wohl entfernt wird. Umfärben kann der Nutzer sie danach im Panel.
     copy.highlight = QColor(0, 0, 0, 255);
@@ -2679,7 +2679,7 @@ int PdfEditController::endReplaceDraw(int id, bool snapped,
 
     if (snapped) {
         // Auf die erkannten Zeilen-Bounds einschnappen (weiße Fläche deckt
-        // die Zeile(n) exakt); Schriftgröße aus der Ø-Zeilenhöhe — dieselbe
+        // die Zeile(n) exakt); Schriftgröße aus der Ø-Zeilenhöhe - dieselbe
         // Typografie-Faustregel wie addAnchoredTextBox (≈ 72 % der Zeile).
         copy.rect = QRectF(qMax(0.0, xPt), qMax(0.0, yPt),
                            qMax(kMinBoxWPt, wPt), qMax(kMinBoxHPt, hPt));
@@ -2692,7 +2692,7 @@ int PdfEditController::endReplaceDraw(int id, bool snapped,
         return -1;                                   // entarteter Klick ohne Zug
     } else {
         // Keine Texterkennung (gescannte PDF/Stelle ohne Text): Box bleibt
-        // exakt der aufgezogene Bereich, Stil aus der Vorlage — bewusst STILL,
+        // exakt der aufgezogene Bereich, Stil aus der Vorlage - bewusst STILL,
         // ohne Hinweis-Dialog/Toast (konsistent zu den Post-its).
         copy.rect.setWidth(qMax(kMinBoxWPt,  copy.rect.width()));
         copy.rect.setHeight(qMax(kMinBoxHPt, copy.rect.height()));
@@ -2702,7 +2702,7 @@ int PdfEditController::endReplaceDraw(int id, bool snapped,
     if (copy.highlight.isValid() && copy.highlight.alpha() > 0) copy.highlight.setAlpha(255);
     else                                                        copy.highlight = QColor(255, 255, 255, 255);
     // Vorbefüllter Text muss vollständig in die Box passen (feste Breite,
-    // Umbruch, Höhe wächst mit dem Inhalt — Muster der Post-it-Reflow-Logik).
+    // Umbruch, Höhe wächst mit dem Inhalt - Muster der Post-it-Reflow-Logik).
     if (!copy.text.isEmpty()) {
         const qreal need = requiredHeightPt(copy);
         if (need > copy.rect.height())
@@ -2733,7 +2733,7 @@ void PdfEditController::removeBox(int id) {
     finishOpenSessions();
     if (m_selectedId == id)
         setSelectedId(-1);
-    //  Bei laufender Aufzeichnung wird nicht entfernt, sondern MARKIERT — sonst
+    //  Bei laufender Aufzeichnung wird nicht entfernt, sondern MARKIERT - sonst
     //  ließe sich das Verwerfen der Löschung nicht mehr zurücknehmen. Eine Box,
     //  die in derselben Sitzung erst entstanden ist (`Added`), verschwindet
     //  dagegen ganz: eine Änderung, die sich selbst aufhebt, ist keine.
@@ -2782,7 +2782,7 @@ PdfEditBox PdfEditController::seededReplace() const {
 
 PdfEditBox PdfEditController::makeReplaceTpl() {
     // Startwerte des „Text ersetzen"-Werkzeugs: schwarzer Text auf deckendem
-    // Weiß (ersetzt gedruckten Text — kein Post-it-Gelb), oben-links.
+    // Weiß (ersetzt gedruckten Text - kein Post-it-Gelb), oben-links.
     PdfEditBox b;
     b.kind      = PdfAnnKind::Replace;
     b.color     = QColor(0, 0, 0);
@@ -2793,7 +2793,7 @@ PdfEditBox PdfEditController::makeReplaceTpl() {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-//  Benötigte Boxhöhe für den Textinhalt (feste Breite, Umbruch) — dieselbe
+//  Benötigte Boxhöhe für den Textinhalt (feste Breite, Umbruch) - dieselbe
 //  QTextLayout-Mathematik wie der Export-Zeichner (drawBox), nur ohne Gerät:
 //  QFont::setPixelSize nimmt Ganzzahlen, daher wird mit Faktor k skaliert
 //  (Sub-Punkt-Präzision); PreferNoHinting hält die Metriken linear skalierbar.
@@ -2925,7 +2925,7 @@ void PdfEditController::reflowChain(int anyId, int editedId,
     struct Delta { int id; int page; QString oldT, newT; QRectF oldR, newR;
                    bool textCh; bool rectCh; };
     QVector<Delta> deltas;
-    //  id → neue growBaseH (0 = Merker löschen). Wird nach dem Buchen der
+    //  id -> neue growBaseH (0 = Merker löschen). Wird nach dem Buchen der
     //  Deltas angewandt; growBaseH ist reine Buchführung und gehört daher NICHT
     //  in ein Undo-Kommando (Undo stellt die Geometrie ohnehin direkt her).
     QHash<int, qreal> grow;
@@ -2943,7 +2943,7 @@ void PdfEditController::reflowChain(int anyId, int editedId,
             const qreal need = requiredHeightPt(tmp);
             if (need > newR.height() + 0.5) {
                 //  Ursprungshöhe EINMALIG merken, bevor sie überschrieben wird
-                //  (s. PdfEditBox::growBaseH) — nur so lässt sie sich später
+                //  (s. PdfEditBox::growBaseH) - nur so lässt sie sich später
                 //  wiederherstellen.
                 if (grow.value(cid, 0.0) <= 0.0 && b->growBaseH <= 0.0)
                     grow.insert(cid, newR.height());
@@ -2952,14 +2952,14 @@ void PdfEditController::reflowChain(int anyId, int editedId,
         } else {
             //  Diese Box ist NICHT (mehr) das Kettenende. War sie es einmal und
             //  ist dabei gewachsen, muss sie auf ihre ursprüngliche Höhe
-            //  zurück — sonst fasst sie weiterhin den gesamten Resttext und die
+            //  zurück - sonst fasst sie weiterhin den gesamten Resttext und die
             //  Folgeboxen bleiben für immer leer.
             if (b->growBaseH > 0.0 && b->growBaseH < newR.height() - 0.5) {
                 newR.setHeight(b->growBaseH);
                 grow.insert(cid, 0.0);              // Merker verbraucht
             }
             //  fitCharCount auf dem MÖGLICHERWEISE geschrumpften Rechteck
-            //  rechnen, nicht auf dem alten — sonst bliebe die Aufteilung an
+            //  rechnen, nicht auf dem alten - sonst bliebe die Aufteilung an
             //  der aufgeblähten Höhe hängen.
             PdfEditBox probe = *b; probe.rect = newR;
             const int fit = fitCharCount(probe, combined.mid(pos));
@@ -3095,7 +3095,7 @@ void PdfEditController::beginGeometryEdit(int id) {
 }
 
 //  Striche: Punkte proportional vom Session-Basis- in das neue Rechteck
-//  abbilden (Verschieben = Translation, Skalieren = Streckung) — identische
+//  abbilden (Verschieben = Translation, Skalieren = Streckung) - identische
 //  Mathematik wie ImageEditController::updateGeometry.
 static QVector<QPointF> transformPoints(const QVector<QPointF>& oldPts,
                                         const QRectF& oldRect, const QRectF& r) {
@@ -3138,7 +3138,7 @@ void PdfEditController::updatePlacement(int id, int page, qreal xPt, qreal yPt,
     const PdfEditBox* b = m_model.boxById(id);
     if (!b)
         return;
-    //  ZIELSEITE ist eine ANSICHTS-Seite (QML rechnet in der Seitenliste) —
+    //  ZIELSEITE ist eine ANSICHTS-Seite (QML rechnet in der Seitenliste) -
     //  gespeichert wird der stabile Key dieser Seite.
     const int key = pageKeyForView(page);
     if (key < 0)
@@ -3198,7 +3198,7 @@ void PdfEditController::updateText(int id, const QString& text) {
     m_model.applyText(id, text);                    // live, KEIN Kommando je Taste
 
     // „Text ersetzen"-Boxen wachsen mit dem Inhalt: feste Breite, automatischer
-    // Umbruch, Höhe folgt dem Text (nie automatisches Schrumpfen — der Nutzer
+    // Umbruch, Höhe folgt dem Text (nie automatisches Schrumpfen - der Nutzer
     // kann über die Handles jederzeit selbst verkleinern). Live ohne Kommando;
     // die Höhenänderung wird am Session-Ende mit dem Text-Delta zu EINEM
     // Undo-Schritt zusammengefasst (finishTextSession-Makro).
@@ -3237,7 +3237,7 @@ void PdfEditController::finishTextSession() {
     const bool rectChanged = b->rect != m_textOldRect;
     if (textChanged && rectChanged) {
         // Automatisches Höhenwachstum („Text ersetzen"): Text- und Geometrie-
-        // Delta zu EINEM Undo-Schritt zusammenfassen — Undo stellt Text UND
+        // Delta zu EINEM Undo-Schritt zusammenfassen - Undo stellt Text UND
         // ursprüngliche Boxhöhe gemeinsam wieder her.
         m_stack.beginMacro(QStringLiteral("text"));
         m_stack.push(new PdfEditTextCommand(&m_model, id, m_textOld, b->text));
@@ -3260,7 +3260,7 @@ void PdfEditController::finishTextSession() {
 void PdfEditController::setBoxField(int id, PdfEditField f, const QVariant& v) {
     if (id < 0) {
         // Nur die Vorlage/Default für NEUE Annotationen setzen (kein Kommando):
-        // Zeichen-Felder → Zeichen-Defaults; Text-Felder → Vorlage des AKTIVEN
+        // Zeichen-Felder -> Zeichen-Defaults; Text-Felder -> Vorlage des AKTIVEN
         // Werkzeugs (Text ersetzen pflegt seine eigene, sonst die Post-its).
         const bool draw = (f == PdfEditField::Stroke || f == PdfEditField::LineWidth
                            || f == PdfEditField::Fill);
@@ -3273,7 +3273,7 @@ void PdfEditController::setBoxField(int id, PdfEditField f, const QVariant& v) {
     const PdfEditBox* b = m_model.boxById(id);
     if (!b)
         return;
-    // „Text ersetzen": Cover-Farbe IST wählbar, muss aber deckend bleiben — das
+    // „Text ersetzen": Cover-Farbe IST wählbar, muss aber deckend bleiben - das
     // Alpha der gewählten Farbe defensiv auf 255 ziehen (Cover deckt vollständig).
     QVariant vEff = v;
     if (f == PdfEditField::Highlight && b->kind == PdfAnnKind::Replace) {
@@ -3389,7 +3389,7 @@ QVariantMap PdfEditController::boxInfo(int id) const {
 
 QVariantMap PdfEditController::defaultInfo() const {
     // Vorlagen-Defaults für neue Annotationen (Panel liest sie rev-getrieben
-    // über defaultRev, wenn nichts ausgewählt ist — Muster wie Bild-Editor).
+    // über defaultRev, wenn nichts ausgewählt ist - Muster wie Bild-Editor).
     // Die Text-Felder kommen aus der Vorlage des AKTIVEN Werkzeugs: „Text
     // ersetzen" pflegt eine eigene (schwarz auf fix Weiß), sonst die Post-its.
     const PdfEditBox& tpl = (m_tool == ReplaceTool) ? m_replaceTpl : m_textTpl;
@@ -3499,7 +3499,7 @@ void PdfEditController::rejectChange(int id) {
 }
 
 //  „Alle" ist EIN Undo-Schritt: ein einziges Strg+Z holt den ganzen Stapel
-//  zurück — dasselbe Verhalten wie im DOCX-Änderungsstreifen.
+//  zurück - dasselbe Verhalten wie im DOCX-Änderungsstreifen.
 void PdfEditController::acceptAllChanges() {
     if (trackedCount() == 0)
         return;
@@ -3531,7 +3531,7 @@ void PdfEditController::undo() {
     finishDrawSession();
     // Eine noch schwebende Tipp-Session IST der zuletzt getane Schritt: Sie
     // wird verworfen, statt sie erst festzuschreiben und sofort wieder
-    // zurückzunehmen (das Festschreiben wartet ggf. auf den Neubau — der
+    // zurückzunehmen (das Festschreiben wartet ggf. auf den Neubau - der
     // Undo-Klick würde dann sichtbar das falsche, ältere Kommando treffen).
     if (m_pendingValid) {
         setPendingValid(false);
@@ -3574,10 +3574,10 @@ bool PdfEditController::saveOverlay() {
     const bool hasVals  = !m_formEdits.isEmpty();
 
     if (!hasBoxes && !hasPlan && !hasOps && !hasVals) {
-        // Leeres Overlay UND unveränderter Seiten-Plan → kein Sidecar zurücklassen.
+        // Leeres Overlay UND unveränderter Seiten-Plan -> kein Sidecar zurücklassen.
         ok = !QFile::exists(sc) || QFile::remove(sc);
         // Ohne Plan verweist auch nichts mehr auf die Begleitdatei der
-        // importierten Seiten → sie wird mit aufgeräumt (kein Datei-Wildwuchs
+        // importierten Seiten -> sie wird mit aufgeräumt (kein Datei-Wildwuchs
         // neben dem Dokument).
         QFile::remove(assetPath(m_docPath));
     } else {
@@ -3606,7 +3606,7 @@ bool PdfEditController::saveOverlay() {
             if (anyChain)
                 rootObj.insert(QStringLiteral("chains"), chains);
             //  Ursprungshöhen vor dem Ketten-Ende-Wachstum (s. growBaseH). Nur
-            //  schreiben, wenn überhaupt eine Box gewachsen ist — ältere
+            //  schreiben, wenn überhaupt eine Box gewachsen ist - ältere
             //  Sidecars ohne das Feld laden unverändert (growBaseH bleibt 0).
             bool anyGrow = false;
             QJsonArray growArr;
@@ -3621,7 +3621,7 @@ bool PdfEditController::saveOverlay() {
             //  Seiten-Plan (s. PdfPlanPage): je Eintrag Quellseite, Quelldatei,
             //  Drehung und der stabile Key, über den die Notizen ihre Seite
             //  finden. Ein reines Int-Array (Sidecars vor den Seitenoperationen)
-            //  wird beim Laden weiterhin verstanden — s. loadOverlay.
+            //  wird beim Laden weiterhin verstanden - s. loadOverlay.
             QJsonArray parr;
             for (const PdfPlanPage& p : std::as_const(m_plan))
                 parr.append(p.toJson());
@@ -3629,7 +3629,7 @@ bool PdfEditController::saveOverlay() {
         }
         if (hasOps) {
             // Änderungen an der EINGEBETTETEN Textebene (Caret-Werkzeug). Sie
-            // sind ein Delta auf die pristine Datei — das Original bleibt auch
+            // sind ein Delta auf die pristine Datei - das Original bleibt auch
             // hier unangetastet, die Bearbeitung dauerhaft rücknehmbar.
             QJsonArray oarr;
             for (const PdfTextOp& op : std::as_const(m_textOps))
@@ -3637,7 +3637,7 @@ bool PdfEditController::saveOverlay() {
             rootObj.insert(QStringLiteral("textops"), oarr);
         }
         if (hasVals) {
-            //  Gepufferte FORMULARWERTE (Feldname → Wert). Sie sind ebenfalls ein
+            //  Gepufferte FORMULARWERTE (Feldname -> Wert). Sie sind ebenfalls ein
             //  Delta auf die pristine Datei: geschrieben wird erst über
             //  saveFormValues() in eine Kopie, hier überleben sie das Schließen.
             QJsonObject vals;
@@ -3646,7 +3646,7 @@ bool PdfEditController::saveOverlay() {
             rootObj.insert(QStringLiteral("formvals"), vals);
         }
 
-        // Atomar (QSaveFile) — wie ViewerController::writeTextFile.
+        // Atomar (QSaveFile) - wie ViewerController::writeTextFile.
         QSaveFile f(sc);
         if (f.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
             const QByteArray bytes = QJsonDocument(rootObj).toJson(QJsonDocument::Compact);
@@ -3702,16 +3702,16 @@ bool PdfEditController::loadOverlay(const QString& pdfPath) {
         if (idx >= 0 && idx < boxes.size() && idx != i)
             boxes[i].chainNext = boxes[idx].id;
     }
-    //  Ursprungshöhen (fehlt das Feld — ältere Sidecars —, bleibt es bei 0).
+    //  Ursprungshöhen (fehlt das Feld - ältere Sidecars -, bleibt es bei 0).
     const QJsonArray growArr = o.value(QStringLiteral("growBase")).toArray();
     for (int i = 0; i < growArr.size() && i < boxes.size(); ++i)
         boxes[i].growBaseH = growArr.at(i).toDouble(0.0);
     m_model.resetBoxes(boxes);
 
-    // Seiten-Plan, falls vorhanden — die Validierung gegen die echte Seitenzahl
+    // Seiten-Plan, falls vorhanden - die Validierung gegen die echte Seitenzahl
     // (und die Key-Vergabe) erfolgt in setSourcePageCount(), sobald QML sie
     // meldet. ALTFORMAT: Sidecars aus der Zeit vor den Seitenoperationen tragen
-    // ein reines Int-Array (Quellseite bzw. −1 für eine Leerseite) — es wird
+    // ein reines Int-Array (Quellseite bzw. −1 für eine Leerseite) - es wird
     // unverändert weiter verstanden.
     m_plan.clear();
     const QJsonArray parr = o.value(QStringLiteral("pageplan")).toArray();
@@ -3723,7 +3723,7 @@ bool PdfEditController::loadOverlay(const QString& pdfPath) {
     }
 
     // Textebenen-Ops (Caret-Werkzeug). setDocument() legt sie anschließend als
-    // Kommandos auf den (danach wieder sauberen) Undo-Stack — s. dort.
+    // Kommandos auf den (danach wieder sauberen) Undo-Stack - s. dort.
     m_textOps.clear();
     const QJsonArray oarr = o.value(QStringLiteral("textops")).toArray();
     for (const QJsonValue& v : oarr) {
@@ -3737,7 +3737,7 @@ bool PdfEditController::loadOverlay(const QString& pdfPath) {
 
     //  Gepufferte Formularwerte. Sie werden gegen die WIRKLICH vorhandenen
     //  Felder abgeglichen, sobald der Lesevorgang zurückkommt
-    //  (formReadFinished) — ein fremdes Sidecar kann hier nichts erzwingen.
+    //  (formReadFinished) - ein fremdes Sidecar kann hier nichts erzwingen.
     m_formEdits.clear();
     const QJsonObject vals = o.value(QStringLiteral("formvals")).toObject();
     for (auto it = vals.constBegin(); it != vals.constEnd(); ++it)
@@ -3773,7 +3773,7 @@ QString PdfEditController::uniqueCopyPath(const QString& pdfPath) {
 QString PdfEditController::exportTargetPath() const {
     if (m_docPath.isEmpty())
         return {};
-    // IMMER eine Kopie neben dem Original — nie destruktiv (die Notizen
+    // IMMER eine Kopie neben dem Original - nie destruktiv (die Notizen
     // bleiben über das Sidecar dauerhaft editier- und entfernbar).
     return uniqueCopyPath(m_docPath);
 }
@@ -3787,7 +3787,7 @@ void PdfEditController::exportPdf() {
     const QString target = exportTargetPath();
     if (target.isEmpty())
         return;
-    // Noch nicht materialisierte Textebenen-Änderungen zuerst schreiben —
+    // Noch nicht materialisierte Textebenen-Änderungen zuerst schreiben -
     // sonst exportierte der Knopf einen Stand, der älter ist als das Bild.
     if (!flushTextForExport(1))
         return;
@@ -3817,7 +3817,7 @@ void PdfEditController::exportContentEdited() {
     // Eignung für den VERLUSTFREIEN Weg prüfen: Seiten-Plan = Identität UND alle
     // Annotationen sind stream-editierbare „Text ersetzen"-Boxen (mit erkanntem
     // Originaltext). Notizen/Zeichnungen oder gescannte Replace-Boxen (ohne
-    // Original) müssten gerendert/überdeckt werden → dann Raster-Export.
+    // Original) müssten gerendert/überdeckt werden -> dann Raster-Export.
     if (!flushTextForExport(2))
         return;
 
@@ -3828,7 +3828,7 @@ void PdfEditController::exportContentEdited() {
         for (const PdfEditBox& b : boxes) {
             //  Stream-editierbar sind „Text ersetzen"- UND „Text schwärzen"-
             //  Boxen: beide kennen ihren Originaltext. Bei der Schwärzung ist
-            //  der Ersatz leer — der Text verschwindet also wirklich.
+            //  der Ersatz leer - der Text verschwindet also wirklich.
             const bool streamable = (b.kind == PdfAnnKind::Replace
                                      || b.kind == PdfAnnKind::Redact);
             if (!streamable || b.origText.isEmpty()) { eligible = false; break; }
@@ -3838,7 +3838,7 @@ void PdfEditController::exportContentEdited() {
     }
     if (eligible && edits.isEmpty())
         eligible = false;                           // nichts zu ersetzen
-    // RAM-Schutz (Prio 1): sehr große Dateien nicht komplett laden → Raster.
+    // RAM-Schutz (Prio 1): sehr große Dateien nicht komplett laden -> Raster.
     if (eligible) {
         constexpr qint64 kMaxContentEditBytes = 64LL * 1024 * 1024;
         if (QFileInfo(textSourcePath()).size() > kMaxContentEditBytes)
@@ -3852,7 +3852,7 @@ void PdfEditController::exportContentEdited() {
     if (eligible) {
         m_pool.start(new PdfContentEditTask(this, textSourcePath(), exportTargetPath(), edits, gen));
     } else {
-        // Direkt Raster-Export (Fallback) — immer korrekt, inkl. aller Notizen.
+        // Direkt Raster-Export (Fallback) - immer korrekt, inkl. aller Notizen.
         emit contentEditFellBack();
         m_cancel = std::make_shared<std::atomic<bool>>(false);
         m_pool.start(new PdfExportTask(this, renderSourcePath(), exportTargetPath(),
@@ -3871,12 +3871,12 @@ void PdfEditController::contentEditTaskFinished(bool ok, const QString& target,
         emit exportFinished(true, target, QString());
         return;
     }
-    // Content-Stream-Editing scheiterte (Seite/Font nicht sicher editierbar) →
+    // Content-Stream-Editing scheiterte (Seite/Font nicht sicher editierbar) ->
     // Raster-Export als Fallback (gleiche Generation, busy bleibt gesetzt).
     emit contentEditFellBack();
     m_cancel = std::make_shared<std::atomic<bool>>(false);
     //  Auch dieser Rückfall bekommt die Schwärzungs-FLÄCHEN mit: ohne sie liefe
-    //  er in genau die Falle, die den Nutzerbefund ausmachte — Textweg
+    //  er in genau die Falle, die den Nutzerbefund ausmachte - Textweg
     //  gescheitert ⇒ alles rastern, obwohl der geometrische Weg räumen kann.
     m_pool.start(new PdfExportTask(this, renderSourcePath(), exportTargetPath(),
                                    exportBoxes(), m_exportGen, m_cancel, importRemovals(), {},
@@ -3903,7 +3903,7 @@ void PdfEditController::exportTaskProgress(int done, int total, int generation) 
 //  Übernommene Annotationen (Annotation Interchange)
 //
 //  ZUORDNUNG der Arten: Was der Editor kennt, wird zu einer Overlay-Box; was er
-//  NICHT kennt (Markierung/Unterstreichung/Durchstreichung — dafür gibt es kein
+//  NICHT kennt (Markierung/Unterstreichung/Durchstreichung - dafür gibt es kein
 //  PdfAnnKind), bleibt bewusst UNANGETASTET in der Datei. Solche Annotationen
 //  werden also weder angezeigt noch verändert, gehen aber auch nicht verloren:
 //  Der Export lässt sie stehen, weil nichts sie streicht.
@@ -3921,7 +3921,7 @@ bool PdfEditController::boxFromAnnotation(const mg::PdfAnnotation& a, PdfEditBox
     b.rect      = a.rect;
     b.lineWidth = qBound(0.0, a.borderWidth, 72.0);
 
-    //  Deckkraft der Annotation auf die Farben durchschlagen lassen — der
+    //  Deckkraft der Annotation auf die Farben durchschlagen lassen - der
     //  Editor kennt keine eigene Deckkraft, nur Alpha in den Farben.
     const int alpha = qBound(0, int(qRound(a.opacity * 255.0)), 255);
     auto withAlpha = [alpha](QColor c, const QColor& fallback) {
@@ -3966,7 +3966,7 @@ bool PdfEditController::boxFromAnnotation(const mg::PdfAnnotation& a, PdfEditBox
         b.fontSizePt = a.fontSizePt > 0.0 ? a.fontSizePt : 12.0;
         b.color      = a.textColor.isValid() ? a.textColor : QColor(0, 0, 0);
         //  Papierfarbe: die Füllung der Annotation, sonst ihre Grundfarbe
-        //  (Sticky Notes tragen ihre Farbe in /C) — beide mit /CA-Alpha.
+        //  (Sticky Notes tragen ihre Farbe in /C) - beide mit /CA-Alpha.
         const QColor paper = a.interiorColor.isValid() ? a.interiorColor : a.color;
         b.highlight  = paper.isValid() ? withAlpha(paper, paper)
                                        : QColor(254, 243, 155, 232);
@@ -4014,7 +4014,7 @@ bool PdfEditController::boxFromAnnotation(const mg::PdfAnnotation& a, PdfEditBox
 
 bool PdfEditController::annotationFromBox(const PdfEditBox& b, mg::PdfAnnotation* out) {
     //  Nicht abbildbar: „Text ersetzen" ist eine DECKFLÄCHE über vorhandenem
-    //  Inhalt (eine Annotation darüber wäre wegklickbar — der Originaltext
+    //  Inhalt (eine Annotation darüber wäre wegklickbar - der Originaltext
     //  käme zum Vorschein), und verkettete Textboxen bilden zusammen EINEN
     //  Textfluss, den ein einzelnes /FreeText nicht ausdrückt.
     if (b.kind == PdfAnnKind::Replace || b.chainNext != 0)
@@ -4026,7 +4026,7 @@ bool PdfEditController::annotationFromBox(const PdfEditBox& b, mg::PdfAnnotation
     a.borderWidth = b.lineWidth;
 
     //  Deckkraft: der Editor führt sie im Alpha der Farben, die Annotation in
-    //  /CA. Genommen wird die durchsichtigste beteiligte Farbe — sonst wirkte
+    //  /CA. Genommen wird die durchsichtigste beteiligte Farbe - sonst wirkte
     //  eine halbtransparente Notiz im Ergebnis deckend.
     int alpha = 255;
     auto noteAlpha = [&alpha](const QColor& c) {
@@ -4129,7 +4129,7 @@ void PdfEditController::annotReadFinished(const QVector<mg::PdfAnnotation>& anno
         if (key < 0)
             continue;
         b.page = key;
-        //  Der Zustand AUS DER DATEI ist die Vergleichsgrundlage — auch für
+        //  Der Zustand AUS DER DATEI ist die Vergleichsgrundlage - auch für
         //  Boxen, die schon im Sidecar lagen (sie können längst verändert sein).
         m_importBaseline.insert(a.objNum, b.toJson());
         if (!known.contains(a.objNum))
@@ -4153,11 +4153,11 @@ bool PdfEditController::importChanged(const PdfEditBox& b) const {
         return false;
     const auto it = m_importBaseline.constFind(b.srcObjNum);
     if (it == m_importBaseline.constEnd())
-        return true;                                // Herkunft unbekannt → sicherheitshalber
+        return true;                                // Herkunft unbekannt -> sicherheitshalber
     return b.toJson() != it.value();
 }
 
-//  Eigene Notizen als Annotationsliste — aber NUR, wenn die Einstellung das
+//  Eigene Notizen als Annotationsliste - aber NUR, wenn die Einstellung das
 //  verlangt und sich JEDE davon abbilden lässt. Andernfalls leer: dann malt der
 //  Export wie bisher (eine Mischung aus beidem wäre die schlechteste Antwort).
 QVector<mg::PdfAnnotation> PdfEditController::exportAnnotations() const {
@@ -4171,7 +4171,7 @@ QVector<mg::PdfAnnotation> PdfEditController::exportAnnotations() const {
     for (const PdfEditBox& b : boxes) {
         mg::PdfAnnotation a;
         if (!annotationFromBox(b, &a))
-            return {};                      // eine reicht → alles malen
+            return {};                      // eine reicht -> alles malen
         out.push_back(a);
     }
     return out;
@@ -4223,14 +4223,14 @@ QVector<int> PdfEditController::importRemovals() const {
 //
 //  GELESEN wird IMMER die pristine Datei: dort liegen die Widgets, und ihr
 //  `page` ist ein QUELLseiten-Index. Die Anzeige spricht dagegen Ansichts-
-//  Seiten — die Abbildung läuft (wie bei den Notizen) über den stabilen
+//  Seiten - die Abbildung läuft (wie bei den Notizen) über den stabilen
 //  Seiten-Key, weshalb formFields() sie bei JEDEM Lesen frisch berechnet:
 //  Umsortieren/Entfernen einer Seite verschiebt die Felder damit korrekt mit,
 //  ohne die Datei erneut zu parsen.
 //
 //  GESCHRIEBEN wird in eine KOPIE „…_ausgefuellt(.n).pdf" der pristinen Datei
 //  (inkrementelles Update). Bewusste Grenze: Ein geänderter Seiten-Plan
-//  (umsortiert/gedreht/eingefügt) wirkt sich auf diese Kopie NICHT aus — sie
+//  (umsortiert/gedreht/eingefügt) wirkt sich auf diese Kopie NICHT aus - sie
 //  trägt die Seitenstruktur des Originals mit den ausgefüllten Feldern. Der
 //  umgekehrte Weg (Formular in die gebackene Arbeitsdatei schreiben) wäre
 //  nicht verlustfrei, weil die Widgets dort bereits kopierte Objekte sind.
@@ -4277,8 +4277,8 @@ QVariantList PdfEditController::formFields() const {
     for (const mg::PdfFormField& f : m_formFields) {
         if (f.page < 0)
             continue;                               // nicht platziertes Widget
-        //  Quellseite → Ansichts-Seite. Pristine Seiten tragen key == src (s.
-        //  PdfPlanPage); eine entfernte Seite liefert −1 → das Feld entfällt.
+        //  Quellseite -> Ansichts-Seite. Pristine Seiten tragen key == src (s.
+        //  PdfPlanPage); eine entfernte Seite liefert −1 -> das Feld entfällt.
         //  Solange QML die Seitenzahl noch nicht gemeldet hat (leerer Plan),
         //  IST die Quellseite die Ansichts-Seite.
         const int view = m_plan.isEmpty() ? f.page : viewOfKey(f.page);
@@ -4346,7 +4346,7 @@ void PdfEditController::setFormValue(const QString& name, const QString& value) 
         m_formEdits.insert(name, value);
     setFormDirty(!m_formEdits.isEmpty());
     //  BEWUSST kein formFieldsChanged: die Liste (Geometrie/Art/Seite) bleibt
-    //  gleich; nur die Werte ändern sich — s. formValueRev.
+    //  gleich; nur die Werte ändern sich - s. formValueRev.
     ++m_formValueRev;
     emit formValueRevChanged();
 }
@@ -4375,7 +4375,7 @@ void PdfEditController::saveFormValues() {
     emit busyChanged();
     const int gen = ++m_formSaveGen;
     //  Weicht die angezeigte Seitenfolge vom Original ab, wird ZUERST in eine
-    //  Zwischendatei ausgefüllt und danach der Plan darauf angewandt — sonst
+    //  Zwischendatei ausgefüllt und danach der Plan darauf angewandt - sonst
     //  trüge die Kopie stillschweigend die ALTE Reihenfolge.
     const bool applyPlan = !planIsIdentity();
     const QString fillTo = applyPlan ? (m_docPath + QStringLiteral(".mgformfill.pdf"))
@@ -4396,7 +4396,7 @@ void PdfEditController::formSaveFinished(bool ok, const QString& target,
     if (ok && applyPlan && !m_formPlanTarget.isEmpty()) {
         //  Die ausgefüllte Zwischendatei nach dem Seiten-Plan zusammenbauen.
         //  Ihre Feldwerte stehen bereits im Seiteninhalt (der Task hat sie
-        //  festgeschrieben) — die Kopie zeigt sie also überall, ist dafür
+        //  festgeschrieben) - die Kopie zeigt sie also überall, ist dafür
         //  aber kein bedienbares Formular mehr. Das wird gemeldet.
         QString aerr;
         if (assemblePlanTo(m_formPlanTarget, target, &aerr)) {
@@ -4412,7 +4412,7 @@ void PdfEditController::formSaveFinished(bool ok, const QString& target,
     m_busy = false;
     emit busyChanged();
     //  Die Werte BLEIBEN im Puffer (die Anzeige soll das ausgefüllte Formular
-    //  weiter zeigen) — nur der „noch nirgends geschrieben"-Zustand fällt.
+    //  weiter zeigen) - nur der „noch nirgends geschrieben"-Zustand fällt.
     if (ok)
         setFormDirty(false);
     emit formSaved(ok, finalTarget, error, flattened);
@@ -4423,8 +4423,8 @@ void PdfEditController::formSaveFinished(bool ok, const QString& target,
 // ─────────────────────────────────────────────────────────────────────────────
 QStringList PdfEditController::standardFonts() const {
     // Feste Editor-Palette (Anforderung). Fehlt eine Familie im System,
-    // substituiert Qt beim Rendern automatisch (z. B. Helvetica → DejaVu Sans
-    // unter Linux) — identisch in Anzeige UND Export, da beide dieselbe
+    // substituiert Qt beim Rendern automatisch (z. B. Helvetica -> DejaVu Sans
+    // unter Linux) - identisch in Anzeige UND Export, da beide dieselbe
     // Font-Auflösung nutzen.
     return { QStringLiteral("Times New Roman"),
              QStringLiteral("Arial"),

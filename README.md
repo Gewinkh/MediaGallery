@@ -11,6 +11,7 @@ One sentence each - the full list, all keyboard shortcuts and where the app
 stores its data are in **[FEATURES.md](FEATURES.md)**.
 
 - **Media formats** - images (including RAW and HEIC), video, audio, PDF, text and source files, DOCX and HTML.
+- **Audio player** - `Alt+A` turns the gallery into a player with shuffle, repeat and a 10-band equalizer.
 - **Gallery** - grid view with adjustable tiles, fullscreen, random mode, and a **split view** for up to four files side by side with draggable panes.
 - **Tags & categories** - your own categories and tags per file, stored as JSON next to the media, with filtering and search.
 - **PDF viewer** - page thumbnails, search, text selection, and audio/video annotations played in place.
@@ -29,7 +30,7 @@ stores its data are in **[FEATURES.md](FEATURES.md)**.
 ### Requirements
 - Qt 6.4+ (developed against Qt 6.11) with modules:
   `Core`, `Gui`, `Qml`, `Quick`, `QuickControls2`, `Multimedia`, `Pdf`, `Svg`, `WebEngineQuick`
-- **Optional**: ZLIB, to enable the **DOCX editor**. If absent, the app builds and runs normally, falls back to Qt's own `qCompress`/`qUncompress`, and only DOCX is disabled — every PDF feature (viewing, editing, page extraction, embedded media) stays fully available. DOCX files still appear in the gallery, but their tiles are greyed out and explain on hover why they cannot be opened
+- **Optional**: ZLIB, to enable the **DOCX editor**. If absent, the app builds and runs normally, falls back to Qt's own `qCompress`/`qUncompress`, and only DOCX is disabled - every PDF feature (viewing, editing, page extraction, embedded media) stays fully available. DOCX files still appear in the gallery, but their tiles are greyed out and explain on hover why they cannot be opened
 - **Optional**: Tesseract + Leptonica (via pkg-config) to enable **OCR for scanned PDFs**. If absent, the app builds and runs normally with OCR disabled
 - **Optional**: Hunspell (via pkg-config) plus a dictionary, to enable **spell checking** in the DOCX editor. If either is missing, the feature stays off and the settings page says why
 - CMake 3.21+
@@ -111,13 +112,13 @@ cmake -B build -DMG_BUILD_TESTS=OFF
 
 The test suite uses plain executables (no external test framework or additional dependencies) and covers:
 
-* DOCX/ZIP parsing
-* Document model behavior
-* Path handling
-* Gallery sorting and filtering
-* Tag/category sidecar persistence
-* Tracked changes in the PDF and image editor
-* Companion-file handling (hiding, removing, undo)
+- DOCX/ZIP parsing
+- Document model behavior
+- Path handling
+- Gallery sorting and filtering
+- Tag/category sidecar persistence
+- Tracked changes in the PDF and image editor
+- Companion-file handling (hiding, removing, undo)
 
 The `tests/` directory is not included in the published repository. If it is missing, the build automatically skips the test targets, allowing a fresh clone to configure and compile normally.
 
@@ -126,26 +127,21 @@ The `tests/` directory is not included in the published repository. If it is mis
 ## Changelog
 
 ### Latest
-* Added subfolder support with navigation, folder actions, and drag-and-drop
-* Added recursive search and per-folder file tags
-* Improved folder tiles, previews, file type indicators, and drag behavior
-* Added folder creation, renaming, and deletion
-* Fixed preview loading and file visibility issues
-* Fixed tag colors when moving files between folders
+- Added audio player mode with queue, playback controls, shuffle, repeat, volume, and full player view
+- Added 10-band equalizer and audio settings
+- Added compact list layout and persistent player state
+- Added two-pane gallery with independent folders and controls
+- Improved menus, toolbar scrolling, settings, and tag/category management
+- Added search, rename, and create/delete actions for tags and categories
+- Expanded automated tests for audio and QML interactions
+- Improved folder counts, bookmark groups, and the unified `+` menu
 
 ---
 
 ## Issues
 
-### Known limitations
-- **Tracked changes cover adding and deleting an annotation**, not editing an existing one (moving, recolouring, retyping) - tracking that would mean storing the state before every single change.
-- **"Show all files" really shows everything**, including file types the app cannot open (archives, executables). They now carry an extension badge, but the app still cannot open them - anything narrower would hide the `.bak` backups the switch is meant to reveal.
-- **The mouse wheel does not scroll the gallery while you drag a file on Wayland**. During a drag the compositor owns the pointer and no wheel event reaches the application at all (measured: 892 drag events, 0 wheel events). Instead, the pointer edges scroll the view and a bar of the visible folders appears at the bottom. On X11 the wheel works.
-- **Spell checking needs an installed Hunspell dictionary**; without one it stays off and says so.
-- **A text-to-PDF page made up only of very short lines cannot be searched in PDFium-based viewers** (Chrome, and this app's own PDF view). Measured: from about 30 characters of line width upwards everything is fine; below that, those viewers read the narrow column as vertically written text and hand out every character on its own line, so a word search finds nothing. The file itself is correct - every character carries its proper Unicode - and other PDF readers are unaffected. Widening the text block from our side did not change the viewer's guess.
-
-### Planned
-- :o
+Known limitations, open bugs and what is not built yet:
+**[LIMITATIONS.md](LIMITATIONS.md)**.
 
 ---
 

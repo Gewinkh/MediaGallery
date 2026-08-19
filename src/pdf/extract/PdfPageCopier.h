@@ -8,7 +8,7 @@
 //  VERLUSTFREIE Extraktion ausgewählter Seiten aus PDF-Dateien in eine NEUE PDF
 //  auf ROH-OBJEKTEBENE (Textebene, Vektoren, Schriften und eingebettete
 //  Annotationen bleiben 1:1 erhalten). Qt selbst kann PDF-Seiten nicht
-//  vektoriell durchreichen (QPdfDocument rendert nur) — deshalb parst diese
+//  vektoriell durchreichen (QPdfDocument rendert nur) - deshalb parst diese
 //  Klasse die PDF-Struktur direkt, wie es das Projekt für eingebettete Audios
 //  bereits tut (PdfAudioController/PdfMediaHandler), hier jedoch vollständig:
 //
@@ -25,25 +25,25 @@
 //  ───────────────
 //  Je gewählter Seite wird der transitive Objektgraph (Ressourcen, Fonts,
 //  XObjects, Inhaltsströme, Annotationen …) eingesammelt, umnummeriert und
-//  verbatim in die Ziel-PDF geschrieben — Stream-Rohdaten werden UNVERÄNDERT
+//  verbatim in die Ziel-PDF geschrieben - Stream-Rohdaten werden UNVERÄNDERT
 //  (samt /Filter) aus dem Quell-Mapping kopiert, es wird nichts neu kodiert.
 //  Vererbte Seitenattribute (/Resources /MediaBox /CropBox /Rotate) werden aus
 //  dem Seitenbaum materialisiert. Referenzen auf NICHT gewählte Seiten (z. B.
 //  GoTo-Ziele von Link-Annotationen) werden zu `null` gekappt, damit der
 //  Graph-Abschluss nicht das halbe Dokument mitzieht.
 //
-//  RAM: Die Quelldatei wird per QFile::map (mmap) gelesen — kein Heap-Vollload,
+//  RAM: Die Quelldatei wird per QFile::map (mmap) gelesen - kein Heap-Vollload,
 //  auch bei 100–300-MB-PDFs; nur dekodierte XRef-/Objekt-Streams liegen
 //  transient im Speicher. Passt zur RAM-Priorität (§0, Prio 1 der MD).
 //
-//  GRENZEN (→ Aufrufer nutzt den Raster-Fallback, s. PdfExtractController):
-//   • Verschlüsselte PDFs (/Encrypt) — Strings/Streams wären umzuschlüsseln.
+//  GRENZEN (-> Aufrufer nutzt den Raster-Fallback, s. PdfExtractController):
+//   • Verschlüsselte PDFs (/Encrypt) - Strings/Streams wären umzuschlüsseln.
 //   • Exotische XRef-Filter/Prädiktoren außerhalb von FlateDecode/PNG.
 //  addSourcePages() plant dafür ZUERST vollständig im Speicher und schreibt
-//  erst bei Erfolg — ein Fehlschlag hinterlässt KEINE Fragmente in der Ausgabe.
+//  erst bei Erfolg - ein Fehlschlag hinterlässt KEINE Fragmente in der Ausgabe.
 //
 //  ABHÄNGIGKEITEN: nur Qt6::Core + mg::zcodec (beides bestehende Projekt-
-//  Abhängigkeiten) → isoliert testbar, keine neue Bibliothek (§0-Priorität 3).
+//  Abhängigkeiten) -> isoliert testbar, keine neue Bibliothek (§0-Priorität 3).
 // ══════════════════════════════════════════════════════════════════════════════
 
 #include <QByteArray>
@@ -65,7 +65,7 @@ public:
 
     // Übernimmt die angegebenen Seiten (0-basiert, aufsteigend erwartet) der
     // Quelldatei VERLUSTFREI. Liefert false bei nicht kopierbarer Quelle
-    // (verschlüsselt/defekt/exotisch) — dann wurde für diese Quelle NICHTS
+    // (verschlüsselt/defekt/exotisch) - dann wurde für diese Quelle NICHTS
     // geschrieben und der Aufrufer kann pro Datei auf Rasterung ausweichen.
     bool addSourcePages(const QString& sourcePath, const QVector<int>& pages,
                         QString* err);
@@ -73,7 +73,7 @@ public:
     // Wie oben, zusätzlich mit einer DREHUNG je übernommener Seite (Grad,
     // Vielfaches von 90; parallel zu `pages`, leer = keine). Der Wert wirkt
     // ZUSÄTZLICH zur Eigendrehung der Quellseite und wird als materialisiertes
-    // /Rotate der Zielseite geschrieben — der Seiteninhalt selbst bleibt
+    // /Rotate der Zielseite geschrieben - der Seiteninhalt selbst bleibt
     // byteweise unverändert (Grundlage von „Seite drehen" im PDF-Editor).
     bool addSourcePages(const QString& sourcePath, const QVector<int>& pages,
                         const QVector<int>& rotations, QString* err);
@@ -84,8 +84,8 @@ public:
                        const QSizeF& pagePt, QString* err);
 
     // Leere (weiße) Seite mit der gegebenen Größe in PDF-Punkten anhängen
-    // (Aufgabe 3 „+ Seite" — Aufrufer nutzt A4 = 595.276 × 841.890 pt). Ohne
-    // Ressourcen, leerer Inhaltsstrom — der PDF-Seitengrund ist per Definition
+    // (Aufgabe 3 „+ Seite" - Aufrufer nutzt A4 = 595.276 × 841.890 pt). Ohne
+    // Ressourcen, leerer Inhaltsstrom - der PDF-Seitengrund ist per Definition
     // weiß. Verlustfrei einreihbar zwischen kopierte Quellseiten.
     bool addBlankPage(const QSizeF& pagePt, QString* err);
 
@@ -102,11 +102,11 @@ public:
     // WOZU: Alle schreibenden Einheiten des Projekts arbeiten inkrementell
     // (anhängen, Originalbytes bleiben). Für „Text schwärzen" ist genau das
     // die Lücke: Der Text ist aus der Anzeige verschwunden, steht aber noch in
-    // den alten Bytes der Datei — ein Hex-Editor findet ihn. Nach diesem
+    // den alten Bytes der Datei - ein Hex-Editor findet ihn. Nach diesem
     // Neuschreiben ist nur noch der aktuelle Stand in der Datei; was kein
     // Objekt des Seitengraphen mehr ist, wird nicht mitkopiert.
     //
-    // PREIS (der Aufrufer muss ihn kennen): Der Katalog entsteht neu — was
+    // PREIS (der Aufrufer muss ihn kennen): Der Katalog entsteht neu - was
     // NICHT am Seitengraphen hängt, geht verloren: `/AcroForm` (Formulare
     // deshalb vorher mit `mg::PdfFormFields::flatten` festschreiben),
     // Lesezeichen, benannte Ziele, Dokument-Metadaten, Seitenbeschriftungen.
@@ -117,7 +117,7 @@ public:
 
     // Anzahl Seiten einer PDF ermitteln, ohne sie zu rendern (leichtgewichtiger
     // Struktur-Parse; -1 bei Fehlschlag). Für den Ordner-Scan des globalen
-    // Extraktionsdialogs — vermeidet QPdfDocument-Vollladungen je Datei.
+    // Extraktionsdialogs - vermeidet QPdfDocument-Vollladungen je Datei.
     static int probePageCount(const QString& sourcePath);
 
 private:
@@ -127,7 +127,7 @@ private:
 
     QIODevice*        m_out = nullptr;
     qint64            m_pos = 0;          // mitgeführter Schreib-Offset
-    QVector<qint64>   m_offsets;          // Objektnummer → Byte-Offset (Index 0 frei)
+    QVector<qint64>   m_offsets;          // Objektnummer -> Byte-Offset (Index 0 frei)
     QVector<int>      m_pageObjs;         // Objektnummern der Seiten (Ausgabereihenfolge)
     int               m_nextObj = 3;      // 1 = Katalog, 2 = Seitenbaum (reserviert)
     bool              m_begun  = false;

@@ -16,7 +16,7 @@
 
 namespace {
 
-//  Ein Verzeichnis lesen — im Worker. Liefert das Ergebnis über eine
+//  Ein Verzeichnis lesen - im Worker. Liefert das Ergebnis über eine
 //  QueuedConnection zurück in den GUI-Thread (Hausmuster, CLAUDE.md Regel 8).
 class ScanTask : public QRunnable {
 public:
@@ -57,10 +57,10 @@ void ScanTask::run() {
         const QFileInfo fi = it.fileInfo();
         FileBrowseModel::Row r;
         r.isDir = fi.isDir();
-        //  Begleitdateien der App ausblenden — dieselbe Regel wie in der Galerie.
+        //  Begleitdateien der App ausblenden - dieselbe Regel wie in der Galerie.
         if (!r.isDir && !m_showAll && mg::isCompanionFile(fi.fileName()))
             continue;
-        //  Der Namensfilter gilt NUR für Dateien — ein Ordner muss immer
+        //  Der Namensfilter gilt NUR für Dateien - ein Ordner muss immer
         //  betretbar bleiben, sonst käme man nirgendwo hin.
         if (!r.isDir && !m_globs.isEmpty()) {
             bool hit = false;
@@ -80,7 +80,7 @@ void ScanTask::run() {
     }
     if (m_cancel && m_cancel->load()) return;
 
-    //  Sortiert wird im MODELL (`sortRows`) — dort steht die eingestellte
+    //  Sortiert wird im MODELL (`sortRows`) - dort steht die eingestellte
     //  Reihenfolge, und ein Umschalten der Spalte darf das Verzeichnis nicht
     //  erneut lesen müssen.
 
@@ -185,7 +185,7 @@ void FileBrowseModel::cdUp() {
 void FileBrowseModel::reload() { startLoad(); }
 
 void FileBrowseModel::startLoad() {
-    //  Laufenden Lauf abbestellen — sein Ergebnis wird über die Generation
+    //  Laufenden Lauf abbestellen - sein Ergebnis wird über die Generation
     //  ohnehin verworfen, aber ein Netzverzeichnis soll nicht weiterlesen.
     if (m_cancel) m_cancel->store(true);
     m_cancel = std::make_shared<std::atomic<bool>>(false);
@@ -293,7 +293,7 @@ bool FileBrowseModel::dirExists(const QString& path) const {
 
 void FileBrowseModel::sortRows(std::vector<Row>& rows) const {
     //  `QCollator` numerisch: „Bild10" steht hinter „Bild9", Umlaute an ihrer
-    //  Stelle. Ordner bleiben IMMER vorn — auch absteigend; sonst müsste man
+    //  Stelle. Ordner bleiben IMMER vorn - auch absteigend; sonst müsste man
     //  zum Hochgehen erst durch alle Dateien scrollen.
     QCollator coll;
     coll.setNumericMode(true);
@@ -305,7 +305,7 @@ void FileBrowseModel::sortRows(std::vector<Row>& rows) const {
         int c = 0;
         if (key == SortSize)      c = (a.size < b.size) ? -1 : (a.size > b.size ? 1 : 0);
         else if (key == SortDate) c = (a.mtime < b.mtime) ? -1 : (a.mtime > b.mtime ? 1 : 0);
-        if (c == 0) c = coll.compare(a.name, b.name);   // Gleichstand → Name
+        if (c == 0) c = coll.compare(a.name, b.name);   // Gleichstand -> Name
         return desc ? c > 0 : c < 0;
     });
 }
@@ -332,7 +332,7 @@ void FileBrowseModel::setSortDescending(bool d) {
 int FileBrowseModel::createFolder(const QString& name) {
     const QString clean = name.trimmed();
     //  Nur ein NAME, kein Pfad: ein Trenner oder „.." würde aus dem aktuellen
-    //  Verzeichnis herausführen — der Wähler soll aber genau dort anlegen.
+    //  Verzeichnis herausführen - der Wähler soll aber genau dort anlegen.
     if (clean.isEmpty() || clean == QLatin1String(".") || clean == QLatin1String("..")
         || clean.contains(QLatin1Char('/')) || clean.contains(QLatin1Char('\\')))
         return 1;
@@ -363,7 +363,7 @@ QString FileBrowseModel::fromUrl(const QUrl& url) const {
     return url.isLocalFile() ? url.toLocalFile() : url.toString();
 }
 
-//  "Bilder (*.png *.jpg)" → ["*.png", "*.jpg"]. Ohne Klammern gilt der ganze
+//  "Bilder (*.png *.jpg)" -> ["*.png", "*.jpg"]. Ohne Klammern gilt der ganze
 //  Text als EIN Muster (so schreiben es manche Aufrufstellen).
 QStringList FileBrowseModel::globsOf(const QString& filterText) const {
     const int a = filterText.lastIndexOf(QLatin1Char('('));

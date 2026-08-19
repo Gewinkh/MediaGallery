@@ -11,7 +11,7 @@ namespace {
 
 //  Die Tabellen, die ein PDF-Betrachter für eine eingebettete TrueType-Schrift
 //  braucht. `post`/`name` sind für die Darstellung entbehrlich, werden aber
-//  mitgenommen, wenn vorhanden — manche Werkzeuge erwarten sie.
+//  mitgenommen, wenn vorhanden - manche Werkzeuge erwarten sie.
 const char* const kTables[] = {
     "head", "hhea", "maxp", "cmap", "glyf", "loca", "hmtx", "name", "OS/2", "post",
     "cvt ", "fpgm", "prep"
@@ -94,7 +94,7 @@ bool PdfFontEmbed::needsEmbedding(const QString& family) {
     const QString f = family.trimmed().toLower();
     if (f.isEmpty()) return false;
     //  Genau die Familien, für die eine Standard-14-Schrift eine ECHTE
-    //  Entsprechung ist — alles andere würde sichtbar anders aussehen.
+    //  Entsprechung ist - alles andere würde sichtbar anders aussehen.
     static const char* const known[] = {
         "helvetica", "arial", "liberation sans", "nimbus sans", "sans", "sans-serif",
         "times", "times new roman", "liberation serif", "nimbus roman", "serif",
@@ -114,15 +114,15 @@ bool PdfFontEmbed::build(const QString& family, bool bold, bool italic,
     QFont qf(family);
     qf.setBold(bold);
     qf.setItalic(italic);
-    qf.setPointSizeF(1000.0 / 10.0);          // groß wählen → genaue Vorschübe
+    qf.setPointSizeF(1000.0 / 10.0);          // groß wählen -> genaue Vorschübe
     const QRawFont rf = QRawFont::fromFont(qf);
     if (!rf.isValid()) return fail("Schrift nicht verfügbar");
 
     //  Die geladene Familie kann von der angeforderten abweichen (Ersetzung
-    //  durch das System). Dann bringt das Einbetten nichts Gutes — lieber
+    //  durch das System). Dann bringt das Einbetten nichts Gutes - lieber
     //  ablehnen als eine FALSCHE Schrift einbetten und Treue vortäuschen.
     if (rf.familyName().compare(family, Qt::CaseInsensitive) != 0)
-        return fail("Systemersetzung — angeforderte Schrift nicht vorhanden");
+        return fail("Systemersetzung - angeforderte Schrift nicht vorhanden");
 
     QVector<QPair<QByteArray, QByteArray>> tables;
     for (const char* tag : kTables) {
@@ -180,7 +180,7 @@ bool PdfFontEmbed::build(const QString& family, bool bold, bool italic,
     out->capHeight   = out->ascent;                 // brauchbare Näherung
     out->italicAngle = italic ? -12.0 : 0.0;
     //  FontBBox aus der head-Tabelle (xMin,yMin,xMax,yMax ab Offset 36),
-    //  in Einheiten von unitsPerEm → auf 1/1000 em umrechnen.
+    //  in Einheiten von unitsPerEm -> auf 1/1000 em umrechnen.
     for (const auto& p : tables) {
         if (p.first != "head" || p.second.size() < 44) continue;
         const auto rd = [&](int off) {

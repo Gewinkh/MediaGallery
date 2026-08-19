@@ -7,10 +7,10 @@
 // This class works around that hard limit by reading the raw PDF byte stream
 // and parsing:
 //
-//   /Subtype /Sound   → audio annotation  (existing)
-//   /Subtype /Screen  → video annotation  (RichMedia / Rendition action)
-//   /Subtype /Movie   → legacy movie annotation
-//   /EmbeddedFile     → embedded file streams (audio or video)
+//   /Subtype /Sound   -> audio annotation  (existing)
+//   /Subtype /Screen  -> video annotation  (RichMedia / Rendition action)
+//   /Subtype /Movie   -> legacy movie annotation
+//   /EmbeddedFile     -> embedded file streams (audio or video)
 //
 // Extracted streams are written to the OS temp directory and exposed as
 // MediaAnnotation records, each with:

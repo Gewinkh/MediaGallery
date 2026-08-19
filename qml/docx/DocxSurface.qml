@@ -4,9 +4,9 @@ import MediaGallery 1.0
 import "../common"
 import "../pdf"
 
-//  DocxSurface.qml — die DOCX-Editor-Kachel des Viewers (FullscreenViewer
+//  DocxSurface.qml - die DOCX-Editor-Kachel des Viewers (FullscreenViewer
 //  type 5). Erfüllt den Viewer-Vertrag der übrigen Surfaces: source,
-//  topInset/bottomInset, save(), release() — und funktioniert dezentral in
+//  topInset/bottomInset, save(), release() - und funktioniert dezentral in
 //  bis zu vier Split-View-Kacheln (eigener DocxEditController je Instanz).
 //
 //  Optik (2026-07-17): ALLE Toolbar-Controls sind explizit im App-Theme
@@ -73,7 +73,7 @@ Item {
     function save()    { editCtl.save() }
     function release() { editCtl.release() }
 
-    //  Rechtschreibprüfung folgt der globalen Einstellung — der Controller
+    //  Rechtschreibprüfung folgt der globalen Einstellung - der Controller
     //  gehört zur KACHEL und kennt die Einstellungen bewusst nicht, deshalb
     //  reicht die Kachel sie herein (beim Start und bei jeder Änderung).
     //  `Connections` gehört an ein ITEM: ein QObject-Typ wie der Controller hat
@@ -111,7 +111,7 @@ Item {
     //  ── PDF-Seiten als Bild einfügen ─────────────────────────────────────
     //  Wird im Bild-Popup eine PDF gewählt, kommt NICHT stillschweigend deren
     //  Cover ins Dokument: es öffnet DERSELBE große Auswahlbildschirm wie die
-    //  Extraktion — links alle PDFs des Ordners, rechts das Seitenraster der
+    //  Extraktion - links alle PDFs des Ordners, rechts das Seitenraster der
     //  angeklickten, unten die Werkbank-Leiste für die Reihenfolge.
     //  Die Komponente ist unverändert wiederverwendet; sie kennt den Modus
     //  „ohne Namensabfrage" schon vom PDF-Editor („Seiten einfügen").
@@ -119,7 +119,7 @@ Item {
     //  Der Ordner-Scan läuft über das Singleton `PdfExtract` (async, ermittelt
     //  je PDF die Seitenzahl). Weil ALLE Flächen und die Shell dasselbe
     //  Singleton hören, markiert `_pdfScanPending`, dass der laufende Scan von
-    //  HIER stammt — Muster wie `_extractPending` in PdfSurface/ApplicationShell.
+    //  HIER stammt - Muster wie `_extractPending` in PdfSurface/ApplicationShell.
     property bool _pdfScanPending: false
     property string _pdfScanPick: ""      // angeklickte PDF (Basisname)
 
@@ -180,7 +180,7 @@ Item {
         }
     }
 
-    //  Dateiauswahl fürs Bild-Einfügen — eigener gethemter Wähler (qml/common).
+    //  Dateiauswahl fürs Bild-Einfügen - eigener gethemter Wähler (qml/common).
     FileChooser {
         id: imgDialog
         fileMode: FileChooser.OpenFile
@@ -218,7 +218,7 @@ Item {
         property var fmt: ({})
         function refresh() { fmt = editCtl.currentFormat() }
 
-        //  Absatzvorlagen des Dokuments — hängen am DOKUMENT, nicht am Cursor:
+        //  Absatzvorlagen des Dokuments - hängen am DOKUMENT, nicht am Cursor:
         //  einmal beim Laden holen, NICHT in refresh() (das läuft bei jedem
         //  Formatwechsel, also praktisch bei jedem Tastendruck).
         property var styleList: []          // [{ id, name, isDefault }]
@@ -228,7 +228,7 @@ Item {
             const n = []
             for (let i = 0; i < l.length; ++i) {
                 //  Überschriften heißen im OOXML immer „heading N" (nur an
-                //  diesem eingebauten Namen erkennt Word sie als Überschrift) —
+                //  diesem eingebauten Namen erkennt Word sie als Überschrift) -
                 //  angezeigt wird die übersetzte Fassung.
                 const m = /^Heading([1-9])$/.exec(l[i].id)
                 n.push(m ? App.uiText(App.language, "DocxHeadingLevel").arg(m[1])
@@ -288,9 +288,9 @@ Item {
             ToolTip.text: tip
         }
 
-        //  Ausrichtungs-Button: gezeichnete Linien statt Pfeil-Glyphen —
+        //  Ausrichtungs-Button: gezeichnete Linien statt Pfeil-Glyphen -
         //  garantiert sichtbar in jeder Schrift/jedem Theme.
-        //  Ausrichtungs-Button: gezeichnete Linien-Icons (explizite x/y —
+        //  Ausrichtungs-Button: gezeichnete Linien-Icons (explizite x/y -
         //  keine Anker in Positionern) statt Pfeil-Glyphen, die je nach
         //  Schrift/Theme unsichtbar blass ausfielen.
         component DAlignBtn: Rectangle {
@@ -441,7 +441,7 @@ Item {
                     ScrollBar.vertical: ScrollBar {}
 
                     //  Rad-Scrollen wie überall in der App (halbe Sichthöhe,
-                    //  180 ms OutCubic) — die Vorgabe der Basic-ListView
+                    //  180 ms OutCubic) - die Vorgabe der Basic-ListView
                     //  kroch zeilenweise durch die Schriftliste.
                     NumberAnimation {
                         id: popScroll
@@ -482,18 +482,18 @@ Item {
             boundsBehavior: Flickable.StopAtBounds
 
             //  Mausrad scrollt die Leiste waagerecht (hoch = nach rechts,
-            //  runter = nach links) — bei schmalem Fenster bleibt so ALLES
+            //  runter = nach links) - bei schmalem Fenster bleibt so ALLES
             //  erreichbar. Gilt OHNE Modifikator, mit Umschalt UND mit STRG:
             //  Strg+Rad ist der Griff, den der PDF-Editor für sein Ribbon
             //  schon anbietet (s. PdfEditPanel), und wer ihn dort gelernt
             //  hat, erwartet ihn hier genauso. Animiert wie überall in der
             //  App (halbe Sichtbreite, 180 ms OutCubic).
-            //  Mausrad scrollt die Leiste waagerecht (hoch = nach rechts) —
+            //  Mausrad scrollt die Leiste waagerecht (hoch = nach rechts) -
             //  bei schmalem Fenster bleibt so ALLES erreichbar.
             //
             //  ES MUSS `SmoothWheelArea` SEIN, kein `WheelHandler`: dieses
             //  Flickable ist interaktiv und verarbeitet Radereignisse SELBST,
-            //  bevor ein Handler darunter sie sieht — die Leiste scrollte
+            //  bevor ein Handler darunter sie sieht - die Leiste scrollte
             //  deshalb in Qts Vorgabeschritten von ~60 px statt in halben
             //  Sichtbreiten (Nutzerbefund „scrollt langsam"). Genau dieselbe
             //  Falle ist in `PdfEditPanel` schon dokumentiert und dort mit
@@ -541,7 +541,7 @@ Item {
                     visible: editCtl.busy
                 }
 
-                //  DOCX → PDF exportieren (Aufgabe 2): Original bleibt erhalten.
+                //  DOCX -> PDF exportieren (Aufgabe 2): Original bleibt erhalten.
                 Rectangle {
                     width: pdfLbl.implicitWidth + 18; height: 26; radius: 6
                     anchors.verticalCenter: parent.verticalCenter
@@ -558,7 +558,7 @@ Item {
                     HoverHandler { id: pdfHover }
                     TapHandler {
                         //  Gemalt wird aus DER Auslegung, die hier auf dem Schirm
-                        //  steht (`area.exportPagesToPdf`) — dadurch ist das PDF
+                        //  steht (`area.exportPagesToPdf`) - dadurch ist das PDF
                         //  seitengleich. Der frühere Weg baute ein zweites Layout
                         //  im Worker und lief auseinander (gemessen: 4 Seiten am
                         //  Schirm gegen 3 im PDF). Das Zeichnen selbst ist kurz,
@@ -586,7 +586,7 @@ Item {
                 //  Schlüssel bewusst die des PDF-Editors: der Text ist
                 //  „Rückgängig"/„Wiederholen" und damit editorneutral. Die
                 //  früheren Namen ImageEditUndo/-Redo gab es im String-Katalog
-                //  GAR NICHT — App.uiText gibt bei unbekanntem Namen den Namen
+                //  GAR NICHT - App.uiText gibt bei unbekanntem Namen den Namen
                 //  zurück, im Tooltip stand also wörtlich „ImageEditUndo".
                 DBtn { iconName: "undo"; enabledBtn: editCtl.canUndo
                        tip: App.uiText(App.language, "PdfEditUndoTip")
@@ -706,7 +706,7 @@ Item {
                 //  ── Abstände: EIN Knopf (Zeilenabstand + davor + danach) ──
                 //  Symbol wie Katakana エ: zwei waagerechte Striche, im
                 //  mittleren Strich ein Doppelpfeil ↑↓ (gezeichnet, damit es
-                //  in jeder Schrift gleich aussieht). Linksklick → Popup mit
+                //  in jeder Schrift gleich aussieht). Linksklick -> Popup mit
                 //  allen drei Einstellungen.
                 Rectangle {
                     id: spacingBtn
@@ -876,7 +876,7 @@ Item {
                                         onTapped: {
                                             const want = modelData[2]
                                             const cur  = bar.fmt.list || 0
-                                            //  toggle* schaltet um — nur aufrufen,
+                                            //  toggle* schaltet um - nur aufrufen,
                                             //  wenn sich der Zustand ändern soll.
                                             if (want === cur) { listPop.close(); return }
                                             if (want === 1)      editCtl.toggleBullets()
@@ -897,9 +897,9 @@ Item {
                 Rectangle { width: 1; height: 20; color: App.themeBorder
                             anchors.verticalCenter: parent.verticalCenter }
 
-                //  Bild einfügen: Dateidialog → eigener Absatz an der Cursorstelle.
+                //  Bild einfügen: Dateidialog -> eigener Absatz an der Cursorstelle.
                 DBtn {
-                    iconName: "image"          // ❏ — BMP, monochrom wie die übrigen
+                    iconName: "image"          // ❏ - BMP, monochrom wie die übrigen
                     enabledBtn: editCtl.ready
                     tip: App.uiText(App.language, "DocxInsertImage")
                     //  Erst die Bilder im ORDNER der Datei anbieten (der häufige
@@ -942,7 +942,7 @@ Item {
 
                 //  Unterschrift/Stempel: dasselbe Ordner-Popup wie beim Bild,
                 //  aber das Bild wird SOFORT verankert eingesetzt (frei auf der
-                //  Seite verschiebbar) und ausgewählt — genau wie im PDF-Editor.
+                //  Seite verschiebbar) und ausgewählt - genau wie im PDF-Editor.
                 DBtn {
                     iconName: "signature"          // ✍
                     enabledBtn: editCtl.ready
@@ -955,7 +955,7 @@ Item {
                         id: signPopup
                         hostWidth: root.width
                         onPicked: function(u) {
-                            //  Eine PDF ist keine Unterschrift — dafür gibt es
+                            //  Eine PDF ist keine Unterschrift - dafür gibt es
                             //  den Bild-Knopf mit der Seitenauswahl.
                             if (!u.toLowerCase().endsWith(".pdf"))
                                 editCtl.insertSignatureImage(u)
@@ -991,7 +991,7 @@ Item {
                                 Text { text: App.uiText(App.language, "DocxTableRows")
                                        color: App.themeTextPrimary; font.pixelSize: 12
                                        anchors.verticalCenter: parent.verticalCenter }
-                                //  `DSpin` MELDET nur (`committed`) — den Wert setzt
+                                //  `DSpin` MELDET nur (`committed`) - den Wert setzt
                                 //  der Aufrufer. Die anderen Steller schicken ihn an
                                 //  den Controller und bekommen ihn über die Bindung
                                 //  zurück; hier gibt es keinen Controller, also hält
@@ -1071,7 +1071,7 @@ Item {
         anchors.left: parent.left
         anchors.right: parent.right
         //  Kein bottomInset-Rand: die Datei-Navigation (Pfeile) schwebt ÜBER
-        //  dem Dokument — wie in der PDF-Anzeige; sonst entstünde unten ein
+        //  dem Dokument - wie in der PDF-Anzeige; sonst entstünde unten ein
         //  reservierter Streifen (wirkte als weiße Leiste).
         anchors.bottom: parent.bottom
         clip: true
@@ -1080,7 +1080,7 @@ Item {
         //  Links angedockte Leiste, nur bei mehr als einer Seite und nur, wenn
         //  die Kachel breit genug ist (in einer schmalen Split-Kachel hätte das
         //  Dokument selbst keinen Platz mehr). Die Delegates malen über
-        //  DocxTextArea::paintPageInto — es gibt keinen Bild-Cache.
+        //  DocxTextArea::paintPageInto - es gibt keinen Bild-Cache.
         Rectangle {
             id: thumbBar
             anchors.left: parent.left
@@ -1110,7 +1110,7 @@ Item {
                     readonly property bool isCurrent: thumbItem.index === area.currentPage
                     //  MUSS über diesen Umweg gehen: `area: area` würde INNERHALB
                     //  von DocxPageThumb auf dessen EIGENE `area`-Property
-                    //  auflösen (Selbst-Beschattung) und bliebe null — die
+                    //  auflösen (Selbst-Beschattung) und bliebe null - die
                     //  Miniaturen blieben leer. Hier im Column-Scope meint
                     //  `area` eindeutig die Textfläche.
                     readonly property var docArea: area
@@ -1165,9 +1165,9 @@ Item {
             tocEmptyLabel: App.uiText(App.language, "DocxTocEmpty")
             onSaveRequested: editCtl.save()
             //  Rechtsklick: Menü nur dort anbieten, wo es etwas zu tun gibt
-            //  (Tabelle oder Bild) — sonst bleibt der Klick wie bisher folgenlos.
+            //  (Tabelle oder Bild) - sonst bleibt der Klick wie bisher folgenlos.
             onContextMenuRequested: (mx, my, block) => ctxMenu.openFor(mx, my, block)
-            //  Cursor sichtbar halten (Inhalts- → Viewport-Koordinaten).
+            //  Cursor sichtbar halten (Inhalts- -> Viewport-Koordinaten).
             onCursorRectChanged: {
                 if (cursorH <= 0) return
                 if (cursorY < contentY + 8)
@@ -1184,7 +1184,7 @@ Item {
         //  Ohne ihn sah ein Dokument MIT nachverfolgten Änderungen aus wie eines
         //  ohne: die Markierungen waren da, aber nichts sagte, was sie bedeuten
         //  oder was man damit tun kann (Nutzerbefund). Aufgezeichnet wird
-        //  weiterhin NICHT — genau das steht im Hinweis.
+        //  weiterhin NICHT - genau das steht im Hinweis.
         Rectangle {
             id: revBar
             visible: editCtl.ready && editCtl.revisionCount > 0
@@ -1211,7 +1211,7 @@ Item {
                                    ? editCtl.revisionAuthorsText : "–")
                     color: App.themeTextPrimary
                     font.pixelSize: 11
-                    //  Die Erklärung steht im Tooltip — der Streifen soll die
+                    //  Die Erklärung steht im Tooltip - der Streifen soll die
                     //  Seite nicht zuwachsen.
                     ToolTip.text: App.uiText(App.language, "DocxRevisionsHint")
                     ToolTip.visible: revHint.hovered
@@ -1231,7 +1231,7 @@ Item {
         //  ── Ziehpunkte des ausgewählten Bildes ─────────────────────────────
         //  Auswahl = der Cursor steht in einem reinen Bild-Absatz (area.
         //  selImageBlock). Die Fläche liefert das Rechteck bereits in
-        //  ITEM-Pixeln; gezogen wird nur eine VORSCHAU — erst beim Loslassen
+        //  ITEM-Pixeln; gezogen wird nur eine VORSCHAU - erst beim Loslassen
         //  geht EIN setImageSizeMm an den Controller. Sonst entstünde je
         //  Mausbewegung ein Undo-Schritt und eine neue Zeichnung im Anhang-Pool.
         Item {
@@ -1246,7 +1246,7 @@ Item {
             property bool dragging: false
             property real previewW: 0
             property real previewH: 0
-            //  Verschieben (nur umfließende Bilder — ein Zeilen-Bild hat keine
+            //  Verschieben (nur umfließende Bilder - ein Zeilen-Bild hat keine
             //  Lage, es steht dort, wo sein Zeichen im Text steht).
             property bool moving: false
             property real previewDx: 0
@@ -1260,7 +1260,7 @@ Item {
             readonly property bool floatingSel: selInfo.image === true
                                                 && selInfo.floating === true
             //  Umrechnung Item-Pixel ↔ Millimeter: das Modell führt die Größe
-            //  in mm, die Anzeige in Pixeln — der Faktor ergibt sich aus dem
+            //  in mm, die Anzeige in Pixeln - der Faktor ergibt sich aus dem
             //  aktuellen Rechteck (er trägt Zoom und Einpass-Maßstab bereits).
             readonly property real mmPerPx: (selInfo.image && area.selImageW > 1)
                                             ? selInfo.widthMm / area.selImageW : 0.26458
@@ -1272,7 +1272,7 @@ Item {
                 border.width: (imgBox.dragging || imgBox.moving) ? 2 : 1
             }
 
-            //  Ziehen im Bild selbst VERSCHIEBT es — aber nur, wenn es
+            //  Ziehen im Bild selbst VERSCHIEBT es - aber nur, wenn es
             //  umfließend ist; sonst müsste die Fläche Klicks schlucken, die
             //  in Wahrheit den Cursor setzen sollen. Wie beim Ändern der Größe
             //  wandert nur eine VORSCHAU, erst das Loslassen schreibt EINEN
@@ -1310,7 +1310,7 @@ Item {
                     //  Über die ANZEIGE ablegen, nicht direkt über den
                     //  Controller: liegt das Bild nach der Geste über einem
                     //  anderen Absatz, hängt sie den Anker dorthin um (wie
-                    //  Word) — erst dann umfließt dessen Text es. Ohne
+                    //  Word) - erst dann umfließt dessen Text es. Ohne
                     //  Absatzwechsel ist es dasselbe wie bisher.
                     area.dropSelectedImage(
                         area.selImageBlock,
@@ -1320,7 +1320,7 @@ Item {
                 onCanceled: imgBox.moving = false
             }
 
-            //  4 Ecken + 4 Kantenmitten — gleiche Interaktion wie im Bild-Editor
+            //  4 Ecken + 4 Kantenmitten - gleiche Interaktion wie im Bild-Editor
             //  (ImageEditBox): „nach außen ziehen vergrößert". Das Bild bleibt
             //  am linken Textrand verankert (Inline-Absatz), es wandert also nie.
             Repeater {
@@ -1365,7 +1365,7 @@ Item {
                         onPositionChanged: (m) => {
                             if (!imgBox.dragging) return
                             const p = mapToItem(viewport, m.x, m.y)
-                            //  Nach außen ziehen vergrößert — unabhängig davon,
+                            //  Nach außen ziehen vergrößert - unabhängig davon,
                             //  an welchem der acht Punkte gezogen wird.
                             const dx = (p.x - pressX) * (handle.hx < 0 ? -1 : 1)
                             const dy = (p.y - pressY) * (handle.hy < 0 ? -1 : 1)
@@ -1397,7 +1397,7 @@ Item {
         //  Auswahl = der Cursor steht in einer Tabelle (kein zweiter Zustand,
         //  wie beim Bild). Gezogen wird eine VORSCHAU; beim Loslassen geht EIN
         //  Aufruf an den Controller, der ALLE Spalten mit demselben Faktor
-        //  skaliert — die Zellen behalten so ihr Verhältnis zueinander.
+        //  skaliert - die Zellen behalten so ihr Verhältnis zueinander.
         //  Der Rahmen umfasst die GANZE Tabelle: eine über Seiten getrennte
         //  bekommt je Stück einen Rahmenteil (`area.selTableRects`), weil
         //  zwischen den Stücken der Seitenrand liegt. Die Ziehpunkte sitzen am
@@ -1411,7 +1411,7 @@ Item {
             property bool dragging: false
             property real previewW: 0
 
-            //  Stück am Cursor — Bezug der Ziehpunkte.
+            //  Stück am Cursor - Bezug der Ziehpunkte.
             readonly property real primX: area.x + area.selTableX
             readonly property real primY: area.y + area.selTableY
             readonly property real primW: dragging ? previewW
@@ -1434,11 +1434,11 @@ Item {
                     border.width: tblBox.dragging ? 2 : 1
                     opacity: tblBox.dragging ? 1.0 : 0.55
 
-                    //  Klick auf den RAHMEN wählt die ganze Tabelle aus — danach
+                    //  Klick auf den RAHMEN wählt die ganze Tabelle aus - danach
                     //  löscht `Entf`/`Rücktaste` sie (`deleteSelectedTable`).
                     //  VIER Randstreifen statt einer Fläche mit `containmentMask`:
                     //  eine Maske aus einem `QtObject` wird von Qt VERWORFEN
-                    //  („does not have an invokable contains method") — die Fläche
+                    //  („does not have an invokable contains method") - die Fläche
                     //  hätte dann die ganze Tabelle abgedeckt und jeden Klick in
                     //  eine Zelle verschluckt. Die Ziehpunkte liegen darüber und
                     //  behalten Vorrang.
@@ -1467,7 +1467,7 @@ Item {
             //  Nur WAAGERECHT wirksame Ziehpunkte: die Höhe einer Tabelle
             //  ergibt sich aus dem Inhalt ihrer Zellen. Punkte, die nichts
             //  bewirken (Mitte oben/unten), werden deshalb gar nicht erst
-            //  angeboten — sie sahen wie eine Höhenverstellung aus und ließen
+            //  angeboten - sie sahen wie eine Höhenverstellung aus und ließen
             //  beim Loslassen alles, wie es war.
             Repeater {
                 model: [ { hx: -1, hy: -1 }, { hx: 1, hy: -1 },
@@ -1532,7 +1532,7 @@ Item {
             focus: true
             closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
                          | Popup.CloseOnReleaseOutside
-            //  [{ text, act, enabled, sep }] — von openFor() gefüllt.
+            //  [{ text, act, enabled, sep }] - von openFor() gefüllt.
             property var entries: []
 
             function openFor(mx, my, block) {
@@ -1564,7 +1564,7 @@ Item {
                                     enabled: false })
                     }
                     list.push({ sep: true })
-                    //  Ganze Tabelle in die Zwischenablage — dieselben Wege wie
+                    //  Ganze Tabelle in die Zwischenablage - dieselben Wege wie
                     //  Strg+C/X/V, hier nur sichtbar gemacht. Verschieben =
                     //  Ausschneiden + an der Zielstelle Einfügen.
                     list.push({ text: App.uiText(App.language, "DocxTableCopy"),
@@ -1579,14 +1579,14 @@ Item {
                 //  „Weiter unter der Tabelle": setzt Words Textumbruch mit
                 //  `w:clear="all"` an die Cursorstelle. Neben einer gleitenden
                 //  Tabelle ist das der einzige Weg, bewusst wieder UNTER sie zu
-                //  kommen — angeboten deshalb genau dann, wenn der Cursor NICHT
+                //  kommen - angeboten deshalb genau dann, wenn der Cursor NICHT
                 //  in der Tabelle steht (dort gäbe es nichts zu unterlaufen).
                 if (editCtl.ready && !t.table) {
                     if (list.length > 0) list.push({ sep: true })
                     list.push({ text: App.uiText(App.language, "DocxClearBreak"),
                                 act: () => editCtl.insertClearBreak() })
                 }
-                //  Einfügen steht auch AUSSERHALB einer Tabelle bereit — sonst
+                //  Einfügen steht auch AUSSERHALB einer Tabelle bereit - sonst
                 //  ließe sich eine ausgeschnittene Tabelle nirgends absetzen.
                 //  Nur, wenn wirklich eine in der Ablage liegt: sonst erschiene
                 //  bei jedem Rechtsklick im Fließtext ein Menü mit einem
@@ -1601,18 +1601,18 @@ Item {
                     list.push({ text: App.uiText(App.language, "DocxImageSize"),
                                 act: () => imgSizePop.openFor(im) })
                     //  Umbruchart: in der Zeile (wp:inline) oder umfließend
-                    //  (wp:anchor + w:wrapSquare) — gezeigt wird immer das,
+                    //  (wp:anchor + w:wrapSquare) - gezeigt wird immer das,
                     //  was man WÄHLEN kann, nicht der aktuelle Zustand.
                     list.push({ text: App.uiText(App.language,
                                     im.floating ? "DocxImageInline"
                                                 : "DocxImageFloating"),
                                 act: () => editCtl.setImageFloating(block,
                                                                     !im.floating) })
-                    //  Umbruchseite — nur ein umfließendes Bild hat eine. Der
+                    //  Umbruchseite - nur ein umfließendes Bild hat eine. Der
                     //  laufende Wert bekommt einen Haken, damit man nicht raten
                     //  muss, wie es gerade steht.
                     if (im.floating) {
-                        //  Alle vier Werte, die ECMA-376 kennt — „beide Seiten"
+                        //  Alle vier Werte, die ECMA-376 kennt - „beide Seiten"
                         //  ist Words Vorgabe und die der Anzeige: sie teilt ein
                         //  Zeilenband dafür in ein Stück links und eines rechts
                         //  des Bildes. Ist eine Seite zu schmal, weicht sie von
@@ -1658,7 +1658,7 @@ Item {
                 //  ── Rechtschreibung: Vorschläge ganz OBEN ─────────────────
                 //  Der Rechtsklick setzt den Cursor an die Stelle (s. area),
                 //  also fragt das Menü genau dort nach. Ersetzt wird nur auf
-                //  Wahl — die Prüfung fasst den Text nie von selbst an.
+                //  Wahl - die Prüfung fasst den Text nie von selbst an.
                 if (editCtl.spellAvailable) {
                     const sug = editCtl.spellSuggestions(editCtl.cursorBlock(),
                                                          editCtl.cursorPos())
@@ -1978,7 +1978,7 @@ Item {
             component FField: Rectangle {
                 property alias field: innerField
                 //  Ohne dieses Alias wäre findField.text/replaceField.text
-                //  undefined → doFind/doReplace/doReplaceAll brächen mit
+                //  undefined -> doFind/doReplace/doReplaceAll brächen mit
                 //  TypeError ab (Suchen&Ersetzen komplett funktionslos).
                 property alias text: innerField.text
                 property string ph: ""
@@ -2009,7 +2009,7 @@ Item {
 
             //  Gethemter kleiner Knopf.
             //  `parent` meint hier den ELTERN-Item der Komponente, nicht die
-            //  Komponente selbst — `parent.tip`/`parent.label` waren deshalb
+            //  Komponente selbst - `parent.tip`/`parent.label` waren deshalb
             //  undefiniert („Unable to assign [undefined] to QString", sechsmal
             //  je Suchleiste). Über die eigene id ist es eindeutig.
             component FBtn: Rectangle {
@@ -2098,7 +2098,7 @@ Item {
                      && root.source.length > 0
         }
 
-        //  Animiertes Mausrad (180 ms OutCubic) — schreibt area.contentY.
+        //  Animiertes Mausrad (180 ms OutCubic) - schreibt area.contentY.
         NumberAnimation {
             id: scrollAnim
             target: area
@@ -2109,19 +2109,19 @@ Item {
         MouseArea {
             anchors.fill: parent
             acceptedButtons: Qt.NoButton
-            //  ZEILEN je Rastung, wie in jedem Texteditor — nicht ein Anteil
+            //  ZEILEN je Rastung, wie in jedem Texteditor - nicht ein Anteil
             //  der Fensterhöhe. Der Anteil war zuletzt ein Viertel Viewport und
             //  damit auf einem 900-px-Fenster ~225 px je Rastung, also das
             //  Vierfache eines gewöhnlichen Editors; außerdem hing die
             //  Geschwindigkeit an der Fenstergröße (Nutzerbefund „immer noch zu
             //  schnell"). Die Zeilenzahl kommt aus derselben Systemeinstellung,
             //  die auch die Qt-Dialoge benutzen.
-            //  `Application.styleHints`, NICHT `Qt.styleHints` — Letzteres gibt
+            //  `Application.styleHints`, NICHT `Qt.styleHints` - Letzteres gibt
             //  es in QML nicht, die Bindung wäre still NaN und das Rad tot.
             readonly property int wheelLines:
                 Math.max(1, Application.styleHints.wheelScrollLines)
             onWheel: (w) => {
-                //  Touchpad/hochauflösendes Rad liefern `pixelDelta` — das ist
+                //  Touchpad/hochauflösendes Rad liefern `pixelDelta` - das ist
                 //  bereits die gewünschte Strecke und wird PIXELGENAU
                 //  übernommen; alles andere zählt Rastungen (120 = eine).
                 let dy = 0

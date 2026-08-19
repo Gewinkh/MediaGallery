@@ -5,7 +5,7 @@ import MediaGallery 1.0
 import "../common"
 
 // ─────────────────────────────────────────────────────────────────────────────
-//  TagBar.qml — Tags einer Datei anzeigen/bearbeiten (ersetzt TagBar/TagPill aus
+//  TagBar.qml - Tags einer Datei anzeigen/bearbeiten (ersetzt TagBar/TagPill aus
 //  TagWidget.cpp). Reine QML-Items; Mutationen via Modell (mediaModel.addTag/
 //  removeTagFromFile). Tag-Auswahl-Dropdown speist sich aus Tags.allTags().
 //
@@ -16,7 +16,7 @@ Item {
     id: bar
 
     //  Der PFAD, nicht der Name: jede Datei führt ihre Zuordnungen im Sidecar
-    //  IHRES Ordners. Der blanke Name traf immer den geöffneten Ordner — für
+    //  IHRES Ordners. Der blanke Name traf immer den geöffneten Ordner - für
     //  eine Datei aus einem aufgeklappten Unterordner also das falsche.
     property string filePath: ""
     property bool   editable: true
@@ -54,7 +54,7 @@ Item {
                 //  und deren Definition liegt in IHREM Sidecar.
                 readonly property color pillCol: {
                     var c = mediaModel.visibleTagColor(pill.modelData)
-                    return (c && c.a > 0) ? c : App.tagColor(pill.modelData)
+                    return (c && c.a > 0) ? c : Tags.tagColor(pill.modelData)
                 }
                 color: Qt.rgba(pillCol.r, pillCol.g, pillCol.b, 0.22)
                 border.color: pillCol
@@ -119,7 +119,7 @@ Item {
                 ThemedMenu {
                     id: tagMenu
                     Repeater {
-                        model: App.allTags()
+                        model: Tags.allTags()
                         delegate: MenuItem {
                             required property var modelData
                             text: modelData

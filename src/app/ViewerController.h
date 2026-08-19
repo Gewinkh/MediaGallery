@@ -12,13 +12,13 @@ class PdfMediaHandler;
 struct MediaAnnotation;
 
 // ─────────────────────────────────────────────────────────────────────────────
-//  ViewerController — C++→QML-Bridge (Singleton) für die Viewer-Hilfsdienste,
+//  ViewerController - C++->QML-Bridge (Singleton) für die Viewer-Hilfsdienste,
 //  die kein reines Property/Model sind:
 //
-//   • readTextFile(path)  → Datei-Inhalt (UTF-8, größenbegrenzt) für TextSurface.
-//   • openExternally(path)→ Öffnet Medium im System-Standardprogramm (Video-Mode
+//   • readTextFile(path)  -> Datei-Inhalt (UTF-8, größenbegrenzt) für TextSurface.
+//   • openExternally(path)-> Öffnet Medium im System-Standardprogramm (Video-Mode
 //                           "external").
-//   • requestPdfAnnotations(path) → ASYNCHRONER Scan der Medien-/Link-Annotationen.
+//   • requestPdfAnnotations(path) -> ASYNCHRONER Scan der Medien-/Link-Annotationen.
 //                           Der teure Roh-Scan (komplette Datei + viele indexOf)
 //                           laeuft in einem Worker-Thread (QThreadPool); das
 //                           Ergebnis kommt per pdfAnnotationsReady(path, list)
@@ -83,8 +83,8 @@ private:
 
     static constexpr int kMaxCachedPdfs = 16;
 
-    QHash<QString, QVariantList> m_annCache;        // Pfad → fertige Annotation-Liste
-    QStringList                  m_cacheOrder;      // LRU-Reihenfolge (alt → neu)
+    QHash<QString, QVariantList> m_annCache;        // Pfad -> fertige Annotation-Liste
+    QStringList                  m_cacheOrder;      // LRU-Reihenfolge (alt -> neu)
     QSet<QString>                m_inFlight;        // laufende Scans (Dedup)
     QStringList                  m_sessionTempFiles;// extrahierte Medien (Cleanup bei Exit)
 };

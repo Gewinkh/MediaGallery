@@ -1,17 +1,17 @@
 #pragma once
 // ─────────────────────────────────────────────────────────────────────────────
-//  DocxTextArea — die selbstgebaute Anzeige-/Eingabefläche des DOCX-Editors
-//  (QQuickPaintedItem; bewusst KEIN QML-TextEdit/RichText — Anforderung des
+//  DocxTextArea - die selbstgebaute Anzeige-/Eingabefläche des DOCX-Editors
+//  (QQuickPaintedItem; bewusst KEIN QML-TextEdit/RichText - Anforderung des
 //  Auftrags: eigenes Absatz-/Zeilenmodell in C++; QTextLayout ist als reines
 //  Shaping-/Zeilenumbruch-Primitiv UNTER diesem Modell ausdrücklich erlaubt).
 //
 //  RAM/Architektur:
-//   • Das Item ist VIEWPORT-groß (nicht inhaltsgroß!) — QQuickPaintedItem
+//   • Das Item ist VIEWPORT-groß (nicht inhaltsgroß!) - QQuickPaintedItem
 //     hält eine Textur in Item-Größe; ein 100-Seiten-Dokument als Textur
 //     wäre ein VRAM-Desaster. Gescrollt wird über die contentY-Property
 //     (QML-Scrollbar/Wheel), paint() zeichnet nur den sichtbaren Streifen.
 //   • Layout-Cache je Absatz (QTextLayout + Höhe), Präfix-Offsets mit
-//     dirtyFrom-Invalidierung → Bearbeitungen relayouten nur ab dem
+//     dirtyFrom-Invalidierung -> Bearbeitungen relayouten nur ab dem
 //     betroffenen Block (inkrementell, Regel 17).
 //   • Initial-Layout gechunkt über einen 0-ms-Timer (~300 Blöcke je Tick):
 //     lange Dokumente blockieren den GUI-Thread nie; noch nicht vermessene
@@ -20,7 +20,7 @@
 //
 //  Eingabe: Maus (Cursor/Selektion/Doppelklick-Wort), Tastatur (Zeichen,
 //  Pfeile/Home/End ± Shift, Enter/Backspace/Entf, Strg+A/C/X/V/Z/Shift+Z,
-//  Strg+B/I/U, Strg+S → saveRequested) sowie Eingabemethoden-Commits
+//  Strg+B/I/U, Strg+S -> saveRequested) sowie Eingabemethoden-Commits
 //  (tote Tasten/IME). Alle Mutationen laufen über den DocxEditController.
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -44,31 +44,31 @@ class DocxTextArea : public QQuickPaintedItem {
     Q_PROPERTY(qreal contentHeight READ contentHeight NOTIFY contentHeightChanged)
     //  Cursor-Rechteck in INHALTS-Koordinaten (QML scrollt es sichtbar).
     //  Caret-Lage in ITEM-Pixeln. `cursorX` gab es lange nicht (QML scrollt nur
-    //  senkrecht) — ohne sie ließ sich die WAAGERECHTE Caret-Lage im Treiber
+    //  senkrecht) - ohne sie ließ sich die WAAGERECHTE Caret-Lage im Treiber
     //  gar nicht prüfen, und genau dort saß N19 (Caret an der Slotkante statt
     //  neben der gleitenden Tabelle).
     Q_PROPERTY(qreal cursorX READ cursorX NOTIFY cursorRectChanged)
     Q_PROPERTY(qreal cursorY READ cursorY NOTIFY cursorRectChanged)
     Q_PROPERTY(qreal cursorH READ cursorH NOTIFY cursorRectChanged)
     //  Höhe EINER Textzeile in ITEM-Pixeln (mit Maßstab). Das Mausrad rechnet
-    //  seine Schrittweite daraus — ein Textdokument scrollt in Zeilen, nicht in
+    //  seine Schrittweite daraus - ein Textdokument scrollt in Zeilen, nicht in
     //  Bruchteilen der Fenster­höhe.
     Q_PROPERTY(qreal lineStep READ lineStep NOTIFY contentHeightChanged)
-    //  i18n-Texte kommen aus QML (App.uiText) — kein Strings-Coupling hier.
+    //  i18n-Texte kommen aus QML (App.uiText) - kein Strings-Coupling hier.
     Q_PROPERTY(QString tablePlaceholder MEMBER m_tablePlaceholder NOTIFY labelsChanged)
     Q_PROPERTY(QString pageBreakLabel MEMBER m_pageBreakLabel NOTIFY labelsChanged)
     //  Beschriftung, wenn ein Inhaltsverzeichnis (noch) keine Überschriften
-    //  findet — sonst wäre der Absatz eine leere Fläche.
+    //  findet - sonst wäre der Absatz eine leere Fläche.
     Q_PROPERTY(QString tocEmptyLabel MEMBER m_tocEmptyLabel NOTIFY labelsChanged)
-    //  Umgebungsgrund (Theme) um die WEISSE Word-Seite herum — QML bindet
+    //  Umgebungsgrund (Theme) um die WEISSE Word-Seite herum - QML bindet
     //  App.themeBase; die Seite selbst bleibt bewusst immer weiß (wie Word).
     Q_PROPERTY(QColor surroundColor MEMBER m_surroundColor NOTIFY labelsChanged)
     //  Paginierung: Seitenzahl des Dokuments und die Seite am Cursor (1-basiert
-    //  in der Anzeige, hier 0-basiert) — Grundlage der Miniaturen-Leiste.
+    //  in der Anzeige, hier 0-basiert) - Grundlage der Miniaturen-Leiste.
     Q_PROPERTY(int pageCount READ pageCount NOTIFY pageCountChanged)
     Q_PROPERTY(int currentPage READ currentPage NOTIFY currentPageChanged)
     //  AUSGEWÄHLTES BILD: der Cursorblock, falls er ein reiner Bild-Absatz ist
-    //  (sonst −1). Es gibt bewusst keinen zweiten Auswahlzustand — ein Klick
+    //  (sonst −1). Es gibt bewusst keinen zweiten Auswahlzustand - ein Klick
     //  aufs Bild setzt den Cursor dorthin, das IST die Auswahl. Das Rechteck
     //  steht in ITEM-Pixeln, damit QML die Ziehpunkte direkt darüberlegen kann.
     Q_PROPERTY(int selImageBlock READ selImageBlock NOTIFY imageSelectionChanged)
@@ -76,10 +76,10 @@ class DocxTextArea : public QQuickPaintedItem {
     Q_PROPERTY(qreal selImageY READ selImageY NOTIFY imageSelectionChanged)
     Q_PROPERTY(qreal selImageW READ selImageW NOTIFY imageSelectionChanged)
     Q_PROPERTY(qreal selImageH READ selImageH NOTIFY imageSelectionChanged)
-    //  AUSGEWÄHLTE TABELLE — dieselbe Regel wie beim Bild: kein zweiter
+    //  AUSGEWÄHLTE TABELLE - dieselbe Regel wie beim Bild: kein zweiter
     //  Auswahlzustand, sondern „der Cursor steht in einer Tabelle". Rechtecke
     //  in ITEM-Pixeln, damit QML Rahmen und Ziehpunkte darüberlegen kann.
-    //  `selTableRects` trägt JE SEITENSTÜCK eines — eine getrennte Tabelle
+    //  `selTableRects` trägt JE SEITENSTÜCK eines - eine getrennte Tabelle
     //  liegt auf mehreren Seiten und lässt sich nie durch EIN Rechteck fassen;
     //  `selTableX/Y/W/H` ist davon das Stück am Cursor (dort die Ziehpunkte).
     Q_PROPERTY(int selTableId READ selTableId NOTIFY imageSelectionChanged)
@@ -118,48 +118,48 @@ public:
     qreal selTableY() const;
     qreal selTableW() const;
     qreal selTableH() const;
-    //  [{x,y,w,h}] in Item-Pixeln — ein Eintrag je Seitenstück der Tabelle.
+    //  [{x,y,w,h}] in Item-Pixeln - ein Eintrag je Seitenstück der Tabelle.
     QVariantList selTableRects() const;
-    //  Oberkante einer Seite in ITEM-Pixeln — QML setzt damit contentY, wenn
+    //  Oberkante einer Seite in ITEM-Pixeln - QML setzt damit contentY, wenn
     //  eine Miniatur angeklickt wird.
     Q_INVOKABLE qreal pageTop(int page);
-    //  1-basierte Seitenzahl eines Blocks — Grundlage der
+    //  1-basierte Seitenzahl eines Blocks - Grundlage der
     //  Verzeichnis-Einträge und im Testtreiber die Probe darauf, dass
     //  das Verzeichnis wirklich allein auf seinen Seiten steht.
     Q_INVOKABLE int pageOfBlock(int i);
     //  1-basierte Seitenzahl EINER STELLE im Block. Ein Überschrift-Absatz kann
-    //  mehrere Einträge tragen und über eine Seitengrenze laufen — dann liegen
+    //  mehrere Einträge tragen und über eine Seitengrenze laufen - dann liegen
     //  seine Zeilen auf verschiedenen Seiten und `pageOfBlock` wäre für alle
     //  ausser der ersten falsch.
     Q_INVOKABLE int pageOfEntry(int i, int pos);
     //  Ein umfließendes Bild ABLEGEN (Ende der Ziehgeste): liegt seine
     //  Oberkante nicht mehr über dem Text seines Absatzes, wandert der Anker in
-    //  den Absatz, über dem es jetzt steht — erst dadurch umfließt DESSEN Text
+    //  den Absatz, über dem es jetzt steht - erst dadurch umfließt DESSEN Text
     //  es (Word macht es genauso). `xMm`/`yMm` sind die gezogene Lage relativ
     //  zum bisherigen Absatz; der Rest ist Geometrie und deshalb Sache der
     //  Anzeige. Ohne Absatzwechsel identisch zu `setImagePositionMm`.
     Q_INVOKABLE void dropSelectedImage(int block, qreal xMm, qreal yMm);
 
     //  EINE Seite in ein Zielrechteck malen (Miniaturen, s. DocxPageThumb).
-    //  Nutzt denselben Zeichenweg wie paint() — es gibt keine zweite Darstellung
+    //  Nutzt denselben Zeichenweg wie paint() - es gibt keine zweite Darstellung
     //  und keinen Bild-Cache (RAM = Priorität 1).
     //  `withPaperFrame` = Papierfläche + grauer Rand (Anzeige/Miniatur). Für
     //  den PDF-Export AUS: dort IST die Seite das Papier, ein gezeichneter
     //  Rahmen wäre ein Strich auf jedem Blatt.
     //  `withSelection` = die blaue Auswahl-Hinterlegung mitmalen. Für den
     //  PDF-Export AUS: sonst brennt eine beim Drücken bestehende Markierung als
-    //  blauer Balken in die Datei — der Caret wird schon immer unterdrückt, die
+    //  blauer Balken in die Datei - der Caret wird schon immer unterdrückt, die
     //  Auswahl war es nicht.
     void paintPageInto(QPainter* p, int page, const QRectF& target,
                        bool withPaperFrame = true, bool withSelection = true);
 
-    //  ── DOCX → PDF, gemalt aus DIESER Auslegung (N6/N9) ─────────────────
+    //  ── DOCX -> PDF, gemalt aus DIESER Auslegung (N6/N9) ─────────────────
     //  Schreibt jede Seite so, wie sie am Bildschirm steht: derselbe
     //  Zeichenweg (`paintSlot`), dieselben Seitengrenzen. Das PDF ist damit
-    //  seitengleich PER KONSTRUKTION — kein zweites Layout, das auseinander
+    //  seitengleich PER KONSTRUKTION - kein zweites Layout, das auseinander
     //  laufen könnte (der frühere `QTextDocument`-Weg tat genau das:
     //  gemessen 4 Anzeige-Seiten gegen 3 Export-Seiten).
-    //  Läuft auf dem GUI-Thread, weil die Auslegung einem QQuickItem gehört —
+    //  Läuft auf dem GUI-Thread, weil die Auslegung einem QQuickItem gehört -
     //  sie ist aber bereits fertig (das Dokument steht auf dem Schirm), es
     //  wird nur noch gezeichnet. Leerer Rückgabewert = Erfolg, sonst der
     //  Fehlertext.
@@ -176,13 +176,13 @@ signals:
     void saveRequested();
     void pageCountChanged();
     void currentPageChanged();
-    //  Inhalt hat sich geändert (Laden/Bearbeiten) — die Miniaturen zeichnen neu.
+    //  Inhalt hat sich geändert (Laden/Bearbeiten) - die Miniaturen zeichnen neu.
     void documentChanged();
     //  Auswahl/Lage des Bildes hat sich geändert (Cursor, Bearbeitung, Scrollen,
-    //  Maßstab) — QML richtet die Ziehpunkte neu aus.
+    //  Maßstab) - QML richtet die Ziehpunkte neu aus.
     void imageSelectionChanged();
     //  Rechtsklick in der Fläche: Position in ITEM-Pixeln + getroffener Block.
-    //  Das Menü selbst baut QML (gethemt) — hier gibt es keine UI-Texte.
+    //  Das Menü selbst baut QML (gethemt) - hier gibt es keine UI-Texte.
     void contextMenuRequested(qreal x, qreal y, int block);
 
 protected:
@@ -206,28 +206,28 @@ private:
     //    Fluss-y = slot * slotHeight() + y innerhalb des Slots. Damit bleibt die
     //    binäre Suche über die Präfix-Offsets gültig, auch wenn zwei Spalten
     //    dieselbe Bildschirmhöhe teilen.
-    //  DOKUMENT-y (Seitenstapel): was man SIEHT — Seiten mit Rand und Lücke
+    //  DOKUMENT-y (Seitenstapel): was man SIEHT - Seiten mit Rand und Lücke
     //    dazwischen. Ein Absatz kann über mehrere Slots laufen; welche Zeilen
     //    wo liegen, steht in seinen Segmenten.
     //  ITEM-Pixel (contentY/contentHeight/cursorY): Dokument-y × m_scale. Der
     //    Maßstab passt eine zu breite Seite in eine schmale Kachel ein und ist
-    //    ein reiner Zeichen-Faktor — das Layout selbst bleibt seitengenau.
+    //    ein reiner Zeichen-Faktor - das Layout selbst bleibt seitengenau.
     struct PageSeg {
         int   slot    = 0;                     // Spalten-Slot dieses Stücks
         //  DREI Bedeutungen, je nach Block: bei einem Absatz die erste ZEILE
         //  des Stücks, bei einem Inhaltsverzeichnis der erste EINTRAG dieser
-        //  Seite, bei einer Tabelle die erste TABELLENZEILE. Nie direkt lesen —
+        //  Seite, bei einer Tabelle die erste TABELLENZEILE. Nie direkt lesen -
         //  segFirstLine()/segFirstEntry()/segFirstRow() trennen das.
         int   first   = 0;
         qreal yInSlot = 0.0;                   // Oberkante im Slot
     };
     //  ── Tabellen-ANZEIGE (read-only) ─────────────────────────────────────────
     //  Eine Tabelle bleibt EIN Block (beim Speichern byteidentisch). Sie wird
-    //  aber als echtes Gitter ausgelegt, damit ihre HÖHE stimmt — mit dem
+    //  aber als echtes Gitter ausgelegt, damit ihre HÖHE stimmt - mit dem
     //  früheren festen Platzhalter von 34 px war jeder Seitenumbruch NACH einer
     //  Tabelle falsch. Bearbeiten von Zellen ist (noch) nicht möglich.
     struct CellLayout {
-        //  Nur noch für NICHT flach zerlegte Tabellen (opaker Block) — dort
+        //  Nur noch für NICHT flach zerlegte Tabellen (opaker Block) - dort
         //  liefert parseTableForDisplay den Inhalt. Bei flach zerlegten Tabellen
         //  kommt der Text aus den echten Blöcken, dann bleibt das hier leer.
         std::vector<std::unique_ptr<QTextLayout>> paras;
@@ -246,7 +246,7 @@ private:
     //  ── Ein STÜCK eines Absatzes ─────────────────────────────────────────────
     //  Ein Absatz ohne Bild hat genau EIN Stück über seinen ganzen Text; ein
     //  Absatz mit Bildern eines je Textabschnitt ZWISCHEN den Bildern (das
-    //  Objekt-Zeichen U+FFFC gehört keinem Stück — QTextLayout würde daraus ein
+    //  Objekt-Zeichen U+FFFC gehört keinem Stück - QTextLayout würde daraus ein
     //  Kästchen malen). Die Zeilen eines Stücks tragen BLOCK-lokale
     //  Koordinaten, `dx`/`dy` bleiben deshalb 0, solange ein Stück nicht als
     //  Ganzes versetzt wird.
@@ -267,7 +267,7 @@ private:
         int     run = -1;                      // Run-Index im Block
         bool    broken = false;                // Bytes/Beziehung unbrauchbar
         //  VERANKERT (`wp:anchor` + `w:wrapSquare`): das Bild steht NICHT im
-        //  Zeilenfluss, sondern an seiner eigenen Stelle — der Text weicht ihm
+        //  Zeilenfluss, sondern an seiner eigenen Stelle - der Text weicht ihm
         //  über so viele Zeilen aus, wie es hoch ist. `padL/padR` sind die
         //  Abstände, die das Dokument dafür verlangt (`distL`/`distR`).
         bool    floating = false;
@@ -277,7 +277,7 @@ private:
     };
     //  ── Ein ZEILENBAND = eine sichtbare Zeile ────────────────────────────────
     //  Höchstens EINE Textzeile, dazu die Bilder, die daneben stehen. Das Band
-    //  ist die Einheit von Paginierung, Caret und Treffersuche — deshalb spricht
+    //  ist die Einheit von Paginierung, Caret und Treffersuche - deshalb spricht
     //  die Facade von „Zeilen": ohne Bild ist ein Band genau eine `QTextLine`.
     struct RowInfo {
         qreal y = 0.0;                         // Oberkante (block-lokal)
@@ -285,7 +285,7 @@ private:
         qreal visH = 0.0;                      // sichtbare Höhe (ohne Durchschuss)
         //  Versatz der TEXTZEILE im Band: neben einem Bild sitzt sie an dessen
         //  Unterkante (Grundlinie, wie in Word), das Band beginnt aber oben.
-        //  Caret und Listenmarker müssen der ZEILE folgen, nicht dem Band —
+        //  Caret und Listenmarker müssen der ZEILE folgen, nicht dem Band -
         //  sonst stünde die Schreibmarke oben und der Text erschiene unten.
         qreal textDy = 0.0;
         qreal ascent = 0.0;
@@ -295,7 +295,7 @@ private:
     };
 
     struct BlockLayout {
-        //  Textstücke + Bilder + Zeilenbänder — ALLES über die Facade lesen.
+        //  Textstücke + Bilder + Zeilenbänder - ALLES über die Facade lesen.
         std::vector<Piece>    pieces;
         std::vector<ImageBox> images;
         std::vector<RowInfo>  rows;
@@ -311,12 +311,12 @@ private:
         //  Die EINTRÄGE stehen nicht in der Datei (das Feld bleibt deklarativ),
         //  sie werden hier zum Auslegen gehalten. Die SEITENZAHL steht bewusst
         //  NICHT dabei: sie ist erst nach der Paginierung bekannt, hängt aber
-        //  nicht an der Höhe (die Zahl der Einträge steht fest) — deshalb füllt
+        //  nicht an der Höhe (die Zahl der Einträge steht fest) - deshalb füllt
         //  sie erst `paint` ein und das Verzeichnis braucht keinen zweiten Pass.
         bool    isToc = false;
         QList<Docx::TocEntry> tocEntries;
         qreal   tocLineH = 0.0;
-        //  Zeichenformat des Verzeichnisses (aus w:pPr/w:rPr des Absatzes) —
+        //  Zeichenformat des Verzeichnisses (aus w:pPr/w:rPr des Absatzes) -
         //  Schriftart und -größe sind das Einzige, was daran einstellbar ist.
         QFont   tocFont;
         //  Einträge, die auf EINE Seite passen (Aufteilung über mehrere Seiten).
@@ -324,20 +324,20 @@ private:
         //  ── Zellblock einer flach zerlegten Tabelle ──────────────────────────
         //  Der FLUSS bleibt monoton, weil die ganze Tabelle am Anker hängt (nur
         //  er trägt Höhe). Die Lage im Dokument steht deshalb hier EXPLIZIT,
-        //  relativ zur Oberkante/linken Textkante des Ankers — genau so, wie
+        //  relativ zur Oberkante/linken Textkante des Ankers - genau so, wie
         //  Spalten ihre eigene x-Lage haben, ohne den Fluss zu verbiegen.
         bool    isCell = false;
         qreal   cellRelX = 0.0, cellRelY = 0.0, cellW = 0.0;
-        //  Tabellenzeile dieses Zellblocks — sie entscheidet, auf welchem Stück
+        //  Tabellenzeile dieses Zellblocks - sie entscheidet, auf welchem Stück
         //  der Tabelle (und damit auf welcher Seite) er liegt.
         int     cellRow = 0;
         qreal   height = 0.0;                  // inkl. Abstand davor/danach
         //  Wie weit ragen verankerte Bilder dieses Blocks UNTER seine eigene
-        //  Unterkante? Genau darum fließen die FOLGENDEN Absätze herum — in
+        //  Unterkante? Genau darum fließen die FOLGENDEN Absätze herum - in
         //  Word endet der Umfluss nicht am Absatz. 0 = kein Überstand.
         qreal   floatOverhang = 0.0;
         //  GLEITENDE Tabelle: sie gibt ihre Flusshöhe ab und wird für die
-        //  folgenden Absätze zum Störer — daneben lässt sich schreiben, genau
+        //  folgenden Absätze zum Störer - daneben lässt sich schreiben, genau
         //  wie neben einem verankerten Bild. Nur wenn ein lesbarer Streifen
         //  bleibt UND die Tabelle auf eine Seite passt (s. maybeFloatTable);
         //  eine über Seiten getrennte Tabelle bleibt im Fluss, ihre Stücke
@@ -385,17 +385,17 @@ private:
     qreal   linesBottom(const BlockLayout& L) const;  // Unterkante des Inhalts
     int     lineForPos(const BlockLayout& L, int pos) const;
     //  Bei einem geteilten Band (Text links UND rechts eines Bildes) das Stück,
-    //  das zu dieser x gehört — sonst `li` unverändert.
+    //  das zu dieser x gehört - sonst `li` unverändert.
     int     rowAtX(const BlockLayout& L, int li, qreal x) const;
     int     lineForLocalY(const BlockLayout& L, qreal y) const;
     void    lineTextRange(const BlockLayout& L, int li, int* start, int* len) const;
     qreal   xForPos(const BlockLayout& L, int li, int pos) const;
     int     posForX(const BlockLayout& L, int li, qreal x) const;
     //  Bild an einer Zeichenposition (−1 = dort steht keines) bzw. unter einem
-    //  Punkt eines Bandes — die Treffersuche macht daraus die Cursor-Stelle.
+    //  Punkt eines Bandes - die Treffersuche macht daraus die Cursor-Stelle.
     int     imageAtPos(const BlockLayout& L, int pos) const;
     int     imageAtX(const BlockLayout& L, int li, qreal x) const;
-    //  Verankertes Bild an einer block-lokalen Stelle — es hängt an keinem
+    //  Verankertes Bild an einer block-lokalen Stelle - es hängt an keinem
     //  Zeilenband, sondern nur an seiner Lage.
     int     floatingImageAt(const BlockLayout& L, qreal x, qreal y) const;
     //  Inhalt eines Blocks samt Selektion zeichnen (block-lokale Positionen;
@@ -403,7 +403,7 @@ private:
     //  `rowFrom`/`rowTo` grenzen die ZEILENBÄNDER ein (rowTo < 0 = bis zum
     //  Ende): läuft ein Absatz über eine Seitenkante, malt jedes Segment nur
     //  seine EIGENEN Zeilen. Das Clipping schneidet die fremden zwar optisch
-    //  weg, im PDF blieben sie aber im Textstrom stehen — jede Zeile stünde dann
+    //  weg, im PDF blieben sie aber im Textstrom stehen - jede Zeile stünde dann
     //  im Inhalt BEIDER Seiten (s. drawBlockLines).
     void    drawBlockText(QPainter* p, const BlockLayout& L, const QPointF& origin,
                           int selStart, int selEnd, const QColor& selBg,
@@ -428,7 +428,7 @@ private:
     void    tableSegRows(const BlockLayout& A, int segIdx, int* from, int* to) const;
     //  Segment des Ankers, in dem eine Tabellenzeile liegt (−1 = keines).
     int     tableSegOfRow(const BlockLayout& A, int row) const;
-    //  Dokument-Ursprung EINES Tabellenstücks — dieselbe Rechnung, die
+    //  Dokument-Ursprung EINES Tabellenstücks - dieselbe Rechnung, die
     //  `paintSlot` zum Zeichnen benutzt. Zellblöcke hängen daran mit ihrem
     //  `cellRelX`/`cellRelY`, damit Gezeichnetes und Getroffenes zusammenfallen.
     QPointF tableSegOrigin(const BlockLayout& A, int segIdx) const;
@@ -485,9 +485,9 @@ private:
     void  buildLayout(int i);                  // Stücke/Bänder eines Absatzes
     void  buildTableLayout(int i);             // Gitter-Layout eines w:tbl-Blocks
     void  buildFlatTableLayout(int anchor);    // Gitter aus den LEBENDEN Zellblöcken
-    int   tableAnchorOf(int i) const;          // Zellblock → Anker (−1 = keiner)
+    int   tableAnchorOf(int i) const;          // Zellblock -> Anker (−1 = keiner)
     //  Absatz mit Bildern in ZEILENBÄNDER auslegen (Bilder nebeneinander, Text
-    //  daneben — genau wie `wp:inline` in Word). Rückgabe: Unterkante des
+    //  daneben - genau wie `wp:inline` in Word). Rückgabe: Unterkante des
     //  Inhalts (block-lokal, ohne Abstand danach).
     qreal buildInlineRows(BlockLayout& L, const Docx::Block& b, const QFont& base,
                           const Docx::ParFmt& pf, qreal width, int blockIdx = -1);
@@ -515,7 +515,7 @@ private:
     //  (s. BlockLayout::tableFloating). Setzt Höhe und Überstand entsprechend.
     void  maybeFloatTable(int blockIdx);
     //  Nach einer Höhen-/Überstands-Änderung die Blöcke im Reichweitenband des
-    //  Überstands zum Neuauslegen markieren (nur vorwärts — kein Zyklus).
+    //  Überstands zum Neuauslegen markieren (nur vorwärts - kein Zyklus).
     void  invalidateFloatFollowers(int i, qreal reach);
     //  Grundschrift eines Absatzes (mit Cursor-Sonderfall für leere Zeilen).
     QFont blockBaseFont(const Docx::Block& b, int blockIdx) const;
@@ -530,7 +530,7 @@ private:
     void  paintToc(QPainter* p, const BlockLayout& L, qreal left, qreal y,
                    qreal width, int firstEntry);
     //  1-basierte Seitenzahl eines Blocks (für die Verzeichnis-Einträge).
-    //  Gitter und (bei opaken Tabellen) Zelltext EINES Stücks zeichnen —
+    //  Gitter und (bei opaken Tabellen) Zelltext EINES Stücks zeichnen -
     //  `rowTo < 0` heißt „alle Zeilen".
     void  paintTable(QPainter* p, const BlockLayout& L, qreal left, qreal y,
                      int rowFrom = 0, int rowTo = -1);
@@ -546,10 +546,10 @@ private:
     //  QTextLayouts weit ausserhalb des Viewports freigeben (Hoehen bleiben).
     void  trimLayouts(int firstVisible, int lastVisible);
     //  Leere Absätze werden mit dem am Cursor GELTENDEN Format vermessen
-    //  (inkl. Pending) — beim Wechsel des Cursor-Blocks bzw. bei einer
+    //  (inkl. Pending) - beim Wechsel des Cursor-Blocks bzw. bei einer
     //  Format-Änderung ohne Selektion muss ihr Layout daher verfallen.
     void  invalidateEmptyBlock(int i);
-    //  Maus (Item-Koordinaten) → (Block, Zeichenposition).
+    //  Maus (Item-Koordinaten) -> (Block, Zeichenposition).
     void  hitTest(const QPointF& itemPos, int* block, int* pos);
     void  moveCursorVertical(int dir, bool keepAnchor);
 
@@ -562,14 +562,14 @@ private:
     QString m_tocEmptyLabel;
     QColor  m_surroundColor = QColor(58, 62, 70);
 
-    std::vector<BlockLayout> m_lay;   // move-only (unique_ptr) → std::vector
+    std::vector<BlockLayout> m_lay;   // move-only (unique_ptr) -> std::vector
     QVector<qreal>       m_offsets;            // Präfix-Summen der Höhen
     int    m_offsetsValidTo = 0;               // Offsets [0..N] gültig
     int    m_layChunkAt = 0;                   // Fortschritt Initial-Layout
     int    m_trimLo = -1, m_trimHi = -1;       // zuletzt getrimmtes Layout-Fenster
     int    m_pageCount = 1;                    // s. pageCount()
     int    m_lastPage = -1;                    // letzter gemeldeter currentPage
-    qreal  m_scale = 1.0;                      // Dokument-Pixel → Item-Pixel
+    qreal  m_scale = 1.0;                      // Dokument-Pixel -> Item-Pixel
     QTimer m_chunkTimer;
     QTimer m_blinkTimer;
     bool   m_caretOn = true;
@@ -582,14 +582,14 @@ private:
     int    m_imgSelBlock = -1;                 // s. selImageBlock()
     QRectF m_imgSelDoc;                        // Bildrechteck in Dokument-Pixeln
     //  ── Fußnoten (Anzeige am Seitenfuß) ──────────────────────────────────────
-    //  Slot → Höhe des Bereichs (Trennlinie + Absätze + Abstände).
+    //  Slot -> Höhe des Bereichs (Trennlinie + Absätze + Abstände).
     //  Ausgelegte Fußnoten (lazy; klein, deshalb gehalten). KEIN QHash: der
     //  Eintrag hält `unique_ptr` und ist damit nicht kopierbar.
 
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
-//  DocxPageThumb — Miniatur EINER Seite. Absichtlich winzig und ohne eigenen
+//  DocxPageThumb - Miniatur EINER Seite. Absichtlich winzig und ohne eigenen
 //  Zustand: sie ruft DocxTextArea::paintPageInto() auf, es gibt also nur EINEN
 //  Zeichenweg für Ansicht und Miniatur und KEINEN Bild-Cache (RAM = Priorität
 //  1). Gezeichnet wird nur, was die QML-ListView gerade als Delegate hält.

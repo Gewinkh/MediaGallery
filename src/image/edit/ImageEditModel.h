@@ -1,13 +1,13 @@
 #pragma once
 // ══════════════════════════════════════════════════════════════════════════════
-//  ImageEditModel.h — Listenmodell der Overlay-Annotationen EINES Bildes.
+//  ImageEditModel.h - Listenmodell der Overlay-Annotationen EINES Bildes.
 // ══════════════════════════════════════════════════════════════════════════════
 //
 //  ROLLE IM SYSTEM (analog PdfEditModel)
 //  ─────────────────────────────────────
 //  Einzige Wahrheitsquelle des Overlays: QML (Repeater) bindet die Rollen;
 //  Undo-Kommandos und der Controller mutieren AUSSCHLIESSLICH über die
-//  apply*/insert*/remove*-Methoden (gezielte dataChanged-Rollen → kein
+//  apply*/insert*/remove*-Methoden (gezielte dataChanged-Rollen -> kein
 //  Delegate-Neuaufbau beim Tippen/Ziehen/Zeichnen, nur Property-Updates).
 //
 //  RAM: reine Werte-Structs (QVector<ImageAnnotation>), keine Bitmaps. Selbst
@@ -48,13 +48,13 @@ public:
     QVector<ImageAnnotation> annotations() const { return m_anns; }   // Kopie (Export/Sidecar)
     int  count() const { return m_anns.size(); }
 
-    // ── Mutationen — NUR ImageEditController + Undo-Kommandos ─────────────────
+    // ── Mutationen - NUR ImageEditController + Undo-Kommandos ─────────────────
     void resetAnns(const QVector<ImageAnnotation>& anns);            // Sidecar-Load
     void insertAnnAt(int row, const ImageAnnotation& ann);
     bool removeById(int id, ImageAnnotation* removed = nullptr, int* removedRow = nullptr);
     bool applyGeometry(int id, const QRectF& r);
     //  applyGeometryPoints: Rechteck UND Punkte in einem Schritt (Strich
-    //  verschieben/skalieren) — feuert nur die tatsächlich geänderten Rollen.
+    //  verschieben/skalieren) - feuert nur die tatsächlich geänderten Rollen.
     bool applyGeometryPoints(int id, const QRectF& r, const QVector<QPointF>& pts);
     bool applyPoints(int id, const QVector<QPointF>& pts);           // Freihand live zeichnen
     bool applyText(int id, const QString& t);

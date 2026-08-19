@@ -31,14 +31,14 @@ namespace {
 //  Dezimaltrenner (locale-unabhängig!). QByteArray::number mit 'f' erfüllt das;
 //  überflüssige Nullen werden entfernt, damit die Ströme klein bleiben.
 //  Zahlen/Strings/Namen: die gemeinsamen Schreiber stehen in PdfObjects
-//  (mg::pdfobj::num, parenString, …) — hier nur noch die Nutzung.
+//  (mg::pdfobj::num, parenString, …) - hier nur noch die Nutzung.
 
 QByteArray rgb(const QColor& c) {
     return num(c.redF()) + " " + num(c.greenF()) + " " + num(c.blueF());
 }
 
 // ── Text als PDF-String ─────────────────────────────────────────────────────
-//  ( ) \ escapen, alles ausserhalb des druckbaren ASCII oktal — 7-Bit-sicher.
+//  ( ) \ escapen, alles ausserhalb des druckbaren ASCII oktal - 7-Bit-sicher.
 
 // ── Standard-14-Schriften ───────────────────────────────────────────────────
 //  Nur diese lassen sich OHNE Einbetten benutzen; jede andere Familie müsste
@@ -70,7 +70,7 @@ QByteArray baseFontFor(const QString& family, bool bold, bool italic) {
 
 //  Grobe Breitenschätzung für den Zeilenumbruch. Die exakten Metriken der
 //  Standard-14 wären eine eigene Tabelle; für den Umbruch genügt ein Mittelwert
-//  je Familie — er liegt bewusst leicht ZU GROSS, damit Zeilen eher zu früh als
+//  je Familie - er liegt bewusst leicht ZU GROSS, damit Zeilen eher zu früh als
 //  zu spät umbrechen und nichts über den Rand läuft.
 qreal avgCharWidth(const QByteArray& baseFont, qreal sizePt) {
     if (baseFont.startsWith("Courier")) return 0.600 * sizePt;
@@ -110,9 +110,9 @@ QVector<QString> wrapText(const QString& text, qreal widthPt,
 //  Die Ströme eines `/Contents`-ARRAYS sind laut Spezifikation EIN Strom: was
 //  der letzte offen lässt, gilt für alles, was wir anhängen. Zwei Dinge tun das:
 //   • offene `q` (Klemme, Farben, Linienbreite bleiben stehen),
-//   • ein **`cm` AUSSERHALB jeder `q`-Klammer** — das lässt sich durch kein `Q`
+//   • ein **`cm` AUSSERHALB jeder `q`-Klammer** - das lässt sich durch kein `Q`
 //     zurücknehmen und gilt bis zum Ende des Stroms.
-//  Genau daran lag der „zufällige schwarze Block": Diese DOCX→PDF-Datei endet
+//  Genau daran lag der „zufällige schwarze Block": Diese DOCX->PDF-Datei endet
 //  mit einer stehenden Matrix `[0.24 0 0 −0.24 0 842]` (Skalierung samt
 //  Y-Spiegelung). Ein Balken mit korrekten Seitenkoordinaten landete dadurch
 //  klein und an der falschen Stelle.
@@ -188,12 +188,12 @@ struct PageJob {
     qreal      heightPt = 0.0;     // ANGEZEIGTE Höhe (für die Y-Spiegelung)
     qreal      widthPt  = 0.0;     // ANGEZEIGTE Breite
     int        rot      = 0;       // /Rotate der Seite (0/90/180/270)
-    QByteArray cm;                 // Abbildung Anzeige → Benutzerraum (leer = Identität)
+    QByteArray cm;                 // Abbildung Anzeige -> Benutzerraum (leer = Identität)
     QByteArray ops;                // erzeugte Zeichenbefehle
     QSet<QByteArray> fonts;        // benötigte Standard-14-Namen
     QSet<QString>    embedFams;    // Familien, die eingebettet werden müssen
     bool       needsAlpha = false; // /ExtGState für Deckkraft nötig?
-    //  Bild-XObjects dieser Seite: Ressourcenname → Dateipfad. Derselbe Pfad
+    //  Bild-XObjects dieser Seite: Ressourcenname -> Dateipfad. Derselbe Pfad
     //  wird nur EINMAL eingebettet, auch wenn er mehrfach platziert ist.
     QHash<QByteArray, QString> images;
 };
@@ -243,7 +243,7 @@ bool appendAnnotations(const QString& inputPath, const QString& outputPath,
     };
     auto dictOf = [&](int n) -> QByteArray { return dictOfObject(bodyOf(n)); };
 
-    //  Entpackte Nutzdaten eines Stream-Objekts (roh oder /FlateDecode) — für
+    //  Entpackte Nutzdaten eines Stream-Objekts (roh oder /FlateDecode) - für
     //  das Zählen der offen gelassenen `q` der Seite (s. unbalancedSaves).
     auto streamDataOf = [&](int n, bool* ok) -> QByteArray {
         *ok = false;
@@ -304,7 +304,7 @@ bool appendAnnotations(const QString& inputPath, const QString& outputPath,
     }
     if (pageObjs.isEmpty()) return fail("keine Seiten");
 
-    //  Seitenmaße aus der (ggf. geerbten) /MediaBox — Grundlage der
+    //  Seitenmaße aus der (ggf. geerbten) /MediaBox - Grundlage der
     //  Koordinatenabbildung. Leer, wenn keine lesbare MediaBox gefunden wird.
     auto pageBox = [&](int pageNum) -> QSizeF {
         int cur = pageNum;
@@ -329,7 +329,7 @@ bool appendAnnotations(const QString& inputPath, const QString& outputPath,
 
     //  Drehung der Seite: eigenes oder vom Seitenbaum GEERBTES /Rotate,
     //  normalisiert auf 0/90/180/270. Sie entscheidet, wie die Koordinaten der
-    //  Anmerkungen in den Benutzerraum abgebildet werden (s. u.) — ohne das
+    //  Anmerkungen in den Benutzerraum abgebildet werden (s. u.) - ohne das
     //  landeten Notizen auf gedrehten Seiten quer bzw. neben dem Inhalt.
     auto pageRotate = [&](int pageNum) -> int {
         int cur = pageNum;
@@ -351,7 +351,7 @@ bool appendAnnotations(const QString& inputPath, const QString& outputPath,
     };
 
     // ── Zeichenbefehle je Seite erzeugen ────────────────────────────────────
-    QHash<int, PageJob> jobs;      // Seitenindex → Auftrag
+    QHash<int, PageJob> jobs;      // Seitenindex -> Auftrag
 
     for (const PdfEditBox& b : boxes) {
         if (b.page < 0 || b.page >= pageObjs.size())
@@ -371,7 +371,7 @@ bool appendAnnotations(const QString& inputPath, const QString& outputPath,
             const bool quarter = (job.rot == 90 || job.rot == 270);
             job.widthPt  = quarter ? box.height() : box.width();
             job.heightPt = quarter ? box.width()  : box.height();
-            //  Abbildung ANGEZEIGTER Raum → Benutzerraum der Seite als cm-Matrix.
+            //  Abbildung ANGEZEIGTER Raum -> Benutzerraum der Seite als cm-Matrix.
             //  Im angezeigten Raum liegt der Ursprung unten links (y nach oben),
             //  Größe = widthPt × heightPt; der Benutzerraum ist die ungedrehte
             //  Seite (box). Ohne Drehung ist das die Identität.
@@ -391,7 +391,7 @@ bool appendAnnotations(const QString& inputPath, const QString& outputPath,
             }
         }
         const qreal H = job.heightPt;
-        //  Ursprung oben-links (App) → unten-links (PDF).
+        //  Ursprung oben-links (App) -> unten-links (PDF).
         auto Y = [H](qreal yTop) { return H - yTop; };
 
         QByteArray& o = job.ops;
@@ -474,9 +474,9 @@ bool appendAnnotations(const QString& inputPath, const QString& outputPath,
         }
         case PdfAnnKind::Stamp: {
             //  Signatur/Stempel: Das Bild wird EINMAL je Datei eingebettet
-            //  (gleicher Pfad → gleiches XObject) und hier nur platziert.
+            //  (gleicher Pfad -> gleiches XObject) und hier nur platziert.
             //  Die `cm`-Matrix bildet das Einheitsquadrat des Bildes auf das
-            //  Box-Rechteck ab — Ursprung unten-links, daher Y() der Unterkante.
+            //  Box-Rechteck ab - Ursprung unten-links, daher Y() der Unterkante.
             if (b.imagePath.isEmpty()) { o += "Q\n"; continue; }
             const QByteArray name = "MGI" + QByteArray::number(
                                         qHash(b.imagePath) & 0xffffff, 16).toUpper();
@@ -493,7 +493,7 @@ bool appendAnnotations(const QString& inputPath, const QString& outputPath,
         }
         case PdfAnnKind::Redact: {
             //  Schwärzung: eine deckende Fläche. Der Text darunter ist bereits
-            //  aus dem Strom entfernt (PdfContentEditor) — die Fläche macht
+            //  aus dem Strom entfernt (PdfContentEditor) - die Fläche macht
             //  sichtbar, DASS hier etwas entfernt wurde.
             const QColor cover = b.highlight.alpha() > 0 ? b.highlight : QColor(0, 0, 0);
             o += rgb(cover) + " rg\n";
@@ -504,7 +504,7 @@ bool appendAnnotations(const QString& inputPath, const QString& outputPath,
         case PdfAnnKind::Markup: {
             //  Textmarkierung: MEHRERE Bereiche in einem Objekt (je zwei Ecken
             //  in `points`). Markieren füllt die Fläche und MULTIPLIZIERT,
-            //  damit der Text darunter lesbar bleibt — so machen es die
+            //  damit der Text darunter lesbar bleibt - so machen es die
             //  verbreiteten Betrachter auch; Unter-/Durchstreichen zieht eine
             //  Linie am unteren Rand bzw. auf halber Höhe.
             if (b.points.size() < 2) { o += "Q\n"; continue; }
@@ -540,7 +540,7 @@ bool appendAnnotations(const QString& inputPath, const QString& outputPath,
         case PdfAnnKind::Text:
         case PdfAnnKind::Replace: {
             //  Hat die Familie KEINE echte Standard-14-Entsprechung, wird die
-            //  Schrift eingebettet — sonst sähe die Ausgabe anders aus als der
+            //  Schrift eingebettet - sonst sähe die Ausgabe anders aus als der
             //  Bildschirm (vorher wurde still durch Helvetica ersetzt).
             const bool embed = mg::PdfFontEmbed::needsEmbedding(b.fontFamily);
             const QByteArray baseFont = embed
@@ -560,7 +560,7 @@ bool appendAnnotations(const QString& inputPath, const QString& outputPath,
             }
             if (b.text.isEmpty()) break;
 
-            //  Text muss in WinAnsi darstellbar sein — die Standard-14 nutzen
+            //  Text muss in WinAnsi darstellbar sein - die Standard-14 nutzen
             //  genau diese Kodierung. Sonst: Fallback (Raster).
             bool encOk = false;
             const auto enc = mg::pdfenc::Encoding::fromEncodingValue("/WinAnsiEncoding", &encOk);
@@ -581,7 +581,7 @@ bool appendAnnotations(const QString& inputPath, const QString& outputPath,
                 if (ty > b.rect.y() + b.rect.height() + lead) break;   // unten raus
                 QByteArray bytes;
                 if (!enc.encode(line, &bytes))
-                    return fail("Notiztext in WinAnsi nicht darstellbar → Fallback");
+                    return fail("Notiztext in WinAnsi nicht darstellbar -> Fallback");
                 qreal tx = b.rect.x() + pad;
                 if (b.alignment != 0) {
                     const qreal wpt = line.size() * avgCharWidth(baseFont, size);
@@ -633,7 +633,7 @@ bool appendAnnotations(const QString& inputPath, const QString& outputPath,
     //  Schriften und Transparenz-Zustände einmal je Dokument anlegen.
     QHash<QByteArray, int> fontObjNum;
     QHash<QByteArray, int> gsObjNum;
-    //  Familien, die eingebettet werden sollen, zuerst bauen — schlägt das
+    //  Familien, die eingebettet werden sollen, zuerst bauen - schlägt das
     //  fehl, ist die ganze Ausgabe zu verwerfen (der Raster-Weg zeigt die
     //  Schrift dann korrekt, s. Kommentar in PdfEditController).
     QHash<QString, mg::EmbeddedFont> embedded;
@@ -646,7 +646,7 @@ bool appendAnnotations(const QString& inputPath, const QString& outputPath,
             mg::EmbeddedFont ef;
             QString ferr;
             if (!mg::PdfFontEmbed::build(fam, bold, italic, &ef, &ferr))
-                return fail("Schrift nicht einbettbar → Fallback");
+                return fail("Schrift nicht einbettbar -> Fallback");
             embedded.insert(key, ef);
         }
     }
@@ -710,7 +710,7 @@ bool appendAnnotations(const QString& inputPath, const QString& outputPath,
     }
     //  Benötigte Alpha-Kombinationen aus den erzeugten Strömen einsammeln
     //  (die Namen wurden oben als /GS<fill>_<stroke> eingesetzt; ein „M" nach
-    //  „GS" verlangt zusätzlich MULTIPLIZIEREN — das braucht die Textmarkierung,
+    //  „GS" verlangt zusätzlich MULTIPLIZIEREN - das braucht die Textmarkierung,
     //  damit der Text darunter lesbar bleibt).
     QSet<QByteArray> gsNames;
     {
@@ -737,8 +737,8 @@ bool appendAnnotations(const QString& inputPath, const QString& outputPath,
     //  ── Bilder einbetten (Signatur/Stempel) ─────────────────────────────────
     //  EINMAL je Dateipfad, auch wenn dasselbe Bild mehrfach platziert ist.
     //  Ein nicht lesbares Bild lässt die Anmerkung ausfallen, statt den ganzen
-    //  Export scheitern zu lassen — der Rest der Seite ist ja in Ordnung.
-    QHash<QString, int> imgObjNum;                 // Pfad → Objektnummer
+    //  Export scheitern zu lassen - der Rest der Seite ist ja in Ordnung.
+    QHash<QString, int> imgObjNum;                 // Pfad -> Objektnummer
     {
         for (auto it = jobs.cbegin(); it != jobs.cend(); ++it) {
             for (auto im = it.value().images.cbegin(); im != it.value().images.cend(); ++im) {
@@ -770,7 +770,7 @@ bool appendAnnotations(const QString& inputPath, const QString& outputPath,
         //  Erst die offen gelassenen `q` der Seite schließen, dann zeichnen.
         //  Ohne das erbt jeder Balken/Strich die letzte `cm` der Seite (s.
         //  unbalancedSaves). Der Deckel ist eine Sicherung gegen einen
-        //  verkorksten Strom — mehr als ein paar Ebenen kommen real nie vor.
+        //  verkorksten Strom - mehr als ein paar Ebenen kommen real nie vor.
         QByteArray ops;
         {
             TrailingState st;
@@ -793,7 +793,7 @@ bool appendAnnotations(const QString& inputPath, const QString& outputPath,
                 for (int n2 : nums) {
                     bool sok = false;
                     const QByteArray part = streamDataOf(n2, &sok);
-                    if (!sok) { known = false; break; }      // nicht lesbar → nichts raten
+                    if (!sok) { known = false; break; }      // nicht lesbar -> nichts raten
                     whole += part;
                     whole += '\n';
                 }
@@ -802,7 +802,7 @@ bool appendAnnotations(const QString& inputPath, const QString& outputPath,
             if (known) {
                 //  1) offene `q` schließen (Klemme/Farben/Linienbreite),
                 for (int k = 0; k < qMin(st.openSaves, 32); ++k) ops += "Q\n";
-                //  2) eine stehen gebliebene Matrix INVERTIEREN — sie lässt sich
+                //  2) eine stehen gebliebene Matrix INVERTIEREN - sie lässt sich
                 //     durch kein `Q` zurücknehmen (s. trailingState).
                 const qreal det = st.m[0]*st.m[3] - st.m[1]*st.m[2];
                 const bool identity = qFuzzyCompare(st.m[0], qreal(1)) && qFuzzyIsNull(st.m[1])
@@ -810,7 +810,7 @@ bool appendAnnotations(const QString& inputPath, const QString& outputPath,
                                    && qFuzzyIsNull(st.m[4]) && qFuzzyIsNull(st.m[5]);
                 if (!identity) {
                     if (qAbs(det) < 1e-9)
-                        return fail("Seitenmatrix nicht umkehrbar → Fallback");
+                        return fail("Seitenmatrix nicht umkehrbar -> Fallback");
                     const qreal inv[6] = {
                          st.m[3]/det, -st.m[1]/det,
                         -st.m[2]/det,  st.m[0]/det,
@@ -835,7 +835,7 @@ bool appendAnnotations(const QString& inputPath, const QString& outputPath,
             out += "\nendstream\nendobj\n";
         }
 
-        //  Seiten-Dict neu schreiben: /Contents → Array, /Resources ergänzen.
+        //  Seiten-Dict neu schreiben: /Contents -> Array, /Resources ergänzen.
         QByteArray pd = dictOf(job.objNum);
         if (pd.isEmpty()) return fail("Seiten-Dict leer");
 
@@ -853,7 +853,7 @@ bool appendAnnotations(const QString& inputPath, const QString& outputPath,
             pd.replace(cp, ce - cp, repl);
         }
 
-        //  /Resources — Schriften und Transparenz ergänzen. Der Einfachheit und
+        //  /Resources - Schriften und Transparenz ergänzen. Der Einfachheit und
         //  Sicherheit halber wird ein bestehendes Dict um die fehlenden
         //  Einträge erweitert; steht dort eine Referenz oder fehlt der Eintrag,
         //  wird ein eigenes Dict gesetzt (die geerbten Ressourcen der Seite
@@ -874,10 +874,10 @@ bool appendAnnotations(const QString& inputPath, const QString& outputPath,
                 rs  = rp;
                 inner = pd.mid(rp + 2, (re_ - 2) - (rp + 2));
             } else if (rp >= 0) {
-                //  `/Resources 4 0 R` — eine REFERENZ. Früher wurde hier ein
+                //  `/Resources 4 0 R` - eine REFERENZ. Früher wurde hier ein
                 //  ZWEITES `/Resources` an das Seiten-Dict gehängt; ein Dict mit
                 //  doppeltem Schlüssel ist ungültig, und Leser nahmen das
-                //  letzte (unser fast leeres) — die Seite verlor damit ihre
+                //  letzte (unser fast leeres) - die Seite verlor damit ihre
                 //  Schriften und ihren Text. Betroffen war JEDE Datei mit
                 //  ausgelagerten Seitenressourcen (Quartz, viele Erzeuger).
                 //  Jetzt wird der referenzierte Inhalt in die Seite geholt und
@@ -945,9 +945,9 @@ bool PdfVectorExport::exportAnnotations(const QString& inputPath, const QString&
                                        const QVector<PdfEditBox>& boxes,
                                        QString* err) {
     //  Der Seiten-Plan ist hier BEREITS angewendet: Der Aufrufer übergibt die
-    //  Datei, die der Nutzer sieht (PdfEditController::renderSourcePath) — bei
+    //  Datei, die der Nutzer sieht (PdfEditController::renderSourcePath) - bei
     //  geänderter Reihenfolge/Drehung/eingefügten Seiten also die gebackene
-    //  Arbeitsdatei — und dazu die Notizen auf ANSICHTS-Seiten abgebildet
+    //  Arbeitsdatei - und dazu die Notizen auf ANSICHTS-Seiten abgebildet
     //  (PdfEditController::exportBoxes). Damit bleibt hier genau eine Aufgabe:
     //  die Anmerkungen anhängen, ohne den vorhandenen Inhalt anzutasten.
     return appendAnnotations(inputPath, outputPath, boxes, err);

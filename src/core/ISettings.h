@@ -15,7 +15,7 @@ enum class ExtractSelectStyle { Frame, Overlay };
 
 // Layout des PDF-Seitenauswahl-Dialogs:
 //  Workbench = Drei-Panel-Werkbank (PDF-Liste + Seitengrid + Auswahlleiste mit
-//              Drag&Drop-Reihenfolge) — Standard
+//              Drag&Drop-Reihenfolge) - Standard
 //  Compact   = schlichtes Einzelraster + Namensdialog (minimalistisch)
 enum class ExtractLayout { Workbench, Compact };
 
@@ -73,7 +73,7 @@ struct ThemeColors {
     // Extra UI overrides
     QColor buttonBg       = QColor(0, 0, 0, 0);  // transparent = derive from accent
     QColor sidebarBg      = QColor(18, 28, 34);
-    // Hintergrund des Text-Editors — GETRENNT für TXT- und HTML-Quellansicht
+    // Hintergrund des Text-Editors - GETRENNT für TXT- und HTML-Quellansicht
     // (TextSurface wählt je Dateiendung). Standard folgt der Karten-/Flächen-
     // farbe (card); beide frei wählbar im Design-Tab (Custom).
     QColor editorBgText   = QColor(18, 28, 34);
@@ -123,7 +123,7 @@ public:
     virtual void           setAudioAccentApple(bool v) = 0;
 
     // Mono-Play: nur EINE Audio-/Video-Wiedergabe gleichzeitig (relevant in der
-    // geteilten Ansicht) — startet eine neue Wiedergabe, wird die bereits
+    // geteilten Ansicht) - startet eine neue Wiedergabe, wird die bereits
     // laufende automatisch pausiert (nicht gestoppt). Standard: AN.
     virtual bool monoPlay() const = 0;
     virtual void setMonoPlay(bool v) = 0;
@@ -132,14 +132,14 @@ public:
     virtual bool fileDropMove() const = 0;
     virtual void setFileDropMove(bool v) = 0;
 
-    //  Zeigt die Galerie (und der eigene Dateiwähler) ALLE Dateien — auch die
+    //  Zeigt die Galerie (und der eigene Dateiwähler) ALLE Dateien - auch die
     //  Begleitdateien der App: die Ordner-JSON mit Tags/Kategorien, die
     //  Editor-Sidecars `<datei>.mgedit.json` und Sicherungskopien `.bak`?
     //  Standard AUS: sie gehören zur Verwaltung, nicht zur Sammlung.
     virtual bool showAllFiles() const = 0;
     virtual void setShowAllFiles(bool v) = 0;
 
-    //  Schriftfarbe beim Export eines Klartextes nach PDF (Texteditor „→ PDF").
+    //  Schriftfarbe beim Export eines Klartextes nach PDF (Texteditor „-> PDF").
     //  VORGABE für alle Dateien; eine einzelne Datei kann sie im Ordner-Sidecar
     //  überschreiben (JsonStorage::textPdfColor). Standard: Schwarz.
     virtual QColor textPdfColor() const = 0;
@@ -186,7 +186,7 @@ public:
     virtual void setPdfPageEditDestructive(bool v) = 0;
 
     // PDF-Editor: Verhalten des EINEN Export-Knopfes. true (Standard) =
-    // verlustfrei bevorzugen — „Text ersetzen"-Änderungen werden direkt in die
+    // verlustfrei bevorzugen - „Text ersetzen"-Änderungen werden direkt in die
     // eingebettete Textebene geschrieben, die Seite bleibt vektoriell
     // (durchsuchbarer Text, eingebettete Schriften); wo das nicht sicher
     // möglich ist, fällt der Controller selbsttätig auf den Raster-Export
@@ -197,7 +197,7 @@ public:
     // PDF-Editor: Eigene Notizen beim Export als ECHTE PDF-Annotationen
     // schreiben (Interchange) statt sie als Inhalt zu malen. true = in anderen
     // Betrachtern bleiben sie auswähl-, verschieb- und löschbar; false
-    // (Standard) = gemalter Inhalt — der sieht überall gleich aus und lässt
+    // (Standard) = gemalter Inhalt - der sieht überall gleich aus und lässt
     // sich nicht versehentlich wegklicken. Nicht abbildbare Notizen („Text
     // ersetzen", verkettete Textboxen) werden IMMER gemalt; enthält die Seite
     // solche, gilt der gemalte Weg für alles.
@@ -228,6 +228,51 @@ public:
     // Saved / bookmarked folders (persistent quick-access list)
     virtual QStringList savedFolders() const = 0;
     virtual void        setSavedFolders(const QStringList& paths) = 0;
+
+    // Bookmark groups: display order of the named groups. One entry per group,
+    // "Name" or "Name\t1" when the group is collapsed in the UI. Bookmarks
+    // themselves carry their group name in their own entry (see AppController).
+    virtual QStringList bookmarkGroups() const = 0;
+    virtual void        setBookmarkGroups(const QStringList& groups) = 0;
+
+    // Two-pane main screen: split ratio and the folder of the second pane
+    // (empty = only one pane was open).
+    virtual qreal   paneSplit() const = 0;
+    virtual void    setPaneSplit(qreal v) = 0;
+    virtual QString secondFolder() const = 0;
+    virtual void    setSecondFolder(const QString& path) = 0;
+
+    // ── Audio player mode (see src/audio/) ──────────────────────────────────
+    //  Equalizer: on/off, ten band gains in dB, preamp in dB, own presets as
+    //  "name<tab>preamp<tab>g0…g9". Plus the player's own options.
+    virtual bool        audioEqEnabled() const = 0;
+    virtual void        setAudioEqEnabled(bool on) = 0;
+    virtual QList<double> audioEqBands() const = 0;
+    virtual void        setAudioEqBands(const QList<double>& db) = 0;
+    virtual double      audioEqPreamp() const = 0;
+    virtual void        setAudioEqPreamp(double db) = 0;
+    virtual QStringList audioEqPresets() const = 0;
+    virtual void        setAudioEqPresets(const QStringList& presets) = 0;
+    //  War der Player-Modus beim Beenden an? (Er soll den Neustart überleben.)
+    virtual bool        audioPlayerMode() const = 0;
+    virtual void        setAudioPlayerMode(bool on) = 0;
+    //  Darstellung im Player-Modus: false = Kacheln wie sonst, true = Liste.
+    virtual bool        audioListLayout() const = 0;
+    virtual void        setAudioListLayout(bool on) = 0;
+    virtual bool        audioShowVideos() const = 0;
+    virtual void        setAudioShowVideos(bool on) = 0;
+    virtual bool        audioRememberLast() const = 0;
+    virtual void        setAudioRememberLast(bool on) = 0;
+    virtual QString     audioLastFile() const = 0;
+    virtual void        setAudioLastFile(const QString& path) = 0;
+    virtual qint64      audioLastPosition() const = 0;
+    virtual void        setAudioLastPosition(qint64 ms) = 0;
+    virtual double      audioVolume() const = 0;
+    virtual void        setAudioVolume(double v) = 0;
+    virtual bool        audioShuffle() const = 0;
+    virtual void        setAudioShuffle(bool on) = 0;
+    virtual int         audioRepeat() const = 0;
+    virtual void        setAudioRepeat(int mode) = 0;
 
     virtual QString rhiBackend() const = 0;   // liest "rhi/detectedBackend" aus QSettings
 

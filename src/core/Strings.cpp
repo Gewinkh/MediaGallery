@@ -12,6 +12,42 @@ static const QMap<StringKey, QString> s_de = {
     { StringKey::MenuOpenFolder,        "Ordner öffnen…" },
     { StringKey::MenuRefresh,           "Neu laden (R)" },
     { StringKey::MenuQuit,              "Beenden" },
+    { StringKey::MenuClosePane,         "Schließen" },
+    { StringKey::MenuSplitWindow,       "Fenster teilen" },
+    { StringKey::MenuUnsplitWindow,     "Teilung aufheben" },
+    { StringKey::SettingsPaneLabel,     "Ordnerbezogenes von:" },
+    { StringKey::AudioPlayerMode,       "Audio-Player (Alt+A)" },
+    { StringKey::AudioShuffle,          "Zufällige Reihenfolge" },
+    { StringKey::AudioRepeatOff,        "Keine Wiederholung" },
+    { StringKey::AudioRepeatOne,        "Titel wiederholen" },
+    { StringKey::AudioRepeatAll,        "Liste wiederholen" },
+    { StringKey::AudioEqTitle,          "Equalizer" },
+    { StringKey::AudioEqOn,             "Equalizer aktiv" },
+    { StringKey::AudioEqPreamp,         "Vorverstärkung" },
+    { StringKey::AudioEqReset,          "Alles auf null" },
+    { StringKey::AudioEqPreset,         "Voreinstellung" },
+    { StringKey::AudioEqSavePreset,     "Sichern" },
+    { StringKey::AudioEqDeletePreset,   "Löschen" },
+    { StringKey::AudioEqPresetName,     "Name der Voreinstellung" },
+    { StringKey::AudioEqClipHint,       "Anhebungen können übersteuern - empfohlene Vorverstärkung: %1 dB" },
+    { StringKey::SettingsTabAudio,      "Audio" },
+    { StringKey::AudioShowVideos,       "Videos im Player-Modus mitzeigen" },
+    { StringKey::AudioRememberLast,     "Zuletzt gespielten Titel merken" },
+    { StringKey::AudioRememberHint,     "Beim Start steht er samt Stelle wieder da - gespielt wird erst auf Druck." },
+    { StringKey::AudioVolume,           "Lautstärke" },
+    { StringKey::AudioNoTrack,          "Kein Titel gewählt" },
+    { StringKey::AudioPrevious,         "Voriger Titel" },
+    { StringKey::AudioNext,             "Nächster Titel" },
+    { StringKey::AudioQueueHeader,      "Als Nächstes" },
+    { StringKey::AudioNowPlaying,       "Läuft gerade" },
+    { StringKey::AudioBackToGallery,    "Zur Galerie" },
+    { StringKey::AudioOpenPlayer,       "Große Ansicht öffnen" },
+    { StringKey::AudioLayoutTitle,      "Darstellung im Player-Modus" },
+    { StringKey::AudioLayoutTiles,      "Kacheln wie sonst" },
+    { StringKey::AudioLayoutList,       "Liste" },
+    { StringKey::AudioLayoutHint,       "Die Liste zeigt mehr Titel auf einmal und macht auf "
+                                        "den ersten Blick klar, dass der Player-Modus läuft. "
+                                        "Tags, Kategorien und das Kontextmenü bleiben gleich." },
     { StringKey::MenuToggleOptions,     "Optionen ein/aus (Alt+S)" },
     { StringKey::MenuSettingsItem,      "Einstellungen…" },
     { StringKey::MenuLanguage,          "Sprache" },
@@ -90,12 +126,12 @@ static const QMap<StringKey, QString> s_de = {
     { StringKey::SettingsDesignImportTitle,     "Theme importieren" },
 
     // Converter
-    { StringKey::ConverterTagToSubcat,    "Tag → Unterkategorie" },
-    { StringKey::ConverterSubcatToTag,    "Unterkategorie → Tag" },
-    { StringKey::ConverterTagToCat,       "Tag → Kategorie" },
-    { StringKey::ConverterCatToTag,       "Kategorie → Tag" },
-    { StringKey::ConverterSubcatToCat,    "Unterkategorie → Kategorie" },
-    { StringKey::ConverterCatToSubcat,    "Kategorie → Unterkategorie" },
+    { StringKey::ConverterTagToSubcat,    "Tag -> Unterkategorie" },
+    { StringKey::ConverterSubcatToTag,    "Unterkategorie -> Tag" },
+    { StringKey::ConverterTagToCat,       "Tag -> Kategorie" },
+    { StringKey::ConverterCatToTag,       "Kategorie -> Tag" },
+    { StringKey::ConverterSubcatToCat,    "Unterkategorie -> Kategorie" },
+    { StringKey::ConverterCatToSubcat,    "Kategorie -> Unterkategorie" },
 
     // Design – PDF viewer / sidebar / button colors
 
@@ -115,10 +151,22 @@ static const QMap<StringKey, QString> s_de = {
     { StringKey::BookmarkDelete,         "Löschen" },
     { StringKey::BookmarkPathLabel,      "Pfad:" },
     { StringKey::BookmarkBrowse,         "Durchsuchen…" },
+    { StringKey::BookmarkGroupAdd,    "+ Gruppe" },
+    { StringKey::BookmarkGroupNewTitle, "Neue Gruppe" },
+    { StringKey::BookmarkGroupRenameTitle, "Gruppe umbenennen" },
+    { StringKey::BookmarkGroupNameLabel, "Gruppenname" },
+    { StringKey::BookmarkGroupDeleteTitle, "Gruppe löschen" },
+    { StringKey::BookmarkGroupDeleteText, "Nur die Gruppe wird entfernt - ihre Ordner bleiben als Lesezeichen ohne Gruppe erhalten." },
+    { StringKey::BookmarkGroupUngrouped, "Ohne Gruppe" },
+    { StringKey::BookmarkGroupLabel,  "Gruppe:" },
+    { StringKey::BookmarkGroupNone,   "- ohne -" },
+    { StringKey::BookmarkGroupEmptyHint, "leer - Lesezeichen hierher ziehen" },
+    { StringKey::BookmarkDragHint,    "Am Griff ziehen: sortieren oder in eine Gruppe geben." },
+    { StringKey::BookmarkGroupNameTaken, "Der Name ist schon vergeben." },
 
     { StringKey::EditorAutoSave,         "Auto-Speichern aktivieren" },
     { StringKey::EditorSave,             "Speichern" },
-    { StringKey::TextExportPdf,          "\u2192 PDF" },
+    { StringKey::TextExportPdf,          "-> PDF" },
     { StringKey::TextExportPdfTip,       "Als PDF exportieren (Original bleibt erhalten)" },
     { StringKey::TextExportPdfOk,        "PDF geschrieben: %1" },
     { StringKey::TextExportPdfFail,      "PDF-Export fehlgeschlagen: %1" },
@@ -129,14 +177,12 @@ static const QMap<StringKey, QString> s_de = {
     { StringKey::TextPdfColorSettingHint,
       "Vorgabe für alle Textdateien. Im Texteditor lässt sich davon abweichend "
       "eine eigene Farbe je Datei wählen." },
-    { StringKey::FileMenuTitle,          "Datei" },
-    { StringKey::ViewMenuTitle,          "Ansicht" },
     { StringKey::ViewMenuImmersive,      "Vollbild (F)" },
     { StringKey::TrackMenuTitle,         "Änderungen verfolgen" },
     { StringKey::TrackRecord,            "Aufzeichnen" },
     { StringKey::TrackRecordHint,
       "Während der Aufzeichnung gilt jede neue Notiz als offene Änderung, und "
-      "Löschen markiert statt zu entfernen — beides lässt sich einzeln annehmen "
+      "Löschen markiert statt zu entfernen - beides lässt sich einzeln annehmen "
       "oder verwerfen." },
     { StringKey::TrackOpenCount,         "%1 offene Änderung(en)" },
     { StringKey::TrackAcceptAll,         "Alle annehmen" },
@@ -148,7 +194,7 @@ static const QMap<StringKey, QString> s_de = {
     { StringKey::SettingsShowAllFilesHint,
       "Zeigt auch die Begleitdateien der App: die Ordner-Datei mit Tags und "
       "Kategorien, die Notizen der Editoren (…mgedit.json) und Sicherungskopien "
-      "(.bak). Normalerweise bleiben sie verborgen — gelöscht wird nichts." },
+      "(.bak). Normalerweise bleiben sie verborgen - gelöscht wird nichts." },
     { StringKey::CtxRemoveEdits,         "Notizen und Zeichnungen löschen" },
     { StringKey::CtxRemoveBackup,        "Vorherige Fassung löschen" },
     { StringKey::CtxRemoveEditsAsk,
@@ -168,17 +214,17 @@ static const QMap<StringKey, QString> s_de = {
     { StringKey::SettingsGenBackendLabel,  "Backend:" },
     { StringKey::SettingsGenBackendAuto,  "Auto" },
     { StringKey::SettingsGenBackendSoftware,  "Software (kein GPU)" },
-    { StringKey::SettingsGenActiveBackend,  "Aktuell aktiv: %1  —  Änderungen werden beim nächsten Start wirksam." },
+    { StringKey::SettingsGenActiveBackend,  "Aktuell aktiv: %1  -  Änderungen werden beim nächsten Start wirksam." },
     { StringKey::SettingsGenSoftwareWarning,  "⚠  Software-Renderer aktiv. Möglicherweise wurde beim letzten Start ein inkompatibles Backend erkannt und automatisch zurückgesetzt." },
     { StringKey::SettingsGenVideoInternal,  "Intern (eingebauter Player)" },
     { StringKey::SettingsGenVideoExternal,  "Extern (System-Player)" },
     { StringKey::SettingsGenSaveClose,  "Speichern & Schließen" },
     { StringKey::SettingsGenMonoPlay,  "Mono-Play" },
     { StringKey::SettingsGenMonoPlayLabel,  "Nur eine Wiedergabe gleichzeitig" },
-    { StringKey::SettingsGenMonoPlayHint,  "Startet in der geteilten Ansicht eine weitere Audio-/Video-Wiedergabe, wird die bereits laufende automatisch pausiert (nicht gestoppt — die Position bleibt erhalten). Deaktiviert dürfen mehrere Wiedergaben parallel laufen." },
+    { StringKey::SettingsGenMonoPlayHint,  "Startet in der geteilten Ansicht eine weitere Audio-/Video-Wiedergabe, wird die bereits laufende automatisch pausiert (nicht gestoppt - die Position bleibt erhalten). Deaktiviert dürfen mehrere Wiedergaben parallel laufen." },
     { StringKey::SettingsGenSeekStep,  "Spulschritt" },
     { StringKey::SettingsGenSeekStepLabel,  "Schrittweite:" },
-    { StringKey::SettingsGenSeekStepHint,  "Im Vollbild (Taste F) spulen ← und → ein Video um diesen Betrag zurück bzw. vor. Bei Bildern blättern die Pfeiltasten weiterhin zum vorherigen/nächsten Medium." },
+    { StringKey::SettingsGenSeekStepHint,  "Im Vollbild (Taste F) spulen <- und -> ein Video um diesen Betrag zurück bzw. vor. Bei Bildern blättern die Pfeiltasten weiterhin zum vorherigen/nächsten Medium." },
     { StringKey::SettingsGenSpell,  "Rechtschreibprüfung" },
     { StringKey::SettingsGenSpellLabel,  "Unbekannte Wörter markieren" },
     { StringKey::SettingsGenSpellHint,  "Unbekannte Wörter werden im DOCX-Editor rot unterkringelt; ein Rechtsklick bietet Verbesserungen an. Der Text wird nie von selbst geändert. Braucht ein installiertes Wörterbuch (Hunspell)." },
@@ -198,7 +244,7 @@ static const QMap<StringKey, QString> s_de = {
     { StringKey::SettingsViewAlignRight,  "Rechtsbündig" },
     { StringKey::SettingsViewAlignManual,  "Manuell (freier Bereich)" },
     { StringKey::SettingsViewArrangementHint,  "Bestimmt, wie Kacheln innerhalb des sichtbaren Bereichs ausgerichtet werden." },
-    { StringKey::SettingsViewZoomHint,  "<b>Zoom-Shortcuts:</b><br>Strg + Mausrad → Kachelgröße ändern<br>Strg + + / Strg + − → Kachelgröße stufenweise" },
+    { StringKey::SettingsViewZoomHint,  "<b>Zoom-Shortcuts:</b><br>Strg + Mausrad -> Kachelgröße ändern<br>Strg + + / Strg + − -> Kachelgröße stufenweise" },
     { StringKey::SettingsDesignProfileLabel,  "Design-Profil" },
     { StringKey::SettingsDesignCustomHint,  "Wähle das Profil „Custom“, um eigene Farben zu bearbeiten." },
     { StringKey::SettingsDesignTextPrimary,  "Text primär" },
@@ -250,7 +296,7 @@ static const QMap<StringKey, QString> s_de = {
     { StringKey::SettingsConvSubToTagHint,  "Wandelt eine Unterkategorie zurück in einen globalen Tag. Alle Dateien der Unterkategorie erhalten diesen Tag." },
     { StringKey::SettingsConvTagToCatHint,  "Wandelt einen globalen Tag in eine eigenständige Hauptkategorie um. Der Tag wird danach aus der globalen Liste entfernt." },
     { StringKey::SettingsConvCatToTagHint,  "Wandelt eine Hauptkategorie in einen globalen Tag um. Alle Dateien der Kategorie erhalten diesen Tag; enthaltene Unterkategorien werden mit entfernt." },
-    { StringKey::SettingsConvSubToCatHint,  "Hebt eine Unterkategorie (samt Inhalt) auf die Hauptebene an — sie wird zur eigenständigen Kategorie." },
+    { StringKey::SettingsConvSubToCatHint,  "Hebt eine Unterkategorie (samt Inhalt) auf die Hauptebene an - sie wird zur eigenständigen Kategorie." },
     { StringKey::SettingsConvCatToSubHint,  "Ordnet eine Hauptkategorie (samt Inhalt) einer anderen Kategorie unter. Das Ziel darf nicht innerhalb der verschobenen Kategorie liegen." },
     { StringKey::SettingsBookBtnAdd,  "+ Ordner hinzufügen" },
     { StringKey::SettingsBookHint,  "Schnellzugriff auf häufig genutzte Ordner." },
@@ -305,8 +351,8 @@ static const QMap<StringKey, QString> s_de = {
     { StringKey::FilterModeExclusiveDesc,  "Ausschließlich die gewählten Tags" },
     { StringKey::FilterModeInclusiveDesc,  "Enthält die gewählten Tags (inklusiv)" },
     { StringKey::FilterSearchPlaceholder,  "Dateien suchen…" },
-    { StringKey::DropBarMove,  "Auf ein Lesezeichen ziehen — die Datei wird VERSCHOBEN" },
-    { StringKey::DropBarCopy,  "Auf ein Lesezeichen ziehen — die Datei wird KOPIERT" },
+    { StringKey::DropBarMove,  "Auf ein Lesezeichen ziehen - die Datei wird VERSCHOBEN" },
+    { StringKey::DropBarCopy,  "Auf ein Lesezeichen ziehen - die Datei wird KOPIERT" },
     { StringKey::DropMoved,  "Verschoben: " },
     { StringKey::DropCopied,  "Kopiert: " },
     { StringKey::DropFailed,  "Nicht möglich: " },
@@ -334,7 +380,7 @@ static const QMap<StringKey, QString> s_de = {
     { StringKey::ModeAddToTag,  "Add-to-Tag-Modus" },
     { StringKey::ViewerRandom,  "Zufällig" },
     { StringKey::GalleryNoMedia,  "Keine anzeigbaren Medien in diesem Ordner." },
-    { StringKey::GalleryNoFolder,  "Kein Ordner geöffnet — Datei ▸ Ordner öffnen oder hierher ziehen." },
+    { StringKey::GalleryNoFolder,  "Kein Ordner geöffnet - Datei ▸ Ordner öffnen oder hierher ziehen." },
     { StringKey::DateYear,  "Jahr" },
     { StringKey::DateMonth,  "Monat" },
     { StringKey::DateDay,  "Tag" },
@@ -350,7 +396,7 @@ static const QMap<StringKey, QString> s_de = {
     { StringKey::PdfAudioActiveTitle,  "Audio %1 · S. %2" },
     { StringKey::ViewerShowPreview,  "Vorschau anzeigen" },
     { StringKey::ViewerShowSource,   "Quelltext anzeigen" },
-    { StringKey::ViewerPreviewCrashed, "Vorschau abgestürzt — über den Button oben zur Quelltext-Ansicht wechseln oder die Datei neu öffnen." },
+    { StringKey::ViewerPreviewCrashed, "Vorschau abgestürzt - über den Button oben zur Quelltext-Ansicht wechseln oder die Datei neu öffnen." },
     { StringKey::FilterAddTagBtn,  "Hinzufügen" },
     { StringKey::FilterAddTagPlaceholder,  "Tag eingeben…" },
     { StringKey::CtxAddTag,  "Tag hinzufügen" },
@@ -358,7 +404,7 @@ static const QMap<StringKey, QString> s_de = {
     { StringKey::CtxNoCategories,  "Keine Kategorien vorhanden" },
     { StringKey::OverlayShowTags,  "Tags anzeigen" },
     { StringKey::OverlayShowCategories,  "Kategorien anzeigen" },
-    { StringKey::OverlayNoValues,  "— keine —" },
+    { StringKey::OverlayNoValues,  "- keine -" },
 
     { StringKey::PanelSectionTags,     "Tags" },
     { StringKey::PanelAddTagTip,       "Neuen Tag erstellen" },
@@ -396,7 +442,7 @@ static const QMap<StringKey, QString> s_de = {
     { StringKey::DocxLoadError,          "DOCX konnte nicht geladen werden" },
     { StringKey::DocxSaveError,          "Speichern fehlgeschlagen" },
     { StringKey::DocxExportedTo,         "Exportiert: %1" },
-    { StringKey::DocxTablePlaceholder,   "Tabelle — Bearbeitung folgt in einer späteren Version" },
+    { StringKey::DocxTablePlaceholder,   "Tabelle - Bearbeitung folgt in einer späteren Version" },
     { StringKey::DocxPageBreak,          "Seitenumbruch" },
     { StringKey::DocxParagraphStyle,     "Formatvorlage des Absatzes" },
     { StringKey::DocxInsertSignature,    "Unterschrift einfügen" },
@@ -422,7 +468,7 @@ static const QMap<StringKey, QString> s_de = {
     { StringKey::DocxTableCut,           "Tabelle ausschneiden" },
     { StringKey::DocxTablePaste,         "Tabelle einfügen" },
     { StringKey::DocxTableDelete,        "Tabelle löschen" },
-    { StringKey::DocxTableLocked,        "Verbundene Zellen — Struktur unveränderlich" },
+    { StringKey::DocxTableLocked,        "Verbundene Zellen - Struktur unveränderlich" },
     { StringKey::DocxImageSize,          "Bildgröße …" },
     { StringKey::DocxImageInline,   QStringLiteral("Mit Text in Zeile") },
     { StringKey::DocxImageFloating, QStringLiteral("Umfließend (Text daneben)") },
@@ -456,7 +502,7 @@ static const QMap<StringKey, QString> s_de = {
     { StringKey::DocxSpacingGroup,             "Abstände" },
     { StringKey::DocxListNone,                 "Keine Liste" },
     { StringKey::DocxListType,                 "Listenart" },
-    { StringKey::DocxExportPdf,                 "\u2192 PDF" },
+    { StringKey::DocxExportPdf,                 "-> PDF" },
     { StringKey::DocxExportPdfTip,             "Als PDF exportieren (Original bleibt erhalten)" },
     { StringKey::DocxPdfExportedTo,            "PDF exportiert: %1" },
     { StringKey::DocxFindPlaceholder,          "Suchen" },
@@ -489,8 +535,8 @@ static const QMap<StringKey, QString> s_de = {
     { StringKey::CtxFolderDelete,           "Ordner löschen…" },
     { StringKey::DeleteFolderTitle,         "Ordner löschen" },
     { StringKey::DeleteFolderText,          "„%1\" mit %2 Einträgen in den Papierkorb verschieben? Mit Strg+Z holst du ihn zurück." },
-    { StringKey::DeleteFolderNoTrash,       "Ohne Papierkorb wird kein Ordner gelöscht — es gäbe keinen Rückweg." },
-    { StringKey::FolderDropBar,             "Ordner hier — zum Ablegen darauf ziehen" },
+    { StringKey::DeleteFolderNoTrash,       "Ohne Papierkorb wird kein Ordner gelöscht - es gäbe keinen Rückweg." },
+    { StringKey::FolderDropBar,             "Ordner hier - zum Ablegen darauf ziehen" },
     { StringKey::FolderDropMoved,           "Nach „%1\" verschoben." },
     { StringKey::FolderDropCopied,          "Nach „%1\" kopiert." },
     { StringKey::PdfOcrBusy,                "OCR läuft …" },
@@ -535,12 +581,17 @@ static const QMap<StringKey, QString> s_de = {
 
     // ── Galerie-Kontextmenü: Datei löschen ──
     { StringKey::CtxDeleteFile,            "Datei löschen…" },
+    { StringKey::CtxRenameFile,            "Umbenennen…" },
+    { StringKey::MenuDocument,             "Dokument" },
+    { StringKey::PanelSearchTag,           "Tag suchen…" },
+    { StringKey::PanelSearchCategory,      "Kategorie suchen…" },
+    { StringKey::PanelSearchNoHit,         "Kein Treffer" },
     { StringKey::DeleteMediaTitle,         "Datei löschen" },
     { StringKey::DeleteMediaText,          "„%1“ wird in den Papierkorb verschoben." },
     { StringKey::DeleteMediaConfirm,       "Löschen" },
 
     // ── Live-Transliteration ──
-    { StringKey::TranslitTip,              "Transliteration (Latein → Arabisch/Japanisch)" },
+    { StringKey::TranslitTip,              "Transliteration (Latein -> Arabisch/Japanisch)" },
     { StringKey::TranslitOff,              "Aus" },
     { StringKey::TranslitArabic,           "Arabisch (mit Harakat)" },
     { StringKey::TranslitHiragana,         "Japanisch – Hiragana" },
@@ -553,7 +604,7 @@ static const QMap<StringKey, QString> s_de = {
     { StringKey::TranslitResetBtn,         "Auf Standard zurücksetzen" },
     { StringKey::TranslitHint,             "Beim Schreiben von Text (TXT, HTML, PDF-Notizen) wird die lateinische Eingabe live in die Zielschrift umgesetzt – aber erst, sobald eindeutig ist, welches Zeichen gemeint ist (z. B. wird „a“ erst umgewandelt, wenn feststeht, dass kein längeres Kürzel wie „aa“ folgt). Die Zuordnungen unten lassen sich frei bearbeiten, ergänzen und löschen." },
     { StringKey::SplitAddFile,             "Datei hinzufügen" },
-    { StringKey::SplitMaxReached,          "Maximal 4 Dateien gleichzeitig geöffnet — bitte zuerst eine schließen." },
+    { StringKey::SplitMaxReached,          "Maximal 4 Dateien gleichzeitig geöffnet - bitte zuerst eine schließen." },
     { StringKey::SplitPickPrompt,          "Datei anklicken, um sie zur geteilten Ansicht hinzuzufügen" },
     { StringKey::SplitCancel,              "Abbrechen" },
 
@@ -604,7 +655,7 @@ static const QMap<StringKey, QString> s_de = {
     { StringKey::PdfPageEditNonDestructive,  "Nicht-destruktiv (Änderungen wirken beim Export)" },
     { StringKey::PdfPageEditDestructiveMode, "Destruktiv (Original-PDF sofort ändern)" },
     { StringKey::SettingsPdfExportLabel,     "Export" },
-    { StringKey::SettingsPdfExportHint,      "Gilt für den „Export\"-Knopf im PDF-Editor. Verlustfrei hält Text durchsuchbar und Grafik vektoriell; wo das nicht sicher möglich ist (verschlüsselt, CID-Schriften, Nicht-ASCII), wird die betroffene Seite automatisch als Bild exportiert. Das Original bleibt in beiden Fällen unangetastet — es entsteht immer eine neue Kopie." },
+    { StringKey::SettingsPdfExportHint,      "Gilt für den „Export\"-Knopf im PDF-Editor. Verlustfrei hält Text durchsuchbar und Grafik vektoriell; wo das nicht sicher möglich ist (verschlüsselt, CID-Schriften, Nicht-ASCII), wird die betroffene Seite automatisch als Bild exportiert. Das Original bleibt in beiden Fällen unangetastet - es entsteht immer eine neue Kopie." },
     { StringKey::PdfExportLosslessMode,      "Verlustfrei, wenn möglich (Text bleibt durchsuchbar)" },
     { StringKey::PdfExportRasterMode,        "Immer als Bild (Raster, 150 dpi)" },
     { StringKey::PdfAddPageTip,              "Leere A4-Seite hier einfügen" },
@@ -620,10 +671,10 @@ static const QMap<StringKey, QString> s_de = {
     { StringKey::PdfPageImportedBadge,       "eingefügt" },
     { StringKey::PdfCaretPageNotEditable,    "Diese Seite lässt sich nicht zeichenweise "
                                              "bearbeiten (eingefügt oder gedreht)." },
-    { StringKey::PdfReflowOverflow,          "Der Absatz ist voll — der Rest steht in der "
+    { StringKey::PdfReflowOverflow,          "Der Absatz ist voll - der Rest steht in der "
                                              "letzten Zeile." },
     { StringKey::PdfEditDeleteMarkup,        "Markierung löschen" },
-    { StringKey::PdfFormSavedFlattenedToast, "Formular gespeichert: %1 — mit der geänderten "
+    { StringKey::PdfFormSavedFlattenedToast, "Formular gespeichert: %1 - mit der geänderten "
                                              "Seitenfolge. Die Felder sind in der Kopie "
                                              "festgeschrieben und dort nicht mehr ausfüllbar." },
     { StringKey::PdfCaretPageNoText,         "Auf dieser Seite gibt es keinen Text zum Bearbeiten "
@@ -637,15 +688,15 @@ static const QMap<StringKey, QString> s_de = {
     { StringKey::PdfStampFailedToast,        "Bild konnte nicht eingefügt werden" },
     { StringKey::PdfEditToolRedact,          "Schwärzen" },
     { StringKey::PdfRedactLimitHint,         "Der geschwärzte Text wird beim Export aus dem "
-                                             "Dokument entfernt — er lässt sich dann nicht mehr "
+                                             "Dokument entfernt - er lässt sich dann nicht mehr "
                                              "markieren, kopieren oder finden. Die Kopie wird "
                                              "dafür vollständig neu geschrieben: Auch in ihren "
                                              "Rohdaten steht er nicht mehr. Lässt er sich nicht "
                                              "sicher entfernen, wird die Seite als Bild "
-                                             "ausgegeben — dann ist er ebenfalls fort, die "
+                                             "ausgegeben - dann ist er ebenfalls fort, die "
                                              "Textebene der Kopie aber auch. Das Original bleibt "
                                              "in beiden Fällen unverändert." },
-    { StringKey::PdfRedactNoTextToast,       "Diese Seite hat keine Textebene — hier lässt sich "
+    { StringKey::PdfRedactNoTextToast,       "Diese Seite hat keine Textebene - hier lässt sich "
                                              "nichts schwärzen. Über „Texterkennung“ wird sie "
                                              "lesbar gemacht." },
     { StringKey::PdfEditToolMarkup,          "Text markieren (ziehen)" },
@@ -656,7 +707,7 @@ static const QMap<StringKey, QString> s_de = {
     { StringKey::PdfExportAsAnnotationsHint,  "Dann bleiben eigene Notizen auch in anderen "
                                               "PDF-Betrachtern auswählbar und löschbar. Ohne "
                                               "diese Option werden sie fest in die Seite "
-                                              "gezeichnet — das sieht überall gleich aus. "
+                                              "gezeichnet - das sieht überall gleich aus. "
                                               "„Text ersetzen\" und verkettete Textboxen "
                                               "werden immer gezeichnet." },
     { StringKey::PdfFormSaveTip,             "Ausgefülltes Formular als Kopie speichern" },
@@ -691,6 +742,42 @@ static const QMap<StringKey, QString> s_en = {
     { StringKey::MenuOpenFolder,        "Open Folder…" },
     { StringKey::MenuRefresh,           "Reload (R)" },
     { StringKey::MenuQuit,              "Quit" },
+    { StringKey::MenuClosePane,         "Close" },
+    { StringKey::MenuSplitWindow,       "Split window" },
+    { StringKey::MenuUnsplitWindow,     "Remove split" },
+    { StringKey::SettingsPaneLabel,     "Folder data from:" },
+    { StringKey::AudioPlayerMode,       "Audio player (Alt+A)" },
+    { StringKey::AudioShuffle,          "Shuffle" },
+    { StringKey::AudioRepeatOff,        "No repeat" },
+    { StringKey::AudioRepeatOne,        "Repeat one" },
+    { StringKey::AudioRepeatAll,        "Repeat all" },
+    { StringKey::AudioEqTitle,          "Equalizer" },
+    { StringKey::AudioEqOn,             "Equalizer on" },
+    { StringKey::AudioEqPreamp,         "Preamp" },
+    { StringKey::AudioEqReset,          "Reset all" },
+    { StringKey::AudioEqPreset,         "Preset" },
+    { StringKey::AudioEqSavePreset,     "Save" },
+    { StringKey::AudioEqDeletePreset,   "Delete" },
+    { StringKey::AudioEqPresetName,     "Preset name" },
+    { StringKey::AudioEqClipHint,       "Boosts can clip - suggested preamp: %1 dB" },
+    { StringKey::SettingsTabAudio,      "Audio" },
+    { StringKey::AudioShowVideos,       "Show videos in player mode" },
+    { StringKey::AudioRememberLast,     "Remember the last played track" },
+    { StringKey::AudioRememberHint,     "On the next start it is ready with its position - it does not play by itself." },
+    { StringKey::AudioVolume,           "Volume" },
+    { StringKey::AudioNoTrack,          "No track selected" },
+    { StringKey::AudioPrevious,         "Previous track" },
+    { StringKey::AudioNext,             "Next track" },
+    { StringKey::AudioQueueHeader,      "Up next" },
+    { StringKey::AudioNowPlaying,       "Now playing" },
+    { StringKey::AudioBackToGallery,    "Back to the gallery" },
+    { StringKey::AudioOpenPlayer,       "Open the full player" },
+    { StringKey::AudioLayoutTitle,      "Layout in player mode" },
+    { StringKey::AudioLayoutTiles,      "Tiles, as everywhere else" },
+    { StringKey::AudioLayoutList,       "List" },
+    { StringKey::AudioLayoutHint,       "The list shows more tracks at once and makes it "
+                                        "obvious that player mode is on. Tags, categories and "
+                                        "the context menu stay the same." },
     { StringKey::MenuToggleOptions,     "Toggle Options (Alt+S)" },
     { StringKey::MenuSettingsItem,      "Settings…" },
     { StringKey::MenuLanguage,          "Language" },
@@ -769,12 +856,12 @@ static const QMap<StringKey, QString> s_en = {
     { StringKey::SettingsDesignImportTitle,     "Import Theme" },
 
     // Converter
-    { StringKey::ConverterTagToSubcat,    "Tag → Subcategory" },
-    { StringKey::ConverterSubcatToTag,    "Subcategory → Tag" },
-    { StringKey::ConverterTagToCat,       "Tag → Category" },
-    { StringKey::ConverterCatToTag,       "Category → Tag" },
-    { StringKey::ConverterSubcatToCat,    "Subcategory → Category" },
-    { StringKey::ConverterCatToSubcat,    "Category → Subcategory" },
+    { StringKey::ConverterTagToSubcat,    "Tag -> Subcategory" },
+    { StringKey::ConverterSubcatToTag,    "Subcategory -> Tag" },
+    { StringKey::ConverterTagToCat,       "Tag -> Category" },
+    { StringKey::ConverterCatToTag,       "Category -> Tag" },
+    { StringKey::ConverterSubcatToCat,    "Subcategory -> Category" },
+    { StringKey::ConverterCatToSubcat,    "Category -> Subcategory" },
 
     // Design – PDF viewer / sidebar / button colors
 
@@ -794,10 +881,22 @@ static const QMap<StringKey, QString> s_en = {
     { StringKey::BookmarkDelete,         "Delete" },
     { StringKey::BookmarkPathLabel,      "Path:" },
     { StringKey::BookmarkBrowse,         "Browse…" },
+    { StringKey::BookmarkGroupAdd,    "+ Group" },
+    { StringKey::BookmarkGroupNewTitle, "New group" },
+    { StringKey::BookmarkGroupRenameTitle, "Rename group" },
+    { StringKey::BookmarkGroupNameLabel, "Group name" },
+    { StringKey::BookmarkGroupDeleteTitle, "Delete group" },
+    { StringKey::BookmarkGroupDeleteText, "Only the group is removed - its folders stay as bookmarks without a group." },
+    { StringKey::BookmarkGroupUngrouped, "No group" },
+    { StringKey::BookmarkGroupLabel,  "Group:" },
+    { StringKey::BookmarkGroupNone,   "- none -" },
+    { StringKey::BookmarkGroupEmptyHint, "empty - drag bookmarks here" },
+    { StringKey::BookmarkDragHint,    "Drag by the handle to sort or to drop into a group." },
+    { StringKey::BookmarkGroupNameTaken, "That name is already taken." },
 
     { StringKey::EditorAutoSave,         "Enable Auto-Save" },
     { StringKey::EditorSave,             "Save" },
-    { StringKey::TextExportPdf,          "\u2192 PDF" },
+    { StringKey::TextExportPdf,          "-> PDF" },
     { StringKey::TextExportPdfTip,       "Export as PDF (keeps the original)" },
     { StringKey::TextExportPdfOk,        "PDF written: %1" },
     { StringKey::TextExportPdfFail,      "PDF export failed: %1" },
@@ -808,8 +907,6 @@ static const QMap<StringKey, QString> s_en = {
     { StringKey::TextPdfColorSettingHint,
       "Default for all text files. The text editor can pick a different colour "
       "for a single file." },
-    { StringKey::FileMenuTitle,          "File" },
-    { StringKey::ViewMenuTitle,          "View" },
     { StringKey::ViewMenuImmersive,      "Fullscreen (F)" },
     { StringKey::TrackMenuTitle,         "Track changes" },
     { StringKey::TrackRecord,            "Record" },
@@ -847,17 +944,17 @@ static const QMap<StringKey, QString> s_en = {
     { StringKey::SettingsGenBackendLabel,  "Backend:" },
     { StringKey::SettingsGenBackendAuto,  "Auto" },
     { StringKey::SettingsGenBackendSoftware,  "Software (no GPU)" },
-    { StringKey::SettingsGenActiveBackend,  "Currently active: %1  —  changes take effect on next start." },
+    { StringKey::SettingsGenActiveBackend,  "Currently active: %1  -  changes take effect on next start." },
     { StringKey::SettingsGenSoftwareWarning,  "⚠  Software renderer active. An incompatible backend may have been detected on the last start and reset automatically." },
     { StringKey::SettingsGenVideoInternal,  "Internal (built-in player)" },
     { StringKey::SettingsGenVideoExternal,  "External (system player)" },
     { StringKey::SettingsGenSaveClose,  "Save & Close" },
     { StringKey::SettingsGenMonoPlay,  "Mono-Play" },
     { StringKey::SettingsGenMonoPlayLabel,  "Only one playback at a time" },
-    { StringKey::SettingsGenMonoPlayHint,  "When another audio/video playback is started in the split view, the one already playing is paused automatically (not stopped — its position is kept). When disabled, multiple playbacks may run in parallel." },
+    { StringKey::SettingsGenMonoPlayHint,  "When another audio/video playback is started in the split view, the one already playing is paused automatically (not stopped - its position is kept). When disabled, multiple playbacks may run in parallel." },
     { StringKey::SettingsGenSeekStep,  "Seek Step" },
     { StringKey::SettingsGenSeekStepLabel,  "Step size:" },
-    { StringKey::SettingsGenSeekStepHint,  "In fullscreen (key F), ← and → skip a video backwards/forwards by this amount. For images the arrow keys keep moving to the previous/next medium." },
+    { StringKey::SettingsGenSeekStepHint,  "In fullscreen (key F), <- and -> skip a video backwards/forwards by this amount. For images the arrow keys keep moving to the previous/next medium." },
     { StringKey::SettingsGenSpell,  "Spell checking" },
     { StringKey::SettingsGenSpellLabel,  "Mark unknown words" },
     { StringKey::SettingsGenSpellHint,  "Unknown words are underlined in red in the DOCX editor; a right-click offers corrections. The text is never changed on its own. Requires an installed dictionary (Hunspell)." },
@@ -877,7 +974,7 @@ static const QMap<StringKey, QString> s_en = {
     { StringKey::SettingsViewAlignRight,  "Right-aligned" },
     { StringKey::SettingsViewAlignManual,  "Manual (free area)" },
     { StringKey::SettingsViewArrangementHint,  "Determines how tiles are aligned within the visible area." },
-    { StringKey::SettingsViewZoomHint,  "<b>Zoom shortcuts:</b><br>Ctrl + mouse wheel → change tile size<br>Ctrl + + / Ctrl + − → tile size stepwise" },
+    { StringKey::SettingsViewZoomHint,  "<b>Zoom shortcuts:</b><br>Ctrl + mouse wheel -> change tile size<br>Ctrl + + / Ctrl + − -> tile size stepwise" },
     { StringKey::SettingsDesignProfileLabel,  "Design Profile" },
     { StringKey::SettingsDesignCustomHint,  "Select the \"Custom\" profile to edit your own colors." },
     { StringKey::SettingsDesignTextPrimary,  "Text primary" },
@@ -929,7 +1026,7 @@ static const QMap<StringKey, QString> s_en = {
     { StringKey::SettingsConvSubToTagHint,  "Converts a subcategory back into a global tag. All files of the subcategory receive this tag." },
     { StringKey::SettingsConvTagToCatHint,  "Converts a global tag into a standalone top-level category. The tag is then removed from the global list." },
     { StringKey::SettingsConvCatToTagHint,  "Converts a top-level category into a global tag. All files of the category receive this tag; contained subcategories are removed as well." },
-    { StringKey::SettingsConvSubToCatHint,  "Promotes a subcategory (including its contents) to the top level — it becomes a standalone category." },
+    { StringKey::SettingsConvSubToCatHint,  "Promotes a subcategory (including its contents) to the top level - it becomes a standalone category." },
     { StringKey::SettingsConvCatToSubHint,  "Places a top-level category (including its contents) under another category. The target must not lie inside the moved category." },
     { StringKey::SettingsBookBtnAdd,  "+ Add Folder" },
     { StringKey::SettingsBookHint,  "Quick access to frequently used folders." },
@@ -984,8 +1081,8 @@ static const QMap<StringKey, QString> s_en = {
     { StringKey::FilterModeExclusiveDesc,  "Exclusively the selected tags" },
     { StringKey::FilterModeInclusiveDesc,  "Contains the selected tags (inclusive)" },
     { StringKey::FilterSearchPlaceholder,  "Search files…" },
-    { StringKey::DropBarMove,  "Drop on a bookmark — the file is MOVED" },
-    { StringKey::DropBarCopy,  "Drop on a bookmark — the file is COPIED" },
+    { StringKey::DropBarMove,  "Drop on a bookmark - the file is MOVED" },
+    { StringKey::DropBarCopy,  "Drop on a bookmark - the file is COPIED" },
     { StringKey::DropMoved,  "Moved: " },
     { StringKey::DropCopied,  "Copied: " },
     { StringKey::DropFailed,  "Not possible: " },
@@ -1013,7 +1110,7 @@ static const QMap<StringKey, QString> s_en = {
     { StringKey::ModeAddToTag,  "Add-to-tag mode" },
     { StringKey::ViewerRandom,  "Random" },
     { StringKey::GalleryNoMedia,  "No displayable media in this folder." },
-    { StringKey::GalleryNoFolder,  "No folder open — File ▸ Open folder or drag here." },
+    { StringKey::GalleryNoFolder,  "No folder open - File ▸ Open folder or drag here." },
     { StringKey::DateYear,  "Year" },
     { StringKey::DateMonth,  "Month" },
     { StringKey::DateDay,  "Day" },
@@ -1029,7 +1126,7 @@ static const QMap<StringKey, QString> s_en = {
     { StringKey::PdfAudioActiveTitle,  "Audio %1 · p. %2" },
     { StringKey::ViewerShowPreview,  "Show preview" },
     { StringKey::ViewerShowSource,   "Show source" },
-    { StringKey::ViewerPreviewCrashed, "Preview crashed — switch to source with the button above, or reopen the file." },
+    { StringKey::ViewerPreviewCrashed, "Preview crashed - switch to source with the button above, or reopen the file." },
     { StringKey::FilterAddTagBtn,  "Add" },
     { StringKey::FilterAddTagPlaceholder,  "Enter tag…" },
     { StringKey::CtxAddTag,  "Add tag" },
@@ -1037,7 +1134,7 @@ static const QMap<StringKey, QString> s_en = {
     { StringKey::CtxNoCategories,  "No categories available" },
     { StringKey::OverlayShowTags,  "Show tags" },
     { StringKey::OverlayShowCategories,  "Show categories" },
-    { StringKey::OverlayNoValues,  "— none —" },
+    { StringKey::OverlayNoValues,  "- none -" },
 
     { StringKey::PanelSectionTags,     "Tags" },
     { StringKey::PanelAddTagTip,       "Create new tag" },
@@ -1075,7 +1172,7 @@ static const QMap<StringKey, QString> s_en = {
     { StringKey::DocxLoadError,          "Could not load DOCX" },
     { StringKey::DocxSaveError,          "Saving failed" },
     { StringKey::DocxExportedTo,         "Exported: %1" },
-    { StringKey::DocxTablePlaceholder,   "Table — editing coming in a later version" },
+    { StringKey::DocxTablePlaceholder,   "Table - editing coming in a later version" },
     { StringKey::DocxPageBreak,          "Page break" },
     { StringKey::DocxParagraphStyle,     "Paragraph style" },
     { StringKey::DocxInsertSignature,    "Insert signature" },
@@ -1101,7 +1198,7 @@ static const QMap<StringKey, QString> s_en = {
     { StringKey::DocxTableCut,           "Cut table" },
     { StringKey::DocxTablePaste,         "Paste table" },
     { StringKey::DocxTableDelete,        "Delete table" },
-    { StringKey::DocxTableLocked,        "Merged cells — structure is fixed" },
+    { StringKey::DocxTableLocked,        "Merged cells - structure is fixed" },
     { StringKey::DocxImageSize,          "Image size …" },
     { StringKey::DocxImageInline,   QStringLiteral("In line with text") },
     { StringKey::DocxImageFloating, QStringLiteral("Wrap text around") },
@@ -1135,7 +1232,7 @@ static const QMap<StringKey, QString> s_en = {
     { StringKey::DocxSpacingGroup,             "Spacing" },
     { StringKey::DocxListNone,                 "No list" },
     { StringKey::DocxListType,                 "List type" },
-    { StringKey::DocxExportPdf,                 "\u2192 PDF" },
+    { StringKey::DocxExportPdf,                 "-> PDF" },
     { StringKey::DocxExportPdfTip,             "Export as PDF (keeps the original)" },
     { StringKey::DocxPdfExportedTo,            "Exported PDF: %1" },
     { StringKey::DocxFindPlaceholder,          "Find" },
@@ -1168,8 +1265,8 @@ static const QMap<StringKey, QString> s_en = {
     { StringKey::CtxFolderDelete,           "Delete folder…" },
     { StringKey::DeleteFolderTitle,         "Delete folder" },
     { StringKey::DeleteFolderText,          "Move \"%1\" and its %2 items to the trash? Ctrl+Z brings it back." },
-    { StringKey::DeleteFolderNoTrash,       "Without a trash bin no folder is deleted — there would be no way back." },
-    { StringKey::FolderDropBar,             "Folders here — drop onto one" },
+    { StringKey::DeleteFolderNoTrash,       "Without a trash bin no folder is deleted - there would be no way back." },
+    { StringKey::FolderDropBar,             "Folders here - drop onto one" },
     { StringKey::FolderDropMoved,           "Moved to \"%1\"." },
     { StringKey::FolderDropCopied,          "Copied to \"%1\"." },
     { StringKey::PdfOcrBusy,                "OCR running …" },
@@ -1214,12 +1311,17 @@ static const QMap<StringKey, QString> s_en = {
 
     // ── Gallery context menu: delete file ──
     { StringKey::CtxDeleteFile,            "Delete file…" },
+    { StringKey::CtxRenameFile,            "Rename…" },
+    { StringKey::MenuDocument,             "Document" },
+    { StringKey::PanelSearchTag,           "Search tag…" },
+    { StringKey::PanelSearchCategory,      "Search category…" },
+    { StringKey::PanelSearchNoHit,         "No match" },
     { StringKey::DeleteMediaTitle,         "Delete file" },
     { StringKey::DeleteMediaText,          "“%1” will be moved to the trash." },
     { StringKey::DeleteMediaConfirm,       "Delete" },
 
     // ── Live transliteration ──
-    { StringKey::TranslitTip,              "Transliteration (Latin → Arabic/Japanese)" },
+    { StringKey::TranslitTip,              "Transliteration (Latin -> Arabic/Japanese)" },
     { StringKey::TranslitOff,              "Off" },
     { StringKey::TranslitArabic,           "Arabic (with harakat)" },
     { StringKey::TranslitHiragana,         "Japanese – Hiragana" },
@@ -1230,9 +1332,9 @@ static const QMap<StringKey, QString> s_en = {
     { StringKey::TranslitValuePlaceholder, "Output (target script)" },
     { StringKey::TranslitAddBtn,           "Add" },
     { StringKey::TranslitResetBtn,         "Reset to defaults" },
-    { StringKey::TranslitHint,             "When writing text (TXT, HTML, PDF notes) your Latin input is converted live into the target script — but only once it is unambiguous which character you mean (e.g. “a” is only converted once it is clear no longer sequence such as “aa” follows). The mappings below can be edited, extended and removed freely." },
+    { StringKey::TranslitHint,             "When writing text (TXT, HTML, PDF notes) your Latin input is converted live into the target script - but only once it is unambiguous which character you mean (e.g. “a” is only converted once it is clear no longer sequence such as “aa” follows). The mappings below can be edited, extended and removed freely." },
     { StringKey::SplitAddFile,             "Add file" },
-    { StringKey::SplitMaxReached,          "A maximum of 4 files can be open at once — please close one first." },
+    { StringKey::SplitMaxReached,          "A maximum of 4 files can be open at once - please close one first." },
     { StringKey::SplitPickPrompt,          "Click a file to add it to the split view" },
     { StringKey::SplitCancel,              "Cancel" },
 
@@ -1283,7 +1385,7 @@ static const QMap<StringKey, QString> s_en = {
     { StringKey::PdfPageEditNonDestructive,  "Non-destructive (changes apply on export)" },
     { StringKey::PdfPageEditDestructiveMode, "Destructive (modify the original PDF immediately)" },
     { StringKey::SettingsPdfExportLabel,     "Export" },
-    { StringKey::SettingsPdfExportHint,      "Applies to the “Export” button in the PDF editor. Lossless keeps text searchable and graphics vector-based; where that is not provably safe (encrypted, CID fonts, non-ASCII), the affected page is exported as an image automatically. Either way the original stays untouched — a new copy is always created." },
+    { StringKey::SettingsPdfExportHint,      "Applies to the “Export” button in the PDF editor. Lossless keeps text searchable and graphics vector-based; where that is not provably safe (encrypted, CID fonts, non-ASCII), the affected page is exported as an image automatically. Either way the original stays untouched - a new copy is always created." },
     { StringKey::PdfExportLosslessMode,      "Lossless when possible (keeps text searchable)" },
     { StringKey::PdfExportRasterMode,        "Always as an image (raster, 150 dpi)" },
     { StringKey::PdfAddPageTip,              "Insert a blank A4 page here" },
@@ -1299,10 +1401,10 @@ static const QMap<StringKey, QString> s_en = {
     { StringKey::PdfPageImportedBadge,       "inserted" },
     { StringKey::PdfCaretPageNotEditable,    "This page cannot be edited character by "
                                              "character (inserted or rotated)." },
-    { StringKey::PdfReflowOverflow,          "The paragraph is full — the remainder stays "
+    { StringKey::PdfReflowOverflow,          "The paragraph is full - the remainder stays "
                                              "on the last line." },
     { StringKey::PdfEditDeleteMarkup,        "Delete highlight" },
-    { StringKey::PdfFormSavedFlattenedToast, "Form saved: %1 — with your new page order. The "
+    { StringKey::PdfFormSavedFlattenedToast, "Form saved: %1 - with your new page order. The "
                                              "fields are baked into that copy and can no longer "
                                              "be filled in there." },
     { StringKey::PdfCaretPageNoText,         "There is no text to edit on this page "
@@ -1316,14 +1418,14 @@ static const QMap<StringKey, QString> s_en = {
     { StringKey::PdfStampFailedToast,        "The image could not be inserted" },
     { StringKey::PdfEditToolRedact,          "Black out" },
     { StringKey::PdfRedactLimitHint,         "The blacked-out text is removed from the document "
-                                             "on export — it can no longer be selected, copied "
+                                             "on export - it can no longer be selected, copied "
                                              "or found. The copy is written from scratch for "
                                              "that, so the text is not in its raw bytes either. "
                                              "If it cannot be removed safely, the page is written "
-                                             "out as an image — the text is gone there too, but "
+                                             "out as an image - the text is gone there too, but "
                                              "so is the copy's text layer. Your original is left "
                                              "untouched either way." },
-    { StringKey::PdfRedactNoTextToast,       "This page has no text layer — there is nothing to "
+    { StringKey::PdfRedactNoTextToast,       "This page has no text layer - there is nothing to "
                                              "black out here. Use “Text recognition” to make it "
                                              "readable." },
     { StringKey::PdfEditToolMarkup,          "Highlight text (drag)" },
@@ -1370,8 +1472,8 @@ QString Strings::get(StringKey key) {
     return get(key, AppSettings::instance().language());
 }
 
-// Name→Key→String: erlaubt reaktiven QML-Zugriff via App.uiText(App.language, "KeyName").
-// Fallback (unbekannter Name) gibt den Namen zurück → Tippfehler sind sofort sichtbar.
+// Name->Key->String: erlaubt reaktiven QML-Zugriff via App.uiText(App.language, "KeyName").
+// Fallback (unbekannter Name) gibt den Namen zurück -> Tippfehler sind sofort sichtbar.
 QString Strings::byName(const QString& name, Language lang) {
     static const QMetaEnum me = QMetaEnum::fromType<StringKey>();
     bool ok = false;

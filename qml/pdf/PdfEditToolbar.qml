@@ -5,20 +5,20 @@ import MediaGallery 1.0
 import "../common"
 
 // ─────────────────────────────────────────────────────────────────────────────
-//  PdfEditToolbar.qml — schwebende Kompakt-Toolbar des PDF-Editors (Word-artig).
+//  PdfEditToolbar.qml - schwebende Kompakt-Toolbar des PDF-Editors (Word-artig).
 //
 //  Lebt EINMAL je Seiten-Delegate (innerhalb von pageImg) und erscheint nur,
 //  wenn die AUSGEWÄHLTE Box auf genau dieser Seite liegt. Position: mittig
-//  über der Box; fehlt oben der Platz, springt sie unter die Box — stets in
+//  über der Box; fehlt oben der Platz, springt sie unter die Box - stets in
 //  die Seite geklemmt.
 //
 //  DATENFLUSS: `info` liest bar.ctl.boxInfo(selectedId) REV-GETRIEBEN neu
-//  (selectionRev bumpt bei Auswahl- UND Datenänderung der ausgewählten Box) —
+//  (selectionRev bumpt bei Auswahl- UND Datenänderung der ausgewählten Box) -
 //  dasselbe Muster wie _audioRev in PdfSurface. Die Buttons schreiben über die
 //  setBox…-Invokables zurück; aufeinanderfolgende Klicks desselben Feldes
 //  verschmelzen im Undo-Stack zu EINEM Schritt (FieldCommand::mergeWith).
 //
-//  BEWUSST: Stil-Klicks schließen eine offene TEXT-Bearbeitung NICHT ab —
+//  BEWUSST: Stil-Klicks schließen eine offene TEXT-Bearbeitung NICHT ab -
 //  der Nutzer kann beim Tippen fett/kursiv umschalten und weitertippen
 //  (Stil-Kommandos sind von der Text-Session unabhängig). Nur LÖSCHEN
 //  committet vorher (die Box verschwindet ja mitsamt Session).
@@ -32,20 +32,20 @@ Item {
     property real pageH: 0
     property var  surface: null
     // Dezentraler PDF-Editor-Controller DIESER Kachel (von PdfSurface via
-    // surface.editCtl gesetzt) — ersetzt den früheren globalen PdfEdit-Singleton.
+    // surface.editCtl gesetzt) - ersetzt den früheren globalen PdfEdit-Singleton.
     readonly property PdfEditController ctl: surface ? surface.editCtl : null
 
     // Eigenschaften der ausgewählten Box, rev-getrieben neu gelesen. Aktiv nur,
     // wenn die Notizen nicht gerade über den Toggle (Alt+Q/◉) ausgeblendet
-    // sind — sonst schwebte die Leiste über einer unsichtbaren Box.
+    // sind - sonst schwebte die Leiste über einer unsichtbaren Box.
     readonly property var  info: (bar.ctl.selectionRev, bar.ctl.boxInfo(bar.ctl.selectedId))
     readonly property bool active: bar.ctl.editMode && info.exists === true
                                    && info.page === pageIndex
                                    && (surface ? surface.notesVisible : true)
-    // Art der Auswahl → kontextsensitive Regler (Text vs. Strich vs. Form).
+    // Art der Auswahl -> kontextsensitive Regler (Text vs. Strich vs. Form).
     readonly property bool isText:    active && info.isText === true
     // „Text ersetzen": volle Text-Regler, aber KEIN Papier-Button (Deckfläche
-    // fix Weiß — keine Farbwahl-UI in dieser Phase).
+    // fix Weiß - keine Farbwahl-UI in dieser Phase).
     readonly property bool isReplace: active && info.isReplace === true
     readonly property bool isTextual: isText || isReplace
     readonly property bool isShape:  active && info.isShape === true
@@ -192,7 +192,7 @@ Item {
         }
 
         // ── Hervorhebung / Deckfläche: Farbfeld (Schrägstrich = keine) ────────
-        //    Post-it → Papierfarbe (mit „keine"); „Text ersetzen" → Cover-Farbe
+        //    Post-it -> Papierfarbe (mit „keine"); „Text ersetzen" -> Cover-Farbe
         //    (immer deckend, der Controller erzwingt das Alpha).
         Rectangle {
             visible: bar.isTextual
@@ -276,7 +276,7 @@ Item {
             tip: App.uiText(App.language, "ImageEditCopyBtn")
             onActivated: { if (bar.surface) bar.surface.commitEditing(); bar.ctl.copySelected() }
         }
-        // ── Löschen (committet die offene Bearbeitung — Box verschwindet) ─────
+        // ── Löschen (committet die offene Bearbeitung - Box verschwindet) ─────
         TBtn {
             iconName: "close"; glyphColor: "#e05a5a"
             tip: App.uiText(App.language,
@@ -295,7 +295,7 @@ Item {
     Popup {
         id: palette
         property string mode: "text"             // text | highlight | stroke | fill
-        // „Keine" bei Hervorhebung/Füllung — NICHT bei „Text ersetzen" (die
+        // „Keine" bei Hervorhebung/Füllung - NICHT bei „Text ersetzen" (die
         // Deckfläche muss deckend bleiben).
         readonly property bool allowNone: mode === "fill"
                                           || (mode === "highlight" && !bar.isReplace)

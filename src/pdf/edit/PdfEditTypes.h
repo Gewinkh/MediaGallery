@@ -1,6 +1,6 @@
 #pragma once
 // ══════════════════════════════════════════════════════════════════════════════
-//  PdfEditTypes.h — Datentypen des PDF-Editor-Overlays (header-only).
+//  PdfEditTypes.h - Datentypen des PDF-Editor-Overlays (header-only).
 // ══════════════════════════════════════════════════════════════════════════════
 //
 //  KONZEPT (Overlay-Architektur)
@@ -9,15 +9,15 @@
 //  Objekte, die als eigenständige Ebene ÜBER dem Dokument liegen:
 //   • Anzeige:   QML zeichnet die Boxen über die gerenderten Seiten.
 //   • Sidecar:   Die Boxen werden als JSON neben dem PDF gesichert
-//                (<pfad>.mgedit.json) → bleiben dauerhaft editierbar.
+//                (<pfad>.mgedit.json) -> bleiben dauerhaft editierbar.
 //   • Export:    Erst der Export rendert Original + Overlay in ein NEUES PDF
-//                (PdfEditController) — kein Flatten-only-Workflow, da das
+//                (PdfEditController) - kein Flatten-only-Workflow, da das
 //                Sidecar erhalten bleibt.
 //
-//  KOORDINATEN: rect liegt in PDF-PUNKTEN (1/72 Zoll), Ursprung OBEN-LINKS —
+//  KOORDINATEN: rect liegt in PDF-PUNKTEN (1/72 Zoll), Ursprung OBEN-LINKS -
 //  identisch zur Konvention der übrigen PDF-Overlays (Annotationen/Audio/
 //  Textauswahl, dort normalisiert). QML rechnet über pagePointSize() in Pixel
-//  um, der Export zeichnet 1:1 (QPdfWriter mit 72 dpi → 1 pt = 1 Einheit).
+//  um, der Export zeichnet 1:1 (QPdfWriter mit 72 dpi -> 1 pt = 1 Einheit).
 // ══════════════════════════════════════════════════════════════════════════════
 
 #include <QString>
@@ -29,24 +29,24 @@
 #include <QJsonArray>
 
 // Art der Annotation (im Sidecar als Ganzzahl gespeichert). Alte Sidecars ohne
-// „kind"-Feld laden als Text (0) — vollständig rückwärtskompatibel. Die Werte
+// „kind"-Feld laden als Text (0) - vollständig rückwärtskompatibel. Die Werte
 // 0–4 sind identisch zum Bild-Editor (ImageAnnKind), damit QML/Export dieselbe
 // Semantik teilen; Replace (5) ist PDF-exklusiv („Text ersetzen").
 enum class PdfAnnKind {
     Text     = 0,   // Post-it-artige Textbox (bisheriges Verhalten)
     Freehand = 1,   // Freihand-Stift (Polylinie)
-    Arrow    = 2,   // Pfeil (Start → Ende)
+    Arrow    = 2,   // Pfeil (Start -> Ende)
     Rect     = 3,   // Rechteck (Kontur + optionale Füllung)
     Ellipse  = 4,   // Ellipse (Kontur + optionale Füllung)
     // „Text ersetzen": deckende, fix WEISSE Fläche exakt über dem gewählten
-    // Bereich + frei editierbare Textbox darüber — EIN Annotation-Objekt
+    // Bereich + frei editierbare Textbox darüber - EIN Annotation-Objekt
     // (gemeinsames Verschieben/Skalieren/Löschen/Kopieren/Undo). KEINE
     // Post-it-Optik (kein Schatten, kein Eselsohr); `highlight` trägt die
     // Deckfläche und wird vom Controller auf deckendes Weiß erzwungen.
     Replace  = 5,
     // Textmarkierung auf der eingebetteten Textebene: Markieren (gefüllte
     // Fläche), Unterstreichen, Durchstreichen. Anders als die übrigen Arten
-    // trägt sie MEHRERE Bereiche — eine Markierung über drei Zeilen ist EIN
+    // trägt sie MEHRERE Bereiche - eine Markierung über drei Zeilen ist EIN
     // Objekt mit drei Rechtecken (so wie `/QuadPoints` es im PDF hält). Die
     // Rechtecke liegen paarweise (obere linke, untere rechte Ecke) in
     // `points`; `rect` ist ihre Hülle. Der Stil steht in `markupStyle`.
@@ -54,22 +54,22 @@ enum class PdfAnnKind {
     // „Text schwärzen": deckende Fläche über dem Bereich UND Entfernen des
     // darunterliegenden Textes aus dem Content-Stream (`origText` trägt den
     // erkannten Text). Bewusst NICHT „Redaktion" genannt: Geschützt ist damit
-    // das Kopieren/Durchsuchen im Betrachter — der alte Strom bleibt beim
+    // das Kopieren/Durchsuchen im Betrachter - der alte Strom bleibt beim
     // inkrementellen Update in den Rohbytes der Datei stehen.
     Redact   = 7,
     // Signatur-/Stempelbild: eine Bilddatei, im Dokument platziert. Der Pfad
     // steht in `imagePath`; eingebettet wird das Bild erst beim Export
-    // (`PdfImageEmbed`) — das Sidecar bleibt so klein wie bisher.
+    // (`PdfImageEmbed`) - das Sidecar bleibt so klein wie bisher.
     Stamp    = 8
 };
 
 // Welches Feld einer Box ändert sich? (Delta-Undo + gezielte dataChanged-Rollen)
 // Nachverfolgte Änderung („Track Changes"). Der Zustand hängt an der Box, weil
-// eine Änderung IMMER genau eine Annotation betrifft — eine zweite Liste daneben
+// eine Änderung IMMER genau eine Annotation betrifft - eine zweite Liste daneben
 // müsste synchron gehalten werden und liefe bei Undo auseinander.
-//   Added   — während der Aufzeichnung entstanden. Annehmen = behalten,
+//   Added   - während der Aufzeichnung entstanden. Annehmen = behalten,
 //             Verwerfen = löschen.
-//   Deleted — während der Aufzeichnung gelöscht. Die Box BLEIBT bis zur
+//   Deleted - während der Aufzeichnung gelöscht. Die Box BLEIBT bis zur
 //             Entscheidung stehen (durchgestrichen dargestellt), sonst ließe
 //             sich das Verwerfen der Löschung nicht mehr zurücknehmen.
 enum class PdfTrackState { None = 0, Added = 1, Deleted = 2 };
@@ -94,11 +94,11 @@ enum class PdfEditField {
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
-//  PdfEditBox — EINE Overlay-Annotation: frei positionierbare (oder zeilen-
-//  verankerte) Textbox ODER Zeichnung (Freihand/Pfeil/Rechteck/Ellipse) —
+//  PdfEditBox - EINE Overlay-Annotation: frei positionierbare (oder zeilen-
+//  verankerte) Textbox ODER Zeichnung (Freihand/Pfeil/Rechteck/Ellipse) -
 //  ein vereinheitlichtes Struct mit kind-Enum, exakt wie ImageAnnotation:
-//   • Text / Rect / Ellipse → Geometrie = `rect` (Bounding-Box, PDF-Punkte).
-//   • Freihand / Pfeil       → Geometrie = `points` (PDF-Punkte der Seite);
+//   • Text / Rect / Ellipse -> Geometrie = `rect` (Bounding-Box, PDF-Punkte).
+//   • Freihand / Pfeil       -> Geometrie = `points` (PDF-Punkte der Seite);
 //                              `rect` ist die abgeleitete Bounding-Box.
 // ─────────────────────────────────────────────────────────────────────────────
 struct PdfEditBox {
@@ -108,16 +108,16 @@ struct PdfEditBox {
     QRectF     rect;                     // PDF-Punkte, Ursprung oben-links
     QVector<QPointF> points;             // Freihand/Pfeil: Stützpunkte (Punkte)
 
-    // ── Zeichnen (Formen + Striche) — Maße in PDF-Punkten ────────────────────
+    // ── Zeichnen (Formen + Striche) - Maße in PDF-Punkten ────────────────────
     QColor stroke    = QColor(230, 44, 44);   // Linienfarbe (deckend)
     qreal  lineWidth = 2.0;                    // Linienbreite in Punkten
-    QColor fill      = QColor(0, 0, 0, 0);    // Füllung Rect/Ellipse (a=0 → nur Kontur)
+    QColor fill      = QColor(0, 0, 0, 0);    // Füllung Rect/Ellipse (a=0 -> nur Kontur)
 
     QString text;
     // „Text ersetzen": der ursprünglich unter der Box erkannte eingebettete Text
     // (Vorbefüllung). Wird für das VERLUSTFREIE Content-Stream-Editing gebraucht,
     // um die Originalzeichenkette im Stream wiederzufinden. Leer bei Text-Notizen
-    // und auf gescannten Seiten ohne Textebene → dann greift der Cover-Patch.
+    // und auf gescannten Seiten ohne Textebene -> dann greift der Cover-Patch.
     QString origText;
     QString fontFamily = QStringLiteral("Helvetica");
     qreal   fontSizePt = 12.0;
@@ -136,15 +136,15 @@ struct PdfEditBox {
     int     vAlign     = 0;
     bool    anchored   = false;                    // an erkannte PDF-Textzeile gefangen
     // Reflow: verkettete Textboxen. chainNext = Sitzungs-ID der Folgebox (0 =
-    // keine). Text fließt Kopf → chainNext → … : überläuft eine Box, wandert der
+    // keine). Text fließt Kopf -> chainNext -> … : überläuft eine Box, wandert der
     // Rest automatisch in die nächste. NICHT direkt in toJson (IDs sind
-    // sitzungslokal) — persistiert als Index-Array „chains" im Sidecar.
+    // sitzungslokal) - persistiert als Index-Array „chains" im Sidecar.
     int     chainNext  = 0;
     // Höhe, die die Box hatte, BEVOR sie als Ketten-ENDE automatisch gewachsen
     // ist (0 = nie gewachsen). Nur das letzte Glied einer Kette wächst mit
     // seinem Inhalt; wird die Kette hinter ihm verlängert, ist es nicht mehr das
     // Ende und muss auf seine ursprüngliche, vom Nutzer gesetzte Höhe
-    // zurückschrumpfen — sonst behält es die aufgeblähte Höhe, fasst weiterhin
+    // zurückschrumpfen - sonst behält es die aufgeblähte Höhe, fasst weiterhin
     // den GESAMTEN Resttext und in der neuen Folgebox kommt nie etwas an (das
     // sah aus, als funktioniere die Verkettung nicht). Sitzungslokal wie
     // chainNext, aber im Sidecar als "growBase" mitgeführt, damit die Höhe auch
@@ -154,7 +154,7 @@ struct PdfEditBox {
     //  0 = eigene Notiz (Normalfall). >0 = diese Box ist beim Öffnen aus einer
     //  echten PDF-Annotation entstanden (`mg::PdfAnnotations`) und trägt deren
     //  Objektnummer. Bedeutung für die Ausgabe: Solange die Box UNVERÄNDERT ist,
-    //  darf sie NICHT noch einmal gezeichnet werden — sie steht bereits in der
+    //  darf sie NICHT noch einmal gezeichnet werden - sie steht bereits in der
     //  Datei; sonst stünde jede importierte Notiz doppelt. Wird sie bearbeitet
     //  oder gelöscht, muss stattdessen das ORIGINAL aus `/Annots` entfernt
     //  werden (sonst bliebe die alte Fassung darunter sichtbar).
@@ -173,7 +173,7 @@ struct PdfEditBox {
     bool isRedact() const { return kind == PdfAnnKind::Redact; }
     bool isStamp()  const { return kind == PdfAnnKind::Stamp; }
     // Textführende Arten: klassische Notiz UND „Text ersetzen" (beide nutzen
-    // die vollständige Text-Pipeline — Schrift/Farben/Ausrichtung/Sidecar).
+    // die vollständige Text-Pipeline - Schrift/Farben/Ausrichtung/Sidecar).
     bool hasText()  const { return kind == PdfAnnKind::Text || kind == PdfAnnKind::Replace; }
 
     // Bounding-Box aus den Punkten neu berechnen (Freihand/Pfeil). Ein
@@ -193,7 +193,7 @@ struct PdfEditBox {
 
     // ── Sidecar-Serialisierung (IDs werden beim Laden neu vergeben) ───────────
     //  Zeichen-Felder werden immer geschrieben (kind/stroke/lw/fill); die
-    //  Text-Felder nur für Text-Boxen — alte Sidecars ohne „kind" laden als
+    //  Text-Felder nur für Text-Boxen - alte Sidecars ohne „kind" laden als
     //  Text (0), das Format bleibt vollständig rückwärtskompatibel.
     QJsonObject toJson() const {
         QJsonObject o;
@@ -207,7 +207,7 @@ struct PdfEditBox {
         o.insert(QStringLiteral("h"),      rect.height());
         //  Punkte trägt nicht nur der Strich: eine Markierung hält darin ihre
         //  Bereiche (je zwei Ecken). Deshalb am INHALT entscheiden, nicht an
-        //  der Art — sonst verlöre ein neuer Typ seine Geometrie im Sidecar.
+        //  der Art - sonst verlöre ein neuer Typ seine Geometrie im Sidecar.
         if (!points.isEmpty()) {
             QJsonArray pts;
             for (const QPointF& p : points) {
@@ -239,7 +239,7 @@ struct PdfEditBox {
             o.insert(QStringLiteral("italic"), italic);
             o.insert(QStringLiteral("under"),  underline);
             o.insert(QStringLiteral("color"),  color.name(QColor::HexRgb));
-            // Alpha mitschreiben → „keine Hervorhebung" (Alpha 0) bleibt erhalten.
+            // Alpha mitschreiben -> „keine Hervorhebung" (Alpha 0) bleibt erhalten.
             o.insert(QStringLiteral("hilite"), highlight.name(QColor::HexArgb));
             o.insert(QStringLiteral("align"),  alignment);
             o.insert(QStringLiteral("valign"), vAlign);
@@ -251,7 +251,7 @@ struct PdfEditBox {
     static PdfEditBox fromJson(const QJsonObject& o) {
         PdfEditBox b;
         b.page       = o.value(QStringLiteral("page")).toInt(0);
-        const int k  = o.value(QStringLiteral("kind")).toInt(0);   // fehlt in Alt-Sidecars → Text
+        const int k  = o.value(QStringLiteral("kind")).toInt(0);   // fehlt in Alt-Sidecars -> Text
         b.kind       = (k >= 0 && k <= 8) ? static_cast<PdfAnnKind>(k) : PdfAnnKind::Text;
         //  Unbekannter Wert ⇒ None: eine verfälschte Datei darf keine Box in
         //  einen Zustand bringen, den die Oberfläche nicht auflösen kann.
@@ -267,7 +267,7 @@ struct PdfEditBox {
             for (int i = 0; i + 1 < pts.size(); i += 2)
                 b.points.append(QPointF(pts.at(i).toDouble(), pts.at(i + 1).toDouble()));
         }
-        //  Herkunftsmarke (fehlt in älteren Sidecars → 0 = eigene Notiz).
+        //  Herkunftsmarke (fehlt in älteren Sidecars -> 0 = eigene Notiz).
         b.srcObjNum = qMax(0, o.value(QStringLiteral("srcobj")).toInt(0));
         b.markupStyle = qBound(0, o.value(QStringLiteral("mstyle")).toInt(0), 2);
         b.imagePath   = o.value(QStringLiteral("img")).toString();
@@ -298,9 +298,9 @@ struct PdfEditBox {
         if (b.alignment < 0 || b.alignment > 2) b.alignment = 0;
         if (b.vAlign    < 0 || b.vAlign    > 1) b.vAlign    = 0;
         // „Text ersetzen": Die Deckfläche muss DECKEND sein (sonst schimmert der
-        // gedruckte Text durch) — die FARBE ist jedoch frei konfigurierbar. Also
+        // gedruckte Text durch) - die FARBE ist jedoch frei konfigurierbar. Also
         // Alpha auf 255 zwingen (auch gegen handeditierte/fremde Sidecars),
-        // fehlende/ungültige Farbe → Weiß als Standard.
+        // fehlende/ungültige Farbe -> Weiß als Standard.
         if (b.kind == PdfAnnKind::Replace) {
             if (b.highlight.isValid() && b.highlight.alpha() > 0) b.highlight.setAlpha(255);
             else                                                  b.highlight = QColor(255, 255, 255, 255);
@@ -316,7 +316,7 @@ struct PdfEditBox {
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
-//  PdfPlanPage — EIN Eintrag des Seiten-Plans (Ansichts-Reihenfolge).
+//  PdfPlanPage - EIN Eintrag des Seiten-Plans (Ansichts-Reihenfolge).
 //
 //  Der Plan ist die einzige Quelle dafür, WELCHE Seite WO und WIE steht; die
 //  Anzeige rendert stets die daraus gebackene Arbeitsdatei (s.
@@ -346,7 +346,7 @@ struct PdfPlanPage {
 
     bool isBlank() const    { return src < 0; }
     bool isImported() const { return doc == 1 && src >= 0; }
-    //  Seite des pristinen Hauptdokuments — nur diese ist zeichenweise
+    //  Seite des pristinen Hauptdokuments - nur diese ist zeichenweise
     //  bearbeitbar (Caret) und trägt key == src.
     bool isPristine() const { return doc == 0 && src >= 0; }
 
@@ -366,9 +366,9 @@ struct PdfPlanPage {
         p.doc = o.value(QStringLiteral("doc")).toInt(0);
         p.rot = o.value(QStringLiteral("rot")).toInt(0);
         // Defensive Klemmen gegen defekte/fremde Sidecars (Regel 22): unbekannte
-        // Quelle → Leerseite; Drehung auf ein Vielfaches von 90° normalisieren.
+        // Quelle -> Leerseite; Drehung auf ein Vielfaches von 90° normalisieren.
         if (p.src < 0)              p.src = -1;
-        if (p.key < 0)              p.key = -1;   // ungültig → wird neu vergeben
+        if (p.key < 0)              p.key = -1;   // ungültig -> wird neu vergeben
         if (p.doc != 0 && p.doc != 1) p.doc = 0;
         p.rot = ((p.rot % 360) + 360) % 360;
         p.rot = (p.rot / 90) * 90;
@@ -383,19 +383,19 @@ inline bool operator==(const PdfPlanPage& a, const PdfPlanPage& b) {
 inline bool operator!=(const PdfPlanPage& a, const PdfPlanPage& b) { return !(a == b); }
 
 // ─────────────────────────────────────────────────────────────────────────────
-//  PdfTextOp — EINE Änderung an der EINGEBETTETEN Textebene (Caret-Werkzeug).
+//  PdfTextOp - EINE Änderung an der EINGEBETTETEN Textebene (Caret-Werkzeug).
 //
 //  Anders als PdfEditBox liegt diese Änderung nicht ÜBER der Seite, sondern IN
 //  ihr. Trotzdem bleibt das Original unberührt: Die Ops sind ein DELTA, das im
 //  Sidecar liegt und beim Anzeigen/Exportieren auf die pristine Datei
 //  angewendet wird (PdfTextEditor). Damit ist das direkte Textbearbeiten genau
-//  so reversibel wie die Notizen — Undo entfernt einfach die letzte Op.
+//  so reversibel wie die Notizen - Undo entfernt einfach die letzte Op.
 //
-//   • Einfügen  → `text` = eingefügte Zeichen, `removed` = 0
-//   • Löschen   → `removed` = Anzahl, `text` = die ENTFERNTEN Zeichen (nur für
+//   • Einfügen  -> `text` = eingefügte Zeichen, `removed` = 0
+//   • Löschen   -> `removed` = Anzahl, `text` = die ENTFERNTEN Zeichen (nur für
 //                 das Undo/Redo-Delta; die Wiedergabe braucht sie nicht)
 //  `index` ist der Glyphen-Index in dem Zustand, den die VORHERIGEN Ops erzeugt
-//  haben — die Reihenfolge der Liste ist deshalb bedeutungstragend.
+//  haben - die Reihenfolge der Liste ist deshalb bedeutungstragend.
 // ─────────────────────────────────────────────────────────────────────────────
 struct PdfTextOp {
     int     page    = 0;    // Seitenindex (0-basiert, Ansichts-/Dateiseite)
@@ -434,7 +434,7 @@ struct PdfTextOp {
 };
 
 //  Vergleich: der Controller prüft damit, ob die Arbeitsdatei die aktuelle
-//  Op-Liste bereits abbildet — ein Neubau, der nichts ändert, unterbleibt.
+//  Op-Liste bereits abbildet - ein Neubau, der nichts ändert, unterbleibt.
 inline bool operator==(const PdfTextOp& a, const PdfTextOp& b) {
     return a.page == b.page && a.index == b.index
            && a.removed == b.removed && a.text == b.text;

@@ -21,7 +21,7 @@ bool PdfImageEmbed::encode(const QImage& img, PdfImageData* out,
     if (img.isNull() || img.width() <= 0 || img.height() <= 0)
         return fail("leeres Bild");
 
-    //  Verkleinern, BEVOR die Pixel angefasst werden — sonst liegt kurzzeitig
+    //  Verkleinern, BEVOR die Pixel angefasst werden - sonst liegt kurzzeitig
     //  das volle Bild zusätzlich als RGB-Puffer im Speicher.
     QImage src = img;
     const int edge = qMax(src.width(), src.height());
@@ -55,7 +55,7 @@ bool PdfImageEmbed::encode(const QImage& img, PdfImageData* out,
                 a8.append(char(px[3]));
             }
         } else {
-            //  RGB888-Zeilen sind auf 4 Byte ausgerichtet — nur die echten
+            //  RGB888-Zeilen sind auf 4 Byte ausgerichtet - nur die echten
             //  Bilddaten übernehmen, nicht die Auffüllbytes.
             rgb.append(reinterpret_cast<const char*>(line), qsizetype(w) * 3);
         }

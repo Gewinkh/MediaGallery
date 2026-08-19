@@ -1,6 +1,6 @@
 #pragma once
 // ══════════════════════════════════════════════════════════════════════════════
-//  PdfEncodings.h — Byte ↔ Unicode für EINFACHE PDF-Textkodierungen
+//  PdfEncodings.h - Byte ↔ Unicode für EINFACHE PDF-Textkodierungen
 // ══════════════════════════════════════════════════════════════════════════════
 //
 //  ZWECK
@@ -8,7 +8,7 @@
 //  Ein einfacher (nicht-CID) PDF-Font bildet jedes Byte eines Textstrings über
 //  eine Kodierungstabelle auf ein Zeichen ab. Ohne diese Tabelle lässt sich
 //  eingebetteter Text nur dann verlustfrei ersetzen, wenn er reines ASCII ist
-//  (dort stimmen alle Tabellen überein) — Umlaute, Akzente und typografische
+//  (dort stimmen alle Tabellen überein) - Umlaute, Akzente und typografische
 //  Zeichen fielen bislang auf den Raster-Export zurück.
 //
 //  UNTERSTÜTZT
@@ -23,9 +23,9 @@
 //
 //  BEWUSST NICHT UNTERSTÜTZT (Aufrufer weicht dann auf Raster aus)
 //  ──────────────────────────────────────────────────────────────
-//   • Type0 OHNE /ToUnicode oder mit anderer /Encoding-CMap als /Identity-H —
+//   • Type0 OHNE /ToUnicode oder mit anderer /Encoding-CMap als /Identity-H -
 //     dann ist nicht bestimmbar, welches Zeichen ein Code meint,
-//   • unbekannte Glyphennamen in /Differences — es wird NICHT geraten,
+//   • unbekannte Glyphennamen in /Differences - es wird NICHT geraten,
 //   • fehlendes/unbekanntes /Encoding: dann gilt nur ASCII als sicher, denn
 //     die eingebaute Kodierung eines Fonts ist von außen nicht zuverlässig
 //     bestimmbar (bei StandardEncoding weichen z. B. 0x27 und 0x60 ab).
@@ -41,7 +41,7 @@ namespace mg::pdfenc {
 
 //  Welche Basistabelle gilt.
 enum class Base {
-    AsciiOnly,      // unbekannt/fehlend → nur 0x20–0x7E gelten als sicher
+    AsciiOnly,      // unbekannt/fehlend -> nur 0x20–0x7E gelten als sicher
     WinAnsi,
     MacRoman,
     IdentityCid,    // Type0 /Identity-H: 2-Byte-Codes, Tabelle aus /ToUnicode
@@ -55,7 +55,7 @@ public:
     //  `encValue` ist entweder ein Name ("/WinAnsiEncoding") oder ein Dict
     //  ("<< /BaseEncoding … /Differences [ … ] >>"); leer = keine Angabe.
     //  `ok` (optional) wird false, wenn ein /Differences-Eintrag einen
-    //  Glyphennamen nennt, der nicht auflösbar ist — dann darf der Aufrufer
+    //  Glyphennamen nennt, der nicht auflösbar ist - dann darf der Aufrufer
     //  KEINE Ersetzung wagen (Zeichen wären nicht eindeutig).
     static Encoding fromEncodingValue(const QByteArray& encValue, bool* ok = nullptr);
 
@@ -64,14 +64,14 @@ public:
     //
     //  Warum ausgerechnet /ToUnicode: bei /Identity-H sind die Stringbytes
     //  2-Byte-CIDs, also Glyphennummern der (meist als Teilmenge eingebetteten)
-    //  Schrift. Welches Zeichen dahintersteht, sagt EINZIG diese CMap — dieselbe
+    //  Schrift. Welches Zeichen dahintersteht, sagt EINZIG diese CMap - dieselbe
     //  Tabelle, die auch Betrachter fürs Kopieren benutzen.
     //
     //  Für das ZURÜCKSCHREIBEN wird sie umgekehrt. Das begrenzt Ersetzungen
     //  zwangsläufig auf Zeichen, die im Dokument bereits vorkommen: eine
     //  Teilmengen-Schrift enthält keine anderen Glyphen, ein fremdes Zeichen
     //  käme als Leerkasten heraus. `encode` lehnt solche Zeichen daher ab.
-    //  Mehrdeutige Einträge (ein Code → mehrere Zeichen, z. B. Ligaturen)
+    //  Mehrdeutige Einträge (ein Code -> mehrere Zeichen, z. B. Ligaturen)
     //  gelten nur in Leserichtung.
     //
     //  `ok` wird false, wenn die CMap nicht sicher auswertbar ist.
@@ -80,15 +80,15 @@ public:
     //  Bytes je Code: 1 (einfache Fonts) bzw. 2 (Identity-H).
     int codeBytes() const { return m_base == Base::IdentityCid ? 2 : 1; }
 
-    //  Byte → Zeichen. Liefert QChar() (null), wenn der Code in dieser
+    //  Byte -> Zeichen. Liefert QChar() (null), wenn der Code in dieser
     //  Kodierung nicht belegt ist.
     QChar toUnicode(quint8 code) const;
 
-    //  Zeichen → Byte. Liefert false, wenn das Zeichen in dieser Kodierung
+    //  Zeichen -> Byte. Liefert false, wenn das Zeichen in dieser Kodierung
     //  nicht darstellbar ist (Aufrufer: Ersetzung ablehnen).
     bool fromUnicode(QChar c, quint8* code) const;
 
-    //  Bequemlichkeit: ganze Bytefolge → Text bzw. Text → Bytefolge.
+    //  Bequemlichkeit: ganze Bytefolge -> Text bzw. Text -> Bytefolge.
     //  `decode` ersetzt unbelegte Codes durch U+FFFD, damit ein Vergleich
     //  gegen den gesuchten Originaltext sicher scheitert statt zufällig zu
     //  passen. `encode` liefert false, sobald EIN Zeichen fehlt.
@@ -108,7 +108,7 @@ private:
     QHash<QChar, quint16>   m_uniToCid;
 };
 
-//  Glyphenname → Zeichen (Adobe Glyph List, Teilmenge + uniXXXX/uXXXX).
+//  Glyphenname -> Zeichen (Adobe Glyph List, Teilmenge + uniXXXX/uXXXX).
 //  Liefert QChar() bei unbekanntem Namen.
 QChar glyphToUnicode(const QByteArray& glyphName);
 

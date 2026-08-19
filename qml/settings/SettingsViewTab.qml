@@ -11,7 +11,7 @@ Item {
 
     // Referenz-Fenstergröße für die maßstabsgetreue Zonen-Vorschau
     //  Bezugsfenster der Vorschau = das AKTUELLE Fenster (2026-07-17). Vorher
-    //  stand hier die INITIALE Fenstergröße — bei maximiertem Fenster rechnete
+    //  stand hier die INITIALE Fenstergröße - bei maximiertem Fenster rechnete
     //  die Vorschau dadurch mit einer viel zu schmalen Fläche und zeigte
     //  dauerhaft nur ~2 Kacheln, während die Galerie 6 anzeigte.
     readonly property int winW: Window.window ? Window.window.width
@@ -22,7 +22,7 @@ Item {
     //  Obergrenze der manuellen Zonenbreite = Breite des Bildschirms, auf dem
     //  das Fenster liegt. Mehr lässt sich gar nicht darstellen: Die Galerie
     //  klemmt die Zone ohnehin auf die Fensterbreite (GalleryView.areaW), ein
-    //  größerer Wert wäre also folgenlos — vorher ging der Regler bis 8000 px
+    //  größerer Wert wäre also folgenlos - vorher ging der Regler bis 8000 px
     //  und der obere Teil seines Wegs tat schlicht nichts.
     readonly property int maxAreaW: Screen.width > 0 ? Screen.width : 3840
 
@@ -106,16 +106,16 @@ Item {
                     spacing: 10
                     visible: App.tileArrangement === 3
 
-                    //  Zonen-Vorschau — ORIGINALGETREU zur Galerie (2026-07-17):
+                    //  Zonen-Vorschau - ORIGINALGETREU zur Galerie (2026-07-17):
                     //  Die Galerie zentriert die manuelle Zone, klemmt sie an
                     //  die Fensterbreite (−2×12 px Rand) und füllt sie mit
                     //  Kacheln (Zelle = Kachel + 8 px Abstand, Spalten =
                     //  ⌊Zone/Zelle⌋). Genau das zeigt die Vorschau jetzt im
-                    //  Maßstab — inklusive der ECHTEN Kachelgröße (live an die
+                    //  Maßstab - inklusive der ECHTEN Kachelgröße (live an die
                     //  Werte der Kachelgröße-Gruppe unten gebunden). Wünscht
                     //  man mehr Breite, als ins Fenster passt, zeigt eine
                     //  gestrichelte Kontur den eingestellten (geklemmten)
-                    //  Wunsch — vorher wirkte der Breitenregler dadurch „tot".
+                    //  Wunsch - vorher wirkte der Breitenregler dadurch „tot".
                     Rectangle {
                         Layout.fillWidth: true
                         Layout.preferredHeight: 340
@@ -145,7 +145,7 @@ Item {
                                 radius: 3
 
                                 //  Galerie-Layoutmodell (Modell-Pixel, nicht
-                                //  skaliert) — exakt die Formeln aus
+                                //  skaliert) - exakt die Formeln aus
                                 //  GalleryView.qml.
                                 readonly property int  gMargin: 12
                                 readonly property int  gSpacing: 8
@@ -161,7 +161,7 @@ Item {
                                                                        (root.winW - gridW) / 2)
                                 //  Die Zone läuft IMMER über die volle Fenster-
                                 //  höhe: Die Galerie kennt nur eine Breiten-
-                                //  begrenzung (s. GalleryView.areaW) — eine
+                                //  begrenzung (s. GalleryView.areaW) - eine
                                 //  einstellbare Höhe hatte nie eine Wirkung und
                                 //  ist daher entfallen (Nutzerbefund).
                                 readonly property int  zoneHpx: root.winH
@@ -191,7 +191,7 @@ Item {
                                     id: zoneRect
                                     //  Sichtabstand zwischen Zonenrahmen und
                                     //  Kacheln (NUR Darstellung): Der Rahmen lag
-                                    //  vorher direkt an der ersten Kachel — die
+                                    //  vorher direkt an der ersten Kachel - die
                                     //  Zone war dadurch kaum als eigene Fläche
                                     //  zu erkennen. Rechts entsteht der Abstand
                                     //  ohnehin aus dem Kachel-Abstand (cellW−tW),

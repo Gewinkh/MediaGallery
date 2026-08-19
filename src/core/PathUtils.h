@@ -1,10 +1,10 @@
 #pragma once
 // ─────────────────────────────────────────────────────────────────────────────
-//  PathUtils.h — gemeinsame, zustandslose Pfad-Helfer.
+//  PathUtils.h - gemeinsame, zustandslose Pfad-Helfer.
 //
 //  Zentralisiert `toLocalPath`, das zuvor byte-identisch in ViewerController,
 //  PdfTextController und PdfThumbnailProvider dupliziert war. Header-only
-//  (inline) → kein zusaetzliches Kompilat, keine Verlinkung noetig.
+//  (inline) -> kein zusaetzliches Kompilat, keine Verlinkung noetig.
 // ─────────────────────────────────────────────────────────────────────────────
 #include <QString>
 #include <QUrl>
@@ -13,7 +13,7 @@
 namespace mg {
 
 // ─────────────────────────────────────────────────────────────────────────────
-//  Begleitdateien der App — nichts, was der Nutzer als „Medium" ansieht:
+//  Begleitdateien der App - nichts, was der Nutzer als „Medium" ansieht:
 //    • `<Ordner>.json`      Tags, Kategorien, Datum, PDF-Schriftfarbe
 //    • `<datei>.mgedit.json` Notizen/Zeichnungen des PDF- bzw. Bild-Editors
 //    • `<datei>.bak`         Sicherungskopie des DOCX-Editors
@@ -33,7 +33,7 @@ inline bool isCompanionFile(const QString& fileName,
 }
 
 //  Ordnerpfad OHNE abschliessenden Trenner. Ein „/pfad/zum/ordner/" macht
-//  `QFileInfo::fileName()` zu einem LEERSTRING — daraus wurde der Sidecar-Name
+//  `QFileInfo::fileName()` zu einem LEERSTRING - daraus wurde der Sidecar-Name
 //  „.json", der nichts mehr traf, und die Ordner-JSON stand plötzlich als
 //  Kachel in der Galerie. Die Wurzel „/" bleibt erhalten.
 inline QString normalizedFolder(const QString& folderPath) {

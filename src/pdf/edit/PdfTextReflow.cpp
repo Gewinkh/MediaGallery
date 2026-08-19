@@ -17,7 +17,7 @@ using namespace mg::pdfobj;
 
 namespace {
 
-//  Bytes → PDF-Paren-String (wie PdfTextEditor/PdfVectorExport: 7-Bit-sicher).
+//  Bytes -> PDF-Paren-String (wie PdfTextEditor/PdfVectorExport: 7-Bit-sicher).
 QByteArray parenBytes(const QByteArray& b) {
     QByteArray out = "(";
     for (char c : b) {
@@ -42,7 +42,7 @@ struct Line {
 
 //  Glyphen in Zeilen gruppieren. Neue Zeile, sobald die Oberkante um mehr als
 //  eine halbe Schriftgröße springt oder der Text spürbar nach LINKS zurückgeht
-//  (Zeilenanfang) — beides ist unabhängig davon, ob der Erzeuger `Td`, `T*`
+//  (Zeilenanfang) - beides ist unabhängig davon, ob der Erzeuger `Td`, `T*`
 //  oder `Tm` benutzt hat.
 QVector<Line> groupLines(const QVector<mg::PdfGlyph>& g) {
     QVector<Line> lines;
@@ -97,7 +97,7 @@ qreal avgAdvance(const QVector<mg::PdfGlyph>& g, int from, int to) {
 //  Absatzes bzw. die neu eingefügte Zeile).
 struct Edit {
     qint64     start = 0;
-    qint64     end   = 0;      // == start → Einfügung
+    qint64     end   = 0;      // == start -> Einfügung
     QByteArray bytes;
 };
 
@@ -111,15 +111,15 @@ QByteArray pnum(qreal v) {
 
 //  Kann die Zeile, die dieser Span beginnt, um `dy` (TEXTRAUM, positiv =
 //  nach unten) verschoben werden? Liefert die Ersatz-Anweisung.
-//   • `Tm` ist ABSOLUT → die y-Komponente wird verkleinert; danach tragen
+//   • `Tm` ist ABSOLUT -> die y-Komponente wird verkleinert; danach tragen
 //     nachfolgende RELATIVE Sprünge die Verschiebung ohnehin mit.
-//   • `Td`/`TD` sind relativ → genau EINMAL je Textobjekt anfassen.
-//   • `T*` und `'`/`"` setzen die Zeile aus dem Zeilenabstand — ohne eigene
+//   • `Td`/`TD` sind relativ -> genau EINMAL je Textobjekt anfassen.
+//   • `T*` und `'`/`"` setzen die Zeile aus dem Zeilenabstand - ohne eigene
 //     Anweisung lässt sich dort nichts verschieben.
 bool shiftStatement(const mg::PdfShowSpan& sp, qreal dy, bool alreadyShifted,
                     Edit* out, bool* nowShifted) {
     *nowShifted = alreadyShifted;
-    //  ABSOLUTES Tm verankert die Zeile neu — es erbt NICHTS und muss deshalb
+    //  ABSOLUTES Tm verankert die Zeile neu - es erbt NICHTS und muss deshalb
     //  immer angefasst werden. Relative Sprünge (Td/TD/T*) tragen eine bereits
     //  wirksame Verschiebung dagegen von selbst weiter.
     if (sp.posOp == "Tm" && sp.posArgs.size() >= 6) {
@@ -132,7 +132,7 @@ bool shiftStatement(const mg::PdfShowSpan& sp, qreal dy, bool alreadyShifted,
         return true;
     }
     if (alreadyShifted)
-        return true;                                  // relativ → erbt sie
+        return true;                                  // relativ -> erbt sie
     if ((sp.posOp == "Td" || sp.posOp == "TD") && sp.posArgs.size() >= 2) {
         const QByteArray b = pnum(sp.posArgs.at(0)) + " "
                            + pnum(sp.posArgs.at(1) - dy) + " " + sp.posOp;
@@ -151,7 +151,7 @@ bool canGrowParagraph(const mg::PdfPageText& page, const QVector<Line>& lines,
                       int start, int end, qreal leading, qreal* dyText) {
     const qreal boundary = lines.at(end).top + 0.5 * leading;   // Grenze „darunter"
 
-    //  (1) Unterhalb darf NICHTS gemalt sein — Grafik wandert nicht mit.
+    //  (1) Unterhalb darf NICHTS gemalt sein - Grafik wandert nicht mit.
     for (const QRectF& r : std::as_const(page.paints))
         if (r.bottom() > boundary)
             return false;
@@ -172,7 +172,7 @@ bool canGrowParagraph(const mg::PdfPageText& page, const QVector<Line>& lines,
         if (end <= start) return false;                       // nur EINE Zeile
         const mg::PdfShowSpan* prev = spanOf(end - 1);
         if (!prev || prev->posOp != "Tm" || prev->posArgs.size() < 6) return false;
-        //  Gleiche Ausrichtung/Skalierung verlangt — sonst ist die Differenz
+        //  Gleiche Ausrichtung/Skalierung verlangt - sonst ist die Differenz
         //  der y-Werte kein Zeilenabstand.
         for (int k = 0; k < 4; ++k)
             if (qAbs(prev->posArgs.at(k) - last->posArgs.at(k)) > 0.0001) return false;
@@ -181,13 +181,13 @@ bool canGrowParagraph(const mg::PdfPageText& page, const QVector<Line>& lines,
                && last->posArgs.size() >= 2) {
         dy = -last->posArgs.at(1);
     } else {
-        return false;                                          // T*, ', " → nein
+        return false;                                          // T*, ', " -> nein
     }
     if (dy <= 0.0001) return false;
 
     //  (3) Jede Zeile UNTERHALB muss verschiebbar sein.
     //  Die neue Zeile wird IM Textobjekt des Absatzes eingefügt und schiebt die
-    //  dortige Textmatrix bereits eine Zeile tiefer — relative Sprünge danach
+    //  dortige Textmatrix bereits eine Zeile tiefer - relative Sprünge danach
     //  erben das, ein neues Textobjekt (BT) setzt es zurück.
     bool shifted = true;
     int  curObj  = last->objIndex;
@@ -206,7 +206,7 @@ bool canGrowParagraph(const mg::PdfPageText& page, const QVector<Line>& lines,
     for (int li = end + 1; li < lines.size(); ++li)
         lowest = qMax(lowest, lines.at(li).top + lines.at(li).fontSize);
     //  `leading` ist der Abstand in ANZEIGE-Punkten (die Zeilen der Seite),
-    //  `dy` derselbe Schritt im Textraum — für die Seitenprüfung zählt der
+    //  `dy` derselbe Schritt im Textraum - für die Seitenprüfung zählt der
     //  angezeigte.
     if (page.pageHeightPt > 0 && lowest + leading > page.pageHeightPt)
         return false;
@@ -261,7 +261,7 @@ bool PdfTextReflow::planParagraph(const PdfPageText& page, int glyphIndex,
 
     //  Schritt 2: gemeinsamer rechter Rand + Toleranz („die Zeile ist voll").
     //  WICHTIG: Der Rand darf NICHT einfach die größte rechte Kante sein. Genau
-    //  die Zeile, in die gerade getippt wurde, steht ja über den Rand hinaus —
+    //  die Zeile, in die gerade getippt wurde, steht ja über den Rand hinaus -
     //  sie würde ihn sonst selbst definieren, und nichts bräche je um. Ragt die
     //  breiteste Zeile deutlich über alle anderen hinaus, gilt daher die
     //  zweitgrößte Kante als Rand (bei gleichmäßigem Satz sind beide gleich).
@@ -272,7 +272,7 @@ bool PdfTextReflow::planParagraph(const PdfPageText& page, int glyphIndex,
     //  Daran, dass ihr LETZTES WORT den Überstand erklärt: Ein sauberer Umbruch
     //  hätte genau dieses Wort nach unten geschoben. Ist der Überstand größer,
     //  sind die übrigen Zeilen einfach kürzer (kurze Schlusszeile, eigener
-    //  Absatz davor) — dann bleibt die breiteste Zeile der Rand.
+    //  Absatz davor) - dann bleibt die breiteste Zeile der Rand.
     int widest = from;
     for (int i = from; i <= to; ++i)
         if (lines.at(i).x1 > lines.at(widest).x1) widest = i;
@@ -297,13 +297,13 @@ bool PdfTextReflow::planParagraph(const PdfPageText& page, int glyphIndex,
     int end = hit;
     while (end < to && isFull(end)) ++end;
 
-    //  Schritt 4: linke Kante — die erste Zeile darf eingezogen sein, alle
+    //  Schritt 4: linke Kante - die erste Zeile darf eingezogen sein, alle
     //  weiteren müssen bündig stehen (sonst ist es kein Fließabsatz).
     if (end > start) {
         const qreal baseX = lines.at(start + 1).x0;
         for (int i = start + 1; i <= end; ++i)
             if (qAbs(lines.at(i).x0 - baseX) > 0.75 * fs)
-                return fail("Zeilen nicht bündig → kein Fließabsatz");
+                return fail("Zeilen nicht bündig -> kein Fließabsatz");
     }
 
     out->firstLine  = start;
@@ -367,7 +367,7 @@ bool PdfTextReflow::planParagraph(const PdfPageText& page, int glyphIndex,
             out->growDyText = dyText;
         }
     }
-    //  Was jetzt noch übrig ist, trägt die letzte Zeile — verloren gehen darf
+    //  Was jetzt noch übrig ist, trägt die letzte Zeile - verloren gehen darf
     //  nichts, aber der Aufrufer erfährt es.
     if (w < words.size()) {
         QString& lastLine = fresh.last();
@@ -396,12 +396,12 @@ bool PdfTextReflow::planParagraph(const PdfPageText& page, int glyphIndex,
 
 int PdfTextReflow::mapCaretIndex(const PdfReflowPlan& plan, int glyphIndex) {
     if (plan.firstGlyph < 0 || glyphIndex <= plan.firstGlyph || !plan.changed)
-        return glyphIndex;                       // vor dem Absatz → unberührt
+        return glyphIndex;                       // vor dem Absatz -> unberührt
     const QString oldText = plan.oldLines.join(QString());
     const QString newText = plan.newLines.join(QString());
     const int off = glyphIndex - plan.firstGlyph;
     if (off >= oldText.size())
-        return plan.firstGlyph + newText.size(); // hinter dem Absatz → ans Ende
+        return plan.firstGlyph + newText.size(); // hinter dem Absatz -> ans Ende
 
     //  So viele NICHT-Leerzeichen stehen vor der Marke …
     int want = 0;
@@ -445,7 +445,7 @@ bool PdfTextReflow::reflowParagraph(const QString& inputPath, const QString& out
     PdfPageText page;
     if (!PdfTextLayout::buildForPage(inputPath, pageIndex, &page, err))
         return false;
-    if (page.contentObj < 0) return fail("mehrteiliger /Contents → nicht bearbeitbar");
+    if (page.contentObj < 0) return fail("mehrteiliger /Contents -> nicht bearbeitbar");
 
     PdfReflowPlan plan;
     if (!planParagraph(page, glyphIndex, &plan, err))
@@ -459,7 +459,7 @@ bool PdfTextReflow::reflowParagraph(const QString& inputPath, const QString& out
         return fail("Zeilen passen nicht zum Plan");
 
     //  Je Zeile: die beteiligten Operatoren in Reihenfolge, EINE Schrift.
-    //  (Eine durch Wachstum HINZUGEKOMMENE Zeile hat noch keine — sie wird
+    //  (Eine durch Wachstum HINZUGEKOMMENE Zeile hat noch keine - sie wird
     //  weiter unten erzeugt.)
     struct LineSpans { QVector<int> spans; QByteArray fontRes; };
     QVector<LineSpans> perLine;
@@ -476,7 +476,7 @@ bool PdfTextReflow::reflowParagraph(const QString& inputPath, const QString& out
             const QByteArray& fr = page.spans.at(sp).fontRes;
             if (ls.fontRes.isEmpty()) ls.fontRes = fr;
             else if (ls.fontRes != fr)
-                return fail("mehrere Schriften im Absatz → Auszeichnung bliebe nicht erhalten");
+                return fail("mehrere Schriften im Absatz -> Auszeichnung bliebe nicht erhalten");
         }
         if (ls.spans.isEmpty()) return fail("Zeile ohne Zeigeoperator");
         perLine.push_back(ls);
@@ -485,7 +485,7 @@ bool PdfTextReflow::reflowParagraph(const QString& inputPath, const QString& out
     //  zwischen den Zeilen, eine abweichende Schrift ginge dabei verloren.
     for (int li = 1; li < perLine.size(); ++li)
         if (perLine.at(li).fontRes != perLine.at(0).fontRes)
-            return fail("mehrere Schriften im Absatz → Auszeichnung bliebe nicht erhalten");
+            return fail("mehrere Schriften im Absatz -> Auszeichnung bliebe nicht erhalten");
     //  Ein Operator darf nicht zu ZWEI Zeilen gehören (sonst würde die zweite
     //  Zuweisung die erste überschreiben).
     {
@@ -493,7 +493,7 @@ bool PdfTextReflow::reflowParagraph(const QString& inputPath, const QString& out
         for (const LineSpans& ls : std::as_const(perLine))
             for (int sp : ls.spans) {
                 if (seen.contains(sp))
-                    return fail("Zeigeoperator über zwei Zeilen → nicht umbrechbar");
+                    return fail("Zeigeoperator über zwei Zeilen -> nicht umbrechbar");
                 seen.insert(sp);
             }
     }
@@ -541,7 +541,7 @@ bool PdfTextReflow::reflowParagraph(const QString& inputPath, const QString& out
             return fail("Zeigeoperator der letzten Zeile nicht gefunden");
 
         //  Positionierung der neuen Zeile: absolut wie die letzte, nur eine
-        //  Zeilenhöhe tiefer — bzw. relativ derselbe Sprung noch einmal.
+        //  Zeilenhöhe tiefer - bzw. relativ derselbe Sprung noch einmal.
         QByteArray posStmt;
         if (lastSp.posOp == "Tm" && lastSp.posArgs.size() >= 6) {
             for (int k = 0; k < 5; ++k) { posStmt += pnum(lastSp.posArgs.at(k)); posStmt += ' '; }
@@ -549,7 +549,7 @@ bool PdfTextReflow::reflowParagraph(const QString& inputPath, const QString& out
             posStmt += " Tm";
         } else if ((lastSp.posOp == "Td" || lastSp.posOp == "TD")
                    && lastSp.posArgs.size() >= 2) {
-            //  x bleibt, wo die letzte Zeile steht → nur der Zeilensprung.
+            //  x bleibt, wo die letzte Zeile steht -> nur der Zeilensprung.
             posStmt = "0 " + pnum(-plan.growDyText) + " Td";
         } else {
             return fail("neue Zeile nicht positionierbar");

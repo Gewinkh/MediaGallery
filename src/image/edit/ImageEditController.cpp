@@ -25,7 +25,7 @@
 
 // ═════════════════════════════════════════════════════════════════════════════
 //  Gemeinsames Overlay-Rendering (Anzeige-Delegate UND Export nutzen dieselbe
-//  Geometrie → WYSIWYG). Als freie Funktion, damit der Worker sie ohne
+//  Geometrie -> WYSIWYG). Als freie Funktion, damit der Worker sie ohne
 //  Controller-Instanz aufrufen kann; die QML-Delegates spiegeln sie 1:1.
 // ═════════════════════════════════════════════════════════════════════════════
 namespace {
@@ -93,8 +93,8 @@ void drawAnnotation(QPainter& p, const ImageAnnotation& a) {
         break;
     }
     case ImageAnnKind::Text: {
-        // Post-it-Optik: Schatten → Papier → Eselsohr (nur bei Papier-Alpha > 0),
-        // dann Text via QTextLayout — geometrisch identisch zum QML-Delegate.
+        // Post-it-Optik: Schatten -> Papier -> Eselsohr (nur bei Papier-Alpha > 0),
+        // dann Text via QTextLayout - geometrisch identisch zum QML-Delegate.
         const bool paper = a.highlight.alpha() > 0;
         if (paper) {
             p.setPen(Qt::NoPen);
@@ -161,7 +161,7 @@ void drawAnnotation(QPainter& p, const ImageAnnotation& a) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-//  ImageExportTask — rendert Original + Overlay in eine NEUE Bildkopie.
+//  ImageExportTask - rendert Original + Overlay in eine NEUE Bildkopie.
 //  Lädt eine EIGENE QImage (kein geteiltes Handle), zeichnet die Annotationen
 //  1:1 in Bild-Pixeln darüber und schreibt atomar via QSaveFile im Quellformat.
 // ─────────────────────────────────────────────────────────────────────────────
@@ -271,7 +271,7 @@ ImageEditController::ImageEditController(QObject* parent) : QObject(parent) {
     connect(&m_stack, &QUndoStack::canRedoChanged, this, [this] { emit undoStateChanged(); });
     connect(&m_stack, &QUndoStack::cleanChanged,   this, [this] { emit dirtyChanged(); });
     connect(&m_model, &ImageEditModel::countChanged, this, [this] { emit annCountChanged(); });
-    //  Zahl der offenen Änderungen folgt JEDER Modelländerung — auch
+    //  Zahl der offenen Änderungen folgt JEDER Modelländerung - auch
     //  Undo/Redo und dem Laden des Sidecars.
     connect(&m_model, &QAbstractItemModel::dataChanged,  this, [this] { emit trackedChanged(); });
     connect(&m_model, &QAbstractItemModel::rowsInserted, this, [this] { emit trackedChanged(); });
@@ -491,7 +491,7 @@ int ImageEditController::beginDraw(int kind, qreal xPx, qreal yPx) {
         a.rect = QRectF(xPx, yPx, 0.0, 0.0);
         break;
     }
-    // LIVE einfügen (Vorschau) — KEIN Kommando; das kommt erst bei endDraw().
+    // LIVE einfügen (Vorschau) - KEIN Kommando; das kommt erst bei endDraw().
     m_model.insertAnnAt(m_model.count(), a);
     m_drawId = a.id;
     return a.id;
@@ -551,7 +551,7 @@ void ImageEditController::endDraw(int id) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-//  Nachverfolgte Änderungen — Semantik wie im PDF-Editor (dort ausführlich
+//  Nachverfolgte Änderungen - Semantik wie im PDF-Editor (dort ausführlich
 //  begründet, s. Structure.md ▸ ## PdfEdit).
 // ─────────────────────────────────────────────────────────────────────────────
 void ImageEditController::pushAdd(ImageAnnotation& a) {
@@ -806,7 +806,7 @@ void ImageEditController::finishTextSession() {
 void ImageEditController::setAnnField(int id, ImageAnnField f, const QVariant& v) {
     if (id < 0) {
         // Nur die Vorlage/Default für neue Annotationen setzen (kein Kommando).
-        // Für Zeichen-Felder → Zeichen-Default, sonst Text-Vorlage.
+        // Für Zeichen-Felder -> Zeichen-Default, sonst Text-Vorlage.
         const bool draw = (f == ImageAnnField::Stroke || f == ImageAnnField::LineWidth
                            || f == ImageAnnField::Fill);
         mirrorToTemplate(f, v, !draw);
@@ -1044,7 +1044,7 @@ QString ImageEditController::uniqueCopyPath(const QString& imgPath, const QStrin
 QString ImageEditController::exportTargetPath() const {
     if (m_docPath.isEmpty())
         return {};
-    // Quellformat spiegeln: JPG→JPG, PNG→PNG, sonst PNG.
+    // Quellformat spiegeln: JPG->JPG, PNG->PNG, sonst PNG.
     const QString srcExt = QFileInfo(m_docPath).suffix().toLower();
     QString outExt = (srcExt == QLatin1String("jpg") || srcExt == QLatin1String("jpeg")
                       || srcExt == QLatin1String("png")) ? srcExt : QStringLiteral("png");

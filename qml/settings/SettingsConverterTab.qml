@@ -6,26 +6,26 @@ import MediaGallery 1.0
 import "../common"
 
 // ─────────────────────────────────────────────────────────────────────────────
-//  SettingsConverterTab.qml — universeller Konverter zwischen Tag,
+//  SettingsConverterTab.qml - universeller Konverter zwischen Tag,
 //  Unterkategorie und (Haupt-)Kategorie in JEDER Richtung.
 //
 //  Die Richtung wird über EIN Dropdown gewählt; die UI darunter passt sich der
 //  gewählten Richtung an (Quelle, ggf. Ziel-Kategorie, ggf. neuer Name):
-//    • Tag → Unterkategorie   Tags.convertTagToSubcategory(tag, parent, name)
-//    • Tag → Kategorie        Tags.convertTagToRootCategory(tag, name)
-//    • Unterkategorie → Tag   Tags.convertSubcategoryToTag(id)
-//    • Kategorie → Tag        Tags.convertSubcategoryToTag(id)  (gleiche Logik)
-//    • Unterkategorie → Kat.  Tags.moveCategory(id, "")         (→ Hauptebene)
-//    • Kategorie → Unterkat.  Tags.moveCategory(id, parentId)
+//    • Tag -> Unterkategorie   Tags.convertTagToSubcategory(tag, parent, name)
+//    • Tag -> Kategorie        Tags.convertTagToRootCategory(tag, name)
+//    • Unterkategorie -> Tag   Tags.convertSubcategoryToTag(id)
+//    • Kategorie -> Tag        Tags.convertSubcategoryToTag(id)  (gleiche Logik)
+//    • Unterkategorie -> Kat.  Tags.moveCategory(id, "")         (-> Hauptebene)
+//    • Kategorie -> Unterkat.  Tags.moveCategory(id, parentId)
 //
-//  Die frühere JSON-Migration (altes tag-zentrisches Format → v2) wurde
-//  entfernt — das Legacy-Format wird nicht mehr unterstützt und die JSONs
+//  Die frühere JSON-Migration (altes tag-zentrisches Format -> v2) wurde
+//  entfernt - das Legacy-Format wird nicht mehr unterstützt und die JSONs
 //  tragen keinen Versions-Marker mehr (siehe JsonStorage).
 // ─────────────────────────────────────────────────────────────────────────────
 Item {
     id: root
 
-    property var tagModel:  []     // [{text,value}] — alle globalen Tags
+    property var tagModel:  []     // [{text,value}] - alle globalen Tags
     property var catModel:  []     // alle Kategorien (für Ziel-/Parent-Auswahl)
     property var subModel:  []     // nur Unterkategorien (depth > 0)
     property var rootModel: []     // nur Hauptkategorien (depth == 0)
@@ -47,7 +47,7 @@ Item {
     }
 
     function refresh() {
-        var tags = App.allTags()
+        var tags = Tags.allTags()
         var tm = []
         for (var i = 0; i < tags.length; ++i) tm.push({ text: tags[i], value: tags[i] })
         tagModel = tm
@@ -66,7 +66,7 @@ Item {
     }
 
     // ── Richtungs-Definition (steuert die adaptive UI) ────────────────────────
-    //  source:      "tag" | "sub" | "root"  → Quell-Dropdown + Beschriftung
+    //  source:      "tag" | "sub" | "root"  -> Quell-Dropdown + Beschriftung
     //  needsParent: Ziel-Kategorie-Dropdown sichtbar
     //  needsName:   Namensfeld sichtbar (neue Kategorie wird erstellt)
     readonly property var modes: [
@@ -95,9 +95,9 @@ Item {
               ? App.uiText(App.language, "SettingsConvSubcatLabel")
               : App.uiText(App.language, "SettingsConvCatLabel")
 
-    // Ziel-Kategorie-Modell: bei „Kategorie → Unterkategorie" ohne die Quelle
+    // Ziel-Kategorie-Modell: bei „Kategorie -> Unterkategorie" ohne die Quelle
     // selbst (in die eigene/untergeordnete Kategorie kann nicht verschoben
-    // werden — den Teilbaum-Fall fängt zusätzlich TagManager::moveCategory ab).
+    // werden - den Teilbaum-Fall fängt zusätzlich TagManager::moveCategory ab).
     readonly property var parentModel: {
         if (mode.op !== "c2s") return catModel
         var out = []
@@ -117,7 +117,7 @@ Item {
         case "t2c": Tags.convertTagToRootCategory(src, name); break
         case "s2t":                                    // gleiche Logik für beide
         case "c2t": Tags.convertSubcategoryToTag(src); break
-        case "s2c": Tags.moveCategory(src, ""); break  // → Hauptebene
+        case "s2c": Tags.moveCategory(src, ""); break  // -> Hauptebene
         case "c2s": Tags.moveCategory(src, parentBox.currentValue); break
         }
         nameField.text = ""

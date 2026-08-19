@@ -2,6 +2,10 @@
     <qresource prefix="/">
         <file>qml/ApplicationShell.qml</file>
         <file>qml/gallery/GalleryView.qml</file>
+        <file>qml/gallery/GalleryPane.qml</file>
+        <file>qml/gallery/AudioPlayerBar.qml</file>
+        <file>qml/gallery/AudioPlayerView.qml</file>
+        <file>qml/gallery/AudioEqPanel.qml</file>
         <file>qml/gallery/MediaTile.qml</file>
         <file>qml/gallery/MediaOverlay.qml</file>
         <file>qml/gallery/FilterBar.qml</file>
@@ -35,6 +39,7 @@
         <file>qml/settings/SettingsCategoriesTab.qml</file>
         <file>qml/settings/SettingsCategoryNode.qml</file>
         <file>qml/settings/SettingsConverterTab.qml</file>
+        <file>qml/settings/SettingsAudioTab.qml</file>
         <file>qml/settings/SettingsDesignTab.qml</file>
         <file>qml/settings/SettingsBookmarksTab.qml</file>
         <file>qml/settings/SettingsShortcutsView.qml</file>
@@ -45,6 +50,7 @@
         <file>qml/common/FileChooser.qml</file>
         <file>qml/common/FolderImagePicker.qml</file>
         <file>qml/common/SmoothWheelArea.qml</file>
+        <file>qml/common/ScrollableBar.qml</file>
         <file>qml/common/TranslitButton.qml</file>
         <file>qml/style/qmldir</file>
         <file>qml/style/Button.qml</file>

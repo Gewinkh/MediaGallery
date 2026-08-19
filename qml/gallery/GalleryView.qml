@@ -4,25 +4,25 @@ import QtQuick.Window
 import MediaGallery 1.0
 
 // ─────────────────────────────────────────────────────────────────────────────
-//  GalleryView.qml — Model/View-Galerie (Phase 2/3, Kernkomponente).
+//  GalleryView.qml - Model/View-Galerie (Phase 2/3, Kernkomponente).
 //
 //  Ersetzt GalleryView(QScrollArea+QGridLayout). KEIN 1:1-Port: statt 1 Widget je
 //  Datei recycelt ein GridView seine Delegates (reuseItems) und hält nur sichtbare
-//  Kacheln im Speicher → flacher RAM-Verbrauch auch bei 10–50k Medien.
+//  Kacheln im Speicher -> flacher RAM-Verbrauch auch bei 10–50k Medien.
 //
-//  Daten kommen aus galleryModel (MediaProxyModel → MediaModel). Mutationen/
+//  Daten kommen aus galleryModel (MediaProxyModel -> MediaModel). Mutationen/
 //  Thumbnail-Anforderungen laufen über mediaModel (per Dateipfad).
 //
 //  Performance (Scrollen):
 //   • Jede Kachel fordert ihr Thumbnail nur einmal an (Pfad-getaktet) und BRICHT
 //     die Anforderung der zuvor angezeigten Datei AB, sobald sie recycelt wird
-//     oder verschwindet (mediaModel.cancelThumbnail) → der Loader verschwendet
+//     oder verschwindet (mediaModel.cancelThumbnail) -> der Loader verschwendet
 //     keinen Decode für weggescrollte Kacheln, sichtbare laufen mit Vorrang.
 //   • cacheBuffer ≈ 2 Zeilen: glättet schnelles Scrollen (weniger Delegate-Auf-/
 //     Abbau an den Rändern) bei weiterhin beschränktem RAM.
 //
 //  Erhaltene Features: dynamische Kachelgröße, Ctrl+Mausrad-Zoom, Anordnung
-//  (Centered/Left/Right/Manual) inkl. Manual-Area-Breite, Doppelklick→Vollbild,
+//  (Centered/Left/Right/Manual) inkl. Manual-Area-Breite, Doppelklick->Vollbild,
 //  Inline-Rename (Overlay), Tag-Toggle, Group-/Add-to-Tag-Modus.
 // ─────────────────────────────────────────────────────────────────────────────
 Rectangle {
@@ -31,33 +31,35 @@ Rectangle {
 
     // Vollbild-Anforderung an die Shell (Phase 3 füllt das Ziel).
     signal activated(string filePath)
+    //  Einfacher Klick auf eine Datei (s. MediaTile) - im Player-Modus spielt er.
+    signal fileClicked(string filePath)
     //  Doppelklick auf eine Ordnerkachel: den Ordner als neue Hauptebene
-    //  oeffnen. Die Shell haengt das an App.openSubfolder (Rueckweg Alt+←).
+    //  oeffnen. Die Shell haengt das an App.openSubfolder (Rueckweg Alt+<-).
     signal folderOpenRequested(string folderPath)
-    //  Aktionen aus der Kopfzeile eines aufgeklappten Bereichs — sie zielen auf
+    //  Aktionen aus der Kopfzeile eines aufgeklappten Bereichs - sie zielen auf
     //  DIESEN Ordner, nicht auf den geoeffneten (Festlegung des Nutzers).
     signal createFileRequested(string folderPath)
     signal extractPagesRequested(string folderPath)
     //  Meldung an die Shell (sie führt die Statuszeile).
     signal statusRequested(string text)
     //  Eine Datei wurde auf eine Ordnerkachel gezogen. Die Shell entscheidet
-    //  (Verschieben/Kopieren, Namenskollision) — sie hat den Dialog dafür schon
+    //  (Verschieben/Kopieren, Namenskollision) - sie hat den Dialog dafür schon
     //  für die Lesezeichen-Leiste.
     signal folderDropRequested(string sourcePath, string folderPath)
-    //  Dateien von AUSSEN (Dateimanager, Browser) — sie werden kopiert.
+    //  Dateien von AUSSEN (Dateimanager, Browser) - sie werden kopiert.
     signal externalDropRequested(var urls, string folderPath)
 
     // ── Ablegen: EINE Fläche, ausgewertet über die Zeilengeometrie ───────────
     //  Gemessen (`tests/bench/bench_dnd.cpp`): eine Fläche mit Treffersuche
     //  kostet je Mausbewegung ~2,5 µs und bleibt bei wachsender Kachelzahl
     //  praktisch flach; EINE Fläche JE KACHEL kostet bei 200 Kacheln 17 µs und
-    //  wächst linear — auch abgeschaltet noch 10 µs. Der JavaScript-Handler
-    //  selbst ist dabei Rundungsrauschen (2,67 → 3,08 µs). Deshalb: eine
+    //  wächst linear - auch abgeschaltet noch 10 µs. Der JavaScript-Handler
+    //  selbst ist dabei Rundungsrauschen (2,67 -> 3,08 µs). Deshalb: eine
     //  Fläche, und die Hervorhebung läuft über `hoverFolder`.
     property string hoverFolder: ""
 
     //  Welcher Ordner liegt unter diesem Punkt (Koordinaten von `root`)?
-    //  Über einer ORDNERKACHEL gewinnt deren eigener Pfad — dorthin zu ziehen
+    //  Über einer ORDNERKACHEL gewinnt deren eigener Pfad - dorthin zu ziehen
     //  ist eindeutiger gemeint als „in den Bereich". Trifft der Punkt keine
     //  Zeile (leerer Raum, Rand), bleibt es beim geöffneten Ordner: ein Drop
     //  landet nie im Nichts.
@@ -76,7 +78,7 @@ Rectangle {
         if (!info || info.ownerFolder === undefined) return fallback
         if (info.kind === 1) return info.ownerFolder        // Kopfzeile
 
-        //  Innerhalb der Zeile entscheidet allein x — eine Zeile trägt genau
+        //  Innerhalb der Zeile entscheidet allein x - eine Zeile trägt genau
         //  eine Kachelreihe.
         const rel = cx - info.depth * root.levelInset
         const col = Math.floor(rel / root.cellW)
@@ -88,7 +90,7 @@ Rectangle {
         return info.ownerFolder
     }
 
-    //  Der Ordner, in dem eine Datei liegt — rein textuell, ohne Dateisystem.
+    //  Der Ordner, in dem eine Datei liegt - rein textuell, ohne Dateisystem.
     function _parentOf(path) {
         const cut = Math.max(path.lastIndexOf("/"), path.lastIndexOf("\\"))
         return cut > 0 ? path.substring(0, cut) : ""
@@ -132,7 +134,7 @@ Rectangle {
 
     //  ── Pfeiltasten scrollen die ANSICHT ────────────────────────────────────
     //  Bewusst NICHT der eingebaute Tastenfluss des GridView: der bewegt
-    //  `currentIndex`, also eine Auswahl — die Galerie hat keine. Gescrollt wird
+    //  `currentIndex`, also eine Auswahl - die Galerie hat keine. Gescrollt wird
     //  über dieselbe Animation wie das Mausrad, damit sich beides gleich anfühlt.
     focus: true
     //  Schreibt der Nutzer gerade (Umbenennen-Feld, Filterleiste), gehören die
@@ -147,7 +149,7 @@ Rectangle {
     //  Ein Flickable liegt NICHT zwingend bei 0: entfernt oder ergänzt das
     //  Modell Zeilen (Filter, Suche, Ordner-Watcher), verschiebt das GridView
     //  seinen `originY`. Wer trotzdem gegen 0 klemmt, schiebt die Ansicht ÜBER
-    //  den Inhalt hinaus — oben steht ein leerer Streifen, und genau so weit
+    //  den Inhalt hinaus - oben steht ein leerer Streifen, und genau so weit
     //  sind die letzten Zeilen unten nicht mehr erreichbar. Genau dieser Befund
     //  („wie ein Shift im Scrolling-Fenster", schmales Fenster = mehr Zeilen).
     //  Dieselbe Lehre wie in `PdfSurface` (minContentY/maxContentY/clampContentY).
@@ -164,7 +166,7 @@ Rectangle {
         gridScroll.to = root.clampContentY(base + dy)
         gridScroll.restart()
     }
-    //  Schrittweite: eine halbe Kachelreihe — ein ganzer Kachelsprung überspringt
+    //  Schrittweite: eine halbe Kachelreihe - ein ganzer Kachelsprung überspringt
     //  bei großen Kacheln fast den ganzen Sichtbereich.
     readonly property real _keyStep: Math.max(40, root.cellH * 0.5)
     Keys.onUpPressed: function(event) {
@@ -210,8 +212,18 @@ Rectangle {
     // ── Layout-Konstanten / abgeleitete Geometrie ───────────────────────────
     readonly property int margin: 12
     readonly property int spacing: 8
-    readonly property int cellW: App.tileWidth + spacing
-    readonly property int cellH: App.tileHeight + spacing
+    //  Listen-Darstellung (Player-Modus, s. GalleryPane): EINE Kachel je Zeile.
+    //  Umgesetzt über die Zellengröße statt über ein zweites Raster - das
+    //  Zeilenmodell rechnet seine Spaltenzahl ohnehin aus `contentWidth` und
+    //  `cellWidth`, also ergibt eine zeilenbreite Zelle genau eine Liste.
+    property bool listMode: false
+    //  Optionen-Modus (Alt+S) der HÄLFTE - nicht appweit (s. GalleryPane).
+    property bool optionsVisible: App.optionsVisible
+    readonly property int tileW: root.listMode ? Math.max(200, root.areaW - spacing)
+                                               : App.tileWidth
+    readonly property int tileH: root.listMode ? 46 : App.tileHeight
+    readonly property int cellW: tileW + spacing
+    readonly property int cellH: tileH + spacing
 
     // Kachelgrößen-Obergrenze = das, was diese Galeriefläche VOLLSTÄNDIG
     // darstellen kann (breiter: Seitenränder + Zellen-Padding; höher: eine
@@ -241,13 +253,13 @@ Rectangle {
 
     // ── Bänder (die helleren Flächen aufgeklappter Unterordner) ─────────────
     //  Ein Band liegt UNTER den Kacheln seines Ordners und deckt genau dessen
-    //  Zeilen ab — kommt eine Datei dazu oder fällt weg, ändert sich einfach
+    //  Zeilen ab - kommt eine Datei dazu oder fällt weg, ändert sich einfach
     //  die Zeilenliste, und das Band wächst oder schrumpft mit.
     //
     //  Die Ebenen unterscheiden sich NUR über die Farbe, nicht über eine
     //  Einrückung: eingerückte Bänder müssten die Kachelzahl je Tiefe
     //  verringern, sonst ragte die letzte Kachel über den Rand hinaus.
-    //  Sichtbar ist deshalb immer nur das INNERSTE Band einer Zeile — die
+    //  Sichtbar ist deshalb immer nur das INNERSTE Band einer Zeile - die
     //  äußeren liegen deckungsgleich darunter.
     //
     //  Richtung der Aufhellung hängt am Theme: auf dunklem Grund wird das Band
@@ -258,21 +270,21 @@ Rectangle {
                                      + 0.114 * App.themeBackground.b) < 0.5
     readonly property int  bandPad: 12       // Luft INNERHALB des Bandes
     readonly property int  bandRadius: 12
-    //  Luft UNTERHALB eines endenden Bandes — sie gehört nicht mehr zum Band.
+    //  Luft UNTERHALB eines endenden Bandes - sie gehört nicht mehr zum Band.
     //  Ohne sie klebte die nächste Kachelreihe des Elternordners direkt am
     //  Unterordner-Bereich (Nutzerbefund).
     readonly property int  bandGap: 14
     //  Einrueckung je Ebene. Sie zeigt auf den ersten Blick, dass der Inhalt zu
-    //  einem Unterordner gehoert — und sie kostet die Zeile Platz, deshalb
+    //  einem Unterordner gehoert - und sie kostet die Zeile Platz, deshalb
     //  rechnet das Zeilenmodell die Kachelzahl je TIEFE (columnsForDepth).
     readonly property int  levelInset: 26
     //  DECKEND, nicht halbtransparent. Mit Alpha addieren sich der eckige
     //  Deckstreifen und die Fläche darunter zu einem sichtbar HELLEREN Streifen,
-    //  und die abgedeckte Rundung blitzt trotzdem durch — beides war am
+    //  und die abgedeckte Rundung blitzt trotzdem durch - beides war am
     //  Prüfstand deutlich zu sehen. Der Ton wird deshalb EINMAL über den
     //  Hintergrund gerechnet und dann deckend gemalt.
     function bandColor(level) {
-        //  Ab der vierten Ebene bleibt es konstant — sonst liefe die Reihe in
+        //  Ab der vierten Ebene bleibt es konstant - sonst liefe die Reihe in
         //  Weiß bzw. Schwarz aus und die Tiefen wären nicht mehr zu trennen.
         var l = Math.min(Math.max(level, 1), 4)
         var a = root.darkTheme ? 0.05 * l : 0.035 * l
@@ -310,7 +322,7 @@ Rectangle {
 
     // ── Raster ──────────────────────────────────────────────────────────────
     //  Eine ListView über ZEILEN, kein GridView über Kacheln: ein GridView hat
-    //  gleich hohe Zellen und kann eine Zeile nicht umbrechen — aufgeklappte
+    //  gleich hohe Zellen und kann eine Zeile nicht umbrechen - aufgeklappte
     //  Unterordner brauchen aber genau das. Das Delegate-Recycling bleibt
     //  erhalten (jetzt je Zeile), die RAM-Obergrenze also auch.
     ListView {
@@ -331,7 +343,7 @@ Rectangle {
         cacheBuffer: root.cellH * 2
         boundsBehavior: Flickable.StopAtBounds
         //  KEIN Ziehen-zum-Scrollen: gescrollt wird per Rad, Bildlaufleiste und
-        //  Pfeiltasten. Ein Zug mit der Maus gehört der KACHEL — sie zieht die
+        //  Pfeiltasten. Ein Zug mit der Maus gehört der KACHEL - sie zieht die
         //  Datei nach draußen (`Drag.Automatic`), und beides gleichzeitig ging
         //  nicht: die Ansicht riss den Griff an sich. Dasselbe Muster wie in
         //  `PdfSurface` (dort `pages`-ListView `interactive:false`).
@@ -341,7 +353,7 @@ Rectangle {
         //  ändern. `interactive: false` heißt: das Flickable holt sich NICHT
         //  selbst zurück (das täte sonst die Zug-Geste). Ohne diese Klemme blieb
         //  die Ansicht nach einer Suche, einem Ordnerwechsel oder einer
-        //  Größenänderung außerhalb ihres Inhalts stehen — sichtbar als leerer
+        //  Größenänderung außerhalb ihres Inhalts stehen - sichtbar als leerer
         //  Streifen mit unerreichbaren Kacheln.
         function _clampNow() {
             if (gridScroll.running) return          // die Animation klemmt selbst
@@ -356,7 +368,7 @@ Rectangle {
         // Vertikale Scrollbar bündig an den rechten Rand der Galerie (root) statt
         // an den Rand des zentrierten Rasters. Sie bleibt funktional an die
         // ListView gebunden (Größe/Position), wird aber zu root umgehängt und dort
-        // rechts verankert — Standardmuster für „Scrollbar am Container-Rand".
+        // rechts verankert - Standardmuster für „Scrollbar am Container-Rand".
         ScrollBar.vertical: ScrollBar {
             id: vScroll
             parent: root
@@ -385,7 +397,7 @@ Rectangle {
             //  zwangsläufig mit.
             readonly property int padTop:    (rowItem.openMask  !== 0) ? root.bandPad : 0
             readonly property int padBottom: (rowItem.closeMask !== 0) ? root.bandPad : 0
-            //  Endet hier ein Band, kommt darunter ein Abstand — AUSSERHALB der
+            //  Endet hier ein Band, kommt darunter ein Abstand - AUSSERHALB der
             //  Fläche, damit die nächste Reihe sichtbar zu einer anderen Ebene
             //  gehört.
             readonly property int gapBottom: (rowItem.closeMask !== 0) ? root.bandGap : 0
@@ -394,13 +406,13 @@ Rectangle {
                     + rowItem.padTop + rowItem.padBottom + rowItem.gapBottom
 
             //  Die Flächen: je Ebene eine, von außen nach innen übereinander.
-            //  Die äußeren sind vom innersten fast vollständig verdeckt — sie
+            //  Die äußeren sind vom innersten fast vollständig verdeckt - sie
             //  füllen genau die ABGERUNDETEN ECKEN, an denen sonst der
             //  Seitenhintergrund durchblitzte.
             //
             //  Gerundet ist jede Fläche immer; wo ihr Band weiterläuft, deckt
             //  ein eckiger Streifen die Rundung ab. (Einzelne Ecken zu runden
-            //  gibt es erst ab Qt 6.7 — das Projekt baut ab 6.4.)
+            //  gibt es erst ab Qt 6.7 - das Projekt baut ab 6.4.)
             Repeater {
                 model: rowItem.depth
 
@@ -439,7 +451,7 @@ Rectangle {
 
             // ── Kopfzeile eines aufgeklappten Ordners ───────────────────────
             //  Name + eigene Aktionen. Was hier angelegt oder extrahiert wird,
-            //  landet in DIESEM Ordner — man soll sehen und treffen können, wo
+            //  landet in DIESEM Ordner - man soll sehen und treffen können, wo
             //  man gerade arbeitet.
             Row {
                 visible: rowItem.kind === 1
@@ -485,14 +497,14 @@ Rectangle {
                     //  Die Kacheldaten kommen als Liste aus dem Zeilenmodell.
                     //  Bewusst über einen INDEX statt über `model: rowItem.tiles`:
                     //  ein Repeater baut bei jedem Modellwechsel alle Elemente
-                    //  neu — jedes eintreffende Thumbnail zerstörte dann die
+                    //  neu - jedes eintreffende Thumbnail zerstörte dann die
                     //  Kacheln seiner Zeile samt Hover-Zustand.
                     readonly property var d: (rowItem.tiles && cell.index < rowItem.tiles.length)
                                              ? rowItem.tiles[cell.index] : null
                     readonly property string filePath: cell.d ? cell.d.filePath : ""
                     readonly property int    mediaType: cell.d ? cell.d.mediaType : 6
 
-                    //  Eingerueckt je Ebene — die Kachelzahl dieser Zeile hat
+                    //  Eingerueckt je Ebene - die Kachelzahl dieser Zeile hat
                     //  das Zeilenmodell bereits entsprechend verringert.
                     x: rowItem.depth * root.levelInset + cell.index * root.cellW
                     y: rowItem.padTop
@@ -519,11 +531,34 @@ Rectangle {
                     onFilePathChanged: syncThumb()
 
                     // Zielgrößen-Stufe der Thumbnails gewechselt (Kachelgröße): die
-                    // Anforderung dieses Delegates neu stellen — syncThumbs Guard
+                    // Anforderung dieses Delegates neu stellen - syncThumbs Guard
                     // (requestedPath === filePath) würde sie sonst unterdrücken.
                     Connections {
                         target: mediaModel
                         function onThumbnailsInvalidated() {
+                            cell.requestedPath = ""
+                            cell.syncThumb()
+                        }
+                    }
+
+                    //  ── Nachfassen, wenn eine Vorschau ausbleibt ──────────
+                    //  Sicherheitsnetz, kein Hauptweg: die Kachel merkt sich
+                    //  ihre Anforderung und fragt von sich aus NIE wieder. Geht
+                    //  eine Anforderung unterwegs verloren - abbestellt von der
+                    //  Kachel, die die Datei abgibt; gestellt, während das
+                    //  Modell gerade neu aufbaut - bliebe die Kachel dauerhaft
+                    //  ohne Bild, bis irgendetwas die Kacheln neu erzeugt. Der
+                    //  Timer läuft NUR, solange diese Kachel noch keine Vorschau
+                    //  hat, und hört von selbst auf; ein zweiter Ruf kostet im
+                    //  Modell einen Hash-Zugriff (schon geliefert / schon in
+                    //  Arbeit). Bei `thumbState === 2` (fehlgeschlagen) läuft er
+                    //  bewusst nicht - dort gibt es nichts zu holen.
+                    Timer {
+                        interval: 1500
+                        repeat: true
+                        running: cell.filePath.length > 0 && cell.mediaType !== 7
+                                 && cell.d !== null && cell.d.thumbState === 0
+                        onTriggered: {
                             cell.requestedPath = ""
                             cell.syncThumb()
                         }
@@ -538,8 +573,10 @@ Rectangle {
 
                     MediaTile {
                         anchors.centerIn: parent
-                        width: App.tileWidth
-                        height: App.tileHeight
+                        width: root.tileW
+                        height: root.tileH
+                        listMode: root.listMode
+                        optionsVisible: root.optionsVisible
 
                         filePath:    cell.filePath
                         displayName: cell.d ? cell.d.displayName : ""
@@ -558,6 +595,7 @@ Rectangle {
                         covered: root.covered
 
                         onActivated: function(p) { root.activated(p) }
+                        onFileClicked: function(p) { root.fileClicked(p) }
                         onFolderOpenRequested: function(p) { root.folderOpenRequested(p) }
                         onDragStartRequested: function(p, url) {
                             root.requestFileDrag(p, url)
@@ -571,6 +609,17 @@ Rectangle {
                         dropTarget: cell.mediaType === 7
                                     && root.hoverFolder.length > 0
                                     && root.hoverFolder === cell.filePath
+                        onRenameRequested: function(p, n) {
+                            fileRenameDialog.openFor(p, n)
+                        }
+                        //  „+ Neu…" aus den Untermenüs: anlegen UND dieser Datei
+                        //  gleich zuweisen (derselbe Weg wie im Overlay-„+").
+                        onNewTagRequested: function(p) {
+                            newForFileDialog.openFor(p, true)
+                        }
+                        onNewCategoryRequested: function(p) {
+                            newForFileDialog.openFor(p, false)
+                        }
                         onDeleteRequested: function(p, n) {
                             deleteDialog.targetPath = p
                             deleteDialog.targetName = n
@@ -582,6 +631,124 @@ Rectangle {
                             companionDialog.open()
                         }
                     }
+                }
+            }
+        }
+    }
+
+    // ── Neuer Tag / neue Kategorie FÜR EINE DATEI ───────────────────────────
+    //  Aus dem Kontextmenü einer Kachel: den Namen abfragen, anlegen und die
+    //  Datei sofort zuordnen - sonst müsste man erst im Panel erstellen und die
+    //  Datei danach dort wiederfinden.
+    Dialog {
+        id: newForFileDialog
+        property string filePath: ""
+        property bool   forTag: true
+        function openFor(path, tag) {
+            filePath = path
+            forTag = tag
+            newForFileField.text = ""
+            open(); newForFileField.forceActiveFocus()
+        }
+        function apply() {
+            const v = newForFileField.text.trim()
+            if (v.length > 0 && newForFileDialog.filePath.length > 0) {
+                if (newForFileDialog.forTag) {
+                    //  `addTag` registriert den Tag im Ordner und weist ihn zu.
+                    mediaModel.addTag(newForFileDialog.filePath, v)
+                } else {
+                    const fn = newForFileDialog.filePath.substring(
+                        Math.max(newForFileDialog.filePath.lastIndexOf("/"),
+                                 newForFileDialog.filePath.lastIndexOf("\\")) + 1)
+                    const id = Tags.addRootCategory(v, Qt.rgba(0, 0.7, 0.63, 1), false)
+                    if (id && id.length > 0) Tags.toggleFileInCategory(id, fn)
+                }
+            }
+            close()
+        }
+        anchors.centerIn: parent
+        modal: true
+        padding: 18
+        background: Rectangle {
+            color: App.themeCard; radius: 10
+            border.color: App.themeBorder; border.width: 1
+        }
+        contentItem: Column {
+            spacing: 10
+            Text {
+                text: newForFileDialog.forTag
+                      ? App.uiText(App.language, "CatPanelNewTag")
+                      : App.uiText(App.language, "CatPanelAddCategory")
+                color: App.themeTextPrimary
+                font.pixelSize: 14; font.bold: true
+            }
+            TextField {
+                id: newForFileField
+                width: 300
+                color: App.themeTextPrimary
+                onAccepted: newForFileDialog.apply()
+            }
+            Row {
+                spacing: 8
+                Button {
+                    text: App.uiText(App.language, "SettingsCancel")
+                    onClicked: newForFileDialog.close()
+                }
+                Button {
+                    text: App.uiText(App.language, "SettingsOk")
+                    onClicked: newForFileDialog.apply()
+                }
+            }
+        }
+    }
+
+    // ── Datei umbenennen ────────────────────────────────────────────────────
+    //  Bewusst ein eigener, winziger Dialog: der Ordner-Dialog spricht mit
+    //  `createFolder`/`renameFolder` und hat dessen Fehlercodes; eine Datei
+    //  geht über `renameItem` und kennt sie nicht.
+    Dialog {
+        id: fileRenameDialog
+        property string filePath: ""
+        function openFor(path, currentName) {
+            filePath = path
+            fileNameField.text = currentName
+            open(); fileNameField.forceActiveFocus(); fileNameField.selectAll()
+        }
+        function apply() {
+            const t = fileNameField.text.trim()
+            if (t.length > 0 && fileRenameDialog.filePath.length > 0)
+                mediaModel.renameItem(fileRenameDialog.filePath, t)
+            close()
+        }
+        anchors.centerIn: parent
+        modal: true
+        padding: 18
+        background: Rectangle {
+            color: App.themeCard; radius: 10
+            border.color: App.themeBorder; border.width: 1
+        }
+        contentItem: Column {
+            spacing: 10
+            Text {
+                text: App.uiText(App.language, "CtxRenameFile")
+                color: App.themeTextPrimary
+                font.pixelSize: 14; font.bold: true
+            }
+            TextField {
+                id: fileNameField
+                width: 300
+                color: App.themeTextPrimary
+                onAccepted: fileRenameDialog.apply()
+            }
+            Row {
+                spacing: 8
+                Button {
+                    text: App.uiText(App.language, "SettingsCancel")
+                    onClicked: fileRenameDialog.close()
+                }
+                Button {
+                    text: App.uiText(App.language, "SettingsOk")
+                    onClicked: fileRenameDialog.apply()
                 }
             }
         }
@@ -707,7 +874,7 @@ Rectangle {
                 Button {
                     text: App.uiText(App.language, "DeleteMediaConfirm")
                     onClicked: {
-                        //  Ohne Papierkorb passiert NICHTS — ein Ordner kann
+                        //  Ohne Papierkorb passiert NICHTS - ein Ordner kann
                         //  beliebig viel enthalten, und ohne Rückweg wäre das
                         //  die falsche Zusage (s. MediaModel::deleteFolder).
                         if (!mediaModel.deleteFolder(folderDeleteDialog.targetPath))
@@ -720,7 +887,7 @@ Rectangle {
     }
 
     // ── Lösch-Bestätigung (EIN gemeinsamer Dialog für alle Kacheln) ──────────
-    //  Verschiebt die Datei in den Papierkorb (mediaModel.deleteItem — räumt
+    //  Verschiebt die Datei in den Papierkorb (mediaModel.deleteItem - räumt
     //  auch Sidecar + persistierte Metadaten ab). Themenkonform gestaltet.
     // ── Begleitdatei entfernen (Notizen/Zeichnungen bzw. Sicherungskopie) ────
     //  Eigener Dialog statt des Lösch-Dialogs: hier geht NICHT die Datei weg,
@@ -848,7 +1015,7 @@ Rectangle {
 
     //  ── Mausrad WÄHREND eines Zuges ────────────────────────────────────────
     //  In QML ist da nichts zu holen: die Galerie hat einen Rad-Handler, der
-    //  immer aktiv ist — während eines `QDrag` reicht Qt die Ereignisse aber
+    //  immer aktiv ist - während eines `QDrag` reicht Qt die Ereignisse aber
     //  nicht mehr an die Elemente durch. `App` sieht sie über einen Filter auf
     //  der Anwendung und meldet sie hier weiter (s. AppController::eventFilter).
     Connections {
@@ -868,14 +1035,14 @@ Rectangle {
     // ── Der Zug-Träger: EINER für die ganze Galerie ─────────────────────────
     //  `Drag.Automatic` + `Drag.active = true` ist der einzige Weg, der das
     //  Fenster verlässt (Dateimanager, Mail, Chat, Upload). Übergeben wird
-    //  `text/uri-list` — die DATEI, wie aus einem Dateimanager.
+    //  `text/uri-list` - die DATEI, wie aus einem Dateimanager.
     //  **Nur kopieren:** mit `MoveAction` dürfte ein Zielprogramm die Datei aus
     //  dem Ordner des Nutzers ENTFERNEN.
     //
     //  Er liegt HIER und nicht in der Kachel, weil `Drag.active = true` bis zum
     //  Loslassen blockiert: in der Kachel hinge deren JavaScript-Rahmen die
     //  ganze Zeit auf dem Stapel, und ein Scrollen während des Zuges räumte
-    //  genau diese Kachel weg — die App stürzte ab.
+    //  genau diese Kachel weg - die App stürzte ab.
     Item {
         id: dragPayload
         width: 1; height: 1
@@ -893,7 +1060,7 @@ Rectangle {
     }
     function _runFileDrag(filePath, thumbUrl) {
         dragPayload.Drag.mimeData = { "text/uri-list": App.fileUrl(filePath) }
-        //  Am Zeiger hängt die Miniatur — sonst zieht man ins Blaue.
+        //  Am Zeiger hängt die Miniatur - sonst zieht man ins Blaue.
         dragPayload.Drag.imageSource = thumbUrl
         App.beginTileDrag()
         //  BLOCKIERT bis zum Ende des Zuges und setzt `active` danach selbst
@@ -911,12 +1078,12 @@ Rectangle {
         anchors.fill: parent
         keys: ["text/uri-list"]
 
-        //  NUR eine Property setzen, und nur wenn sie sich ändert — die
+        //  NUR eine Property setzen, und nur wenn sie sich ändert - die
         //  Kacheln hängen ihre Hervorhebung daran. Kein Objekt je Kachel.
         //  ── Scrollen WÄHREND eines Zuges ────────────────────────────────
         //  Das Mausrad hilft hier nicht: solange ein Zug läuft, hält er den
         //  Griff, und Qt liefert keine Radereignisse an die Ansicht. Deshalb
-        //  der übliche Weg — kommt der Zeiger an den oberen oder unteren Rand,
+        //  der übliche Weg - kommt der Zeiger an den oberen oder unteren Rand,
         //  scrollt die Ansicht von selbst weiter, damit man auch die Ordner
         //  darüber erreicht (Nutzerbefund).
         //  ── Randscrollen ────────────────────────────────────────────────
@@ -924,7 +1091,7 @@ Rectangle {
         //  Wayland gehoert der Zeiger dem Compositor, und Rad- wie
         //  Mausbewegungs-Ereignisse erreichen die Anwendung gar nicht.
         //  GEMESSEN (MG_DRAGLOG, echter Zug): waehrend des Zuges kamen 892
-        //  `DragMove` an — aber KEIN einziges `Wheel` und kein `MouseMove`.
+        //  `DragMove` an - aber KEIN einziges `Wheel` und kein `MouseMove`.
         //
         //  Die Zone ist grosszuegig, und das Tempo waechst mit der Naehe zum
         //  Rand: am aeussersten Rand rutscht die Ansicht spuerbar, kurz
@@ -936,7 +1103,7 @@ Rectangle {
         property int  autoDir: 0         // −1 hoch · 0 aus · +1 runter
         property real autoStep: 0        // Pixel je Takt
         //  Letzte bekannte Zeigerposition: waehrend die Ansicht von selbst
-        //  scrollt, bewegt sich der Zeiger nicht — das Ziel muss trotzdem
+        //  scrollt, bewegt sich der Zeiger nicht - das Ziel muss trotzdem
         //  laufend neu bestimmt werden, und zwar an SEINER Stelle.
         property real lastX: 0
         property real lastY: 0
@@ -1011,13 +1178,13 @@ Rectangle {
                     if (galleryDrop.ticks % 20 === 1)
                         console.log("[MG_DRAGLOG] Scroll-Takt #" + galleryDrop.ticks
                                     + " contentY " + Math.round(grid.contentY)
-                                    + " → " + Math.round(v)
+                                    + " -> " + Math.round(v)
                                     + " (Grenzen " + Math.round(root.minContentY)
                                     + ".." + Math.round(root.maxContentY) + ")")
                 }
                 if (Math.abs(v - grid.contentY) < 0.5) return   // am Anschlag
                 grid.contentY = v
-                //  Unter dem Zeiger liegt jetzt ein anderer Ordner — bestimmt
+                //  Unter dem Zeiger liegt jetzt ein anderer Ordner - bestimmt
                 //  an seiner ZULETZT BEKANNTEN Stelle, nicht in der Mitte.
                 const f = root.folderAtPoint(galleryDrop.lastX, galleryDrop.lastY)
                 if (f !== root.hoverFolder) root.hoverFolder = f
@@ -1034,7 +1201,7 @@ Rectangle {
             const src = App.localPath(drop.urls[0])
             if (mediaModel.ownsFile(src)) {
                 //  Ein app-interner Zug: verschieben/kopieren. In den EIGENEN
-                //  Ordner abzulegen ist keine Bewegung — das Modell meldete
+                //  Ordner abzulegen ist keine Bewegung - das Modell meldete
                 //  sonst „nicht möglich" und die Shell zeigte einen Fehler.
                 if (root._parentOf(src) !== target)
                     root.folderDropRequested(src, target)
@@ -1046,7 +1213,7 @@ Rectangle {
     }
 
     // ── Mausrad: Strg = Zoom (Kachelgröße), sonst weiches Scrollen ───────────
-    //  Eine MouseArea(NoButton) fängt die Wheel-Events zuverlässig ab — ein
+    //  Eine MouseArea(NoButton) fängt die Wheel-Events zuverlässig ab - ein
     //  WheelHandler/das GridView selbst verschluckt sie sonst. NoButton lässt
     //  Klicks, Doppelklicks und Hover ungehindert zu den Kacheln durch.
     NumberAnimation {

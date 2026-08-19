@@ -28,14 +28,22 @@ void GalleryRowModel::setSource(QObject* src) {
     if (m_proxy) {
         //  Alles, was die REIHENFOLGE oder den Bestand aendert, loest einen
         //  Neuaufbau aus; `dataChanged` dagegen nur ein Auffrischen der
-        //  betroffenen Zeile — ein Thumbnail verschiebt keine Kachel.
-        //  Einfuegen/Entfernen aendert nur die STELLE — der Diff genuegt.
-        connect(m_proxy, &QAbstractItemModel::rowsInserted,  this, &GalleryRowModel::scheduleRebuild);
-        connect(m_proxy, &QAbstractItemModel::rowsRemoved,   this, &GalleryRowModel::scheduleRebuild);
+        //  betroffenen Zeile - ein Thumbnail verschiebt keine Kachel.
+        //  Einfuegen/Entfernen aendert nur die STELLE - der Diff genuegt.
+        //  Einfuegen/Entfernen: die STELLE mitnehmen. Ab ihr traegt jede Zeile
+        //  andere Kacheln, auch wenn die Zeilenliste unveraendert aussieht
+        //  (s. applyRows) - ohne diese Marke blieben die Kacheln darunter auf
+        //  den Daten ihres Vorgaengers stehen, samt dessen Miniatur-Zustand.
+        const auto markDirty = [this](const QModelIndex&, int first, int) {
+            m_dirtyFrom = qMin(m_dirtyFrom, first);
+            scheduleRebuild();
+        };
+        connect(m_proxy, &QAbstractItemModel::rowsInserted,  this, markDirty);
+        connect(m_proxy, &QAbstractItemModel::rowsRemoved,   this, markDirty);
         //  Diese drei TAUSCHEN den Inhalt: Ordnerwechsel/Reload (`modelReset`),
         //  neue Sortierung (`layoutChanged`), Umordnung (`rowsMoved`). Dabei
         //  koennen die Zeilen dieselbe GESTALT behalten und trotzdem voellig
-        //  andere Kacheln tragen — die Ansicht braucht dann ein Auffrischen
+        //  andere Kacheln tragen - die Ansicht braucht dann ein Auffrischen
         //  ueber ALLE Zeilen, nicht nur ueber die verschobenen.
         const auto markReset = [this]() { m_sourceReset = true; scheduleRebuild(); };
         connect(m_proxy, &QAbstractItemModel::rowsMoved,     this, markReset);
@@ -86,7 +94,7 @@ void GalleryRowModel::scheduleRebuild() {
 
 //  Ist `maybeAncestor` derselbe Bereich wie `scope` oder einer darueber? Damit
 //  entscheidet sich, ob eine Zeile ein NEUES Band beginnt (dann kommt eine
-//  Kopfzeile davor) oder nur in ein laufendes zurueckkehrt — der Inhalt eines
+//  Kopfzeile davor) oder nur in ein laufendes zurueckkehrt - der Inhalt eines
 //  Ordners nach einem eingeschobenen Unterordner braucht keine zweite Kopfzeile.
 bool GalleryRowModel::isAncestorOrSame(int maybeAncestor, int scope) const {
     if (!m_src) return maybeAncestor == scope;
@@ -128,7 +136,7 @@ void GalleryRowModel::rebuildNow() {
         while (j < n && (j - i) < cols && m_proxy->scopeAt(j) == scope)
             ++j;
         //  KOPFZEILE: vor der ERSTEN Zeile eines aufgeklappten Ordners. Sie
-        //  traegt seinen Namen und seine eigenen Aktionen — man soll sehen und
+        //  traegt seinen Namen und seine eigenen Aktionen - man soll sehen und
         //  treffen koennen, in welchem Ordner man gerade etwas anlegt.
         //  Ein Band BEGINNT, wenn die Zeile davor nicht schon darin lag. Der
         //  Vergleich laeuft von der vorherigen Zeile AUFWAERTS: kehrt der
@@ -180,11 +188,11 @@ void GalleryRowModel::rebuildNow() {
 //  ── Die neue Zeilenliste EINSPIELEN, ohne die Ansicht zurueckzusetzen ───────
 //  Ein `beginResetModel` wirft in der ListView ALLE Delegates weg (samt der
 //  MediaTiles darin, samt ihrer Thumbnail-Anforderungen) und setzt `contentY`
-//  auf 0 — beim Auf- und Zuklappen eines Ordners war genau das der spuerbare
+//  auf 0 - beim Auf- und Zuklappen eines Ordners war genau das der spuerbare
 //  Ruckler und der Sprung an den Anfang.
 //
 //  Stattdessen ein Diff: gleicher Anfang, gleiches Ende, dazwischen EIN
-//  Entfernen und EIN Einfuegen. Das Ende wird dabei ohne `first` verglichen —
+//  Entfernen und EIN Einfuegen. Das Ende wird dabei ohne `first` verglichen -
 //  werden Zeilen eingefuegt, verschieben sich die Proxy-Indizes aller
 //  folgenden Zeilen, ihre GESTALT bleibt aber gleich. Sie werden deshalb
 //  behalten und nur aufgefrischt.
@@ -232,16 +240,31 @@ void GalleryRowModel::applyRows(const QVector<Row>& next) {
     if (tailMoved && suffix > 0)
         emit dataChanged(index(m_rows.size() - suffix), index(m_rows.size() - 1));
     //  Hat die Quelle ihren Inhalt getauscht, ist AUCH der behaltene Anfang
-    //  inhaltlich neu — er sieht nur gleich aus. Einmal ueber alles auffrischen
+    //  inhaltlich neu - er sieht nur gleich aus. Einmal ueber alles auffrischen
     //  ist trotzdem billiger als ein Reset: die Ansicht behaelt ihre Delegates
     //  und ihre Position, liest aber jede Zeile neu.
     if (m_sourceReset) {
         m_sourceReset = false;
+        m_dirtyFrom = std::numeric_limits<int>::max();
         if (!m_rows.isEmpty())
             emit dataChanged(index(0), index(m_rows.size() - 1));
+    } else if (m_dirtyFrom != std::numeric_limits<int>::max()) {
+        //  Der Bestand hat sich AB einer bestimmten Proxy-Zeile geaendert. Eine
+        //  Zeile, deren Proxy-Bereich dort hineinreicht oder dahinter liegt,
+        //  zeigt ab jetzt andere Dateien - auch wenn `first`, Gestalt und
+        //  Kachelzahl gleich geblieben sind (eine geloeschte Datei mittendrin
+        //  ruecken die folgenden einfach auf). Genau diese Zeilen bekommen ihre
+        //  Meldung; die Zeilen davor sind nachweislich unberuehrt.
+        int from = -1;
+        for (int r = 0; r < m_rows.size(); ++r) {
+            if (m_rows.at(r).first + m_rows.at(r).count > m_dirtyFrom) { from = r; break; }
+        }
+        m_dirtyFrom = std::numeric_limits<int>::max();
+        if (from >= 0)
+            emit dataChanged(index(from), index(m_rows.size() - 1));
     }
     //  Sonst kann sich nur der behaltene Anfang in den Kacheldaten geaendert
-    //  haben (Thumbnail, Tags) — das meldet `onSourceDataChanged` gezielt.
+    //  haben (Thumbnail, Tags) - das meldet `onSourceDataChanged` gezielt.
 
     if (oldMid != newMid)
         emit countChanged();
@@ -253,7 +276,7 @@ void GalleryRowModel::onSourceDataChanged(const QModelIndex& topLeft,
     const int from = topLeft.row();
     const int to   = bottomRight.row();
     //  Die betroffenen VISUELLEN Zeilen sind zusammenhaengend (die Zeilenliste
-    //  ist nach Proxy-Zeilen geordnet) — ein Bereich genuegt.
+    //  ist nach Proxy-Zeilen geordnet) - ein Bereich genuegt.
     int first = -1, last = -1;
     for (int r = 0; r < m_rows.size(); ++r) {
         const Row& row = m_rows.at(r);

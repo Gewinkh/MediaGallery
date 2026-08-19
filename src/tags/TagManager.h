@@ -52,7 +52,7 @@ public:
                            const QString& toCatId);
 
     // ── Datei ↔ Kategorie (direkte Mitgliedschaft, TagCategory::files) ────────
-    //  Bisher entstanden Datei-Einträge nur über Legacy-JSON bzw. den Converter —
+    //  Bisher entstanden Datei-Einträge nur über Legacy-JSON bzw. den Converter -
     //  ohne Setter konnte QML Dateien weder Kategorien zuweisen noch die
     //  Mitgliedschaft anzeigen. Schlüssel ist der DATEINAME (wie beim Tag-System).
     void addFileToCategory(const QString& catId, const QString& fileName);

@@ -400,7 +400,7 @@ void AppSettings::setPageTransition(PageTransition t) {
     m_settings.setValue("ui/pageTransition", static_cast<int>(t));
 }
 ExtractSelectStyle AppSettings::extractSelectStyle() const {
-    // Default 0 = Frame (Akzent-Rahmen) — die dezentere Variante.
+    // Default 0 = Frame (Akzent-Rahmen) - die dezentere Variante.
     return static_cast<ExtractSelectStyle>(
         m_settings.value("ui/extractSelectStyle", 0).toInt());
 }
@@ -435,14 +435,14 @@ bool AppSettings::fileDropMove() const {
 void AppSettings::setFileDropMove(bool v) {
     m_settings.setValue("ui/fileDropMove", v);
 }
-//  „Alle Dateien anzeigen" — Begleitdateien der App sichtbar machen.
+//  „Alle Dateien anzeigen" - Begleitdateien der App sichtbar machen.
 bool AppSettings::showAllFiles() const {
     return m_settings.value("ui/showAllFiles", false).toBool();
 }
 void AppSettings::setShowAllFiles(bool v) {
     m_settings.setValue("ui/showAllFiles", v);
 }
-//  Schriftfarbe des TXT→PDF-Exports (Vorgabe, je Datei überschreibbar).
+//  Schriftfarbe des TXT->PDF-Exports (Vorgabe, je Datei überschreibbar).
 //  Als NAME gespeichert und beim Lesen geprüft: ein von Hand verfälschter Wert
 //  ergäbe sonst eine ungültige QColor und damit unsichtbaren Text im Export.
 QColor AppSettings::textPdfColor() const {
@@ -480,7 +480,7 @@ void AppSettings::setVideoSeekStep(int seconds) {
 
 // ─── PDF-Editor ───────────────────────────────────────────────────────────────
 bool AppSettings::pdfEditPanelTop() const {
-    // Standard: false → Text-Eigenschaften als rechte Seitenleiste.
+    // Standard: false -> Text-Eigenschaften als rechte Seitenleiste.
     return m_settings.value("pdfedit/panelTop", false).toBool();
 }
 void AppSettings::setPdfEditPanelTop(bool v) {
@@ -489,7 +489,7 @@ void AppSettings::setPdfEditPanelTop(bool v) {
 
 // ─── DOCX-Editor ──────────────────────────────────────────────────────────────
 bool AppSettings::docxSaveDirect() const {
-    // Standard: true → Direkt speichern (mit einmaliger .bak je Sitzung).
+    // Standard: true -> Direkt speichern (mit einmaliger .bak je Sitzung).
     return m_settings.value("docx/saveDirect", true).toBool();
 }
 void AppSettings::setDocxSaveDirect(bool v) {
@@ -497,7 +497,7 @@ void AppSettings::setDocxSaveDirect(bool v) {
 }
 
 bool AppSettings::pdfPageEditDestructive() const {
-    // Standard: false → nicht-destruktiv (Seiten-Änderungen liegen im Sidecar
+    // Standard: false -> nicht-destruktiv (Seiten-Änderungen liegen im Sidecar
     // und wirken erst beim Export; das Original-PDF bleibt unangetastet).
     return m_settings.value("pdfedit/pageEditDestructive", false).toBool();
 }
@@ -506,7 +506,7 @@ void AppSettings::setPdfPageEditDestructive(bool v) {
 }
 
 bool AppSettings::pdfExportLossless() const {
-    // Standard: true → verlustfrei bevorzugen. Das ist der schonendere Weg
+    // Standard: true -> verlustfrei bevorzugen. Das ist der schonendere Weg
     // (Text bleibt durchsuchbar, Vektorgrafik/Schriften bleiben erhalten) und
     // kann nichts kaputt machen: wo er nicht sicher anwendbar ist, weicht der
     // Controller selbsttätig auf den Raster-Export aus.
@@ -517,7 +517,7 @@ void AppSettings::setPdfExportLossless(bool v) {
 }
 
 bool AppSettings::pdfExportAsAnnotations() const {
-    // Standard: false → gemalter Inhalt. Er sieht in JEDEM Betrachter und im
+    // Standard: false -> gemalter Inhalt. Er sieht in JEDEM Betrachter und im
     // Druck gleich aus; echte Annotationen sind zwar weiterbearbeitbar, aber
     // eben auch mit einem Klick zu löschen und werden nicht überall gleich
     // dargestellt. Wer den Austausch will, schaltet es bewusst ein.
@@ -656,4 +656,100 @@ QStringList AppSettings::savedFolders() const {
 
 void AppSettings::setSavedFolders(const QStringList& paths) {
     m_settings.setValue("bookmarks/folders", paths);
+}
+
+// ─── Audio-Player: Equalizer und Optionen ─────────────────────────────────────
+//  Alles unter `audio/`. Werte werden beim LESEN geklemmt - eine von Hand
+//  verstellte Datei darf keinen Regler an den Anschlag oder darüber schicken.
+bool AppSettings::audioEqEnabled() const { return m_settings.value("audio/eqEnabled", false).toBool(); }
+void AppSettings::setAudioEqEnabled(bool on) { m_settings.setValue("audio/eqEnabled", on); }
+
+QList<double> AppSettings::audioEqBands() const {
+    const QStringList raw = m_settings.value("audio/eqBands").toStringList();
+    QList<double> out;
+    out.reserve(10);
+    for (int i = 0; i < 10; ++i) {
+        const double v = (i < raw.size()) ? raw.at(i).toDouble() : 0.0;
+        out.append(qBound(-12.0, v, 12.0));
+    }
+    return out;
+}
+void AppSettings::setAudioEqBands(const QList<double>& db) {
+    QStringList raw;
+    raw.reserve(db.size());
+    for (double v : db) raw.append(QString::number(qBound(-12.0, v, 12.0), 'f', 2));
+    m_settings.setValue("audio/eqBands", raw);
+}
+
+double AppSettings::audioEqPreamp() const {
+    return qBound(-12.0, m_settings.value("audio/eqPreamp", 0.0).toDouble(), 12.0);
+}
+void AppSettings::setAudioEqPreamp(double db) {
+    m_settings.setValue("audio/eqPreamp", qBound(-12.0, db, 12.0));
+}
+
+QStringList AppSettings::audioEqPresets() const {
+    return m_settings.value("audio/eqPresets").toStringList();
+}
+void AppSettings::setAudioEqPresets(const QStringList& presets) {
+    m_settings.setValue("audio/eqPresets", presets);
+}
+
+bool AppSettings::audioPlayerMode() const { return m_settings.value("audio/playerMode", false).toBool(); }
+void AppSettings::setAudioPlayerMode(bool on) { m_settings.setValue("audio/playerMode", on); }
+bool AppSettings::audioListLayout() const { return m_settings.value("audio/listLayout", true).toBool(); }
+void AppSettings::setAudioListLayout(bool on) { m_settings.setValue("audio/listLayout", on); }
+bool AppSettings::audioShowVideos() const { return m_settings.value("audio/showVideos", false).toBool(); }
+void AppSettings::setAudioShowVideos(bool on) { m_settings.setValue("audio/showVideos", on); }
+
+bool AppSettings::audioRememberLast() const { return m_settings.value("audio/rememberLast", true).toBool(); }
+void AppSettings::setAudioRememberLast(bool on) { m_settings.setValue("audio/rememberLast", on); }
+
+QString AppSettings::audioLastFile() const { return m_settings.value("audio/lastFile").toString(); }
+void AppSettings::setAudioLastFile(const QString& path) { m_settings.setValue("audio/lastFile", path); }
+
+qint64 AppSettings::audioLastPosition() const {
+    return qMax<qint64>(0, m_settings.value("audio/lastPosition", 0).toLongLong());
+}
+void AppSettings::setAudioLastPosition(qint64 ms) {
+    m_settings.setValue("audio/lastPosition", qMax<qint64>(0, ms));
+}
+
+double AppSettings::audioVolume() const {
+    return qBound(0.0, m_settings.value("audio/volume", 0.85).toDouble(), 1.0);
+}
+void AppSettings::setAudioVolume(double v) { m_settings.setValue("audio/volume", qBound(0.0, v, 1.0)); }
+
+bool AppSettings::audioShuffle() const { return m_settings.value("audio/shuffle", false).toBool(); }
+void AppSettings::setAudioShuffle(bool on) { m_settings.setValue("audio/shuffle", on); }
+
+int AppSettings::audioRepeat() const {
+    return qBound(0, m_settings.value("audio/repeat", 0).toInt(), 2);
+}
+void AppSettings::setAudioRepeat(int mode) { m_settings.setValue("audio/repeat", qBound(0, mode, 2)); }
+
+// ─── Zwei-Fenster-Modus: Verhältnis und zweiter Ordner ────────────────────────
+//  Das Verhältnis wird beim LESEN geklemmt: eine von Hand verstellte Datei darf
+//  keine Hälfte auf null Breite schicken (dieselbe Linie wie beim Spulschritt).
+qreal AppSettings::paneSplit() const {
+    const qreal v = m_settings.value("ui/paneSplit", 0.5).toDouble();
+    return qBound(0.15, v, 0.85);
+}
+void AppSettings::setPaneSplit(qreal v) {
+    m_settings.setValue("ui/paneSplit", qBound(0.15, v, 0.85));
+}
+QString AppSettings::secondFolder() const {
+    return m_settings.value("folder/second", QString()).toString();
+}
+void AppSettings::setSecondFolder(const QString& path) {
+    m_settings.setValue("folder/second", path);
+}
+
+// ─── Bookmark groups (display order + collapsed flag) ─────────────────────────
+QStringList AppSettings::bookmarkGroups() const {
+    return m_settings.value("bookmarks/groups").toStringList();
+}
+
+void AppSettings::setBookmarkGroups(const QStringList& groups) {
+    m_settings.setValue("bookmarks/groups", groups);
 }

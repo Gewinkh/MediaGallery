@@ -105,14 +105,14 @@ void PdfMediaHandler::parseLinkAnnotations(const QByteArray& data) {
     // PDF link annotations: /Subtype /Link  with  /A << /S /URI  /URI (url) >>
     // The /A value can be:
     //   (a) inline dict:   /A << /S /URI /URI (https://...) >>
-    //   (b) indirect ref:  /A 14 0 R   →  object 14 contains the action dict
+    //   (b) indirect ref:  /A 14 0 R   ->  object 14 contains the action dict
     // We handle both.
 
     const QByteArray tags[] = { "/Subtype /Link", "/Subtype/Link" };
 
     // Helper lambda: extract URI string from an action dict byte block
     auto extractUri = [](const QByteArray& block) -> QString {
-        // Find /URI key — value is a PDF string: (url) or <hex>
+        // Find /URI key - value is a PDF string: (url) or <hex>
         qsizetype uriKey = block.indexOf("/URI");
         if (uriKey < 0) return {};
         // Skip the key name itself (4 chars "/URI") + optional whitespace
@@ -136,9 +136,9 @@ void PdfMediaHandler::parseLinkAnnotations(const QByteArray& data) {
         return {};
     };
 
-    // Helper lambda: resolve an indirect PDF object reference "N G R" → object body
+    // Helper lambda: resolve an indirect PDF object reference "N G R" -> object body
     auto resolveIndirect = [&](const QByteArray& ref) -> QByteArray {
-        // ref looks like "14 0 R" — extract object number
+        // ref looks like "14 0 R" - extract object number
         bool ok = false;
         const int objNum = ref.trimmed().split(' ').first().toInt(&ok);
         if (!ok || objNum <= 0) return {};
@@ -160,7 +160,7 @@ void PdfMediaHandler::parseLinkAnnotations(const QByteArray& data) {
             while (afterRef < data.size() && data[afterRef] >= '0' && data[afterRef] <= '9') ++afterRef;
             while (afterRef < data.size() && (data[afterRef] == ' ')) ++afterRef;
             if (data.mid(afterRef, 3) != "obj") { pos += marker.size(); continue; }
-            // Found the object — return its body (between "obj\n" and "endobj")
+            // Found the object - return its body (between "obj\n" and "endobj")
             qsizetype bodyStart = afterRef + 3;
             qsizetype bodyEnd   = data.indexOf("endobj", bodyStart);
             if (bodyEnd < 0) bodyEnd = qMin(bodyStart + 4096, static_cast<qsizetype>(data.size()));
@@ -195,7 +195,7 @@ void PdfMediaHandler::parseLinkAnnotations(const QByteArray& data) {
             // ── /P (page reference) ────────────────────────────────────────
             const QByteArray pageRef = dictValue(dict, "/P");
 
-            // ── /A (action) — inline dict or indirect reference ────────────
+            // ── /A (action) - inline dict or indirect reference ────────────
             QString url;
 
             // Find "/A" key in the annotation dict
@@ -270,7 +270,7 @@ void PdfMediaHandler::parseOneAnnotation(const QByteArray& data,
                                          qsizetype hitPos,
                                          const QByteArray& subtypeTag) {
     // ── Locate the surrounding dictionary ────────────────────────────────────
-    // Walk backward from hitPos to the nearest '<<' — that's (approximately)
+    // Walk backward from hitPos to the nearest '<<' - that's (approximately)
     // the start of the annotation dictionary.
     qsizetype dictStart = data.lastIndexOf("<<", hitPos);
     if (dictStart < 0) return;

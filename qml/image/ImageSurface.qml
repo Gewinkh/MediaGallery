@@ -5,12 +5,12 @@ import MediaGallery 1.0
 import "../common"
 
 // ─────────────────────────────────────────────────────────────────────────────
-//  ImageSurface.qml — Bild-Anzeige mit PDF-artigem Zoom/Pan UND dezentralem
+//  ImageSurface.qml - Bild-Anzeige mit PDF-artigem Zoom/Pan UND dezentralem
 //  Bild-Editor (nicht-destruktive Annotationen). Ersetzt die frühere simple
 //  img.scale-Komponente im FullscreenViewer.
 //
 //  DEZENTRAL: jede Kachel (Split-View) hat ihre EIGENE ImageEditController-
-//  Instanz (via qmlRegisterType) → unabhängige Auswahl/Undo/Export je Bild.
+//  Instanz (via qmlRegisterType) -> unabhängige Auswahl/Undo/Export je Bild.
 //
 //  ANSICHT: Ein Flickable trägt das Bild in Anzeige-Pixeln (natürliche Größe ×
 //  dispScale). Pan = Ziehen (Ansichtsmodus oder Auswahl-Werkzeug); Zoom =
@@ -43,8 +43,8 @@ Item {
 
     // ── Editor-Zustand (von Delegates/Toolbar/Panel gelesen) ──────────────────
     property bool notesVisible: true
-    property int  editCommitRev: 0               // Bump → offene Textbearbeitungen schließen
-    property int  _autoEditId: -1                // frisch erzeugte Text-Notiz → sofort editieren
+    property int  editCommitRev: 0               // Bump -> offene Textbearbeitungen schließen
+    property int  _autoEditId: -1                // frisch erzeugte Text-Notiz -> sofort editieren
     property bool editPanelVisible: false
 
     readonly property bool docReady: img.status === Image.Ready
@@ -82,7 +82,7 @@ Item {
     function actualSize()  { setDispScale(1.0) }
 
     // Fenster-Resize: im Fit-Modus neu einpassen; sonst dispScale HALTEN (kein
-    // Springen — der Flickable klemmt die Position selbst neu). Behebt das
+    // Springen - der Flickable klemmt die Position selbst neu). Behebt das
     // Zurückspringen beim Größenändern/Hinzufügen einer Datei in der Split-Ansicht.
     onFitScaleChanged: if (root._fitMode) root.dispScale = root.fitScale
 
@@ -196,7 +196,7 @@ Item {
             }
         }
 
-        // Mausrad zoomt (Bild hat keinen Scrollinhalt) — mittig verankert.
+        // Mausrad zoomt (Bild hat keinen Scrollinhalt) - mittig verankert.
         MouseArea {
             anchors.fill: parent
             acceptedButtons: Qt.NoButton
@@ -220,7 +220,7 @@ Item {
     Rectangle {
         id: toolbar
         anchors { left: parent.left; right: parent.right; top: parent.top; topMargin: root.topInset }
-        //  42 px wie im DOCX-Editor — die drei Editor-Leisten sind
+        //  42 px wie im DOCX-Editor - die drei Editor-Leisten sind
         //  bewusst gleich hoch (Nutzerwunsch: überall konsistent).
         height: 42
         color: App.themeToolbarBg
@@ -256,9 +256,11 @@ Item {
         //  LINKS die Werkzeuge (Nutzerentscheidung 2026-08-16): das Bearbeiten
         //  liegt damit auf derselben Seite wie im PDF- und DOCX-Editor; die
         //  Ansicht (Zoom) sitzt rechts. Die Transliteration bleibt bewusst
-        //  rechts — sie gehört zur Eingabe, nicht zum Werkzeugkasten.
-        Row {
-            anchors { left: parent.left; leftMargin: 10; verticalCenter: parent.verticalCenter }
+        //  rechts - sie gehört zur Eingabe, nicht zum Werkzeugkasten.
+        //  Blätterbar wie die übrigen Leisten (Mausrad, mit und ohne Strg).
+        ScrollableBar {
+            anchors { left: parent.left; leftMargin: 10; right: imgToolsRight.left
+                      rightMargin: 8; top: parent.top; bottom: parent.bottom }
             spacing: 4
             TBtn { visible: root.editCtl.editMode; iconName: "eye"; checked: !root.notesVisible
                    tip: App.uiText(App.language, "PdfEditNotesToggleTip")
@@ -280,8 +282,12 @@ Item {
                    } }
         }
 
-        Row {
-            anchors { right: parent.right; rightMargin: 10; verticalCenter: parent.verticalCenter }
+        //  Gedeckelt und blätterbar wie die linke Gruppe (s. PdfSurface).
+        ScrollableBar {
+            id: imgToolsRight
+            anchors { right: parent.right; rightMargin: 10
+                      top: parent.top; bottom: parent.bottom }
+            width: Math.min(contentWidth, toolbar.width * 0.55)
             spacing: 4
             TBtn { iconName: "minus"; tip: App.uiText(App.language, "ImageZoomOut"); onActivated: root.zoomOut() }
             TBtn { iconName: "fit-window"; tip: App.uiText(App.language, "ImageFitWindow"); checked: root._fitMode

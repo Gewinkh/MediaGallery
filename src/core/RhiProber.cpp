@@ -7,8 +7,8 @@
 #include <QStringList>
 
 // ─────────────────────────────────────────────────────────────────────────────
-//  Hilfsfunktion: String → GraphicsApi
-//  (Erreicht nur noch VALIDIERTE Namen — sanitizeBackend läuft immer davor.)
+//  Hilfsfunktion: String -> GraphicsApi
+//  (Erreicht nur noch VALIDIERTE Namen - sanitizeBackend läuft immer davor.)
 // ─────────────────────────────────────────────────────────────────────────────
 static QSGRendererInterface::GraphicsApi toApi(const QString& name)
 {
@@ -22,11 +22,11 @@ static QSGRendererInterface::GraphicsApi toApi(const QString& name)
 // ─────────────────────────────────────────────────────────────────────────────
 //  Vulkan-Loader-Vorabprüfung (nur dort, wo Vulkan wählbar ist)
 //
-//  Billige dlopen-Probe auf die Loader-Bibliothek — KEINE Instanz-Erzeugung
+//  Billige dlopen-Probe auf die Loader-Bibliothek - KEINE Instanz-Erzeugung
 //  (zu teuer, und vor der QGuiApplication auch zu früh). Fehlt der Loader
 //  (z. B. Linux ohne vulkan-icd-loader), würde ein Vulkan-Start sofort
-//  scheitern und erst der Crash-Guard-Zyklus (Crash → Neustart → Fallback)
-//  zu OpenGL führen — die Vorabprüfung erspart diesen Umweg komplett.
+//  scheitern und erst der Crash-Guard-Zyklus (Crash -> Neustart -> Fallback)
+//  zu OpenGL führen - die Vorabprüfung erspart diesen Umweg komplett.
 // ─────────────────────────────────────────────────────────────────────────────
 #ifndef Q_OS_MACOS
 static bool vulkanLoaderAvailable()
@@ -42,7 +42,7 @@ static bool vulkanLoaderAvailable()
 #endif
 
 // ─────────────────────────────────────────────────────────────────────────────
-//  platformDefault — sicherer Ausgangspunkt je Plattform
+//  platformDefault - sicherer Ausgangspunkt je Plattform
 //  OpenGL: auf allen drei Zielplattformen vorhanden und zugleich das
 //  robusteste Backend für die WebEngine-Vorschau (s. Projektüberblick).
 // ─────────────────────────────────────────────────────────────────────────────
@@ -52,8 +52,8 @@ QString RhiProber::platformDefault()
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-//  fallbackFor — Degradationskette nach einem Fehlschlag
-//  vulkan/d3d11/metal → opengl → software (Software ist die letzte Stufe).
+//  fallbackFor - Degradationskette nach einem Fehlschlag
+//  vulkan/d3d11/metal -> opengl -> software (Software ist die letzte Stufe).
 // ─────────────────────────────────────────────────────────────────────────────
 QString RhiProber::fallbackFor(const QString& backend)
 {
@@ -63,7 +63,7 @@ QString RhiProber::fallbackFor(const QString& backend)
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-//  sanitizeBackend — Namens- und Plattformvalidierung
+//  sanitizeBackend - Namens- und Plattformvalidierung
 //  Unbekannte oder plattformfremde Werte (verwaiste/kopierte Configs) fallen
 //  auf den Plattform-Standard zurück statt stillschweigend auf Software.
 // ─────────────────────────────────────────────────────────────────────────────
@@ -86,7 +86,7 @@ QString RhiProber::sanitizeBackend(QString backend)
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-//  applyApi — setzt das Backend
+//  applyApi - setzt das Backend
 // ─────────────────────────────────────────────────────────────────────────────
 void RhiProber::applyApi(const QString& backend)
 {
@@ -94,13 +94,13 @@ void RhiProber::applyApi(const QString& backend)
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-//  applyStoredBackend — Haupt-Einstiegspunkt, VOR QGuiApplication aufrufen
+//  applyStoredBackend - Haupt-Einstiegspunkt, VOR QGuiApplication aufrufen
 //
 //  Ablauf:
 //  1. Crash-Guard prüfen: Ist „lastStartedWith" noch gesetzt, ist die App beim
-//     letzten Start mit diesem Backend sofort abgestürzt → EINE Stufe der
+//     letzten Start mit diesem Backend sofort abgestürzt -> EINE Stufe der
 //     Degradationskette zurückfallen (persistiert, Guard fürs Fallback neu
-//     gesetzt — crasht auch das Fallback sofort, geht es weiter Richtung
+//     gesetzt - crasht auch das Fallback sofort, geht es weiter Richtung
 //     Software). Verwaiste Guard-Werte (unbekannter Name) werden ignoriert
 //     und gelöscht statt fälschlich einen Fallback auszulösen.
 //  2. Gewünschtes Backend aus „rhi/backend" lesen und validieren (Name +
@@ -123,7 +123,7 @@ QString RhiProber::applyStoredBackend()
             QStringLiteral("metal"),  QStringLiteral("opengl")
         };
         if (knownNames.contains(guardRaw)) {
-            // Letzter Start mit diesem Backend endete im Crash → eine Stufe
+            // Letzter Start mit diesem Backend endete im Crash -> eine Stufe
             // der Kette zurückfallen (nicht mehr pauschal Software).
             const QString fb = fallbackFor(guardRaw);
             s.setValue(QString::fromUtf8(kKeyBackend),    fb);
@@ -135,7 +135,7 @@ QString RhiProber::applyStoredBackend()
             applyApi(fb);
             return fb;
         }
-        // Verwaister/unbekannter Guard-Wert → kein Rückschluss möglich,
+        // Verwaister/unbekannter Guard-Wert -> kein Rückschluss möglich,
         // nur aufräumen und normal fortfahren.
         s.remove(QString::fromUtf8(kKeyCrashGuard));
     }
@@ -150,7 +150,7 @@ QString RhiProber::applyStoredBackend()
         backend = QStringLiteral("opengl");
 #endif
 
-    // Korrigierte/gefallene Werte zurückschreiben → Anzeige und Persistenz
+    // Korrigierte/gefallene Werte zurückschreiben -> Anzeige und Persistenz
     // sind konsistent zum tatsächlich verwendeten Backend.
     if (backend != s.value(QString::fromUtf8(kKeyBackend)).toString())
         s.setValue(QString::fromUtf8(kKeyBackend), backend);
@@ -165,7 +165,7 @@ QString RhiProber::applyStoredBackend()
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-//  markCleanShutdown — Crash-Guard löschen
+//  markCleanShutdown - Crash-Guard löschen
 // ─────────────────────────────────────────────────────────────────────────────
 void RhiProber::markCleanShutdown()
 {
@@ -175,7 +175,7 @@ void RhiProber::markCleanShutdown()
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-//  setDesiredBackend — Backend für nächsten Start speichern (validiert)
+//  setDesiredBackend - Backend für nächsten Start speichern (validiert)
 // ─────────────────────────────────────────────────────────────────────────────
 void RhiProber::setDesiredBackend(const QString& backend)
 {
@@ -185,10 +185,10 @@ void RhiProber::setDesiredBackend(const QString& backend)
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-//  noteRuntimeFailure — Laufzeit-Guard (Gerätewechsel/Device-Lost)
+//  noteRuntimeFailure - Laufzeit-Guard (Gerätewechsel/Device-Lost)
 //
 //  Qt meldet sceneGraphError nur, wenn der Scene Graph den Fehler NICHT
-//  selbst beheben konnte — die laufende Sitzung ist auf diesem Gerät nicht
+//  selbst beheben konnte - die laufende Sitzung ist auf diesem Gerät nicht
 //  mehr zu retten. Hier wird deshalb fürs NÄCHSTE Programm-Ende das
 //  nächstsicherere Backend persistiert; der Neustart läuft damit garantiert
 //  wieder (schlimmstenfalls Software).
@@ -199,7 +199,7 @@ void RhiProber::noteRuntimeFailure()
     const QString cur = sanitizeBackend(s.value(
         QString::fromUtf8(kKeyBackend), platformDefault()).toString());
     if (cur == u"software")
-        return;                        // letzte Stufe — nichts mehr zu degradieren
+        return;                        // letzte Stufe - nichts mehr zu degradieren
     s.setValue(QString::fromUtf8(kKeyBackend),  fallbackFor(cur));
     s.setValue(QString::fromUtf8(kKeyFallback), true);
     s.sync();

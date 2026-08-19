@@ -5,7 +5,7 @@ import MediaGallery 1.0
 import "../common"
 
 // ─────────────────────────────────────────────────────────────────────────────
-//  SettingsCategoryNode.qml — rekursiver Editor-Knoten des Kategorie-Baums.
+//  SettingsCategoryNode.qml - rekursiver Editor-Knoten des Kategorie-Baums.
 //  Instanziiert sich für Unterkategorien selbst (Loader + source-String, um den
 //  M129-Fehler "Typ kann nicht rekursiv instanziiert werden" zu vermeiden).
 //
@@ -131,7 +131,7 @@ Column {
                 // sonst Eigenfarbe des Tags.
                 readonly property color effColor: nodeRoot.node.tagUniform
                                                   ? nodeRoot.node.tagColor
-                                                  : App.tagColor(chip.modelData)
+                                                  : Tags.tagColor(chip.modelData)
                 height: 22; radius: 11
                 width: chipRow.implicitWidth + 14
                 color: Qt.rgba(chip.effColor.r, chip.effColor.g,
@@ -163,7 +163,7 @@ Column {
         visible: !nodeRoot.collapsed
         Repeater {
             model: nodeRoot.node.children
-            //  setSource() statt `source:` — s. SettingsCategoriesTab: mit
+            //  setSource() statt `source:` - s. SettingsCategoriesTab: mit
             //  `required property` scheitert die Erzeugung sonst still und die
             //  Unterkategorien blieben unsichtbar.
             delegate: Loader {

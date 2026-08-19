@@ -17,6 +17,42 @@ enum class StringKey {
     MenuOpenFolder,
     MenuRefresh,
     MenuQuit,
+    MenuClosePane,             // Datei-Menü bei zwei Hälften: „Schließen"
+    MenuSplitWindow,           // Ansicht: Fenster teilen (zweite Galerie)
+    MenuUnsplitWindow,         // Ansicht: Teilung aufheben
+    SettingsPaneLabel,         // Einstellungen: „Ordnerbezogene Angaben von:"
+    //  ── Audio-Player mit Equalizer ──
+    AudioPlayerMode,
+    AudioShuffle,
+    AudioRepeatOff,
+    AudioRepeatOne,
+    AudioRepeatAll,
+    AudioEqTitle,
+    AudioEqOn,
+    AudioEqPreamp,
+    AudioEqReset,
+    AudioEqPreset,
+    AudioEqSavePreset,
+    AudioEqDeletePreset,
+    AudioEqPresetName,
+    AudioEqClipHint,
+    SettingsTabAudio,
+    AudioShowVideos,
+    AudioRememberLast,
+    AudioRememberHint,
+    AudioVolume,
+    AudioNoTrack,
+    AudioPrevious,
+    AudioNext,
+    AudioQueueHeader,
+    AudioNowPlaying,
+    AudioBackToGallery,
+    AudioOpenPlayer,
+    AudioLayoutTitle,
+    AudioLayoutTiles,
+    AudioLayoutList,
+    AudioLayoutHint,
+
     MenuToggleOptions,
     MenuSettingsItem,
     MenuLanguage,
@@ -98,12 +134,25 @@ enum class StringKey {
     BookmarkDelete,
     BookmarkPathLabel,
     BookmarkBrowse,
+    //  ── Gruppen im Menü „Ordner" und in Einstellungen ▸ Lesezeichen ──
+    BookmarkGroupAdd,
+    BookmarkGroupNewTitle,
+    BookmarkGroupRenameTitle,
+    BookmarkGroupNameLabel,
+    BookmarkGroupDeleteTitle,
+    BookmarkGroupDeleteText,
+    BookmarkGroupUngrouped,
+    BookmarkGroupLabel,
+    BookmarkGroupNone,
+    BookmarkGroupEmptyHint,
+    BookmarkDragHint,
+    BookmarkGroupNameTaken,
 
     // Text editor / filter
     EditorAutoSave,
     EditorSave,
-    TextExportPdf,            // Texteditor-Toolbar: Button „→ PDF"
-    TextExportPdfTip,         // Tooltip des „→ PDF"-Buttons
+    TextExportPdf,            // Texteditor-Toolbar: Button „-> PDF"
+    TextExportPdfTip,         // Tooltip des „-> PDF"-Buttons
     TextExportPdfOk,          // Statusmeldung: PDF geschrieben („%1" = Dateiname)
     TextExportPdfFail,        // Statusmeldung: Export fehlgeschlagen („%1" = Grund)
     TextPdfColorTitle,        // Titel des Farbwählers für die PDF-Schriftfarbe
@@ -111,8 +160,6 @@ enum class StringKey {
     TextPdfColorResetTip,     // Tooltip: zurück auf die Vorgabe aus den Einstellungen
     TextPdfColorSetting,      // Einstellungen ▸ Editor: Beschriftung der Vorgabe
     TextPdfColorSettingHint,  // Einstellungen ▸ Editor: Erklärung der Vorgabe
-    FileMenuTitle,            // Kopfleiste der Kachel: Knopf des Datei-Menüs
-    ViewMenuTitle,            // Kopfleiste der Kachel: Knopf des Ansichts-Menüs
     ViewMenuImmersive,        // Ansichts-Menü: immersives Vollbild (F)
     TrackMenuTitle,           // Kopfleiste: Knopf „Änderungen verfolgen"
     TrackRecord,              // Popup: Checkbox „Aufzeichnen"
@@ -421,7 +468,7 @@ enum class StringKey {
     DocxTableCut,             // Kontextmenü: ganze Tabelle ausschneiden
     DocxTablePaste,           // Kontextmenü: Tabelle aus der Ablage einfügen
     DocxTableDelete,
-    DocxTableLocked,          // verbundene Zellen → Struktur unveränderlich
+    DocxTableLocked,          // verbundene Zellen -> Struktur unveränderlich
     // Bildgröße (Kontextmenü + Ziehpunkte)
     DocxImageSize,
     DocxImageInline,
@@ -457,8 +504,8 @@ enum class StringKey {
     DocxSpacingGroup,         // DOCX-Toolbar: Sammel-Knopf (Zeilenabstand + davor/danach)
     DocxListNone,             // DOCX-Listen-Popup: Liste ausschalten
     DocxListType,             // DOCX-Toolbar: Tooltip des Listen-Knopfs
-    DocxExportPdf,            // DOCX-Toolbar: Button „→ PDF" (Aufgabe 2)
-    DocxExportPdfTip,         // Tooltip des „→ PDF"-Buttons
+    DocxExportPdf,            // DOCX-Toolbar: Button „-> PDF" (Aufgabe 2)
+    DocxExportPdfTip,         // Tooltip des „-> PDF"-Buttons
     DocxPdfExportedTo,        // Status nach PDF-Export (%1 = Dateiname)
     DocxFindPlaceholder,      // Suchen&Ersetzen: Platzhalter Suchfeld
     DocxReplacePlaceholder,   // Suchen&Ersetzen: Platzhalter Ersetzungsfeld
@@ -538,11 +585,16 @@ enum class StringKey {
 
     // ── Galerie-Kontextmenü: Datei löschen ──
     CtxDeleteFile,             // Kontextmenü-Eintrag „Datei löschen…"
+    CtxRenameFile,             // Kontextmenü-Eintrag „Umbenennen…"
+    MenuDocument,              // Menü der Kachel-Kopfleiste („Dokument")
+    PanelSearchTag,            // Suchfeld im Tag-Abschnitt
+    PanelSearchCategory,       // Suchfeld im Kategorien-Abschnitt
+    PanelSearchNoHit,          // Suche ohne Treffer
     DeleteMediaTitle,          // Dialog-Titel
     DeleteMediaText,           // Dialog-Text „%1 wird in den Papierkorb …"
     DeleteMediaConfirm,        // Dialog-Bestätigungsknopf „Löschen"
 
-    // ── Live-Transliteration (Latein → Arabisch/Kana) ──
+    // ── Live-Transliteration (Latein -> Arabisch/Kana) ──
     TranslitTip,               // Button-Tooltip
     TranslitOff,               // Popup: Aus
     TranslitArabic,            // Popup: Arabisch (mit Harakat)
@@ -624,8 +676,8 @@ enum class StringKey {
     PdfStampFileTitle,          // Dateidialog: Bild auswählen
     PdfStampFailedToast,        // Toast: Bild nicht verwendbar
     PdfEditToolRedact,          // Werkzeug: Schwärzen (kurze Beschriftung)
-    PdfRedactLimitHint,         // Hinweis: wogegen die Schwärzung schützt — und wogegen nicht
-    PdfRedactNoTextToast,       // Toast: Seite ohne Textebene — Schwärzen greift dort nicht
+    PdfRedactLimitHint,         // Hinweis: wogegen die Schwärzung schützt - und wogegen nicht
+    PdfRedactNoTextToast,       // Toast: Seite ohne Textebene - Schwärzen greift dort nicht
     PdfEditToolMarkup,          // Werkzeug: Text markieren
     PdfMarkupHighlight,         // Stil: Markieren (Fläche)
     PdfMarkupUnderline,         // Stil: Unterstreichen
@@ -678,7 +730,7 @@ public:
     static QString get(StringKey key);
     static QString get(StringKey key, const QString& arg1);
     static QString get(StringKey key, Language lang);          // explizite Sprache
-    static QString byName(const QString& name, Language lang); // Name→Key→String (für QML uiText)
+    static QString byName(const QString& name, Language lang); // Name->Key->String (für QML uiText)
 
 private:
     static const QString& de(StringKey key);

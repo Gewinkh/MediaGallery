@@ -16,13 +16,13 @@
 #include <utility>
 
 // ══════════════════════════════════════════════════════════════════════════════
-//  PdfExtractTask — schreibt die Ziel-PDF im Pool-Thread.
+//  PdfExtractTask - schreibt die Ziel-PDF im Pool-Thread.
 //
 //  Je Quelle zuerst der VERLUSTFREIE Weg (PdfAssembler::addSourcePages plant
-//  vollständig, bevor es schreibt → ein Fehlschlag hinterlässt keine Fragmente);
+//  vollständig, bevor es schreibt -> ein Fehlschlag hinterlässt keine Fragmente);
 //  nur bei Fehlschlag werden die Seiten DIESER Quelle mit einer EIGENEN
 //  QPdfDocument-Instanz (Thread-Affinität wie PdfThumbRenderTask) gerastert und
-//  als JPEG-Bildseiten in dieselbe Ausgabe gehängt. Kein QObject — der Rückweg
+//  als JPEG-Bildseiten in dieselbe Ausgabe gehängt. Kein QObject - der Rückweg
 //  läuft wie bei PdfExportTask über QMetaObject::invokeMethod (queued).
 // ══════════════════════════════════════════════════════════════════════════════
 namespace {
@@ -70,7 +70,7 @@ private:
         }, Qt::QueuedConnection);
     }
 
-    // Fallback: alle gewählten Seiten EINER Quelle rastern (JPEG → Bildseiten).
+    // Fallback: alle gewählten Seiten EINER Quelle rastern (JPEG -> Bildseiten).
     bool rasterizeJob(PdfAssembler* asmb, const Job& job, int* done,
                       int total, QString* err) {
         QPdfDocument doc;   // Affinität: dieser Pool-Thread
@@ -87,7 +87,7 @@ private:
             const QSizeF pts = doc.pagePointSize(page);
             const double wPt = pts.width()  > 1.0 ? pts.width()  : 612.0;
             const double hPt = pts.height() > 1.0 ? pts.height() : 792.0;
-            // Punkt → Pixel bei kRasterDpi, mit RAM-Kantenschutz.
+            // Punkt -> Pixel bei kRasterDpi, mit RAM-Kantenschutz.
             const double scale = PdfExtractController::kRasterDpi / 72.0;
             int w = qBound(1, int(wPt * scale + 0.5), PdfExtractController::kRasterMaxPx);
             int h = qBound(1, int(hPt * scale + 0.5), PdfExtractController::kRasterMaxPx);
@@ -162,7 +162,7 @@ private:
     CancelFlag            m_cancel;
 };
 
-// ── PdfScanTask — PDF-Liste + Seitenzahlen eines Ordners (globaler Dialog) ──
+// ── PdfScanTask - PDF-Liste + Seitenzahlen eines Ordners (globaler Dialog) ──
 class PdfScanTask : public QRunnable {
 public:
     using CancelFlag = std::shared_ptr<std::atomic<bool>>;
@@ -203,7 +203,7 @@ public:
                     && doc.status() == QPdfDocument::Status::Ready)
                     count = doc.pageCount();
             }
-            if (count <= 0) continue;                 // unlesbar → auslassen
+            if (count <= 0) continue;                 // unlesbar -> auslassen
             QVariantMap m;
             m.insert(QStringLiteral("path"), path);
             m.insert(QStringLiteral("name"), name);
@@ -231,7 +231,7 @@ private:
 //  PdfExtractController
 // ══════════════════════════════════════════════════════════════════════════════
 PdfExtractController::PdfExtractController(QObject* parent) : QObject(parent) {
-    // EIN Worker: nie zwei Extraktionen/Scans parallel → RAM-Peak gedeckelt,
+    // EIN Worker: nie zwei Extraktionen/Scans parallel -> RAM-Peak gedeckelt,
     // QSaveFile-Ziele kollidieren nicht (Muster wie PdfThumbnailProvider).
     m_pool.setMaxThreadCount(1);
     m_pool.setExpiryTimeout(30000);
@@ -293,7 +293,7 @@ QVector<int> PdfExtractController::normalizePages(const QVariantList& pages) {
         if (ok && p >= 0 && !out.contains(p))
             out.append(p);
     }
-    // Anforderung: die erzeugte PDF folgt IMMER der Originalreihenfolge —
+    // Anforderung: die erzeugte PDF folgt IMMER der Originalreihenfolge -
     // unabhängig von der Klick-Reihenfolge der Auswahl.
     std::sort(out.begin(), out.end());
     return out;
@@ -370,7 +370,7 @@ void PdfExtractController::extractOrdered(const QVariantList& items,
     // Geordnete (path,page)-Paare: Reihenfolge = Ausgabereihenfolge. Duplikate
     // je (path,page) verwerfen; aufeinanderfolgende Seiten derselben Quelle zu
     // EINEM Job zusammenfassen (addSourcePages behält die Seitenreihenfolge, s.
-    // CopyPlan::plan) → Bar-Reihenfolge bleibt exakt erhalten, ohne die Quelle
+    // CopyPlan::plan) -> Bar-Reihenfolge bleibt exakt erhalten, ohne die Quelle
     // je Seite neu zu parsen.
     QVector<Job> jobs;
     QSet<QString> seen;
@@ -392,7 +392,7 @@ void PdfExtractController::extractOrdered(const QVariantList& items,
             jobs.append({path, QVector<int>{page}});
     }
 
-    // Leerer Ziel-Ordner → Ordner der ersten Quelle (in-PDF-Aufruf aus der
+    // Leerer Ziel-Ordner -> Ordner der ersten Quelle (in-PDF-Aufruf aus der
     // PdfSurface, wo das Ziel neben der Quelldatei liegen soll).
     if (folder.isEmpty() && !firstPath.isEmpty())
         folder = QFileInfo(firstPath).absolutePath();

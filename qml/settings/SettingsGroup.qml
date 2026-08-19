@@ -3,9 +3,9 @@ import QtQuick.Layouts
 import MediaGallery 1.0
 
 // ─────────────────────────────────────────────────────────────────────────────
-//  SettingsGroup.qml — einheitlicher Titel-Container (ersetzt QGroupBox-Stil).
+//  SettingsGroup.qml - einheitlicher Titel-Container (ersetzt QGroupBox-Stil).
 //  Kinder werden in die innere ColumnLayout aufgenommen (default property alias).
-//  implicitHeight/Width leiten sich aus dem Inhalt ab → passt in ColumnLayouts.
+//  implicitHeight/Width leiten sich aus dem Inhalt ab -> passt in ColumnLayouts.
 // ─────────────────────────────────────────────────────────────────────────────
 Rectangle {
     id: group

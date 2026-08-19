@@ -18,7 +18,7 @@ namespace {
 // ── 3×2-Matrix [a b c d e f] wie in PDF ─────────────────────────────────────
 struct Mat {
     qreal a = 1, b = 0, c = 0, d = 1, e = 0, f = 0;
-    //  this ⋅ m  (erst this, dann m anwenden — PDF-Reihenfolge)
+    //  this ⋅ m  (erst this, dann m anwenden - PDF-Reihenfolge)
     Mat mul(const Mat& m) const {
         return { a*m.a + b*m.c,        a*m.b + b*m.d,
                  c*m.a + d*m.c,        c*m.b + d*m.d,
@@ -35,11 +35,11 @@ struct FontMetrics {
     mg::pdfenc::Encoding enc;
     bool     cid      = false;      // 2-Byte-Codes
     qreal    defWidth = -1.0;       // /DW bzw. feste Dickte (Courier), sonst −1
-    QHash<quint32, qreal> widths;   // Code → Breite in 1/1000 em
+    QHash<quint32, qreal> widths;   // Code -> Breite in 1/1000 em
     bool valid = false;
 
     //  Breite eines Codes in Glyphenraum-Einheiten (1/1000 em).
-    //  −1 = unbekannt → Aufrufer bricht ab (kein Raten).
+    //  −1 = unbekannt -> Aufrufer bricht ab (kein Raten).
     qreal widthOf(quint32 code) const {
         const auto it = widths.constFind(code);
         if (it != widths.constEnd()) return it.value();
@@ -115,7 +115,7 @@ bool PdfTextLayout::buildForPage(const QString& pdfPath, int pageIndex,
         const qint64 ep = body.indexOf("endstream", sp);
         if (ep < 0) return {};
         qint64 len = ep - sp;
-        //  /Length darf eine REFERENZ sein (so schreibt Qt) — direkt gelesen
+        //  /Length darf eine REFERENZ sein (so schreibt Qt) - direkt gelesen
         //  ergäbe das die Objektnummer und schnitte den Strom ab.
         const qint64 dl = streamLength(d, buf, objs);
         if (dl >= 0 && dl <= len) len = dl;
@@ -136,7 +136,7 @@ bool PdfTextLayout::buildForPage(const QString& pdfPath, int pageIndex,
     }
     if (rootNum < 0) return fail("kein /Root");
 
-    //  Seitenbaum → gesuchte Seite samt geerbtem /Resources.
+    //  Seitenbaum -> gesuchte Seite samt geerbtem /Resources.
     int pageNum = -1;
     QByteArray pageRes;
     {
@@ -220,14 +220,14 @@ bool PdfTextLayout::buildForPage(const QString& pdfPath, int pageIndex,
 
             FontMetrics fm;
             const QByteArray baseFont = nameValue(fd, "BaseFont");
-            //  Courier ist per Definition dicktengleich (600/1000) — das ist
+            //  Courier ist per Definition dicktengleich (600/1000) - das ist
             //  keine Schätzung, sondern Teil der Schriftdefinition.
             if (baseFont.contains("Courier")) fm.defWidth = 600.0;
 
             if (nameValue(fd, "Subtype") == "/Type0") {
                 fm.cid = true;
                 if (nameValue(fd, "Encoding") != "/Identity-H")
-                    return fail("Type0 ohne /Identity-H → nicht auswertbar");
+                    return fail("Type0 ohne /Identity-H -> nicht auswertbar");
                 const int tu = refValue(fd, "ToUnicode");
                 if (tu < 0) return fail("Type0 ohne /ToUnicode");
                 bool sok = false;
@@ -314,14 +314,14 @@ bool PdfTextLayout::buildForPage(const QString& pdfPath, int pageIndex,
                 }
 
                 //  KEINE (oder unvollständige) /Widths? Bei einer der 14
-                //  Standardschriften ist das ERLAUBT — die Spezifikation
+                //  Standardschriften ist das ERLAUBT - die Spezifikation
                 //  erwartet, dass der Betrachter ihre Maße kennt. Genau daran
                 //  scheiterte „Text bearbeiten" auf solchen Dokumenten.
                 //  Die Tabellen stammen aus den Adobe-AFM-Metriken; gefüllt
-                //  wird über die Kodierung der Schrift (Code → Zeichen →
+                //  wird über die Kodierung der Schrift (Code -> Zeichen ->
                 //  Breite), damit WinAnsi, MacRoman und /Differences
                 //  gleichermaßen stimmen. Bereits vorhandene Werte aus /Widths
-                //  bleiben unangetastet — die Datei weiß es besser.
+                //  bleiben unangetastet - die Datei weiß es besser.
                 int baseCount = 0;
                 if (const mg::BaseWidth* table = mg::baseFontWidths(baseFont, &baseCount)) {
                     for (quint32 code = 0; code < 256; ++code) {
@@ -396,7 +396,7 @@ bool PdfTextLayout::buildForPage(const QString& pdfPath, int pageIndex,
     //  Eine Zeichenkette zeigen und die Glyphen eintragen.
     //  `byteBase` = Offset dieser Bytes innerhalb der ZUSAMMENGEFÜGTEN Bytes
     //  des Zeigeoperators (`PdfShowSpan::bytes`). Bei `Tj` ist er 0, bei `TJ`
-    //  wächst er über die Array-Glieder — nur so zeigt `PdfGlyph::byteOffset`
+    //  wächst er über die Array-Glieder - nur so zeigt `PdfGlyph::byteOffset`
     //  auf dieselbe Stelle, an der die Weiterverarbeitung schneidet.
     auto showBytes = [&](const QByteArray& bytes, qint64 byteBase = 0) {
         if (!fm || !fm->valid) return true;                   // ohne Font nichts zu tun
@@ -438,7 +438,7 @@ bool PdfTextLayout::buildForPage(const QString& pdfPath, int pageIndex,
         return true;
     };
 
-    //  Anfang der laufenden ANWEISUNG (erster Operand) — nötig, um eine
+    //  Anfang der laufenden ANWEISUNG (erster Operand) - nötig, um eine
     //  Positionierung später vollständig ersetzen zu können.
     qint64 stmtStart = -1;
     //  Zuletzt gesetzte Positionierung (gilt für die folgenden Zeigeoperatoren).
@@ -459,8 +459,8 @@ bool PdfTextLayout::buildForPage(const QString& pdfPath, int pageIndex,
             pathBox.setBottom(qMax(pathBox.bottom(), p.y()));
         }
     };
-    //  Gemalte Fläche merken (Umrechnung unten-links → oben-links wie bei den
-    //  Glyphen). `page` ist optional — nur der ausführliche Aufruf sammelt sie.
+    //  Gemalte Fläche merken (Umrechnung unten-links -> oben-links wie bei den
+    //  Glyphen). `page` ist optional - nur der ausführliche Aufruf sammelt sie.
     auto notePaint = [&](const QRectF& userBox, bool isImage = false) {
         if (!page) return;
         const QRectF r(userBox.left(), pageH - userBox.bottom(),
@@ -493,7 +493,7 @@ bool PdfTextLayout::buildForPage(const QString& pdfPath, int pageIndex,
         if (isWs(ch)) { ++i; continue; }
         if (ch == '%') { while (i < n && content[i] != '\n' && content[i] != '\r') ++i; continue; }
         if (ch == '(' || ch == '<' || ch == '[' || ch == '/') {
-            if (ch == '<' && i + 1 < n && content[i+1] == '<') {   // Dict → überspringen
+            if (ch == '<' && i + 1 < n && content[i+1] == '<') {   // Dict -> überspringen
                 i = skipValue(content, i); ops.clear(); stmtStart = -1; continue;
             }
             const qint64 e = skipValue(content, i);
@@ -529,7 +529,7 @@ bool PdfTextLayout::buildForPage(const QString& pdfPath, int pageIndex,
             }
         }
         else if (op == "Td" || op == "TD" || op == "Tm" || op == "T*") {
-            //  Anweisung merken, BEVOR die Weiche sie auswertet — nur so lässt
+            //  Anweisung merken, BEVOR die Weiche sie auswertet - nur so lässt
             //  sich die Zeile später verschieben (s. PdfShowSpan::posStart).
             posStart = (stmtStart >= 0) ? stmtStart : s;
             posEnd   = i;
@@ -599,9 +599,9 @@ bool PdfTextLayout::buildForPage(const QString& pdfPath, int pageIndex,
                 PdfShowSpan sp;
                 sp.operandStart = lastOperandStart; sp.operandEnd = lastOperandEnd;
                 sp.isArray = false; sp.bytes = bytes; sp.fontRes = curFontRes;
-                //  Umrechnung TJ-Versatz → Seiten-Punkte (s. PdfShowSpan).
+                //  Umrechnung TJ-Versatz -> Seiten-Punkte (s. PdfShowSpan).
                 sp.tjUnitPt = fsize * hscale * ctm.scaleX() * tm.scaleX();
-                //  Bei ' und " setzt der Zeigeoperator SELBST die neue Zeile —
+                //  Bei ' und " setzt der Zeigeoperator SELBST die neue Zeile -
                 //  eine eigene Positionierung gibt es dafür nicht.
                 if (op == "Tj") { sp.posStart = posStart; sp.posEnd = posEnd;
                                   sp.posOp = posOp; sp.posArgs = posArgs; }
@@ -673,7 +673,7 @@ bool PdfTextLayout::buildForPage(const QString& pdfPath, int pageIndex,
 int PdfTextLayout::hitTest(const QVector<PdfGlyph>& glyphs, const QPointF& p) {
     if (glyphs.isEmpty()) return -1;
     //  Erst ein echter Treffer, sonst das Zeichen mit dem kleinsten Abstand
-    //  zum Mittelpunkt — so landet der Caret auch neben der Zeile sinnvoll.
+    //  zum Mittelpunkt - so landet der Caret auch neben der Zeile sinnvoll.
     for (int i = 0; i < glyphs.size(); ++i)
         if (glyphs[i].box.contains(p)) return i;
     int best = 0;

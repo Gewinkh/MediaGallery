@@ -7,16 +7,16 @@
 //  ─────
 //  Liefert die browser-artige TEXTAUSWAHL der PDF-Hauptansicht: Ziehen markiert
 //  Text, Strg+C kopiert ihn. Quelle ist die EINGEBETTETE Textebene des PDFs
-//  (kein OCR) — fuer digitale PDFs praktisch kostenlos.
+//  (kein OCR) - fuer digitale PDFs praktisch kostenlos.
 //
 //  WARUM EINE EIGENE KLASSE (und KEIN QML-PdfSelection auf root.doc)?
 //   • Die Hauptansicht skaliert ihre Seiten ueber fitScale*zoom (nicht ueber
 //     renderScale). Eine eigene C++-Bruecke gibt VOLLE Kontrolle ueber die
 //     Koordinaten-Abbildung (normalisiert [0..1] ↔ PDF-Punkte) und haengt nicht
 //     an den internen Koordinaten-Annahmen des QML-PdfSelection.
-//   • Die Auswahl laeuft ueber QPdfDocument::getSelection(page, start, end) →
+//   • Die Auswahl laeuft ueber QPdfDocument::getSelection(page, start, end) ->
 //     QPdfSelection. Deren bounds() sind Rechteck-Polygone mit Ursprung
-//     oben-links in PUNKTEN — exakt das, was wir normalisiert an QML zurueck-
+//     oben-links in PUNKTEN - exakt das, was wir normalisiert an QML zurueck-
 //     geben (wie die bestehenden Annotation-Overlays).
 //
 //  RAM-BEWUSST (Prio 1)
@@ -26,7 +26,7 @@
 //   • Es ist immer hoechstens EIN Auswahl-Dokument resident (das aktive). Beim
 //     Verlassen/Wechseln gibt PdfSurface es ueber releaseDocument() frei.
 //   • Das Dokument haelt nur die Seitenstruktur + bei Bedarf den Text der
-//     abgefragten Seite (PDFium-Cache) — KEINE Seitenbitmaps.
+//     abgefragten Seite (PDFium-Cache) - KEINE Seitenbitmaps.
 //
 //  ASYNC-MUSTER (Projektkonvention, wie PdfScanTask/PdfThumbRenderTask)
 //   • prepare() stoesst einen QRunnable an (eigener QThreadPool, maxThreadCount=1),
@@ -84,7 +84,7 @@ public:
     QString searchTerm() const { return m_searchTerm; }
 
     // Sorgt (lazy, asynchron) dafuer, dass fuer pathOrUrl ein Auswahl-Dokument
-    // geladen wird. Idempotent: laeuft bereits ein Laden/ist es aktiv → No-Op.
+    // geladen wird. Idempotent: laeuft bereits ein Laden/ist es aktiv -> No-Op.
     // Ein anderer Pfad verwirft das vorherige Dokument.
     Q_INVOKABLE void prepare(const QString& pathOrUrl);
 
@@ -109,10 +109,10 @@ public:
 
     // ── PDF-Editor: Zeilenfang (Snapping) ─────────────────────────────────────
     //  Liefert die erkannten TEXTZEILEN einer Seite als normalisierte Rechtecke
-    //  { x, y, w, h } (Ursprung oben-links). Quelle ist getAllText() — die
+    //  { x, y, w, h } (Ursprung oben-links). Quelle ist getAllText() - die
     //  Fragment-Polygone werden nach vertikaler Mitte gruppiert und je Zeile
     //  vereinigt. Leer, wenn das Auswahl-Dokument (lazy) noch nicht geladen ist
-    //  oder die Seite keine Textebene hat → der Editor fällt dann auf freie
+    //  oder die Seite keine Textebene hat -> der Editor fällt dann auf freie
     //  Platzierung zurück.
     Q_INVOKABLE QVariantList textLineRects(int page);
 
@@ -120,10 +120,10 @@ public:
     //  Prüft den NORMALISIERT [0..1] aufgezogenen Bereich gegen die erkannten
     //  Textzeilen der Seite. Getroffene Zeilen (vertikale Überlappung ≥ 35 %
     //  der Zeilenhöhe bzw. ≥ 80 % der Aufzieh-Höhe, horizontale Überlappung
-    //  > 0) werden VEREINIGT — die Box schnappt exakt auf die Zeilen-Bounds.
+    //  > 0) werden VEREINIGT - die Box schnappt exakt auf die Zeilen-Bounds.
     //  Rückgabe: { found, x, y, w, h (normalisiert, Union), lineH (normalisierte
-    //  Ø-Zeilenhöhe → Schriftgröße), text (eingebetteter Text unter der
-    //  Fläche) }. found=false ohne Textebene/Treffer → der Editor fällt STILL
+    //  Ø-Zeilenhöhe -> Schriftgröße), text (eingebetteter Text unter der
+    //  Fläche) }. found=false ohne Textebene/Treffer -> der Editor fällt STILL
     //  auf die unbefüllte Box zurück (Anforderung: kein Hinweis-Dialog).
     //  BEWUSST seiteneffektfrei: verändert weder die sichtbare Auswahl noch
     //  selectedText (Strg+C des Nutzers bleibt unberührt).
@@ -132,7 +132,7 @@ public:
 
     // ── OCR (gescannte PDFs) ──────────────────────────────────────────────────
     //  Erkennt die Textzeilen der Seite ASYNCHRON (eigener 1-Thread-Pool,
-    //  transiente QPdfDocument-Instanz zum Rendern → GUI-Thread bleibt frei).
+    //  transiente QPdfDocument-Instanz zum Rendern -> GUI-Thread bleibt frei).
     //  Nach Erfolg liegen die Zeilen im Cache und `textLineRects`/`replaceProbe`/
     //  die Textauswahl nutzen sie automatisch, als hätte die Seite eine
     //  eingebettete Textebene. Signal `ocrReady(page,lineCount)`. No-op ohne
@@ -146,7 +146,7 @@ public:
 
     // ── Suche ─────────────────────────────────────────────────────────────────
     //  search: startet eine neue Suche (leerer Begriff hebt sie auf). Die Seiten
-    //  werden STÜCKWEISE durchsucht, damit die Oberfläche nicht stehenbleibt —
+    //  werden STÜCKWEISE durchsucht, damit die Oberfläche nicht stehenbleibt -
     //  Fortschritt/Ende meldet `searchChanged`.
     Q_INVOKABLE void search(const QString& needle);
     Q_INVOKABLE void clearSearch();
@@ -180,8 +180,8 @@ private:
                                 double pageWidthPts, double pageHeightPts);
 
     // OCR-Textauswahl (gescannte Seiten): liefert die Highlight-Rechtecke der
-    // OCR-Zeilen, die `dragPts` (in Punkten) schneiden — bzw. ALLE bei
-    // selectAll — und merkt deren Text. Zeilengranular (OCR liefert Zeilen).
+    // OCR-Zeilen, die `dragPts` (in Punkten) schneiden - bzw. ALLE bei
+    // selectAll - und merkt deren Text. Zeilengranular (OCR liefert Zeilen).
     QVariantList ocrSelection(int page, const QRectF& dragPts,
                               double pageWidthPts, double pageHeightPts, bool selectAll);
 
@@ -195,7 +195,7 @@ private:
     QString       m_pendingPath;     // lokaler Pfad eines gerade ladenden Dokuments
     int           m_generation = 0;  // verwirft veraltete Async-Ladevorgaenge
 
-    // 1 Thread → nie zwei QPdfDocument-Ladevorgaenge gleichzeitig (RAM-Peak gedeckelt).
+    // 1 Thread -> nie zwei QPdfDocument-Ladevorgaenge gleichzeitig (RAM-Peak gedeckelt).
     QThreadPool   m_pool;
 
     QString       m_selText;         // zuletzt markierter Text
@@ -208,12 +208,12 @@ private:
     QHash<int, QList<mg::OcrLine>> m_ocrCache;
 
     // ── Suche ────────────────────────────────────────────────────────────────
-    //  EIN Treffer. `rect` steht in PDF-Punkten mit Ursprung oben-links —
+    //  EIN Treffer. `rect` steht in PDF-Punkten mit Ursprung oben-links -
     //  genau so liefert QPdfSearchModel sie (gemessen), also dieselbe
     //  Konvention wie im ganzen Editor.
     //  EIN Treffer = EINE Fundstelle, auch wenn sie über mehrere Rechtecke
     //  gezeichnet wird. PDFium liefert je Fundstelle so viele Rechtecke, wie sie
-    //  Zeige-Operatoren berührt — und manche Erzeuger (dieses DOCX→PDF etwa)
+    //  Zeige-Operatoren berührt - und manche Erzeuger (dieses DOCX->PDF etwa)
     //  setzen JEDES Zeichen einzeln. Ein Rechteck = ein Treffer zu zählen ergab
     //  dort „7 Treffer" für das eine Wort „Stellen" (Nutzerbefund).
     struct SearchHit {
@@ -223,7 +223,7 @@ private:
         QString         after;
         bool            ocr = false;  // aus der OCR-Zeile, nicht aus der Textebene
 
-        //  Umschließendes Rechteck — für das Anspringen (▲/▼).
+        //  Umschließendes Rechteck - für das Anspringen (▲/▼).
         QRectF bounds() const {
             QRectF b;
             for (const QRectF& r : rects) b = b.isNull() ? r : b.united(r);
@@ -234,19 +234,19 @@ private:
     QString            m_searchTerm;
     //  Nächste zu durchsuchende Seite (−1 = keine Suche läuft). QPdfSearchModel
     //  arbeitet LAZY je Seite (gemessen: erst `resultsOnPage(p)` durchsucht sie)
-    //  — der Timer holt sie stückweise, damit eine 500-Seiten-Datei die
+    //  - der Timer holt sie stückweise, damit eine 500-Seiten-Datei die
     //  Oberfläche nicht einfriert.
     int                m_searchPage = -1;
     QPdfSearchModel*   m_searchModel = nullptr;
     //  Dokument, zu dem die Treffer gehören. Ohne diesen Vergleich hätte der
-    //  Kurzschluss „derselbe Begriff → nichts tun" eine Suche verschluckt, die
+    //  Kurzschluss „derselbe Begriff -> nichts tun" eine Suche verschluckt, die
     //  VOR dem Öffnen eingetippt wurde (sie lief nie, der Begriff stand aber
     //  schon da).
     QPdfDocument*      m_searchedDoc = nullptr;
     QTimer             m_searchTimer;
     void stepSearch();
     //  Treffer der OCR-Zeilen einer Seite (nur wo es OCR gibt): die ZEILE ist
-    //  der Treffer — feiner geht es nicht, OCR liefert keine Zeichenlagen.
+    //  der Treffer - feiner geht es nicht, OCR liefert keine Zeichenlagen.
     void appendOcrHits(int page);
     int           m_ocrGen  = 0;
     bool          m_ocrBusy = false;

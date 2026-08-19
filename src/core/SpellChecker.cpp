@@ -43,7 +43,7 @@ QStringList SpellChecker::searchPaths(const QString& extraDir) {
         << QStringLiteral("/usr/share/myspell/dicts")
         << QStringLiteral("/usr/local/share/hunspell")
         << QStringLiteral("/Library/Spelling");
-    //  Eigenes Verzeichnis neben der Konfiguration — dorthin darf der Nutzer
+    //  Eigenes Verzeichnis neben der Konfiguration - dorthin darf der Nutzer
     //  ein Wörterbuch legen, ohne Systemrechte zu brauchen.
     const QString cfg = QStandardPaths::writableLocation(QStandardPaths::AppConfigLocation);
     if (!cfg.isEmpty()) out << cfg + QStringLiteral("/dictionaries");
@@ -102,7 +102,7 @@ bool SpellChecker::open(const QString& language, const QString& extraDir) {
     const QByteArray dic = (base + QStringLiteral(".dic")).toLocal8Bit();
     d->hs = std::make_unique<Hunspell>(aff.constData(), dic.constData());
     const QByteArray encName(d->hs->get_dic_encoding());
-    //  Unbekannte Kodierung → lieber gar nicht prüfen als falsch anstreichen.
+    //  Unbekannte Kodierung -> lieber gar nicht prüfen als falsch anstreichen.
     auto encoding = QStringConverter::encodingForName(encName.constData());
     if (!encoding) {
         d->hs.reset();
@@ -138,7 +138,7 @@ bool SpellChecker::isCorrect(const QString& word) const {
     if (!available()) return true;         // ohne Wissen wird nichts angestrichen
     QStringEncoder& e = const_cast<QStringEncoder&>(d->enc);
     const QByteArray enc = e.encode(word);
-    if (e.hasError()) { e.resetState(); return true; }   // nicht darstellbar → durchlassen
+    if (e.hasError()) { e.resetState(); return true; }   // nicht darstellbar -> durchlassen
     return d->hs->spell(std::string(enc.constData(), size_t(enc.size())));
 #else
     return true;
@@ -196,7 +196,7 @@ std::vector<SpellRange> SpellChecker::checkText(const QString& text) const {
         const QString word = text.mid(start, end - start);
         i = end;
         //  Übersprungen wird, was keine Rechtschreibung hat: Wörter mit Ziffern
-        //  (B2B, MP3) und reine Großschreibung (Abkürzungen wie DOCX) — sonst
+        //  (B2B, MP3) und reine Großschreibung (Abkürzungen wie DOCX) - sonst
         //  wäre die Anzeige voller roter Linien, die niemand abstellen kann.
         if (hasDigit || word.size() < 2) continue;
         if (word == word.toUpper()) continue;

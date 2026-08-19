@@ -5,14 +5,14 @@ import MediaGallery 1.0
 import "../common"
 
 // ─────────────────────────────────────────────────────────────────────────────
-//  ImageEditPanel.qml — Werkzeug- & Eigenschaften-Panel des Bild-Editors, in
+//  ImageEditPanel.qml - Werkzeug- & Eigenschaften-Panel des Bild-Editors, in
 //  ZWEI Layouts in einer Datei (Analog PdfEditPanel):
-//   • horizontal:false → RECHTE SEITENLEISTE (Standard)
-//   • horizontal:true  → OBERE LEISTE („wie Word") — Ribbon
+//   • horizontal:false -> RECHTE SEITENLEISTE (Standard)
+//   • horizontal:true  -> OBERE LEISTE („wie Word") - Ribbon
 //  Die Dock-Position teilt sich der Bild-Editor mit dem PDF-Editor über die
 //  globale Einstellung PdfEdit.panelOnTop (Einstellungen ▸ Editor).
 //
-//  ZIEL-ID: Regler wirken auf die AUSWAHL (ctl.selectedId) — oder, wenn nichts
+//  ZIEL-ID: Regler wirken auf die AUSWAHL (ctl.selectedId) - oder, wenn nichts
 //  ausgewählt ist, auf die VORLAGE für neue Annotationen (id −1). So setzt man
 //  „erst Farbe/Breite, dann zeichnen" (Stil-Erben).
 // ─────────────────────────────────────────────────────────────────────────────
@@ -31,7 +31,7 @@ Item {
     readonly property var  info: hasSel ? sel : def
     readonly property int  targetId: hasSel ? ctl.selectedId : -1
 
-    // Welche Regler zeigen? Auswahl → deren Art; sonst das aktive Werkzeug.
+    // Welche Regler zeigen? Auswahl -> deren Art; sonst das aktive Werkzeug.
     readonly property int  tool: ctl.tool
     readonly property bool showText:   hasSel ? sel.isText  : tool === 1
     readonly property bool showStroke: hasSel ? (sel.isStroke === true || sel.isShape === true) : tool >= 2
@@ -148,7 +148,7 @@ Item {
     Component.onCompleted: refreshFromSelection()
 
     // ══════════════════════════════════════════════════════════════════════════
-    //  VARIANTE A — rechte Seitenleiste (Standard)
+    //  VARIANTE A - rechte Seitenleiste (Standard)
     // ══════════════════════════════════════════════════════════════════════════
     Rectangle {
         anchors.fill: parent
@@ -214,7 +214,7 @@ Item {
                 }
                 Text { visible: panel.ctl.resolvedFont(panel.info.fontFamily) !== panel.info.fontFamily
                        width: parent.width; wrapMode: Text.WordWrap
-                       text: "\u2192 " + panel.ctl.resolvedFont(panel.info.fontFamily)
+                       text: "-> " + panel.ctl.resolvedFont(panel.info.fontFamily)
                        color: App.themeTextMuted; font.pixelSize: 10 }
                 Row {
                     spacing: 10
@@ -380,7 +380,7 @@ Item {
                 }
             }
 
-            //  Es gibt GENAU EINE Trennlinie im Panel — die unter der
+            //  Es gibt GENAU EINE Trennlinie im Panel - die unter der
             //  Werkzeugreihe. Die zweite (vor dem Dokument-Bereich) ist entfallen.
             // ── Dokument (Speichern / Export) ─────────────────────────────────
             Row {
@@ -429,7 +429,7 @@ Item {
     }
 
     // ══════════════════════════════════════════════════════════════════════════
-    //  VARIANTE B — obere Leiste („wie Word"; horizontal:true)
+    //  VARIANTE B - obere Leiste („wie Word"; horizontal:true)
     // ══════════════════════════════════════════════════════════════════════════
     Rectangle {
         anchors.fill: parent
@@ -486,7 +486,7 @@ Item {
                 //  dazwischen sind ohne Auswahl unsichtbar, dann rückten die
                 //  beiden Striche aneinander und sahen wie eine Doppellinie aus
                 //  (Nutzerbefund). Es bleibt der EINE Trenner hinter den
-                //  Werkzeugen — wie im senkrechten Panel.
+                //  Werkzeugen - wie im senkrechten Panel.
                 // Dokument
                 Column { anchors.verticalCenter: parent.verticalCenter; spacing: 2
                     Row { spacing: 6

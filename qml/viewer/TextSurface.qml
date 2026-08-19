@@ -5,13 +5,13 @@ import MediaGallery 1.0
 import "../common"
 
 // ─────────────────────────────────────────────────────────────────────────────
-//  TextSurface.qml — editierbarer Plain-Text-Editor (ersetzt TextViewer(QWidget)).
+//  TextSurface.qml - editierbarer Plain-Text-Editor (ersetzt TextViewer(QWidget)).
 //  Inhalt via Viewer.readTextFile, Speichern via Viewer.writeTextFile (atomar).
 //
 //  • Editierbar (kein read-only mehr); Strg+S oder Speichern-Button schreibt.
 //  • Ungespeicherte Aenderungen werden mit "•" markiert; beim Verlassen
 //    (release) automatisch gespeichert, damit keine Eingaben verloren gehen.
-//  • topInset/bottomInset werden vom FullscreenViewer reserviert → die globale
+//  • topInset/bottomInset werden vom FullscreenViewer reserviert -> die globale
 //    Leiste (Dateiname) ueberdeckt den Inhalt NICHT mehr.
 //  • Weiches, web-aehnliches Mausrad-Scrollen (animiert, groesserer Schritt).
 // ─────────────────────────────────────────────────────────────────────────────
@@ -25,19 +25,19 @@ Item {
     property string currentPath: ""
     property bool   dirty: false
     property bool   _loading: false
-    //  Läuft gerade ein PDF-Export? (Der Knopf bleibt so lange stumm — der
+    //  Läuft gerade ein PDF-Export? (Der Knopf bleibt so lange stumm - der
     //  Export selbst liegt im Worker, die Oberfläche bleibt bedienbar.)
     property bool   _pdfBusy: false
 
     //  Schriftfarbe des PDF-Exports. Der Zähler treibt die Neuauswertung: die
     //  Farbe kommt aus einer Invokable (Ordner-Sidecar), also gibt es kein
     //  Signal, an dem eine Bindung allein hängen könnte. `App.textPdfColor` steht
-    //  bewusst MIT in der Bindung — ändert sich die globale Vorgabe, zieht eine
+    //  bewusst MIT in der Bindung - ändert sich die globale Vorgabe, zieht eine
     //  Datei ohne eigene Farbe sofort nach.
     property int    _inkRev: 0
     readonly property color _pdfInk: {
         //  Die globale Vorgabe wird IMMER gelesen, auch wenn sie gleich verworfen
-        //  wird: eine QML-Bindung hängt nur an dem, was sie tatsächlich anfasst —
+        //  wird: eine QML-Bindung hängt nur an dem, was sie tatsächlich anfasst -
         //  stünde sie im else-Zweig, bliebe eine Datei ohne eigene Farbe beim
         //  Ändern der Vorgabe auf dem alten Wert stehen.
         //  Über den PFAD ans Modell: die Ausnahme je Datei liegt im Sidecar des
@@ -53,7 +53,7 @@ Item {
         && mediaModel.hasFileTextPdfColor(root.currentPath)
 
     // HTML-Quelltext bekommt eine eigene Editor-Hintergrundfarbe (Design-Tab),
-    // getrennt von TXT/Code — daher Endungserkennung aus dem aktuellen Pfad.
+    // getrennt von TXT/Code - daher Endungserkennung aus dem aktuellen Pfad.
     readonly property bool _isHtml: {
         var p = root.currentPath.toLowerCase()
         return p.endsWith(".html") || p.endsWith(".htm")
@@ -93,9 +93,13 @@ Item {
         z: 4
         Rectangle { anchors.bottom: parent.bottom; width: parent.width; height: 1; color: App.themeBorder }
 
-        Row {
-            anchors.left: parent.left; anchors.leftMargin: 12
-            anchors.verticalCenter: parent.verticalCenter
+        //  Blätterbar (Mausrad, mit und ohne Strg) - wie im DOCX-Editor und in
+        //  den Menüleisten: in einer schmalen Kachel bleibt so jeder Knopf
+        //  erreichbar, statt rechts abgeschnitten zu werden.
+        ScrollableBar {
+            anchors { left: parent.left; leftMargin: 12
+                      right: translitBtn.left; rightMargin: 8
+                      top: parent.top; bottom: parent.bottom }
             spacing: 10
 
             Rectangle {
@@ -155,7 +159,7 @@ Item {
                     }
 
                     //  Trenner + Zurücksetzen erscheinen erst, wenn die Datei eine
-                    //  eigene Farbe trägt — vorher gäbe es nichts zurückzusetzen.
+                    //  eigene Farbe trägt - vorher gäbe es nichts zurückzusetzen.
                     Rectangle {
                         anchors.verticalCenter: parent.verticalCenter
                         visible: root._pdfInkOwn
@@ -187,9 +191,9 @@ Item {
                 }
             }
 
-            //  Text → PDF: schreibt <Name>.pdf NEBEN die Quelle, die Textdatei
+            //  Text -> PDF: schreibt <Name>.pdf NEBEN die Quelle, die Textdatei
             //  bleibt unangetastet. Gedruckt wird der STAND IM EDITOR (nicht der
-            //  auf Platte) — ungespeicherte Änderungen sind also mit im PDF.
+            //  auf Platte) - ungespeicherte Änderungen sind also mit im PDF.
             Rectangle {
                 anchors.verticalCenter: parent.verticalCenter
                 width: pdfLbl.implicitWidth + 18; height: 26; radius: 6
@@ -226,9 +230,10 @@ Item {
             }
         }
 
-        // Live-Transliteration (oben rechts): Latein → Arabisch/Kana beim
+        // Live-Transliteration (oben rechts): Latein -> Arabisch/Kana beim
         // Tippen; Schema-Auswahl im Popup, Umsetzung s. editor.onTextChanged.
         TranslitButton {
+            id: translitBtn
             anchors { right: parent.right; rightMargin: 12
                       verticalCenter: parent.verticalCenter }
         }
@@ -245,7 +250,7 @@ Item {
         }
         clip: true
         //  TXT bricht an der SICHTBAREN Breite um (kein waagerechtes Scrollen
-        //  mehr — Nutzerwunsch 2026-07-17); HTML-Quelltext behält NoWrap, weil
+        //  mehr - Nutzerwunsch 2026-07-17); HTML-Quelltext behält NoWrap, weil
         //  Code-Zeilen dort bündig bleiben sollen.
         contentWidth: root._isHtml ? editor.paintedWidth : width
         contentHeight: editor.paintedHeight
@@ -261,7 +266,7 @@ Item {
             id: editor
             readOnly: false
             selectByMouse: true
-            //  Breite an den Viewport binden, sobald umgebrochen wird — sonst
+            //  Breite an den Viewport binden, sobald umgebrochen wird - sonst
             //  bliebe die TextArea so breit wie ihre längste Zeile.
             width: root._isHtml ? Math.max(implicitWidth, flick.width) : flick.width
             wrapMode: root._isHtml ? TextEdit.NoWrap : TextEdit.Wrap
@@ -278,7 +283,7 @@ Item {
             // Neuzuweisung (Undo-Stack + Performance großer Dateien bleiben
             // intakt); der Guard verhindert Re-Entranz durch die eigene Edition.
             //  ↓ in der LETZTEN (sichtbaren) Zeile springt ans Zeilenende,
-            //  statt wirkungslos zu bleiben — einheitlich in allen Editoren
+            //  statt wirkungslos zu bleiben - einheitlich in allen Editoren
             //  der App (Vergleich der Cursor-Zeilen-y mit dem Textende deckt
             //  auch umgebrochene Zeilen ab).
             Keys.onDownPressed: (e) => {
@@ -320,7 +325,7 @@ Item {
     }
 
     // ── Rückmeldung des PDF-Exports (Muster wie PdfSurface: kurzer Toast, kein
-    //    Dialog — der Export ist eine Nebentätigkeit und soll nicht bestätigt
+    //    Dialog - der Export ist eine Nebentätigkeit und soll nicht bestätigt
     //    werden müssen). Der Pfad wird auf den Dateinamen gekürzt.
     Connections {
         target: Viewer
@@ -362,8 +367,8 @@ Item {
         Timer { id: toastTimer; interval: 3500; onTriggered: toast.visible = false }
     }
 
-    // Weiches, web-aehnliches Mausrad-Scrollen — als Geschwister der Flickable,
-    // damit der Fänger NICHT mit dem Inhalt mitscrollt. NoButton → Klicks/Markieren
+    // Weiches, web-aehnliches Mausrad-Scrollen - als Geschwister der Flickable,
+    // damit der Fänger NICHT mit dem Inhalt mitscrollt. NoButton -> Klicks/Markieren
     // erreichen den Editor.
     NumberAnimation {
         id: scrollAnim

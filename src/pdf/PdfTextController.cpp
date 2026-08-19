@@ -23,7 +23,7 @@
 #include <algorithm>
 
 // ─────────────────────────────────────────────────────────────────────────────
-//  PdfLoadTask — laedt das Auswahl-Dokument OHNE GUI-Thread.
+//  PdfLoadTask - laedt das Auswahl-Dokument OHNE GUI-Thread.
 //
 //  Oeffnet eine EIGENE QPdfDocument-Instanz (Parsen blockiert nie die GUI),
 //  verschiebt sie nach Erfolg auf den GUI-Thread und reicht sie per
@@ -50,7 +50,7 @@ public:
             // Kuenftige Nutzung erfolgt ausschliesslich auf dem GUI-Thread.
             doc->moveToThread(QCoreApplication::instance()->thread());
         } else {
-            delete doc;                 // Loeschen auf eigenem Thread → ok
+            delete doc;                 // Loeschen auf eigenem Thread -> ok
             doc = nullptr;
         }
 
@@ -58,10 +58,10 @@ public:
         const QString path = m_path;
         const int     gen  = m_gen;
         //  Das Dokument gehoert dem Lambda: wird das geposte Ereignis nie
-        //  ausgefuehrt (Controller wird gerade zerstoert — ~QObject verwirft
+        //  ausgefuehrt (Controller wird gerade zerstoert - ~QObject verwirft
         //  anhaengige Ereignisse), gibt der unique_ptr es beim Zerstoeren des
         //  Lambdas frei. Mit dem rohen Zeiger blieb in genau diesem Fall ein
-        //  komplett geparstes QPdfDocument (MB-Bereich) verwaist im Speicher —
+        //  komplett geparstes QPdfDocument (MB-Bereich) verwaist im Speicher -
         //  bei jedem Schliessen einer PDF-Kachel waehrend des Ladens.
         std::unique_ptr<QPdfDocument> owned(doc);
         QMetaObject::invokeMethod(owner, [owner, d = std::move(owned), path, gen]() mutable {
@@ -76,7 +76,7 @@ private:
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
-//  PdfOcrTask — rendert EINE Seite und erkennt ihren Text (Tesseract) OHNE
+//  PdfOcrTask - rendert EINE Seite und erkennt ihren Text (Tesseract) OHNE
 //  GUI-Thread. Öffnet dazu eine EIGENE, transiente QPdfDocument-Instanz aus dem
 //  Pfad (thread-sicher, unabhängig vom GUI-Thread-Dokument), rendert bei
 //  kOcrDpi und reicht die Zeilen per QueuedConnection an den Controller. Die
@@ -127,7 +127,7 @@ private:
 // ─────────────────────────────────────────────────────────────────────────────
 PdfTextController::PdfTextController(QObject* parent) : QObject(parent) {
     // Genau EIN Worker: nie sind zwei der teuren QPdfDocument-Instanzen
-    // gleichzeitig am Laden → RAM-Peak bleibt gedeckelt.
+    // gleichzeitig am Laden -> RAM-Peak bleibt gedeckelt.
     m_pool.setMaxThreadCount(1);
     m_ocrPool.setMaxThreadCount(1);   // OCR seriell, getrennt vom Ladepool
 }
@@ -139,7 +139,7 @@ PdfTextController::~PdfTextController() {
     m_pool.waitForDone();
     m_ocrPool.clear();
     m_ocrPool.waitForDone();
-    // m_doc ist als Kind von 'this' geparented → wird automatisch geloescht.
+    // m_doc ist als Kind von 'this' geparented -> wird automatisch geloescht.
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -150,7 +150,7 @@ void PdfTextController::prepare(const QString& pathOrUrl) {
     if (local.isEmpty() || !QFileInfo::exists(local))
         return;
 
-    // Bereits aktiv oder bereits am Laden → nichts zu tun (idempotent).
+    // Bereits aktiv oder bereits am Laden -> nichts zu tun (idempotent).
     if ((local == m_activePath && m_doc) || local == m_pendingPath)
         return;
 
@@ -166,9 +166,9 @@ void PdfTextController::prepare(const QString& pathOrUrl) {
 void PdfTextController::adoptDocument(QPdfDocument* doc, const QString& localPath,
                                       int generation) {
     if (generation != m_generation) {
-        // Veraltet (zwischenzeitlich prepare()/releaseDocument()) → verwerfen.
+        // Veraltet (zwischenzeitlich prepare()/releaseDocument()) -> verwerfen.
         if (doc)
-            delete doc;     // doc lebt auf dem GUI-Thread → direktes delete ok
+            delete doc;     // doc lebt auf dem GUI-Thread -> direktes delete ok
         return;
     }
 
@@ -190,7 +190,7 @@ void PdfTextController::adoptDocument(QPdfDocument* doc, const QString& localPat
     emit readyChanged();
 
     //  Wurde schon gesucht, BEVOR das Dokument da war (Begriff eingetippt,
-    //  während die Textebene noch lud), läuft die Suche jetzt nach — sonst
+    //  während die Textebene noch lud), läuft die Suche jetzt nach - sonst
     //  bliebe die Trefferliste stumm leer, obwohl der Begriff dasteht.
     if (m_doc && !m_searchTerm.isEmpty() && m_searchedDoc != m_doc) {
         const QString again = m_searchTerm;
@@ -209,7 +209,7 @@ void PdfTextController::releaseDocument() {
     m_searchPage = -1;
     m_hits.clear();
     m_searchTerm.clear();
-    //  Das Suchmodell hält das Dokument — es verschwindet mit ihm (ein
+    //  Das Suchmodell hält das Dokument - es verschwindet mit ihm (ein
     //  setDocument(nullptr) meldet in Qt nur eine nutzlose connect-Warnung).
     delete m_searchModel;
     m_searchModel = nullptr;
@@ -241,7 +241,7 @@ void PdfTextController::ocrPage(int page) {
     if (m_ocrCache.contains(page) || m_ocrBusy)
         return;
     // Hat die Seite eine EINGEBETTETE Textebene, ist OCR unnötig (schneller,
-    // exakter Weg bleibt): dann nur ein leeres Ergebnis cachen wäre falsch —
+    // exakter Weg bleibt): dann nur ein leeres Ergebnis cachen wäre falsch -
     // wir starten OCR gar nicht und lassen den eingebetteten Pfad greifen.
     if (m_doc && !lineRectsPts(page).isEmpty())
         return;
@@ -252,7 +252,7 @@ void PdfTextController::ocrPage(int page) {
 
 void PdfTextController::adoptOcr(int page, const QList<mg::OcrLine>& lines,
                                  int generation) {
-    if (generation != m_ocrGen)     // veraltet (Pfadwechsel/Freigabe) → verwerfen
+    if (generation != m_ocrGen)     // veraltet (Pfadwechsel/Freigabe) -> verwerfen
         return;
     m_ocrCache.insert(page, lines);
     if (m_ocrBusy) { m_ocrBusy = false; emit ocrBusyChanged(); }
@@ -276,7 +276,7 @@ QVariantList PdfTextController::selectionBetween(int page,
     const QPdfSelection sel = m_doc->getSelection(page, a, b);
     if (sel.isValid() && !sel.text().isEmpty())
         return applySelection(sel, page, ps.width(), ps.height());
-    // Gescannte Seite → OCR-basierte (zeilengranulare) Auswahl.
+    // Gescannte Seite -> OCR-basierte (zeilengranulare) Auswahl.
     return ocrSelection(page, QRectF(a, b).normalized(), ps.width(), ps.height(), false);
 }
 
@@ -292,20 +292,20 @@ QVariantList PdfTextController::selectAllOnPage(int page) {
     const QPdfSelection sel = m_doc->getAllText(page);
     if (sel.isValid() && !sel.text().isEmpty())
         return applySelection(sel, page, ps.width(), ps.height());
-    // Gescannte Seite → alle OCR-Zeilen auswählen.
+    // Gescannte Seite -> alle OCR-Zeilen auswählen.
     return ocrSelection(page, QRectF(), ps.width(), ps.height(), true);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
 //  Aus der QPdfSelection die normalisierten Highlight-Rechtecke bauen und den
 //  Text merken. bounds() liefert Rechteck-Polygone in Punkten (Ursprung
-//  oben-links) → boundingRect()/Seitengroesse ergibt normalisierte [0..1]-Rects.
+//  oben-links) -> boundingRect()/Seitengroesse ergibt normalisierte [0..1]-Rects.
 // ─────────────────────────────────────────────────────────────────────────────
 QVariantList PdfTextController::applySelection(const QPdfSelection& sel, int page,
                                                double pageWidthPts,
                                                double pageHeightPts) {
     //  `page` gehört zur Signatur (Symmetrie zu ocrSelection), die Umrechnung
-    //  braucht ihn nicht — die Rechtecke sind bereits seitenrelativ.
+    //  braucht ihn nicht - die Rechtecke sind bereits seitenrelativ.
     Q_UNUSED(page)
     QVariantList rects;
     QString text;
@@ -453,7 +453,7 @@ QVariantList PdfTextController::textLineRects(int page) {
 //  „Text ersetzen"-Sonde: getroffene Zeilen vereinigen (Zeilen-Einschnappen),
 //  Ø-Zeilenhöhe für die Schriftgröße ableiten und den EINGEBETTETEN Text unter
 //  der vereinigten Fläche extrahieren. Der Text wird über getSelection zwischen
-//  den (leicht eingerückten) Ecken der Union geholt — bewusst OHNE die
+//  den (leicht eingerückten) Ecken der Union geholt - bewusst OHNE die
 //  Nutzer-Auswahl (m_selText) anzufassen.
 // ─────────────────────────────────────────────────────────────────────────────
 QVariantMap PdfTextController::replaceProbe(int page, double nx0, double ny0,
@@ -467,7 +467,7 @@ QVariantMap PdfTextController::replaceProbe(int page, double nx0, double ny0,
     if (ps.isEmpty())
         return out;
 
-    // Aufgezogener Bereich in Punkten (normalisiert → Punkte, Ecken sortiert).
+    // Aufgezogener Bereich in Punkten (normalisiert -> Punkte, Ecken sortiert).
     const QRectF drag(QPointF(qMin(nx0, nx1) * ps.width(),  qMin(ny0, ny1) * ps.height()),
                       QPointF(qMax(nx0, nx1) * ps.width(),  qMax(ny0, ny1) * ps.height()));
     // Entartete Klicks (kein echtes Aufziehen) treffen bewusst nichts.
@@ -483,7 +483,7 @@ QVariantMap PdfTextController::replaceProbe(int page, double nx0, double ny0,
         const qreal ovX = qMin(drag.right(),  l.right())  - qMax(drag.left(), l.left());
         // Treffer: horizontale Überlappung + vertikal mindestens 35 % der
         // Zeilenhöhe ODER 80 % der Aufzieh-Höhe (flacher Zug INNERHALB einer
-        // hohen Zeile zählt ebenfalls) — Streifschüsse zählen nicht.
+        // hohen Zeile zählt ebenfalls) - Streifschüsse zählen nicht.
         const qreal need = qMin(l.height() * 0.35, drag.height() * 0.8);
         if (ovX <= 0.0 || ovY < qMax(0.5, need))
             continue;
@@ -547,13 +547,13 @@ void PdfTextController::clearSelection() {
 //  Suche im Dokument
 //
 //  GRUNDLAGE: `QPdfSearchModel` (Qt PDF). Gemessen an einem Testdokument liefert
-//  es seine Rechtecke in PDF-PUNKTEN mit Ursprung OBEN-LINKS — dieselbe
+//  es seine Rechtecke in PDF-PUNKTEN mit Ursprung OBEN-LINKS - dieselbe
 //  Konvention wie der ganze Editor, es muss also nichts gespiegelt werden. Es
 //  arbeitet allerdings **lazy**: Erst `resultsOnPage(p)` durchsucht Seite p.
 //  Deshalb holt ein Timer die Seiten STÜCKWEISE; ein 500-Seiten-Dokument würde
 //  die Oberfläche sonst für Sekunden einfrieren (Regel 17).
 //
-//  OCR: Gescannte Seiten haben keine Textebene — dort kennt nur `m_ocrCache`
+//  OCR: Gescannte Seiten haben keine Textebene - dort kennt nur `m_ocrCache`
 //  Text. Für sie ist die erkannte ZEILE der Treffer (feiner geht es nicht, OCR
 //  liefert keine Zeichenlagen); solche Treffer sind als `ocr` gekennzeichnet.
 // ─────────────────────────────────────────────────────────────────────────────
@@ -605,7 +605,7 @@ void PdfTextController::stepSearch() {
     for (int p = m_searchPage; p < end; ++p) {
         const QList<QPdfLink> found = m_searchModel->resultsOnPage(p);
         for (const QPdfLink& l : found) {
-            //  ALLE Rechtecke einer Fundstelle gehören zu EINEM Treffer — sonst
+            //  ALLE Rechtecke einer Fundstelle gehören zu EINEM Treffer - sonst
             //  zählt ein Wort so oft, wie der Erzeuger es in Zeige-Operatoren
             //  zerlegt hat (s. SearchHit im Header).
             SearchHit h;
@@ -658,7 +658,7 @@ QVariantList PdfTextController::searchHitsOnPage(int page) const {
     for (const SearchHit& h : m_hits) {
         if (h.page != page)
             continue;
-        //  Gezeichnet werden ALLE Teilstücke — gezählt wird die Fundstelle nur
+        //  Gezeichnet werden ALLE Teilstücke - gezählt wird die Fundstelle nur
         //  einmal (s. searchCount).
         for (const QRectF& r : h.rects) {
             QVariantMap m;

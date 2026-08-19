@@ -1,28 +1,28 @@
 #pragma once
 // ══════════════════════════════════════════════════════════════════════════════
-//  PdfImageEmbed.h — ein Bild als PDF-XObject vorbereiten
+//  PdfImageEmbed.h - ein Bild als PDF-XObject vorbereiten
 // ══════════════════════════════════════════════════════════════════════════════
 //
 //  ZWECK
 //  ─────
 //  Signatur- und Stempelbilder (README ▸ Planned ▸ PDF-Editor) müssen als
 //  Bild-XObject IN die PDF. Diese Einheit macht aus einem `QImage` die beiden
-//  Datenströme, die dafür nötig sind — die Objekte selbst schreibt der
+//  Datenströme, die dafür nötig sind - die Objekte selbst schreibt der
 //  Aufrufer, weil nur er seine Objektnummern kennt (`PdfVectorExport`,
 //  `PdfAnnotations`).
 //
 //  WARUM ALS EIGENE EINHEIT: Dieselbe Aufbereitung brauchen der gezeichnete
 //  Export und die Annotations-Ausgabe. Zwei Kopien wären die schlechtere Lösung
-//  — dieselbe Begründung wie bei `PdfObjects`/`PdfFontEmbed`.
+//  - dieselbe Begründung wie bei `PdfObjects`/`PdfFontEmbed`.
 //
 //  VERFAHREN
 //  ─────────
 //  Das Bild wird auf `/DeviceRGB` mit 8 Bit je Kanal gebracht und mit zlib
-//  gepackt (`/FlateDecode`) — ohne Verlust und ohne Fremdbibliothek. Hat es
+//  gepackt (`/FlateDecode`) - ohne Verlust und ohne Fremdbibliothek. Hat es
 //  Transparenz, entsteht zusätzlich ein 8-Bit-Graustufenstrom als **`/SMask`**;
 //  ohne ihn zeichnete PDF den transparenten Rand einer Signatur als weißen
 //  Kasten. JPEG-Wiederverwendung (`/DCTDecode`) wäre kleiner, verlangt aber
-//  Vertrauen in fremde Dateibytes — hier zählt Vorhersagbarkeit mehr.
+//  Vertrauen in fremde Dateibytes - hier zählt Vorhersagbarkeit mehr.
 //
 //  RAM/GRÖSSE (§0-Priorität 4): Die längere Kante wird auf `maxEdgePx`
 //  begrenzt. Eine Handy-Fotografie einer Unterschrift hat sonst 4000 px, von
@@ -55,7 +55,7 @@ public:
     //  Bereitet `img` auf. Liefert false bei leerem/unbrauchbarem Bild.
     static bool encode(const QImage& img, PdfImageData* out,
                        int maxEdgePx = 1600, QString* err = nullptr);
-    //  Wie oben, lädt das Bild zuvor von `path` (nicht lesbar → false).
+    //  Wie oben, lädt das Bild zuvor von `path` (nicht lesbar -> false).
     static bool encodeFile(const QString& path, PdfImageData* out,
                            int maxEdgePx = 1600, QString* err = nullptr);
 

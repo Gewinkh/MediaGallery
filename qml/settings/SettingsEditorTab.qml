@@ -56,7 +56,7 @@ Item {
                     Item { Layout.fillWidth: true }
                 }
 
-                //  Vorgabe-Schriftfarbe für „Text → PDF". Steht bewusst hier und
+                //  Vorgabe-Schriftfarbe für „Text -> PDF". Steht bewusst hier und
                 //  nicht im Design-Tab: sie färbt ein DOKUMENT, nicht die
                 //  Oberfläche, und darf einem Themenwechsel deshalb nicht folgen.
                 RowLayout {
@@ -93,7 +93,7 @@ Item {
             }
 
             // ── PDF-Editor ────────────────────────────────────────────────────
-            //  Export erzeugt IMMER eine Kopie „…_bearbeitet(.n).pdf" — die
+            //  Export erzeugt IMMER eine Kopie „…_bearbeitet(.n).pdf" - die
             //  frühere Überschreib-Option wurde entfernt (Original + Sidecar
             //  bleiben unangetastet, Notizen bleiben reversibel). Hier nur
             //  noch die Panel-Position.
@@ -101,14 +101,14 @@ Item {
                 title: App.uiText(App.language, "SettingsPdfEditGroup")
                 Layout.fillWidth: true
 
-                //  ZWEI GETRENNTE AUSWAHLGRUPPEN — zwingend nötig:
+                //  ZWEI GETRENNTE AUSWAHLGRUPPEN - zwingend nötig:
                 //  `RadioButton` ist `autoExclusive` und gruppiert sich dann
                 //  über das ELTERNELEMENT. SettingsGroup steckt aber ALLE
                 //  Kinder in dieselbe innere ColumnLayout (`default property
                 //  alias content: inner.data`), weshalb die vier Knöpfe dieser
                 //  Gruppe eine einzige Auswahl bildeten: ein Klick auf
                 //  „Seiten hinzufügen/entfernen" hob die Panel-Position wieder
-                //  auf (und umgekehrt) — es ließ sich immer nur EINE der beiden
+                //  auf (und umgekehrt) - es ließ sich immer nur EINE der beiden
                 //  Einstellungen zeigen. Eine explizite ButtonGroup je
                 //  Sachbereich stellt die Exklusivität wieder korrekt her.
                 //  (Die übrigen SettingsGroups haben je nur ein Auswahlpaar
@@ -193,7 +193,7 @@ Item {
                     }
                 }
                 // Export-Modus: steuert den EINEN „Export"-Knopf des PDF-Editors.
-                // Früher gab es dafür zwei Knöpfe nebeneinander — die Wahl ist
+                // Früher gab es dafür zwei Knöpfe nebeneinander - die Wahl ist
                 // aber eine Grundsatzentscheidung, keine je Export.
                 Label {
                     text: App.uiText(App.language, "SettingsPdfExportLabel")
@@ -265,7 +265,7 @@ Item {
 
                 Label {
                     text: App.uiText(App.language, "SettingsPdfPageEditHint")
-                    //  themeTextMuted — die Hinweisfarbe aller übrigen
+                    //  themeTextMuted - die Hinweisfarbe aller übrigen
                     //  Erklärtexte (s. DOCX-Gruppe unten). Hier stand
                     //  `themeTextSecondary`: die Property gibt es in
                     //  AppController NICHT, die Bindung lieferte `undefined`
@@ -334,16 +334,16 @@ Item {
                 }
             }
 
-            // ── Live-Transliteration (Latein → Arabisch/Kana) ─────────────────
+            // ── Live-Transliteration (Latein -> Arabisch/Kana) ─────────────────
             //  Schema-Auswahl + editierbare Zuordnungsliste. Die Liste liest
             //  Translit.mappings(scheme) rev-getrieben (mappingsRev bumpt bei
-            //  jeder Änderung) — kein manuelles Modell-Handling nötig.
+            //  jeder Änderung) - kein manuelles Modell-Handling nötig.
             SettingsGroup {
                 id: trGroup
                 title: App.uiText(App.language, "SettingsTranslitGroup")
                 Layout.fillWidth: true
 
-                // Welches Schema wird bearbeitet — initial das aktive, danach
+                // Welches Schema wird bearbeitet - initial das aktive, danach
                 // frei wählbar (Änderung im Editor überschreibt die Auswahl
                 // hier NICHT). Component.onCompleted entkoppelt die Bindung.
                 property string editScheme: "ar"
@@ -421,7 +421,7 @@ Item {
                                                            text, valField.text)
                             }
                         }
-                        Text { text: "\u2192"; color: App.themeTextMuted
+                        Text { text: "->"; color: App.themeTextMuted
                                Layout.alignment: Qt.AlignVCenter }
                         TextField {
                             id: valField
@@ -470,7 +470,7 @@ Item {
                             border.color: App.themeBorder
                         }
                     }
-                    Text { text: "\u2192"; color: App.themeTextMuted
+                    Text { text: "->"; color: App.themeTextMuted
                            Layout.alignment: Qt.AlignVCenter }
                     TextField {
                         id: newVal

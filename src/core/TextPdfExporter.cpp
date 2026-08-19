@@ -27,12 +27,12 @@ constexpr qreal kFooterPt   = 8.0;     // Fußzeile („1/3")
 constexpr int   kTabChars   = 8;       // Tabulatorweite in Zeichen
 
 //  Dicktengleiche Schrift des Systems. styleHint + fixedPitch sorgen dafür,
-//  dass ein Rückfall (Familie nicht vorhanden) wieder eine Monospace wählt —
+//  dass ein Rückfall (Familie nicht vorhanden) wieder eine Monospace wählt -
 //  sonst verrutschen genau die Einrückungen, für die sie gewählt wurde.
 //
 //  GEWICHT MEDIUM, nicht Regular: die Tinte ist reines Schwarz (s. unten), der
 //  Regular-Schnitt einer Monospace ist bei 10 pt aber so dünn, dass die Seite in
-//  voller Größe am Bildschirm GRAU wirkt — gemessen 138/255 mittlere Tinte gegen
+//  voller Größe am Bildschirm GRAU wirkt - gemessen 138/255 mittlere Tinte gegen
 //  129 bei Medium; Bold (111) liest sich als Auszeichnung und kommt für Fließtext
 //  nicht in Frage. Fehlt der Medium-Schnitt, wählt Qt den nächstliegenden.
 QFont monoFont() {
@@ -88,7 +88,7 @@ bool exportToPdf(const QString& text, const QString& targetPath,
         writer.setResolution(kResolution);
         writer.setTitle(QFileInfo(targetPath).completeBaseName());
 
-        //  Bedruckbare Fläche (Seite abzüglich Ränder) — der QPainter auf einem
+        //  Bedruckbare Fläche (Seite abzüglich Ränder) - der QPainter auf einem
         //  QPdfWriter hat dort seinen Ursprung.
         const QRectF paintRect =
             writer.pageLayout().paintRectPixels(writer.resolution());
@@ -114,7 +114,7 @@ bool exportToPdf(const QString& text, const QString& targetPath,
         to.setTabStopDistance(kTabChars *
             QFontMetricsF(font, &writer).horizontalAdvance(QLatin1Char(' ')));
         td.setDefaultTextOption(to);
-        //  Metriken am Writer messen (nicht am Bildschirm) — sonst hinge das
+        //  Metriken am Writer messen (nicht am Bildschirm) - sonst hinge das
         //  Ergebnis an der Bildschirm-DPI des Rechners.
         td.documentLayout()->setPaintDevice(&writer);
 
@@ -133,7 +133,7 @@ bool exportToPdf(const QString& text, const QString& targetPath,
         //  lassen: gemessen legt es die Zeile an der Kante 0,009 px ÜBER die
         //  Grenze und lässt sie 18 px hinunterragen. Sichtbar ist das nichts,
         //  aber gezeichnet wird sie damit auf BEIDEN Seiten (Klippen versteckt
-        //  sie nur optisch) — im Textlayer steht die Zeile doppelt, Suche und
+        //  sie nur optisch) - im Textlayer steht die Zeile doppelt, Suche und
         //  Kopieren finden sie zweimal. Eigene Zeilengrenzen kennen diesen
         //  Rundungsfall nicht.
         td.setPageSize(QSizeF(paintRect.width(), 1e7));
@@ -156,7 +156,7 @@ bool exportToPdf(const QString& text, const QString& targetPath,
                     const QTextLine ln = lay->lineAt(i);
                     const qreal lTop = blockY + ln.y();
                     const qreal lBot = lTop + ln.height();
-                    //  Passt die Zeile nicht mehr ganz? → Seite hier schließen.
+                    //  Passt die Zeile nicht mehr ganz? -> Seite hier schließen.
                     //  Eine Zeile, die für sich schon höher ist als die Seite,
                     //  bekommt trotzdem ihre eigene (sonst Endlosschleife).
                     if (lBot - top > bodyH && bottom > top) {
@@ -180,7 +180,7 @@ bool exportToPdf(const QString& text, const QString& targetPath,
             p.translate(0, -sp.top);
 
             //  WINZIGER EINZUG (kEps) an Ober- und Unterkante: die Auswahl der zu
-            //  zeichnenden Blöcke arbeitet mit BERÜHRUNG — die Nachbarzeile der
+            //  zeichnenden Blöcke arbeitet mit BERÜHRUNG - die Nachbarzeile der
             //  vorigen/nächsten Seite endet exakt auf der Kante und käme sonst
             //  mit in den Textlayer (nur optisch weggeklippt, für Suche und
             //  Kopieren aber vorhanden). Sichtbar kostet der Einzug nichts.
@@ -188,11 +188,11 @@ bool exportToPdf(const QString& text, const QString& targetPath,
             const QRectF band(0, sp.top + kEps, paintRect.width(),
                               sp.bottom - sp.top - 2 * kEps);
 
-            //  DIE SCHRIFTFARBE WIRD IMMER GESETZT — über die PALETTE des
+            //  DIE SCHRIFTFARBE WIRD IMMER GESETZT - über die PALETTE des
             //  PaintContext, NICHT über die Feder des Malers allein.
             //  `drawContents` wäre kürzer, nimmt aber die Anwendungspalette: im
             //  dunklen Theme stand deshalb `0.902 0.902 0.902` (= #E6E6E6,
-            //  `themeTextPrimary`) als Füllfarbe im PDF — das Papier war weiß,
+            //  `themeTextPrimary`) als Füllfarbe im PDF - das Papier war weiß,
             //  die Schrift fast auch. Am Prüfstand fiel es nicht auf, weil dort
             //  die Standardpalette ohnehin schwarz ist. Die Farbe kommt deshalb
             //  vom AUFRUFER (Datei- bzw. globale Einstellung), nie aus der
@@ -216,7 +216,7 @@ bool exportToPdf(const QString& text, const QString& targetPath,
             p.restore();
         }
         p.end();
-    }   // QPdfWriter zerstört → PDF finalisiert (Trailer) in den QSaveFile-Puffer
+    }   // QPdfWriter zerstört -> PDF finalisiert (Trailer) in den QSaveFile-Puffer
 
     if (!out.commit()) {
         if (err) *err = QStringLiteral("Schreiben fehlgeschlagen.");

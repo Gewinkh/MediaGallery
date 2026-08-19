@@ -64,12 +64,12 @@ Item {
 
                 Repeater {
                     model: tab.treeModel
-                    //  setSource() STATT `source:` — SettingsCategoryNode benutzt
+                    //  setSource() STATT `source:` - SettingsCategoryNode benutzt
                     //  `required property`, und die lassen sich AUSSCHLIESSLICH
                     //  bei der Erzeugung belegen. `source:` erzeugt sofort und
                     //  ohne Startwerte: Qt bricht die Erzeugung mit „Required
                     //  property … was not initialized" ab, `onLoaded` feuert nie
-                    //  und der Baum blieb komplett leer — obwohl categoriesTree()
+                    //  und der Baum blieb komplett leer - obwohl categoriesTree()
                     //  die Kategorien korrekt lieferte (Nutzerbefund 2026-07-23).
                     delegate: Loader {
                         id: rootLoader

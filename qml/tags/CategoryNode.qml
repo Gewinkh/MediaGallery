@@ -5,10 +5,10 @@ import MediaGallery 1.0
 import "../common"
 
 // ─────────────────────────────────────────────────────────────────────────────
-//  CategoryNode.qml — ein (rekursiver) Knoten des Kategorie-Baums (ersetzt
+//  CategoryNode.qml - ein (rekursiver) Knoten des Kategorie-Baums (ersetzt
 //  CategoryNode aus TagCategoryPanel.cpp). Instanziiert sich für Unterkategorien
 //  selbst. Tags sind ziehbare Chips; eine DropArea nimmt auf einen anderen Knoten
-//  gezogene Tags entgegen → Tags.moveTagToCategory.
+//  gezogene Tags entgegen -> nodeRoot.panel.tagsCtl.moveTagToCategory.
 // ─────────────────────────────────────────────────────────────────────────────
 Column {
     id: nodeRoot
@@ -31,10 +31,10 @@ Column {
                                      : (headerHover.hovered ? App.themeCard : "transparent")
         radius: 5
 
-        //  Nimmt ZWEIERLEI an: einen app-intern gezogenen Tag-Chip (→ der Tag
-        //  wechselt die Kategorie) und eine gezogene DATEI (→ sie wird Mitglied
+        //  Nimmt ZWEIERLEI an: einen app-intern gezogenen Tag-Chip (-> der Tag
+        //  wechselt die Kategorie) und eine gezogene DATEI (-> sie wird Mitglied
         //  dieser Kategorie). Bewusst EINE Fläche für beides: zwei
-        //  übereinanderliegende DropAreas würden einander den Zug wegnehmen —
+        //  übereinanderliegende DropAreas würden einander den Zug wegnehmen -
         //  geliefert wird immer nur an die oberste.
         DropArea {
             id: dropArea
@@ -107,7 +107,7 @@ Column {
                     MenuItem {
                         text: App.uiText(App.language, "SettingsCatNodeClearUniform")
                         enabled: nodeRoot.node.uniform
-                        onTriggered: Tags.setCategoryUniformColor(nodeRoot.node.id, false, nodeRoot.node.color, false)
+                        onTriggered: nodeRoot.panel.tagsCtl.setCategoryUniformColor(nodeRoot.node.id, false, nodeRoot.node.color, false)
                     }
                     MenuSeparator {}
                     MenuItem { text: App.uiText(App.language, "BookmarkDelete"); onTriggered: nodeRoot.panel.promptDelete(nodeRoot.node.id) }
@@ -116,6 +116,26 @@ Column {
         }
 
         HoverHandler { id: headerHover }
+
+        //  Rechtsklick auf die Kopfzeile öffnet dasselbe Menü wie der „⋮"-Knopf
+        //  (Unterkategorie/Tag anlegen, umbenennen, löschen) - man sucht die
+        //  Funktion dort, wo man gerade steht.
+        TapHandler {
+            acceptedButtons: Qt.RightButton
+            onTapped: nodeCtxMenu.open()
+        }
+        ThemedMenu {
+            id: nodeCtxMenu
+            MenuItem { text: "+  " + App.uiText(App.language, "SettingsCatNodeAddSub")
+                       onTriggered: nodeRoot.panel.promptAddSubcategory(nodeRoot.node.id) }
+            MenuItem { text: "+  " + App.uiText(App.language, "TagBarPlaceholder")
+                       onTriggered: nodeRoot.panel.promptAddTag(nodeRoot.node.id) }
+            MenuSeparator {}
+            MenuItem { text: App.uiText(App.language, "SettingsCatNodeRename")
+                       onTriggered: nodeRoot.panel.promptRename(nodeRoot.node.id, nodeRoot.node.name) }
+            MenuItem { text: App.uiText(App.language, "BookmarkDelete")
+                       onTriggered: nodeRoot.panel.promptDelete(nodeRoot.node.id) }
+        }
     }
 
     // ── Tag-Chips ─────────────────────────────────────────────────────────────
@@ -140,10 +160,10 @@ Column {
                 readonly property bool active: nodeRoot.panel.isTagActive(chip.modelData)
 
                 // Effektive Farbe: Einheitsfarbe der Kategorie (bzw. vererbt),
-                // sonst die Eigenfarbe des Tags — beim Deaktivieren automatisch zurück.
+                // sonst die Eigenfarbe des Tags - beim Deaktivieren automatisch zurück.
                 readonly property color effColor: nodeRoot.node.tagUniform
                                                   ? nodeRoot.node.tagColor
-                                                  : App.tagColor(chip.modelData)
+                                                  : nodeRoot.panel.tagsCtl.tagColor(chip.modelData)
 
                 height: 24; radius: 12
                 width: chipRow.implicitWidth + 16
@@ -185,7 +205,7 @@ Column {
                 //  Gleiche Fläche wie im Tags-Abschnitt des Panels; ein Tag
                 //  unter einer Kategorie soll sich nicht anders verhalten als
                 //  derselbe Tag in der Liste darüber. `keys` grenzt sauber gegen
-                //  den Chip-Zug ab (der trägt keine Schlüssel) — sonst nähme
+                //  den Chip-Zug ab (der trägt keine Schlüssel) - sonst nähme
                 //  diese Fläche dem Kategorie-Kopf das Verschieben weg.
                 DropArea {
                     id: chipDrop
@@ -198,7 +218,7 @@ Column {
                         drop.acceptProposedAction()
                     }
                 }
-                //  Rückmeldung beim Ziehen darüber — sonst rät man, ob der Chip
+                //  Rückmeldung beim Ziehen darüber - sonst rät man, ob der Chip
                 //  den Zug überhaupt annimmt.
                 Rectangle {
                     anchors.fill: parent
@@ -224,7 +244,7 @@ Column {
                     MenuSeparator {}
                     MenuItem {
                         text: App.uiText(App.language, "CatNodeRemoveFromCat")
-                        onTriggered: Tags.removeTagFromCategory(nodeRoot.node.id, chip.modelData)
+                        onTriggered: nodeRoot.panel.tagsCtl.removeTagFromCategory(nodeRoot.node.id, chip.modelData)
                     }
                 }
             }
@@ -234,7 +254,7 @@ Column {
     // ── Unterkategorien (rekursiv) ─────────────────────────────────────────────
     // Hinweis: Direktes `CategoryNode { }` hier würde mit pragma ComponentBehavior: Bound
     // den Fehler M129 ("Typ kann nicht rekursiv instanziiert werden") auslösen.
-    // Lösung: Loader mit source-String → kein statischer Typ-Verweis zur Compile-Zeit.
+    // Lösung: Loader mit source-String -> kein statischer Typ-Verweis zur Compile-Zeit.
     Column {
         width: parent.width
         spacing: 2
@@ -244,7 +264,7 @@ Column {
             //  setSource() statt `source:`: CategoryNode benutzt `required
             //  property`, die nur bei der Erzeugung belegt werden koennen.
             //  Mit `source:` brach Qt die Erzeugung ab („Required property …
-            //  was not initialized"), onLoaded feuerte nie — UNTERkategorien
+            //  was not initialized"), onLoaded feuerte nie - UNTERkategorien
             //  waren dadurch auch im Hauptbildschirm unsichtbar.
             delegate: Loader {
                 id: childLoader

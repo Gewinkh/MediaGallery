@@ -4,13 +4,13 @@ import QtQuick.Templates as T
 import MediaGallery 1.0
 
 // ─────────────────────────────────────────────────────────────────────────────
-//  Menu.qml — gethemtes Menü-Popup (Stil "style").
+//  Menu.qml - gethemtes Menü-Popup (Stil "style").
 //
-//  WARUM DAS HIERHER GEHÖRT: Der Stil brachte bisher nur `MenuItem.qml` mit —
+//  WARUM DAS HIERHER GEHÖRT: Der Stil brachte bisher nur `MenuItem.qml` mit -
 //  den RAHMEN eines Menüs malte also weiterhin Fusion: eckig und in der
 //  Fusion-Grundfarbe. Solange die App ihre Menüs selbst instanziiert, ließ sich
 //  das mit einem eigenen `background` überschreiben (`common/ThemedMenu.qml`).
-//  Menüs, die QT SELBST aufmacht, erreicht man so aber nicht — allen voran das
+//  Menüs, die QT SELBST aufmacht, erreicht man so aber nicht - allen voran das
 //  Bearbeiten-Kontextmenü einer `TextArea` (Text-, HTML-, Quelltext-Ansicht).
 //  Genau die blieben eckig (Nutzerbefund). Als Stil-Datei gilt die Fassung für
 //  JEDES Menü der Anwendung, auch für die, die wir nie anfassen.
@@ -37,7 +37,7 @@ T.Menu {
         implicitHeight: contentHeight
         model: control.contentModel
         //  Nur scrollbar, wenn das Menü höher als der Bildschirm wäre (wie die
-        //  eingebauten Stile) — sonst schluckt das ListView Rad-Ereignisse.
+        //  eingebauten Stile) - sonst schluckt das ListView Rad-Ereignisse.
         interactive: Window.window ? contentHeight + control.topPadding
                                      + control.bottomPadding > Window.window.height
                                    : false
@@ -47,7 +47,7 @@ T.Menu {
         keyNavigationWraps: true
         //  BEWUSST OHNE `ScrollIndicator`: eine Stil-Datei darf
         //  `QtQuick.Controls` nicht importieren (Ringschluss), und ohne diesen
-        //  Import ist der Typ nicht bekannt — das Menü ließe sich gar nicht mehr
+        //  Import ist der Typ nicht bekannt - das Menü ließe sich gar nicht mehr
         //  erzeugen („Type Menu unavailable", am Prüfstand gemessen).
     }
 

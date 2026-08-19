@@ -5,32 +5,32 @@ import QtWebEngine
 import MediaGallery 1.0
 
 // ─────────────────────────────────────────────────────────────────────────────
-//  HtmlSurface.qml — gerenderte HTML-Vorschau (Gegenstück zur Quelltext-Ansicht
+//  HtmlSurface.qml - gerenderte HTML-Vorschau (Gegenstück zur Quelltext-Ansicht
 //  in TextSurface). Wird vom FullscreenViewer für Typ 4 (Text) geladen, sobald
 //  die Datei eine .html/.htm ist UND der Vorschau-Modus aktiv ist.
 //
 //  INVARIANTE (lazy WebEngine): Diese Datei importiert QtWebEngine und erzeugt
-//  eine WebEngineView — sie darf daher NUR instanziiert werden, wenn
+//  eine WebEngineView - sie darf daher NUR instanziiert werden, wenn
 //  WebEngine.ready === true (WebEngineController hat initialisiert). Der
 //  FullscreenViewer stellt das sicher: HtmlSurface wird ausschließlich über
 //  einen URL-Loader geladen, der hart auf WebEngine.ready gegated ist; ohne
 //  Ready fällt HTML immer auf TextSurface (Quelltext) zurück. HtmlSurface
-//  NIEMALS direkt (als Typ) referenzieren — sonst lädt bereits das Kompilieren
+//  NIEMALS direkt (als Typ) referenzieren - sonst lädt bereits das Kompilieren
 //  der referenzierenden Datei das QtWebEngine-Plugin.
 //
-//  • Rendert die lokale Datei über Qt WebEngine (Chromium, Teil von Qt 6.11 —
-//    keine externe Bibliothek). Pfad → kodierte file://-URL via App.fileUrl()
+//  • Rendert die lokale Datei über Qt WebEngine (Chromium, Teil von Qt 6.11 -
+//    keine externe Bibliothek). Pfad -> kodierte file://-URL via App.fileUrl()
 //    (CJK-/Leerzeichen-fest), analog zur Bild-Komponente.
 //  • Policy „offline": JavaScript AN (interaktive Quizze/Suche/Shortcuts der
-//    Lernzettel laufen), Netzwerk AUS — eine file://-Seite darf per Default
+//    Lernzettel laufen), Netzwerk AUS - eine file://-Seite darf per Default
 //    keine entfernten URLs laden; wir setzen das hier explizit, damit z. B.
 //    Google-Fonts NICHT nachgeladen werden. Nichts verlässt den Rechner; bei
 //    fehlenden Web-Fonts greift die CSS-Fallback-Kette (lokal installierte
 //    Familien wie Noto Sans JP).
 //  • Lokaler Dateizugriff bleibt erlaubt (eingebundene lokale Bilder/CSS).
-//  • topInset/bottomInset werden vom FullscreenViewer reserviert → die globale
+//  • topInset/bottomInset werden vom FullscreenViewer reserviert -> die globale
 //    Leiste/Navigation überdeckt den Inhalt NICHT; die View füllt die Mitte.
-//  • Beim Verlassen/Umschalten release() → Laden stoppen + Seite leeren; die
+//  • Beim Verlassen/Umschalten release() -> Laden stoppen + Seite leeren; die
 //    eigentliche RAM-/Render-Prozess-Freigabe erfolgt durch das Entladen der
 //    Komponente im Loader (genau ein aktives Medium, RAM-Prio 1).
 // ─────────────────────────────────────────────────────────────────────────────
@@ -53,7 +53,7 @@ Item {
         else                   { web.stop(); web.url = "about:blank" }
     }
 
-    //  Der Loader entlädt diese Komponente beim Wechsel/Verlassen — ein noch
+    //  Der Loader entlädt diese Komponente beim Wechsel/Verlassen - ein noch
     //  laufender Ladevorgang darf dabei nicht in die Zerstörung hineinlaufen.
     Component.onDestruction: web.stop()
 
@@ -67,7 +67,7 @@ Item {
             top: parent.top;    topMargin: root.topInset
             bottom: parent.bottom; bottomMargin: root.bottomInset
         }
-        // Seitenweiß hinter dem Dokument-Body — passt zu den hellen Lernzetteln
+        // Seitenweiß hinter dem Dokument-Body - passt zu den hellen Lernzetteln
         // und vermeidet ein dunkles Aufblitzen vor dem ersten Paint.
         backgroundColor: "white"
 
@@ -79,7 +79,7 @@ Item {
 
         // Render-Prozess gestorben (Crash/OOM/vom System beendet): NICHT
         // automatisch neu laden (sonst Crash-Schleife). Stattdessen View leeren
-        // und eine Hinweisfläche zeigen — der Nutzer kann oben auf den Quelltext
+        // und eine Hinweisfläche zeigen - der Nutzer kann oben auf den Quelltext
         // umschalten oder die Datei neu öffnen. Verhindert „weißer Hänger".
         onRenderProcessTerminated: function(terminationStatus, exitCode) {
             web.visible = false
@@ -87,7 +87,7 @@ Item {
         }
 
         // Fehlgeschlagenes Laden (defekte Datei, verweigerter Zugriff, Timeout):
-        // bisher blieb einfach eine weiße Fläche stehen — nicht unterscheidbar
+        // bisher blieb einfach eine weiße Fläche stehen - nicht unterscheidbar
         // von „hängt". Jetzt erscheint dieselbe Hinweisfläche wie beim Absturz,
         // der Nutzer kann auf den Quelltext umschalten. about:blank ist der
         // reguläre Ruhezustand und wird ausgenommen.
@@ -100,7 +100,7 @@ Item {
         }
 
         // Ein lokales Dokument darf die Ansicht nicht wegnavigieren (Links auf
-        // externe Seiten sind durch die Offline-Policy ohnehin blockiert) —
+        // externe Seiten sind durch die Offline-Policy ohnehin blockiert) -
         // Navigationsziele außerhalb von file:// werden verworfen, statt die
         // View in einen Ladezustand zu schicken, der nie endet.
         onNavigationRequested: function(request) {
