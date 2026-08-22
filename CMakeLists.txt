@@ -169,7 +169,9 @@ mg_domain(mg_media
         src/media/ThumbnailLoader.cpp
         src/media/ThumbnailLoader.h
     LIBS
-        mg_core mg_tags mg_docx Qt6::Multimedia Qt6::Pdf
+        #  `mg_audio` nur wegen `AudioTags`: die Kachel einer Audiodatei zeigt
+        #  ihr eingebettetes Titelbild. Kein Kreis - mg_audio kennt mg_media nicht.
+        mg_core mg_tags mg_docx mg_audio Qt6::Multimedia Qt6::Pdf
 )
 
 mg_domain(mg_pdfextract
@@ -260,8 +262,18 @@ mg_domain(mg_audio
         src/audio/AudioEngine.h
         src/audio/AudioController.cpp
         src/audio/AudioController.h
+        src/audio/Mp4AudioExtract.cpp
+        src/audio/Mp4AudioExtract.h
+        src/audio/AudioTags.cpp
+        src/audio/AudioTags.h
+        src/audio/MkvAudioExtract.cpp
+        src/audio/MkvAudioExtract.h
+        src/audio/AudioSeekIndex.cpp
+        src/audio/AudioSeekIndex.h
+        src/audio/AudioCoverProvider.cpp
+        src/audio/AudioCoverProvider.h
     LIBS
-        mg_core Qt6::Multimedia
+        mg_core Qt6::Multimedia Qt6::Quick
 )
 
 mg_domain(mg_imageedit

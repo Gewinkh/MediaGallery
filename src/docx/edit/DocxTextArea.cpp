@@ -647,6 +647,9 @@ void DocxTextArea::rebuildAll() {
     m_lay.clear();
     m_offsets.clear();
     m_offsetsValidTo = 0;
+    m_offsetsHighWater = 0;
+    m_offsetsDirtyMax = 0;
+    m_fmtCache.clear();          // anderes Dokument = andere Formate
     m_layChunkAt = 0;
     m_trimLo = m_trimHi = -1;   // Indizes verschoben -> Layout-Fenster neu bestimmen
     m_contentHeight = 0;
@@ -659,6 +662,14 @@ void DocxTextArea::rebuildAll() {
             if (b.kind == Block::OpaqueHidden)      m_lay[i].height = 0;
             else if (b.kind == Block::OpaqueVisible) m_lay[i].height = 34;
             else m_lay[i].height = 22.0 * qMax(1, b.textLength() / 90 + 1);
+        }
+        //  Einmal je Dokument: gibt es hier überhaupt Nummerierung? (s.
+        //  m_anyNumbering) - der Lauf darunter läuft sonst je Tastendruck über
+        //  alle Blöcke, ohne je etwas zu finden.
+        m_anyNumbering = m_ctl->doc().stylesMayNumber();
+        if (!m_anyNumbering) {
+            for (const Block& b : m_ctl->doc().blocks)
+                if (b.pfmt.set & ParFmt::FNum) { m_anyNumbering = true; break; }
         }
         rebuildMarkers();
         m_chunkTimer.start();
@@ -686,13 +697,33 @@ void DocxTextArea::invalidateFrom(int first, int oldCount, int newCount) {
             first = qMin(first, anchor);
         }
     }
-    for (int i = 0; i < oldCount && first < int(m_lay.size()); ++i)
-        m_lay.erase(m_lay.begin() + first);
-    for (int i = 0; i < newCount; ++i)
+    //  Der häufigste Fall ist 1:1 (ein Absatz wird durch seine neue Fassung
+    //  ersetzt - jeder Tastendruck). Dann wird AN ORT UND STELLE zurückgesetzt:
+    //  ein `erase` samt `insert` schöbe alle folgenden Layout-Einträge zweimal
+    //  durch den Speicher (gemessen: 55 % eines Tastendrucks bei 30.451
+    //  Blöcken). Nur die DIFFERENZ wird noch eingefügt bzw. entfernt.
+    const int common = qMin(oldCount, newCount);
+    for (int i = 0; i < common && first + i < int(m_lay.size()); ++i)
+        m_lay[size_t(first + i)] = BlockLayout();
+    for (int i = common; i < oldCount && first + common < int(m_lay.size()); ++i)
+        m_lay.erase(m_lay.begin() + first + common);
+    for (int i = common; i < newCount; ++i)
         m_lay.insert(m_lay.begin() + first + i, BlockLayout());
     for (int i = 0; i < newCount; ++i)
         ensureLaid(first + i);
+    //  Neue Blöcke können Nummerierung mitbringen (Aufzählung einschalten,
+    //  Einfügen aus der Zwischenablage) - dann muss der Marker-Lauf wieder
+    //  laufen.
+    if (!m_anyNumbering && m_ctl->ready()) {
+        const Document& doc = m_ctl->doc();
+        for (int i = 0; i < newCount && first + i < doc.blocks.size(); ++i)
+            if (doc.blocks.at(first + i).pfmt.set & ParFmt::FNum) {
+                m_anyNumbering = true;
+                break;
+            }
+    }
     m_offsetsValidTo = qMin(m_offsetsValidTo, first);
+    m_offsetsDirtyMax = qMax(m_offsetsDirtyMax, first + qMax(0, newCount - 1));
     m_trimLo = m_trimHi = -1;   // Indizes verschoben -> Layout-Fenster neu bestimmen
     //  Ein Inhaltsverzeichnis hängt am GANZEN Dokument, nicht nur an den
     //  Blöcken hinter der Änderung - es steht ja meist davor. Also immer
@@ -703,6 +734,7 @@ void DocxTextArea::invalidateFrom(int first, int oldCount, int newCount) {
         m_lay[k].laid = false;
         m_lay[k].tocEntries.clear();
         m_offsetsValidTo = qMin(m_offsetsValidTo, int(k));
+        m_offsetsDirtyMax = qMax(m_offsetsDirtyMax, int(k));
     }
     rebuildMarkers();
     //  Marker können sich hinter der Änderung geändert haben (Listenzähler) -
@@ -724,6 +756,10 @@ void DocxTextArea::rebuildMarkers() {
     if (!m_ctl) return;
     const Document& d = m_ctl->doc();
     const bool mayNumber = d.stylesMayNumber();
+    if (mayNumber) m_anyNumbering = true;
+    //  Ohne jede Nummerierung im Dokument gäbe der Lauf für jeden Block
+    //  dasselbe leere Ergebnis zurück - er kostet dann nur die Schleife.
+    if (!m_anyNumbering) return;
     QHash<int, int> counters;                       // numId -> laufende Nummer
     for (int i = 0; i < d.blocks.size() && i < int(m_lay.size()); ++i) {
         const Block& b = d.blocks.at(i);
@@ -781,6 +817,51 @@ QFont DocxTextArea::blockBaseFont(const Block& b, int blockIdx) const {
     return base;
 }
 
+//  Merkspeicher, s. Kopfdatei. Der Deckel ist Absicht: ein Dokument mit
+//  Hunderten verschiedener Formate würde die lineare Suche sonst teurer machen
+//  als das Bauen selbst - dann wird eben gebaut.
+const QTextCharFormat& DocxTextArea::charFormatOf(const RunFmt& rf,
+                                                  const RunFmt& def,
+                                                  const Run& r) const {
+    constexpr size_t kFmtCacheCap = 48;
+    FmtKey key;
+    key.rf       = rf;
+    key.opaque   = r.opaque;
+    key.revision = int(r.revision);
+    if (r.revision != Run::RevNone) key.author = r.revAuthor;
+    for (const std::pair<FmtKey, QTextCharFormat>& e : m_fmtCache)
+        if (e.first == key) return e.second;
+
+    QTextCharFormat cf;
+    QFont f;
+    f.setFamily(rf.font.isEmpty() ? def.font : rf.font);
+    f.setPointSizeF(rf.sizePt > 0 ? rf.sizePt : def.sizePt);
+    f.setBold(rf.bold);
+    f.setItalic(rf.italic);
+    f.setUnderline(rf.underline);
+    cf.setFont(f);
+    cf.setForeground(rf.color.isValid() ? rf.color : QColor(0, 0, 0));
+    if (r.opaque && r.revision == Run::RevNone) {
+        //  Atomare Fremdinhalte dezent hinterlegen (Hyperlink-Blau wäre
+        //  irreführend - es sind auch Felder/Zeichnungen).
+        cf.setBackground(QColor(0, 0, 0, 14));
+    }
+    //  ── Änderungsverfolgung als DEKORATOR ────────────────────────────────────
+    //  Eingefügt = unterstrichen, gelöscht = durchgestrichen, beides in der
+    //  Farbe des Autors - wie in Word. Das Dokument selbst bleibt unangetastet;
+    //  die Markierung ist reine Darstellung.
+    if (r.revision != Run::RevNone) {
+        const QColor rc = revisionColor(r.revAuthor);
+        cf.setForeground(rc);
+        if (r.revision == Run::RevInserted) f.setUnderline(true);
+        else                                f.setStrikeOut(true);
+        cf.setFont(f);
+    }
+    if (m_fmtCache.size() >= kFmtCacheCap) m_fmtCache.clear();
+    m_fmtCache.emplace_back(std::move(key), cf);
+    return m_fmtCache.back().second;
+}
+
 void DocxTextArea::buildLayout(int i) {
     const Document& d = m_ctl->doc();
     const Block& b = d.blocks.at(i);
@@ -790,6 +871,7 @@ void DocxTextArea::buildLayout(int i) {
     L.rows.clear();
     L.textLen  = 0;
     L.isText   = false;
+    L.hasBreak = false;
     L.isImage  = false;
     L.trimmed  = false;
     L.beforePx = 0;
@@ -946,6 +1028,8 @@ qreal DocxTextArea::buildInlineRows(BlockLayout& L, const Block& b,
         if (text.at(ci) == Docx::kClearBreak) { clearAt.append(ci); text[ci] = Docx::kLineBreak; }
     const qreal     W = qMax(20.0, width);
     const qreal     spacing = qMax(0.5, pf.lineSpacing);
+    //  Einmal hier, statt bei jeder Paginierung erneut (s. BlockLayout::hasBreak).
+    L.hasBreak = text.contains(kPageBreak);
 
     //  Diese Funktion BAUT den Block - sie muss ihn deshalb selbst leeren.
     //  Der Zellpfad (buildFlatTableLayout) ruft sie direkt auf; ohne das blieb
@@ -962,35 +1046,10 @@ qreal DocxTextArea::buildInlineRows(BlockLayout& L, const Block& b,
     for (const Run& r : b.runs) {
         if (r.text.isEmpty()) continue;
         const RunFmt rf = d.resolveRun(b, r);
-        QTextCharFormat cf;
-        QFont f;
-        f.setFamily(rf.font.isEmpty() ? def.font : rf.font);
-        f.setPointSizeF(rf.sizePt > 0 ? rf.sizePt : def.sizePt);
-        f.setBold(rf.bold);
-        f.setItalic(rf.italic);
-        f.setUnderline(rf.underline);
-        cf.setFont(f);
-        cf.setForeground(rf.color.isValid() ? rf.color : QColor(0, 0, 0));
-        if (r.opaque && r.revision == Run::RevNone) {
-            //  Atomare Fremdinhalte dezent hinterlegen (Hyperlink-Blau wäre
-            //  irreführend - es sind auch Felder/Zeichnungen).
-            cf.setBackground(QColor(0, 0, 0, 14));
-        }
-        //  ── Änderungsverfolgung als DEKORATOR ────────────────────────────────
-        //  Eingefügt = unterstrichen, gelöscht = durchgestrichen, beides in der
-        //  Farbe des Autors - wie in Word. Das Dokument selbst bleibt
-        //  unangetastet; die Markierung ist reine Darstellung.
-        if (r.revision != Run::RevNone) {
-            const QColor rc = revisionColor(r.revAuthor);
-            cf.setForeground(rc);
-            if (r.revision == Run::RevInserted) f.setUnderline(true);
-            else                                f.setStrikeOut(true);
-            cf.setFont(f);
-        }
         QTextLayout::FormatRange fr;
         fr.start  = acc;
         fr.length = r.text.size();
-        fr.format = cf;
+        fr.format = charFormatOf(rf, def, r);
         fmts.append(fr);
         acc += r.text.size();
     }
@@ -2059,14 +2118,17 @@ void DocxTextArea::ensureLaid(int i) {
         const qreal oldH    = m_lay[i].height;
         const qreal oldOver = m_lay[i].floatOverhang;
         buildLayout(i);
-        if (!qFuzzyCompare(oldH + 1, m_lay[i].height + 1))
+        if (!qFuzzyCompare(oldH + 1, m_lay[i].height + 1)) {
             m_offsetsValidTo = qMin(m_offsetsValidTo, i);
+            m_offsetsDirtyMax = qMax(m_offsetsDirtyMax, i);
+        }
         //  Der Überstand eines verankerten Bildes bestimmt das Layout der
         //  FOLGENDEN Blöcke mit - ändert er sich, sind deren Zeilen veraltet.
         //  Nur vorwärts markieren (kein Zyklus), das Neuauslegen bleibt lazy.
         if (!qFuzzyCompare(oldOver + 1, m_lay[i].floatOverhang + 1)) {
             invalidateFloatFollowers(i, qMax(oldOver, m_lay[i].floatOverhang));
             m_offsetsValidTo = qMin(m_offsetsValidTo, i);
+            m_offsetsDirtyMax = qMax(m_offsetsDirtyMax, i);
         }
     }
 }
@@ -2171,8 +2233,12 @@ qreal DocxTextArea::paginateBlock(int idx, qreal flowStart, qreal slotH) {
     }
 
     const int nLines = lineCount(L);
-    const QString text = blockText(L);
-    const bool hasExplicitBreak = text.contains(kPageBreak);
+    const bool hasExplicitBreak = L.hasBreak;
+    //  Der Absatztext wird nur noch dort gebraucht, wo wirklich ein
+    //  erzwungener Umbruch drinsteht - er kostet sonst je Block und je
+    //  Tastendruck eine Zeichenkette samt Suchlauf.
+    QString text;
+    if (hasExplicitBreak) text = blockText(L);
 
     //  Einfachster und häufigster Fall: passt komplett, kein erzwungener Umbruch.
     //  Gemessen wird gegen die KAPAZITÄT des Slots (Slot-Höhe minus
@@ -2294,6 +2360,8 @@ void DocxTextArea::ensureOffsetsTo(int i) {
     if (m_offsets.size() != int(m_lay.size()) + 1) {
         m_offsets.resize(int(m_lay.size()) + 1);
         m_offsetsValidTo = 0;
+        m_offsetsHighWater = 0;      // Indizes verschoben - nichts ist mehr vergleichbar
+        m_offsetsDirtyMax = 0;
     }
     if (m_offsets.isEmpty()) return;
     const qreal slotH = slotHeight();
@@ -2302,9 +2370,33 @@ void DocxTextArea::ensureOffsetsTo(int i) {
         if (!m_lay.empty()) m_offsets[1] = paginateBlock(0, 0.0, slotH);
         m_offsetsValidTo = qMin(1, int(m_lay.size()));
     }
-    for (int k = m_offsetsValidTo + 1; k <= i; ++k)
+    //  ── Weiterlaufen nur, solange sich wirklich etwas verschiebt ────────────
+    //  Eine Änderung macht die Offsets ab ihrem Block ungültig - der Fluss
+    //  DAHINTER ist aber fast immer derselbe (ein Zeichen mehr in einer Zeile
+    //  verschiebt keine einzige Seite). Liefert ein Block wieder exakt densel-
+    //  ben Fluss-Ausgang wie beim letzten Lauf, sind alle folgenden Ergebnisse
+    //  bitgleich zu den gespeicherten: gleicher Eingang, unverändertes Layout,
+    //  gleiche Rechnung. Dann wird bis zum Hochwasserstand übersprungen.
+    //  Verglichen wird EXAKT (kein qFuzzyCompare): schon ein Bruchteil eines
+    //  Pixels Unterschied ist eine echte Verschiebung, die weitergerechnet
+    //  werden muss.
+    int k = m_offsetsValidTo + 1;
+    while (k <= i) {
+        const qreal before = m_offsets[k];
         m_offsets[k] = paginateBlock(k - 1, m_offsets[k - 1], slotH);
+        if (k < m_offsetsHighWater && k - 1 >= m_offsetsDirtyMax
+            && m_offsets[k] == before) {
+            m_offsetsValidTo = m_offsetsHighWater;
+            m_offsetsDirtyMax = 0;
+            k = m_offsetsHighWater + 1;
+            continue;
+        }
+        ++k;
+    }
     m_offsetsValidTo = qMax(m_offsetsValidTo, i);
+    m_offsetsHighWater = qMax(m_offsetsHighWater, m_offsetsValidTo);
+    if (m_offsetsValidTo >= int(m_lay.size()))
+        m_offsetsDirtyMax = 0;        // der Lauf ist durch - nichts steht mehr aus
 
     //  Seitenzahl steht erst fest, wenn der ganze Fluss paginiert ist.
     if (m_offsetsValidTo >= int(m_lay.size()) && !m_lay.empty()) {
@@ -2385,8 +2477,15 @@ void DocxTextArea::trimLayouts(int firstVisible, int lastVisible) {
         //  weder Praefix-Offsets noch die Inhaltshoehe neu berechnet werden.
         //  Fuer Tabellen gilt dasselbe: das Gitter-Layout haelt je Zelle
         //  QTextLayouts und ist damit der groesste Einzelposten im Fenster.
+        //  Die ZEILENBAeNDER bleiben dagegen stehen (64 Byte je Zeile, ohne
+        //  Zeiger): sie sind alles, was die Paginierung braucht, um einen
+        //  Absatz an einer Seitenkante zu TRENNEN. Ohne sie musste
+        //  `paginateBlock` jeden Block an einer Seitengrenze neu vermessen -
+        //  Harfbuzz-Shaping mitten im Tastendruck, gemessen 8 ms (218 Seiten)
+        //  bzw. 26 ms (648 Seiten) je Umbruch-Verschiebung. `lineRef` liefert
+        //  ohne Stuecke eine ungueltige Referenz, Zeichnen und Cursor gehen
+        //  ohnehin ueber `ensureLaid` (das `trimmed` sieht und neu baut).
         m_lay[i].pieces.clear();
-        m_lay[i].rows.clear();
         m_lay[i].table.reset();
         //  Das eingepasste Bild ist der groesste Einzelposten je Block. Die
         //  KASTENMASSE bleiben stehen, die Hoehe aendert sich also nicht.
@@ -2663,6 +2762,55 @@ qreal DocxTextArea::selImageH() const { return m_imgSelDoc.height() * m_scale; }
 // ─────────────────────────────────────────────────────────────────────────────
 //  Zeichnen
 // ─────────────────────────────────────────────────────────────────────────────
+void DocxTextArea::setPageNumberPos(int pos) {
+    pos = qBound(0, pos, 3);
+    if (m_pageNumberPos == pos) return;
+    m_pageNumberPos = pos;
+    emit pageNumberChanged();
+    emit documentChanged();      // die Miniaturen tragen sie auch
+    update();
+}
+
+void DocxTextArea::setPageNumberStyle(int style) {
+    style = qBound(0, style, 1);
+    if (m_pageNumberStyle == style) return;
+    m_pageNumberStyle = style;
+    emit pageNumberChanged();
+    emit documentChanged();
+    update();
+}
+
+//  Die Seitenzahl sitzt in einem FESTEN Abstand über der Blattkante (~9 mm auf
+//  A4), nicht relativ zum Satzspiegel: ohne zusätzlichen Rand fiele sie sonst
+//  genau auf die Kante und wäre halb abgeschnitten. Alle Maße sind Anteile des
+//  BLATTS - damit sieht die Zahl am Bildschirm, in der Miniatur und im PDF
+//  gleich aus, obwohl dort mit 300 dpi und hier mit Dokument-Pixeln gemalt wird.
+void DocxTextArea::paintPageNumber(QPainter* p, const QRectF& sheet, int page,
+                                   int total, int pos, int style) const {
+    if (pos <= 0 || sheet.height() <= 0.0) return;
+    const QString text = (style == 0) ? QString::number(page + 1)
+                                      : QStringLiteral("%1 / %2").arg(page + 1)
+                                            .arg(qMax(1, total));
+    const qreal numY   = sheet.bottom() - sheet.height() * 0.030;
+    const qreal numPad = sheet.width() * 0.06;
+    QFont numFont;
+    //  9 pt bei 300 dpi = 0,0107 der A4-Höhe; als ANTEIL gerechnet ist die Zahl
+    //  in jeder Auflösung gleich groß (`setPointSizeF` wäre an die dpi des
+    //  Malgeräts gebunden und in der Miniatur riesig).
+    numFont.setPixelSize(qMax(1, qRound(sheet.height() * 0.0107)));
+    p->save();
+    p->setFont(numFont);
+    //  Gedämpftes Grau - die Zählung gehört nicht zum Inhalt.
+    p->setPen(QColor(120, 120, 120));
+    const QRectF line(sheet.left() + numPad, numY - sheet.height() * 0.03,
+                      sheet.width() - 2 * numPad, sheet.height() * 0.06);
+    const Qt::Alignment h = (pos == 1) ? Qt::AlignLeft
+                          : (pos == 3) ? Qt::AlignRight
+                                       : Qt::AlignHCenter;
+    p->drawText(line, int(h | Qt::AlignVCenter), text);
+    p->restore();
+}
+
 void DocxTextArea::paint(QPainter* p) {
     if (!m_ctl || !m_ctl->ready())
         return;
@@ -2703,6 +2851,8 @@ void DocxTextArea::paint(QPainter* p) {
         for (int c = 0; c < nCols; ++c) {
             paintSlot(p, page * nCols + c, true);
         }
+        paintPageNumber(p, paper, page, m_pageCount, m_pageNumberPos,
+                        m_pageNumberStyle);
     }
     p->restore();
 
@@ -2964,7 +3114,8 @@ void DocxTextArea::paintSlot(QPainter* p, int slot, bool withCaret,
 //  weil die Seite HIER das Papier ist und die Ränder schon im Layout stecken.
 //  Der Maler auf einem `QPdfWriter` erzeugt echten Vektortext - keine Bilder.
 // ─────────────────────────────────────────────────────────────────────────────
-QString DocxTextArea::exportPagesToPdf(const QString& targetPath) {
+QString DocxTextArea::exportPagesToPdf(const QString& targetPath, int paddingMm,
+                                       int pageNumberPos, int pageNumberStyle) {
     if (!m_ctl || !m_ctl->ready())
         return QStringLiteral("Kein Dokument geladen.");
     if (targetPath.isEmpty())
@@ -2991,13 +3142,45 @@ QString DocxTextArea::exportPagesToPdf(const QString& targetPath) {
         writer.setTitle(QFileInfo(targetPath).completeBaseName());
 
         const QRectF sheet = writer.pageLayout().paintRectPixels(writer.resolution());
+        //  Zusätzlicher Rand: die Seite wird in ein KLEINERES Rechteck gemalt.
+        //  `paintPageInto` skaliert auf dieses Rechteck, das Blatt bleibt also
+        //  A4 (bzw. was in `w:sectPr` steht) und der Inhalt wird maßstäblich
+        //  kleiner - der andere Weg (Blatt vergrößern) wurde bewusst verworfen,
+        //  weil das PDF dann kein A4 mehr wäre.
+        const qreal padPx = qMax(0, qMin(paddingMm, 40)) * writer.resolution() / 25.4;
+        const QRectF target = (padPx > 0.0 && sheet.width() > 4 * padPx
+                                           && sheet.height() > 4 * padPx)
+                              ? sheet.adjusted(padPx, padPx, -padPx, -padPx)
+                              : sheet;
+
         QPainter p(&writer);
+        //  Die Seitenzahl malt `paintPageNumber` - derselbe Weg wie in der
+        //  Anzeige und in den Miniaturen. Sie bekommt das BLATT, nicht das um
+        //  den zusätzlichen Rand verkleinerte Ziel: sonst rutschte sie mit dem
+        //  Rand nach innen, statt an der Blattkante zu bleiben.
         for (int pg = 0; pg < pages; ++pg) {
             if (pg > 0) writer.newPage();
             //  OHNE Papierrahmen: die PDF-Seite IST das Papier.
             //  Ohne Auswahl-Hinterlegung: eine beim Export bestehende Markierung
             //  gehört nicht ins Papier.
-            paintPageInto(&p, pg, sheet, false, false);
+            paintPageInto(&p, pg, target, false, false);
+
+            paintPageNumber(&p, sheet, pg, pages, pageNumberPos, pageNumberStyle);
+            //  Das Layout-Fenster MITZIEHEN. Ohne das hält der Export am Ende
+            //  die Auslegung JEDER Seite im Speicher - gemessen an einem
+            //  648-Seiten-Dokument +145 MB, und zwar dauerhaft, weil danach
+            //  nichts mehr trimmt. Jede Seite wird ohnehin genau einmal
+            //  gezeichnet; der Rückweg kostet also keinen Neuaufbau.
+            //  Nur JEDE ACHTE Seite: der Lauf geht über alle Blöcke, und acht
+            //  Seiten Auslegung mehr im Speicher sind gegenüber den 145 MB
+            //  nichts. Je Seite zu trimmen kostete 19 % Exportzeit (648
+            //  Seiten: 1034 -> 1230 ms), jede achte nur 6 % (1102 ms).
+            if ((pg & 7) == 0) {
+                const int nCols  = colCount();
+                const qreal slotH = slotHeight();
+                const qreal top   = qreal(pg * nCols) * slotH;
+                trimLayouts(blockAtY(top), blockAtY(top + nCols * slotH));
+            }
         }
         p.end();
     }   // Writer zerstört -> PDF finalisiert
@@ -3034,6 +3217,12 @@ void DocxTextArea::paintPageInto(QPainter* p, int page, const QRectF& target,
     for (int c = 0; c < nCols; ++c) {
         paintSlot(p, page * nCols + c, false, withSelection);   // ohne Caret
     }
+    //  Nur für die ANZEIGE (Miniaturen): im PDF-Export malt `exportPagesToPdf`
+    //  die Zahl selbst auf das BLATT - dort ist das Ziel um den zusätzlichen
+    //  Rand kleiner, die Zahl gehört aber an die Blattkante.
+    if (withPaperFrame)
+        paintPageNumber(p, paper, page, m_pageCount, m_pageNumberPos,
+                        m_pageNumberStyle);
     p->restore();
 }
 

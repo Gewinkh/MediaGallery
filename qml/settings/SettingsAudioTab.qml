@@ -133,6 +133,57 @@ Item {
                     }
                 }
             }
+
+            // ── Ton aus Videos sichern ────────────────────────────────────────
+            //  Ausgelöst wird es am Video (Rechtsklick auf die Kachel) oder in
+            //  der Warteschlange des Players; hier stehen nur die Vorgaben.
+            SettingsGroup {
+                title: App.uiText(App.language, "AudioExtractGroup")
+                Layout.fillWidth: true
+
+                CheckBox {
+                    text: App.uiText(App.language, "AudioExtractInheritTags")
+                    checked: Audio.extractInheritTags
+                    onToggled: Audio.extractInheritTags = checked
+                    contentItem: Text {
+                        text: parent.text; color: App.themeTextPrimary
+                        leftPadding: parent.indicator.width + 6
+                        verticalAlignment: Text.AlignVCenter
+                    }
+                }
+                Text {
+                    Layout.fillWidth: true
+                    Layout.leftMargin: 24
+                    text: App.uiText(App.language, "AudioExtractInheritHint")
+                    color: App.themeTextMuted
+                    font.pixelSize: 11
+                    wrapMode: Text.WordWrap
+                }
+
+                CheckBox {
+                    text: App.uiText(App.language, "AudioExtractToQueue")
+                    checked: Audio.extractToQueue
+                    onToggled: Audio.extractToQueue = checked
+                    contentItem: Text {
+                        text: parent.text; color: App.themeTextPrimary
+                        leftPadding: parent.indicator.width + 6
+                        verticalAlignment: Text.AlignVCenter
+                    }
+                }
+                Text {
+                    Layout.fillWidth: true
+                    Layout.leftMargin: 24
+                    text: App.uiText(App.language, "AudioExtractToQueueHint")
+                    color: App.themeTextMuted
+                    font.pixelSize: 11
+                    wrapMode: Text.WordWrap
+                }
+            }
         }
     }
+
+    //  Weiches, schnelles Mausrad-Scrollen (Galerie-Muster) statt der festen
+    //  60 px je Rastung von `Flickable`. Fehlte hier als einzigem Reiter -
+    //  dadurch lief der Audio-Reiter spürbar zäher als die übrigen acht.
+    SmoothWheelArea { flickable: audioScroll.contentItem }
 }

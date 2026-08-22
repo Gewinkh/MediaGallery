@@ -148,6 +148,9 @@ Item {
                         Layout.fillWidth: true
                         model: root.modes
                         textRole: "label"
+                        //  Beschriftung und Aufklappliste zeigen den Pfeil
+                        //  GEZEICHNET (Regel 28) - `textRole` bleibt gesetzt,
+                        //  damit die Suche/Tastaturauswahl weiter am Text hängt.
                     }
                 }
 

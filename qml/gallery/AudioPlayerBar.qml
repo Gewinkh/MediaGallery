@@ -241,13 +241,13 @@ Rectangle {
             anchors { left: parent.left; right: parent.right; top: parent.top; topMargin: 2 }
             horizontalAlignment: Text.AlignHCenter
             elide: Text.ElideMiddle
+            //  Titel aus den Datei-Tags, dahinter der Interpret; ohne Tags
+            //  bleibt es beim Dateinamen (das entscheidet `Audio.trackTitle`).
             text: {
-                const p = Audio.currentPath
-                if (!p) return App.uiText(App.language, "AudioNoTrack")
-                const cut = Math.max(p.lastIndexOf("/"), p.lastIndexOf("\\"))
-                const name = cut >= 0 ? p.slice(cut + 1) : p
-                const dot = name.lastIndexOf(".")
-                return dot > 0 ? name.slice(0, dot) : name
+                if (!Audio.currentPath) return App.uiText(App.language, "AudioNoTrack")
+                const t = Audio.trackTitle
+                const a = Audio.trackArtist
+                return a.length > 0 ? t + "  -  " + a : t
             }
             color: centerHover.hovered ? App.themeAccent : App.themeTextPrimary
             font.pixelSize: 13

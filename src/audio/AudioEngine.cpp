@@ -1,4 +1,8 @@
 #include "audio/AudioEngine.h"
+#include "audio/AudioSeekIndex.h"
+#include "audio/MkvAudioExtract.h"
+
+#include <QElapsedTimer>
 
 #include "audio/AudioEqualizer.h"
 
@@ -75,7 +79,22 @@ AudioEngine::AudioEngine(AudioEqualizer& eq, QObject* parent)
     m_tick.setInterval(100);
     connect(&m_tick, &QTimer::timeout, this, [this] {
         if (m_state == State::Playing) emit positionChanged();
+
+        //  Hat die AUSGABE die Naht überschritten? Gefragt wird die Senke, nicht
+        //  der Ring: `m_framesOut` ist das, was sie ABGEHOLT hat, und sie hält
+        //  davon noch ~280 ms in ihrem eigenen Puffer. Ohne diese Unterscheidung
+        //  spränge der Titelname eine Viertelsekunde zu früh um.
+        if (m_boundaryFrames >= 0 && m_sink && m_state == State::Playing) {
+            const qint64 rate = std::max(1, m_format.sampleRate());
+            const qint64 playedFrames = m_sink->processedUSecs() * rate / 1000000;
+            if (playedFrames >= m_boundaryFrames) promoteNext();
+        }
+
         if (!m_decodeDone || m_state != State::Playing || !m_sink) return;
+        //  Ein vorbereiteter Übergang heißt: es kommt noch etwas. Erst wenn auch
+        //  der zweite Dekoder durch ist UND die Naht hinter uns liegt, kann die
+        //  Kette zu Ende sein.
+        if (m_boundaryFrames >= 0) return;
         if (m_ring.available() != 0) return;
         if (m_pendingAt < m_pending.size()) return;      // Rest wartet noch
         //  Der leere Ring heißt NUR: alles ist an die Senke übergeben. Die hat
@@ -103,7 +122,11 @@ void AudioEngine::setState(State s) {
 
 qint64 AudioEngine::position() const {
     if (!m_format.isValid()) return 0;
-    const qint64 frames = m_baseFrames + m_framesOut.load(std::memory_order_relaxed);
+    //  `m_frameOrigin` ist der Stand der Ausgabe, an dem der laufende Titel
+    //  begann - nach einem lückenlosen Übergang ist das nicht mehr 0, weil die
+    //  Senke seit dem VORIGEN Titel durchläuft.
+    const qint64 played = m_framesOut.load(std::memory_order_relaxed) - m_frameOrigin;
+    const qint64 frames = m_baseFrames + std::max<qint64>(0, played);
     return m_format.durationForFrames(int(std::min<qint64>(frames, INT32_MAX))) / 1000;
 }
 
@@ -126,14 +149,21 @@ void AudioEngine::teardown() {
         m_dump->deleteLater();
         m_dump = nullptr;
     }
+    if (m_tail) {
+        m_tail->close();
+        m_tail->deleteLater();
+        m_tail = nullptr;
+    }
     if (m_decoder) {
         m_decoder->stop();
         m_decoder->deleteLater();
         m_decoder = nullptr;
     }
+    clearNext();
     m_ring.clear();
     m_pending.clear();
     m_pendingAt = 0;
+    m_frameOrigin = 0;
     m_decodeDone = false;
     m_framesOut.store(0, std::memory_order_relaxed);
     m_underruns.store(0, std::memory_order_relaxed);
@@ -149,6 +179,7 @@ void AudioEngine::play(const QString& path) {
         return;
     }
     teardown();
+    m_nextPath.clear();          // der Nachfolger gehört zum vorigen Titel
     m_path = local;
     m_baseFrames = 0;
     m_durationMs = 0;
@@ -159,7 +190,7 @@ void AudioEngine::play(const QString& path) {
 
 //  Der Dekoder liefert immer VON VORN - für einen Sprung wird er neu gestartet
 //  und bis zur Zielstelle verworfen (`m_skipFrames`).
-void AudioEngine::startDecode(const QString& path, qint64 skipMs) {
+void AudioEngine::startDecode(const QString& path, qint64 skipMs, qint64 byteOffset) {
     //  Zwei Formate festlegen. GERECHNET wird immer in Gleitkomma; die SENKE
     //  bekommt, was sie kann. Nimmt sie Float, ist die Wandlung ein `memcpy`.
     const QAudioDevice dev = QMediaDevices::defaultAudioOutput();
@@ -207,10 +238,42 @@ void AudioEngine::startDecode(const QString& path, qint64 skipMs) {
     m_decoder = new QAudioDecoder(this);
     //  Der Dekoder liefert IMMER Float - daran hängen Ring und Equalizer.
     m_decoder->setAudioFormat(m_work);
-    m_decoder->setSource(QUrl::fromLocalFile(path));
+
+    //  ── Sprung ohne Vorlauf ────────────────────────────────────────────────
+    //  Mit Byte-Versatz bekommt der Dekoder ein Gerät, das genau am Zielrahmen
+    //  BEGINNT. Ein `seek()` auf der Datei nützt nichts: `setSourceDevice`
+    //  ignoriert die Position, der Dekoder spult selbst auf 0 zurück (gemessen:
+    //  das Ergebnis war bitgenau der Dateianfang). Deshalb `TailDevice`.
+    //  Ein fertiger Strom (aus einer Hülle) hat Vorrang: er liegt schon offen
+    //  bereit und beginnt am Zielcluster.
+    if (m_pendingStream) {
+        m_tail = m_pendingStream;
+        m_pendingStream = nullptr;
+        m_tail->setParent(this);
+        m_keepDuration = true;
+        m_decoder->setSourceDevice(m_tail);
+    } else if (byteOffset > 0) {
+        auto* tail = new AudioSeek::TailDevice(path, byteOffset, this);
+        if (tail->open(QIODevice::ReadOnly)) {
+            m_tail = tail;
+            //  Die Dauer der RESTdatei ist nicht die Dauer des Titels - die
+            //  bekannte bleibt stehen (s. `m_keepDuration`).
+            m_keepDuration = true;
+            m_decoder->setSourceDevice(m_tail);
+        } else {
+            delete tail;
+            m_decoder->setSource(QUrl::fromLocalFile(path));
+        }
+    } else {
+        m_keepDuration = false;
+        m_decoder->setSource(QUrl::fromLocalFile(path));
+    }
     connect(m_decoder, &QAudioDecoder::bufferReady, this, &AudioEngine::onBufferReady);
     connect(m_decoder, &QAudioDecoder::finished,    this, &AudioEngine::onDecodeFinished);
     connect(m_decoder, &QAudioDecoder::durationChanged, this, [this](qint64 ms) {
+        //  Nach einem Sprung sieht der Dekoder nur noch den REST der Datei -
+        //  seine Dauer wäre gelogen. Die bekannte gilt weiter.
+        if (m_keepDuration) return;
         if (ms > 0 && ms != m_durationMs) { m_durationMs = ms; emit durationChanged(); }
     });
     //  In Qt 6 heißt das Signal schlicht `error(QAudioDecoder::Error)`; den Text
@@ -249,7 +312,33 @@ void AudioEngine::startSinkIfReady() {
 
 //  Der Dekoder meldet fertige Stücke. Passt nichts mehr in den Ring, wird
 //  gewartet: `bufferReady` bleibt anstehen, der nächste Aufruf holt es ab.
+//
+//  ZWEI Dekoder teilen sich diesen Weg: erst der laufende Titel, und sobald der
+//  restlos im Ring liegt, der angemeldete nächste. Weil beide auf `m_work`
+//  festgelegt sind (Float, Rate und Kanäle der Senke), liegen ihre Werte im Ring
+//  ununterscheidbar hintereinander - genau das macht den Übergang lückenlos.
 void AudioEngine::onBufferReady() {
+    //  Erst der laufende Titel. Ist der Ring voll, endet der Takt hier.
+    if (!feedFrom(m_decoder, m_pending, m_pendingAt)) return;
+    if (!m_decodeDone) return;
+    if (m_decoder && m_decoder->bufferAvailable()) return;
+
+    //  Der laufende Titel ist vollständig im Ring: hier liegt die Nahtstelle.
+    if (m_boundaryFrames < 0) {
+        if (m_nextPath.isEmpty()) return;              // nichts angemeldet
+        m_boundaryFrames = m_framesIn;
+        m_queuedPath = m_nextPath;
+        m_queuedDurationMs = 0;
+        m_nextPath.clear();
+        startNextDecoder();
+        if (kLog) qDebug("audio: Naht bei %lld Frames -> %s",
+                         m_boundaryFrames, qPrintable(m_queuedPath));
+    }
+    feedFrom(m_nextDec, m_nextPending, m_nextPendingAt);
+}
+
+bool AudioEngine::feedFrom(QAudioDecoder* dec, std::vector<float>& pending, size_t& at) {
+    if (!dec) return true;
     const int chOut = std::max(1, m_work.channelCount());
 
     //  EINE Stelle, die in den Ring schreibt - und die den REST behält. Früher
@@ -264,18 +353,18 @@ void AudioEngine::onBufferReady() {
 
     //  Erst den Rest der letzten Runde loswerden, sonst käme er nach dem
     //  nächsten Stück - die Wiedergabe spränge zurück.
-    if (m_pendingAt < m_pending.size()) {
-        const qint64 left = qint64(m_pending.size() - m_pendingAt);
-        const qint64 rest = push(m_pending.data() + m_pendingAt, left);
-        m_pendingAt = m_pending.size() - size_t(rest);
-        if (rest > 0) return;                       // Ring immer noch voll
-        m_pending.clear();
-        m_pendingAt = 0;
+    if (at < pending.size()) {
+        const qint64 left = qint64(pending.size() - at);
+        const qint64 rest = push(pending.data() + at, left);
+        at = pending.size() - size_t(rest);
+        if (rest > 0) return false;                     // Ring immer noch voll
+        pending.clear();
+        at = 0;
     }
 
-    while (m_decoder && m_decoder->bufferAvailable()) {
-        if (m_ring.space() == 0) { startSinkIfReady(); return; }   // Ring voll
-        const QAudioBuffer buf = m_decoder->read();
+    while (dec->bufferAvailable()) {
+        if (m_ring.space() == 0) { startSinkIfReady(); return false; }
+        const QAudioBuffer buf = dec->read();
         if (!buf.isValid()) continue;
 
         const int ch = std::max(1, buf.format().channelCount());
@@ -286,15 +375,13 @@ void AudioEngine::onBufferReady() {
                              int(buf.format().sampleFormat()));
             continue;
         }
-        if (kLog) qDebug("audio: Stück %d Hz, %d Kanäle (gewünscht %d Hz, %d)",
-                         buf.format().sampleRate(), ch,
-                         m_work.sampleRate(), m_work.channelCount());
         const float* src = buf.constData<float>();
         qint64 frames = buf.frameCount();
         if (!src || frames <= 0) continue;
 
-        //  Sprung: die ersten Frames gehören zur übersprungenen Strecke.
-        if (m_skipFrames > 0) {
+        //  Sprung: die ersten Frames gehören zur übersprungenen Strecke. Gilt
+        //  nur für den LAUFENDEN Titel - ein vorbereiteter beginnt immer vorn.
+        if (dec == m_decoder && m_skipFrames > 0) {
             const qint64 drop = std::min(m_skipFrames, frames);
             m_skipFrames -= drop;
             src    += drop * ch;
@@ -308,18 +395,149 @@ void AudioEngine::onBufferReady() {
                          frames, m_ring.available(), m_ring.capacity(), rest);
         if (rest > 0) {
             //  Was nicht mehr hineinpasste, wartet auf den nächsten Takt.
-            m_pending.assign(src + (values - rest), src + values);
-            m_pendingAt = 0;
+            pending.assign(src + (values - rest), src + values);
+            at = 0;
             startSinkIfReady();
-            return;
+            return false;
         }
         startSinkIfReady();
     }
+    return true;
+}
+
+//  Der zweite Dekoder. Er hängt an DERSELBEN Kette; nur sein Ende und seine
+//  Fehler werden getrennt behandelt - ein defekter Folgetitel darf den
+//  laufenden nicht abwürgen.
+void AudioEngine::startNextDecoder() {
+    if (m_nextDec || m_queuedPath.isEmpty()) return;
+    m_nextDecodeDone = false;
+    m_nextPending.clear();
+    m_nextPendingAt = 0;
+
+    m_nextDec = new QAudioDecoder(this);
+    m_nextDec->setAudioFormat(m_work);
+    m_nextDec->setSource(QUrl::fromLocalFile(m_queuedPath));
+    connect(m_nextDec, &QAudioDecoder::bufferReady, this, &AudioEngine::onBufferReady);
+    //  ACHTUNG: dieser Dekoder WIRD im Lauf zum laufenden (`promoteNext`), und
+    //  seine Meldungen kommen oft erst danach. Deshalb entscheidet der Ruf
+    //  selbst, wer gemeint ist - sonst setzte sein `finished` nach der
+    //  Beförderung einen Merker, den niemand mehr liest, und die Kette wartete
+    //  ewig auf ein Ende, das schon da war (genau so gemessen: 4694 Unterläufe
+    //  und kein `finished`).
+    connect(m_nextDec, &QAudioDecoder::finished, this, [this, dec = m_nextDec] {
+        if (dec == m_decoder) onDecodeFinished();      // schon befördert
+        else                  m_nextDecodeDone = true;
+    });
+    connect(m_nextDec, &QAudioDecoder::durationChanged, this,
+            [this, dec = m_nextDec](qint64 ms) {
+        if (ms <= 0) return;
+        //  Dieselbe Falle wie bei `finished`: nach der Beförderung ist es die
+        //  Dauer des LAUFENDEN Titels. Meldet der Dekoder sie erst danach
+        //  (kommt bei manchen Hüllen vor), stünde sonst in der Leiste weiter
+        //  die Dauer des vorigen Stücks.
+        if (dec == m_decoder) {
+            if (ms != m_durationMs) { m_durationMs = ms; emit durationChanged(); }
+        } else {
+            m_queuedDurationMs = ms;
+        }
+    });
+    connect(m_nextDec, QOverload<QAudioDecoder::Error>::of(&QAudioDecoder::error),
+            this, [this, dec = m_nextDec](QAudioDecoder::Error) {
+        const QString msg = dec ? dec->errorString() : QString();
+        //  Nach der Beförderung ist es der LAUFENDE Titel - dann gilt derselbe
+        //  Weg wie für den ersten Dekoder: melden und anhalten.
+        if (dec == m_decoder) {
+            emit error(msg);
+            teardown();
+            setState(State::Stopped);
+            return;
+        }
+        //  Hat er noch NICHTS beigetragen, wird der Übergang verworfen und der
+        //  laufende Titel endet wie ohne Anmeldung (`finished`) - die
+        //  Warteschlange stolpert dann auf gewohntem Weg über die Datei.
+        //  Steckt schon etwas von ihm im Ring, bleibt die Naht bestehen; das
+        //  Bruchstück läuft zu Ende und danach ist Schluss.
+        if (m_framesIn <= m_boundaryFrames) {
+            clearNext();
+        } else {
+            m_nextDecodeDone = true;
+        }
+        emit error(msg);
+    });
+    m_nextDec->start();
+}
+
+void AudioEngine::setNextTrack(const QString& path) {
+    const QString local = path.startsWith(QStringLiteral("file:"))
+                          ? QUrl(path).toLocalFile() : path;
+    //  Steht der Übergang schon fest, gilt die Anmeldung dem ÜBERNÄCHSTEN
+    //  Titel - sie geht also nicht verloren, sondern wartet auf die nächste
+    //  Naht (s. `promoteNext`).
+    if (m_nextPath == local) return;
+    m_nextPath = local;
+}
+
+void AudioEngine::clearNext() {
+    //  Der WUNSCH bleibt bestehen, nur die Vorbereitung fällt weg: nach einem
+    //  Sprung wird derselbe Titel gleich wieder vorbereitet. Wer einen ANDEREN
+    //  Titel spielt (`play`), löscht den Wunsch ausdrücklich - sonst hinge der
+    //  alte Nachfolger am neuen Stück.
+    if (m_nextPath.isEmpty() && !m_queuedPath.isEmpty()) m_nextPath = m_queuedPath;
+    if (m_nextDec) {
+        m_nextDec->stop();
+        m_nextDec->deleteLater();
+        m_nextDec = nullptr;
+    }
+    m_queuedPath.clear();
+    m_queuedDurationMs = 0;
+    m_boundaryFrames = -1;
+    m_nextDecodeDone = false;
+    m_nextPending.clear();
+    m_nextPendingAt = 0;
+}
+
+//  Die Ausgabe hat die Naht erreicht: der vorbereitete Titel IST jetzt der
+//  laufende. Die Kette läuft dabei ununterbrochen weiter - Senke, Ring und
+//  Equalizer bleiben unangetastet, es wechseln nur die Buchhaltung und der
+//  Dekoder.
+void AudioEngine::promoteNext() {
+    if (m_queuedPath.isEmpty()) return;
+
+    if (m_decoder) {                       // der alte ist fertig und geht
+        m_decoder->stop();
+        m_decoder->deleteLater();
+    }
+    m_decoder    = m_nextDec;
+    m_nextDec    = nullptr;
+    m_decodeDone = m_nextDecodeDone;
+    m_pending    = std::move(m_nextPending);
+    m_pendingAt  = m_nextPendingAt;
+    m_nextPending.clear();
+    m_nextPendingAt = 0;
+    m_nextDecodeDone = false;
+
+    m_path        = m_queuedPath;
+    m_durationMs  = m_queuedDurationMs;
+    m_frameOrigin = m_boundaryFrames;      // ab hier zählt die Position neu
+    m_baseFrames  = 0;
+    m_queuedPath.clear();
+    m_queuedDurationMs = 0;
+    m_boundaryFrames = -1;
+
+    if (kLog) qDebug("audio: Übergang vollzogen -> %s", qPrintable(m_path));
+    emit currentPathChanged();
+    emit durationChanged();
+    emit positionChanged();
+    emit advancedToNext(m_path);
 }
 
 void AudioEngine::onDecodeFinished() {
     m_decodeDone = true;
     startSinkIfReady();          // sehr kurze Datei: nie 60 ms Vorrat erreicht
+    //  Jetzt ist der Platz hinter dem laufenden Titel bekannt - der angemeldete
+    //  nächste kann anfangen, dahinter zu schreiben (`onBufferReady` setzt die
+    //  Naht, sobald wirklich alles im Ring liegt).
+    onBufferReady();
 }
 
 void AudioEngine::pause() {
@@ -359,9 +577,55 @@ void AudioEngine::seek(qint64 ms) {
     if (m_path.isEmpty()) return;
     const qint64 target = std::max<qint64>(0, ms);
     const QString path = m_path;
+
+    //  ── Der teure und der billige Weg ──────────────────────────────────────
+    //  `QAudioDecoder` kann nicht springen. Ohne Hilfe bleibt nur: von vorn
+    //  dekodieren und alles davor wegwerfen - bei 45 min in einem Film-Ton
+    //  gemessene 2813 ms.
+    //  Für SELBSTRAHMENDE Ströme (MP3/MP2/AC-3/E-AC-3/AAC) geht es billiger:
+    //  die Rahmenköpfe entlanglaufen (nur Kopfbytes, gemessen 3 ms auf 45 min),
+    //  am Zielrahmen aufsetzen und nur den Rest bis zur genauen Stelle
+    //  überspringen. Hüllen (m4a/ogg/flac/wav) tragen ihren Index anderswo -
+    //  dort bleibt es beim alten Weg.
+    qint64 byteOffset = 0;
+    qint64 skipMs     = target;
+    //  Diagnose (nur mit `MG_AUDIOLOG=1`): WELCHEN Weg nimmt der Sprung, und
+    //  was kostet er? Ohne die Variable kostet die Zeile nichts.
+    const bool logSeek = qEnvironmentVariableIntValue("MG_AUDIOLOG") >= 1;
+    QElapsedTimer seekTimer;
+    if (logSeek) seekTimer.start();
+    qint64 findMs = 0;
+
+    QIODevice* stream = nullptr;
+    if (target > 0 && AudioSeek::isSelfFraming(path)) {
+        const AudioSeek::Position p = AudioSeek::findFrame(path, target);
+        if (logSeek) findMs = seekTimer.elapsed();
+        if (p.ok && p.byteOffset > 0 && p.ms() <= target) {
+            byteOffset = p.byteOffset;
+            skipMs     = target - p.ms();       // Rest bis zur genauen Stelle
+        }
+    } else if (target > 0 && MkvAudio::isCandidate(path)) {
+        //  Hülle: ein Stück aus der Mitte einer Matroska ist für sich nicht
+        //  lesbar. Der Leser holt die Tonspur ab dem Cluster der Zielstelle als
+        //  rohen Strom heraus - genau das kann ein Dekoder aufnehmen.
+        qint64 actualMs = 0;
+        stream = MkvAudio::openRawStream(path, 0, target, &actualMs, nullptr);
+        if (logSeek) findMs = seekTimer.elapsed();
+        if (stream) skipMs = std::max<qint64>(0, target - actualMs);
+    }
+    if (logSeek)
+        qInfo("[MG_AUDIOLOG] Sprung auf %lld ms in %s: %s (Suche %lld ms, "
+              "Byte %lld, Rest %lld ms)",
+              target, qPrintable(QFileInfo(path).fileName()),
+              stream       ? "SCHNELL (Hülle, Strom ab Cluster)"
+              : byteOffset > 0 ? "SCHNELL (Rahmenkopf)"
+                               : "langsam (von vorn dekodieren)",
+              findMs, byteOffset, skipMs);
+
     teardown();
     m_baseFrames = m_format.isValid() ? m_format.framesForDuration(target * 1000) : 0;
-    startDecode(path, target);
+    m_pendingStream = stream;              // s. startDecode
+    startDecode(path, skipMs, byteOffset);
     emit positionChanged();
 }
 

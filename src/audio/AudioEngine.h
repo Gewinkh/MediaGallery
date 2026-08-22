@@ -71,21 +71,49 @@ public:
     Q_INVOKABLE void seek(qint64 ms);
     Q_INVOKABLE void setVolume(qreal v);
 
+    //  ── Lückenloser Übergang ────────────────────────────────────────────────
+    //  Der Aufrufer meldet an, was NACH dem laufenden Titel kommt (leer =
+    //  nichts). Sobald der laufende Titel restlos im Ring liegt, hängt die Kette
+    //  den nächsten UNMITTELBAR dahinter - dieselbe Senke, derselbe Ring, kein
+    //  Neustart. Ohne Anmeldung endet die Kette wie zuvor mit `finished()`.
+    //  Kommt die Anmeldung zu spät (der Übergang steht schon fest), wird sie
+    //  für den ÜBERNÄCHSTEN Titel vorgemerkt.
+    void setNextTrack(const QString& path);
+    QString nextTrack() const { return m_nextPath; }
+
 signals:
     void stateChanged();
     void currentPathChanged();
     void positionChanged();
     void durationChanged();
     //  Der Titel ist NATÜRLICH zu Ende (nicht gestoppt) - die Warteschlange
-    //  entscheidet, was folgt.
+    //  entscheidet, was folgt. Kommt NUR, wenn kein nächster Titel angemeldet
+    //  war: beim lückenlosen Übergang läuft die Kette weiter und meldet
+    //  stattdessen `advancedToNext`.
     void finished();
+    //  Der lückenlose Übergang hat stattgefunden - ab jetzt ist `path` der
+    //  laufende Titel. Die Warteschlange zieht damit ihren Zeiger nach.
+    void advancedToNext(const QString& path);
     void volumeChanged();
     void error(const QString& message);
 
 private:
     friend class AudioPull;                 // der Zuliefer-Ruf der Ausgabe
 
-    void startDecode(const QString& path, qint64 skipMs);
+    //  `byteOffset` > 0: der Dekoder beginnt an dieser Stelle der Datei
+    //  (Sprung ohne Vorlauf, s. `AudioSeekIndex.h`); `skipMs` ist dann nur noch
+    //  der Rest bis zur genauen Zielstelle.
+    void startDecode(const QString& path, qint64 skipMs, qint64 byteOffset = 0);
+    //  Einen Dekoder in den Ring leeren. `false` = der Ring ist voll, der Rest
+    //  wartet im zugehörigen `pending` auf den nächsten Takt.
+    bool feedFrom(QAudioDecoder* dec, std::vector<float>& pending, size_t& at);
+    //  Den angemeldeten Titel hinter dem laufenden anhängen (zweiter Dekoder).
+    void startNextDecoder();
+    //  Die Ausgabe hat die Nahtstelle erreicht: der nächste Titel ist ab jetzt
+    //  der laufende (Pfad, Dauer, Position, Dekoder).
+    void promoteNext();
+    //  Vorbereitung verwerfen (Sprung, Stopp, neuer Titel von Hand).
+    void clearNext();
     //  Die Senke wird ERST gestartet, wenn genug im Ring liegt - sonst zieht sie
     //  eine Viertelsekunde Stille, bevor der erste Ton kommt (gemessen: 255 ms).
     void startSinkIfReady();
@@ -105,6 +133,14 @@ private:
 
     AudioEqualizer&        m_eq;
     QAudioDecoder*         m_decoder = nullptr;
+    //  Gerät für den Sprung: zeigt die Datei ab dem Zielrahmen. Gehört der
+    //  Kette und wird in `teardown()` mit abgeräumt.
+    QIODevice*             m_tail = nullptr;
+    //  Von `seek()` vorbereiteter Strom (Hülle) - `startDecode` übernimmt ihn.
+    QIODevice*             m_pendingStream = nullptr;
+    //  Nach einem Sprung meldet der Dekoder die Dauer des RESTES - die wird
+    //  dann nicht übernommen.
+    bool                   m_keepDuration = false;
     QAudioSink*            m_sink = nullptr;
     AudioPull*             m_pull = nullptr;     // gehört uns
     AudioRing              m_ring;
@@ -125,6 +161,24 @@ private:
 
     QString m_path;
     State   m_state = State::Stopped;
+
+    //  ── Lückenloser Übergang ────────────────────────────────────────────────
+    //  Der zweite Dekoder schreibt in DENSELBEN Ring - er darf das, weil jeder
+    //  Dekoder auf `m_work` (Float, Rate und Kanäle der Senke) festgelegt ist:
+    //  zwei Titel unterscheiden sich im Ring nicht mehr voneinander.
+    QAudioDecoder*     m_nextDec = nullptr;
+    QString            m_nextPath;         // angemeldet, noch nicht begonnen
+    QString            m_queuedPath;       // wird gerade nachgeschoben
+    qint64             m_queuedDurationMs = 0;
+    //  Stand von `m_framesIn`, an dem der laufende Titel endet und der nächste
+    //  beginnt. −1 = kein Übergang vorbereitet.
+    qint64             m_boundaryFrames = -1;
+    //  Stand von `m_framesOut`, an dem der LAUFENDE Titel begann - die Position
+    //  zählt ab hier, nicht ab dem Start der Senke.
+    qint64             m_frameOrigin = 0;
+    bool               m_nextDecodeDone = false;
+    std::vector<float> m_nextPending;
+    size_t             m_nextPendingAt = 0;
     qreal   m_volume = 0.85;
     qint64  m_durationMs = 0;
     //  Wie viele Frames die Ausgabe schon gespielt hat (Grundlage der Position).

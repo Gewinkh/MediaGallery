@@ -1,10 +1,16 @@
 #pragma once
 #include <QObject>
 #include <QPointer>
+#include <QHash>
 #include <QStringList>
+#include <QThreadPool>
 #include <QVariantList>
 
+#include <atomic>
+#include <memory>
+
 #include "audio/AudioEngine.h"
+#include "audio/AudioTags.h"
 #include "audio/AudioEqualizer.h"
 #include "audio/PlayQueue.h"
 
@@ -69,8 +75,20 @@ class AudioController : public QObject {
     Q_PROPERTY(bool listLayout   READ listLayout   WRITE setListLayout   NOTIFY optionsChanged)
     Q_PROPERTY(bool rememberLast READ rememberLast WRITE setRememberLast NOTIFY optionsChanged)
 
+    // ── Ton aus einem Video sichern (MP4 -> M4A, ohne Neukodierung) ─────────
+    //  Läuft gerade eine Sicherung? QML sperrt damit den Menüpunkt.
+    Q_PROPERTY(bool extractBusy READ extractBusy NOTIFY extractBusyChanged)
+    Q_PROPERTY(bool extractInheritTags READ extractInheritTags
+               WRITE setExtractInheritTags NOTIFY optionsChanged)
+    Q_PROPERTY(bool extractToQueue READ extractToQueue
+               WRITE setExtractToQueue NOTIFY optionsChanged)
+
 public:
     explicit AudioController(ISettings& settings, QObject* parent = nullptr);
+    //  Beim Abräumen wird ein laufendes Sichern abgebrochen und abgewartet:
+    //  der Arbeiter hält einen rohen Zeiger auf DIESES Objekt (Rückweg per
+    //  `invokeMethod`) - liefe er weiter, zeigte der ins Leere.
+    ~AudioController() override;
 
     int     state() const { return m_engine.stateInt(); }
     bool    active() const { return m_engine.state() != AudioEngine::State::Stopped; }
@@ -116,6 +134,21 @@ public:
     void setListLayout(bool on);
     bool rememberLast() const;
     void setRememberLast(bool on);
+    QString trackTitle() const;
+    QString trackArtist() const;
+    QString trackAlbum() const;
+    QString trackSubtitle() const;
+    bool    trackHasCover() const;
+    QString coverSource() const;
+    //  Titel und Interpret einer BELIEBIGEN Datei - für die Warteschlange, die
+    //  auch die kommenden Titel benennen will. Ohne Bild, also billig.
+    Q_INVOKABLE QString titleOf(const QString& pathOrUrl) const;
+
+    bool extractBusy() const { return m_extractBusy; }
+    bool extractInheritTags() const;
+    void setExtractInheritTags(bool on);
+    bool extractToQueue() const;
+    void setExtractToQueue(bool on);
 
     // ── Bedienung aus QML ───────────────────────────────────────────────────
     //  Die Galerie reicht ihre SICHTBARE Liste mit - sie ist die Warteschlange.
@@ -151,6 +184,18 @@ public:
     //  Player-Modus, sobald man den Bildschirm teilt.
     Q_INVOKABLE bool takePlayerModeRestore();
 
+    // ── Ton sichern ─────────────────────────────────────────────────────────
+    //  Lohnt sich der Menüpunkt für diese Datei? Reine ENDUNGS-Prüfung, damit
+    //  das Öffnen eines Kontextmenüs keine Datei anfasst.
+    Q_INVOKABLE bool canExtractAudio(const QString& pathOrUrl) const;
+    //  Asynchron (Regel 8): eigener Pool, kooperativer Abbruch, Rückweg über
+    //  die Ereignisschlange. Das Ergebnis kommt als `extractFinished` und als
+    //  fertiger Meldungstext über `message`.
+    //  `trackIndex` < 0 heißt „erst nachsehen": hat die Datei mehr als eine
+    //  Tonspur, kommt `trackChoiceNeeded` und die Oberfläche fragt nach; sonst
+    //  läuft es sofort mit der ersten. Ein Index >= 0 sichert genau diese Spur.
+    Q_INVOKABLE void extractAudio(const QString& pathOrUrl, int trackIndex = -1);
+
     Q_INVOKABLE void rememberSession();
     //  Beim Start: den gemerkten Titel LADEN, aber nicht abspielen.
     Q_INVOKABLE void restoreSession();
@@ -168,9 +213,34 @@ signals:
     void optionsChanged();
     void queueChanged();
     void ownerChanged();
+    void tagsChanged();
+    void extractBusyChanged();
+    //  `source` und `target` sind LOKALE Pfade. Der Aufrufer hängt daran das
+    //  Erben der Tags - dazu braucht er beide Namen.
+    void extractFinished(bool ok, const QString& source, const QString& target);
+    //  Mehrere Tonspuren: die Oberfläche soll fragen. Jeder Eintrag der Liste
+    //  ist eine Karte mit `index`, `label` und `supported` - fertige Texte, die
+    //  QML nur noch anzeigt.
+    void trackChoiceNeeded(const QString& source, const QVariantList& tracks);
     void message(const QString& text);
 
 private:
+    //  Den Nachfolger bei der Kette anmelden (lückenloser Übergang).
+    void armNextTrack();
+    //  Die Tags des laufenden Titels neu lesen (Pfadwechsel). Ohne Bild -
+    //  das holt der Bild-Anbieter in seinem eigenen Faden.
+    void refreshTags();
+    friend class AudioExtractTask;
+    friend class AudioProbeTask;
+    //  Rückweg des Nachsehens: die Spurliste steht, jetzt entscheidet der
+    //  GUI-Faden - eine Spur = sofort sichern, mehrere = fragen lassen.
+    void probeTaskDone(const QString& source, const QVariantList& tracks);
+    //  Rückweg des Arbeiters (immer im GUI-Thread, per QueuedConnection).
+    //  `messageKey` ist ein `StringKey` - der Arbeiter wählt ihn, den Satz baut
+    //  der GUI-Faden.
+    void extractTaskDone(bool ok, int messageKey, const QString& source,
+                         const QString& target, int audioTracks, int generation,
+                         int trackIndex = 0);
     void loadSettings();
     void applyGainsToSettings();
     QStringList builtinPresetLines() const;
@@ -186,4 +256,22 @@ private:
     //  ins Leere - deshalb `QPointer`.
     QPointer<QObject> m_owner;
     bool              m_restoreTaken = false;
+
+    //  Tags des laufenden Titels; `m_tagsPath` merkt, wofür sie gelten, damit
+    //  ein wiederholtes `currentChanged` die Datei nicht erneut liest.
+    AudioTags::Tags m_tags;
+    QString         m_tagsPath;
+    //  Cache-Brecher für die Bildadresse (jeder neue Titel zählt hoch).
+    int             m_coverRev = 0;
+    //  Titel je Pfad, damit die Warteschlangen-Liste beim Blättern nicht bei
+    //  JEDER Zeile erneut in die Datei greift. Beim Überlaufen wird schlicht
+    //  geleert - eine echte LRU wäre für ein paar hundert Namen zu viel Technik.
+    mutable QHash<QString, QString> m_titleCache;
+
+    //  Sichern läuft in EINEM eigenen Faden - mehrere gleichzeitig brächten
+    //  nichts (die Arbeit ist Ein-/Ausgabe) und würden die Platte nur belasten.
+    QThreadPool                          m_extractPool;
+    std::shared_ptr<std::atomic<bool>>   m_extractCancel;
+    int                                  m_extractGen  = 0;
+    bool                                 m_extractBusy = false;
 };

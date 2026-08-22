@@ -1528,10 +1528,11 @@ Item {
             spacing: 6
 
             PdfToolButton {
-                // <- = einklappen (Panel offen), -> = ausklappen (Panel zu).
-                // Bewusst Pfeile (<-/->) statt der soliden Seiten-Nav-
-                // Dreiecke (\u25C0/\u25B6) -> optisch klar unterscheidbar.
-                glyph: root.thumbsVisible ? "<-" : "->"
+                // Pfeil nach links = einklappen (Panel offen), nach rechts =
+                // ausklappen (Panel zu). Bewusst PFEILE MIT SCHAFT und nicht die
+                // Chevrons: die tragen direkt daneben die Seiten-Navigation, und
+                // zwei Bedeutungen dürfen nicht dieselbe Form haben.
+                iconName: root.thumbsVisible ? "arrow-left" : "arrow-right"
                 active: root.thumbsVisible
                 tip: root.thumbsVisible ? App.uiText(App.language, "PdfCollapsePreview")
                                         : App.uiText(App.language, "PdfExpandPreview")
@@ -2542,6 +2543,7 @@ Item {
 
             ListView {
                 id: thumbs
+                objectName: "pdfThumbs"           // Prüfstand: MG_BENCH_WHEEL
                 anchors.fill: parent
                 anchors.margins: 8
                 clip: true

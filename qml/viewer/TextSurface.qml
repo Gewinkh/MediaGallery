@@ -200,12 +200,22 @@ Item {
                 color: pdfHover.hovered ? App.themeCard : "transparent"
                 border.color: App.themeBorder
                 opacity: (root.currentPath.length > 0 && !root._pdfBusy) ? 1.0 : 0.45
-                Text {
+                //  „wird zu PDF": der Pfeil ist hier ein SYMBOL und wird
+                //  gezeichnet (Regel 28); im Text steht nur noch „PDF".
+                Row {
                     id: pdfLbl
                     anchors.centerIn: parent
-                    text: App.uiText(App.language, "TextExportPdf")
-                    color: App.themeTextPrimary
-                    font.pixelSize: 12
+                    spacing: 5
+                    DrawnIcon {
+                        anchors.verticalCenter: parent.verticalCenter
+                        name: "arrow-right"; size: 13; color: App.themeTextPrimary
+                    }
+                    Text {
+                        anchors.verticalCenter: parent.verticalCenter
+                        text: App.uiText(App.language, "TextExportPdf")
+                        color: App.themeTextPrimary
+                        font.pixelSize: 12
+                    }
                 }
                 HoverHandler { id: pdfHover }
                 TapHandler {

@@ -952,11 +952,34 @@ ApplicationWindow {
         function onFolderOpened(path)  { shell.statusText = path; statusClearTimer.restart() }
     }
 
+    //  Meldungen der Wiedergabe: Fehler der Kette und der Verlauf des
+    //  Ton-Sicherns. Sie gehen hier auf denselben Toast wie alles andere -
+    //  vorher fielen sie ins Leere, weil ihnen niemand zuhörte.
+    Connections {
+        target: Audio
+        function onMessage(text) {
+            if (!text || text.length === 0) return
+            shell.statusText = text
+            statusClearTimer.restart()
+        }
+    }
+
 
     // ── Lesezeichen anlegen/bearbeiten (geteilt mit SettingsBookmarksTab) ──────
 
     // ── Kachelgrößen-Dialog (Phase 4) ─────────────────────────────────────────
     TileSizeDialog { id: tileSizeDialog }
+
+    //  „Welche Tonspur?" - erscheint nur, wenn die Datei mehr als eine hat.
+    //  Er gehört der SHELL: `Audio` ist ein Singleton, je Hälfte gehostet
+    //  gingen bei zwei Hälften zwei Fenster gleichzeitig auf.
+    AudioTrackDialog { id: audioTrackDialog }
+    Connections {
+        target: Audio
+        function onTrackChoiceNeeded(source, tracks) {
+            audioTrackDialog.openFor(source, tracks)
+        }
+    }
 
     // ── Einstellungs-Dialog (Phase 4) ─────────────────────────────────────────
     // Loader-gated: erst beim Öffnen instanziiert, beim Schließen wieder

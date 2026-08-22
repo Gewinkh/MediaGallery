@@ -74,6 +74,12 @@ Item {
                                   audio:  galleryModel.showAudio,
                                   pdfs:   galleryModel.showPdfs,
                                   texts:  galleryModel.showTexts }
+            //  Die WEISSE Liste entscheidet (`MediaProxyModel::isPlayableType`) -
+            //  die Häkchen darunter bleiben trotzdem stimmig, damit die
+            //  Medien-Rubrik der Filterleiste zeigt, was wirklich zu sehen ist.
+            //  Ohne die weisse Liste lief alles Unbekannte (ZIP, XLSX, OTH …) an
+            //  jedem Häkchen vorbei.
+            galleryModel.onlyPlayable = true
             galleryModel.showImages = false
             galleryModel.showPdfs   = false
             galleryModel.showTexts  = false
@@ -107,6 +113,7 @@ Item {
         //  Teilung überlebt hat) -, gilt der Grundzustand ALLES AN: mit einem
         //  Rest-Filter „nur Audio" stünde man sonst vor einer halbleeren
         //  Galerie und wüsste nicht, warum.
+        galleryModel.onlyPlayable = false
         const f = pane._savedFilter
         const meaningful = f && (f.images || f.pdfs || f.texts)
         galleryModel.showImages = meaningful ? f.images : true
@@ -822,6 +829,24 @@ Item {
                     pane.externalDropRequested(urls, folderPath)
                 }
                 onStatusRequested: function(text) { pane.statusRequested(text) }
+                //  „Ton als Audiodatei sichern": die Arbeit macht `Audio`
+                //  asynchron, das Aufnehmen der neuen Datei danach `PaneCtl`
+                //  (s. Connections weiter unten).
+                onAudioExtractRequested: function(filePath) {
+                    Audio.extractAudio(filePath)
+                }
+            }
+
+            //  Ergebnis des Ton-Sicherns. `Audio` ist APPWEIT - deshalb setzen
+            //  BEIDE Hälften denselben Ruf ab; `adoptSiblingFile` prüft selbst,
+            //  ob die neue Datei im Ordner DIESER Hälfte liegt, und tut sonst
+            //  nichts. Ein Merker je Hälfte wäre dafür die zweite Wahrheit.
+            Connections {
+                target: Audio
+                function onExtractFinished(ok, source, target) {
+                    if (!ok) return
+                    PaneCtl.adoptSiblingFile(source, target, Audio.extractInheritTags)
+                }
             }
 
             TagCategoryPanel {
@@ -1570,14 +1595,18 @@ Item {
                         border.color: hot ? App.themeAccent : Qt.rgba(1, 1, 1, 0.35)
                         border.width: 1
 
-                        // Rand-Glyphe: Richtungspfeil (universell verfügbare Zeichen).
-                        Text {
+                        // Rand-Symbol: Richtungspfeil, GEZEICHNET (Regel 28).
+                        // Vorher standen hier zwei ASCII-Zeichen und zwei
+                        // Unicode-Pfeile nebeneinander - vier Richtungen in zwei
+                        // verschiedenen Bauarten, entsprechend ungleich schwer.
+                        DrawnIcon {
                             anchors.centerIn: parent
                             visible: zoneInd.modelData.kind === "edge"
-                            color: "#e8efed"; font.pixelSize: 18; font.bold: true
-                            text: zoneInd.modelData.kind === "edge"
-                                  ? ({ left: "<-", right: "->",
-                                       top: "\u2191", bottom: "\u2193" })[zoneInd.modelData.side]
+                            size: 20
+                            color: "#e8efed"
+                            name: zoneInd.modelData.kind === "edge"
+                                  ? ({ left: "arrow-left", right: "arrow-right",
+                                       top: "arrow-up", bottom: "arrow-down" })[zoneInd.modelData.side]
                                   : ""
                         }
                         // Ecken-Glyphe: Quadrat-Umriss mit gefülltem Viertel -
@@ -1664,6 +1693,16 @@ Item {
                 PaneCtl.playerViewOpen = false
                 if (paneStack.depth > 1) paneStack.pop()
             }
+        }
+    }
+
+    //  Das Datum sollte an der DATEI stehen; geht das nicht (schreibgeschützt,
+    //  fremdes Dateisystem), bleibt es beim Sidecar - und der Nutzer erfährt es.
+    Connections {
+        target: mediaModel
+        function onFileDateNotWritten(fileName) {
+            pane.statusRequested(App.uiText(App.language, "DateNotWrittenToFile")
+                                 .arg(fileName))
         }
     }
 

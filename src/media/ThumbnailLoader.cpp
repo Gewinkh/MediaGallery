@@ -1,12 +1,14 @@
 #include "media/ThumbnailLoader.h"
 #include "docx/DocxDocument.h"
 #include "media/MediaItem.h"
+#include "audio/AudioTags.h"
 
 #include <QPdfDocument>
 #include <QPainter>
 #include <QLinearGradient>
 #include <QImage>
 #include <QImageReader>
+#include <QSemaphore>
 #include <QFont>
 #include <QFileInfo>
 #include <QStandardPaths>
@@ -60,10 +62,13 @@ QString cacheKeyFor(const QString& path, int dim) {
     //     (statt ggf. transparent->schwarz beim JPEG-Export) -> alte, fälschlich
     //     schwarze PDF-Thumbnails müssen einmalig neu generiert werden.
     //     (Bei künftigen Änderungen an der Thumbnail-Darstellung weiter hochzählen.)
+    // v9: Audiodateien zeigen ihr eingebettetes TITELBILD statt der gezeichneten
+    //     Welle - ohne Hochzählen behielten alle bereits erzeugten Kacheln die
+    //     Welle, obwohl der Code längst das Bild liefert.
     // Seit den Kachelgrößen-Stufen geht die AKTUELLE Zielgröße (dim) in den
     // Schlüssel ein: jede Stufe hat eigene Cache-Dateien; ein Stufenwechsel
     // erzeugt sie neu, ein Rückwechsel findet die alten wieder.
-    static const int kCacheVersion = 8;
+    static const int kCacheVersion = 9;
     const qint64 mtime = QFileInfo(path).lastModified().toMSecsSinceEpoch();
     const QByteArray raw =
         (path + QChar('|')
@@ -292,6 +297,21 @@ void ThumbnailTask::run() {
 }
 
 QImage ThumbnailTask::generateAudioThumbnail(const QString& path, const QSize& size) {
+    //  Trägt die Datei ein TITELBILD, ist es die Kachel - es sagt mehr als
+    //  jede gezeichnete Welle. Gelesen wird dafür nur der Kopf der Datei
+    //  (`AudioTags`, derselbe Leser wie im Player), und das Ergebnis landet im
+    //  gewöhnlichen Miniaturen-Cache: der Kopf wird also EINMAL gelesen, nicht
+    //  bei jedem Blättern. Ohne Bild bleibt alles wie bisher.
+    const QByteArray cover = AudioTags::readCover(path);
+    if (!cover.isEmpty()) {
+        QImage art;
+        if (art.loadFromData(cover) && !art.isNull()) {
+            if (art.width() > size.width() || art.height() > size.height())
+                art = art.scaled(size, Qt::KeepAspectRatio, Qt::SmoothTransformation);
+            return art;
+        }
+    }
+
     QImage pix(size, QImage::Format_ARGB32_Premultiplied);
     pix.fill(Qt::transparent);
 
@@ -332,6 +352,28 @@ QImage ThumbnailTask::generateAudioThumbnail(const QString& path, const QSize& s
     return pix;
 }
 
+//  ── Speicher-Budget für gleichzeitige VOLLBILD-Dekodierungen ────────────────
+//  Ein JPEG wird beim Lesen mitskaliert (libjpeg rechnet in DCT-Stufen
+//  herunter), der Puffer bleibt also winzig. Ein PNG kann das nicht: es wird
+//  IMMER in voller Auflösung dekodiert und erst danach verkleinert - bei
+//  4000x3000 sind das 48 MB, und acht Pool-Fäden gleichzeitig ergaben in einem
+//  Ordner aus lauter solchen PNGs gemessene **421 MB Spitze** (Regel 9: RAM ist
+//  Prio 1).
+//  Gedeckelt wird deshalb der SPEICHER, nicht die Fadenzahl: jeder grosse
+//  Dekodierer nimmt sich so viele Megabyte aus dem Budget, wie sein Bild
+//  braucht. Ein 12-MP-PNG (48 MB) lässt drei weitere neben sich zu, ein
+//  50-MP-Scan (200 MB) läuft allein - eine feste Zahl Plätze könnte Letzteres
+//  nicht (8 x 200 MB) und würde Ersteres unnötig bremsen.
+//  Gemessen an 200 grossen PNGs: Spitze 421 -> 324 MB, erster Schirm 350 ->
+//  400 ms. Kleine Bilder und ALLE JPEGs laufen unbehindert weiter.
+constexpr int kBigDecodeBudgetMb = 192;
+QSemaphore& bigDecodeBudget() {
+    static QSemaphore sem(kBigDecodeBudgetMb);
+    return sem;
+}
+//  Ab dieser Pixelzahl gilt ein Bild als gross (12 MB Puffer bei 4 Byte/Pixel).
+constexpr qint64 kBigDecodePixels = 3'000'000;
+
 QImage ThumbnailTask::generateImageThumbnail(const QString& path, const QSize& size) {
     QImageReader reader(path);
     reader.setAutoTransform(true);
@@ -340,7 +382,23 @@ QImage ThumbnailTask::generateImageThumbnail(const QString& path, const QSize& s
     if (imgSize.isValid() && (imgSize.width() > size.width() || imgSize.height() > size.height()))
         reader.setScaledSize(imgSize.scaled(size, Qt::KeepAspectRatio));
 
-    QImage img = reader.read();
+    //  Kann der Leser SELBST verkleinern (JPEG), bleibt der Puffer klein - dann
+    //  gibt es nichts zu bremsen. Sonst: Speicher aus dem Budget nehmen
+    //  (s. bigDecodeBudget) und erst nach dem Dekodieren zurückgeben.
+    const bool scalingReader = reader.supportsOption(QImageIOHandler::ScaledSize);
+    const qint64 pixels = imgSize.isValid()
+                              ? qint64(imgSize.width()) * imgSize.height() : 0;
+    const int cost = (!scalingReader && pixels > kBigDecodePixels)
+                         ? int(qBound<qint64>(1, pixels * 4 / (1024 * 1024),
+                                              qint64(kBigDecodeBudgetMb)))
+                         : 0;
+    QImage img;
+    {
+        if (cost > 0) bigDecodeBudget().acquire(cost);
+        //  Der Freigeber gibt auch dann zurück, wenn `read()` wirft.
+        QSemaphoreReleaser back(cost > 0 ? &bigDecodeBudget() : nullptr, cost);
+        img = reader.read();
+    }
     if (img.isNull()) return {};
 
     if (img.width() > size.width() || img.height() > size.height())

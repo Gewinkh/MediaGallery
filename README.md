@@ -127,14 +127,14 @@ The `tests/` directory is not included in the published repository. If it is mis
 ## Changelog
 
 ### Latest
-- Added audio player mode with queue, playback controls, shuffle, repeat, volume, and full player view
-- Added 10-band equalizer and audio settings
-- Added compact list layout and persistent player state
-- Added two-pane gallery with independent folders and controls
-- Improved menus, toolbar scrolling, settings, and tag/category management
-- Added search, rename, and create/delete actions for tags and categories
-- Expanded automated tests for audio and QML interactions
-- Improved folder counts, bookmark groups, and the unified `+` menu
+- Improved media playback and audio extraction
+- Improved memory usage and performance for images, thumbnails, DOCX, and large searches
+- Improved seeking and scrubbing for audio and video
+- Added support for extracting audio from MKV, WEBM, MKA, and additional codecs
+- Added audio track selection and embedded cover art support
+- Added gapless audio playback and improved player metadata
+- Improved DOCX preview, page numbering, typing performance, and PDF export
+- Improved file date handling and recursive search performance
 
 ---
 

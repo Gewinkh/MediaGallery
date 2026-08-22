@@ -27,10 +27,6 @@ public:
     QStringList getTags(const QString& fileName) const;
     void        setTags(const QString& fileName, const QStringList& tags);
 
-    bool      hasCustomDate(const QString& fileName) const;
-    QDateTime getCustomDate(const QString& fileName) const;
-    void      setCustomDate(const QString& fileName, const QDateTime& dt);
-    void      clearCustomDate(const QString& fileName);
 
     // Text colour this file uses when exported to PDF (text editor "-> PDF").
     // Invalid colour == no own choice; the caller then falls back to the global
@@ -68,8 +64,10 @@ private:
 
     struct FileMeta {
         QStringList tags;
-        QDateTime   customDate;
-        bool        hasCustomDate = false;
+        //  KEIN Datum: das Änderungs- und das Erstellungsdatum stehen an der
+        //  DATEI selbst (Festlegung des Nutzers 2026-08-21). Dieselbe Angabe
+        //  zweimal zu führen hieße nur, dass sie auseinanderläuft, sobald
+        //  jemand die Datei außerhalb der App anfasst.
         QColor      textPdfColor;   // invalid == follow the global default
     };
 

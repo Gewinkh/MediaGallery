@@ -16,6 +16,7 @@
 #include "core/FileBrowseModel.h"
 #include "core/AppSettings.h"
 #include "audio/AudioController.h"
+#include "audio/AudioCoverProvider.h"
 #include "app/PaneController.h"
 #include "app/PaneHost.h"
 #include "tags/TagController.h"
@@ -321,6 +322,10 @@ int main(int argc, char* argv[]) {
     // RAM-Vorschauen der PDF-Seitenleiste: "image://pdfthumb/<docId>/<page>".
     // Eigentum des Providers geht an die Engine ueber.
     engine.addImageProvider(QStringLiteral("pdfthumb"), pdfThumbs.createImageProvider());
+
+    //  Das im Titel eingebettete Bild: "image://audiocover/<pfad>?rev=<n>".
+    //  Liest im Bild-Faden von Qt Quick, nicht im GUI-Faden (s. AudioCoverProvider.h).
+    engine.addImageProvider(QStringLiteral("audiocover"), new AudioCoverProvider);
 
     engine.load(QUrl(QStringLiteral("qrc:/qml/ApplicationShell.qml")));
     if (engine.rootObjects().isEmpty())

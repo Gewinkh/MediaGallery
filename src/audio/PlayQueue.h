@@ -58,6 +58,12 @@ public:
     int         orderedPos() const { return m_pos; }
     //  Umkehrung für die Anzeige: Platz in der Abspielfolge -> Pfad.
     QString     pathAtOrder(int orderPos) const;
+    //  Was beim NATÜRLICHEN Ende folgen würde, OHNE etwas zu verändern - die
+    //  Grundlage des lückenlosen Übergangs (`AudioEngine::setNextTrack`).
+    //  Leer heißt „hier ist Schluss" - und ebenso im Fall „Zufall + alles
+    //  wiederholen am Listenende": dort wird beim Weiterschalten NEU gemischt,
+    //  welcher Titel dann vorn steht, ist vorher nicht entschieden.
+    QString     peekNext(bool natural = true) const;
     //  Bei diesem Platz der Abspielfolge weitermachen (Klick in der Liste).
     bool        startAtOrder(int orderPos);
 

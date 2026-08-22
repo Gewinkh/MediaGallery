@@ -4,6 +4,7 @@
 #include <QHash>
 #include <QString>
 #include <QStringList>
+#include <QElapsedTimer>
 #include <QTimer>
 #include <QColor>
 #include <QDateTime>
@@ -102,6 +103,10 @@ public:
     QHash<int, QByteArray> roleNames() const override;
 
     int     count()  const { return m_items.size(); }
+    //  Laeuft gerade ein GROSSEINLESEN (Ordner oeffnen, Unterordner aufklappen,
+    //  Treffer einer Suche)? Das Zeilenmodell fasst seine Neuaufbauten dann
+    //  zusammen, statt nach jeder Charge einen zu machen - s. GalleryRowModel.
+    bool    isFilling() const { return hasMoreToFill(); }
     QString folder() const { return m_folder; }
 
     // Direktzugriff auf die Quelldaten einer Zeile (nullptr bei ungültigem Index).
@@ -280,6 +285,8 @@ public:
     //  Kennt das Modell die Datei nicht, passiert nichts (Lesen: leer/ungueltig).
     Q_INVOKABLE QStringList tagsOfFile(const QString& filePath) const;
     Q_INVOKABLE void        removeTag(const QString& filePath, const QString& tag);
+    //  „Gibt es etwas zurückzusetzen?" - aus der DATEI beantwortet
+    //  (Änderungsdatum weicht vom Erstellungsdatum ab).
     Q_INVOKABLE bool        hasCustomDate(const QString& filePath) const;
     Q_INVOKABLE QDateTime   customDate(const QString& filePath) const;
     Q_INVOKABLE void        setCustomDate(const QString& filePath, const QDateTime& dt);
@@ -347,6 +354,9 @@ signals:
     void thumbnailsInvalidated();   // Zielgröße gewechselt -> Delegates fordern neu an
     void fileHistoryChanged();      // Undo-/Redo-Stapel der Datei-Vorgänge
     void expansionChanged();        // ein Unterordner wurde auf-/zugeklappt
+    //  Das Datum konnte NICHT an die Datei geschrieben werden (schreibgeschützt,
+    //  fremdes Dateisystem) - es steht dann nur im Sidecar.
+    void fileDateNotWritten(const QString& fileName);
 
 private slots:
     void onThumbnailReady(const QString& filePath, const QString& thumbUrl);
@@ -374,8 +384,8 @@ private:
         QStringList tags;
         QStringList categoryIds;          // DIREKTE Mitgliedschaften (IDs, eigener Ordner)
         QStringList categoryNames;        // dieselben als NAMEN (für einen fremden Ordner)
-        QDateTime   customDate;
-        bool        hasCustomDate = false;
+        //  KEIN Datum: es hängt an der Datei und wandert mit ihr - Verschieben
+        //  und Papierkorb erhalten die Zeitstempel.
     };
     //  Deckel gegen unbegrenztes Wachstum (RAM = Priorität 1): der Stapel hält
     //  nur Pfade und Metadaten, aber er soll auch bei Massenlöschungen nicht
@@ -525,6 +535,9 @@ private:
     int          m_deepGeneration = 0;
     QThreadPool* m_deepPool = nullptr;
     QTimer       m_deepTimer;              // entprellt das Tippen
+    //  Nur fuer die Diagnose (`MG_DEEPLOG=1`): misst das Aufklappen nach einer
+    //  Suche. Ungueltig, solange nicht gemessen wird - kostet dann nichts.
+    QElapsedTimer m_deepFillTimer;
     MediaProxyModel::FilterCriteria m_deepCriteria;
     QStringList  m_deepCategoryNames;
     std::shared_ptr<std::atomic<bool>> m_deepCancel;

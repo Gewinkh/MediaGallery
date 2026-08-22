@@ -58,6 +58,10 @@ Rectangle {
     //  Begleitdatei entfernen: kind 1 = Notizen/Zeichnungen (Sidecar),
     //  2 = Sicherungskopie (.bak). Die Rückfrage führt GalleryView.
     signal companionRemoveRequested(string filePath, int kind)
+    //  „Ton als Audiodatei sichern" (nur Videokacheln): die Tonspur wird ohne
+    //  Neukodierung neben das Video gelegt. Ausgeführt wird es in GalleryPane -
+    //  dort hängt auch das Erben der Tags.
+    signal audioExtractRequested(string filePath)
     //  Ordnerkachel: Doppelklick oeffnet den Ordner als neue Hauptebene.
     signal folderOpenRequested(string folderPath)
     signal folderRenameRequested(string folderPath, string currentName)
@@ -530,8 +534,13 @@ Rectangle {
             property var fileCatIds: []    // Kategorie-IDs der Datei
             //  Bitmaske der vorhandenen Begleitdateien (1 Sidecar, 2 .bak).
             property int companions: 0
+            //  Lohnt „Ton sichern"? Reine Endungs-Prüfung in C++ - das Öffnen
+            //  eines Menüs soll keine Datei anfassen.
+            property bool canExtractAudio: false
             onAboutToShow: {
                 ctxMenu.companions = mediaModel.companionKinds(tile.filePath)
+                ctxMenu.canExtractAudio = tile.mediaType === 1
+                                          && Audio.canExtractAudio(tile.filePath)
                 ctxTags    = Tags.allTags()
                 ctxCats    = Tags.categoriesFlat()
                 fileTags   = mediaModel.tagsOfFile(tile.filePath)
@@ -601,6 +610,17 @@ Rectangle {
             MenuItem {
                 text: App.uiText(App.language, "CtxDeleteFile")
                 onTriggered: tile.deleteRequested(tile.filePath, tile.displayName)
+            }
+
+            //  ── Ton aus dem Video sichern ────────────────────────────────────
+            //  Nur bei Videokacheln und nur für Hüllen, die der Leser kennt
+            //  (MP4/M4V/MOV). Das Video bleibt unangetastet.
+            MenuItem {
+                visible: ctxMenu.canExtractAudio
+                height: visible ? implicitHeight : 0
+                enabled: !Audio.extractBusy
+                text: App.uiText(App.language, "AudioExtractMenu")
+                onTriggered: tile.audioExtractRequested(tile.filePath)
             }
 
             //  ── Begleitdateien dieser Datei ──────────────────────────────────

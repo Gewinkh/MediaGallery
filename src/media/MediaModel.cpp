@@ -10,6 +10,7 @@
 #include "core/PathUtils.h"
 
 #include <QDirIterator>
+#include <QTimeZone>
 #include <QFileInfo>
 #include <QFile>
 #include <QUuid>
@@ -17,7 +18,12 @@
 #include <algorithm>
 #include <QPointer>
 #include <QRunnable>
+#include <QElapsedTimer>
 #include <QThreadPool>
+#include <QThread>
+#include <QMutex>
+#include <QWaitCondition>
+#include <atomic>
 
 #include "core/MemoryUtils.h"   // mg::trimHeap - RSS-Rückgabe nach Ordnerwechsel
 
@@ -116,18 +122,15 @@ public:
         setAutoDelete(true);
     }
 
-    void run() override {
-        QStringList hits;
-        QStringList stack{ m_root };
-        //  Deckel gegen einen versehentlich riesigen Baum: die Suche soll
-        //  Ordner finden, nicht das halbe Dateisystem indizieren.
-        int visited = 0;
-        while (!stack.isEmpty() && visited < 20000) {
-            if (m_cancel && m_cancel->load()) return;
-            const QString dir = stack.takeLast();
-            ++visited;
-
-            const bool isRoot = (dir == m_root);
+    //  ── EIN Ordner ────────────────────────────────────────────────────────
+    //  Rein funktional: alles, was gebraucht wird, kommt als Argument, das
+    //  Ergebnis geht als Rückgabewert zurück. Nur so darf das gleichzeitig auf
+    //  mehreren Fäden laufen (`JsonStorage` entsteht hier und stirbt hier,
+    //  `MediaProxyModel::acceptsFile` ist statisch und rührt nichts an).
+    //  `subdirs` sammelt die Unterordner ein - wer sie weiterverfolgt,
+    //  entscheidet der Aufrufer.
+    bool scanOne(const QString& dir, QStringList* subdirs) const {
+        const bool isRoot = (dir == m_root);
             const QString sidecar = mg::folderSidecarName(dir);
 
             //  Sidecar dieses Ordners: Tags, eigenes Datum, Kategorien.
@@ -156,11 +159,11 @@ public:
             QDirIterator it(dir, QDir::Files | QDir::Dirs | QDir::NoDotAndDotDot,
                             QDirIterator::NoIteratorFlags);
             while (it.hasNext()) {
-                if (m_cancel && m_cancel->load()) return;
+                if (m_cancel && m_cancel->load()) return false;
                 it.next();
                 const QFileInfo fi = it.fileInfo();
                 if (fi.isDir()) {
-                    if (!fi.isSymLink()) stack.append(fi.filePath());
+                    if (!fi.isSymLink()) subdirs->append(fi.filePath());
                     continue;
                 }
                 if (isRoot || hit) continue;   // Wurzel ist ohnehin sichtbar
@@ -174,8 +177,104 @@ public:
                     hit = true;
                 }
             }
-            if (hit) hits.append(dir);
+        return hit;
+    }
+
+    void run() override {
+        //  ── 1) Die Ordner einsammeln ──────────────────────────────────────
+        //  Das bleibt EINFÄDIG: es ist billig (gemessen: 259 Ordner in
+        //  wenigen Millisekunden), und der Baum ist erst danach bekannt.
+        //  Deckel gegen einen versehentlich riesigen Baum: die Suche soll
+        //  Ordner finden, nicht das halbe Dateisystem indizieren.
+        QStringList dirs;
+        {
+            QStringList stack{ m_root };
+            while (!stack.isEmpty() && dirs.size() < 20000) {
+                if (m_cancel && m_cancel->load()) return;
+                const QString dir = stack.takeLast();
+                dirs.append(dir);
+                QDirIterator it(dir, QDir::Dirs | QDir::NoDotAndDotDot,
+                                QDirIterator::NoIteratorFlags);
+                while (it.hasNext()) {
+                    it.next();
+                    const QFileInfo fi = it.fileInfo();
+                    if (!fi.isSymLink()) stack.append(fi.filePath());
+                }
+            }
         }
+
+        //  ── 2) Die Ordner auf die Kerne verteilen ─────────────────────────
+        //  Jeder Ordner ist unabhängig: eigener Sidecar, eigene Dateien. Die
+        //  Zahl der Fäden kommt vom RECHNER (`idealThreadCount`), nicht aus
+        //  einer Konstanten - ein Zweikern-Laptop soll nicht acht Fäden
+        //  starten, ein Achtkerner nicht auf einem sitzen bleiben. Gedeckelt
+        //  auf 8: der Engpass ist ab da die Platte, nicht der Kern.
+        //  Bei wenigen Ordnern lohnt das Verteilen nicht - dann läuft es hier.
+        //  `MG_DEEPTHREADS` überschreibt die Zahl - für Messungen (1 = wie
+        //  früher) und als Notausgang auf einem Rechner, dem das nicht bekommt.
+        const int wanted = qEnvironmentVariableIntValue("MG_DEEPTHREADS");
+        const int threads = wanted > 0 ? qBound(1, wanted, 64)
+                                       : qBound(1, QThread::idealThreadCount(), 8);
+        QElapsedTimer scanTimer;
+        if (qEnvironmentVariableIntValue("MG_DEEPLOG") >= 1) scanTimer.start();
+        QStringList hits;
+        if (threads <= 1 || dirs.size() < 8) {
+            for (const QString& d : std::as_const(dirs)) {
+                if (m_cancel && m_cancel->load()) return;
+                QStringList ignored;
+                if (scanOne(d, &ignored)) hits.append(d);
+            }
+        } else {
+            //  Ein Pool NUR für diesen Lauf: er entsteht mit der Suche und
+            //  verschwindet mit ihr (Kosten je Faden: Bruchteile einer
+            //  Millisekunde gegen eine Suche im Sekundenbereich). Damit hängen
+            //  zwischen zwei Suchen keine Fäden im Leerlauf.
+            QThreadPool pool;
+            pool.setMaxThreadCount(threads);
+            std::atomic<int> next{ 0 };
+            QVector<QStringList> perThread(threads);
+            QMutex done;
+            QWaitCondition wake;
+            int running = threads;
+
+            for (int w = 0; w < threads; ++w) {
+                pool.start([&, w] {
+                    QStringList mine;
+                    for (;;) {
+                        const int i = next.fetch_add(1, std::memory_order_relaxed);
+                        if (i >= dirs.size()) break;
+                        if (m_cancel && m_cancel->load()) break;
+                        QStringList ignored;
+                        if (scanOne(dirs.at(i), &ignored)) mine.append(dirs.at(i));
+                    }
+                    QMutexLocker lock(&done);
+                    perThread[w] = std::move(mine);
+                    if (--running == 0) wake.wakeAll();
+                });
+            }
+            {
+                QMutexLocker lock(&done);
+                while (running > 0) wake.wait(&done);
+            }
+            pool.waitForDone();
+            if (m_cancel && m_cancel->load()) return;
+
+            //  Wieder in die Reihenfolge des Baumes bringen: die Treffer sollen
+            //  aufklappen wie der Nutzer den Baum sieht, nicht wie die Fäden
+            //  fertig wurden.
+            QSet<QString> found;
+            for (const QStringList& l : std::as_const(perThread))
+                for (const QString& d : l) found.insert(d);
+            for (const QString& d : std::as_const(dirs))
+                if (found.contains(d)) hits.append(d);
+        }
+
+        //  Diagnose (nur mit `MG_DEEPLOG=1`): wie lange hat das SUCHEN
+        //  gedauert - ohne das Aufklappen der Treffer, das danach im GUI-Faden
+        //  passiert und den größeren Teil der Wartezeit ausmacht.
+        if (scanTimer.isValid())
+            qInfo("[MG_DEEPLOG] %lld Ordner auf %d Faeden: %lld ms, %lld Treffer",
+                  dirs.size(), threads, scanTimer.elapsed(), hits.size());
 
         MediaModel* owner = m_owner.data();
         if (!owner) return;
@@ -449,7 +548,7 @@ void MediaModel::feedChunk(bool firstChunk) {
             //  heisst so und nicht „Urlaub 2025".
             item.displayName = fi.fileName();
             item.type        = MediaType::Folder;
-            item.dateTime    = fi.lastModified();
+            item.dateTime    = fi.lastModified(QTimeZone::UTC);
             item.fileSize    = 0;
             item.scope       = scope;
             batch.append(std::move(item));
@@ -475,7 +574,7 @@ void MediaModel::feedChunk(bool firstChunk) {
         item.displayName = fi.completeBaseName();
         item.fileSize    = fi.size();
         item.type        = t;
-        item.dateTime    = fi.lastModified();
+        item.dateTime    = fi.lastModified(QTimeZone::UTC);
         item.scope       = scope;
         batch.append(std::move(item));
         ++produced;
@@ -493,10 +592,9 @@ void MediaModel::feedChunk(bool firstChunk) {
         for (auto& item : batch) {
             if (item.isFolder()) continue;
             const QString name = item.fileName();
-            if (st->hasCustomDate(name)) {
-                item.dateTime      = st->getCustomDate(name);
-                item.hasCustomDate = true;
-            }
+            //  KEIN Datum aus dem Sidecar: es steht an der Datei und wurde
+            //  beim Einlesen schon von dort genommen.
+            (void)name;
         }
     }
 
@@ -536,6 +634,15 @@ void MediaModel::queueExpandedFolders(int firstRow) {
 void MediaModel::finishFill() {
     m_pendingIt.reset();
     m_pendingScope = -1;
+
+    //  Diagnose (nur mit `MG_DEEPLOG=1`): wie lange hat das AUFKLAPPEN nach
+    //  einer Suche gedauert - der Teil, den der Nutzer als Wartezeit erlebt,
+    //  nachdem der Suchlauf selbst längst fertig ist.
+    if (m_deepFillTimer.isValid()) {
+        qInfo("[MG_DEEPLOG] Aufklappen: %lld Zeilen im Modell nach %lld ms",
+              qint64(m_items.size()), m_deepFillTimer.elapsed());
+        m_deepFillTimer.invalidate();
+    }
 
     //  Jetzt stehen die Zeilen - jetzt kann die Ansicht ihre Miniaturen neu
     //  anfordern (s. rebuild()).
@@ -958,7 +1065,13 @@ QVariant MediaModel::data(const QModelIndex& index, int role) const {
     case MediaTypeRole:   return static_cast<int>(it.type);
     case TypeLabelRole:   return typeLabel(it);
     case TagsRole:        return it.tags;
-    case DateTimeRole:    return it.dateTime;
+    //  Gespeichert wird UTC, angezeigt die Ortszeit. Die Umrechnung ist teuer
+    //  (sie ruft `tzset`) - deshalb passiert sie HIER, also je sichtbarer
+    //  Zeile, statt beim Einlesen je Datei. Gemessen: 1,54 -> 1,04 µs je Datei
+    //  beim Einlesen, bei 77.958 Dateien rund 39 ms.
+    //  Sortiert und verglichen wird auf dem Struct (`fieldLess`) - eine
+    //  Zeitangabe ist absolut, die Zeitzone spielt dabei keine Rolle.
+    case DateTimeRole:    return it.dateTime.toLocalTime();
     case FileSizeRole:    return it.fileSize;
     case ThumbUrlRole:    return m_thumbUrls[r];
     case ThumbStateRole:  return m_thumbState[r];
@@ -1184,8 +1297,8 @@ void MediaModel::collectMetaAt(const QString& folder, const QString& fileName,
     op->tags          = st->getTags(fileName);
     op->categoryIds.clear();                       // IDs gelten nur im eigenen Baum
     op->categoryNames = categoryNamesOf(*st, fileName);
-    op->hasCustomDate = st->hasCustomDate(fileName);
-    if (op->hasCustomDate) op->customDate = st->getCustomDate(fileName);
+    //  Kein Datum: es hängt an der Datei und wandert mit ihr (Verschieben und
+    //  Papierkorb erhalten die Zeitstempel).
 }
 
 void MediaModel::dropMetaAt(const QString& folder, const QString& fileName,
@@ -1215,7 +1328,6 @@ void MediaModel::restoreMetaAt(const QString& folder, const QString& fileName,
         st->setTags(fileName, tags);
     }
     attachCategories(*st, fileName, op.categoryNames);
-    if (op.hasCustomDate) st->setCustomDate(fileName, op.customDate);
     st->saveCurrentFolder();
 }
 
@@ -1366,7 +1478,7 @@ void MediaModel::appendRowFor(const QString& filePath) {
     item.fileSize    = fi.size();
     item.type        = fi.isDir() ? MediaType::Folder
                                   : MediaItem::detectType(fi.filePath());
-    item.dateTime    = fi.lastModified();
+    item.dateTime    = fi.lastModified(QTimeZone::UTC);
     item.scope       = scope;
     if (item.isFolder()) {
         item.displayName = fi.fileName();      // nicht completeBaseName
@@ -1378,10 +1490,6 @@ void MediaModel::appendRowFor(const QString& filePath) {
     if (JsonStorage* st = storageForScope(scope)) {
         st->applyToItems(batch);
         const QString name = batch.first().fileName();
-        if (st->hasCustomDate(name)) {
-            batch.first().dateTime      = st->getCustomDate(name);
-            batch.first().hasCustomDate = true;
-        }
     }
 
     const int at = m_items.size();
@@ -1420,9 +1528,7 @@ void MediaModel::clearFileHistory() {
 void MediaModel::collectMeta(const QString& fileName, FileOp* op) const {
     op->tags          = m_tagManager.tagsForFile(fileName);
     op->categoryIds   = m_tagManager.categoryIdsForFile(fileName);
-    op->hasCustomDate = m_storage.hasCustomDate(fileName);
-    if (op->hasCustomDate)
-        op->customDate = m_storage.getCustomDate(fileName);
+    //  Kein Datum - s. `collectMetaAt`.
 }
 
 void MediaModel::dropMeta(const QString& fileName, const FileOp& op) {
@@ -1441,8 +1547,6 @@ void MediaModel::restoreMeta(const QString& fileName, const FileOp& op) {
         m_tagManager.addTagToFile(fileName, tag);
     for (const QString& id : op.categoryIds)
         m_tagManager.addFileToCategory(id, fileName);
-    if (op.hasCustomDate)
-        m_storage.setCustomDate(fileName, op.customDate);
     m_storage.saveCurrentFolder();
 }
 
@@ -1457,7 +1561,7 @@ void MediaModel::restoreMeta(const QString& fileName, const FileOp& op) {
 void MediaModel::writeMetaToFolder(const QString& folder, const QString& fileName,
                                    const FileOp& op,
                                    const QHash<QString, QColor>& tagColors) {
-    if (op.tags.isEmpty() && op.categoryIds.isEmpty() && !op.hasCustomDate)
+    if (op.tags.isEmpty() && op.categoryIds.isEmpty())
         return;
     JsonStorage dest;
     dest.loadFolder(folder);
@@ -1479,8 +1583,6 @@ void MediaModel::writeMetaToFolder(const QString& folder, const QString& fileNam
         }
         dest.setTags(fileName, tags);
     }
-    if (op.hasCustomDate)
-        dest.setCustomDate(fileName, op.customDate);
     if (!op.categoryNames.isEmpty()) {
         QList<TagCategory>& cats = dest.categoriesRef();
         for (const QString& wanted : op.categoryNames) {
@@ -1602,6 +1704,7 @@ void MediaModel::startDeepScan() {
 void MediaModel::noteDeepMatches(const QStringList& folders, int generation) {
     if (generation != m_deepGeneration || !m_deepActive) return;
     if (folders.isEmpty()) return;
+    if (qEnvironmentVariableIntValue("MG_DEEPLOG") >= 1) m_deepFillTimer.start();
 
     //  Jeder Treffer-Ordner UND seine ganze Kette bis zum offenen Ordner -
     //  sonst waere der Treffer zwar aufgeklappt, aber nicht zu sehen.
@@ -2136,48 +2239,87 @@ void MediaModel::removeTag(const QString& filePath, const QString& tag) {
     setTagOnRow(row, tag, false);
 }
 
+//  „Gibt es hier etwas zurückzusetzen?" - genau das fragt die Oberfläche.
+//  Beantwortet wird es aus der DATEI: weicht ihr Änderungsdatum vom
+//  Erstellungsdatum ab, führt „Zurücksetzen" zu etwas. Kein Merker nötig.
 bool MediaModel::hasCustomDate(const QString& filePath) const {
-    const int r = rowForPath(filePath);
-    return isFileRow(r) && m_items.at(r).hasCustomDate;
+    const QFileInfo fi(mg::toLocalPath(filePath));
+    const QDateTime born = fi.birthTime(QTimeZone::UTC);
+    const QDateTime mod  = fi.lastModified(QTimeZone::UTC);
+    return born.isValid() && mod.isValid() && born != mod;
 }
 
 QDateTime MediaModel::customDate(const QString& filePath) const {
     const int r = rowForPath(filePath);
-    return isFileRow(r) ? m_items.at(r).dateTime : QDateTime();
+    return isFileRow(r) ? m_items.at(r).dateTime.toLocalTime() : QDateTime();
 }
 
 void MediaModel::setCustomDate(const QString& filePath, const QDateTime& dt) {
-    int row = -1;
-    JsonStorage* st = storageOfFile(filePath, &row);
-    if (!st) return;
-    const QString name = m_items.at(row).fileName();
+    const int row = rowForPath(filePath);
+    if (!isFileRow(row)) return;
 
+    //  ── Das Datum gehört an die DATEI - und NUR dorthin ────────────────────
+    //  Kein Eintrag im Sidecar: Änderungs- und Erstellungsdatum stehen ohnehin
+    //  im Dateisystem, und dieselbe Angabe zweimal zu führen hieße nur, dass
+    //  sie auseinanderläuft, sobald jemand die Datei außerhalb der App anfasst
+    //  (Festlegung des Nutzers 2026-08-21). „Zurücksetzen" braucht dafür auch
+    //  keinen Merker mehr: es nimmt das ERSTELLUNGSdatum, das sich nie ändert -
+    //  egal, wie oft hier ein neues gesetzt wird.
     ++m_suppressWatch;
-    st->setCustomDate(name, dt);
-    st->saveCurrentFolder();
+    bool wroteFile = false;
+    {
+        QFile f(filePath);
+        if (f.open(QIODevice::ReadWrite)) {
+            wroteFile = f.setFileTime(dt, QFileDevice::FileModificationTime);
+            f.close();
+        }
+    }
     --m_suppressWatch;
 
-    //  Die Anzeige mitziehen - sonst zeigte die Kachel das alte Datum, und die
-    //  Sortierung nach Datum stimmte bis zum naechsten Neuladen nicht.
-    m_items[row].dateTime      = dt;
-    m_items[row].hasCustomDate = true;
+    if (!wroteFile) {
+        //  Schreibgeschützt oder fremdes Dateisystem: dann passiert NICHTS -
+        //  ein Datum, das nur die App kennt, wäre genau die Doppelablage, die
+        //  hier verschwinden sollte.
+        emit fileDateNotWritten(QFileInfo(filePath).fileName());
+        return;
+    }
+
+    //  Zurücklesen: manche Dateisysteme (FAT) runden auf zwei Sekunden.
+    //  Angezeigt wird, was WIRKLICH an der Datei steht.
+    const QDateTime after = QFileInfo(filePath).lastModified(QTimeZone::UTC);
+    m_items[row].dateTime = after.isValid() ? after : dt;
     emitRow(row, { DateTimeRole });
 }
 
 void MediaModel::clearCustomDate(const QString& filePath) {
-    int row = -1;
-    JsonStorage* st = storageOfFile(filePath, &row);
-    if (!st) return;
-    const QString name = m_items.at(row).fileName();
+    const int row = rowForPath(filePath);
+    if (!isFileRow(row)) return;
+
+    //  Zurück heißt: auf das ERSTELLUNGSdatum der Datei. Es ändert sich nie -
+    //  man kann also beliebig oft ein neues Datum setzen und kommt immer an
+    //  denselben Punkt zurück. Kennt das Dateisystem kein Erstellungsdatum
+    //  (FAT, ältere ext4), wird nichts angefasst: raten wäre schlimmer als
+    //  stehenlassen.
+    const QDateTime born = QFileInfo(filePath).birthTime(QTimeZone::UTC);
+    if (!born.isValid()) {
+        emit fileDateNotWritten(QFileInfo(filePath).fileName());
+        return;
+    }
 
     ++m_suppressWatch;
-    st->clearCustomDate(name);
-    st->saveCurrentFolder();
+    bool wrote = false;
+    {
+        QFile f(filePath);
+        if (f.open(QIODevice::ReadWrite)) {
+            wrote = f.setFileTime(born, QFileDevice::FileModificationTime);
+            f.close();
+        }
+    }
     --m_suppressWatch;
 
-    //  Zurueck auf das DATEIdatum.
-    m_items[row].dateTime      = QFileInfo(filePath).lastModified();
-    m_items[row].hasCustomDate = false;
+    if (!wrote) { emit fileDateNotWritten(QFileInfo(filePath).fileName()); return; }
+
+    m_items[row].dateTime = QFileInfo(filePath).lastModified(QTimeZone::UTC);
     emitRow(row, { DateTimeRole });
 }
 

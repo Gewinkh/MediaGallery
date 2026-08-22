@@ -548,12 +548,21 @@ Item {
                     color: pdfHover.hovered ? App.themeCard : "transparent"
                     border.color: App.themeBorder
                     opacity: (editCtl.ready && !editCtl.busy) ? 1.0 : 0.45
-                    Text {
+                    //  Pfeil gezeichnet (Regel 28), Beschriftung daneben.
+                    Row {
                         id: pdfLbl
                         anchors.centerIn: parent
-                        text: App.uiText(App.language, "DocxExportPdf")
-                        color: App.themeTextPrimary
-                        font.pixelSize: 12
+                        spacing: 5
+                        DrawnIcon {
+                            anchors.verticalCenter: parent.verticalCenter
+                            name: "arrow-right"; size: 13; color: App.themeTextPrimary
+                        }
+                        Text {
+                            anchors.verticalCenter: parent.verticalCenter
+                            text: App.uiText(App.language, "DocxExportPdf")
+                            color: App.themeTextPrimary
+                            font.pixelSize: 12
+                        }
                     }
                     HoverHandler { id: pdfHover }
                     TapHandler {
@@ -567,7 +576,12 @@ Item {
                             if (!editCtl.ready || editCtl.busy)
                                 return
                             const tgt = editCtl.pdfExportTargetPath()
-                            const e = area.exportPagesToPdf(tgt)
+                            //  Rand und Seitenzahl kommen aus den globalen
+                            //  DOCX-Einstellungen (Rand: Einstellungen ▸ Editor,
+                            //  Seitenzahl: das Menü rechts daneben).
+                            const e = area.exportPagesToPdf(tgt, Docx.pdfPaddingMm,
+                                                            Docx.pdfPageNumberPos,
+                                                            Docx.pdfPageNumberStyle)
                             if (e.length === 0)
                                 statusText.flash(App.uiText(App.language, "DocxPdfExportedTo")
                                                  .replace("%1", tgt.split("/").pop()))
@@ -1096,13 +1110,53 @@ Item {
 
             ListView {
                 id: thumbList
+                objectName: "docxThumbs"          // Prüfstand: MG_BENCH_WHEEL
                 anchors.fill: parent
                 anchors.margins: 8
                 spacing: 10
                 clip: true
                 model: area.pageCount
                 boundsBehavior: Flickable.StopAtBounds
+                //  Vorhalt wie in der PDF-Leiste: die Delegates überleben das
+                //  Scrollen, statt bei jeder Rastung neu erzeugt (und neu
+                //  GEZEICHNET) zu werden - eine Miniatur kostet 0,8 ms.
+                cacheBuffer: Math.max(0, Math.round(thumbList.height * 1.5))
                 ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
+
+                //  ── Mausrad: dieselbe Schrittweite wie in der PDF-Leiste ─────
+                //  Ohne eigenen Handler gilt die Vorgabe von `Flickable`:
+                //  gemessen **72 px je Rastung** (ein Drittel Miniatur), und
+                //  die folgenden Rastungen wurden vom laufenden Flick sogar
+                //  ganz verschluckt (0 px). Die PDF-Leiste macht 408 px je
+                //  Rastung und rührt jede an. Gleiche Rechnung, gleiches
+                //  Ausschwingen - eine Vorschau soll sich nicht danach
+                //  unterscheiden, welches Format darunter liegt.
+                NumberAnimation on contentY {
+                    id: thumbScroll
+                    running: false
+                    duration: 180
+                    easing.type: Easing.OutCubic
+                }
+                MouseArea {
+                    anchors.fill: parent
+                    acceptedButtons: Qt.NoButton
+                    z: 1
+                    onWheel: (wheel) => {
+                        const scrollable = thumbList.contentHeight - thumbList.height
+                        if (scrollable <= 0) { wheel.accepted = true; return }
+                        const minY = thumbList.originY
+                        const maxY = thumbList.originY + scrollable
+                        const raw = (wheel.angleDelta.y !== 0)
+                                    ? (wheel.angleDelta.y / 120) * (thumbList.height * 0.55)
+                                    : wheel.pixelDelta.y * 1.6
+                        const base = thumbScroll.running ? thumbScroll.to
+                                                         : thumbList.contentY
+                        thumbScroll.from = thumbList.contentY
+                        thumbScroll.to = Math.max(minY, Math.min(base - raw, maxY))
+                        thumbScroll.restart()
+                        wheel.accepted = true
+                    }
+                }
 
                 delegate: Column {
                     id: thumbItem
@@ -1159,6 +1213,11 @@ Item {
             anchors.left: thumbBar.visible ? thumbBar.right : parent.left
             anchors.right: parent.right
             ctl: editCtl
+            //  Die Seitenzahl gehört auf die Seite, sobald sie eingestellt ist -
+            //  nicht erst ins ausgegebene PDF (Nutzerbefund). Anzeige,
+            //  Miniaturen und Export lesen damit dieselbe Angabe.
+            pageNumberPos: Docx.pdfPageNumberPos
+            pageNumberStyle: Docx.pdfPageNumberStyle
             surroundColor: App.themeBackground
             tablePlaceholder: App.uiText(App.language, "DocxTablePlaceholder")
             pageBreakLabel: App.uiText(App.language, "DocxPageBreak")

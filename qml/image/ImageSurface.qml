@@ -22,6 +22,7 @@ import "../common"
 // ─────────────────────────────────────────────────────────────────────────────
 Item {
     id: root
+    objectName: "imageSurface"        // Prüfstand: MG_BENCH_INVOKE/MG_BENCH_WHEEL
 
     // ── Vom FullscreenViewer gesetzt ──────────────────────────────────────────
     property string source: ""
@@ -54,6 +55,34 @@ Item {
     readonly property real dispH: Math.max(1, natH * dispScale)
     readonly property real fitScale: (natW > 0 && natH > 0 && view.width > 0 && view.height > 0)
                                      ? Math.min(view.width / natW, view.height / natH) : 1.0
+    //  ── Wie viele Pixel muss das Bild WIRKLICH dekodieren? ───────────────────
+    //  Ein 27-MP-Foto in voller Auflösung sind 108 MB im Speicher (dazu dieselbe
+    //  Textur) - eingepasst in ein 1400 px breites Fenster zeigt der Bildschirm
+    //  davon nicht einmal ein Zwanzigstel. Dekodiert wird deshalb nur, was die
+    //  Ansicht gerade braucht, und zwar in STUFEN (Verdopplungen) wie bei den
+    //  Miniaturen: Zoomen innerhalb einer Stufe dekodiert nicht neu, erst der
+    //  Stufenwechsel tut es - und bei 100 % ist es wieder das volle Bild, also
+    //  unverändert scharf. 0 = Größe unbekannt -> nativ dekodieren (Rückfall,
+    //  aus dem `natW` überhaupt erst entsteht).
+    readonly property int decodeDim: {
+        //  NUR wenn der Controller die Datei selbst vermessen hat. Der Rückfall
+        //  `natW = img.implicitWidth` dürfte hier nicht einfliessen: dann hinge
+        //  die Stufe an der zuletzt dekodierten Grösse und schriebe sich selbst
+        //  fest (die Notizen lägen danach in der falschen Skala).
+        if (editCtl.imageWidth <= 0 || editCtl.imageHeight <= 0) return 0
+        if (natW <= 0 || natH <= 0) return 0
+        //  Solange die Fläche ihre Größe noch nicht kennt, steht `dispScale`
+        //  auf 1.0 - dekodiert würde also einmal das VOLLE Bild, nur um beim
+        //  Einpassen sofort wieder verworfen zu werden (gemessen: 108 MB
+        //  Spitze für nichts). Bis dahin die kleinste Stufe.
+        if (view.width <= 0 || view.height <= 0) return Math.min(1024, Math.max(natW, natH))
+        const nat  = Math.max(natW, natH)
+        const need = Math.max(dispW, dispH)
+        if (need >= nat) return nat
+        let stage = 1024
+        while (stage < need) stage *= 2
+        return Math.min(stage, nat)
+    }
 
     function commitEditing() { root.editCommitRev++ }
     function startImageExport() { root.editCtl.exportImage() }
@@ -132,9 +161,17 @@ Item {
                 smooth: true
                 mipmap: true
                 autoTransform: false               // gespeicherte Orientierung = Export = WYSIWYG
-                sourceSize: (root.natW > 0 && root.natH > 0) ? Qt.size(root.natW, root.natH) : undefined
+                //  Nur EINE Kante vorgeben - die andere rechnet Qt seitenrichtig
+                //  dazu. Siehe root.decodeDim.
+                sourceSize: root.decodeDim > 0
+                            ? (root.natW >= root.natH ? Qt.size(root.decodeDim, 0)
+                                                      : Qt.size(0, root.decodeDim))
+                            : undefined
                 // Fallback, falls QImageReader das Format nicht messen konnte.
-                onStatusChanged: if (status === Image.Ready)
+                // NUR dann: sonst meldete die Stufe (z. B. 2048) sich als native
+                // Bildgröße, und alle Notizen lägen in der falschen Skala.
+                onStatusChanged: if (status === Image.Ready
+                                     && root.editCtl.imageWidth <= 0)
                                      root.editCtl.setImageSize(implicitWidth, implicitHeight)
             }
 

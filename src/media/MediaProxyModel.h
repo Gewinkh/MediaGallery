@@ -1,4 +1,6 @@
 #pragma once
+#include "media/MediaItem.h"
+
 #include <QSortFilterProxyModel>
 #include <QtGlobal>
 #include <QStringList>
@@ -51,6 +53,11 @@ class MediaProxyModel : public QSortFilterProxyModel {
     Q_PROPERTY(bool showTexts      READ showTexts      WRITE setShowTexts      NOTIFY filterChanged)
     //  Ordnerkacheln der Unterordner - eigener Eintrag in der Medien-Rubrik.
     Q_PROPERTY(bool showFolders    READ showFolders    WRITE setShowFolders    NOTIFY filterChanged)
+    //  PLAYER-MODUS: nur Abspielbares. Eine WEISSE Liste, keine schwarze - die
+    //  Menge des Abspielbaren ist endlich und bekannt, die des Übrigen nicht
+    //  (Nutzerbefund: im Player-Modus standen ZIP, XLSX, OTH … in der Galerie,
+    //  weil `MediaType::Unknown` an jedem Typ-Häkchen vorbeilief).
+    Q_PROPERTY(bool onlyPlayable   READ onlyPlayable   WRITE setOnlyPlayable   NOTIFY filterChanged)
     Q_PROPERTY(QStringList tagFilter      READ tagFilter      WRITE setTagFilter      NOTIFY filterChanged)
     Q_PROPERTY(int         tagFilterMode  READ tagFilterModeInt WRITE setTagFilterModeInt NOTIFY filterChanged)
     Q_PROPERTY(QStringList categoryFilter READ categoryFilter WRITE setCategoryFilter NOTIFY filterChanged)
@@ -78,6 +85,10 @@ public:
         QSet<QString> catFiles;      // Dateinamen in aktiven Kategorien DIESES Ordners
         bool showImages = true, showVideos = true, showAudio = true;
         bool showPdfs   = true, showTexts  = true, showFolders = true;
+        //  s. Q_PROPERTY onlyPlayable - im Player-Modus entscheidet allein die
+        //  weisse Liste (`isPlayableType`), die Häkchen oben spielen dann nur
+        //  noch für „Videos mitzeigen" eine Rolle.
+        bool onlyPlayable = false;
         //  Kein Filter aktiv ⇒ es gibt nichts zu suchen.
         bool isEmpty() const {
             return search.isEmpty() && tags.isEmpty() && !categoryActive;
@@ -86,6 +97,11 @@ public:
     static bool acceptsFile(int mediaType, const QString& displayName,
                             const QString& fileName, const QStringList& tags,
                             const FilterCriteria& c);
+    //  ── Die weisse Liste des Player-Modus ────────────────────────────────────
+    //  HIER erweitern, wenn ein neuer Typ abspielbar wird - an genau EINER
+    //  Stelle, nicht verstreut über Filter und QML. `withVideo` kommt aus
+    //  „Videos mitzeigen" (Einstellungen ▸ Audio).
+    static bool isPlayableType(MediaType t, bool withVideo);
 
     //  Momentaufnahme des aktuellen Filters (fuer die rekursive Suche).
     FilterCriteria criteria() const;
@@ -118,6 +134,7 @@ public:
     bool showImages() const { return m_showImages; }  void setShowImages(bool v);
     bool showVideos() const { return m_showVideos; }  void setShowVideos(bool v);
     bool showAudio()  const { return m_showAudio;  }  void setShowAudio(bool v);
+    bool onlyPlayable() const { return m_onlyPlayable; } void setOnlyPlayable(bool v);
     bool showPdfs()   const { return m_showPdfs;   }  void setShowPdfs(bool v);
     bool showTexts()  const { return m_showTexts;  }  void setShowTexts(bool v);
     bool showFolders() const { return m_showFolders; } void setShowFolders(bool v);
@@ -209,6 +226,7 @@ private:
     bool m_showImages = true;
     bool m_showVideos = true;
     bool m_showAudio  = true;
+    bool m_onlyPlayable = false;      // s. onlyPlayable()
     bool m_showPdfs   = true;
     bool m_showTexts  = true;
     bool m_showFolders = true;

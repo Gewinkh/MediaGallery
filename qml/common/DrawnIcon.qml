@@ -442,6 +442,14 @@ Item {
         "align-left":   { lines: [[4,6,20,6], [4,12,14,12], [4,18,17,18]] },
         "align-right":  { lines: [[4,6,20,6], [10,12,20,12], [7,18,20,18]] },
         "arrow":        { lines: [[5,19,19,5], [12,5,19,5], [19,5,19,12]] },
+        //  Richtungspfeile mit Schaft - NICHT die Chevrons: die tragen im PDF
+        //  die Seiten-Navigation, und zwei Bedeutungen dürfen nicht dieselbe
+        //  Form haben. Schaft achsenparallel (rastet scharf ein), Spitze schräg
+        //  (läuft über `Shape`, s. oben).
+        "arrow-right":  { lines: [[5,12,19,12], [13.5,6.5,19,12], [19,12,13.5,17.5]] },
+        "arrow-left":   { lines: [[5,12,19,12], [10.5,6.5,5,12], [5,12,10.5,17.5]] },
+        "arrow-up":     { lines: [[12,5,12,19], [6.5,10.5,12,5], [12,5,17.5,10.5]] },
+        "arrow-down":   { lines: [[12,5,12,19], [6.5,13.5,12,19], [12,19,17.5,13.5]] },
         "audio":        { lines: [[9,18,9,6], [9,6,19,4], [19,4,19,16]],
                           rings: [[6.5,18,2.5], [16.5,16,2.5]] },
         "caret":        { lines: [[9,4,15,4], [9,20,15,20], [12,4,12,20]] },

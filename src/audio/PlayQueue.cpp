@@ -147,6 +147,15 @@ QString PlayQueue::advance(bool natural) {
     return currentPath();
 }
 
+QString PlayQueue::peekNext(bool natural) const {
+    if (m_order.isEmpty() || m_pos < 0) return {};
+    if (natural && m_repeat == Repeat::One) return currentPath();
+    if (m_pos + 1 < m_order.size()) return pathAtOrder(m_pos + 1);
+    if (m_repeat != Repeat::All) return {};
+    if (m_shuffle) return {};                  // die neue Runde wird erst gemischt
+    return pathAtOrder(0);
+}
+
 QString PlayQueue::back() {
     if (m_order.isEmpty() || m_pos < 0) return {};
 

@@ -430,13 +430,20 @@ Rectangle {
                 // Substitutions-Hinweis: Ist die Familie nicht installiert (auf
                 // Linux z. B. Calibri/Helvetica), zeigt Qt-Fontauflösung, was
                 // TATSÄCHLICH gerendert wird - identisch in Anzeige und Export.
-                Text {
+                Row {
                     visible: panel.showText
                              && panel.ctl.resolvedFont(fontBox.currentText) !== fontBox.currentText
-                    width: parent.width
-                    text: "-> " + panel.ctl.resolvedFont(fontBox.currentText)
-                    color: App.themeTextMuted; font.pixelSize: 10
-                    elide: Text.ElideRight
+                    width: parent.width; spacing: 5
+                    //  Der Pfeil ist hier ein SYMBOL („wird gezeichnet als"),
+                    //  kein Fließtext - deshalb gezeichnet (Regel 28).
+                    DrawnIcon { name: "arrow-right"; size: 11; color: App.themeTextMuted
+                                y: 2 }
+                    Text {
+                        width: parent.width - 16
+                        text: panel.ctl.resolvedFont(fontBox.currentText)
+                        color: App.themeTextMuted; font.pixelSize: 10
+                        elide: Text.ElideRight
+                    }
                 }
 
                 // Größe + Stil in einer Zeile

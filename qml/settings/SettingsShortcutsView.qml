@@ -1,5 +1,6 @@
 import QtQuick
 import MediaGallery 1.0
+import "../common"
 
 // ─────────────────────────────────────────────────────────────────────────────
 //  SettingsShortcutsView.qml - gethemte Tastenkürzel-Übersicht (Einstellungen ▸
@@ -83,20 +84,43 @@ Item {
 
     //  Einzelnes Tasten-„Kbd"-Chip (gethemt, monospace-artig).
     component Kbd: Rectangle {
+        id: kbd
         property string label: ""
-        implicitWidth: kbdTxt.implicitWidth + 14
+        //  Die PFEILTASTEN tragen ihr Zeichen als Symbol - hier ist der Pfeil
+        //  die Taste, und eine Taste zeigt man als Bild, nicht als zwei
+        //  Schriftzeichen (Regel 28). Der Pfeil kann dabei ALLEIN stehen ("->")
+        //  oder am Ende eines zusammengesetzten Kürzels ("Alt+<-") - deshalb
+        //  wird die Beschriftung geteilt statt nur verglichen.
+        readonly property string arrowPart:
+            kbd.label.endsWith("->") ? "->" : (kbd.label.endsWith("<-") ? "<-" : "")
+        readonly property string textPart:
+            kbd.arrowPart.length > 0
+            ? kbd.label.slice(0, kbd.label.length - 2) : kbd.label
+        implicitWidth: kbdRow.implicitWidth + 14
         implicitHeight: 22
         radius: 5
         color: App.themeCard
         border.color: App.themeBorder
         border.width: 1
-        Text {
-            id: kbdTxt
+        Row {
+            id: kbdRow
             anchors.centerIn: parent
-            text: parent.label
-            color: App.themeTextPrimary
-            font.pixelSize: 11
-            font.bold: true
+            spacing: 0
+            Text {
+                anchors.verticalCenter: parent.verticalCenter
+                visible: kbd.textPart.length > 0
+                text: kbd.textPart
+                color: App.themeTextPrimary
+                font.pixelSize: 11
+                font.bold: true
+            }
+            DrawnIcon {
+                anchors.verticalCenter: parent.verticalCenter
+                visible: kbd.arrowPart.length > 0
+                name: kbd.arrowPart === "->" ? "arrow-right" : "arrow-left"
+                size: 13
+                color: App.themeTextPrimary
+            }
         }
     }
 

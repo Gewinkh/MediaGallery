@@ -117,6 +117,34 @@ void PaneController::clearFolderHistory() {
     emit folderHistoryChanged();
 }
 
+bool PaneController::adoptSiblingFile(const QString& sourcePath,
+                                      const QString& newPath, bool inheritTags) {
+    if (sourcePath.isEmpty() || newPath.isEmpty()) return false;
+    const QString src = mg::toLocalPath(sourcePath);
+    const QString dst = mg::toLocalPath(newPath);
+    const QString folder = QFileInfo(dst).absolutePath();
+    //  Nur die Hälfte, in der die Datei wirklich liegt, macht etwas. Mit zwei
+    //  Galerien setzen beide denselben Ruf ab - die andere fällt hier heraus.
+    if (mg::normalizedFolder(folder) != mg::normalizedFolder(m_folders.currentFolder()))
+        return false;
+
+    //  ERST neu einlesen: ohne Zeile im Modell hätte die neue Datei nichts, an
+    //  dem ein Tag hängen könnte (`MediaModel::addTag` sucht die Zeile).
+    m_media.reload();
+    emit folderContentsChanged();
+    if (!inheritTags) return true;
+
+    for (const QString& tag : m_media.tagsOfFile(src))
+        m_media.addTag(dst, tag);
+
+    //  Kategorien führen DATEINAMEN, nicht Pfade (s. TagManager).
+    const QString srcName = QFileInfo(src).fileName();
+    const QString dstName = QFileInfo(dst).fileName();
+    for (const QString& catId : m_tags.categoryIdsForFile(srcName))
+        m_tags.addFileToCategory(catId, dstName);
+    return true;
+}
+
 // ── Inhalt hat sich geändert ─────────────────────────────────────────────────
 //  Mit zwei Hälften ist „der Ordner" nicht mehr eindeutig: eine Datei, die in
 //  Hälfte A angelegt wird, geht Hälfte B nichts an, solange dort ein anderer

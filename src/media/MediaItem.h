@@ -56,7 +56,10 @@ struct MediaItem {
     QString displayName;    // Shown in UI (may differ from filename)
     QStringList tags;
     QDateTime dateTime;     // Effective date (custom or file date)
-    bool hasCustomDate = false;
+    //  Ob ein Datum von Hand gesetzt wurde, steht nicht mehr hier: es wird bei
+    //  Bedarf aus der DATEI beantwortet (Änderungsdatum gegen Erstellungsdatum,
+    //  s. MediaModel::hasCustomDate). Das Feld bleibt als Platzhalter für den
+    //  Aufbau der Struktur erhalten und wird nirgends mehr gelesen.
     qint64 fileSize = 0;
     MediaType type = MediaType::Unknown;
 
@@ -82,10 +85,17 @@ struct MediaItem {
             "mp4","mkv","avi","mov","wmv","flv","webm","m4v","mpg","mpeg",
             "3gp","ogv","ts","m2ts","vob","rmvb","asf","divx","xvid"
         };
+        //  `eac3`/`ec3`/`mp2`/`aac` stehen hier NICHT nur der Vollständigkeit
+        //  halber: das sind Endungen, die die App SELBST erzeugt („Audio
+        //  extrahieren"). Fehlten sie, landete das eigene Ergebnis als
+        //  unbekannter Typ in der Galerie - sichtbar nur unter „alle Dateien
+        //  anzeigen", nicht abspielbar, ohne Kachelbild. Jedes Format hier ist
+        //  mit dem Dekoder des Players geprüft.
         static const QSet<QString> audExts = {
-            "mp3","flac","wav","ogg","aac","m4a","wma","opus","aiff","aif",
-            "ape","mka","alac","dsf","dff","wv","tta","spx","amr","ac3",
-            "dts","mpc","ra","rm","mid","midi","xm","mod","s3m","it"
+            "mp3","flac","wav","ogg","oga","aac","m4a","m4b","wma","opus",
+            "aiff","aif","ape","mka","alac","dsf","dff","wv","tta","spx","amr",
+            "ac3","eac3","ec3","mp2","dts","mpc","ra","rm","mid","midi",
+            "xm","mod","s3m","it"
         };
         static const QSet<QString> txtExts = {
             "txt","md","sql","cpp","c","h","hpp","hxx","cxx","cc","py","js","ts",

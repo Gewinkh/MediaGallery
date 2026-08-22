@@ -332,6 +332,38 @@ Item {
                     wrapMode: Text.WordWrap
                     Layout.fillWidth: true
                 }
+
+                // ── Zusätzlicher Rand beim PDF-Export ───────────────────────
+                //  Einmal eingestellt, gilt für jeden Export - deshalb hier und
+                //  nicht am Dokument. Die Seitenzahl dagegen wählt man in der
+                //  Werkzeugleiste des Dokuments (dort arbeitet man daran).
+                RowLayout {
+                    Layout.fillWidth: true
+                    Layout.topMargin: 6
+                    spacing: 8
+
+                    Label {
+                        text: App.uiText(App.language, "DocxPdfPaddingLabel")
+                        color: App.themeTextPrimary
+                        font.pixelSize: 13
+                    }
+                    SpinBox {
+                        id: docxPadBox
+                        from: 0; to: 40; stepSize: 1
+                        value: Docx.pdfPaddingMm
+                        editable: true
+                        textFromValue: function (v) { return v + " mm" }
+                        valueFromText: function (t) { return parseInt(t) || 0 }
+                        onValueModified: Docx.pdfPaddingMm = value
+                    }
+                }
+                Label {
+                    text: App.uiText(App.language, "DocxPdfPaddingHint")
+                    color: App.themeTextMuted
+                    font.pixelSize: 11
+                    wrapMode: Text.WordWrap
+                    Layout.fillWidth: true
+                }
             }
 
             // ── Live-Transliteration (Latein -> Arabisch/Kana) ─────────────────
@@ -421,8 +453,11 @@ Item {
                                                            text, valField.text)
                             }
                         }
-                        Text { text: "->"; color: App.themeTextMuted
-                               Layout.alignment: Qt.AlignVCenter }
+                        //  „Taste wird zu Zeichen" - der Pfeil zwischen den
+                        //  beiden Feldern ist ein Symbol, kein Text (Regel 28).
+                        DrawnIcon { name: "arrow-right"; size: 13
+                                    color: App.themeTextMuted
+                                    Layout.alignment: Qt.AlignVCenter }
                         TextField {
                             id: valField
                             Layout.fillWidth: true
@@ -470,8 +505,9 @@ Item {
                             border.color: App.themeBorder
                         }
                     }
-                    Text { text: "->"; color: App.themeTextMuted
-                           Layout.alignment: Qt.AlignVCenter }
+                    DrawnIcon { name: "arrow-right"; size: 13
+                                color: App.themeTextMuted
+                                Layout.alignment: Qt.AlignVCenter }
                     TextField {
                         id: newVal
                         Layout.fillWidth: true

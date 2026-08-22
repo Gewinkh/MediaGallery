@@ -1,9 +1,16 @@
 #include "audio/AudioController.h"
 
+#include "audio/AudioCoverProvider.h"
+#include "audio/Mp4AudioExtract.h"
+#include "audio/MkvAudioExtract.h"
 #include "core/ISettings.h"
+#include "core/PathUtils.h"
+#include "core/Strings.h"
 
 #include <QDebug>
 #include <QFileInfo>
+#include <QPointer>
+#include <QRunnable>
 
 namespace {
 //  Diagnose wie in `AudioEngine` (MG_LOG_AUDIO=1): zeigt, WANN die Liste gesetzt
@@ -47,12 +54,38 @@ AudioController::AudioController(ISettings& settings, QObject* parent)
 
     //  Der Titel ist NATÜRLICH zu Ende - jetzt entscheidet die Warteschlange.
     connect(&m_engine, &AudioEngine::finished, this, [this] {
+        //  Kein lückenloser Übergang möglich gewesen (nichts angemeldet, oder
+        //  Zufall am Listenende): der gewohnte Weg mit kurzem Absetzen.
         const QString next = m_queue.advance(/*natural=*/true);
         if (next.isEmpty()) return;                  // Ende der Liste
         m_engine.play(next);
     });
 
+    //  Der lückenlose Übergang hat schon stattgefunden - die Warteschlange zieht
+    //  nur noch ihren Zeiger nach und meldet den ÜBERNÄCHSTEN Titel an.
+    connect(&m_engine, &AudioEngine::advancedToNext, this, [this](const QString& path) {
+        const QString moved = m_queue.advance(/*natural=*/true);
+        //  Sicherheitsnetz: liefe die Warteschlange auseinander (Filterwechsel
+        //  während des Übergangs), zählt WAS SPIELT - der Zeiger folgt der
+        //  Wiedergabe, nicht umgekehrt.
+        if (moved != path) m_queue.startAt(path);
+        armNextTrack();
+    });
+
+    //  Wechselt der Titel, gelten andere Tags.
+    connect(this, &AudioController::currentChanged, this, &AudioController::refreshTags);
+
+    //  Ändert sich die Liste oder die Reihenfolge, ändert sich auch, was folgt.
+    connect(&m_queue, &PlayQueue::itemsChanged,   this, &AudioController::armNextTrack);
+    connect(&m_queue, &PlayQueue::currentChanged, this, &AudioController::armNextTrack);
+
     loadSettings();
+}
+
+AudioController::~AudioController() {
+    if (m_extractCancel) m_extractCancel->store(true, std::memory_order_relaxed);
+    m_extractPool.clear();               // noch nicht begonnene Aufträge weg
+    m_extractPool.waitForDone(3000);     // der laufende bricht selbst ab
 }
 
 void AudioController::loadSettings() {
@@ -81,6 +114,15 @@ void AudioController::playFile(const QString& path, const QStringList& queue) {
     if (!m_queue.startAt(path)) m_queue.setItems(QStringList { path });
     m_pendingSeek = 0;
     m_engine.play(m_queue.currentPath().isEmpty() ? path : m_queue.currentPath());
+    armNextTrack();
+}
+
+//  Was nach dem laufenden Titel kommt, der Kette anmelden - sie hängt es dann
+//  ohne Absetzen hinter den laufenden. Wird bei JEDER Änderung neu gerufen
+//  (Titelwechsel, Liste, Zufall, Wiederholung), weil sich damit auch der
+//  Nachfolger ändert.
+void AudioController::armNextTrack() {
+    m_engine.setNextTrack(m_queue.peekNext(/*natural=*/true));
 }
 
 void AudioController::setQueue(const QStringList& queue) {
@@ -306,6 +348,312 @@ void AudioController::setRememberLast(bool on) {
         m_settings.setAudioLastPosition(0);
     }
     emit optionsChanged();
+}
+
+// ── Was im Titel steht ───────────────────────────────────────────────────────
+void AudioController::refreshTags() {
+    const QString path = currentPath();
+    if (path == m_tagsPath) return;              // derselbe Titel, nichts zu tun
+    m_tagsPath = path;
+    //  OHNE Bild: das kostet nur den Kopf der Datei und darf deshalb im
+    //  GUI-Faden laufen. Das Bild holt der Anbieter später selbst.
+    m_tags = path.isEmpty() ? AudioTags::Tags {}
+                            : AudioTags::read(path, /*withCover=*/false);
+    if (!path.isEmpty()) m_titleCache.insert(path, m_tags.displayTitle(path));
+    ++m_coverRev;
+    emit tagsChanged();
+}
+
+QString AudioController::trackTitle() const {
+    const QString path = currentPath();
+    if (path.isEmpty()) return {};
+    return m_tags.displayTitle(path);
+}
+QString AudioController::trackArtist() const { return m_tags.artist; }
+QString AudioController::trackAlbum() const  { return m_tags.album; }
+QString AudioController::trackSubtitle() const { return m_tags.subtitle(); }
+bool    AudioController::trackHasCover() const { return m_tags.hasCover; }
+
+QString AudioController::coverSource() const {
+    if (!m_tags.hasCover) return {};
+    return AudioCoverProvider::sourceFor(currentPath(), m_coverRev);
+}
+
+QString AudioController::titleOf(const QString& pathOrUrl) const {
+    const QString path = mg::toLocalPath(pathOrUrl);
+    if (path.isEmpty()) return {};
+    if (path == m_tagsPath) return trackTitle();     // der laufende: schon gelesen
+    const auto hit = m_titleCache.constFind(path);
+    if (hit != m_titleCache.constEnd()) return *hit;
+
+    const AudioTags::Tags t = AudioTags::read(path, /*withCover=*/false);
+    const QString title = t.displayTitle(path);
+    if (m_titleCache.size() > 512) m_titleCache.clear();
+    m_titleCache.insert(path, title);
+    return title;
+}
+
+bool AudioController::extractInheritTags() const { return m_settings.audioExtractInheritTags(); }
+void AudioController::setExtractInheritTags(bool on) {
+    if (m_settings.audioExtractInheritTags() == on) return;
+    m_settings.setAudioExtractInheritTags(on);
+    emit optionsChanged();
+}
+bool AudioController::extractToQueue() const { return m_settings.audioExtractToQueue(); }
+void AudioController::setExtractToQueue(bool on) {
+    if (m_settings.audioExtractToQueue() == on) return;
+    m_settings.setAudioExtractToQueue(on);
+    emit optionsChanged();
+}
+
+// ── Ton aus einem Video sichern ──────────────────────────────────────────────
+//  Der Arbeiter fasst NUR Pfade an (kein Modell, kein Qt-Objekt des GUI-Fadens)
+//  und meldet sich ausschließlich über die Ereignisschlange zurück - Muster
+//  `PdfExtractTask`.
+class AudioExtractTask : public QRunnable {
+public:
+    using CancelFlag = std::shared_ptr<std::atomic<bool>>;
+
+    AudioExtractTask(AudioController* owner, QString source, int generation,
+                     CancelFlag cancel, int trackIndex = 0)
+        : m_owner(owner)
+        , m_source(std::move(source))
+        , m_gen(generation)
+        , m_cancel(std::move(cancel))
+        , m_track(trackIndex) {
+        setAutoDelete(true);
+    }
+
+    //  ZWEI Hüllenfamilien, ein Weg: MP4/M4V/MOV geht über `Mp4AudioExtract`
+    //  (Tonspur -> `.m4a`), MKV/WEBM/MKA über `MkvAudioExtract` (Opus/Vorbis ->
+    //  Ogg). Welcher der beiden zuständig ist, entscheidet die Endung; der
+    //  Zielname entsteht deshalb HIER und nicht im GUI-Faden - bei MKV muss
+    //  dafür die Datei kurz angelesen werden (die Endung hängt am Codec).
+    void run() override {
+        QString target;
+        int tracks = 0;
+        //  Was der Nutzer lesen soll: der Schlüssel wird im GUI-Faden zum Satz.
+        int key = int(StringKey::AudioExtractFailNotMp4);
+        bool ok = false;
+
+        if (Mp4Audio::isCandidate(m_source)) {
+            target = Mp4Audio::targetPathFor(m_source);
+            Mp4Audio::Info info;
+            const auto r = Mp4Audio::extract(m_source, target, &info, m_cancel.get(),
+                                             m_track);
+            tracks = info.audioTracks;
+            ok = (r == Mp4Audio::Result::Ok);
+            switch (r) {
+                case Mp4Audio::Result::Ok:            key = int(StringKey::AudioExtractOk); break;
+                case Mp4Audio::Result::NotMp4:        key = int(StringKey::AudioExtractFailNotMp4); break;
+                case Mp4Audio::Result::Fragmented:    key = int(StringKey::AudioExtractFailFragmented); break;
+                case Mp4Audio::Result::NoAudioTrack:  key = int(StringKey::AudioExtractFailNoTrack); break;
+                case Mp4Audio::Result::ExternalMedia: key = int(StringKey::AudioExtractFailExternal); break;
+                case Mp4Audio::Result::TooLarge:      key = int(StringKey::AudioExtractFailTooLarge); break;
+                case Mp4Audio::Result::WriteFailed:   key = int(StringKey::AudioExtractFailWrite); break;
+                case Mp4Audio::Result::NotOpenable:   key = int(StringKey::AudioExtractFailRead); break;
+                default:                              key = int(StringKey::AudioExtractFailDamaged); break;
+            }
+        } else if (MkvAudio::isCandidate(m_source)) {
+            //  Die ENDUNG hängt an der gewählten Spur - eine Datei kann Opus
+            //  und E-AC-3 nebeneinander führen.
+            target = MkvAudio::targetPathFor(m_source, m_track);
+            MkvAudio::Info info;
+            const auto r = MkvAudio::extract(m_source, target, &info, m_cancel.get(),
+                                             m_track);
+            tracks = info.audioTracks;
+            ok = (r == MkvAudio::Result::Ok);
+            switch (r) {
+                case MkvAudio::Result::Ok:               key = int(StringKey::AudioExtractOk); break;
+                case MkvAudio::Result::NotMatroska:      key = int(StringKey::AudioExtractFailNotMp4); break;
+                case MkvAudio::Result::NoAudioTrack:     key = int(StringKey::AudioExtractFailNoTrack); break;
+                case MkvAudio::Result::UnsupportedCodec: key = int(StringKey::AudioExtractFailCodec); break;
+                case MkvAudio::Result::TooLarge:         key = int(StringKey::AudioExtractFailTooLarge); break;
+                case MkvAudio::Result::WriteFailed:      key = int(StringKey::AudioExtractFailWrite); break;
+                case MkvAudio::Result::NotOpenable:      key = int(StringKey::AudioExtractFailRead); break;
+                default:                                 key = int(StringKey::AudioExtractFailDamaged); break;
+            }
+        }
+
+        AudioController* owner = m_owner;
+        const QString src = m_source, dst = ok ? target : QString();
+        const int gen = m_gen;
+        const int track = m_track;
+        QMetaObject::invokeMethod(owner, [owner, ok, key, src, dst, tracks, gen, track] {
+            owner->extractTaskDone(ok, key, src, dst, tracks, gen, track);
+        }, Qt::QueuedConnection);
+    }
+
+private:
+    AudioController* m_owner;
+    QString    m_source;
+    int        m_gen;
+    CancelFlag m_cancel;
+    int        m_track = 0;      // welche Tonspur (0 = die erste)
+};
+
+//  Nachsehen, WELCHE Tonspuren die Datei hat - im eigenen Faden, weil dafür
+//  der Kopf der Datei gelesen wird (bei MKV bis zu 16 MB). Muster wie
+//  `AudioExtractTask`: nur Pfade, Rückweg über die Ereignisschlange.
+class AudioProbeTask : public QRunnable {
+public:
+    AudioProbeTask(AudioController* owner, QString source)
+        : m_owner(owner), m_source(std::move(source)) { setAutoDelete(true); }
+
+    //  Die Kanalzahl in Worte - die Zahl allein sagt beim Wählen wenig.
+    static QString channelText(int ch) {
+        if (ch == 1) return Strings::get(StringKey::AudioChMono);
+        if (ch == 2) return Strings::get(StringKey::AudioChStereo);
+        if (ch == 6) return QStringLiteral("5.1");
+        if (ch == 8) return QStringLiteral("7.1");
+        if (ch > 0)  return Strings::get(StringKey::AudioChMulti).arg(ch);
+        return QString();
+    }
+
+    //  Eine Zeile für die Auswahl: „Spur 2 · ENG · Kommentar · Opus · Stereo".
+    static QVariantMap describe(int index, const QString& codec, const QString& language,
+                                const QString& name, int channels, bool supported) {
+        QStringList parts;
+        parts << Strings::get(StringKey::AudioTrackNumber).arg(index + 1);
+        if (!language.isEmpty()) parts << language.toUpper();
+        if (!name.isEmpty())     parts << name;
+        //  Der Codec-Name der Datei („A_EAC3", „mp4a") ist für den Nutzer
+        //  nichts wert, für die Unterscheidung zweier Spuren aber alles.
+        if (!codec.isEmpty())    parts << codec;
+        const QString ch = channelText(channels);
+        if (!ch.isEmpty())       parts << ch;
+        if (!supported)
+            parts << Strings::get(StringKey::AudioTrackUnsupported);
+
+        QVariantMap m;
+        m.insert(QStringLiteral("index"), index);
+        m.insert(QStringLiteral("label"), parts.join(QStringLiteral(" · ")));
+        m.insert(QStringLiteral("supported"), supported);
+        return m;
+    }
+
+    void run() override {
+        QVariantList list;
+        if (Mp4Audio::isCandidate(m_source)) {
+            const Mp4Audio::Info info = Mp4Audio::probe(m_source);
+            for (int i = 0; i < info.tracks.size(); ++i) {
+                const Mp4Audio::TrackDesc& d = info.tracks.at(i);
+                list.append(describe(i, d.codec, d.language, d.name, d.channels,
+                                     d.supported));
+            }
+        } else if (MkvAudio::isCandidate(m_source)) {
+            const MkvAudio::Info info = MkvAudio::probe(m_source);
+            for (int i = 0; i < info.tracks.size(); ++i) {
+                const MkvAudio::TrackDesc& d = info.tracks.at(i);
+                list.append(describe(i, d.codec, d.language, d.name, d.channels,
+                                     d.supported));
+            }
+        }
+        AudioController* owner = m_owner;
+        const QString src = m_source;
+        QMetaObject::invokeMethod(owner, [owner, src, list] {
+            owner->probeTaskDone(src, list);
+        }, Qt::QueuedConnection);
+    }
+
+private:
+    AudioController* m_owner;
+    QString          m_source;
+};
+
+bool AudioController::canExtractAudio(const QString& pathOrUrl) const {
+    const QString p = mg::toLocalPath(pathOrUrl);
+    return Mp4Audio::isCandidate(p) || MkvAudio::isCandidate(p);
+}
+
+void AudioController::extractAudio(const QString& pathOrUrl, int trackIndex) {
+    const QString src = mg::toLocalPath(pathOrUrl);
+    if (src.isEmpty() || !QFileInfo::exists(src)) {
+        emit message(Strings::get(StringKey::AudioExtractFailRead)
+                         .arg(QFileInfo(src).fileName()));
+        emit extractFinished(false, src, QString());
+        return;
+    }
+
+    //  Noch keine Spur gewählt: erst nachsehen, wie viele es überhaupt sind.
+    //  Das kostet nur den Kopf der Datei und läuft im eigenen Faden; die
+    //  Entscheidung fällt danach in `probeTaskDone`.
+    if (trackIndex < 0) {
+        if (m_extractPool.maxThreadCount() != 1) m_extractPool.setMaxThreadCount(1);
+        //  Schon das Nachsehen zählt als „beschäftigt": es liest die Datei an,
+        //  und der Knopf, der es ausgelöst hat, soll nicht zweimal gehen.
+        if (!m_extractBusy) {
+            m_extractBusy = true;
+            emit extractBusyChanged();
+        }
+        m_extractPool.start(new AudioProbeTask(this, src));
+        return;
+    }
+    //  Eine Sicherung nach der anderen: der Pool hat einen Faden, ein zweiter
+    //  Auftrag reiht sich ein statt die Platte zu teilen.
+    if (m_extractPool.maxThreadCount() != 1) m_extractPool.setMaxThreadCount(1);
+    if (!m_extractCancel) m_extractCancel = std::make_shared<std::atomic<bool>>(false);
+
+    if (!m_extractBusy) {
+        m_extractBusy = true;
+        emit extractBusyChanged();
+    }
+    emit message(Strings::get(StringKey::AudioExtractRunning));
+    //  Der Zielname entsteht im Arbeiter: bei MKV hängt die Endung am Codec.
+    m_extractPool.start(new AudioExtractTask(this, src, ++m_extractGen, m_extractCancel,
+                                             trackIndex));
+}
+
+void AudioController::probeTaskDone(const QString& source, const QVariantList& tracks) {
+    //  Eine Spur (oder gar keine Auskunft): nicht fragen, einfach machen.
+    //  Fragen, wo es nichts zu wählen gibt, ist ein Klick zu viel.
+    if (tracks.size() < 2) {
+        extractAudio(source, 0);
+        return;
+    }
+    //  Jetzt liegt es beim Nutzer - und solange gearbeitet wird nicht.
+    if (m_extractBusy) {
+        m_extractBusy = false;
+        emit extractBusyChanged();
+    }
+    emit trackChoiceNeeded(source, tracks);
+}
+
+void AudioController::extractTaskDone(bool ok, int messageKey, const QString& source,
+                                      const QString& target, int audioTracks,
+                                      int generation, int trackIndex) {
+    //  Nur der ZULETZT gestartete Auftrag schaltet den Zustand zurück - sonst
+    //  räumte ein früher fertiger Auftrag den späteren mit ab.
+    if (generation == m_extractGen && m_extractBusy) {
+        m_extractBusy = false;
+        emit extractBusyChanged();
+    }
+
+    const QString name = QFileInfo(source).fileName();
+    if (!ok) {
+        emit message(Strings::get(static_cast<StringKey>(messageKey)).arg(name));
+        emit extractFinished(false, source, QString());
+        return;
+    }
+
+    //  Auf Wunsch reiht sich die gesicherte Tonspur gleich ein. Bewusst
+    //  ANHÄNGEN und nicht ersetzen: die laufende Liste bleibt, wie sie ist.
+    if (m_settings.audioExtractToQueue()) {
+        QStringList items = m_queue.items();
+        if (!items.contains(target)) {
+            items.append(target);
+            m_queue.setItems(items);
+        }
+    }
+
+    const QString targetName = QFileInfo(target).fileName();
+    //  Mehrere Tonspuren: dann steht in der Meldung, WELCHE gesichert wurde -
+    //  bei zwei Sprachen ist das der einzige Unterschied, den man später sieht.
+    emit message(audioTracks > 1
+                     ? Strings::get(StringKey::AudioExtractManyTracks)
+                           .arg(targetName).arg(audioTracks).arg(trackIndex + 1)
+                     : Strings::get(StringKey::AudioExtractOk).arg(targetName));
+    emit extractFinished(true, source, target);
 }
 
 bool AudioController::takePlayerModeRestore() {

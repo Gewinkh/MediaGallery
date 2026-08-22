@@ -26,6 +26,7 @@
 
 #include <QQuickPaintedItem>
 #include <QImage>
+#include <QTextCharFormat>
 #include <QTextLayout>
 #include <QTimer>
 #include <QVector>
@@ -65,6 +66,14 @@ class DocxTextArea : public QQuickPaintedItem {
     Q_PROPERTY(QColor surroundColor MEMBER m_surroundColor NOTIFY labelsChanged)
     //  Paginierung: Seitenzahl des Dokuments und die Seite am Cursor (1-basiert
     //  in der Anzeige, hier 0-basiert) - Grundlage der Miniaturen-Leiste.
+    //  SEITENZAHL: dieselbe Angabe, die der PDF-Export bekommt (Dokument-Menü).
+    //  Sie gehört auf die Seite, nicht erst ins ausgegebene PDF - sonst sieht
+    //  man erst nach dem Umwandeln, was man eingestellt hat.
+    //  0 aus · 1 links · 2 mittig · 3 rechts; Stil 0 = „3", 1 = „3 / 12".
+    Q_PROPERTY(int pageNumberPos READ pageNumberPos WRITE setPageNumberPos
+               NOTIFY pageNumberChanged)
+    Q_PROPERTY(int pageNumberStyle READ pageNumberStyle WRITE setPageNumberStyle
+               NOTIFY pageNumberChanged)
     Q_PROPERTY(int pageCount READ pageCount NOTIFY pageCountChanged)
     Q_PROPERTY(int currentPage READ currentPage NOTIFY currentPageChanged)
     //  AUSGEWÄHLTES BILD: der Cursorblock, falls er ein reiner Bild-Absatz ist
@@ -105,6 +114,10 @@ public:
     qreal cursorH() const { return m_cursorRect.height() * m_scale; }
     qreal lineStep() const;
 
+    int   pageNumberPos() const { return m_pageNumberPos; }
+    void  setPageNumberPos(int p);
+    int   pageNumberStyle() const { return m_pageNumberStyle; }
+    void  setPageNumberStyle(int s);
     int   pageCount() const { return m_pageCount; }
     int   currentPage() const;
 
@@ -163,7 +176,14 @@ public:
     //  sie ist aber bereits fertig (das Dokument steht auf dem Schirm), es
     //  wird nur noch gezeichnet. Leerer Rückgabewert = Erfolg, sonst der
     //  Fehlertext.
-    Q_INVOKABLE QString exportPagesToPdf(const QString& targetPath);
+    //  `paddingMm`: zusätzlicher Rand rundum. Das PAPIERFORMAT bleibt das aus
+    //  `w:sectPr` - die gemalte Seite wird maßstäblich kleiner (Festlegung des
+    //  Nutzers: A4 bleibt A4). `pageNumberPos`: 0 aus · 1 links · 2 mittig ·
+    //  3 rechts; `pageNumberStyle`: 0 = „3" · 1 = „3 / 12".
+    Q_INVOKABLE QString exportPagesToPdf(const QString& targetPath,
+                                         int paddingMm = 0,
+                                         int pageNumberPos = 0,
+                                         int pageNumberStyle = 1);
 
     void paint(QPainter* p) override;
 
@@ -175,6 +195,7 @@ signals:
     void labelsChanged();
     void saveRequested();
     void pageCountChanged();
+    void pageNumberChanged();
     void currentPageChanged();
     //  Inhalt hat sich geändert (Laden/Bearbeiten) - die Miniaturen zeichnen neu.
     void documentChanged();
@@ -301,6 +322,12 @@ private:
         std::vector<RowInfo>  rows;
         int     textLen = 0;                   // Zeichen des Absatzes
         bool    isText  = false;               // Block ist ein ausgelegter Absatz
+        //  Steht ein erzwungener Seitenumbruch (U+E000) IM Absatz? Beim
+        //  Auslegen einmal bestimmt. Die Paginierung fragte das früher über
+        //  `blockText(L)` ab - ein zusammengesetzter Absatztext plus voller
+        //  Suchlauf JE BLOCK und JE Tastendruck, obwohl fast kein Absatz einen
+        //  Umbruch trägt. Das Flag überlebt `trimLayouts` (wie `height`).
+        bool    hasBreak = false;
         //  Layout-Fenster hat Stücke/Bilder freigegeben (Höhen bleiben gültig).
         bool    trimmed = false;
         std::unique_ptr<TableLayout> table;    // nur bei w:tbl (s. isTable)
@@ -461,6 +488,12 @@ private:
     //  Blöcke eines Slots zeichnen (gemeinsamer Weg von paint() und
     //  paintPageInto(); `p` ist bereits auf Dokument-Pixel gestellt).
     void  paintSlot(QPainter* p, int slot, bool withCaret, bool withSelection = true);
+    //  Die Seitenzahl auf EIN Blatt malen - EIN Weg für Anzeige, Miniatur und
+    //  PDF-Export, damit die drei nicht auseinanderlaufen. `sheet` ist das
+    //  Blatt in den Koordinaten des Malers; Lage und Größe werden daraus
+    //  relativ gerechnet, also unabhängig von der Auflösung.
+    void  paintPageNumber(QPainter* p, const QRectF& sheet, int page, int total,
+                          int pos, int style) const;
     //  Rote Wellenlinie unter den beanstandeten Stellen (Rechtschreibprüfung).
     //  Farbe der Änderungsmarkierung je Autor (stabil, aus dem Namen).
     static QColor revisionColor(const QString& author);
@@ -519,6 +552,27 @@ private:
     void  invalidateFloatFollowers(int i, qreal reach);
     //  Grundschrift eines Absatzes (mit Cursor-Sonderfall für leere Zeilen).
     QFont blockBaseFont(const Docx::Block& b, int blockIdx) const;
+    //  ── Zeichenformat eines Runs, GEMERKT ────────────────────────────────────
+    //  Aus dem aufgelösten `RunFmt` ein `QTextCharFormat` zu bauen ist teuer:
+    //  `QTextCharFormat::setFont` legt jede Schrifteigenschaft einzeln als
+    //  `QVariant` ab (gemessen 16 % eines Tastendrucks). Ein Dokument kennt
+    //  aber nur eine Handvoll verschiedener Formate, und dasselbe Format
+    //  wiederholt sich in jedem Absatz. Deshalb ein kleiner Merkspeicher mit
+    //  linearer Suche - bei dieser Größe schneller als eine Hash-Tabelle.
+    //  Geleert wird er beim Laden eines anderen Dokuments (`rebuildAll`).
+    struct FmtKey {
+        Docx::RunFmt rf;
+        bool         opaque = false;
+        int          revision = 0;
+        QString      author;
+        bool operator==(const FmtKey& o) const {
+            return opaque == o.opaque && revision == o.revision
+                   && author == o.author && rf == o.rf;
+        }
+    };
+    const QTextCharFormat& charFormatOf(const Docx::RunFmt& rf,
+                                        const Docx::RunFmt& def,
+                                        const Docx::Run& r) const;
     //  Bild eines Runs auf `avail` einpassen (Seitenverhältnis bleibt).
     bool  makeImageBox(const Docx::InlineImage& info, qreal avail,
                        ImageBox* out) const;
@@ -563,11 +617,31 @@ private:
     QColor  m_surroundColor = QColor(58, 62, 70);
 
     std::vector<BlockLayout> m_lay;   // move-only (unique_ptr) -> std::vector
+    mutable std::vector<std::pair<FmtKey, QTextCharFormat>> m_fmtCache;  // s. charFormatOf
     QVector<qreal>       m_offsets;            // Präfix-Summen der Höhen
     int    m_offsetsValidTo = 0;               // Offsets [0..N] gültig
+    //  Wie weit war der Fluss schon EINMAL vollständig paginiert? Nur bis
+    //  hierhin darf `ensureOffsetsTo` abbrechen, sobald ein Block wieder
+    //  denselben Fluss-Ausgang liefert wie zuvor (s. dort). Zurückgesetzt wird
+    //  der Stand nur, wenn sich die Blockzahl ändert oder alles neu entsteht.
+    int    m_offsetsHighWater = 0;
+    //  Höchster Block, dessen HÖHE sich seit dem letzten vollständigen Lauf
+    //  geändert hat. Der Abbruch oben darf erst GREIFEN, wenn der Lauf an ihm
+    //  vorbei ist - sonst überspränge er Blöcke, die sich sehr wohl verschoben
+    //  haben, und die gespeicherten Offsets dahinter wären veraltet (gemessen:
+    //  Seitenzahl 218 statt 207, `docx.pdfexport` rot).
+    int    m_offsetsDirtyMax = 0;
     int    m_layChunkAt = 0;                   // Fortschritt Initial-Layout
     int    m_trimLo = -1, m_trimHi = -1;       // zuletzt getrimmtes Layout-Fenster
     int    m_pageCount = 1;                    // s. pageCount()
+    //  Kann in DIESEM Dokument überhaupt eine Nummerierung entstehen? Ist die
+    //  Antwort nein, hat `rebuildMarkers` nichts zu tun - und der Lauf über
+    //  ALLE Blöcke je Tastendruck entfällt (gemessen: 33 % eines Tastendrucks
+    //  in einem Dokument mit 30.451 Blöcken). Wird nur GESETZT, nie gelöscht:
+    //  eine entfernte Nummerierung muss der Lauf noch aufräumen dürfen.
+    bool   m_anyNumbering = false;
+    int    m_pageNumberPos = 0;                // s. pageNumberPos()
+    int    m_pageNumberStyle = 1;              // s. pageNumberStyle()
     int    m_lastPage = -1;                    // letzter gemeldeter currentPage
     qreal  m_scale = 1.0;                      // Dokument-Pixel -> Item-Pixel
     QTimer m_chunkTimer;

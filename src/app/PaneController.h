@@ -119,6 +119,15 @@ public:
     //  Nur die Hälfte, der der Ordner gehört, liest neu.
     void notifyContentsChanged(const QString& folder = QString());
 
+    //  Eine NEBEN einer Quelldatei entstandene Datei in diese Hälfte aufnehmen:
+    //  Ordner neu einlesen und - auf Wunsch - Tags und Kategorien der Quelle
+    //  übernehmen. Gehört der Ordner nicht dieser Hälfte, passiert nichts
+    //  (`false`), sodass beide Hälften den Ruf blind absetzen können.
+    //  Genutzt von „Ton aus Video sichern" (s. `AudioController::extractAudio`).
+    Q_INVOKABLE bool adoptSiblingFile(const QString& sourcePath,
+                                      const QString& newPath,
+                                      bool inheritTags);
+
 signals:
     void playerModeChanged();
     void playerViewOpenChanged();

@@ -674,6 +674,8 @@ FocusScope {
 
                     ThemedMenu {
                         id: viewMenu
+                        //  Griff für den Prüfstand (`bench_qmlscene … documentMenu`).
+                        objectName: "documentMenu"
 
                         //  Was mit DIESER Datei zu tun hat - nach Bedeutung
                         //  gruppiert statt nach Gewohnheit. Zufallsmodus und
@@ -697,6 +699,39 @@ FocusScope {
                                 root._htmlPreview = !root._htmlPreview
                             }
                         }
+                        //  ── Ton aus DIESEM Video sichern ──────────────────
+                        //  Derselbe Weg wie im Kontextmenü der Kachel, nur ohne
+                        //  Umweg über die Galerie: wer das Video gerade ansieht,
+                        //  will es nicht erst wieder schließen. Sichtbar nur bei
+                        //  Videos und nur für Hüllen, die der Leser kennt.
+                        //  Die neue Datei nimmt die HÄLFTE auf (GalleryPane hört
+                        //  auf `Audio.extractFinished`) - die Ansicht bleibt
+                        //  stehen, sie hat damit nichts zu tun.
+                        MenuItem {
+                            visible: root.type === 1 && Audio.canExtractAudio(root.path)
+                            height: visible ? implicitHeight : 0
+                            enabled: !Audio.extractBusy
+                            text: App.uiText(App.language, "AudioExtractMenu")
+                            onTriggered: Audio.extractAudio(root.path)
+                        }
+                        //  ── Nur DOCX: was beim Weg „-> PDF" gelten soll ───
+                        //  KEINE `MenuItem`s: die schließen ihr Menü beim Klick
+                        //  von selbst. Hier soll es stehen bleiben, während das
+                        //  kleine Fenster daneben aufgeht - deshalb eigene
+                        //  Zeilen (`DocMenuRow`), die den Klick selbst nehmen.
+                        //  Der frühere Weg (schließen lassen und sofort wieder
+                        //  öffnen) flackerte sichtbar.
+                        DocMenuRow {
+                            visible: root.type === 5
+                            label: App.uiText(App.language, "DocxPdfNumberMenu")
+                            onActivated: root._openDocPopup(pageNumPopup, this)
+                        }
+                        DocMenuRow {
+                            visible: root.type === 5
+                            label: App.uiText(App.language, "DocxPdfNumberStyleHead")
+                            onActivated: root._openDocPopup(pageStylePopup, this)
+                        }
+
                         MenuSeparator { }
                         //  Bearbeitungen dieser Datei verwerfen (war das ganze
                         //  frühere „Datei"-Menü). Erscheint nur, wo es einen
@@ -911,6 +946,143 @@ FocusScope {
             root.dateTime = dt
         }
         onCleared: mediaModel.clearCustomDate(root.path)
+    }
+
+    // ── Zwei kleine Fenster für den DOCX-PDF-Export ──────────────────────────
+    //  Aufgerufen aus dem Dokument-Menü. Bewusst EIGENE Popups und keine
+    //  aufgeklappten Menülisten: im Menü sollen für ein Dokument nur drei Zeilen
+    //  stehen (Datum, Seitenzahl, Form).
+    //
+    //  Inline-Komponente statt zweimal derselbe Aufbau - die beiden
+    //  unterscheiden sich nur in Überschrift und Auswahl.
+    //  Eine Zeile im Dokument-Menü, die das Menü NICHT schließt. Sieht aus wie
+    //  ein `MenuItem` (s. `qml/style/MenuItem.qml`: Höhe 26, Radius 4, 10 px
+    //  links, Schrift 13, Hervorhebung in 20 % Akzent) und trägt rechts einen
+    //  Chevron - er sagt: hier geht etwas auf.
+    component DocMenuRow: Rectangle {
+        id: docRow
+        property string label: ""
+        signal activated()
+
+        //  200 px ist das Mindestmaß der Menüs im Projekt (s. MenuItem.qml).
+        implicitWidth: 200
+        implicitHeight: visible ? 26 : 0
+        height: implicitHeight
+        width: docRow.ListView.view ? docRow.ListView.view.width : implicitWidth
+        radius: 4
+        color: docRowHover.hovered
+               ? Qt.rgba(App.themeAccent.r, App.themeAccent.g, App.themeAccent.b, 0.20)
+               : "transparent"
+
+        Text {
+            anchors { left: parent.left; leftMargin: 10; right: chevron.left
+                      rightMargin: 6; verticalCenter: parent.verticalCenter }
+            text: docRow.label
+            color: App.themeTextPrimary
+            font.pixelSize: 13
+            elide: Text.ElideRight
+        }
+        DrawnIcon {
+            id: chevron
+            anchors { right: parent.right; rightMargin: 8
+                      verticalCenter: parent.verticalCenter }
+            name: "chevron-right"; size: 10
+            color: App.themeTextMuted
+        }
+        //  Die Markierung eines zuvor überfahrenen `MenuItem` räumt der Stil
+        //  selbst weg (s. `qml/style/MenuItem.qml`) - hier ist nichts zu tun.
+        HoverHandler { id: docRowHover }
+        TapHandler { onTapped: docRow.activated() }
+    }
+
+    component ChoicePopup: Popup {
+        id: choice
+        //  [{ text, value }] und der gerade gültige Wert.
+        property var options: []
+        property int current: -1
+        signal picked(int value)
+
+        //  AUSSEHEN UND VERHALTEN wie die Popups der Werkzeugleiste (Tabelle,
+        //  Aufzählung in `DocxSurface`): Menüleisten-Ton, Radius 8, schmale
+        //  Polsterung, die gültige Zeile in der Akzentfarbe GEFÜLLT. Kein
+        //  `modal`, kein `dim` - es ist ein kleines Fenster am Bedienelement,
+        //  kein Dialog. (Der Datums-Editor ist etwas anderes und bleibt es.)
+        modal: false
+        dim: false
+        closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
+        padding: 4
+        background: Rectangle {
+            color: App.themeMenuBarBg
+            border.color: App.themeBorder
+            radius: 8
+        }
+        contentItem: Column {
+            spacing: 2
+            Repeater {
+                model: choice.options
+                delegate: Rectangle {
+                    id: optRow
+                    required property var modelData
+                    readonly property bool sel: choice.current === modelData.value
+                    width: 176
+                    height: 28
+                    radius: 5
+                    color: optRow.sel ? App.themeAccent
+                                      : (optHover.hovered ? App.themeCard : "transparent")
+                    Text {
+                        anchors { left: parent.left; leftMargin: 10
+                                  verticalCenter: parent.verticalCenter }
+                        text: optRow.modelData.text
+                        color: optRow.sel ? "#ffffff" : App.themeTextPrimary
+                        font.pixelSize: 12
+                    }
+                    HoverHandler { id: optHover }
+                    TapHandler {
+                        onTapped: { choice.picked(optRow.modelData.value); choice.close() }
+                    }
+                }
+            }
+        }
+    }
+
+    //  Ein Auswahl-Fenster BÜNDIG rechts neben dem Dokument-Menü aufmachen, auf
+    //  Höhe des angeklickten Eintrags: die linke Kante des Fensters liegt an der
+    //  rechten Kante des Menüs, nichts blitzt dazwischen durch (Festlegung des
+    //  Nutzers; die Werkzeugleisten-Popups haben dort 4 px Luft). An den
+    //  Fensterrändern wird geklemmt, damit es nie hinausragt.
+    function _openDocPopup(pop, item) {
+        const at = viewBtn.mapToItem(root, 0, viewBtn.height + 2)
+        const itemY = item ? item.mapToItem(root, 0, 0).y : at.y
+        pop.x = Math.max(8, Math.min(at.x + viewMenu.width, root.width - pop.width - 8))
+        pop.y = Math.max(8, Math.min(itemY, root.height - pop.height - 8))
+        pop.open()
+        //  Das Menü BLEIBT offen: die beiden Zeilen sind keine `MenuItem`s,
+        //  also schließt es sich gar nicht erst (s. `DocMenuRow`).
+    }
+
+    ChoicePopup {
+        id: pageNumPopup
+        objectName: "docxPageNumberPopup"
+        current: Docx.pdfPageNumberPos
+        options: [
+            { text: App.uiText(App.language, "DocxPdfNumberOff"),    value: 0 },
+            { text: App.uiText(App.language, "DocxPdfNumberLeft"),   value: 1 },
+            { text: App.uiText(App.language, "DocxPdfNumberCenter"), value: 2 },
+            { text: App.uiText(App.language, "DocxPdfNumberRight"),  value: 3 },
+        ]
+        //  Wahl getroffen -> auch das Menü darf zugehen.
+        onPicked: function(v) { Docx.pdfPageNumberPos = v; viewMenu.close() }
+    }
+
+    ChoicePopup {
+        id: pageStylePopup
+        objectName: "docxPageStylePopup"
+        current: Docx.pdfPageNumberStyle
+        options: [
+            { text: App.uiText(App.language, "DocxPdfNumberStylePlain"), value: 0 },
+            { text: App.uiText(App.language, "DocxPdfNumberStyleTotal"), value: 1 },
+        ]
+        onPicked: function(v) { Docx.pdfPageNumberStyle = v; viewMenu.close() }
     }
 
     // ── Tastatur ────────────────────────────────────────────────────────────

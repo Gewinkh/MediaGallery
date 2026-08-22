@@ -120,6 +120,16 @@ public:
     bool        audioShowVideos() const override;
     void        setAudioShowVideos(bool on) override;
     bool        audioRememberLast() const override;
+    int         docxPdfPaddingMm() const override;
+    void        setDocxPdfPaddingMm(int mm) override;
+    int         docxPdfPageNumberPos() const override;
+    void        setDocxPdfPageNumberPos(int pos) override;
+    int         docxPdfPageNumberStyle() const override;
+    void        setDocxPdfPageNumberStyle(int style) override;
+    bool        audioExtractInheritTags() const override;
+    void        setAudioExtractInheritTags(bool on) override;
+    bool        audioExtractToQueue() const override;
+    void        setAudioExtractToQueue(bool on) override;
     void        setAudioRememberLast(bool on) override;
     QString     audioLastFile() const override;
     void        setAudioLastFile(const QString& path) override;

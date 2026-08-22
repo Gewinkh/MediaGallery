@@ -209,6 +209,17 @@ public:
     //  Sitzung); false = „Kopie exportieren" (<Name>_edited(.n).docx).
     virtual bool docxSaveDirect() const = 0;
     virtual void setDocxSaveDirect(bool v) = 0;
+    //  DOCX -> PDF: zusätzlicher Rand in MILLIMETERN (0 = wie bisher). Das
+    //  Papierformat bleibt dabei das aus Word - der Inhalt wird maßstäblich
+    //  kleiner gemalt (Festlegung des Nutzers).
+    virtual int  docxPdfPaddingMm() const = 0;
+    virtual void setDocxPdfPaddingMm(int mm) = 0;
+    //  Seitenzahl unten: 0 = aus, 1 = links, 2 = mittig, 3 = rechts.
+    virtual int  docxPdfPageNumberPos() const = 0;
+    virtual void setDocxPdfPageNumberPos(int pos) = 0;
+    //  Form der Seitenzahl: 0 = nur die Seite („3"), 1 = mit Gesamtzahl („3 / 12").
+    virtual int  docxPdfPageNumberStyle() const = 0;
+    virtual void setDocxPdfPageNumberStyle(int style) = 0;
 
     // Text editor / auto-save
     virtual bool autoSaveEnabled() const = 0;
@@ -263,6 +274,12 @@ public:
     virtual void        setAudioShowVideos(bool on) = 0;
     virtual bool        audioRememberLast() const = 0;
     virtual void        setAudioRememberLast(bool on) = 0;
+    //  „Ton aus Video sichern": erbt die neue Audiodatei die Verschlagwortung
+    //  des Videos, und soll sie gleich in die Warteschlange?
+    virtual bool        audioExtractInheritTags() const = 0;
+    virtual void        setAudioExtractInheritTags(bool on) = 0;
+    virtual bool        audioExtractToQueue() const = 0;
+    virtual void        setAudioExtractToQueue(bool on) = 0;
     virtual QString     audioLastFile() const = 0;
     virtual void        setAudioLastFile(const QString& path) = 0;
     virtual qint64      audioLastPosition() const = 0;

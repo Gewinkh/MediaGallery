@@ -92,7 +92,33 @@ PROXY_BOOL_SETTER(setShowAudio,  m_showAudio)
 PROXY_BOOL_SETTER(setShowPdfs,   m_showPdfs)
 PROXY_BOOL_SETTER(setShowTexts,  m_showTexts)
 PROXY_BOOL_SETTER(setShowFolders, m_showFolders)
+PROXY_BOOL_SETTER(setOnlyPlayable, m_onlyPlayable)
 #undef PROXY_BOOL_SETTER
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  Die weisse Liste des Player-Modus (s. Kopfdatei).
+//
+//  Warum weiss und nicht schwarz: die Menge des Abspielbaren ist endlich und
+//  bekannt, die Menge des Übrigen nicht. Der Filter hatte für
+//  `MediaType::Unknown` gar keine Bedingung - jede Datei, die das Modell nicht
+//  einordnen kann (ZIP, XLSX, OTH …), lief damit an ALLEN Typ-Häkchen vorbei,
+//  sobald „Alle Dateien anzeigen" an war. Eine schwarze Liste wäre nie fertig.
+// ─────────────────────────────────────────────────────────────────────────────
+bool MediaProxyModel::isPlayableType(MediaType t, bool withVideo) {
+    switch (t) {
+    case MediaType::Audio: return true;
+    case MediaType::Video: return withVideo;   // Einstellungen ▸ Audio
+    //  Alles Weitere ist im Player-Modus nicht abspielbar. Kommt ein Typ dazu,
+    //  gehört er HIER hin - und sonst nirgends.
+    case MediaType::Image:
+    case MediaType::Pdf:
+    case MediaType::Text:
+    case MediaType::Docx:
+    case MediaType::Unknown:
+    case MediaType::Folder:
+    default:               return false;
+    }
+}
 
 void MediaProxyModel::setTagFilter(const QStringList& t) {
     if (t == m_tagFilter) return;
@@ -190,6 +216,14 @@ void MediaProxyModel::collectTagsForCategory(const QString& id, QSet<QString>& o
 bool MediaProxyModel::acceptsFile(int mediaType, const QString& displayName,
                                   const QString& fileName, const QStringList& tags,
                                   const FilterCriteria& c) {
+    //  ── Player-Modus: NUR Abspielbares ──────────────────────────────────────
+    //  Vor allen Häkchen, damit hier kein Typ durchrutschen kann (Ordner sind
+    //  schon vorher abgehandelt und bleiben sichtbar - sie sind der Weg nach
+    //  unten, keine Medien).
+    if (c.onlyPlayable
+        && !isPlayableType(static_cast<MediaType>(mediaType), c.showVideos))
+        return false;
+
     switch (static_cast<MediaType>(mediaType)) {
     case MediaType::Image: if (!c.showImages) return false; break;
     case MediaType::Video: if (!c.showVideos) return false; break;
@@ -261,6 +295,7 @@ MediaProxyModel::FilterCriteria MediaProxyModel::criteria() const {
     c.showPdfs       = m_showPdfs;
     c.showTexts      = m_showTexts;
     c.showFolders    = m_showFolders;
+    c.onlyPlayable   = m_onlyPlayable;
     return c;
 }
 

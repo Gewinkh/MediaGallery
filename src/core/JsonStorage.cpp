@@ -99,13 +99,9 @@ void JsonStorage::loadNewFormat(const QJsonObject& root) {
             ensureTagRegistered(tag);
         }
 
-        if (o.contains("d")) {
-            QDateTime dt = QDateTime::fromString(o["d"].toString(), Qt::ISODate);
-            if (dt.isValid()) {
-                meta.customDate    = dt;
-                meta.hasCustomDate = true;
-            }
-        }
+        //  „d" (eigenes Datum) und „o" (Merker) werden NICHT mehr gelesen: das
+        //  Datum steht an der Datei. Alte Einträge verschwinden beim nächsten
+        //  Speichern von selbst - der Sidecar wird immer ganz neu geschrieben.
 
         if (o.contains("c")) {
             // Only a colour Qt can parse is taken over; garbage stays "no choice"
@@ -175,10 +171,6 @@ void JsonStorage::mergeForeignChanges(const QString& path) {
         FileMeta& ours = m_fileMeta[it.key()];
         for (const QString& t : theirs.tags)
             if (!ours.tags.contains(t)) ours.tags.append(t);
-        if (!ours.hasCustomDate && theirs.hasCustomDate) {
-            ours.customDate    = theirs.customDate;
-            ours.hasCustomDate = true;
-        }
         if (!ours.textPdfColor.isValid() && theirs.textPdfColor.isValid())
             ours.textPdfColor = theirs.textPdfColor;
     }
@@ -204,8 +196,9 @@ void JsonStorage::saveFolder(const QString& folderPath) {
     QJsonObject filesObj;
     for (auto it = m_fileMeta.cbegin(); it != m_fileMeta.cend(); ++it) {
         const FileMeta& meta = it.value();
-        if (meta.tags.isEmpty() && !meta.hasCustomDate && !meta.textPdfColor.isValid())
-            continue;  // skip files with no metadata at all -> saves space
+        //  Ohne Daten kein Eintrag - das spart bei großen Sammlungen viel.
+        if (meta.tags.isEmpty() && !meta.textPdfColor.isValid())
+            continue;
 
         QJsonObject o;
         if (!meta.tags.isEmpty()) {
@@ -213,8 +206,6 @@ void JsonStorage::saveFolder(const QString& folderPath) {
             for (const QString& t : meta.tags) tagsArr.append(t);
             o["t"] = tagsArr;
         }
-        if (meta.hasCustomDate)
-            o["d"] = meta.customDate.toString(Qt::ISODate);
         if (meta.textPdfColor.isValid())
             o["c"] = meta.textPdfColor.name(QColor::HexRgb);
 
@@ -312,20 +303,6 @@ void JsonStorage::clearTextPdfColor(const QString& f) {
     m_fileMeta[f].textPdfColor = QColor();
 }
 
-bool JsonStorage::hasCustomDate(const QString& f) const {
-    return m_fileMeta.value(f).hasCustomDate;
-}
-QDateTime JsonStorage::getCustomDate(const QString& f) const {
-    return m_fileMeta.value(f).customDate;
-}
-void JsonStorage::setCustomDate(const QString& f, const QDateTime& dt) {
-    m_fileMeta[f].customDate = dt;
-    m_fileMeta[f].hasCustomDate = true;
-}
-void JsonStorage::clearCustomDate(const QString& f) {
-    m_fileMeta[f].hasCustomDate = false;
-    m_fileMeta[f].customDate = QDateTime();
-}
 
 // ── Tag registry ──────────────────────────────────────────────────────────────
 QColor JsonStorage::tagColor(const QString& tag) const {
@@ -353,6 +330,12 @@ void JsonStorage::deleteTag(const QString& tag) {
 
 // ── Apply to items ────────────────────────────────────────────────────────────
 void JsonStorage::applyToItems(QVector<MediaItem>& items) const {
+    //  Ordner OHNE Sidecar sind der Normalfall - dann gibt es nichts zu
+    //  übertragen, und `fileName()` (das je Aufruf eine Zeichenkette anlegt)
+    //  wird gar nicht erst gerufen. Bei einem Ordner mit 300 Dateien sind das
+    //  300 Allokationen weniger, beim Aufklappen eines Baumes entsprechend mehr.
+    if (m_fileMeta.isEmpty()) return;
+
     for (auto& item : items) {
         auto it = m_fileMeta.constFind(item.fileName());
         if (it == m_fileMeta.constEnd()) continue;

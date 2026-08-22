@@ -36,6 +36,8 @@ Rectangle {
     //  Doppelklick auf eine Ordnerkachel: den Ordner als neue Hauptebene
     //  oeffnen. Die Shell haengt das an App.openSubfolder (Rueckweg Alt+<-).
     signal folderOpenRequested(string folderPath)
+    //  „Ton als Audiodatei sichern" aus dem Kontextmenü einer Videokachel.
+    signal audioExtractRequested(string filePath)
     //  Aktionen aus der Kopfzeile eines aufgeklappten Bereichs - sie zielen auf
     //  DIESEN Ordner, nicht auf den geoeffneten (Festlegung des Nutzers).
     signal createFileRequested(string folderPath)
@@ -504,11 +506,23 @@ Rectangle {
                     readonly property string filePath: cell.d ? cell.d.filePath : ""
                     readonly property int    mediaType: cell.d ? cell.d.mediaType : 6
 
-                    //  Eingerueckt je Ebene - die Kachelzahl dieser Zeile hat
-                    //  das Zeilenmodell bereits entsprechend verringert.
+                    //  Eingerueckt je Ebene.
                     x: rowItem.depth * root.levelInset + cell.index * root.cellW
                     y: rowItem.padTop
-                    width: root.cellW
+                    //  Im LISTEN-Modus füllt EINE Kachel die Zeile - sie zieht
+                    //  deshalb die Einrückung von ihrer Länge ab, sonst liefe
+                    //  sie rechts aus dem Fenster (Nutzerbefund).
+                    //  ABGEZOGEN WIRD NUR DIE LINKE Einrückung: die rechte Kante
+                    //  bleibt damit auf ALLEN Ebenen dieselbe (Festlegung des
+                    //  Nutzers - „rechts soll es einheitlich sein"). Zöge man
+                    //  links UND rechts ab, würde jede Ebene zusätzlich kürzer,
+                    //  und die rechten Kanten stünden treppenförmig versetzt.
+                    //  Im Kachel-Modus ändert sich nichts: dort haben Kacheln
+                    //  eine feste Größe, und die Einrückung steckt bereits in der
+                    //  Spaltenzahl (`GalleryRowModel::columnsForDepth`).
+                    width: root.listMode
+                           ? Math.max(120, root.cellW - rowItem.depth * root.levelInset)
+                           : root.cellW
                     height: root.cellH
 
                     // Pfad, für den aktuell ein Thumbnail angefordert ist.
@@ -573,7 +587,16 @@ Rectangle {
 
                     MediaTile {
                         anchors.centerIn: parent
-                        width: root.tileW
+                        //  Im LISTEN-Modus füllt die Kachel ihre Zelle - und die
+                        //  ist bei einem aufgeklappten Unterordner schmaler
+                        //  (s. `cell.width`). Die feste Zeilenbreite `root.tileW`
+                        //  hob die Einrückung wieder auf: die Kachel wurde
+                        //  mittig in die eingerückte Zelle gesetzt und landete
+                        //  dadurch bei JEDER Ebene an derselben Stelle
+                        //  (gemessen: x=16, rechts=984 für Ebene 0, 1 und 2).
+                        width: root.listMode
+                               ? Math.max(120, cell.width - root.spacing)
+                               : root.tileW
                         height: root.tileH
                         listMode: root.listMode
                         optionsVisible: root.optionsVisible
@@ -624,6 +647,9 @@ Rectangle {
                             deleteDialog.targetPath = p
                             deleteDialog.targetName = n
                             deleteDialog.open()
+                        }
+                        onAudioExtractRequested: function(p) {
+                            root.audioExtractRequested(p)
                         }
                         onCompanionRemoveRequested: function(p, kind) {
                             companionDialog.targetPath = p

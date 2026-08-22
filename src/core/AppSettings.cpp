@@ -496,6 +496,28 @@ void AppSettings::setDocxSaveDirect(bool v) {
     m_settings.setValue("docx/saveDirect", v);
 }
 
+//  DOCX -> PDF. Vorgabe 0 mm: ein Export ohne Zutun ergibt genau das, was er
+//  vorher ergab. Der Deckel von 40 mm ist die Grenze der Vernunft - darüber
+//  bliebe von einer A4-Seite kaum Inhalt übrig.
+int AppSettings::docxPdfPaddingMm() const {
+    return qBound(0, m_settings.value("docx/pdfPaddingMm", 0).toInt(), 40);
+}
+void AppSettings::setDocxPdfPaddingMm(int mm) {
+    m_settings.setValue("docx/pdfPaddingMm", qBound(0, mm, 40));
+}
+int AppSettings::docxPdfPageNumberPos() const {
+    return qBound(0, m_settings.value("docx/pdfPageNumberPos", 0).toInt(), 3);
+}
+void AppSettings::setDocxPdfPageNumberPos(int pos) {
+    m_settings.setValue("docx/pdfPageNumberPos", qBound(0, pos, 3));
+}
+int AppSettings::docxPdfPageNumberStyle() const {
+    return qBound(0, m_settings.value("docx/pdfPageNumberStyle", 1).toInt(), 1);
+}
+void AppSettings::setDocxPdfPageNumberStyle(int style) {
+    m_settings.setValue("docx/pdfPageNumberStyle", qBound(0, style, 1));
+}
+
 bool AppSettings::pdfPageEditDestructive() const {
     // Standard: false -> nicht-destruktiv (Seiten-Änderungen liegen im Sidecar
     // und wirken erst beim Export; das Original-PDF bleibt unangetastet).
@@ -699,6 +721,12 @@ bool AppSettings::audioPlayerMode() const { return m_settings.value("audio/playe
 void AppSettings::setAudioPlayerMode(bool on) { m_settings.setValue("audio/playerMode", on); }
 bool AppSettings::audioListLayout() const { return m_settings.value("audio/listLayout", true).toBool(); }
 void AppSettings::setAudioListLayout(bool on) { m_settings.setValue("audio/listLayout", on); }
+//  Tags erben ist die Vorgabe: eine frisch gesicherte Tonspur steht sonst
+//  unverschlagwortet in derselben Galerie wie ihr Video.
+bool AppSettings::audioExtractInheritTags() const { return m_settings.value("audio/extractInheritTags", true).toBool(); }
+void AppSettings::setAudioExtractInheritTags(bool on) { m_settings.setValue("audio/extractInheritTags", on); }
+bool AppSettings::audioExtractToQueue() const { return m_settings.value("audio/extractToQueue", false).toBool(); }
+void AppSettings::setAudioExtractToQueue(bool on) { m_settings.setValue("audio/extractToQueue", on); }
 bool AppSettings::audioShowVideos() const { return m_settings.value("audio/showVideos", false).toBool(); }
 void AppSettings::setAudioShowVideos(bool on) { m_settings.setValue("audio/showVideos", on); }
 

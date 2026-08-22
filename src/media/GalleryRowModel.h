@@ -1,6 +1,7 @@
 #pragma once
 #include <QAbstractListModel>
 #include <QPointer>
+#include <QElapsedTimer>
 #include <QTimer>
 #include <QVector>
 #include <limits>
@@ -118,6 +119,9 @@ private:
     //  Kette der Bereiche von der Wurzel bis `scope` (Index 0 = Wurzel).
     bool isAncestorOrSame(int maybeAncestor, int scope) const;
     QVector<int> chainOf(int scope) const;
+    //  Dieselbe Kette in einen VORHANDENEN Puffer - fuer den Neuaufbau, der sie
+    //  je Zeile braucht (s. .cpp).
+    void         chainOf(int scope, QVector<int>* out) const;
     void onSourceDataChanged(const QModelIndex& topLeft, const QModelIndex& bottomRight);
 
     QPointer<MediaProxyModel> m_proxy;
@@ -131,6 +135,9 @@ private:
     //  Aufbau je Charge einmal ueber alle Zeilen - quadratisch beim Oeffnen
     //  eines grossen Ordners.
     QTimer m_rebuildTimer;
+    //  Wann lief der letzte Aufbau? Begrenzt die Rate waehrend eines
+    //  Grosseinlesens (s. `kMinRebuildGapMs` in der .cpp).
+    QElapsedTimer m_lastRebuild;
     //  Hat die QUELLE ihren Inhalt komplett getauscht (Ordnerwechsel, Reload,
     //  neue Sortierung)? Dann reicht der Struktur-Diff NICHT: die Zeilen koennen
     //  zufaellig dieselbe Gestalt haben, tragen aber ganz andere Kacheln - die

@@ -29,6 +29,23 @@ T.MenuItem {
     spacing: 8
     font.pixelSize: 13
 
+    //  ── Markierung loslassen, wenn der Zeiger weg ist ───────────────────────
+    //  Qt setzt beim Überfahren `Menu.currentIndex` auf den Eintrag und lässt
+    //  ihn dort stehen - fährt man vom Eintrag weg (aus dem Menü hinaus oder auf
+    //  eine Zeile, die kein `MenuItem` ist), bleibt er markiert, obwohl die Maus
+    //  längst woanders ist (Nutzerbefund am Dokument-Menü).
+    //
+    //  Aufgeräumt wird VERZÖGERT (`Qt.callLater`), und nur, wenn dieser Eintrag
+    //  dann noch der markierte ist: beim Wechsel auf den Nachbarn setzt DIESER
+    //  den Index zuerst auf sich - ein sofortiges Löschen nähme ihm die frische
+    //  Markierung wieder weg.
+    onHoveredChanged: if (!control.hovered) Qt.callLater(control._dropStaleHighlight)
+    function _dropStaleHighlight() {
+        if (control.hovered || !control.menu) return
+        const i = control.menu.currentIndex
+        if (i >= 0 && control.menu.itemAt(i) === control) control.menu.currentIndex = -1
+    }
+
     //  Häkchen-Markierung (nur bei `checkable`) - Geometrie wie CheckBox.qml,
     //  nur eine Spur kleiner, damit die Zeilenhöhe eines Menüs erhalten bleibt.
     indicator: Rectangle {

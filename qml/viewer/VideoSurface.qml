@@ -188,7 +188,9 @@ Item {
             }
 
             Text {
-                text: root.formatTime(player.position)
+                //  Beim Ziehen zeigt die Uhr die ZIELZEIT, nicht die laufende
+                //  Wiedergabe - sonst zöge man blind.
+                text: root.formatTime(seek.pressed ? seek.value : player.position)
                 color: "white"
                 font.pixelSize: 11
             }
@@ -208,7 +210,27 @@ Item {
                     value: player.position
                     restoreMode: Binding.RestoreNone
                 }
-                onMoved: player.position = value
+
+                //  ── Gesprungen wird beim LOSLASSEN, nicht beim Ziehen ───────
+                //  `onMoved` feuert während eines Zuges laufend; jeder Sprung
+                //  zwingt den Player auf ein Schlüsselbild und füllt seinen
+                //  Puffer neu. Beim Ziehen über eine Stunde Film kamen so
+                //  Dutzende Sprünge zusammen - das ist das Ruckeln. Ein
+                //  einzelner Sprung kostet dagegen wenig (gemessen: 65 ms auf
+                //  45 min in einer 1,5-GB-Datei).
+                //  Mit Tastatur (Pfeiltasten) oder einem Klick auf die Leiste
+                //  gibt es keinen Zug - dann wird sofort gesprungen.
+                property real pendingSeek: -1
+                onMoved: {
+                    if (seek.pressed) seek.pendingSeek = seek.value
+                    else              player.position = seek.value
+                }
+                onPressedChanged: {
+                    if (!seek.pressed && seek.pendingSeek >= 0) {
+                        player.position = seek.pendingSeek
+                        seek.pendingSeek = -1
+                    }
+                }
             }
 
             Text {

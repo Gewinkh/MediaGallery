@@ -208,12 +208,15 @@ Item {
             width: Math.min(parent.width, 420)
             spacing: 18
 
-            //  Platzhalter-Fläche statt Cover (s. Kopf der Datei).
+            //  Das Titelbild aus der Datei - und solange es keines gibt (oder
+            //  es noch geladen wird), die gezeichnete Fläche darunter.
             Rectangle {
+                id: coverBox
                 width: Math.min(parent.width, view.narrow ? 150 : 260)
                 height: width
                 anchors.horizontalCenter: parent.horizontalCenter
                 radius: 16
+                clip: true
                 gradient: Gradient {
                     GradientStop { position: 0.0
                                    color: Qt.rgba(App.themeAccent.r, App.themeAccent.g,
@@ -222,10 +225,25 @@ Item {
                 }
                 DrawnIcon {
                     anchors.centerIn: parent
+                    visible: cover.status !== Image.Ready
                     name: "audio"
                     size: parent.width * 0.42
                     color: Qt.rgba(App.themeTextPrimary.r, App.themeTextPrimary.g,
                                    App.themeTextPrimary.b, 0.75)
+                }
+                Image {
+                    id: cover
+                    objectName: "playerCover"
+                    anchors.fill: parent
+                    //  `sourceSize` bestimmt, in welcher Größe der Anbieter das
+                    //  Bild überhaupt erst aufbaut - ein 1500er Titelbild würde
+                    //  sonst in voller Auflösung im Speicher liegen.
+                    sourceSize.width: Math.round(coverBox.width)
+                    sourceSize.height: Math.round(coverBox.height)
+                    fillMode: Image.PreserveAspectCrop
+                    asynchronous: true
+                    cache: false
+                    source: Audio.coverSource
                 }
             }
 
@@ -240,11 +258,23 @@ Item {
                 width: parent.width
                 horizontalAlignment: Text.AlignHCenter
                 elide: Text.ElideMiddle
-                text: view._name(Audio.currentPath)
-                       || App.uiText(App.language, "AudioNoTrack")
+                //  Der Titel aus den Datei-Tags; ohne sie der Dateiname
+                //  (`AudioController::trackTitle` entscheidet das).
+                text: Audio.trackTitle || App.uiText(App.language, "AudioNoTrack")
                 color: App.themeTextPrimary
                 font.pixelSize: 20
                 font.bold: true
+            }
+            //  Interpret und Album - nur, wenn die Datei sie hergibt.
+            Text {
+                width: parent.width
+                visible: Audio.trackSubtitle.length > 0
+                height: visible ? implicitHeight : 0
+                horizontalAlignment: Text.AlignHCenter
+                elide: Text.ElideRight
+                text: Audio.trackSubtitle
+                color: App.themeTextMuted
+                font.pixelSize: 13
             }
 
             // ── Fortschritt, breit ──────────────────────────────────────────
@@ -427,15 +457,51 @@ Item {
                     font.pixelSize: 11
                 }
                 Text {
-                    anchors { left: parent.left; leftMargin: 40; right: parent.right
+                    anchors { left: parent.left; leftMargin: 40
+                              right: saveSound.visible ? saveSound.left : parent.right
                               rightMargin: 12; verticalCenter: parent.verticalCenter }
                     elide: Text.ElideMiddle
-                    text: view._name(row.modelData)
+                    //  `titleOf` liest den Kopf der Datei EINMAL je Pfad und
+                    //  merkt sich das Ergebnis (Cache im Controller) - beim
+                    //  Blättern wird also nicht je Zeile erneut gelesen.
+                    text: Audio.titleOf(row.modelData)
                     color: row.index === Audio.queueIndex ? App.themeAccent
                                                           : App.themeTextPrimary
                     font.pixelSize: 12
                     font.bold: row.index === Audio.queueIndex
                 }
+
+                //  Ist dieser Eintrag ein VIDEO (Einstellungen ▸ Audio ▸ Videos
+                //  mitzeigen), lässt sich seine Tonspur hier als Datei sichern.
+                //  BLEIBEND sichtbar, nicht erst bei Zeigerkontakt: die Zeile
+                //  zeigt den Namen ohne Endung, man sähe einer Zeile sonst gar
+                //  nicht an, dass sie ein Video ist. Gedämpft, bis man darauf
+                //  zeigt - Videos sind in einer Wiedergabeliste die Ausnahme.
+                Rectangle {
+                    id: saveSound
+                    objectName: "queueSaveSound"
+                    anchors { right: parent.right; rightMargin: 8
+                              verticalCenter: parent.verticalCenter }
+                    width: 28; height: 28; radius: 14
+                    visible: Audio.canExtractAudio(row.modelData)
+                    opacity: Audio.extractBusy ? 0.4 : 1.0
+                    color: saveHover.hovered ? App.themeCard : "transparent"
+                    DrawnIcon {
+                        anchors.centerIn: parent
+                        name: "save"; size: 15
+                        color: saveHover.hovered ? App.themeAccent : App.themeTextMuted
+                    }
+                    ToolTip.visible: saveHover.hovered
+                    ToolTip.text: App.uiText(App.language, "AudioExtractMenu")
+                    HoverHandler { id: saveHover }
+                    //  Der Zug auf die ZEILE spielt den Titel - dieser Griff
+                    //  muss ihn deshalb abfangen, sonst täte ein Klick beides.
+                    TapHandler {
+                        gesturePolicy: TapHandler.ReleaseWithinBounds
+                        onTapped: if (!Audio.extractBusy) Audio.extractAudio(row.modelData)
+                    }
+                }
+
                 HoverHandler { id: rowHover }
                 TapHandler { onTapped: Audio.playAt(row.index) }
             }

@@ -212,10 +212,19 @@ Item {
                     model: panel.ctl.standardFonts()
                     onActivated: panel.ctl.setAnnFont(panel.targetId, currentText)
                 }
-                Text { visible: panel.ctl.resolvedFont(panel.info.fontFamily) !== panel.info.fontFamily
-                       width: parent.width; wrapMode: Text.WordWrap
-                       text: "-> " + panel.ctl.resolvedFont(panel.info.fontFamily)
-                       color: App.themeTextMuted; font.pixelSize: 10 }
+                //  Substitutions-Hinweis: „diese Familie wird als jene
+                //  gezeichnet". Der Pfeil ist ein SYMBOL, also gezeichnet
+                //  (Regel 28) - er sitzt in der ersten Zeile des Textes, damit
+                //  ein umbrechender Name darunter bündig weiterläuft.
+                Row {
+                    visible: panel.ctl.resolvedFont(panel.info.fontFamily) !== panel.info.fontFamily
+                    width: parent.width; spacing: 5
+                    DrawnIcon { name: "arrow-right"; size: 11; color: App.themeTextMuted
+                                y: 2 }
+                    Text { width: parent.width - 16; wrapMode: Text.WordWrap
+                           text: panel.ctl.resolvedFont(panel.info.fontFamily)
+                           color: App.themeTextMuted; font.pixelSize: 10 }
+                }
                 Row {
                     spacing: 10
                     Column { spacing: 4
