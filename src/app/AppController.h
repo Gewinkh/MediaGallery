@@ -7,6 +7,7 @@
 #include <QDateTime>
 #include <QUrl>
 #include <QList>
+#include <QAbstractItemModel>
 #include <QVariantList>
 #include <QVariantMap>
 #include <QHash>
@@ -18,6 +19,7 @@ class FolderService;
 class JsonStorage;
 class TagManager;
 class PaneController;
+class PaneListModel;
 class ThumbnailLoader;
 class TagController;
 
@@ -84,6 +86,10 @@ class AppController : public QObject {
     // ── Zwei-Fenster-Modus ──────────────────────────────────────────────────
     //  Die Hälften des Hauptfensters (1 oder 2) und die fokussierte davon.
     Q_PROPERTY(QVariantList panes READ panes NOTIFY panesChanged)
+    //  DASSELBE als Modell - und NUR das gehoert an einen `Repeater`. Ueber die
+    //  Liste oben baut er bei jeder Aenderung alle Delegates neu und zerstoert
+    //  damit die andere Haelfte samt geoeffneter Datei (s. `PaneListModel`).
+    Q_PROPERTY(QAbstractItemModel* panesModel READ panesModel CONSTANT)
     Q_PROPERTY(int paneCount READ paneCount NOTIFY panesChanged)
     Q_PROPERTY(int focusedPaneIndex READ focusedPaneIndex NOTIFY panesChanged)
     //  Teilungsverhältnis der beiden Hälften (0,15…0,85), bleibt erhalten.
@@ -193,6 +199,7 @@ public:
     //  Der Ordner der zweiten Hälfte aus der letzten Sitzung ("" = es gab keine).
     Q_INVOKABLE QString secondFolder() const;
     QVariantList panes() const;
+    QAbstractItemModel* panesModel() const;
     int paneCount() const { return int(m_panes.size()); }
     int focusedPaneIndex() const;
 
@@ -499,6 +506,9 @@ private:
     //  Die Hälften gehören dieser Fassade (sie überleben QML-Neuaufbauten).
     static constexpr int kMaxPanes = 2;
     std::vector<PaneController*> m_panes;
+    //  Sicht auf `m_panes` fuer QML-Repeater; wird von addPane/closePane/
+    //  swapPanes um jede Aenderung geklammert.
+    PaneListModel* m_panesModel = nullptr;
     ThumbnailLoader* m_loader = nullptr;
     TagController*   m_tagsFacade = nullptr;
     int              m_settingsPane = -1;

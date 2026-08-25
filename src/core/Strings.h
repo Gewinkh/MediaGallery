@@ -20,6 +20,7 @@ enum class StringKey {
     MenuClosePane,             // Datei-Menü bei zwei Hälften: „Schließen"
     MenuSplitWindow,           // Ansicht: Fenster teilen (zweite Galerie)
     MenuUnsplitWindow,         // Ansicht: Teilung aufheben
+    MenuSwapPanes,             // Ansicht: Hälften tauschen
     SettingsPaneLabel,         // Einstellungen: „Ordnerbezogene Angaben von:"
     //  ── Audio-Player mit Equalizer ──
     AudioPlayerMode,
@@ -559,9 +560,14 @@ enum class StringKey {
     PdfEditColorLabel,         // Panel: Textfarbe
     PdfEditHighlightLabel,     // Panel: Hervorhebung (Box-Hintergrund)
     PdfEditCoverLabel,         // Panel: Deckfläche (Cover-Farbe von „Text ersetzen")
-    PdfOcrBtn,                 // Panel: OCR-Button (gescannte Seite erkennen)
-    PdfOcrTip,                 // Tooltip des OCR-Buttons
-    LibMissingTesseract,       // Hover-Hinweis: Feature braucht Tesseract
+    //  ── Dokument durchsuchbar machen (unsichtbare Textebene, Scans) ────────
+    PdfSearchableMenu,         // Dokument-Menü: „Dokument durchsuchbar machen"
+    PdfSearchableRunning,      // Toast: Fortschritt (%1 von %2 Seiten)
+    PdfSearchableDoneToast,    // Toast: fertig (%1 Seiten, %2 Wörter)
+    PdfSearchableSkippedNote,  // Anhang an den Fertig-Toast (%1 übersprungen)
+    PdfSearchableNoneToast,    // Toast: nichts erkannt
+    PdfSearchableFailedToast,  // Toast: fehlgeschlagen (%1 = Grund)
+    PdfSearchableAlreadyTip,   // Menü-Hinweis: schon durchsuchbar
     LibMissingZlib,            // Hover-Hinweis: Feature braucht ZLIB
 
     //  ── Unterordner in der Galerie ─────────────────────────────────────────
@@ -583,9 +589,6 @@ enum class StringKey {
     FolderDropBar,             // Ablegeleiste: „Ordner hier"
     FolderDropMoved,           // Meldung: Datei in den Ordner verschoben
     FolderDropCopied,          // Meldung: Datei in den Ordner kopiert
-    PdfOcrBusy,                // Toast: OCR läuft
-    PdfOcrDone,                // Toast: %1 Zeilen erkannt
-    PdfOcrNone,                // Toast: kein Text erkannt
     PdfChainLink,              // Panel: Box mit nächster verketten (Reflow)
     PdfChainUnlink,            // Panel: Kette lösen
     PdfChainPick,              // Toast: Zielbox anklicken
@@ -699,8 +702,6 @@ enum class StringKey {
     // ── PDF: Seiten hinzufügen/entfernen (Aufgabe 3) ─────────────────────────
     SettingsPdfPageEditLabel,   // Einstellungen ▸ Editor (PDF): Label über den Radios
     SettingsPdfPageEditHint,    // Einstellungen: Hinweistext
-    PdfPageEditNonDestructive,  // Radio: nicht-destruktiv (wirkt beim Export)
-    PdfPageEditDestructiveMode, // Radio: destruktiv (Original sofort ändern)
     SettingsPdfExportLabel,     // Einstellungen ▸ Editor (PDF): Label über den Export-Radios
     SettingsPdfExportHint,      // Einstellungen: Hinweistext zum Export-Modus
     PdfExportLosslessMode,      // Radio: verlustfrei bevorzugen (Text bleibt vektoriell)

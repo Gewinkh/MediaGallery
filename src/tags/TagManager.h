@@ -1,5 +1,6 @@
 #pragma once
 #include <QObject>
+#include <QTimer>
 #include <QString>
 #include <QColor>
 #include <QStringList>
@@ -61,12 +62,33 @@ public:
     QStringList categoriesForFile(const QString& fileName) const;   // Namen (rekursiv)
     QStringList categoryIdsForFile(const QString& fileName) const;  // IDs   (rekursiv)
 
+    //  NUR fuer den Pruefstand (`bench_tags`): das Signal einzeln ausloesen,
+    //  um seinen Anteil an einer Zuordnung zu messen. Kein Aufrufer in `src/`.
+    void notifyTagsChangedForBench() { emit tagsChanged(); }
+
+    //  Ausstehende Meldungen sofort abgeben - Ordnerwechsel, Beenden, und
+    //  ueberall dort, wo ein Aufrufer den neuen Stand im SELBEN Durchlauf
+    //  braucht.
+    void flushPendingSignals();
+
 signals:
     void tagsChanged();
     void tagColorChanged(const QString& tag, const QColor& color);
     void categoriesChanged();
 
 private:
+    //  SAMMELNDES Melden: `tagsChanged`/`categoriesChanged` lösen bei jedem
+    //  Empfänger einen vollständigen Durchgang aus - `MediaModel` liest die
+    //  Tags ALLER Zeilen neu, `MediaProxyModel` filtert alles neu. Bei 2000
+    //  Dateien kostet das gemessen 0,65 ms je Meldung; wer 100 Dateien auf
+    //  einen Tag zieht, zahlte es hundertmal. Zusammengefasst wird nur, was im
+    //  SELBEN Ereignisdurchlauf anfällt (Null-Timer) - länger wartet nie etwas.
+    void scheduleTagsChanged();
+    void scheduleCategoriesChanged();
+    QTimer m_signalTimer;
+    bool   m_tagsDirty = false;
+    bool   m_catsDirty = false;
+
     JsonStorage* m_storage;
 
     static TagCategory* findById(QList<TagCategory>& list, const QString& id);

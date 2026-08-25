@@ -1,4 +1,6 @@
 #include "core/JsonStorage.h"
+
+#include <QCoreApplication>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QJsonArray>
@@ -8,7 +10,22 @@
 #include <QRandomGenerator>
 #include <QSet>
 
-JsonStorage::JsonStorage(QObject* parent) : QObject(parent) {}
+JsonStorage::JsonStorage(QObject* parent) : QObject(parent) {
+    //  Sammelndes Speichern: Ein Null-Timer feuert am Ende des laufenden
+    //  Ereignisdurchlaufs - alles, was darin anfällt (100 Dateien auf einen
+    //  Tag ziehen), wird zu EINEM Schreibvorgang.
+    m_saveTimer.setSingleShot(true);
+    m_saveTimer.setInterval(0);
+    connect(&m_saveTimer, &QTimer::timeout, this, &JsonStorage::flushPendingSave);
+    //  Beenden: was noch aussteht, muss auf die Platte. Der Destruktor allein
+    //  genügt nicht - beim regulären Beenden räumt Qt die Ereignisschleife ab,
+    //  bevor lange lebende Objekte fallen.
+    if (QCoreApplication* app = QCoreApplication::instance())
+        connect(app, &QCoreApplication::aboutToQuit, this,
+                &JsonStorage::flushPendingSave);
+}
+
+JsonStorage::~JsonStorage() { flushPendingSave(); }
 
 QColor JsonStorage::randomTagColor() {
     static const QList<QColor> palette = {
@@ -115,6 +132,10 @@ void JsonStorage::loadNewFormat(const QJsonObject& root) {
 
 // ── Load / Save ───────────────────────────────────────────────────────────────
 void JsonStorage::loadFolder(const QString& folderPath) {
+    //  Ein ausstehender Schreibvorgang gehört zum BISHERIGEN Ordner - er muss
+    //  raus, bevor `m_folderPath` weiterzeigt, sonst landet er im falschen
+    //  Ordner oder fällt ganz unter den Tisch.
+    flushPendingSave();
     m_folderPath = folderPath;
     m_fileMeta.clear();
     m_tagColors.clear();
@@ -182,6 +203,12 @@ void JsonStorage::mergeForeignChanges(const QString& path) {
 }
 
 void JsonStorage::saveFolder(const QString& folderPath) {
+    //  Ein expliziter Speicherbefehl erledigt zugleich, was gesammelt wurde -
+    //  sonst schriebe der Timer gleich darauf ein zweites Mal dasselbe.
+    if (folderPath == m_folderPath) {
+        m_saveTimer.stop();
+        m_savePending = false;
+    }
     //  Erst fremde Änderungen übernehmen (s. oben), dann das Ganze schreiben.
     mergeForeignChanges(m_jsonPath.isEmpty()
                             ? folderPath + "/" + QFileInfo(folderPath).fileName() + ".json"
@@ -282,7 +309,28 @@ void JsonStorage::saveFolder(const QString& folderPath) {
 }
 
 void JsonStorage::saveCurrentFolder() {
-    if (!m_folderPath.isEmpty()) saveFolder(m_folderPath);
+    if (m_folderPath.isEmpty()) return;
+    //  Sammeln setzt eine laufende Ereignisschleife voraus - der Null-Timer
+    //  feuert sonst nie. Ohne sie (Testtreiber, Kommandozeilenwege, Abbau beim
+    //  Beenden) wird SOFORT geschrieben; das ist der sichere Fall, nicht der
+    //  Ausnahmefall.
+    if (!m_deferSaves || !QCoreApplication::instance()) {
+        saveFolder(m_folderPath);
+        return;
+    }
+    m_savePending = true;
+    if (!m_saveTimer.isActive())
+        m_saveTimer.start();
+}
+
+void JsonStorage::flushPendingSave() {
+    m_saveTimer.stop();
+    if (!m_savePending || m_folderPath.isEmpty()) {
+        m_savePending = false;
+        return;
+    }
+    m_savePending = false;              // VOR dem Schreiben zurücksetzen -
+    saveFolder(m_folderPath);           // saveFolder darf nicht erneut anstoßen
 }
 
 // ── File metadata ─────────────────────────────────────────────────────────────

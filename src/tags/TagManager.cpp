@@ -1,9 +1,41 @@
+#include <QCoreApplication>
 #include "tags/TagManager.h"
 
 #include <functional>
 
 TagManager::TagManager(JsonStorage* storage, QObject* parent)
-    : QObject(parent), m_storage(storage) {}
+    : QObject(parent), m_storage(storage) {
+    //  Sammelndes Melden (s. Header): ein Null-Timer feuert am Ende des
+    //  laufenden Ereignisdurchlaufs, alles darin wird zu EINER Meldung.
+    m_signalTimer.setSingleShot(true);
+    m_signalTimer.setInterval(0);
+    connect(&m_signalTimer, &QTimer::timeout, this, &TagManager::flushPendingSignals);
+    if (QCoreApplication* app = QCoreApplication::instance())
+        connect(app, &QCoreApplication::aboutToQuit, this,
+                &TagManager::flushPendingSignals);
+}
+
+//  Ohne laufende Ereignisschleife kann der Timer nie feuern - dann wird sofort
+//  gemeldet (Testtreiber, Kommandozeilenwege). Sicherer Fall zuerst.
+void TagManager::scheduleTagsChanged() {
+    if (!QCoreApplication::instance()) { emit tagsChanged(); return; }
+    m_tagsDirty = true;
+    if (!m_signalTimer.isActive()) m_signalTimer.start();
+}
+
+void TagManager::scheduleCategoriesChanged() {
+    if (!QCoreApplication::instance()) { emit categoriesChanged(); return; }
+    m_catsDirty = true;
+    if (!m_signalTimer.isActive()) m_signalTimer.start();
+}
+
+void TagManager::flushPendingSignals() {
+    m_signalTimer.stop();
+    const bool t = m_tagsDirty, c = m_catsDirty;
+    m_tagsDirty = m_catsDirty = false;   // VOR dem Melden - ein Empfaenger darf
+    if (t) emit tagsChanged();           // erneut aendern, ohne dass es verfaellt
+    if (c) emit categoriesChanged();
+}
 
 // ── Tag basics ────────────────────────────────────────────────────────────────
 QStringList TagManager::allTags() const { return m_storage->allTags(); }
@@ -13,7 +45,7 @@ void TagManager::setTagColor(const QString& tag, const QColor& c) {
     m_storage->setTagColor(tag, c);
     m_storage->saveCurrentFolder();
     emit tagColorChanged(tag, c);
-    emit categoriesChanged();
+    scheduleCategoriesChanged();
 }
 
 void TagManager::addTagToFile(const QString& fileName, const QString& tag) {
@@ -22,7 +54,7 @@ void TagManager::addTagToFile(const QString& fileName, const QString& tag) {
         tags.append(tag);
         m_storage->setTags(fileName, tags);
         m_storage->saveCurrentFolder();
-        emit tagsChanged();
+        scheduleTagsChanged();
     }
 }
 
@@ -32,7 +64,7 @@ void TagManager::createTag(const QString& name, const QColor& color) {
     if (color.isValid())
         m_storage->setTagColor(name.trimmed(), color);
     m_storage->saveCurrentFolder();
-    emit tagsChanged();
+    scheduleTagsChanged();
 }
 
 void TagManager::removeTagFromFile(const QString& fileName, const QString& tag) {
@@ -40,7 +72,7 @@ void TagManager::removeTagFromFile(const QString& fileName, const QString& tag) 
     if (tags.removeAll(tag) > 0) {
         m_storage->setTags(fileName, tags);
         m_storage->saveCurrentFolder();
-        emit tagsChanged();
+        scheduleTagsChanged();
     }
 }
 
@@ -58,8 +90,8 @@ void TagManager::deleteTag(const QString& tag) {
     // Kategorien/Datei-Metadaten übrig sind, und entfernt andernfalls die
     // JSON-Datei komplett statt eines leeren Stubs.
     m_storage->saveCurrentFolder();
-    emit tagsChanged();
-    emit categoriesChanged();
+    scheduleTagsChanged();
+    scheduleCategoriesChanged();
 }
 
 void TagManager::renameTag(const QString& oldName, const QString& newName) {
@@ -76,8 +108,8 @@ void TagManager::renameTag(const QString& oldName, const QString& newName) {
     m_storage->deleteTag(oldName);
     m_storage->setTagColor(newName, c);
     m_storage->saveCurrentFolder();
-    emit tagsChanged();
-    emit categoriesChanged();
+    scheduleTagsChanged();
+    scheduleCategoriesChanged();
 }
 
 // ── Categories ────────────────────────────────────────────────────────────────
@@ -91,7 +123,7 @@ const QList<TagCategory>& TagManager::categories() const {
 void TagManager::addCategory(const TagCategory& cat) {
     m_storage->categoriesRef().append(cat);
     m_storage->saveCurrentFolder();
-    emit categoriesChanged();
+    scheduleCategoriesChanged();
 }
 
 void TagManager::addSubcategory(const QString& parentId, const TagCategory& sub) {
@@ -99,7 +131,7 @@ void TagManager::addSubcategory(const QString& parentId, const TagCategory& sub)
     if (!parent) return;
     parent->children.append(sub);
     m_storage->saveCurrentFolder();
-    emit categoriesChanged();
+    scheduleCategoriesChanged();
 }
 
 void TagManager::renameCategory(const QString& id, const QString& newName) {
@@ -107,13 +139,13 @@ void TagManager::renameCategory(const QString& id, const QString& newName) {
     if (!cat) return;
     cat->name = newName;
     m_storage->saveCurrentFolder();
-    emit categoriesChanged();
+    scheduleCategoriesChanged();
 }
 
 void TagManager::deleteCategory(const QString& id) {
     removeById(m_storage->categoriesRef(), id);
     m_storage->saveCurrentFolder();
-    emit categoriesChanged();
+    scheduleCategoriesChanged();
 }
 
 void TagManager::moveCategory(const QString& id, const QString& newParentId) {
@@ -148,7 +180,7 @@ void TagManager::moveCategory(const QString& id, const QString& newParentId) {
     }
 
     m_storage->saveCurrentFolder();
-    emit categoriesChanged();
+    scheduleCategoriesChanged();
 }
 
 void TagManager::setCategoryUniformColor(const QString& id, bool uniform, const QColor& color,
@@ -164,7 +196,7 @@ void TagManager::setCategoryUniformColor(const QString& id, bool uniform, const 
     // rechnerisch angewandt -> beim Deaktivieren kehrt jede Farbe automatisch
     // zur Eigenfarbe zurück (Anforderung: "restore original color").
     m_storage->saveCurrentFolder();
-    emit categoriesChanged();
+    scheduleCategoriesChanged();
 }
 
 void TagManager::addTagToCategory(const QString& catId, const QString& tag) {
@@ -174,8 +206,8 @@ void TagManager::addTagToCategory(const QString& catId, const QString& tag) {
     if (!cat->tags.contains(tag)) cat->tags.append(tag);
     // Emit first so UI updates, then save - prevents any signal-triggered
     // rebuild from racing with the write.
-    emit tagsChanged();
-    emit categoriesChanged();
+    scheduleTagsChanged();
+    scheduleCategoriesChanged();
     m_storage->saveCurrentFolder();
 }
 
@@ -184,7 +216,7 @@ void TagManager::removeTagFromCategory(const QString& catId, const QString& tag)
     if (!cat) return;
     cat->tags.removeAll(tag);
     m_storage->saveCurrentFolder();
-    emit categoriesChanged();
+    scheduleCategoriesChanged();
 }
 
 void TagManager::moveTagToCategory(const QString& tag,
@@ -203,14 +235,14 @@ void TagManager::addFileToCategory(const QString& catId, const QString& fileName
     m_storage->saveCurrentFolder();
     // categoriesChanged zieht den Proxy-Kategoriefilter (m_activeCatFiles) und
     // alle QML-Ansichten (fileCount, Panels) nach.
-    emit categoriesChanged();
+    scheduleCategoriesChanged();
 }
 
 void TagManager::removeFileFromCategory(const QString& catId, const QString& fileName) {
     TagCategory* cat = findById(m_storage->categoriesRef(), catId);
     if (!cat || cat->files.removeAll(fileName) == 0) return;
     m_storage->saveCurrentFolder();
-    emit categoriesChanged();
+    scheduleCategoriesChanged();
 }
 
 bool TagManager::fileInCategory(const QString& catId, const QString& fileName) const {

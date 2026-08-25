@@ -69,7 +69,6 @@ Item {
     property bool   _selecting: false        // gerade am Ziehen?
     property var    _lastSel: null           // letzte Drag-Brüche (für Re-Query bei Ready)
     property bool   _pendingSelectAll: false // Strg+A vor Abschluss des Lazy-Loads -> nachziehen
-    property int    _ocrWantedPage: -1       // OCR angefordert, aber Textdoc noch nicht bereit -> nachziehen
     property int    _linkFromId: 0           // Reflow-Verkettung: Ausgangsbox, wartet auf Zielbox-Klick
 
     // ── Audio (PdfAudio-Singleton) ────────────────────────────────────────────
@@ -108,7 +107,7 @@ Item {
     property PdfEditController editCtl: PdfEditController {}
     PdfTextController  { id: pdfTextCtl }
     PdfAudioController { id: pdfAudioCtl }
-    //  Für Kinder (PdfEditPanel: OCR-Button) - der Textcontroller dieser Kachel.
+    //  Für Kinder (Panel/Werkzeugleiste) - der Textcontroller dieser Kachel.
     property alias textCtl: pdfTextCtl
 
     // ── PDF-Editor (dezentraler Controller: root.editCtl) ─────────────────────
@@ -497,11 +496,6 @@ Item {
                 root.selPage = root.currentPage
                 root.selRects = pdfTextCtl.selectAllOnPage(root.currentPage)
             }
-            // OCR wurde angefordert, bevor das Textdoc bereit war -> jetzt starten.
-            if (root._ocrWantedPage >= 0) {
-                pdfTextCtl.ocrPage(root._ocrWantedPage)
-                root._ocrWantedPage = -1
-            }
         }
         //  Suchlauf hat neue Treffer (er läuft stückweise) -> Anzeige nachziehen
         //  und beim ERSTEN Treffer gleich dorthin springen.
@@ -512,21 +506,17 @@ Item {
             else if (pdfTextCtl.searchCount === 0)
                 root.searchIndex = -1
         }
-        //  OCR fertig: Zeilenfang-Cache invalidieren (nutzt jetzt die OCR-Zeilen)
-        //  und Rückmeldung geben.
-        function onOcrReady(page, lineCount) {
-            root._snapCache = ({})
-            root._toast(lineCount > 0
-                ? App.uiText(App.language, "PdfOcrDone").arg(lineCount)
-                : App.uiText(App.language, "PdfOcrNone"))
-        }
     }
 
     // ── PDF-Editor: Reaktionen auf Controller-Ereignisse ──────────────────────
     Connections {
         target: root.editCtl
         // Aufgabe 3: Seiten-Plan geändert -> gebackene Arbeitsdatei neu rendern.
-        function onDocumentRewritten() { root._reloadRenderDoc() }
+        //  Die DATEI hat sich geändert (Seitenoperation, neue Textebene) -
+        //  nicht nur die Anzeige: der Textcontroller hält sein eigenes
+        //  Dokument und muss es neu lesen, sonst suchen und markieren wir
+        //  weiter im alten Stand.
+        function onDocumentRewritten() { root._reloadRenderDoc(); pdfTextCtl.reload() }
         //  Seitenstruktur geändert (umsortiert/gedreht/eingefügt/entfernt) ->
         //  Vorschauleiste neu rendern. BEWUSST nicht an documentRewritten
         //  gehängt: Ein Neubau der Textebene lässt die Struktur unberührt und
@@ -558,6 +548,28 @@ Item {
             } else {
                 root.editPanelVisible = false
             }
+        }
+        //  ── „Dokument durchsuchbar machen" ───────────────────────────────
+        //  Der Lauf dauert je Seite rund eine Sekunde - ohne Rueckmeldung
+        //  saehe es aus, als geschehe nichts.
+        function onSearchableProgress(done, total) {
+            if (done < total)
+                root._toast(App.uiText(App.language, "PdfSearchableRunning")
+                                .arg(done + 1).arg(total))
+        }
+        function onSearchableFinished(ok, pages, words, skipped, errorText) {
+            if (!ok) {
+                root._toast(errorText === "notext"
+                            ? App.uiText(App.language, "PdfSearchableNoneToast")
+                            : App.uiText(App.language, "PdfSearchableFailedToast")
+                                  .arg(errorText))
+                return
+            }
+            var msg = App.uiText(App.language, "PdfSearchableDoneToast")
+                          .arg(pages).arg(words)
+            if (skipped > 0)
+                msg += App.uiText(App.language, "PdfSearchableSkippedNote").arg(skipped)
+            root._toast(msg)
         }
         function onExportFinished(ok, targetPath, errorText) {
             if (ok)
@@ -1203,20 +1215,6 @@ Item {
         if (fromId < 0) return
         root._linkFromId = fromId
         root._toast(App.uiText(App.language, "PdfChainPick"))
-    }
-    //  OCR der aktuellen Seite anstoßen (gescannte PDFs). Ist das Textdoc noch
-    //  nicht bereit (Lazy-Load läuft), wird die Anforderung im
-    //  pdfTextCtl.onReadyChanged-Catch-up nachgezogen. No-op ohne Tesseract.
-    function requestOcr() {
-        if (!pdfTextCtl.ocrAvailable || pdfTextCtl.ocrBusy) return
-        pdfTextCtl.prepare(root.source)
-        if (pdfTextCtl.ready) {
-            pdfTextCtl.ocrPage(root.currentPage)
-            root._toast(App.uiText(App.language, "PdfOcrBusy"))
-        } else {
-            root._ocrWantedPage = root.currentPage
-            root._toast(App.uiText(App.language, "PdfOcrBusy"))
-        }
     }
     // ── Suche im Dokument ────────────────────────────────────────────────────
     //  Der Controller hält Begriff und Treffer; hier liegt nur, was die

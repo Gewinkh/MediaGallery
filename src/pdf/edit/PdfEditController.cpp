@@ -7,6 +7,8 @@
 #include "core/AppSettings.h"      // AppSettings::instance() für den Default-Ctor (QML-Instanzen)
 #include "core/PathUtils.h"
 #include "pdf/extract/PdfPageCopier.h"   // PdfAssembler - destruktiver Seiten-Neuschrieb
+#include "pdf/edit/PdfOcrLayer.h"         // unsichtbare Textebene fuer Scans
+#include "pdf/OcrEngine.h"                // mg::ocr - Erkennung (optional)
 #include "pdf/edit/PdfContentEditor.h" // verlustfreies Content-Stream-Editing (Aufgabe)
 #include "pdf/edit/PdfTextEditor.h"   // zeichenweises Bearbeiten (Caret-Werkzeug)
 #include "pdf/edit/PdfTextReflow.h"   // Absatz-Umbruch nach dem Tippen
@@ -61,6 +63,12 @@
 //  Handle frei) -> out.commit() (Rename über das ggf. identische Original).
 // ─────────────────────────────────────────────────────────────────────────────
 namespace {
+
+//  Auflösung, in der für die Erkennung gerendert wird. 200 dpi ist der Punkt,
+//  an dem Tesseract zuverlässig liest, ohne dass die Bilder ausufern - dieselbe
+//  Zahl nutzt der seitenweise Weg im Betrachter (`PdfTextController`).
+constexpr double kSearchableDpi = 200.0;
+
 // ─────────────────────────────────────────────────────────────────────────────
 //  PdfCaretLayoutTask - Zeichen-Layout EINER Seite bauen (Werkzeug „Text
 //  bearbeiten"). Das Parsen des Content-Streams gehört nicht in den GUI-Thread:
@@ -362,6 +370,127 @@ private:
     QString                   m_target;
     QVector<mg::PdfTextEdit>  m_edits;
     int                       m_gen;
+};
+
+// ══════════════════════════════════════════════════════════════════════════════
+//  PdfSearchableTask - eine gescannte PDF DAUERHAFT durchsuchbar machen.
+//
+//  Je Seite OHNE eingebettete Textebene: rendern, Wörter erkennen, sammeln.
+//  Danach EINMAL `mg::PdfOcrLayer::write` - ein inkrementelles Update, das die
+//  Originalbytes stehen lässt. Der Austausch der Datei geschieht auf dem
+//  GUI-Faden (searchableTaskFinished), damit kein Rennen mit der Anzeige
+//  entsteht.
+//
+//  Seiten, die schon Text haben, werden ÜBERSPRUNGEN - sie sind bereits
+//  durchsuchbar, und eine zweite Textebene darüber würde jeden Treffer
+//  verdoppeln.
+// ══════════════════════════════════════════════════════════════════════════════
+class PdfSearchableTask : public QRunnable {
+public:
+    using CancelFlag = std::shared_ptr<std::atomic<bool>>;
+
+    PdfSearchableTask(PdfEditController* owner, QString sourcePath, QString targetPath,
+                      int generation, CancelFlag cancel)
+        : m_owner(owner)
+        , m_source(std::move(sourcePath))
+        , m_target(std::move(targetPath))
+        , m_gen(generation)
+        , m_cancel(std::move(cancel)) {
+        setAutoDelete(true);
+    }
+
+    void run() override {
+        QString err;
+        int pages = 0, words = 0, skipped = 0;
+        const bool ok = build(&pages, &words, &skipped, &err);
+
+        PdfEditController* owner = m_owner;
+        const int gen = m_gen;
+        QMetaObject::invokeMethod(owner, [owner, ok, pages, words, skipped, err, gen] {
+            owner->searchableTaskFinished(ok, pages, words, skipped, err, gen);
+        }, Qt::QueuedConnection);
+    }
+
+private:
+    bool cancelled() const {
+        return m_cancel && m_cancel->load(std::memory_order_relaxed);
+    }
+    void report(int done, int total) {
+        PdfEditController* owner = m_owner;
+        const int gen = m_gen;
+        QMetaObject::invokeMethod(owner, [owner, done, total, gen] {
+            owner->searchableTaskProgress(done, total, gen);
+        }, Qt::QueuedConnection);
+    }
+
+    bool build(int* pagesOut, int* wordsOut, int* skippedOut, QString* err) {
+        if (!mg::ocr::available()) { *err = QStringLiteral("noocr"); return false; }
+
+        //  EINE Instanz für den ganzen Lauf. Ein zwischenzeitliches Neuöffnen
+        //  (alle 8 Seiten) wurde ausprobiert, weil der Verbrauch mit der
+        //  Seitenzahl steigt - es brachte GEMESSEN nichts (198/212/268 MB bei
+        //  3/16/32 Seiten, mit und ohne). Der Zuwachs steckt also nicht in
+        //  PDFiums Seiten-Cache; deshalb bleibt der einfachere Weg.
+        auto doc = std::make_unique<QPdfDocument>();
+        if (doc->load(m_source) != QPdfDocument::Error::None
+            || doc->status() != QPdfDocument::Status::Ready) {
+            *err = QStringLiteral("load");
+            return false;
+        }
+        const int n = doc->pageCount();
+        QVector<QVector<mg::PdfOcrWord>> perPage(n);
+
+        //  SERIELL, und das ist gemessen die richtige Wahl: Seiten parallel zu
+        //  erkennen brachte an 16 Seiten nur 13378 -> 12120 ms (2 Fäden, +10 %),
+        //  mit 4 Fäden war es wieder langsamer als mit 2 - bei 241 -> 427 MB
+        //  Spitzenspeicher. Die Fäden liefen dabei nachweislich gleichzeitig
+        //  (Wellen im Ablauf), JEDE Seite dauerte im Viererpack aber 2,8 s statt
+        //  0,87 s: die Erkennung ist speicherbandbreiten-gebunden, nicht
+        //  rechengebunden - auch mit abgeschaltetem OpenMP von Tesseract.
+        //  Mehr Speicher für 8 % Zeit ist nach §0 (RAM = Priorität 1) ein
+        //  Verlust. Details im Runden-Eintrag.
+        for (int p = 0; p < n; ++p) {
+            if (cancelled()) { *err = QStringLiteral("cancel"); return false; }
+            report(p, n);
+
+            //  Hat die Seite schon Text? Dann ist hier nichts zu tun - eine
+            //  zweite Textebene darüber würde jeden Treffer verdoppeln.
+            if (!doc->getAllText(p).text().trimmed().isEmpty())
+                continue;
+
+            const QSizeF ps = doc->pagePointSize(p);
+            if (ps.isEmpty())
+                continue;
+            const QSize px(qRound(ps.width()  * kSearchableDpi / 72.0),
+                           qRound(ps.height() * kSearchableDpi / 72.0));
+            const QImage img = doc->render(p, px);
+            if (img.isNull())
+                continue;
+
+            const QList<mg::OcrLine> found =
+                mg::ocr::recognize(img, kSearchableDpi, mg::OcrLevel::Word);
+            QVector<mg::PdfOcrWord> words;
+            words.reserve(found.size());
+            for (const mg::OcrLine& w : found)
+                words.append({ w.rectPts, w.text });
+            if (!words.isEmpty()) {
+                ++(*pagesOut);
+                *wordsOut += words.size();
+                perPage[p] = std::move(words);      // erst zaehlen, dann leeren
+            }
+        }
+        report(n, n);
+        if (cancelled())    { *err = QStringLiteral("cancel"); return false; }
+        if (*pagesOut == 0) { *err = QStringLiteral("notext"); return false; }
+
+        return mg::PdfOcrLayer::write(m_source, m_target, perPage, err, skippedOut);
+    }
+
+    PdfEditController* m_owner;
+    QString            m_source;
+    QString            m_target;
+    int                m_gen;
+    CancelFlag         m_cancel;
 };
 
 class PdfExportTask : public QRunnable {
@@ -1077,6 +1206,16 @@ PdfEditController::PdfEditController(ISettings& settings, QObject* parent)
     connect(this, &PdfEditController::planChanged,
             this, &PdfEditController::formFieldsChanged);
 
+    //  Beenden aus dem Editor heraus: Auch dann darf neben der PDF nichts
+    //  liegen bleiben. `releaseDocument` läuft in diesem Weg nicht mehr, also
+    //  wird hier dasselbe getan - Plan verbrauchen, speichern, aufräumen.
+    //  (Festlegung des Nutzers 2026-08-23.)
+    if (QCoreApplication* app = QCoreApplication::instance())
+        connect(app, &QCoreApplication::aboutToQuit, this, [this] {
+            if (!m_docPath.isEmpty())
+                releaseDocument();
+        });
+
     // Datenänderung an der AUSGEWÄHLTEN Box -> Toolbar/Panel rev-getrieben
     // neu binden lassen; verschwundene Auswahl (Undo eines Hinzufügens,
     // Sidecar-Reset) aufräumen.
@@ -1198,19 +1337,6 @@ void PdfEditController::setExportLossless(bool v) {
 // ─────────────────────────────────────────────────────────────────────────────
 //  Seiten hinzufügen/entfernen (Aufgabe 3)
 // ─────────────────────────────────────────────────────────────────────────────
-bool PdfEditController::pageEditDestructive() const {
-    return m_settings.pdfPageEditDestructive();
-}
-void PdfEditController::setPageEditDestructive(bool v) {
-    if (m_settings.pdfPageEditDestructive() == v)
-        return;
-    m_settings.setPdfPageEditDestructive(v);
-    emit pageEditDestructiveChanged();
-    // Modewechsel bei bereits geändertem Plan -> Arbeitsdatei neu am richtigen Ort.
-    if (!m_docPath.isEmpty() && !planIsIdentity())
-        bakeWorking();
-}
-
 QString PdfEditController::backupPath(const QString& pdfPath) {
     return pdfPath + QStringLiteral(".mgorig");
 }
@@ -1222,26 +1348,23 @@ QString PdfEditController::assetPath(const QString& pdfPath) {
 }
 
 QString PdfEditController::pristinePath() const {
-    // Quelle mit den UNVERÄNDERTEN Seiten: destruktiv liegt sie in der
-    // einmaligen .mgorig-Sicherung, sonst ist das Original selbst pristine.
-    if (m_settings.pdfPageEditDestructive()) {
-        const QString bak = backupPath(m_docPath);
-        if (QFile::exists(bak))
-            return bak;
-    }
+    // Quelle mit den Seiten, wie sie beim ÖFFNEN standen. Sobald eine
+    // Seitenoperation läuft, liegt sie in der Sicherung `.mgorig`; danach ist
+    // die PDF selbst schon umgebaut. Ohne Sicherung ist die Datei pristine.
+    const QString bak = backupPath(m_docPath);
+    if (QFile::exists(bak))
+        return bak;
     return m_docPath;
 }
 
 QString PdfEditController::renderSourcePath() const {
-    // Datei, die die ANZEIGE rendert: bei geändertem Plan die gebackene
-    // Arbeitsdatei (destruktiv = die .pdf selbst, sonst die temporäre
-    // .mgpreview.pdf), sonst die pristine Quelle. So bleibt „Ansichts-Index ==
-    // Seitenindex der gerenderten Datei" erhalten - die Ansicht muss den Plan
-    // NICHT selbst anwenden.
+    // Datei, die die ANZEIGE rendert. Seitenoperationen wirken SOFORT in der
+    // PDF selbst (s. bakeWorking), also ist sie es auch, sobald der Plan von
+    // der Identität abweicht. So bleibt „Ansichts-Index == Seitenindex der
+    // gerenderten Datei" erhalten - die Ansicht muss den Plan NICHT anwenden.
     if (m_docPath.isEmpty() || planIsIdentity())
         return textSourcePath();            // ggf. mit bearbeiteter Textebene
-    return m_settings.pdfPageEditDestructive() ? m_docPath
-                                               : previewPath(m_docPath);
+    return m_docPath;
 }
 
 bool PdfEditController::planIsIdentity() const {
@@ -1613,37 +1736,32 @@ QString PdfEditController::planSourceFile(int doc, bool preferTextWork) const {
 void PdfEditController::bakeWorking() {
     if (m_docPath.isEmpty())
         return;
-    const bool destructive = m_settings.pdfPageEditDestructive();
 
     if (planIsIdentity()) {
-        // Kein Plan (mehr) -> Arbeitsdatei = pristine.
-        if (destructive) {
-            const QString bak = backupPath(m_docPath);
-            if (QFile::exists(bak)) {           // gebackene .pdf aufs Original zurück
-                QFile::remove(m_docPath);
-                QFile::copy(bak, m_docPath);
-            }
-        } else {
-            QFile::remove(previewPath(m_docPath));   // temporäre Vorschau aufräumen
+        // Kein Plan (mehr) - z. B. alles zurückgenommen: die gebackene PDF
+        // wird durch die Sicherung ersetzt, der Stand von vor der ersten
+        // Seitenoperation ist damit wieder da.
+        const QString bak = backupPath(m_docPath);
+        if (QFile::exists(bak)) {
+            QFile::remove(m_docPath);
+            QFile::copy(bak, m_docPath);
         }
         emit documentRewritten();
         return;
     }
 
-    // Pristine bestimmen (destruktiv: einmalige Sicherung anlegen).
-    if (destructive) {
-        const QString bak = backupPath(m_docPath);
-        if (!QFile::exists(bak) && !QFile::copy(m_docPath, bak))
-            return;                             // ohne Sicherung nicht schreiben
-    }
+    // Einmalige Sicherung: sie ist die Quelle für Strg+Z und liegt neben der
+    // PDF, solange sie im Editor offen ist (consumePlan räumt sie weg).
+    const QString bak = backupPath(m_docPath);
+    if (!QFile::exists(bak) && !QFile::copy(m_docPath, bak))
+        return;                                 // ohne Sicherung nicht schreiben
+
     // Die Quelle je Plan-Eintrag liefert planSourceFile(): das pristine
     // Hauptdokument (bzw. die Textebenen-Arbeitsdatei - die Ops beziehen sich
     // auf die pristinen Seitenindizes, der Plan ordnet danach um) oder die
     // Begleitdatei der importierten Seiten.
-    const QString target = destructive ? m_docPath : previewPath(m_docPath);
-
     QString err;
-    if (!assemblePlanTo(target, QString(), &err)) {
+    if (!assemblePlanTo(m_docPath, QString(), &err)) {
         qWarning("PdfEditController::bakeWorking: %s", qPrintable(err));
         return;
     }
@@ -1661,9 +1779,10 @@ bool PdfEditController::assemblePlanTo(const QString& targetPath,
     bool ok = asmbl.begin(&e);
 
     //  Aufeinanderfolgende, AUFSTEIGENDE Seiten derselben Quelle werden zu EINEM
-    //  addSourcePages-Aufruf gebündelt (wie im Vektor-Export). Jeder Aufruf
-    //  parst die Quelle neu - ohne Bündelung kostete das Umsortieren einer
-    //  300-seitigen Datei 300 vollständige Struktur-Parses (§0-Priorität 2).
+    //  addSourcePages-Aufruf gebündelt (wie im Vektor-Export) - das spart die
+    //  Planungsarbeit je Lauf. Den Struktur-Parse hält der Assembler seit
+    //  seinem Quellen-Zwischenspeicher ohnehin fest, ein aufgebrochener Lauf
+    //  (umgekehrte oder gemischte Seitenfolge) ist also nicht mehr teuer.
     //  Die Drehung bricht den Lauf NICHT: sie reist je Seite mit.
     int runDoc = -2;
     QVector<int> runPages;
@@ -2259,11 +2378,20 @@ void PdfEditController::setDocument(const QString& pathOrUrl) {
     // Auto-Sicherung: ungesicherte Änderungen des VORHERIGEN Dokuments landen
     // im Sidecar - Navigation verliert nie stillschweigend Bearbeitungen.
     // Gepufferte Formularwerte zählen dazu: sie stehen (noch) in keiner PDF.
-    if (!m_docPath.isEmpty() && (!m_stack.isClean() || !m_formEdits.isEmpty()))
-        saveOverlay();
+    // Ein Dokumentwechsel SCHLIESST das vorherige Dokument, also wird sein
+    // Seiten-Plan hier ebenso verbraucht wie in releaseDocument() - sonst
+    // bliebe seine Sicherung liegen und der Plan im Sidecar würde beim
+    // nächsten Öffnen ein zweites Mal wirken.
+    if (!m_docPath.isEmpty()) {
+        commitPendingTextOp();
+        const bool hadPlan = !planIsIdentity();
+        consumePlan();
+        if (hadPlan || !m_stack.isClean() || !m_formEdits.isEmpty())
+            saveOverlay();
+    }
 
     if (!m_docPath.isEmpty()) {
-        QFile::remove(previewPath(m_docPath));  // Vorschau des VORIGEN Dokuments
+        QFile::remove(previewPath(m_docPath));  // Altlast früherer Fassungen
         QFile::remove(textWorkPath(m_docPath)); // Textebenen-Arbeitsdatei ebenso
     }
 
@@ -2340,15 +2468,72 @@ void PdfEditController::resetTextState() {
     emit caretChanged();
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+//  Plan verbrauchen (beim Schließen)
+//
+//  Seitenoperationen wirken sofort in der PDF. Beim Schließen ist die Datei
+//  also fertig - der Plan beschreibt nur noch, WIE sie entstanden ist, und
+//  genau das darf nicht liegen bleiben: ein gespeicherter Plan würde beim
+//  nächsten Öffnen ein ZWEITES Mal angewandt.
+// ─────────────────────────────────────────────────────────────────────────────
+void PdfEditController::consumePlan() {
+    if (m_docPath.isEmpty())
+        return;
+
+    if (!planIsIdentity()) {
+        //  Die Notizen adressieren ihre Seite über den stabilen Key. Nach dem
+        //  Verbrauchen IST die Ansichtsreihenfolge die Dateireihenfolge, also
+        //  wird Key i die Seite i - die Keys der Boxen wandern entsprechend mit.
+        QHash<int, int> keyToNew;
+        for (int i = 0; i < m_plan.size(); ++i)
+            keyToNew.insert(m_plan.at(i).key, i);
+
+        QVector<PdfEditBox> boxes = m_model.boxes();
+        for (PdfEditBox& b : boxes)
+            b.page = keyToNew.value(b.page, -1);
+        //  Notizen auf einer entfernten Seite haben kein Zuhause mehr.
+        boxes.removeIf([](const PdfEditBox& b) { return b.page < 0; });
+        m_model.resetBoxes(boxes);
+
+        //  Textebenen-Ops sind ein Delta auf die pristine Datei - und die
+        //  gebackene PDF trägt sie bereits (assemblePlanTo liest die
+        //  Textebenen-Arbeitsdatei, s. planSourceFile). Sie ein zweites Mal
+        //  anzuwenden würde den Text verdoppeln, also sind sie hier erledigt.
+        m_textOps.clear();
+        m_textOpsLoaded = false;
+        m_builtOps.clear();
+        setPendingValid(false);
+        m_textWorkValid = false;
+
+        //  Ab jetzt gilt: Ansichtsseite == Dateiseite.
+        const int n = m_plan.size();
+        m_plan.resize(n);
+        for (int i = 0; i < n; ++i)
+            m_plan[i] = PdfPlanPage{ i, 0, 0, i };
+        m_srcPageCount = n;
+        m_nextPageKey  = n;
+        emit planChanged();
+    }
+
+    //  Die Sicherung hat ihren Zweck (Strg+Z in dieser Sitzung) erfüllt, und
+    //  die übernommenen Fremdseiten stehen jetzt in der PDF selbst.
+    QFile::remove(backupPath(m_docPath));
+    QFile::remove(assetPath(m_docPath));
+}
+
 void PdfEditController::releaseDocument() {
     if (m_docPath.isEmpty())
         return;
     finishOpenSessions();
     finishDrawSession();
     commitPendingTextOp();                      // Tipp-Session abschließen
-    if (!m_stack.isClean() || !m_formEdits.isEmpty())
+    //  ERST verbrauchen, DANN speichern: das Sidecar soll die umgeschriebenen
+    //  Notiz-Keys sehen und keinen Plan mehr enthalten.
+    const bool hadPlan = !planIsIdentity();
+    consumePlan();
+    if (hadPlan || !m_stack.isClean() || !m_formEdits.isEmpty())
         saveOverlay();
-    QFile::remove(previewPath(m_docPath));      // temporäre Vorschau verwerfen
+    QFile::remove(previewPath(m_docPath));      // Altlast früherer Fassungen
     // Die Textebenen-Arbeitsdatei ist ableitbar (Sidecar-Ops + Original) und
     // bleibt daher NICHT neben dem PDF liegen - beim nächsten Öffnen wird sie
     // aus den Ops neu erzeugt.
@@ -3569,11 +3754,15 @@ bool PdfEditController::saveOverlay() {
     commitPendingTextOp();                  // schwebende Tipp-Session festschreiben
 
     const bool hasBoxes = m_model.count() > 0;
-    const bool hasPlan  = !planIsIdentity();
     const bool hasOps   = !m_textOps.isEmpty();
     const bool hasVals  = !m_formEdits.isEmpty();
 
-    if (!hasBoxes && !hasPlan && !hasOps && !hasVals) {
+    //  Der SEITEN-PLAN gehört bewusst NICHT hierher: Seitenoperationen wirken
+    //  sofort in der PDF, die Datei selbst ist der Stand. Ein gespeicherter
+    //  Plan würde beim nächsten Öffnen ein zweites Mal angewandt (s.
+    //  consumePlan). Das Sidecar trägt nur, was NEBEN der Datei lebt:
+    //  Textblöcke, Schwärzungen, Formularwerte, Textebenen-Ops.
+    if (!hasBoxes && !hasOps && !hasVals) {
         // Leeres Overlay UND unveränderter Seiten-Plan -> kein Sidecar zurücklassen.
         ok = !QFile::exists(sc) || QFile::remove(sc);
         // Ohne Plan verweist auch nichts mehr auf die Begleitdatei der
@@ -3616,16 +3805,6 @@ bool PdfEditController::saveOverlay() {
             }
             if (anyGrow)
                 rootObj.insert(QStringLiteral("growBase"), growArr);
-        }
-        if (hasPlan) {
-            //  Seiten-Plan (s. PdfPlanPage): je Eintrag Quellseite, Quelldatei,
-            //  Drehung und der stabile Key, über den die Notizen ihre Seite
-            //  finden. Ein reines Int-Array (Sidecars vor den Seitenoperationen)
-            //  wird beim Laden weiterhin verstanden - s. loadOverlay.
-            QJsonArray parr;
-            for (const PdfPlanPage& p : std::as_const(m_plan))
-                parr.append(p.toJson());
-            rootObj.insert(QStringLiteral("pageplan"), parr);
         }
         if (hasOps) {
             // Änderungen an der EINGEBETTETEN Textebene (Caret-Werkzeug). Sie
@@ -3890,6 +4069,83 @@ void PdfEditController::exportTaskFinished(bool ok, const QString& target,
     m_busy = false;
     emit busyChanged();
     emit exportFinished(ok, target, error);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  Dokument durchsuchbar machen (gescannte PDFs)
+//
+//  Der Unterschied zum seitenweisen OCR des Betrachters ist der ganze Punkt:
+//  dort liegt die Erkennung im Speicher und ist beim Schließen fort, hier steht
+//  sie danach IN der Datei - unsichtbar über dem Bild. Jeder Leser findet den
+//  Text, nicht nur diese App, und kein zweiter Lauf ist je nötig.
+// ─────────────────────────────────────────────────────────────────────────────
+bool PdfEditController::ocrAvailable() const { return mg::ocr::available(); }
+
+bool PdfEditController::alreadySearchable() const {
+    return !m_docPath.isEmpty() && mg::PdfOcrLayer::hasLayer(m_docPath);
+}
+
+void PdfEditController::makeSearchable() {
+    if (m_docPath.isEmpty() || m_searchableBusy)
+        return;
+    if (!mg::ocr::available()) {
+        emit searchableFinished(false, 0, 0, 0, QStringLiteral("noocr"));
+        return;
+    }
+    //  Schwebende Seitenoperationen zuerst in die Datei bringen: die Erkennung
+    //  soll die Seiten sehen, die der Nutzer sieht.
+    finishOpenSessions();
+    finishDrawSession();
+
+    m_searchableCancel = std::make_shared<std::atomic<bool>>(false);
+    const int gen = ++m_searchableGen;
+    m_searchableBusy = true;
+    emit searchableBusyChanged();
+    //  In eine Nachbardatei schreiben und erst bei Erfolg tauschen - ein
+    //  Abbruch mittendrin darf die PDF des Nutzers nie halbfertig hinterlassen.
+    m_pool.start(new PdfSearchableTask(this, m_docPath,
+                                       m_docPath + QStringLiteral(".mgocr.tmp"),
+                                       gen, m_searchableCancel));
+}
+
+void PdfEditController::cancelSearchable() {
+    if (m_searchableCancel)
+        m_searchableCancel->store(true, std::memory_order_relaxed);
+}
+
+void PdfEditController::searchableTaskProgress(int done, int total, int generation) {
+    if (generation != m_searchableGen)
+        return;
+    emit searchableProgress(done, total);
+}
+
+void PdfEditController::searchableTaskFinished(bool ok, int pages, int words,
+                                               int skipped, const QString& error,
+                                               int generation) {
+    const QString tmp = m_docPath + QStringLiteral(".mgocr.tmp");
+    if (generation != m_searchableGen) {            // veralteter Lauf
+        QFile::remove(tmp);
+        return;
+    }
+    m_searchableBusy = false;
+    emit searchableBusyChanged();
+
+    if (!ok) {
+        QFile::remove(tmp);
+        emit searchableFinished(false, 0, 0, 0, error);
+        return;
+    }
+    //  Tausch auf dem GUI-Faden: erst hier ist sicher, dass nichts mehr in die
+    //  alte Datei schreibt. Gelingt der Tausch nicht, bleibt das Original.
+    if (!QFile::remove(m_docPath) || !QFile::rename(tmp, m_docPath)) {
+        QFile::remove(tmp);
+        emit searchableFinished(false, 0, 0, 0, QStringLiteral("replace"));
+        return;
+    }
+    //  Die Textebene ist neu in der Datei: Anzeige und Textwege neu aufsetzen.
+    m_textWorkValid = false;
+    emit documentRewritten();
+    emit searchableFinished(true, pages, words, skipped, QString());
 }
 
 void PdfEditController::exportTaskProgress(int done, int total, int generation) {

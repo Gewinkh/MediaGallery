@@ -1,5 +1,6 @@
 #include "app/AppController.h"
 #include "app/PaneController.h"
+#include "app/PaneListModel.h"
 #include "tags/TagController.h"
 #include "core/PathUtils.h"
 
@@ -44,6 +45,8 @@ AppController::AppController(ISettings& settings, QObject* parent)
     connect(&as, &AppSettings::tileArrangementChanged, this, &AppController::tileArrangementChanged);
     connect(&as, &AppSettings::autoSaveSettingsChanged, this, &AppController::autoSaveChanged);
 
+    //  Sicht auf `m_panes` fuer den `Repeater` der Shell (s. PaneListModel).
+    m_panesModel = new PaneListModel(m_panes, this);
 }
 
 // ── Die fokussierte Hälfte ───────────────────────────────────────────────────
@@ -96,6 +99,8 @@ QVariantList AppController::panes() const {
     return out;
 }
 
+QAbstractItemModel* AppController::panesModel() const { return m_panesModel; }
+
 int AppController::focusedPaneIndex() const {
     for (size_t i = 0; i < m_panes.size(); ++i)
         if (m_panes[i] == m_pane) return int(i);
@@ -111,7 +116,11 @@ int AppController::indexOfPane(QObject* pane) const {
 QObject* AppController::addPane() {
     if (!m_loader || int(m_panes.size()) >= kMaxPanes) return nullptr;
     auto* pane = new PaneController(m_settings, *m_loader, this);
+    //  Punktgenau einfuegen: die BESTEHENDE Haelfte darf dabei nicht neu
+    //  gebaut werden, sonst ist ihre geoeffnete Datei weg (s. PaneListModel).
+    m_panesModel->beginInsert(int(m_panes.size()));
     m_panes.push_back(pane);
+    m_panesModel->endInsert();
     //  Die erste Hälfte bekommt sofort den Fokus; eine hinzugefügte auch - man
     //  hat sie gerade aufgemacht, also will man dort arbeiten.
     setFocusedPane(pane);
@@ -123,7 +132,9 @@ bool AppController::closePane(int index) {
     if (index < 0 || index >= int(m_panes.size())) return false;
     if (m_panes.size() <= 1) return false;          // die letzte bleibt
     PaneController* pane = m_panes[index];
+    m_panesModel->beginRemove(index);
     m_panes.erase(m_panes.begin() + index);
+    m_panesModel->endRemove();
     if (m_pane == pane)
         setFocusedPane(m_panes.front());
     //  Erst melden, dann löschen: QML gibt seine Hälfte im selben Zug frei.
@@ -143,7 +154,11 @@ QString AppController::secondFolder() const { return m_settings.secondFolder(); 
 
 bool AppController::swapPanes() {
     if (m_panes.size() < 2) return false;
+    //  VERSCHIEBEN, nicht neu bauen: so wandert jede Haelfte mit allem, was in
+    //  ihr offen ist, auf den anderen Platz.
+    m_panesModel->beginMove(1, 0);
     std::swap(m_panes[0], m_panes[1]);
+    m_panesModel->endMove();
     //  Der Fokus hängt am OBJEKT, nicht am Platz - er wandert also mit.
     emit panesChanged();
     return true;

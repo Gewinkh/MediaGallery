@@ -314,6 +314,13 @@ MediaModel::MediaModel(JsonStorage& storage,
     , m_loader(loader)
     , m_watcher(new QFileSystemWatcher(this))
 {
+    //  Der Sidecar des OFFENEN Ordners darf seine Schreibvorgänge sammeln:
+    //  dort fallen sie im Rudel an (100 Dateien auf einen Tag ziehen), und
+    //  jeder einzelne serialisiert die ganze Datei. Die Sidecars aufgeklappter
+    //  UNTERordner (`m_scopeStorage`) bleiben bewusst sofort schreibend - s.
+    //  `JsonStorage::setDeferredSaves`.
+    m_storage.setDeferredSaves(true);
+
     connect(&m_loader, &ThumbnailLoader::thumbnailReady,
             this, &MediaModel::onThumbnailReady, Qt::QueuedConnection);
     connect(&m_loader, &ThumbnailLoader::thumbnailFailed,

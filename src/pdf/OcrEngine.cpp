@@ -8,6 +8,7 @@
 #include <QStringList>
 #include <QDir>
 #include <QSet>
+#include <memory>
 #include <mutex>
 
 namespace {
@@ -64,6 +65,30 @@ const TessPick& pick() {
 }
 
 QByteArray pickLanguage() { return pick().lang; }
+
+//  Eine Tesseract-Instanz JE FADEN, einmal aufgesetzt und danach
+//  wiederverwendet. `Init` lädt das Sprachmodell und kostet gemessen ~118 ms -
+//  bei jedem Aufruf erneut, obwohl sich nichts daran ändert. TessBaseAPI ist
+//  nicht fadensicher; `thread_local` gibt jedem Faden seine eigene, ohne Sperre
+//  (der Aufrufer ist ohnehin ein 1-Faden-Pool, s. PdfTextController).
+struct TessSession {
+    tesseract::TessBaseAPI api;
+    bool ready = false;
+
+    TessSession() {
+        const TessPick& p = pick();
+        if (p.lang.isEmpty()) return;
+        ready = api.Init(p.dir.isEmpty() ? nullptr : p.dir.constData(),
+                         p.lang.constData()) == 0;
+    }
+    ~TessSession() { if (ready) api.End(); }
+};
+
+//  Wird beim Beenden des Fadens abgeräumt.
+TessSession* session() {
+    static thread_local TessSession s;
+    return s.ready ? &s : nullptr;
+}
 }  // namespace
 
 namespace mg::ocr {
@@ -72,43 +97,47 @@ bool available() { return !pickLanguage().isEmpty(); }
 
 QString language() { return QString::fromLatin1(pickLanguage()); }
 
-QList<OcrLine> recognize(const QImage& img, double dpi) {
+QList<OcrLine> recognize(const QImage& img, double dpi, OcrLevel level) {
     QList<OcrLine> out;
-    const QByteArray lang = pickLanguage();
-    if (lang.isEmpty() || img.isNull() || dpi <= 0.0)
+    if (img.isNull() || dpi <= 0.0)
         return out;
 
-    tesseract::TessBaseAPI api;
-    const QByteArray dir = pick().dir;
-    if (api.Init(dir.isEmpty() ? nullptr : dir.constData(), lang.constData()) != 0)
-        return out;
+    TessSession* s = session();
+    if (!s) return out;
+    tesseract::TessBaseAPI& api = s->api;
 
     //  Graustufen-8 = ein Byte je Pixel -> direkt an Tesseract übergebbar.
     const QImage gray = img.convertToFormat(QImage::Format_Grayscale8);
-    if (gray.isNull()) { api.End(); return out; }
+    if (gray.isNull()) return out;
     api.SetImage(gray.constBits(), gray.width(), gray.height(), 1,
                  static_cast<int>(gray.bytesPerLine()));
     api.SetSourceResolution(qMax(70, static_cast<int>(dpi + 0.5)));
-    if (api.Recognize(nullptr) != 0) { api.End(); return out; }
+    if (api.Recognize(nullptr) != 0) { api.Clear(); return out; }
 
     const double toPts = 72.0 / dpi;
-    tesseract::ResultIterator* it = api.GetIterator();
-    const tesseract::PageIteratorLevel level = tesseract::RIL_TEXTLINE;
+    //  `GetIterator` gibt einen NEUEN Iterator heraus, den der Aufrufer
+    //  freigeben muss - `End()`/`Clear()` tun das nicht.
+    const std::unique_ptr<tesseract::ResultIterator> it(api.GetIterator());
+    const tesseract::PageIteratorLevel lvl =
+        (level == OcrLevel::Word) ? tesseract::RIL_WORD : tesseract::RIL_TEXTLINE;
     if (it) {
         do {
             int x1, y1, x2, y2;
-            if (!it->BoundingBox(level, &x1, &y1, &x2, &y2))
+            if (!it->BoundingBox(lvl, &x1, &y1, &x2, &y2))
                 continue;
-            char* c = it->GetUTF8Text(level);
+            char* c = it->GetUTF8Text(lvl);
             const QString t = c ? QString::fromUtf8(c).trimmed() : QString();
             delete[] c;
             if (t.isEmpty())
                 continue;
             out.append({ QRectF(x1 * toPts, y1 * toPts,
                                 (x2 - x1) * toPts, (y2 - y1) * toPts), t });
-        } while (it->Next(level));
+        } while (it->Next(lvl));
     }
-    api.End();
+    //  `Clear` gibt Bild und Zwischenergebnisse frei, lässt das geladene
+    //  Sprachmodell aber stehen - sonst zeigte die Instanz auf den Puffer des
+    //  `gray`-Bildes, das gleich verschwindet.
+    api.Clear();
     return out;
 }
 
@@ -119,7 +148,7 @@ QList<OcrLine> recognize(const QImage& img, double dpi) {
 namespace mg::ocr {
 bool    available() { return false; }
 QString language()  { return {}; }
-QList<OcrLine> recognize(const QImage&, double) { return {}; }
+QList<OcrLine> recognize(const QImage&, double, OcrLevel) { return {}; }
 }  // namespace mg::ocr
 
 #endif

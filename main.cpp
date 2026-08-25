@@ -1,5 +1,9 @@
 #include <QGuiApplication>
 #include <QFont>
+#include <QElapsedTimer>
+#include <QFile>
+#include <QAbstractItemModel>
+#include <QQmlComponent>
 #include <QQmlApplicationEngine>
 #include <QStyleHints>
 #include <QQmlContext>
@@ -42,7 +46,43 @@
 #include "media/MediaProxyModel.h"
 #include "media/GalleryRowModel.h"
 
+// ─────────────────────────────────────────────────────────────────────────────
+//  Start- und Schliess-Messung (`MG_STARTLOG=1`)
+//
+//  Worauf der Nutzer beim Start wartet, laesst sich nur IM Start messen - ein
+//  Pruefstand kann ihn nicht nachstellen (RHI-Wahl, QML-Uebersetzung, Fenster,
+//  erster Rahmen). Deshalb ein paar Marken direkt hier, nach dem Muster von
+//  `MG_DEEPLOG` im Suchlauf: standardmaessig aus, kostet dann eine
+//  Umgebungsabfrage beim Start und sonst nichts.
+// ─────────────────────────────────────────────────────────────────────────────
+namespace {
+QElapsedTimer  g_startClock;
+bool           g_startLog = false;
+
+//  Belegter Speicher zur Marke - „schnell" und „schlank" gehoeren zusammen
+//  (§0-Prioritaet 2 und 4), und ohne die Zahl sieht man nicht, was ein
+//  vorgezogener Aufbau kostet.
+long startRssKb() {
+    QFile f(QStringLiteral("/proc/self/status"));
+    if (!f.open(QIODevice::ReadOnly)) return -1;
+    for (const QByteArray& line : f.readAll().split('\n'))
+        if (line.startsWith("VmRSS:"))
+            return line.mid(6).trimmed().split(' ').first().toLong();
+    return -1;
+}
+
+void startMark(const char* what) {
+    if (!g_startLog) return;
+    qInfo("[START] %-32s %6lld ms   RSS %7ld KB", what,
+          static_cast<long long>(g_startClock.elapsed()), startRssKb());
+}
+}  // namespace
+
 int main(int argc, char* argv[]) {
+    g_startClock.start();
+    g_startLog = qEnvironmentVariableIsSet("MG_STARTLOG");
+    startMark("main betreten");
+
     // ── RHI-Backend setzen ────────────────────────────────────────────────────
     // Muss VOR allen Qt-Klassen aufgerufen werden.
     // Liest das gewählte Backend aus QSettings, prüft den Crash-Guard
@@ -99,6 +139,7 @@ int main(int argc, char* argv[]) {
     //  Farbschema (applyThemePalette).
 
     QGuiApplication app(argc, argv);
+    startMark("QGuiApplication steht");
     app.setApplicationName("MediaGallery");
     app.setOrganizationName("MediaGallery");
     app.setApplicationVersion("1.0.0");
@@ -312,6 +353,8 @@ int main(int argc, char* argv[]) {
     qmlRegisterSingletonInstance("MediaGallery", 1, 0, "WebEngine", &webEngine);
 
     // ── QML-Wurzel ───────────────────────────────────────────────────────────
+    startMark("Controller/Modelle stehen");
+
     QQmlApplicationEngine engine;
     //  Suchpfad für den eigenen Control-Stil (liegt in den Ressourcen):
     //  der Stil "style" wird als ":/qml/style/" aufgelöst.
@@ -327,9 +370,46 @@ int main(int argc, char* argv[]) {
     //  Liest im Bild-Faden von Qt Quick, nicht im GUI-Faden (s. AudioCoverProvider.h).
     engine.addImageProvider(QStringLiteral("audiocover"), new AudioCoverProvider);
 
+    //  Aufteilen, wohin die Startzeit geht: Ein winziges Stück QML zwingt die
+    //  Engine und die QtQuick-Erweiterungen dazu, sich einzurichten. Alles
+    //  danach ist UNSERE Oberfläche. Ohne diese Trennung raet man, welche
+    //  Haelfte teuer ist (nur mit `MG_STARTLOG`).
+    if (g_startLog) {
+        QQmlComponent probe(&engine);
+        probe.setData("import QtQuick\nimport QtQuick.Controls\nItem {}",
+                      QUrl(QStringLiteral("qrc:/startprobe.qml")));
+        delete probe.create();
+        startMark("Engine + QtQuick bereit");
+    }
+
     engine.load(QUrl(QStringLiteral("qrc:/qml/ApplicationShell.qml")));
+    startMark("QML geladen (Shell steht)");
     if (engine.rootObjects().isEmpty())
         return -1;
+
+    //  Erster gezeichneter Rahmen und erste Kachel im Modell - das ist, was der
+    //  Nutzer als „die App ist da" erlebt. Beide Verbindungen loesen sich nach
+    //  dem ersten Mal selbst.
+    if (g_startLog) {
+        if (auto* w = qobject_cast<QQuickWindow*>(engine.rootObjects().first())) {
+            auto* c = new QMetaObject::Connection;
+            *c = QObject::connect(w, &QQuickWindow::frameSwapped, &app, [c] {
+                startMark("erster Rahmen gezeichnet");
+                QObject::disconnect(*c);
+                delete c;
+            });
+        }
+        auto* cm = new QMetaObject::Connection;
+        *cm = QObject::connect(&mediaModel, &QAbstractItemModel::rowsInserted, &app,
+                               [cm](const QModelIndex&, int, int) {
+            startMark("erste Kachel im Modell");
+            QObject::disconnect(*cm);
+            delete cm;
+        });
+        QObject::connect(&app, &QGuiApplication::aboutToQuit, &app, [] {
+            startMark("Beenden beginnt (aboutToQuit)");
+        });
+    }
 
     // ── Laufzeit-Guard: Scene-Graph-Fehler (GPU-Wechsel/Device-Lost) ──────────
     // Ohne verbundenen Slot beendet Qt die App bei einem NICHT behebbaren
@@ -364,13 +444,25 @@ int main(int argc, char* argv[]) {
     //   (b) beim regulären Beenden (aboutToQuit, VOR dem Teardown)
     // löschen - ein WebEngine-Schließen-Crash oder ein per kill beendeter
     // Hänger kann dann nie wieder Software erzwingen.
+    //  `MG_AUTOQUIT=<ms>` beendet die App von selbst - damit laesst sich das
+    //  SCHLIESSEN messen (bis dahin gab es keinen Weg, an einen sauberen
+    //  Abbau heranzukommen, ohne von Hand zu klicken). Nur mit `MG_STARTLOG`
+    //  sinnvoll; standardmaessig aus.
+    if (const int autoQuit = qEnvironmentVariableIntValue("MG_AUTOQUIT"); autoQuit > 0)
+        QTimer::singleShot(autoQuit, &app, [] {
+            startMark("Beenden angefordert");
+            QGuiApplication::quit();
+        });
+
     QTimer::singleShot(4000, &app, [] { RhiProber::markCleanShutdown(); });
     QObject::connect(&app, &QGuiApplication::aboutToQuit,
                      &app, [] { RhiProber::markCleanShutdown(); });
 
     const int ret = app.exec();
+    startMark("Ereignisschleife verlassen");
 
     // Fallback für Exit-Pfade ohne aboutToQuit.
     RhiProber::markCleanShutdown();
+    startMark("main verlassen (Abbau folgt)");
     return ret;
 }

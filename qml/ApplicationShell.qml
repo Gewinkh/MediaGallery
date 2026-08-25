@@ -314,7 +314,10 @@ ApplicationWindow {
             MenuSeparator {}
             MenuItem {
                 text: App.uiText(App.language, "MenuTileSize")
-                onTriggered: tileSizeDialog.openDialog()
+                onTriggered: {
+                    tileSizeLoader.active = true
+                    tileSizeLoader.item.openDialog()
+                }
             }
             MenuSeparator {}
             //  Immersives Vollbild (F): betrifft das FENSTER, nicht die Datei -
@@ -332,9 +335,19 @@ ApplicationWindow {
                 text: App.paneCount > 1 ? App.uiText(App.language, "MenuUnsplitWindow")
                                         : App.uiText(App.language, "MenuSplitWindow")
                 onTriggered: {
-                    if (App.paneCount > 1) App.closePane(1)
+                    if (App.paneCount > 1) paneArea.unsplit()
                     else                   App.addPane()
                 }
+            }
+            //  Hälften tauschen. Der GRIFF dafür ist die Leiste der Hälfte -
+            //  die ist aber weg, sobald dort eine Datei offen ist (die Kachel
+            //  bringt ihre eigene Kopfzeile mit). Ohne diesen Eintrag ließen
+            //  sich zwei Hälften mit geöffneten Dateien überhaupt nicht mehr
+            //  tauschen (Nutzerbefund).
+            MenuItem {
+                text: App.uiText(App.language, "MenuSwapPanes")
+                enabled: App.paneCount > 1
+                onTriggered: App.swapPanes()
             }
         }
 
@@ -365,9 +378,31 @@ ApplicationWindow {
     //  darin zeigen `mediaModel`, `galleryModel` und `Tags` auf ihre Objekte.
     Item {
         id: paneArea
+        objectName: "paneArea"      // Griff für tests/bench (Regel 31)
         anchors.fill: parent
 
         readonly property bool split: App.paneCount > 1
+
+        //  Zeigt die Hälfte i gerade ihre Galerie, ist dort also KEINE Datei
+        //  offen? (`itemAt` liefert den `PaneHost`, dessen `item` die Galerie.)
+        function _paneEmpty(i) {
+            const h = paneRepeater.itemAt(i)
+            return !(h && h.item) || h.item.galleryActive
+        }
+        //  Teilung aufheben: eine Hälfte MUSS weichen - aber nie die, in der
+        //  etwas offen ist, solange die andere leer ist. Vorher stand hier fest
+        //  `closePane(1)`; damit verschwand die geöffnete Datei der rechten
+        //  Hälfte, obwohl links nur die Galerie stand (Nutzerbefund), und wer
+        //  rechts arbeitete, schloss mit dem Eintrag seine EIGENE Hälfte.
+        function unsplit() {
+            const focused = Math.max(0, App.focusedPaneIndex)
+            const other   = (focused === 0) ? 1 : 0
+            //  Regel: es geht die unfokussierte Hälfte - es sei denn, die
+            //  fokussierte ist leer und die andere nicht. Dann geht die leere,
+            //  und es geht nichts verloren.
+            if (_paneEmpty(focused) && !_paneEmpty(other)) App.closePane(focused)
+            else                                          App.closePane(other)
+        }
         readonly property real dividerW: 6
         //  Breite der linken Hälfte aus dem gespeicherten Verhältnis.
         readonly property real leftW: split
@@ -377,13 +412,18 @@ ApplicationWindow {
 
         Repeater {
             id: paneRepeater
-            model: App.panes
+            //  **Modell, NICHT `App.panes`**: ueber eine Liste baut ein
+            //  `Repeater` bei jeder Aenderung ALLE Delegates neu - die zweite
+            //  Haelfte aufzumachen zerstoerte damit die erste samt der dort
+            //  geoeffneten Datei, das Schliessen ebenso (gemessen). Das Modell
+            //  meldet Einfuegen/Entfernen/Verschieben punktgenau.
+            model: App.panesModel
             delegate: PaneHost {
                 id: paneHost
                 required property int index
-                required property var modelData
+                required property var paneObject
 
-                pane: paneHost.modelData
+                pane: paneHost.paneObject
                 source: "qrc:/qml/gallery/GalleryPane.qml"
                 y: 0
                 height: paneArea.height
@@ -393,7 +433,24 @@ ApplicationWindow {
                        : Math.max(0, paneArea.width - paneArea.leftW - paneArea.dividerW)
 
                 onLoadFailed: function(err) { console.warn("Hälfte nicht ladbar:", err) }
-                onItemChanged: if (paneHost.index === 0) shell.firstPaneItem = paneHost.item
+
+                //  Das Element der ERSTEN Hälfte für die Menüknöpfe oben.
+                //  **Muss eine Bindung sein, keine Zuweisung in `onItemChanged`:**
+                //  Wird die linke Hälfte geschlossen, rutscht die rechte auf
+                //  Platz 0, OHNE dass ihr `item` sich ändert - `onItemChanged`
+                //  feuerte dann nie, und `firstPaneItem` blieb auf dem gerade
+                //  zerstörten Element stehen (also null). Die Knöpfe „Datei"
+                //  und „Ordner" oben waren damit für den Rest der Sitzung tot
+                //  (gemessen, `tests/bench/bench_shell.cpp`).
+                //  `RestoreNone`: die weichende Hälfte darf den Wert beim
+                //  Abschalten nicht auf ihren alten Stand zurückdrehen.
+                Binding {
+                    target: shell
+                    property: "firstPaneItem"
+                    value: paneHost.item
+                    when: paneHost.index === 0
+                    restoreMode: Binding.RestoreNone
+                }
 
                 //  Zustand hinein …
                 Binding { target: paneHost.item; property: "splitActive"; value: paneArea.split
@@ -859,19 +916,30 @@ ApplicationWindow {
     //  Ordners und Namenspflicht (requireName) - die Ausgabe landet im
     //  aktuellen Ordner, deshalb hostet die Shell den Dialog (sie kennt
     //  Overlay und Statuszeile).
-    PdfPageSelectDialog {
-        id: globalExtractDlg
-        anchors.fill: parent
-        requireName: true
-        titleText: App.uiText(App.language, "ExtractGlobalTitle")
-        defaultName: ""
-        onExtractRequested: (items, name) => {
-            shell._extractPending = true
-            shell._extractName    = name
-            // items = [{path,page}] in Auswahlreihenfolge (Werkbank) bzw.
-            // Originalreihenfolge (kompakt) -> extractOrdered erhält die Reihenfolge.
-            PdfExtract.extractOrdered(items, shell._extractTarget(), name)
+    //  Erst beim Öffnen erzeugt (Muster `settingsLoader` unten): der Dialog ist
+    //  mit Abstand die größte Komponente der Shell, wird aber nur gebraucht,
+    //  wenn jemand wirklich Seiten aus den PDFs des Ordners zieht. Eager
+    //  erzeugt kostete er gemessen einen guten Teil der Startzeit.
+    Component {
+        id: globalExtractComponent
+        PdfPageSelectDialog {
+            requireName: true
+            titleText: App.uiText(App.language, "ExtractGlobalTitle")
+            defaultName: ""
+            onExtractRequested: (items, name) => {
+                shell._extractPending = true
+                shell._extractName    = name
+                // items = [{path,page}] in Auswahlreihenfolge (Werkbank) bzw.
+                // Originalreihenfolge (kompakt) -> extractOrdered erhält die Reihenfolge.
+                PdfExtract.extractOrdered(items, shell._extractTarget(), name)
+            }
         }
+    }
+    Loader {
+        id: globalExtractLoader
+        anchors.fill: parent
+        active: false
+        sourceComponent: globalExtractComponent
     }
 
     Connections {
@@ -884,7 +952,8 @@ ApplicationWindow {
                 statusClearTimer.restart()
                 return
             }
-            globalExtractDlg.openWith(files)
+            globalExtractLoader.active = true
+            globalExtractLoader.item.openWith(files)
         }
         function onExtractProgress(done, total) {
             if (!shell._extractPending) return
@@ -968,16 +1037,29 @@ ApplicationWindow {
     // ── Lesezeichen anlegen/bearbeiten (geteilt mit SettingsBookmarksTab) ──────
 
     // ── Kachelgrößen-Dialog (Phase 4) ─────────────────────────────────────────
-    TileSizeDialog { id: tileSizeDialog }
+    //  Ebenfalls erst beim Öffnen - er erscheint über einen Menüeintrag.
+    Component { id: tileSizeComponent; TileSizeDialog {} }
+    Loader {
+        id: tileSizeLoader
+        active: false
+        sourceComponent: tileSizeComponent
+    }
 
     //  „Welche Tonspur?" - erscheint nur, wenn die Datei mehr als eine hat.
     //  Er gehört der SHELL: `Audio` ist ein Singleton, je Hälfte gehostet
     //  gingen bei zwei Hälften zwei Fenster gleichzeitig auf.
-    AudioTrackDialog { id: audioTrackDialog }
+    //  Erscheint nur, wenn eine Datei mehr als eine Tonspur hat - also selten.
+    Component { id: audioTrackComponent; AudioTrackDialog {} }
+    Loader {
+        id: audioTrackLoader
+        active: false
+        sourceComponent: audioTrackComponent
+    }
     Connections {
         target: Audio
         function onTrackChoiceNeeded(source, tracks) {
-            audioTrackDialog.openFor(source, tracks)
+            audioTrackLoader.active = true
+            audioTrackLoader.item.openFor(source, tracks)
         }
     }
 

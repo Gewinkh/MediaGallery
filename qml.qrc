@@ -15,6 +15,8 @@
         <file>qml/viewer/VideoSurface.qml</file>
         <file>qml/viewer/TextSurface.qml</file>
         <file>qml/viewer/HtmlSurface.qml</file>
+        <file>qml/viewer/HtmlHost.qml</file>
+        <file>qml/viewer/ViewerNote.qml</file>
         <file>qml/viewer/MetadataDateEditor.qml</file>
         <file>qml/pdf/PdfSurface.qml</file>
         <file>qml/pdf/PdfEditBox.qml</file>

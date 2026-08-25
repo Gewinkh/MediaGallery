@@ -127,14 +127,14 @@ The `tests/` directory is not included in the published repository. If it is mis
 ## Changelog
 
 ### Latest
-- Improved media playback and audio extraction
-- Improved memory usage and performance for images, thumbnails, DOCX, and large searches
-- Improved seeking and scrubbing for audio and video
-- Added support for extracting audio from MKV, WEBM, MKA, and additional codecs
-- Added audio track selection and embedded cover art support
-- Added gapless audio playback and improved player metadata
-- Improved DOCX preview, page numbering, typing performance, and PDF export
-- Improved file date handling and recursive search performance
+- Improved split-pane handling, swapping, and document preservation
+- Improved startup time and memory usage with on-demand loading
+- Fixed undo/redo behavior for file operations
+- Improved tagging and category performance
+- Added permanent OCR text layers for searchable scanned PDFs
+- Improved PDF page editing, extraction, and selection performance
+- Removed unnecessary OCR controls and PDF sidecar files
+- Improved OCR performance by keeping the language model loaded
 
 ---
 

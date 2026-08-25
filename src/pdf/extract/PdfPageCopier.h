@@ -51,6 +51,8 @@
 #include <QVector>
 #include <QSizeF>
 
+#include <memory>
+
 class QIODevice;
 
 class PdfAssembler {
@@ -58,6 +60,7 @@ public:
     // out: geöffnetes, beschreibbares Gerät (typisch QSaveFile). Der Assembler
     // schreibt sequenziell und führt die Byte-Offsets selbst mit.
     explicit PdfAssembler(QIODevice* out);
+    ~PdfAssembler();
 
     // Schreibt den PDF-Header und reserviert Katalog (Obj 1) + Seitenbaum
     // (Obj 2). Genau einmal vor allen add*-Aufrufen aufrufen.
@@ -124,6 +127,17 @@ private:
     bool writeRaw(const QByteArray& bytes, QString* err);
     // Beginnt ein neues Objekt „<num> 0 obj“ und merkt den Offset. Liefert num.
     bool beginObject(int num, QString* err);
+
+    //  Geparste Quellen DIESES Laufs (Definition in der .cpp). Ein
+    //  Auswahlauftrag ruft `addSourcePages` je zusammenhängendem Block auf;
+    //  mischt der Nutzer Seiten mehrerer PDFs, trifft dieselbe Quelle immer
+    //  wieder. Der Zwischenspeicher hält je Quelle den Struktur-Parse UND die
+    //  Zuordnung Quell-Objektnummer -> neue Objektnummer, damit geteilte
+    //  Objekte (Schriften, Ressourcen) genau EINMAL in die Ausgabe wandern.
+    //  Gedeckelt (LRU); darüber hinaus fällt der Lauf auf das alte Verhalten
+    //  zurück - langsamer und größer, aber nie falsch.
+    struct SourceCache;
+    std::unique_ptr<SourceCache> m_sources;
 
     QIODevice*        m_out = nullptr;
     qint64            m_pos = 0;          // mitgeführter Schreib-Offset

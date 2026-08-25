@@ -107,6 +107,82 @@ but inert, and exotic field types may look plainer than in Acrobat.
 existing one (moving, recolouring, retyping).
 Why: tracking that would mean storing the state before every single change.
 
+**Page changes cannot be undone once you close the file.** Moving, rotating,
+removing or inserting pages is written into the PDF straight away; `Ctrl+Z`
+works only while the document is open.
+Why: deliberate (user's decision, 2026-08-23). The undo source is a temporary
+copy `<name>.mgorig` next to the file, and that copy is deleted when the
+document is closed - keeping it would mean a second full copy of every PDF you
+ever reordered lying next to it.
+Workaround / status: while the file is open, `Ctrl+Z` reaches back to the state
+it had when you opened it. If you need a safety net beyond that, copy the file
+first.
+
+**Typing into the page text is made permanent by a page change in the same
+session.** Text you typed with the *edit text* tool normally stays reversible
+through the sidecar; if you also moved, rotated or removed a page, it is baked
+into the file when you close it.
+Why: the reordered file is assembled from the edited text layer, so the typed
+characters are already in it - keeping the edit as a pending change too would
+apply it a second time. Notes, drawings, highlights and redactions are not
+affected: they are drawn only on export and stay reversible either way.
+
+**Mixing pages from more than eight PDFs in one extraction makes the result
+larger and slower to write.**
+Why: while writing, the assembler keeps the parsed structure and the object map
+of at most eight sources, so shared objects (fonts, resources) of those go into
+the output exactly once. Beyond that the least recently used source is dropped;
+when it comes up again it is parsed anew and its shared objects are written a
+second time. Measured with two sources at 150 interleaved pages: 3.3 ms and
+268 KB inside the cap, 86.2 ms and 1177 KB without it.
+Workaround / status: nothing to do - the result is always correct, only bigger.
+The cap keeps memory bounded while a job runs.
+
+**A scanned page has no text until you make the document searchable.**
+Selecting text, the document search, line snapping and the *Replace text*
+prefill all read the PDF's own text layer - a scan has none.
+Why: deliberate. The app no longer keeps a per-page recognition in memory;
+instead *Document -> Make document searchable* writes the words into the file
+once, and everything then works through the normal path.
+Workaround / status: run that action once per scanned document.
+
+**Making a document searchable takes about a second per page, and it is not
+faster on more cores.**
+Why: measured on A4 at 200 dpi - 49 ms to render, ~810 ms for Tesseract's LSTM
+recognition. Recognising pages in parallel was built and measured: 16 pages went
+from 13.4 s to 12.1 s with two threads (+10 %) and got *slower* again with four,
+while peak memory rose from 241 MB to 427 MB. The threads demonstrably ran at the
+same time, yet each page took 2.8 s instead of 0.87 s - the work is bound by
+memory bandwidth, not by CPU, and switching off Tesseract's own OpenMP changed
+nothing. So it stays serial: memory is the higher priority here.
+Workaround / status: it reports progress per page and can be cancelled.
+
+**The invisible text layer is written in Latin script only.** Words containing
+characters outside WinAnsi/Latin-1 - Arabic, Japanese, Cyrillic - are skipped,
+and the app says how many were.
+Why: those need a CID font with a `/ToUnicode` map in the file; writing one
+correctly is a separate piece of work. Skipping is the honest option - a wrong
+byte would make the search find the wrong word.
+
+**OCR mistakes become part of the file.** If a word is read wrongly, that is what
+the search will find from then on, and correcting it means redoing the document.
+Why: inherent to every OCR PDF. Measured on a clean 32-page test scan, 30 of the
+32 pages returned the searched word.
+
+**On a scanned page, blacking out cannot remove words**, because there are no
+words in the file - only pixels in an image. A text layer does not change that:
+it tells the app where a word sits, but the pixels underneath stay.
+Workaround / status: cover the spot and export with rasterising, so the covered
+pixels are gone from the output.
+
+**Selecting text on a page rotated by 90 or 180 degrees loses the last
+character.**
+Why: `QPdfDocument::getSelection` behaves that way in Qt 6.11 - measured with
+ordinary, visible text that has nothing to do with this app's OCR; the same file
+reports the full text through `getSelectionAtIndex`, and the character positions
+are correct. Reproduce it with `bench_rotselect`.
+Workaround / status: drag a little past the word, or select the whole page.
+
 ---
 
 ## Audio player
@@ -306,6 +382,19 @@ what it still cannot do stays behind in the sections above.
   on a *folder tile* in the other half already works (it is copied there); what is
   missing is dropping it into that half's open folder, and moving instead of
   copying.
+- **Spell checking for Japanese** - there is no Hunspell dictionary for it, and
+  the approach does not fit: Japanese does not separate words by spaces, while
+  Hunspell checks word by word. It would need a different engine altogether (a
+  morphological analyser such as MeCab, which first has to split the sentence
+  into words), i.e. a new dependency plus its own dictionary and a second
+  checking path next to Hunspell - a separate piece of work, not started. Arabic, by contrast, only needs the `hunspell-ar` dictionary
+  installed - no code change.
+- **An IDE-style text editor**: the text view has no syntax colouring at all -
+  Markdown, C++, Python and the rest are shown as plain text - it sits in an
+  inset box rather than filling the view, and its colours cannot be set
+  separately from the theme. Wanted (user, 2026-08-24) with Kate as the model;
+  the working note with the current state and the open decisions is in
+  `NEXT.md` ▸ 4.
 - **Writing tags** (changing title or artist of an audio file) - reading is solid,
   writing is deliberately not built: one wrong byte damages the file.
 

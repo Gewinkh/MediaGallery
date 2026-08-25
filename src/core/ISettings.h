@@ -179,12 +179,6 @@ public:
     virtual bool pdfEditPanelTop() const = 0;
     virtual void setPdfEditPanelTop(bool v) = 0;
 
-    // PDF-Editor: Seiten hinzufügen/entfernen (Aufgabe 3). false (Standard) =
-    // nicht-destruktiv (Änderungen im Sidecar, wirken erst beim Export); true =
-    // destruktiv (Original-PDF wird bei jeder Änderung sofort neu geschrieben).
-    virtual bool pdfPageEditDestructive() const = 0;
-    virtual void setPdfPageEditDestructive(bool v) = 0;
-
     // PDF-Editor: Verhalten des EINEN Export-Knopfes. true (Standard) =
     // verlustfrei bevorzugen - „Text ersetzen"-Änderungen werden direkt in die
     // eingebettete Textebene geschrieben, die Seite bleibt vektoriell

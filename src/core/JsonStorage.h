@@ -1,5 +1,6 @@
 #pragma once
 #include <QObject>
+#include <QTimer>
 #include <QString>
 #include <QVector>
 #include <QHash>
@@ -17,11 +18,34 @@ class JsonStorage : public QObject {
     Q_OBJECT
 public:
     explicit JsonStorage(QObject* parent = nullptr);
+    ~JsonStorage() override;
 
     // Load/save for a folder
     void loadFolder(const QString& folderPath);
+    //  Schreibt SOFORT nach `folderPath` (expliziter Speicherbefehl).
     void saveFolder(const QString& folderPath);
+    //  SAMMELND: merkt nur, dass zu schreiben ist, und tut es am Ende des
+    //  laufenden Ereignisdurchlaufs EINMAL.
+    //
+    //  Warum: Jede einzelne Mutation rief das hier - jede Tag-Zuordnung, jede
+    //  Kategorie-Änderung -, und jeder Aufruf serialisiert und schreibt die
+    //  GANZE Ordner-JSON. Gemessen bei 2000 Dateien: 6,3 ms je Aufruf, also
+    //  91 % der Kosten einer Zuordnung. 100 Dateien auf einen Tag zu ziehen
+    //  kostete damit ~0,7 s, und es wuchs mit dem Ordner (§0-Priorität 2).
+    //  Zusammengefasst wird nur, was im SELBEN Durchlauf anfällt - länger
+    //  liegen bleibt nie etwas.
     void saveCurrentFolder();
+    //  Schaltet das Sammeln ein. Bewusst standardmäßig AUS: gesammelt wird nur
+    //  der Sidecar des OFFENEN Ordners (`MediaModel` schaltet ihn frei). Die
+    //  Sidecars aufgeklappter UNTERordner schreiben weiter sofort durch - sie
+    //  werden je Zuordnung genau einmal angefasst (nichts zu sammeln), und ein
+    //  anderer Leser desselben Ordners muss den neuen Stand sehen, ohne von
+    //  unserem Timer zu wissen.
+    void setDeferredSaves(bool on) { m_deferSaves = on; }
+    //  Ausstehenden Schreibvorgang sofort ausführen. Wird bei jedem
+    //  Ordnerwechsel, beim Beenden und vor jedem Lesen von der Platte gerufen -
+    //  wer die Datei anfasst, sieht immer den aktuellen Stand.
+    void flushPendingSave();
 
     // Per-file metadata (displayName is NOT persisted - derived from filename)
     QStringList getTags(const QString& fileName) const;
@@ -60,6 +84,10 @@ public:
 
 private:
     QString m_folderPath;
+    //  Sammelndes Speichern (s. saveCurrentFolder).
+    QTimer  m_saveTimer;
+    bool    m_savePending = false;
+    bool    m_deferSaves  = false;
     QString m_jsonPath;
 
     struct FileMeta {

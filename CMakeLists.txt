@@ -33,7 +33,7 @@ if(MG_SANITIZE)
     if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
         add_compile_options(-fsanitize=address,undefined -fno-omit-frame-pointer -g)
         add_link_options(-fsanitize=address,undefined)
-        message(STATUS "Sanitizer aktiv (address,undefined) — NICHT für Auslieferung")
+        message(STATUS "Sanitizer aktiv (address,undefined) - NICHT für Auslieferung")
     else()
         message(WARNING "MG_SANITIZE ignoriert: nur GCC/Clang unterstützt")
     endif()
@@ -59,7 +59,7 @@ find_package(ZLIB)
 find_package(PkgConfig QUIET)
 if(PkgConfig_FOUND)
     pkg_check_modules(TESSERACT IMPORTED_TARGET tesseract lept)
-    #  Rechtschreibprüfung — OPTIONAL, wie ZLIB und Tesseract: fehlt sie, bleibt
+    #  Rechtschreibprüfung - OPTIONAL, wie ZLIB und Tesseract: fehlt sie, bleibt
     #  die Prüfung aus und die Oberfläche sagt warum.
     pkg_check_modules(HUNSPELL IMPORTED_TARGET hunspell)
 endif()
@@ -110,14 +110,14 @@ mg_domain(mg_core
         Qt6::Core Qt6::Gui Qt6::Quick
 )
 
-#  Der Shim ist die EINZIGE Stelle im Baum, die zlib.h einbindet — alle
+#  Der Shim ist die EINZIGE Stelle im Baum, die zlib.h einbindet - alle
 #  Domänen erben ihn über mg_core (PUBLIC), keine braucht ZLIB::ZLIB selbst.
 if(ZLIB_FOUND)
     target_link_libraries(mg_core PUBLIC ZLIB::ZLIB)
     target_compile_definitions(mg_core PUBLIC MG_HAVE_ZLIB)
-    message(STATUS "ZLIB gefunden (${ZLIB_VERSION_STRING}) — DOCX verfügbar")
+    message(STATUS "ZLIB gefunden (${ZLIB_VERSION_STRING}) - DOCX verfügbar")
 else()
-    message(STATUS "ZLIB fehlt — Qt-Fallback aktiv, DOCX deaktiviert (PDF vollständig)")
+    message(STATUS "ZLIB fehlt - Qt-Fallback aktiv, DOCX deaktiviert (PDF vollständig)")
 endif()
 
 mg_domain(mg_tags
@@ -195,6 +195,8 @@ mg_domain(mg_pdfedit
         src/pdf/edit/PdfEditController.h
         src/pdf/edit/PdfContentEditor.cpp
         src/pdf/edit/PdfContentEditor.h
+        src/pdf/edit/PdfOcrLayer.cpp
+        src/pdf/edit/PdfOcrLayer.h
         src/pdf/edit/PdfEncodings.cpp
         src/pdf/edit/PdfEncodings.h
         src/pdf/edit/PdfObjects.cpp
@@ -218,7 +220,10 @@ mg_domain(mg_pdfedit
         src/pdf/edit/PdfFontEmbed.cpp
         src/pdf/edit/PdfFontEmbed.h
     LIBS
-        mg_core mg_pdfextract Qt6::Pdf
+        #  `mg_pdf` wegen `mg::ocr`: „Dokument durchsuchbar machen" erkennt die
+        #  Seiten und schreibt die Textebene - Erkennung wohnt in mg_pdf, das
+        #  Schreiben hier. Kein Zyklus: mg_pdf kennt mg_pdfedit nicht.
+        mg_core mg_pdf mg_pdfextract Qt6::Pdf
 )
 
 #  Zwei Quellen dürfen NICHT in eine Sammel-Übersetzungseinheit (Unity-Build):
@@ -248,7 +253,7 @@ mg_domain(mg_pdf
 )
 
 #  Audio-Wiedergabe mit Equalizer (README ▸ Planned). Eigene Kette, weil
-#  QMediaPlayer seine Samples nicht herausgibt — s. src/audio/AudioEqualizer.h.
+#  QMediaPlayer seine Samples nicht herausgibt - s. src/audio/AudioEqualizer.h.
 mg_domain(mg_audio
     SOURCES
         src/audio/Xoshiro.h
@@ -297,6 +302,8 @@ mg_domain(mg_app
         src/app/PaneController.h
         src/app/PaneHost.cpp
         src/app/PaneHost.h
+        src/app/PaneListModel.cpp
+        src/app/PaneListModel.h
         src/app/ViewerController.cpp
         src/app/ViewerController.h
         src/app/WebEngineController.cpp

@@ -58,6 +58,12 @@ Item {
     //  schaltet das Öffnen um: ein Doppelklick SPIELT, statt die Vollbild-
     //  Ansicht zu öffnen. Die Leiste erscheint erst, wenn wirklich etwas läuft.
     property bool playerMode: false
+
+    //  Zustand des Tags/Kategorien-Panels. Er liegt HIER und nicht im Panel,
+    //  weil das Panel erst entsteht, wenn einer der beiden Abschnitte an ist
+    //  (s. `catPanelLoader`) - vorher gäbe es niemanden, der ihn hielte.
+    property bool tagsSectionOn: false
+    property bool catsSectionOn: false
     //  Der Filterzustand VOR dem Umschalten - beim Verlassen kommt er zurück.
     property var  _savedFilter: null
 
@@ -705,7 +711,12 @@ Item {
             //  gehört die Taste dem Text (dieselbe Prüfung wie die Pfeiltasten
             //  der Galerie, deshalb ihre Funktion und keine zweite Kopie).
             Shortcut {
-                sequence: StandardKey.Undo; enabled: pane._keysLive
+                //  `sequences` (Mehrzahl), nicht `sequence`: eine StandardKey
+                //  steht auf Linux fuer MEHRERE Tastenfolgen - `Redo` etwa fuer
+                //  Strg+Umschalt+Z UND Strg+Y. Mit der Einzahl griff nur eine
+                //  davon, und Qt meldete das beim Start („Only binding to one of
+                //  multiple key bindings").
+                sequences: [ StandardKey.Undo ]; enabled: pane._keysLive
                 onActivated: {
                     if (galleryView._editableTextFocused()) return
                     const name = mediaModel.undoFileOpName()
@@ -715,7 +726,7 @@ Item {
                 }
             }
             Shortcut {
-                sequence: StandardKey.Redo; enabled: pane._keysLive
+                sequences: [ StandardKey.Redo ]; enabled: pane._keysLive
                 onActivated: {
                     if (galleryView._editableTextFocused()) return
                     const name = mediaModel.redoFileOpName()
@@ -758,10 +769,10 @@ Item {
                 // Panel-Steuerung: Tag- und Kategorie-Abschnitt des Seitenpanels
                 // INDIVIDUELL schaltbar; der Zustand lebt im TagCategoryPanel und
                 // wird hier für die Aktiv-Anzeige der Toggle-Zeilen gespiegelt.
-                tagPanelVisible: catPanel.showTagsSection
-                categoryPanelVisible: catPanel.showCategoriesSection
-                onTagPanelToggled:      catPanel.showTagsSection      = !catPanel.showTagsSection
-                onCategoryPanelToggled: catPanel.showCategoriesSection = !catPanel.showCategoriesSection
+                tagPanelVisible: pane.tagsSectionOn
+                categoryPanelVisible: pane.catsSectionOn
+                onTagPanelToggled:      pane.tagsSectionOn = !pane.tagsSectionOn
+                onCategoryPanelToggled: pane.catsSectionOn = !pane.catsSectionOn
                 // „Extrahieren": Ordner asynchron nach PDFs durchsuchen; das
                 // Ergebnis öffnet unten (onFolderPdfsReady) den Auswahldialog.
                 // Das Flag grenzt uns gegen Scans anderer Aufrufer ab (Singleton).
@@ -783,7 +794,7 @@ Item {
                 optionsVisible: PaneCtl.optionsVisible
                 anchors {
                     left: parent.left
-                    right: catPanel.visible ? catPanel.left : parent.right
+                    right: catPanelLoader.active ? catPanelLoader.left : parent.right
                     top: filterBar.bottom
                     bottom: addBanner.visible ? addBanner.top
                             : (modeBanner.visible ? modeBanner.top : parent.bottom)
@@ -849,21 +860,46 @@ Item {
                 }
             }
 
-            TagCategoryPanel {
-                id: catPanel
-                //  Die Tags/Kategorien DIESER Hälfte - `Tags` wäre appweit und
-                //  folgte dem Mauszeiger (s. TagCategoryPanel ▸ tagsCtl).
-                tagsCtl: PaneCtl.tags
-                folderSource: PaneCtl
-                // Beide Abschnitte starten ausgeblendet; das Panel erscheint,
-                // sobald mindestens einer aktiviert wird (Filter ▸ Tags & Kategorien).
-                showTagsSection: false
-                showCategoriesSection: false
-                visible: showTagsSection || showCategoriesSection
+            //  ── Tags/Kategorien-Panel: erst bauen, wenn es gebraucht wird ──
+            //  Beide Abschnitte starten ausgeblendet - das Panel war also bei
+            //  JEDEM Start da, ohne je sichtbar zu sein. Gemessen kostete das
+            //  165 der 218 ms, die das Aufbauen der Oberfläche insgesamt
+            //  brauchte (§0-Priorität 2 und 4). Der ZUSTAND liegt deshalb jetzt
+            //  hier in der Hälfte, nicht im Panel: er muss auch dann gelten,
+            //  wenn es das Panel (noch) gar nicht gibt.
+            Loader {
+                id: catPanelLoader
+                active: pane.tagsSectionOn || pane.catsSectionOn
+                visible: active
                 width: Math.min(300, galleryPage.width * 0.45)
                 anchors { right: parent.right; top: filterBar.bottom; bottom: parent.bottom }
-                onEnterAddToTagMode: function(tag) { galleryView.enterAddToTagMode(tag) }
-                onEnterGroupMode: function(tag) { galleryView.enterGroupMode(tag) }
+                //  **`source` (URL), NICHT `sourceComponent`**: eine inline
+                //  hingeschriebene Komponente zwingt QML, die Datei samt ihren
+                //  Abhängigkeiten schon beim Übersetzen der Hälfte zu laden -
+                //  gemessen brachte der Loader so exakt NICHTS (216 ms wie
+                //  vorher). Erst mit der URL wird die Datei wirklich erst beim
+                //  Einschalten gelesen: 216 -> 56 ms.
+                source: active ? "qrc:/qml/tags/TagCategoryPanel.qml" : ""
+                onLoaded: {
+                    //  Die Tags/Kategorien DIESER Hälfte - `Tags` wäre appweit
+                    //  und folgte dem Mauszeiger (s. TagCategoryPanel ▸ tagsCtl).
+                    item.tagsCtl = PaneCtl.tags
+                    item.folderSource = PaneCtl
+                }
+                Binding {
+                    target: catPanelLoader.item; when: catPanelLoader.item !== null
+                    property: "showTagsSection"; value: pane.tagsSectionOn
+                }
+                Binding {
+                    target: catPanelLoader.item; when: catPanelLoader.item !== null
+                    property: "showCategoriesSection"; value: pane.catsSectionOn
+                }
+                Connections {
+                    target: catPanelLoader.item
+                    ignoreUnknownSignals: true
+                    function onEnterAddToTagMode(tag) { galleryView.enterAddToTagMode(tag) }
+                    function onEnterGroupMode(tag)    { galleryView.enterGroupMode(tag) }
+                }
             }
 
             // ── Hinzufügen-Modus-Banner (Datei zur geteilten Ansicht wählen) ─

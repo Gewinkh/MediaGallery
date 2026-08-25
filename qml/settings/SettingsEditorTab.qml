@@ -114,7 +114,6 @@ Item {
                 //  (Die übrigen SettingsGroups haben je nur ein Auswahlpaar
                 //  und brauchen das daher nicht.)
                 ButtonGroup { id: panelPosGroup }
-                ButtonGroup { id: pageEditGroup }
                 ButtonGroup { id: exportModeGroup }
 
                 // Position der Text-Eigenschaften: rechte Seitenleiste (Standard)
@@ -154,43 +153,24 @@ Item {
                     }
                 }
 
-                // Seiten hinzufügen/entfernen (Aufgabe 3): nicht-destruktiv
-                // (Änderungen wirken beim Export, Original bleibt) vs. destruktiv
-                // (Original-PDF wird sofort neu geschrieben; einmalige .mgorig-
-                // Sicherung). PdfEdit.pageEditDestructive ist persistiert.
+                // Seiten hinzufügen/entfernen: Die Änderung wirkt SOFORT in der
+                // PDF (s. PdfEditController::bakeWorking); es gibt dafür keinen
+                // Modus mehr. Der Hinweistext sagt, was das bedeutet.
                 Label {
                     text: App.uiText(App.language, "SettingsPdfPageEditLabel")
                     color: App.themeTextPrimary
                     font.pixelSize: 13
                     topPadding: 6
                 }
-                RadioButton {
-                    id: pageEditSafe
-                    ButtonGroup.group: pageEditGroup
-                    text: App.uiText(App.language, "PdfPageEditNonDestructive")
-                    checked: !PdfEdit.pageEditDestructive
-                    onToggled: if (checked) PdfEdit.pageEditDestructive = false
-                    contentItem: Text {
-                        text: pageEditSafe.text
-                        color: App.themeTextPrimary
-                        leftPadding: pageEditSafe.indicator.width + 6
-                        verticalAlignment: Text.AlignVCenter
-                        wrapMode: Text.WordWrap
-                    }
-                }
-                RadioButton {
-                    id: pageEditDestr
-                    ButtonGroup.group: pageEditGroup
-                    text: App.uiText(App.language, "PdfPageEditDestructiveMode")
-                    checked: PdfEdit.pageEditDestructive
-                    onToggled: if (checked) PdfEdit.pageEditDestructive = true
-                    contentItem: Text {
-                        text: pageEditDestr.text
-                        color: App.themeTextPrimary
-                        leftPadding: pageEditDestr.indicator.width + 6
-                        verticalAlignment: Text.AlignVCenter
-                        wrapMode: Text.WordWrap
-                    }
+                Label {
+                    text: App.uiText(App.language, "SettingsPdfPageEditHint")
+                    //  themeTextMuted - die Hinweisfarbe aller übrigen
+                    //  Erklärtexte. Ohne Einzug: der Text hing früher unter
+                    //  einem Auswahlring, den es hier nicht mehr gibt.
+                    color: App.themeTextMuted
+                    font.pixelSize: 11
+                    wrapMode: Text.WordWrap
+                    Layout.fillWidth: true
                 }
                 // Export-Modus: steuert den EINEN „Export"-Knopf des PDF-Editors.
                 // Früher gab es dafür zwei Knöpfe nebeneinander - die Wahl ist
@@ -256,20 +236,6 @@ Item {
                 }
                 Label {
                     text: App.uiText(App.language, "SettingsPdfExportHint")
-                    color: App.themeTextMuted
-                    font.pixelSize: 11
-                    leftPadding: 26
-                    wrapMode: Text.WordWrap
-                    Layout.fillWidth: true
-                }
-
-                Label {
-                    text: App.uiText(App.language, "SettingsPdfPageEditHint")
-                    //  themeTextMuted - die Hinweisfarbe aller übrigen
-                    //  Erklärtexte (s. DOCX-Gruppe unten). Hier stand
-                    //  `themeTextSecondary`: die Property gibt es in
-                    //  AppController NICHT, die Bindung lieferte `undefined`
-                    //  und der Text wurde schwarz gerendert.
                     color: App.themeTextMuted
                     font.pixelSize: 11
                     leftPadding: 26

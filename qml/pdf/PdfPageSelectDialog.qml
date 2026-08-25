@@ -54,7 +54,15 @@ Item {
     // ── Auswahlmodell (gemeinsam) ──────────────────────────────────────────────
     ListModel { id: barModel }             // gewählte Seiten in Reihenfolge
     property var  _inSel: ({})             // "fileIdx:page" -> true
+    //  Gewählte Seiten JE DATEI, fortlaufend mitgezählt. Ohne diesen Zähler
+    //  musste `_selCountFor` die ganze Datei durchzählen - und weil der Zähler
+    //  in der linken Liste an `_selRev` hängt, geschah das bei JEDER einzelnen
+    //  Auswahl erneut: „ganzes PDF wählen" wurde damit quadratisch.
+    property var  _selCounts: ({})         // fileIdx -> Anzahl
     property int  _selRev: 0               // Binding-Refresh (Kachel-Optik)
+    //  >0 = Sammelvorgang läuft; die Bindungen werden EINMAL am Ende
+    //  aufgefrischt statt je Seite (Regel: `dataChanged` statt Reset).
+    property int  _selBatch: 0
     property int  _activeFileIdx: 0        // links gewähltes PDF (rechtes Raster)
 
     // ── Strg-Großvorschau ──────────────────────────────────────────────────────
@@ -70,6 +78,8 @@ Item {
         files = fileList || []
         barModel.clear()
         _inSel = ({})
+        _selCounts = ({})
+        _selBatch = 0
         _selRev++
         _activeFileIdx = (activeIdx > 0 && activeIdx < files.length) ? activeIdx : 0
         _clearHover()
@@ -77,6 +87,11 @@ Item {
     }
 
     function _key(fileIdx, page) { return fileIdx + ":" + page }
+    //  Bindungs-Auffrischung: während eines Sammelvorgangs unterdrückt, danach
+    //  genau einmal.
+    function _touchSel()  { if (_selBatch === 0) _selRev++ }
+    function _beginBatch() { _selBatch++ }
+    function _endBatch()   { if (--_selBatch <= 0) { _selBatch = 0; _selRev++ } }
     function _isSelected(fileIdx, page) {
         void _selRev
         return _inSel[_key(fileIdx, page)] === true
@@ -90,19 +105,21 @@ Item {
         var k = _key(fileIdx, page)
         if (_inSel[k]) return
         _inSel[k] = true
+        _selCounts[fileIdx] = (_selCounts[fileIdx] || 0) + 1
         barModel.append({ path: files[fileIdx].path, page: page,
                           fileIdx: fileIdx, fileName: _fileName(fileIdx) })
-        _selRev++
+        _touchSel()
     }
     function _removeSel(fileIdx, page) {
         var k = _key(fileIdx, page)
         if (!_inSel[k]) return
         delete _inSel[k]
+        _selCounts[fileIdx] = Math.max(0, (_selCounts[fileIdx] || 0) - 1)
         for (var i = 0; i < barModel.count; i++) {
             var it = barModel.get(i)
             if (it.fileIdx === fileIdx && it.page === page) { barModel.remove(i, 1); break }
         }
-        _selRev++
+        _touchSel()
     }
     function _toggleSel(fileIdx, page) {
         if (_isSelected(fileIdx, page)) _removeSel(fileIdx, page)
@@ -112,26 +129,36 @@ Item {
     function _addWholePdf(fileIdx) {
         var f = files[fileIdx]
         if (!f) return
+        _beginBatch()
         for (var p = 0; p < f.pageCount; p++) _addSel(fileIdx, p)
+        _endBatch()
     }
+    //  Rückwärts EINMAL durch die Leiste statt je Seite von vorn zu suchen -
+    //  aus n Durchläufen über die Leiste wird einer.
     function _removeWholePdf(fileIdx) {
         var f = files[fileIdx]
         if (!f) return
-        for (var p = 0; p < f.pageCount; p++) _removeSel(fileIdx, p)
+        _beginBatch()
+        for (var i = barModel.count - 1; i >= 0; i--) {
+            var it = barModel.get(i)
+            if (it.fileIdx !== fileIdx) continue
+            delete _inSel[_key(fileIdx, it.page)]
+            barModel.remove(i, 1)
+        }
+        _selCounts[fileIdx] = 0
+        _endBatch()
     }
-    // Zählt die gewählten Seiten eines PDFs (für „N/M" und Voll-Zustand links).
+    // Gewählte Seiten eines PDFs (für „N/M" und Voll-Zustand links) - der Wert
+    // wird beim Wählen/Abwählen fortgeschrieben, hier nur nachgeschlagen.
     function _selCountFor(fileIdx) {
         void _selRev
-        var f = files[fileIdx]
-        if (!f) return 0
-        var c = 0
-        for (var p = 0; p < f.pageCount; p++) if (_inSel[_key(fileIdx, p)]) c++
-        return c
+        return _selCounts[fileIdx] || 0
     }
     function _removeBarAt(idx) {
         if (idx < 0 || idx >= barModel.count) return
         var it = barModel.get(idx)
         delete _inSel[_key(it.fileIdx, it.page)]
+        _selCounts[it.fileIdx] = Math.max(0, (_selCounts[it.fileIdx] || 0) - 1)
         barModel.remove(idx, 1)
         _selRev++
     }

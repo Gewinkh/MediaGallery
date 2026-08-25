@@ -48,7 +48,6 @@
 #include <QList>
 #include <QHash>
 
-#include "pdf/OcrEngine.h"      // mg::OcrLine (für OCR-Cache/Signaturen)
 
 class QPdfDocument;
 class QPdfSearchModel;
@@ -60,10 +59,6 @@ class PdfTextController : public QObject {
     Q_PROPERTY(bool ready READ isReady NOTIFY readyChanged)
     // Zuletzt markierter Text (für die Aktivierung der Kopier-Aktion in QML).
     Q_PROPERTY(QString selectedText READ selectedText NOTIFY selectedTextChanged)
-    // OCR verfügbar (Tesseract einkompiliert + Sprachdatei vorhanden)?
-    Q_PROPERTY(bool ocrAvailable READ ocrAvailable CONSTANT)
-    // Läuft gerade eine (asynchrone) OCR-Erkennung?
-    Q_PROPERTY(bool ocrBusy READ ocrBusy NOTIFY ocrBusyChanged)
     // ── Suche im Dokument ─────────────────────────────────────────────────────
     //  Anzahl der Treffer der laufenden/letzten Suche.
     Q_PROPERTY(int  searchCount READ searchCount NOTIFY searchChanged)
@@ -77,8 +72,6 @@ public:
 
     bool    isReady() const { return m_doc != nullptr; }
     QString selectedText() const { return m_selText; }
-    bool    ocrAvailable() const;
-    bool    ocrBusy() const { return m_ocrBusy; }
     int     searchCount() const { return m_hits.size(); }
     bool    searching() const { return m_searchPage >= 0; }
     QString searchTerm() const { return m_searchTerm; }
@@ -130,16 +123,11 @@ public:
     Q_INVOKABLE QVariantMap replaceProbe(int page, double nx0, double ny0,
                                          double nx1, double ny1);
 
-    // ── OCR (gescannte PDFs) ──────────────────────────────────────────────────
-    //  Erkennt die Textzeilen der Seite ASYNCHRON (eigener 1-Thread-Pool,
-    //  transiente QPdfDocument-Instanz zum Rendern -> GUI-Thread bleibt frei).
-    //  Nach Erfolg liegen die Zeilen im Cache und `textLineRects`/`replaceProbe`/
-    //  die Textauswahl nutzen sie automatisch, als hätte die Seite eine
-    //  eingebettete Textebene. Signal `ocrReady(page,lineCount)`. No-op ohne
-    //  Tesseract oder wenn die Seite bereits eine eingebettete Textebene hat.
-    Q_INVOKABLE void ocrPage(int page);
-    //  true, wenn für die Seite bereits OCR-Zeilen im Cache liegen.
-    Q_INVOKABLE bool hasOcr(int page) const;
+    //  Datei NEU einlesen, obwohl der Pfad derselbe blieb. `prepare` ist
+    //  bewusst idempotent und täte hier nichts - nötig ist das, wenn die Datei
+    //  SELBST umgeschrieben wurde: Seitenoperationen und „Dokument durchsuchbar
+    //  machen" ändern sie unter gleichem Namen.
+    Q_INVOKABLE void reload();
 
     // Kopiert den zuletzt markierten Text in die System-Zwischenablage.
     Q_INVOKABLE void copyToClipboard();
@@ -154,7 +142,7 @@ public:
     //  (die Anzeige zeichnet sie wie eine Auswahl).
     Q_INVOKABLE QVariantList searchHitsOnPage(int page) const;
     //  EIN Treffer für die Ergebnisliste/Navigation:
-    //  { page, x, y, w, h, before, after, ocr }.
+    //  { page, x, y, w, h, before, after }.
     Q_INVOKABLE QVariantMap searchHit(int index) const;
 
     // ── Intern (vom Worker-Thread per QueuedConnection aufgerufen) ────────────
@@ -162,14 +150,9 @@ public:
     //  dem GUI-Thread entgegen. NICHT direkt aus QML aufrufen.
     void adoptDocument(QPdfDocument* doc, const QString& localPath, int generation);
 
-    //  OCR-Ergebnis auf dem GUI-Thread übernehmen (vom Worker). NICHT aus QML.
-    void adoptOcr(int page, const QList<mg::OcrLine>& lines, int generation);
-
 signals:
     void readyChanged();
     void selectedTextChanged();
-    void ocrBusyChanged();
-    void ocrReady(int page, int lineCount);
     //  Suchzustand geändert (neue Treffer, Fortschritt, Ende).
     void searchChanged();
 
@@ -178,12 +161,6 @@ private:
     // Text. pageSize ist die Seitengroesse in Punkten (zum Normalisieren).
     QVariantList applySelection(const QPdfSelection& sel, int page,
                                 double pageWidthPts, double pageHeightPts);
-
-    // OCR-Textauswahl (gescannte Seiten): liefert die Highlight-Rechtecke der
-    // OCR-Zeilen, die `dragPts` (in Punkten) schneiden - bzw. ALLE bei
-    // selectAll - und merkt deren Text. Zeilengranular (OCR liefert Zeilen).
-    QVariantList ocrSelection(int page, const QRectF& dragPts,
-                              double pageWidthPts, double pageHeightPts, bool selectAll);
 
     // Erkannte Textzeilen einer Seite in PDF-PUNKTEN (gemeinsamer Kern von
     // textLineRects und replaceProbe): Fragment-Rechtecke aus getAllText()
@@ -200,13 +177,6 @@ private:
 
     QString       m_selText;         // zuletzt markierter Text
 
-    // ── OCR ───────────────────────────────────────────────────────────────────
-    //  Eigener 1-Thread-Pool (blockiert nicht die Dokumentladung); Cache je Seite
-    //  (erkannte Zeilen in PDF-Punkten + Text); Generationszahl verwirft veraltete
-    //  Läufe (Pfadwechsel/Freigabe).
-    QThreadPool   m_ocrPool;
-    QHash<int, QList<mg::OcrLine>> m_ocrCache;
-
     // ── Suche ────────────────────────────────────────────────────────────────
     //  EIN Treffer. `rect` steht in PDF-Punkten mit Ursprung oben-links -
     //  genau so liefert QPdfSearchModel sie (gemessen), also dieselbe
@@ -221,7 +191,6 @@ private:
         QList<QRectF>   rects;      // alle Teilstücke DIESER Fundstelle
         QString         before;
         QString         after;
-        bool            ocr = false;  // aus der OCR-Zeile, nicht aus der Textebene
 
         //  Umschließendes Rechteck - für das Anspringen (▲/▼).
         QRectF bounds() const {
@@ -245,9 +214,4 @@ private:
     QPdfDocument*      m_searchedDoc = nullptr;
     QTimer             m_searchTimer;
     void stepSearch();
-    //  Treffer der OCR-Zeilen einer Seite (nur wo es OCR gibt): die ZEILE ist
-    //  der Treffer - feiner geht es nicht, OCR liefert keine Zeichenlagen.
-    void appendOcrHits(int page);
-    int           m_ocrGen  = 0;
-    bool          m_ocrBusy = false;
 };

@@ -136,6 +136,11 @@ FocusScope {
     readonly property var _trackCtl: ((root.type === 3 || root.type === 0) && surface.item
                                       && surface.item.editCtl !== undefined)
                                      ? surface.item.editCtl : null
+    //  NUR der PDF-Editor - `_trackCtl` gilt auch fuer Bilder, und die kennen
+    //  „durchsuchbar machen" nicht.
+    readonly property var _pdfCtl: (root.type === 3 && surface.item
+                                    && surface.item.editCtl !== undefined)
+                                   ? surface.item.editCtl : null
     readonly property bool _pdfReady: root._loaded && surface.item !== null && surface.item.docReady === true
     // Ein PDF wird gerade geladen: deckt Öffnen-Animation (Typ aus _startType),
     // Dokument-Parsing (Typ aus root.type) UND Blättern zur nächsten PDF ab.
@@ -354,18 +359,37 @@ FocusScope {
         id: surface
         anchors.fill: parent
         active: root._loaded
-        sourceComponent: {
+        //  **URL statt Typname** - der entscheidende Unterschied fuer den Start:
+        //  ein Typname (`PdfSurface {}`) zwingt QML, die Datei schon beim
+        //  UEBERSETZEN dieser Datei zu laden, und damit bei jedem App-Start alle
+        //  Flaechen samt ihren Kindern. Gemessen kostete das rund 100 ms, obwohl
+        //  beim Start keine einzige Flaeche gebraucht wird. Ueber die URL wird
+        //  genau die eine Datei geladen, die der Nutzer wirklich oeffnet.
+        //  (Derselbe Kunstgriff wie bisher schon bei HtmlSurface - jetzt fuer
+        //  alle. Deshalb sind auch die zwei Hinweistexte eigene Dateien:
+        //  ein Loader kann `source` und `sourceComponent` nicht mischen.)
+        source: {
             switch (root.type) {
-            case 0:  return imageComponent
-            case 1:  return (App.videoPlayback === "external") ? externalNote : videoComponent
-            case 2:  return videoComponent      // Audio: VideoSurface mit Audio-Out
-            case 3:  return pdfComponent
-            case 4:  return root._showWebPreview ? htmlComponent : textComponent
-            case 5:  return docxComponent       // Word-Dokumente (DOCX-Editor)
-            default: return unsupportedNote
+            case 0:  return "qrc:/qml/image/ImageSurface.qml"
+            case 1:  return (App.videoPlayback === "external")
+                            ? "qrc:/qml/viewer/ViewerNote.qml"
+                            : "qrc:/qml/viewer/VideoSurface.qml"
+            case 2:  return "qrc:/qml/viewer/VideoSurface.qml"   // Audio: VideoSurface mit Audio-Out
+            case 3:  return "qrc:/qml/pdf/PdfSurface.qml"
+            case 4:  return root._showWebPreview ? "qrc:/qml/viewer/HtmlHost.qml"
+                                                 : "qrc:/qml/viewer/TextSurface.qml"
+            case 5:  return "qrc:/qml/docx/DocxSurface.qml"      // Word-Dokumente (DOCX-Editor)
+            default: return "qrc:/qml/viewer/ViewerNote.qml"
             }
         }
-        onItemChanged: if (item && item.hasOwnProperty("source")) item.source = root.path
+        onItemChanged: {
+            if (!item) return
+            //  Der Hinweistext braucht seine Art (extern geoeffnet vs. kein
+            //  Betrachter) - beide Faelle teilen sich EINE Datei.
+            if (item.hasOwnProperty("kind"))
+                item.kind = (root.type === 1) ? "external" : "unsupported"
+            if (item.hasOwnProperty("source")) item.source = root.path
+        }
     }
 
     // ── Surface-Chrome unterhalb der globalen Leisten halten (kein Overlap) ────
@@ -394,80 +418,10 @@ FocusScope {
         restoreMode: Binding.RestoreNone
     }
 
-    // ── Bild (Viewer + dezentraler Bild-Editor) ───────────────────────────────
-    Component { id: imageComponent; ImageSurface {} }
-
-    // ── Video / Audio ───────────────────────────────────────────────────────
-    Component { id: videoComponent; VideoSurface {} }
-
-    // ── PDF ───────────────────────────────────────────────────────────────────
-    Component { id: pdfComponent; PdfSurface {} }
-
-    // ── Text ──────────────────────────────────────────────────────────────────
-    Component { id: textComponent; TextSurface {} }
-
-    // ── DOCX (dezentraler Editor je Kachel) ───────────────────────────────────
-    Component { id: docxComponent; DocxSurface {} }
-
-    // ── HTML (gerenderte Vorschau über WebEngine) ─────────────────────────────
-    //  Indirektion statt direkter HtmlSurface-Instanz: HtmlSurface.qml wird per
-    //  URL-Loader erst zur LAUFZEIT kompiliert - der QtWebEngine-Import (und
-    //  damit die WebEngineView) wird also niemals angefasst, solange WebEngine
-    //  nicht Ready ist. Der innere Loader ist hart auf WebEngine.ready gegated.
-    Component {
-        id: htmlComponent
-        Item {
-            id: htmlHost
-            property string source: ""
-            property real   topInset: 0
-            property real   bottomInset: 0
-            function release() {
-                if (htmlInner.item && htmlInner.item.release)
-                    htmlInner.item.release()
-            }
-            Loader {
-                id: htmlInner
-                anchors.fill: parent
-                // Harte Garantie: ohne Ready wird HtmlSurface (und damit die
-                // WebEngineView) nie erzeugt - dieser Zweig wird ohnehin nur
-                // bei _showWebPreview (inkl. WebEngine.ready) gewählt.
-                source: WebEngine.ready ? "qrc:/qml/viewer/HtmlSurface.qml" : ""
-            }
-            // Properties an die geladene HtmlSurface durchreichen (reaktiv).
-            Binding { target: htmlInner.item; property: "source";      value: htmlHost.source
-                      when: htmlInner.item !== null; restoreMode: Binding.RestoreNone }
-            Binding { target: htmlInner.item; property: "topInset";    value: htmlHost.topInset
-                      when: htmlInner.item !== null; restoreMode: Binding.RestoreNone }
-            Binding { target: htmlInner.item; property: "bottomInset"; value: htmlHost.bottomInset
-                      when: htmlInner.item !== null; restoreMode: Binding.RestoreNone }
-        }
-    }
-
-    // ── Hinweise ────────────────────────────────────────────────────────────
-    Component {
-        id: externalNote
-        Item {
-            property string source: ""
-            function release() {}
-            Text {
-                anchors.centerIn: parent
-                text: App.uiText(App.language, "ViewerOpenedExternal")
-                color: "#c8dbd5"; font.pixelSize: 16
-            }
-        }
-    }
-    Component {
-        id: unsupportedNote
-        Item {
-            property string source: ""
-            function release() {}
-            Text {
-                anchors.centerIn: parent
-                text: App.uiText(App.language, "ViewerNoRenderer")
-                color: "#888"; font.pixelSize: 15
-            }
-        }
-    }
+    //  Die Flaechen selbst stehen NICHT mehr als Typnamen hier: der
+    //  `surface`-Loader oben waehlt sie ueber eine URL (s. dort). Frueher
+    //  standen an dieser Stelle sechs `Component { XxxSurface {} }` - genau die
+    //  zwangen QML, samtliche Flaechen bei jedem Start mitzuuebersetzen.
 
     // ── Obere Leiste: Zurück / Name / Datum / Tags ────────────────────────────
     Rectangle {
@@ -730,6 +684,22 @@ FocusScope {
                             visible: root.type === 5
                             label: App.uiText(App.language, "DocxPdfNumberStyleHead")
                             onActivated: root._openDocPopup(pageStylePopup, this)
+                        }
+
+                        //  ── Gescannte PDF dauerhaft durchsuchbar machen ───
+                        //  Erkennt die Seiten OHNE Textebene und schreibt die
+                        //  Wörter unsichtbar IN die Datei. Danach findet sie
+                        //  jeder Leser - deshalb steht das hier und nicht als
+                        //  Knopf in der Werkzeugpalette: es ist eine Sache des
+                        //  DOKUMENTS, nicht des gerade gewählten Werkzeugs.
+                        MenuItem {
+                            visible: root._pdfCtl !== null && root._pdfCtl.ocrAvailable
+                            height: visible ? implicitHeight : 0
+                            enabled: root._pdfCtl !== null
+                                     && !root._pdfCtl.searchableBusy
+                                     && !root._pdfCtl.alreadySearchable
+                            text: App.uiText(App.language, "PdfSearchableMenu")
+                            onTriggered: root._pdfCtl.makeSearchable()
                         }
 
                         MenuSeparator { }

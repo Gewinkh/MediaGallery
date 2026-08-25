@@ -108,7 +108,7 @@ private:
 
     // Seiten hinzufügen/entfernen (Aufgabe 3): destruktiv (Original-PDF sofort
     // neu schreiben) vs. nicht-destruktiv (Plan im Sidecar, wirkt beim Export).
-    Q_PROPERTY(bool pageEditDestructive READ pageEditDestructive WRITE setPageEditDestructive NOTIFY pageEditDestructiveChanged)
+
 
     // Verhalten des EINEN Export-Knopfes (Einstellungen -> Editor -> PDF-Editor).
     // true (Standard) = verlustfrei bevorzugen (Textebene bearbeiten, Seite
@@ -250,9 +250,6 @@ public:
     bool hasClipboard() const { return m_hasClip; }
     bool panelOnTop() const;
     void setPanelOnTop(bool v);
-
-    bool pageEditDestructive() const;
-    void setPageEditDestructive(bool v);
 
     bool exportLossless() const;
     void setExportLossless(bool v);
@@ -402,6 +399,26 @@ public:
     //  über die UNVERÄNDERTEN Seiten läuft (die .pdf auf Platte trägt derweil
     //  die gebackene Struktur).
     Q_INVOKABLE QString renderSourcePath() const;
+
+    // ── Dokument durchsuchbar machen (gescannte PDFs) ─────────────────────────
+    //  Erkennt die Seiten OHNE eingebettete Textebene und schreibt die Wörter
+    //  als UNSICHTBARE Textebene in die Datei (`mg::PdfOcrLayer`). Danach
+    //  findet, markiert und kopiert JEDER Leser den Text - dauerhaft, nicht nur
+    //  in dieser Sitzung. Ohne Tesseract ein No-op (`ocrAvailable() == false`).
+    Q_PROPERTY(bool ocrAvailable READ ocrAvailable CONSTANT)
+    //  Läuft gerade ein Durchlauf? (QML sperrt damit den Menüpunkt.)
+    Q_PROPERTY(bool searchableBusy READ searchableBusy NOTIFY searchableBusyChanged)
+    //  Trägt die geöffnete Datei bereits eine von uns geschriebene Textebene?
+    Q_PROPERTY(bool alreadySearchable READ alreadySearchable NOTIFY documentRewritten)
+
+    bool ocrAvailable() const;
+    bool searchableBusy() const { return m_searchableBusy; }
+    bool alreadySearchable() const;
+    //  Startet den Lauf. Meldet `searchableFinished`; Fortschritt je Seite über
+    //  `searchableProgress`. Ein zweiter Aufruf während des Laufs tut nichts.
+    Q_INVOKABLE void makeSearchable();
+    //  Bricht einen laufenden Durchlauf ab (kooperativ).
+    Q_INVOKABLE void cancelSearchable();
     //  Intern (Kommando redo/undo) - NICHT aus QML rufen.
     void applyPlan(const QVector<PdfPlanPage>& plan);
 
@@ -555,6 +572,10 @@ public:
     void exportTaskFinished(bool ok, const QString& target,
                             const QString& error, int generation);
     void exportTaskProgress(int done, int total, int generation);
+    //  Rückweg von „Dokument durchsuchbar machen".
+    void searchableTaskProgress(int done, int total, int generation);
+    void searchableTaskFinished(bool ok, int pages, int words, int skipped,
+                                const QString& error, int generation);
     //  Ergebnis des Content-Stream-Editing-Workers: bei Erfolg fertig, sonst
     //  wird intern der Raster-Export gestartet (gleiche Generation).
     void contentEditTaskFinished(bool ok, const QString& target, int generation);
@@ -600,7 +621,6 @@ signals:
     void textEditingChanged();
     void clipboardChanged();
     void panelOnTopChanged();
-    void pageEditDestructiveChanged();
     void exportLosslessChanged();
     void exportAsAnnotationsChanged();
     void planChanged();
@@ -628,6 +648,13 @@ signals:
     void reflowOverflow();
     void exportFinished(bool ok, const QString& targetPath, const QString& errorText);
     void exportProgress(int done, int total);
+    //  „Durchsuchbar machen": Fortschritt je Seite und Ergebnis. `pages` =
+    //  Seiten, die eine Textebene bekommen haben, `words` = geschriebene
+    //  Wörter, `skipped` = Wörter, die an der Kodierung scheiterten.
+    void searchableProgress(int done, int total);
+    void searchableFinished(bool ok, int pages, int words, int skipped,
+                            const QString& errorText);
+    void searchableBusyChanged();
     void overlaySaved(bool ok);
     //  Formularfelder gelesen/verändert bzw. Puffer-Zustand geändert.
     void formFieldsChanged();
@@ -812,6 +839,19 @@ private:
     //  Frisch geladenen/erzeugten Plan mit Keys versehen (pristine Seite ->
     //  key = src, neue Seiten -> laufende Keys) und m_nextPageKey nachziehen.
     void assignPlanKeys();
+
+    // ── Dokument durchsuchbar machen ─────────────────────────────────────────
+    bool m_searchableBusy = false;
+    int  m_searchableGen  = 0;
+    std::shared_ptr<std::atomic<bool>> m_searchableCancel;
+
+    //  Beim SCHLIESSEN: Die Seitenoperationen stehen bereits in der PDF (s.
+    //  bakeWorking), der Plan hat damit seinen Zweck erfüllt. Er wird
+    //  „verbraucht": Notiz-Keys auf die neue Seitenfolge umgeschrieben, Plan
+    //  auf Identität zurückgesetzt, Sicherung und Begleitdatei entfernt. Danach
+    //  IST die PDF der Stand - es bleibt nichts daneben liegen, und beim
+    //  nächsten Öffnen kann kein Plan ein zweites Mal angewandt werden.
+    void consumePlan();
     static QString backupPath(const QString& pdfPath);   // <pdf>.mgorig (destruktiv)
     static QString previewPath(const QString& pdfPath);  // <pdf>.mgpreview.pdf (nicht-destr.)
     static QString assetPath(const QString& pdfPath);    // <pdf>.mgpages.pdf (Importe)

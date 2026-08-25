@@ -518,15 +518,6 @@ void AppSettings::setDocxPdfPageNumberStyle(int style) {
     m_settings.setValue("docx/pdfPageNumberStyle", qBound(0, style, 1));
 }
 
-bool AppSettings::pdfPageEditDestructive() const {
-    // Standard: false -> nicht-destruktiv (Seiten-Änderungen liegen im Sidecar
-    // und wirken erst beim Export; das Original-PDF bleibt unangetastet).
-    return m_settings.value("pdfedit/pageEditDestructive", false).toBool();
-}
-void AppSettings::setPdfPageEditDestructive(bool v) {
-    m_settings.setValue("pdfedit/pageEditDestructive", v);
-}
-
 bool AppSettings::pdfExportLossless() const {
     // Standard: true -> verlustfrei bevorzugen. Das ist der schonendere Weg
     // (Text bleibt durchsuchbar, Vektorgrafik/Schriften bleiben erhalten) und

@@ -362,47 +362,6 @@ Rectangle {
                               } }
                 }
 
-                // \u2500\u2500 OCR (gescannte PDFs): erkennt die Textzeilen der aktuellen
-                //    Seite, danach greifen Zeilenfang + \u201EText ersetzen"-Vorbef\u00FCllung
-                //    wie bei einer eingebetteten Textebene. Nur wenn Tesseract da ist.
-                Rectangle {
-                    id: ocrBtn
-                    //  Fehlt Tesseract, bleibt der Knopf SICHTBAR, wird aber
-                    //  ausgegraut \u2014 der Hover-Text sagt dann, was fehlt.
-                    readonly property bool ocrOn: panel.surface && panel.surface.textCtl
-                                                  && panel.surface.textCtl.ocrAvailable
-                    width: parent.width; height: 30; radius: 6
-                    visible: panel.surface && panel.surface.textCtl
-                    opacity: ocrOn ? 1.0 : 0.45
-                    color: (ocrOn && ocrHover.hovered) ? App.themeCard : "transparent"
-                    border.color: App.themeBorder; border.width: 1
-                    Row {
-                        anchors.centerIn: parent; spacing: 6
-                        BusyIndicator {
-                            width: 16; height: 16
-                            anchors.verticalCenter: parent.verticalCenter
-                            running: panel.surface && panel.surface.textCtl
-                                     && panel.surface.textCtl.ocrBusy
-                            visible: running
-                        }
-                        Text {
-                            text: App.uiText(App.language, "PdfOcrBtn")
-                            color: ocrBtn.ocrOn ? App.themeTextPrimary : App.themeTextMuted
-                            font.pixelSize: 12
-                            anchors.verticalCenter: parent.verticalCenter
-                        }
-                    }
-                    HoverHandler { id: ocrHover }
-                    TapHandler {
-                        enabled: ocrBtn.ocrOn
-                        onTapped: if (panel.surface) panel.surface.requestOcr()
-                    }
-                    ToolTip.visible: ocrHover.hovered
-                    ToolTip.delay: 500
-                    ToolTip.text: ocrBtn.ocrOn
-                                  ? App.uiText(App.language, "PdfOcrTip")
-                                  : App.uiText(App.language, "LibMissingTesseract")
-                }
 
                 Rectangle { width: parent.width; height: 1; color: App.themeBorder }
 
@@ -939,55 +898,6 @@ Rectangle {
                                       onBrowseRequested: if (panel.surface) panel.surface.pickStampImage()
                                   } }
                     }
-                }
-
-                // \u2500\u2500 OCR (gescannte PDFs). Ohne Tesseract ausgegraut statt weg \u2014
-                //    der Hover-Text nennt dann die fehlende Bibliothek.
-                //  Kein Beschriftungs-Ausgleich mehr nötig: seit die Gruppen im
-                //  Ribbon ohne Überschriften auskommen, sitzt jeder Knopf direkt
-                //  in der Zeile - und die zentriert senkrecht.
-                Rectangle {
-                    id: ocrRibBtn
-                    readonly property bool ocrOn: panel.surface && panel.surface.textCtl
-                                                  && panel.surface.textCtl.ocrAvailable
-                    visible: panel.surface && panel.surface.textCtl
-                    opacity: ocrOn ? 1.0 : 0.45
-                    width: ocrRibRow.implicitWidth + 16; height: 30; radius: 6
-                    color: (ocrOn && ocrRibHover.hovered) ? App.themeCard : "transparent"
-                    border.color: App.themeBorder; border.width: 1
-                    Row {
-                        id: ocrRibRow
-                        anchors.centerIn: parent; spacing: 6
-                        //  Symbol statt Glyphe (Regel 28).
-                        DrawnIcon {
-                            anchors.verticalCenter: parent.verticalCenter
-                            name: "search"; size: 14
-                            color: ocrRibBtn.ocrOn ? App.themeTextPrimary : App.themeTextMuted
-                        }
-                        BusyIndicator {
-                            width: 16; height: 16
-                            anchors.verticalCenter: parent.verticalCenter
-                            running: panel.surface && panel.surface.textCtl
-                                     && panel.surface.textCtl.ocrBusy
-                            visible: running
-                        }
-                        Text {
-                            text: App.uiText(App.language, "PdfOcrBtn")
-                            color: ocrRibBtn.ocrOn ? App.themeTextPrimary : App.themeTextMuted
-                            font.pixelSize: 12
-                            anchors.verticalCenter: parent.verticalCenter
-                        }
-                    }
-                    HoverHandler { id: ocrRibHover }
-                    TapHandler {
-                        enabled: ocrRibBtn.ocrOn
-                        onTapped: if (panel.surface) panel.surface.requestOcr()
-                    }
-                    ToolTip.visible: ocrRibHover.hovered
-                    ToolTip.delay: 500
-                    ToolTip.text: ocrRibBtn.ocrOn
-                                  ? App.uiText(App.language, "PdfOcrTip")
-                                  : App.uiText(App.language, "LibMissingTesseract")
                 }
 
                 Rectangle { width: 1; height: 34; color: App.themeBorder
