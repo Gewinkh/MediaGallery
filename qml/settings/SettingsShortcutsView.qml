@@ -42,7 +42,9 @@ Item {
             { de: "Vollbild ein-/ausschalten",     en: "Toggle fullscreen",           keys: ["F"] },
             { de: "Vorschau-Sperre umschalten",    en: "Toggle cover mode",           keys: ["B"] },
             { de: "Kachelgröße größer / kleiner",  en: "Tile size larger / smaller",  keys: ["Ctrl++", "Ctrl+-"] },
-            { de: "Vollbild öffnen",               en: "Open fullscreen",             keys: ["Doppelklick"] }
+            { de: "Vollbild öffnen",               en: "Open fullscreen",             keys: ["Doppelklick"] },
+            { de: "Dateiaktion rückgängig / wiederholen",
+              en: "Undo / redo a file operation", keys: ["Ctrl+Z", "Ctrl+Shift+Z", "Ctrl+Y"] }
         ] },
         { headerKey: "ShortcutCtxViewer", rows: [
             { de: "Nächste / vorherige Datei",     en: "Next / previous item",        keys: ["->", "<-"] },
@@ -60,13 +62,13 @@ Item {
             { de: "Notizen ein-/ausblenden",       en: "Toggle note visibility",      keys: ["Alt+Q"] },
             { de: "Ausgewählte Notiz löschen",     en: "Delete selected annotation",  keys: ["Entf"] },
             { de: "Notiz kopieren / einfügen",     en: "Copy / paste annotation",     keys: ["Ctrl+C", "Ctrl+V"] },
-            { de: "Rückgängig / Wiederholen",      en: "Undo / redo",                 keys: ["Ctrl+Z", "Ctrl+Shift+Z"] },
+            { de: "Rückgängig / Wiederholen",      en: "Undo / redo",                 keys: ["Ctrl+Z", "Ctrl+Shift+Z", "Ctrl+Y"] },
         ] },
         { headerKey: "ShortcutCtxImage", rows: [
             { de: "Notizen ein-/ausblenden",       en: "Toggle note visibility",      keys: ["Alt+Q"] },
             { de: "Ausgewählte Notiz löschen",     en: "Delete selected annotation",  keys: ["Entf"] },
             { de: "Notiz kopieren / einfügen",     en: "Copy / paste annotation",     keys: ["Ctrl+C", "Ctrl+V"] },
-            { de: "Rückgängig / Wiederholen",      en: "Undo / redo",                 keys: ["Ctrl+Z", "Ctrl+Shift+Z"] },
+            { de: "Rückgängig / Wiederholen",      en: "Undo / redo",                 keys: ["Ctrl+Z", "Ctrl+Shift+Z", "Ctrl+Y"] },
         ] },
         { headerKey: "ShortcutCtxDocx", rows: [
             { de: "Speichern",                     en: "Save",                        keys: ["Ctrl+S"] },
@@ -75,7 +77,7 @@ Item {
             { de: "Alles / kopieren / ausschneiden / einfügen",
               en: "Select all / copy / cut / paste", keys: ["Ctrl+A", "Ctrl+C", "Ctrl+X", "Ctrl+V"] },
             { de: "Zeilenumbruch im Absatz",       en: "Line break inside paragraph", keys: ["Shift+↵"] },
-            { de: "Rückgängig / Wiederholen",      en: "Undo / redo",                 keys: ["Ctrl+Z", "Ctrl+Shift+Z"] },
+            { de: "Rückgängig / Wiederholen",      en: "Undo / redo",                 keys: ["Ctrl+Z", "Ctrl+Shift+Z", "Ctrl+Y"] },
         ] },
         { headerKey: "ShortcutCtxText", rows: [
             { de: "Speichern",                     en: "Save",                        keys: ["Ctrl+S"] }

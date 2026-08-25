@@ -1055,6 +1055,13 @@ void MediaModel::reload() {
     rebuild(m_folder);
 }
 
+void MediaModel::dropScopeSidecars() {
+    if (m_scopeStorage.isEmpty()) return;
+    qDeleteAll(m_scopeStorage);         // bewusst OHNE saveCurrentFolder, s. Header
+    m_scopeStorage.clear();
+    reload();
+}
+
 // ─── QAbstractListModel ──────────────────────────────────────────────────────
 int MediaModel::rowCount(const QModelIndex& parent) const {
     return parent.isValid() ? 0 : m_items.size();

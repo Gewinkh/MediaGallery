@@ -451,8 +451,10 @@ Item {
         enabled: root.paneActive && root.docReady && root.editCtl.editMode && root.editCtl.canUndo
         onActivated: root.editCtl.undo()
     }
+    //  Strg+Y als zweite Folge (s. GalleryPane: das Plattform-Thema liefert sie
+    //  nicht in jeder Sitzung).
     Shortcut {
-        sequence: "Ctrl+Shift+Z"
+        sequences: [ "Ctrl+Shift+Z", "Ctrl+Y" ]
         enabled: root.paneActive && root.docReady && root.editCtl.editMode && root.editCtl.canRedo
         onActivated: root.editCtl.redo()
     }

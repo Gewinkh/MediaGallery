@@ -49,6 +49,8 @@ public:
     void setFileDropMove(bool v) override;
     bool showAllFiles() const override;
     void setShowAllFiles(bool v) override;
+    bool deleteTagsInSubfolders() const override;
+    void setDeleteTagsInSubfolders(bool v) override;
     QColor textPdfColor() const override;
     void   setTextPdfColor(const QColor& c) override;
 

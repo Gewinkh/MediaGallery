@@ -38,6 +38,31 @@ Item {
             }
         }
 
+        //  ── Wie weit reicht „Tag löschen"? ──────────────────────────────────
+        //  Jeder Ordner führt seine Verschlagwortung in einer eigenen Datei;
+        //  ohne diesen Schalter blieb ein gelöschter Tag in jedem Unterordner
+        //  stehen. Standard ist AN.
+        CheckBox {
+            id: subfolderBox
+            Layout.fillWidth: true
+            text: App.uiText(App.language, "SettingsTagDeleteSubfolders")
+            checked: App.deleteTagsInSubfolders
+            onToggled: App.deleteTagsInSubfolders = checked
+            contentItem: Text {
+                text: subfolderBox.text; color: App.themeTextPrimary
+                leftPadding: subfolderBox.indicator.width + 6
+                verticalAlignment: Text.AlignVCenter
+            }
+        }
+        Text {
+            Layout.fillWidth: true
+            Layout.leftMargin: 24
+            text: App.uiText(App.language, "SettingsTagDeleteSubfoldersHint")
+            color: App.themeTextMuted
+            font.pixelSize: 11
+            wrapMode: Text.WordWrap
+        }
+
         ScrollView {
             id: tagsScroll
             Layout.fillWidth: true

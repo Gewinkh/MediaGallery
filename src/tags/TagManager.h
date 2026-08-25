@@ -1,5 +1,6 @@
 #pragma once
 #include <QObject>
+#include <QThreadPool>
 #include <QTimer>
 #include <QString>
 #include <QColor>
@@ -23,7 +24,16 @@ public:
     QStringList tagsForFile(const QString& fileName) const;
 
     void createTag(const QString& name, const QColor& color); // create a global tag with a specific color
+    //  Löscht den Tag im OFFENEN Ordner (Registry, Datei-Zuordnungen, alle
+    //  Kategorien - auch die verschachtelten). Die Unterordner erledigt
+    //  `sweepSubfolders`, s. dort; `deleteTag` allein lässt sie unberührt.
     void deleteTag(const QString& tag);
+    //  Denselben Tag aus den Sidecars ALLER Ordner UNTERHALB von `rootFolder`
+    //  entfernen - im Hintergrund (Regel 8/16: ein tiefer Baum bedeutet viele
+    //  kleine Dateien). Bewusst über ALLE Unterordner, nicht nur die
+    //  aufgeklappten: sonst hinge das Ergebnis daran, was gerade sichtbar ist.
+    //  Meldet `subfolderSweepFinished(tag, geaenderteOrdner)` im GUI-Faden.
+    void sweepSubfolders(const QString& rootFolder, const QString& tag);
     void renameTag(const QString& oldName, const QString& newName);
 
     // ── Categories ────────────────────────────────────────────────────────────
@@ -75,6 +85,13 @@ signals:
     void tagsChanged();
     void tagColorChanged(const QString& tag, const QColor& color);
     void categoriesChanged();
+    //  Die Unterordner sind durch - `count` sagt, in wie vielen Ordnern
+    //  wirklich etwas geändert wurde (0 = der Tag kam dort nirgends vor).
+    void subfolderSweepFinished(const QString& tag, int count);
+    //  Ein Tag wurde im OFFENEN Ordner gelöscht. Wer die Unterordner mitziehen
+    //  will, hängt sich hier ein - der `TagManager` selbst kennt weder die
+    //  Einstellung dafür noch den Ordnerbaum (das weiß `PaneController`).
+    void tagDeleted(const QString& tag);
 
 private:
     //  SAMMELNDES Melden: `tagsChanged`/`categoriesChanged` lösen bei jedem
@@ -90,6 +107,10 @@ private:
     bool   m_catsDirty = false;
 
     JsonStorage* m_storage;
+    //  Eigener Pool fuer `sweepSubfolders` (Regel 8): EIN Faden genuegt - die
+    //  Arbeit ist Datei-I/O auf vielen kleinen JSONs, mehr Faeden brachten
+    //  beim OCR-Lauf nachweislich nichts als Speicher.
+    QThreadPool m_sweepPool;
 
     static TagCategory* findById(QList<TagCategory>& list, const QString& id);
     static const TagCategory* findById(const QList<TagCategory>& list, const QString& id);

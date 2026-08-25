@@ -399,6 +399,13 @@ public:
     //  über die UNVERÄNDERTEN Seiten läuft (die .pdf auf Platte trägt derweil
     //  die gebackene Struktur).
     Q_INVOKABLE QString renderSourcePath() const;
+    //  Welche Ansichts-Seite soll nach dem nächsten Neuladen zu sehen sein?
+    //  Die Seitenoperationen hinterlegen sie hier (eingefügte Seite, Ziel des
+    //  Verschiebens); die Anzeige holt sie EINMAL beim `documentRewritten` ab
+    //  und bekommt danach wieder −1. Ohne das sprang die Ansicht nach jeder
+    //  Operation an den Dokumentanfang. Bewusst kein Q_PROPERTY: der Wert wird
+    //  genau einmal gelesen und ist keine Bindungsquelle.
+    Q_INVOKABLE int  takeStructureFocus();
 
     // ── Dokument durchsuchbar machen (gescannte PDFs) ─────────────────────────
     //  Erkennt die Seiten OHNE eingebettete Textebene und schreibt die Wörter
@@ -856,6 +863,7 @@ private:
     static QString previewPath(const QString& pdfPath);  // <pdf>.mgpreview.pdf (nicht-destr.)
     static QString assetPath(const QString& pdfPath);    // <pdf>.mgpages.pdf (Importe)
     bool    m_editMode     = false;
+    int     m_structureFocus = -1;   // s. takeStructureFocus()
     int     m_tool         = Select;
     int     m_selectedId   = -1;
     int     m_selectionRev = 0;

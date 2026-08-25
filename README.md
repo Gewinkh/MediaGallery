@@ -127,14 +127,11 @@ The `tests/` directory is not included in the published repository. If it is mis
 ## Changelog
 
 ### Latest
-- Improved split-pane handling, swapping, and document preservation
-- Improved startup time and memory usage with on-demand loading
-- Fixed undo/redo behavior for file operations
-- Improved tagging and category performance
-- Added permanent OCR text layers for searchable scanned PDFs
-- Improved PDF page editing, extraction, and selection performance
-- Removed unnecessary OCR controls and PDF sidecar files
-- Improved OCR performance by keeping the language model loaded
+- Improved tag deletion - deleting a tag now also removes it from subfolders and nested categories
+- Improved redo support - Ctrl+Y now works consistently across the gallery, PDF editor, and image editor
+- Improved PDF page handling - page changes are reflected immediately, while the current page is preserved
+- Improved PDF messages - searchable PDFs now clearly report when no OCR is needed
+- Improved page rotation controls - simplified the menu and added drawn rotation icons
 
 ---
 

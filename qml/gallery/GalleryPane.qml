@@ -710,13 +710,19 @@ Item {
             //  Dokument. Und nicht, während jemand in einem Feld tippt - dort
             //  gehört die Taste dem Text (dieselbe Prüfung wie die Pfeiltasten
             //  der Galerie, deshalb ihre Funktion und keine zweite Kopie).
+            //  ── Tastenfolgen AUSGESCHRIEBEN, nicht ueber `StandardKey` ──────
+            //  `QKeySequence::keyBindings` geht ueber das Plattform-Thema, und
+            //  das antwortet je Sitzung anders. GEMESSEN auf diesem Rechner:
+            //      offscreen : Redo -> Ctrl+Y, Alt+Shift+Backspace, Ctrl+Shift+Z, Redo
+            //      Wayland   : Redo -> NUR Ctrl+Shift+Z
+            //  Unter Wayland war Strg+Y damit an gar nichts gebunden: die Taste
+            //  kam nachweislich in der App an (Mitschnitt `MG_KEYLOG`), es gab
+            //  nur nichts, was sie beansprucht haette. Jede Messung mit
+            //  `offscreen` zeigte das Gegenteil - deshalb steht hier jetzt, was
+            //  gelten SOLL, statt zu fragen, was der Desktop gerade meint.
+            //  `Ctrl` bleibt portabel: QKeySequence bildet es auf macOS auf Cmd ab.
             Shortcut {
-                //  `sequences` (Mehrzahl), nicht `sequence`: eine StandardKey
-                //  steht auf Linux fuer MEHRERE Tastenfolgen - `Redo` etwa fuer
-                //  Strg+Umschalt+Z UND Strg+Y. Mit der Einzahl griff nur eine
-                //  davon, und Qt meldete das beim Start („Only binding to one of
-                //  multiple key bindings").
-                sequences: [ StandardKey.Undo ]; enabled: pane._keysLive
+                sequences: [ "Ctrl+Z" ]; enabled: pane._keysLive
                 onActivated: {
                     if (galleryView._editableTextFocused()) return
                     const name = mediaModel.undoFileOpName()
@@ -726,7 +732,7 @@ Item {
                 }
             }
             Shortcut {
-                sequences: [ StandardKey.Redo ]; enabled: pane._keysLive
+                sequences: [ "Ctrl+Shift+Z", "Ctrl+Y" ]; enabled: pane._keysLive
                 onActivated: {
                     if (galleryView._editableTextFocused()) return
                     const name = mediaModel.redoFileOpName()

@@ -40,6 +40,12 @@ Item {
     property int    currentPage: 0
     property real   panX: 0                   // horizontaler Schwenk-Offset (Zoom-Pan)
     property int    _savePage: 0             // Resize: die stabile Seite sichern …
+    //  Läuft gerade ein Neuladen der Datei nach einer Seitenoperation? Solange
+    //  das gesetzt ist, darf der Ready-Melder die Ansicht NICHT an den Anfang
+    //  setzen - die Wiederherstellung bringt sie an die richtige Stelle.
+    property bool   _reloading: false
+    //  Zählt die Neuladevorgänge derselben Datei (s. _activateDoc).
+    property int    _fileRev: 0
     property int    _stablePage: 0           // zuletzt SICHER erkannte Seite (Quelle für _savePage)
     property real   _saveFrac: 0             // … samt Innerseiten-Scrollanteil (0..1)
     property real   _stableFrac: 0           // zuletzt sicher erkannter Innerseiten-Anteil
@@ -309,6 +315,12 @@ Item {
     function _activateDoc(localPath) {
         var key = root._localPath(localPath)
         var url = localPath.indexOf("file:") === 0 ? localPath : "file://" + localPath
+        //  Nach einer Seitenoperation liegt die NEUE Datei am SELBEN Pfad. Qt
+        //  erkennt am gleichen URL nichts Neues und zeigt weiter die alten
+        //  Seitenbilder (gemessen). Ein Zähler in der Abfrage macht die URL
+        //  eindeutig; `toLocalFile()` verwirft ihn wieder, geöffnet wird also
+        //  dieselbe Datei.
+        if (root._fileRev > 0) url += "?mgrev=" + root._fileRev
         var d = root._pool[key]
         if (!d) {
             d = _pdfDocFactory.createObject(root)
@@ -421,6 +433,13 @@ Item {
         target: root.doc
         function onStatusChanged() {
             if (root.doc && root.doc.status === PdfDocument.Ready) {
+                if (root._reloading) {
+                    //  Neuladen nach einer Seitenoperation: die Stelle bringt
+                    //  `restorePageTimer` zurück, hier NICHT an den Anfang.
+                    root._beginWarmup()
+                    root._ensurePlanInit()
+                    return
+                }
                 // Origin-bewusst an den Dokumentanfang (s. clampContentY).
                 pages.positionViewAtBeginning()
                 root.currentPage = 0
@@ -456,6 +475,17 @@ Item {
     function _reloadRenderDoc() {
         var p = root.editCtl.renderSourcePath()
         if (!p || p.length === 0) return
+
+        //  WO die Ansicht danach stehen soll: die Seitenoperation hinterlegt
+        //  ihre Zielseite (eingefügte Seite, Ziel des Verschiebens); sonst
+        //  bleibt der Blick, wo er war. Ohne das sprang die Ansicht bei jeder
+        //  Operation auf Seite 1.
+        var focus = root.editCtl.takeStructureFocus()
+        root._savePage = (focus >= 0) ? focus : root._stablePage
+        root._saveFrac = (focus >= 0) ? 0     : root._stableFrac
+        root._reloading = true
+        root._resizing  = true              // sperrt updateCurrentPage bis zum Restore
+
         var key = root._localPath(p)
         var old = root._pool[key]
         if (old) {
@@ -463,8 +493,13 @@ Item {
             var i = root._poolOrder.indexOf(key)
             if (i >= 0) root._poolOrder.splice(i, 1)
         }
+        //  Delegates JETZT wegwerfen und gleich neu bauen: die Datei liegt am
+        //  selben Pfad, die Bild-URL ändert sich also nicht - ein bestehendes
+        //  `PdfPageImage` liest sie deshalb nicht neu (gemessen).
+        root._fileRev++                     // neue URL -> Qt liest die Datei neu
         _activateDoc(p)                     // frisch laden (Pool-Eintrag entfernt)
         if (old && old !== root.doc) { old.source = ""; old.destroy() }
+        restorePageTimer.restart()
     }
 
     // Ergebnis des asynchronen Scans entgegennehmen - nur uebernehmen, wenn es
@@ -559,10 +594,15 @@ Item {
         }
         function onSearchableFinished(ok, pages, words, skipped, errorText) {
             if (!ok) {
-                root._toast(errorText === "notext"
-                            ? App.uiText(App.language, "PdfSearchableNoneToast")
-                            : App.uiText(App.language, "PdfSearchableFailedToast")
-                                  .arg(errorText))
+                //  DREI Faelle, nicht zwei: „schon durchsuchbar" ist kein
+                //  Fehlschlag, sondern nichts zu tun - vorher meldete auch
+                //  dieser Fall „Kein Text gefunden" (Nutzerbefund).
+                root._toast(errorText === "alreadytext"
+                            ? App.uiText(App.language, "PdfSearchableAlreadyToast")
+                            : errorText === "notext"
+                              ? App.uiText(App.language, "PdfSearchableNoneToast")
+                              : App.uiText(App.language, "PdfSearchableFailedToast")
+                                    .arg(errorText))
                 return
             }
             var msg = App.uiText(App.language, "PdfSearchableDoneToast")
@@ -973,8 +1013,11 @@ Item {
         enabled: root.paneActive && root.docReady && root.editCtl.editMode && !root.editCtl.textEditing
         onActivated: root.editCtl.undo()
     }
+    //  Strg+Y als zweite Folge - dieselbe Lehre wie in der Galerie: es gibt
+    //  Sitzungen, in denen das Plattform-Thema sie NICHT liefert, und dann ist
+    //  sie an nichts gebunden (gemessen unter Wayland).
     Shortcut {
-        sequence: "Ctrl+Shift+Z"
+        sequences: [ "Ctrl+Shift+Z", "Ctrl+Y" ]
         enabled: root.paneActive && root.docReady && root.editCtl.editMode && !root.editCtl.textEditing
         onActivated: root.editCtl.redo()
     }
@@ -1192,6 +1235,7 @@ Item {
             root.clampPanX()
             root._restoring = false
             root._resizing = false
+            root._reloading = false
         }
     }
 
@@ -3055,6 +3099,7 @@ Item {
     //  Ziel-Ordner = Ordner der Quelldatei (Controller), Ergebnis via Toast.
     ThemedMenu {
         id: pageCtxMenu
+        objectName: "pageCtxMenu"      // Griff für tests/bench (Regel 31)
         property int ctxPage: 0
 
         //  ── Entscheidung über EINE nachverfolgte Änderung ─────────────────────
@@ -3108,16 +3153,48 @@ Item {
         }
         // ── Seitenverwaltung (nur im Editmodus; Strg+Z macht alles rückgängig) ─
         MenuSeparator { visible: root.editCtl.editMode }
-        MenuItem {
+        //  Zweimal „Drehen" - die RICHTUNG sagt allein das Symbol daneben
+        //  (Festlegung des Nutzers). Der Stil gibt Menüeinträgen sonst nur
+        //  Text; diese beiden bekommen deshalb ein eigenes `contentItem`.
+        component RotateItem: MenuItem {
+            id: rotItem
+            property string iconName: ""
             visible: root.editCtl.editMode
             height: visible ? implicitHeight : 0
-            text: App.uiText(App.language, "PdfRotatePageLeft")
+            text: App.uiText(App.language, "PdfRotatePage")
+            //  KEIN `Row` und KEIN Bezug auf `rotIcon.height`: beides ließ die
+            //  Zeile leer bleiben (am Prüfstand gesehen - das Menü zeigte zwei
+            //  leere Zeilen). Die Höhe kommt deshalb aus dem Textmaß und der
+            //  festen Symbolgröße, nicht aus der Geometrie des Kindes.
+            contentItem: Item {
+                implicitWidth:  rotLbl.implicitWidth + 8 + 18
+                implicitHeight: Math.max(18, rotLbl.implicitHeight)
+                //  Das Symbol steht HINTER der Beschriftung (Festlegung des
+                //  Nutzers): erst liest man „Drehen", dann sieht man, wohin.
+                Text {
+                    id: rotLbl
+                    anchors.left: parent.left
+                    anchors.verticalCenter: parent.verticalCenter
+                    text: rotItem.text
+                    font: rotItem.font
+                    color: rotItem.enabled ? App.themeTextPrimary : App.themeTextMuted
+                }
+                DrawnIcon {
+                    anchors.left: rotLbl.right
+                    anchors.leftMargin: 8
+                    anchors.verticalCenter: parent.verticalCenter
+                    name: rotItem.iconName
+                    size: 18
+                    color: rotItem.enabled ? App.themeTextPrimary : App.themeTextMuted
+                }
+            }
+        }
+        RotateItem {
+            iconName: "rotate-left"
             onTriggered: root._rotatePage(pageCtxMenu.ctxPage, -90)
         }
-        MenuItem {
-            visible: root.editCtl.editMode
-            height: visible ? implicitHeight : 0
-            text: App.uiText(App.language, "PdfRotatePageRight")
+        RotateItem {
+            iconName: "rotate-right"
             onTriggered: root._rotatePage(pageCtxMenu.ctxPage, 90)
         }
         MenuItem {

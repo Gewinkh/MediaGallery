@@ -438,6 +438,12 @@ void AppController::endTileDrag() {
 bool AppController::fileDropMove() const { return m_settings.fileDropMove(); }
 
 bool AppController::showAllFiles() const { return m_settings.showAllFiles(); }
+bool AppController::deleteTagsInSubfolders() const { return m_settings.deleteTagsInSubfolders(); }
+void AppController::setDeleteTagsInSubfolders(bool v) {
+    if (m_settings.deleteTagsInSubfolders() == v) return;
+    m_settings.setDeleteTagsInSubfolders(v);
+    emit deleteTagsInSubfoldersChanged();
+}
 
 void AppController::setShowAllFiles(bool v) {
     if (m_settings.showAllFiles() == v) return;

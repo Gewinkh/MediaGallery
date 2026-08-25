@@ -42,6 +42,25 @@ PaneController::PaneController(ISettings& settings, ThumbnailLoader& loader,
     connect(&m_tags, &TagManager::tagsChanged,       this, &PaneController::tagsChanged);
     connect(&m_tags, &TagManager::categoriesChanged, this, &PaneController::categoriesChanged);
 
+    //  Tag gelöscht -> auf Wunsch auch aus allen UNTERordnern. Die Entscheidung
+    //  fällt hier, nicht im `TagManager`: der kennt weder die Einstellung noch
+    //  den geöffneten Ordner. Standard ist AN (s. `ISettings`).
+    connect(&m_tags, &TagManager::tagDeleted, this, [this](const QString& tag) {
+        if (!m_settings.deleteTagsInSubfolders()) return;
+        const QString folder = m_folders.currentFolder();
+        if (folder.isEmpty()) return;
+        m_tags.sweepSubfolders(folder, tag);
+    });
+    connect(&m_tags, &TagManager::subfolderSweepFinished, this,
+            [this](const QString& tag, int count) {
+        if (count <= 0) return;                 // nirgends vorgekommen - nichts zu melden
+        //  Die im Speicher gehaltenen Sidecars der aufgeklappten Unterordner
+        //  sind jetzt veraltet: wegwerfen und neu lesen.
+        m_media.dropScopeSidecars();
+        emit statusMessage(Strings::get(StringKey::TagDeletedInSubfolders)
+                               .arg(tag).arg(count));
+    });
+
     //  „Alle Dateien anzeigen": der Schalter lebt in den Einstellungen, die
     //  Regel im Modell - beim Umschalten liest es den Ordner neu.
     m_media.setShowAllFiles(m_settings.showAllFiles());

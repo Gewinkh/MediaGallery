@@ -15,6 +15,8 @@
 #include <QUrl>
 #include <QTimer>                    // verzögertes Löschen des RHI-Crash-Guards nach Start
 #include <QDebug>                    // Warnung bei Scene-Graph-Laufzeitfehlern
+#include <QKeyEvent>                 // Tasten-Mitschnitt (MG_KEYLOG, s. KeyLogger)
+#include <QShortcutEvent>
 
 #include "core/RhiProber.h"
 #include "core/FileBrowseModel.h"
@@ -76,6 +78,47 @@ void startMark(const char* what) {
     qInfo("[START] %-32s %6lld ms   RSS %7ld KB", what,
           static_cast<long long>(g_startClock.elapsed()), startRssKb());
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  Tasten-Mitschnitt (`MG_KEYLOG=1`)
+//
+//  Wenn ein Kürzel „nicht wirkt", gibt es genau zwei Möglichkeiten, und sie
+//  verlangen völlig verschiedene Antworten: entweder kommt die Taste gar nicht
+//  bei uns an (Eingabemethode, Fenstermanager, globales Kürzel des Desktops) -
+//  dann ist im Code nichts zu suchen -, oder sie kommt an und jemand im Baum
+//  nimmt sie vorher. Beides ist nur AM LAUFENDEN FENSTER zu unterscheiden, ein
+//  Prüfstand kann es nicht: der hat weder Eingabemethode noch Fenstermanager.
+//
+//  Deshalb ein Filter, der genau die drei Ereignisse mitschreibt, an denen sich
+//  das entscheidet - `ShortcutOverride` (wer beansprucht die Taste?),
+//  `KeyPress` (ist sie überhaupt angekommen?) und `Shortcut` (welche Aktion hat
+//  ausgelöst?). Standardmäßig AUS; dann kostet er eine Umgebungsabfrage beim
+//  Start und sonst nichts (der Filter wird gar nicht erst eingehängt).
+// ─────────────────────────────────────────────────────────────────────────────
+class KeyLogger : public QObject {
+public:
+    using QObject::QObject;
+
+protected:
+    bool eventFilter(QObject* watched, QEvent* ev) override {
+        const QEvent::Type t = ev->type();
+        if (t == QEvent::KeyPress || t == QEvent::ShortcutOverride) {
+            const auto* k = static_cast<QKeyEvent*>(ev);
+            qInfo("[KEY] %-16s key=0x%08X mods=0x%08X text=\"%s\" -> %s%s",
+                  t == QEvent::KeyPress ? "KeyPress" : "ShortcutOverride",
+                  k->key(), unsigned(k->modifiers().toInt()),
+                  qPrintable(k->text()),
+                  watched->metaObject()->className(),
+                  ev->isAccepted() ? "  [bereits angenommen]" : "");
+        } else if (t == QEvent::Shortcut) {
+            const auto* sc = static_cast<QShortcutEvent*>(ev);
+            qInfo("[KEY] Shortcut         \"%s\" ausgeloest -> %s",
+                  qPrintable(sc->key().toString()),
+                  watched->metaObject()->className());
+        }
+        return false;                       // NIE verbrauchen - nur zusehen
+    }
+};
 }  // namespace
 
 int main(int argc, char* argv[]) {
@@ -140,6 +183,14 @@ int main(int argc, char* argv[]) {
 
     QGuiApplication app(argc, argv);
     startMark("QGuiApplication steht");
+
+    //  Tasten-Mitschnitt nur auf Verlangen (s. KeyLogger oben): beantwortet die
+    //  Frage „kommt das Kürzel überhaupt an?", die kein Prüfstand beantworten
+    //  kann. Ohne `MG_KEYLOG` wird gar nichts eingehängt.
+    if (qEnvironmentVariableIsSet("MG_KEYLOG")) {
+        app.installEventFilter(new KeyLogger(&app));
+        qInfo("[KEY] Mitschnitt an - jeder Tastendruck wird protokolliert.");
+    }
     app.setApplicationName("MediaGallery");
     app.setOrganizationName("MediaGallery");
     app.setApplicationVersion("1.0.0");

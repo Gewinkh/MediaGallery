@@ -57,6 +57,8 @@ class AppController : public QObject {
     Q_PROPERTY(bool    fileDropMove    READ fileDropMove    WRITE setFileDropMove NOTIFY fileDropMoveChanged)
     //  Begleitdateien der App in Galerie und Dateiwähler mitzeigen.
     Q_PROPERTY(bool    showAllFiles    READ showAllFiles    WRITE setShowAllFiles NOTIFY showAllFilesChanged)
+    //  Reicht „Tag löschen" bis in die Unterordner? (Standard AN, s. ISettings)
+    Q_PROPERTY(bool    deleteTagsInSubfolders READ deleteTagsInSubfolders WRITE setDeleteTagsInSubfolders NOTIFY deleteTagsInSubfoldersChanged)
     //  Vorgabe-Schriftfarbe des TXT->PDF-Exports; je Datei überschreibbar
     //  (MediaModel::fileTextPdfColor & Co. - die Ausnahme liegt im Sidecar des
     //  Ordners, dem die Datei gehört).
@@ -427,6 +429,8 @@ public:
     bool dragLogging() const { return qEnvironmentVariableIsSet("MG_DRAGLOG"); }
     bool fileDropMove() const;
     bool showAllFiles() const;
+    bool deleteTagsInSubfolders() const;
+    void setDeleteTagsInSubfolders(bool v);
     void setShowAllFiles(bool v);
     QColor textPdfColor() const;
     void   setTextPdfColor(const QColor& c);
@@ -467,6 +471,7 @@ signals:
     void dragWheel(int angleDeltaY);
     void fileDropMoveChanged();
     void showAllFilesChanged();
+    void deleteTagsInSubfoldersChanged();
     void textPdfColorChanged();
     void themeChanged();
     void autoSaveChanged();

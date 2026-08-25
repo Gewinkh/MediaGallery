@@ -236,6 +236,8 @@ Item {
         case "play":              return cPlay
         case "loop":              return cLoop
         case "loop-one":          return cLoop
+        case "rotate-right":      return cRotateRight
+        case "rotate-left":       return cRotateLeft
         }
         return null
     }
@@ -417,6 +419,65 @@ Item {
         }
     }
 
+    //  Seite drehen: derselbe Ring, aber als RICHTUNGSANZEIGE gedacht - im
+    //  Menü steht nur noch „Drehen", die Richtung sagt allein das Symbol.
+    //  Winkel: 0 Grad liegt auf 3 Uhr, positive Werte laufen im Uhrzeigersinn.
+    Component {
+        id: cRotateRight
+        Shape {
+            anchors.fill: parent
+            preferredRendererType: Shape.CurveRenderer
+            //  Luecke von 90 Grad (statt 55 wie beim Wiederholungs-Ring): bei
+            //  18-20 px im Menue ist die OFFENE SEITE das, was man zuerst
+            //  sieht - erst danach die Spitze.
+            Outline {
+                PathAngleArc { centerX: 12; centerY: 12; radiusX: 6.4; radiusY: 6.4
+                               startAngle: 220; sweepAngle: -260 }
+            }
+            //  Spitze wie beim Wiederholungs-Ring gebaut, nur groesser: SENKRECHTE
+            //  Grundlinie, die den Bogen kreuzt, Spitze nach aussen. Eine sauber
+            //  tangential gerechnete Spitze sah am Pruefstand LOSGELOEST aus - sie
+            //  wird an der Kreuzungsstelle zu schmal, um den Strich zu decken.
+            //  Groesser als beim Ring, weil im Menue nur noch „Drehen" steht und
+            //  die RICHTUNG die ganze Aussage ist.
+            //  **Welche der beiden gespiegelten Formen „rechts" heisst, ist eine
+            //  Frage des LESENS, nicht der Geometrie.** Die Zuordnung folgt der
+            //  Festlegung des Nutzers (2026-08-26); die AKTION dahinter ist
+            //  unabhaengig davon geprueft: `rotatePage(v,-90)` dreht die Seite
+            //  nachweislich nach links (`bench_pageorder`, schwarze Seitenecke).
+            ShapePath {
+                strokeColor: "transparent"
+                fillColor: root.color
+                startX: 10.4; startY: 0.8
+                PathLine { x: 2.4; y: 5.4 }
+                PathLine { x: 10.4; y: 10.0 }
+                PathLine { x: 10.4; y: 0.8 }
+            }
+        }
+    }
+
+    //  Gespiegelt an x = 12 (Spiegeln per `scale: -1` würde den
+    //  Antialiasing-Saum mitspiegeln, s. Regel 28 - deshalb eigene Zahlen).
+    Component {
+        id: cRotateLeft
+        Shape {
+            anchors.fill: parent
+            preferredRendererType: Shape.CurveRenderer
+            Outline {
+                PathAngleArc { centerX: 12; centerY: 12; radiusX: 6.4; radiusY: 6.4
+                               startAngle: -40; sweepAngle: 260 }
+            }
+            ShapePath {
+                strokeColor: "transparent"
+                fillColor: root.color
+                startX: 13.6; startY: 0.8
+                PathLine { x: 21.6; y: 5.4 }
+                PathLine { x: 13.6; y: 10.0 }
+                PathLine { x: 13.6; y: 0.8 }
+            }
+        }
+    }
+
     Component {
         id: cSelect
         Shape {
@@ -511,6 +572,9 @@ Item {
                           lines: [[9.6,10.7,11.0,9.1]] },
         "plus":         { lines: [[12,5,12,19], [5,12,19,12]] },
         "rect":         { boxes: [[3.5,6,17,12,1]] },
+        //  Seite drehen - reine Kurven, s. `_curve`.
+        "rotate-left":  { },
+        "rotate-right": { },
         "redact":       { fills: [[3,4,18,2,1,0.45], [3,16,13,2,1,0.45], [2.5,9,19,5.5,1]] },
         "redo":         { lines: [[16,6,20,10], [20,10,16,14]] },
         "replace":      { lines: [[4,9,17,9], [14,6,17,9], [17,9,14,12],

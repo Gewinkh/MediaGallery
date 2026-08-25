@@ -1,6 +1,12 @@
 #include <QCoreApplication>
 #include "tags/TagManager.h"
 
+#include <QDir>
+#include <QDirIterator>
+#include <QFile>
+#include <QFileInfo>
+#include <QRunnable>
+
 #include <functional>
 
 TagManager::TagManager(JsonStorage* storage, QObject* parent)
@@ -81,9 +87,16 @@ QStringList TagManager::tagsForFile(const QString& fileName) const {
 }
 
 void TagManager::deleteTag(const QString& tag) {
-    // Remove from all categories
-    for (auto& cat : m_storage->categoriesRef())
-        cat.tags.removeAll(tag);
+    //  Aus ALLEN Kategorien - auch den verschachtelten. Die Schleife lief
+    //  früher nur über die oberste Ebene; in einer Unterkategorie blieb der
+    //  Tag stehen (`renameTag` daneben war schon immer rekursiv).
+    std::function<void(QList<TagCategory>&)> strip = [&](QList<TagCategory>& list) {
+        for (auto& cat : list) {
+            cat.tags.removeAll(tag);
+            strip(cat.children);
+        }
+    };
+    strip(m_storage->categoriesRef());
     m_storage->deleteTag(tag);
     // Sofort persistieren - nicht erst beim nächsten anderweitigen Save.
     // JsonStorage::saveFolder prüft dabei selbst, ob danach noch Tags/
@@ -92,6 +105,73 @@ void TagManager::deleteTag(const QString& tag) {
     m_storage->saveCurrentFolder();
     scheduleTagsChanged();
     scheduleCategoriesChanged();
+    emit tagDeleted(tag);
+}
+
+// ── Denselben Tag aus den Sidecars aller UNTERordner entfernen ───────────────
+//  Jeder Ordner fuehrt seine Verschlagwortung in einer eigenen Datei
+//  `<ordner>/<ordnername>.json`. Ohne diesen Durchgang blieb ein geloeschter
+//  Tag in jedem Unterordner stehen (Nutzerbefund).
+//
+//  Der Durchgang laeuft im Hintergrund (Regel 8) und fasst NUR die Ordner an,
+//  in denen der Tag wirklich vorkommt - ein Baum mit hundert Ordnern schreibt
+//  sonst hundert Dateien neu, obwohl drei betroffen sind.
+//
+//  `JsonStorage` wird IM FADEN erzeugt und dort auch wieder abgeraeumt (sein
+//  `QTimer` gehoert damit diesem Faden); gespeichert wird ueber `saveFolder`
+//  (sofort), nie ueber `saveCurrentFolder` (sammelnder Timer).
+void TagManager::sweepSubfolders(const QString& rootFolder, const QString& tag) {
+    if (rootFolder.isEmpty() || tag.isEmpty()) {
+        emit subfolderSweepFinished(tag, 0);
+        return;
+    }
+    m_sweepPool.setMaxThreadCount(1);
+
+    class SweepTask : public QRunnable {
+    public:
+        SweepTask(TagManager* owner, QString root, QString tag)
+            : m_owner(owner), m_root(std::move(root)), m_tag(std::move(tag)) {
+            setAutoDelete(true);
+        }
+        void run() override {
+            int touched = 0;
+            QDirIterator it(m_root, QDir::Dirs | QDir::NoDotAndDotDot,
+                            QDirIterator::Subdirectories);
+            while (it.hasNext()) {
+                const QString dir = it.next();
+                const QString side = dir + QLatin1Char('/')
+                                   + QFileInfo(dir).fileName() + QStringLiteral(".json");
+                if (!QFile::exists(side))
+                    continue;               // Ordner ohne Sidecar: nichts zu tun
+                JsonStorage st;
+                st.loadFolder(dir);
+                if (!st.allTags().contains(m_tag))
+                    continue;               // kennt den Tag nicht - Datei bleibt, wie sie ist
+                std::function<void(QList<TagCategory>&)> strip =
+                    [&](QList<TagCategory>& list) {
+                        for (auto& cat : list) {
+                            cat.tags.removeAll(m_tag);
+                            strip(cat.children);
+                        }
+                    };
+                strip(st.categoriesRef());
+                st.deleteTag(m_tag);
+                st.saveFolder(dir);
+                ++touched;
+            }
+            TagManager* owner = m_owner;
+            const QString tag = m_tag;
+            QMetaObject::invokeMethod(owner, [owner, tag, touched] {
+                emit owner->subfolderSweepFinished(tag, touched);
+            }, Qt::QueuedConnection);
+        }
+    private:
+        TagManager* m_owner;
+        QString     m_root;
+        QString     m_tag;
+    };
+
+    m_sweepPool.start(new SweepTask(this, rootFolder, tag));
 }
 
 void TagManager::renameTag(const QString& oldName, const QString& newName) {

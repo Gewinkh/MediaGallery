@@ -144,6 +144,13 @@ public:
     // ── Ordner-Steuerung (von AppController-Signalen getrieben) ──────────────
     void loadFolder(const QString& rawFolderPath);
     void reload();   // aktuellen Ordner neu einlesen (Drop/Refresh/Watcher)
+    //  Die Sidecars der aufgeklappten Unterordner sind AUF DER PLATTE geändert
+    //  worden (Tag über den Baum gelöscht, s. `TagManager::sweepSubfolders`) -
+    //  die im Speicher gehaltenen Kopien wegwerfen und neu einlesen. Ohne das
+    //  zeigten die Filterleiste und die Kacheln der Unterordner den Tag weiter.
+    //  Verworfen wird OHNE Speichern, und das ist sicher: Unterordner
+    //  schreiben sofort, es steht nie etwas Ungesichertes darin.
+    void dropScopeSidecars();
 
     //  Begleitdateien der App mitzeigen (Ordner-JSON, `.mgedit.json`, `.bak`)?
     //  Kommt aus den Einstellungen; das Umschalten liest den Ordner neu.

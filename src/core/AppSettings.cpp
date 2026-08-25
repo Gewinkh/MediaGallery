@@ -442,6 +442,13 @@ bool AppSettings::showAllFiles() const {
 void AppSettings::setShowAllFiles(bool v) {
     m_settings.setValue("ui/showAllFiles", v);
 }
+//  „Tag auch in den Unterordnern löschen" - Standard AN (s. ISettings.h).
+bool AppSettings::deleteTagsInSubfolders() const {
+    return m_settings.value("tags/deleteInSubfolders", true).toBool();
+}
+void AppSettings::setDeleteTagsInSubfolders(bool v) {
+    m_settings.setValue("tags/deleteInSubfolders", v);
+}
 //  Schriftfarbe des TXT->PDF-Exports (Vorgabe, je Datei überschreibbar).
 //  Als NAME gespeichert und beim Lesen geprüft: ein von Hand verfälschter Wert
 //  ergäbe sonst eine ungültige QColor und damit unsichtbaren Text im Export.

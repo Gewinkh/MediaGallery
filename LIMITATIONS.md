@@ -81,8 +81,14 @@ Consequence: a tag created in one folder does not appear in another; moving a fi
 into another folder carries its tag with it only if the target folder does not
 already define that tag differently.
 
-**Deleting a tag removes it from every file in that folder.**
-Why: there is one definition per folder; the panel asks before it does this.
+**Deleting a tag cannot be undone.**
+Why: the gallery's undo stack carries file operations only (delete, move, restore); there
+has never been an undo for tags, in the open folder or anywhere else. With *Delete a tag in
+subfolders as well* on (the default), one confirmation now removes the tag from the whole
+tree below the open folder.
+Workaround / status: the panel asks before deleting, and the status line says how many
+subfolders were touched. Switch the setting off (*Settings -> Tags*) to keep deletion
+confined to the open folder.
 
 ---
 

@@ -439,6 +439,9 @@ private:
         }
         const int n = doc->pageCount();
         QVector<QVector<mg::PdfOcrWord>> perPage(n);
+        //  Seiten OHNE Textebene - nur die sind ueberhaupt Kandidaten. Die Zahl
+        //  entscheidet am Ende zwischen „schon durchsuchbar" und „nichts erkannt".
+        int scanned = 0;
 
         //  SERIELL, und das ist gemessen die richtige Wahl: Seiten parallel zu
         //  erkennen brachte an 16 Seiten nur 13378 -> 12120 ms (2 Fäden, +10 %),
@@ -457,6 +460,7 @@ private:
             //  zweite Textebene darüber würde jeden Treffer verdoppeln.
             if (!doc->getAllText(p).text().trimmed().isEmpty())
                 continue;
+            ++scanned;
 
             const QSizeF ps = doc->pagePointSize(p);
             if (ps.isEmpty())
@@ -481,7 +485,15 @@ private:
         }
         report(n, n);
         if (cancelled())    { *err = QStringLiteral("cancel"); return false; }
-        if (*pagesOut == 0) { *err = QStringLiteral("notext"); return false; }
+        if (*pagesOut == 0) {
+            //  ZWEI grundverschiedene Faelle, die vorher beide „Kein Text
+            //  gefunden" meldeten. Gab es keine einzige textlose Seite, war
+            //  schlicht nichts zu tun - das Dokument ist bereits durchsuchbar,
+            //  und das ist KEIN Fehlschlag (Nutzerbefund an einer digitalen PDF).
+            *err = (scanned == 0) ? QStringLiteral("alreadytext")
+                                  : QStringLiteral("notext");
+            return false;
+        }
 
         return mg::PdfOcrLayer::write(m_source, m_target, perPage, err, skippedOut);
     }
@@ -1357,6 +1369,12 @@ QString PdfEditController::pristinePath() const {
     return m_docPath;
 }
 
+int PdfEditController::takeStructureFocus() {
+    const int v = m_structureFocus;
+    m_structureFocus = -1;
+    return v;
+}
+
 QString PdfEditController::renderSourcePath() const {
     // Datei, die die ANZEIGE rendert. Seitenoperationen wirken SOFORT in der
     // PDF selbst (s. bakeWorking), also ist sie es auch, sobald der Plan von
@@ -1504,6 +1522,7 @@ void PdfEditController::addBlankPageAfter(int viewIndex) {
     if (pos > m_plan.size())  pos = m_plan.size();
     QVector<PdfPlanPage> next = m_plan;
     next.insert(pos, PdfPlanPage{ -1, 0, 0, m_nextPageKey++ });
+    m_structureFocus = pos;                     // die NEUE Seite soll man sehen
     pushCommand(new PdfEditPagePlanCommand(this, m_plan, next));
 }
 
@@ -1514,6 +1533,9 @@ void PdfEditController::removePage(int viewIndex) {
         return;                                 // mindestens eine Seite bleibt
     QVector<PdfPlanPage> next = m_plan;
     next.removeAt(viewIndex);
+    //  Nach dem Entfernen rückt die folgende Seite auf diesen Platz; bei der
+    //  letzten Seite bleibt der Blick auf der neuen letzten.
+    m_structureFocus = qMin(viewIndex, next.size() - 1);
     pushCommand(new PdfEditPagePlanCommand(this, m_plan, next));
 }
 
@@ -1526,6 +1548,7 @@ void PdfEditController::movePage(int from, int to) {
         return;
     QVector<PdfPlanPage> next = m_plan;
     next.move(from, to);
+    m_structureFocus = to;                      // die verschobene Seite bleibt im Blick
     pushCommand(new PdfEditPagePlanCommand(this, m_plan, next));
 }
 
@@ -1674,6 +1697,7 @@ void PdfEditController::insertPagesFrom(const QString& pathOrUrl,
     QVector<PdfPlanPage> next = m_plan;
     for (int i = 0; i < want.size(); ++i)
         next.insert(pos + i, PdfPlanPage{ before + i, 1, 0, m_nextPageKey++ });
+    m_structureFocus = pos;                     // die erste eingefügte Seite
     pushCommand(new PdfEditPagePlanCommand(this, m_plan, next));
     emit pagesInserted(want.size(), QString());
 }

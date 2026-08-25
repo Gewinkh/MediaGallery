@@ -139,6 +139,15 @@ public:
     virtual bool showAllFiles() const = 0;
     virtual void setShowAllFiles(bool v) = 0;
 
+    //  Löscht „Tag löschen" den Tag auch in ALLEN Unterordnern des offenen
+    //  Ordners? Jeder Ordner führt seine Verschlagwortung in einer eigenen
+    //  Sidecar-Datei; ohne diesen Schalter blieb ein gelöschter Tag dort
+    //  stehen (Nutzerbefund). **Standard AN** - wer einen Tag loswerden will,
+    //  meint ihn in aller Regel im ganzen Baum. Ausgeschaltet wirkt das
+    //  Löschen nur im offenen Ordner, wie früher.
+    virtual bool deleteTagsInSubfolders() const = 0;
+    virtual void setDeleteTagsInSubfolders(bool v) = 0;
+
     //  Schriftfarbe beim Export eines Klartextes nach PDF (Texteditor „-> PDF").
     //  VORGABE für alle Dateien; eine einzelne Datei kann sie im Ordner-Sidecar
     //  überschreiben (JsonStorage::textPdfColor). Standard: Schwarz.

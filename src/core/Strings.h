@@ -122,6 +122,9 @@ enum class StringKey {
     SettingsOk,
     SettingsCancel,
     SettingsTagDelete,
+    SettingsTagDeleteSubfolders,      // Einstellung: Tag auch in Unterordnern löschen
+    SettingsTagDeleteSubfoldersHint,  // … und was das bedeutet
+    TagDeletedInSubfolders,           // Statuszeile: „%1" in %2 Unterordnern entfernt
 
     // MetadataEditor
     MetaTitle,
@@ -565,7 +568,8 @@ enum class StringKey {
     PdfSearchableRunning,      // Toast: Fortschritt (%1 von %2 Seiten)
     PdfSearchableDoneToast,    // Toast: fertig (%1 Seiten, %2 Wörter)
     PdfSearchableSkippedNote,  // Anhang an den Fertig-Toast (%1 übersprungen)
-    PdfSearchableNoneToast,    // Toast: nichts erkannt
+    PdfSearchableNoneToast,    // Toast: gescannte Seiten da, aber nichts erkannt
+    PdfSearchableAlreadyToast, // Toast: jede Seite hat schon Text - nichts zu tun
     PdfSearchableFailedToast,  // Toast: fehlgeschlagen (%1 = Grund)
     PdfSearchableAlreadyTip,   // Menü-Hinweis: schon durchsuchbar
     LibMissingZlib,            // Hover-Hinweis: Feature braucht ZLIB
@@ -727,8 +731,7 @@ enum class StringKey {
     PdfExportAsAnnotationsHint,   // Hinweistext dazu
     PdfAddPageTip,              // „+"-Linie unter der Seite: Tooltip
     PdfRemovePage,              // Rechtsklick-Menü: „Seite entfernen"
-    PdfRotatePageLeft,          // Rechtsklick-Menü: „Seite nach links drehen"
-    PdfRotatePageRight,         // Rechtsklick-Menü: „Seite nach rechts drehen"
+    PdfRotatePage,              // Rechtsklick-Menü: „Drehen" (Richtung sagt das Symbol)
     PdfInsertPagesFrom,         // Rechtsklick-Menü: „Seiten aus PDF einfügen…"
     PdfInsertPagesDialogTitle,  // Auswahldialog: Titel beim Einfügen
     PdfInsertPagesFileTitle,    // Dateidialog: Titel („PDF auswählen")
