@@ -31,10 +31,13 @@ enum class StringKey {
     AudioEqTitle,
     AudioEqOn,
     AudioEqPreamp,
+    SettingsShowHidden,
+    SettingsShowHiddenDesc,
+    AudioEqAutoPreamp,
+    AudioEqAutoPreampHint,
     AudioEqReset,
     AudioEqPreset,
     AudioEqSavePreset,
-    AudioEqDeletePreset,
     AudioEqPresetName,
     AudioEqClipHint,
     SettingsTabAudio,
@@ -69,8 +72,10 @@ enum class StringKey {
     AudioChStereo,
     AudioChMulti,
     //  ── DOCX -> PDF: Rand und Seitenzahl ──
-    DocxPdfPaddingLabel,
-    DocxPdfPaddingHint,
+    //  ── Randlineale des DOCX-Editors ────────────────────────────────────────
+    DocxRulerResetTip,         // Hilfetext des Zurücksetzen-Knopfes
+    DocxRulerTopTip,           // Hilfetext des waagerechten Lineals
+    DocxRulerSideTip,          // Hilfetext des senkrechten Lineals
     DocxPdfNumberMenu,
     DocxPdfNumberOff,
     DocxPdfNumberLeft,
@@ -632,6 +637,27 @@ enum class StringKey {
 
     // ── Galerie-Kontextmenü: Datei löschen ──
     CtxDeleteFile,             // Kontextmenü-Eintrag „Datei löschen…"
+    //  ── Mehrfachauswahl der Galerie ─────────────────────────────────────────
+    CtxCopyFiles,              // Kontextmenü „Kopieren" (Strg+C)
+    CtxDeleteSelection,        // „%1 Objekte löschen…" (Mehrfachauswahl)
+    SelDeleteTitle,            // Rückfrage-Titel „Mehrere löschen?"
+    SelDeleteText,             // „%1 Objekte wandern in den Papierkorb."
+    SelCountStatus,            // Statuszeile „%1 ausgewählt"
+    SelCopied,                 // Statuszeile „%1 in die Zwischenablage"
+    SelDeleted,                // Statuszeile „%1 gelöscht"
+    FileOpAndMore,             // Anhang „ und %1 weitere"
+    DropBatchCount,            // „%1 Dateien" - Zug mit mehreren Dateien
+    SelPasted,                 // „%1 eingefügt" (Strg+V in der Galerie)
+    SelPasteEmpty,             // „Die Zwischenablage enthält keine Dateien"
+    //  ── Equalizer-Voreinstellungen ──────────────────────────────────────────
+    AudioEqPresetOverwriteTip, // Hilfetext: aktuelle Regler auf diese Zeile
+    AudioEqPresetDeleteTip,    // Hilfetext: Eintrag entfernen
+    AudioEqPresetResetTip,     // Hilfetext: mitgelieferte Vorlage zurückholen
+    AudioEqPresetResetAll,     // Knopf „Alle mitgelieferten zurücksetzen"
+    AudioEqPresetUpTip,        // Hilfetext: eine Zeile nach oben
+    AudioEqPresetDownTip,      // Hilfetext: eine Zeile nach unten
+    AudioEqPresetNewTitle,     // „Neue Voreinstellung"
+    AudioEqPresetOverwriteTitle, // „Vorhandene überschreiben"
     CtxRenameFile,             // Kontextmenü-Eintrag „Umbenennen…"
     MenuDocument,              // Menü der Kachel-Kopfleiste („Dokument")
     PanelSearchTag,            // Suchfeld im Tag-Abschnitt

@@ -48,7 +48,13 @@ Item {
     property int  _autoEditId: -1                // frisch erzeugte Text-Notiz -> sofort editieren
     property bool editPanelVisible: false
 
-    readonly property bool docReady: img.status === Image.Ready
+    //  „Ein Bild ist DA" - nicht „gerade wird nicht geladen". Beim Wechsel der
+    //  Dekodier-Stufe bleibt das alte Bild dank `retainWhileLoading` sichtbar;
+    //  ginge `docReady` dabei auf false, verschwände die Werkzeugleiste und der
+    //  Inhalt spränge um 40 px, obwohl sich auf der Fläche nichts tut. Beim
+    //  Wechsel der Datei wird es zurückgesetzt (s. onSourceChanged).
+    readonly property bool docReady: img.status === Image.Ready || _everReady
+    property bool _everReady: false
     readonly property int  natW: editCtl.imageWidth  > 0 ? editCtl.imageWidth  : img.implicitWidth
     readonly property int  natH: editCtl.imageHeight > 0 ? editCtl.imageHeight : img.implicitHeight
     readonly property real dispW: Math.max(1, natW * dispScale)
@@ -64,7 +70,7 @@ Item {
     //  Stufenwechsel tut es - und bei 100 % ist es wieder das volle Bild, also
     //  unverändert scharf. 0 = Größe unbekannt -> nativ dekodieren (Rückfall,
     //  aus dem `natW` überhaupt erst entsteht).
-    readonly property int decodeDim: {
+    readonly property int decodeWant: {
         //  NUR wenn der Controller die Datei selbst vermessen hat. Der Rückfall
         //  `natW = img.implicitWidth` dürfte hier nicht einfliessen: dann hinge
         //  die Stufe an der zuletzt dekodierten Grösse und schriebe sich selbst
@@ -82,6 +88,35 @@ Item {
         let stage = 1024
         while (stage < need) stage *= 2
         return Math.min(stage, nat)
+    }
+
+    //  Was WIRKLICH dekodiert wird. Zwei Unterschiede zur reinen Rechnung
+    //  `decodeWant`, beide gegen den Befund „beim Ziehen am Fensterrand ist das
+    //  Bild kurz weg" (gemessen: 2 Stufenwechsel und 24 % der Messpunkte ohne
+    //  fertiges Bild in EINEM Zug):
+    //   · Sie WÄCHST nur, solange dieselbe Datei offen ist. Ein kleineres
+    //     Fenster dekodiert damit nie neu - die vorhandenen Pixel reichen ja.
+    //   · Sie folgt der Rechnung erst nach RUHE. Ein Zug über zehn Größen löst
+    //     so eine Dekodierung aus, nicht zehn.
+    //  Beim Dateiwechsel wird sie zurückgesetzt (s. onSourceChanged), sonst
+    //  schleppte ein kleines Bild die Stufe des vorherigen großen mit.
+    //  Nebenwirkung, die dazugehört: `decodeDim` wird ZUGEWIESEN statt gebunden
+    //  - damit ist der Ring `decodeDim -> sourceSize -> implicitWidth -> natW ->
+    //  dispW -> decodeDim` aufgetrennt, den Qt bisher als Bindungsschleife meldete.
+    property int decodeDim: 0
+
+    onDecodeWantChanged: {
+        //  Erstes Mal (und nach jedem Dateiwechsel) SOFORT - sonst dekodierte
+        //  das `Image` einmal die volle Auflösung, nur um sie beim Einpassen
+        //  gleich wieder zu verwerfen.
+        if (root.decodeDim <= 0) { root.decodeDim = root.decodeWant; return }
+        if (root.decodeWant > root.decodeDim) decodeGrow.restart()
+    }
+    Timer {
+        id: decodeGrow
+        interval: 150
+        onTriggered: if (root.decodeWant > root.decodeDim)
+                         root.decodeDim = root.decodeWant
     }
 
     function commitEditing() { root.editCommitRev++ }
@@ -117,6 +152,10 @@ Item {
 
     onSourceChanged: {
         root.editCtl.setDocument(source)
+        //  Stufe für die NEUE Datei neu bestimmen - „nur wachsen" gilt je Datei.
+        decodeGrow.stop()
+        root._everReady = false
+        root.decodeDim = root.decodeWant
         img.source = source ? App.fileUrl(source) : ""
         root._fitMode = true
         root.editPanelVisible = false
@@ -167,12 +206,19 @@ Item {
                             ? (root.natW >= root.natH ? Qt.size(root.decodeDim, 0)
                                                       : Qt.size(0, root.decodeDim))
                             : undefined
+                //  Beim Stufenwechsel das ALTE Bild stehen lassen, bis das neue
+                //  fertig ist - sonst ist die Fläche währenddessen leer, und
+                //  genau das hat der Nutzer als „Bild ist kurz weg" gesehen.
+                retainWhileLoading: true
                 // Fallback, falls QImageReader das Format nicht messen konnte.
                 // NUR dann: sonst meldete die Stufe (z. B. 2048) sich als native
                 // Bildgröße, und alle Notizen lägen in der falschen Skala.
-                onStatusChanged: if (status === Image.Ready
-                                     && root.editCtl.imageWidth <= 0)
-                                     root.editCtl.setImageSize(implicitWidth, implicitHeight)
+                onStatusChanged: {
+                    if (status !== Image.Ready) return
+                    root._everReady = true
+                    if (root.editCtl.imageWidth <= 0)
+                        root.editCtl.setImageSize(implicitWidth, implicitHeight)
+                }
             }
 
             // Leeren Bereich antippen hebt die Auswahl auf (nur Auswahl-Werkzeug;

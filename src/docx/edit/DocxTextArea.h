@@ -74,7 +74,23 @@ class DocxTextArea : public QQuickPaintedItem {
                NOTIFY pageNumberChanged)
     Q_PROPERTY(int pageNumberStyle READ pageNumberStyle WRITE setPageNumberStyle
                NOTIFY pageNumberChanged)
+    //  ── Wo liegt die SEITE im Item? (Randlineale) ────────────────────────
+    //  Die Lineale sollen die Maßstabsrechnung dieser Fläche nicht nachbauen -
+    //  dann liefen sie über kurz oder lang auseinander. Sie fragen stattdessen,
+    //  wo die Seite gerade steht: Versatz von links, Breite und Höhe in
+    //  ITEM-Pixeln, also einschließlich des Einpass-Maßstabs.
+    Q_PROPERTY(qreal pageOffsetX  READ pageOffsetX  NOTIFY pageGeometryChanged)
+    Q_PROPERTY(qreal pageWidthPx  READ pageWidthPx  NOTIFY pageGeometryChanged)
+    Q_PROPERTY(qreal pageHeightPx READ pageHeightPx NOTIFY pageGeometryChanged)
+    //  Oberkante der AKTUELLEN Seite in Item-Koordinaten. Das senkrechte Lineal
+    //  meint immer die Seite, die man gerade vor sich hat - wie in Word.
+    Q_PROPERTY(qreal currentPageTopPx READ currentPageTopPx NOTIFY pageGeometryChanged)
     Q_PROPERTY(int pageCount READ pageCount NOTIFY pageCountChanged)
+    //  Laeuft das gechunkte Initial-Layout noch? Fuer Pruefstaende und Tests:
+    //  die warteten bisher darauf, dass sich die SEITENZAHL nicht mehr aendert
+    //  - bei einem Dokument mit zwei Absaetzen bleibt sie bei 1, und der Lauf
+    //  lief in sein Zeitlimit statt in ein Ergebnis (gemessen: 60010 ms).
+    Q_PROPERTY(bool layoutBusy READ layoutBusy NOTIFY layoutBusyChanged)
     Q_PROPERTY(int currentPage READ currentPage NOTIFY currentPageChanged)
     //  AUSGEWÄHLTES BILD: der Cursorblock, falls er ein reiner Bild-Absatz ist
     //  (sonst −1). Es gibt bewusst keinen zweiten Auswahlzustand - ein Klick
@@ -119,6 +135,7 @@ public:
     int   pageNumberStyle() const { return m_pageNumberStyle; }
     void  setPageNumberStyle(int s);
     int   pageCount() const { return m_pageCount; }
+    bool  layoutBusy() const { return m_chunkTimer.isActive(); }
     int   currentPage() const;
 
     int   selImageBlock() const;
@@ -136,6 +153,14 @@ public:
     //  Oberkante einer Seite in ITEM-Pixeln - QML setzt damit contentY, wenn
     //  eine Miniatur angeklickt wird.
     Q_INVOKABLE qreal pageTop(int page);
+    //  Oberkante einer Seite in ITEM-Koordinaten (also abzüglich `contentY`) -
+    //  daran hängt das senkrechte Lineal, das immer die Seite meint, die man
+    //  gerade vor sich hat.
+    Q_INVOKABLE qreal pageTopItem(int page);
+    qreal pageOffsetX()  const { return itemOffsetX(); }
+    qreal pageWidthPx()  const;
+    qreal pageHeightPx() const;
+    qreal currentPageTopPx() const;
     //  1-basierte Seitenzahl eines Blocks - Grundlage der
     //  Verzeichnis-Einträge und im Testtreiber die Probe darauf, dass
     //  das Verzeichnis wirklich allein auf seinen Seiten steht.
@@ -176,12 +201,14 @@ public:
     //  sie ist aber bereits fertig (das Dokument steht auf dem Schirm), es
     //  wird nur noch gezeichnet. Leerer Rückgabewert = Erfolg, sonst der
     //  Fehlertext.
-    //  `paddingMm`: zusätzlicher Rand rundum. Das PAPIERFORMAT bleibt das aus
-    //  `w:sectPr` - die gemalte Seite wird maßstäblich kleiner (Festlegung des
-    //  Nutzers: A4 bleibt A4). `pageNumberPos`: 0 aus · 1 links · 2 mittig ·
-    //  3 rechts; `pageNumberStyle`: 0 = „3" · 1 = „3 / 12".
+    //  Den SCHREIBBEREICH bestimmen die Seitenränder des Dokuments
+    //  (`w:sectPr/w:pgMar`, im Editor an den Randlinealen einstellbar) - der
+    //  Export malt die Bildschirm-Auslegung und braucht dafür keinen eigenen
+    //  Rand mehr. Die frühere Einstellung „zusätzlicher Rand beim PDF-Export"
+    //  war der Behelf dafür und ist entfallen.
+    //  `pageNumberPos`: 0 aus · 1 links · 2 mittig · 3 rechts;
+    //  `pageNumberStyle`: 0 = „3" · 1 = „3 / 12".
     Q_INVOKABLE QString exportPagesToPdf(const QString& targetPath,
-                                         int paddingMm = 0,
                                          int pageNumberPos = 0,
                                          int pageNumberStyle = 1);
 
@@ -195,6 +222,10 @@ signals:
     void labelsChanged();
     void saveRequested();
     void pageCountChanged();
+    void layoutBusyChanged();
+    //  Lage/Maßstab der Seite im Item hat sich geändert (Breite, Einpassung,
+    //  neue Seiteneinrichtung) - die Randlineale richten sich danach.
+    void pageGeometryChanged();
     void pageNumberChanged();
     void currentPageChanged();
     //  Inhalt hat sich geändert (Laden/Bearbeiten) - die Miniaturen zeichnen neu.
@@ -487,7 +518,11 @@ private:
 
     //  Blöcke eines Slots zeichnen (gemeinsamer Weg von paint() und
     //  paintPageInto(); `p` ist bereits auf Dokument-Pixel gestellt).
-    void  paintSlot(QPainter* p, int slot, bool withCaret, bool withSelection = true);
+    //  `withSpell`: die roten Wellenlinien sind eine ANZEIGEHILFE. Sie gehören
+    //  weder in den PDF-Export noch in die Seitenminiaturen - beide gehen über
+    //  `paintPageInto`, das sie deshalb abschaltet.
+    void  paintSlot(QPainter* p, int slot, bool withCaret, bool withSelection = true,
+                    bool withSpell = true);
     //  Die Seitenzahl auf EIN Blatt malen - EIN Weg für Anzeige, Miniatur und
     //  PDF-Export, damit die drei nicht auseinanderlaufen. `sheet` ist das
     //  Blatt in den Koordinaten des Malers; Lage und Größe werden daraus
@@ -501,6 +536,9 @@ private:
                      const QPointF& origin);
 
     void  rebuildAll();                        // Dokument (neu) geladen
+    //  Grobe Höhe eines noch nicht vermessenen Blocks (Fluss/Bildlaufleiste
+    //  bleiben plausibel, bis `layoutChunk` ihn vermisst).
+    static qreal estimateHeight(const Docx::Block& b);
     void  invalidateFrom(int first, int oldCount, int newCount);
     void  ensureLaid(int i);                   // Layout eines Blocks erzwingen
     void  ensureOffsetsTo(int i);              // Präfix-Offsets bis i gültig
@@ -513,6 +551,8 @@ private:
     qreal blockTop(int i);                     // Inhalts-y des Blocks
     int   blockAtY(qreal y);                   // Block unter Inhalts-y
     void  layoutChunk();                       // Timer-Tick des Initial-Layouts
+    void  startChunkLayout();                  // schaltet m_chunkTimer + layoutBusy
+    void  stopChunkLayout();
     void  updateContentHeight();
     void  rebuildMarkers();                    // Listen-Zähler (ganzes Dokument)
     void  buildLayout(int i);                  // Stücke/Bänder eines Absatzes
@@ -573,6 +613,10 @@ private:
     const QTextCharFormat& charFormatOf(const Docx::RunFmt& rf,
                                         const Docx::RunFmt& def,
                                         const Docx::Run& r) const;
+    //  Schluessel EINES Runs - dieselbe Kennung, nach der `charFormatOf`
+    //  zwischenspeichert. Zwei Runs mit gleichem Schluessel sehen identisch
+    //  aus und duerfen deshalb zu EINEM Formatbereich verschmelzen.
+    FmtKey fmtKeyOf(const Docx::RunFmt& rf, const Docx::Run& r) const;
     //  Bild eines Runs auf `avail` einpassen (Seitenverhältnis bleibt).
     bool  makeImageBox(const Docx::InlineImage& info, qreal avail,
                        ImageBox* out) const;

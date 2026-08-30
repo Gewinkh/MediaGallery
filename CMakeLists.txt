@@ -6,7 +6,102 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_AUTOMOC ON)
 set(CMAKE_AUTORCC ON)
 
+# ──────────────────────────────────────────────────────────────────────────────
+#  BAUZEIT
+#
+#  Gemessen am 2026-08-28 (roh, ohne ccache, Release, i7-11370H = 4 Kerne / 8
+#  Faeden). Vollbau von Grund auf, Sekunden:
+#
+#      --parallel        1       2       4       8
+#      -O3 ohne LTO      150.3   84.8    52.4    49.4
+#      -O3 MIT LTO        88.4   59.5    46.1    43.9   <- Vorgabe (MG_LTO)
+#      -O3 mit MG_UNITY  126.5   81.7    62.9    64.6
+#
+#  DARAUS FOLGT DIE VORGABE: `MG_UNITY` ist AUS. Buendeln spart Header-Arbeit
+#  (bei einem Faden 20 % schneller), nimmt aber Parallelitaet UND laesst `-O3`
+#  ueber groessere Einheiten laufen - der Optimierer waechst darin ueberlinear.
+#  Ab vier Faeden verliert es deshalb in JEDER Buendelgroesse (2/4/6/12 alle
+#  gemessen, keine gewinnt). Wer wirklich mit `--parallel 1` baut, schaltet es
+#  ein; sonst nicht.
+#
+#  Was ausserdem gemessen und VERWORFEN wurde, damit es niemand nochmal probiert:
+#   · Ninja statt Make: 155.4 gegen 157.4 s bei einem Faden, 50.2 gegen 51.2 bei
+#     acht. Im Rauschen - der Generator ist hier nicht der Engpass.
+#   · Vorkompiliertes Kopfstueck erweitern: die haeufigsten Qt-Klassen stehen
+#     laengst darin. Was fehlt, kommt hoechstens 8-mal in 65 Dateien vor, und
+#     QtPdf/QtMultimedia duerfen nicht hinein (nicht jedes Ziel linkt sie).
+#
+#   · `-pipe`: 156.3 gegen 157.4 s. Im Rauschen, bleibt trotzdem drin - es
+#     kostet nichts.
+#
+#  WO DIE ZEIT WIRKLICH LIEGT (aus Ninjas Protokoll, acht Faeden):
+#      Kompilieren + Linken     261.8 s
+#      AUTOMOC/RCC-Vorstufen     52.8 s   (17 %, generierter Qt-Code)
+#      laengster Einzeljob        16.7 s   (`PdfEditController.cpp`)
+#      Linken des Programms        0.4 s
+#  Summe aller Jobs 314.6 s; bei acht Faeden waeren rechnerisch ~39 s die
+#  Untergrenze, gemessen sind 51.2 s. Die Luecke ist Hyperthreading (vier echte
+#  Kerne, acht Faeden) und die Reihenfolge der Ziele - nicht fehlende Buendelung
+#  und nicht der Linker. Es ist also nichts Grosses mehr zu holen, ausser ueber
+#  die Optimierstufe:
+#
+#      -O3 (Vorgabe)   157.4 s / 51.2 s     (ein Faden / acht Faeden)
+#      -O2             147.8 s / 46.1 s
+#      -O1             105.8 s / 33.8 s
+#
+#  Die Stufe ist BEWUSST NICHT gesenkt: sie tauscht Laufzeit gegen Bauzeit, und
+#  Laufzeit steht in `CLAUDE.md` §0 auf Platz 2. Wer beim Entwickeln schneller
+#  bauen will, setzt sie fuer SEINEN Ordner:
+#      cmake -S. -B build-schnell -DCMAKE_BUILD_TYPE=Release \
+#            -DCMAKE_CXX_FLAGS_RELEASE="-O1 -DNDEBUG"
+#
+#   MG_CCACHE  - zweiter Bau derselben Quelle kommt aus dem Zwischenspeicher.
+#                AUS misst die ROHE Bauzeit (dafuer gedacht, nicht zum Sparen).
+#   MG_UNITY   - mehrere Quellen je Uebersetzungseinheit (s. oben).
+#   MG_UNITY_BATCH - Quellen je Buendel. Nur wirksam bei MG_UNITY=ON.
+# ──────────────────────────────────────────────────────────────────────────────
+option(MG_CCACHE "Compiler-Zwischenspeicher benutzen, wenn vorhanden" ON)
+option(MG_LTO    "Ueber Dateigrenzen hinweg optimieren (schneller UND gleich schnell)" ON)
+option(MG_UNITY  "Quellen je Domaene buendeln (lohnt NUR bei --parallel 1)" OFF)
+set(MG_UNITY_BATCH 12 CACHE STRING "Quellen je Buendel (nur bei MG_UNITY=ON)")
+
+#  ── LTO ───────────────────────────────────────────────────────────────────
+#  Der Compiler legt je Datei nur eine Zwischendarstellung ab; optimiert wird
+#  EINMAL beim Linken statt 65-mal. Deshalb schlaegt es bei wenigen Faeden am
+#  staerksten durch. Gemessen (Vollbau, roh, Release, Sekunden):
+#
+#      --parallel      1       2       4       8
+#      -O3           150.3   84.8    52.4    49.4
+#      -O3 + LTO      88.4   59.5    46.1    43.9      <- gewinnt ueberall
+#
+#  Und es kostet KEINE Laufzeit: der Equalizer (die rechenintensivste Stelle,
+#  je Sample und Band) braucht mit und ohne LTO dieselben 81 ms fuer 60 s Ton;
+#  alles andere liegt innerhalb des Messrauschens von +/-10 %. Der Speicher der
+#  laufenden App ist unveraendert (RSS auf die Kilobyte gleich), der Bau
+#  braucht in der Spitze 2.5 GB (668 MB je Prozess) - unkritisch.
+#
+#  `check_ipo_supported` statt blindem Einschalten: auf einem Compiler ohne
+#  Unterstuetzung soll das Projekt bauen, nicht scheitern (Portabilitaet,
+#  §0-Prioritaet 3). Nur fuer optimierte Bauarten - in einem Debug-Bau kostet
+#  LTO Zeit und erschwert das Debuggen.
+if(MG_LTO)
+    include(CheckIPOSupported)
+    check_ipo_supported(RESULT MG_IPO_OK OUTPUT MG_IPO_WHY)
+    if(MG_IPO_OK)
+        foreach(cfg RELEASE RELWITHDEBINFO MINSIZEREL)
+            set(CMAKE_INTERPROCEDURAL_OPTIMIZATION_${cfg} TRUE)
+        endforeach()
+        message(STATUS "LTO aktiv (Release-Bauarten)")
+    else()
+        message(STATUS "LTO nicht moeglich: ${MG_IPO_WHY}")
+    endif()
+endif()
+
 find_program(MG_CCACHE_PROGRAM NAMES ccache NO_CACHE)
+if(NOT MG_CCACHE)
+    set(MG_CCACHE_PROGRAM "")
+    message(STATUS "ccache: abgeschaltet (MG_CCACHE=OFF)")
+endif()
 if(MG_CCACHE_PROGRAM AND NOT CMAKE_CXX_COMPILER_LAUNCHER)
     set(CMAKE_CXX_COMPILER_LAUNCHER ${CMAKE_COMMAND} -E env
         CCACHE_SLOPPINESS=pch_defines,time_macros ${MG_CCACHE_PROGRAM})
@@ -22,7 +117,11 @@ if(MSVC)
     set(MG_WARN_FLAGS $<IF:$<BOOL:${MG_WARNINGS}>,/W4,/w>)
 else()
     set(MG_WARN_FLAGS $<IF:$<BOOL:${MG_WARNINGS}>,-Wall$<SEMICOLON>-Wextra,-w>)
+    #  Zwischenstufen durch die Pipe statt ueber Dateien - spart I/O je
+    #  Uebersetzungseinheit und kostet nichts.
+    add_compile_options(-pipe)
 endif()
+
 
 #  Bewusst GLOBAL (add_compile_options vor allen Zielen), nicht nur an den
 #  Testzielen: Sanitizer ändern die Codeerzeugung, ein halb instrumentierter Baum
@@ -81,7 +180,45 @@ function(mg_domain name)
     target_compile_options(${name} PRIVATE ${MG_WARN_FLAGS})
     target_link_libraries(${name} PUBLIC ${D_LIBS})
     target_precompile_headers(${name} REUSE_FROM mg_pch)
+    #  Buendeln: die Qt-Header einer Domaene werden einmal je Buendel gelesen
+    #  statt einmal je Datei. Das PCH bleibt daneben wirksam - es deckt Core/Gui
+    #  ab, die Buendel sparen zusaetzlich Quick/Pdf/Multimedia.
+    if(MG_UNITY)
+        set_target_properties(${name} PROPERTIES
+            UNITY_BUILD ON
+            UNITY_BUILD_BATCH_SIZE ${MG_UNITY_BATCH})
+    endif()
 endfunction()
+
+#  ──────────────────────────────────────────────────────────────────────────
+#  Diese Quellen bleiben EINZELN (kein Buendel). Es sind die handgeschriebenen
+#  Format-Leser: sie tragen ihre Helfer im anonymen Namensraum, und mehrere von
+#  ihnen benutzen dieselben kurzen Namen (`be16`, `be32`, `Box`, `fcc`,
+#  `parenBytes`, `have`, `u`). In EINER Uebersetzungseinheit wuerden die
+#  einander ueberschreiben.
+#
+#  Bewusst so und nicht durch Umbenennen im Code geloest: die Namen sind dort
+#  richtig - sie sind lokal, kurz und stehen dicht bei ihrer Benutzung. Ein Bau
+#  soll den Code nicht umschreiben.
+set(MG_NO_UNITY
+    src/audio/AudioTags.cpp
+    src/audio/AudioSeekIndex.cpp
+    src/audio/MkvAudioExtract.cpp
+    src/audio/Mp4AudioExtract.cpp
+    src/pdf/edit/PdfTextEditor.cpp
+    src/pdf/edit/PdfTextReflow.cpp
+    src/pdf/edit/PdfFontEmbed.cpp
+    src/pdf/edit/PdfFormFields.cpp
+    src/pdf/edit/PdfAnnotations.cpp
+    src/pdf/edit/PdfVectorExport.cpp
+    src/pdf/extract/PdfPageCopier.cpp
+    src/audio/AudioEqualizer.cpp
+    src/docx/DocxZip.cpp
+)
+if(MG_UNITY)
+    set_source_files_properties(${MG_NO_UNITY}
+        PROPERTIES SKIP_UNITY_BUILD_INCLUSION ON)
+endif()
 
 mg_domain(mg_core
     SOURCES
@@ -106,6 +243,8 @@ mg_domain(mg_core
         src/core/MemoryUtils.h
         src/core/ZCodec.cpp
         src/core/ZCodec.h
+        src/core/PdfGlyphRuns.cpp
+        src/core/PdfGlyphRuns.h
     LIBS
         Qt6::Core Qt6::Gui Qt6::Quick
 )

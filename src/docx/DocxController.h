@@ -27,8 +27,6 @@ class DocxController : public QObject {
     //  Zusätzlicher Rand beim PDF-Export, in Millimetern (0…40, Vorgabe 0).
     //  Das Papierformat bleibt das aus Word; der Inhalt wird maßstäblich
     //  kleiner gemalt (Festlegung des Nutzers - A4 bleibt A4).
-    Q_PROPERTY(int pdfPaddingMm READ pdfPaddingMm WRITE setPdfPaddingMm
-               NOTIFY pdfOptionsChanged)
     //  Seitenzahl unten: 0 = aus · 1 = links · 2 = mittig · 3 = rechts.
     Q_PROPERTY(int pdfPageNumberPos READ pdfPageNumberPos WRITE setPdfPageNumberPos
                NOTIFY pdfOptionsChanged)
@@ -41,8 +39,6 @@ public:
 
     bool saveDirect() const;
     void setSaveDirect(bool v);
-    int  pdfPaddingMm() const;
-    void setPdfPaddingMm(int mm);
     int  pdfPageNumberPos() const;
     void setPdfPageNumberPos(int pos);
     int  pdfPageNumberStyle() const;

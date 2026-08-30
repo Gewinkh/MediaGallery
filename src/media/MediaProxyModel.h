@@ -176,6 +176,27 @@ public:
     //  rueckt Unterordner danach ein.
     Q_INVOKABLE int       depthAt(int proxyRow) const;
 
+    // ── Mehrfachauswahl in ANSICHTS-Reihenfolge ──────────────────────────────
+    //  Gehalten wird die Auswahl im `MediaModel` (s. dort); was HIER liegt, sind
+    //  die Wege, die die SICHTBARE Ordnung brauchen - ein Umschalt-Bereich und
+    //  ein Auswahlrahmen meinen das, was man sieht, nicht die Modellzeilen.
+    Q_INVOKABLE void selectRange(int fromProxyRow, int toProxyRow, bool additive);
+    //  Strg+A: alles, was der Filter gerade durchlaesst - nicht der ganze
+    //  Ordner. Man kann nur waehlen, was man sieht.
+    Q_INVOKABLE void selectAllVisible();
+    //  Ausgewaehltes in ANSICHTS-Reihenfolge; `filesOnly` laesst Ordner weg.
+    Q_INVOKABLE QStringList selectedPaths(bool filesOnly = false) const;
+
+    //  ── Auswahlrahmen (Gummiband) ────────────────────────────────────────────
+    //  `beginBand` merkt sich den Ausgangsstand (bei `additive` den bestehenden,
+    //  sonst nichts), `updateBand` bekommt je Mausbewegung die vom Rahmen
+    //  ueberdeckten PROXY-Bereiche als flache Liste [a0,b0,a1,b1,…] und setzt
+    //  die Auswahl auf Ausgangsstand + Rahmen. Gemeldet wird nur der
+    //  Unterschied (s. `MediaModel::setSelectedRows`).
+    Q_INVOKABLE void beginBand(bool additive);
+    Q_INVOKABLE void updateBand(const QVariantList& proxyRanges);
+    Q_INVOKABLE void endBand();
+
 signals:
     void countChanged();
     void sortChanged();
@@ -240,4 +261,8 @@ private:
     //  Dieselbe Menge JE BEREICH: die Kategorien eines aufgeklappten
     //  Unterordners liegen in SEINEM Sidecar, unter gleichnamigen Knoten.
     QHash<int, QSet<QString>> m_catFilesByScope;
+
+    //  Ausgangsstand des laufenden Auswahlrahmens (QUELLzeilen, aufsteigend);
+    //  leer, wenn gerade kein Rahmen gezogen wird.
+    QVector<int> m_bandBase;
 };

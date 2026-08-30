@@ -6,6 +6,7 @@
 
 #include <QDateTime>
 #include <QRandomGenerator>
+#include <algorithm>
 #include <functional>
 
 MediaProxyModel::MediaProxyModel(QObject* parent)
@@ -17,6 +18,17 @@ MediaProxyModel::MediaProxyModel(QObject* parent)
     //  Ordner hinten und, schlimmer, der Inhalt eines aufgeklappten Ordners VOR
     //  seiner Kachel. Die Baumordnung darf die Richtung nicht sehen.
     sort(0, Qt::AscendingOrder);
+
+    //  JEDE Filteraenderung raeumt die Mehrfachauswahl ab. Eine Auswahl, die
+    //  der Filter gerade ausblendet, waere eine Falle: `Strg+C` und „Loeschen"
+    //  traefen Dateien, die nicht auf dem Schirm stehen. Ein Ruf ins Leere
+    //  kostet nichts (`clearSelection` kehrt bei leerer Auswahl sofort um).
+    //  HIER und nicht in `setSourceModel`: dort waere sie bei jedem Wechsel des
+    //  Quellmodells ein zweites Mal entstanden, und `Qt::UniqueConnection` gibt
+    //  es fuer ein Lambda nicht - Qt verwirft eine solche Verbindung stillschweigend.
+    connect(this, &MediaProxyModel::filterChanged, this, [this] {
+        if (m_src) m_src->clearSelection();
+    });
 
     // count-Property reaktiv halten.
     connect(this, &QAbstractItemModel::rowsInserted,   this, &MediaProxyModel::countChanged);
@@ -534,6 +546,89 @@ QDateTime MediaProxyModel::dateTimeAt(int r)  const { return roleAt(r, MediaMode
 
 int MediaProxyModel::depthAt(int proxyRow) const {
     return roleAt(proxyRow, MediaModel::DepthRole).toInt();
+}
+
+// ─── Mehrfachauswahl in Ansichts-Reihenfolge ─────────────────────────────────
+//  Gehalten wird sie im Quellmodell; hier steht nur, was die SICHTBARE Ordnung
+//  braucht. Uebersetzt wird ueber `mapToSource` - ein Umschalt-Bereich meint
+//  „von dieser Kachel bis zu jener", und das sind Proxy-Zeilen.
+
+void MediaProxyModel::selectRange(int fromProxyRow, int toProxyRow, bool additive) {
+    if (!m_src) return;
+    const int n = rowCount();
+    int a = qBound(0, qMin(fromProxyRow, toProxyRow), n - 1);
+    int b = qBound(0, qMax(fromProxyRow, toProxyRow), n - 1);
+    if (n == 0) return;
+
+    QVector<int> rows = additive ? m_src->selectedRows() : QVector<int>();
+    rows.reserve(rows.size() + (b - a + 1));
+    for (int r = a; r <= b; ++r) {
+        const QModelIndex src = mapToSource(index(r, 0));
+        if (src.isValid()) rows.append(src.row());
+    }
+    std::sort(rows.begin(), rows.end());
+    rows.erase(std::unique(rows.begin(), rows.end()), rows.end());
+    m_src->setSelectedRows(rows);
+}
+
+void MediaProxyModel::selectAllVisible() {
+    if (!m_src) return;
+    const int n = rowCount();
+    if (n == 0) return;
+    QVector<int> rows;
+    rows.reserve(n);
+    for (int r = 0; r < n; ++r) {
+        const QModelIndex src = mapToSource(index(r, 0));
+        if (src.isValid()) rows.append(src.row());
+    }
+    std::sort(rows.begin(), rows.end());
+    m_src->setSelectedRows(rows);
+}
+
+QStringList MediaProxyModel::selectedPaths(bool filesOnly) const {
+    if (!m_src) return {};
+    QStringList out;
+    const int n = rowCount();
+    out.reserve(m_src->selectionCount());
+    for (int r = 0; r < n; ++r) {
+        const QModelIndex src = mapToSource(index(r, 0));
+        if (!src.isValid()) continue;
+        const MediaItem* it = m_src->itemAt(src.row());
+        if (!it) continue;
+        if (!src.data(MediaModel::SelectedRole).toBool()) continue;
+        if (filesOnly && it->isFolder()) continue;
+        out.append(it->filePath);
+    }
+    return out;
+}
+
+void MediaProxyModel::beginBand(bool additive) {
+    if (!m_src) return;
+    m_bandBase = additive ? m_src->selectedRows() : QVector<int>();
+    if (!additive) m_src->clearSelection();
+}
+
+void MediaProxyModel::updateBand(const QVariantList& proxyRanges) {
+    if (!m_src) return;
+    const int n = rowCount();
+    QVector<int> rows = m_bandBase;
+    for (int i = 0; i + 1 < proxyRanges.size(); i += 2) {
+        const int a = qBound(0, proxyRanges.at(i).toInt(),     n > 0 ? n - 1 : 0);
+        const int b = qBound(0, proxyRanges.at(i + 1).toInt(), n > 0 ? n - 1 : 0);
+        if (n == 0) break;
+        for (int r = qMin(a, b); r <= qMax(a, b); ++r) {
+            const QModelIndex src = mapToSource(index(r, 0));
+            if (src.isValid()) rows.append(src.row());
+        }
+    }
+    std::sort(rows.begin(), rows.end());
+    rows.erase(std::unique(rows.begin(), rows.end()), rows.end());
+    m_src->setSelectedRows(rows);
+}
+
+void MediaProxyModel::endBand() {
+    m_bandBase.clear();
+    m_bandBase.squeeze();
 }
 
 int MediaProxyModel::rowForPath(const QString& filePath) const {

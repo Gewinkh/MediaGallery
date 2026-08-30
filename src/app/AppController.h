@@ -55,6 +55,9 @@ class AppController : public QObject {
     Q_PROPERTY(bool    dragLogging     READ dragLogging     CONSTANT)
     //  Ziehen auf ein Lesezeichen: verschieben (Standard) oder kopieren.
     Q_PROPERTY(bool    fileDropMove    READ fileDropMove    WRITE setFileDropMove NOTIFY fileDropMoveChanged)
+    //  Versteckte Dateien mitzeigen. Wirkt beim naechsten Einlesen des Ordners -
+    //  der Setter stoesst es deshalb selbst an.
+    Q_PROPERTY(bool    showHiddenFiles READ showHiddenFiles WRITE setShowHiddenFiles NOTIFY showHiddenFilesChanged)
     //  Begleitdateien der App in Galerie und Dateiwähler mitzeigen.
     Q_PROPERTY(bool    showAllFiles    READ showAllFiles    WRITE setShowAllFiles NOTIFY showAllFilesChanged)
     //  Reicht „Tag löschen" bis in die Unterordner? (Standard AN, s. ISettings)
@@ -187,6 +190,8 @@ public:
     //  Schließt die Hälfte an dieser Stelle. Die letzte lässt sich nicht
     //  schließen - dann wäre gar keine Galerie mehr da.
     Q_INVOKABLE bool closePane(int index);
+    //  Ordner beider Haelften in die Einstellungen schreiben (s. `.cpp`).
+    void persistPaneFolders();
     //  Diese Hälfte ist jetzt gemeint (Fokus folgt dem Zeiger, s. GalleryPane).
     Q_INVOKABLE void focusPane(int index);
     //  Die beiden Hälften TAUSCHEN (Zug an der Leiste einer Hälfte). Ordner,
@@ -412,6 +417,21 @@ public:
     // kommt unverändert zurück.
     Q_INVOKABLE QString localPath(const QString& urlOrPath) const;
 
+    //  ── Dateien in die Zwischenablage (Strg+C in der Galerie) ───────────────
+    //  Abgelegt wird das, was ein Dateimanager erwartet: `text/uri-list` (die
+    //  Dateien selbst), `text/plain` (die Pfade, fuer Terminal und Textfeld)
+    //  und `x-special/gnome-copied-files` (Nautilus/Nemo/Caja verlangen es zum
+    //  Einfuegen; Dolphin liest `text/uri-list`). Unter Windows/macOS bildet Qt
+    //  die URL-Liste von selbst auf die Dateiliste des Systems ab.
+    //  Rueckgabe: Anzahl der wirklich abgelegten Dateien.
+    Q_INVOKABLE int copyFilesToClipboard(const QStringList& paths) const;
+    //  Gegenstueck: die Dateien AUS der Zwischenablage (`Strg+V` in der
+    //  Galerie). Gelesen wird `text/uri-list` - dasselbe Format, das ein
+    //  Dateimanager beim Kopieren ablegt und das auch unser Ziehen benutzt.
+    //  Zurueck kommen nur Adressen, die es wirklich gibt; Ordner bleiben
+    //  aussen vor (sie werden nicht kopiert, s. `handleDroppedUrls`).
+    Q_INVOKABLE QList<QUrl> clipboardFileUrls() const;
+
     // Shell-Beschriftungen (reaktiv über languageChanged)
     QString menuFileText()           const;
     QString menuViewText()           const;
@@ -428,6 +448,8 @@ public:
     //  Nur fuer die Fehlersuche: schaltet die QML-Seite ihre Protokollzeilen an.
     bool dragLogging() const { return qEnvironmentVariableIsSet("MG_DRAGLOG"); }
     bool fileDropMove() const;
+    bool showHiddenFiles() const;
+    void setShowHiddenFiles(bool v);
     bool showAllFiles() const;
     bool deleteTagsInSubfolders() const;
     void setDeleteTagsInSubfolders(bool v);
@@ -470,6 +492,7 @@ signals:
     //  ueberhaupt nicht weitergereicht (dann bleibt das Randscrollen).
     void dragWheel(int angleDeltaY);
     void fileDropMoveChanged();
+    void showHiddenFilesChanged();
     void showAllFilesChanged();
     void deleteTagsInSubfoldersChanged();
     void textPdfColorChanged();
@@ -523,6 +546,15 @@ public:
     void  setPaneSplit(qreal v);
 private:
     bool           m_tileDragActive = false;
+    //  Was WIR zuletzt kopiert haben. Grund: die Zwischenablage des Systems
+    //  liefert eine lange Adressliste nicht vollstaendig zurueck (gemessen auf
+    //  KDE/Wayland: 29 Adressen abgelegt, 3 wiedergelesen - s. LIMITATIONS.md).
+    //  Solange WIR der Eigentuemer sind, ist diese Liste die Wahrheit; sobald
+    //  ein anderes Programm kopiert, gilt wieder die Ablage des Systems.
+    QStringList    m_ownClipFiles;
+    //  Kam die letzte Aenderung der Ablage von UNS? Dann bleibt `m_ownClipFiles`
+    //  stehen, sonst wird sie verworfen (ein anderes Programm hat kopiert).
+    bool           m_clipSelfSet = false;
     //  Nur fuer die Fehlersuche (Umgebungsvariable MG_DRAGLOG=1): zaehlt, welche
     //  Ereignistypen waehrend eines Zuges ueberhaupt bei der Anwendung ankommen.
     bool               m_dragLog = false;

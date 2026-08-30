@@ -20,7 +20,7 @@ void FolderService::openFolder(const QString& rawPath) {
         m_storage.saveFolder(m_currentFolder);
 
     m_currentFolder = path;
-    m_settings.setLastFolder(path);
+    if (m_persistsLast) m_settings.setLastFolder(path);
     m_storage.loadFolder(path);
 
     emit folderOpened(path);

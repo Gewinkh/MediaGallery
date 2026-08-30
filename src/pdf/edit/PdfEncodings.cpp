@@ -7,8 +7,10 @@
 // ══════════════════════════════════════════════════════════════════════════════
 //  PdfEncodings.cpp - Tabellen der einfachen PDF-Textkodierungen.
 //
-//  REIN MECHANISCHE DATEN (Adobe: WinAnsiEncoding, MacRomanEncoding, Adobe
-//  Glyph List). Sie stehen bewusst hier statt im Content-Editor: die
+//  DATENTABELLEN: WinAnsiEncoding und MacRomanEncoding legt die
+//  PDF-Spezifikation fest (ISO 32000-1, Anhang D); die Glyphennamen folgen der
+//  Adobe Glyph List. Ausgeschrieben ist nur die hier gebrauchte Teilmenge.
+//  Sie stehen bewusst hier statt im Content-Editor: die
 //  Zuordnung Byte ↔ Unicode wird auch beim direkten Bearbeiten der Textebene
 //  gebraucht (README ▸ Planned) und hat mit dem Splicing nichts zu tun.
 //

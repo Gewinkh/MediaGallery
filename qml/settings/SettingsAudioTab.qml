@@ -26,9 +26,33 @@ Item {
                 title: App.uiText(App.language, "AudioEqTitle")
                 Layout.fillWidth: true
 
+                CheckBox {
+                    text: App.uiText(App.language, "AudioEqAutoPreamp")
+                    checked: Audio.eqAutoPreamp
+                    onToggled: Audio.eqAutoPreamp = checked
+                    contentItem: Text {
+                        text: parent.text; color: App.themeTextPrimary
+                        leftPadding: parent.indicator.width + 6
+                        verticalAlignment: Text.AlignVCenter
+                    }
+                }
+                Text {
+                    Layout.fillWidth: true
+                    Layout.leftMargin: 24
+                    Layout.bottomMargin: 6
+                    text: App.uiText(App.language, "AudioEqAutoPreampHint")
+                    color: App.themeTextMuted
+                    font.pixelSize: 11
+                    wrapMode: Text.WordWrap
+                }
+
                 AudioEqPanel {
                     Layout.fillWidth: true
                     Layout.preferredHeight: implicitHeight
+                    //  Hier - und nur hier - lassen sich Voreinstellungen
+                    //  löschen, zurücksetzen und umsortieren (Wunsch des
+                    //  Nutzers); am Player wählt und sichert man nur.
+                    manageable: true
                 }
             }
 

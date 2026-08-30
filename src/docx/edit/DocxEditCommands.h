@@ -64,3 +64,33 @@ private:
     int                 m_tableId = -1;       // −1 = kein Gerüst betroffen
     Docx::TableDef      m_tblBefore, m_tblAfter;
 };
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  DocxSectionCommand - Seitenränder (Randlineale).
+//
+//  Eigener Kommandotyp und kein Block-Schnappschuss: die Ränder ändern KEINEN
+//  Block, sondern die Seiteneinrichtung - davon hängt die ganze Auslegung ab
+//  (Zeilenbreite, Umbruch, Seitenzahl). Gesichert werden deshalb die Werte UND
+//  das umgeschriebene `w:sectPr`; beides gehört zusammen, weil das eine die
+//  Anzeige treibt und das andere das Speichern.
+// ─────────────────────────────────────────────────────────────────────────────
+class DocxSectionCommand : public QUndoCommand {
+public:
+    DocxSectionCommand(DocxEditController* ctl,
+                       Docx::Document::SectionState before,
+                       Docx::Document::SectionState after);
+
+    void undo() override;
+    void redo() override;
+    //  Aufeinanderfolgende Züge AM SELBEN Rand verschmelzen zu EINEM Schritt -
+    //  sonst hinterließe ein einziges Ziehen des Lineals Dutzende von
+    //  Rückgängig-Schritten (das Lineal meldet je Mausbewegung).
+    int  id() const override { return 0xD05; }
+    bool mergeWith(const QUndoCommand* other) override;
+
+private:
+    DocxEditController*          m_ctl;
+    Docx::Document::SectionState m_before;
+    Docx::Document::SectionState m_after;
+    bool                         m_firstRedo = true;
+};

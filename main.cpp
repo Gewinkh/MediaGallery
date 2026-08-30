@@ -110,6 +110,22 @@ protected:
                   qPrintable(k->text()),
                   watched->metaObject()->className(),
                   ev->isAccepted() ? "  [bereits angenommen]" : "");
+            //  WER hat den Tastaturfokus? Ohne diese Zeile beantwortet der
+            //  Mitschnitt nur „ist die Taste angekommen?" - nicht „warum tut
+            //  sie nichts?". Genau das war bei der Entf-Taste die offene
+            //  Frage: sie haengt an `GalleryView.Keys.onPressed`, greift also
+            //  NUR, solange die Ansicht den Fokus hat. Ein Textfeld im Baum
+            //  (Suche, Umbenennen) schluckt sie lautlos.
+            if (t == QEvent::KeyPress) {
+                if (auto* w = qobject_cast<QQuickWindow*>(watched)) {
+                    QQuickItem* f = w->activeFocusItem();
+                    QObject*    o = f ? f->parent() : nullptr;
+                    qInfo("[KEY]     Fokus: %s   (gehoert zu: %s)   Fenster aktiv: %s",
+                          f ? f->metaObject()->className() : "(keins)",
+                          o ? o->metaObject()->className() : "-",
+                          w->isActive() ? "ja" : "nein");
+                }
+            }
         } else if (t == QEvent::Shortcut) {
             const auto* sc = static_cast<QShortcutEvent*>(ev);
             qInfo("[KEY] Shortcut         \"%s\" ausgeloest -> %s",

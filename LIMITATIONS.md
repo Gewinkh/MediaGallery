@@ -58,6 +58,52 @@ Workaround: unknown types carry an extension badge, so they are recognisable.
 Why: on systems without a working trash the app refuses to delete rather than
 removing a file for good.
 
+**The selection rectangle does not scroll the gallery.**
+What you notice: dragging it to the top or bottom edge does not carry on to the
+tiles above or below, unlike dragging a *file*, which does scroll at the edge.
+Why: the rectangle is evaluated over the rows that are currently laid out. If the
+view scrolled underneath it, tiles would pass through it: what left the viewport
+would be neither visibly selected nor visibly deselected, and the result would
+depend on how fast you dragged. Measured cost of one pointer move over 3000
+files: 230 µs while the selection changes, 55 µs while it does not.
+Workaround: scroll first, then drag - or add to the selection with `Ctrl`+click
+and `Shift`+click, which reach any tile.
+
+**Any change to a filter clears the selection**, as does opening another folder or
+a refresh.
+Why: a selection the filter has hidden would be a trap - `Ctrl+C` and *Delete*
+would act on files that are not on screen. The same reasoning keeps `Ctrl+A` to
+what the filter is showing rather than the whole folder.
+
+**The desktop's clipboard can shorten a long list of copied files.**
+What you notice: you copy many files with `Ctrl+C` and another program
+(a browser, a file manager) receives only the first few - sometimes only one.
+Why: not the copy itself. Measured on KDE/Wayland with 29 files
+(`bench_shell g`): the app hands over 4147 bytes / 29 addresses, and reading the
+system clipboard back gives 429 bytes / 3 addresses, cut in the middle of an
+address - twice out of five runs it was even the clipboard of an **earlier**
+run, from a different folder. The mangled version always carries the format
+`application/x-kde-onlyReplaceEmpty`, the fingerprint of KDE's clipboard manager
+(Klipper). Leaving out `text/plain` does not help (measured, 5 runs each).
+Workaround / status: **inside the app it does not happen** - `Ctrl+V` in the
+gallery uses the list the app remembered when copying, so all files arrive
+(measured: 29 copied, 29 pasted, three runs). For other programs, **dragging**
+the selection works reliably where copying does not - a drag carries the whole
+list. Turning Klipper off (or its "Text selection only" option on) removes the
+problem at its source.
+
+**Folders can be selected, but not dragged or copied.**
+What you notice: a folder tile joins a multi-selection and is deleted with it,
+but dragging the selection leaves it behind, and `Ctrl+C` does not copy it.
+Why: dragging a folder into another program is a promise of its own, not a side
+effect of selecting it; the gallery has never offered it.
+
+**A multi-file drop asks about each name collision separately.**
+What you notice: dropping 20 files into a folder that already holds five of those
+names brings up the replace/rename question five times.
+Why: there is no "apply to all" - each collision is a decision about a different
+file. Cancelling applies to that one file only; the rest of the drop carries on.
+
 ---
 
 ## Tags and categories
@@ -311,10 +357,19 @@ planned.
 
 ## Two-pane mode
 
+**A boosted equalizer plays quieter than a flat one.**
+What you notice: raise a band and the music gets noticeably quieter rather than
+louder - one band at +12 dB costs about 12 dB of level.
+Why: boosting cannot add headroom, it can only use it up. Either the peaks are
+cut off (harsh, measured at 13-35 % distortion) or the whole signal is lowered to
+make room. *Prevent clipping* does the latter, and it aims at the worst case: the
+loudest frequency the filter chain can produce, not the average.
+Workaround / status: turn the volume up, or drag the preamp back yourself - the
+slider keeps working. Turning *Prevent clipping* off in Settings -> Audio brings
+the old behaviour back, distortion included.
+
 **Two halves, at most four open files** (two per half when split).
 Why: a deliberate cap - beyond that the tiles are too small to work in.
-
-**A file cannot be dragged from one half into the other.** Not built yet.
 
 **In true fullscreen a tile cannot be re-docked.**
 Why: the header of a tile is also its drag handle for docking; while the chrome is
@@ -337,12 +392,58 @@ the second visit to any folder comes from the thumbnail cache (0.04 ms per tile)
 
 ## Editors
 
-**The extra margin for DOCX-to-PDF makes the content smaller, not the paper bigger.**
-Why: the paper size comes from the document (`w:sectPr`) and stays - a growing
-sheet would no longer be A4 and would be rescaled by printers and viewers. So the
-page is drawn into a smaller rectangle instead, which shrinks the text by the same
-factor.
-Workaround / status: deliberate (your choice); 0 mm keeps the previous result.
+**The margin rulers move the page margins, not the paper.**
+What you notice: pulling a margin in gives you a narrower column of text and
+usually MORE pages - it does not shrink the document to fit.
+Why: that is what a page margin is, and it is what Word does. The paper size
+still comes from the document (`w:sectPr/w:pgSz`) and is left alone - a growing
+sheet would no longer be A4 and would be rescaled by printers and viewers. The
+earlier setting "extra margin for PDF export", which drew the page smaller into a
+rectangle and left the page count untouched, has been removed: it was the
+stopgap for exactly this, and the two would have added up.
+
+**Scrolling while you hold a ruler handle counts towards the margin.**
+What you notice: grab a margin handle, keep the button down and turn the wheel -
+the handle stays under your pointer and the margin changes by exactly the
+distance you scrolled, on top of whatever the mouse itself moved.
+Why: deliberate, and necessary - an A4 page is taller than the window, so the
+bottom margin cannot be reached without scrolling. The vertical ruler's scale
+follows the scroll for as long as you hold a handle, instead of following the
+page under your eye (which jumps by a whole page at a time). Measured
+(`bench_docxruler`): the handle sits 1 px from the pointer, scrolling 367 px
+adds exactly 97 mm to the margin, and letting go moves nothing (0 px).
+Workaround / status: it means a long scroll makes a large margin - scroll only
+as far as you need while holding, or let go, scroll, and grab again. The value
+is still clamped so at least 10 mm of writing area remains. The horizontal ruler
+is deliberately unaffected: vertical scrolling must not change the left and
+right margins (measured: 35.5 mm with and without the wheel).
+
+**Dragging a ruler changes the document.**
+What you notice: the file is marked as modified and the margins are saved with
+it - Word then shows the same margins.
+Why: they live in the document (`w:sectPr/w:pgMar`), which is the only place
+Word reads them from. `Ctrl+Z` takes a drag back as one step, and the reset
+button on each ruler restores what the file came with. A document that had no
+`w:sectPr` at all gets one written the first time you drag.
+
+**A tab in a document becomes a space in the exported PDF's text.**
+Why: Qt maps the space glyph to U+0009 in the PDF's `ToUnicode` table, so every
+space in an exported file would be read back as a tab. That is corrected on the
+way out (`core/PdfGlyphRuns`), and a real tab - which a page description draws as
+blank space anyway, never as a glyph - is read back as a space along with it.
+Workaround / status: deliberate; the alternative was tabs instead of spaces in
+every exported file.
+
+**A PDF made by another Qt program can still read back with its words split.**
+Why: Qt's PDF engine writes one text object per glyph. On a page of short,
+tightly spaced lines PDFium - which drives this app's search and Chrome's PDF
+viewer - then takes the page for vertically written text and puts a line break
+between the letters, so "Hallo" is read as "H" + "allo". Files written *by this
+app* are repaired on the way out (measured on 44 lines of "Hallo wie geht es":
+searching "Hallo" went from 0 hits to 132, and the rendered page is unchanged
+pixel for pixel). A file that arrives from elsewhere is not touched.
+Workaround / status: for a foreign file, a Poppler-based reader (Okular,
+Evince, `pdftotext`) reads it correctly.
 
 **The page number in the text-to-PDF export is fixed.**
 Why: that export writes a centred "1/3" footer by design; only the DOCX export got
@@ -351,6 +452,20 @@ the choice of position and style.
 **The DOCX editor rewrites only what you touch.**
 Why: the file is kept as it came, so unknown parts survive untouched. Practical
 limit: features the editor does not know are preserved but not editable.
+
+**Dragging a margin ruler gets sluggish in a long document.**
+What you notice: on a short document the margin follows the mouse smoothly; the
+longer the document, the more the drag stutters.
+Why: a margin change re-flows the whole document, and the ruler reports on every
+mouse movement, so that work runs once per movement on the UI thread. Measured
+(`bench_docxruler`, per mouse movement): 5.2 ms at 100 paragraphs, 18.4 ms at
+400, 53.7 ms at 1600, **73.1 ms at 4000** - about 14 updates per second at the
+top end.
+Workaround / status: the view itself no longer moves while you drag (that was a
+separate bug and is fixed), so the stutter is the only remaining cost; drag in
+short steps, or set the margin and let go. Coalescing the updates was considered
+and not built: the window system already merges mouse movements, so the
+measurement says it would save nothing that is not already saved.
 
 **A very long DOCX keeps its whole layout in memory.**
 Why: the editor measures every paragraph to know where the pages break, and it
@@ -371,6 +486,10 @@ view differs from the old one by 0.18 of 255 per pixel on average.
 Workaround / status: deliberate. A JPEG even opens faster this way (55 ms -> 33 ms);
 a PNG opens about 30 % slower (179 ms -> 233 ms), because it has to be decoded at
 full size anyway and is then scaled down - the memory is the trade.
+The decode step only ever *grows* while a file stays open, so making the window
+large and then small again keeps the larger step in memory until you open
+another file. That is the deliberate half of the trade: shrinking the window
+would otherwise re-decode the picture and make it blink.
 
 **What Word makes of the app's files has never been checked.**
 Why: every test reads the file back with the app's own parser. Opening one in Word
@@ -384,10 +503,6 @@ Not limits of the built thing - **planned work**, kept here so there is one plac
 to look. Once something ships, its entry moves out (into **[FEATURES.md](FEATURES.md)**), and only
 what it still cannot do stays behind in the sections above.
 
-- **Dragging a file from one half of the split view into the other** - dropping it
-  on a *folder tile* in the other half already works (it is copied there); what is
-  missing is dropping it into that half's open folder, and moving instead of
-  copying.
 - **Spell checking for Japanese** - there is no Hunspell dictionary for it, and
   the approach does not fit: Japanese does not separate words by spaces, while
   Hunspell checks word by word. It would need a different engine altogether (a
@@ -395,6 +510,10 @@ what it still cannot do stays behind in the sections above.
   into words), i.e. a new dependency plus its own dictionary and a second
   checking path next to Hunspell - a separate piece of work, not started. Arabic, by contrast, only needs the `hunspell-ar` dictionary
   installed - no code change.
+- **Undoing a tag change** - `Ctrl+Z` in the gallery takes back file operations
+  (delete, move), including a multi-file deletion in one step, but tag and
+  category changes are not on that stack at all. Deleting a tag across a folder
+  tree therefore cannot be taken back.
 - **An IDE-style text editor**: the text view has no syntax colouring at all -
   Markdown, C++, Python and the rest are shown as plain text - it sits in an
   inset box rather than filling the view, and its colours cannot be set

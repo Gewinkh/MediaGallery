@@ -16,12 +16,6 @@ void DocxController::setSaveDirect(bool v) {
 }
 
 // ── Was beim Weg „DOCX -> PDF" gilt ──────────────────────────────────────────
-int DocxController::pdfPaddingMm() const { return m_settings.docxPdfPaddingMm(); }
-void DocxController::setPdfPaddingMm(int mm) {
-    if (m_settings.docxPdfPaddingMm() == mm) return;
-    m_settings.setDocxPdfPaddingMm(mm);
-    emit pdfOptionsChanged();
-}
 int DocxController::pdfPageNumberPos() const { return m_settings.docxPdfPageNumberPos(); }
 void DocxController::setPdfPageNumberPos(int pos) {
     if (m_settings.docxPdfPageNumberPos() == pos) return;

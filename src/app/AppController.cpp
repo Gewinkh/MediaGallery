@@ -29,11 +29,26 @@
 #include <QTimer>
 #include <QWheelEvent>
 #include <QGuiApplication>
+#include <QClipboard>
+#include <QMimeData>
+#include <QUrl>
 
 AppController::AppController(ISettings& settings, QObject* parent)
     : QObject(parent)
     , m_settings(settings)
 {
+    //  ── Wachhund über die Zwischenablage ────────────────────────────────────
+    //  Kopiert ein ANDERES Programm, verliert unsere gemerkte Dateiliste ihre
+    //  Gültigkeit - sonst fügte `Strg+V` später etwas ein, das gar nicht mehr
+    //  in der Ablage steht. Die eigene Änderung wird über `m_clipSelfSet`
+    //  durchgelassen (sie kommt als dasselbe Signal zurück).
+    if (QClipboard* cb = QGuiApplication::clipboard()) {
+        connect(cb, &QClipboard::dataChanged, this, [this] {
+            if (m_clipSelfSet) { m_clipSelfSet = false; return; }
+            m_ownClipFiles.clear();
+        });
+    }
+
     // Settings (konkrete Instanz für Signale; Datenzugriff über ISettings&)
     AppSettings& as = AppSettings::instance();
     connect(&as, &AppSettings::colorSchemeChanged, this, &AppController::backgroundColorChanged);
@@ -116,6 +131,10 @@ int AppController::indexOfPane(QObject* pane) const {
 QObject* AppController::addPane() {
     if (!m_loader || int(m_panes.size()) >= kMaxPanes) return nullptr;
     auto* pane = new PaneController(m_settings, *m_loader, this);
+    //  Den Startordner schreibt NUR die erste Haelfte. Sonst ueberschreibt die
+    //  zuletzt benutzte Haelfte den gemerkten Ordner der ersten, und beim
+    //  naechsten Start stehen beide auf demselben (vom Nutzer gemeldet).
+    pane->folderService().setPersistsLastFolder(m_panes.empty());
     //  Punktgenau einfuegen: die BESTEHENDE Haelfte darf dabei nicht neu
     //  gebaut werden, sonst ist ihre geoeffnete Datei weg (s. PaneListModel).
     m_panesModel->beginInsert(int(m_panes.size()));
@@ -137,10 +156,46 @@ bool AppController::closePane(int index) {
     m_panesModel->endRemove();
     if (m_pane == pane)
         setFocusedPane(m_panes.front());
+    //  Wer jetzt die erste ist, schreibt ab sofort den Startordner - sonst
+    //  merkte sich nach dem Schliessen der ersten Haelfte niemand mehr einen.
+    if (!m_panes.empty())
+        m_panes.front()->folderService().setPersistsLastFolder(true);
+
+    //  Der Player-Merker haengt am PLATZ der Haelfte (Bit je Platz). Faellt eine
+    //  weg, muss ihr Bit verschwinden und die dahinter muessen aufruecken -
+    //  sonst entsteht die geschlossene Haelfte beim naechsten Start wieder aus
+    //  dem Merker (vom Nutzer gemeldet: „habe einen Screen geschlossen und beim
+    //  Neustart sind wieder zwei da").
+    {
+        const int alt = m_settings.audioPlayerModeMask();
+        int neu = 0;
+        for (int i = 0, platz = 0; i < 4; ++i) {
+            if (i == index) continue;                 // faellt weg
+            if (alt & (1 << i)) neu |= (1 << platz);
+            ++platz;
+        }
+        if (neu != alt) m_settings.setAudioPlayerModeMask(neu);
+    }
+    //  Den Fensterzustand SOFORT nachziehen, nicht erst beim Beenden: wer eine
+    //  Haelfte schliesst und die App danach anders beendet (Absturz, Abmelden),
+    //  bekam sie beim naechsten Start zurueck (vom Nutzer gemeldet).
+    persistPaneFolders();
     //  Erst melden, dann löschen: QML gibt seine Hälfte im selben Zug frei.
     emit panesChanged();
     pane->deleteLater();
     return true;
+}
+
+//  Welche Ordner stehen wo? Der der ERSTEN Haelfte ist der Startordner, der der
+//  zweiten gehoert zum Fensterzustand. An EINER Stelle geschrieben, damit die
+//  beiden nicht auseinanderlaufen.
+void AppController::persistPaneFolders() {
+    if (!m_panes.empty()) {
+        const QString first = m_panes.front()->currentFolder();
+        if (!first.isEmpty()) m_settings.setLastFolder(first);
+    }
+    m_settings.setSecondFolder(m_panes.size() > 1 ? m_panes[1]->currentFolder()
+                                                  : QString());
 }
 
 void AppController::focusPane(int index) {
@@ -433,6 +488,20 @@ void AppController::endTileDrag() {
     if (!m_tileDragActive) return;
     m_tileDragActive = false;
     emit tileDragActiveChanged();
+}
+
+bool AppController::showHiddenFiles() const { return m_settings.showHiddenFiles(); }
+void AppController::setShowHiddenFiles(bool v) {
+    if (m_settings.showHiddenFiles() == v) return;
+    m_settings.setShowHiddenFiles(v);
+    emit showHiddenFilesChanged();
+    //  ALLE Haelften neu einlesen, nicht nur die fokussierte: die Einstellung
+    //  wird beim Umschalten meist aus den EINSTELLUNGEN heraus gesetzt, und dann
+    //  zeigt `m_pane` gar nicht auf die Galerie, die man gerade vor sich hat -
+    //  `refreshCurrentFolder()` lief dann ins Leere (vom Nutzer gemeldet: die
+    //  Einstellung war im Programm, `.gitignore` erschien trotzdem nicht).
+    for (PaneController* p : m_panes)
+        if (p) p->refreshCurrentFolder();
 }
 
 bool AppController::fileDropMove() const { return m_settings.fileDropMove(); }
@@ -1008,10 +1077,8 @@ void AppController::saveWindowState(int w, int h, int x, int y, bool maximized) 
     }
     m_settings.sync();
     if (m_pane) m_pane->folderService().saveCurrentFolder();
-    //  Zwei-Fenster-Modus: der Ordner der zweiten Hälfte gehört zum Fensterzustand.
-    //  Ohne zweite Hälfte wird der Eintrag geleert - sonst käme sie beim nächsten
-    //  Start zurück, obwohl man sie geschlossen hat.
-    m_settings.setSecondFolder(m_panes.size() > 1 ? m_panes[1]->currentFolder() : QString());
+    //  Beide Ordner ueber denselben Weg (s. `persistPaneFolders`).
+    persistPaneFolders();
 }
 
 // ── Tags ─────────────────────────────────────────────────────────────────────
@@ -1058,6 +1125,85 @@ QString AppController::uiText(const QString& lang, const QString& key) const {
 
 QString AppController::localPath(const QString& urlOrPath) const {
     return mg::toLocalPath(urlOrPath);
+}
+
+//  ── Dateien in die Zwischenablage ───────────────────────────────────────────
+//  Drei Formate nebeneinander, weil die Dateimanager sich nicht einig sind:
+//  `text/uri-list` versteht jeder (Dolphin, Thunar, PCManFM, und es ist auch
+//  das Format des Ziehens), `x-special/gnome-copied-files` braucht die
+//  GNOME-Linie (Nautilus/Nemo/Caja) mit vorangestelltem „copy", und
+//  `text/plain` ist der Rueckfall fuer Terminal und Textfeld.
+int AppController::copyFilesToClipboard(const QStringList& paths) const {
+    QClipboard* cb = QGuiApplication::clipboard();
+    if (!cb) return 0;
+
+    QList<QUrl> urls;
+    QStringList plain;
+    urls.reserve(paths.size());
+    plain.reserve(paths.size());
+    for (const QString& p : paths) {
+        const QString local = mg::toLocalPath(p);
+        if (local.isEmpty() || !QFileInfo::exists(local)) continue;
+        urls.append(QUrl::fromLocalFile(local));
+        plain.append(local);
+    }
+    if (urls.isEmpty()) {
+        //  Nichts abzulegen - die vorhandene Zwischenablage bleibt, wie sie ist.
+        return 0;
+    }
+
+    auto* mime = new QMimeData;
+    mime->setUrls(urls);
+    mime->setText(plain.join(QLatin1Char('\n')));
+    QByteArray gnome = QByteArrayLiteral("copy");
+    for (const QUrl& u : std::as_const(urls))
+        gnome += '\n' + u.toEncoded();
+    mime->setData(QStringLiteral("x-special/gnome-copied-files"), gnome);
+    //  Die Zwischenablage uebernimmt den Besitz.
+    cb->setMimeData(mime);
+    //  ZUSAETZLICH selbst merken (s. `clipboardFileUrls`). Der Merker wird VOR
+    //  dem Schreiben gesetzt: `setMimeData` loest `dataChanged` aus, und der
+    //  Wachhund darf die gerade gesetzte Liste nicht gleich wieder wegwerfen.
+    auto* self = const_cast<AppController*>(this);
+    self->m_clipSelfSet = true;
+    self->m_ownClipFiles = plain;
+    return urls.size();
+}
+
+QList<QUrl> AppController::clipboardFileUrls() const {
+    QClipboard* cb = QGuiApplication::clipboard();
+    if (!cb) return {};
+    //  ── Haben WIR zuletzt kopiert? Dann gilt unsere eigene Liste ────────────
+    //  GEMESSEN auf KDE/Wayland (`bench_shell g`): 29 Adressen abgelegt, die
+    //  Systemablage liefert 3 zurueck - und zwar die eines FRUEHEREN Laufs, aus
+    //  einem ganz anderen Ordner. Eine Zwischenablagen-Verwaltung (Klipper,
+    //  erkennbar am Format `application/x-kde-onlyReplaceEmpty`) haelt dort
+    //  einen gekuerzten Stand fest. Innerhalb der App gibt es keinen Grund,
+    //  diesen Verlust hinzunehmen.
+    //  Wann die eigene Liste WIEDER faellt, entscheidet `QClipboard::dataChanged`
+    //  (s. Konstruktor): kopiert ein anderes Programm, ist sie weg.
+    //  Weder `ownsClipboard()` noch ein Inhaltsvergleich taugen dafuer -
+    //  Ersteres meldet unter Wayland falsch, Letzterer scheitert genau dann,
+    //  wenn die Ablage einen ganz fremden (veralteten) Stand haelt.
+    if (!m_ownClipFiles.isEmpty()) {
+        QList<QUrl> mine;
+        for (const QString& p : m_ownClipFiles) {
+            if (!QFileInfo::exists(p) || QFileInfo(p).isDir()) continue;
+            mine.append(QUrl::fromLocalFile(p));
+        }
+        if (!mine.isEmpty()) return mine;
+    }
+    //  Sonst gilt die Ablage des Systems (ein anderes Programm hat kopiert).
+    const QMimeData* md = cb->mimeData();
+    if (!md || !md->hasUrls()) return {};
+    QList<QUrl> out;
+    for (const QUrl& u : md->urls()) {
+        const QString local = u.toLocalFile();
+        if (local.isEmpty() || !QFileInfo::exists(local)) continue;
+        if (QFileInfo(local).isDir()) continue;   // Ordner werden nicht kopiert
+        out.append(u);
+    }
+    return out;
 }
 
 QString AppController::fileUrl(const QString& path) const {

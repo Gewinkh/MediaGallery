@@ -1,5 +1,8 @@
 #include "core/TextPdfExporter.h"
 
+#include "core/PdfGlyphRuns.h"
+
+#include <QBuffer>
 #include <QPdfWriter>
 #include <QPageSize>
 #include <QPageLayout>
@@ -80,8 +83,14 @@ bool exportToPdf(const QString& text, const QString& targetPath,
         return false;
     }
 
+    //  Erst in den Speicher, dann durch `mergeGlyphRuns` - Qt schreibt sonst
+    //  ein Textobjekt je Glyphe, und PDFium liest daraus zerrissene Wörter
+    //  (s. core/PdfGlyphRuns.h).
+    QByteArray pdfBytes;
     {
-        QPdfWriter writer(&out);
+        QBuffer sink(&pdfBytes);
+        sink.open(QIODevice::WriteOnly);
+        QPdfWriter writer(&sink);
         writer.setPageSize(QPageSize(QPageSize::A4));
         writer.setPageMargins(QMarginsF(kMarginMm, kMarginMm, kMarginMm, kMarginMm),
                               QPageLayout::Millimeter);
@@ -216,8 +225,14 @@ bool exportToPdf(const QString& text, const QString& targetPath,
             p.restore();
         }
         p.end();
-    }   // QPdfWriter zerstört -> PDF finalisiert (Trailer) in den QSaveFile-Puffer
+    }   // QPdfWriter zerstört -> PDF finalisiert (Trailer)
 
+    const QByteArray fixed = mg::pdfglyphs::mergeGlyphRuns(pdfBytes);
+    pdfBytes.clear();
+    if (out.write(fixed) != fixed.size()) {
+        if (err) *err = QStringLiteral("Schreiben fehlgeschlagen.");
+        return false;
+    }
     if (!out.commit()) {
         if (err) *err = QStringLiteral("Schreiben fehlgeschlagen.");
         return false;

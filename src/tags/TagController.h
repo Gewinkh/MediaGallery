@@ -70,6 +70,13 @@ public:
     Q_INVOKABLE bool fileInCategory(const QString& catId, const QString& fileName) const;
     Q_INVOKABLE QStringList categoriesForFile(const QString& fileName) const;   // Namen
     Q_INVOKABLE QStringList categoryIdsForFile(const QString& fileName) const;  // IDs
+    //  ── Mehrfachauswahl ──────────────────────────────────────────────────────
+    //  IDs, in denen ALLE genannten Dateien liegen (Schnittmenge) - daran haengt
+    //  das Haekchen im Kontextmenue einer Mehrfachauswahl.
+    Q_INVOKABLE QStringList categoryIdsForFiles(const QStringList& fileNames) const;
+    //  Dieselbe Mitgliedschaft fuer alle genannten Dateien setzen bzw. loesen.
+    Q_INVOKABLE void setFilesInCategory(const QString& catId,
+                                        const QStringList& fileNames, bool on);
 
     // ── Converter: Tag ↔ Unterkategorie (Phase 4) ────────────────────────────
     // Kombinierte Mehrschritt-Mutationen - bleiben als Geschäftslogik in C++.

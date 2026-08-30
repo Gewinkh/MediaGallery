@@ -93,7 +93,8 @@ public:
     Q_INVOKABLE int rowOfIndex(int proxyRow) const;
     //  Alles ueber eine Zeile in EINEM Zugriff - die Ansicht braucht das beim
     //  Ablegen, um aus einem Punkt den Zielordner zu bestimmen.
-    //  Schluessel: kind · first · count · depth · ownerFolder
+    //  Schluessel: kind · first · count · depth · openMask · closeMask ·
+    //  ownerFolder
     Q_INVOKABLE QVariantMap rowInfo(int row) const;
 
 signals:
@@ -122,7 +123,8 @@ private:
     //  Dieselbe Kette in einen VORHANDENEN Puffer - fuer den Neuaufbau, der sie
     //  je Zeile braucht (s. .cpp).
     void         chainOf(int scope, QVector<int>* out) const;
-    void onSourceDataChanged(const QModelIndex& topLeft, const QModelIndex& bottomRight);
+    void onSourceDataChanged(const QModelIndex& topLeft, const QModelIndex& bottomRight,
+                             const QList<int>& roles);
 
     QPointer<MediaProxyModel> m_proxy;
     QPointer<MediaModel>      m_src;

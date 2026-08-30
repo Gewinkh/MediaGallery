@@ -13,9 +13,7 @@ namespace mg {
 //  eine Kanone auf einen Spatz (§0-Priorität 4).
 //
 //  Xoshiro128++ ist der Gegenentwurf: **16 Byte Zustand**, ~5 Rechenschritte je
-//  Zahl, gute Verteilung (BigCrush-fest in dieser Wortbreite). Header-only, kein
-//  Fremdcode - die Rechenvorschrift ist gemeinfrei und hier eigenständig
-//  ausgeschrieben.
+//  Zahl, gute Verteilung (BigCrush-fest in dieser Wortbreite). Header-only.
 //
 //  Nachstellbarkeit: mit demselben Saatwert kommt dieselbe Folge - die
 //  Testtreiber prüfen die Mischung damit deterministisch.
@@ -49,7 +47,7 @@ public:
         return result;
     }
 
-    //  Gleichverteilt in [0, bound). Der Rest-Trick (Lemire) braucht EINE
+    //  Gleichverteilt in [0, bound). Der Rest-Trick braucht EINE
     //  Multiplikation statt einer Division; die Nachprüfung schlägt nur in
     //  seltenen Fällen zu und hält die Verteilung exakt gleichmäßig - ein
     //  blankes `% bound` bevorzugt die kleinen Werte.

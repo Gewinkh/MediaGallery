@@ -696,8 +696,21 @@ Rectangle {
     Popup {
         id: confirmDeleteTag
         modal: true; focus: true; anchors.centerIn: Overlay.overlay; padding: 16
+        //  **Eingabetaste bestaetigt** (Wunsch des Nutzers: JEDE Loeschrueckfrage,
+        //  nicht nur die der Entf-Taste). Ein `Popup` bringt das - anders als ein
+        //  `Dialog` - nicht mit, also von Hand. **Der Handler gehoert ans
+        //  `contentItem`**, nicht ans Popup: dort feuert er nicht (gemessen,
+        //  s. `GalleryView`).
+        function confirm() {
+            panel.tagsCtl.deleteTag(panel.deleteTagName)
+            confirmDeleteTag.close()
+        }
+
         background: Rectangle { color: App.themeCard; radius: 10; border.color: App.themeBorder }
         contentItem: Column {
+            focus: true
+            Keys.onReturnPressed: function(e) { confirmDeleteTag.confirm(); e.accepted = true }
+            Keys.onEnterPressed:  function(e) { confirmDeleteTag.confirm(); e.accepted = true }
             spacing: 12
             Text {
                 text: App.uiText(App.language, "SettingsTagDelete") + ": " + panel.deleteTagName
@@ -707,8 +720,7 @@ Rectangle {
                 spacing: 8
                 Button {
                     text: App.uiText(App.language, "BookmarkDelete")
-                    onClicked: { panel.tagsCtl.deleteTag(panel.deleteTagName)
-                                 confirmDeleteTag.close() }
+                    onClicked: confirmDeleteTag.confirm()
                 }
                 Button { text: App.uiText(App.language, "SettingsCancel")
                          onClicked: confirmDeleteTag.close() }
@@ -720,13 +732,22 @@ Rectangle {
     Popup {
         id: confirmDelete
         modal: true; focus: true; anchors.centerIn: Overlay.overlay; padding: 16
+        //  **Eingabetaste bestaetigt** - s. `confirmDeleteTag`.
+        function confirm() {
+            panel.tagsCtl.deleteCategory(panel.deleteCatId)
+            confirmDelete.close()
+        }
+
         background: Rectangle { color: App.themeCard; radius: 10; border.color: App.themeBorder }
         contentItem: Column {
+            focus: true
+            Keys.onReturnPressed: function(e) { confirmDelete.confirm(); e.accepted = true }
+            Keys.onEnterPressed:  function(e) { confirmDelete.confirm(); e.accepted = true }
             spacing: 12
             Text { text: App.uiText(App.language, "TagPanelDeleteTitle"); color: App.themeTextPrimary; font.pixelSize: 14; font.bold: true }
             Row {
                 spacing: 8
-                Button { text: App.uiText(App.language, "BookmarkDelete"); onClicked: { panel.tagsCtl.deleteCategory(panel.deleteCatId); confirmDelete.close() } }
+                Button { text: App.uiText(App.language, "BookmarkDelete"); onClicked: confirmDelete.confirm() }
                 Button { text: App.uiText(App.language, "SettingsCancel"); onClicked: confirmDelete.close() }
             }
         }

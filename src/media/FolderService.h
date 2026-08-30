@@ -28,6 +28,17 @@ public:
     // Saves the current folder's JSON (if any is open).
     void saveCurrentFolder();
 
+    //  Schreibt dieser Dienst den Startordner (`lastFolder`) mit?
+    //
+    //  JEDE Haelfte hat ihren eigenen FolderService, aber es gibt nur EINEN
+    //  Schluessel dafuer. Schrieben alle hinein, ueberschriebe die zuletzt
+    //  benutzte Haelfte den Ordner der ersten - und beim naechsten Start
+    //  standen BEIDE auf demselben Ordner (vom Nutzer gemeldet). Deshalb
+    //  schreibt nur die erste Haelfte; der Ordner der zweiten gehoert zum
+    //  Fensterzustand (`ISettings::secondFolder`).
+    void setPersistsLastFolder(bool on) { m_persistsLast = on; }
+    bool persistsLastFolder() const { return m_persistsLast; }
+
     // Restores the last folder from settings (call once after UI is ready).
     void restoreLastFolder();
 
@@ -38,5 +49,6 @@ signals:
 private:
     ISettings&   m_settings;
     JsonStorage& m_storage;
+    bool         m_persistsLast = true;   // s. setPersistsLastFolder
     QString      m_currentFolder;
 };

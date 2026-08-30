@@ -36,6 +36,32 @@ void DocxReplaceBlocksCommand::undo() {
     m_ctl->applyBlocks(m_first, m_after.size(), m_before, m_curBefore);
 }
 
+// ─── Seitenränder ────────────────────────────────────────────────────────────
+DocxSectionCommand::DocxSectionCommand(DocxEditController* ctl,
+                                       Docx::Document::SectionState before,
+                                       Docx::Document::SectionState after)
+    : m_ctl(ctl), m_before(std::move(before)), m_after(std::move(after)) {
+    setText(QStringLiteral("Seitenränder"));
+}
+
+void DocxSectionCommand::redo() {
+    //  Wie bei den Blöcken: `push()` ruft redo() sofort, die Änderung ist zu
+    //  diesem Zeitpunkt aber schon am Dokument vollzogen.
+    if (m_firstRedo) { m_firstRedo = false; return; }
+    m_ctl->applySectionState(m_after);
+}
+
+void DocxSectionCommand::undo() {
+    m_ctl->applySectionState(m_before);
+}
+
+bool DocxSectionCommand::mergeWith(const QUndoCommand* other) {
+    const auto* o = dynamic_cast<const DocxSectionCommand*>(other);
+    if (!o) return false;
+    m_after = o->m_after;
+    return true;
+}
+
 bool DocxReplaceBlocksCommand::mergeWith(const QUndoCommand* other) {
     const auto* o = dynamic_cast<const DocxReplaceBlocksCommand*>(other);
     //  Verschmelzen nur: gleiche Koaleszenz-Klasse, derselbe EINE Block,

@@ -32,6 +32,11 @@ class AudioEqualizer : public QObject {
 public:
     static constexpr int kBands = 10;
     static constexpr double kMaxGainDb = 12.0;
+    //  Der Preamp reicht WEITER nach unten als nach oben: die Gegenrechnung
+    //  gegen das Uebersteuern braucht bei zehn angehobenen Baendern gut 12,5 dB
+    //  (gemessen), und bei -12 dB blieben 6 % der Werte am Anschlag haengen.
+    static constexpr double kMinPreampDb = -24.0;
+    static constexpr double kMaxPreampDb =  12.0;
     //  Mittenfrequenzen der Bänder (Hz).
     static const std::array<double, kBands>& frequencies();
 
@@ -52,8 +57,17 @@ public:
     void setEnabled(bool on);                   // Bypass
     bool enabled() const { return m_enabled.load(std::memory_order_relaxed); }
 
-    //  Empfohlene Vorverstärkung, damit die stärkste Anhebung nicht übersteuert
-    //  (negativer Wert). Das Panel zeigt sie an - geklemmt wird erst am Ausgang.
+    //  Die groesste Verstaerkung, die die Filterkette IRGENDWO im Spektrum
+    //  erzeugt (dB, nie negativ). Nicht das Maximum der Regler: mehrere
+    //  benachbarte Baender addieren sich, ein einzelnes hebt nur um seine
+    //  Mitte herum. Gerechnet aus den Koeffizienten ueber ein Frequenzraster -
+    //  nur bei Reglerwechsel, nie je Sample.
+    double peakGainDb() const;
+
+    //  Vorverstaerkung, bei der die Kette gerade nicht mehr uebersteuert
+    //  (negativer Wert, 0 wenn nichts angehoben ist). Frueher stand hier
+    //  `-groesste Anhebung`, was ein einzelnes Band um volle 12 dB absenkte,
+    //  obwohl es breitbandig nur ~4 dB lauter macht.
     double suggestedPreamp() const;
 
     //  Verarbeitet `frames` × `channels` Werte AN ORT UND STELLE (Interleaved).
@@ -83,6 +97,9 @@ private:
     };
 
     void rebuild();
+    //  Koeffizienten EINES Bandes. Von `rebuild` und `peakGainDb` benutzt,
+    //  damit die Rechnung nur an einer Stelle steht.
+    bool makeBiquad(int band, double gainDb, Biquad* out) const;
 
     std::array<double, kBands> m_gainDb {};
     double m_preampDb = 0.0;

@@ -61,6 +61,29 @@ Item {
                     font.pixelSize: 11
                     wrapMode: Text.WordWrap
                 }
+
+                //  Steht bewusst NEBEN „Alle Dateien anzeigen": beide beantworten
+                //  dieselbe Frage - welche Dateien sind ueberhaupt zu sehen -, und
+                //  sie werden leicht verwechselt. „Alle Dateien" meint UNBEKANNTE
+                //  Typen, dieser hier den Punkt am Namensanfang.
+                CheckBox {
+                    text: App.uiText(App.language, "SettingsShowHidden")
+                    checked: App.showHiddenFiles
+                    onToggled: App.showHiddenFiles = checked
+                    contentItem: Text {
+                        text: parent.text; color: App.themeTextPrimary
+                        leftPadding: parent.indicator.width + 6
+                        verticalAlignment: Text.AlignVCenter
+                    }
+                }
+                Text {
+                    Layout.fillWidth: true
+                    Layout.leftMargin: 24
+                    text: App.uiText(App.language, "SettingsShowHiddenDesc")
+                    color: App.themeTextMuted
+                    font.pixelSize: 11
+                    wrapMode: Text.WordWrap
+                }
             }
 
             // ── Kachel-Anordnung ──────────────────────────────────────────────

@@ -1,5 +1,6 @@
 #pragma once
 #include <QAbstractListModel>
+#include <QDir>
 #include <QVector>
 #include <QHash>
 #include <QString>
@@ -50,6 +51,14 @@ class MediaModel : public QAbstractListModel {
     Q_OBJECT
     Q_PROPERTY(int  count       READ count       NOTIFY countChanged)
     Q_PROPERTY(QString folder   READ folder      NOTIFY folderChanged)
+    //  Wie viele Kacheln sind gerade ausgewaehlt? Die Oberflaeche haengt daran
+    //  ihre Meldung und die Beschriftung der Sammel-Eintraege im Kontextmenue.
+    Q_PROPERTY(int  selectionCount READ selectionCount NOTIFY selectionChanged)
+    //  Zaehlt JEDE Aenderung der Auswahl hoch. Eine Kachel bindet ihren
+    //  Auswahlzustand daran (`selectionRevision >= 0 && isSelected(pfad)`) -
+    //  `selectionCount` genuegt dafuer NICHT: ein wandernder Auswahlrahmen kann
+    //  gleich viele, aber andere Kacheln treffen.
+    Q_PROPERTY(int  selectionRevision READ selectionRevision NOTIFY selectionChanged)
 
 public:
     enum Roles {
@@ -67,7 +76,8 @@ public:
         OwnerFolderRole,   // Ordner, DEM die Zeile gehoert (nicht ihr Pfad)
         DepthRole,         // 0 = geoeffneter Ordner, 1 = erste Aufklapp-Ebene, …
         ExpandedRole,      // nur Ordnerzeilen: ist dieser Ordner aufgeklappt?
-        ChildCountRole     // nur Ordnerzeilen: Medien darin (−1 = noch ungezaehlt)
+        ChildCountRole,    // nur Ordnerzeilen: Medien darin (−1 = noch ungezaehlt)
+        SelectedRole       // Mehrfachauswahl der Galerie (bool)
     };
 
     //  Ein Ordner-GELTUNGSBEREICH: der geoeffnete Ordner (Index 0) oder ein
@@ -317,12 +327,58 @@ public:
     //  Gehoert die Datei zur ANSICHT (offener Ordner ODER ein aufgeklappter
     //  Unterordner)? Damit unterscheidet die Galerie beim Ablegen einen
     //  app-internen Zug von einer Datei, die von aussen kommt.
+    //  `QDir::Hidden` oder nichts - je nach Einstellung (s. `.cpp`).
+    static QDir::Filters hiddenFlag();
+
     Q_INVOKABLE bool ownsFile(const QString& filePath) const {
         return rowForPath(filePath) >= 0;
     }
     Q_INVOKABLE bool hasFile(const QString& filePath) const {
         return isRootFileRow(rowForPath(filePath));
     }
+
+    // ── Mehrfachauswahl (Strg-/Umschalt-Klick, Auswahlrahmen) ────────────────
+    //  Die Auswahl liegt HIER und nicht in QML: sie wird je sichtbarer Kachel
+    //  gelesen (Rolle `SelectedRole`) und von mehreren Stellen geschrieben
+    //  (Kachel, Auswahlrahmen, Strg+A, Kontextmenue). Gehalten wird sie als
+    //  PARALLELVEKTOR zu `m_items` - dasselbe Muster wie `m_thumbUrls`/
+    //  `m_thumbState` und ein Byte je Zeile, waehrend ein `bool` im Struct
+    //  wegen dessen 8-Byte-Ausrichtung acht gekostet haette.
+    //
+    //  Sie gilt nur fuer die AKTUELLE Ansicht: ein Ordnerwechsel, ein Neu-
+    //  Einlesen und jede Filteraenderung raeumen sie ab (s. `clearSelection`).
+    //  Eine Auswahl, die man nicht sieht, waere sonst eine Falle - `Strg+C`
+    //  und „Loeschen" wuerden Dateien treffen, die gar nicht auf dem Schirm
+    //  stehen.
+    int  selectionCount() const { return m_selCount; }
+    int  selectionRevision() const { return m_selRevision; }
+    Q_INVOKABLE bool isSelected(const QString& filePath) const;
+    Q_INVOKABLE void setSelected(const QString& filePath, bool on);
+    Q_INVOKABLE void toggleSelected(const QString& filePath);
+    Q_INVOKABLE void clearSelection();
+    //  Alles Ausgewaehlte in MODELL-Reihenfolge. `filesOnly` laesst Ordner weg -
+    //  Ordner sind zwar auswaehlbar, aber weder ziehbar noch kopierbar.
+    Q_INVOKABLE QStringList selectedPaths(bool filesOnly = false) const;
+    //  Dateinamen der ausgewaehlten DATEIEN - Kategorien sind ueber den Namen
+    //  adressiert, nicht ueber den Pfad.
+    Q_INVOKABLE QStringList selectedFileNames() const;
+    //  Tags, die ALLE ausgewaehlten Dateien tragen (Schnittmenge). Daran haengt
+    //  das Haekchen im Kontextmenue: angehakt heisst „alle haben ihn".
+    Q_INVOKABLE QStringList tagsOfSelection() const;
+    //  Denselben Tag an ALLEN ausgewaehlten Dateien setzen bzw. entfernen.
+    Q_INVOKABLE void setTagOnSelection(const QString& tag, bool on);
+    //  Die Auswahl auf GENAU diese Quellzeilen setzen (aufsteigend sortiert,
+    //  ohne Dubletten). Meldet nur, was sich wirklich geaendert hat - der
+    //  Auswahlrahmen ruft das je Mausbewegung. Nicht Q_INVOKABLE: QML kennt
+    //  Quellzeilen nicht, es geht ueber `MediaProxyModel`.
+    void setSelectedRows(const QVector<int>& sortedRows);
+    //  Quellzeilen der Auswahl (aufsteigend) - Ausgangspunkt des Rahmens.
+    QVector<int> selectedRows() const;
+
+    //  Alles Ausgewaehlte in den Papierkorb - als EIN Schritt auf dem
+    //  Rueckgaengig-Stapel (`Strg+Z` holt die ganze Gruppe zurueck).
+    //  Rueckgabe: Anzahl der wirklich geloeschten Dateien.
+    Q_INVOKABLE int deleteSelected();
 
     // ── Rückholbare Datei-Vorgänge (Galerie-Undo) ────────────────────────────
     //  Für das Dateisystem gab es bisher kein Undo: ein Fehlgriff war endgültig.
@@ -353,9 +409,15 @@ public:
     //  Oberfläche baut daraus ihre Meldung.
     Q_INVOKABLE QString undoFileOpName() const;
     Q_INVOKABLE QString redoFileOpName() const;
+    //  Wie viele Dateien haengen am naechsten Schritt? 1 bei einem
+    //  Einzelvorgang, N bei einer geloeschten Mehrfachauswahl - die Meldung
+    //  der Oberflaeche nennt damit „und N weitere".
+    Q_INVOKABLE int     undoFileOpCount() const;
+    Q_INVOKABLE int     redoFileOpCount() const;
 
 signals:
     void countChanged();
+    void selectionChanged();
     void folderChanged();
     void folderContentsChanged();   // externe Änderung (für Statusmeldung)
     void thumbnailsInvalidated();   // Zielgröße gewechselt -> Delegates fordern neu an
@@ -383,11 +445,20 @@ private:
         //  keine Metadaten: die liegen in SEINEM Sidecar und wandern mit.
         enum class Kind { Delete, Move, Companion, Folder };
         Kind        kind = Kind::Delete;
+        //  Gruppennummer: 0 = Einzelvorgang. Vorgaenge mit derselben Nummer
+        //  gehoeren zusammen (Mehrfachauswahl geloescht) und gehen als EIN
+        //  Schritt zurueck. Sie liegen im Stapel unmittelbar nebeneinander.
+        int         group = 0;
         QString     path;                 // ursprünglicher Pfad im Ordner
         QString     movedTo;              // nur Kind::Move: neuer Pfad
         QString     trashPath;            // Ablage im Papierkorb
         QString     sidecarPath;          // "<pfad>.mgedit.json" (falls vorhanden)
         QString     sidecarTrashPath;
+        //  Die DOCX-Sicherungskopie "<pfad>.bak". Sie gehoert zur Datei und
+        //  hat ohne sie keinen Sinn - blieb sie liegen, stand neben der
+        //  geloeschten DOCX eine verwaiste Sicherung (vom Nutzer gemeldet).
+        QString     bakPath;
+        QString     bakTrashPath;
         QStringList tags;
         QStringList categoryIds;          // DIREKTE Mitgliedschaften (IDs, eigener Ordner)
         QStringList categoryNames;        // dieselben als NAMEN (für einen fremden Ordner)
@@ -401,7 +472,7 @@ private:
 
     bool trashFile(const QString& filePath, FileOp* op);  // Datei + Metadaten weg
     bool restoreFile(const FileOp& op);                   // Papierkorb -> Ordner
-    bool restoreFolder(const FileOp& op);                 // Papierkorb -> Ordner (Verzeichnis)
+    bool restoreFolder(const FileOp& op, bool reloadNow = true);  // Papierkorb -> Ordner (Verzeichnis)
     //  Metadaten einer Datei aus dem OFFENEN Ordner einsammeln bzw. entfernen -
     //  gemeinsame Grundlage von Löschen und Verschieben.
     void collectMeta(const QString& fileName, FileOp* op) const;
@@ -423,12 +494,28 @@ private:
     bool undoMove(const FileOp& op);                      // Verschiebung zurücknehmen
     void appendRowFor(const QString& filePath);           // Zeile ans Ende (Proxy sortiert)
     bool dropRowFor(const QString& filePath);             // Zeile gezielt entfernen
+    //  Auswahlzaehler nach einer STRUKTURaenderung (Zeilen entfernt, Ordner neu
+    //  eingelesen) nachziehen und `selectionChanged` melden, falls er sich
+    //  geaendert hat. Ein O(n)-Lauf, aber nur bei Strukturaenderungen - die
+    //  kosten ohnehin schon `rebuildPathIndex`.
+    void recountSelection();
+    //  Fortschreibungszahl hochzaehlen UND melden. IMMER hierueber, nie
+    //  `emit selectionChanged()` von Hand: die Kacheln haengen an der Zahl, und
+    //  eine Aenderung ohne sie bliebe auf dem Schirm unsichtbar.
+    void noteSelectionChanged();
+    //  Einen Ordner in den Papierkorb geben. `reloadNow == false` verschiebt das
+    //  Neu-Einlesen an den Aufrufer - `deleteSelected` loescht mehrere Ordner
+    //  hintereinander und liest danach EINMAL neu ein.
+    bool trashFolderAt(const QString& folderPath, bool reloadNow);
     void clearFileHistory();
 
     void rebuild(const QString& folderPath);   // startet inkrementelle Befüllung
     void feedChunk(bool firstChunk);           // eine Charge Zeilen einspeisen
     void finishFill();                         // Aufräumen nach letzter Charge
     void emitRow(int row, const QVector<int>& roles);
+    //  Dasselbe fuer einen zusammenhaengenden BEREICH - die Auswahl aendert
+    //  meist mehrere Zeilen am Stueck (Rahmen, Umschalt-Klick, Strg+A).
+    void emitRows(int first, int last, const QVector<int>& roles);
 
     // ── Bereiche & Scan-Warteschlange ────────────────────────────────────────
     //  Bereich fuer einen Ordner besorgen (vorhandenen reaktivieren oder neu
@@ -455,6 +542,13 @@ private:
     QVector<MediaItem>     m_items;       // reine Daten, keine Pixmaps
     QVector<QString>       m_thumbUrls;   // parallel: Cache-URL je Zeile ("" = none)
     QVector<int>           m_thumbState;  // parallel: 0/1/2
+    //  parallel: Mehrfachauswahl je Zeile (0/1). quint8 statt bool im Struct -
+    //  s. Kasten bei `selectionCount()`.
+    QVector<quint8>        m_selected;
+    int                    m_selCount = 0;
+    int                    m_selRevision = 0;
+    //  Zaehlt die Gruppen des Undo-Stapels hoch (0 bleibt „Einzelvorgang").
+    int                    m_opGroup = 0;
     QHash<QString, int>    m_pathToRow;   // schnelle Adressierung für Updates
 
     // ── Inkrementelle Befüllung ──────────────────────────────────────────────

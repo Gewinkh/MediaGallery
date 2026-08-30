@@ -429,6 +429,11 @@ void AppSettings::setMonoPlay(bool v) {
     m_settings.setValue("ui/monoPlay", v);
 }
 //  Ziehen auf ein Lesezeichen: verschieben (Standard) oder kopieren.
+bool AppSettings::showHiddenFiles() const {
+    return m_settings.value("gallery/showHidden", false).toBool();
+}
+void AppSettings::setShowHiddenFiles(bool v) { m_settings.setValue("gallery/showHidden", v); }
+
 bool AppSettings::fileDropMove() const {
     return m_settings.value("ui/fileDropMove", true).toBool();
 }
@@ -503,15 +508,6 @@ void AppSettings::setDocxSaveDirect(bool v) {
     m_settings.setValue("docx/saveDirect", v);
 }
 
-//  DOCX -> PDF. Vorgabe 0 mm: ein Export ohne Zutun ergibt genau das, was er
-//  vorher ergab. Der Deckel von 40 mm ist die Grenze der Vernunft - darüber
-//  bliebe von einer A4-Seite kaum Inhalt übrig.
-int AppSettings::docxPdfPaddingMm() const {
-    return qBound(0, m_settings.value("docx/pdfPaddingMm", 0).toInt(), 40);
-}
-void AppSettings::setDocxPdfPaddingMm(int mm) {
-    m_settings.setValue("docx/pdfPaddingMm", qBound(0, mm, 40));
-}
 int AppSettings::docxPdfPageNumberPos() const {
     return qBound(0, m_settings.value("docx/pdfPageNumberPos", 0).toInt(), 3);
 }
@@ -715,8 +711,55 @@ void AppSettings::setAudioEqPresets(const QStringList& presets) {
     m_settings.setValue("audio/eqPresets", presets);
 }
 
+//  Geloeschte MITGELIEFERTE Voreinstellungen. Nur ihre Namen - die Vorlagen
+//  selbst stehen im Programm und kommen beim Zuruecksetzen von dort.
+//  Vorgabe AUS (Festlegung des Nutzers 2026-08-29). Die Gegenrechnung wirkt,
+//  aber sie macht die Wiedergabe hoerbar leiser - ein Band auf +12 dB kostet
+//  rund 12 dB Pegel. Wer sauberen Klang ueber Lautstaerke stellt, schaltet sie
+//  in den Einstellungen ein; die Messwerte dazu stehen in `AudioEqualizer`.
+bool AppSettings::audioEqAutoPreamp() const {
+    return m_settings.value("audio/eqAutoPreamp", false).toBool();
+}
+void AppSettings::setAudioEqAutoPreamp(bool on) {
+    m_settings.setValue("audio/eqAutoPreamp", on);
+}
+
+QStringList AppSettings::audioEqHiddenPresets() const {
+    return m_settings.value("audio/eqHiddenPresets").toStringList();
+}
+void AppSettings::setAudioEqHiddenPresets(const QStringList& names) {
+    m_settings.setValue("audio/eqHiddenPresets", names);
+}
+
+//  Anzeigereihenfolge. Bewusst als NAMENSLISTE und nicht als Indizes: kommt
+//  eine mitgelieferte Voreinstellung dazu oder faellt eine weg, bleibt die
+//  gespeicherte Ordnung der uebrigen gueltig.
+QStringList AppSettings::audioEqPresetOrder() const {
+    return m_settings.value("audio/eqPresetOrder").toStringList();
+}
+void AppSettings::setAudioEqPresetOrder(const QStringList& names) {
+    m_settings.setValue("audio/eqPresetOrder", names);
+}
+
 bool AppSettings::audioPlayerMode() const { return m_settings.value("audio/playerMode", false).toBool(); }
 void AppSettings::setAudioPlayerMode(bool on) { m_settings.setValue("audio/playerMode", on); }
+//  Welche Hälften im Player-Modus standen, als Bitmaske (Bit 0 = erste
+//  Hälfte). Geklemmt auf vier Hälften - mehr gibt es nicht, und ein verstellter
+//  Wert soll den Start nicht stören.
+//
+//  Fehlt die Maske, wird sie aus der früheren Schreibweise abgeleitet (EIN
+//  Schalter plus EIN Platz): so verliert niemand beim Aktualisieren seinen
+//  zuletzt eingestellten Zustand.
+int AppSettings::audioPlayerModeMask() const {
+    if (m_settings.contains("audio/playerModeMask"))
+        return m_settings.value("audio/playerModeMask", 0).toInt() & 0x0F;
+    if (!audioPlayerMode()) return 0;
+    const int pane = qBound(0, m_settings.value("audio/playerModePane", 0).toInt(), 3);
+    return 1 << pane;
+}
+void AppSettings::setAudioPlayerModeMask(int mask) {
+    m_settings.setValue("audio/playerModeMask", mask & 0x0F);
+}
 bool AppSettings::audioListLayout() const { return m_settings.value("audio/listLayout", true).toBool(); }
 void AppSettings::setAudioListLayout(bool on) { m_settings.setValue("audio/listLayout", on); }
 //  Tags erben ist die Vorgabe: eine frisch gesicherte Tonspur steht sonst

@@ -232,19 +232,54 @@ QVariantList AudioController::eqFrequencies() const {
     return out;
 }
 
+//  Jeder Griff an einen Regler hebt die Voreinstellung auf: danach passt kein
+//  Name mehr zu dem, was eingestellt ist.
+//  Die Gegenrechnung gegen das Uebersteuern.
+//
+//  Ohne sie klemmt `AudioEqualizer::process` am Ausgang hart - gemessen bei
+//  -1 dBFS Eingang: EIN Band auf +12 dB laesst 1,4 % der Werte am Anschlag
+//  haengen, drei angehobene 3,9 %, alle zehn 66,5 %, bei 13-35 % Klirr. Ein
+//  weicher Begrenzer half nachweislich nicht (12,4 % statt 13,4 % Klirr);
+//  was hilft, ist Luft nach oben zu schaffen.
+//
+//  Ist die Automatik AUS, wird NICHTS gerechnet - `peakGainDb` laeuft dann gar
+//  nicht erst an, und der Regler gehoert ganz dem Nutzer (Festlegung des
+//  Nutzers: wer uebersteuern will, soll das duerfen).
+bool AudioController::eqAutoPreamp() const { return m_settings.audioEqAutoPreamp(); }
+
+void AudioController::applyAutoPreamp() {
+    if (!m_settings.audioEqAutoPreamp()) return;
+    m_eq.setPreamp(m_eq.suggestedPreamp());
+}
+
+void AudioController::setEqAutoPreamp(bool on) {
+    if (m_settings.audioEqAutoPreamp() == on) return;
+    m_settings.setAudioEqAutoPreamp(on);
+    //  Beim Einschalten sofort wirken lassen; beim Ausschalten bleibt der
+    //  zuletzt errechnete Wert stehen - er ist ein gueltiger Startpunkt, und
+    //  ihn ungefragt auf 0 zu reissen waere ein Lautstaerkesprung.
+    if (on) { applyAutoPreamp(); applyGainsToSettings(); }
+    emit optionsChanged();
+    emit eqChanged();
+}
+
 void AudioController::setBandGain(int band, qreal db) {
     m_eq.setBandGain(band, db);
+    applyAutoPreamp();
+    if (!m_activePreset.isEmpty()) { m_activePreset.clear(); emit presetsChanged(); }
     applyGainsToSettings();
 }
 
 void AudioController::resetBands() {
     m_eq.setGains(QVector<double>(AudioEqualizer::kBands, 0.0));
     m_eq.setPreamp(0.0);
+    if (!m_activePreset.isEmpty()) { m_activePreset.clear(); emit presetsChanged(); }
     applyGainsToSettings();
 }
 
 void AudioController::setEqPreamp(qreal db) {
     m_eq.setPreamp(db);
+    if (!m_activePreset.isEmpty()) { m_activePreset.clear(); emit presetsChanged(); }
     applyGainsToSettings();
 }
 
@@ -254,42 +289,107 @@ QStringList AudioController::builtinPresetLines() const {
     return out;
 }
 
-QStringList AudioController::presetNames() const {
-    QStringList out;
+//  Die Zeile einer Voreinstellung. EIGENE gewinnen ueber gleichnamige
+//  mitgelieferte - genau daran haengt das Ueberschreiben.
+QString AudioController::presetLine(const QString& name) const {
+    for (const QString& line : m_settings.audioEqPresets())
+        if (line.section(QLatin1Char('\t'), 0, 0).trimmed()
+                .compare(name, Qt::CaseInsensitive) == 0)
+            return line;
+    if (m_settings.audioEqHiddenPresets().contains(name, Qt::CaseInsensitive))
+        return {};                                  // geloescht
     for (const QString& line : builtinPresetLines())
-        out.append(line.section(QLatin1Char('\t'), 0, 0));
-    for (const QString& line : m_settings.audioEqPresets()) {
-        const QString name = line.section(QLatin1Char('\t'), 0, 0).trimmed();
-        if (!name.isEmpty() && !out.contains(name)) out.append(name);
-    }
+        if (line.section(QLatin1Char('\t'), 0, 0).compare(name, Qt::CaseInsensitive) == 0)
+            return line;
+    return {};
+}
+
+bool AudioController::presetIsBuiltin(const QString& name) const {
+    for (const QString& line : builtinPresetLines())
+        if (line.section(QLatin1Char('\t'), 0, 0).compare(name, Qt::CaseInsensitive) == 0)
+            return true;
+    return false;
+}
+
+bool AudioController::presetIsModified(const QString& name) const {
+    if (!presetIsBuiltin(name)) return false;
+    for (const QString& line : m_settings.audioEqPresets())
+        if (line.section(QLatin1Char('\t'), 0, 0).trimmed()
+                .compare(name, Qt::CaseInsensitive) == 0)
+            return true;                            // ueberschrieben
+    return false;
+}
+
+bool AudioController::presetsModified() const {
+    if (!m_settings.audioEqHiddenPresets().isEmpty()) return true;
+    for (const QString& line : builtinPresetLines())
+        if (presetIsModified(line.section(QLatin1Char('\t'), 0, 0))) return true;
+    return false;
+}
+
+//  Namen in die gespeicherte Reihenfolge bringen. Was dort NICHT steht, haengt
+//  sich hinten an - eine spaeter dazugekommene mitgelieferte Voreinstellung
+//  bleibt damit sichtbar, statt an einer Indexluecke zu verschwinden.
+QStringList AudioController::inStoredOrder(const QStringList& names) const {
+    const QStringList order = m_settings.audioEqPresetOrder();
+    if (order.isEmpty()) return names;
+    QStringList out;
+    for (const QString& want : order)
+        for (const QString& have : names)
+            if (have.compare(want, Qt::CaseInsensitive) == 0 && !out.contains(have)) {
+                out.append(have);
+                break;
+            }
+    for (const QString& have : names)
+        if (!out.contains(have)) out.append(have);
     return out;
 }
 
-void AudioController::applyPreset(const QString& name) {
-    QStringList all = builtinPresetLines();
-    all += m_settings.audioEqPresets();
-    for (const QString& line : all) {
-        if (line.section(QLatin1Char('\t'), 0, 0).trimmed() != name) continue;
-        const QStringList parts = line.split(QLatin1Char('\t'));
-        if (parts.size() < 2 + AudioEqualizer::kBands) continue;
-        m_eq.setPreamp(parts.at(1).toDouble());
-        QVector<double> g;
-        for (int i = 0; i < AudioEqualizer::kBands; ++i)
-            g.append(parts.at(2 + i).toDouble());
-        m_eq.setGains(g);
-        applyGainsToSettings();
-        return;
+QStringList AudioController::presetNames() const {
+    QStringList out;
+    const QStringList hidden = m_settings.audioEqHiddenPresets();
+    //  Mitgelieferte zuerst (in ihrer Programm-Reihenfolge), aber ohne die
+    //  geloeschten; eine ueberschriebene bleibt an ihrem Platz stehen.
+    for (const QString& line : builtinPresetLines()) {
+        const QString n = line.section(QLatin1Char('\t'), 0, 0);
+        if (hidden.contains(n, Qt::CaseInsensitive)) continue;
+        out.append(n);
     }
+    //  Danach die eigenen - eine, die eine mitgelieferte ueberschreibt, steht
+    //  schon oben und kommt nicht doppelt.
+    for (const QString& line : m_settings.audioEqPresets()) {
+        const QString n = line.section(QLatin1Char('\t'), 0, 0).trimmed();
+        if (n.isEmpty() || out.contains(n, Qt::CaseInsensitive)) continue;
+        out.append(n);
+    }
+    return inStoredOrder(out);
 }
 
+void AudioController::applyPreset(const QString& name) {
+    const QString line = presetLine(name);
+    if (line.isEmpty()) return;
+    const QStringList parts = line.split(QLatin1Char('\t'));
+    if (parts.size() < 2 + AudioEqualizer::kBands) return;
+    m_eq.setPreamp(parts.at(1).toDouble());
+    QVector<double> g;
+    for (int i = 0; i < AudioEqualizer::kBands; ++i)
+        g.append(parts.at(2 + i).toDouble());
+    m_eq.setGains(g);
+    //  Die Voreinstellung bringt ihre eigene Vorverstaerkung mit. Reicht sie
+    //  nicht, korrigiert die Automatik sie nach oben bzw. unten.
+    applyAutoPreamp();
+    applyGainsToSettings();
+    m_activePreset = name;
+    emit presetsChanged();
+}
+
+//  Sichern - AUCH auf einen mitgelieferten Namen. Frueher wurde das abgewiesen
+//  („sonst waere Flach irgendwann nicht mehr flach"); der Nutzer will diese
+//  Freiheit ausdruecklich. Der Rueckweg bleibt: die Vorlage steht im Programm,
+//  `resetPreset` holt sie zurueck.
 void AudioController::savePreset(const QString& name) {
     const QString n = name.trimmed();
     if (n.isEmpty()) return;
-    //  Ein eingebauter Name lässt sich nicht überschreiben - sonst wäre „Flach"
-    //  irgendwann nicht mehr flach.
-    for (const QString& line : builtinPresetLines())
-        if (line.section(QLatin1Char('\t'), 0, 0).compare(n, Qt::CaseInsensitive) == 0)
-            return;
 
     QStringList fields { n, QString::number(m_eq.preamp(), 'f', 2) };
     for (double v : m_eq.gains()) fields.append(QString::number(v, 'f', 2));
@@ -298,7 +398,8 @@ void AudioController::savePreset(const QString& name) {
     QStringList own = m_settings.audioEqPresets();
     bool replaced = false;
     for (QString& existing : own) {
-        if (existing.section(QLatin1Char('\t'), 0, 0).compare(n, Qt::CaseInsensitive) != 0)
+        if (existing.section(QLatin1Char('\t'), 0, 0).trimmed()
+                .compare(n, Qt::CaseInsensitive) != 0)
             continue;
         existing = line;
         replaced = true;
@@ -306,17 +407,89 @@ void AudioController::savePreset(const QString& name) {
     }
     if (!replaced) own.append(line);
     m_settings.setAudioEqPresets(own);
+
+    //  Wurde derselbe Name zuvor geloescht, kommt er mit dem Sichern zurueck.
+    QStringList hidden = m_settings.audioEqHiddenPresets();
+    if (hidden.removeIf([&n](const QString& h) {
+            return h.compare(n, Qt::CaseInsensitive) == 0; }) > 0)
+        m_settings.setAudioEqHiddenPresets(hidden);
+
+    m_activePreset = n;
     emit presetsChanged();
 }
 
+//  Loeschen entfernt den EINTRAG, nicht die Einstellung: die Regler bleiben
+//  stehen, wo sie stehen (Festlegung des Nutzers). Eine mitgelieferte wird
+//  ausgeblendet statt entfernt - sie steht im Programm und kommt ueber
+//  `resetPreset` zurueck.
 void AudioController::deletePreset(const QString& name) {
+    bool changed = false;
+
+    QStringList own = m_settings.audioEqPresets();
+    if (own.removeIf([&name](const QString& l) {
+            return l.section(QLatin1Char('\t'), 0, 0).trimmed()
+                       .compare(name, Qt::CaseInsensitive) == 0; }) > 0) {
+        m_settings.setAudioEqPresets(own);
+        changed = true;
+    }
+    if (presetIsBuiltin(name)) {
+        QStringList hidden = m_settings.audioEqHiddenPresets();
+        if (!hidden.contains(name, Qt::CaseInsensitive)) {
+            hidden.append(name);
+            m_settings.setAudioEqHiddenPresets(hidden);
+            changed = true;
+        }
+    }
+    if (!changed) return;
+    //  Der Klang bleibt - nur die Zuordnung „das ist gerade jene" faellt weg.
+    if (m_activePreset.compare(name, Qt::CaseInsensitive) == 0)
+        m_activePreset.clear();
+    emit presetsChanged();
+}
+
+void AudioController::resetPreset(const QString& name) {
+    if (!presetIsBuiltin(name)) return;
+    bool changed = false;
+
+    QStringList own = m_settings.audioEqPresets();
+    if (own.removeIf([&name](const QString& l) {
+            return l.section(QLatin1Char('\t'), 0, 0).trimmed()
+                       .compare(name, Qt::CaseInsensitive) == 0; }) > 0) {
+        m_settings.setAudioEqPresets(own);
+        changed = true;
+    }
+    QStringList hidden = m_settings.audioEqHiddenPresets();
+    if (hidden.removeIf([&name](const QString& h) {
+            return h.compare(name, Qt::CaseInsensitive) == 0; }) > 0) {
+        m_settings.setAudioEqHiddenPresets(hidden);
+        changed = true;
+    }
+    if (changed) emit presetsChanged();
+}
+
+void AudioController::resetAllPresets() {
     QStringList own = m_settings.audioEqPresets();
     const int before = own.size();
-    for (int i = own.size() - 1; i >= 0; --i)
-        if (own.at(i).section(QLatin1Char('\t'), 0, 0).compare(name, Qt::CaseInsensitive) == 0)
-            own.removeAt(i);
-    if (own.size() == before) return;
-    m_settings.setAudioEqPresets(own);
+    own.removeIf([this](const QString& l) {
+        return presetIsBuiltin(l.section(QLatin1Char('\t'), 0, 0).trimmed()); });
+    bool changed = (own.size() != before);
+    if (changed) m_settings.setAudioEqPresets(own);
+    if (!m_settings.audioEqHiddenPresets().isEmpty()) {
+        m_settings.setAudioEqHiddenPresets({});
+        changed = true;
+    }
+    if (changed) emit presetsChanged();
+}
+
+//  Reihenfolge aendern. Gespeichert werden NAMEN, nicht Plaetze - s.
+//  `inStoredOrder`.
+void AudioController::movePreset(int from, int to) {
+    QStringList names = presetNames();
+    if (from < 0 || from >= names.size()) return;
+    to = qBound(0, to, names.size() - 1);
+    if (from == to) return;
+    names.move(from, to);
+    m_settings.setAudioEqPresetOrder(names);
     emit presetsChanged();
 }
 
@@ -656,10 +829,44 @@ void AudioController::extractTaskDone(bool ok, int messageKey, const QString& so
     emit extractFinished(true, source, target);
 }
 
-bool AudioController::takePlayerModeRestore() {
-    if (m_restoreTaken) return false;
-    m_restoreTaken = true;
-    return m_settings.audioPlayerMode();
+bool AudioController::playerModePaneRemembered(int paneIndex) {
+    if (paneIndex < 0 || paneIndex > 3) return false;
+    if (m_restoreMask < 0) m_restoreMask = m_settings.audioPlayerModeMask();
+    return (m_restoreMask & (1 << paneIndex)) != 0;
+}
+
+bool AudioController::takePlayerModeRestore(int paneIndex) {
+    if (paneIndex < 0 || paneIndex > 3) return false;
+    //  Der Stand beim Beenden wird EINMAL gelesen und danach nur noch
+    //  abgetragen: die Einstellungen aendern sich waehrend des Laufs mit jeder
+    //  Umschaltung, der Wiederherstell-Auftrag darf das nicht mitbekommen.
+    if (m_restoreMask < 0) m_restoreMask = m_settings.audioPlayerModeMask();
+    const int bit = 1 << paneIndex;
+    if (!(m_restoreMask & bit)) return false;
+    m_restoreMask &= ~bit;                 // gilt genau einmal je Haelfte
+    return true;
+}
+
+void AudioController::rememberPlayerMode(bool on, int paneIndex) {
+    //  JE HAELFTE merken, nicht nur „irgendeine": bei geteiltem Fenster stand
+    //  sonst nach dem Neustart der Player auf der falschen Seite (vom Nutzer
+    //  gemeldet). Die andere Haelfte behaelt dabei ihr eigenes Bit.
+    if (paneIndex >= 0 && paneIndex <= 3) {
+        const int before = m_settings.audioPlayerModeMask();
+        const int bit    = 1 << paneIndex;
+        const int after  = on ? (before | bit) : (before & ~bit);
+        if (after != before) m_settings.setAudioPlayerModeMask(after);
+        //  Der alte Schalter bleibt die Kurzantwort „stand irgendwo ein Player".
+        const bool any = after != 0;
+        if (m_settings.audioPlayerMode() != any) {
+            m_settings.setAudioPlayerMode(any);
+            emit optionsChanged();
+        }
+        return;
+    }
+    if (m_settings.audioPlayerMode() == on) return;
+    m_settings.setAudioPlayerMode(on);
+    emit optionsChanged();
 }
 
 // ── Sitzung ──────────────────────────────────────────────────────────────────

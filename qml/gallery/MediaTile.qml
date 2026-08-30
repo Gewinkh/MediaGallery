@@ -42,6 +42,25 @@ Rectangle {
     // Vorschau-Sperre (Privatsphäre, Taste "B"): verdeckt das Thumbnail.
     property bool   covered: false
 
+    //  ── Mehrfachauswahl (Strg-/Umschalt-Klick, Auswahlrahmen) ───────────────
+    //  Der ZUSTAND kommt aus dem Modell (Rolle `selected`), die ABSICHT geht als
+    //  Signal an die Galerie: nur die kennt die Ansichts-Reihenfolge, und ein
+    //  Umschalt-Bereich meint „von dort bis hier" in genau dieser Ordnung.
+    property bool selected: false
+    //  Zeile dieser Kachel in der ANSICHT (Proxy) - Griff fuer den Bereich.
+    property int  proxyRow: -1
+
+    //  Klick mit Strg oder Umschalt: die Galerie entscheidet, was daraus wird.
+    signal selectRequested(int proxyRow, int modifiers)
+    //  Klick ohne Modifikator (auch Rechtsklick auf eine NICHT gewaehlte
+    //  Kachel): die Auswahl faellt weg, bevor die eigentliche Tat laeuft.
+    signal selectionResetRequested()
+
+    //  Wirkt eine Tat auf die ganze Auswahl? Nur dann, wenn DIESE Kachel dazu
+    //  gehoert und mehr als eine gewaehlt ist - sonst bleibt alles beim Alten.
+    readonly property bool multi: tile.selected && mediaModel.selectionCount > 1
+    readonly property int  multiCount: tile.multi ? mediaModel.selectionCount : 1
+
     signal activated(string filePath)
     //  Einfacher Linksklick auf eine DATEI (ohne Tag-Modus). Die Galerie nutzt
     //  ihn nur im Player-Modus: dort spielt ein Klick, ohne etwas zu öffnen.
@@ -49,6 +68,11 @@ Rectangle {
     // Kontextmenü „Datei löschen…" -> GalleryView zeigt EINEN gemeinsamen
     // Bestätigungs-Dialog (kein Dialog je Kachel) und ruft mediaModel.deleteItem.
     signal deleteRequested(string filePath, string displayName)
+    //  Kontextmenü „Kopieren" bzw. Strg+C: die ganze Auswahl (oder diese eine
+    //  Datei) in die Zwischenablage. Ausgefuehrt wird es in der GalleryView.
+    signal copyRequested(string filePath)
+    //  Kontextmenü „N Objekte löschen…" - die Rückfrage stellt die GalleryView.
+    signal deleteSelectionRequested(int count)
     //  „Umbenennen…" aus dem Kontextmenü - den Dialog stellt die GalleryView.
     signal renameRequested(string filePath, string currentName)
     //  „+ Neu…" in den Untermenüs: anlegen UND dieser Datei gleich zuweisen.
@@ -114,8 +138,12 @@ Rectangle {
     //  Ein AUFGEKLAPPTER Ordner hebt sich ab: Akzentrahmen, angehobener
     //  Kachelgrund und ein anderes Symbol (offener Ordner). Ohne das war nicht
     //  zu sehen, welcher Ordner die Flaeche darunter geoeffnet hat.
-    border.width: (tagged || tile.playing || (tile.isFolder && tile.expanded)) ? 2 : 1
-    border.color: (tagged || tile.playing || (tile.isFolder && tile.expanded))
+    //  Die AUSWAHL gewinnt: sie muss sich von einem Tag-Rahmen und vom
+    //  laufenden Titel unterscheiden lassen, die beide schon den Akzent tragen.
+    border.width: tile.selected ? 3
+                  : (tagged || tile.playing || (tile.isFolder && tile.expanded)) ? 2 : 1
+    border.color: (tile.selected || tagged || tile.playing
+                   || (tile.isFolder && tile.expanded))
                   ? App.themeAccent : App.themeBorder
 
     // ── Platzhalter (während/!= ready) ──────────────────────────────────────
@@ -275,8 +303,22 @@ Rectangle {
 
     //  Die Anzahl wird sichtbarkeitsgesteuert geholt - wie ein Thumbnail, und
     //  wie dort asynchron (s. MediaModel::ensureFolderCount).
-    onFilePathChanged: if (tile.isFolder) mediaModel.ensureFolderCount(tile.filePath)
-    Component.onCompleted: if (tile.isFolder) mediaModel.ensureFolderCount(tile.filePath)
+    //
+    //  AUCH an `mediaType` hängen, nicht nur an `filePath`: beim Recyceln einer
+    //  Zeile werden die Kacheldaten der Reihe nach durchgereicht, und `filePath`
+    //  steht VOR `mediaType` (s. `GalleryView` ▸ Zellen-Properties). Wird eine
+    //  Zelle von einer DATEI auf einen ORDNER umgesetzt, lief der Handler
+    //  deshalb noch mit dem alten Typ - `isFolder` war falsch, die Anfrage
+    //  entfiel, und die Zeile blieb leer, bis irgendetwas die Kacheln neu baute.
+    //  Genau so gemeldet: „die Anzahl erscheint nur manchmal, nach Klicken oder
+    //  anderen Aktionen".
+    function _wantFolderCount() {
+        if (tile.mediaType === 7 && tile.filePath.length > 0)
+            mediaModel.ensureFolderCount(tile.filePath)
+    }
+    onFilePathChanged:     tile._wantFolderCount()
+    onMediaTypeChanged:    tile._wantFolderCount()
+    Component.onCompleted: tile._wantFolderCount()
 
     // ── Typ-Marke, wenn es KEIN Bild gibt ───────────────────────────────────
     //  Die Endung steckt sonst nur im erzeugten Thumbnail (dort malt sie der
@@ -347,6 +389,28 @@ Rectangle {
         anchors.fill: parent
         radius: tile.radius
         color: Qt.rgba(App.themeAccent.r, App.themeAccent.g, App.themeAccent.b, 0.14)
+    }
+
+    //  ── Ausgewaehlt: Schleier + Haekchen ───────────────────────────────────
+    //  Der Rahmen allein genuegt nicht - zwischen verschlagworteten Kacheln
+    //  (die ebenfalls den Akzent tragen) waere er nicht zu unterscheiden.
+    Rectangle {
+        visible: tile.selected
+        anchors.fill: parent
+        radius: tile.radius
+        color: Qt.rgba(App.themeAccent.r, App.themeAccent.g, App.themeAccent.b, 0.22)
+    }
+    Rectangle {
+        visible: tile.selected
+        anchors { left: parent.left; top: parent.top; margins: 5 }
+        width: 18; height: 18; radius: 9
+        color: App.themeAccent
+        DrawnIcon {
+            anchors.centerIn: parent
+            name: "check"
+            size: 13
+            color: App.themeCard
+        }
     }
 
     //  Waehrend ein Zug ueber diesem Ordner steht, hebt er sich hervor.
@@ -427,6 +491,21 @@ Rectangle {
                 tile.activated(tile.filePath)
         }
         onClicked: function(mouse) {
+            //  ── Mehrfachauswahl geht VOR ────────────────────────────────
+            //  Strg- und Umschalt-Klick gehoeren der Auswahl: sie oeffnen
+            //  nichts, klappen nichts auf und schalten keinen Tag um. Sonst
+            //  koennte man einen Ordner nicht auswaehlen, ohne ihn dabei
+            //  aufzuklappen.
+            if (mouse.button === Qt.LeftButton
+                && (mouse.modifiers & (Qt.ControlModifier | Qt.ShiftModifier))) {
+                tile.selectRequested(tile.proxyRow, mouse.modifiers)
+                return
+            }
+            //  Ein Klick OHNE Strg hebt die Auswahl auf - auch der Rechtsklick,
+            //  wenn er eine Kachel trifft, die gar nicht dazugehoert.
+            if (mouse.button === Qt.LeftButton || !tile.selected)
+                tile.selectionResetRequested()
+
             // Ohne aktiven View-Modus öffnet Rechtsklick das Kontextmenü
             // (Tag/Kategorie hinzufügen). Die Modus-Interaktionen (Group/
             // Add-to-Tag) bleiben unverändert und haben Vorrang.
@@ -516,9 +595,16 @@ Rectangle {
             }
             MenuSeparator {}
             MenuItem {
-                text: App.uiText(App.language, "CtxFolderDelete")
-                onTriggered: tile.folderDeleteRequested(tile.filePath, tile.displayName,
-                                                        tile.childCount)
+                text: tile.multi
+                      ? App.uiText(App.language, "CtxDeleteSelection")
+                            .replace("%1", tile.multiCount)
+                      : App.uiText(App.language, "CtxFolderDelete")
+                onTriggered: {
+                    if (tile.multi) tile.deleteSelectionRequested(tile.multiCount)
+                    else            tile.folderDeleteRequested(tile.filePath,
+                                                               tile.displayName,
+                                                               tile.childCount)
+                }
             }
         }
     }
@@ -543,8 +629,15 @@ Rectangle {
                                           && Audio.canExtractAudio(tile.filePath)
                 ctxTags    = Tags.allTags()
                 ctxCats    = Tags.categoriesFlat()
-                fileTags   = mediaModel.tagsOfFile(tile.filePath)
-                fileCatIds = Tags.categoryIdsForFile(tile.fileName)
+                //  Bei einer Mehrfachauswahl steht das Haekchen fuer „ALLE
+                //  haben es" - deshalb die Schnittmenge, nicht die Tags der
+                //  angeklickten Kachel. Beide Schnittmengen kommen aus C++;
+                //  in QML waere es je Datei ein Baumlauf.
+                fileTags   = tile.multi ? mediaModel.tagsOfSelection()
+                                        : mediaModel.tagsOfFile(tile.filePath)
+                fileCatIds = tile.multi
+                             ? Tags.categoryIdsForFiles(mediaModel.selectedFileNames())
+                             : Tags.categoryIdsForFile(tile.fileName)
             }
 
             ThemedMenu {
@@ -569,7 +662,13 @@ Rectangle {
                         text: modelData
                         checkable: true
                         checked: ctxMenu.fileTags.indexOf(modelData) >= 0
-                        onTriggered: mediaModel.toggleTag(tile.filePath, modelData)
+                        onTriggered: {
+                            if (tile.multi)
+                                mediaModel.setTagOnSelection(
+                                    modelData, ctxMenu.fileTags.indexOf(modelData) < 0)
+                            else
+                                mediaModel.toggleTag(tile.filePath, modelData)
+                        }
                     }
                 }
             }
@@ -593,7 +692,14 @@ Rectangle {
                         text: modelData.name
                         checkable: true
                         checked: ctxMenu.fileCatIds.indexOf(modelData.id) >= 0
-                        onTriggered: Tags.toggleFileInCategory(modelData.id, tile.fileName)
+                        onTriggered: {
+                            if (tile.multi)
+                                Tags.setFilesInCategory(
+                                    modelData.id, mediaModel.selectedFileNames(),
+                                    ctxMenu.fileCatIds.indexOf(modelData.id) < 0)
+                            else
+                                Tags.toggleFileInCategory(modelData.id, tile.fileName)
+                        }
                     }
                 }
             }
@@ -605,11 +711,23 @@ Rectangle {
                 text: App.uiText(App.language, "CtxRenameFile")
                 onTriggered: tile.renameRequested(tile.filePath, tile.displayName)
             }
+            //  In die Zwischenablage - bei einer Mehrfachauswahl alles
+            //  Gewaehlte, sonst diese eine Datei. Dasselbe wie Strg+C.
+            MenuItem {
+                text: App.uiText(App.language, "CtxCopyFiles")
+                onTriggered: tile.copyRequested(tile.filePath)
+            }
             // Datei löschen (in den Papierkorb) - Bestätigung übernimmt der
             // gemeinsame Dialog in GalleryView (deleteRequested-Signal).
             MenuItem {
-                text: App.uiText(App.language, "CtxDeleteFile")
-                onTriggered: tile.deleteRequested(tile.filePath, tile.displayName)
+                text: tile.multi
+                      ? App.uiText(App.language, "CtxDeleteSelection")
+                            .replace("%1", tile.multiCount)
+                      : App.uiText(App.language, "CtxDeleteFile")
+                onTriggered: {
+                    if (tile.multi) tile.deleteSelectionRequested(tile.multiCount)
+                    else            tile.deleteRequested(tile.filePath, tile.displayName)
+                }
             }
 
             //  ── Ton aus dem Video sichern ────────────────────────────────────

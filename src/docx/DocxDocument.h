@@ -133,6 +133,11 @@ struct Block {
     QString pprXml;             // materialisiert bei Absatzformat-Änderung
     bool    pprMaterialized = false;
     QString opaqueName;         // Elementname opaker Blöcke ("w:tbl", …)
+    //  Umgeschriebener Roh-Bereich - wie `Run::rawOverride`, aber für einen
+    //  ganzen Block. Gebraucht für das `w:sectPr`: die Seitenränder werden
+    //  DARIN geändert, und eine Mutation der Dokument-XML verschöbe die Spans
+    //  aller späteren Blöcke. Leer = unverändert (dann gilt `rawSpan`).
+    QString rawOverride;
 
     QList<Run> runs;
     ParFmt  pfmt;
@@ -523,6 +528,23 @@ public:
     //  eine Seitengeometrie je Dokument; ohne w:sectPr bleibt es bei A4.
     const SectionProps& section() const { return m_section; }
 
+    //  ── Seitenränder ändern (Randlineale des Editors) ────────────────────────
+    //  Werte in TWIPS, genau wie in `w:pgMar`; geklemmt nach denselben Regeln
+    //  wie beim Einlesen (mindestens 1 cm Textbreite/-höhe bleiben stehen).
+    //  Geschrieben wird ins `w:sectPr` des Hauptteils - Word sieht die Ränder
+    //  damit genauso. Hat das Dokument gar kein `w:sectPr`, entsteht eines
+    //  (mit der bis dahin geltenden Seitengröße). false = nichts geändert.
+    bool setPageMargins(int top, int right, int bottom, int left);
+    //  Zustand für Rückgängig/Wiederholen: die Werte UND das umgeschriebene
+    //  `w:sectPr`. Beides gehört zusammen - die Werte treiben die Auslegung,
+    //  das XML das Speichern.
+    struct SectionState {
+        SectionProps props;
+        QString      sectPrXml;      // leer = kein eigener Roh-Bereich gesetzt
+    };
+    SectionState sectionState() const;
+    void         setSectionState(const SectionState& st);
+
     // ── Nummerierung ─────────────────────────────────────────────────────────
     NumLevel numLevel(int numId, int ilvl) const;
     //  Liefert eine numId für neue Listen; legt (lazy) eigene abstractNum/num-
@@ -567,6 +589,17 @@ private:
 
     bool parseDocumentXml(QString* err);
     void parseSectPr(QStringView xml);       // w:pgSz/w:pgMar/w:cols -> m_section
+    //  Die Ränder in gültige Grenzen bringen (dieselben Regeln wie beim
+    //  Einlesen) - eine Stelle für beide Wege.
+    static void clampSection(SectionProps* s);
+    //  Blockindex des `w:sectPr` des Hauptteils; legt eines an, wenn keines da
+    //  ist (ans Ende des Körpers, wohin es gehört). −1 nur bei leerem Dokument.
+    int  ensureSectPrBlock();
+    //  `w:pgMar` im `w:sectPr` neu schreiben und als `Block::rawOverride`
+    //  ablegen. `w:header`/`w:footer`/`w:gutter` werden dabei ÜBERNOMMEN - sie
+    //  gehören nicht uns.
+    bool rewriteSectPr();
+    int  m_sectPrBlock = -1;
     bool parseStylesXml(const QByteArray& xml);
     bool parseNumberingXml(const QByteArray& xml);
 

@@ -145,10 +145,19 @@ Item {
         anchors.centerIn: Overlay.overlay
         standardButtons: Dialog.Yes | Dialog.No
         onAccepted: Tags.deleteCategory(tab.pId)
+        //  **Eingabetaste bestaetigt.** `focus: true` am Dialog UND ein
+        //  `Keys`-Handler am `contentItem` - beides noetig: `standardButtons`
+        //  allein wertet `Return` NICHT aus (der Fokus liegt dann auf der
+        //  `DialogButtonBox`, und die hat keinen Vorgabe-Knopf), und ein
+        //  `Keys`-Handler am Dialog selbst feuert gar nicht. Beides gemessen.
+        focus: true
         background: Rectangle { color: App.themeCard; border.color: App.themeBorder; radius: 8 }
         // s. SettingsBookmarksTab: feste implicitWidth des contentItem bricht
         // die Rückkopplung Dialog.implicitWidth ↔ Textumbruch.
         contentItem: Item {
+            focus: true
+            Keys.onReturnPressed: function(e) { deleteDialog.accept(); e.accepted = true }
+            Keys.onEnterPressed:  function(e) { deleteDialog.accept(); e.accepted = true }
             implicitWidth: 300
             implicitHeight: catDelText.implicitHeight
             Text {

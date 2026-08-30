@@ -45,6 +45,18 @@ class AudioController : public QObject {
     //  Ein Titel ist GEWÄHLT (läuft, pausiert oder wurde beim Start
     //  wiederhergestellt) - daran hängt, ob die Leiste steht.
     Q_PROPERTY(bool    hasTrack    READ hasTrack    NOTIFY currentChanged)
+    //  ── Was im laufenden Titel steht ────────────────────────────────────────
+    //  Diese sechs waren nie nach QML freigegeben - weder als Property noch als
+    //  Invokable. `Audio.trackTitle` war damit `undefined`, und die Kopfzeile
+    //  der grossen Ansicht zeigte dauerhaft „Kein Titel gewaehlt"; das Titelbild
+    //  blieb leer (vom Nutzer gemeldet, NEXT.md K3).
+    //  NOTIFY `tagsChanged`: die Angaben werden beim Titelwechsel neu gelesen.
+    Q_PROPERTY(QString trackTitle    READ trackTitle    NOTIFY tagsChanged)
+    Q_PROPERTY(QString trackArtist   READ trackArtist   NOTIFY tagsChanged)
+    Q_PROPERTY(QString trackAlbum    READ trackAlbum    NOTIFY tagsChanged)
+    Q_PROPERTY(QString trackSubtitle READ trackSubtitle NOTIFY tagsChanged)
+    Q_PROPERTY(bool    trackHasCover READ trackHasCover NOTIFY tagsChanged)
+    Q_PROPERTY(QString coverSource   READ coverSource   NOTIFY tagsChanged)
 
     // ── Reihenfolge ─────────────────────────────────────────────────────────
     Q_PROPERTY(bool shuffle READ shuffle WRITE setShuffle NOTIFY shuffleChanged)
@@ -54,8 +66,16 @@ class AudioController : public QObject {
     Q_PROPERTY(bool eqEnabled READ eqEnabled WRITE setEqEnabled NOTIFY eqChanged)
     Q_PROPERTY(QVariantList eqGains READ eqGains NOTIFY eqChanged)
     Q_PROPERTY(qreal eqPreamp READ eqPreamp WRITE setEqPreamp NOTIFY eqChanged)
+    //  Rechnet der Equalizer selbst gegen das Uebersteuern?
+    Q_PROPERTY(bool eqAutoPreamp READ eqAutoPreamp WRITE setEqAutoPreamp
+               NOTIFY optionsChanged)
     Q_PROPERTY(QVariantList eqFrequencies READ eqFrequencies CONSTANT)
     Q_PROPERTY(QStringList presetNames READ presetNames NOTIFY presetsChanged)
+    //  Welche Voreinstellung steht gerade? Leer, sobald ein Regler von Hand
+    //  bewegt wurde - dann passt kein Name mehr.
+    Q_PROPERTY(QString activePreset READ activePreset NOTIFY presetsChanged)
+    //  Gibt es ueberhaupt etwas zurueckzusetzen? Daran haengt der Sammelknopf.
+    Q_PROPERTY(bool presetsModified READ presetsModified NOTIFY presetsChanged)
 
     // ── Warteschlange (die große Ansicht zeigt sie) ─────────────────────────
     Q_PROPERTY(QStringList queue      READ queue      NOTIFY queueChanged)
@@ -115,9 +135,13 @@ public:
     void setEqEnabled(bool on);
     QVariantList eqGains() const;
     qreal eqPreamp() const { return m_eq.preamp(); }
+    bool  eqAutoPreamp() const;
+    void  setEqAutoPreamp(bool on);
     void  setEqPreamp(qreal db);
     QVariantList eqFrequencies() const;
     QStringList  presetNames() const;
+    QString      activePreset() const { return m_activePreset; }
+    bool         presetsModified() const;
 
     //  In ABSPIEL-Reihenfolge: bei Zufall zeigt die Liste die Mischung, nicht
     //  die Ordnerfolge (sonst stimmte „als Nächstes" nicht).
@@ -168,10 +192,31 @@ public:
     Q_INVOKABLE void setBandGain(int band, qreal db);
     Q_INVOKABLE void resetBands();
     Q_INVOKABLE qreal suggestedPreamp() const { return m_eq.suggestedPreamp(); }
-    //  Eingebaute und eigene Presets: anwenden, speichern, löschen.
+    //  ── Voreinstellungen ────────────────────────────────────────────────────
+    //  Die MITGELIEFERTEN lassen sich ueberschreiben und loeschen wie eigene
+    //  (Festlegung des Nutzers) - der Rueckweg bleibt aber immer: die Vorlagen
+    //  stehen fest im Programm, geaendert wird nur DANEBEN.
     Q_INVOKABLE void applyPreset(const QString& name);
+    //  Die aktuellen Regler unter diesem Namen sichern. Trifft der Name eine
+    //  mitgelieferte Voreinstellung, ueberschreibt er sie (und sie laesst sich
+    //  danach zuruecksetzen).
     Q_INVOKABLE void savePreset(const QString& name);
+    //  Eintrag entfernen. Eine eigene verschwindet ganz, eine mitgelieferte
+    //  wird ausgeblendet. **Der KLANG bleibt stehen** - geloescht wird der
+    //  Eintrag, nicht die Einstellung (Festlegung des Nutzers).
     Q_INVOKABLE void deletePreset(const QString& name);
+    //  Eine mitgelieferte Voreinstellung auf ihre Vorlage zuruecksetzen
+    //  (hebt Ueberschreiben UND Ausblenden auf).
+    Q_INVOKABLE void resetPreset(const QString& name);
+    //  Alle mitgelieferten zurueck, eigene bleiben unberuehrt.
+    Q_INVOKABLE void resetAllPresets();
+    //  Reihenfolge aendern (Einstellungen ▸ Audio).
+    Q_INVOKABLE void movePreset(int from, int to);
+    //  Ist das eine mitgelieferte? Danach richtet sich, welche Zeichen die
+    //  Zeile traegt (Zuruecksetzen gibt es nur dort).
+    Q_INVOKABLE bool presetIsBuiltin(const QString& name) const;
+    //  Weicht diese mitgelieferte von ihrer Vorlage ab (ueberschrieben)?
+    Q_INVOKABLE bool presetIsModified(const QString& name) const;
     //  Zeitangabe „m:ss" für die Leiste (QML soll nicht rechnen müssen).
     Q_INVOKABLE QString formatTime(qint64 ms) const;
 
@@ -182,7 +227,16 @@ public:
     //  später dazukommt: `paneIndex` steht beim Aufbau noch nicht fest (die
     //  Shell bindet ihn erst danach), und die zweite Hälfte ginge mit in den
     //  Player-Modus, sobald man den Bildschirm teilt.
-    Q_INVOKABLE bool takePlayerModeRestore();
+    //  `paneIndex` = Platz der fragenden Hälfte. Nur DIE Hälfte, die den Modus
+    //  beim Beenden hatte, bekommt ihn zurück; alle anderen erhalten false.
+    //  Ohne den Platz nahm ihn die zuerst gebaute Hälfte, und bei geteiltem
+    //  Fenster standen Player und Galerie danach vertauscht (Nutzerbefund).
+    Q_INVOKABLE bool takePlayerModeRestore(int paneIndex);
+    //  Wie oben, aber OHNE den Auftrag abzutragen: die Shell fragt damit beim
+    //  Start, ob es eine zweite Haelfte ueberhaupt geben muss.
+    Q_INVOKABLE bool playerModePaneRemembered(int paneIndex);
+    //  Beim Umschalten merken, WELCHE Hälfte es war.
+    Q_INVOKABLE void rememberPlayerMode(bool on, int paneIndex);
 
     // ── Ton sichern ─────────────────────────────────────────────────────────
     //  Lohnt sich der Menüpunkt für diese Datei? Reine ENDUNGS-Prüfung, damit
@@ -244,6 +298,14 @@ private:
     void loadSettings();
     void applyGainsToSettings();
     QStringList builtinPresetLines() const;
+    //  Die Zeile einer Voreinstellung - EIGENE gewinnen ueber gleichnamige
+    //  mitgelieferte. Leer, wenn es sie nicht (mehr) gibt.
+    QString     presetLine(const QString& name) const;
+    //  Namen in die gespeicherte Reihenfolge bringen; Unbekanntes haengt hinten
+    //  an (eine neue mitgelieferte Voreinstellung geht so nie verloren).
+    QStringList inStoredOrder(const QStringList& names) const;
+    //  Name der gerade angewandten Voreinstellung ("" = von Hand verstellt).
+    QString     m_activePreset;
 
     ISettings&      m_settings;
     AudioEqualizer  m_eq;
@@ -255,7 +317,13 @@ private:
     //  Nur beobachtet, nie besessen: verschwindet die Hälfte, zeigt der Zeiger
     //  ins Leere - deshalb `QPointer`.
     QPointer<QObject> m_owner;
-    bool              m_restoreTaken = false;
+    //  Die beim Start gelesene Maske (s. `takePlayerModeRestore`); -1 = noch
+    //  nicht gelesen. Jede Haelfte holt ihr Bit genau EINMAL je Programmlauf ab.
+    //  Setzt die Vorverstaerkung auf die Spitzenverstaerkung der Kette -
+    //  aber nur, wenn die Automatik an ist (s. `.cpp`).
+    void applyAutoPreamp();
+
+    int               m_restoreMask = -1;
 
     //  Tags des laufenden Titels; `m_tagsPath` merkt, wofür sie gelten, damit
     //  ein wiederholtes `currentChanged` die Datei nicht erneut liest.

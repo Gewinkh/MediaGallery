@@ -452,7 +452,16 @@ Item {
         standardButtons: Dialog.Yes | Dialog.No
         background: Rectangle { color: App.themeCard; border.color: App.themeBorder; radius: 8 }
         onAccepted: App.removeBookmarkGroup(root.groupTarget)
+        //  **Eingabetaste bestaetigt.** `focus: true` am Dialog UND ein
+        //  `Keys`-Handler am `contentItem` - beides noetig: `standardButtons`
+        //  allein wertet `Return` NICHT aus (der Fokus liegt dann auf der
+        //  `DialogButtonBox`, und die hat keinen Vorgabe-Knopf), und ein
+        //  `Keys`-Handler am Dialog selbst feuert gar nicht. Beides gemessen.
+        focus: true
         contentItem: Item {
+            focus: true
+            Keys.onReturnPressed: function(e) { groupDeleteDialog.accept(); e.accepted = true }
+            Keys.onEnterPressed:  function(e) { groupDeleteDialog.accept(); e.accepted = true }
             implicitWidth: 300
             implicitHeight: groupDelText.implicitHeight
             Text {
@@ -472,12 +481,21 @@ Item {
         standardButtons: Dialog.Yes | Dialog.No
         background: Rectangle { color: App.themeCard; border.color: App.themeBorder; radius: 8 }
         onAccepted: App.removeBookmark(root.deleteIndex)
+        //  **Eingabetaste bestaetigt.** `focus: true` am Dialog UND ein
+        //  `Keys`-Handler am `contentItem` - beides noetig: `standardButtons`
+        //  allein wertet `Return` NICHT aus (der Fokus liegt dann auf der
+        //  `DialogButtonBox`, und die hat keinen Vorgabe-Knopf), und ein
+        //  `Keys`-Handler am Dialog selbst feuert gar nicht. Beides gemessen.
+        focus: true
         // Umbrechender Text in einem Item mit FESTER implicitWidth: Als
         // contentItem bestimmt dessen implicitWidth die Dialogbreite. Ein
         // umbrechender Text meldet dagegen eine implicitWidth, die von seiner
         // (vom Dialog gesetzten) Breite abhängt -> Rückkopplung
         // Dialog.implicitWidth ↔ Textumbruch ("Binding loop detected").
         contentItem: Item {
+            focus: true
+            Keys.onReturnPressed: function(e) { deleteDialog.accept(); e.accepted = true }
+            Keys.onEnterPressed:  function(e) { deleteDialog.accept(); e.accepted = true }
             implicitWidth: 280
             implicitHeight: delText.implicitHeight
             Text {

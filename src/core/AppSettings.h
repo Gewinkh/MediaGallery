@@ -45,6 +45,8 @@ public:
 
     bool monoPlay() const override;
     void setMonoPlay(bool v) override;
+    bool showHiddenFiles() const override;
+    void setShowHiddenFiles(bool v) override;
     bool fileDropMove() const override;
     void setFileDropMove(bool v) override;
     bool showAllFiles() const override;
@@ -112,16 +114,22 @@ public:
     double      audioEqPreamp() const override;
     void        setAudioEqPreamp(double db) override;
     QStringList audioEqPresets() const override;
+    bool        audioEqAutoPreamp() const override;
+    void        setAudioEqAutoPreamp(bool on) override;
+    QStringList audioEqHiddenPresets() const override;
+    void        setAudioEqHiddenPresets(const QStringList& names) override;
+    QStringList audioEqPresetOrder() const override;
+    void        setAudioEqPresetOrder(const QStringList& names) override;
     void        setAudioEqPresets(const QStringList& presets) override;
     bool        audioPlayerMode() const override;
     void        setAudioPlayerMode(bool on) override;
+    int         audioPlayerModeMask() const override;
+    void        setAudioPlayerModeMask(int mask) override;
     bool        audioListLayout() const override;
     void        setAudioListLayout(bool on) override;
     bool        audioShowVideos() const override;
     void        setAudioShowVideos(bool on) override;
     bool        audioRememberLast() const override;
-    int         docxPdfPaddingMm() const override;
-    void        setDocxPdfPaddingMm(int mm) override;
     int         docxPdfPageNumberPos() const override;
     void        setDocxPdfPageNumberPos(int pos) override;
     int         docxPdfPageNumberStyle() const override;

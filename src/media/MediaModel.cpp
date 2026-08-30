@@ -1,4 +1,6 @@
 #include "media/MediaModel.h"
+
+#include "core/AppSettings.h"
 #include "core/JsonStorage.h"
 #include "media/MediaProxyModel.h"
 #include "tags/TagCategory.h"
@@ -53,7 +55,7 @@ public:
 
     void run() override {
         int n = 0;
-        QDirIterator it(m_folder, QDir::Files | QDir::Dirs | QDir::NoDotAndDotDot,
+        QDirIterator it(m_folder, QDir::Files | QDir::Dirs | QDir::NoDotAndDotDot | MediaModel::hiddenFlag(),
                         QDirIterator::NoIteratorFlags);
         while (it.hasNext()) {
             it.next();
@@ -156,7 +158,7 @@ public:
             bool hit = !isRoot && !crit.search.isEmpty()
                     && QFileInfo(dir).fileName().contains(crit.search, Qt::CaseInsensitive);
 
-            QDirIterator it(dir, QDir::Files | QDir::Dirs | QDir::NoDotAndDotDot,
+            QDirIterator it(dir, QDir::Files | QDir::Dirs | QDir::NoDotAndDotDot | MediaModel::hiddenFlag(),
                             QDirIterator::NoIteratorFlags);
             while (it.hasNext()) {
                 if (m_cancel && m_cancel->load()) return false;
@@ -422,6 +424,9 @@ void MediaModel::rebuild(const QString& folderPath) {
     m_items.clear();
     m_thumbUrls.clear();
     m_thumbState.clear();
+    //  Die Auswahl gehoert zur ALTEN Ansicht und faellt mit ihr weg.
+    m_selected.clear();
+    recountSelection();
     m_pathToRow.clear();
     //  Die Bereichstabelle wird beim Neuaufbau geleert, `m_expanded` NICHT:
     //  daraus setzt sich der aufgeklappte Unterbaum waehrend des Einlesens von
@@ -501,9 +506,16 @@ void MediaModel::rebuild(const QString& folderPath) {
         finishFill();
 }
 
+//  Versteckte Dateien nur auf Wunsch. In einem Medienordner sind sie fast immer
+//  Beiwerk; in einem Projektordner will man `.gitignore` aber sehen (vom Nutzer
+//  gemeldet). Die Einstellung wird bei JEDEM Einlesen frisch gelesen, damit ein
+//  Umschalten nach dem naechsten Neuladen greift.
+QDir::Filters MediaModel::hiddenFlag() {
+    return AppSettings::instance().showHiddenFiles() ? QDir::Hidden : QDir::Filters();
+}
+
 //  Iterator fuer GENAU EINEN Bereich. Verzeichnisse kommen mit (`QDir::Dirs`),
-//  denn Unterordner sind jetzt Kacheln; `QDir::Hidden` bleibt bewusst aussen vor
-//  (wie bisher bei Dateien).
+//  denn Unterordner sind jetzt Kacheln.
 void MediaModel::startScan(int scope) {
     m_pendingIt.reset();
     m_pendingScope = -1;
@@ -511,7 +523,7 @@ void MediaModel::startScan(int scope) {
     const QString path = m_scopes.at(scope).path;
     if (path.isEmpty()) return;
     m_pendingIt = std::make_unique<QDirIterator>(
-        path, QDir::Files | QDir::Dirs | QDir::NoDotAndDotDot,
+        path, QDir::Files | QDir::Dirs | QDir::NoDotAndDotDot | MediaModel::hiddenFlag(),
         QDirIterator::NoIteratorFlags);
     m_pendingScope = scope;
 }
@@ -613,6 +625,7 @@ void MediaModel::feedChunk(bool firstChunk) {
         m_items.append(std::move(item));
         m_thumbUrls.append(QString());
         m_thumbState.append(0);
+        m_selected.append(0);
     }
     endInsertRows();
     emit countChanged();
@@ -773,8 +786,11 @@ void MediaModel::removeRowsOfScopes(const QSet<int>& scopes) {
         m_items.remove(first, n);
         m_thumbUrls.remove(first, n);
         m_thumbState.remove(first, n);
+        m_selected.remove(first, n);
         endRemoveRows();
         removed += n;
+        //  Waren zugeklappte Zeilen ausgewaehlt, ist die Auswahl jetzt kleiner.
+        recountSelection();
     }
 
     for (int s : scopes) {
@@ -920,9 +936,23 @@ void MediaModel::invalidateFolderCount(const QString& folderPath) {
 
 void MediaModel::noteFolderCount(const QString& folderPath, int count, int generation,
                                  int ticket) {
-    if (generation != m_countGeneration) return;    // veraltet (Neuaufbau)
-    if (ticket != m_countTicket.value(folderPath)) return;   // veraltet (Inhalt geaendert)
+    //  ZUERST streichen: der Auftrag ist fertig, ganz gleich ob sein Ergebnis
+    //  noch gilt. HAERTUNG, kein belegter Fehler - heute raeumt `rebuild()` die
+    //  Vormerkungen ohnehin mit auf, und `invalidateFolderCount` tut es selbst.
+    //  Stuende das Streichen aber weiter HINTER den Pruefungen, liesse jeder
+    //  kuenftige Weg, der die Marke hebt ohne die Vormerkung zu raeumen, den
+    //  Ordner fuer immer als „laeuft gerade" gelten - und `ensureFolderCount`
+    //  kehrte danach bei jedem Versuch sofort um.
     m_countPending.remove(folderPath);
+    //  Veraltet? Dann NICHT einfach aufgeben: der Wunsch besteht weiter, also
+    //  gleich neu zaehlen, statt auf das naechste `finishFill` zu warten.
+    //  Ist der Ordner inzwischen weg (`rowForPath < 0`), passiert nichts.
+    if (generation != m_countGeneration                        // Neuaufbau
+        || ticket != m_countTicket.value(folderPath)) {        // Inhalt geaendert
+        if (m_countWanted.contains(folderPath) && rowForPath(folderPath) >= 0)
+            ensureFolderCount(folderPath);
+        return;
+    }
     m_folderCounts.insert(folderPath, count);
     const int row = rowForPath(folderPath);
     if (row >= 0) emitRow(row, { ChildCountRole });
@@ -1094,6 +1124,7 @@ QVariant MediaModel::data(const QModelIndex& index, int role) const {
     case DepthRole:       return scopeDepthOf(it.scope);
     case ExpandedRole:    return it.isFolder() && m_expanded.contains(it.filePath);
     case ChildCountRole:  return it.isFolder() ? m_folderCounts.value(it.filePath, -1) : -1;
+    case SelectedRole:    return r < m_selected.size() && m_selected.at(r) != 0;
     default:              return {};
     }
 }
@@ -1114,6 +1145,7 @@ QHash<int, QByteArray> MediaModel::roleNames() const {
         { DepthRole,       "depth"       },
         { ExpandedRole,    "expanded"    },
         { ChildCountRole,  "childCount"  },
+        { SelectedRole,    "selected"    },
     };
 }
 
@@ -1135,6 +1167,11 @@ void MediaModel::emitRow(int row, const QVector<int>& roles) {
     if (row < 0 || row >= m_items.size()) return;
     const QModelIndex idx = index(row);
     emit dataChanged(idx, idx, roles);
+}
+
+void MediaModel::emitRows(int first, int last, const QVector<int>& roles) {
+    if (first < 0 || last < first || last >= m_items.size()) return;
+    emit dataChanged(index(first), index(last), roles);
 }
 
 // ─── Thumbnails (sichtbarkeitsgesteuert) ─────────────────────────────────────
@@ -1398,6 +1435,8 @@ bool MediaModel::trashFile(const QString& filePath, FileOp* op) {
     op->trashPath.clear();
     op->sidecarPath.clear();
     op->sidecarTrashPath.clear();
+    op->bakPath.clear();
+    op->bakTrashPath.clear();
     //  VOR dem Löschen sichern - danach sind sie weg. Aus dem Sidecar DES
     //  Ordners, dem die Datei gehoert (Unterordner haben ihr eigenes).
     collectMetaAt(folder, name, op);
@@ -1424,6 +1463,19 @@ bool MediaModel::trashFile(const QString& filePath, FileOp* op) {
                 op->sidecarTrashPath = sidecarTrash;
             else
                 QFile::remove(sidecar);
+        }
+        //  … und die DOCX-Sicherungskopie. Sie gehoert zur Datei; blieb sie
+        //  liegen, stand neben der geloeschten DOCX eine verwaiste `.bak`
+        //  (vom Nutzer gemeldet). Ueber den Papierkorb, damit `Strg+Z` sie
+        //  zusammen mit der Datei zurueckholt.
+        const QString bak = filePath + QStringLiteral(".bak");
+        if (QFile::exists(bak)) {
+            op->bakPath = bak;
+            QString bakTrash;
+            if (QFile::moveToTrash(bak, &bakTrash))
+                op->bakTrashPath = bakTrash;
+            else
+                QFile::remove(bak);
         }
         dropMetaAt(folder, name, *op);
     }
@@ -1452,6 +1504,11 @@ bool MediaModel::restoreFile(const FileOp& op) {
             if (!QFile::rename(op.sidecarTrashPath, op.sidecarPath))
                 QFile::copy(op.sidecarTrashPath, op.sidecarPath);
         }
+        if (!op.bakTrashPath.isEmpty() && QFile::exists(op.bakTrashPath)
+            && !QFileInfo::exists(op.bakPath)) {
+            if (!QFile::rename(op.bakTrashPath, op.bakPath))
+                QFile::copy(op.bakTrashPath, op.bakPath);
+        }
         restoreMetaAt(QFileInfo(op.path).absolutePath(),
                       QFileInfo(op.path).fileName(), op);
         invalidateFolderCount(QFileInfo(op.path).absolutePath());
@@ -1465,6 +1522,13 @@ bool MediaModel::restoreFile(const FileOp& op) {
 void MediaModel::appendRowFor(const QString& filePath) {
     const QFileInfo fi(filePath);
     if (!fi.exists()) return;
+
+    //  Versteckte Dateien nur, wenn der Nutzer sie sehen will. Dieser Weg
+    //  UMGEHT den Verzeichnis-Leser (er haengt an einer einzelnen Datei), also
+    //  muss der Filter hier noch einmal stehen - sonst stand nach einem
+    //  Rueckgaengig ploetzlich eine `.gitignore` in der Galerie, obwohl beide
+    //  Schalter aus waren (vom Nutzer gemeldet: „manchmal ist sie zu sehen").
+    if (fi.isHidden() && !AppSettings::instance().showHiddenFiles()) return;
 
     //  Eine zurückgeholte BEGLEITdatei darf nur dann als Kachel erscheinen, wenn
     //  der Nutzer sie sehen will - sonst legte ein `Strg+Z` plötzlich eine
@@ -1512,6 +1576,7 @@ void MediaModel::appendRowFor(const QString& filePath) {
     m_items.append(std::move(batch.first()));
     m_thumbUrls.append(QString());
     m_thumbState.append(0);
+    m_selected.append(0);
     endInsertRows();
     emit countChanged();
 }
@@ -1525,8 +1590,10 @@ bool MediaModel::dropRowFor(const QString& filePath) {
     m_items.removeAt(row);
     m_thumbUrls.removeAt(row);
     m_thumbState.removeAt(row);
+    m_selected.removeAt(row);
     rebuildPathIndex();
     endRemoveRows();
+    recountSelection();
     emit countChanged();
     return true;
 }
@@ -1880,11 +1947,7 @@ int MediaModel::renameFolder(const QString& folderPath, const QString& newName) 
     return 0;
 }
 
-bool MediaModel::deleteFolder(const QString& folderPath) {
-    const int row = rowForPath(folderPath);
-    const MediaItem* it = itemAt(row);
-    if (!it || !it->isFolder()) return false;
-
+bool MediaModel::trashFolderAt(const QString& folderPath, bool reloadNow) {
     FileOp op;
     op.kind = FileOp::Kind::Folder;
     op.path = folderPath;
@@ -1906,9 +1969,19 @@ bool MediaModel::deleteFolder(const QString& folderPath) {
         if (p != folderPath && !p.startsWith(prefix)) keep.insert(p);
     m_expanded = keep;
 
-    reload();
+    //  `reloadNow == false` kommt aus `deleteSelected`: dort werden mehrere
+    //  Ordner nacheinander geloescht, und ein Neu-Einlesen JE Ordner haette
+    //  den naechsten unauffindbar gemacht (der Aufbau laeuft gechunkt).
+    if (reloadNow) reload();
     pushUndo(op);
     return true;
+}
+
+bool MediaModel::deleteFolder(const QString& folderPath) {
+    const int row = rowForPath(folderPath);
+    const MediaItem* it = itemAt(row);
+    if (!it || !it->isFolder()) return false;
+    return trashFolderAt(folderPath, /*reloadNow=*/true);
 }
 
 bool MediaModel::pushUndo(const FileOp& op) {
@@ -1997,6 +2070,197 @@ int MediaModel::transferToFolder(const QString& filePath, const QString& destFol
     //  Auch beim KOPIEREN waechst der Zielordner.
     invalidateFolderCount(mg::normalizedFolder(destFolder));
     return 0;
+}
+
+// ─── Mehrfachauswahl ─────────────────────────────────────────────────────────
+//  Wahrheitsquelle ist `m_selected` (ein Byte je Zeile, parallel zu `m_items`).
+//  Gemeldet wird IMMER zweigleisig: `dataChanged(SelectedRole)` faerbt die
+//  betroffenen Kacheln nach (das Zeilenmodell reicht es an die sichtbaren
+//  Zeilen weiter), `selectionChanged` traegt die Anzahl an die Oberflaeche.
+
+void MediaModel::noteSelectionChanged() {
+    ++m_selRevision;
+    emit selectionChanged();
+}
+
+void MediaModel::recountSelection() {
+    int n = 0;
+    for (const quint8 v : std::as_const(m_selected))
+        if (v) ++n;
+    if (n == m_selCount) return;
+    m_selCount = n;
+    noteSelectionChanged();
+}
+
+bool MediaModel::isSelected(const QString& filePath) const {
+    const int row = rowForPath(mg::toLocalPath(filePath));
+    return row >= 0 && row < m_selected.size() && m_selected.at(row) != 0;
+}
+
+void MediaModel::setSelected(const QString& filePath, bool on) {
+    const int row = rowForPath(mg::toLocalPath(filePath));
+    if (row < 0 || row >= m_selected.size()) return;
+    const quint8 want = on ? 1 : 0;
+    if (m_selected.at(row) == want) return;
+    m_selected[row] = want;
+    m_selCount += on ? 1 : -1;
+    emitRow(row, { SelectedRole });
+    noteSelectionChanged();
+}
+
+void MediaModel::toggleSelected(const QString& filePath) {
+    setSelected(filePath, !isSelected(filePath));
+}
+
+void MediaModel::clearSelection() {
+    if (m_selCount == 0) return;
+    //  In ZUSAMMENHAENGENDEN Laeufen melden statt Zeile fuer Zeile: eine
+    //  geleerte Auswahl ueber 40 Kacheln waeren sonst 40 Signale, und jedes
+    //  liesse das Zeilenmodell seine Kacheldaten neu bauen.
+    int runFirst = -1;
+    for (int r = 0; r < m_selected.size(); ++r) {
+        if (m_selected.at(r)) {
+            m_selected[r] = 0;
+            if (runFirst < 0) runFirst = r;
+        } else if (runFirst >= 0) {
+            emitRows(runFirst, r - 1, { SelectedRole });
+            runFirst = -1;
+        }
+    }
+    if (runFirst >= 0)
+        emitRows(runFirst, m_selected.size() - 1, { SelectedRole });
+    m_selCount = 0;
+    noteSelectionChanged();
+}
+
+QStringList MediaModel::selectedPaths(bool filesOnly) const {
+    QStringList out;
+    out.reserve(m_selCount);
+    for (int r = 0; r < m_selected.size() && r < m_items.size(); ++r) {
+        if (!m_selected.at(r)) continue;
+        if (filesOnly && m_items.at(r).isFolder()) continue;
+        out.append(m_items.at(r).filePath);
+    }
+    return out;
+}
+
+QStringList MediaModel::selectedFileNames() const {
+    QStringList out;
+    out.reserve(m_selCount);
+    for (int r = 0; r < m_selected.size() && r < m_items.size(); ++r) {
+        if (!m_selected.at(r) || m_items.at(r).isFolder()) continue;
+        out.append(m_items.at(r).fileName());
+    }
+    return out;
+}
+
+QStringList MediaModel::tagsOfSelection() const {
+    QStringList out;
+    bool first = true;
+    for (int r = 0; r < m_selected.size() && r < m_items.size(); ++r) {
+        if (!m_selected.at(r) || m_items.at(r).isFolder()) continue;
+        const QStringList& t = m_items.at(r).tags;
+        if (first) { out = t; first = false; continue; }
+        for (int k = out.size() - 1; k >= 0; --k)
+            if (!t.contains(out.at(k))) out.removeAt(k);
+        if (out.isEmpty()) break;
+    }
+    return out;
+}
+
+void MediaModel::setTagOnSelection(const QString& tag, bool on) {
+    //  Ueber die PFADE und nicht ueber die Zeilen: `setTagOnRow` schreibt in das
+    //  Sidecar des Ordners, dem die Zeile gehoert, und kann dabei melden - die
+    //  Zeilennummern bleiben aber stabil, es wird nichts eingefuegt oder
+    //  entfernt. Der Umweg ueber die Pfadliste haelt es trotzdem robust.
+    const QStringList paths = selectedPaths(/*filesOnly=*/true);
+    for (const QString& path : paths) {
+        const int row = rowForPath(path);
+        if (row < 0) continue;
+        const bool has = m_items.at(row).tags.contains(tag);
+        if (has == on) continue;
+        setTagOnRow(row, tag, on);
+    }
+}
+
+QVector<int> MediaModel::selectedRows() const {
+    QVector<int> out;
+    out.reserve(m_selCount);
+    for (int r = 0; r < m_selected.size(); ++r)
+        if (m_selected.at(r)) out.append(r);
+    return out;
+}
+
+void MediaModel::setSelectedRows(const QVector<int>& sortedRows) {
+    //  Ein Durchlauf ueber alle Zeilen mit einem Zeiger in die Sollmenge:
+    //  gemeldet wird nur, was sich wirklich aendert. Genau darauf beruht der
+    //  Auswahlrahmen - er ruft das je Mausbewegung, und ohne den Vergleich
+    //  baute das Zeilenmodell dabei jedes Mal alle sichtbaren Kacheln neu.
+    int k = 0;
+    int n = 0;
+    int lo = -1, hi = -1;
+    for (int r = 0; r < m_selected.size(); ++r) {
+        while (k < sortedRows.size() && sortedRows.at(k) < r) ++k;
+        const quint8 want = (k < sortedRows.size() && sortedRows.at(k) == r) ? 1 : 0;
+        if (want) ++n;
+        if (m_selected.at(r) == want) continue;
+        m_selected[r] = want;
+        if (lo < 0) lo = r;
+        hi = r;
+    }
+    //  EINE Meldung ueber den gesamten beruehrten Bereich statt einer je
+    //  zusammenhaengendem Lauf: der Rahmen aendert in ANSICHTS-Ordnung, und die
+    //  faellt nicht mit der Modellordnung zusammen - es entstuenden also viele
+    //  kleine Laeufe. (Gemessen hat das allein NICHTS gebracht, 1150 -> 1145 µs;
+    //  die Kosten lagen woanders, s. `GalleryRowModel::onSourceDataChanged`.
+    //  Es bleibt, weil es einfacher ist, nicht weil es schneller waere.)
+    if (lo >= 0)
+        emitRows(lo, hi, { SelectedRole });
+    m_selCount = n;
+    //  Gemeldet wird, sobald sich IRGENDETWAS geaendert hat - nicht erst bei
+    //  anderer Anzahl: ein wandernder Auswahlrahmen kann gleich viele, aber
+    //  andere Kacheln treffen, und die Kacheln haengen an der Meldung.
+    if (lo >= 0)
+        noteSelectionChanged();
+}
+
+int MediaModel::deleteSelected() {
+    //  Erst die Dateien, dann die Ordner - und beides unter EINER
+    //  Gruppennummer, damit `Strg+Z` alles in einem Schritt zurueckholt.
+    //  Die Reihenfolge ist kein Geschmack: `deleteFolder` liest den Ordner neu
+    //  ein, und danach faende keine Datei mehr ihre Zeile.
+    QStringList files, folders;
+    for (int r = 0; r < m_selected.size() && r < m_items.size(); ++r) {
+        if (!m_selected.at(r)) continue;
+        if (m_items.at(r).isFolder()) folders.append(m_items.at(r).filePath);
+        else                          files.append(m_items.at(r).filePath);
+    }
+    if (files.isEmpty() && folders.isEmpty()) return 0;
+
+    const int group = (files.size() + folders.size() > 1) ? ++m_opGroup : 0;
+    int done = 0;
+    //  Die Gruppennummer wird dem Vorgang NACHTRAEGLICH aufgedrueckt: er landet
+    //  im jeweiligen Loesch-Weg selbst auf dem Stapel, und ein Loeschen ohne
+    //  Papierkorb kommt gar nicht erst darauf (dann steht nichts nachzutragen).
+    const auto stamp = [this, group] {
+        if (group != 0 && !m_undoOps.isEmpty())
+            m_undoOps.last().group = group;
+    };
+    for (const QString& path : std::as_const(files)) {
+        if (!deleteItem(path)) continue;
+        stamp();
+        ++done;
+    }
+    for (const QString& path : std::as_const(folders)) {
+        if (!trashFolderAt(path, /*reloadNow=*/false)) continue;
+        stamp();
+        ++done;
+    }
+    if (!folders.isEmpty())
+        reload();               // EINMAL, nicht je Ordner
+    if (done > 0)
+        recountSelection();
+    return done;
 }
 
 bool MediaModel::deleteItem(const QString& filePath) {
@@ -2101,43 +2365,105 @@ bool MediaModel::removeCompanion(const QString& filePath, int kind) {
 //  Einen Ordner aus dem Papierkorb zurueckholen. Anders als bei einer Datei
 //  gibt es keine Metadaten einzusammeln: die liegen im Sidecar IM Ordner und
 //  sind mitgewandert.
-bool MediaModel::restoreFolder(const FileOp& op) {
+bool MediaModel::restoreFolder(const FileOp& op, bool reloadNow) {
     if (op.trashPath.isEmpty() || !QFileInfo::exists(op.trashPath)) return false;
     if (QFileInfo::exists(op.path)) return false;      // Platz wieder belegt
 
     ++m_suppressWatch;
     const bool ok = QDir().rename(op.trashPath, op.path);
     --m_suppressWatch;
-    if (ok) reload();
+    //  `reloadNow == false` kommt aus dem Gruppen-Rueckweg: dort werden erst
+    //  alle Dateien als Zeilen zurueckgelegt und danach EINMAL neu eingelesen.
+    if (ok && reloadNow) reload();
     return ok;
 }
 
 bool MediaModel::undoFileOp() {
     while (!m_undoOps.isEmpty()) {
-        const FileOp op = m_undoOps.takeLast();
-        const bool back = (op.kind == FileOp::Kind::Move)   ? undoMove(op)
-                        : (op.kind == FileOp::Kind::Folder) ? restoreFolder(op)
-                        : restoreFile(op);   // Companion nutzt denselben Rückweg
-        if (!back) {
-            //  Nicht zurückholbar (Papierkorb geleert, Platz wieder belegt) -
-            //  Eintrag verwerfen und den nächsten versuchen, statt hängen zu
-            //  bleiben.
-            emit fileHistoryChanged();
-            continue;
+        //  Ein GRUPPEN-Vorgang (geloeschte Mehrfachauswahl) geht als EIN Schritt
+        //  zurueck: alle Eintraege mit derselben Gruppennummer liegen im Stapel
+        //  unmittelbar nebeneinander und werden zusammen abgehoben.
+        const int grp = m_undoOps.last().group;
+        QVector<FileOp> batch;
+        if (grp == 0) {
+            batch.append(m_undoOps.takeLast());
+        } else {
+            while (!m_undoOps.isEmpty() && m_undoOps.last().group == grp)
+                batch.append(m_undoOps.takeLast());
         }
-        //  Der Ordner ist ueber `reload()` schon wieder da; eine Datei kommt
-        //  gezielt als Zeile zurueck (kein Reload, keine neuen Miniaturen).
-        if (op.kind != FileOp::Kind::Folder)
-            appendRowFor(op.path);
-        m_redoOps.push_back(op);
+
+        //  Innerhalb einer Gruppe kommen die DATEIEN zuerst zurueck und die
+        //  Ordner zuletzt: ein Ordner-Rueckweg liest den Ordner neu ein, und
+        //  ein `appendRowFor` waehrend eines laufenden Neuaufbaus legte die
+        //  Zeile ein zweites Mal an.
+        int  back      = 0;
+        bool hadFolder = false;
+        for (int pass = 0; pass < 2; ++pass) {
+            for (const FileOp& op : std::as_const(batch)) {
+                const bool isFolder = (op.kind == FileOp::Kind::Folder);
+                if (isFolder != (pass == 1)) continue;
+                const bool ok = (op.kind == FileOp::Kind::Move) ? undoMove(op)
+                              : isFolder ? restoreFolder(op, /*reloadNow=*/false)
+                              : restoreFile(op);   // Companion nutzt denselben Rückweg
+                //  Nicht zurückholbar (Papierkorb geleert, Platz wieder belegt) -
+                //  Eintrag verwerfen und den nächsten versuchen, statt hängen zu
+                //  bleiben.
+                if (!ok) continue;
+                //  Eine Datei kommt gezielt als Zeile zurueck (kein Reload,
+                //  keine neuen Miniaturen); ein Ordner braucht das Neu-Einlesen.
+                if (isFolder) hadFolder = true;
+                else          appendRowFor(op.path);
+                m_redoOps.push_back(op);
+                ++back;
+            }
+        }
+        if (hadFolder) reload();
         emit fileHistoryChanged();
-        return true;
+        if (back > 0) return true;
     }
     return false;
 }
 
 bool MediaModel::redoFileOp() {
     while (!m_redoOps.isEmpty()) {
+        //  Gegenstueck zu `undoFileOp`: eine Gruppe geht auch VORWAERTS als EIN
+        //  Schritt. Die Eintraege werden einzeln abgearbeitet, aber ohne
+        //  Rueckkehr zwischendurch - sonst braeuchte es N-mal Strg+Y.
+        const int grp = m_redoOps.last().group;
+        if (grp != 0) {
+            //  Die ganze Gruppe ZUERST abheben, dann arbeiten: `trashFolderAt`
+            //  legt seinen Vorgang selbst ab und LEERT dabei den Redo-Zweig
+            //  (`pushUndo`) - haette man mitten in der Schleife noch Eintraege
+            //  darin liegen, waeren sie weg gewesen.
+            QVector<FileOp> batch;
+            while (!m_redoOps.isEmpty() && m_redoOps.last().group == grp)
+                batch.append(m_redoOps.takeLast());
+
+            int  again      = 0;
+            bool hadFolder  = false;
+            for (FileOp gop : batch) {
+                if (rowForPath(gop.path) < 0) continue;
+                if (gop.kind == FileOp::Kind::Folder) {
+                    if (!trashFolderAt(gop.path, /*reloadNow=*/false)) continue;
+                    hadFolder = true;
+                    if (!m_undoOps.isEmpty()) m_undoOps.last().group = grp;
+                    ++again;
+                    continue;
+                }
+                if (!trashFile(gop.path, &gop)) continue;
+                dropRowFor(gop.path);
+                if (gop.trashPath.isEmpty()) continue;
+                gop.group = grp;
+                m_undoOps.push_back(gop);
+                if (m_undoOps.size() > kMaxFileOps) m_undoOps.removeFirst();
+                ++again;
+            }
+            if (hadFolder) reload();          // EINMAL, nicht je Ordner
+            emit fileHistoryChanged();
+            if (again > 0) return true;
+            continue;
+        }
+
         FileOp op = m_redoOps.takeLast();
         if (rowForPath(op.path) < 0) { emit fileHistoryChanged(); continue; }
 
@@ -2185,6 +2511,29 @@ QString MediaModel::undoFileOpName() const {
 QString MediaModel::redoFileOpName() const {
     return m_redoOps.isEmpty() ? QString()
                                : QFileInfo(m_redoOps.last().path).fileName();
+}
+
+//  Wie viele Dateien haengen am naechsten Schritt? Bei einem Einzelvorgang 1,
+//  bei einer Gruppe deren Laenge - die Oberflaeche haengt daran ihr
+//  „und N weitere".
+int MediaModel::undoFileOpCount() const {
+    if (m_undoOps.isEmpty()) return 0;
+    const int grp = m_undoOps.last().group;
+    if (grp == 0) return 1;
+    int n = 0;
+    for (int i = m_undoOps.size() - 1; i >= 0 && m_undoOps.at(i).group == grp; --i)
+        ++n;
+    return n;
+}
+
+int MediaModel::redoFileOpCount() const {
+    if (m_redoOps.isEmpty()) return 0;
+    const int grp = m_redoOps.last().group;
+    if (grp == 0) return 1;
+    int n = 0;
+    for (int i = m_redoOps.size() - 1; i >= 0 && m_redoOps.at(i).group == grp; --i)
+        ++n;
+    return n;
 }
 
 //  Tag setzen/entfernen im Sidecar DES ORDNERS, dem die Datei gehoert.

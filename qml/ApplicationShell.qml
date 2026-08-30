@@ -155,10 +155,15 @@ ApplicationWindow {
         App.restoreLastFolder()
         //  Zwei-Fenster-Modus der letzten Sitzung wiederherstellen. Der Fokus
         //  geht danach zurück auf die erste Hälfte - dort hat man aufgehört.
+        //  Die zweite Hälfte entsteht auch dann, wenn sie KEINEN Ordner
+        //  hatte, aber im Player-Modus stand: dort zeigt sie die Warteschlange,
+        //  `secondFolder()` bleibt leer, und die Hälfte wäre ersatzlos
+        //  verschwunden (vom Nutzer gemeldet: der Modus kam nur für die linke
+        //  Hälfte zurück).
         var second = App.secondFolder()
-        if (second.length > 0) {
+        if (second.length > 0 || Audio.playerModePaneRemembered(1)) {
             var p = App.addPane()
-            if (p) p.openFolder(second)
+            if (p && second.length > 0) p.openFolder(second)
             App.focusPane(0)
         }
         //  Zuletzt gespielten Titel BEREITLEGEN (nicht abspielen) - er wartet
@@ -497,9 +502,9 @@ ApplicationWindow {
                         shell._scanPending = true
                         PdfExtract.scanFolder(shell._extractTarget())
                     }
-                    function onFolderDropRequested(sourcePath, folderPath) {
+                    function onFolderDropRequested(sourcePaths, folderPath) {
                         App.focusPane(paneHost.index)
-                        shell._dropIntoFolder(sourcePath, folderPath)
+                        shell._dropPathsIntoFolder(sourcePaths, folderPath)
                     }
                     function onExternalDropRequested(urls, folderPath) {
                         App.focusPane(paneHost.index)
@@ -735,17 +740,25 @@ ApplicationWindow {
     }
 
     //  Eine abgelegte Nutzlast in einen Ordner geben - app-intern verschieben
-    //  bzw. kopieren, von aussen kopieren. Dieselbe Unterscheidung wie in der
-    //  Galerie (`mediaModel.ownsFile`).
+    //  bzw. kopieren, von aussen kopieren. "App-intern" heisst IRGENDEINE
+    //  Haelfte, nicht nur die unter dem Zeiger; die Galerie entscheidet mit
+    //  derselben Frage (`GalleryView._appOwnsFile`).
     function _dropUrlsOnFolder(urls, destFolder) {
         if (!urls || urls.length === 0 || destFolder.length === 0) return
         const src = App.localPath(urls[0])
         const owner = shell._modelOwning(src)
         if (owner && owner.ownsFile(src)) {
-            //  In den EIGENEN Ordner abzulegen ist keine Bewegung.
-            const cut = Math.max(src.lastIndexOf("/"), src.lastIndexOf("\\"))
-            if (cut > 0 && src.substring(0, cut) === destFolder) return
-            shell._dropIntoFolder(src, destFolder)
+            //  Ein Zug kann MEHRERE Dateien tragen (Mehrfachauswahl). In den
+            //  EIGENEN Ordner abzulegen ist keine Bewegung und faellt weg.
+            const paths = []
+            for (var i = 0; i < urls.length; ++i) {
+                const p = App.localPath(urls[i])
+                if (p.length === 0) continue
+                const cut = Math.max(p.lastIndexOf("/"), p.lastIndexOf("\\"))
+                if (cut > 0 && p.substring(0, cut) === destFolder) continue
+                paths.push(p)
+            }
+            shell._dropPathsIntoFolder(paths, destFolder)
         } else {
             App.handleDroppedUrls(urls, destFolder)
         }
@@ -800,8 +813,7 @@ ApplicationWindow {
                         keys: ["text/uri-list"]
                         onDropped: function(drop) {
                             if (!drop.hasUrls) { drop.accepted = false; return }
-                            shell._dropIntoFolder(App.localPath(drop.urls[0]),
-                                                  bmTarget.modelData.path)
+                            shell._dropUrlsOnFolder(drop.urls, bmTarget.modelData.path)
                             drop.acceptProposedAction()
                         }
                     }
@@ -814,30 +826,71 @@ ApplicationWindow {
     //  auf einer ORDNERKACHEL der Galerie; beide Wege sind derselbe Vorgang.
     //  Die Regeln stehen im Modell (`transferToFolder`); hier bleibt nur die
     //  Rückfrage bei einem belegten Namen und die Meldung.
+    //  ── Mehrere Dateien: eine Warteschlange ─────────────────────────────────
+    //  Ein Zug kann seit der Mehrfachauswahl mehrere Dateien tragen. Sie werden
+    //  der Reihe nach abgearbeitet; stoesst eine auf einen belegten Namen, wird
+    //  die Schlange ANGEHALTEN, der Dialog gefragt und danach weitergemacht.
+    //  Eine Sammelantwort („fuer alle") gibt es bewusst nicht - jede Kollision
+    //  ist eine eigene Entscheidung ueber eine fremde Datei.
+    property var    _dropQueue: []
+    property string _dropDest: ""
+    property int    _dropOk: 0
+    property int    _dropFail: 0
+    property string _dropLast: ""
+
     function _dropIntoFolder(path, destFolder) {
-        if (path.length === 0 || destFolder.length === 0) return
-        const move = App.fileDropMove
-        const owner = shell._modelOwning(path)
-        if (!owner) return
-        const r = owner.transferToFolder(path, destFolder, move, 0)
-        if (r === 1) {
-            collisionDialog.srcPath    = path
-            collisionDialog.destFolder = destFolder
-            collisionDialog.moveMode   = move
-            collisionDialog.altName    = owner.transferTargetName(path, destFolder)
-            collisionDialog.open()
-            return
-        }
-        shell._reportTransfer(r, move, path)
+        shell._dropPathsIntoFolder([path], destFolder)
     }
-    function _reportTransfer(result, move, path) {
-        const name = String(path).split("/").pop()
-        if (result === 0)
-            shell.statusText = App.uiText(App.language, move ? "DropMoved" : "DropCopied") + name
+    function _dropPathsIntoFolder(paths, destFolder) {
+        if (!paths || paths.length === 0 || destFolder.length === 0) return
+        shell._dropQueue = paths.slice()
+        shell._dropDest  = destFolder
+        shell._dropOk    = 0
+        shell._dropFail  = 0
+        shell._dropLast  = ""
+        shell._dropNext()
+    }
+    function _dropNext() {
+        const move = App.fileDropMove
+        while (shell._dropQueue.length > 0) {
+            const path = shell._dropQueue.shift()
+            if (!path || path.length === 0) continue
+            const owner = shell._modelOwning(path)
+            if (!owner) { shell._dropFail++; continue }
+            const r = owner.transferToFolder(path, shell._dropDest, move, 0)
+            if (r === 1) {
+                collisionDialog.srcPath    = path
+                collisionDialog.destFolder = shell._dropDest
+                collisionDialog.moveMode   = move
+                collisionDialog.altName    = owner.transferTargetName(path, shell._dropDest)
+                collisionDialog.open()
+                return                       // der Dialog macht weiter
+            }
+            shell._noteTransfer(r, path)
+        }
+        shell._reportDropBatch(move)
+    }
+    function _noteTransfer(result, path) {
+        if (result === 0) { shell._dropOk++; shell._dropLast = String(path).split("/").pop() }
+        else              { shell._dropFail++ }
+    }
+    //  Eine Meldung fuer den ganzen Zug: bei einer Datei ihr Name (wie bisher),
+    //  bei mehreren die Zahl.
+    function _reportDropBatch(move) {
+        if (shell._dropOk === 1 && shell._dropFail === 0)
+            shell.statusText = App.uiText(App.language, move ? "DropMoved" : "DropCopied")
+                               + shell._dropLast
+        else if (shell._dropOk > 0)
+            shell.statusText = App.uiText(App.language, move ? "DropMoved" : "DropCopied")
+                               + App.uiText(App.language, "DropBatchCount")
+                                     .replace("%1", shell._dropOk)
+        else if (shell._dropFail > 0)
+            shell.statusText = App.uiText(App.language, "DropFailed") + shell._dropLast
         else
-            shell.statusText = App.uiText(App.language, "DropFailed") + name
+            return
         statusClearTimer.restart()
     }
+
 
     // ── Rückfrage bei belegtem Namen (Ersetzen / Umbenennen / Abbrechen) ─────
     Dialog {
@@ -893,16 +946,20 @@ ApplicationWindow {
                         TapHandler {
                             onTapped: {
                                 collisionDialog.close()
-                                if (colBtn.modelData.mode === 0) return
-                                const owner = shell._modelOwning(collisionDialog.srcPath)
-                                if (!owner) return
-                                const r = owner.transferToFolder(
-                                              collisionDialog.srcPath,
-                                              collisionDialog.destFolder,
-                                              collisionDialog.moveMode,
-                                              colBtn.modelData.mode)
-                                shell._reportTransfer(r, collisionDialog.moveMode,
-                                                      collisionDialog.srcPath)
+                                //  Abbrechen gilt NUR fuer diese Datei - der
+                                //  Rest des Zuges laeuft weiter.
+                                if (colBtn.modelData.mode !== 0) {
+                                    const owner = shell._modelOwning(collisionDialog.srcPath)
+                                    if (owner) {
+                                        const r = owner.transferToFolder(
+                                                      collisionDialog.srcPath,
+                                                      collisionDialog.destFolder,
+                                                      collisionDialog.moveMode,
+                                                      colBtn.modelData.mode)
+                                        shell._noteTransfer(r, collisionDialog.srcPath)
+                                    }
+                                }
+                                shell._dropNext()
                             }
                         }
                     }

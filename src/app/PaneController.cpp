@@ -93,6 +93,19 @@ void PaneController::refreshCurrentFolder() {
     const QString folder = m_folders.currentFolder();
     if (folder.isEmpty()) return;
     m_storage.loadFolder(folder);
+    //  Das VERZEICHNIS wieder einlesen, nicht nur die Beidatei. Vorher stand
+    //  hier allein `m_storage.loadFolder` - das laedt Tags und Kategorien neu,
+    //  laesst die Dateiliste aber unangetastet. Wer den Ordner aktualisierte,
+    //  bekam deshalb weder neu hinzugekommene Dateien noch die Wirkung einer
+    //  Einstellung, die den Leser betrifft.
+    //
+    //  **`reload()`, NICHT `loadFolder()`**: letzteres steigt beim SELBEN Ordner
+    //  sofort wieder aus (`folderPath == m_folder && !m_items.isEmpty()`) - ein
+    //  Aktualisieren desselben Ordners war damit wirkungslos. `reload()` baut
+    //  bedingungslos neu auf, und genau darauf beruht auch der Schalter „alle
+    //  Dateien anzeigen" (vom Nutzer gemeldet: versteckte Dateien erschienen
+    //  erst, wenn man ZUSAETZLICH jenen Schalter umlegte).
+    m_media.reload();
     emit folderContentsChanged();
     emit statusMessage(Strings::get(StringKey::MenuRefresh));
 }

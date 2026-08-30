@@ -42,7 +42,8 @@ Item {
 
     // ── Meldungen nach oben ─────────────────────────────────────────────────
     signal extractRequested(string folder)     // „PDF-Seiten…" (Dialog hostet die Shell)
-    signal folderDropRequested(string sourcePath, string folderPath)
+    //  Eine oder MEHRERE Dateien auf eine Ordnerkachel gezogen.
+    signal folderDropRequested(var sourcePaths, string folderPath)
     signal externalDropRequested(var urls, string folderPath)
     signal statusRequested(string text)
     signal focusRequested()                    // diese Hälfte ist jetzt gemeint
@@ -71,6 +72,20 @@ Item {
     //  Leiste und die große Ansicht - sonst stünde der Player in beiden Galerien.
     readonly property bool playerMine: Audio.owner === PaneCtl
 
+    //  Der Platz DIESER Haelfte in `App.panes`. **Nicht `pane.paneIndex`
+    //  allein:** die Shell bindet die Eigenschaft erst, wenn der `PaneHost`
+    //  sein `item` hat - also NACH `Component.onCompleted`. Dort stand deshalb
+    //  noch die Vorgabe 0, und die zweite Haelfte fragte ihren Player-Merker
+    //  mit 0 statt 1 ab (vom Nutzer gemeldet: der Player-Modus der rechten
+    //  Haelfte kam nach dem Neustart nicht zurueck; bei beiden Haelften
+    //  verbrauchte die linke sogar das Bit der rechten mit).
+    //  Das Modell weiss den Platz zu JEDEM Zeitpunkt - `addPane` traegt die
+    //  Haelfte ein, bevor das Delegat entsteht.
+    function _myIndex() {
+        const i = App.indexOfPane(PaneCtl)
+        return i >= 0 ? i : pane.paneIndex
+    }
+
     function togglePlayerMode() { pane.setPlayerMode(!pane.playerMode) }
     function setPlayerMode(on) {
         if (pane.playerMode === on) return
@@ -93,7 +108,11 @@ Item {
             galleryModel.showVideos = Audio.showVideos
             pane.playerMode = true
             PaneCtl.playerMode = true            // überlebt das Neubauen der Hälfte
-            Audio.playerModeRemembered = true    // und den Programmstart
+            //  … und den Programmstart, MIT dem Platz dieser Hälfte: sonst
+            //  bekäme ihn beim nächsten Start die zuerst gebaute, und bei
+            //  geteiltem Fenster standen Player und Galerie vertauscht
+            //  (vom Nutzer gemeldet).
+            Audio.rememberPlayerMode(true, pane._myIndex())
             //  Läuft in der ANDEREN Hälfte gerade etwas, wird es ihr nicht
             //  weggenommen. Liegt dagegen nur ein Titel bereit (wiederhergestellt
             //  oder pausiert), übernimmt diese Hälfte ihn - genau das erwartet
@@ -130,7 +149,7 @@ Item {
         pane._savedFilter = null
         pane.playerMode = false
         PaneCtl.playerMode = false
-        Audio.playerModeRemembered = false
+        Audio.rememberPlayerMode(false, pane._myIndex())
     }
 
     //  Beim Aufbau der Hälfte: War sie im Player-Modus (Teilung/Zusammenlegen
@@ -146,9 +165,10 @@ Item {
             //  Lag die große Ansicht oben, kommt sie zurück - sonst stünde man
             //  nach dem Teilen unvermittelt in der Galerie.
             if (PaneCtl.playerViewOpen) pane.openPlayerView()
-        } else if (Audio.takePlayerModeRestore()) {
-            //  Gilt EINMAL je Programmlauf (s. AudioController): die erste
-            //  Hälfte nimmt den Modus auf, eine später hinzugefügte nicht.
+        } else if (Audio.takePlayerModeRestore(pane._myIndex())) {
+            //  Gilt EINMAL je Programmlauf (s. AudioController) und NUR für die
+            //  Hälfte, die den Modus beim Beenden hatte - eine später
+            //  hinzugefügte bekommt ihn nicht.
             pane.setPlayerMode(true)
         }
     }
@@ -726,8 +746,13 @@ Item {
                 onActivated: {
                     if (galleryView._editableTextFocused()) return
                     const name = mediaModel.undoFileOpName()
+                    //  Eine geloeschte Mehrfachauswahl geht als EIN Schritt
+                    //  zurueck - die Meldung nennt deshalb auch die Zahl.
+                    const n = mediaModel.undoFileOpCount()
                     pane.statusRequested(mediaModel.undoFileOp()
                         ? App.uiText(App.language, "FileUndoRestored") + name
+                          + (n > 1 ? App.uiText(App.language, "FileOpAndMore")
+                                        .replace("%1", n - 1) : "")
                         : App.uiText(App.language, "FileUndoNothing"))
                 }
             }
@@ -736,9 +761,68 @@ Item {
                 onActivated: {
                     if (galleryView._editableTextFocused()) return
                     const name = mediaModel.redoFileOpName()
+                    const n = mediaModel.redoFileOpCount()
                     pane.statusRequested(mediaModel.redoFileOp()
                         ? App.uiText(App.language, "FileRedoDeleted") + name
+                          + (n > 1 ? App.uiText(App.language, "FileOpAndMore")
+                                        .replace("%1", n - 1) : "")
                         : App.uiText(App.language, "FileRedoNothing"))
+                }
+            }
+            //  ── Mehrfachauswahl ─────────────────────────────────────────────
+            //  Strg+A waehlt alles, was der Filter gerade durchlaesst (nicht den
+            //  ganzen Ordner - man kann nur waehlen, was man sieht), Strg+C legt
+            //  die Auswahl in die Zwischenablage. Esc gehoert NICHT hierher,
+            //  sondern an den Tastaturfokus der Galerie (s. GalleryView
+            //  `Keys.onEscapePressed`): ein `Shortcut` haette einem offenen
+            //  Dialog seine Escape-Taste weggenommen - Kuerzel werden VOR den
+            //  Tastenereignissen ausgewertet, das Popup waere offen geblieben.
+            //  Beide ABGESCHALTET, solange jemand tippt - nicht nur „tut
+            //  nichts": ein aktives Kuerzel VERBRAUCHT die Taste, und dann
+            //  haette das Suchfeld sein eigenes Strg+A bzw. Strg+C verloren.
+            Shortcut {
+                sequence: "Ctrl+A"
+                enabled: pane._keysLive && !galleryView._editableTextFocused()
+                onActivated: galleryView.selectAll()
+            }
+            Shortcut {
+                sequence: "Ctrl+C"
+                enabled: pane._keysLive && !galleryView._editableTextFocused()
+                onActivated: {
+                    if (mediaModel.selectionCount === 0) return
+                    const list = galleryModel.selectedPaths(true)
+                    const n = App.copyFilesToClipboard(list)
+                    if (n > 0)
+                        pane.statusRequested(App.uiText(App.language, "SelCopied")
+                                             .replace("%1", n))
+                }
+            }
+            //  Strg+V: die Dateien aus der Zwischenablage in den OFFENEN Ordner
+            //  dieser Hälfte kopieren - derselbe Weg wie ein Zug von aussen
+            //  (`handleDroppedUrls`), also mit denselben Regeln und derselben
+            //  Namensbehandlung. Ordner werden dabei übergangen.
+            Shortcut {
+                sequence: "Ctrl+V"
+                enabled: pane._keysLive && !galleryView._editableTextFocused()
+                onActivated: {
+                    const urls = App.clipboardFileUrls()
+                    if (!urls || urls.length === 0) {
+                        pane.statusRequested(App.uiText(App.language, "SelPasteEmpty"))
+                        return
+                    }
+                    App.handleDroppedUrls(urls, PaneCtl.currentFolder)
+                    pane.statusRequested(App.uiText(App.language, "SelPasted")
+                                         .replace("%1", urls.length))
+                }
+            }
+            //  Wie viele sind gewaehlt? Ohne Rueckmeldung raet man, was ein
+            //  „Loeschen" gleich trifft.
+            Connections {
+                target: mediaModel
+                function onSelectionChanged() {
+                    if (mediaModel.selectionCount > 1)
+                        pane.statusRequested(App.uiText(App.language, "SelCountStatus")
+                                             .replace("%1", mediaModel.selectionCount))
                 }
             }
             Shortcut {
@@ -837,8 +921,8 @@ Item {
                 onExtractPagesRequested: function(folderPath) {
                     pane.extractRequested(folderPath)
                 }
-                onFolderDropRequested: function(sourcePath, folderPath) {
-                    pane.folderDropRequested(sourcePath, folderPath)
+                onFolderDropRequested: function(sourcePaths, folderPath) {
+                    pane.folderDropRequested(sourcePaths, folderPath)
                 }
                 //  Dateien von AUSSEN landen in dem Ordner, ueber dem
                 //  losgelassen wurde (geprueft in AppController).

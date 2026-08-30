@@ -868,8 +868,11 @@ bool Document::parseDocumentXml(QString* err) {
             blocks.append(ob);
             //  Seiteneinrichtung des Hauptteils: das LETZTE w:sectPr im Körper
             //  gewinnt (frühere gehören zu abgeschlossenen Abschnitten).
-            if (name == QLatin1String("w:sectPr"))
+            if (name == QLatin1String("w:sectPr")) {
                 parseSectPr(QStringView(m_docXml).mid(bs, blen));
+                //  Das LETZTE gewinnt - dieselbe Regel wie für die Werte.
+                m_sectPrBlock = int(blocks.size()) - 1;
+            }
         }
     }
     if (bodyContentEnd < 0 || r.hasError()) {
@@ -1336,17 +1339,25 @@ void Document::parseSectPr(QStringView xml) {
             m_section.colSpace = num("w:space", 708, 0, 14400);
         }
     }
-    //  Ränder dürfen die Seite nicht auffressen: mindestens 1 cm Textbreite
-    //  bzw. -höhe bleiben stehen, sonst gilt die Angabe als unbrauchbar.
-    if (m_section.marLeft + m_section.marRight > m_section.pageW - 567)
-        m_section.marLeft = m_section.marRight = qMax(0, (m_section.pageW - 567) / 2);
-    if (m_section.marTop + m_section.marBottom > m_section.pageH - 567)
-        m_section.marTop = m_section.marBottom = qMax(0, (m_section.pageH - 567) / 2);
+    clampSection(&m_section);
+}
+
+//  Ränder dürfen die Seite nicht auffressen: mindestens 1 cm Textbreite bzw.
+//  -höhe bleiben stehen, sonst gilt die Angabe als unbrauchbar. Dieselbe Regel
+//  gilt für das Einlesen UND für die Randlineale - deshalb an EINER Stelle.
+void Document::clampSection(SectionProps* s) {
+    s->marTop    = qBound(0, s->marTop,    56693);
+    s->marRight  = qBound(0, s->marRight,  56693);
+    s->marBottom = qBound(0, s->marBottom, 56693);
+    s->marLeft   = qBound(0, s->marLeft,   56693);
+    if (s->marLeft + s->marRight > s->pageW - 567)
+        s->marLeft = s->marRight = qMax(0, (s->pageW - 567) / 2);
+    if (s->marTop + s->marBottom > s->pageH - 567)
+        s->marTop = s->marBottom = qMax(0, (s->pageH - 567) / 2);
     //  Spalten müssen zusammen mit ihren Abständen in die Textbreite passen.
-    const int textW = m_section.pageW - m_section.marLeft - m_section.marRight;
-    while (m_section.cols > 1
-           && (m_section.cols - 1) * m_section.colSpace + m_section.cols * 284 > textW)
-        --m_section.cols;
+    const int textW = s->pageW - s->marLeft - s->marRight;
+    while (s->cols > 1 && (s->cols - 1) * s->colSpace + s->cols * 284 > textW)
+        --s->cols;
 }
 
 bool Document::parseStylesXml(const QByteArray& xml) {
@@ -1781,6 +1792,149 @@ QString Document::buildParagraphXml(const Block& b) const {
 // ─────────────────────────────────────────────────────────────────────────────
 //  Einfügen neuer Knoten
 // ─────────────────────────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────────────
+//  Seitenränder ändern (Randlineale des Editors)
+//
+//  Geschrieben wird ins `w:sectPr` des Hauptteils, nicht in einen Sidecar:
+//  Word liest genau dieses Element, und Anzeige, Miniaturen und PDF-Export
+//  hängen ohnehin schon daran (`DocxTextArea::sect()`). Der Weg ist derselbe
+//  wie bei angenommenen Änderungen: ein umgeschriebener ROH-Bereich am Block,
+//  KEINE Mutation von `m_docXml` - sonst verschöben sich die Spans aller
+//  späteren Blöcke.
+// ─────────────────────────────────────────────────────────────────────────────
+namespace {
+
+//  Ein Attribut eines self-closing Elements lesen ("" = fehlt).
+QString attrOf(QStringView elem, QLatin1StringView name) {
+    const qsizetype at = elem.indexOf(name);
+    if (at < 0) return {};
+    qsizetype i = at + name.size();
+    while (i < elem.size() && elem.at(i).isSpace()) ++i;
+    if (i >= elem.size() || elem.at(i) != QLatin1Char('=')) return {};
+    ++i;
+    while (i < elem.size() && elem.at(i).isSpace()) ++i;
+    if (i >= elem.size()) return {};
+    const QChar q = elem.at(i);
+    if (q != QLatin1Char('"') && q != QLatin1Char('\'')) return {};
+    const qsizetype end = elem.indexOf(q, i + 1);
+    if (end < 0) return {};
+    return elem.mid(i + 1, end - i - 1).toString();
+}
+
+//  Reihenfolge der Kinder von `w:sectPr` nach ECMA-376 (CT_SectPr) - nur so
+//  weit, wie es für das Einsetzen von `w:pgMar` nötig ist.
+const QStringList& sectPrOrder() {
+    static const QStringList o = {
+        QStringLiteral("w:footnotePr"), QStringLiteral("w:endnotePr"),
+        QStringLiteral("w:type"),       QStringLiteral("w:pgSz"),
+        QStringLiteral("w:pgMar"),      QStringLiteral("w:paperSrc"),
+        QStringLiteral("w:pgBorders"),  QStringLiteral("w:lnNumType"),
+        QStringLiteral("w:pgNumType"),  QStringLiteral("w:cols"),
+        QStringLiteral("w:formProt"),   QStringLiteral("w:vAlign"),
+        QStringLiteral("w:noEndnote"),  QStringLiteral("w:titlePg"),
+        QStringLiteral("w:textDirection"), QStringLiteral("w:bidi"),
+        QStringLiteral("w:rtlGutter"),  QStringLiteral("w:docGrid"),
+        QStringLiteral("w:printerSettings"), QStringLiteral("w:sectPrChange"),
+    };
+    return o;
+}
+
+}  // namespace
+
+int Document::ensureSectPrBlock() {
+    if (m_sectPrBlock >= 0 && m_sectPrBlock < blocks.size()
+        && blocks.at(m_sectPrBlock).opaqueName == QLatin1String("w:sectPr"))
+        return m_sectPrBlock;
+
+    //  Kein `w:sectPr` im Körper - eines anlegen. Es gehört ans ENDE des
+    //  Körpers (letztes Kind von `w:body`), und genau dort landet ein Block,
+    //  der hinten angehängt wird: `emitBlocks` schreibt die Blöcke der Reihe
+    //  nach, danach erst den Körper-Suffix.
+    const QString xml = QStringLiteral(
+        "<w:sectPr><w:pgSz w:w=\"%1\" w:h=\"%2\"%3/></w:sectPr>")
+            .arg(m_section.pageW).arg(m_section.pageH)
+            .arg(m_section.landscape ? QStringLiteral(" w:orient=\"landscape\"")
+                                     : QString());
+    const int at = appendPool(xml);
+    Block ob;
+    ob.kind       = Block::OpaqueHidden;
+    ob.opaqueName = QStringLiteral("w:sectPr");
+    ob.rawSpan    = { at, int(xml.size()) };
+    blocks.append(ob);
+    m_sectPrBlock = int(blocks.size()) - 1;
+    return m_sectPrBlock;
+}
+
+bool Document::rewriteSectPr() {
+    const int bi = ensureSectPrBlock();
+    if (bi < 0) return false;
+    Block& b = blocks[bi];
+
+    const QString cur = b.rawOverride.isEmpty()
+                            ? QStringView(m_docXml).mid(b.rawSpan.start, b.rawSpan.len).toString()
+                            : b.rawOverride;
+
+    //  `w:header`/`w:footer`/`w:gutter` gehören nicht uns - sie werden aus dem
+    //  vorhandenen `w:pgMar` übernommen (Vorgaben wie in Words eigener Ausgabe).
+    QString header = QStringLiteral("708");
+    QString footer = QStringLiteral("708");
+    QString gutter = QStringLiteral("0");
+    const qsizetype mp = cur.indexOf(QLatin1String("<w:pgMar"));
+    if (mp >= 0) {
+        const qsizetype me = cur.indexOf(QLatin1Char('>'), mp);
+        if (me > mp) {
+            const QStringView elem = QStringView(cur).mid(mp, me - mp + 1);
+            const QString h = attrOf(elem, QLatin1StringView("w:header"));
+            const QString f = attrOf(elem, QLatin1StringView("w:footer"));
+            const QString g = attrOf(elem, QLatin1StringView("w:gutter"));
+            if (!h.isEmpty()) header = h;
+            if (!f.isEmpty()) footer = f;
+            if (!g.isEmpty()) gutter = g;
+        }
+    }
+
+    const QString pgMar = QStringLiteral(
+        "<w:pgMar w:top=\"%1\" w:right=\"%2\" w:bottom=\"%3\" w:left=\"%4\" "
+        "w:header=\"%5\" w:footer=\"%6\" w:gutter=\"%7\"/>")
+            .arg(m_section.marTop).arg(m_section.marRight)
+            .arg(m_section.marBottom).arg(m_section.marLeft)
+            .arg(header, footer, gutter);
+
+    const QString next = upsertProp(cur, QStringLiteral("w:sectPr"),
+                                    QStringLiteral("w:pgMar"), pgMar, sectPrOrder());
+    if (next == cur) return false;
+    b.rawOverride = next;
+    return true;
+}
+
+bool Document::setPageMargins(int top, int right, int bottom, int left) {
+    SectionProps want = m_section;
+    want.marTop = top; want.marRight = right;
+    want.marBottom = bottom; want.marLeft = left;
+    clampSection(&want);
+    if (want.marTop == m_section.marTop && want.marRight == m_section.marRight
+        && want.marBottom == m_section.marBottom && want.marLeft == m_section.marLeft)
+        return false;
+    m_section = want;
+    rewriteSectPr();
+    return true;
+}
+
+Document::SectionState Document::sectionState() const {
+    SectionState st;
+    st.props = m_section;
+    if (m_sectPrBlock >= 0 && m_sectPrBlock < blocks.size())
+        st.sectPrXml = blocks.at(m_sectPrBlock).rawOverride;
+    return st;
+}
+
+void Document::setSectionState(const SectionState& st) {
+    m_section = st.props;
+    clampSection(&m_section);
+    if (m_sectPrBlock >= 0 && m_sectPrBlock < blocks.size())
+        blocks[m_sectPrBlock].rawOverride = st.sectPrXml;
+}
+
 int Document::appendPool(const QString& xml) {
     const int at = m_docXml.size();
     m_docXml += xml;
@@ -3017,6 +3171,13 @@ QString Document::emitBlocks(bool rawOnly) const {
     out.reserve(m_docXml.size() + 1024);
 
     auto emitOne = [&](const Block& b) {
+        //  Umgeschriebener Roh-Bereich (heute nur das `w:sectPr` der
+        //  Randlineale). NICHT im `rawOnly`-Lauf: der prüft beim Laden, ob sich
+        //  das ORIGINAL exakt rekonstruieren lässt.
+        if (!rawOnly && !b.rawOverride.isEmpty()) {
+            out += b.rawOverride;
+            return;
+        }
         if (rawOnly || b.kind != Block::Paragraph
             || (!b.dirty && !b.pprMaterialized && b.rawSpan.valid()))
             out += doc.mid(b.rawSpan.start, b.rawSpan.len);

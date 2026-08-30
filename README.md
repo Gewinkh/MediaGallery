@@ -19,7 +19,7 @@ stores its data are in **[FEATURES.md](FEATURES.md)**.
 - **PDF editor** - notes, drawings, highlights, redaction, signature stamps, form filling, page reordering, text editing and **tracked changes** for your own annotations; export keeps the original content byte-for-byte wherever possible.
 - **Image editor** - non-destructive crop, rotate, adjust and draw, with the same **tracked changes** as the PDF editor; the original file is never overwritten.
 - **DOCX editor** - a loss-preserving Word editor: only what you touch is rewritten. Tables, pictures, contents list, tracked changes (shown and resolvable), spell checking, find & replace, and PDF export.
-- **Text & HTML** - editor with syntax awareness and a live HTML preview.
+- **Text & HTML** - a plain-text and source editor with a live HTML preview. Syntax colouring is not built yet (see [LIMITATIONS.md](LIMITATIONS.md)).
 - **Live transliteration** - type Latin, get Arabic, Hiragana or Katakana while you write.
 - **Appearance** - every colour of the interface is adjustable and themes can be exported and shared.
 
@@ -127,11 +127,16 @@ The `tests/` directory is not included in the published repository. If it is mis
 ## Changelog
 
 ### Latest
-- Improved tag deletion - deleting a tag now also removes it from subfolders and nested categories
-- Improved redo support - Ctrl+Y now works consistently across the gallery, PDF editor, and image editor
-- Improved PDF page handling - page changes are reflected immediately, while the current page is preserved
-- Improved PDF messages - searchable PDFs now clearly report when no OCR is needed
-- Improved page rotation controls - simplified the menu and added drawn rotation icons
+Added multi-selection, copy and paste support in the gallery
+Added draggable DOCX margin rulers with independent undo
+Improved DOCX autosaving and backup handling
+Added editable equalizer presets and improved audio playback
+Improved split-pane state and player mode persistence
+Improved keyboard focus, deletion, and confirmation handling
+Improved drag-and-drop between split panes
+Improved spell checking for multilingual text
+Improved document stability and layout while adjusting margins
+Fixed various player, equalizer, DOCX, and gallery issues
 
 ---
 
@@ -144,4 +149,9 @@ Known limitations, open bugs and what is not built yet:
 
 ## License
 
-MIT License. See `LICENSE` for details.
+MediaGallery is licensed under the MIT License. See `LICENSE` for details.
+
+The MIT License covers MediaGallery's own source code only. Qt and every other
+third-party component remain under their own licenses; they are listed, with
+their sources and the obligations a binary distribution would carry, in
+**[THIRD_PARTY_LICENSES.md](THIRD_PARTY_LICENSES.md)**.

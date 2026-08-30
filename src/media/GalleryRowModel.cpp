@@ -50,8 +50,8 @@ void GalleryRowModel::setSource(QObject* src) {
         connect(m_proxy, &QAbstractItemModel::modelReset,    this, markReset);
         connect(m_proxy, &QAbstractItemModel::layoutChanged, this, markReset);
         connect(m_proxy, &QAbstractItemModel::dataChanged,   this,
-                [this](const QModelIndex& tl, const QModelIndex& br, const QList<int>&) {
-                    onSourceDataChanged(tl, br);
+                [this](const QModelIndex& tl, const QModelIndex& br, const QList<int>& roles) {
+                    onSourceDataChanged(tl, br, roles);
                 });
     }
     emit sourceChanged();
@@ -323,7 +323,18 @@ void GalleryRowModel::applyRows(const QVector<Row>& next) {
 }
 
 void GalleryRowModel::onSourceDataChanged(const QModelIndex& topLeft,
-                                          const QModelIndex& bottomRight) {
+                                          const QModelIndex& bottomRight,
+                                          const QList<int>& roles) {
+    //  ── Die MEHRFACHAUSWAHL steht bewusst NICHT in den Kacheldaten ─────────
+    //  Eine Kachel bindet sie direkt (`mediaModel.isSelected` an
+    //  `selectionRevision`, s. MediaTile). Loeste sie hier einen Neuaufbau aus,
+    //  kostete JEDE Mausbewegung des Auswahlrahmens den vollen Umbau der
+    //  Kacheldaten samt Neu-Auswertung aller Bindungen jeder sichtbaren Kachel.
+    //  GEMESSEN (3000 Dateien, 400 Bewegungen): 1145 µs je Bewegung mit der
+    //  Rolle in den Kacheldaten, 415 µs wenn nur der Neuaufbau bleibt, 55 µs
+    //  wenn beides entfaellt.
+    if (roles.size() == 1 && roles.first() == MediaModel::SelectedRole) return;
+
     if (m_rows.isEmpty()) return;
     const int from = topLeft.row();
     const int to   = bottomRight.row();
@@ -357,6 +368,11 @@ QVariantMap GalleryRowModel::rowInfo(int row) const {
     m.insert(QStringLiteral("first"), r.first);
     m.insert(QStringLiteral("count"), r.count);
     m.insert(QStringLiteral("depth"), r.depth);
+    //  Der Auswahlrahmen braucht die Masken: aus ihnen ergibt sich, ob die
+    //  Zeile oben bzw. unten die Bandpolsterung traegt - und damit, wo in ihr
+    //  die Kacheln wirklich liegen.
+    m.insert(QStringLiteral("openMask"),  static_cast<int>(r.openMask));
+    m.insert(QStringLiteral("closeMask"), static_cast<int>(r.closeMask));
     m.insert(QStringLiteral("ownerFolder"),
              m_src ? m_src->folderOfScope(r.scope) : QString());
     return m;

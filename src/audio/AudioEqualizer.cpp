@@ -61,7 +61,8 @@ QVector<double> AudioEqualizer::gains() const {
 }
 
 void AudioEqualizer::setPreamp(double db) {
-    const double v = std::clamp(db, -kMaxGainDb, kMaxGainDb);
+    //  Nach unten weiter als nach oben - s. `kMinPreampDb`.
+    const double v = std::clamp(db, kMinPreampDb, kMaxPreampDb);
     if (qFuzzyCompare(m_preampDb + 1.0, v + 1.0)) return;
     m_preampDb = v;
     rebuild();
@@ -78,12 +79,88 @@ void AudioEqualizer::setEnabled(bool on) {
 //  Faustregel reicht die stärkste Anhebung als Gegenwert - mehr wegzunehmen
 //  kostete nur Lautstärke.
 double AudioEqualizer::suggestedPreamp() const {
-    const double maxGain = *std::max_element(m_gainDb.cbegin(), m_gainDb.cend());
-    return maxGain > 0.0 ? -maxGain : 0.0;
+    const double peak = peakGainDb();
+    if (peak <= 0.0) return 0.0;
+    return std::max(kMinPreampDb, -peak);
 }
 
-//  RBJ-Peaking-Biquad („Cookbook"-Formeln, allgemein bekannt und hier
-//  eigenständig ausgeschrieben). Bei 0 dB ergibt sich exakt der Durchlass
+//  Koeffizienten EINES Bandes. `false` heisst: dieses Band traegt nichts bei
+//  (Regler auf null, oder seine Mitte liegt ueber der halben Abtastrate).
+bool AudioEqualizer::makeBiquad(int band, double gainDb, Biquad* out) const {
+    if (!out || band < 0 || band >= kBands) return false;
+    if (std::abs(gainDb) < 1e-9) return false;
+
+    const double A     = std::pow(10.0, gainDb / 40.0);
+    const double w0    = 2.0 * M_PI * frequencies()[size_t(band)] / double(m_sampleRate);
+    if (w0 >= M_PI) return false;                 // über der halben Rate
+    const double alpha = std::sin(w0) / (2.0 * kQ);
+    const double cosw0 = std::cos(w0);
+
+    const double b0 =  1.0 + alpha * A;
+    const double b1 = -2.0 * cosw0;
+    const double b2 =  1.0 - alpha * A;
+    const double a0 =  1.0 + alpha / A;
+    const double a1 = -2.0 * cosw0;
+    const double a2 =  1.0 - alpha / A;
+
+    out->b0 = b0 / a0;
+    out->b1 = b1 / a0;
+    out->b2 = b2 / a0;
+    out->a1 = a1 / a0;
+    out->a2 = a2 / a0;
+    return true;
+}
+
+//  Die groesste Verstaerkung der GANZEN Kette, ueber das Spektrum gesucht.
+//
+//  WARUM NICHT das Maximum der Regler: ein einzelnes Band auf +12 dB hebt nur
+//  um seine Mittenfrequenz herum; breitbandiges Material wird davon knapp 4 dB
+//  lauter, nicht 12. Umgekehrt addieren sich benachbarte Baender - drei auf
+//  +12 dB ergeben mehr als 12. Beides sieht man nur am Frequenzgang.
+//
+//  Gerechnet wird auf einem logarithmischen Raster von 10 Hz bis kurz unter
+//  Nyquist: 512 Punkte reichen, weil die Baender mit Q=1,0 breit sind und
+//  keine schmalen Spitzen haben. Kosten: 10 x 512 Auswertungen, ausgeloest nur
+//  bei einem Reglerwechsel.
+double AudioEqualizer::peakGainDb() const {
+    std::array<Biquad, kBands> bands {};
+    int count = 0;
+    for (int i = 0; i < kBands; ++i) {
+        Biquad q;
+        if (makeBiquad(i, m_gainDb[size_t(i)], &q)) bands[size_t(count++)] = q;
+    }
+    if (count == 0) return 0.0;
+
+    constexpr int kPoints = 512;
+    const double fLow  = 10.0;
+    const double fHigh = 0.499 * double(m_sampleRate);
+    if (fHigh <= fLow) return 0.0;
+    const double step = std::log(fHigh / fLow) / double(kPoints - 1);
+
+    double peak = 0.0;
+    for (int p = 0; p < kPoints; ++p) {
+        const double f = fLow * std::exp(step * double(p));
+        const double w = 2.0 * M_PI * f / double(m_sampleRate);
+        const double c1 = std::cos(w),  s1 = std::sin(w);
+        const double c2 = std::cos(2*w), s2 = std::sin(2*w);
+        double mag = 1.0;
+        for (int b = 0; b < count; ++b) {
+            const Biquad& q = bands[size_t(b)];
+            //  |H| = |b0 + b1 e^-jw + b2 e^-2jw| / |1 + a1 e^-jw + a2 e^-2jw|
+            const double nr = q.b0 + q.b1 * c1 + q.b2 * c2;
+            const double ni =      -(q.b1 * s1 + q.b2 * s2);
+            const double dr = 1.0  + q.a1 * c1 + q.a2 * c2;
+            const double di =      -(q.a1 * s1 + q.a2 * s2);
+            const double den = dr * dr + di * di;
+            if (den <= 1e-30) continue;
+            mag *= std::sqrt((nr * nr + ni * ni) / den);
+        }
+        peak = std::max(peak, mag);
+    }
+    return peak > 1.0 ? 20.0 * std::log10(peak) : 0.0;
+}
+
+//  RBJ-Peaking-Biquad. Bei 0 dB ergibt sich exakt der Durchlass
 //  (b0=1, alles andere 0) - ein Band ohne Anhebung kostet dann zwar noch
 //  Rechenschritte, ändert aber bitgenau nichts.
 void AudioEqualizer::rebuild() {
@@ -91,33 +168,13 @@ void AudioEqualizer::rebuild() {
     set->preamp = float(std::pow(10.0, m_preampDb / 20.0));
 
     for (int i = 0; i < kBands; ++i) {
-        const double gainDb = m_gainDb[size_t(i)];
         //  Ein Band ohne Anhebung wird ÜBERSPRUNGEN, nicht als Durchlass
-        //  gerechnet.
-        if (std::abs(gainDb) < 1e-9) continue;
-        Biquad& q = set->band[size_t(set->count)];
+        //  gerechnet (das erledigt `makeBiquad` mit `false`).
+        Biquad q;
+        if (!makeBiquad(i, m_gainDb[size_t(i)], &q)) continue;
+        set->band[size_t(set->count)] = q;
         set->slot[size_t(set->count)] = i;
         ++set->count;
-
-        const double A     = std::pow(10.0, gainDb / 40.0);
-        const double w0    = 2.0 * M_PI * frequencies()[size_t(i)] / double(m_sampleRate);
-        //  Über der halben Abtastrate gibt es nichts mehr zu heben.
-        if (w0 >= M_PI) { --set->count; continue; }   // über der halben Rate
-        const double alpha = std::sin(w0) / (2.0 * kQ);
-        const double cosw0 = std::cos(w0);
-
-        const double b0 =  1.0 + alpha * A;
-        const double b1 = -2.0 * cosw0;
-        const double b2 =  1.0 - alpha * A;
-        const double a0 =  1.0 + alpha / A;
-        const double a1 = -2.0 * cosw0;
-        const double a2 =  1.0 - alpha / A;
-
-        q.b0 = b0 / a0;
-        q.b1 = b1 / a0;
-        q.b2 = b2 / a0;
-        q.a1 = a1 / a0;
-        q.a2 = a2 / a0;
     }
     //  Als GANZES tauschen: der Audio-Pfad sieht entweder den alten oder den
     //  neuen Satz, nie eine Mischung.

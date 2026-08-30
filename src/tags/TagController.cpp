@@ -187,6 +187,26 @@ QStringList TagController::categoryIdsForFile(const QString& fileName) const {
     return m_mgr->categoryIdsForFile(fileName);
 }
 
+QStringList TagController::categoryIdsForFiles(const QStringList& fileNames) const {
+    if (fileNames.isEmpty()) return {};
+    QStringList out = m_mgr->categoryIdsForFile(fileNames.first());
+    for (int i = 1; i < fileNames.size() && !out.isEmpty(); ++i) {
+        const QStringList ids = m_mgr->categoryIdsForFile(fileNames.at(i));
+        for (int k = out.size() - 1; k >= 0; --k)
+            if (!ids.contains(out.at(k))) out.removeAt(k);
+    }
+    return out;
+}
+
+void TagController::setFilesInCategory(const QString& catId,
+                                       const QStringList& fileNames, bool on) {
+    for (const QString& name : fileNames) {
+        if (on == m_mgr->fileInCategory(catId, name)) continue;
+        if (on) m_mgr->addFileToCategory(catId, name);
+        else    m_mgr->removeFileFromCategory(catId, name);
+    }
+}
+
 // ── Converter: Tag ↔ Unterkategorie (Phase 4) ────────────────────────────────
 // Portiert aus SettingsDialog::convertTagToSubcategory/convertSubcategoryToTag.
 void TagController::convertTagToSubcategory(const QString& tag,

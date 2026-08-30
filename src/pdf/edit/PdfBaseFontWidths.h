@@ -13,9 +13,8 @@
 //  wirklich - und das Werkzeug „Text bearbeiten" funktioniert auch auf
 //  Dokumenten, die ihre Standardschriften nicht selbst vermessen.
 //
-//  HERKUNFT DER ZAHLEN: erzeugt aus den devps-Metriken von groff, die per
-//  `afmtodit` aus den Adobe-AFM-Dateien stammen - nicht abgetippt. Stichproben
-//  prüft `tests/pdf/tst_pdfbasewidths.cpp`.
+//  Die Zahlen sind maschinell erzeugt, nicht abgetippt; Stichproben prüft
+//  `tests/pdf/tst_pdfbasewidths.cpp`.
 //
 //  NICHT ENTHALTEN: Courier (alle Zeichen 600 - das steht direkt in
 //  `PdfTextLayout`), Symbol und ZapfDingbats (für Textbearbeitung ohne Belang).

@@ -30,6 +30,7 @@
         <file>qml/image/ImageEditToolbar.qml</file>
         <file>qml/image/ImageEditPanel.qml</file>
         <file>qml/docx/DocxSurface.qml</file>
+        <file>qml/docx/DocxRuler.qml</file>
         <file>qml/tags/TagBar.qml</file>
         <file>qml/tags/TagCategoryPanel.qml</file>
         <file>qml/tags/CategoryNode.qml</file>

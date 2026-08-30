@@ -52,6 +52,12 @@ DocxEditController::DocxEditController(QObject* parent) : QObject(parent) {
     m_stack.setUndoLimit(200);
     connect(&m_stack, &QUndoStack::canUndoChanged, this, &DocxEditController::undoChanged);
     connect(&m_stack, &QUndoStack::canRedoChanged, this, &DocxEditController::undoChanged);
+    //  Die beiden Rand-Ketten melden ebenso - sonst blieben die Pfeile der
+    //  Werkzeugleiste nach einem Zug am Lineal grau.
+    for (QUndoStack* st : { &m_hMarginStack, &m_vMarginStack }) {
+        connect(st, &QUndoStack::canUndoChanged, this, &DocxEditController::undoChanged);
+        connect(st, &QUndoStack::canRedoChanged, this, &DocxEditController::undoChanged);
+    }
 }
 
 DocxEditController::~DocxEditController() = default;
@@ -120,6 +126,7 @@ void DocxEditController::setSource(const QString& s) {
                 }
                 delete doc;
                 emit c->blocksReplaced(0, 0, c->m_doc.blocks.size());
+                emit c->sectionChanged();
                 emit c->readyChanged();
                 emit c->cursorChanged();
                 c->bumpFormat();
@@ -223,6 +230,34 @@ int DocxEditController::ensureRunBoundary(Block& b, int pos) const {
         acc += len;
     }
     return b.runs.size();
+}
+
+//  Zwei Runs duerfen nur verschmelzen, wenn NICHTS an ihnen verlorengeht:
+//  beide gewoehnlicher Text (kein opaker Fremdinhalt, keine nachverfolgte
+//  Aenderung, keine Ersatz-Rohform) und beide mit demselben wirksamen `w:rPr`.
+//  Das Zeichenformat `fmt` wird zusaetzlich verglichen - `rprSpan` und `fmt`
+//  koennen auseinanderlaufen, solange ein Run noch nicht materialisiert ist.
+int DocxEditController::coalesceRuns(Block& b) const {
+    if (!b.dirty || b.runs.size() < 2) return 0;
+    const QStringView xml = m_doc.docXml();
+    int saved = 0;
+    for (int i = b.runs.size() - 1; i > 0; --i) {
+        Run& cur = b.runs[i];
+        Run& prev = b.runs[i - 1];
+        if (cur.text.isEmpty() || prev.text.isEmpty())            continue;
+        if (cur.opaque || prev.opaque)                            continue;
+        if (cur.revision != Run::RevNone
+            || prev.revision != Run::RevNone)                     continue;
+        if (!cur.rawOverride.isEmpty()
+            || !prev.rawOverride.isEmpty())                       continue;
+        if (!(cur.fmt == prev.fmt))                               continue;
+        if (cur.currentRpr(xml) != prev.currentRpr(xml))           continue;
+        prev.text += cur.text;
+        prev.dirty = true;
+        b.runs.removeAt(i);
+        ++saved;
+    }
+    return saved;
 }
 
 void DocxEditController::removeRangeInBlock(Block& b, int p1, int p2) const {
@@ -486,6 +521,77 @@ void DocxEditController::clearSelection() {
 // ─────────────────────────────────────────────────────────────────────────────
 //  Kommando-Anwendung (Undo/Redo-Pfad)
 // ─────────────────────────────────────────────────────────────────────────────
+// ─── Randlineale (Seitenränder) ──────────────────────────────────────────────
+//  Die Ränder treiben die GANZE Auslegung (Zeilenbreite, Umbruch, Seitenzahl)
+//  und über sie auch den PDF-Export - der malt die Bildschirm-Auslegung. Es
+//  genügt deshalb, das Dokument zu ändern und ein vollständiges Neu-Auslegen
+//  anzustoßen; einen zweiten Weg für die Ausgabe gibt es nicht.
+//  Gemessen wird gegen den STANDARD (2,5 cm), nicht gegen den Ladestand:
+//  „Zurücksetzen" soll dorthin führen, wo die meisten Dokumente stehen -
+//  sonst wäre der eigene, einmal gespeicherte Wert beim nächsten Öffnen der
+//  neue „Standard" (Festlegung des Nutzers).
+bool DocxEditController::marginsChanged() const {
+    return marginsChangedH() || marginsChangedV();
+}
+
+bool DocxEditController::setPageMarginsMm(qreal top, qreal right,
+                                          qreal bottom, qreal left, int axis) {
+    if (!m_ready) return false;
+    const auto toTw = [](qreal mm) {
+        return int(qRound(qMax(0.0, mm) / kTwipToMm));
+    };
+    const Docx::Document::SectionState before = m_doc.sectionState();
+    if (!m_doc.setPageMargins(toTw(top), toTw(right), toTw(bottom), toTw(left)))
+        return false;
+    const Docx::Document::SectionState after = m_doc.sectionState();
+    setModified(true);
+    //  VOLLSTÄNDIG neu auslegen: eine andere Textbreite bricht jeden Absatz
+    //  anders um, also ist ab Block 0 alles betroffen.
+    emit blocksReplaced(0, m_doc.blocks.size(), m_doc.blocks.size());
+    emit sectionChanged();
+    //  Auf die Kette des LINEALS, das gezogen wurde - nicht auf die des Textes.
+    //  `axis == 0` (etwa aus einem Testtreiber) landet weiterhin dort, wo es
+    //  auch bisher lag.
+    QUndoStack& st = (axis == 1) ? m_hMarginStack
+                   : (axis == 2) ? m_vMarginStack : m_stack;
+    st.push(new DocxSectionCommand(this, before, after));
+    return true;
+}
+
+bool DocxEditController::marginsChangedH() const {
+    const Docx::SectionProps& s = m_doc.section();
+    return s.marLeft != kStandardMarginTw || s.marRight != kStandardMarginTw;
+}
+
+bool DocxEditController::marginsChangedV() const {
+    const Docx::SectionProps& s = m_doc.section();
+    return s.marTop != kStandardMarginTw || s.marBottom != kStandardMarginTw;
+}
+
+//  Das Zurücksetzen gehört auf die Kette DESSELBEN Lineals - sonst liesse es
+//  sich nicht zurücknehmen, ohne die andere Seite mitzunehmen.
+bool DocxEditController::resetPageMargins(int axis) {
+    //  Jeder Zurücksetzen-Knopf gehört SEINEM Lineal: der am waagerechten
+    //  stellt links/rechts zurück, der am senkrechten oben/unten. Vorher setzten
+    //  beide alles zurück (vom Nutzer gemeldet).
+    const Docx::SectionProps& cur = m_doc.section();
+    const qreal std = kStandardMarginTw * kTwipToMm;
+    const bool h = (axis == 0 || axis == 1);
+    const bool v = (axis == 0 || axis == 2);
+    return setPageMarginsMm(v ? std : cur.marTop    * kTwipToMm,
+                            h ? std : cur.marRight  * kTwipToMm,
+                            v ? std : cur.marBottom * kTwipToMm,
+                            h ? std : cur.marLeft   * kTwipToMm,
+                            axis);
+}
+
+void DocxEditController::applySectionState(const Docx::Document::SectionState& st) {
+    m_doc.setSectionState(st);
+    setModified(true);
+    emit blocksReplaced(0, m_doc.blocks.size(), m_doc.blocks.size());
+    emit sectionChanged();
+}
+
 void DocxEditController::applyBlocks(int first, int oldCount,
                                      const QList<Block>& blocks,
                                      const DocxCursor& cur) {
@@ -537,12 +643,23 @@ struct DocxEditController::EditScope {
     //  newCount = Blockzahl des Bereichs NACH der Mutation; Cursor ist vom
     //  Aufrufer bereits gesetzt.
     void commit(int newCount) {
+        //  VOR dem Schnappschuss: die Bruchstuecke, die dieser Eingriff
+        //  hinterlassen hat, wieder zusammenlegen (s. `coalesceRuns`).
+        for (int i = 0; i < newCount; ++i)
+            c->coalesceRuns(c->m_doc.blocks[first + i]);
         QList<Block> after;
         after.reserve(newCount);
         for (int i = 0; i < newCount; ++i)
             after.append(c->m_doc.blocks.at(first + i));
         c->setModified(true);
         emit c->blocksReplaced(first, oldCount, newCount);
+        //  Die geaenderten Absaetze neu bewerten. Ohne das blieb ein Wort rot
+        //  markiert, nachdem man es berichtigt hatte - `applyBlocks` tat es
+        //  laengst, aber dort kommt nur Undo/Redo vorbei; JEDE Eingabe laeuft
+        //  hier durch. Der Deckel auf `newCount` haelt es billig: ein
+        //  Tastendruck betrifft EINEN Absatz, und die Pruefung selbst laeuft
+        //  im Pool (s. `spellRequest`).
+        c->spellInvalidate(first, newCount);
         emit c->cursorChanged();
         c->bumpFormat();
         auto* cmd = new DocxReplaceBlocksCommand(
@@ -1388,12 +1505,15 @@ void DocxEditController::spellResult(int block, int gen,
     if (bad.isEmpty()) m_spellBad.remove(block);
     else               m_spellBad.insert(block, bad);
     emit spellRangesChanged(block);
+    //  Waehrend der Pruefung wurde weitergetippt: jetzt der Nachschlag.
+    if (m_spellStale.remove(block)) spellRequest(block);
 }
 
 void DocxEditController::spellStart() {
     ++m_spellGen;
     m_spellBad.clear();
     m_spellPending.clear();
+    m_spellStale.clear();
     m_spellReady = false;
     m_spellLang.clear();
     m_spell.reset();
@@ -1453,6 +1573,11 @@ void DocxEditController::spellRequest(int block) {
     if (block < 0 || block >= m_doc.blocks.size()) return;
     const Docx::Block& b = m_doc.blocks.at(block);
     if (b.kind != Docx::Block::Paragraph) return;
+    //  Laeuft fuer diesen Absatz schon eine Pruefung, wird KEINE zweite
+    //  eingereiht - nur vermerkt, dass danach noch einmal zu pruefen ist.
+    //  Sonst haette schnelles Tippen einen Auftrag je Anschlag erzeugt, alle
+    //  auf demselben Absatz, und nur der letzte haette gezaehlt.
+    if (m_spellPending.contains(block)) { m_spellStale.insert(block); return; }
     m_spellPending.insert(block);
     m_spellPool->start(new SpellTask(QPointer<DocxEditController>(this), m_spell,
                                      block, b.plainText(), m_spellIgnored,
@@ -1469,7 +1594,10 @@ const QVector<mg::SpellRange>& DocxEditController::spellRanges(int block) const 
 int DocxEditController::spellWordAt(int block, int pos, mg::SpellRange* out) const {
     const QVector<mg::SpellRange>& r = spellRanges(block);
     for (const mg::SpellRange& s : r) {
-        if (pos >= s.start && pos <= s.start + s.length) {
+        //  `<` statt `<=` am Ende: die Stelle DIREKT HINTER dem Wort gehoert
+        //  nicht mehr dazu. Mit `<=` traf ein Rechtsklick daneben noch das Wort
+        //  und bot dessen Korrekturen an (vom Nutzer gemeldet).
+        if (pos >= s.start && pos < s.start + s.length) {
             if (out) *out = s;
             return 1;
         }
@@ -2613,8 +2741,38 @@ void DocxEditController::insertRunParagraphs(const QList<QList<Run>>& paras) {
     clearPending();
     scope.commit(curBlock - b1 + 1);
 }
-void DocxEditController::undo() { if (m_stack.canUndo()) m_stack.undo(); }
-void DocxEditController::redo() { if (m_stack.canRedo()) m_stack.redo(); }
+//  ── Strg+Z geht an die zuletzt angefasste Stelle ─────────────────────────────
+//  Text und die beiden Randlineale führen GETRENNTE Ketten (Festlegung des
+//  Nutzers). Welche gemeint ist, sagt `m_rulerFocus` - gesetzt beim Druck auf
+//  ein Lineal, zurückgesetzt bei jedem Klick oder Tastendruck im Text.
+QUndoStack& DocxEditController::activeStack() {
+    if (m_rulerFocus == 1) return m_hMarginStack;
+    if (m_rulerFocus == 2) return m_vMarginStack;
+    return m_stack;
+}
+const QUndoStack& DocxEditController::activeStack() const {
+    return const_cast<DocxEditController*>(this)->activeStack();
+}
+
+bool DocxEditController::canUndoHere() const { return activeStack().canUndo(); }
+bool DocxEditController::canRedoHere() const { return activeStack().canRedo(); }
+
+void DocxEditController::setRulerFocus(int axis) {
+    axis = qBound(0, axis, 2);
+    if (m_rulerFocus == axis) return;
+    m_rulerFocus = axis;
+    emit rulerFocusChanged();
+    emit undoChanged();          // die Pfeile meinen jetzt eine andere Kette
+}
+
+void DocxEditController::undo() {
+    QUndoStack& st = activeStack();
+    if (st.canUndo()) st.undo();
+}
+void DocxEditController::redo() {
+    QUndoStack& st = activeStack();
+    if (st.canRedo()) st.redo();
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 //  Suchen & Ersetzen
@@ -2948,9 +3106,10 @@ void DocxEditController::startSaveWorker(const QString& targetPath, bool direct)
     class SaveTask : public QRunnable {
     public:
         SaveTask(QPointer<DocxEditController> c, QString src, QString tgt,
-                 QHash<QString, QByteArray> parts, bool direct)
+                 QHash<QString, QByteArray> parts, bool direct, bool dropBak)
             : m_c(c), m_src(std::move(src)), m_tgt(std::move(tgt)),
-              m_parts(std::move(parts)), m_direct(direct) { setAutoDelete(true); }
+              m_parts(std::move(parts)), m_direct(direct), m_dropBak(dropBak)
+        { setAutoDelete(true); }
         void run() override {
             QString err;
             bool ok = false;
@@ -2997,6 +3156,12 @@ void DocxEditController::startSaveWorker(const QString& targetPath, bool direct)
                     if (!ok) out.cancelWriting();
                 }
             }
+            //  Verlassen der Kachel: die Sicherungskopie faellt HIER, im
+            //  Worker. Nur bei ERFOLG - schlug das Schreiben fehl, ist sie das
+            //  Einzige, was den Stand davor noch haelt.
+            if (ok && m_direct && m_dropBak)
+                QFile::remove(m_src + QStringLiteral(".bak"));
+
             auto c = m_c;
             const QString tgt = m_tgt;
             const bool direct = m_direct;
@@ -3007,6 +3172,10 @@ void DocxEditController::startSaveWorker(const QString& targetPath, bool direct)
                 if (ok && direct)
                     c->setModified(false);
                 emit c->saveFinished(ok, tgt, err);
+                //  Wurde die Kachel waehrend des Speicherns verlassen, kommt
+                //  das Aufraeumen der `.bak` erst jetzt (s. `release`).
+                if (c->m_dropBakOnFinish)
+                    c->dropBackupIfIdle();
             }, Qt::QueuedConnection);
         }
     private:
@@ -3014,13 +3183,51 @@ void DocxEditController::startSaveWorker(const QString& targetPath, bool direct)
         QString m_src, m_tgt;
         QHash<QString, QByteArray> m_parts;
         bool m_direct;
+        bool m_dropBak;
     };
-    QThreadPool::globalInstance()->start(new SaveTask(self, srcPath, targetPath, parts, direct));
+    QThreadPool::globalInstance()->start(
+        new SaveTask(self, srcPath, targetPath, parts, direct,
+                     m_dropBakAfterSave && direct));
+}
+
+//  Die Sicherungskopie beim Verlassen wieder entfernen.
+//
+//  Sie ist ausdruecklich eine SITZUNGS-Sicherung: sie entsteht beim ersten
+//  direkten Speichern und haelt den Stand davor. Wer die Datei verlaesst, hat
+//  seine Aenderungen angenommen - die Kopie daneben liegen zu lassen, war
+//  unnoetiger Ballast (vom Nutzer gemeldet: „die .bak sollte man nicht sehen").
+//
+//  AUSNAHME: traegt das Dokument nachverfolgte Aenderungen, bleibt sie stehen.
+//  Dort ist der Stand davor noch von Bedeutung, und entfernt wird sie dann von
+//  Hand (Kontextmenue der Kachel ▸ „Sicherungskopie entfernen").
+void DocxEditController::dropBackupIfIdle() {
+    m_dropBakOnFinish = false;
+    if (!m_bakDone || m_source.isEmpty()) return;
+    if (m_revCount > 0) return;                 // Track Changes: behalten
+    const QString bak = m_source + QStringLiteral(".bak");
+    if (QFile::exists(bak) && QFile::remove(bak))
+        m_bakDone = false;                      // eine neue Sitzung legt neu an
 }
 
 void DocxEditController::release() {
+    //  Ob die Sicherungskopie gehen darf, wird JETZT entschieden - solange
+    //  dieses Objekt noch lebt und `m_revCount` gilt. Das Wegraeumen selbst
+    //  uebernimmt der Schreib-Worker: die Kachel wird gleich abgebaut, und der
+    //  Rueckweg hierher liefe dann ins Leere (vom Nutzer gemeldet: nach blossem
+    //  Zurueckgehen blieb die .bak liegen, nach Strg+S dagegen nicht - dort
+    //  war nichts mehr zu speichern, und der Zweig unten griff synchron).
+    m_dropBakAfterSave = (m_revCount == 0) && !m_source.isEmpty();
+
     //  Beim Verlassen der Kachel automatisch sichern (Muster TextSurface -
     //  kein Datenverlust); der Speicherweg folgt der globalen Einstellung.
     if (m_ready && m_modified && !m_busy)
         save();
+    m_dropBakAfterSave = false;
+
+    //  Laeuft das Speichern noch, muss die Sicherung WARTEN - sonst loeschte
+    //  man sie, waehrend der Schreib-Worker sie noch braucht. Lebt die Kachel
+    //  bis dahin doch, raeumt der Rueckruf auf; sonst hat es der Worker schon
+    //  getan, und `dropBackupIfIdle` findet nichts mehr vor.
+    if (m_busy) m_dropBakOnFinish = true;
+    else        dropBackupIfIdle();
 }

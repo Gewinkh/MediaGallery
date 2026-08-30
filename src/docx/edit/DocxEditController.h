@@ -52,6 +52,24 @@ class DocxEditController : public QObject {
     //  und die Zeile blieb ohne Autoren stehen.
     Q_PROPERTY(QString revisionAuthorsText READ revisionAuthorsText NOTIFY revisionsChanged)
     Q_PROPERTY(QObject* translit READ translit WRITE setTranslit NOTIFY translitChanged)
+    //  ── Seiteneinrichtung für die RANDLINEALE ────────────────────────────────
+    //  In MILLIMETERN, weil das Lineal in Millimetern bedient wird; im Dokument
+    //  stehen Twips. Alles lesend - geschrieben wird über `setPageMarginsMm`,
+    //  damit jede Änderung als EIN Rückgängig-Schritt landet.
+    Q_PROPERTY(qreal pageWidthMm    READ pageWidthMm    NOTIFY sectionChanged)
+    Q_PROPERTY(qreal pageHeightMm   READ pageHeightMm   NOTIFY sectionChanged)
+    Q_PROPERTY(qreal marginTopMm    READ marginTopMm    NOTIFY sectionChanged)
+    Q_PROPERTY(qreal marginRightMm  READ marginRightMm  NOTIFY sectionChanged)
+    Q_PROPERTY(qreal marginBottomMm READ marginBottomMm NOTIFY sectionChanged)
+    Q_PROPERTY(qreal marginLeftMm   READ marginLeftMm   NOTIFY sectionChanged)
+    //  Weichen die Ränder vom Standard (2,5 cm) ab? Daran hängt der
+    //  Zurücksetzen-Knopf der Lineale.
+    Q_PROPERTY(bool  marginsChanged READ marginsChanged NOTIFY sectionChanged)
+    //  Je LINEAL getrennt: das waagerechte stellt links/rechts, das senkrechte
+    //  oben/unten - und jeder Zurücksetzen-Knopf darf nur seine eigenen beiden
+    //  Ränder anfassen (vom Nutzer gemeldet: beide setzten alles zurück).
+    Q_PROPERTY(bool  marginsChangedH READ marginsChangedH NOTIFY sectionChanged)
+    Q_PROPERTY(bool  marginsChangedV READ marginsChangedV NOTIFY sectionChanged)
 
 public:
     explicit DocxEditController(QObject* parent = nullptr);
@@ -322,6 +340,57 @@ public:
     //  Seiteneinrichtung des Dokuments.
     const Docx::SectionProps& section() const { return m_doc.section(); }
 
+    // ── Randlineale ──────────────────────────────────────────────────────────
+    //  Twips -> Millimeter: 1440 Twips = 1 Zoll = 25,4 mm.
+    static constexpr qreal kTwipToMm = 25.4 / 1440.0;
+    qreal pageWidthMm()    const { return m_doc.section().pageW * kTwipToMm; }
+    qreal pageHeightMm()   const { return m_doc.section().pageH * kTwipToMm; }
+    qreal marginTopMm()    const { return m_doc.section().marTop * kTwipToMm; }
+    qreal marginRightMm()  const { return m_doc.section().marRight * kTwipToMm; }
+    qreal marginBottomMm() const { return m_doc.section().marBottom * kTwipToMm; }
+    qreal marginLeftMm()   const { return m_doc.section().marLeft * kTwipToMm; }
+    bool  marginsChanged() const;
+    bool  marginsChangedH() const;
+    bool  marginsChangedV() const;
+
+    //  Ränder setzen (Millimeter). Ein Zug am Lineal ruft das je Mausbewegung -
+    //  die Schritte verschmelzen über `DocxSectionCommand::mergeWith` zu EINEM
+    //  Rückgängig-Schritt. false = nichts geändert (auch bei geklemmten Werten).
+    //  `axis` sagt, WELCHES Lineal gezogen wurde: 1 = waagerecht (links/rechts),
+    //  2 = senkrecht (oben/unten), 0 = von woanders. Danach richtet sich, auf
+    //  welchen Rückgängig-Stapel der Schritt kommt.
+    Q_INVOKABLE bool setPageMarginsMm(qreal top, qreal right,
+                                      qreal bottom, qreal left, int axis = 0);
+    //  Zurück auf den GEBRÄUCHLICHEN Standard: 2,5 cm rundum (1417 Twips) -
+    //  genau das, was Word als Vorgabe schreibt. Bewusst NICHT der Ladestand
+    //  des Dokuments (Festlegung des Nutzers): wer einmal verstellt und
+    //  gespeichert hat, bekäme sonst beim nächsten Öffnen seinen eigenen Wert
+    //  als „Standard" zurück.
+    //  `axis`: 0 = alle vier · 1 = nur links/rechts (waagerechtes Lineal) ·
+    //  2 = nur oben/unten (senkrechtes Lineal).
+    static constexpr int kStandardMarginTw = 1417;       // 2,5 cm
+    Q_INVOKABLE bool resetPageMargins(int axis = 0);
+    //  Für `DocxSectionCommand` - wendet einen gesicherten Zustand an und stößt
+    //  das vollständige Neu-Auslegen an.
+    void applySectionState(const Docx::Document::SectionState& st);
+
+    //  ── Wer bekommt Strg+Z? ─────────────────────────────────────────────────
+    //  JEDES Lineal führt seine EIGENE Kette, getrennt voneinander UND von der
+    //  Historie des Dokuments (Festlegung des Nutzers). Welche gerade gemeint
+    //  ist, entscheidet die zuletzt angefasste Stelle: ein Druck auf ein Lineal
+    //  setzt sie auf 1 bzw. 2, jeder Klick oder Tastendruck im Text auf 0.
+    //  Ohne das nähme ein `Strg+Z` nach einem Zug am Lineal den letzten
+    //  TIPPvorgang zurück - oder umgekehrt.
+    Q_PROPERTY(int rulerFocus READ rulerFocus NOTIFY rulerFocusChanged)
+    int  rulerFocus() const { return m_rulerFocus; }
+    Q_INVOKABLE void setRulerFocus(int axis);
+    //  Kann die aktuell gemeinte Kette zurück bzw. vor? Daran hängen die Pfeile
+    //  in der Werkzeugleiste, damit sie nicht über eine leere Kette lügen.
+    Q_PROPERTY(bool canUndoHere READ canUndoHere NOTIFY undoChanged)
+    Q_PROPERTY(bool canRedoHere READ canRedoHere NOTIFY undoChanged)
+    bool canUndoHere() const;
+    bool canRedoHere() const;
+
     //  Interner Anwender der Kommandos (public für DocxReplaceBlocksCommand).
     void applyBlocks(int first, int oldCount, const QList<Docx::Block>& blocks,
                      const DocxCursor& cur);
@@ -349,6 +418,11 @@ signals:
     void imageInsertFailed(const QString& error);
     //  Zahl/Autoren der nachverfolgten Änderungen haben sich geändert.
     void revisionsChanged();
+    //  Seiteneinrichtung geändert (Randlineale) - die Anzeige legt komplett neu
+    //  aus, die Lineale und der Zurücksetzen-Knopf richten sich neu.
+    void sectionChanged();
+    //  Die zuletzt angefasste Stelle hat gewechselt (Text ⇄ Lineal).
+    void rulerFocusChanged();
 
 private:
     struct EditScope;                                    // s. cpp
@@ -408,6 +482,13 @@ private:
     int  ensureRunBoundary(Docx::Block& b, int pos) const;
     //  Löscht [p1,p2) innerhalb EINES Blocks (Run-bewusst, opake atomar).
     void removeRangeInBlock(Docx::Block& b, int p1, int p2) const;
+    //  Aneinandergrenzende Runs mit IDENTISCHEM rPr wieder zu EINEM Run
+    //  zusammenfassen. `ensureRunBoundary` teilt bei jedem Eingriff, und jeder
+    //  Tastendruck legt einen eigenen Run an - ohne diesen Lauf steht in der
+    //  gespeicherten Datei ein `<w:r>` je getipptem Zeichen. Nur auf DIRTY
+    //  Blöcken (ein unberührter geht ohnehin verbatim heraus). Liefert die
+    //  Zahl der eingesparten Runs.
+    int  coalesceRuns(Docx::Block& b) const;
     //  Absatz an `pos` teilen: alles ab dort wandert in einen NEUEN Absatz
     //  DAHINTER (gleiche Zelle, gleiches pPr/pfmt). Steht an `pos` ein
     //  `w:br`-Zeichen, wird es dabei geschluckt - aus dem Zeilenumbruch wird
@@ -462,7 +543,31 @@ private:
     bool       m_ready = false;
     bool       m_busy = false;
     bool       m_modified = false;
+    //  ── Getrennte Rückgängig-Ketten der Randlineale ─────────────────────────
+    //  Bewusst EIGENE Stapel neben `m_stack`: ein Randwechsel gehört nicht in
+    //  die Historie des TEXTES, und die beiden Lineale sollen einander nicht
+    //  ins Handwerk pfuschen.
+    //  Der Stapel, den `undo`/`redo` gerade meinen (s. `m_rulerFocus`).
+    QUndoStack&       activeStack();
+    const QUndoStack& activeStack() const;
+    QUndoStack m_hMarginStack;
+    QUndoStack m_vMarginStack;
+    int        m_rulerFocus = 0;         // 0 Text · 1 waagerecht · 2 senkrecht
     bool       m_bakDone = false;        // .bak einmalig je Sitzung
+    //  Beim Verlassen der Datei wird die `.bak` wieder entfernt: sie haelt nur
+    //  den Stand VOR den Aenderungen DIESER Sitzung, und offen daneben liegen
+    //  bleiben soll sie nicht (Festlegung des Nutzers). Ausnahme: traegt das
+    //  Dokument nachverfolgte Aenderungen, bleibt sie stehen, bis der Nutzer
+    //  sie selbst entfernt. Das Speichern laeuft asynchron - deshalb ein Merker
+    //  statt sofortigem Loeschen.
+    bool       m_dropBakOnFinish = false;
+    //  Gilt NUR fuer das Speichern beim Verlassen: der Schreib-Worker raeumt
+    //  die `.bak` danach selbst weg. Ein Rueckruf hierher genuegt nicht - die
+    //  Kachel ist dann meist schon abgebaut (s. `release`).
+    bool       m_dropBakAfterSave = false;
+    //  Die `.bak` entfernen, falls es sie gibt und keine nachverfolgte
+    //  Aenderung im Dokument steht.
+    void       dropBackupIfIdle();
     int        m_formatRev = 0;
     int        m_loadGen = 0;            // Generationszähler async Laden
     DocxCursor m_cursor;
@@ -489,6 +594,7 @@ private:
     std::shared_ptr<mg::SpellChecker> m_spell;      // nur im Pool-Thread benutzt
     QHash<int, QVector<mg::SpellRange>> m_spellBad; // Absatz -> Fundstellen
     QSet<int>  m_spellPending;           // eingereiht, Ergebnis steht aus
+    QSet<int>  m_spellStale;             // waehrenddessen erneut geaendert
     QStringList m_spellIgnored;          // Sitzungswörter (GUI-Thread hält sie)
     bool       m_spellOn = false;
     bool       m_spellReady = false;

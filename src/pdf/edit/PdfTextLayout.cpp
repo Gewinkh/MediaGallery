@@ -317,8 +317,7 @@ bool PdfTextLayout::buildForPage(const QString& pdfPath, int pageIndex,
                 //  Standardschriften ist das ERLAUBT - die Spezifikation
                 //  erwartet, dass der Betrachter ihre Maße kennt. Genau daran
                 //  scheiterte „Text bearbeiten" auf solchen Dokumenten.
-                //  Die Tabellen stammen aus den Adobe-AFM-Metriken; gefüllt
-                //  wird über die Kodierung der Schrift (Code -> Zeichen ->
+                //  Gefüllt wird über die Kodierung der Schrift (Code -> Zeichen ->
                 //  Breite), damit WinAnsi, MacRoman und /Differences
                 //  gleichermaßen stimmen. Bereits vorhandene Werte aus /Widths
                 //  bleiben unangetastet - die Datei weiß es besser.

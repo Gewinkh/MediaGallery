@@ -460,6 +460,22 @@ void readMp4(QFile& f, AudioTags::Tags* out, bool withCover) {
     }
 }
 
+//  Steht in einem Feld NICHTS Sichtbares, gilt es als nicht gesetzt. Manche
+//  Werkzeuge „leeren" den Titel, indem sie ein unsichtbares Zeichen
+//  hineinschreiben statt das Feld wegzulassen (gemessen: ein Titel aus genau
+//  einem U+2800 BRAILLE PATTERN BLANK). Ohne diese Prüfung stünde in der
+//  Anzeige eine leere Zeile, statt auf den Dateinamen zurückzufallen.
+bool invisibleField(const QString& s) {
+    for (const QChar c : s) {
+        if (c.isSpace()) continue;
+        const QChar::Category cat = c.category();
+        if (cat == QChar::Other_Format || cat == QChar::Other_Control) continue;
+        if (c.unicode() == 0x2800) continue;
+        return false;
+    }
+    return true;
+}
+
 //  Ein Tag lesen - der gemeinsame Weg für beide öffentlichen Funktionen.
 AudioTags::Tags readInto(const QString& path, bool withCover) {
     AudioTags::Tags t;
@@ -501,6 +517,10 @@ AudioTags::Tags readInto(const QString& path, bool withCover) {
         //  Keine bekannte Hülle vorn - vielleicht liegt hinten ein ID3v1.
         readId3v1(f, &t);
     }
+
+    if (invisibleField(t.title))  t.title.clear();
+    if (invisibleField(t.artist)) t.artist.clear();
+    if (invisibleField(t.album))  t.album.clear();
 
     t.ok = !t.title.isEmpty() || !t.artist.isEmpty() || !t.album.isEmpty()
            || t.hasCover;

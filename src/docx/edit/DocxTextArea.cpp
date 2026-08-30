@@ -1,9 +1,12 @@
 #include "docx/edit/DocxTextArea.h"
+
+#include "core/PdfGlyphRuns.h"
 #include <QFileInfo>
 #include <QSaveFile>
 #include <QPageLayout>
 #include <QPageSize>
 #include <QPdfWriter>
+#include <QBuffer>
 #include "docx/edit/DocxEditController.h"
 
 #include <QPainter>
@@ -141,6 +144,9 @@ void DocxTextArea::setContentY(qreal y) {
     m_contentY = y;
     emit contentYChanged();
     emit imageSelectionChanged();   // Ziehpunkte scrollen mit
+    //  Die Seite wandert im Item - die Randlineale hängen daran (das senkrechte
+    //  meint immer die Seite, die man gerade vor sich hat).
+    emit pageGeometryChanged();
     update();
 }
 
@@ -200,6 +206,7 @@ void DocxTextArea::updateScale() {
     m_scale = s;
     updateContentHeight();
     updateCursorRect();
+    emit pageGeometryChanged();
     update();
 }
 
@@ -640,9 +647,39 @@ qreal DocxTextArea::pageTop(int page) {
     return pageDocY(qBound(0, page, qMax(0, m_pageCount - 1))) * m_scale;
 }
 
+qreal DocxTextArea::pageTopItem(int page) {
+    return pageTop(page) - m_contentY;
+}
+
+qreal DocxTextArea::pageWidthPx()  const { return pageWpx() * m_scale; }
+qreal DocxTextArea::pageHeightPx() const { return pageHpx() * m_scale; }
+
+//  Welche Seite hat man gerade vor sich? Bewusst NICHT `currentPage()` - das ist
+//  die Seite des CURSORS, und wer scrollt, ohne zu tippen, bekäme ein Lineal,
+//  das zu einer Seite weit oberhalb gehört. Gemessen wird an einem Punkt ein
+//  Viertel unterhalb der Fensteroberkante: dort liegt die Seite, die den Blick
+//  füllt, auch wenn oben noch der Rest der vorigen zu sehen ist.
+qreal DocxTextArea::currentPageTopPx() const {
+    if (m_pageCount <= 0 || m_scale <= 0.0) return -m_contentY;
+    const qreal step = pageHpx() + kPageGap;
+    if (step <= 0.0) return -m_contentY;
+    const qreal probeDocY = (m_contentY + height() * 0.25) / m_scale;
+    int pg = int((probeDocY - kPadV) / step);
+    pg = qBound(0, pg, m_pageCount - 1);
+    return pageDocY(pg) * m_scale - m_contentY;
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 //  Layout-Verwaltung
 // ─────────────────────────────────────────────────────────────────────────────
+//  Grobe Höhe eines noch nicht vermessenen Blocks. Sie hält den Fluss und die
+//  Bildlaufleiste plausibel, bis `layoutChunk` den Block wirklich vermisst.
+qreal DocxTextArea::estimateHeight(const Block& b) {
+    if (b.kind == Block::OpaqueHidden)  return 0.0;
+    if (b.kind == Block::OpaqueVisible) return 34.0;
+    return 22.0 * qMax(1, b.textLength() / 90 + 1);
+}
+
 void DocxTextArea::rebuildAll() {
     m_lay.clear();
     m_offsets.clear();
@@ -657,12 +694,8 @@ void DocxTextArea::rebuildAll() {
     if (m_ctl && m_ctl->ready()) {
         m_lay.resize(size_t(m_ctl->doc().blocks.size()));
         //  Schätzhöhen (eine Zeile je ~90 Zeichen) - vom Chunk-Layout ersetzt.
-        for (int i = 0; i < int(m_lay.size()); ++i) {
-            const Block& b = m_ctl->doc().blocks.at(i);
-            if (b.kind == Block::OpaqueHidden)      m_lay[i].height = 0;
-            else if (b.kind == Block::OpaqueVisible) m_lay[i].height = 34;
-            else m_lay[i].height = 22.0 * qMax(1, b.textLength() / 90 + 1);
-        }
+        for (int i = 0; i < int(m_lay.size()); ++i)
+            m_lay[i].height = estimateHeight(m_ctl->doc().blocks.at(i));
         //  Einmal je Dokument: gibt es hier überhaupt Nummerierung? (s.
         //  m_anyNumbering) - der Lauf darunter läuft sonst je Tastendruck über
         //  alle Blöcke, ohne je etwas zu finden.
@@ -672,7 +705,7 @@ void DocxTextArea::rebuildAll() {
                 if (b.pfmt.set & ParFmt::FNum) { m_anyNumbering = true; break; }
         }
         rebuildMarkers();
-        m_chunkTimer.start();
+        startChunkLayout();
     }
     //  Seitengröße kommt aus dem Dokument -> Einpass-Maßstab neu bestimmen.
     updateScale();
@@ -705,12 +738,40 @@ void DocxTextArea::invalidateFrom(int first, int oldCount, int newCount) {
     const int common = qMin(oldCount, newCount);
     for (int i = 0; i < common && first + i < int(m_lay.size()); ++i)
         m_lay[size_t(first + i)] = BlockLayout();
-    for (int i = common; i < oldCount && first + common < int(m_lay.size()); ++i)
-        m_lay.erase(m_lay.begin() + first + common);
+    //  ENTFERNEN als EIN Bereich. Einzeln gelöscht schob jeder Schritt den
+    //  gesamten Rest des Vektors um eine Stelle nach vorn - bei „alles
+    //  markieren + löschen" in einem 30.000-Block-Dokument gemessene 5.043 ms
+    //  von insgesamt 5.045 ms, und der Ton in der anderen Hälfte stockte mit.
+    if (oldCount > common) {
+        const int from = qMin(first + common, int(m_lay.size()));
+        const int to   = qMin(first + oldCount, int(m_lay.size()));
+        if (to > from)
+            m_lay.erase(m_lay.begin() + from, m_lay.begin() + to);
+    }
+    //  EINFÜGEN darf einzeln bleiben: die Stellen wachsen aufsteigend, hinter
+    //  der jeweiligen Einfügestelle liegt also fast nichts mehr (gemessen 2,0 ms
+    //  für 30.000 Blöcke beim Rückgängigmachen).
     for (int i = common; i < newCount; ++i)
         m_lay.insert(m_lay.begin() + first + i, BlockLayout());
-    for (int i = 0; i < newCount; ++i)
+    //  Auslegen: die ERSTEN paar sofort (der Cursor steht darin, und der
+    //  Alltagsfall ist ohnehin genau einer), der REST über denselben
+    //  Chunk-Timer wie beim Öffnen. Alles auf einmal zu vermessen blockierte
+    //  den GUI-Faden - beim Rückgängigmachen eines „alles löschen" in einem
+    //  30.000-Block-Dokument gemessene 1.088 ms.
+    constexpr int kSyncRelayout = 64;
+    const int sync = qMin(newCount, kSyncRelayout);
+    for (int i = 0; i < sync; ++i)
         ensureLaid(first + i);
+    if (newCount > sync) {
+        const Document& doc = m_ctl->doc();
+        for (int i = sync; i < newCount; ++i) {
+            const int at = first + i;
+            if (at >= int(m_lay.size()) || at >= doc.blocks.size()) break;
+            m_lay[size_t(at)].height = estimateHeight(doc.blocks.at(at));
+        }
+        m_layChunkAt = qMin(m_layChunkAt, first + sync);
+        startChunkLayout();
+    }
     //  Neue Blöcke können Nummerierung mitbringen (Aufzählung einschalten,
     //  Einfügen aus der Zwischenablage) - dann muss der Marker-Lauf wieder
     //  laufen.
@@ -820,15 +881,20 @@ QFont DocxTextArea::blockBaseFont(const Block& b, int blockIdx) const {
 //  Merkspeicher, s. Kopfdatei. Der Deckel ist Absicht: ein Dokument mit
 //  Hunderten verschiedener Formate würde die lineare Suche sonst teurer machen
 //  als das Bauen selbst - dann wird eben gebaut.
-const QTextCharFormat& DocxTextArea::charFormatOf(const RunFmt& rf,
-                                                  const RunFmt& def,
-                                                  const Run& r) const {
-    constexpr size_t kFmtCacheCap = 48;
+DocxTextArea::FmtKey DocxTextArea::fmtKeyOf(const RunFmt& rf, const Run& r) const {
     FmtKey key;
     key.rf       = rf;
     key.opaque   = r.opaque;
     key.revision = int(r.revision);
     if (r.revision != Run::RevNone) key.author = r.revAuthor;
+    return key;
+}
+
+const QTextCharFormat& DocxTextArea::charFormatOf(const RunFmt& rf,
+                                                  const RunFmt& def,
+                                                  const Run& r) const {
+    constexpr size_t kFmtCacheCap = 48;
+    const FmtKey key = fmtKeyOf(rf, r);
     for (const std::pair<FmtKey, QTextCharFormat>& e : m_fmtCache)
         if (e.first == key) return e.second;
 
@@ -1041,16 +1107,32 @@ qreal DocxTextArea::buildInlineRows(BlockLayout& L, const Block& b,
     L.rows.clear();
 
     //  Format-Bereiche des GANZEN Absatzes (block-lokal); je Stück geklippt.
+    //  ANEINANDERGRENZENDE Runs mit GLEICHEM Aussehen werden zu EINEM Bereich
+    //  verschmolzen. Das ist keine Kosmetik: `QTextLayout` zerlegt den Text an
+    //  jeder Bereichsgrenze in ein eigenes Textstueck, und der PDF-Export
+    //  schreibt je Stueck ein eigenes `BT … ET` mit absolutem `Td`. PDFium
+    //  setzt zwischen zwei solche Stuecke eine Wortgrenze - aus „Hallo" wurde
+    //  im ausgelesenen Text „H allo", und die Suche fand das Wort nicht mehr.
+    //  Word teilt Runs schon von sich aus (rsid), unsere eigene Datei ebenso.
     QList<QTextLayout::FormatRange> fmts;
     int acc = 0;
+    FmtKey lastKey;
+    bool   haveLast = false;
     for (const Run& r : b.runs) {
         if (r.text.isEmpty()) continue;
-        const RunFmt rf = d.resolveRun(b, r);
-        QTextLayout::FormatRange fr;
-        fr.start  = acc;
-        fr.length = r.text.size();
-        fr.format = charFormatOf(rf, def, r);
-        fmts.append(fr);
+        const RunFmt rf  = d.resolveRun(b, r);
+        const FmtKey key = fmtKeyOf(rf, r);
+        if (haveLast && key == lastKey) {
+            fmts.last().length += r.text.size();
+        } else {
+            QTextLayout::FormatRange fr;
+            fr.start  = acc;
+            fr.length = r.text.size();
+            fr.format = charFormatOf(rf, def, r);
+            fmts.append(fr);
+            lastKey  = key;
+            haveLast = true;
+        }
         acc += r.text.size();
     }
     //  Seitenumbruch-Sentinel unsichtbar machen (der Marker wird gemalt).
@@ -1456,11 +1538,20 @@ std::unique_ptr<QTextLayout> DocxTextArea::layoutParagraph(const Block& b, qreal
     opt.setTextDirection(Qt::LayoutDirectionAuto);
     lay->setTextOption(opt);
 
+    //  Aneinandergrenzende Runs mit gleichem Format zu EINEM Bereich
+    //  zusammenfassen - Begruendung s. `buildInlineRows`.
     QList<QTextLayout::FormatRange> fmts;
     int acc = 0;
+    RunFmt lastRf;
+    bool   haveLast = false;
     for (const Run& r : b.runs) {
         if (r.text.isEmpty()) continue;
         const RunFmt rf = d.resolveRun(b, r);
+        if (haveLast && rf == lastRf) {
+            fmts.last().length += r.text.size();
+            acc += r.text.size();
+            continue;
+        }
         QTextCharFormat cf;
         QFont f;
         f.setFamily(rf.font.isEmpty() ? def.font : rf.font);
@@ -1473,6 +1564,8 @@ std::unique_ptr<QTextLayout> DocxTextArea::layoutParagraph(const Block& b, qreal
         QTextLayout::FormatRange fr;
         fr.start = acc; fr.length = r.text.size(); fr.format = cf;
         fmts.append(fr);
+        lastRf   = rf;
+        haveLast = true;
         acc += r.text.size();
     }
     lay->setFormats(fmts);
@@ -2427,8 +2520,22 @@ int DocxTextArea::blockAtY(qreal y) {
     return lo;
 }
 
+//  Der Chunk-Timer wird nur ueber diese beiden Wege geschaltet, damit
+//  `layoutBusy` nie luegt - daran haengen die Pruefstaende (Regel 31).
+void DocxTextArea::startChunkLayout() {
+    if (m_chunkTimer.isActive()) return;
+    m_chunkTimer.start();
+    emit layoutBusyChanged();
+}
+
+void DocxTextArea::stopChunkLayout() {
+    if (!m_chunkTimer.isActive()) return;
+    m_chunkTimer.stop();
+    emit layoutBusyChanged();
+}
+
 void DocxTextArea::layoutChunk() {
-    if (!m_ctl || !m_ctl->ready()) { m_chunkTimer.stop(); return; }
+    if (!m_ctl || !m_ctl->ready()) { stopChunkLayout(); return; }
     int done = 0;
     while (m_layChunkAt < int(m_lay.size()) && done < kChunk) {
         //  ÜBER ensureLaid, nicht direkt über buildLayout: nur ensureLaid
@@ -2443,7 +2550,7 @@ void DocxTextArea::layoutChunk() {
     }
     updateContentHeight();
     if (m_layChunkAt >= int(m_lay.size())) {
-        m_chunkTimer.stop();
+        stopChunkLayout();
         updateCursorRect();
     }
     //  Schon WAEHREND des Initial-Layouts trimmen: sonst laegen bei einem
@@ -2622,6 +2729,7 @@ void DocxTextArea::updateCursorRect() {
     if (currentPage() != m_lastPage) {
         m_lastPage = currentPage();
         emit currentPageChanged();
+        emit pageGeometryChanged();
     }
 }
 
@@ -2926,7 +3034,7 @@ void DocxTextArea::paintSpell(QPainter* p, const BlockLayout& L, int blockIdx,
 //  unteren Rand des Textbereichs. Gezeichnet wird in Dokument-Pixeln, wie alles
 //  andere auch.
 void DocxTextArea::paintSlot(QPainter* p, int slot, bool withCaret,
-                             bool withSelection) {
+                             bool withSelection, bool withSpell) {
     const Document& d = m_ctl->doc();
     const qreal slotH = slotHeight();
     const qreal sx = slotDocX(slot);
@@ -3058,7 +3166,9 @@ void DocxTextArea::paintSlot(QPainter* p, int slot, bool withCaret,
         //  Rechtschreibung: rote Wellenlinie UNTER den beanstandeten Stellen.
         //  Gezeichnet wird nur, was ohnehin sichtbar ist - die Fundstellen
         //  liegen im Controller und kosten hier nichts als ein Nachschlagen.
-        paintSpell(p, L, i, QPointF(left + L.indentPx, y));
+        //  Im Export und in den Miniaturen bleibt sie weg (s. `withSpell`).
+        if (withSpell)
+            paintSpell(p, L, i, QPointF(left + L.indentPx, y));
 
         //  Text samt Selektion (block-lokale Positionen).
         int s0 = -1, s1 = -1;
@@ -3114,7 +3224,7 @@ void DocxTextArea::paintSlot(QPainter* p, int slot, bool withCaret,
 //  weil die Seite HIER das Papier ist und die Ränder schon im Layout stecken.
 //  Der Maler auf einem `QPdfWriter` erzeugt echten Vektortext - keine Bilder.
 // ─────────────────────────────────────────────────────────────────────────────
-QString DocxTextArea::exportPagesToPdf(const QString& targetPath, int paddingMm,
+QString DocxTextArea::exportPagesToPdf(const QString& targetPath,
                                        int pageNumberPos, int pageNumberStyle) {
     if (!m_ctl || !m_ctl->ready())
         return QStringLiteral("Kein Dokument geladen.");
@@ -3130,10 +3240,18 @@ QString DocxTextArea::exportPagesToPdf(const QString& targetPath, int paddingMm,
     if (!out.open(QIODevice::WriteOnly))
         return QStringLiteral("Ziel nicht beschreibbar.");
 
+    //  Der Writer schreibt ZUERST in den Speicher, nicht direkt in die Datei:
+    //  danach fasst `mg::pdfglyphs::mergeGlyphRuns` die von Qt je GLYPHE
+    //  geschriebenen Textobjekte zusammen (sonst liest PDFium „H allo" statt
+    //  „Hallo", s. dort). Kostet EINE Kopie der fertigen PDF im RAM - gegen die
+    //  Auslegung des Dokuments, die ohnehin steht, fällt das nicht ins Gewicht.
+    QByteArray pdfBytes;
     {
+        QBuffer sink(&pdfBytes);
+        sink.open(QIODevice::WriteOnly);
         constexpr qreal kTwipToMm = 25.4 / 1440.0;
         const Docx::SectionProps& sp = m_ctl->section();
-        QPdfWriter writer(&out);
+        QPdfWriter writer(&sink);
         writer.setPageSize(QPageSize(QSizeF(sp.pageW * kTwipToMm, sp.pageH * kTwipToMm),
                                      QPageSize::Millimeter, QString(),
                                      QPageSize::FuzzyMatch));
@@ -3141,17 +3259,14 @@ QString DocxTextArea::exportPagesToPdf(const QString& targetPath, int paddingMm,
         writer.setResolution(300);
         writer.setTitle(QFileInfo(targetPath).completeBaseName());
 
+        //  Das BLATT ist das Ziel - der Schreibbereich steckt in den
+        //  Seitenrändern des Dokuments und damit bereits in der Auslegung, die
+        //  hier gemalt wird. Der frühere „zusätzliche Rand" malte die Seite in
+        //  ein kleineres Rechteck und verkleinerte damit den Inhalt maßstäblich;
+        //  seit die Randlineale die echten Ränder verstellen, ist das der
+        //  falsche Weg (er hätte sich mit ihnen addiert).
         const QRectF sheet = writer.pageLayout().paintRectPixels(writer.resolution());
-        //  Zusätzlicher Rand: die Seite wird in ein KLEINERES Rechteck gemalt.
-        //  `paintPageInto` skaliert auf dieses Rechteck, das Blatt bleibt also
-        //  A4 (bzw. was in `w:sectPr` steht) und der Inhalt wird maßstäblich
-        //  kleiner - der andere Weg (Blatt vergrößern) wurde bewusst verworfen,
-        //  weil das PDF dann kein A4 mehr wäre.
-        const qreal padPx = qMax(0, qMin(paddingMm, 40)) * writer.resolution() / 25.4;
-        const QRectF target = (padPx > 0.0 && sheet.width() > 4 * padPx
-                                           && sheet.height() > 4 * padPx)
-                              ? sheet.adjusted(padPx, padPx, -padPx, -padPx)
-                              : sheet;
+        const QRectF target = sheet;
 
         QPainter p(&writer);
         //  Die Seitenzahl malt `paintPageNumber` - derselbe Weg wie in der
@@ -3185,6 +3300,10 @@ QString DocxTextArea::exportPagesToPdf(const QString& targetPath, int paddingMm,
         p.end();
     }   // Writer zerstört -> PDF finalisiert
 
+    const QByteArray fixed = mg::pdfglyphs::mergeGlyphRuns(pdfBytes);
+    pdfBytes.clear();                       // die Kopie sofort wieder freigeben
+    if (out.write(fixed) != fixed.size())
+        return QStringLiteral("Schreiben fehlgeschlagen.");
     if (!out.commit())
         return QStringLiteral("Schreiben fehlgeschlagen.");
     return QString();
@@ -3215,7 +3334,10 @@ void DocxTextArea::paintPageInto(QPainter* p, int page, const QRectF& target,
 
     const int nCols = colCount();
     for (int c = 0; c < nCols; ++c) {
-        paintSlot(p, page * nCols + c, false, withSelection);   // ohne Caret
+        //  Ohne Caret UND ohne die roten Wellenlinien: sie sind eine Hilfe beim
+        //  Schreiben und hatten im ausgegebenen PDF nichts zu suchen
+        //  (vom Nutzer gemeldet).
+        paintSlot(p, page * nCols + c, false, withSelection, /*withSpell=*/false);
     }
     //  Nur für die ANZEIGE (Miniaturen): im PDF-Export malt `exportPagesToPdf`
     //  die Zahl selbst auf das BLATT - dort ist das Ziel um den zusätzlichen
@@ -3372,6 +3494,8 @@ void DocxTextArea::hitTest(const QPointF& itemPos, int* block, int* pos) {
 
 void DocxTextArea::mousePressEvent(QMouseEvent* e) {
     forceActiveFocus();
+    //  Ein Klick IN DEN TEXT holt `Strg+Z` von den Randlinealen zurück.
+    if (m_ctl) m_ctl->setRulerFocus(0);
     int b, p;
     hitTest(e->position(), &b, &p);
 
@@ -3511,6 +3635,25 @@ void DocxTextArea::keyPressEvent(QKeyEvent* e) {
     const bool shift = e->modifiers() & Qt::ShiftModifier;
     const DocxCursor& c = m_ctl->cursor();
 
+    //  Sobald im TEXT getippt wird, meint `Strg+Z` wieder das Dokument und
+    //  nicht mehr das zuletzt gezogene Randlineal (s. `setRulerFocus`).
+    //
+    //  ZWEI Ausnahmen, und die zweite ist die, die es lange kaputt hielt:
+    //   1. `Strg+Z`/`Strg+Y` selbst - sie sollen die Kette treffen, die gerade
+    //      gemeint ist.
+    //   2. **Die Modifikatortasten selbst.** Qt schickt fuer `Strg` ein EIGENES
+    //      Tastenereignis, BEVOR das `Z` kommt (im Mitschnitt `MG_KEYLOG`
+    //      nachgewiesen: erst `key=0x01000021`, dann `key=0x0000005A`). Ohne
+    //      diese Ausnahme setzte schon das blosse Druecken von `Strg` den Fokus
+    //      zurueck - das `Z` fand dann den leeren Text-Stapel vor, und auch der
+    //      Rueckgaengig-Knopf war danach wirkungslos.
+    const int key = e->key();
+    const bool modifierKey = (key == Qt::Key_Control || key == Qt::Key_Shift
+                              || key == Qt::Key_Alt  || key == Qt::Key_Meta
+                              || key == Qt::Key_AltGr);
+    const bool undoRedo    = ctrl && (key == Qt::Key_Z || key == Qt::Key_Y);
+    if (!modifierKey && !undoRedo)
+        m_ctl->setRulerFocus(0);
     if (ctrl) {
         switch (e->key()) {
         case Qt::Key_S: emit saveRequested();          e->accept(); return;
@@ -3609,6 +3752,10 @@ void DocxTextArea::geometryChange(const QRectF& n, const QRectF& o) {
         updateScale();
     }
     emit imageSelectionChanged();     // Seite wandert waagerecht/skaliert
+    //  AUCH ohne Maßstabswechsel: eine breitere Kachel verschiebt die zentrierte
+    //  Seite, ohne dass `updateScale` etwas ändert (sie steht schon auf 1,0) -
+    //  die Lineale müssen trotzdem mitwandern.
+    emit pageGeometryChanged();
     update();
 }
 

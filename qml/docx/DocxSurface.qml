@@ -69,6 +69,21 @@ Item {
         onActivated: root.openFind()
     }
 
+    //  ── Automatisch sichern ─────────────────────────────────────────────────
+    //  Seit der Speichern-Knopf beim DIREKTEN Speichern entfallen ist, muss die
+    //  Fläche es selbst tun: im Takt der Auto-Sicherung (dieselbe Einstellung
+    //  wie im Texteditor) und beim Verlassen (`release`). Im Modus „Kopie
+    //  exportieren" läuft der Takt NICHT - dort entstünde bei jedem Mal eine
+    //  weitere Datei; dafür gibt es dort weiterhin den Knopf.
+    Timer {
+        id: autoSaveTimer
+        interval: Math.max(5, App.autoSaveInterval) * 1000
+        repeat: true
+        running: App.autoSaveEnabled && Docx.saveDirect
+                 && editCtl.ready && root.source.length > 0
+        onTriggered: if (editCtl.modified && !editCtl.busy) editCtl.save()
+    }
+
     //  Auto-Speichern beim Verlassen (Vertrag wie TextSurface.release()).
     function save()    { editCtl.save() }
     function release() { editCtl.release() }
@@ -513,9 +528,19 @@ Item {
                 height: leftFlick.height
                 spacing: 6
 
-                //  Speichern (Modus folgt der globalen Einstellung) + Busy.
+                //  ── Speichern ───────────────────────────────────────────────
+                //  NUR im Modus „Kopie exportieren": dort ist es eine
+                //  ausdrückliche Tat (sie legt eine neue Datei an), und
+                //  automatisch ausgelöst entstünde bei jedem Takt eine weitere.
+                //  Beim DIREKTEN Speichern ist der Knopf entfallen (Festlegung
+                //  des Nutzers): dort sichert die Fläche von selbst - im Takt
+                //  der Auto-Sicherung und beim Verlassen der Datei. Der
+                //  Änderungspunkt vor dem Dateinamen zeigt weiter an, ob etwas
+                //  noch nicht auf der Platte steht; `Strg+S` bleibt.
                 Rectangle {
-                    width: saveLbl.implicitWidth + 20; height: 26; radius: 6
+                    visible: !Docx.saveDirect
+                    width: visible ? saveLbl.implicitWidth + 20 : 0
+                    height: 26; radius: 6
                     anchors.verticalCenter: parent.verticalCenter
                     color: saveHover.hovered ? Qt.darker(App.themeAccent, 1.1)
                                              : App.themeAccent
@@ -579,7 +604,7 @@ Item {
                             //  Rand und Seitenzahl kommen aus den globalen
                             //  DOCX-Einstellungen (Rand: Einstellungen ▸ Editor,
                             //  Seitenzahl: das Menü rechts daneben).
-                            const e = area.exportPagesToPdf(tgt, Docx.pdfPaddingMm,
+                            const e = area.exportPagesToPdf(tgt,
                                                             Docx.pdfPageNumberPos,
                                                             Docx.pdfPageNumberStyle)
                             if (e.length === 0)
@@ -602,10 +627,13 @@ Item {
                 //  früheren Namen ImageEditUndo/-Redo gab es im String-Katalog
                 //  GAR NICHT - App.uiText gibt bei unbekanntem Namen den Namen
                 //  zurück, im Tooltip stand also wörtlich „ImageEditUndo".
-                DBtn { iconName: "undo"; enabledBtn: editCtl.canUndo
+                //  `canUndoHere`, nicht `canUndo`: die Pfeile meinen dieselbe
+                //  Kette wie `Strg+Z` - nach einem Zug am Lineal also dessen
+                //  eigene, sonst die des Dokuments.
+                DBtn { iconName: "undo"; enabledBtn: editCtl.canUndoHere
                        tip: App.uiText(App.language, "PdfEditUndoTip")
                        onClicked: editCtl.undo() }
-                DBtn { iconName: "redo"; enabledBtn: editCtl.canRedo
+                DBtn { iconName: "redo"; enabledBtn: editCtl.canRedoHere
                        tip: App.uiText(App.language, "PdfEditRedoTip")
                        onClicked: editCtl.redo() }
 
@@ -1206,12 +1234,212 @@ Item {
             }
         }
 
+        //  ── Randlineale ────────────────────────────────────────────────────
+        //  Sie stellen die echten SEITENRÄNDER des Dokuments ein
+        //  (`w:sectPr/w:pgMar`) - Word sieht dieselben, und der PDF-Export malt
+        //  ohnehin die Auslegung, die daran hängt.
+        //  Das senkrechte Lineal liegt RECHTS und nicht wie in Word links:
+        //  links steht die Miniaturen-Leiste (Festlegung des Nutzers).
+        //  IMMER sichtbar, sobald ein Dokument steht - NICHT am Optionen-Modus
+        //  (`Alt+S`) aufgehängt. Der Wunsch nannte zwar Alt+S, aber der
+        //  DOCX-Editor hat gar keinen zweiten Modus: er ist immer der
+        //  Bearbeiten-Modus. An Alt+S gekoppelt fehlten die Lineale jedem, der
+        //  den Optionen-Modus aus hat - genau so gemeldet („sehe die Bars
+        //  nicht"). Ein Lineal ist Werkzeug, keine Beigabe.
+        //  Zu kleine Kacheln bekommen keines: dort bliebe für das Dokument
+        //  nichts übrig (dieselbe Überlegung wie bei der Miniaturen-Leiste).
+        readonly property bool rulersOn: editCtl.ready
+                                         && viewport.width > 360
+                                         && viewport.height > 240
+
+        //  Läuft gerade eine Randänderung samt Neu-Auslegen? Solange folgt die
+        //  Ansicht dem Caret NICHT (s. `onCursorRectChanged`). Der Zug am
+        //  Lineal meldet je Mausbewegung, deshalb ein nachlaufender Timer statt
+        //  eines Merkers je Änderung.
+        property bool sectionSettling: false
+
+        //  Eine Randänderung legt das GANZE Dokument neu aus. Währenddessen
+        //  schrumpft die Inhaltshöhe kurz, und `setContentY` klemmt die Ansicht
+        //  an den Anfang - beim Ziehen am Lineal sprang sie deshalb bei jeder
+        //  Mausbewegung nach oben (vom Nutzer gemeldet). Gemerkt wird die
+        //  Stelle vor der Änderung und danach wieder hergestellt.
+        //
+        //  **ABSOLUT, nicht als Anteil der Gesamthöhe.** Der Anteil war der
+        //  Grund, warum die Datei beim Ziehen sprang: die SEITEN liegen fest
+        //  (das Papier ändert seine Größe nicht, nur der Text darauf fließt
+        //  neu), die Gesamthöhe ändert sich aber mit der Seitenzahl. Wer
+        //  weit unten steht, wurde damit um `Anteil * Höhenänderung`
+        //  verschoben - gemessen an einem 20-Seiten-Dokument bei 93 %
+        //  Dokumentstelle: Inhaltshöhe 21.744 -> 22.887 px, und die Ansicht
+        //  sprang um **1.060 px**. Absolut bleibt dieselbe Papierstelle stehen.
+        //  `-1` heisst „nichts gemerkt". Beim fortlaufenden Ziehen bleibt der
+        //  ZUERST gemerkte Wert stehen - sonst wanderte der Bezug mit jedem
+        //  Zwischenschritt ein Stück weiter.
+        property real _scrollY: -1
+        function rememberScroll() {
+            if (viewport._scrollY >= 0) return
+            //  Läuft gerade das Mausrad, ist das ZIEL der Animation die Stelle,
+            //  die der Nutzer meint - nicht der Zwischenstand, an dem sie
+            //  gerade vorbeikommt.
+            viewport._scrollY = scrollAnim.running ? scrollAnim.to : area.contentY
+        }
+        //  Was `restoreScroll` zuletzt selbst gesetzt hat. Daran erkennt es,
+        //  ob JEMAND ANDERES den Bildlauf inzwischen bewegt hat.
+        property real _lastSetY: -1
+        function restoreScroll() {
+            if (viewport._scrollY < 0) return
+            //  NICHT gegen eine laufende Rad-Animation schreiben: sonst
+            //  schreiben zwei an derselben Eigenschaft und das Bild zappelt
+            //  (vom Nutzer gemeldet: Mausrad + Lineal = Springen). Die
+            //  Animation läuft ohnehin auf `_scrollY` zu.
+            if (scrollAnim.running) return
+            //  **Wer sonst gescrollt hat, gewinnt.** Steht `contentY` woanders,
+            //  als wir es zuletzt gesetzt haben, hat es jemand anderes bewegt -
+            //  das Rad, die Bildlaufleiste, ein Sprung zu einer Seite. Dann
+            //  wird der Anker NACHGEZOGEN statt dagegen zu schreiben. Ohne
+            //  diese Regel zog die gemerkte Stelle die Ansicht nach dem
+            //  Loslassen des Linealgriffs zurueck (vom Nutzer gemeldet;
+            //  gemessen: contentY 513,7 -> 432,4, und das Randlineal sprang
+            //  mit, weil es an der sichtbaren Seite haengt).
+            if (viewport._lastSetY >= 0
+                && Math.abs(area.contentY - viewport._lastSetY) > 1)
+                viewport._scrollY = area.contentY
+            const maxY = Math.max(0, area.contentHeight - viewport.height)
+            const y = Math.max(0, Math.min(viewport._scrollY, maxY))
+            area.contentY = y
+            viewport._lastSetY = y
+        }
+        //  Der Nutzer hat selbst gescrollt, während eine Randänderung nachläuft.
+        //  Dann wird SEIN Ziel der neue Anker - **nicht einfach vergessen.**
+        //  Vergessen sah richtig aus und war es nicht: der nächste
+        //  Zwischenschritt des Ziehens nahm dann einen Zwischenstand der
+        //  laufenden Rad-Animation als Anker, und nach dem Loslassen zog die
+        //  Ansicht dorthin zurück (vom Nutzer gemeldet: „beim Loslassen springt
+        //  die zurück"; gemessen `bench_docxruler`: contentY 493,8 -> 432,4,
+        //  und das Randlineal sprang mit, weil es an der sichtbaren Seite hängt).
+        //  Übergeben wird das ZIEL der Radbewegung, nicht der Stand unterwegs.
+        function noteUserScroll(targetY) {
+            viewport._scrollY = Math.max(0, targetY)
+            viewport._lastSetY = -1          // ab hier gilt die Stelle des Nutzers
+        }
+        Timer {
+            id: sectionSettle
+            interval: 400
+            onTriggered: {
+                viewport.restoreScroll()
+                viewport._scrollY = -1
+                viewport._lastSetY = -1
+                viewport.sectionSettling = false
+            }
+        }
+        Connections {
+            target: editCtl
+            function onSectionChanged() {
+                viewport.sectionSettling = true
+                //  Sofort UND am Ende der Ruhezeit: die Absätze werden erst
+                //  beim Zeichnen vermessen, die endgültige Höhe steht also
+                //  nicht schon beim Signal fest.
+                Qt.callLater(viewport.restoreScroll)
+                sectionSettle.restart()
+            }
+        }
+
+        DocxRuler {
+            id: hRuler
+            visible: viewport.rulersOn
+            height: visible ? 18 : 0
+            anchors.top: parent.top
+            anchors.left: area.left
+            anchors.right: area.right
+            z: 1
+
+            pageLenMm: editCtl.pageWidthMm
+            pageStart: area.pageOffsetX
+            scrollY:   area.contentY
+            pagePx:    area.pageWidthPx
+            startMm:   editCtl.marginLeftMm
+            endMm:     editCtl.marginRightMm
+            //  Alle vier Ränder sind einstellbar (Festlegung des Nutzers -
+            //  der frühere „einfache" Modus mit nur zwei Griffen ist entfallen).
+            startEnabled: true
+            endEnabled:   true
+            //  Nur die EIGENEN beiden Ränder - der Knopf am senkrechten Lineal
+            //  hat mit links/rechts nichts zu tun (vom Nutzer gemeldet: beide
+            //  setzten alles zurück).
+            resettable:   editCtl.marginsChangedH
+
+            //  ERST den Tastaturfokus holen, DANN die Kette merken. Die Tasten
+            //  laufen durch `DocxTextArea::keyPressEvent`, und die bekommt sie nur
+            //  mit aktivem Fokus - den holt sie sich sonst allein beim Klick IN DEN
+            //  TEXT. Wer nur am Lineal zog, hatte ihn nie, und `Strg+Z` lief ins
+            //  Leere (vom Nutzer gemeldet). `forceActiveFocus` loest keinen
+            //  Mausdruck aus, setzt also `rulerFocus` nicht zurueck.
+            onGrabbed: {
+                area.forceActiveFocus()
+                editCtl.setRulerFocus(1)
+            }
+            onMarginsRequested: function(l, r) {
+                viewport.rememberScroll()
+                editCtl.setPageMarginsMm(editCtl.marginTopMm, r,
+                                         editCtl.marginBottomMm, l, 1)
+            }
+            onResetRequested: {
+                viewport.rememberScroll()
+                editCtl.resetPageMargins(1)
+            }
+        }
+
+        DocxRuler {
+            id: vRuler
+            vertical: true
+            visible: viewport.rulersOn
+            width: visible ? 18 : 0
+            anchors.top: hRuler.bottom
+            anchors.bottom: parent.bottom
+            //  VOR der Bildlaufleiste, nicht darunter: `vbar` hängt an derselben
+            //  Kante und ist später im Baum erklärt - sie nähme dem Lineal
+            //  sonst jeden Mausdruck ab (am Prüfstand gemessen: der Zug am
+            //  senkrechten Lineal blieb wirkungslos, der am waagerechten nicht).
+            anchors.right: vbar.visible ? vbar.left : parent.right
+            z: 1
+
+            pageLenMm: editCtl.pageHeightMm
+            pageStart: area.currentPageTopPx
+            scrollY:   area.contentY
+            pagePx:    area.pageHeightPx
+            startMm:   editCtl.marginTopMm
+            endMm:     editCtl.marginBottomMm
+            startEnabled: true
+            endEnabled:   true
+            resettable:   editCtl.marginsChangedV
+
+            //  ERST den Tastaturfokus holen, DANN die Kette merken. Die Tasten
+            //  laufen durch `DocxTextArea::keyPressEvent`, und die bekommt sie nur
+            //  mit aktivem Fokus - den holt sie sich sonst allein beim Klick IN DEN
+            //  TEXT. Wer nur am Lineal zog, hatte ihn nie, und `Strg+Z` lief ins
+            //  Leere (vom Nutzer gemeldet). `forceActiveFocus` loest keinen
+            //  Mausdruck aus, setzt also `rulerFocus` nicht zurueck.
+            onGrabbed: {
+                area.forceActiveFocus()
+                editCtl.setRulerFocus(2)
+            }
+            onMarginsRequested: function(t, b) {
+                viewport.rememberScroll()
+                editCtl.setPageMarginsMm(t, editCtl.marginRightMm,
+                                         b, editCtl.marginLeftMm, 2)
+            }
+            onResetRequested: {
+                viewport.rememberScroll()
+                editCtl.resetPageMargins(2)
+            }
+        }
+
         DocxTextArea {
             id: area
-            anchors.top: parent.top
+            anchors.top: hRuler.visible ? hRuler.bottom : parent.top
             anchors.bottom: parent.bottom
             anchors.left: thumbBar.visible ? thumbBar.right : parent.left
-            anchors.right: parent.right
+            anchors.right: vRuler.visible ? vRuler.left : parent.right
             ctl: editCtl
             //  Die Seitenzahl gehört auf die Seite, sobald sie eingestellt ist -
             //  nicht erst ins ausgegebene PDF (Nutzerbefund). Anzeige,
@@ -1227,7 +1455,21 @@ Item {
             //  (Tabelle oder Bild) - sonst bleibt der Klick wie bisher folgenlos.
             onContextMenuRequested: (mx, my, block) => ctxMenu.openFor(mx, my, block)
             //  Cursor sichtbar halten (Inhalts- -> Viewport-Koordinaten).
+            //  NICHT, solange gerade die Seitenränder verstellt werden: eine
+            //  Randänderung legt das ganze Dokument neu aus, dabei wandert der
+            //  Caret - und die Ansicht sprang dorthin, also meist an den Anfang
+            //  (vom Nutzer gemeldet: „die Ansicht springt immer hoch"). Wer am
+            //  Lineal zieht, will die Stelle behalten, die er vor sich hat.
             onCursorRectChanged: {
+                //  `sectionSettling` allein reicht NICHT: es wird erst in
+                //  `onSectionChanged` gesetzt, also NACH der ersten
+                //  Caret-Meldung derselben Randänderung. Genau diese eine
+                //  Verfolgung lief durch und zog die Ansicht über den ganzen
+                //  Zug um 671 px mit (gemessen, `bench_docxruler`: 20162 ->
+                //  20833 in einer OutCubic-Kurve). Der ANKER dagegen steht
+                //  schon, bevor die Ränder überhaupt geschrieben werden
+                //  (`onMarginsRequested` merkt zuerst, ändert dann).
+                if (viewport.sectionSettling || viewport._scrollY >= 0) return
                 if (cursorH <= 0) return
                 if (cursorY < contentY + 8)
                     scrollAnim.to = Math.max(0, cursorY - 40)
@@ -2193,6 +2435,9 @@ Item {
                 scrollAnim.to = Math.max(0,
                     Math.min(base - dy,
                              Math.max(0, area.contentHeight - viewport.height)))
+                //  Erst melden, dann starten: ab jetzt gilt die Stelle des
+                //  Nutzers, nicht die vor einer laufenden Randänderung gemerkte.
+                viewport.noteUserScroll(scrollAnim.to)
                 scrollAnim.restart()
             }
         }
@@ -2209,8 +2454,11 @@ Item {
                   ? Math.min(1.0, viewport.height / area.contentHeight) : 1.0
             position: area.contentHeight > 0 ? area.contentY / area.contentHeight : 0
             onPositionChanged: {
-                if (pressed)
+                if (pressed) {
+                    // s. Rad: der Nutzer gewinnt, sein Ziel wird der Anker
+                    viewport.noteUserScroll(position * area.contentHeight)
                     area.contentY = position * area.contentHeight
+                }
             }
         }
     }

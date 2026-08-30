@@ -165,7 +165,7 @@ Item {
                 }
             }
 
-            // ── Ziehen auf ein Lesezeichen: verschieben oder kopieren ─────────
+            // ── Ziehen auf einen Ordner: verschieben oder kopieren ────────────
             SettingsGroup {
                 title: App.uiText(App.language, "SettingsDropMoveLabel")
                 Layout.fillWidth: true

@@ -129,6 +129,12 @@ public:
     virtual void setMonoPlay(bool v) = 0;
     //  Was passiert, wenn eine Kachel auf ein LESEZEICHEN gezogen wird:
     //  true = verschieben (Standard), false = kopieren.
+    //  Versteckte Dateien (Punkt am Anfang) mit einlesen? Vorgabe AUS: in einem
+    //  Medienordner sind das fast immer Beiwerk (`.DS_Store`, `.thumbnails`).
+    //  Wer in einem Projektordner arbeitet, will `.gitignore` aber sehen
+    //  (vom Nutzer gemeldet) - deshalb schaltbar statt fest zu.
+    virtual bool showHiddenFiles() const = 0;
+    virtual void setShowHiddenFiles(bool v) = 0;
     virtual bool fileDropMove() const = 0;
     virtual void setFileDropMove(bool v) = 0;
 
@@ -212,11 +218,6 @@ public:
     //  Sitzung); false = „Kopie exportieren" (<Name>_edited(.n).docx).
     virtual bool docxSaveDirect() const = 0;
     virtual void setDocxSaveDirect(bool v) = 0;
-    //  DOCX -> PDF: zusätzlicher Rand in MILLIMETERN (0 = wie bisher). Das
-    //  Papierformat bleibt dabei das aus Word - der Inhalt wird maßstäblich
-    //  kleiner gemalt (Festlegung des Nutzers).
-    virtual int  docxPdfPaddingMm() const = 0;
-    virtual void setDocxPdfPaddingMm(int mm) = 0;
     //  Seitenzahl unten: 0 = aus, 1 = links, 2 = mittig, 3 = rechts.
     virtual int  docxPdfPageNumberPos() const = 0;
     virtual void setDocxPdfPageNumberPos(int pos) = 0;
@@ -267,9 +268,36 @@ public:
     virtual void        setAudioEqPreamp(double db) = 0;
     virtual QStringList audioEqPresets() const = 0;
     virtual void        setAudioEqPresets(const QStringList& presets) = 0;
+    //  ── Die MITGELIEFERTEN Voreinstellungen sind veraenderbar ────────────────
+    //  Sie stehen fest im Programm; was der Nutzer daran aendert, liegt
+    //  DANEBEN - so bleibt jederzeit ein Rueckweg (Festlegung des Nutzers).
+    //  `audioEqHiddenPresets`: Namen mitgelieferter Voreinstellungen, die
+    //  geloescht wurden. Eine ueberschriebene steht schlicht als eigene mit
+    //  demselben Namen in `audioEqPresets` und gewinnt dort.
+    //  `audioEqAutoPreamp`: rechnet der Equalizer selbst gegen das
+    //  Uebersteuern? AN bedeutet, dass die Vorverstaerkung bei jedem
+    //  Reglerwechsel auf die Spitzenverstaerkung der Kette gesetzt wird. AUS
+    //  heisst: es wird NICHTS gerechnet, der Regler gehoert ganz dem Nutzer -
+    //  auch wenn er damit uebersteuert (Festlegung des Nutzers).
+    virtual bool        audioEqAutoPreamp() const = 0;
+    virtual void        setAudioEqAutoPreamp(bool on) = 0;
+    virtual QStringList audioEqHiddenPresets() const = 0;
+    virtual void        setAudioEqHiddenPresets(const QStringList& names) = 0;
+    //  Anzeigereihenfolge (Namen). Was hier fehlt, haengt sich hinten an -
+    //  eine neue mitgelieferte Voreinstellung geht damit nie verloren.
+    virtual QStringList audioEqPresetOrder() const = 0;
+    virtual void        setAudioEqPresetOrder(const QStringList& names) = 0;
     //  War der Player-Modus beim Beenden an? (Er soll den Neustart überleben.)
     virtual bool        audioPlayerMode() const = 0;
     virtual void        setAudioPlayerMode(bool on) = 0;
+    //  … und in WELCHER Hälfte er stand. Ohne das bekam ihn beim Neustart
+    //  schlicht die zuerst gebaute Hälfte - bei geteiltem Fenster also oft die
+    //  falsche (vom Nutzer gemeldet: „links und rechts sind vertauscht").
+    //  Bitmaske: Bit i = Haelfte i stand im Player-Modus. Eine einzelne
+    //  Platznummer reichte nicht - bei geteiltem Fenster hat JEDE Haelfte einen
+    //  eigenen Modus, und beide sollen so wiederkommen, wie sie standen.
+    virtual int         audioPlayerModeMask() const = 0;
+    virtual void        setAudioPlayerModeMask(int mask) = 0;
     //  Darstellung im Player-Modus: false = Kacheln wie sonst, true = Liste.
     virtual bool        audioListLayout() const = 0;
     virtual void        setAudioListLayout(bool on) = 0;

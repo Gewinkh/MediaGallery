@@ -3,9 +3,7 @@
 // ══════════════════════════════════════════════════════════════════════════════
 //  ERZEUGT, NICHT GETIPPT.
 //
-//  Quelle sind die devps-Metriken von groff (`/usr/share/groff/*/font/devps/`),
-//  die per `afmtodit` aus den Adobe-AFM-Dateien der 14 Standardschriften
-//  stammen. Von Hand abgeschriebene Breiten wären genau die Art Datenmenge, in
+//  Von Hand abgeschriebene Breiten wären genau die Art Datenmenge, in
 //  der sich ein falscher Wert lautlos versteckt - und eine falsche Breite
 //  verschiebt die Schreibmarke Zeichen für Zeichen weiter aus der Zeile.
 //  Stichproben stehen im Testtreiber (`tests/pdf/tst_pdfbasewidths.cpp`).

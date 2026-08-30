@@ -22,6 +22,14 @@ struct SpellChecker::Impl {
     bool encodingOk = false;
 #endif
     QSet<QString> ignored;
+    //  Vorschlaege je Wort. Hunspell erzeugt und bewertet dafuer viele
+    //  Kandidaten - GEMESSEN 6,4 ms fuer EIN Wort, gegen 0,0002 ms fuer
+    //  `isCorrect`. Der Aufruf sitzt im GUI-Faden (Kontextmenue), und dasselbe
+    //  falsch geschriebene Wort steht in einem Text meist mehrfach.
+    //  Klein gehalten: ein Kontextmenue fragt EIN Wort, mehr als eine Handvoll
+    //  verschiedene sieht ein Nutzer in einer Sitzung selten hintereinander.
+    mutable QHash<QString, QStringList> sugCache;
+    static constexpr int kSugCacheMax = 64;
 };
 
 SpellChecker::SpellChecker() : d(std::make_unique<Impl>()) {}
@@ -74,6 +82,8 @@ QStringList SpellChecker::availableLanguages(const QString& extraDir) {
 
 bool SpellChecker::open(const QString& language, const QString& extraDir) {
     m_lang.clear();
+    //  Anderes Woerterbuch = andere Vorschlaege.
+    d->sugCache.clear();
 #ifdef MG_HAVE_HUNSPELL
     d->hs.reset();
     d->encodingOk = false;
@@ -128,6 +138,9 @@ bool SpellChecker::available() const {
 }
 
 void SpellChecker::ignoreWord(const QString& word) {
+    //  Ein ignoriertes Wort wird nicht mehr beanstandet - alte Vorschlaege
+    //  dazu duerfen nicht stehen bleiben.
+    d->sugCache.remove(word);
     if (!word.isEmpty()) d->ignored.insert(word);
 }
 
@@ -148,6 +161,8 @@ bool SpellChecker::isCorrect(const QString& word) const {
 QStringList SpellChecker::suggest(const QString& word) const {
 #ifdef MG_HAVE_HUNSPELL
     if (!available() || word.isEmpty()) return {};
+    const auto cached = d->sugCache.constFind(word);
+    if (cached != d->sugCache.cend()) return cached.value();
     QStringEncoder& e = const_cast<QStringEncoder&>(d->enc);
     QStringDecoder& dd = const_cast<QStringDecoder&>(d->dec);
     const QByteArray enc = e.encode(word);
@@ -162,6 +177,10 @@ QStringList SpellChecker::suggest(const QString& word) const {
         if (!t.isEmpty()) out << t;
         if (out.size() >= 8) break;        // mehr passt in kein Kontextmenü
     }
+    //  Voll? Dann von vorn - eine Verdraengung nach Alter waere hier teurer
+    //  als der Treffer wert ist, und die Liste ist ohnehin klein.
+    if (d->sugCache.size() >= Impl::kSugCacheMax) d->sugCache.clear();
+    d->sugCache.insert(word, out);
     return out;
 #else
     Q_UNUSED(word)
@@ -199,7 +218,13 @@ std::vector<SpellRange> SpellChecker::checkText(const QString& text) const {
         //  (B2B, MP3) und reine Großschreibung (Abkürzungen wie DOCX) - sonst
         //  wäre die Anzeige voller roter Linien, die niemand abstellen kann.
         if (hasDigit || word.size() < 2) continue;
-        if (word == word.toUpper()) continue;
+        //  Die Abkürzungs-Regel gilt NUR für Schriften, die überhaupt zwei
+        //  Fälle kennen. In Arabisch, Hebräisch, Chinesisch oder Thai ist jedes
+        //  Wort gleich seiner Großform - die Regel hätte dort ALLES übersprungen
+        //  und die Prüfung damit still abgeschaltet, obwohl das Wörterbuch da
+        //  ist und der Fehler erkannt wird.
+        const bool hasCase = (word != word.toLower());
+        if (hasCase && word == word.toUpper()) continue;
         if (isCorrect(word)) continue;
         out.push_back({ start, end - start });
     }

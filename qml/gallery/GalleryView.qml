@@ -44,10 +44,10 @@ Rectangle {
     signal extractPagesRequested(string folderPath)
     //  Meldung an die Shell (sie führt die Statuszeile).
     signal statusRequested(string text)
-    //  Eine Datei wurde auf eine Ordnerkachel gezogen. Die Shell entscheidet
-    //  (Verschieben/Kopieren, Namenskollision) - sie hat den Dialog dafür schon
-    //  für die Lesezeichen-Leiste.
-    signal folderDropRequested(string sourcePath, string folderPath)
+    //  Eine oder MEHRERE Dateien wurden auf eine Ordnerkachel gezogen. Die
+    //  Shell entscheidet (Verschieben/Kopieren, Namenskollision) - sie hat den
+    //  Dialog dafür schon für die Lesezeichen-Leiste.
+    signal folderDropRequested(var sourcePaths, string folderPath)
     //  Dateien von AUSSEN (Dateimanager, Browser) - sie werden kopiert.
     signal externalDropRequested(var urls, string folderPath)
 
@@ -92,7 +92,79 @@ Rectangle {
         return info.ownerFolder
     }
 
+    // ── Mehrfachauswahl ─────────────────────────────────────────────────────
+    //  Der ZUSTAND liegt im Modell (`mediaModel.selected*`); hier steht nur, was
+    //  die ANSICHTS-Reihenfolge braucht - ein Umschalt-Bereich meint „von der
+    //  zuletzt angefassten Kachel bis zu dieser", und das sind Proxy-Zeilen.
+    //
+    //  `selAnchor` ist die zuletzt mit Strg oder Umschalt angefasste Zeile. Ohne
+    //  ihn haette ein Umschalt-Klick keinen Anfang; er verhaelt sich dann wie
+    //  ein Strg-Klick und setzt den Anker selbst.
+    property int selAnchor: -1
+
+    function selectFromTile(proxyRow, mods) {
+        if (proxyRow < 0) return
+        //  Wer in die Galerie klickt, meint die Galerie - ab jetzt gehoeren ihr
+        //  die Tasten. Ohne das behielt den Fokus, was ihn zuletzt hatte (das
+        //  Suchfeld der Filterleiste, ein geschlossener Dialog, die andere
+        //  Haelfte), und `Entf` lief dorthin statt in die Auswahl. Am
+        //  Pruefstand war der Fehler nicht zu sehen: dort hatte die Ansicht den
+        //  Fokus ohnehin (`bench_shell del2`). Kostet nichts, wenn er schon da
+        //  ist, und ist das Verhalten jedes Dateimanagers.
+        root.forceActiveFocus()
+        const shift = (mods & Qt.ShiftModifier) !== 0
+        const ctrl  = (mods & Qt.ControlModifier) !== 0
+        if (shift && root.selAnchor >= 0) {
+            //  Strg zusaetzlich = den Bereich HINZUnehmen, ohne das Bisherige
+            //  wegzuwerfen (wie im Dateimanager).
+            galleryModel.selectRange(root.selAnchor, proxyRow, ctrl)
+            return
+        }
+        const path = galleryModel.filePathAt(proxyRow)
+        if (path.length === 0) return
+        mediaModel.toggleSelected(path)
+        root.selAnchor = proxyRow
+    }
+
+    //  Strg+A / Esc - aus den Tastenkuerzeln der Hälfte (s. GalleryPane).
+    function selectAll() {
+        galleryModel.selectAllVisible()
+        root.selAnchor = galleryModel.count > 0 ? 0 : -1
+    }
+    function clearSelection() {
+        mediaModel.clearSelection()
+        root.selAnchor = -1
+    }
+
+    //  In die Zwischenablage: die ganze Auswahl, wenn `path` dazugehoert und
+    //  mehr als eines gewaehlt ist - sonst genau diese eine Datei. Ordner
+    //  bleiben aussen vor (`filesOnly`), sie sind hier nicht kopierbar.
+    function copyToClipboard(path) {
+        const many = mediaModel.selectionCount > 1 && mediaModel.isSelected(path)
+        const list = many ? galleryModel.selectedPaths(true)
+                          : (path.length > 0 ? [path] : [])
+        const n = App.copyFilesToClipboard(list)
+        if (n > 0)
+            root.statusRequested(App.uiText(App.language, "SelCopied")
+                                 .replace("%1", n))
+    }
+
     //  Der Ordner, in dem eine Datei liegt - rein textuell, ohne Dateisystem.
+    //  Gehört die Datei IRGENDEINER Hälfte dieser App? Für `mediaModel` ist eine
+    //  Datei aus der ANDEREN Hälfte fremd - app-intern ist der Zug trotzdem, und
+    //  er soll deshalb der Einstellung „Verschieben statt Kopieren" folgen statt
+    //  blind zu kopieren. Dieselbe Frage beantwortet die Shell mit
+    //  `_modelOwning`; hier steht sie, weil hier die Entscheidung fällt.
+    function _appOwnsFile(path) {
+        if (mediaModel.ownsFile(path)) return true
+        const list = App.panes
+        for (var i = 0; i < list.length; ++i) {
+            const m = list[i] ? list[i].mediaModel : null
+            if (m && m.ownsFile(path)) return true
+        }
+        return false
+    }
+
     function _parentOf(path) {
         const cut = Math.max(path.lastIndexOf("/"), path.lastIndexOf("\\"))
         return cut > 0 ? path.substring(0, cut) : ""
@@ -142,6 +214,19 @@ Rectangle {
     //  Schreibt der Nutzer gerade (Umbenennen-Feld, Filterleiste), gehören die
     //  Pfeiltasten IHM. Ein einzeiliges TextField lässt ↑/↓ sonst nach oben
     //  durch und die Galerie spränge beim Tippen. Muster aus `FullscreenViewer`.
+    //  Die Sammel-Löschung anstoßen. EIN Weg für beide Auslöser (Kontextmenü
+    //  der Kachel und die Entf-Taste der Hälfte) - der Dialog gehört dieser
+    //  Datei, und zwei Öffnungswege wären zwei Stellen, an denen die Rückfrage
+    //  vergessen werden kann. Ohne Auswahl passiert NICHTS; gelöscht wird nie
+    //  ohne Nachfrage.
+    function requestDeleteSelection() {
+        const n = mediaModel.selectionCount
+        if (n <= 0) return false
+        selDeleteDialog.count = n
+        selDeleteDialog.open()
+        return true
+    }
+
     function _editableTextFocused() {
         var f = root.Window.activeFocusItem
         if (!f) return false
@@ -179,8 +264,32 @@ Rectangle {
         if (root._editableTextFocused()) return
         root.scrollByPixels(root._keyStep); event.accepted = true
     }
+    //  Esc hebt die Mehrfachauswahl auf. Bewusst ein TASTENereignis und kein
+    //  `Shortcut`: ein Kuerzel wird vor den Tastenereignissen ausgewertet und
+    //  haette einem offenen Dialog sein Escape weggenommen. Hier greift es nur,
+    //  solange die Galerie selbst den Tastaturfokus hat.
+    Keys.onEscapePressed: function(event) {
+        if (root._editableTextFocused()) return
+        if (mediaModel.selectionCount === 0) return
+        root.clearSelection()
+        event.accepted = true
+    }
     Keys.onPressed: function(event) {
         if (root._editableTextFocused()) return
+        //  Entf löscht die AUSWAHL - mit derselben Rückfrage wie das
+        //  Kontextmenü; ohne Auswahl bleibt sie folgenlos.
+        //
+        //  BEWUSST HIER und nicht als `Shortcut` in der Hälfte: ein Kürzel
+        //  erreicht die Landkarte nur über ein aktives Fenster und einen
+        //  Fokus, der bei keinem Popup liegt. Am Prüfstand gemessen
+        //  (`bench_shell del`): `Strg+A` kam an, `Entf` NICHT - auch nachdem
+        //  der offene Dialog geschlossen war und der Fokus wieder auf der
+        //  Hälfte lag. Die Tastenbehandlung der Ansicht ist der Weg, den die
+        //  Galerie ohnehin nimmt (PageUp/PageDown/Pos1/Ende stehen daneben).
+        if (event.key === Qt.Key_Delete) {
+            if (root.requestDeleteSelection()) event.accepted = true
+            return
+        }
         if (event.key === Qt.Key_PageDown) {
             root.scrollByPixels(grid.height * 0.9); event.accepted = true
         } else if (event.key === Qt.Key_PageUp) {
@@ -323,6 +432,123 @@ Rectangle {
     }
 
     // ── Raster ──────────────────────────────────────────────────────────────
+    // ── Auswahlrahmen (Gummiband) ───────────────────────────────────────────
+    //  Ein Zug auf LEERER Fläche zieht einen Rahmen; was er überdeckt, wird
+    //  ausgewählt. Die Fläche liegt VOR der ListView im Baum und damit unter
+    //  ihr: eine Kachel nimmt den Druck zuerst (sie zieht die Datei hinaus),
+    //  freier Raum fällt hierher durch. Ein `z` bräuchte es dafür nicht - die
+    //  Reihenfolge im Baum entscheidet.
+    //
+    //  ES WIRD NICHT MITGESCROLLT. Der Rahmen wirkt auf das, was zu sehen ist;
+    //  ein Rand-Scrollen wie beim Ziehen einer Datei würde Kacheln unter dem
+    //  Rahmen hindurchlaufen lassen, und was oben hinausrutscht, wäre weder
+    //  sichtbar gewählt noch sichtbar abgewählt. Die Grenze steht in
+    //  LIMITATIONS.md.
+    property bool bandActive: false
+    //  Inhalts-Koordinaten (also mitsamt `contentY`), damit ein Rahmen einen
+    //  Scroll zwischendurch unbeschadet übersteht.
+    property real bandAx: 0
+    property real bandAy: 0
+    property real bandBx: 0
+    property real bandBy: 0
+    readonly property real _bandL: Math.min(root.bandAx, root.bandBx)
+    readonly property real _bandR: Math.max(root.bandAx, root.bandBx)
+    readonly property real _bandT: Math.min(root.bandAy, root.bandBy)
+    readonly property real _bandB: Math.max(root.bandAy, root.bandBy)
+
+    //  Welche PROXY-Bereiche überdeckt der Rahmen? Ergebnis ist eine flache
+    //  Liste [a0,b0,a1,b1,…] - das Proxy-Modell setzt daraus die Auswahl.
+    //
+    //  Gelaufen wird nur über die AUSGELEGTEN Zeilen (`itemAtIndex` liefert für
+    //  alles andere null): mehr als das Sichtbare kann der Rahmen ohnehin nicht
+    //  meinen, und ein Lauf über alle Zeilen wäre bei 78.000 Dateien je
+    //  Mausbewegung ein paar tausend Schritte.
+    function bandRanges() {
+        const out = []
+        if (rowModel.count === 0) return out
+        let r = grid.indexAt(1, Math.max(0, grid.contentY + 1))
+        if (r < 0) r = 0
+        for (; r < rowModel.count; ++r) {
+            const it = grid.itemAtIndex(r)
+            if (!it) break                       // ab hier ist nichts ausgelegt
+            if (it.y > root._bandB) break        // der Rahmen endet darüber
+            if (it.y + it.height < root._bandT) continue
+            const info = rowModel.rowInfo(r)
+            if (!info || info.kind !== 0 || info.count <= 0) continue
+            //  Innerhalb der Zeile liegen die Kacheln unter der Bandpolsterung.
+            const padTop = (info.openMask !== 0) ? root.bandPad : 0
+            const top    = it.y + padTop
+            if (top > root._bandB || top + root.cellH < root._bandT) continue
+            //  Waagerecht entscheidet die Spalte - dieselbe Rechnung wie beim
+            //  Ablegen (`folderAtPoint`), damit beide dasselbe Raster sehen.
+            const inset = info.depth * root.levelInset
+            const relL  = root._bandL - inset
+            const relR  = root._bandR - inset
+            if (relR < 0 || relL > info.count * root.cellW) continue
+            const c0 = Math.max(0, Math.floor(relL / root.cellW))
+            const c1 = Math.min(info.count - 1, Math.floor(relR / root.cellW))
+            if (c1 < c0) continue
+            out.push(info.first + c0, info.first + c1)
+        }
+        return out
+    }
+
+    MouseArea {
+        id: bandArea
+        anchors.fill: parent
+        acceptedButtons: Qt.LeftButton
+        //  Der Rahmen beginnt erst nach einer Schwelle - ein einfacher Klick auf
+        //  freie Fläche soll die Auswahl aufheben, nicht einen 2-px-Rahmen
+        //  ziehen (dieselbe Lehre wie beim Herausziehen einer Kachel).
+        property real pressX: 0
+        property real pressY: 0
+        property bool armed: false
+        property bool additive: false
+
+        onPressed: function(mouse) {
+            root.forceActiveFocus()          // s. selectFromTile
+            bandArea.pressX  = mouse.x - grid.x
+            bandArea.pressY  = mouse.y - grid.y + grid.contentY
+            bandArea.additive = (mouse.modifiers & Qt.ControlModifier) !== 0
+            bandArea.armed   = true
+            root.bandActive  = false
+        }
+        onPositionChanged: function(mouse) {
+            if (!bandArea.armed) return
+            const cx = mouse.x - grid.x
+            const cy = mouse.y - grid.y + grid.contentY
+            if (!root.bandActive) {
+                if (Math.abs(cx - bandArea.pressX) < 8
+                    && Math.abs(cy - bandArea.pressY) < 8)
+                    return                        // noch ein Klick, kein Zug
+                root.bandActive = true
+                root.bandAx = bandArea.pressX
+                root.bandAy = bandArea.pressY
+                galleryModel.beginBand(bandArea.additive)
+            }
+            root.bandBx = cx
+            root.bandBy = cy
+            galleryModel.updateBand(root.bandRanges())
+        }
+        onReleased: {
+            bandArea.armed = false
+            if (root.bandActive) {
+                galleryModel.endBand()
+                root.bandActive = false
+                //  Der Anker fuer einen spaeteren Umschalt-Klick ist die Zeile,
+                //  an der der Rahmen begann.
+                root.selAnchor = -1
+            } else {
+                //  Ein Klick ins Leere hebt die Auswahl auf.
+                root.clearSelection()
+            }
+        }
+        onCanceled: {
+            bandArea.armed = false
+            if (root.bandActive) { galleryModel.endBand(); root.bandActive = false }
+        }
+    }
+
     //  Eine ListView über ZEILEN, kein GridView über Kacheln: ein GridView hat
     //  gleich hohe Zellen und kann eine Zeile nicht umbrechen - aufgeklappte
     //  Unterordner brauchen aber genau das. Das Delegate-Recycling bleibt
@@ -617,6 +843,26 @@ Rectangle {
                         modeTag: root.modeTag
                         covered: root.covered
 
+                        proxyRow: cell.d && cell.d.row !== undefined ? cell.d.row : -1
+                        //  Der Auswahlzustand kommt NICHT aus den Kacheldaten,
+                        //  sondern direkt aus dem Modell: `selectionRevision`
+                        //  ist die Abhaengigkeit, `isSelected` die Antwort.
+                        //  Ueber die Kacheldaten kostete jede Mausbewegung des
+                        //  Auswahlrahmens den vollen Umbau aller sichtbaren
+                        //  Kacheln - gemessen 1145 statt 60 µs je Bewegung.
+                        selected: mediaModel.selectionRevision >= 0
+                                  && mediaModel.isSelected(cell.filePath)
+
+                        onSelectRequested: function(row, mods) {
+                            root.selectFromTile(row, mods)
+                        }
+                        onSelectionResetRequested: mediaModel.clearSelection()
+                        onCopyRequested: function(p) { root.copyToClipboard(p) }
+                        //  Die Zahl aus dem Signal wird nicht gebraucht - die
+                        //  Auswahl kennt sie selbst, und EINE Quelle ist besser
+                        //  als zwei, die auseinanderlaufen koennen.
+                        onDeleteSelectionRequested: root.requestDeleteSelection()
+
                         onActivated: function(p) { root.activated(p) }
                         onFileClicked: function(p) { root.fileClicked(p) }
                         onFolderOpenRequested: function(p) { root.folderOpenRequested(p) }
@@ -869,12 +1115,24 @@ Rectangle {
         }
         anchors.centerIn: parent
         modal: true
+        //  **Eingabetaste bestaetigt** - s. `companionDialog`.
+        focus: true
+        onAccepted: {
+            //  Ohne Papierkorb passiert NICHTS - ein Ordner kann beliebig viel
+            //  enthalten, und ohne Rückweg wäre das die falsche Zusage
+            //  (s. MediaModel::deleteFolder).
+            if (!mediaModel.deleteFolder(folderDeleteDialog.targetPath))
+                root.statusRequested(App.uiText(App.language, "DeleteFolderNoTrash"))
+        }
         padding: 18
         background: Rectangle {
             color: App.themeCard; radius: 10
             border.color: App.themeBorder; border.width: 1
         }
         contentItem: Column {
+            focus: true
+            Keys.onReturnPressed: function(e) { folderDeleteDialog.accept(); e.accepted = true }
+            Keys.onEnterPressed:  function(e) { folderDeleteDialog.accept(); e.accepted = true }
             spacing: 10
             Text {
                 text: App.uiText(App.language, "DeleteFolderTitle")
@@ -899,14 +1157,7 @@ Rectangle {
                 }
                 Button {
                     text: App.uiText(App.language, "DeleteMediaConfirm")
-                    onClicked: {
-                        //  Ohne Papierkorb passiert NICHTS - ein Ordner kann
-                        //  beliebig viel enthalten, und ohne Rückweg wäre das
-                        //  die falsche Zusage (s. MediaModel::deleteFolder).
-                        if (!mediaModel.deleteFolder(folderDeleteDialog.targetPath))
-                            root.statusRequested(App.uiText(App.language, "DeleteFolderNoTrash"))
-                        folderDeleteDialog.close()
-                    }
+                    onClicked: folderDeleteDialog.accept()
                 }
             }
         }
@@ -924,12 +1175,29 @@ Rectangle {
         property int    kind: 1
         anchors.centerIn: parent
         modal: true
+        //  **Eingabetaste bestaetigt.** Die Tat steht in `onAccepted`, die
+        //  Knoepfe rufen nur `accept()` - so gibt es EINEN Weg zum Loeschen,
+        //  gleich ob geklickt oder `Enter` gedrueckt wird (Wunsch des Nutzers:
+        //  fuer JEDE Loeschrueckfrage, nicht nur die der Entf-Taste).
+        //  `focus: true` ist Pflicht: ohne Tastaturfokus kommt `Return` beim
+        //  Dialog gar nicht an. `Esc` schliesst ihn ohnehin (`closePolicy`).
+        //  **`Return` haengt am `contentItem`, NICHT am Dialog** (s. unten):
+        //  ein `Dialog` wertet die Taste nur mit `standardButtons` aus, und ein
+        //  `Keys`-Handler am Popup selbst feuert nicht. Beides gemessen
+        //  (`bench_shell del2`): `Esc` schloss den Dialog, `Enter` blieb
+        //  wirkungslos - die Taste KAM an, nur niemand nahm sie.
+        focus: true
+        onAccepted: mediaModel.removeCompanion(companionDialog.targetPath,
+                                               companionDialog.kind)
         padding: 18
         background: Rectangle {
             color: App.themeCard; radius: 10
             border.color: App.themeBorder; border.width: 1
         }
         contentItem: Column {
+            focus: true
+            Keys.onReturnPressed: function(e) { companionDialog.accept(); e.accepted = true }
+            Keys.onEnterPressed:  function(e) { companionDialog.accept(); e.accepted = true }
             spacing: 10
             Text {
                 text: companionDialog.kind === 1
@@ -966,13 +1234,7 @@ Rectangle {
                     Text { id: compOk; anchors.centerIn: parent
                            text: App.uiText(App.language, "SettingsOk")
                            color: App.themeTextPrimary; font.pixelSize: 12 }
-                    TapHandler {
-                        onTapped: {
-                            mediaModel.removeCompanion(companionDialog.targetPath,
-                                                       companionDialog.kind)
-                            companionDialog.close()
-                        }
-                    }
+                    TapHandler { onTapped: companionDialog.accept() }
                 }
             }
         }
@@ -984,6 +1246,22 @@ Rectangle {
         property string targetName: ""
         anchors.centerIn: parent
         modal: true
+        //  **Eingabetaste bestaetigt.** Die Tat steht in `onAccepted`, die
+        //  Knoepfe rufen nur `accept()` - so gibt es EINEN Weg zum Loeschen,
+        //  gleich ob geklickt oder `Enter` gedrueckt wird (Wunsch des Nutzers:
+        //  fuer JEDE Loeschrueckfrage, nicht nur die der Entf-Taste).
+        //  `focus: true` ist Pflicht: ohne Tastaturfokus kommt `Return` beim
+        //  Dialog gar nicht an. `Esc` schliesst ihn ohnehin (`closePolicy`).
+        //  **`Return` haengt am `contentItem`, NICHT am Dialog** (s. unten):
+        //  ein `Dialog` wertet die Taste nur mit `standardButtons` aus, und ein
+        //  `Keys`-Handler am Popup selbst feuert nicht. Beides gemessen
+        //  (`bench_shell del2`): `Esc` schloss den Dialog, `Enter` blieb
+        //  wirkungslos - die Taste KAM an, nur niemand nahm sie.
+        focus: true
+        onAccepted: {
+            mediaModel.deleteItem(deleteDialog.targetPath)
+            root.forceActiveFocus()          // s. selDeleteDialog
+        }
         padding: 18
         background: Rectangle {
             color: App.themeCard
@@ -991,6 +1269,9 @@ Rectangle {
             border.color: App.themeBorder; border.width: 1
         }
         contentItem: Column {
+            focus: true
+            Keys.onReturnPressed: function(e) { deleteDialog.accept(); e.accepted = true }
+            Keys.onEnterPressed:  function(e) { deleteDialog.accept(); e.accepted = true }
             spacing: 10
             Text {
                 text: App.uiText(App.language, "DeleteMediaTitle")
@@ -1028,12 +1309,93 @@ Rectangle {
                            text: App.uiText(App.language, "DeleteMediaConfirm")
                            color: "#e08080"; font.pixelSize: 12 }
                     HoverHandler { id: delHover }
-                    TapHandler {
-                        onTapped: {
-                            mediaModel.deleteItem(deleteDialog.targetPath)
-                            deleteDialog.close()
-                        }
-                    }
+                    TapHandler { onTapped: deleteDialog.accept() }
+                }
+            }
+        }
+    }
+
+    //  ── Sammel-Löschung (Mehrfachauswahl) ──────────────────────────────────
+    //  EINE Rückfrage für alles Gewählte, und der Vorgang landet als EIN Schritt
+    //  auf dem Rückgängig-Stapel (s. `MediaModel::deleteSelected`) - `Strg+Z`
+    //  holt die ganze Gruppe zurück, nicht Datei für Datei.
+    Dialog {
+        id: selDeleteDialog
+        property int count: 0
+        anchors.centerIn: parent
+        modal: true
+        //  **Eingabetaste bestaetigt.** Die Tat steht in `onAccepted`, die
+        //  Knoepfe rufen nur `accept()` - so gibt es EINEN Weg zum Loeschen,
+        //  gleich ob geklickt oder `Enter` gedrueckt wird (Wunsch des Nutzers:
+        //  fuer JEDE Loeschrueckfrage, nicht nur die der Entf-Taste).
+        //  `focus: true` ist Pflicht: ohne Tastaturfokus kommt `Return` beim
+        //  Dialog gar nicht an. `Esc` schliesst ihn ohnehin (`closePolicy`).
+        //  **`Return` haengt am `contentItem`, NICHT am Dialog** (s. unten):
+        //  ein `Dialog` wertet die Taste nur mit `standardButtons` aus, und ein
+        //  `Keys`-Handler am Popup selbst feuert nicht. Beides gemessen
+        //  (`bench_shell del2`): `Esc` schloss den Dialog, `Enter` blieb
+        //  wirkungslos - die Taste KAM an, nur niemand nahm sie.
+        focus: true
+        onAccepted: {
+            const n = mediaModel.deleteSelected()
+            root.selAnchor = -1
+            //  Fokus zurueck an die Galerie: sonst liegt er nach dem Dialog
+            //  anderswo, und `Strg+Z` kaeme nicht an (vom Nutzer gemeldet; am
+            //  Pruefstand ohne Dialog liess sich der Fall nicht nachstellen).
+            root.forceActiveFocus()
+            if (n > 0)
+                root.statusRequested(
+                    App.uiText(App.language, "SelDeleted").replace("%1", n))
+        }
+        padding: 18
+        background: Rectangle {
+            color: App.themeCard
+            radius: 10
+            border.color: App.themeBorder; border.width: 1
+        }
+        contentItem: Column {
+            focus: true
+            Keys.onReturnPressed: function(e) { selDeleteDialog.accept(); e.accepted = true }
+            Keys.onEnterPressed:  function(e) { selDeleteDialog.accept(); e.accepted = true }
+            spacing: 10
+            Text {
+                text: App.uiText(App.language, "SelDeleteTitle")
+                color: App.themeTextPrimary
+                font.pixelSize: 14; font.bold: true
+            }
+            Text {
+                width: 320
+                text: App.uiText(App.language, "SelDeleteText")
+                          .replace("%1", selDeleteDialog.count)
+                color: App.themeTextMuted
+                font.pixelSize: 12
+                wrapMode: Text.WordWrap
+            }
+            Row {
+                anchors.right: parent.right
+                spacing: 8
+                Rectangle {
+                    width: selCancelLbl.implicitWidth + 24; height: 30; radius: 6
+                    color: selCancelHover.hovered
+                           ? Qt.rgba(App.themeTextPrimary.r, App.themeTextPrimary.g, App.themeTextPrimary.b, 0.16)
+                           : Qt.rgba(App.themeTextPrimary.r, App.themeTextPrimary.g, App.themeTextPrimary.b, 0.07)
+                    border.color: App.themeBorder; border.width: 1
+                    Text { id: selCancelLbl; anchors.centerIn: parent
+                           text: App.uiText(App.language, "SettingsCancel")
+                           color: App.themeTextPrimary; font.pixelSize: 12 }
+                    HoverHandler { id: selCancelHover }
+                    TapHandler { onTapped: selDeleteDialog.close() }
+                }
+                Rectangle {
+                    width: selDelLbl.implicitWidth + 24; height: 30; radius: 6
+                    color: selDelHover.hovered ? Qt.rgba(0.88, 0.35, 0.35, 0.30)
+                                               : Qt.rgba(0.88, 0.35, 0.35, 0.16)
+                    border.color: "#c25a5a"; border.width: 1
+                    Text { id: selDelLbl; anchors.centerIn: parent
+                           text: App.uiText(App.language, "DeleteMediaConfirm")
+                           color: "#e08080"; font.pixelSize: 12 }
+                    HoverHandler { id: selDelHover }
+                    TapHandler { onTapped: selDeleteDialog.accept() }
                 }
             }
         }
@@ -1082,10 +1444,31 @@ Rectangle {
     //  auf dem Stapel und dürfte nicht weggeräumt werden.
     function requestFileDrag(filePath, thumbUrl) {
         if (filePath.length === 0) return
-        Qt.callLater(root._runFileDrag, filePath, thumbUrl)
+        //  Gehoert die angefasste Kachel zur Auswahl, wandert die GANZE Auswahl
+        //  mit - sonst nur sie selbst (genau wie in einem Dateimanager). Ordner
+        //  bleiben aussen vor: ein Ordner-Zug ins Fremdprogramm ist eine eigene
+        //  Zusage, keine Nebenwirkung.
+        const many = mediaModel.selectionCount > 1 && mediaModel.isSelected(filePath)
+        const list = many ? galleryModel.selectedPaths(true) : [filePath]
+        if (list.length === 0) return
+        Qt.callLater(root._runFileDrag, list, thumbUrl)
     }
-    function _runFileDrag(filePath, thumbUrl) {
-        dragPayload.Drag.mimeData = { "text/uri-list": App.fileUrl(filePath) }
+    //  `text/uri-list` traegt MEHRERE Adressen, je eine Zeile (RFC 2483: CRLF) -
+    //  so liest es jeder Dateimanager, und so liest es auch `drop.urls` auf dem
+    //  Rueckweg ins eigene Fenster. Eigene Funktion, damit der Prüfstand sie
+    //  aufrufen kann, ohne einen echten Zug zu starten (der blockiert bis zum
+    //  Loslassen) - s. tests/media/tst_bandselect.
+    function dragUriList(paths) {
+        const uris = []
+        for (var i = 0; i < paths.length; ++i) {
+            if (!paths[i] || paths[i].length === 0) continue
+            uris.push(App.fileUrl(paths[i]))
+        }
+        return uris.join("\r\n")
+    }
+    function _runFileDrag(paths, thumbUrl) {
+        const filePath = paths[0]
+        dragPayload.Drag.mimeData = { "text/uri-list": root.dragUriList(paths) }
         //  Am Zeiger hängt die Miniatur - sonst zieht man ins Blaue.
         dragPayload.Drag.imageSource = thumbUrl
         App.beginTileDrag()
@@ -1224,18 +1607,41 @@ Rectangle {
             root.hoverFolder = ""
             if (!drop.hasUrls || target.length === 0) { drop.accepted = false; return }
 
+            //  Ein Zug kann MEHRERE Dateien tragen (Mehrfachauswahl). Ob er
+            //  aus der App kommt, entscheidet die erste Adresse - gemischt
+            //  kommt eine Nutzlast nicht vor.
             const src = App.localPath(drop.urls[0])
-            if (mediaModel.ownsFile(src)) {
+            if (root._appOwnsFile(src)) {
                 //  Ein app-interner Zug: verschieben/kopieren. In den EIGENEN
                 //  Ordner abzulegen ist keine Bewegung - das Modell meldete
                 //  sonst „nicht möglich" und die Shell zeigte einen Fehler.
-                if (root._parentOf(src) !== target)
-                    root.folderDropRequested(src, target)
+                const moves = []
+                for (var i = 0; i < drop.urls.length; ++i) {
+                    const p = App.localPath(drop.urls[i])
+                    if (p.length > 0 && root._parentOf(p) !== target) moves.push(p)
+                }
+                if (moves.length > 0)
+                    root.folderDropRequested(moves, target)
             } else {
                 root.externalDropRequested(drop.urls, target)
             }
             drop.acceptProposedAction()
         }
+    }
+
+    //  Der sichtbare Rahmen. Reine Anzeige - er faengt nichts ab (kein
+    //  MouseArea darin), sonst naehme er dem Zug seine eigenen Ereignisse.
+    Rectangle {
+        visible: root.bandActive
+        z: 3
+        x: grid.x + root._bandL
+        y: grid.y + root._bandT - grid.contentY
+        width:  Math.max(0, root._bandR - root._bandL)
+        height: Math.max(0, root._bandB - root._bandT)
+        color: Qt.rgba(App.themeAccent.r, App.themeAccent.g, App.themeAccent.b, 0.16)
+        border.color: App.themeAccent
+        border.width: 1
+        radius: 2
     }
 
     // ── Mausrad: Strg = Zoom (Kachelgröße), sonst weiches Scrollen ───────────
