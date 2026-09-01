@@ -101,10 +101,13 @@ class AppController : public QObject {
     Q_PROPERTY(qreal paneSplit READ paneSplit WRITE setPaneSplit NOTIFY paneSplitChanged)
     //  Hälfte, auf die die ordnerbezogenen Einstellungen wirken (−1 = fokussierte).
     Q_PROPERTY(int settingsPaneIndex READ settingsPaneIndex NOTIFY panesChanged)
-    // NACH GRUPPEN gegliedert, in Anzeigereihenfolge: je Abschnitt
-    // { group, collapsed, items: [ { name, path, group, index } ] }. Der ERSTE
-    // Abschnitt ist immer die Gruppe "" (ohne Gruppe) - auch wenn sie leer ist,
-    // damit die Einstellungen ein Ablegeziel dafür haben.
+    // Der GANZE Baum als FLACHE Zeilenliste in Anzeigereihenfolge - eine Zeile
+    // je Gruppe UND je Lesezeichen, in Tiefensuche (je Ebene erst die
+    // Lesezeichen, dann die Untergruppen). Felder s. `bookmarkTree()`.
+    // Flach, weil beide Verbraucher flach sind: das Menü ist eine Liste von
+    // Einträgen, der Einstellungen-Reiter eine Liste von Zeilen. Ein
+    // verschachteltes QVariantMap zwänge beide zu geschachtelten Repeatern,
+    // über deren Grenzen hinweg sich nichts ziehen ließe.
     Q_PROPERTY(QVariantList bookmarkTree READ bookmarkTree NOTIFY savedFoldersChanged)
 
     // ── Galerie-View-State (Phase 2): Kachelgröße / Anordnung / Zoom ─────────
@@ -277,19 +280,39 @@ public:
                                     const QString& group = QString());
     Q_INVOKABLE void removeBookmark(int index);
 
-    // ── Lesezeichen-Gruppen (Ordnung im Menü „Ordner" + Einstellungen) ───────
-    //  Eine Gruppe ist reine Anzeige-Ordnung: sie hält keine Pfade, jeder
-    //  Eintrag nennt SEINE Gruppe. Namen sind eindeutig (Vergleich ohne
-    //  Rücksicht auf Groß-/Kleinschreibung); "" heißt „ohne Gruppe".
-    Q_INVOKABLE void addBookmarkGroup(const QString& name);
-    Q_INVOKABLE void renameBookmarkGroup(const QString& oldName, const QString& newName);
-    //  Löscht NUR die Gruppe; ihre Lesezeichen bleiben und rücken nach „ohne Gruppe".
-    Q_INVOKABLE void removeBookmarkGroup(const QString& name);
-    Q_INVOKABLE void setBookmarkGroupCollapsed(const QString& name, bool collapsed);
-    Q_INVOKABLE void moveBookmarkGroup(int from, int to);
+    // ── Lesezeichen-Gruppen: BELIEBIG TIEF verschachtelbar ──────────────────
+    //  Eine Gruppe ist reine Anzeige-Ordnung: sie hält keinen Pfad, jedes
+    //  Lesezeichen nennt SEINE Gruppe. Gruppen können Gruppen enthalten,
+    //  Lesezeichen sind immer Blätter.
+    //  IDENTITÄT ist der volle Pfad mit "/" als Trenner ("Persönlich/Lernen");
+    //  ein Gruppenname darf deshalb weder "/" noch einen Tabulator enthalten
+    //  (`isUsableGroupName`). Vergleiche laufen ohne Rücksicht auf Groß-/
+    //  Kleinschreibung, "" heißt „ohne Gruppe" (oberste Ebene).
+    //  Eine alte Konfiguration mit EINER Ebene ist unverändert gültig - ihre
+    //  Namen sind bereits Pfade ohne Trenner.
+    //  `parentPath` leer = oberste Ebene. Fehlt die Elterngruppe, wird sie
+    //  samt ihrer Vorfahren angelegt statt den Aufruf zu verwerfen.
+    Q_INVOKABLE void addBookmarkGroup(const QString& name,
+                                      const QString& parentPath = QString());
+    //  Benennt NUR das letzte Glied um; alle Untergruppen und Mitglieder
+    //  ziehen mit (ihre Pfade tragen den alten Namen als Vorsilbe).
+    Q_INVOKABLE void renameBookmarkGroup(const QString& path, const QString& newName);
+    //  Löscht die Gruppe UND alle Untergruppen; deren Lesezeichen bleiben und
+    //  rücken nach „ohne Gruppe" - eine Gruppe zu schließen kostet nie Pfade.
+    Q_INVOKABLE void removeBookmarkGroup(const QString& path);
+    Q_INVOKABLE void setBookmarkGroupCollapsed(const QString& path, bool collapsed);
+    //  Hängt eine Gruppe unter eine andere (oder mit leerem `newParentPath` auf
+    //  die oberste Ebene) und setzt sie dort an Position `pos` unter ihre
+    //  Geschwister; `pos` < 0 = ans Ende. Eine Gruppe in sich selbst oder in
+    //  eine ihrer Untergruppen zu hängen wird abgewiesen (das ergäbe einen Ring).
+    Q_INVOKABLE void moveBookmarkGroup(const QString& path, const QString& newParentPath,
+                                       int pos);
     //  Einen Eintrag in eine Gruppe geben und dort einsortieren. `pos` < 0 oder
     //  über der Mitgliederzahl = ans Ende der Gruppe.
     Q_INVOKABLE void moveBookmark(int index, const QString& targetGroup, int pos);
+    //  Ist der Name als Glied eines Gruppenpfades brauchbar? (nicht leer, kein
+    //  "/" und kein Tabulator). Die Oberfläche fragt damit, BEVOR sie anlegt.
+    Q_INVOKABLE bool isUsableGroupName(const QString& name) const;
 
     // ── Editor / Auto-Save (Phase 4) ────────────────────────────────────────
     bool autoSaveEnabled()  const;
@@ -507,9 +530,14 @@ signals:
 private:
     //  Der Rückweg (Alt+<-) gehört zur Hälfte - s. `PaneController`.
 
-    //  Der Abschnitt, in dem ein Gruppenname landet: der Name selbst, wenn es
-    //  die Gruppe gibt - sonst "" (ohne Gruppe).
+    //  Der Abschnitt, in dem ein Gruppenpfad landet: der Pfad selbst in der
+    //  GESPEICHERTEN Schreibweise, wenn es die Gruppe gibt - sonst "" (ohne
+    //  Gruppe). Ein von Hand verstellter Pfad lässt damit nie ein Lesezeichen
+    //  verschwinden, es rückt nach oben.
     QString bookmarkSection(const QString& group) const;
+    //  Legt `fullPath` samt aller fehlenden Vorfahren an. Gibt den Pfad in der
+    //  gespeicherten Schreibweise zurück (leer, wenn er unbrauchbar war).
+    QString ensureBookmarkGroup(const QString& fullPath);
 
 
     // Theme-Lese-Helfer

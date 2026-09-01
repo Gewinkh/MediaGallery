@@ -104,6 +104,25 @@ names brings up the replace/rename question five times.
 Why: there is no "apply to all" - each collision is a decision about a different
 file. Cancelling applies to that one file only; the rest of the drop carries on.
 
+**A bookmark group name cannot contain a slash.**
+What you notice: typing "C/C++" as a group name leaves the OK button disabled,
+with a line saying why.
+Why: a group is identified by its full path, and "/" is what separates the
+levels - "Personal/Learning" IS the nesting. A slash inside a name would make the
+same text mean two different places in the tree. The same goes for a tab
+character, which separates the columns of the stored line.
+Workaround / status: use another separator in the name ("C, C++" or "C - C++"),
+or make it two groups. Bookmarks themselves are unaffected - their display name
+takes any character.
+
+**Reordering groups that sit side by side needs the thin strip, not the row.**
+What you notice: dragging a group onto another group puts it *inside* it. To
+place it *before* a sibling you have to hit the 10-pixel insert strip that
+appears above each group row while you drag.
+Why: one drop target cannot mean two things. "Into" is the operation the nesting
+exists for, so the row carries it, and the strip carries "before, same level".
+The strip's space is reserved permanently, so nothing shifts when a drag starts.
+
 ---
 
 ## Tags and categories

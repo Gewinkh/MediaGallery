@@ -528,18 +528,29 @@ void AppController::setFileDropMove(bool v) {
 
 // ── Lesezeichen: Einträge, Gruppen, Anzeigereihenfolge ───────────────────────
 //  Ein Eintrag steht als EINE Zeichenkette in den Einstellungen:
-//      "Name\tPfad\tGruppe"   (Gruppe optional, Altformat "Name\tPfad" bzw. "Pfad")
+//      "Name\tPfad\tGruppenpfad"  (Gruppe optional, Altformat "Name\tPfad" bzw. "Pfad")
 //  Die Gruppen selbst stehen getrennt davon in ihrer ANZEIGEreihenfolge:
-//      "Gruppenname"  bzw.  "Gruppenname\t1"  (eingeklappt)
-//  Damit bleibt jede alte Konfiguration lesbar: ohne dritte Spalte gehört ein
-//  Eintrag zu „ohne Gruppe", und ohne Gruppenliste gibt es genau diesen einen
-//  Abschnitt - also die Liste, die es vorher gab.
+//      "Gruppenpfad"  bzw.  "Gruppenpfad\t1"  (eingeklappt)
+//
+//  VERSCHACHTELUNG über den PFAD: die Identität einer Gruppe ist ihr voller
+//  Pfad mit "/" als Trenner - "Persönlich", "Persönlich/Lernen". Der Elternteil
+//  steht damit im Namen selbst; es braucht weder eine Kennung noch eine zweite
+//  Liste. Zwei Folgen, die zusammengehören:
+//    • Ein Gruppenname darf kein "/" enthalten (`isUsableGroupName`), sonst
+//      hieße derselbe Text zwei verschiedene Bäume.
+//    • Eine ALTE Konfiguration bleibt gültig, ohne umgeschrieben zu werden:
+//      ihre Gruppennamen sind bereits Pfade ohne Trenner, also Gruppen der
+//      obersten Ebene. Genau das war ihre Bedeutung vorher auch.
+//  Ohne dritte Spalte gehört ein Eintrag zu „ohne Gruppe", und ohne Gruppenliste
+//  gibt es genau diesen einen Abschnitt - also die Liste, die es vorher gab.
 namespace {
+
+constexpr QChar kGroupSep = QLatin1Char('/');
 
 struct BmEntry {
     QString name;      // wie gespeichert; leer = Anzeige fällt auf den Ordnernamen zurück
     QString path;
-    QString group;
+    QString group;     // voller Gruppenpfad; leer = oberste Ebene
 };
 
 BmEntry parseBookmark(const QString& raw) {
@@ -565,10 +576,67 @@ QString displayName(const BmEntry& e) {
     return e.name.isEmpty() ? QFileInfo(e.path).fileName() : e.name;
 }
 
+// ── Gruppenpfade ────────────────────────────────────────────────────────────
+//  Alles, was mit dem Trenner zu tun hat, steht HIER - nicht verstreut in den
+//  Verwaltungsfunktionen.
+
+//  Ein einzelnes Glied: nicht leer, kein Trenner, kein Tabulator (der trennt
+//  die Spalten der gespeicherten Zeile).
+bool usableGroupLeaf(const QString& name) {
+    const QString t = name.trimmed();
+    return !t.isEmpty() && !t.contains(kGroupSep) && !t.contains(QLatin1Char('\t'));
+}
+
+//  Beschneidet jedes Glied und wirft leere weg: "  A / / B " -> "A/B".
+QString normalizeGroupPath(const QString& path) {
+    QStringList out;
+    const QStringList parts = path.split(kGroupSep);
+    for (const QString& p : parts) {
+        const QString t = p.trimmed();
+        if (!t.isEmpty()) out.append(t);
+    }
+    return out.join(kGroupSep);
+}
+
+QString parentOfGroup(const QString& path) {
+    const int cut = path.lastIndexOf(kGroupSep);
+    return cut < 0 ? QString() : path.left(cut);
+}
+
+QString leafOfGroup(const QString& path) {
+    const int cut = path.lastIndexOf(kGroupSep);
+    return cut < 0 ? path : path.mid(cut + 1);
+}
+
+QString joinGroup(const QString& parent, const QString& leaf) {
+    return parent.isEmpty() ? leaf : (parent + kGroupSep + leaf);
+}
+
+//  Liegt `path` IN `ancestor` (oder ist es selbst)? Der Test hinter dem
+//  Ring-Schutz beim Verschieben und hinter „mitziehen" beim Umbenennen.
+bool isSelfOrBelow(const QString& path, const QString& ancestor) {
+    if (ancestor.isEmpty()) return true;                 // alles liegt unter der Wurzel
+    if (path.compare(ancestor, Qt::CaseInsensitive) == 0) return true;
+    const QString prefix = ancestor + kGroupSep;
+    return path.startsWith(prefix, Qt::CaseInsensitive);
+}
+
+//  Ersetzt die Vorsilbe `from` durch `to` - für Umbenennen und Verschieben
+//  eines ganzen Teilbaums. `path` muss vorher `isSelfOrBelow(path, from)` sein.
+QString reparent(const QString& path, const QString& from, const QString& to) {
+    return to + path.mid(from.size());
+}
+
 struct BmGroup {
-    QString name;
+    QString path;                  // voller Pfad
     bool    collapsed = false;
 };
+
+int groupPos(const QList<BmGroup>& groups, const QString& path) {
+    for (int i = 0; i < groups.size(); ++i)
+        if (groups.at(i).path.compare(path, Qt::CaseInsensitive) == 0) return i;
+    return -1;
+}
 
 QList<BmGroup> parseGroups(const QStringList& raw) {
     QList<BmGroup> out;
@@ -576,16 +644,24 @@ QList<BmGroup> parseGroups(const QStringList& raw) {
     for (const QString& r : raw) {
         const QStringList parts = r.split(QLatin1Char('\t'));
         BmGroup g;
-        g.name = parts.value(0).trimmed();
-        if (g.name.isEmpty()) continue;
+        g.path = normalizeGroupPath(parts.value(0));
+        if (g.path.isEmpty()) continue;
         g.collapsed = parts.value(1) == QLatin1String("1");
-        //  Namen sind eindeutig (ohne Rücksicht auf Groß-/Kleinschreibung) -
+        //  Pfade sind eindeutig (ohne Rücksicht auf Groß-/Kleinschreibung) -
         //  eine von Hand verdoppelte Zeile würde sonst zwei Abschnitte mit
         //  denselben Mitgliedern zeigen.
-        bool dup = false;
-        for (const BmGroup& seen : out)
-            if (seen.name.compare(g.name, Qt::CaseInsensitive) == 0) { dup = true; break; }
-        if (!dup) out.append(g);
+        if (groupPos(out, g.path) < 0) out.append(g);
+    }
+    //  FEHLENDE VORFAHREN ergänzen: steht "A/B" ohne "A" in der Liste (von Hand
+    //  bearbeitet, oder "A" wurde gelöscht), hinge der ganze Ast an einem
+    //  Elternteil, den die Tiefensuche nie besucht - er wäre unsichtbar. Die
+    //  Vorsilbe wird deshalb angelegt, und zwar DIREKT VOR ihrem Kind, damit
+    //  die Anzeigereihenfolge der Geschwister erhalten bleibt.
+    for (int i = 0; i < out.size(); ++i) {
+        const QString parent = parentOfGroup(out.at(i).path);
+        if (parent.isEmpty() || groupPos(out, parent) >= 0) continue;
+        out.insert(i, BmGroup{ parent, false });
+        --i;                       // dieselbe Stelle erneut prüfen (Großeltern)
     }
     return out;
 }
@@ -594,78 +670,186 @@ QStringList packGroups(const QList<BmGroup>& groups) {
     QStringList out;
     out.reserve(groups.size());
     for (const BmGroup& g : groups)
-        out.append(g.collapsed ? (g.name + QLatin1String("\t1")) : g.name);
+        out.append(g.collapsed ? (g.path + QLatin1String("\t1")) : g.path);
     return out;
-}
-
-int groupPos(const QList<BmGroup>& groups, const QString& name) {
-    for (int i = 0; i < groups.size(); ++i)
-        if (groups.at(i).name.compare(name, Qt::CaseInsensitive) == 0) return i;
-    return -1;
 }
 
 } // namespace
 
-//  Der Abschnitt, in dem ein Eintrag landet: seine Gruppe, sofern es sie gibt -
-//  sonst „ohne Gruppe". Ein von Hand verstellter Gruppenname lässt ein
-//  Lesezeichen damit nie verschwinden.
-QString AppController::bookmarkSection(const QString& group) const {
-    if (group.isEmpty()) return QString();
-    const QList<BmGroup> groups = parseGroups(m_settings.bookmarkGroups());
-    const int pos = groupPos(groups, group);
-    return pos < 0 ? QString() : groups.at(pos).name;
+bool AppController::isUsableGroupName(const QString& name) const {
+    return usableGroupLeaf(name);
 }
 
+//  Der Abschnitt, in dem ein Eintrag landet: seine Gruppe, sofern es sie gibt -
+//  sonst „ohne Gruppe". Ein von Hand verstellter Gruppenpfad lässt ein
+//  Lesezeichen damit nie verschwinden.
+QString AppController::bookmarkSection(const QString& group) const {
+    const QString g = normalizeGroupPath(group);
+    if (g.isEmpty()) return QString();
+    const QList<BmGroup> groups = parseGroups(m_settings.bookmarkGroups());
+    const int pos = groupPos(groups, g);
+    return pos < 0 ? QString() : groups.at(pos).path;
+}
+
+QString AppController::ensureBookmarkGroup(const QString& fullPath) {
+    const QString wanted = normalizeGroupPath(fullPath);
+    if (wanted.isEmpty()) return QString();
+
+    QList<BmGroup> groups = parseGroups(m_settings.bookmarkGroups());
+    const QStringList parts = wanted.split(kGroupSep);
+    QString sofar;                     // in der GESPEICHERTEN Schreibweise
+    bool changed = false;
+    for (const QString& leaf : parts) {
+        if (!usableGroupLeaf(leaf)) return QString();
+        const QString candidate = joinGroup(sofar, leaf);
+        const int pos = groupPos(groups, candidate);
+        if (pos >= 0) {
+            sofar = groups.at(pos).path;          // bestehende Schreibweise behalten
+        } else {
+            groups.append(BmGroup{ candidate, false });
+            sofar   = candidate;
+            changed = true;
+        }
+    }
+    if (changed) {
+        m_settings.setBookmarkGroups(packGroups(groups));
+        m_settings.sync();
+    }
+    return sofar;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  Der ganze Baum als FLACHE Zeilenliste, in Anzeigereihenfolge.
+//
+//  Je Zeile:
+//      kind        "group" | "bookmark"
+//      name        angezeigter Text (Gruppe: letztes Glied; Eintrag: sein Name)
+//      group       Gruppe: ihr VOLLER Pfad · Eintrag: der Pfad seiner Gruppe
+//      parent      Pfad der Elterngruppe ("" = oberste Ebene)
+//      depth       Einrücktiefe, 0 = oberste Ebene
+//      hidden      true, wenn ein VORFAHR eingeklappt ist (Zeile nicht zeigen)
+//      path        NUR Eintrag: der Ordner
+//      index       NUR Eintrag: Platz in der gespeicherten Liste (Identität)
+//      collapsed   NUR Gruppe: ist SIE eingeklappt?
+//      count       NUR Gruppe: Zahl der DIREKTEN Kinder (Gruppen + Einträge)
+//      pos         Platz unter den GLEICHARTIGEN Geschwistern - genau der Wert,
+//                  den `moveBookmark`/`moveBookmarkGroup` als `pos` erwarten
+//
+//  Je Ebene erst die Lesezeichen, dann die Untergruppen - ein Ordner steht
+//  damit immer über den Schubladen, die unter ihm liegen.
+//
+//  Tiefensuche mit EIGENEM STAPEL statt Rekursion: die Schachtelungstiefe kommt
+//  aus einer Konfigurationsdatei und ist damit nach oben offen.
+// ─────────────────────────────────────────────────────────────────────────────
 QVariantList AppController::bookmarkTree() const {
     const QStringList raw = m_settings.savedFolders();
     const QList<BmGroup> groups = parseGroups(m_settings.bookmarkGroups());
 
-    struct Row { BmEntry e; int index; QString section; };
+    //  Einträge EINMAL lesen und ihrem Abschnitt zuordnen. `bookmarkSection`
+    //  zerlegte die Gruppenliste je Eintrag neu - bei vielen Lesezeichen wäre
+    //  das quadratisch, und die Liste steht hier bereits.
+    struct Row { QString name, path, section; int index; };
     QList<Row> rows;
     rows.reserve(raw.size());
     for (int i = 0; i < raw.size(); ++i) {
         const BmEntry e = parseBookmark(raw.at(i));
         if (e.path.isEmpty()) continue;
-        const int gp = e.group.isEmpty() ? -1 : groupPos(groups, e.group);
-        rows.append({ e, i, gp < 0 ? QString() : groups.at(gp).name });
+        const QString g = normalizeGroupPath(e.group);
+        const int gp = g.isEmpty() ? -1 : groupPos(groups, g);
+        rows.append({ displayName(e), e.path, gp < 0 ? QString() : groups.at(gp).path, i });
     }
-
-    //  Abschnitte in Anzeigereihenfolge: „ohne Gruppe" zuerst (die Einträge,
-    //  die es vor den Gruppen schon gab, bleiben damit oben stehen), danach die
-    //  Gruppen in ihrer eigenen Reihenfolge.
-    QList<BmGroup> sections;
-    sections.append(BmGroup{ QString(), false });
-    sections.append(groups);
 
     QVariantList out;
-    out.reserve(sections.size());
-    for (const BmGroup& sec : sections) {
-        QVariantList items;
-        for (const Row& r : rows) {
-            if (r.section != sec.name) continue;
+    out.reserve(groups.size() + rows.size());
+
+    //  Alle Lesezeichen EINER Ebene ausgeben.
+    auto emitBookmarks = [&](const QString& parent, int depth, bool hidden) {
+        int pos = 0;                       // Platz unter den GESCHWISTERN
+        for (const Row& r : std::as_const(rows)) {
+            if (r.section.compare(parent, Qt::CaseInsensitive) != 0) continue;
             QVariantMap m;
-            m.insert(QStringLiteral("name"),  displayName(r.e));
-            m.insert(QStringLiteral("path"),  r.e.path);
-            m.insert(QStringLiteral("group"), sec.name);
-            m.insert(QStringLiteral("index"), r.index);
-            items.append(m);
+            m.insert(QStringLiteral("kind"),   QStringLiteral("bookmark"));
+            m.insert(QStringLiteral("name"),   r.name);
+            m.insert(QStringLiteral("path"),   r.path);
+            m.insert(QStringLiteral("group"),  parent);
+            m.insert(QStringLiteral("parent"), parent);
+            m.insert(QStringLiteral("depth"),  depth);
+            m.insert(QStringLiteral("hidden"), hidden);
+            m.insert(QStringLiteral("index"),  r.index);
+            m.insert(QStringLiteral("pos"),    pos++);
+            out.append(m);
         }
-        QVariantMap s;
-        s.insert(QStringLiteral("group"),     sec.name);
-        s.insert(QStringLiteral("collapsed"), sec.collapsed);
-        s.insert(QStringLiteral("items"),     items);
-        out.append(s);
+    };
+
+    //  Die Plätze der DIREKTEN Untergruppen einer Ebene, in Listenreihenfolge.
+    auto childGroups = [&](const QString& parent) {
+        QList<int> idx;
+        for (int i = 0; i < groups.size(); ++i)
+            if (parentOfGroup(groups.at(i).path).compare(parent, Qt::CaseInsensitive) == 0)
+                idx.append(i);
+        return idx;
+    };
+
+    auto directCount = [&](const QString& parent) {
+        int n = childGroups(parent).size();
+        for (const Row& r : std::as_const(rows))
+            if (r.section.compare(parent, Qt::CaseInsensitive) == 0) ++n;
+        return n;
+    };
+
+    //  Ein Stapeleintrag = eine Gruppe, deren KOPFZEILE noch aussteht.
+    struct Frame { int group; int depth; bool hidden; int pos; };
+    QList<Frame> stack;
+
+    //  Oberste Ebene: erst ihre Lesezeichen, dann ihre Gruppen.
+    emitBookmarks(QString(), 0, false);
+    {
+        const QList<int> roots = childGroups(QString());
+        for (int k = roots.size() - 1; k >= 0; --k)
+            stack.append(Frame{ roots.at(k), 0, false, k });
     }
+
+    while (!stack.isEmpty()) {
+        const Frame f = stack.takeLast();
+        const BmGroup& g = groups.at(f.group);
+
+        QVariantMap m;
+        m.insert(QStringLiteral("kind"),      QStringLiteral("group"));
+        m.insert(QStringLiteral("name"),      leafOfGroup(g.path));
+        m.insert(QStringLiteral("path"),      QString());
+        m.insert(QStringLiteral("group"),     g.path);
+        m.insert(QStringLiteral("parent"),    parentOfGroup(g.path));
+        m.insert(QStringLiteral("depth"),     f.depth);
+        m.insert(QStringLiteral("hidden"),    f.hidden);
+        m.insert(QStringLiteral("collapsed"), g.collapsed);
+        m.insert(QStringLiteral("count"),     directCount(g.path));
+        m.insert(QStringLiteral("pos"),       f.pos);
+        out.append(m);
+
+        //  Der Inhalt liegt eine Ebene tiefer und ist verborgen, sobald DIESE
+        //  Gruppe zu ist - oder schon ein Vorfahr zu war.
+        const bool inner = f.hidden || g.collapsed;
+        emitBookmarks(g.path, f.depth + 1, inner);
+        const QList<int> kids = childGroups(g.path);
+        for (int k = kids.size() - 1; k >= 0; --k)
+            stack.append(Frame{ kids.at(k), f.depth + 1, inner, k });
+    }
+
     return out;
 }
 
-//  Flache Liste in derselben Anzeigereihenfolge - für Ablegeleiste,
-//  Dateiwähler und alles, was Gruppen nicht darstellt.
+//  Flache Liste NUR der Lesezeichen, in derselben Anzeigereihenfolge - für
+//  Ablegeleiste, Dateiwähler und alles, was Gruppen nicht darstellt.
+//  Eingeklappte Gruppen zählen mit: „zugeklappt" ist eine Frage der Anzeige,
+//  kein Ausschluss.
 QVariantList AppController::savedFolders() const {
     QVariantList out;
     const QVariantList tree = bookmarkTree();
-    for (const QVariant& sec : tree)
-        out.append(sec.toMap().value(QStringLiteral("items")).toList());
+    for (const QVariant& v : tree) {
+        const QVariantMap m = v.toMap();
+        if (m.value(QStringLiteral("kind")).toString() == QLatin1String("bookmark"))
+            out.append(m);
+    }
     return out;
 }
 
@@ -674,17 +858,17 @@ void AppController::openBookmark(const QString& path) {
     if (m_pane) m_pane->openFolder(path);   // leert den Rückweg (s. openSubfolder)
 }
 
-// ── Lesezeichen-Verwaltung (Phase 4) ─────────────────────────────────────────
+// ── Lesezeichen-Verwaltung ───────────────────────────────────────────────────
 void AppController::addBookmark(const QString& name, const QString& path,
                                 const QString& group) {
     if (path.trimmed().isEmpty()) return;
     //  Eine noch unbekannte Gruppe wird angelegt statt verworfen - sonst
     //  landete der Eintrag stillschweigend woanders, als der Nutzer wählte.
-    const QString g = group.trimmed();
-    if (!g.isEmpty() && bookmarkSection(g).isEmpty()) addBookmarkGroup(g);
+    //  Mit Pfaden gilt das für den GANZEN Ast: "A/B/C" legt A, B und C an.
+    const QString section = ensureBookmarkGroup(group);
 
     QStringList entries = m_settings.savedFolders();
-    entries.append(packBookmark(BmEntry{ name.trimmed(), path.trimmed(), bookmarkSection(g) }));
+    entries.append(packBookmark(BmEntry{ name.trimmed(), path.trimmed(), section }));
     m_settings.setSavedFolders(entries);
     m_settings.sync();
     emit savedFoldersChanged();
@@ -693,12 +877,12 @@ void AppController::addBookmark(const QString& name, const QString& path,
 void AppController::updateBookmark(int index, const QString& name, const QString& path,
                                    const QString& group) {
     if (path.trimmed().isEmpty()) return;
+    if (index < 0 || index >= m_settings.savedFolders().size()) return;
+    const QString section = ensureBookmarkGroup(group);
+    //  ERST jetzt lesen: `ensureBookmarkGroup` schreibt die Gruppenliste, nicht
+    //  die Einträge - eine vorher gezogene Kopie wäre trotzdem unnötig alt.
     QStringList entries = m_settings.savedFolders();
-    if (index < 0 || index >= entries.size()) return;
-    const QString g = group.trimmed();
-    if (!g.isEmpty() && bookmarkSection(g).isEmpty()) addBookmarkGroup(g);
-    entries = m_settings.savedFolders();     // addBookmarkGroup ändert nur die Gruppen
-    entries[index] = packBookmark(BmEntry{ name.trimmed(), path.trimmed(), bookmarkSection(g) });
+    entries[index] = packBookmark(BmEntry{ name.trimmed(), path.trimmed(), section });
     m_settings.setSavedFolders(entries);
     m_settings.sync();
     emit savedFoldersChanged();
@@ -714,35 +898,56 @@ void AppController::removeBookmark(int index) {
 }
 
 // ── Lesezeichen-Gruppen ──────────────────────────────────────────────────────
-void AppController::addBookmarkGroup(const QString& name) {
-    const QString n = name.trimmed();
-    if (n.isEmpty()) return;
+void AppController::addBookmarkGroup(const QString& name, const QString& parentPath) {
+    if (!usableGroupLeaf(name)) return;
+    //  Die Elterngruppe muss es geben - sonst hinge die neue Gruppe an einem
+    //  Pfad, den niemand sieht. Fehlt sie, wird sie mit angelegt.
+    const QString parent = parentPath.trimmed().isEmpty()
+                               ? QString()
+                               : ensureBookmarkGroup(parentPath);
+    if (!parentPath.trimmed().isEmpty() && parent.isEmpty()) return;   // unbrauchbarer Pfad
+
     QList<BmGroup> groups = parseGroups(m_settings.bookmarkGroups());
-    if (groupPos(groups, n) >= 0) return;          // Name schon vergeben
-    groups.append(BmGroup{ n, false });
+    const QString full = joinGroup(parent, name.trimmed());
+    if (groupPos(groups, full) >= 0) return;          // Name in dieser Ebene vergeben
+    groups.append(BmGroup{ full, false });
     m_settings.setBookmarkGroups(packGroups(groups));
     m_settings.sync();
     emit savedFoldersChanged();
 }
 
-void AppController::renameBookmarkGroup(const QString& oldName, const QString& newName) {
-    const QString from = oldName.trimmed();
-    const QString to   = newName.trimmed();
-    if (from.isEmpty() || to.isEmpty() || from == to) return;
+void AppController::renameBookmarkGroup(const QString& path, const QString& newName) {
+    const QString from = normalizeGroupPath(path);
+    if (from.isEmpty() || !usableGroupLeaf(newName)) return;
+
     QList<BmGroup> groups = parseGroups(m_settings.bookmarkGroups());
     const int pos = groupPos(groups, from);
     if (pos < 0) return;
+
+    const QString to = joinGroup(parentOfGroup(from), newName.trimmed());
+    //  Nur bei WIRKLICH gleichem Namen nichts tun. Eine reine Schreibweisen-
+    //  Aenderung ("Studium" -> "studium") ist eine gueltige Umbenennung: die
+    //  Kollisionspruefung unten findet dabei die Gruppe selbst und laesst sie durch.
+    if (to == from) return;
     const int clash = groupPos(groups, to);
-    if (clash >= 0 && clash != pos) return;        // Name schon vergeben
-    groups[pos].name = to;
+    if (clash >= 0 && clash != pos) return;           // Name in dieser Ebene vergeben
+
+    //  Die Gruppe SELBST und jede Untergruppe tragen den alten Namen als
+    //  Vorsilbe - alle ziehen mit, sonst risse der Ast ab.
+    for (BmGroup& g : groups)
+        if (isSelfOrBelow(g.path, from))
+            g.path = reparent(g.path, from, to);
     m_settings.setBookmarkGroups(packGroups(groups));
 
-    //  Die Mitglieder tragen den Gruppennamen selbst - sie werden mitgezogen.
+    //  Die Mitglieder tragen ihren Gruppenpfad selbst - auch die der
+    //  Untergruppen.
     QStringList entries = m_settings.savedFolders();
     for (QString& raw : entries) {
         BmEntry e = parseBookmark(raw);
-        if (e.path.isEmpty() || e.group.compare(from, Qt::CaseInsensitive) != 0) continue;
-        e.group = to;
+        if (e.path.isEmpty()) continue;
+        const QString g = normalizeGroupPath(e.group);
+        if (g.isEmpty() || !isSelfOrBelow(g, from)) continue;
+        e.group = reparent(g, from, to);
         raw = packBookmark(e);
     }
     m_settings.setSavedFolders(entries);
@@ -750,21 +955,26 @@ void AppController::renameBookmarkGroup(const QString& oldName, const QString& n
     emit savedFoldersChanged();
 }
 
-void AppController::removeBookmarkGroup(const QString& name) {
-    const QString n = name.trimmed();
+void AppController::removeBookmarkGroup(const QString& path) {
+    const QString n = normalizeGroupPath(path);
     if (n.isEmpty()) return;
     QList<BmGroup> groups = parseGroups(m_settings.bookmarkGroups());
-    const int pos = groupPos(groups, n);
-    if (pos < 0) return;
-    groups.removeAt(pos);
+    if (groupPos(groups, n) < 0) return;
+
+    //  Die Gruppe UND alles darunter verschwindet aus der Ordnung.
+    for (int i = groups.size() - 1; i >= 0; --i)
+        if (isSelfOrBelow(groups.at(i).path, n))
+            groups.removeAt(i);
     m_settings.setBookmarkGroups(packGroups(groups));
 
-    //  Die Lesezeichen der Gruppe bleiben - sie rücken nach „ohne Gruppe".
-    //  Eine Gruppe zu schließen darf nie Pfade kosten.
+    //  Die Lesezeichen des ganzen Astes bleiben - sie rücken nach „ohne
+    //  Gruppe". Eine Gruppe zu schließen darf nie Pfade kosten.
     QStringList entries = m_settings.savedFolders();
     for (QString& raw : entries) {
         BmEntry e = parseBookmark(raw);
-        if (e.path.isEmpty() || e.group.compare(n, Qt::CaseInsensitive) != 0) continue;
+        if (e.path.isEmpty()) continue;
+        const QString g = normalizeGroupPath(e.group);
+        if (g.isEmpty() || !isSelfOrBelow(g, n)) continue;
         e.group.clear();
         raw = packBookmark(e);
     }
@@ -773,9 +983,9 @@ void AppController::removeBookmarkGroup(const QString& name) {
     emit savedFoldersChanged();
 }
 
-void AppController::setBookmarkGroupCollapsed(const QString& name, bool collapsed) {
+void AppController::setBookmarkGroupCollapsed(const QString& path, bool collapsed) {
     QList<BmGroup> groups = parseGroups(m_settings.bookmarkGroups());
-    const int pos = groupPos(groups, name.trimmed());
+    const int pos = groupPos(groups, normalizeGroupPath(path));
     if (pos < 0 || groups.at(pos).collapsed == collapsed) return;
     groups[pos].collapsed = collapsed;
     m_settings.setBookmarkGroups(packGroups(groups));
@@ -783,12 +993,64 @@ void AppController::setBookmarkGroupCollapsed(const QString& name, bool collapse
     emit savedFoldersChanged();
 }
 
-void AppController::moveBookmarkGroup(int from, int to) {
+void AppController::moveBookmarkGroup(const QString& path, const QString& newParentPath,
+                                      int pos) {
+    const QString from = normalizeGroupPath(path);
+    if (from.isEmpty()) return;
+
     QList<BmGroup> groups = parseGroups(m_settings.bookmarkGroups());
-    if (from < 0 || from >= groups.size() || from == to) return;
-    const int dest = qBound(0, to, groups.size() - 1);
-    if (dest == from) return;
-    groups.move(from, dest);
+    const int at = groupPos(groups, from);
+    if (at < 0) return;
+
+    //  RING-SCHUTZ: eine Gruppe darf nicht unter sich selbst wandern. Ohne
+    //  diesen Test entstünde ein Pfad wie "A/B/A/B", den die Tiefensuche nie
+    //  erreicht - der Ast wäre weg.
+    QString parent;
+    if (!newParentPath.trimmed().isEmpty()) {
+        parent = normalizeGroupPath(newParentPath);
+        if (isSelfOrBelow(parent, from)) return;
+        const int pp = groupPos(groups, parent);
+        if (pp < 0) return;                       // Zielgruppe gibt es nicht
+        parent = groups.at(pp).path;              // gespeicherte Schreibweise
+    }
+
+    const QString to = joinGroup(parent, leafOfGroup(groups.at(at).path));
+    const int clash = groupPos(groups, to);
+    if (clash >= 0 && clash != at) return;        // Name in der Zielebene vergeben
+
+    if (to != groups.at(at).path) {
+        for (BmGroup& g : groups)
+            if (isSelfOrBelow(g.path, from))
+                g.path = reparent(g.path, from, to);
+
+        QStringList entries = m_settings.savedFolders();
+        for (QString& raw : entries) {
+            BmEntry e = parseBookmark(raw);
+            if (e.path.isEmpty()) continue;
+            const QString g = normalizeGroupPath(e.group);
+            if (g.isEmpty() || !isSelfOrBelow(g, from)) continue;
+            e.group = reparent(g, from, to);
+            raw = packBookmark(e);
+        }
+        m_settings.setSavedFolders(entries);
+    }
+
+    //  Platz unter den GESCHWISTERN. Nur der Eintrag der Gruppe selbst zieht
+    //  um; ihre Untergruppen behalten ihre Plätze in der Liste, denn deren
+    //  Reihenfolge zählt nur untereinander (die Tiefensuche liest den Vater aus
+    //  dem Pfad, nicht aus der Position).
+    const int cur = groupPos(groups, to);
+    const BmGroup moved = groups.takeAt(cur);
+    QList<int> siblings;
+    for (int i = 0; i < groups.size(); ++i)
+        if (parentOfGroup(groups.at(i).path).compare(parent, Qt::CaseInsensitive) == 0)
+            siblings.append(i);
+    int dest;
+    if (siblings.isEmpty())                     dest = groups.size();
+    else if (pos < 0 || pos >= siblings.size()) dest = siblings.last() + 1;
+    else                                        dest = siblings.at(pos);
+    groups.insert(dest, moved);
+
     m_settings.setBookmarkGroups(packGroups(groups));
     m_settings.sync();
     emit savedFoldersChanged();
@@ -800,18 +1062,19 @@ void AppController::moveBookmark(int index, const QString& targetGroup, int pos)
     BmEntry e = parseBookmark(entries.at(index));
     if (e.path.isEmpty()) return;
 
-    const QString section = bookmarkSection(targetGroup.trimmed());
+    const QString section = bookmarkSection(targetGroup);
     e.group = section;
     entries.removeAt(index);
 
-    //  Die Reihenfolge INNERHALB eines Abschnitts ist die Reihenfolge in der
+    //  Die Reihenfolge INNERHALB einer Gruppe ist die Reihenfolge in der
     //  gespeicherten Liste - der neue Platz wird deshalb relativ zu den übrigen
     //  Mitgliedern derselben Gruppe gesucht.
     QList<int> members;
     for (int i = 0; i < entries.size(); ++i) {
         const BmEntry other = parseBookmark(entries.at(i));
         if (other.path.isEmpty()) continue;
-        if (bookmarkSection(other.group) == section) members.append(i);
+        if (bookmarkSection(other.group).compare(section, Qt::CaseInsensitive) == 0)
+            members.append(i);
     }
     int at;
     if (members.isEmpty())                        at = entries.size();

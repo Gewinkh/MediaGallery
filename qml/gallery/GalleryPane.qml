@@ -493,11 +493,16 @@ Item {
             id: bookmarkGroupComponent
             Item {
                 id: groupRow
+                //  IDENTITÄT ist der volle Pfad ("Persönlich/Lernen") - der
+                //  angezeigte Text ist nur das letzte Glied.
+                property string groupPath: ""
                 property string groupName: ""
                 property bool   collapsed: false
                 property int    itemCount: 0
+                property int    depth: 0
 
-                implicitWidth: Math.max(200, groupLabel.implicitWidth + 64)
+                implicitWidth: Math.max(200, groupLabel.implicitWidth + 64
+                                             + groupRow.depth * 14)
                 implicitHeight: 28
                 width: parent ? parent.width : implicitWidth
 
@@ -512,7 +517,9 @@ Item {
                 }
                 Row {
                     anchors.fill: parent
-                    anchors.leftMargin: 10
+                    //  Je Ebene 14 px mehr Einzug - dieselbe Stufung wie bei den
+                    //  Einträgen darunter, damit Kopf und Inhalt eine Spalte bilden.
+                    anchors.leftMargin: 10 + groupRow.depth * 14
                     anchors.rightMargin: 12
                     spacing: 6
                     DrawnIcon {
@@ -537,7 +544,7 @@ Item {
                 }
                 HoverHandler { id: groupHover }
                 TapHandler {
-                    onTapped: App.setBookmarkGroupCollapsed(groupRow.groupName,
+                    onTapped: App.setBookmarkGroupCollapsed(groupRow.groupPath,
                                                             !groupRow.collapsed)
                 }
             }
@@ -546,36 +553,38 @@ Item {
         // Aktuell aktive dynamische Items (zum sauberen Entfernen beim Rebuild).
         property var dynamicBookmarkItems: []
 
-        //  Baut aus `App.bookmarkTree` auf: erst die Lesezeichen ohne
-        //  Gruppe, danach je Gruppe eine Kopfzeile und - solange sie
-        //  aufgeklappt ist - ihre eingerückten Einträge.
+        //  Baut aus `App.bookmarkTree` auf. Das ist eine FLACHE Zeilenliste in
+        //  Anzeigereihenfolge - je Zeile eine Gruppe oder ein Lesezeichen, mit
+        //  `depth` als Einrücktiefe. Zeilen unter einer zugeklappten Gruppe
+        //  tragen `hidden` und werden übersprungen; C++ hat die Ebenen dafür
+        //  schon abgelaufen, das Menü muss nichts nachrechnen.
         function rebuildBookmarks() {
             // Alte dynamische Items entfernen
             for (var i = 0; i < dynamicBookmarkItems.length; i++)
                 bookmarksMenu.removeItem(dynamicBookmarkItems[i])
             dynamicBookmarkItems = []
 
-            var tree = App.bookmarkTree
-            for (var s = 0; s < tree.length; s++) {
-                var sec = tree[s]
-                var isGroup = sec.group.length > 0
-                if (isGroup) {
+            var rows = App.bookmarkTree
+            for (var r = 0; r < rows.length; r++) {
+                var row = rows[r]
+                if (row.hidden) continue
+                if (row.kind === "group") {
                     var head = bookmarkGroupComponent.createObject(bookmarksMenu, {
-                        groupName: sec.group,
-                        collapsed: sec.collapsed,
-                        itemCount: sec.items.length
+                        groupPath: row.group,
+                        groupName: row.name,
+                        collapsed: row.collapsed,
+                        itemCount: row.count,
+                        depth:     row.depth
                     })
                     bookmarksMenu.addItem(head)
                     dynamicBookmarkItems.push(head)
-                    if (sec.collapsed) continue
-                }
-                for (var j = 0; j < sec.items.length; j++) {
+                } else {
                     var item = bookmarkItemComponent.createObject(bookmarksMenu, {
-                        text:         sec.items[j].name,
-                        bookmarkPath: sec.items[j].path,
+                        text:         row.name,
+                        bookmarkPath: row.path,
                         //  Eingerückt, damit ein Eintrag sichtbar zu seiner
                         //  Gruppe gehört (Menüs kennen keine Einzüge).
-                        leftPadding:  isGroup ? 30 : 10
+                        leftPadding:  10 + row.depth * 14
                     })
                     bookmarksMenu.addItem(item)
                     dynamicBookmarkItems.push(item)

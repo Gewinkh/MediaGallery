@@ -196,6 +196,10 @@ enum class StringKey {
     BookmarkGroupEmptyHint,
     BookmarkDragHint,
     BookmarkGroupNameTaken,
+    BookmarkGroupSubAdd,
+    BookmarkGroupNameInvalid,
+    BookmarkGroupParentLabel,
+    BookmarkGroupParentRoot,
 
     // Text editor / filter
     EditorAutoSave,

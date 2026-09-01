@@ -26,18 +26,28 @@ Item {
     // -1 = Hinzufügen, >=0 = Bearbeiten (Index in App.savedFolders)
     property int editIndex: -1
 
-    //  Auswahlliste der Gruppe: „ohne" + jede angelegte Gruppe (Reihenfolge wie
-    //  im Menü). Der leere Eintrag steht bewusst an Position 0.
-    readonly property var groupNames: {
-        var out = [""]
-        var tree = App.bookmarkTree
-        for (var i = 0; i < tree.length; i++)
-            if (tree[i].group.length > 0) out.push(tree[i].group)
+    //  Auswahlliste der Gruppe: „ohne" + JEDE angelegte Gruppe, auch die tief
+    //  liegenden, in der Reihenfolge des Menüs. Der leere Eintrag steht bewusst
+    //  an Position 0.
+    //  Je Eintrag zwei Dinge: `path` ist die Identität ("Persönlich/Lernen"),
+    //  `label` das, was man liest - nach Tiefe eingerückt, damit die
+    //  Verschachtelung in einer Klappliste überhaupt zu erkennen ist.
+    readonly property var groupItems: {
+        var out = [{ path: "", label: App.uiText(App.language, "BookmarkGroupNone") }]
+        var rows = App.bookmarkTree
+        for (var i = 0; i < rows.length; i++) {
+            if (rows[i].kind !== "group") continue
+            var pad = ""
+            for (var d = 0; d < rows[i].depth; d++) pad += "    "
+            out.push({ path: rows[i].group, label: pad + rows[i].name })
+        }
         return out
     }
     function _groupIndex(g) {
-        var i = root.groupNames.indexOf(g === undefined || g === null ? "" : g)
-        return i < 0 ? 0 : i
+        var want = (g === undefined || g === null) ? "" : g
+        for (var i = 0; i < root.groupItems.length; i++)
+            if (root.groupItems[i].path === want) return i
+        return 0
     }
 
     function openAdd(prefillPath, group) {
@@ -72,7 +82,8 @@ Item {
         onAccepted: {
             var p = pathField.text.trim()
             if (p.length === 0) return                 // leerer Pfad -> kein Eintrag
-            var g = root.groupNames[groupBox.currentIndex]
+            var gi = root.groupItems[groupBox.currentIndex]
+            var g = gi ? gi.path : ""
             if (root.editIndex < 0) App.addBookmark(nameField.text.trim(), p, g)
             else                    App.updateBookmark(root.editIndex, nameField.text.trim(), p, g)
         }
@@ -108,7 +119,7 @@ Item {
             //  ohne angelegte Gruppen gäbe es nichts zu wählen.
             RowLayout {
                 Layout.fillWidth: true; spacing: 8
-                visible: root.groupNames.length > 1
+                visible: root.groupItems.length > 1
                 Label {
                     text: App.uiText(App.language, "BookmarkGroupLabel")
                     color: App.themeTextPrimary; Layout.preferredWidth: 60
@@ -116,16 +127,22 @@ Item {
                 ComboBox {
                     id: groupBox
                     Layout.fillWidth: true
-                    model: root.groupNames
-                    displayText: root.groupNames[currentIndex] === ""
-                                 ? App.uiText(App.language, "BookmarkGroupNone")
-                                 : root.groupNames[currentIndex]
+                    model: root.groupItems
+                    textRole: "label"
+                    //  Im geschlossenen Zustand der VOLLE Pfad - eingerückt
+                    //  wäre er dort ohne seine Nachbarn nicht zu deuten.
+                    displayText: {
+                        var gi = root.groupItems[groupBox.currentIndex]
+                        if (!gi) return ""
+                        return gi.path.length > 0
+                               ? gi.path
+                               : App.uiText(App.language, "BookmarkGroupNone")
+                    }
                     delegate: ItemDelegate {
                         required property int index
                         required property var modelData
                         width: groupBox.width
-                        text: modelData === "" ? App.uiText(App.language, "BookmarkGroupNone")
-                                               : modelData
+                        text: modelData.label
                         highlighted: groupBox.highlightedIndex === index
                     }
                 }

@@ -227,6 +227,8 @@ Item {
         case "ellipse":           return cEllipse
         case "eye":               return cEye
         case "markup-underline":  return cUnderline
+        case "gear":              return cGear
+        case "trash":             return cTrash
         case "undo":              return cUndo
         case "redo":              return cRedo
         case "signature":         return cSignature
@@ -242,12 +244,62 @@ Item {
         return null
     }
 
+    //  Ein Punkt im 24er-Raster, in Polarkoordinaten um die Mitte - nur fuer
+    //  das Zahnrad, dessen Zaehne auf einem Kreis sitzen.
+    function _polar(r, deg) {
+        const t = deg * Math.PI / 180
+        return Qt.point(12 + r * Math.cos(t), 12 + r * Math.sin(t))
+    }
+
+    //  Kranz des Zahnrads: acht Zaehne, je vier Punkte (Fuss - Kopf - Kopf -
+    //  Fuss). Aussen 10.2 + halbe Strichstaerke bleibt innerhalb des Rasters.
+    function _gearOutline() {
+        const teeth = 8, rIn = 7.0, rOut = 10.2
+        const step = 360 / teeth
+        const halfOut = 13, halfIn = step / 2 - 5
+        let pts = []
+        for (let i = 0; i < teeth; ++i) {
+            const a = i * step
+            pts.push(root._polar(rIn,  a - halfIn))
+            pts.push(root._polar(rOut, a - halfOut))
+            pts.push(root._polar(rOut, a + halfOut))
+            pts.push(root._polar(rIn,  a + halfIn))
+        }
+        pts.push(pts[0])                       // Ring schliessen
+        return pts
+    }
+
     component Outline: ShapePath {
         strokeColor: root.color
         strokeWidth: 2
         fillColor: "transparent"
         capStyle: ShapePath.RoundCap
         joinStyle: ShapePath.RoundJoin
+    }
+
+    Component {
+        id: cGear
+        Shape {
+            anchors.fill: parent
+            preferredRendererType: Shape.CurveRenderer
+            Outline { PathPolyline { path: root._gearOutline() } }
+        }
+    }
+
+    Component {
+        id: cTrash
+        Shape {
+            anchors.fill: parent
+            preferredRendererType: Shape.CurveRenderer
+            //  Der Koerper laeuft nach unten leicht zusammen - das macht aus
+            //  einem Kasten eine Tonne.
+            Outline {
+                startX: 6.2; startY: 7.5
+                PathLine { x: 7.2;  y: 20.5 }
+                PathLine { x: 16.8; y: 20.5 }
+                PathLine { x: 17.8; y: 7.5 }
+            }
+        }
     }
 
     Component {
@@ -538,6 +590,17 @@ Item {
         //  Offener Ordner: Rueckwand blasser (Alpha), Vorderblatt tiefer und
         //  breiter davor - die Stufe dazwischen liest sich als „aufgeklappt".
         //  Zwei Toene aus EINER Farbe, weil `fills` einen Alpha-Wert kennt.
+        //  Zahnrad: der Kranz ist eine echte Vielecklinie mit acht Zaehnen
+        //  (`_gearOutline`), die Nabe ein Ring. Aus Rechtecken entstuende er
+        //  nicht - die Zaehne stehen auf 45 Grad, und ein GEDREHTES Rechteck
+        //  rastert seine Kanten nicht spiegelbildlich (Regel 28).
+        "gear":         { rings: [[12,12,3.4]] },
+        //  Muelltonne: Deckel, Griff und die zwei Rippen sind achsenparallel
+        //  und damit Striche; nur der leicht verjuengte Koerper braucht eine
+        //  Schraege und steht deshalb in `_curve`.
+        "trash":        { lines: [[3.5,6.5,20.5,6.5],
+                                  [9,3.5,15,3.5], [9,3.5,9,6.5], [15,3.5,15,6.5],
+                                  [10,11,10,17.5], [14,11,14,17.5]] },
         "folder-open":  { fills: [[3,5.5,8.5,3,1,0.5], [3,7,17,7,1.5,0.5],
                                   [4.5,11,18.5,8.5,1.5,1]] },
         "image":        { lines: [[4,17,9,12], [9,12,13,16], [13,16,16,14], [16,14,20,17]],

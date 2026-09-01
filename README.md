@@ -127,16 +127,9 @@ The `tests/` directory is not included in the published repository. If it is mis
 ## Changelog
 
 ### Latest
-- Added multi-selection, copy and paste support in the gallery
-- Added draggable DOCX margin rulers with independent undo
-- Improved DOCX autosaving and backup handling
-- Added editable equalizer presets and improved audio playback
-- Improved split-pane state and player mode persistence
-- Improved keyboard focus, deletion, and confirmation handling
-- Improved drag-and-drop between split panes
-- Improved spell checking for multilingual text
-- Improved document stability and layout while adjusting margins
-- Fixed various player, equalizer, DOCX, and gallery issues
+- Added nested bookmark groups with independent expand/collapse at every level
+- Improved bookmark management with drag-and-drop reordering across group levels
+- Improved bookmark controls with drawn icons for editing and deleting bookmarks
 
 ---
 
