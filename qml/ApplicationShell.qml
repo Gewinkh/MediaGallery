@@ -20,6 +20,17 @@ ApplicationWindow {
     id: shell
     visible: true
 
+    //  ── Bildschirm, auf dem dieses Fenster steht, an `App` melden ───────────
+    //  Nur ein WINDOW weiß das verlässlich: `Window.screen` folgt dem Umziehen
+    //  auf einen anderen Monitor. Das an ein Item angehängte `Screen` tut das
+    //  NICHT, solange das Item in einem geschlossenen Popup sitzt - es meldet
+    //  dann den PRIMÄREN Bildschirm (gemessen 2026-09-02 auf zwei Monitoren:
+    //  1536 primär, 1920 der zweite; im geschlossenen Popup kam immer 1536).
+    //  Genau daran hing die Obergrenze der manuellen Kachelbreite, und sie blieb
+    //  deshalb beim Wechsel auf den größeren Monitor stehen (vom Nutzer gemeldet).
+    readonly property int _screenW: shell.screen ? shell.screen.width : 0
+    on_ScreenWChanged: App.setScreenWidth(shell._screenW)
+
     width:  App.initialWindowWidth  > 0 ? App.initialWindowWidth  : 1200
     height: App.initialWindowHeight > 0 ? App.initialWindowHeight : 800
     x: App.initialWindowX
@@ -150,6 +161,11 @@ ApplicationWindow {
     property string _extractName: ""
 
     Component.onCompleted: {
+        //  Erstmeldung des Bildschirms; danach hält `on_ScreenWChanged` es
+        //  nach. KEIN eigenes `Component.onCompleted` dafür - ein zweites
+        //  wäre „Property value set multiple times", und die Shell lädt dann
+        //  gar nicht mehr (am Prüfstand gesehen).
+        App.setScreenWidth(shell._screenW)
         if (App.startMaximized)
             shell.visibility = Window.Maximized
         App.restoreLastFolder()

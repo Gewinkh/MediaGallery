@@ -134,6 +134,7 @@ Item {
 
             // ── Profil-Auswahl ────────────────────────────────────────────────
             SettingsGroup {
+                key: "design.profile"
                 title: App.uiText(App.language, "SettingsDesignProfileLabel")
                 Layout.fillWidth: true
 
@@ -223,6 +224,7 @@ Item {
                 }
 
                 SettingsGroup {
+                    key: "design.base-colors"
                     title: App.uiText(App.language, "SettingsDesignBaseColors")
                     Layout.fillWidth: true
                     ColorRow { label: App.uiText(App.language, "SettingsDesignBackground");      value: root.twBackground;  onPicked: (c) => { root.twBackground = c;  root.applyLive() } }
@@ -233,6 +235,7 @@ Item {
                 }
 
                 SettingsGroup {
+                    key: "design.accent"
                     title: App.uiText(App.language, "SettingsDesignAccent")
                     Layout.fillWidth: true
                     RowLayout {
@@ -279,6 +282,7 @@ Item {
                 }
 
                 SettingsGroup {
+                    key: "design.bg-gradient"
                     title: App.uiText(App.language, "SettingsDesignBgGradient")
                     Layout.fillWidth: true
                     CheckBox {
@@ -306,6 +310,7 @@ Item {
                 }
 
                 SettingsGroup {
+                    key: "design.tile-bg"
                     title: App.uiText(App.language, "SettingsDesignTileBgLabel")
                     Layout.fillWidth: true
                     RowLayout {
@@ -355,6 +360,7 @@ Item {
                 }
 
                 SettingsGroup {
+                    key: "design.bars"
                     title: App.uiText(App.language, "SettingsDesignBars")
                     Layout.fillWidth: true
                     ColorRow { label: App.uiText(App.language, "SettingsDesignMenuBar");   value: root.twMenuBarBg;   onPicked: (c) => { root.twMenuBarBg = c;   root.applyLive() } }
@@ -367,6 +373,7 @@ Item {
                 }
 
                 SettingsGroup {
+                    key: "design.pdf-viewer"
                     title: App.uiText(App.language, "SettingsDesignPdfViewer")
                     Layout.fillWidth: true
                     ColorRow { label: App.uiText(App.language, "SettingsDesignViewerBg"); value: root.twPdfViewerBg;    onPicked: (c) => { root.twPdfViewerBg = c;    root.applyLive() } }
@@ -377,6 +384,7 @@ Item {
                 }
 
                 SettingsGroup {
+                    key: "design.theme-name-export"
                     title: App.uiText(App.language, "SettingsDesignThemeNameExport")
                     Layout.fillWidth: true
                     RowLayout {

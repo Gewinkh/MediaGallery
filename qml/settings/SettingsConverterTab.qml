@@ -134,6 +134,12 @@ Item {
             spacing: 14
 
             SettingsGroup {
+                //  NICHT klappbar (Festlegung des Nutzers): diese eine Gruppe
+                //  IST der ganze Reiter - wie bei Tags und Kategorien, die gar
+                //  keine Gruppe haben. Ein Pfeil böte hier nur an, die Seite
+                //  leer zu machen. Ohne Klappen auch nichts zu merken, also
+                //  kein `key`.
+                collapsible: false
                 title: App.uiText(App.language, "SettingsTabConverter")
                 Layout.fillWidth: true
 

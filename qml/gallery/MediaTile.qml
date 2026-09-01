@@ -213,6 +213,11 @@ Rectangle {
     }
 
     // ── Zeilen-Darstellung (listMode) ───────────────────────────────────────
+    //  Die Zeilenhöhe ist einstellbar (`App.listRowHeight`, 28…160 px), also
+    //  wächst der INHALT mit - sonst bekäme eine grosse Zeile nur mehr Luft um
+    //  eine 13-px-Schrift herum. Bezug ist die frühere feste Höhe 46; geklemmt,
+    //  damit weder die kleinste Zeile überläuft noch die grösste albern wird.
+    readonly property real listScale: tile.height / 46
     Item {
         visible: tile.listMode
         anchors.fill: parent
@@ -259,7 +264,7 @@ Rectangle {
                       verticalCenter: parent.verticalCenter }
             text: tile.displayName
             color: tile.playing ? App.themeAccent : App.themeTextPrimary
-            font.pixelSize: 13
+            font.pixelSize: Math.round(Math.max(10, Math.min(24, 13 * tile.listScale)))
             font.bold: tile.playing
             elide: Text.ElideMiddle
         }
@@ -277,7 +282,9 @@ Rectangle {
                 model: tile.tags
                 delegate: Rectangle {
                     required property var modelData
-                    width: 9; height: 9; radius: 4.5
+                    width: Math.round(Math.max(7, Math.min(16, 9 * tile.listScale)))
+                    height: width
+                    radius: width / 2
                     color: Tags.tagColor(modelData)
                     border.width: 1
                     border.color: Qt.rgba(1, 1, 1, 0.35)
@@ -297,7 +304,7 @@ Rectangle {
                         : App.uiText(App.language, "FolderMediaCount").arg(tile.childCount)))
                   : tile.typeLabel
             color: App.themeTextMuted
-            font.pixelSize: 11
+            font.pixelSize: Math.round(Math.max(9, Math.min(18, 11 * tile.listScale)))
         }
     }
 

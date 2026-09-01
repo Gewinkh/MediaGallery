@@ -60,6 +60,19 @@ class AppController : public QObject {
     Q_PROPERTY(bool    showHiddenFiles READ showHiddenFiles WRITE setShowHiddenFiles NOTIFY showHiddenFilesChanged)
     //  Begleitdateien der App in Galerie und Dateiwähler mitzeigen.
     Q_PROPERTY(bool    showAllFiles    READ showAllFiles    WRITE setShowAllFiles NOTIFY showAllFilesChanged)
+    //  Galerie als Liste (eine waagerechte Zeile je Eintrag) statt als
+    //  Kachelraster. Vorgabe AUS. Im Player-Modus entscheidet weiter
+    //  `Audio.listLayout` - s. `GalleryPane` ▸ `listMode`.
+    Q_PROPERTY(bool    galleryListLayout READ galleryListLayout WRITE setGalleryListLayout NOTIFY galleryListLayoutChanged)
+    //  Zeilenhöhe der Listen-Darstellung - das Gegenstück zu `tileHeight`.
+    //  Eine Zeile ist immer so breit wie die Fläche; die Höhe ist die einzige
+    //  Größe, die es zu wählen gibt.
+    Q_PROPERTY(int     listRowHeight   READ listRowHeight   NOTIFY listRowHeightChanged)
+    //  Breite des Bildschirms, auf dem das Fenster gerade steht. Gemeldet von
+    //  der `ApplicationShell`, weil nur ein WINDOW das verlässlich weiß - das
+    //  angehängte `Screen` eines Items in einem geschlossenen Popup liefert den
+    //  PRIMÄREN Bildschirm und ändert sich nie (gemessen, s. `setScreenWidth`).
+    Q_PROPERTY(int     screenWidth     READ screenWidth     NOTIFY screenWidthChanged)
     //  Reicht „Tag löschen" bis in die Unterordner? (Standard AN, s. ISettings)
     Q_PROPERTY(bool    deleteTagsInSubfolders READ deleteTagsInSubfolders WRITE setDeleteTagsInSubfolders NOTIFY deleteTagsInSubfoldersChanged)
     //  Vorgabe-Schriftfarbe des TXT->PDF-Exports; je Datei überschreibbar
@@ -474,9 +487,41 @@ public:
     bool showHiddenFiles() const;
     void setShowHiddenFiles(bool v);
     bool showAllFiles() const;
+    bool galleryListLayout() const;
     bool deleteTagsInSubfolders() const;
     void setDeleteTagsInSubfolders(bool v);
     void setShowAllFiles(bool v);
+    void setGalleryListLayout(bool v);
+
+
+    // ── Zeilenhöhe der Listen-Darstellung ───────────────────────────────────
+    //  `zoomInList`/`zoomOutList` sind das Gegenstück zu `zoomIn`/`zoomOut`.
+    //  WELCHE der beiden Paare gilt, entscheidet die OBERFLÄCHE, nicht der
+    //  Controller: die Darstellung hängt an der HÄLFTE (im Player-Modus an
+    //  `Audio.listLayout`, sonst an `galleryListLayout`), und zwei Hälften
+    //  können verschieden stehen. Der Controller kennt die Hälfte nicht.
+    int  listRowHeight() const;
+    Q_INVOKABLE void setListRowHeight(int px);
+    Q_INVOKABLE void zoomInList(int stepPx = 4);
+    Q_INVOKABLE void zoomOutList(int stepPx = 4);
+
+    // ── Bildschirm, auf dem das Fenster steht ───────────────────────────────
+    //  Die `ApplicationShell` meldet es (`Window.screen` folgt dem Umziehen auf
+    //  einen anderen Monitor); die Einstellungen binden ihre Obergrenze daran.
+    //  Gemessen am 2026-09-02 auf zwei Monitoren (1536 primär / 1920): das an
+    //  ein Item angehängte `Screen` meldet in einem GESCHLOSSENEN Popup immer
+    //  1536 - den primären, nicht den, auf dem das Fenster steht. Genau deshalb
+    //  kommt der Wert hier aus dem Fenster und nicht aus dem Reiter.
+    int  screenWidth() const { return m_screenW; }
+    Q_INVOKABLE void setScreenWidth(int w);
+    // ── Klappzustand der Gruppen im Einstellungen-Fenster ───────────────────
+    //  `key` ist ein STABILER Schlüssel je Gruppe (z. B. "view.tiles") - nicht
+    //  ihre Überschrift, die ist übersetzt. Unbekannt = offen.
+    //  Bewusst OHNE NOTIFY: eine Gruppe liest ihren Zustand einmal beim
+    //  Entstehen und schreibt ihn beim Umschalten; es gibt keinen zweiten
+    //  Leser, den ein Signal erreichen müsste.
+    Q_INVOKABLE bool settingsGroupCollapsed(const QString& key) const;
+    Q_INVOKABLE void setSettingsGroupCollapsed(const QString& key, bool collapsed);
     QColor textPdfColor() const;
     void   setTextPdfColor(const QColor& c);
     void setFileDropMove(bool v);
@@ -517,6 +562,9 @@ signals:
     void fileDropMoveChanged();
     void showHiddenFilesChanged();
     void showAllFilesChanged();
+    void galleryListLayoutChanged();
+    void listRowHeightChanged();
+    void screenWidthChanged();
     void deleteTagsInSubfoldersChanged();
     void textPdfColorChanged();
     void themeChanged();
@@ -593,5 +641,6 @@ private:
     // Kachelgrößen-Obergrenze (Galeriefläche; von der Shell gemeldet).
     // Startwert = großzügiger Fallback, bis die Shell die reale Fläche meldet.
     int m_maxTileW = 4096;
+    int     m_screenW = 0;   // 0 = noch nicht gemeldet
     int m_maxTileH = 4096;
 };

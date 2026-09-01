@@ -127,9 +127,12 @@ The `tests/` directory is not included in the published repository. If it is mis
 ## Changelog
 
 ### Latest
-- Added nested bookmark groups with independent expand/collapse at every level
-- Improved bookmark management with drag-and-drop reordering across group levels
-- Improved bookmark controls with drawn icons for editing and deleting bookmarks
+- Improved multi-monitor window sizing and zoom behavior
+- Added adjustable list row height and gallery tile/list arrangement
+- Improved View settings with live size controls
+- Simplified and reorganized General and View settings
+- Improved startup performance and reduced memory usage
+- Improved gallery list layout and usability
 
 ---
 

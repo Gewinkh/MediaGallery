@@ -19,6 +19,7 @@ Item {
             spacing: 16
 
             SettingsGroup {
+                key: "editor.auto-save"
                 title: App.uiText(App.language, "SettingsEditorAutoSaveGroup")
                 Layout.fillWidth: true
 
@@ -98,6 +99,7 @@ Item {
             //  bleiben unangetastet, Notizen bleiben reversibel). Hier nur
             //  noch die Panel-Position.
             SettingsGroup {
+                key: "editor.pdf-edit"
                 title: App.uiText(App.language, "SettingsPdfEditGroup")
                 Layout.fillWidth: true
 
@@ -250,6 +252,7 @@ Item {
             //  Sitzung); „Kopie exportieren" lässt das Original unangetastet
             //  und erzeugt <Name>_edited(.n).docx.
             SettingsGroup {
+                key: "editor.docx"
                 title: App.uiText(App.language, "SettingsDocxGroup")
                 Layout.fillWidth: true
 

@@ -26,6 +26,14 @@ import "../viewer"
 // ─────────────────────────────────────────────────────────────────────────────
 Item {
     id: pane
+
+    //  Zeigt DIESE Hälfte ihre Einträge als Liste? Im Player-Modus entscheidet
+    //  `Audio.listLayout`, sonst `App.galleryListLayout` - zwei Hälften können
+    //  also verschieden stehen. EINE Quelle, weil zwei Dinge daran hängen: die
+    //  Darstellung der Galerie UND worauf `Strg` + `+`/`-` bzw. `Strg` + Rad
+    //  wirken.
+    readonly property bool listMode: pane.playerMode ? Audio.listLayout
+                                                     : App.galleryListLayout
     objectName: "galleryPane"      // Griff für tests/bench (Regel 31)
 
     // ── Von der Shell gesetzt ───────────────────────────────────────────────
@@ -457,7 +465,7 @@ Item {
             // normalisiert) - er bleibt vor dem Bestätigen frei änderbar.
             // Ohne offenen (oder mit bereits gespeichertem) Ordner öffnet der
             // Dialog wie bisher leer.
-            onTriggered: bookmarkEditDialog.openAdd(pane._bookmarkPrefillPath())
+            onTriggered: pane.openBookmarkAdd(pane._bookmarkPrefillPath())
         }
         MenuSeparator {
             id: bookmarksSeparator
@@ -848,15 +856,20 @@ Item {
             // Strg + '+'/'-' (inkl. '='): Kachelgröße ändern. Nur eindeutige
             // Sequenzen - StandardKey.ZoomIn würde zusätzlich "Ctrl++" liefern und
             // den Shortcut mehrdeutig machen (feuert dann gar nicht).
+            //  In der LISTEN-Darstellung gibt es keine Kachelgröße, sondern
+            //  eine Zeilenhöhe - sonst verstellte das Zoomen unsichtbar die
+            //  Kacheln und schlüge erst beim Umschalten durch (vom Nutzer
+            //  gemeldet). Kleinere Schrittweite, weil eine Zeile mit 46 px
+            //  startet und nicht mit 200.
             Shortcut {
                 sequences: ["Ctrl++", "Ctrl+="]
                 enabled: pane._keysLive
-                onActivated: App.zoomIn(16)
+                onActivated: pane.listMode ? App.zoomInList(4) : App.zoomIn(16)
             }
             Shortcut {
                 sequence: "Ctrl+-"
                 enabled: pane._keysLive
-                onActivated: App.zoomOut(16)
+                onActivated: pane.listMode ? App.zoomOutList(4) : App.zoomOut(16)
             }
 
             FilterBar {
@@ -885,10 +898,17 @@ Item {
 
             GalleryView {
                 id: galleryView
-                //  Im Player-Modus auf Wunsch als Liste statt als Kachelraster
-                //  (Einstellungen ▸ Audio) - so sieht man auch auf den ersten
-                //  Blick, in welchem Modus man ist.
-                listMode: pane.playerMode && Audio.listLayout
+                //  Liste statt Kachelraster - ZWEI getrennte Schalter, weil es
+                //  zwei verschiedene Fragen sind:
+                //   • Im Player-Modus entscheidet `Audio.listLayout`
+                //     (Einstellungen ▸ Audio, Vorgabe AN) - so sieht man auch auf
+                //     den ersten Blick, in welchem Modus man ist.
+                //   • Sonst `App.galleryListLayout` (Einstellungen ▸ Ansicht,
+                //     Vorgabe AUS).
+                //  Der Filter bleibt davon UNBERÜHRT: `onlyPlayable` hängt allein
+                //  am Player-Modus (s. `_togglePlayerMode`), im Normalmodus sind
+                //  also alle Dateien zu sehen - Liste hin oder her.
+                listMode: pane.listMode
                 //  Optionen-Modus dieser Hälfte (Alt+S).
                 optionsVisible: PaneCtl.optionsVisible
                 anchors {
@@ -1807,15 +1827,35 @@ Item {
     //  Erst sichtbar, wenn ein Titel gewählt ist (Festlegung des Nutzers) - und
     //  nur in der Hälfte, die die Wiedergabe BESITZT: in der anderen Galerie
     //  hätte sie nichts zu suchen.
-    AudioPlayerBar {
+    //  ── Player-Leiste: LAZY ─────────────────────────────────────────────────
+    //  Sie entstand beim Bau JEDER Galerie-Hälfte, obwohl sie nur im
+    //  Player-Modus mit bereitliegendem Titel überhaupt sichtbar ist.
+    //  Gemessen an `bench_qmlcost --einzeln qml/gallery/GalleryPane.qml`:
+    //  sie kostet dort ~9 ms und ~4 MB RSS.
+    //
+    //  Laden und Entladen kostet nichts: `AudioPlayerBar` führt AUSSER dem
+    //  Signal `expandRequested` keine einzige eigene Eigenschaft - alles kommt
+    //  aus `Audio`. Es gibt also keinen Zustand, den ein Entladen verlöre.
+    //  Geladen wird über eine URL, damit die Datei erst zur Laufzeit übersetzt
+    //  wird (Muster wie `HtmlHost.qml` und der Lesezeichen-Dialog unten).
+    Loader {
         id: playerBar
         //  `hasTrack` statt `active`: nach dem Wiederherstellen liegt ein Titel
         //  bereit, ohne zu laufen - die Leiste muss ihn zeigen können.
         //  In der großen Ansicht ist sie weg, dort steht alles schon oben.
-        visible: pane.playerMode && pane.playerMine && Audio.hasTrack
-                 && !pane.playerPageActive
+        active: pane.playerMode && pane.playerMine && Audio.hasTrack
+                && !pane.playerPageActive
+        //  `visible` MUSS an `active` hängen: der `paneStack` ankert sein
+        //  unteres Ende an `playerBar.visible ? playerBar.top : parent.bottom`.
+        //  Ein Loader ist von sich aus sichtbar - ohne diese Zeile wäre die
+        //  Bedingung immer wahr.
+        visible: playerBar.active
+        source: "qrc:/qml/gallery/AudioPlayerBar.qml"
         anchors { left: parent.left; right: parent.right; bottom: parent.bottom }
-        onExpandRequested: pane.openPlayerView()
+        Connections {
+            target: playerBar.item
+            function onExpandRequested() { pane.openPlayerView() }
+        }
     }
 
     //  Die große Ansicht entsteht erst beim ersten Öffnen und bleibt dann als
@@ -1848,5 +1888,24 @@ Item {
         fileMode: FileChooser.Directory
         onAccepted: PaneCtl.openFolderUrl(folderDialog.selectedFolder)
     }
-    BookmarkEditDialog { id: bookmarkEditDialog }
+    //  ── Lesezeichen-Dialog: LAZY ────────────────────────────────────────────
+    //  Er entstand bisher beim Bau JEDER Galerie-Hälfte, obwohl man ihn erst
+    //  braucht, wenn jemand „Ordner hinzufügen" wählt. Er ist kein kleiner
+    //  Dialog: er bringt einen vollständigen `FileChooser` mit.
+    //
+    //  Geladen wird über eine URL, nicht über einen `Component`-Block: so wird
+    //  `BookmarkEditDialog.qml` erst zur LAUFZEIT übersetzt. Ein inline
+    //  `Component` verschöbe nur das Erzeugen, das Übersetzen liefe weiter beim
+    //  Start mit (dasselbe Muster und dieselbe Begründung wie in `HtmlHost.qml`).
+    Loader {
+        id: bookmarkEditLoader
+        active: false
+        source: "qrc:/qml/settings/BookmarkEditDialog.qml"
+    }
+    //  Beim ersten Aufruf laden, dann öffnen. `active = true` lädt synchron
+    //  (`asynchronous` ist aus), `item` steht also unmittelbar danach.
+    function openBookmarkAdd(prefillPath) {
+        bookmarkEditLoader.active = true
+        if (bookmarkEditLoader.item) bookmarkEditLoader.item.openAdd(prefillPath)
+    }
 }

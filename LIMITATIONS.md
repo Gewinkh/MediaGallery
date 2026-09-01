@@ -104,6 +104,21 @@ names brings up the replace/rename question five times.
 Why: there is no "apply to all" - each collision is a decision about a different
 file. Cancelling applies to that one file only; the rest of the drop carries on.
 
+**In the list arrangement the hover overlay is gone - tagging and renaming go
+through the right-click menu.**
+What you notice: with *Settings -> View -> Arrangement* set to *List*, hovering a
+row no longer brings up the strip for editing tags, renaming inline and the
+quick actions. The row still shows the name and coloured tag dots, so you can
+see what a file carries - you just cannot change it from the row itself.
+Everything is still reachable, from the right-click menu instead.
+Why: a row is 46 pixels high, and the overlay is built for a tile - drawn over a
+row it would cover the whole entry including the name. `MediaTile` therefore
+switches the overlay off in list mode, along with the large thumbnail, the type
+badge and the play circle. The same has always been true of player mode; the
+setting only makes it reachable in the normal gallery as well.
+Workaround / status: right-click gives tags, categories, rename and delete;
+switch back to *Tiles* for the overlay.
+
 **A bookmark group name cannot contain a slash.**
 What you notice: typing "C/C++" as a group name leaves the OK button disabled,
 with a line saying why.

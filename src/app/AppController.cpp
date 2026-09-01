@@ -520,6 +520,61 @@ void AppController::setShowAllFiles(bool v) {
     emit showAllFilesChanged();
 }
 
+bool AppController::galleryListLayout() const { return m_settings.galleryListLayout(); }
+
+int AppController::listRowHeight() const { return m_settings.galleryListRowHeight(); }
+
+void AppController::setScreenWidth(int w) {
+    const int nw = qMax(0, w);
+    if (nw == m_screenW) return;
+    m_screenW = nw;
+    emit screenWidthChanged();
+}
+
+void AppController::setListRowHeight(int px) {
+    //  `ISettings` klemmt auf 28…160 - hier wird gegen den GESPEICHERTEN Wert
+    //  verglichen, nicht gegen den übergebenen: am Anschlag feuert das Signal
+    //  sonst bei jedem Radschritt weiter, und jede Kachelzeile rechnete neu.
+    const int before = m_settings.galleryListRowHeight();
+    m_settings.setGalleryListRowHeight(px);
+    const int after = m_settings.galleryListRowHeight();
+    if (after == before) return;
+    m_settings.sync();
+    emit listRowHeightChanged();
+}
+
+void AppController::zoomInList(int stepPx)  { setListRowHeight(listRowHeight() + stepPx); }
+void AppController::zoomOutList(int stepPx) { setListRowHeight(listRowHeight() - stepPx); }
+
+bool AppController::settingsGroupCollapsed(const QString& key) const {
+    if (key.isEmpty()) return false;
+    return m_settings.collapsedSettingsGroups().contains(key);
+}
+
+void AppController::setSettingsGroupCollapsed(const QString& key, bool collapsed) {
+    if (key.isEmpty()) return;
+    QStringList keys = m_settings.collapsedSettingsGroups();
+    const bool had = keys.contains(key);
+    if (had == collapsed) return;
+    if (collapsed) keys.append(key);
+    else           keys.removeAll(key);
+    //  Sortiert ablegen: die Datei bleibt zwischen zwei Laeufen vergleichbar,
+    //  und die Reihenfolge sagt ohnehin nichts aus.
+    keys.sort();
+    m_settings.setCollapsedSettingsGroups(keys);
+    m_settings.sync();
+}
+
+void AppController::setGalleryListLayout(bool v) {
+    if (m_settings.galleryListLayout() == v) return;
+    m_settings.setGalleryListLayout(v);
+    //  Kein Neu-Einlesen des Ordners: die Umschaltung ist reine Darstellung.
+    //  `GalleryView` rechnet Zellengröße und Spaltenzahl aus `listMode` neu,
+    //  das Modell bleibt unangetastet.
+    m_settings.sync();
+    emit galleryListLayoutChanged();
+}
+
 void AppController::setFileDropMove(bool v) {
     if (m_settings.fileDropMove() == v) return;
     m_settings.setFileDropMove(v);

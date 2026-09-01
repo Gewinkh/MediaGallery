@@ -447,6 +447,33 @@ bool AppSettings::showAllFiles() const {
 void AppSettings::setShowAllFiles(bool v) {
     m_settings.setValue("ui/showAllFiles", v);
 }
+//  Galerie als Liste statt als Kachelraster - Vorgabe AUS (s. ISettings.h).
+//  Eigener Schlüssel neben `audio/listLayout`: die beiden Ansichten werden
+//  getrennt eingestellt.
+bool AppSettings::galleryListLayout() const {
+    return m_settings.value("gallery/listLayout", false).toBool();
+}
+void AppSettings::setGalleryListLayout(bool v) {
+    m_settings.setValue("gallery/listLayout", v);
+}
+//  Zugeklappte Gruppen des Einstellungen-Fensters (s. ISettings.h). Leer =
+//  alles offen, und genau das ist der Auslieferungszustand.
+QStringList AppSettings::collapsedSettingsGroups() const {
+    return m_settings.value("ui/collapsedGroups").toStringList();
+}
+void AppSettings::setCollapsedSettingsGroups(const QStringList& keys) {
+    if (keys.isEmpty()) m_settings.remove("ui/collapsedGroups");
+    else                m_settings.setValue("ui/collapsedGroups", keys);
+}
+//  Zeilenhöhe der Listen-Darstellung (s. ISettings.h). Geklemmt in BEIDE
+//  Richtungen - wie `videoSeekStep`, und aus demselben Grund.
+int AppSettings::galleryListRowHeight() const {
+    const int v = m_settings.value("gallery/listRowHeight", 46).toInt();
+    return std::clamp(v, 28, 160);
+}
+void AppSettings::setGalleryListRowHeight(int px) {
+    m_settings.setValue("gallery/listRowHeight", std::clamp(px, 28, 160));
+}
 //  „Tag auch in den Unterordnern löschen" - Standard AN (s. ISettings.h).
 bool AppSettings::deleteTagsInSubfolders() const {
     return m_settings.value("tags/deleteInSubfolders", true).toBool();

@@ -332,7 +332,9 @@ Rectangle {
     property bool optionsVisible: App.optionsVisible
     readonly property int tileW: root.listMode ? Math.max(200, root.areaW - spacing)
                                                : App.tileWidth
-    readonly property int tileH: root.listMode ? 46 : App.tileHeight
+    //  Zeilenhöhe aus den Einstellungen statt fest 46 - einstellbar über
+    //  `Strg` + `+`/`-`, `Strg` + Rad und den Reiter Ansicht.
+    readonly property int tileH: root.listMode ? App.listRowHeight : App.tileHeight
     readonly property int cellW: tileW + spacing
     readonly property int cellH: tileH + spacing
 
@@ -1659,8 +1661,15 @@ Rectangle {
         z: 2
         onWheel: function(wheel) {
             if (wheel.modifiers & Qt.ControlModifier) {
-                if (wheel.angleDelta.y > 0)      App.zoomIn(16)
-                else if (wheel.angleDelta.y < 0) App.zoomOut(16)
+                //  In der LISTEN-Darstellung wächst die ZEILENHÖHE, nicht die
+                //  Kachel: sonst tat sich beim Zoomen sichtbar nichts, und die
+                //  verstellte Kachelgröße schlug erst beim Umschalten durch
+                //  (vom Nutzer gemeldet). Schrittweite 4 statt 16 - eine Zeile
+                //  startet bei 46 px, eine Kachel bei 200.
+                if (wheel.angleDelta.y > 0)
+                    root.listMode ? App.zoomInList(4)  : App.zoomIn(16)
+                else if (wheel.angleDelta.y < 0)
+                    root.listMode ? App.zoomOutList(4) : App.zoomOut(16)
                 wheel.accepted = true
                 return
             }

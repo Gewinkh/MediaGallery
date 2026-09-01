@@ -381,6 +381,20 @@ static const QMap<StringKey, QString> s_de = {
     { StringKey::SettingsCatNodeClearUniform,  "Einheitsfarbe entfernen" },
     { StringKey::SettingsCatNodeColorTitle,  "Kategorie-Farbe" },
     { StringKey::SettingsTabViewLayout,  "Ansicht / Layout" },
+    { StringKey::SettingsViewGalleryLayout,  "Ansicht" },
+    { StringKey::SettingsViewGalleryLayoutHint,
+      "Wie die Galerie ihre Ordner und Dateien anordnet. „Liste\" stellt jeden Eintrag "
+      "in eine eigene waagerechte Zeile - dieselbe Anordnung wie im Player-Modus, aber "
+      "ohne dessen Filter: hier bleibt jede Datei sichtbar. Der Player-Modus wird "
+      "getrennt eingestellt (Einstellungen ▸ Audio)." },
+    { StringKey::GalleryLayoutTiles,  "Kacheln" },
+    { StringKey::GalleryLayoutList,   "Liste" },
+    { StringKey::SettingsViewListSize,   "Listengröße" },
+    { StringKey::SettingsViewListHeight, "Zeilenhöhe" },
+    { StringKey::SettingsViewListSizeHint,
+      "Eine Zeile ist immer so breit wie die Fläche - einzustellen ist also nur "
+      "ihre Höhe. Bild, Schrift und Tag-Punkte wachsen mit. Geht auch in der "
+      "Galerie: Strg und + bzw. -, oder Strg und Mausrad." },
     { StringKey::SettingsTabEditorShort,  "Editor" },
     { StringKey::SettingsTabConverter,  "Converter" },
     { StringKey::SettingsTabBookmarks,  "Lesezeichen" },
@@ -1185,6 +1199,20 @@ static const QMap<StringKey, QString> s_en = {
     { StringKey::SettingsCatNodeClearUniform,  "Remove uniform color" },
     { StringKey::SettingsCatNodeColorTitle,  "Category Color" },
     { StringKey::SettingsTabViewLayout,  "View / Layout" },
+    { StringKey::SettingsViewGalleryLayout,  "Arrangement" },
+    { StringKey::SettingsViewGalleryLayoutHint,
+      "How the gallery arranges its folders and files. \"List\" puts every entry on a "
+      "horizontal row of its own - the same arrangement as player mode, but without its "
+      "filter: every file stays visible here. Player mode is set separately "
+      "(Settings > Audio)." },
+    { StringKey::GalleryLayoutTiles,  "Tiles" },
+    { StringKey::GalleryLayoutList,   "List" },
+    { StringKey::SettingsViewListSize,   "List Size" },
+    { StringKey::SettingsViewListHeight, "Row height" },
+    { StringKey::SettingsViewListSizeHint,
+      "A row is always as wide as the area, so its height is the only size to "
+      "choose. Artwork, text and tag dots grow with it. It also works in the "
+      "gallery: Ctrl and + or -, or Ctrl and the mouse wheel." },
     { StringKey::SettingsTabEditorShort,  "Editor" },
     { StringKey::SettingsTabConverter,  "Converter" },
     { StringKey::SettingsTabBookmarks,  "Saved Folders" },

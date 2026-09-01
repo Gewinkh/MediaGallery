@@ -23,6 +23,7 @@ Item {
 
             // ── Equalizer ─────────────────────────────────────────────────────
             SettingsGroup {
+                key: "audio.audio-eq"
                 title: App.uiText(App.language, "AudioEqTitle")
                 Layout.fillWidth: true
 
@@ -58,6 +59,7 @@ Item {
 
             // ── Darstellung ───────────────────────────────────────────────────
             SettingsGroup {
+                key: "audio.audio-layout"
                 title: App.uiText(App.language, "AudioLayoutTitle")
                 Layout.fillWidth: true
 
@@ -100,6 +102,7 @@ Item {
 
             // ── Player-Modus ──────────────────────────────────────────────────
             SettingsGroup {
+                key: "audio.audio-player-mode"
                 title: App.uiText(App.language, "AudioPlayerMode")
                 Layout.fillWidth: true
 
@@ -162,6 +165,7 @@ Item {
             //  Ausgelöst wird es am Video (Rechtsklick auf die Kachel) oder in
             //  der Warteschlange des Players; hier stehen nur die Vorgaben.
             SettingsGroup {
+                key: "audio.audio-extract"
                 title: App.uiText(App.language, "AudioExtractGroup")
                 Layout.fillWidth: true
 

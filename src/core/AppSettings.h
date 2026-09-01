@@ -51,6 +51,12 @@ public:
     void setFileDropMove(bool v) override;
     bool showAllFiles() const override;
     void setShowAllFiles(bool v) override;
+    bool galleryListLayout() const override;
+    void setGalleryListLayout(bool v) override;
+    QStringList collapsedSettingsGroups() const override;
+    void        setCollapsedSettingsGroups(const QStringList& keys) override;
+    int  galleryListRowHeight() const override;
+    void setGalleryListRowHeight(int px) override;
     bool deleteTagsInSubfolders() const override;
     void setDeleteTagsInSubfolders(bool v) override;
     QColor textPdfColor() const override;

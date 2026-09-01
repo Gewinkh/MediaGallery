@@ -145,6 +145,32 @@ public:
     virtual bool showAllFiles() const = 0;
     virtual void setShowAllFiles(bool v) = 0;
 
+    //  Zeigt die Galerie ihre Einträge als KACHELRASTER (Vorgabe) oder als
+    //  Liste - eine waagerechte Zeile je Ordner und je Datei? Es ist derselbe
+    //  Aufbau, den der Player-Modus schon kennt (`audioListLayout`), hier aber
+    //  OHNE dessen Filter: im Normalmodus bleibt jede Datei sichtbar.
+    //  Beide Schalter bleiben getrennt - wer den Player als Liste will, will
+    //  damit noch nicht seine Galerie als Liste.
+    virtual bool galleryListLayout() const = 0;
+    virtual void setGalleryListLayout(bool v) = 0;
+
+    //  Welche Gruppen im Einstellungen-Fenster sind ZUGEKLAPPT? Gespeichert
+    //  werden die stabilen Schlüssel der Gruppen (`SettingsGroup.key`), NICHT
+    //  ihre Überschriften - die sind übersetzt und änderten sich mit der
+    //  Sprache. Nicht genannt = offen; eine frische Installation zeigt also
+    //  alles, was sie vorher auch zeigte.
+    virtual QStringList collapsedSettingsGroups() const = 0;
+    virtual void        setCollapsedSettingsGroups(const QStringList& keys) = 0;
+
+    //  Zeilenhöhe der LISTEN-Darstellung der Galerie (`galleryListLayout` bzw.
+    //  der Player-Modus). Das Gegenstück zur Kachelgröße - eine Zeile ist immer
+    //  so breit wie die Fläche, ihre Höhe ist also die einzige Größe, die es zu
+    //  wählen gibt. Vorgabe 46 = der Wert, der vorher fest im QML stand.
+    //  Geklemmt auf 28…160 BEIM LESEN UND SCHREIBEN: eine von Hand verstellte
+    //  Datei darf keine unbrauchbare Zeile in die Galerie durchreichen.
+    virtual int  galleryListRowHeight() const = 0;
+    virtual void setGalleryListRowHeight(int px) = 0;
+
     //  Löscht „Tag löschen" den Tag auch in ALLEN Unterordnern des offenen
     //  Ordners? Jeder Ordner führt seine Verschlagwortung in einer eigenen
     //  Sidecar-Datei; ohne diesen Schalter blieb ein gelöschter Tag dort

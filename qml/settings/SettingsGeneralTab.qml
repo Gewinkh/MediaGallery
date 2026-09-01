@@ -8,6 +8,23 @@ import "../common"
 Item {
     id: root
 
+    //  Zwischenüberschrift INNERHALB einer gebündelten Gruppe - dieselbe Form
+    //  wie in `SettingsViewTab`.
+    component GenSubHead: ColumnLayout {
+        property alias text: subLabel.text
+        Layout.fillWidth: true
+        Layout.topMargin: 6
+        spacing: 6
+        Rectangle { Layout.fillWidth: true; height: 1; color: App.themeBorder }
+        Text {
+            id: subLabel
+            Layout.fillWidth: true
+            color: App.themeTextMuted
+            font.pixelSize: 11
+            font.bold: true
+        }
+    }
+
     // Signal nach oben: Backend gespeichert -> Dialog schließen
     signal rhiSwitchSucceeded()
 
@@ -40,6 +57,7 @@ Item {
             spacing: 16
 
             SettingsGroup {
+                key: "general.menu-language"
                 title: App.uiText(App.language, "MenuLanguage")
                 Layout.fillWidth: true
 
@@ -62,6 +80,7 @@ Item {
             }
 
             SettingsGroup {
+                key: "general.menu-video-playback"
                 title: App.uiText(App.language, "MenuVideoPlayback")
                 Layout.fillWidth: true
 
@@ -89,6 +108,7 @@ Item {
 
             // ── Vollbild-Animation (Öffnen/Schließen) ─────────────────────────
             SettingsGroup {
+                key: "general.fullscreen-anim"
                 title: App.uiText(App.language, "SettingsGenFullscreenAnim")
                 Layout.fillWidth: true
 
@@ -116,6 +136,7 @@ Item {
 
             // ── Audio-Player-Akzent (PDF-Audioleiste) ─────────────────────────
             SettingsGroup {
+                key: "general.audio-player"
                 title: App.uiText(App.language, "SettingsGenAudioPlayer")
                 Layout.fillWidth: true
 
@@ -142,7 +163,12 @@ Item {
             }
 
             // ── Mono-Play (nur eine Wiedergabe gleichzeitig) ───────────────────
+            //  Mono-Play UND Spulschritt in EINER Gruppe (Festlegung des Nutzers
+            //  2026-09-01): beides betrifft dieselbe Sache - wie sich Ton und
+            //  Video beim Abspielen verhalten. Die früheren Gruppentitel leben
+            //  als Zwischenüberschriften weiter.
             SettingsGroup {
+                key: "general.playback"
                 title: App.uiText(App.language, "SettingsGenMonoPlay")
                 Layout.fillWidth: true
 
@@ -163,36 +189,8 @@ Item {
                     wrapMode: Text.WordWrap
                     Layout.fillWidth: true
                 }
-            }
 
-            // ── Ziehen auf einen Ordner: verschieben oder kopieren ────────────
-            SettingsGroup {
-                title: App.uiText(App.language, "SettingsDropMoveLabel")
-                Layout.fillWidth: true
-
-                CheckBox {
-                    checked: App.fileDropMove
-                    onToggled: App.fileDropMove = checked
-                    text: App.uiText(App.language, "SettingsDropMoveLabel")
-                    contentItem: Text {
-                        text: parent.text; color: App.themeTextPrimary
-                        leftPadding: parent.indicator.width + 6
-                        verticalAlignment: Text.AlignVCenter
-                    }
-                }
-                Label {
-                    text: App.uiText(App.language, "SettingsDropMoveDesc")
-                    color: App.themeTextMuted
-                    font.pixelSize: 11
-                    wrapMode: Text.WordWrap
-                    Layout.fillWidth: true
-                }
-            }
-
-            // ── Spulschritt der Pfeiltasten im Video-Vollbild ──────────────────
-            SettingsGroup {
-                title: App.uiText(App.language, "SettingsGenSeekStep")
-                Layout.fillWidth: true
+                GenSubHead { text: App.uiText(App.language, "SettingsGenSeekStep") }
 
                 RowLayout {
                     Layout.fillWidth: true
@@ -222,10 +220,37 @@ Item {
                 }
             }
 
+            // ── Ziehen auf einen Ordner: verschieben oder kopieren ────────────
+            SettingsGroup {
+                key: "general.drop-move"
+                title: App.uiText(App.language, "SettingsDropMoveLabel")
+                Layout.fillWidth: true
+
+                CheckBox {
+                    checked: App.fileDropMove
+                    onToggled: App.fileDropMove = checked
+                    text: App.uiText(App.language, "SettingsDropMoveLabel")
+                    contentItem: Text {
+                        text: parent.text; color: App.themeTextPrimary
+                        leftPadding: parent.indicator.width + 6
+                        verticalAlignment: Text.AlignVCenter
+                    }
+                }
+                Label {
+                    text: App.uiText(App.language, "SettingsDropMoveDesc")
+                    color: App.themeTextMuted
+                    font.pixelSize: 11
+                    wrapMode: Text.WordWrap
+                    Layout.fillWidth: true
+                }
+            }
+
+            // ── Spulschritt der Pfeiltasten im Video-Vollbild ──────────────────
             // ── Rechtschreibprüfung ───────────────────────────────────────────
             //  PRÜFUNG, nicht Korrektur: markiert wird, ersetzt wird nur auf
             //  ausdrückliche Wahl im Kontextmenü.
             SettingsGroup {
+                key: "general.spell"
                 title: App.uiText(App.language, "SettingsGenSpell")
                 Layout.fillWidth: true
 
@@ -276,6 +301,7 @@ Item {
 
             // ── Render-Backend ────────────────────────────────────────────────
             SettingsGroup {
+                key: "general.render-backend"
                 title: App.uiText(App.language, "SettingsGenRenderBackend")
                 Layout.fillWidth: true
 
@@ -342,6 +368,7 @@ Item {
 
             // ── Tastenkürzel-Übersicht ────────────────────────────────────────
             SettingsGroup {
+                key: "general.shortcuts"
                 title: App.uiText(App.language, "SettingsGenShortcuts")
                 Layout.fillWidth: true
 
