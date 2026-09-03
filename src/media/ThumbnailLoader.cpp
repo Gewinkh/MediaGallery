@@ -1,4 +1,6 @@
 #include "media/ThumbnailLoader.h"
+
+#include "media/ContentSniff.h"
 #include "docx/DocxDocument.h"
 #include "media/MediaItem.h"
 #include "audio/AudioTags.h"
@@ -28,6 +30,9 @@
 #include <QColor>
 #include <QGuiApplication>
 #include <QHash>
+#include <QJsonDocument>
+#include "editor/LanguageTable.h"
+#include "editor/SyntaxScanner.h"
 
 // ─── Disk-Cache-Helfer ───────────────────────────────────────────────────────
 namespace {
@@ -50,7 +55,11 @@ const QString& cacheDir() {
     return dir;
 }
 
-QString cacheKeyFor(const QString& path, int dim) {
+//  `stilTag` beschreibt das AUSSEHEN einer Text-Kachel (Vorschau an/aus +
+//  Fingerabdruck der Editor-Palette). Er ist leer fuer alle anderen Medien -
+//  ein Farbwechsel im Editor darf keine Bild-, Video- oder PDF-Kachel
+//  ungueltig machen.
+QString cacheKeyFor(const QString& path, int dim, const QString& stilTag = QString()) {
     // mtime einbeziehen -> ersetzte/bearbeitete Dateien erhalten frische Thumbnails.
     // v4: feste Generierungsgröße (kThumbDim) statt variabler Kachelgröße.
     // v5: HTML/HTM rendern jetzt als Design-Karte statt Quelltext -> alte
@@ -74,7 +83,8 @@ QString cacheKeyFor(const QString& path, int dim) {
         (path + QChar('|')
          + QString::number(dim) + QChar('|')
          + QString::number(mtime) + QChar('|')
-         + QString::number(kCacheVersion)).toUtf8();
+         + QString::number(kCacheVersion) + QChar('|')
+         + stilTag).toUtf8();
     return cacheDir() + QStringLiteral("/")
            + QString::fromLatin1(QCryptographicHash::hash(raw, QCryptographicHash::Md5).toHex())
            + QStringLiteral(".jpg");
@@ -90,6 +100,24 @@ ThumbnailLoader::ThumbnailLoader(QObject* parent)
     const int threads = qMin(8, qMax(2, QThread::idealThreadCount()));
     m_pool->setMaxThreadCount(threads);
     m_pool->setExpiryTimeout(30000);
+}
+
+bool ThumbnailLoader::setTextPreviewStyle(bool zeigeInhalt,
+                                         const mg::editor::SyntaxPalette& p) {
+    //  Der Fingerabdruck geht in den Cache-Schluessel: aendert sich die
+    //  Einstellung oder eine Farbe, sind die alten Kacheln ungueltig. Ohne das
+    //  behielte jede bereits erzeugte Kachel ihr Aussehen, bis die Datei
+    //  angefasst wird.
+    const QByteArray roh = QJsonDocument(p.toJson()).toJson(QJsonDocument::Compact);
+    const QString tag = (zeigeInhalt ? QStringLiteral("c") : QStringLiteral("t"))
+        + QString::fromLatin1(
+              QCryptographicHash::hash(roh, QCryptographicHash::Md5).toHex().left(8));
+    if (tag == m_textStil.tag)
+        return false;
+    m_textStil.zeigeInhalt = zeigeInhalt;
+    m_textStil.palette     = p;
+    m_textStil.tag         = tag;
+    return true;
 }
 
 int ThumbnailLoader::quantizeDim(int needPx) {
@@ -141,7 +169,11 @@ void ThumbnailLoader::requestThumbnail(const QString& filePath) {
     //  Kein Pool-Dispatch, kein Decode - nur eine Existenzprüfung und ein
     //  queued Signal. Das ist der Normalfall beim Scrollen über bereits
     //  generierte Thumbnails und hält den Pool für echte Misses frei.
-    const QString cachePath = cacheKeyFor(filePath, m_targetDim);
+    //  Nur Text-Kacheln haengen am Stil - alle anderen behalten ihren
+    //  Schluessel, damit ein Farbwechsel im Editor sie nicht neu erzeugt.
+    const QString stilTag = (mg::refineType(filePath, MediaItem::detectType(filePath)) == MediaType::Text)
+                                ? m_textStil.tag : QString();
+    const QString cachePath = cacheKeyFor(filePath, m_targetDim, stilTag);
     if (QFileInfo::exists(cachePath)) {
         const QString url = QUrl::fromLocalFile(cachePath).toString();
         QMetaObject::invokeMethod(this, [this, filePath, url]() {
@@ -153,7 +185,8 @@ void ThumbnailLoader::requestThumbnail(const QString& filePath) {
     // ── Miss: Task mit Abbruch-Flag + Priorität einreihen ────────────────────
     const uint64_t gen = m_generation.load(std::memory_order_relaxed);
     auto flag = std::make_shared<std::atomic<bool>>(false);
-    auto* task = new ThumbnailTask(filePath, QSize(m_targetDim, m_targetDim), gen, flag);
+    auto* task = new ThumbnailTask(filePath, QSize(m_targetDim, m_targetDim), gen, flag,
+                                   m_textStil);
     task->setAutoDelete(true);
 
     {
@@ -245,8 +278,10 @@ void ThumbnailLoader::cancelAll() {
 
 // ─── ThumbnailTask ───────────────────────────────────────────────────────────
 ThumbnailTask::ThumbnailTask(const QString& path, const QSize& size, uint64_t generation,
-                             std::shared_ptr<std::atomic<bool>> cancel)
+                             std::shared_ptr<std::atomic<bool>> cancel,
+                             const TextPreviewStyle& stil)
     : m_path(path), m_size(size), m_generation(generation), m_cancel(std::move(cancel))
+    , m_stil(stil)
 {
     setAutoDelete(true);
 }
@@ -258,7 +293,9 @@ void ThumbnailTask::run() {
         return;
     }
 
-    const QString cachePath = cacheKeyFor(m_path, m_size.width());
+    const QString stilTag = (mg::refineType(m_path, MediaItem::detectType(m_path)) == MediaType::Text)
+                                ? m_stil.tag : QString();
+    const QString cachePath = cacheKeyFor(m_path, m_size.width(), stilTag);
 
     // Disk-Cache-Treffer: keine Dekodierung nötig (nur Existenzprüfung im Pool).
     if (QFileInfo::exists(cachePath)) {
@@ -272,13 +309,15 @@ void ThumbnailTask::run() {
         return;
     }
 
-    const MediaType t = MediaItem::detectType(m_path);
+    //  Dieselbe Nachbesserung wie im Modell - sonst versuchte die Vorschau bei
+    //  einer TypeScript-Datei mit der Endung `.ts` ein Videobild zu greifen.
+    const MediaType t = mg::refineType(m_path, MediaItem::detectType(m_path));
     QImage pix;
     if      (t == MediaType::Image) pix = generateImageThumbnail(m_path, m_size);
     else if (t == MediaType::Video) pix = generateVideoThumbnail(m_path, m_size);
     else if (t == MediaType::Audio) pix = generateAudioThumbnail(m_path, m_size);
     else if (t == MediaType::Pdf)   pix = generatePdfThumbnail(m_path, m_size);
-    else if (t == MediaType::Text)  pix = generateTextThumbnail(m_path, m_size);
+    else if (t == MediaType::Text)  pix = generateTextThumbnail(m_path, m_size, m_stil);
     else if (t == MediaType::Docx)  pix = generateDocxThumbnail(m_path, m_size);
 
     if (pix.isNull()) {
@@ -1095,7 +1134,55 @@ QImage ThumbnailTask::generateHtmlCardThumbnail(const QString& path, const QSize
     return pix;
 }
 
-QImage ThumbnailTask::generateTextThumbnail(const QString& path, const QSize& size) {
+//  Karte, die NUR den Dateityp nennt - die Vorschau ist abgeschaltet.
+//  Grosse Buchstaben (CPP, PY, MD …) in den Farben der Editor-Palette, damit
+//  Kachel und Editor zusammenpassen.
+QImage ThumbnailTask::generateTypeCardThumbnail(const QString& path, const QSize& size,
+                                                const TextPreviewStyle& stil) {
+    QString typ = QFileInfo(path).suffix().toUpper();
+    if (typ.isEmpty())
+        typ = QFileInfo(path).fileName().toUpper();   // Makefile, Dockerfile …
+    if (typ.isEmpty())
+        typ = QStringLiteral("TXT");
+
+    QImage pix(size, QImage::Format_ARGB32_Premultiplied);
+    pix.fill(stil.palette.background);
+    QPainter p(&pix);
+    p.setRenderHint(QPainter::Antialiasing);
+
+    //  Schriftgroesse an die Kachel binden und dann an die BREITE anpassen -
+    //  „DOCKERFILE" ist dreimal so lang wie „PY" und liefe sonst hinaus.
+    QFont f(QStringLiteral("Monospace"));
+    f.setStyleHint(QFont::Monospace);
+    f.setBold(true);
+    int px = qMax(10, size.height() / 5);
+    f.setPixelSize(px);
+    const int platz = size.width() - qMax(8, size.width() / 8);
+    while (px > 8 && QFontMetrics(f).horizontalAdvance(typ) > platz) {
+        px = px * 9 / 10;
+        f.setPixelSize(px);
+    }
+    p.setFont(f);
+    p.setPen(stil.palette.text);
+    p.drawText(pix.rect(), Qt::AlignCenter, typ);
+
+    //  BEWUSST nichts weiter: „Vorschau aus" heisst der Dateityp und sonst
+    //  nichts. Ein Zwischenstand hatte einen farbigen Strich darunter, der die
+    //  Typen unterscheiden sollte - er kann es nicht, weil die Farbe der
+    //  PALETTE gehoert und nicht der Sprache, und sah damit auf jeder Kachel
+    //  gleich aus.
+    p.end();
+    return pix;
+}
+
+QImage ThumbnailTask::generateTextThumbnail(const QString& path, const QSize& size,
+                                            const TextPreviewStyle& stil) {
+    //  Vorschau abgeschaltet -> nur der Dateityp. Gilt fuer JEDE Textdatei,
+    //  auch fuer HTML: wer den Inhalt nicht sehen will, will auch keine
+    //  Design-Karte.
+    if (!stil.zeigeInhalt)
+        return generateTypeCardThumbnail(path, size, stil);
+
     // HTML/HTM -> gerenderte Design-Karte (Hero-Nachbildung) statt Quelltext.
     {
         const QString suf = QFileInfo(path).suffix().toLower();
@@ -1122,16 +1209,14 @@ QImage ThumbnailTask::generateTextThumbnail(const QString& path, const QSize& si
     QPainter p(&pix);
     p.setRenderHint(QPainter::Antialiasing);
 
-    QLinearGradient grad(0, 0, 0, size.height());
-    grad.setColorAt(0, QColor(26, 34, 42));
-    grad.setColorAt(1, QColor(16, 22, 28));
-    p.fillRect(pix.rect(), grad);
+    //  Flaeche in der EDITOR-Farbe: die Kachel zeigt eine Vorschau dessen, was
+    //  beim Oeffnen kommt - also soll sie auch so aussehen.
+    p.fillRect(pix.rect(), stil.palette.background);
 
     QFont mono("Monospace");
     mono.setStyleHint(QFont::Monospace);
     mono.setPixelSize(qMax(8, size.height() / 16));
     p.setFont(mono);
-    p.setPen(QColor(180, 205, 200));
 
     QFontMetrics fm(mono);
     const int lineH  = fm.height();
@@ -1139,11 +1224,54 @@ QImage ThumbnailTask::generateTextThumbnail(const QString& path, const QSize& si
     int y            = margin + fm.ascent();
     const int avail  = size.width() - 2 * margin;
 
+    //  Dieselbe Zerlegung wie im Editor - Sprache aus der Endung, Zustand von
+    //  Zeile zu Zeile weitergereicht (ein Blockkommentar in Zeile 1 faerbt so
+    //  auch Zeile 2). Der Zerleger ist reines C++ und laeuft hier im Pool.
+    const mg::editor::LanguageDef& def = mg::editor::languageForPath(path);
+    int zustand = 0;
+    mg::editor::SpanList spans;
+
     for (const QString& raw : std::as_const(lines)) {
         if (y > size.height() - margin) break;
         QString line = raw;
         line.replace('\t', QStringLiteral("    "));
-        p.drawText(margin, y, fm.elidedText(line, Qt::ElideRight, avail));
+        zustand = mg::editor::scanLine(line, def, zustand, spans);
+
+        //  Wie viele Zeichen passen? Gekuerzt wird MIT Faerbung, nicht statt
+        //  ihrer: faerbte man nur ungekuerzte Zeilen, waere auf einer Kachel
+        //  ausgerechnet die eine kurze Zeile bunt und der Rest grau.
+        const QString sichtbar = fm.elidedText(line, Qt::ElideRight, avail);
+        const bool gekuerzt = (sichtbar != line);
+        const qsizetype zeichen = gekuerzt ? qMax<qsizetype>(0, sichtbar.size() - 1)
+                                           : line.size();
+
+        //  Abschnittsweise malen, jedes Zeichen GENAU EINMAL: erst die Luecke
+        //  vor einem Span in der Grundfarbe, dann der Span in seiner Farbe.
+        //  Die x-Position kommt aus `horizontalAdvance` des Praefixes und nicht
+        //  aus einer Multiplikation mit der Zeichenbreite - sonst verrutschte
+        //  jede Zeile mit einem doppelt breiten Zeichen (CJK) oder einer
+        //  Ersatzglyphe.
+        qsizetype pos = 0;
+        const auto male = [&](qsizetype von, qsizetype len, const QColor& c) {
+            if (len <= 0) return;
+            p.setPen(c);
+            p.drawText(margin + fm.horizontalAdvance(line.left(von)), y,
+                       line.mid(von, len));
+        };
+        for (const mg::editor::Span& sp : spans) {
+            if (sp.start >= zeichen) break;
+            if (sp.tok == mg::editor::Tok::Normal) continue;
+            male(pos, sp.start - pos, stil.palette.text);
+            const qsizetype len = qMin(sp.length, zeichen - sp.start);
+            male(sp.start, len, stil.palette.colorFor(sp.tok));
+            pos = sp.start + len;
+        }
+        male(pos, zeichen - pos, stil.palette.text);
+        if (gekuerzt) {
+            p.setPen(stil.palette.text);
+            p.drawText(margin + fm.horizontalAdvance(line.left(zeichen)), y,
+                       QStringLiteral("\u2026"));
+        }
         y += lineH;
     }
 

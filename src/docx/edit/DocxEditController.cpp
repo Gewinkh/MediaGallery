@@ -1,4 +1,5 @@
 #include "docx/edit/DocxEditController.h"
+#include "core/SearchPattern.h"
 
 #include "core/FolderImages.h"
 #include "docx/DocxZip.h"
@@ -2805,12 +2806,24 @@ QVariantMap DocxEditController::findNext(const QString& needle, bool caseSensiti
     const int n = m_doc.blocks.size();
     if (!m_ready || needle.isEmpty() || n == 0)
         return r;
-    const auto sens = caseSensitive ? Qt::CaseSensitive : Qt::CaseInsensitive;
+    //  Woertlich UND - bei Sonderzeichen - als Muster, wie ueberall in der App
+    //  (s. `core/SearchPattern.h`). Die Trefferlaenge ist deshalb NICHT mehr
+    //  `needle.size()`, sondern das, was gefunden wurde.
+    const mg::search::Pattern p(needle, caseSensitive, false);
 
     //  Startgrenze: vorwärts ab Selektionsende, rückwärts ab Selektionsanfang.
     int sb, sp;
     { int b1, p1, b2, p2; orderedSelection(b1, p1, b2, p2);
       if (backward) { sb = b1; sp = p1; } else { sb = b2; sp = p2; } }
+
+    auto liefern = [&](int bi, const mg::search::Range& tr, bool wrapped) {
+        selectRange(bi, tr.start, tr.length);
+        r.insert(QStringLiteral("found"), true);
+        r.insert(QStringLiteral("wrapped"), wrapped);
+        r.insert(QStringLiteral("block"), bi);
+        r.insert(QStringLiteral("pos"), tr.start);
+        return r;
+    };
 
     //  EINMAL umlaufend durch alle Blöcke; der Wrap-Durchgang (k==n) landet
     //  wieder im Startblock und akzeptiert nur Treffer VOR der Startgrenze
@@ -2821,39 +2834,23 @@ QVariantMap DocxEditController::findNext(const QString& needle, bool caseSensiti
         if (!isEditableParagraph(bi))
             continue;
         const QString t = blockText(bi);
-        int idx;
         if (!backward) {
-            const int from = (k == 0) ? sp : 0;
-            idx = t.indexOf(needle, from, sens);
+            const mg::search::Range tr = p.firstFrom(t, (k == 0) ? sp : 0);
+            if (tr.length <= 0) continue;
             if (k == n) {                         // Wrap zurück in den Startblock
-                if (idx >= 0 && idx < sp) { selectRange(bi, idx, needle.size());
-                    r.insert(QStringLiteral("found"), true);
-                    r.insert(QStringLiteral("wrapped"), true);
-                    r.insert(QStringLiteral("block"), bi);
-                    r.insert(QStringLiteral("pos"), idx); return r; }
+                if (tr.start < sp) return liefern(bi, tr, true);
                 continue;
             }
-            if (idx >= 0) { selectRange(bi, idx, needle.size());
-                r.insert(QStringLiteral("found"), true);
-                r.insert(QStringLiteral("wrapped"), false);
-                r.insert(QStringLiteral("block"), bi);
-                r.insert(QStringLiteral("pos"), idx); return r; }
+            return liefern(bi, tr, false);
         } else {
-            const int fromEnd = (k == 0) ? sp - needle.size() : t.size();
-            idx = t.lastIndexOf(needle, fromEnd, sens);
+            const mg::search::Range tr =
+                p.lastEndingAtOrBefore(t, (k == 0) ? sp : int(t.size()));
+            if (tr.length <= 0) continue;
             if (k == n) {                         // Wrap zurück in den Startblock
-                if (idx >= 0 && idx >= sp) { selectRange(bi, idx, needle.size());
-                    r.insert(QStringLiteral("found"), true);
-                    r.insert(QStringLiteral("wrapped"), true);
-                    r.insert(QStringLiteral("block"), bi);
-                    r.insert(QStringLiteral("pos"), idx); return r; }
+                if (tr.start >= sp) return liefern(bi, tr, true);
                 continue;
             }
-            if (idx >= 0) { selectRange(bi, idx, needle.size());
-                r.insert(QStringLiteral("found"), true);
-                r.insert(QStringLiteral("wrapped"), false);
-                r.insert(QStringLiteral("block"), bi);
-                r.insert(QStringLiteral("pos"), idx); return r; }
+            return liefern(bi, tr, false);
         }
     }
     return r;
@@ -2866,8 +2863,10 @@ QVariantMap DocxEditController::replaceAndFind(const QString& needle,
     //  spaltete insertText den Absatz und verschöbe die Trefferpositionen).
     QString rep = replacement; rep.remove(QLatin1Char('\n')).remove(QLatin1Char('\r'));
     if (m_ready && !needle.isEmpty() && m_cursor.hasSelection()) {
-        const auto sens = caseSensitive ? Qt::CaseSensitive : Qt::CaseInsensitive;
-        if (selectionPlainText().compare(needle, sens) == 0) {
+        //  Bei einem Muster laesst sich der Wortlaut nicht mehr vergleichen -
+        //  gefragt ist, ob die Auswahl GENAU ein Treffer ist.
+        const mg::search::Pattern p(needle, caseSensitive, false);
+        if (p.matchesWhole(selectionPlainText())) {
             //  Aktuelle Selektion IST der Treffer -> ersetzen (undo-fähig).
             if (rep.isEmpty()) deleteBackward();   // löscht die Selektion
             else               insertText(rep);
@@ -2882,7 +2881,7 @@ int DocxEditController::replaceAll(const QString& needle, const QString& replace
         return 0;
     //  Absatzintern -> Ersatztext ohne Umbrüche (s. replaceAndFind).
     QString rep = replacement; rep.remove(QLatin1Char('\n')).remove(QLatin1Char('\r'));
-    const auto sens = caseSensitive ? Qt::CaseSensitive : Qt::CaseInsensitive;
+    const mg::search::Pattern p(needle, caseSensitive, false);
     int count = 0;
     m_stack.beginMacro(QStringLiteral("Alle ersetzen"));
     //  Deterministisch von vorne: je Block alle Vorkommen, danach der nächste.
@@ -2896,12 +2895,12 @@ int DocxEditController::replaceAll(const QString& needle, const QString& replace
         int from = 0;
         while (true) {
             const QString t = blockText(bi);
-            const int idx = t.indexOf(needle, from, sens);
-            if (idx < 0) break;
-            selectRange(bi, idx, needle.size());
+            const mg::search::Range tr = p.firstFrom(t, from);
+            if (tr.length <= 0) break;
+            selectRange(bi, tr.start, tr.length);
             if (rep.isEmpty()) deleteBackward();
             else               insertText(rep);
-            from = idx + rep.size();               // hinter dem Ersatz weitersuchen
+            from = tr.start + int(rep.size());     // hinter dem Ersatz weitersuchen
             if (++count >= hardCap) break;
         }
         if (count >= hardCap) break;

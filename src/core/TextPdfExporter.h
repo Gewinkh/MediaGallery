@@ -37,8 +37,13 @@ namespace TextPdf {
 //  Zieldatei wird dann nicht angelegt (QSaveFile-Rollback).
 //  textColor: Schriftfarbe des Fließtextes. Ungültige Farbe ⇒ Schwarz (die
 //  Fußzeile bleibt immer gedämpftes Grau, sie gehört nicht zum Inhalt).
+//  tabWidth: Tabulatorweite in ZEICHEN. Sie kommt aus der Editor-Einstellung
+//  (`Editor.tabWidth`), damit derselbe Text gedruckt genauso eingerueckt ist wie
+//  am Bildschirm. Frueher stand hier eine feste 8 - eine mit vier Zeichen
+//  eingerueckte Datei sah im PDF doppelt so tief eingerueckt aus.
 bool exportToPdf(const QString& text, const QString& targetPath,
                  const QColor& textColor = QColor(Qt::black),
+                 int tabWidth = 4,
                  QString* err = nullptr);
 
 //  Freier Zielpfad NEBEN der Quelle: <Name>.pdf, bei Kollision <Name> (2).pdf …

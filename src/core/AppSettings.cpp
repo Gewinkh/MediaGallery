@@ -220,39 +220,6 @@ ThemeColors AppSettings::themeForProfile(DesignProfile p) {
         t.pdfToolbarBg     = QColor(20, 8, 0);
         t.pdfScrollbarBg   = QColor(20, 8, 0);
         break;
-    case DesignProfile::NeonPurple:
-        t.name             = "Neon Purple";
-        t.background       = QColor(4, 0, 10);
-        t.card             = QColor(12, 5, 25);
-        t.accent           = QColor(180, 0, 255);
-        t.accentType       = AccentType::Glow;
-        t.accentGradEnd    = QColor(80, 0, 200);
-        t.glowRadius       = 14.0f;
-        t.glowIntensity    = 0.9f;
-        t.textPrimary      = QColor(230, 210, 255);
-        t.textMuted        = QColor(120, 80, 170);
-        t.border           = QColor(35, 10, 65);
-        t.bgIsGradient     = true;
-        t.bgGradStart      = QColor(4, 0, 10);
-        t.bgGradEnd        = QColor(16, 0, 38);
-        t.bgGradAngle      = 140;
-        t.tileBgType       = TileBgType::Gradient;
-        t.tileBgColor      = QColor(12, 5, 25);
-        t.tileBgGradEnd    = QColor(6, 2, 14);
-        t.tileBgGradAngle  = 180;
-        t.tileGlowOnHover  = true;
-        t.tileGlowRadius   = 12.0f;
-        t.menuBarBg        = QColor(3, 0, 8);
-        t.toolbarBg        = QColor(3, 0, 8);
-        t.filterBarBg      = QColor(5, 0, 12);
-        t.statusBarBg      = QColor(2, 0, 5);
-        t.sidebarBg        = QColor(12, 5, 25);
-        t.pdfViewerBg      = QColor(2, 0, 5);
-        t.pdfThumbBg       = QColor(255, 255, 255);
-        t.pdfSidebarBg     = QColor(4, 0, 10);
-        t.pdfToolbarBg     = QColor(12, 5, 25);
-        t.pdfScrollbarBg   = QColor(12, 5, 25);
-        break;
     case DesignProfile::MidnightRose:
         t.name             = "Midnight Rose";
         t.background       = QColor(6, 0, 4);
@@ -422,6 +389,98 @@ void AppSettings::setAudioAccentApple(bool v) {
     m_settings.setValue("ui/audioAccentApple", v);
 }
 // Mono-Play: nur eine Audio-/Video-Wiedergabe gleichzeitig (Standard: AN).
+//  ── Texteditor ──────────────────────────────────────────────────────────────
+//  Eigene Gruppe [editor] in der Konfiguration - sie hat mit [design] nichts zu
+//  tun und darf beim Ex-/Import eines OBERFLAECHEN-Themas nicht mitwandern.
+int AppSettings::editorProfile() const {
+    return m_settings.value("editor/profile", 0).toInt();
+}
+void AppSettings::setEditorProfile(int p) {
+    m_settings.setValue("editor/profile", p);
+}
+QString AppSettings::editorCustomPalette() const {
+    return m_settings.value("editor/customPalette", QString()).toString();
+}
+void AppSettings::setEditorCustomPalette(const QString& json) {
+    m_settings.setValue("editor/customPalette", json);
+}
+bool AppSettings::editorLineNumbers() const {
+    return m_settings.value("editor/lineNumbers", true).toBool();
+}
+void AppSettings::setEditorLineNumbers(bool v) {
+    m_settings.setValue("editor/lineNumbers", v);
+}
+bool AppSettings::editorHighlightCurrentLine() const {
+    return m_settings.value("editor/highlightCurrentLine", true).toBool();
+}
+void AppSettings::setEditorHighlightCurrentLine(bool v) {
+    m_settings.setValue("editor/highlightCurrentLine", v);
+}
+bool AppSettings::editorSoftWrap() const {
+    //  Vorgabe AN - so verhaelt sich der Editor heute schon, und Kate ebenso.
+    return m_settings.value("editor/softWrap", true).toBool();
+}
+void AppSettings::setEditorSoftWrap(bool v) {
+    m_settings.setValue("editor/softWrap", v);
+}
+
+//  Steht in der Gruppe [gallery], nicht in [editor]: es ist eine Einstellung der
+//  GALERIE-Anzeige. Die Farben dafuer kommen zwar aus der Editor-Palette, aber
+//  geschaltet wird die Darstellung der Kacheln.
+bool AppSettings::editorMinimap() const {
+    return m_settings.value("editor/minimap", false).toBool();
+}
+void AppSettings::setEditorMinimap(bool v) {
+    m_settings.setValue("editor/minimap", v);
+}
+
+bool AppSettings::editorFolding() const {
+    return m_settings.value("editor/folding", true).toBool();
+}
+void AppSettings::setEditorFolding(bool v) {
+    m_settings.setValue("editor/folding", v);
+}
+
+bool AppSettings::editorIndentGuides() const {
+    return m_settings.value("editor/indentGuides", true).toBool();
+}
+void AppSettings::setEditorIndentGuides(bool v) {
+    m_settings.setValue("editor/indentGuides", v);
+}
+
+bool AppSettings::editorMatchBrackets() const {
+    return m_settings.value("editor/matchBrackets", true).toBool();
+}
+void AppSettings::setEditorMatchBrackets(bool v) {
+    m_settings.setValue("editor/matchBrackets", v);
+}
+
+int AppSettings::editorTabWidth() const {
+    //  Geklemmt beim LESEN: eine von Hand verfaelschte Konfiguration darf
+    //  keinen unbrauchbaren Wert in den Editor durchreichen (0 hiesse
+    //  Division durch null beim Einruecken).
+    const int v = m_settings.value("editor/tabWidth", 4).toInt();
+    return qBound(2, v, 8);
+}
+void AppSettings::setEditorTabWidth(int zeichen) {
+    m_settings.setValue("editor/tabWidth", qBound(2, zeichen, 8));
+}
+bool AppSettings::editorTabSpaces() const {
+    //  Vorgabe AN - so haelt es Kate, und so entstehen Dateien, die ueberall
+    //  gleich aussehen.
+    return m_settings.value("editor/tabSpaces", true).toBool();
+}
+void AppSettings::setEditorTabSpaces(bool v) {
+    m_settings.setValue("editor/tabSpaces", v);
+}
+
+bool AppSettings::textPreviewContent() const {
+    return m_settings.value("gallery/textPreviewContent", true).toBool();
+}
+void AppSettings::setTextPreviewContent(bool v) {
+    m_settings.setValue("gallery/textPreviewContent", v);
+}
+
 bool AppSettings::monoPlay() const {
     return m_settings.value("ui/monoPlay", true).toBool();
 }
@@ -625,7 +684,23 @@ void AppSettings::setAutoSaveIntervalSeconds(int s) {
 
 // ─── Design / Theme ───────────────────────────────────────────────────────────
 DesignProfile AppSettings::designProfile() const {
-    return static_cast<DesignProfile>(m_settings.value("design/profile", 0).toInt());
+    int v = m_settings.value("design/profile", 0).toInt();
+
+    //  ── Einmalige Umrechnung alter Werte ────────────────────────────────────
+    //  Schema 1 hatte `NeonPurple` an Position 4. Ohne diese Umrechnung
+    //  bekaeme jeder, der eines der Profile DAHINTER eingestellt hatte, still
+    //  ein anderes - „Simple" (7) waere zu „Custom" geworden.
+    const int schema = m_settings.value("design/profileSchema", 1).toInt();
+    if (schema < 2) {
+        if (v == 4)      v = 0;      // NeonPurple gibt es nicht mehr -> Dark
+        else if (v > 4)  v -= 1;     // alles dahinter rueckt eine Stelle vor
+        m_settings.setValue("design/profile", v);
+        m_settings.setValue("design/profileSchema", 2);
+    }
+
+    if (v < 0 || v > static_cast<int>(DesignProfile::Custom))
+        v = 0;
+    return static_cast<DesignProfile>(v);
 }
 void AppSettings::setDesignProfile(DesignProfile p) {
     m_settings.setValue("design/profile", static_cast<int>(p));

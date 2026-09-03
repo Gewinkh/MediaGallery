@@ -300,14 +300,45 @@ Item {
         function _applyTranslit() {
             if (edit._trGuard || !box.editing || !Translit.enabled)
                 return
-            const r = Translit.liveApply(edit.text, edit.cursorPosition)
-            if (!r.changed)
-                return
+            //  EIN Undo-Schritt statt zwei: `applyInDocument` klammert Loeschen
+            //  und Einfuegen im Dokument zusammen. Der fruehere Weg
+            //  (`remove()` + `insert()`) hinterliess je Tastendruck ZWEI
+            //  Schritte, sodass Strg+Z durch halb umgesetzte Zwischenstaende
+            //  lief („سَلam").
             edit._trGuard = true
-            edit.remove(r.start, r.end)
-            edit.insert(r.start, r.replacement)
-            edit.cursorPosition = r.cursor
+            const r = Translit.applyInDocument(edit.textDocument, edit.cursorPosition)
+            if (r.changed)
+                edit.cursorPosition = r.cursor
             edit._trGuard = false
+        }
+
+        //  ── Strg+Z / Strg+Y: die Transliteration muss dabei STILLHALTEN ──
+        //  Ein Undo stellt den lateinischen Stand wieder her, `onTextChanged`
+        //  feuert, und die Transliteration schriebe ihn sofort wieder um - was
+        //  selbst ein Undo-Schritt ist. Strg+Z pendelte dadurch endlos zwischen
+        //  zwei Staenden (Nutzerbefund 2026-09-02, arabische Eingabe; belegt in
+        //  `tests/bench/bench_translitundo.cpp`). Der Guard, der ohnehin gegen
+        //  Re-Entranz schuetzt, deckt das mit ab.
+        function _guardedUndo() {
+            edit._trGuard = true
+            edit.undo()
+            edit._trGuard = false
+        }
+        function _guardedRedo() {
+            edit._trGuard = true
+            edit.redo()
+            edit._trGuard = false
+        }
+        Keys.onPressed: function(e) {
+            if (!(e.modifiers & Qt.ControlModifier))
+                return
+            if (e.key === Qt.Key_Z) {
+                if (e.modifiers & Qt.ShiftModifier) edit._guardedRedo()
+                else                                edit._guardedUndo()
+                e.accepted = true
+            } else if (e.key === Qt.Key_Y) {
+                edit._guardedRedo(); e.accepted = true
+            }
         }
         onTextChanged: {
             if (box.editing) {

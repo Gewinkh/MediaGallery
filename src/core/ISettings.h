@@ -27,9 +27,16 @@ enum class TileArrangement {
     Manual          // user-defined fixed-width area
 };
 
+//  ACHTUNG bei Aenderungen: der Wert wird als INT gespeichert
+//  (`design/profile`). Faellt ein Eintrag heraus, rutschen alle dahinter um
+//  eins - wer „Simple" eingestellt hatte, saehe danach „Custom". Deshalb traegt
+//  die Einstellung eine SCHEMA-Nummer (`design/profileSchema`), und
+//  `AppSettings::designProfile` rechnet einen alten Wert einmalig um.
+//  Zuletzt entfallen: `NeonPurple` (Schema 1 -> 2, 2026-09-02, Wunsch des
+//  Nutzers - acht Profile fuellen zwei Reihen zu je vier vollstaendig aus).
 enum class DesignProfile {
     Dark, DarkOLED, OceanDepth, InfernoBlaze,
-    NeonPurple, MidnightRose, Elegant, Simple, Custom
+    MidnightRose, Elegant, Simple, Custom
 };
 
 enum class AccentType  { Solid, Gradient, Glow };
@@ -125,6 +132,56 @@ public:
     // Mono-Play: nur EINE Audio-/Video-Wiedergabe gleichzeitig (relevant in der
     // geteilten Ansicht) - startet eine neue Wiedergabe, wird die bereits
     // laufende automatisch pausiert (nicht gestoppt). Standard: AN.
+    //  ── Texteditor (Syntaxfaerbung + Verhalten) ─────────────────────────
+    //  Das Farbprofil des Editors ist BEWUSST von `designProfile` getrennt:
+    //  der Editor hat eigene Profile und einen eigenen Konfigurator
+    //  (Festlegung des Nutzers 2026-09-02). Ein Themenwechsel der Oberflaeche
+    //  faerbt den Editor deshalb nicht um.
+    virtual int  editorProfile() const = 0;          // mg::editor::EditorProfile
+    virtual void setEditorProfile(int p) = 0;
+    virtual QString editorCustomPalette() const = 0; // JSON, leer = Vorgabe
+    virtual void    setEditorCustomPalette(const QString& json) = 0;
+    virtual bool editorLineNumbers() const = 0;
+    virtual void setEditorLineNumbers(bool v) = 0;
+    virtual bool editorHighlightCurrentLine() const = 0;
+    virtual void setEditorHighlightCurrentLine(bool v) = 0;
+    //  Sichtbarer („weicher") Umbruch wie in Kate: die Datei bekommt davon
+    //  nichts mit, nur die Anzeige bricht um. Aus = die Zeile laeuft waagerecht
+    //  weiter wie in VS Code.
+    virtual bool editorSoftWrap() const = 0;
+    virtual void setEditorSoftWrap(bool v) = 0;
+
+    //  Tabulator: wie BREIT er dargestellt wird (2…8 Zeichen) und ob die
+    //  Tabulatortaste ein `\t` schreibt oder LEERZEICHEN bis zum naechsten
+    //  Halt. Zwei getrennte Fragen: die Breite ist Anzeige, die Taste aendert
+    //  den Dateiinhalt. Kate und die meisten Editoren schreiben per Vorgabe
+    //  Leerzeichen - deshalb ist das auch hier die Vorgabe.
+    //  Uebersichtsspalte rechts (Kates „Minimap"). Vorgabe AUS - sie kostet
+    //  Breite, und wer sie will, schaltet sie ein.
+    virtual bool editorMinimap() const = 0;
+    virtual void setEditorMinimap(bool v) = 0;
+    //  Faltungsleiste rechts von den Zeilennummern. Vorgabe AN - sie erscheint
+    //  ohnehin nur, wenn die Datei faltbare Bloecke hat.
+    virtual bool editorFolding() const = 0;
+    virtual void setEditorFolding(bool v) = 0;
+    //  Senkrechte Fuehrungslinien je Einrueckungsstufe.
+    virtual bool editorIndentGuides() const = 0;
+    virtual void setEditorIndentGuides(bool v) = 0;
+    //  Klammernpaar am Cursor hervorheben; fehlt die Partnerin, wird sie rot.
+    virtual bool editorMatchBrackets() const = 0;
+    virtual void setEditorMatchBrackets(bool v) = 0;
+    virtual int  editorTabWidth() const = 0;
+    virtual void setEditorTabWidth(int zeichen) = 0;
+    virtual bool editorTabSpaces() const = 0;
+    virtual void setEditorTabSpaces(bool v) = 0;
+
+    //  Vorschaukarten von TEXTdateien in der Galerie: AN = die ersten Zeilen mit
+    //  Syntaxfaerbung (dieselben Farben wie im Editor), AUS = nur der Dateityp
+    //  in grossen Buchstaben (CPP, PY, MD …). Betrifft Kacheln UND Liste - beide
+    //  zeigen dasselbe erzeugte Thumbnail.
+    virtual bool textPreviewContent() const = 0;
+    virtual void setTextPreviewContent(bool v) = 0;
+
     virtual bool monoPlay() const = 0;
     virtual void setMonoPlay(bool v) = 0;
     //  Was passiert, wenn eine Kachel auf ein LESEZEICHEN gezogen wird:

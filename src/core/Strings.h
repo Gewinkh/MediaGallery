@@ -801,6 +801,90 @@ enum class StringKey {
     ExtractWorkOrder,              // Auswahlleiste: „Auswahl · Reihenfolge = Ausgabe"
     ExtractWorkHint,               // Werkbank: Bedien-Hinweis (Klick/Drag&Drop)
     ExtractWorkDropHint,           // Leere Auswahlleiste: „Seiten hierher ziehen"
+    //  ── Texteditor: Datei groesser als der Lesedeckel (nur lesen) ──
+    TextReadOnlyBadge,             // Kurzmarke in der Werkzeugleiste
+    TextReadOnlyTip,               // Erklaerung dazu (Tooltip)
+    //  ── Statuszeile des Texteditors ──
+    EditorStatusLineCol,           // „Zeile %1, Spalte %2"
+    EditorStatusLines,             // „Zeilen" (hinter der Zahl)
+    EditorStatusPlain,             // Sprache unbekannt -> „Text"
+    EditorStatusWrapOn,            // „Umbruch"
+    //  ── Editor-Reiter: Ansicht ──
+    SettingsEditorViewGroup,
+    SettingsEditorLineNumbers,
+    SettingsEditorCurrentLine,
+    SettingsEditorSoftWrap,
+    SettingsEditorSoftWrapHint,
+    SettingsEditorTabWidth,
+    SettingsEditorTabSpaces,
+    SettingsEditorTabSpacesHint,
+    //  ── Suchleiste des Texteditors (Strg+F) ──
+    EditorFindPlaceholder,
+    EditorReplacePlaceholder,
+    EditorFindPrev,
+    EditorFindNext,
+    EditorFindCase,
+    EditorFindWords,
+    EditorFindHighlight,
+    EditorFindClose,
+    EditorFindReplaceOne,
+    EditorFindReplaceAll,
+    EditorFindNoMatch,
+    EditorFindCounter,
+    EditorFindReplaced,
+    EditorMinimap,
+    EditorMinimapTip,
+    EditorMinimapHint,
+    SettingsEditorExportTitle,
+    SettingsEditorImportTitle,
+    EditorStatusModified,
+    TextPdfMenu,
+    TextPdfConvert,
+    EditorFolding,
+    EditorFoldingHint,
+    EditorIndentGuides,
+    EditorIndentGuidesHint,
+    EditorMatchBrackets,
+    EditorMatchBracketsHint,
+    SettingsSearchGroup,
+    SettingsSearchTable,
+    SettingsSearchExamples,
+    //  ── Design-Reiter: die zwei grossen Bloecke + Editor-Farben ──
+    //  Die Farbnamen folgen dem Schluessel aus `SyntaxPalette::tokenKey`:
+    //  QML baut den Key als "EditorColor" + Schluessel mit grossem
+    //  Anfangsbuchstaben, damit die neunzehn Namen nicht doppelt stehen.
+    SettingsDesignBlockUi,
+    SettingsDesignBlockEditor,
+    SettingsEditorProfileLabel,
+    SettingsEditorSurfaceGroup,
+    SettingsEditorSyntaxGroup,
+    SettingsEditorPreviewGroup,
+    SettingsEditorCustomHint,
+    SettingsEditorSeedCustom,
+    SettingsEditorResetColors,
+    EditorColorBackground,
+    EditorColorText,
+    EditorColorCurrentLine,
+    EditorColorSelection,
+    EditorColorGutterBackground,
+    EditorColorGutterText,
+    EditorColorGutterTextActive,
+    EditorColorKeyword,
+    EditorColorType,
+    EditorColorString,
+    EditorColorNumber,
+    EditorColorComment,
+    EditorColorPreproc,
+    EditorColorFunction,
+    EditorColorOperator,
+    EditorColorHeading,
+    EditorColorEmphasis,
+    EditorColorLink,
+    EditorColorCode,
+    //  ── Ansicht-Reiter: Vorschau von Textdateien ──
+    SettingsViewPreviewGroup,
+    SettingsViewTextPreview,
+    SettingsViewTextPreviewHint,
 };
 Q_ENUM_NS(StringKey)
 }  // namespace SK

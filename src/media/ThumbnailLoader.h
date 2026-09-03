@@ -1,4 +1,6 @@
 #pragma once
+#include "editor/SyntaxPalette.h"
+
 #include <QObject>
 #include <QRunnable>
 #include <QThreadPool>
@@ -11,6 +13,21 @@
 #include <memory>
 
 class ThumbnailTask;
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  TextPreviewStyle - wie eine TEXT-Kachel aussieht.
+//
+//  `zeigeInhalt` AN: die ersten Zeilen der Datei, mit Syntaxfaerbung in genau
+//  den Farben des Editors. AUS: nur der Dateityp in grossen Buchstaben.
+//  `tag` geht in den Cache-Schluessel ein - ohne das behielten alle bereits
+//  erzeugten Kacheln ihr altes Aussehen, obwohl die Einstellung laengst anders
+//  steht.
+// ─────────────────────────────────────────────────────────────────────────────
+struct TextPreviewStyle {
+    bool                     zeigeInhalt = true;
+    mg::editor::SyntaxPalette palette{};
+    QString                  tag;          // Fingerabdruck fuer den Cache
+};
 
 // ─────────────────────────────────────────────────────────────────────────────
 //  ThumbnailLoader - Phase 2/3: reiner ASYNC-DISK-CACHE mit Priorisierung &
@@ -58,6 +75,13 @@ public:
     bool setTargetDim(int needPx);
     int  targetDim() const { return m_targetDim; }
 
+    //  Aussehen der TEXT-Kacheln setzen (Einstellung + Editor-Palette).
+    //  Liefert true, wenn sich etwas geaendert hat - der Aufrufer laesst die
+    //  sichtbaren Kacheln dann neu erzeugen. Wird IMMER vom GUI-Faden gerufen;
+    //  jeder Task bekommt eine Kopie mit.
+    bool setTextPreviewStyle(bool zeigeInhalt, const mg::editor::SyntaxPalette& p);
+    const TextPreviewStyle& textPreviewStyle() const { return m_textStil; }
+
     // Sorgt dafür, dass für filePath eine Cache-Datei existiert. Bei Treffer wird
     // thumbnailReady sofort (queued) emittiert; sonst nach asynchroner Erzeugung.
     void requestThumbnail(const QString& filePath);
@@ -82,6 +106,7 @@ private:
 
     QThreadPool*                   m_pool;
     int                            m_targetDim = kThumbDim;  // nur GUI-Thread
+    TextPreviewStyle               m_textStil;               // nur GUI-Thread
     QMutex                         m_mutex;
     QSet<QString>                  m_pending;
     //  Pfade, die WAEHREND eines laufenden Abbruchs erneut angefordert wurden.
@@ -103,7 +128,8 @@ class ThumbnailTask : public QObject, public QRunnable {
     Q_OBJECT
 public:
     ThumbnailTask(const QString& path, const QSize& size, uint64_t generation,
-                  std::shared_ptr<std::atomic<bool>> cancel);
+                  std::shared_ptr<std::atomic<bool>> cancel,
+                  const TextPreviewStyle& stil);
     void run() override;
 
 signals:
@@ -115,6 +141,10 @@ private:
     QSize    m_size;
     uint64_t m_generation;
     std::shared_ptr<std::atomic<bool>> m_cancel;
+    //  KOPIE, nicht Zeiger: der Task laeuft im Pool, die Palette gehoert dem
+    //  GUI-Faden. Sie ist klein (gut zwanzig Farben) und aendert sich selten -
+    //  eine Kopie je Kachel ist billiger als jede Absicherung.
+    TextPreviewStyle m_stil;
 
     bool cancelled() const {
         return m_cancel && m_cancel->load(std::memory_order_relaxed);
@@ -129,7 +159,11 @@ private:
     static QImage generateImageThumbnail(const QString& path, const QSize& size);
     static QImage generateAudioThumbnail(const QString& path, const QSize& size);
     static QImage generatePdfThumbnail(const QString& path, const QSize& size);
-    static QImage generateTextThumbnail(const QString& path, const QSize& size);
+    static QImage generateTextThumbnail(const QString& path, const QSize& size,
+                                        const TextPreviewStyle& stil);
+    //  Karte, die NUR den Dateityp nennt (Vorschau abgeschaltet).
+    static QImage generateTypeCardThumbnail(const QString& path, const QSize& size,
+                                            const TextPreviewStyle& stil);
     //  DOCX-Karte (erste Absätze via Docx::Document::plainTextPreview).
     static QImage generateDocxThumbnail(const QString& path, const QSize& size);
     static QImage generateHtmlCardThumbnail(const QString& path, const QSize& size);

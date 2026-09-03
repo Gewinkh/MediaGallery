@@ -80,7 +80,12 @@ Item {
             { de: "Rückgängig / Wiederholen",      en: "Undo / redo",                 keys: ["Ctrl+Z", "Ctrl+Shift+Z", "Ctrl+Y"] },
         ] },
         { headerKey: "ShortcutCtxText", rows: [
-            { de: "Speichern",                     en: "Save",                        keys: ["Ctrl+S"] }
+            { de: "Speichern",                     en: "Save",                        keys: ["Ctrl+S"] },
+            { de: "Suchen & Ersetzen",             en: "Find & replace",              keys: ["Ctrl+F"] },
+            { de: "Nächster / vorheriger Treffer", en: "Next / previous match",       keys: ["↵", "Shift+↵"] },
+            { de: "Suche schließen",               en: "Close search",                keys: ["Esc"] },
+            { de: "Rückgängig / Wiederholen",      en: "Undo / redo",                 keys: ["Ctrl+Z", "Ctrl+Shift+Z", "Ctrl+Y"] },
+            { de: "Einrücken (schreibt Leerzeichen)", en: "Indent (writes spaces)",   keys: ["Tab"] }
         ] }
     ]
 

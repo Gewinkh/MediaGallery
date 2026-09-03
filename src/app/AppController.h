@@ -64,6 +64,10 @@ class AppController : public QObject {
     //  Kachelraster. Vorgabe AUS. Im Player-Modus entscheidet weiter
     //  `Audio.listLayout` - s. `GalleryPane` ▸ `listMode`.
     Q_PROPERTY(bool    galleryListLayout READ galleryListLayout WRITE setGalleryListLayout NOTIFY galleryListLayoutChanged)
+    //  Textdateien in der Galerie: Inhalt mit Syntaxfaerbung (AN) oder nur der
+    //  Dateityp (AUS). Gilt fuer Kacheln UND Liste - beide zeigen dasselbe
+    //  erzeugte Thumbnail.
+    Q_PROPERTY(bool    textPreviewContent READ textPreviewContent WRITE setTextPreviewContent NOTIFY textPreviewContentChanged)
     //  Zeilenhöhe der Listen-Darstellung - das Gegenstück zu `tileHeight`.
     //  Eine Zeile ist immer so breit wie die Fläche; die Höhe ist die einzige
     //  Größe, die es zu wählen gibt.
@@ -488,6 +492,8 @@ public:
     void setShowHiddenFiles(bool v);
     bool showAllFiles() const;
     bool galleryListLayout() const;
+    bool textPreviewContent() const;
+    void setTextPreviewContent(bool v);
     bool deleteTagsInSubfolders() const;
     void setDeleteTagsInSubfolders(bool v);
     void setShowAllFiles(bool v);
@@ -563,6 +569,8 @@ signals:
     void showHiddenFilesChanged();
     void showAllFilesChanged();
     void galleryListLayoutChanged();
+    //  Die Kacheln muessen danach NEU erzeugt werden - main.cpp haengt daran.
+    void textPreviewContentChanged();
     void listRowHeightChanged();
     void screenWidthChanged();
     void deleteTagsInSubfoldersChanged();

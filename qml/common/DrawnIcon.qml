@@ -595,6 +595,12 @@ Item {
         //  nicht - die Zaehne stehen auf 45 Grad, und ein GEDREHTES Rechteck
         //  rastert seine Kanten nicht spiegelbildlich (Regel 28).
         "gear":         { rings: [[12,12,3.4]] },
+        //  Vorhaengeschloss: Buegel ist ein RING, Koerper eine gefuellte
+        //  Flaeche - und weil `fills` NACH `rings` gezeichnet wird, deckt
+        //  der Koerper die untere Haelfte des Rings ab. Uebrig bleibt der
+        //  Bogen darueber. Kein Schluesselloch: bei 12 px waere es ein
+        //  Fleck, und eine Aussparung kennt die Tabelle nicht.
+        "lock":         { rings: [[12,10,3.2]], fills: [[4.5,10,15,10,2]] },
         //  Muelltonne: Deckel, Griff und die zwei Rippen sind achsenparallel
         //  und damit Striche; nur der leicht verjuengte Koerper braucht eine
         //  Schraege und steht deshalb in `_curve`.

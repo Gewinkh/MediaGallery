@@ -96,7 +96,10 @@ FocusScope {
     // Aktueller Zustand (aus dem Proxy gelesen).
     property int    currentRow: -1
     property string path: ""
-    property int    type: 5          // 0 Image,1 Video,2 Audio,3 Pdf,4 Text,5 Unknown
+    //  Typtabelle wie `MediaItem.h` ▸ `MediaType`. Der frühere Kommentar
+    //  nannte 5 „Unknown" - das stimmte seit dem DOCX-Editor nicht mehr
+    //  und hätte beim nächsten Lesen in die Irre geführt.
+    property int    type: 5          // 0 Image,1 Video,2 Audio,3 Pdf,4 Text/HTML,5 Docx
     property string displayName: ""
     property var    tags: []
     property var    dateTime
@@ -209,6 +212,12 @@ FocusScope {
         if (surface.item && surface.item.hasOwnProperty("source"))
             surface.item.source = path
     }
+
+    //  Die offene TEXTFLÄCHE, falls es eine ist - daran hängen die Farbwahl und
+    //  der PDF-Weg, die seit 2026-09-03 im Menü „Dokument" stehen statt in einer
+    //  eigenen Leiste. Bei HTML-Vorschau und allen anderen Typen: null.
+    readonly property var _textCtl:
+        (surface.item && surface.item.exportPdf !== undefined) ? surface.item : null
 
     function releaseCurrent() {
         if (surface.item && surface.item.release)
@@ -516,6 +525,26 @@ FocusScope {
                     onActivated: root.addFileRequested()
                 }
 
+                //  ── Übersichtsspalte und Transliteration ──────────────
+                //  Standen bis 2026-09-03 in der Werkzeugleiste der Textfläche.
+                //  Sie gehören hierher, weil sie ANSICHT und EINGABE betreffen,
+                //  nicht die Datei - und weil die zweite Leiste damit ganz
+                //  entfallen konnte (Festlegung des Nutzers).
+                ChromeBtn {
+                    id: mapBtn
+                    visible: root._textCtl !== null
+                    anchors.verticalCenter: parent.verticalCenter
+                    kind: "toc"
+                    active: Editor.minimap
+                    tip: App.uiText(App.language, "EditorMinimapTip")
+                    onActivated: Editor.minimap = !Editor.minimap
+                }
+                TranslitButton {
+                    id: translitBtn
+                    visible: root._textCtl !== null
+                    anchors.verticalCenter: parent.verticalCenter
+                }
+
                 // Quelltext ⇄ gerenderte HTML-Vorschau - nur sichtbar bei .html/.htm.
                 ChromeBtn {
                     id: previewBtn
@@ -538,6 +567,12 @@ FocusScope {
                 ChromeBtn {
                     id: diceBtn
                     anchors.verticalCenter: parent.verticalCenter
+                    //  NICHT bei textbasierten Dateien (Typ 4 = Text/HTML,
+                    //  5 = DOCX): dort liest man ein Dokument, man springt
+                    //  nicht zufällig zum nächsten. Der Knopf stand in der
+                    //  Leiste, ohne je zu etwas gut zu sein (Nutzerbefund
+                    //  2026-09-02).
+                    visible: root.type !== 4 && root.type !== 5
                     kind: "dice"
                     tip: App.uiText(App.language, "ViewerRandom")
                     active: root.randomNext
@@ -684,6 +719,16 @@ FocusScope {
                             visible: root.type === 5
                             label: App.uiText(App.language, "DocxPdfNumberStyleHead")
                             onActivated: root._openDocPopup(pageStylePopup, this)
+                        }
+
+                        //  ── Nur TEXT: als PDF sichern ─────────────────────
+                        //  Farbe und Knopf stehen im Popup daneben - wie bei
+                        //  DOCX. Eine `DocMenuRow`, damit das Menü offen bleibt,
+                        //  während man die Farbe wählt.
+                        DocMenuRow {
+                            visible: root._textCtl !== null
+                            label: App.uiText(App.language, "TextPdfMenu")
+                            onActivated: root._openDocPopup(textPdfPopup, this)
                         }
 
                         //  ── Gescannte PDF dauerhaft durchsuchbar machen ───
@@ -1030,6 +1075,101 @@ FocusScope {
         //  also schließt es sich gar nicht erst (s. `DocMenuRow`).
     }
 
+    //  ── Text -> PDF ──────────────────────────────────────────────────────────
+    //  Schriftfarbe DIESER Datei plus der Knopf, der die PDF neben die Quelle
+    //  schreibt. Steht bewusst in einem Popup und nicht in einer Leiste: es ist
+    //  ein seltener Vorgang mit einer Einstellung daran.
+    Popup {
+        id: textPdfPopup
+        objectName: "textPdfPopup"
+        //  Aussehen wie die übrigen Dokument-Popups (s. `ChoicePopup`).
+        modal: false
+        dim: false
+        closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
+        padding: 10
+        background: Rectangle {
+            color: App.themeMenuBarBg
+            border.color: App.themeBorder
+            radius: 8
+        }
+
+        contentItem: Column {
+            spacing: 10
+
+            Text {
+                text: App.uiText(App.language, "TextPdfColorTitle")
+                color: App.themeTextPrimary
+                font.pixelSize: 12
+            }
+
+            Row {
+                spacing: 8
+                ColorPicker {
+                    anchors.verticalCenter: parent.verticalCenter
+                    width: 34; height: 20
+                    showAlpha: false
+                    title: App.uiText(App.language, "TextPdfColorTitle")
+                    selectedColor: root._textCtl ? root._textCtl.pdfInk : "black"
+                    onColorPicked: function (c) {
+                        if (root._textCtl) root._textCtl.pickPdfInk(c)
+                    }
+                }
+                //  Zurücksetzen erscheint erst, wenn die Datei eine EIGENE Farbe
+                //  trägt - vorher gäbe es nichts zurückzusetzen.
+                Rectangle {
+                    anchors.verticalCenter: parent.verticalCenter
+                    visible: root._textCtl !== null && root._textCtl.pdfInkOwn
+                    width: 22; height: 22; radius: 4
+                    color: inkResetHover.hovered ? App.themeCard : "transparent"
+                    border.color: App.themeBorder; border.width: 1
+                    DrawnIcon {
+                        anchors.centerIn: parent
+                        name: "undo"; size: 12
+                        color: App.themeTextPrimary
+                    }
+                    HoverHandler { id: inkResetHover }
+                    TapHandler { onTapped: { if (root._textCtl) root._textCtl.resetPdfInk() } }
+                    ToolTip.visible: inkResetHover.hovered
+                    ToolTip.delay: 600
+                    ToolTip.text: App.uiText(App.language, "TextPdfColorResetTip")
+                }
+            }
+
+            Rectangle {
+                width: Math.max(140, konvRow.implicitWidth + 24); height: 28; radius: 6
+                opacity: (root._textCtl && !root._textCtl.pdfBusy) ? 1.0 : 0.45
+                color: konvHover.hovered ? Qt.rgba(App.themeAccent.r, App.themeAccent.g,
+                                                   App.themeAccent.b, 0.30)
+                                         : Qt.rgba(App.themeAccent.r, App.themeAccent.g,
+                                                   App.themeAccent.b, 0.16)
+                border.color: App.themeAccent; border.width: 1
+                Row {
+                    id: konvRow
+                    anchors.centerIn: parent
+                    spacing: 6
+                    DrawnIcon {
+                        anchors.verticalCenter: parent.verticalCenter
+                        name: "arrow-right"; size: 13; color: App.themeAccent
+                    }
+                    Text {
+                        anchors.verticalCenter: parent.verticalCenter
+                        text: App.uiText(App.language, "TextPdfConvert")
+                        color: App.themeAccent; font.pixelSize: 12
+                    }
+                }
+                HoverHandler { id: konvHover }
+                TapHandler {
+                    enabled: root._textCtl !== null && !root._textCtl.pdfBusy
+                    onTapped: {
+                        root._textCtl.exportPdf()
+                        textPdfPopup.close()
+                        viewMenu.close()
+                    }
+                }
+            }
+        }
+    }
+
     ChoicePopup {
         id: pageNumPopup
         objectName: "docxPageNumberPopup"
@@ -1188,6 +1328,19 @@ FocusScope {
                             anchors.right: parent.right; height: 5; radius: 1; color: "#e8efed" }
                 Rectangle { x: 3; y: 9;  width: 12; height: 1.6; radius: 0.8; color: "#e8efed" }
                 Rectangle { x: 3; y: 12; width: 8;  height: 1.6; radius: 0.8; color: "#e8efed" }
+            }
+
+            //  Übersichtsspalte: drei Zeilen mit einem Rahmen rechts - dasselbe
+            //  Bild wie in der Symboltabelle (`DrawnIcon "toc"`), hier aber in
+            //  der hellen Farbe der oberen Leiste.
+            Item {
+                anchors.fill: parent
+                visible: cb.kind === "toc"
+                Rectangle { x: 0; y: 2;  width: 11; height: 1.6; radius: 0.8; color: "#e8efed" }
+                Rectangle { x: 0; y: 8;  width: 11; height: 1.6; radius: 0.8; color: "#e8efed" }
+                Rectangle { x: 0; y: 14; width: 11; height: 1.6; radius: 0.8; color: "#e8efed" }
+                Rectangle { x: 13.5; y: 1; width: 4.5; height: 16; radius: 1.5
+                            color: "transparent"; border.color: "#e8efed"; border.width: 1.3 }
             }
 
             // Datei hinzufügen: minimalistisches Datei-Blatt (Umriss + Inhaltszeilen)

@@ -18,6 +18,140 @@ Item {
             width: root.width
             spacing: 16
 
+            //  ── Ansicht des Texteditors ───────────────────────────────────
+            //  Hier steht, was KEINE Farbe ist. Die Farben des Editors haben
+            //  einen eigenen Block im Design-Reiter (eigene Profile, getrennt
+            //  vom Oberflächen-Theme) - Festlegung des Nutzers 2026-09-02.
+            SettingsGroup {
+                key: "editor.view"
+                title: App.uiText(App.language, "SettingsEditorViewGroup")
+                Layout.fillWidth: true
+
+                //  Inline-Komponente: dreimal dieselbe Zeile, einmal beschrieben.
+                component EdCheck: CheckBox {
+                    contentItem: Text {
+                        text: parent.text; color: App.themeTextPrimary
+                        leftPadding: parent.indicator.width + 6
+                        verticalAlignment: Text.AlignVCenter
+                    }
+                }
+
+                EdCheck {
+                    text: App.uiText(App.language, "SettingsEditorLineNumbers")
+                    checked: Editor.lineNumbers
+                    onToggled: Editor.lineNumbers = checked
+                }
+                EdCheck {
+                    text: App.uiText(App.language, "SettingsEditorCurrentLine")
+                    checked: Editor.highlightCurrentLine
+                    onToggled: Editor.highlightCurrentLine = checked
+                }
+                EdCheck {
+                    text: App.uiText(App.language, "EditorMinimap")
+                    checked: Editor.minimap
+                    onToggled: Editor.minimap = checked
+                }
+                Label {
+                    Layout.fillWidth: true
+                    Layout.leftMargin: 24
+                    text: App.uiText(App.language, "EditorMinimapHint")
+                    color: App.themeTextMuted
+                    font.pixelSize: 11
+                    wrapMode: Text.WordWrap
+                }
+
+                EdCheck {
+                    text: App.uiText(App.language, "EditorFolding")
+                    checked: Editor.folding
+                    onToggled: Editor.folding = checked
+                }
+                Label {
+                    Layout.fillWidth: true
+                    Layout.leftMargin: 24
+                    text: App.uiText(App.language, "EditorFoldingHint")
+                    color: App.themeTextMuted
+                    font.pixelSize: 11
+                    wrapMode: Text.WordWrap
+                }
+
+                EdCheck {
+                    text: App.uiText(App.language, "EditorIndentGuides")
+                    checked: Editor.indentGuides
+                    onToggled: Editor.indentGuides = checked
+                }
+                Label {
+                    Layout.fillWidth: true
+                    Layout.leftMargin: 24
+                    text: App.uiText(App.language, "EditorIndentGuidesHint")
+                    color: App.themeTextMuted
+                    font.pixelSize: 11
+                    wrapMode: Text.WordWrap
+                }
+
+                EdCheck {
+                    text: App.uiText(App.language, "EditorMatchBrackets")
+                    checked: Editor.matchBrackets
+                    onToggled: Editor.matchBrackets = checked
+                }
+                Label {
+                    Layout.fillWidth: true
+                    Layout.leftMargin: 24
+                    text: App.uiText(App.language, "EditorMatchBracketsHint")
+                    color: App.themeTextMuted
+                    font.pixelSize: 11
+                    wrapMode: Text.WordWrap
+                }
+
+                EdCheck {
+                    id: wrapChk
+                    text: App.uiText(App.language, "SettingsEditorSoftWrap")
+                    checked: Editor.softWrap
+                    onToggled: Editor.softWrap = checked
+                }
+                Label {
+                    Layout.fillWidth: true
+                    Layout.leftMargin: 24
+                    text: App.uiText(App.language, "SettingsEditorSoftWrapHint")
+                    color: App.themeTextMuted
+                    font.pixelSize: 11
+                    wrapMode: Text.WordWrap
+                }
+
+                //  ── Tabulator ─────────────────────────────────────────────
+                //  Zwei getrennte Fragen: die BREITE ist reine Anzeige, die
+                //  TASTE ändert den Dateiinhalt.
+                RowLayout {
+                    Layout.fillWidth: true
+                    Layout.topMargin: 6
+                    spacing: 10
+                    Label {
+                        text: App.uiText(App.language, "SettingsEditorTabWidth")
+                        color: App.themeTextPrimary
+                    }
+                    SpinBox {
+                        from: 2; to: 8; stepSize: 1
+                        value: Editor.tabWidth
+                        editable: true
+                        onValueModified: Editor.tabWidth = value
+                    }
+                    Item { Layout.fillWidth: true }
+                }
+
+                EdCheck {
+                    text: App.uiText(App.language, "SettingsEditorTabSpaces")
+                    checked: Editor.tabSpaces
+                    onToggled: Editor.tabSpaces = checked
+                }
+                Label {
+                    Layout.fillWidth: true
+                    Layout.leftMargin: 24
+                    text: App.uiText(App.language, "SettingsEditorTabSpacesHint")
+                    color: App.themeTextMuted
+                    font.pixelSize: 11
+                    wrapMode: Text.WordWrap
+                }
+            }
+
             SettingsGroup {
                 key: "editor.auto-save"
                 title: App.uiText(App.language, "SettingsEditorAutoSaveGroup")
@@ -309,6 +443,11 @@ Item {
             //  jeder Änderung) - kein manuelles Modell-Handling nötig.
             SettingsGroup {
                 id: trGroup
+                //  OHNE `key` merkt sich die Gruppe ihren Zustand NICHT - sie
+                //  stand nach jedem Öffnen der Einstellungen wieder offen, als
+                //  einzige im ganzen Dialog (Nutzerbefund 2026-09-02). Der
+                //  Schlüssel ist ein STABILER Bezeichner, nie die Überschrift.
+                key: "editor.translit"
                 title: App.uiText(App.language, "SettingsTranslitGroup")
                 Layout.fillWidth: true
 

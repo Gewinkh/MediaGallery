@@ -229,6 +229,8 @@ mg_domain(mg_core
         src/core/Strings.h
         src/core/JsonStorage.cpp
         src/core/JsonStorage.h
+        src/core/SearchPattern.cpp
+        src/core/SearchPattern.h
         src/core/RhiProber.cpp
         src/core/RhiProber.h
         src/core/FileBrowseModel.cpp
@@ -294,9 +296,44 @@ mg_domain(mg_docxedit
         mg_docx Qt6::Pdf
 )
 
+#  ── Texteditor: Syntaxfaerbung ───────────────────────────────────────────────
+#  Zerleger und Sprachtabelle sind reines C++ und haengen nur an Qt6::Core
+#  (QString/QStringView). Der Anschluss an Qts Dokumentmodell steht getrennt in
+#  CodeHighlighter - so bleibt der Kern ohne GUI testbar.
+mg_domain(mg_editor
+    SOURCES
+        src/editor/SyntaxTypes.h
+        src/editor/LanguageTable.cpp
+        src/editor/LanguageTable.h
+        src/editor/SyntaxScanner.cpp
+        src/editor/SyntaxScanner.h
+        src/editor/FoldScanner.cpp
+        src/editor/FoldScanner.h
+        src/editor/TextFoldBar.cpp
+        src/editor/TextFoldBar.h
+        src/editor/TextDecorations.cpp
+        src/editor/TextDecorations.h
+        src/editor/TextDecorations.cpp
+        src/editor/TextDecorations.h
+        src/editor/SyntaxPalette.cpp
+        src/editor/SyntaxPalette.h
+        src/editor/EditorController.cpp
+        src/editor/EditorController.h
+        src/editor/CodeHighlighter.cpp
+        src/editor/CodeHighlighter.h
+        src/editor/TextGutter.cpp
+        src/editor/TextGutter.h
+        src/editor/TextMinimap.cpp
+        src/editor/TextMinimap.h
+    LIBS
+        mg_core Qt6::Quick
+)
+
 mg_domain(mg_media
     SOURCES
         src/media/MediaItem.h
+        src/media/ContentSniff.cpp
+        src/media/ContentSniff.h
         src/media/MediaModel.cpp
         src/media/MediaModel.h
         src/media/MediaProxyModel.cpp
@@ -310,7 +347,14 @@ mg_domain(mg_media
     LIBS
         #  `mg_audio` nur wegen `AudioTags`: die Kachel einer Audiodatei zeigt
         #  ihr eingebettetes Titelbild. Kein Kreis - mg_audio kennt mg_media nicht.
-        mg_core mg_tags mg_docx mg_audio Qt6::Multimedia Qt6::Pdf
+        #  `mg_editor` fuer die VORSCHAUKARTEN von Textdateien: sie zeigen die
+        #  ersten Zeilen mit derselben Syntaxfaerbung wie der Editor
+        #  (`LanguageTable`, `SyntaxScanner`, `SyntaxPalette`). Kein Kreis -
+        #  mg_editor kennt nur mg_core. Der Preis ist Qt6::Quick auf der
+        #  Linkzeile jedes mg_media-Nutzers: die Koepfe von `CodeHighlighter`
+        #  und `TextGutter` binden Quick ein, und CMake kann das nicht je
+        #  Kopfdatei trennen. Reine Linkzeit, keine Laufzeit.
+        mg_core mg_editor mg_tags mg_docx mg_audio Qt6::Multimedia Qt6::Pdf
 )
 
 mg_domain(mg_pdfextract
@@ -443,6 +487,8 @@ mg_domain(mg_app
         src/app/PaneHost.h
         src/app/PaneListModel.cpp
         src/app/PaneListModel.h
+        src/app/QmlTypes.cpp
+        src/app/QmlTypes.h
         src/app/ViewerController.cpp
         src/app/ViewerController.h
         src/app/WebEngineController.cpp
@@ -476,6 +522,7 @@ target_link_libraries(MediaGallery PRIVATE
     mg_app
     mg_audio
     mg_core
+    mg_editor
     mg_media
     mg_tags
     mg_pdf

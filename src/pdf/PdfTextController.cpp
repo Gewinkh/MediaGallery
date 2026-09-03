@@ -424,6 +424,7 @@ void PdfTextController::search(const QString& needle) {
         return;
     m_hits.clear();
     m_searchTerm = term;
+    m_searchPattern = mg::search::Pattern(term, false, false);
     m_searchTimer.stop();
     m_searchPage = -1;
 
@@ -478,6 +479,66 @@ void PdfTextController::stepSearch() {
                 m_hits.push_back(h);
         }
     }
+    //  ── Muster-Zweig ────────────────────────────────────────────────────
+    //  Nur wenn der Begriff Sonderzeichen traegt und uebersetzbar war. Der
+    //  Seitentext liegt im SELBEN Indexraum wie `getSelectionAtIndex`
+    //  (nachgemessen), daraus kommen die Rechtecke.
+    if (m_searchPattern.usesRegex()) {
+        for (int p = m_searchPage; p < end; ++p) {
+            const QString seite = m_doc->getAllText(p).text();
+            if (seite.isEmpty()) continue;
+            //  Nur der MUSTER-Zweig: den Wortlaut hat `QPdfSearchModel` oben
+            //  bereits erledigt, samt Kontext.
+            auto it = m_searchPattern.regex().globalMatch(seite);
+            int genommen = 0;
+            while (it.hasNext() && genommen < 500) {
+                const QRegularExpressionMatch m = it.next();
+                if (m.capturedLength() <= 0) continue;
+                const QPdfSelection sel =
+                    m_doc->getSelectionAtIndex(p, int(m.capturedStart()),
+                                               int(m.capturedLength()));
+                SearchHit h;
+                h.page = p;
+                //  `bounds()` liefert Vielecke (gedrehter Text) - fuer die
+                //  Markierung genuegt ihr umschliessendes Rechteck.
+                for (const QPolygonF& poly : sel.bounds()) {
+                    const QRectF r = poly.boundingRect();
+                    if (r.width() > 0.0 && r.height() > 0.0)
+                        h.rects.push_back(r);
+                }
+                if (h.rects.isEmpty()) continue;
+
+                //  Doppelt? Ein Muster kann dasselbe treffen wie der Wortlaut.
+                //  Verglichen wird die FLAECHE, weil der Wortlaut-Zweig keine
+                //  Zeichenindizes meldet.
+                bool schon = false;
+                const QRectF neu = h.bounds();
+                for (const SearchHit& alt : std::as_const(m_hits))
+                    if (alt.page == p && alt.bounds().intersects(neu)) { schon = true; break; }
+                if (schon) continue;
+
+                constexpr int kKontext = 30;
+                const int von = int(m.capturedStart());
+                h.before = seite.mid(qMax(0, von - kKontext),
+                                     qMin(kKontext, von));
+                h.after  = seite.mid(von + int(m.capturedLength()), kKontext);
+                m_hits.push_back(h);
+                ++genommen;
+            }
+        }
+        //  Nach Seite und Lage sortieren, damit ▲/▼ die Treffer in der
+        //  Reihenfolge des Dokuments abschreitet und nicht erst alle
+        //  woertlichen und dann alle Muster-Treffer.
+        std::stable_sort(m_hits.begin(), m_hits.end(),
+                         [](const SearchHit& a, const SearchHit& b) {
+                             if (a.page != b.page) return a.page < b.page;
+                             const QRectF ra = a.bounds(), rb = b.bounds();
+                             if (!qFuzzyCompare(ra.top() + 1, rb.top() + 1))
+                                 return ra.top() < rb.top();
+                             return ra.left() < rb.left();
+                         });
+    }
+
     m_searchPage = end;
     if (m_searchPage >= pageCount) {
         m_searchPage = -1;                       // fertig

@@ -19,9 +19,9 @@ stores its data are in **[FEATURES.md](FEATURES.md)**.
 - **PDF editor** - notes, drawings, highlights, redaction, signature stamps, form filling, page reordering, text editing and **tracked changes** for your own annotations; export keeps the original content byte-for-byte wherever possible.
 - **Image editor** - non-destructive crop, rotate, adjust and draw, with the same **tracked changes** as the PDF editor; the original file is never overwritten.
 - **DOCX editor** - a loss-preserving Word editor: only what you touch is rewritten. Tables, pictures, contents list, tracked changes (shown and resolvable), spell checking, find & replace, and PDF export.
-- **Text & HTML** - a plain-text and source editor with a live HTML preview. Syntax colouring is not built yet (see [LIMITATIONS.md](LIMITATIONS.md)).
+- **Text & source editor** - syntax colouring for 27 languages, folding, line numbers, indent guides, bracket matching, find & replace, an overview column and its own colour themes; plus a live HTML preview.
 - **Live transliteration** - type Latin, get Arabic, Hiragana or Katakana while you write.
-- **Appearance** - every colour of the interface is adjustable and themes can be exported and shared.
+- **Appearance** - every colour of the interface is adjustable, the editor has its own separate palette, and both can be exported and shared.
 
 ---
 
@@ -127,12 +127,14 @@ The `tests/` directory is not included in the published repository. If it is mis
 ## Changelog
 
 ### Latest
-- Improved multi-monitor window sizing and zoom behavior
-- Added adjustable list row height and gallery tile/list arrangement
-- Improved View settings with live size controls
-- Simplified and reorganized General and View settings
-- Improved startup performance and reduced memory usage
-- Improved gallery list layout and usability
+- Expanded text editor with syntax highlighting, folding, minimap, line numbers, bracket matching, indent guides, and find/replace.
+- Added support for more file types and languages, including Dart, Perl, R, QML, HTML/XML, and additional configuration files.
+- Improved search with automatic pattern/regex support across the gallery, text editor, PDF, and DOCX.
+- Improved editor behavior with smoother selection scrolling, reliable Page Up/Down, stable folding, and safer handling of large files.
+- Added editor themes with save/load support and separate Text Editor design settings.
+- Improved text editing with configurable tab width, spaces-by-default, auto-save, and better PDF export.
+- Improved gallery text previews and file-type handling, including content-based .ts detection.
+- Improved settings UI with persistent collapsible groups and better layout.
 
 ---
 

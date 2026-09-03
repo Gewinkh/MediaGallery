@@ -504,6 +504,42 @@ Item {
                 }
             }
 
+            // ── Vorschau von Textdateien ──────────────────────────────────────
+            //  Steht hier und nicht im Editor-Reiter: geschaltet wird die
+            //  Darstellung der GALERIE. Die Farben dafür kommen zwar aus der
+            //  Editor-Palette (Design ▸ Text-Editor), aber betroffen sind die
+            //  Kacheln und die Liste, nicht der Editor.
+            SettingsGroup {
+                key: "view.text-preview"
+                title: App.uiText(App.language, "SettingsViewPreviewGroup")
+                Layout.fillWidth: true
+                //  In der LISTEN-Darstellung wirkt die Einstellung nicht: dort
+                //  steht bei Textdateien immer der Typ, weil vom Inhalt bei
+                //  rund 30 px nichts zu erkennen wäre. Eine Einstellung
+                //  anzubieten, die gerade nichts tut, ist schlimmer als sie
+                //  wegzulassen (Festlegung des Nutzers 2026-09-02).
+                visible: !App.galleryListLayout
+
+                CheckBox {
+                    text: App.uiText(App.language, "SettingsViewTextPreview")
+                    checked: App.textPreviewContent
+                    onToggled: App.textPreviewContent = checked
+                    contentItem: Text {
+                        text: parent.text; color: App.themeTextPrimary
+                        leftPadding: parent.indicator.width + 6
+                        verticalAlignment: Text.AlignVCenter
+                    }
+                }
+                Label {
+                    Layout.fillWidth: true
+                    Layout.leftMargin: 24
+                    text: App.uiText(App.language, "SettingsViewTextPreviewHint")
+                    color: App.themeTextMuted
+                    font.pixelSize: 11
+                    wrapMode: Text.WordWrap
+                }
+            }
+
             // ── PDF-Extraktion: Auswahl-Darstellung ───────────────────────────
             SettingsGroup {
                 key: "view.extract-style"

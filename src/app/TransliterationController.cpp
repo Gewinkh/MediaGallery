@@ -1,4 +1,6 @@
 #include "app/TransliterationController.h"
+#include <QTextCursor>
+#include <QTextDocument>
 
 #include <QJsonDocument>
 #include <QJsonObject>
@@ -377,6 +379,41 @@ void TransliterationController::bumpMappings() {
 // ─────────────────────────────────────────────────────────────────────────────
 //  Live-Motor
 // ─────────────────────────────────────────────────────────────────────────────
+QVariantMap TransliterationController::applyInDocument(QQuickTextDocument* doc,
+                                                       int cursorPos) const {
+    QVariantMap r;
+    r.insert(QStringLiteral("changed"), false);
+    if (!doc || !doc->textDocument())
+        return r;
+    QTextDocument* d = doc->textDocument();
+
+    //  Denselben Motor benutzen wie der QML-Weg - hier wird NUR anders
+    //  geschrieben, nicht anders gerechnet.
+    const QVariantMap plan = liveApply(d->toPlainText(), cursorPos);
+    if (!plan.value(QStringLiteral("changed")).toBool())
+        return r;
+
+    const int start = plan.value(QStringLiteral("start")).toInt();
+    const int ende  = plan.value(QStringLiteral("end")).toInt();
+    const QString ersatz = plan.value(QStringLiteral("replacement")).toString();
+    if (start < 0 || ende < start || ende > d->characterCount())
+        return r;
+
+    //  EIN Undo-Schritt statt zwei: `beginEditBlock` klammert Loeschen und
+    //  Einfuegen zusammen. Ohne das lief Strg+Z durch halb umgesetzte
+    //  Zwischenstaende (gemessen: `bench_translitundo`).
+    QTextCursor cur(d);
+    cur.beginEditBlock();
+    cur.setPosition(start);
+    cur.setPosition(ende, QTextCursor::KeepAnchor);
+    cur.insertText(ersatz);
+    cur.endEditBlock();
+
+    r.insert(QStringLiteral("changed"), true);
+    r.insert(QStringLiteral("cursor"), plan.value(QStringLiteral("cursor")));
+    return r;
+}
+
 QVariantMap TransliterationController::liveApply(const QString& text, int cursorPos) const {
     QVariantMap r;
     r.insert(QStringLiteral("changed"), false);

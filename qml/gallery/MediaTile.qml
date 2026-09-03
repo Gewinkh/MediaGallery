@@ -110,6 +110,7 @@ Rectangle {
     //  dauerhaft - ein Ordner ohne sichtbaren Namen waere nicht unterscheidbar.
     readonly property bool isFolder: mediaType === 7
 
+
     //  LISTEN-Darstellung (Player-Modus, Einstellung „Liste"): dieselbe Kachel,
     //  aber flach und breit - Bild klein links, Name, Tags, Angabe rechts. Die
     //  Bedienung bleibt vollständig: Kontextmenü (Tags, Kategorien, Umbenennen,
@@ -231,9 +232,20 @@ Rectangle {
             width: Math.max(24, tile.height - 12)
             height: width
 
+            //  TEXTdateien zeigen hier IMMER ihren Typ, nie den Inhalt - und
+            //  zwar unabhängig von der Einstellung „Vorschau von Textdateien":
+            //  bei rund 30 px ist von fünf Zeilen Quelltext nichts zu erkennen,
+            //  der Typ dagegen sofort (Nutzerbefund 2026-09-02). Bild, Video
+            //  und PDF behalten ihr Vorschaubild - die sind auch klein noch
+            //  wiederzuerkennen.
+            readonly property bool zeigeTyp: !tile.isFolder && tile.mediaType === 4
+                                             && !tile.covered
+                                             && tile.typeLabel.length > 0
+                                             && !tile.covered
+
             Image {
                 anchors.fill: parent
-                visible: !tile.isFolder && tile.thumbState === 1
+                visible: !tile.isFolder && !listArt.zeigeTyp && tile.thumbState === 1
                          && status === Image.Ready && !tile.covered
                 source: tile.thumbUrl
                 asynchronous: true
@@ -244,11 +256,28 @@ Rectangle {
                 mipmap: true
                 clip: true
             }
+            Text {
+                anchors.centerIn: parent
+                visible: listArt.zeigeTyp
+                text: tile.typeLabel
+                color: App.themeTextMuted
+                font.bold: true
+                //  An die Zeilenhöhe gebunden und zusätzlich an die BREITE des
+                //  Feldes: „LICENSE" ist dreimal so lang wie „PY". Der Faktor
+                //  0,75 ist die gemessene Grenze - mit 1,6 lief „JSON" über und
+                //  wurde zu „JS…", obwohl das Feld gross genug war.
+                font.pixelSize: Math.max(7, Math.min(parent.width * 0.42,
+                                                     parent.width / (0.75 * Math.max(2, tile.typeLabel.length))))
+                elide: Text.ElideRight
+                width: parent.width
+                horizontalAlignment: Text.AlignHCenter
+            }
             DrawnIcon {
                 anchors.centerIn: parent
                 //  Ordner, gesperrte Vorschau oder (noch) kein Bild: dann sagt
                 //  das Symbol, worum es geht.
-                visible: tile.isFolder || tile.covered || tile.thumbState !== 1
+                visible: !listArt.zeigeTyp
+                         && (tile.isFolder || tile.covered || tile.thumbState !== 1)
                 name: tile.isFolder ? (tile.expanded ? "folder-open" : "folder")
                     : tile.mediaType === 2 ? "audio"
                     : tile.mediaType === 1 ? "play" : "file"

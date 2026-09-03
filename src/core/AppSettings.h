@@ -43,6 +43,31 @@ public:
     bool           audioAccentApple() const override;
     void           setAudioAccentApple(bool v) override;
 
+    int  editorProfile() const override;
+    void setEditorProfile(int p) override;
+    QString editorCustomPalette() const override;
+    void    setEditorCustomPalette(const QString& json) override;
+    bool editorLineNumbers() const override;
+    void setEditorLineNumbers(bool v) override;
+    bool editorHighlightCurrentLine() const override;
+    void setEditorHighlightCurrentLine(bool v) override;
+    bool editorSoftWrap() const override;
+    void setEditorSoftWrap(bool v) override;
+    bool editorMinimap() const override;
+    void setEditorMinimap(bool v) override;
+    bool editorFolding() const override;
+    void setEditorFolding(bool v) override;
+    bool editorIndentGuides() const override;
+    void setEditorIndentGuides(bool v) override;
+    bool editorMatchBrackets() const override;
+    void setEditorMatchBrackets(bool v) override;
+    int  editorTabWidth() const override;
+    void setEditorTabWidth(int zeichen) override;
+    bool editorTabSpaces() const override;
+    void setEditorTabSpaces(bool v) override;
+    bool textPreviewContent() const override;
+    void setTextPreviewContent(bool v) override;
+
     bool monoPlay() const override;
     void setMonoPlay(bool v) override;
     bool showHiddenFiles() const override;
@@ -178,5 +203,9 @@ signals:
 
 private:
     explicit AppSettings(QObject* parent = nullptr);
-    QSettings m_settings;
+    //  `mutable`, weil `designProfile() const` einen alten gespeicherten Wert
+    //  einmalig umrechnet und zurueckschreibt (s. Schema-Nummer dort). Das ist
+    //  keine Zustandsaenderung nach aussen - dieselbe Frage liefert danach
+    //  dieselbe Antwort, nur ohne die Umrechnung noch einmal zu brauchen.
+    mutable QSettings m_settings;
 };

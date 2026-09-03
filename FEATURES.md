@@ -23,6 +23,11 @@ Where a feature stops - the known limits, with the reason behind each one - is i
 - **HTML**: Rendered live preview (via Qt WebEngine) alongside the editable source view
 
 ## Gallery & View
+- **Text files preview with syntax colours**: a tile shows the first lines of the file in the same colours as the editor, so a `.cpp` looks different from a `.md`, a `.py` or a `.json` at a glance. Truncated lines keep their colouring
+- **A `.ts` file is looked at, not guessed**: the extension means both TypeScript and MPEG transport stream, so the first kilobyte decides - four packets in a row starting with the sync byte make it a video, anything else (an empty file included) is treated as source code and opens in the editor
+- Switchable under Settings -> View: turned off, the tile shows the **file type** instead (CPP, PY, MD …)
+- **The list view always shows the file type**, never the content - the square there is about 30 px wide, where five lines of source code are unreadable but `CPP` or `PY` is instantly clear. The setting therefore hides itself while the list layout is active
+- Files without an extension are covered too: `LICENSE`, `COPYING`, `README`, `CHANGELOG`, `Makefile` and `Dockerfile` open as text and show their name as the type
 - **Tiles or list** (*Settings -> View -> Arrangement*): the gallery either lays its entries out as a **tile grid** (the default, unchanged) or puts every folder and every file on a **horizontal row of its own** - small artwork on the left, name, tag dots, and the count or file type on the right. It is the same arrangement player mode uses, but **without its filter**: in the normal gallery every file stays visible, images, PDFs, text and all. The row height is yours to choose - `Ctrl` with `+`/`-` or the wheel, or by hand in the settings. Subfolders still open in place and stay indented by level, and everything keeps working - tags, categories, the context menu, dragging, click and double-click. Player mode is set separately (*Settings -> Audio*), so choosing a list there does not turn your gallery into one
 - **Grid view**: 1–25 columns, zoom with `Ctrl+Scroll` or `Shift+Scroll`
 - **Zooming follows the arrangement**: `Ctrl` with `+`/`-` or the mouse wheel resizes **whatever is on screen** - the tiles in tile view, the **row height** in list view (28 to 160 px, and artwork, text and tag dots grow with it). Each keeps its own size, so switching back and forth never disturbs the other. Both can also be set by hand in *Settings -> View*, where the box shows the tile controls or the row height depending on which arrangement is active
@@ -61,20 +66,49 @@ Where a feature stops - the known limits, with the reason behind each one - is i
 
 ## Text Editor
 - Opens any supported text/source file in a monospace editor inside the fullscreen view
-- **Save** button and `Ctrl+S` shortcut
-- Unsaved-changes indicator (`*` in the filename label)
+- **No Save button - and none needed.** The file is written when you leave it, when you switch to another one, and on the auto-save interval; `Ctrl+S` still works, and the status bar shows a dot with *modified* while something is unsaved. This also freed the second toolbar: the editor now has **one** bar (the viewer header), with the overview and transliteration buttons next to *Add file*, and *Save as PDF …* (colour + convert) in the **Document** menu
 - **Auto-Save**: optional timer-based auto-save (configurable interval, Settings -> Text Editor)
-- Confirmation dialog on navigation away from unsaved changes (Save / Discard / Cancel)
 - Proper Arabic/CJK font fallback in the editor (no more missing-glyph "tofu" boxes)
-- **Export as PDF** (`-> PDF` button next to Save): writes `<name>.pdf` **beside the source file**; the text file itself is never touched, and an existing PDF of that name is never overwritten (`<name> (2).pdf`, `(3)`, …)
+- **Export as PDF** (**Document** menu -> *Save as PDF …*): writes `<name>.pdf` **beside the source file**; the text file itself is never touched, and an existing PDF of that name is never overwritten (`<name> (2).pdf`, `(3)`, …)
   - What gets printed is **what stands in the editor**, including unsaved changes
   - Fixed layout: monospace 10 pt in **medium weight** (indentation, ASCII tables and columns keep their alignment), A4 portrait, 20 mm margins all round, footer carrying **only the page count** (`1/3`, centred) - no file name
-  - **Choosable text colour**, with black as the default. A colour swatch sits left of the `-> PDF` button: what you pick there applies **to this file only** and is remembered in the folder's JSON sidecar next to its tags and date. Once a file has its own colour, a reset button appears **inside the same frame**, separated by a thin line, and drops it back to the default. The default itself is one setting for all files (Settings -> Text Editor -> *Text colour for text-to-PDF export*)
+  - **Choosable text colour**, with black as the default. The swatch sits in the same popup as the Convert button: what you pick there applies **to this file only** and is remembered in the folder's JSON sidecar next to its tags and date. Once a file has its own colour, a reset button appears next to the swatch and drops it back to the default. The default itself is one setting for all files (Settings -> Text Editor -> *Text colour for text-to-PDF export*)
   - **The colour never follows the app theme.** It is written into the document, so a theme switch must not change it - before this was pinned down, a dark theme once printed near-white text onto white paper. An unusable stored value falls back to black rather than to something invisible. The medium weight is part of the same promise: at 10 pt a regular monospace is so thin that a full page reads grey on screen even though the ink is solid
-  - Long lines **wrap** (never truncated); tabs are eight characters wide; CRLF and old Mac CR line endings are handled
+  - Long lines **wrap** (never truncated); tabs are as wide as they are in the editor (the *Tab width* setting, 2…8 characters), so a printed file is indented exactly as it looked on screen; CRLF and old Mac CR line endings are handled
   - Real text, not an image: the result can be selected, copied and searched (see *Known limitations* for pages made up of very short lines)
   - Runs in the background - the editor stays usable, and a short status message reports the written file or the error
-- **Themeable editor backgrounds**: the TXT/code editor and the HTML source view each have their **own separate** background color, independent of each other and of the card/panel background (Settings -> Design)
+- **Syntax highlighting** for the file's language, worked out from its extension. Covers C/C++ (`c cc cpp cxx h hpp hxx`), Python, Markdown, Java, JavaScript/TypeScript, C#, Go, Rust, PHP, Swift, Kotlin, shell (`sh bash zsh`), Ruby, Lua, CMake, YAML, SQL, XML/HTML, CSS/SCSS/LESS, JSON and INI/TOML, plus extension-less `Makefile`, `CMakeLists.txt` and `Dockerfile`. An unknown extension is shown as plain text and costs nothing
+  - Thirteen colour classes shared by **every** language (keyword, type, string, number, comment, preprocessor, function, operator, heading, emphasis, link, code) - so adding a language never adds another row of colour settings
+  - Markdown gets its own treatment: headings, emphasis, lists, block quotes, links, inline code and fenced code blocks, with the fence carrying across lines
+  - **HTML colours its embedded languages too**: everything inside `<style>` is read as CSS and everything inside `<script>` as JavaScript, across line boundaries. In a real page that is usually the bulk of the file
+  - **QML, `.qrc`, `.pro` and `.pri`** are recognised as text files (they used to open on a "no preview renderer" screen). QML gets its own keyword set plus its structure: type names (`Rectangle {`) and property bindings (`anchors.fill:`) are coloured, while the colon of a conditional is left alone
+  - HTML also colours **entities** (`&nbsp;`, `&#12354;`) and the CSS inside an inline `style="…"`
+  - **JavaScript template strings** (`` ` … ` ``) are read as strings even across lines
+  - **`on*` attributes in HTML carry code**: the value of `onclick="…"` is read as JavaScript, the way `style="…"` is read as CSS
+  - In QML the **whole property chain** is coloured (`anchors.fill:`), not just its last part
+  - Typing re-colours **one** line, not the file
+- **Tab width is adjustable (2…8, default 4)**, as in Qt Creator and Kate. (Qt's own default is a fixed 80 pixels regardless of the font, which at 13 px monospace is about ten characters.) **Text -> PDF uses the same width**, so an exported file is indented on paper exactly as it was on screen
+- **The Tab key inserts spaces by default**, up to the next stop - the way Kate does it, so the file looks the same in every editor no matter what tab width is set there. Switchable off (Settings -> Text Editor), which writes a real tab character instead
+- **The view follows the caret, and only the caret.** Typing at the bottom edge, `Page Down`, `Ctrl+End`, or dragging a selection past the edge all scroll the view along - but a change to the *layout* never does. That is why folding a block or flipping a setting no longer throws you back to the top of the file: the editor is deliberately not wired to Qt's "keep the cursor visible on every relayout", it follows the caret itself when the caret actually moves
+- **Every search understands patterns** (regular expressions) - and needs no switch for them. The text you type is **always** searched literally; if it also contains regex characters and makes sense as a pattern, it is searched as a pattern **as well** and both results are merged into one overlap-free list. So searching `\d{4}` finds every four-digit number **and** the literal text `\d{4}`, and a half-typed `(` is not an error - it is simply searched literally. This applies to the **gallery search, the text editor, PDF and DOCX** alike. Replacement is always literal: type `\d{4}` there and you get those six characters. Settings -> General -> *Search with patterns* lists the characters and a few examples
+- **Find and replace** (`Ctrl+F`), as in any IDE: incremental search with a match counter
+  (`3 / 17`), `Enter` / `Shift+Enter` to step through, wrap-around at the end of the file,
+  match case, whole words, and every match highlighted at once. Selected text is picked up when
+  the bar opens, `Esc` closes it. Replace, Replace all - and all replacements are **one** undo
+  step. On a read-only file the replace row is greyed out
+- **Overview column** on the right (Kate's minimap), collapsible from the button next to *Add file* or from the settings: the whole file scaled right down, drawn as coloured bars in the syntax colours rather than as text. It shows the shape of the document - indentation, blocks, blank lines - and you can click and drag in it to scroll. Off by default, because it costs width
+- **Folding**, as in Qt Creator: a narrow bar right of the line numbers collapses functions, blocks, sections or headings. It appears **only for files that actually have foldable blocks** - a plain `.txt` never shows it, and once shown it stays for that file so the text does not jump around while you type. A collapsed block shows `void f() {…}` with the body hidden - **click the three dots to open it again**, or the arrow in the bar; the file itself is untouched, and saving or exporting always writes the whole text. What folds depends on the language: braces (C/C++, Java, JS, C#, Go, Rust, PHP, Swift, Kotlin, Dart, CSS, JSON, QML, shell, Perl, R, Valgrind `.supp`), indentation (Python, YAML), headings and fenced code (Markdown), sections (INI, TOML), **tag pairs** (HTML/XML - void elements such as `<br>` and self-closing tags open nothing, and a stray `</div>` does not derail the rest), and **keyword pairs** (Lua `do`/`end`, Ruby `def`/`end`, CMake `if()`/`endif()`). A search hit inside a collapsed block opens it and leaves it open; hits you have not stepped to are marked on the collapsed line's `…` instead
+- **Indent guides**: a vertical line per indentation level, so you can see which closing bracket belongs where
+- **Bracket matching**: with the cursor on a bracket, it and its partner are highlighted; a bracket **without** a partner turns red. Brackets inside strings and comments are ignored
+- **Borderless surface**: the text fills the tile from edge to edge. The framed, rounded box that used to float inside the tile is gone
+- **Line-number column**, in the style of a code editor. With visual wrap on, a wrapped line keeps ONE number, so you can see at a glance where a real line break is. Instead of empty space, the continuation rows carry a thin vertical line with a small arrow branching off each row - it starts at the top of the first continuation row and ends halfway down the last one, marking exactly how far the logical line reaches
+- **Current-line highlight** behind the line the cursor sits on
+- **Status bar** along the bottom: line and column, number of lines, detected language, encoding, and whether wrapping is on. It is also where the read-only reason is spelled out
+- **Own colour themes, separate from the app theme** (Settings -> Design -> *Text Editor*), **saveable and loadable as JSON** like the interface themes: four editor themes (Nightfall, Paper, Ember, Custom) with their own colour editor for the surface (background, text, current line, selection, line-number column) and the twelve syntax classes, plus a live preview. Switching the app theme leaves the editor untouched, and vice versa
+- **Visual line wrap** (Settings -> Text Editor): long lines wrap on screen the way Kate does it - purely visual, the file is never changed and a real line break is still `Enter`. Turned off, the line runs on horizontally as in VS Code. HTML source always runs on horizontally
+- Line numbers and the current-line highlight can each be switched off (Settings -> Text Editor)
+- **Files larger than 8 MB open read-only.** Only the beginning is loaded, so writing back would destroy the rest - the status bar carries a *Read only* marker explaining why, and saving is refused
+- **Themeable HTML source background** (Settings -> Design)
 
 ## HTML Viewer
 - **.html / .htm** files open in a rendered live preview by default, with a one-click toggle back to the editable source view
@@ -92,6 +126,30 @@ Where a feature stops - the known limits, with the reason behind each one - is i
 - Supports the Arabic definite article (sun/moon letter assimilation), doubled consonants (auto-Shadda), and word-boundary handling
 - Fully customizable mapping tables per script (Settings -> Text Editor), with add/edit/remove/reset controls
 - Toggle button (with scheme picker) available directly in the editor toolbar and the PDF Editor toolbar
+
+## Search (patterns)
+
+The same rule applies to **every** search box in MediaGallery - the gallery filter, the
+text editor's find bar, PDF and DOCX:
+
+- **What you type is always searched literally.** No mode, no switch, nothing to remember.
+- **If it also contains regular-expression characters and makes sense as a pattern, it is
+  searched as a pattern as well**, and both result sets are merged into one list. Searching
+  `\d{4}` therefore finds every four-digit number **and** a file (or line) that literally
+  contains `\d{4}`.
+- **A half-typed pattern is not an error.** While you are typing `(\w+)`, the `(` alone is
+  not a valid expression - the pattern half is simply dropped for that keystroke and the
+  literal search carries on. Nothing blinks red, nothing stops.
+- **Overlapping hits are resolved before anything is replaced.** `\w+ung` and the literal
+  `ung` both hit "Verwaltung"; the merged list keeps one of them, so *Replace all* never
+  writes into the same place twice.
+- **Replacement is always literal.** Type `\d{4}` into the replace field and you get those
+  six characters. There are no back-references (`\1`).
+- Settings -> General -> *Search with patterns* lists the characters and a few examples.
+
+The most useful ones: `.` any character · `\d` a digit · `[abc]` one of these · `*` zero or
+more · `{4}` exactly four times · `^` start of line · `$` end of line · `a|b` either · `\.`
+a literal dot.
 
 ## Tags & Categories
 - **Tags**: Per-folder, unlimited, freely named, color-coded
@@ -223,7 +281,9 @@ Notes, drawings, redactions and form values are **non-destructive**: they live i
 - **Fewer, larger boxes**: in *View* the arrangement, the tile arrangement and the tile size now share one box - it is the same question in three steps - with the old headings kept as dividers inside it. In *General*, mono play and the seek step share one box, since both are about how playback behaves
 
 ## Full Color Customization (Settings -> Design)
-- **9 built-in themes**: Dark, Dark OLED, Ocean Depth, Inferno Blaze, Neon Purple, Midnight Rose, Elegant, Simple, Custom
+- Two separate blocks, each collapsible: **Interface** and **Text Editor**. They share no colour at all - switching one leaves the other alone
+- **8 built-in interface themes**, four per row: Dark, Dark OLED, Ocean Depth, Inferno Blaze, Midnight Rose, Elegant, Simple, Custom
+- **4 built-in editor themes** in one row: Nightfall (dark), Paper (light), Ember (warm dark), Custom - each with three preview swatches. *Copy into Custom* takes the current theme as a starting point for your own
 - **Custom Theme Editor** with live preview:
   - Main background (solid or gradient)
   - Card / panel background
@@ -235,7 +295,8 @@ Notes, drawings, redactions and form values are **non-destructive**: they live i
   - Tile hover glow effect
   - **PDF Viewer** sidebar, toolbar, and scrollbar colors
   - Sidebar background color
-  - Editor background (text / HTML source editor surface)
+  - Editor background (HTML source editor surface)
+  - **Text Editor block**: surface colours (background, text, current line, selection, line-number column and its numbers) and the twelve syntax classes (keyword, type, string, number, comment, preprocessor, function, operator, heading, emphasis, link, code), with a live preview
 - Export / Import custom themes as JSON files
 - All color changes apply live without restarting
 - **Themed icons**: every icon in the interface (toolbars, panels, filter bar) is drawn by the app itself from geometric shapes - there are no icon image files. Icons take the theme's text colour as a live binding, so a colour change repaints them instantly instead of reloading images, and they stay sharp at any interface scaling (100 %, 125 %, 150 %, 200 %) because edges snap to whole device pixels
@@ -362,6 +423,13 @@ Notes, drawings, redactions and form values are **non-destructive**: they live i
 | Back to gallery (from any viewer) | `Alt+<-` |
 | Back out of a subfolder (gallery) | `Alt+<-` |
 | Save text file | `Ctrl+S` |
+| Find & replace (text editor) | `Ctrl+F` |
+| Next / previous match | `Enter` / `Shift+Enter` |
+| Close the search bar | `Esc` |
+| Undo / redo (text editor) | `Ctrl+Z` / `Ctrl+Shift+Z` (or `Ctrl+Y`) |
+| Indent (writes spaces by default) | `Tab` |
+| Jump to start / end of the file (text editor) | `Ctrl+Home` / `Ctrl+End` |
+| Page up / page down (text editor, **scrolls only - the caret stays put**) | `Page Up` / `Page Down` |
 | Edit date (fullscreen) | `D` |
 | Open date editor | Calendar button (fullscreen) |
 | Delete file | Delete button (fullscreen) |

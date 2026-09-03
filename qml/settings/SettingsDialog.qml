@@ -19,6 +19,9 @@ import "../common"
 // ─────────────────────────────────────────────────────────────────────────────
 Dialog {
     id: dlg
+    //  Griff fuer die Pruefstaende (Muster wie `documentMenu`) - QML-`id`s sind
+    //  von aussen nicht auffindbar, `objectName` schon.
+    objectName: "settingsDialog"
     title: App.uiText(App.language, "SettingsTitle")
     //  Beim Öffnen gilt die Hälfte, in der gerade gearbeitet wird; beim
     //  Schließen folgt die Fassade wieder dem Fokus (−1).
@@ -101,9 +104,21 @@ Dialog {
         // ── Tab-Leiste ───────────────────────────────────────────────────────
         TabBar {
             id: tabBar
+            objectName: "settingsTabBar"
             Layout.fillWidth: true
             Layout.margins: 12
             Layout.bottomMargin: 0
+
+            //  BESCHNEIDEN, sonst laufen die Reiter aus dem Dialog heraus.
+            //  Die `TabBar` blaettert intern ueber eine `ListView`; ohne `clip`
+            //  malt die aber auch die Eintraege LINKS und RECHTS ausserhalb
+            //  weiter - im schmalen Fenster stand dann der Rest von
+            //  „Allgemein" am Fensterrand und „Lesezeichen" ueber der
+            //  Dialogkante (Nutzerbefund 2026-09-02, `tests/nonContainedBar.png`).
+            //  Beides setzen: `clip` an der Leiste haelt ihre eigenen Kinder,
+            //  `clip` am `contentItem` die geblaetterte Liste.
+            clip: true
+            Component.onCompleted: if (tabBar.contentItem) tabBar.contentItem.clip = true
 
             background: Rectangle { color: "transparent" }
 
@@ -155,6 +170,7 @@ Dialog {
         // ── Tab-Inhalte ──────────────────────────────────────────────────────
         StackLayout {
             id: stack
+            objectName: "settingsStack"
             Layout.fillWidth: true
             Layout.fillHeight: true
             Layout.margins: 12

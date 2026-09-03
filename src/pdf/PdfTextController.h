@@ -38,6 +38,8 @@
 //  Registrierung: qmlRegisterSingletonInstance(…, "PdfText", …) in main.cpp.
 // ══════════════════════════════════════════════════════════════════════════════
 
+#include "core/SearchPattern.h"
+
 #include <QObject>
 #include <QString>
 #include <QVariantList>
@@ -201,6 +203,10 @@ private:
     };
     QVector<SearchHit> m_hits;
     QString            m_searchTerm;
+    //  Derselbe Begriff als Muster - der WOERTLICHE Zweig laeuft weiter ueber
+    //  `QPdfSearchModel` (der liefert Rechtecke und Kontext gratis), der
+    //  Muster-Zweig ueber den Seitentext. Siehe `core/SearchPattern.h`.
+    mg::search::Pattern m_searchPattern;
     //  Nächste zu durchsuchende Seite (−1 = keine Suche läuft). QPdfSearchModel
     //  arbeitet LAZY je Seite (gemessen: erst `resultsOnPage(p)` durchsucht sie)
     //  - der Timer holt sie stückweise, damit eine 500-Seiten-Datei die

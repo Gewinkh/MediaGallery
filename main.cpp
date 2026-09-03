@@ -23,6 +23,7 @@
 #include "core/AppSettings.h"
 #include "audio/AudioController.h"
 #include "audio/AudioCoverProvider.h"
+#include "app/QmlTypes.h"
 #include "app/PaneController.h"
 #include "app/PaneHost.h"
 #include "tags/TagController.h"
@@ -44,6 +45,12 @@
 #include "docx/edit/DocxTextArea.h"
 #include "app/TransliterationController.h"
 #include "app/WebEngineController.h"
+#include "editor/EditorController.h"
+#include "editor/CodeHighlighter.h"
+#include "editor/TextGutter.h"
+#include "editor/TextDecorations.h"
+#include "editor/TextFoldBar.h"
+#include "editor/TextMinimap.h"
 #include "media/MediaModel.h"
 #include "media/MediaProxyModel.h"
 #include "media/GalleryRowModel.h"
@@ -293,6 +300,13 @@ int main(int argc, char* argv[]) {
     //  Kachel via qmlRegisterType unten); das Docx-Singleton trägt allein die
     //  globale Speicherverhalten-Einstellung (direkt / Kopie exportieren).
     DocxController       docx(settings);
+    //  Texteditor: das Singleton traegt Farbprofil und Verhalten (appweit), der
+    //  eigentliche Faerber lebt DEZENTRAL je Kachel (CodeHighlighter als Typ
+    //  unten) - in der geteilten Ansicht sind bis zu vier Dateien mit je eigener
+    //  Sprache offen. `setActiveController` reicht die Palette an die Faerber
+    //  weiter, ohne dass die den Controller kennen muessen.
+    mg::editor::EditorController editor(settings);
+    mg::editor::setActiveController(&editor);
     //  Audio-Player mit Equalizer: EINE Wiedergabe für die ganze App (wie
     //  `monoPlay`), deshalb ein Singleton - welche Hälfte ihn zeigt, entscheidet
     //  die Oberfläche (s. src/audio/AudioController.h).
@@ -324,6 +338,25 @@ int main(int argc, char* argv[]) {
                                           settings.tileHeight())))
             mediaModel.refreshThumbnails();
     });
+
+    // ── Aussehen der TEXT-Kacheln ───────────────────────────────────────────
+    //  Die Vorschaukarte einer Textdatei zeigt deren erste Zeilen in genau den
+    //  Farben des Editors - oder nur den Dateityp, wenn die Vorschau
+    //  abgeschaltet ist. Beides steckt in der erzeugten Cache-Datei, ein
+    //  Umzeichnen genuegt also nicht: aendert sich die Einstellung ODER eine
+    //  Farbe des Editors, muessen die sichtbaren Kacheln neu erzeugt werden.
+    //  Der Stil wird HIER gesetzt und in jeden Task kopiert - der Faerber im
+    //  Pool fasst den Controller nie an.
+    const auto textStilSetzen = [&settings, &editor, &thumbLoader, &mediaModel]() {
+        if (thumbLoader.setTextPreviewStyle(settings.textPreviewContent(),
+                                            editor.palette()))
+            mediaModel.refreshThumbnails();
+    };
+    textStilSetzen();                       // Startwert, vor der ersten Kachel
+    QObject::connect(&appController, &AppController::textPreviewContentChanged,
+                     &mediaModel, textStilSetzen);
+    QObject::connect(&editor, &mg::editor::EditorController::paletteChanged,
+                     &mediaModel, textStilSetzen);
 
     // ── Anwendungs-Palette folgt dem App-Farbschema ──────────────────────────
     //  Die Standard-Controls (alles, was NICHT vom eigenen Stil abgedeckt ist:
@@ -390,31 +423,14 @@ int main(int argc, char* argv[]) {
     qmlRegisterSingletonInstance("MediaGallery", 1, 0, "PdfEdit",   &pdfEdit);
     qmlRegisterSingletonInstance("MediaGallery", 1, 0, "PdfExtract", &pdfExtract);
     qmlRegisterSingletonInstance("MediaGallery", 1, 0, "Docx",      &docx);
+    qmlRegisterSingletonInstance("MediaGallery", 1, 0, "Editor",    &editor);
 
-    // Dezentrale, pro PdfSurface (PDF-Kachel) instanziierbare Editor-Controller -
-    // eigener Zustand je geöffneter Datei (kein QML_ELEMENT-Makro, manuelle
-    // Registrierung wie die übrigen Typen).
-    qmlRegisterType<PdfTextController> ("MediaGallery", 1, 0, "PdfTextController");
-    qmlRegisterType<PdfAudioController>("MediaGallery", 1, 0, "PdfAudioController");
-    qmlRegisterType<PdfEditController> ("MediaGallery", 1, 0, "PdfEditController");
-    // Dezentraler Bild-Editor: je ImageSurface-Kachel eine eigene Instanz.
-    qmlRegisterType<ImageEditController>("MediaGallery", 1, 0, "ImageEditController");
-    qmlRegisterType<DocxEditController>("MediaGallery", 1, 0, "DocxEditController");
-    qmlRegisterType<DocxTextArea>      ("MediaGallery", 1, 0, "DocxTextArea");
-    //  Seiten-Miniatur des DOCX-Editors (Delegate der Miniaturen-Leiste; malt
-    //  über DocxTextArea::paintPageInto, hält also selbst kein Bild).
-    qmlRegisterType<DocxPageThumb>     ("MediaGallery", 1, 0, "DocxPageThumb");
-    //  Verzeichnis-Inhalt für den eigenen Datei-/Ordnerwähler
-    //  (`qml/common/FileChooser.qml`) - ein Modell je Wähler, damit zwei
-    //  geöffnete Wähler nicht im selben Verzeichnis stehen.
-    qmlRegisterType<FileBrowseModel>   ("MediaGallery", 1, 0, "FileBrowseModel");
-    //  Zeilenmodell der Galerie - je Ansicht eine Instanz, gespeist aus
-    //  `galleryModel` (s. src/media/GalleryRowModel.h).
-    qmlRegisterType<GalleryRowModel>   ("MediaGallery", 1, 0, "GalleryRowModel");
-    //  Zwei-Fenster-Modus: `PaneController` je Hälfte, `PaneHost` erzeugt deren
-    //  QML-Teilbaum mit eigenem Kontext (s. src/app/PaneHost.h).
-    qmlRegisterType<PaneController>    ("MediaGallery", 1, 0, "PaneController");
-    qmlRegisterType<PaneHost>          ("MediaGallery", 1, 0, "PaneHost");
+    //  Alle QML-TYPEN an einer Stelle - dieselbe Funktion ruft der Pruefstand
+    //  `tests/bench/bench_shell.cpp`. Frueher fuehrte jede Datei ihre eigene
+    //  Liste, und dem Pruefstand fehlte regelmaessig ein neuer Typ
+    //  (s. `src/app/QmlTypes.h`). Die SINGLETONS bleiben hier: sie brauchen
+    //  die Instanzen von oben.
+    mg::registerQmlTypes();
     qmlRegisterSingletonInstance("MediaGallery", 1, 0, "Audio",     &audio);
     qmlRegisterSingletonInstance("MediaGallery", 1, 0, "Translit",  &translit);
     qmlRegisterSingletonInstance("MediaGallery", 1, 0, "WebEngine", &webEngine);

@@ -36,6 +36,7 @@
 // ══════════════════════════════════════════════════════════════════════════════
 
 #include <QObject>
+#include <QQuickTextDocument>
 #include <QString>
 #include <QStringList>
 #include <QVariantMap>
@@ -68,6 +69,16 @@ public:
     //  text[start..end) über TextEdit.remove()/insert() (kein Voll-Reset des
     //  Textes -> Undo-Stack und Performance großer Dateien bleiben intakt).
     Q_INVOKABLE QVariantMap liveApply(const QString& text, int cursorPos) const;
+
+    //  Dasselbe, aber DIREKT im Dokument und in EINEM Undo-Schritt.
+    //  Rueckgabe: { changed, cursor }.
+    //  Warum es das braucht: der Weg ueber `remove()` + `insert()` aus QML
+    //  erzeugt ZWEI Undo-Schritte je Tastendruck. Strg+Z lief dadurch durch
+    //  halb umgesetzte Zwischenstaende („سَلam") statt einen Tastendruck
+    //  zurueckzunehmen. `QTextCursor::beginEditBlock` fasst beides zu einem
+    //  Schritt zusammen - erreichbar nur ueber das Dokument der TextArea, das
+    //  QML als `QQuickTextDocument` herausgibt.
+    Q_INVOKABLE QVariantMap applyInDocument(QQuickTextDocument* doc, int cursorPos) const;
 
     // ── Schemata & Zuordnungen (Einstellungen) ────────────────────────────────
     Q_INVOKABLE QStringList schemes() const;                  // feste IDs

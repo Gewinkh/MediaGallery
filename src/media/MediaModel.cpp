@@ -1,5 +1,7 @@
 #include "media/MediaModel.h"
 
+#include "media/ContentSniff.h"
+
 #include "core/AppSettings.h"
 #include "core/JsonStorage.h"
 #include "media/MediaProxyModel.h"
@@ -156,7 +158,7 @@ public:
             }
 
             bool hit = !isRoot && !crit.search.isEmpty()
-                    && QFileInfo(dir).fileName().contains(crit.search, Qt::CaseInsensitive);
+                    && crit.pattern.contains(QFileInfo(dir).fileName());
 
             QDirIterator it(dir, QDir::Files | QDir::Dirs | QDir::NoDotAndDotDot | MediaModel::hiddenFlag(),
                             QDirIterator::NoIteratorFlags);
@@ -170,7 +172,11 @@ public:
                 }
                 if (isRoot || hit) continue;   // Wurzel ist ohnehin sichtbar
                 if (!m_showAll && mg::isCompanionFile(fi.fileName(), sidecar)) continue;
-                const MediaType t = MediaItem::detectType(fi.filePath());
+                //  Auch die Tiefensuche muss die mehrdeutige Endung nachbessern
+                //  (s. `ContentSniff.h`) - sonst zaehlte eine TypeScript-Datei
+                //  beim Filter „nur Videos" als Video.
+                const MediaType t = mg::refineType(fi.filePath(),
+                                                   MediaItem::detectType(fi.filePath()));
                 if (t == MediaType::Unknown && !m_showAll) continue;
 
                 const QString name = fi.completeBaseName();
@@ -581,7 +587,13 @@ void MediaModel::feedChunk(bool firstChunk) {
         if (!m_showAllFiles && mg::isCompanionFile(fi.fileName(), sidecar))
             continue;
 
-        const MediaType t = MediaItem::detectType(fi.filePath());
+        //  `refineType` schaut nur bei mehrdeutigen Endungen in die Datei
+        //  hinein (heute genau `.ts` - TypeScript oder Transportstrom,
+        //  s. `ContentSniff.h`); jede andere Datei kostet es nichts. Es steht
+        //  HIER und nicht erst beim Zusammenbauen des Eintrags: dieser Scanner
+        //  füllt `item.type` selbst, und die Kachel liest genau den Wert.
+        const MediaType t = mg::refineType(fi.filePath(),
+                                           MediaItem::detectType(fi.filePath()));
         //  „Alle Dateien anzeigen" heißt WIRKLICH alle: auch was die App nicht
         //  als Medium erkennt (`.bak`, Archive, Programme). Sonst hielte der
         //  Schalter sein Versprechen nur halb - die Sicherungskopie einer DOCX
@@ -1154,7 +1166,15 @@ QString MediaModel::typeLabel(const MediaItem& item) {
     case MediaType::Video: return item.extension().toUpper();
     case MediaType::Audio: return item.audioFormatLabel();
     case MediaType::Pdf:   return QStringLiteral("PDF");
-    case MediaType::Text:  return item.extension().toUpper();
+    //  Endungslose Textdateien (LICENSE, Makefile, Dockerfile) haetten sonst
+    //  gar kein Kuerzel - in der LISTE steht dort aber genau dieses Kuerzel
+    //  statt einer Vorschau, und ein leeres Feld sagt nichts.
+    case MediaType::Text: {
+        const QString e = item.extension().toUpper();
+        if (!e.isEmpty()) return e;
+        const QString name = mg::baseNameView(item.filePath).toString().toUpper();
+        return name.left(10);
+    }
     //  Nicht erkannte Typen (`.bak`, Archive, Programme) stehen nur bei „Alle
     //  Dateien anzeigen" in der Galerie - und waren dort an NICHTS zu erkennen:
     //  kein Thumbnail, kein Badge. Die Endung ist genau die Auskunft, die fehlt.
@@ -1554,8 +1574,12 @@ void MediaModel::appendRowFor(const QString& filePath) {
     item.filePath    = fi.filePath();
     item.displayName = fi.completeBaseName();
     item.fileSize    = fi.size();
+    //  `refineType` schaut nur bei mehrdeutigen Endungen in die Datei hinein
+    //  (heute genau `.ts` - TypeScript oder Transportstrom, s. `ContentSniff`).
+    //  Fuer alles andere kostet es nichts.
     item.type        = fi.isDir() ? MediaType::Folder
-                                  : MediaItem::detectType(fi.filePath());
+                                  : mg::refineType(fi.filePath(),
+                                        MediaItem::detectType(fi.filePath()));
     item.dateTime    = fi.lastModified(QTimeZone::UTC);
     item.scope       = scope;
     if (item.isFolder()) {
@@ -1784,8 +1808,13 @@ void MediaModel::startDeepScan() {
 
 void MediaModel::noteDeepMatches(const QStringList& folders, int generation) {
     if (generation != m_deepGeneration || !m_deepActive) return;
-    if (folders.isEmpty()) return;
-    if (qEnvironmentVariableIntValue("MG_DEEPLOG") >= 1) m_deepFillTimer.start();
+    //  KEIN frueher Ausstieg bei einer leeren Liste: der Lauf meldet sich genau
+    //  EINMAL mit dem vollstaendigen Ergebnis. Ohne Treffer muss die Kette der
+    //  VORIGEN Suche verschwinden - sonst blieben deren Ordner im Ergebnis
+    //  stehen, obwohl der neue Begriff nichts trifft (vom Nutzer gemeldet:
+    //  „kriege nur 22 Ordner markiert").
+    if (qEnvironmentVariableIntValue("MG_DEEPLOG") >= 1 && !folders.isEmpty())
+        m_deepFillTimer.start();
 
     //  Jeder Treffer-Ordner UND seine ganze Kette bis zum offenen Ordner -
     //  sonst waere der Treffer zwar aufgeklappt, aber nicht zu sehen.

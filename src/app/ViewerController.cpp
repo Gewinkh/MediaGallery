@@ -100,8 +100,7 @@ QString ViewerController::readTextFile(const QString& filePathOrUrl) const {
     if (!f.open(QIODevice::ReadOnly))
         return {};
 
-    constexpr qint64 kMaxBytes = 8 * 1024 * 1024;   // 8 MB Schutzgrenze
-    const QByteArray raw = f.read(kMaxBytes);
+    const QByteArray raw = f.read(kMaxTextBytes);
     f.close();
 
     // UTF-8 mit Fehlerprüfung; bei ungültigen Sequenzen Latin-1-Fallback.
@@ -110,14 +109,29 @@ QString ViewerController::readTextFile(const QString& filePathOrUrl) const {
     if (dec.hasError())
         text = QString::fromLatin1(raw);
 
-    if (f.size() > kMaxBytes)
-        text += QStringLiteral("\n\n… [Datei gekürzt: > 8 MB]");
+    //  BEWUSST KEIN Hinweistext mehr im Inhalt: der Vermerk „Datei gekürzt"
+    //  stand frueher IM Puffer und wurde beim Speichern mit in die Datei
+    //  geschrieben. Der Hinweis gehoert in die Oberflaeche, nicht in die Daten -
+    //  sie fragt ueber textFileTruncated nach und sperrt das Schreiben.
     return text;
+}
+
+bool ViewerController::textFileTruncated(const QString& filePathOrUrl) const {
+    const QString path = mg::toLocalPath(filePathOrUrl);
+    if (path.isEmpty())
+        return false;
+    const QFileInfo fi(path);
+    return fi.exists() && fi.size() > kMaxTextBytes;
 }
 
 bool ViewerController::writeTextFile(const QString& filePathOrUrl, const QString& content) const {
     const QString path = mg::toLocalPath(filePathOrUrl);
     if (path.isEmpty())
+        return false;
+
+    //  Letzte Instanz gegen Datenverlust: von einer Datei jenseits des Deckels
+    //  liegt nur der Anfang im Editor. Zurueckschreiben hiesse den Rest loeschen.
+    if (QFileInfo(path).size() > kMaxTextBytes)
         return false;
 
     // Atomar schreiben (QSaveFile: erst Temp-Datei, dann atomarer Rename) - bei
@@ -203,7 +217,8 @@ void ViewerController::requestPdfAnnotations(const QString& filePathOrUrl) {
 // ─────────────────────────────────────────────────────────────────────────────
 void ViewerController::exportTextToPdf(const QString& filePathOrUrl,
                                        const QString& content,
-                                       const QColor& textColor) {
+                                       const QColor& textColor,
+                                       int tabWidth) {
     const QString src    = mg::toLocalPath(filePathOrUrl);
     const QString target = TextPdf::targetPathFor(src);
     if (target.isEmpty()) {
@@ -218,14 +233,15 @@ void ViewerController::exportTextToPdf(const QString& filePathOrUrl,
 
     class TextPdfTask : public QRunnable {
     public:
-        TextPdfTask(ViewerController* owner, QString text, QString target, QColor ink)
+        TextPdfTask(ViewerController* owner, QString text, QString target, QColor ink,
+                    int tabWidth)
             : m_owner(owner), m_text(std::move(text)), m_target(std::move(target)),
-              m_ink(ink)
+              m_ink(ink), m_tabWidth(tabWidth)
         { setAutoDelete(true); }
 
         void run() override {
             QString err;
-            const bool ok = TextPdf::exportToPdf(m_text, m_target, m_ink, &err);
+            const bool ok = TextPdf::exportToPdf(m_text, m_target, m_ink, m_tabWidth, &err);
             // Owner als QPointer: er kann waehrend des Exports (App-Ende)
             // verschwinden - wie bei PdfScanTask.
             QPointer<ViewerController> owner = m_owner;
@@ -241,9 +257,11 @@ void ViewerController::exportTextToPdf(const QString& filePathOrUrl,
         QString                    m_text;
         QString                    m_target;
         QColor                     m_ink;
+        int                        m_tabWidth = 4;
     };
 
-    QThreadPool::globalInstance()->start(new TextPdfTask(this, content, target, textColor));
+    QThreadPool::globalInstance()->start(
+        new TextPdfTask(this, content, target, textColor, tabWidth));
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

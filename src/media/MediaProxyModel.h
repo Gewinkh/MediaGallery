@@ -1,4 +1,5 @@
 #pragma once
+#include "core/SearchPattern.h"
 #include "media/MediaItem.h"
 
 #include <QSortFilterProxyModel>
@@ -79,6 +80,11 @@ public:
     // ─────────────────────────────────────────────────────────────────────────
     struct FilterCriteria {
         QString       search;
+        //  Derselbe Begriff, EINMAL uebersetzt: woertlich und - bei
+        //  Sonderzeichen - zusaetzlich als Muster (s. `core/SearchPattern.h`).
+        //  Er wird je Zeile ausgewertet, deshalb darf er nicht je Zeile neu
+        //  gebaut werden.
+        mg::search::Pattern pattern;
         QSet<QString> tags;          // effektive Tags (manuell ∪ Kategorien)
         int           mode = 0;      // TagMode
         bool          categoryActive = false;
@@ -89,6 +95,11 @@ public:
         //  weisse Liste (`isPlayableType`), die Häkchen oben spielen dann nur
         //  noch für „Videos mitzeigen" eine Rolle.
         bool onlyPlayable = false;
+        //  Suchtext setzen - immer ueber diesen Weg, damit `pattern` dazu passt.
+        void setSearch(const QString& s) {
+            search = s;
+            pattern = mg::search::Pattern(s, false, false);
+        }
         //  Kein Filter aktiv ⇒ es gibt nichts zu suchen.
         bool isEmpty() const {
             return search.isEmpty() && tags.isEmpty() && !categoryActive;
@@ -253,6 +264,7 @@ private:
     bool m_showFolders = true;
 
     QString       m_search;           // Suchtext, bereits getrimmt
+    mg::search::Pattern m_searchPattern;   // derselbe Text, uebersetzt
     QStringList   m_tagFilter;        // manuell gewählte Tags
     QStringList   m_categoryFilter;   // aktive Kategorie-IDs
     QSet<QString> m_effectiveTags;    // manuell ∪ Tags aktiver Kategorien (Cache)

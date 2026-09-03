@@ -426,6 +426,32 @@ the second visit to any folder comes from the thumbnail cache (0.04 ms per tile)
 
 ## Editors
 
+**A text file over 8 MB opens read-only.**
+What you notice: the Save button is replaced by an orange *Read only* marker,
+and typing does nothing. `Ctrl+S` is silent.
+Why: `ViewerController::readTextFile` loads at most 8 MB so a huge log does not
+freeze the window - only the BEGINNING of the file is in the editor. Writing that
+back would delete everything past the cap. Measured before the lock existed: a
+9,860,000-byte log lost 1,471,361 bytes (14.9 %) after a single keystroke plus
+save, and the notice line "… [Datei gekürzt: > 8 MB]" was written into the file
+along with it. Two locks now stand in the way - the surface refuses to edit
+(`Viewer.textFileTruncated`), and `writeTextFile` refuses the write outright.
+Workaround / status: use an external editor for such files. Raising the cap is
+not the fix - the same 9.6 MB file already costs 2.3 s of frozen window just to
+be laid out by `TextArea`, before any colouring. Loading such a file in pieces is
+its own piece of work and has not been started.
+
+**Typing in a very large file gets slower the larger the file is.**
+What you notice: in a file of a few hundred thousand lines each keystroke lags.
+Why: measured with the highlighter attached, ONE block is re-coloured per
+keystroke - the syntax colouring is not the cost. What grows is Qt's own re-layout
+of the document: 2 ms at 20,000 lines, 15 ms at 100,000, 41 ms at 240,000, and
+the same numbers appear with the highlighter switched off. This predates the
+syntax colouring.
+Workaround / status: none inside the editor; the 8 MB cap above keeps it from
+getting worse.
+
+
 **The margin rulers move the page margins, not the paper.**
 What you notice: pulling a margin in gives you a narrower column of text and
 usually MORE pages - it does not shrink the document to fit.
@@ -529,6 +555,35 @@ would otherwise re-decode the picture and make it blink.
 Why: every test reads the file back with the app's own parser. Opening one in Word
 is on the list (see `NEXT.md`).
 
+**A search pattern never reaches across a line break.**
+Why: every search runs per line (text editor) or per paragraph (DOCX) - as
+`QTextDocument::find` always did, since it does not cross block boundaries
+either. So `\d\n\d` finds nothing, and `.*` stops at the end of the line.
+Workaround / status: deliberate. Searching across blocks would mean holding the
+whole document as one string - at the 8 MB read cap that is a second copy of the
+file for every keystroke in the search field.
+
+**A replacement is inserted literally - `\1` does not put back what was found.**
+Why: a hit can come from the literal branch or from the pattern branch (see
+Settings -> General -> *Search with patterns*), and a back-reference has no
+meaning for a literal hit. Making it work would require the mode switch the
+whole design avoids.
+Workaround / status: deliberate.
+
+**A pathological pattern can make the editor hang for a moment.**
+Why: Qt's regular expressions have no time limit, and a pattern such as
+`(a+)+$` on a long line can take exponentially long (catastrophic
+backtracking). This is a property of the engine, not of the file.
+Workaround / status: none built. Such patterns are written on purpose rather
+than by accident; the literal branch of the same search is unaffected, and the
+pattern branch only runs at all when the term contains regex characters.
+
+**In a PDF, the pattern branch stops after 500 hits per page.**
+Why: each hit costs one `getSelectionAtIndex` call to get its rectangles, and a
+pattern like `.` matches every character on the page. The literal branch (Qt's
+own search model) is not capped.
+Workaround / status: deliberate; write a more specific pattern.
+
 ---
 
 ## Not built yet
@@ -548,12 +603,11 @@ what it still cannot do stays behind in the sections above.
   (delete, move), including a multi-file deletion in one step, but tag and
   category changes are not on that stack at all. Deleting a tag across a folder
   tree therefore cannot be taken back.
-- **An IDE-style text editor**: the text view has no syntax colouring at all -
-  Markdown, C++, Python and the rest are shown as plain text - it sits in an
-  inset box rather than filling the view, and its colours cannot be set
-  separately from the theme. Wanted (user, 2026-08-24) with Kate as the model;
-  the working note with the current state and the open decisions is in
-  `NEXT.md` ▸ 4.
+- **Whitespace markers** (Kate's `»` for tabs and dots for spaces) are
+  deliberately not built - the user decided against them on 2026-09-02.
+- **More languages.** 27 are covered. Each new one is a table entry in
+  `src/editor/LanguageTable.cpp` plus a section in the test driver; no scanner
+  code changes as long as one of the five scanner kinds fits.
 - **Writing tags** (changing title or artist of an audio file) - reading is solid,
   writing is deliberately not built: one wrong byte damages the file.
 

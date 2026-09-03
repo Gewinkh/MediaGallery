@@ -27,7 +27,8 @@ constexpr int   kResolution = 96;      // Layout-DPI
 constexpr qreal kMarginMm   = 20.0;    // Rand rundum
 constexpr qreal kFontPt     = 10.0;    // Textschrift (Monospace)
 constexpr qreal kFooterPt   = 8.0;     // Fußzeile („1/3")
-constexpr int   kTabChars   = 8;       // Tabulatorweite in Zeichen
+//  Die Tabulatorweite kommt jetzt als Argument (aus der Editor-Einstellung).
+//  Geklemmt wie dort, damit ein verfaelschter Wert nichts zerlegt.
 
 //  Dicktengleiche Schrift des Systems. styleHint + fixedPitch sorgen dafür,
 //  dass ein Rückfall (Familie nicht vorhanden) wieder eine Monospace wählt -
@@ -68,7 +69,8 @@ QString targetPathFor(const QString& sourcePath) {
 }
 
 bool exportToPdf(const QString& text, const QString& targetPath,
-                 const QColor& textColor, QString* err) {
+                 const QColor& textColor, int tabWidth,
+                 QString* err) {
     //  Unbrauchbare Farbe ⇒ Schwarz. Nie ungeprüft übernehmen: eine
     //  ungültige QColor malte sonst schwarz-transparent bis unsichtbar.
     const QColor ink = textColor.isValid() ? textColor : QColor(Qt::black);
@@ -120,8 +122,11 @@ bool exportToPdf(const QString& text, const QString& targetPath,
         //  abgeschnitten zu werden. AnywhereIfNecessary greift bei Zeilen ohne
         //  Leerzeichen (lange Pfade, base64).
         to.setWrapMode(QTextOption::WrapAtWordBoundaryOrAnywhere);
-        to.setTabStopDistance(kTabChars *
-            QFontMetricsF(font, &writer).horizontalAdvance(QLatin1Char(' ')));
+        //  An echten LEERZEICHEN gemessen und mit derselben Zahl wie im Editor -
+        //  sonst ist derselbe Text gedruckt anders eingerueckt als am Bildschirm.
+        to.setTabStopDistance(
+            QFontMetricsF(font, &writer).horizontalAdvance(
+                QString(qBound(2, tabWidth, 8), u' ')));
         td.setDefaultTextOption(to);
         //  Metriken am Writer messen (nicht am Bildschirm) - sonst hinge das
         //  Ergebnis an der Bildschirm-DPI des Rechners.

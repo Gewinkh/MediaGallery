@@ -102,7 +102,15 @@ struct MediaItem {
             "jsx","tsx","json","xml","html","htm","css","scss","less","yaml","yml",
             "toml","ini","cfg","conf","sh","bash","zsh","bat","cmd","ps1","java",
             "cs","go","rs","rb","php","swift","kt","lua","r","m","f90","cmake","mk",
-            "log","csv","tsv","gitignore","gitattributes","env","dockerfile","makefile"
+            "log","csv","tsv","gitignore","gitattributes","env","dockerfile","makefile",
+            "qml","qrc","pro","pri","supp",
+            //  Diese Liste MUSS jede Endung enthalten, die
+            //  `src/editor/LanguageTable.cpp` kennt - sonst faerbt der Editor
+            //  eine Sprache, die sich gar nicht oeffnen laesst („Kein
+            //  Vorschau-Renderer"). Genau so passiert mit `.dart` und `.pl`
+            //  (Nutzerbefund 2026-09-03); `tests/media/tst_mediaitem.cpp`
+            //  vergleicht beide Listen seitdem gegeneinander.
+            "dart","pl","pm"
         };
         const QString ext = mg::suffixView(path).toString().toLower();
         if (imgExts.contains(ext)) return MediaType::Image;
@@ -113,7 +121,16 @@ struct MediaItem {
         if (txtExts.contains(ext)) return MediaType::Text;
         // Extension-less text files (e.g. "Makefile", "Dockerfile")
         const QString name = mg::baseNameView(path).toString().toLower();
-        if (name == "makefile" || name == "dockerfile") return MediaType::Text;
+        //  Endungslose Textdateien, die in jedem Projekt vorkommen. Ohne sie
+        //  meldet der Viewer „Kein Vorschau-Renderer fuer diesen Typen" -
+        //  eine LICENSE liess sich dadurch gar nicht ansehen (Nutzerbefund
+        //  2026-09-02). Kleingeschrieben verglichen, `name` ist es bereits.
+        static const QSet<QString> textNamen = {
+            "makefile", "dockerfile", "license", "licence", "copying",
+            "notice", "authors", "contributors", "changelog", "changes",
+            "readme", "todo", "install", "version", "manifest"
+        };
+        if (textNamen.contains(name)) return MediaType::Text;
         return MediaType::Unknown;
     }
 };

@@ -565,6 +565,20 @@ void AppController::setSettingsGroupCollapsed(const QString& key, bool collapsed
     m_settings.sync();
 }
 
+bool AppController::textPreviewContent() const {
+    return m_settings.textPreviewContent();
+}
+
+void AppController::setTextPreviewContent(bool v) {
+    if (m_settings.textPreviewContent() == v) return;
+    m_settings.setTextPreviewContent(v);
+    m_settings.sync();
+    //  Anders als bei der Anordnung reicht Umzeichnen NICHT: das Aussehen
+    //  steckt in der erzeugten Cache-Datei. main.cpp haengt am Signal und
+    //  laesst die sichtbaren Kacheln neu erzeugen.
+    emit textPreviewContentChanged();
+}
+
 void AppController::setGalleryListLayout(bool v) {
     if (m_settings.galleryListLayout() == v) return;
     m_settings.setGalleryListLayout(v);
@@ -1609,7 +1623,6 @@ QVariantList AppController::designProfiles() const {
         { DesignProfile::DarkOLED,     "\xE2\x9A\xAB",     "Reines Schwarz mit Glow - ideal für OLED" },
         { DesignProfile::OceanDepth,   "\xF0\x9F\x8C\x8A", "Tiefes Blau mit Verlauf" },
         { DesignProfile::InfernoBlaze, "\xF0\x9F\x94\xA5", "Warmes Orange-Rot" },
-        { DesignProfile::NeonPurple,   "\xE2\x9A\xA1",     "Leuchtendes Violett mit Glow" },
         { DesignProfile::MidnightRose, "\xF0\x9F\x8C\xB9", "Dunkles Rosé" },
         { DesignProfile::Elegant,      "\xE2\x9C\xA8",     "Sanftes Lavendel, elegant" },
         { DesignProfile::Simple,       "\xE2\x98\x80",     "Neutrales Graustufen-Theme" },

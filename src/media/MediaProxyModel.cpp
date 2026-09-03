@@ -146,6 +146,7 @@ void MediaProxyModel::setSearchText(const QString& t) {
     const QString trimmed = t.trimmed();
     if (trimmed == m_search) return;
     m_search = trimmed;
+    m_searchPattern = mg::search::Pattern(trimmed, false, false);
     refilterRows();
     emit filterChanged();
 }
@@ -249,11 +250,10 @@ bool MediaProxyModel::acceptsFile(int mediaType, const QString& displayName,
 
     //  Freitextsuche - UND-verknüpft, deshalb VOR jedem frühen `return true`.
     if (!c.search.isEmpty()) {
-        bool hit = displayName.contains(c.search, Qt::CaseInsensitive)
-                || fileName.contains(c.search, Qt::CaseInsensitive);
+        bool hit = c.pattern.contains(displayName) || c.pattern.contains(fileName);
         if (!hit)
             for (const QString& t : tags)
-                if (t.contains(c.search, Qt::CaseInsensitive)) { hit = true; break; }
+                if (c.pattern.contains(t)) { hit = true; break; }
         if (!hit) return false;
     }
 
@@ -296,7 +296,7 @@ bool MediaProxyModel::acceptsFile(int mediaType, const QString& displayName,
 
 MediaProxyModel::FilterCriteria MediaProxyModel::criteria() const {
     FilterCriteria c;
-    c.search         = m_search;
+    c.setSearch(m_search);
     c.tags           = m_effectiveTags;
     c.mode           = static_cast<int>(m_mode);
     c.categoryActive = !m_activeCatIds.isEmpty();
@@ -361,7 +361,7 @@ bool MediaProxyModel::filterAcceptsRow(int sourceRow, const QModelIndex& sourceP
         //  wenn nichts darin passt.
         const QString name = item ? item->displayName
                                   : idx.data(MediaModel::DisplayNameRole).toString();
-        if (!m_search.isEmpty() && name.contains(m_search, Qt::CaseInsensitive))
+        if (!m_search.isEmpty() && m_searchPattern.contains(name))
             return true;
 
         const QString path = item ? item->filePath
