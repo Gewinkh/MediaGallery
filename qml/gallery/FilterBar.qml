@@ -35,9 +35,27 @@ Rectangle {
     //  Farbe eines Tags - erst der offene Ordner, dann die aufgeklappten
     //  Unterordner (s. MediaModel::visibleTagColor). Kennt ihn niemand, bleibt
     //  es bei der Vorgabe des Themes.
+    //  WELCHER Tag-Controller? Der der EIGENEN Hälfte - `Tags` folgt dem Fokus
+    //  (s. `TagCategoryPanel` ▸ `tagsCtl`). `GalleryPane` setzt ihn.
+    property var tagsCtl: Tags
+    //  Zähler, der bei jeder Tag-Änderung hochgeht. **Er ist die Abhängigkeit,
+    //  die den Bindungen fehlte:** `tagColorOf` ruft nur FUNKTIONEN
+    //  (`visibleTagColor`, `tagColor`), und Funktionsaufrufe erzeugt QML keine
+    //  Bindung darauf - eine geänderte Tagfarbe kam deshalb erst an, wenn die
+    //  Delegates neu gebaut wurden (Filter zu und wieder auf, Chip ab- und
+    //  wieder anwählen; Nutzerbefund 2026-09-03). Wird `tagRev` INNERHALB der
+    //  Funktion gelesen, hängt jede Bindung, die sie ruft, daran.
+    property int tagRev: 0
+    Connections {
+        target: bar.tagsCtl
+        function onTagsChanged()       { bar.tagRev++ }
+        function onCategoriesChanged() { bar.tagRev++ }
+    }
+
     function tagColorOf(tag) {
+        void bar.tagRev                 // s. oben - die Bindung braucht sie
         var c = mediaModel.visibleTagColor(tag)
-        return (c && c.a > 0) ? c : Tags.tagColor(tag)
+        return (c && c.a > 0) ? c : bar.tagsCtl.tagColor(tag)
     }
 
     //  Ordner, in dem „+ Erstellen" und „PDF-Seiten…" arbeiten. Leer = der
@@ -891,10 +909,13 @@ Rectangle {
             //  (folderContentsChanged) und meldet den Erfolg über die Statuszeile.
             Popup {
                 id: createPopup
+                objectName: "createPopup"   // fuer `bench_qmlscene`
                 y: plusBtn.height + 4
                 width: 260
                 padding: 12
-                property string kind: "pdf"    // "pdf" | "html" | "txt" | "docx"
+                //  "free" = der eingegebene Name gilt unveraendert, Endung nach
+                //  Wahl oder gar keine; die Datei bleibt leer.
+                property string kind: "pdf"    // "pdf" | "html" | "txt" | "docx" | "free"
 
                 function doCreate() {
                     if (createNameField.text.trim().length === 0)
@@ -923,7 +944,8 @@ Rectangle {
                         model: [ { kind: "pdf",  key: "CreateFileTypePdf"  },
                                  { kind: "html", key: "CreateFileTypeHtml" },
                                  { kind: "txt",  key: "CreateFileTypeTxt"  },
-                                 { kind: "docx", key: "CreateFileTypeDocx" } ]
+                                 { kind: "docx", key: "CreateFileTypeDocx" },
+                                 { kind: "free", key: "CreateFileTypeFree" } ]
                         delegate: Rectangle {
                             id: typeRow
                             required property var modelData
@@ -970,8 +992,14 @@ Rectangle {
                     }
 
                     Text {
-                        text: App.uiText(App.language, "CreateFileNameLabel")
+                        //  Bei freier Wahl gehoert die Endung IN das Feld - das
+                        //  muss dabeistehen, sonst tippt man den Namen ohne sie.
+                        width: parent.width
+                        text: createPopup.kind === "free"
+                              ? App.uiText(App.language, "CreateFileNameFreeLabel")
+                              : App.uiText(App.language, "CreateFileNameLabel")
                         color: App.themeTextMuted; font.pixelSize: 11
+                        wrapMode: Text.WordWrap
                     }
                     TextField {
                         id: createNameField

@@ -268,6 +268,8 @@ mg_domain(mg_tags
         src/tags/TagManager.h
         src/tags/TagController.cpp
         src/tags/TagController.h
+        src/tags/TagUndoMark.cpp
+        src/tags/TagUndoMark.h
     LIBS
         mg_core
 )

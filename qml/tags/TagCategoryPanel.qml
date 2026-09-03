@@ -50,6 +50,14 @@ Rectangle {
     //  Ebenso der Ordnerwechsel: der EIGENE zählt.
     property var folderSource: App
 
+    //  Rueckgaengig-Leiste: EINE, am Fuss des Panels, und deutlich sichtbar.
+    //  Zwei getrennte Leisten (Tags/Kategorien) waren ueberlegt und wieder
+    //  verworfen - viele Vorgaenge fassen beides an, die Trennung haette mehr
+    //  Fragen aufgeworfen als beantwortet (Festlegung des Nutzers 2026-09-03).
+    readonly property bool hasUndo: (panel.tagsCtl && (panel.tagsCtl.canUndo
+                                                       || panel.tagsCtl.canRedo)) ? true : false
+    readonly property int  undoBarHeight: panel.hasUndo ? 44 : 0
+
     property var tree: []
     property var allTagsModel: []
     property var activeCategories: []
@@ -57,9 +65,23 @@ Rectangle {
     // Mutationen laufen immer über den Proxy, der Spiegel folgt via Connections).
     property var activeTagFilter: []
 
+    //  Zähler, der bei jeder Tag-/Kategorie-Änderung hochgeht. **Er ist die
+    //  Abhängigkeit, die den Farb-Bindungen fehlte:** `tagColor(...)` ist ein
+    //  FUNKTIONSaufruf, und darauf erzeugt QML keine Bindung - eine geänderte
+    //  Tagfarbe kam deshalb erst an, wenn die Delegates neu gebaut wurden
+    //  (beide Panels aus und wieder ein; Nutzerbefund 2026-09-03). `allTags()`
+    //  liefert bei einer reinen Farbänderung dieselbe Liste, der Repeater baut
+    //  also von sich aus nichts neu. Wer `tagColorOf` ruft, hängt daran mit.
+    property int tagRev: 0
+    function tagColorOf(tag) {
+        void panel.tagRev                 // s. oben - die Bindung braucht sie
+        return panel.tagsCtl.tagColor(tag)
+    }
+
     function refresh() {
         tree = panel.tagsCtl.categoriesTree()
         allTagsModel = panel.tagsCtl.allTags()
+        panel.tagRev++
     }
     Component.onCompleted: {
         refresh()
@@ -242,6 +264,54 @@ Rectangle {
                 panel.tagsCtl.toggleFileInCategory(catId, name)
         }
     }
+    //  Ein Tag-Chip, der INS LEERE fällt: aus der Kategorie nehmen, aus der er
+    //  kam - und nur aus dieser. Die Regel gehört ins Panel, wie alle anderen
+    //  Ablege-Regeln auch; `CategoryNode` stellt nur fest, dass niemand den Zug
+    //  angenommen hat.
+    //  Ist der Optionen-Modus (Alt+S) dieser Hälfte an? Nur dann lassen sich
+    //  Kategorien per Zug umhängen - im Normalbetrieb ist die Kopfzeile zum
+    //  Anklicken da.
+    readonly property bool editMode: (panel.folderSource
+                                      && panel.folderSource.optionsVisible === true)
+
+    //  Eine Kategorie unter eine andere hängen. Die Regel liegt im Panel wie
+    //  alle Ablege-Regeln; `moveCategory` weist einen Zug in den eigenen
+    //  Teilbaum selbst ab.
+    function moveCategoryInto(catId, newParentId) {
+        if (!catId || !newParentId || catId === newParentId) return
+        //  **Nicht in den EIGENEN Teilbaum.** `moveCategory` weist das ohnehin
+        //  ab, aber stillschweigend - auf dem Bildschirm sah es aus, als sei
+        //  etwas eingefroren (Nutzerbefund 2026-09-03). Hier wird es früher
+        //  entschieden, und der zurückspringende Kopf ist die Antwort.
+        //  In den EIGENEN Teilbaum gezogen: dann TAUSCHEN die beiden ihre
+        //  Plätze, statt dass gar nichts passiert - jede nimmt ihre Tags,
+        //  Dateien und übrigen Unterkategorien mit (Festlegung des Nutzers
+        //  2026-09-04). Ein echtes Verschieben ginge dort nicht: der Ast, an
+        //  dem man zieht, hinge dann in sich selbst.
+        const node = panel._findNode(panel.tree, catId)
+        if (node && panel._subtreeIds(node).indexOf(newParentId) >= 0) {
+            panel.tagsCtl.swapCategories(catId, newParentId)
+            return
+        }
+        panel.tagsCtl.moveCategory(catId, newParentId)
+    }
+
+    //  Eine Kategorie, die INS LEERE fällt, wird zur Hauptkategorie - das
+    //  Gegenstück zum Tag-Chip, der so seine Kategorie verlässt. Eine, die
+    //  ohnehin schon oben liegt, bleibt unangetastet (sonst rutschte sie nur
+    //  ans Ende der Liste).
+    function dropCategoryOutside(catId) {
+        if (!catId) return
+        const oben = panel._ancestorIds(panel.tree, catId)
+        if (!oben || oben.length === 0) return
+        panel.tagsCtl.moveCategory(catId, "")
+    }
+
+    function dropTagOutside(tag, fromCat) {
+        if (!fromCat || String(fromCat).length === 0) return
+        panel.tagsCtl.removeTagFromCategory(fromCat, tag)
+    }
+
     function requestAddToTagMode(tag) { panel.enterAddToTagMode(tag) }
     function requestGroupMode(tag)    { panel.enterGroupMode(tag) }
 
@@ -250,10 +320,12 @@ Rectangle {
         namePrompt.onAcceptFn = function(v) { panel.tagsCtl.addSubcategory(parentId, v, Qt.rgba(0,0.7,0.63,1), false) }
         namePrompt.open()
     }
+    //  Tag zu einer Kategorie: ANLEGEN oben, AUSWÄHLEN unten.
+    //  Vorher gab es nur ein Namensfeld - man musste den Tag also exakt
+    //  abtippen, obwohl er schon existierte (Nutzerbefund 2026-09-03).
     function promptAddTag(catId) {
-        namePrompt.title = App.uiText(App.language, "TagBarDropdownHeader"); namePrompt.value = ""
-        namePrompt.onAcceptFn = function(v) { panel.tagsCtl.addTagToCategory(catId, v) }
-        namePrompt.open()
+        tagPick.targetCat = catId
+        tagPick.open()
     }
     function promptRename(id, oldName) {
         namePrompt.title = App.uiText(App.language, "CatPanelRename"); namePrompt.value = oldName
@@ -331,6 +403,162 @@ Rectangle {
         }
     }
 
+    // ── Rückgängig für TAG-Vorgänge ──────────────────────────────────────────
+    //  BEWUSST GETRENNT vom Rückgängig der Dateien (Strg+Z in der Galerie,
+    //  `MediaModel`): dieser Stapel trägt ausschließlich Tag- und
+    //  Kategorie-Vorgänge des EIGENEN Ordners, und er hat deshalb auch kein
+    //  Tastenkürzel - ein zweites Strg+Z wäre nicht vorhersagbar (Festlegung
+    //  des Nutzers 2026-09-03).
+    //  ── Die beiden Knöpfe ────────────────────────────────────────────
+    //  Gezeichnete Pfeile (Regel 28), 30x30 - groß genug, um sie ohne
+    //  Zielen zu treffen.
+    //  Eine Marke: gezeichnetes Symbol (Mülleimer beim Löschen) plus die
+    //  Stücke aus C++, jedes in seiner Farbe und kursiv, wenn es gekürzt ist.
+    //  Leere Marke = keine Breite; die andere Seite bekommt den Platz.
+    component MarkRow: Row {
+        id: mr
+        property var    marks: []
+        property string iconName: ""
+        property int    maxW: 0
+        spacing: 3
+        clip: true
+        visible: mr.marks.length > 0
+
+        DrawnIcon {
+            anchors.verticalCenter: parent.verticalCenter
+            visible: mr.iconName.length > 0
+            width: visible ? 14 : 0
+            name: mr.iconName.length > 0 ? mr.iconName : "trash"
+            size: 14
+            //  Der Mülleimer trägt die Farbe des ersten Stückes - so gehört er
+            //  zur Richtung, für die er steht.
+            color: mr.marks.length > 0 && mr.marks[0].color ? mr.marks[0].color
+                                                            : App.themeTextMuted
+        }
+        Repeater {
+            model: mr.marks
+            delegate: Text {
+                required property var modelData
+                anchors.verticalCenter: parent.verticalCenter
+                text: modelData.text
+                color: modelData.color !== undefined && modelData.color !== null
+                       ? modelData.color : App.themeTextPrimary
+                font.pixelSize: 12
+                font.italic: modelData.italic === true
+                font.bold: true
+                //  Zusammen dürfen die Stücke die halbe Leiste nicht sprengen.
+                width: Math.min(implicitWidth, Math.max(24, mr.maxW - 20))
+                elide: Text.ElideRight
+            }
+        }
+        //  Der volle Text (Namen und Pfade ungekürzt) beim Zeigen darauf.
+        HoverHandler { id: mrHover }
+        ToolTip.visible: mrHover.hovered && mr.fullText.length > 0
+        ToolTip.delay: 400
+        ToolTip.text: mr.fullText
+        readonly property string fullText: {
+            var out = ""
+            for (var i = 0; i < mr.marks.length; ++i) {
+                var p = mr.marks[i]
+                out += (p.full && p.full.length > 0) ? p.full : p.text
+            }
+            return out
+        }
+    }
+
+    component ArrowBtn: Rectangle {
+        id: ab
+        property string iconName: ""
+        property bool   on: false
+        property string tip: ""
+        signal clicked()
+        width: 30; height: 30; radius: 6
+        color: !ab.on ? "transparent"
+             : (abHover.hovered ? Qt.rgba(App.themeAccent.r, App.themeAccent.g,
+                                          App.themeAccent.b, 0.34)
+                                : Qt.rgba(App.themeAccent.r, App.themeAccent.g,
+                                          App.themeAccent.b, 0.18))
+        border.color: ab.on ? App.themeAccent : "transparent"
+        border.width: 1
+        DrawnIcon {
+            anchors.centerIn: parent
+            name: ab.iconName; size: 15
+            color: ab.on ? App.themeAccent : App.themeTextMuted
+        }
+        HoverHandler { id: abHover; cursorShape: ab.on ? Qt.PointingHandCursor
+                                                       : Qt.ArrowCursor }
+        TapHandler { enabled: ab.on; onTapped: ab.clicked() }
+        ToolTip.visible: abHover.hovered && ab.tip.length > 0
+        ToolTip.delay: 500
+        ToolTip.text: ab.tip
+    }
+
+    //  Zwei Knöpfe in der MITTE, links die Marke dessen, was ZURÜCK täte, rechts
+    //  die dessen, was VOR täte.
+    //
+    //  **Warum nicht die vergangene Tat:** dort stand vorher „was passiert ist",
+    //  während der Knopf daneben das Gegenteil tat - ein Löschen zeigte `-1 T:b`,
+    //  und Zurück fügte hinzu. Jetzt steht auf jeder Seite, was ihr eigener Knopf
+    //  bewirken würde, in der Farbe DIESER Richtung (Zurück eines Löschens ist
+    //  also grün). Ist eine Seite nicht möglich, bleibt sie LEER und ihr Knopf
+    //  grau (Festlegung des Nutzers 2026-09-03).
+    component UndoBar: Rectangle {
+        id: ub
+        color: Qt.rgba(App.themeAccent.r, App.themeAccent.g, App.themeAccent.b, 0.10)
+
+        //  Trennlinie nach oben.
+        Rectangle {
+            anchors { left: parent.left; right: parent.right; top: parent.top }
+            height: 1
+            color: App.themeBorder
+        }
+
+        readonly property bool hasL: panel.tagsCtl ? panel.tagsCtl.canUndo : false
+        readonly property bool hasR: panel.tagsCtl ? panel.tagsCtl.canRedo : false
+        //  Der Platz, den sich die beiden Seiten teilen. Ist eine leer, bekommt
+        //  die andere alles - „die aktive Seite bekommt den Platz".
+        readonly property int freeW: Math.max(0, ub.width - 78)
+        readonly property int sideW: (ub.hasL && ub.hasR) ? Math.floor(ub.freeW / 2)
+                                                          : ub.freeW
+
+        //  Alles in EINER zentrierten Reihe: so stehen die Knöpfe in der Mitte
+        //  des Inhalts, und eine leere Seite verschenkt keinen Platz.
+        Row {
+            anchors.centerIn: parent
+            width: Math.min(parent.width - 12, implicitWidth)
+            spacing: 6
+
+            MarkRow {
+                anchors.verticalCenter: parent.verticalCenter
+                marks:  panel.tagsCtl ? panel.tagsCtl.undoMark : []
+                iconName: panel.tagsCtl ? panel.tagsCtl.undoIcon : ""
+                maxW: ub.sideW
+            }
+            ArrowBtn {
+                objectName: "undoBtn"
+                anchors.verticalCenter: parent.verticalCenter
+                iconName: "undo"
+                on: ub.hasL
+                tip: App.uiText(App.language, "TagUndoTip")
+                onClicked: panel.tagsCtl.undoLast()
+            }
+            ArrowBtn {
+                objectName: "redoBtn"
+                anchors.verticalCenter: parent.verticalCenter
+                iconName: "redo"
+                on: ub.hasR
+                tip: App.uiText(App.language, "TagUndoTip2")
+                onClicked: panel.tagsCtl.redoLast()
+            }
+            MarkRow {
+                anchors.verticalCenter: parent.verticalCenter
+                marks:  panel.tagsCtl ? panel.tagsCtl.redoMark : []
+                iconName: panel.tagsCtl ? panel.tagsCtl.redoIcon : ""
+                maxW: ub.sideW
+            }
+        }
+    }
+
     component SectionHeader: Rectangle {
         id: hdr
         property string title: ""
@@ -388,7 +616,7 @@ Rectangle {
             // wenn der Kategorien-Abschnitt ausgeblendet ist); darüber scrollbar.
             height: Math.min(tagsCol.implicitHeight,
                              panel.showCategoriesSection ? Math.floor(panel.height * 0.35)
-                                                         : panel.height - 34)
+                                                         : panel.height - 34 - panel.undoBarHeight)
             clip: true
             ScrollBar.horizontal.policy: ScrollBar.AlwaysOff
 
@@ -416,9 +644,47 @@ Rectangle {
                             id: pChip
                             required property var modelData
 
-                            readonly property color tc: panel.tagsCtl.tagColor(pChip.modelData)
+                            readonly property color tc: panel.tagColorOf(pChip.modelData)
                             // Klarer Toggle-Zustand: aktiv = gefüllt + Häkchen + kräftiger Rand.
                             readonly property bool active: panel.isTagActive(pChip.modelData)
+
+                            //  ── Chip in eine Kategorie ziehen ──────────────
+                            //  Dieselben Nutzdaten wie die Chips UNTER einer
+                            //  Kategorie (`CategoryNode`), damit die vorhandene
+                            //  Ablegefläche des Kategorie-Kopfes beide annimmt.
+                            //  `dragFromCat` bleibt leer: dieser Chip kommt aus
+                            //  der Liste, nicht aus einer Kategorie - deshalb
+                            //  wird beim Ablegen nur HINZUGEFÜGT, und ein Zug
+                            //  ins Leere nimmt ihn nirgendwo weg.
+                            property string dragTag: modelData
+                            property string dragFromCat: ""
+                            //  **Der Chip muss an seinen Platz zurück.** Ein
+                            //  `DragHandler` VERSCHIEBT sein Ziel; das `Flow`
+                            //  darüber setzt `x`/`y` aber nur beim Auslegen neu.
+                            //  Ohne das Zurücksetzen blieb der Chip liegen, wo
+                            //  man ihn fallen ließ - er sah aus, als sei er aus
+                            //  der Tag-Liste verschwunden, und kam erst beim
+                            //  Aus- und Einschalten des Panels wieder
+                            //  (Nutzerbefund 2026-09-03).
+                            property real homeX: 0
+                            property real homeY: 0
+                            Drag.active: pDrag.active
+                            Drag.source: pChip
+                            Drag.hotSpot.x: width / 2
+                            Drag.hotSpot.y: height / 2
+                            z: pDrag.active ? 10 : 0
+                            DragHandler {
+                                id: pDrag
+                                onActiveChanged: {
+                                    if (active) {
+                                        pChip.homeX = pChip.x; pChip.homeY = pChip.y
+                                        return
+                                    }
+                                    pChip.Drag.drop()          // erst zustellen …
+                                    pChip.x = pChip.homeX      // … dann zurück
+                                    pChip.y = pChip.homeY
+                                }
+                            }
 
                             height: 24; radius: 12
                             width: pRow.implicitWidth + 16
@@ -554,7 +820,7 @@ Rectangle {
             height: panel.height
                     - (panel.showTagsSection ? 34 + tagsArea.height : 0)
                     - (panel.showTagsSection && panel.showCategoriesSection ? 1 : 0)
-                    - 34
+                    - 34 - panel.undoBarHeight
             clip: true
 
             Column {
@@ -682,6 +948,122 @@ Rectangle {
         }
     }
 
+    // ── Tag zu einer Kategorie hinzufügen ────────────────────────────────────
+    //  ZWEI Wege in einem Fenster, durch eine Linie getrennt (Festlegung des
+    //  Nutzers 2026-09-03):
+    //   • oben ein Feld - Eingabe legt an UND weist zu; ein bereits vorhandener
+    //     Name weist einfach den vorhandenen zu (`addTagToCategory` registriert
+    //     ohnehin nur, was es noch nicht gibt).
+    //   • unten die Tags des Ordners, die dieser Kategorie noch fehlen, als
+    //     scrollbare Liste. Das Feld oben FILTERT sie zugleich - man tippt zwei
+    //     Buchstaben und klickt, statt den Namen abzuschreiben.
+    Popup {
+        id: tagPick
+        objectName: "tagPickPopup"
+        modal: true; focus: true; anchors.centerIn: Overlay.overlay; padding: 14
+        property string targetCat: ""
+
+        //  Die Tags des Ordners OHNE die, die der Kategorie schon gehören.
+        function candidates() {
+            const node = panel._findNode(panel.tree, tagPick.targetCat)
+            const drin = node ? node.tags : []
+            const alle = panel.filterList(panel.allTagsModel, pickField.text)
+            var out = []
+            for (var i = 0; i < alle.length; ++i)
+                if (drin.indexOf(alle[i]) < 0) out.push(alle[i])
+            return out
+        }
+        function assign(tag) {
+            const t = String(tag).trim()
+            if (t.length === 0) return
+            panel.tagsCtl.addTagToCategory(tagPick.targetCat, t)
+            tagPick.close()
+        }
+
+        background: Rectangle { color: App.themeCard; radius: 10; border.color: App.themeBorder }
+        onOpened: { pickField.text = ""; pickField.forceActiveFocus() }
+
+        contentItem: Column {
+            spacing: 10
+            Text {
+                text: App.uiText(App.language, "TagBarDropdownHeader")
+                color: App.themeTextPrimary; font.pixelSize: 14; font.bold: true
+            }
+            TextField {
+                id: pickField
+                width: 280
+                color: App.themeTextPrimary
+                placeholderText: App.uiText(App.language, "CatPanelNewTag")
+                onAccepted: tagPick.assign(pickField.text)
+            }
+            Button {
+                //  Der ausdrückliche Weg „anlegen" - Enter im Feld tut dasselbe.
+                enabled: pickField.text.trim().length > 0
+                height: 26; font.pixelSize: 11
+                text: App.uiText(App.language, "TagPickCreate")
+                onClicked: tagPick.assign(pickField.text)
+            }
+
+            Rectangle { width: 280; height: 1; color: App.themeBorder }
+
+            Text {
+                text: App.uiText(App.language, "TagPickExisting")
+                color: App.themeTextMuted; font.pixelSize: 11
+            }
+            //  Kleine, scrollbare Liste - sie darf das Fenster nicht sprengen.
+            ScrollView {
+                width: 280
+                height: Math.min(180, Math.max(28, pickList.count * 28))
+                clip: true
+                ScrollBar.horizontal.policy: ScrollBar.AlwaysOff
+                ListView {
+                    id: pickList
+                    objectName: "tagPickList"
+                    model: tagPick.candidates()
+                    spacing: 2
+                    delegate: Rectangle {
+                        required property var modelData
+                        width: 264; height: 26; radius: 5
+                        color: rowHover.hovered
+                               ? Qt.rgba(App.themeTextPrimary.r, App.themeTextPrimary.g,
+                                         App.themeTextPrimary.b, 0.10)
+                               : "transparent"
+                        Row {
+                            anchors { left: parent.left; leftMargin: 8
+                                      verticalCenter: parent.verticalCenter }
+                            spacing: 7
+                            Rectangle {
+                                anchors.verticalCenter: parent.verticalCenter
+                                width: 10; height: 10; radius: 5
+                                color: panel.tagColorOf(parent.parent.modelData)
+                            }
+                            Text {
+                                anchors.verticalCenter: parent.verticalCenter
+                                text: parent.parent.modelData
+                                color: App.themeTextPrimary; font.pixelSize: 12
+                            }
+                        }
+                        HoverHandler { id: rowHover; cursorShape: Qt.PointingHandCursor }
+                        TapHandler { onTapped: tagPick.assign(parent.modelData) }
+                    }
+                }
+            }
+            Text {
+                visible: pickList.count === 0
+                width: 280
+                text: App.uiText(App.language, "TagPickNone")
+                color: App.themeTextMuted; font.pixelSize: 11; wrapMode: Text.WordWrap
+            }
+
+            Row {
+                anchors.right: parent.right
+                Button { text: App.uiText(App.language, "SettingsCancel")
+                         height: 26; font.pixelSize: 11
+                         onClicked: tagPick.close() }
+            }
+        }
+    }
+
     // ── Farbwahl ────────────────────────────────────────────────────────────
     ColorDialog {
         id: colorDialog
@@ -689,6 +1071,14 @@ Rectangle {
         // Einheitsfarbe aus dem Panel vererbt an den gesamten Teilbaum (Tags,
         // Unter- und verschachtelte Unterkategorien) - die erwartete Wirkung.
         onAccepted: panel.tagsCtl.setCategoryUniformColor(targetCat, true, selectedColor, true)
+    }
+
+    UndoBar {
+        objectName: "undoBar"          // fuer `bench_tagpanel`
+        anchors { left: parent.left; right: parent.right; bottom: parent.bottom
+                  leftMargin: 1; rightMargin: 1; bottomMargin: 1 }
+        height: panel.undoBarHeight
+        visible: height > 0
     }
 
     //  Rückfrage vor dem Löschen eines TAGS (s. `promptDeleteTag`). Ein

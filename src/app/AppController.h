@@ -249,8 +249,15 @@ public:
 
     // Erstellt eine leere Datei im AKTUELLEN Ordner (FilterBar „Erstellen").
     // kind: "pdf" (eine leere A4-Seite via QPdfWriter) | "html" (Minimal-
-    // Skelett, UTF-8) | "txt" (leer). baseName ohne Endung; Pfadtrenner werden
-    // entfernt, Namenskollisionen per „ (n)"-Suffix aufgelöst. Schreibt atomar
+    // Skelett, UTF-8) | "txt" (leer) | "docx" | "free". baseName ohne Endung;
+    // Pfadtrenner werden entfernt, Namenskollisionen per „ (n)"-Suffix aufgelöst.
+    //  **"free"**: der eingegebene Name gilt UNVERÄNDERT als Dateiname - die
+    //  Endung wählt der Nutzer, oder es gibt gar keine (`LICENSE`, `NOTIZEN`);
+    //  die Datei bleibt leer. Die Endung wird für die Kollisionsauflösung
+    //  abgetrennt (`notiz (2).xyz`), Punkte und Leerzeichen am Ende fallen weg.
+    //  Kennt `MediaItem::detectType` die Endung nicht und ist „Alle Dateien
+    //  anzeigen" AUS, sagt die Statuszeile das ausdrücklich - die Einstellung
+    //  wird NICHT hinter dem Rücken des Nutzers umgestellt. Schreibt atomar
     // (QSaveFile), meldet Erfolg/Fehler über statusMessage und stößt via
     // folderContentsChanged das Neuladen der Galerie an (Kachel erscheint
     // sofort, ohne auf den FileSystemWatcher zu warten). Liefert den vollen

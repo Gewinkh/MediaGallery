@@ -874,6 +874,9 @@ Item {
 
             FilterBar {
                 id: filterBar
+                //  Der Tag-Controller DIESER Hälfte - daran hängt das Auffrischen
+                //  der Tagfarben (s. `tagRev` dort).
+                tagsCtl: PaneCtl.tags
                 //  Im Player-Modus stehen nur Audio und Video zur Wahl.
                 audioOnly: pane.playerMode
                 anchors { left: parent.left; right: parent.right; top: parent.top }
@@ -898,6 +901,9 @@ Item {
 
             GalleryView {
                 id: galleryView
+                //  Der Tag-Controller DIESER Haelfte (nicht die fokusfolgende
+                //  Fassade) - daran haengt das Rueckgaengig der Tag-Modi.
+                tagsCtl: PaneCtl.tags
                 //  Liste statt Kachelraster - ZWEI getrennte Schalter, weil es
                 //  zwei verschiedene Fragen sind:
                 //   • Im Player-Modus entscheidet `Audio.listLayout`

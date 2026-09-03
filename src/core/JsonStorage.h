@@ -22,6 +22,25 @@ public:
 
     // Load/save for a folder
     void loadFolder(const QString& folderPath);
+    //  Der Ordner, dessen Sidecar dieses Objekt gerade fuehrt ("" = keiner).
+    QString folderPath() const { return m_folderPath; }
+
+    //  ── Schnappschuss der Verschlagwortung (fuer das Rueckgaengig der
+    //     Tag-Seitenleiste, s. `TagManager`) ────────────────────────────────
+    //  `tagStateSnapshot` gibt den GESAMTEN Stand dieses Objekts zurueck -
+    //  Datei-Metadaten, Kategorienbaum und die Tag-Registrierung.
+    //  **Nicht das Format der Platte, sondern ein `QDataStream`:** der
+    //  JSON-Baum kostete gemessen 10,3 ms je Geste (5000 Dateien, 15.000
+    //  Zuordnungen, 300 Kategorien), und der Schnappschuss verlaesst den
+    //  Prozess nie. Er enthaelt ausserdem ALLE registrierten Tagfarben, auch
+    //  die von Tags, die (noch) an keiner Datei und in keiner Kategorie
+    //  haengen - die Datei fuehrt nur die benutzten, ein frisch angelegter Tag
+    //  waere durch ein Rueckgaengig sonst nicht zurueckgekommen.
+    //  Der Strom liegt GEPACKT im Stapel (578 -> 78 KB im selben Fall).
+    QByteArray tagStateSnapshot() const;
+    //  Denselben Stand wieder herstellen. Schreibt NICHT auf die Platte - das
+    //  entscheidet der Aufrufer (`TagManager::undoLastStep` speichert sofort).
+    void restoreTagState(const QByteArray& snapshot);
     //  Schreibt SOFORT nach `folderPath` (expliziter Speicherbefehl).
     void saveFolder(const QString& folderPath);
     //  SAMMELND: merkt nur, dass zu schreiben ist, und tut es am Ende des
@@ -66,6 +85,10 @@ public:
     void   ensureTagRegistered(const QString& tag);
 
     QStringList allTags() const;
+    //  Alle Dateien, die diesen Tag tragen - alphabetisch, weil die Reihenfolge
+    //  eines `QHash` nicht stabil ist. Gebraucht vom Konverter (Tag wird
+    //  Kategorie: die Dateien ziehen mit).
+    QStringList filesWithTag(const QString& tag) const;
 
     // Apply loaded data to MediaItem list
     void applyToItems(QVector<MediaItem>& items) const;
@@ -77,6 +100,13 @@ public:
 
     // Tag management
     void deleteTag(const QString& tag);
+    //  Einen Tag umbenennen, OHNE seine Datei-Zuordnungen zu verlieren. Der
+    //  frueher benutzte Weg „loeschen + neu registrieren" nahm ihn jeder Datei
+    //  weg (`deleteTag` raeumt auch die Datei-Eintraege) - gemessen: nach dem
+    //  Umbenennen trug keine Datei mehr den Tag. Behaelt die Position in der
+    //  Tag-Liste je Datei; existiert der neue Name dort schon, wird der alte
+    //  nur entfernt (kein Duplikat).
+    void renameTag(const QString& oldName, const QString& newName);
 
     // Categories
     QList<TagCategory>&       categoriesRef()       { return m_categories; }

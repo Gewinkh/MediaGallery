@@ -4,9 +4,11 @@
 
 #include "core/AppSettings.h"
 #include "core/JsonStorage.h"
+#include "core/Strings.h"
 #include "media/MediaProxyModel.h"
 #include "tags/TagCategory.h"
 #include "tags/TagManager.h"
+#include "tags/TagUndoMark.h"
 #include "media/ThumbnailLoader.h"
 
 #include <QFileSystemWatcher>
@@ -2587,6 +2589,14 @@ void MediaModel::setTagOnRow(int row, const QString& tag, bool on) {
         it.tags = m_tagManager.tagsForFile(name);
     } else if (JsonStorage* st = storageForScope(it.scope)) {
         QStringList tags = st->getTags(name);
+        //  Rueckgaengig der Tag-Seitenleiste: dieser Sidecar gehoert einem
+        //  aufgeklappten UNTERordner und laeuft nicht ueber den `TagManager` -
+        //  er muss ausdruecklich in den laufenden Schritt aufgenommen werden,
+        //  bevor er ueberschrieben wird.
+        if (on != tags.contains(tag))
+            m_tagManager.noteForeignFolder(st->folderPath(),
+                mg::tagmark::mkCounted(on ? 1 : 0, on ? 0 : 1,
+                                       mg::tagmark::Thing::Tag, tag, {}));
         bool changed = false;
         if (on && !tags.contains(tag)) {
             tags.append(tag);

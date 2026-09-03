@@ -1,6 +1,21 @@
 #include "tags/TagController.h"
 
+#include "core/Strings.h"
+#include "tags/TagUndoMark.h"
+
 #include <functional>
+
+namespace {
+//  Schliesst die Rueckgaengig-Gruppe auf JEDEM Rueckweg - die Konverter kehren
+//  an mehreren Stellen vorzeitig um.
+struct UndoGroupGuard {
+    explicit UndoGroupGuard(TagManager* m) : mgr(m) {}
+    ~UndoGroupGuard() { mgr->endUndoGroup(); }
+    UndoGroupGuard(const UndoGroupGuard&) = delete;
+    UndoGroupGuard& operator=(const UndoGroupGuard&) = delete;
+    TagManager* mgr;
+};
+}
 
 TagController::TagController(TagManager& mgr, QObject* parent)
     : QObject(parent), m_mgr(&mgr)
@@ -25,8 +40,31 @@ void TagController::setTagManager(TagManager& mgr) {
     connect(m_mgr, &TagManager::tagColorChanged,   this, [this](const QString&, const QColor&) {
         emit tagsChanged();
     });
+    connect(m_mgr, &TagManager::undoStackChanged,  this, &TagController::undoStackChanged);
     emit tagsChanged();
     emit categoriesChanged();
+    emit undoStackChanged();
+}
+
+// ── Rueckgaengig (s. Header) ─────────────────────────────────────────────────
+bool         TagController::canUndo() const  { return m_mgr->canUndo(); }
+bool         TagController::canRedo() const  { return m_mgr->canRedo(); }
+QVariantList TagController::undoMark() const { return m_mgr->undoMark(); }
+QVariantList TagController::redoMark() const { return m_mgr->redoMark(); }
+QString      TagController::undoIcon() const { return m_mgr->undoIcon(); }
+QString      TagController::redoIcon() const { return m_mgr->redoIcon(); }
+QString      TagController::undoTip() const  { return mg::tagmark::plain(m_mgr->undoMark()); }
+QString      TagController::redoTip() const  { return mg::tagmark::plain(m_mgr->redoMark()); }
+void         TagController::undoLast()       { m_mgr->undoLastStep(); }
+void         TagController::redoLast()       { m_mgr->redoLastStep(); }
+void         TagController::endUndoGroup()   { m_mgr->endUndoGroup(); }
+
+//  Der Tag-Modus der Galerie ist EINE Bedienung (Kachel um Kachel bis
+//  „Fertig"). Die Marke zaehlt mit, was darin zu- und weggekommen ist -
+//  `+3 T:a` gruen, `-1 T:a` rot, beides zusammen bei gemischten Sitzungen.
+void TagController::beginTagModeGroup(const QString& tag) {
+    m_mgr->beginUndoGroup(mg::tagmark::mkCounted(0, 0, mg::tagmark::Thing::Tag, tag, {}),
+                          /*counted=*/true);
 }
 
 // ── Tags ─────────────────────────────────────────────────────────────────────
@@ -121,6 +159,10 @@ void TagController::setCategoryUniformColor(const QString& id, bool uniform,
     m_mgr->setCategoryUniformColor(id, uniform, color, inheritToChildren);
 }
 
+void TagController::swapCategories(const QString& a, const QString& b) {
+    m_mgr->swapCategories(a, b);
+}
+
 void TagController::moveCategory(const QString& id, const QString& newParentId) {
     m_mgr->moveCategory(id, newParentId);
 }
@@ -208,53 +250,78 @@ void TagController::setFilesInCategory(const QString& catId,
 }
 
 // ── Converter: Tag ↔ Unterkategorie (Phase 4) ────────────────────────────────
-// Portiert aus SettingsDialog::convertTagToSubcategory/convertSubcategoryToTag.
+//  DIE DATEIEN ZIEHEN MIT. Ein Tag ist nur ueber die Dateien etwas wert, die
+//  ihn tragen; wird er zur Kategorie, gehoeren sie in deren `files`-Liste -
+//  daran haengen die Anzeige (`fileCount`), der Kategorie-Filter und der
+//  Rueckweg `convertSubcategoryToTag`. Ohne das stand nach dem Umwandeln eine
+//  LEERE Kategorie da (Nutzerbefund 2026-09-03).
+//
+//  Der Tag selbst wird dabei AUFGEBRAUCHT: er verschwindet aus der Registry und
+//  von den Dateien. Frueher trug ihn die neue Kategorie hinterher noch als
+//  Tag-Chip - der filterte nach dem Umwandeln aber nichts mehr, weil keine
+//  Datei ihn mehr hatte. So ist der Weg Tag -> Kategorie -> Tag verlustfrei.
 void TagController::convertTagToSubcategory(const QString& tag,
                                             const QString& parentCatId,
                                             const QString& newSubcatName) {
     const QString t = tag.trimmed();
     if (t.isEmpty() || parentCatId.isEmpty()) return;
+    //  ERST pruefen, DANN anfassen: gibt es das Ziel oder den Tag nicht, darf
+    //  auch nichts passieren - sonst verbrauchte eine gescheiterte Umwandlung
+    //  den Tag trotzdem (Schritt 2 laeuft unabhaengig von Schritt 1).
+    if (!m_mgr->categoryById(parentCatId)) return;
+    if (!m_mgr->allTags().contains(t))     return;
 
     QString name = newSubcatName.trimmed();
     if (name.isEmpty()) name = t;
 
-    // 1. Unterkategorie unter parentCatId mit der Tag-Farbe anlegen.
+    //  Vier Mutationen, EIN Rueckgaengig-Schritt (s. `TagManager`).
+    {
+        QStringList ziel = mg::tagmark::pathOf(m_mgr->categories(), parentCatId);
+        if (const TagCategory* p = m_mgr->categoryById(parentCatId)) ziel.append(p->name);
+        m_mgr->beginUndoGroup(mg::tagmark::mkTransition(
+            mg::tagmark::Verb::Convert,
+            mg::tagmark::Thing::Tag,         t,    {},
+            mg::tagmark::Thing::Subcategory, name, ziel));
+    }
+    const UndoGroupGuard guard(m_mgr);
+
+    // 1. Unterkategorie unter parentCatId mit der Tag-Farbe anlegen - MIT den
+    //    Dateien, die den Tag tragen (s. Kopf dieses Abschnitts).
     TagCategory sub  = TagCategory::create(name);
     sub.color        = m_mgr->tagColor(t);
     sub.uniformColor = true;
+    sub.files        = m_mgr->filesWithTag(t);
     m_mgr->addSubcategory(parentCatId, sub);
 
-    // 2. Neu erstellte Unterkategorie (letztes Kind des Parents) finden.
-    const TagCategory* parent = m_mgr->categoryById(parentCatId);
-    if (!parent || parent->children.isEmpty()) return;
-    const QString newSubId = parent->children.last().id;
-
-    // 3. Tag als Mitglied der neuen Unterkategorie eintragen.
-    m_mgr->addTagToCategory(newSubId, t);
-
-    // 4. Tag aus der globalen Registry entfernen (lebt jetzt als Unterkategorie).
+    // 2. Tag aufbrauchen: aus der Registry, von den Dateien, aus allen
+    //    Kategorien. Er lebt ab jetzt als Unterkategorie weiter.
     m_mgr->deleteTag(t);
 }
 
 void TagController::convertTagToRootCategory(const QString& tag, const QString& newName) {
     const QString t = tag.trimmed();
     if (t.isEmpty()) return;
+    if (!m_mgr->allTags().contains(t)) return;      // s. oben
 
     QString name = newName.trimmed();
     if (name.isEmpty()) name = t;
 
-    // 1. Hauptkategorie mit der Tag-Farbe anlegen (ID ist vorab bekannt: create()).
+    m_mgr->beginUndoGroup(mg::tagmark::mkTransition(
+        mg::tagmark::Verb::Convert,
+        mg::tagmark::Thing::Tag,      t,    {},
+        mg::tagmark::Thing::Category, name, {}));
+    const UndoGroupGuard guard(m_mgr);
+
+    // 1. Hauptkategorie mit der Tag-Farbe anlegen (ID ist vorab bekannt:
+    //    create()) - MIT den Dateien, die den Tag tragen.
     TagCategory cat  = TagCategory::create(name);
     cat.color        = m_mgr->tagColor(t);
     cat.uniformColor = true;
+    cat.files        = m_mgr->filesWithTag(t);
     m_mgr->addCategory(cat);
 
-    // 2. Tag ERST aus der globalen Registry entfernen, DANACH als Kategorie-Tag
-    //    eintragen - deleteTag() räumt die Tag-Listen der WURZEL-Kategorien auf
-    //    und würde den soeben gesetzten Eintrag sonst gleich wieder löschen
-    //    (beim Unterkategorie-Konverter unkritisch, da dort ein Kind-Knoten).
+    // 2. Tag aufbrauchen (s. Kopf dieses Abschnitts).
     m_mgr->deleteTag(t);
-    m_mgr->addTagToCategory(cat.id, t);
 }
 
 void TagController::convertSubcategoryToTag(const QString& subcatId) {
@@ -266,11 +333,23 @@ void TagController::convertSubcategoryToTag(const QString& subcatId) {
     const QString tagName  = subcat->name;
     const QColor  tagColor = subcat->color;
 
+    {
+        const QStringList p = mg::tagmark::pathOf(m_mgr->categories(), subcatId);
+        m_mgr->beginUndoGroup(mg::tagmark::mkTransition(
+            mg::tagmark::Verb::Convert,
+            p.isEmpty() ? mg::tagmark::Thing::Category
+                        : mg::tagmark::Thing::Subcategory, tagName, p,
+            mg::tagmark::Thing::Tag, tagName, {}));
+    }
+    const UndoGroupGuard guard(m_mgr);
+
     // 1. Neuen Tag mit der Farbe der Unterkategorie registrieren.
     m_mgr->setTagColor(tagName, tagColor);
 
-    // 2. Alle Dateien der Unterkategorie erhalten diesen Tag.
-    for (const QString& fileName : subcat->files)
+    // 2. Alle Dateien der Unterkategorie erhalten diesen Tag - der Rueckweg
+    //    zu Schritt 1 der beiden Konverter oben.
+    const QStringList files = subcat->files;
+    for (const QString& fileName : files)
         m_mgr->addTagToFile(fileName, tagName);
 
     // 3. Unterkategorie löschen.

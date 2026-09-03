@@ -316,9 +316,27 @@ Rectangle {
     property int    tagMode: 0
     property string modeTag: ""
 
-    function enterGroupMode(tag)     { modeTag = tag; tagMode = 1 }
-    function enterAddToTagMode(tag)  { modeTag = tag; tagMode = 2 }
-    function exitModes()             { modeTag = ""; tagMode = 0 }
+    //  WELCHER Tag-Controller? Der der EIGENEN Haelfte - `Tags` folgt dem
+    //  Fokus und damit dem Mauszeiger (s. `TagCategoryPanel` ▸ `tagsCtl`).
+    //  `GalleryPane` setzt ihn auf `PaneCtl.tags`.
+    property var tagsCtl: Tags
+
+    //  Ein Tag-Modus ist EINE Bedienung: der Nutzer klickt Kachel um Kachel
+    //  an, bis er „Fertig" drueckt. Alles darin ist EIN Rueckgaengig-Schritt
+    //  in der Tag-Seitenleiste (Nutzerbefund 2026-09-03: drei angeklickte
+    //  Dateien brauchten drei Klicks auf „Rueckgaengig"). Die Gruppe ist
+    //  LAZY - wer nur hineinschaut und wieder herausgeht, hinterlaesst nichts.
+    function enterGroupMode(tag)     { root._startTagMode(tag, 1) }
+    function enterAddToTagMode(tag)  { root._startTagMode(tag, 2) }
+    function exitModes() {
+        if (root.tagMode !== 0) root.tagsCtl.endUndoGroup()
+        modeTag = ""; tagMode = 0
+    }
+    function _startTagMode(tag, mode) {
+        root.exitModes()                 // ein laufender Modus wird sauber beendet
+        root.tagsCtl.beginTagModeGroup(tag)
+        modeTag = tag; tagMode = mode
+    }
 
     // ── Layout-Konstanten / abgeleitete Geometrie ───────────────────────────
     readonly property int margin: 12

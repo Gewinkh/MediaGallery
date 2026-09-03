@@ -19,6 +19,24 @@
 // ─────────────────────────────────────────────────────────────────────────────
 class TagController : public QObject {
     Q_OBJECT
+    //  ── Rueckgaengig fuer TAG-Vorgaenge (Seitenleiste) ──────────────────────
+    //  BEWUSST GETRENNT vom Rueckgaengig der Dateien (Strg+Z, `MediaModel`):
+    //  ein Stapel, der mal eine Datei und mal einen Tag zurueckholt, waere
+    //  nicht vorhersagbar (Festlegung des Nutzers 2026-09-03). Der Stapel
+    //  gehoert der HAELFTE - das Panel liest ihn ueber `PaneCtl.tags`.
+    Q_PROPERTY(bool canUndo READ canUndo NOTIFY undoStackChanged)
+    Q_PROPERTY(bool canRedo READ canRedo NOTIFY undoStackChanged)
+    //  Die MARKE des jeweils obersten Schrittes - eine Liste von Stuecken
+    //  (`text`/`color`/`italic`/`full`), s. `tags/TagUndoMark.h`. Sie ist keine
+    //  Zeichenkette, weil jedes Stueck seine eigene Farbe hat.
+    Q_PROPERTY(QVariantList undoMark READ undoMark NOTIFY undoStackChanged)
+    Q_PROPERTY(QVariantList redoMark READ redoMark NOTIFY undoStackChanged)
+    //  Gezeichnetes Symbol vor der Marke ("trash" beim Loeschen, sonst leer).
+    Q_PROPERTY(QString undoIcon READ undoIcon NOTIFY undoStackChanged)
+    Q_PROPERTY(QString redoIcon READ redoIcon NOTIFY undoStackChanged)
+    //  Der volle Text zum Hover ueber der Leiste (Namen und Pfade ungekuerzt).
+    Q_PROPERTY(QString undoTip READ undoTip NOTIFY undoStackChanged)
+    Q_PROPERTY(QString redoTip READ redoTip NOTIFY undoStackChanged)
 public:
     explicit TagController(TagManager& mgr, QObject* parent = nullptr);
     //  Auf einen anderen Manager umhängen (Fokuswechsel zwischen den Hälften).
@@ -54,6 +72,9 @@ public:
     // Kategorie (inkl. Teilbaum) verschieben: newParentId leer = Hauptebene.
     // Deckt die Konverter-Richtungen Unterkategorie ↔ Kategorie ab.
     Q_INVOKABLE void moveCategory(const QString& id, const QString& newParentId);
+    //  Zwei Kategorien tauschen die Plaetze, jede nimmt ihren Inhalt mit
+    //  (s. `TagManager::swapCategories`).
+    Q_INVOKABLE void swapCategories(const QString& aId, const QString& bId);
 
     // ── Tag ↔ Kategorie ──────────────────────────────────────────────────────
     Q_INVOKABLE void addTagToCategory(const QString& catId, const QString& tag);
@@ -90,9 +111,31 @@ public:
     // enthaltene Unterkategorien werden mit entfernt (deleteCategory).
     Q_INVOKABLE void convertSubcategoryToTag(const QString& subcatId);
 
+    // ── Rueckgaengig ─────────────────────────────────────────────────────────
+    bool         canUndo() const;
+    bool         canRedo() const;
+    QVariantList undoMark() const;
+    QVariantList redoMark() const;
+    QString      undoIcon() const;
+    QString      redoIcon() const;
+    QString      undoTip() const;
+    QString      redoTip() const;
+    Q_INVOKABLE void undoLast();
+    Q_INVOKABLE void redoLast();
+    //  Eine LAUFENDE Bedienung zu EINEM Rueckgaengig-Schritt buendeln - die
+    //  Tag-Modi der Galerie (`GalleryView.enterAddToTagMode`/`enterGroupMode`):
+    //  der Nutzer klickt dort Kachel um Kachel an, und was er bis „Fertig"
+    //  gesetzt hat, gehoert zusammen. Muss gepaart aufgerufen werden; ein
+    //  Ordnerwechsel schliesst eine offene Gruppe selbst (s. `TagManager`).
+    //  `add` = im Modus wird zugeordnet (gruen), sonst entfernt (rot). Die
+    //  Marke entsteht in C++ - QML setzt keine Zeichenketten zusammen.
+    Q_INVOKABLE void beginTagModeGroup(const QString& tag);
+    Q_INVOKABLE void endUndoGroup();
+
 signals:
     void tagsChanged();
     void categoriesChanged();
+    void undoStackChanged();
 
 private:
     // `inherited` = gültige Farbe, wenn ein Vorfahr seine Einheitsfarbe an die

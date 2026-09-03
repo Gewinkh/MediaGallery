@@ -273,9 +273,14 @@ QString AppController::createEmptyFile(const QString& kind, const QString& baseN
         folder = targetFolder;
     }
 
+    //  Typ „frei": der eingegebene Name gilt UNVERAENDERT (Endung nach Wahl
+    //  oder gar keine, wie bei `LICENSE`), und die Datei bleibt leer.
+    const bool freeName = (kind == QLatin1String("free"));
+
     // Endung aus dem Typ ableiten (Whitelist).
     QString ext;
-    if      (kind == QLatin1String("pdf"))  ext = QStringLiteral("pdf");
+    if      (freeName)                      ext.clear();   // steckt im Namen
+    else if (kind == QLatin1String("pdf"))  ext = QStringLiteral("pdf");
     else if (kind == QLatin1String("html")) ext = QStringLiteral("html");
     else if (kind == QLatin1String("txt"))  ext = QStringLiteral("txt");
     else if (kind == QLatin1String("docx")) ext = QStringLiteral("docx");
@@ -291,15 +296,40 @@ QString AppController::createEmptyFile(const QString& kind, const QString& baseN
     base.remove(QLatin1Char('\\'));
     while (base.startsWith(QLatin1Char('.')))
         base.remove(0, 1);
+    if (freeName) {
+        //  Punkte und Leerzeichen am ENDE weg: „notiz." legt unter Windows
+        //  eine Datei an, die dort niemand mehr oeffnen kann, und `..` bzw. `.`
+        //  waeren gar kein Dateiname. Nach dem Kuerzen der fuehrenden Punkte
+        //  oben bleibt von „.." ohnehin nichts uebrig - der Fall ist hier nur
+        //  noch der leere Name.
+        while (base.endsWith(QLatin1Char('.')) || base.endsWith(QLatin1Char(' ')))
+            base.chop(1);
+    }
     if (base.isEmpty())
         base = Strings::get(StringKey::CreateFileTitle);
 
+    //  Bei freier Wahl steckt die Endung IM Namen - sie wird abgetrennt, damit
+    //  die Kollisionsaufloesung sie erhaelt (`notiz (2).xyz`, nicht
+    //  `notiz.xyz (2)`). Ein Punkt an erster Stelle zaehlt nicht als Trenner:
+    //  fuehrende Punkte sind oben schon entfernt.
+    if (freeName) {
+        const int dot = base.lastIndexOf(QLatin1Char('.'));
+        if (dot > 0) {
+            ext  = base.mid(dot + 1);
+            base = base.left(dot);
+        }
+        if (base.isEmpty())
+            base = Strings::get(StringKey::CreateFileTitle);
+    }
+
     // Kollisionen per „ (n)"-Suffix auflösen (wie der Editor-Export).
-    QString path = folder + QLatin1Char('/') + base + QLatin1Char('.') + ext;
+    const QString dotExt = ext.isEmpty() ? QString()
+                                         : QLatin1Char('.') + ext;
+    QString path = folder + QLatin1Char('/') + base + dotExt;
     int n = 2;
     while (QFileInfo::exists(path)) {
         path = folder + QLatin1Char('/') + base
-               + QStringLiteral(" (%1).").arg(n) + ext;
+               + QStringLiteral(" (%1)").arg(n) + dotExt;
         ++n;
     }
 
@@ -343,7 +373,7 @@ QString AppController::createEmptyFile(const QString& kind, const QString& baseN
                 // eigenen Container-Fabrik - sofort im DOCX-Editor nutzbar.
                 bytes = Docx::Document::emptyDocxBytes(base);
             }
-            // txt bleibt bewusst 0 Byte.
+            // txt und der frei benannte Fall bleiben bewusst 0 Byte.
             if (bytes.isEmpty() || out.write(bytes) == bytes.size())
                 ok = out.commit();
             else
@@ -358,8 +388,15 @@ QString AppController::createEmptyFile(const QString& kind, const QString& baseN
     // Galerie sofort aktualisieren (deterministisch, nicht nur Watcher) - und
     // zwar die Hälfte, der der Ordner gehört.
     if (m_pane) m_pane->notifyContentsChanged(folder);
-    emit statusMessage(Strings::get(StringKey::CreateFileDone)
-                           .arg(QFileInfo(path).fileName()));
+    //  Eine Endung, die die Galerie nicht kennt, ist ohne „Alle Dateien
+    //  anzeigen" unsichtbar - die Datei liegt im Ordner, die Kachel fehlt.
+    //  Gesagt, nicht heimlich behoben: die Einstellung gehoert dem Nutzer
+    //  (Festlegung 2026-09-03).
+    const bool invisible = MediaItem::detectType(path) == MediaType::Unknown
+                           && !m_settings.showAllFiles();
+    emit statusMessage(Strings::get(invisible ? StringKey::CreateFileHiddenHint
+                                              : StringKey::CreateFileDone,
+                                    QFileInfo(path).fileName()));
     return path;
 }
 

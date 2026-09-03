@@ -145,6 +145,15 @@ static const QMap<StringKey, QString> s_de = {
     { StringKey::SettingsTagDeleteSubfolders,     "Tag auch in den Unterordnern löschen" },
     { StringKey::SettingsTagDeleteSubfoldersHint, "Jeder Ordner führt seine Verschlagwortung selbst. Ist der Schalter an, entfernt „Tag löschen\" den Tag in ALLEN Ordnern unterhalb des geöffneten - nicht nur in den gerade aufgeklappten. Aus wirkt das Löschen nur im geöffneten Ordner." },
     { StringKey::TagDeletedInSubfolders,          "„%1\" auch in %2 Unterordnern entfernt" },
+    { StringKey::TagUndoTip, "Letzten Tag-Vorgang rückgängig machen - getrennt vom Rückgängig der Dateien (Strg+Z)" },
+    { StringKey::TagUndoTip2, "Zuletzt Zurückgenommenes wiederherstellen" },
+    { StringKey::TagMarkTag, "T" },
+    { StringKey::TagMarkCat, "K" },
+    { StringKey::TagMarkSub, "U" },
+    { StringKey::TagRedoDone, "Wiederhergestellt: %1" },
+    { StringKey::TagUndoDone, "Rückgängig: %1" },
+    { StringKey::TagUndoDoneSub, "Rückgängig: %1 - auch in %2 Unterordnern" },
+    { StringKey::TagUndoPartial, "Rückgängig: %1 - die Unterordner ließen sich nur teilweise zurücksetzen" },
 
     { StringKey::MetaTitle,         "Datum bearbeiten" },
     { StringKey::MetaReset,         "Zurücksetzen" },
@@ -158,6 +167,9 @@ static const QMap<StringKey, QString> s_de = {
     { StringKey::CatPanelDelete,        "Kategorie löschen" },
     { StringKey::CatPanelSetColor,      "Einheitsfarbe setzen" },
     { StringKey::CatPanelNewTag,        "Neuer Tag" },
+    { StringKey::TagPickExisting, "Vorhandene Tags" },
+    { StringKey::TagPickNone, "Keine weiteren Tags in diesem Ordner" },
+    { StringKey::TagPickCreate, "Anlegen und zuweisen" },
 
 
     { StringKey::FilterCatNewName,      "Neuer Name:" },
@@ -648,6 +660,9 @@ static const QMap<StringKey, QString> s_de = {
     { StringKey::CreateFileTypePdf,        "Leere PDF" },
     { StringKey::CreateFileTypeHtml,       "Leere HTML-Datei" },
     { StringKey::CreateFileTypeTxt,        "Leere Textdatei" },
+    { StringKey::CreateFileTypeFree, "Leere Datei, eigene Endung" },
+    { StringKey::CreateFileNameFreeLabel, "Dateiname mit Endung, z. B. notiz.xyz - oder ganz ohne" },
+    { StringKey::CreateFileHiddenHint, "Erstellt: %1 - sichtbar erst mit „Alle Dateien anzeigen\"" },
     { StringKey::CreateFileDone,           "Erstellt: %1" },
     { StringKey::CreateFileFailed,         "Datei konnte nicht erstellt werden." },
 
@@ -1038,6 +1053,15 @@ static const QMap<StringKey, QString> s_en = {
     { StringKey::SettingsTagDeleteSubfolders,     "Delete a tag in subfolders as well" },
     { StringKey::SettingsTagDeleteSubfoldersHint, "Every folder keeps its own tagging. With this on, \"Delete tag\" removes the tag from EVERY folder below the open one - not only the ones currently expanded. With it off, deleting only affects the open folder." },
     { StringKey::TagDeletedInSubfolders,          "\"%1\" removed from %2 subfolders as well" },
+    { StringKey::TagUndoTip, "Undo the last tag operation - separate from the file undo (Ctrl+Z)" },
+    { StringKey::TagUndoTip2, "Redo what was last undone" },
+    { StringKey::TagMarkTag, "T" },
+    { StringKey::TagMarkCat, "C" },
+    { StringKey::TagMarkSub, "S" },
+    { StringKey::TagRedoDone, "Redone: %1" },
+    { StringKey::TagUndoDone, "Undone: %1" },
+    { StringKey::TagUndoDoneSub, "Undone: %1 - in %2 subfolders as well" },
+    { StringKey::TagUndoPartial, "Undone: %1 - the subfolders could only be restored in part" },
 
     { StringKey::MetaTitle,         "Edit Date" },
     { StringKey::MetaReset,         "Reset" },
@@ -1051,6 +1075,9 @@ static const QMap<StringKey, QString> s_en = {
     { StringKey::CatPanelDelete,        "Delete Category" },
     { StringKey::CatPanelSetColor,      "Set uniform color" },
     { StringKey::CatPanelNewTag,        "New tag" },
+    { StringKey::TagPickExisting, "Existing tags" },
+    { StringKey::TagPickNone, "No further tags in this folder" },
+    { StringKey::TagPickCreate, "Create and assign" },
 
 
     { StringKey::FilterCatNewName,      "New name:" },
@@ -1541,6 +1568,9 @@ static const QMap<StringKey, QString> s_en = {
     { StringKey::CreateFileTypePdf,        "Empty PDF" },
     { StringKey::CreateFileTypeHtml,       "Empty HTML file" },
     { StringKey::CreateFileTypeTxt,        "Empty text file" },
+    { StringKey::CreateFileTypeFree, "Empty file, your own extension" },
+    { StringKey::CreateFileNameFreeLabel, "File name with extension, e.g. notes.xyz - or none at all" },
+    { StringKey::CreateFileHiddenHint, "Created: %1 - only visible with \"Show all files\"" },
     { StringKey::CreateFileDone,           "Created: %1" },
     { StringKey::CreateFileFailed,         "Could not create file." },
 

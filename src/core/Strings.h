@@ -131,6 +131,21 @@ enum class StringKey {
     SettingsTagDeleteSubfoldersHint,  // … und was das bedeutet
     TagDeletedInSubfolders,           // Statuszeile: „%1" in %2 Unterordnern entfernt
 
+    //  ── Rueckgaengig der Tag-Seitenleiste (getrennt vom Datei-Rueckgaengig) ──
+    //  Die %1-Platzhalter tragen den betroffenen Tag- bzw. Kategorienamen; die
+    //  Beschriftung eines Schrittes entsteht in `TagManager`, nicht in QML.
+    TagUndoTip2,               // Hover ueber dem Redo-Knopf
+    //  Buchstaben der Marken-Syntax (T:a, K:a, U(K:b):a) - sie folgen der
+    //  SPRACHE, deutsch T/K/U, englisch T/C/S.
+    TagMarkTag,
+    TagMarkCat,
+    TagMarkSub,
+    TagRedoDone,               // Statuszeile: Wiederhergestellt: %1
+    TagUndoTip,
+    TagUndoDone,
+    TagUndoDoneSub,
+    TagUndoPartial,
+
     // MetadataEditor
     MetaTitle,
     MetaReset,
@@ -146,6 +161,9 @@ enum class StringKey {
     CatPanelDelete,
     CatPanelSetColor,
     CatPanelNewTag,
+    TagPickExisting,
+    TagPickNone,
+    TagPickCreate,
 
     // FilterBar / HoverDropdown
     FilterCatNewName,
@@ -643,6 +661,11 @@ enum class StringKey {
     CreateFileTypePdf,         // Typ: leere PDF
     CreateFileTypeHtml,        // Typ: leere HTML-Datei
     CreateFileTypeTxt,         // Typ: leere Textdatei
+    //  Typ „frei": der eingegebene Name gilt UNVERAENDERT als Dateiname -
+    //  Endung nach Wahl oder gar keine (LICENSE, NOTIZEN). Die Datei bleibt leer.
+    CreateFileTypeFree,
+    CreateFileNameFreeLabel,   // Eingabefeld-Label fuer diesen Typ
+    CreateFileHiddenHint,      // Statuszeile: angelegt, aber ohne „Alle Dateien" unsichtbar
     CreateFileDone,            // Statuszeile: Erstellt: %1
     CreateFileFailed,          // Statuszeile: Erstellen fehlgeschlagen
 

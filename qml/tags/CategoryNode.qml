@@ -25,11 +25,46 @@ Column {
 
     // ── Kopfzeile ─────────────────────────────────────────────────────────────
     Rectangle {
+        id: header
         width: parent.width
         height: 30
         color: dropArea.containsDrag ? Qt.rgba(0, 0.78, 0.70, 0.18)
                                      : (headerHover.hovered ? App.themeCard : "transparent")
         radius: 5
+
+        //  ── Kategorie UMHÄNGEN (nur im Optionen-Modus, Alt+S) ─────────────
+        //  Eine Kategorie auf eine andere ziehen macht sie zu deren
+        //  Unterkategorie. **Nur im Optionen-Modus:** im Normalbetrieb ist die
+        //  Kopfzeile zum Anklicken da (auf-/zuklappen, filtern), und ein
+        //  versehentliches Umhängen des halben Baums wäre teuer. Der Zug ist
+        //  DERSELBE Mechanismus wie beim Tag-Chip, nur mit `dragCat` statt
+        //  `dragTag` - `catHeaderDrop` unterscheidet danach.
+        property string dragCat: nodeRoot.node.id
+        //  Zurück an den Platz - s. `TagCategoryPanel` ▸ Chip. Ohne das blieb
+        //  die Kopfzeile liegen, wo man sie fallen ließ, und verdeckte den neu
+        //  gezeichneten Baum: es sah eingefroren aus (Nutzerbefund 2026-09-03).
+        property real homeX: 0
+        property real homeY: 0
+        Drag.active: catDrag.active
+        Drag.source: header
+        Drag.hotSpot.x: 20
+        Drag.hotSpot.y: 15
+        z: catDrag.active ? 10 : 0
+        DragHandler {
+            id: catDrag
+            enabled: nodeRoot.panel.editMode
+            onActiveChanged: {
+                if (active) { header.homeX = header.x; header.homeY = header.y; return }
+                const wirkung = header.Drag.drop()
+                header.x = header.homeX
+                header.y = header.homeY
+                //  Ins Leere gezogen: die Kategorie wird zur Hauptkategorie.
+                if (wirkung === Qt.IgnoreAction)
+                    nodeRoot.panel.dropCategoryOutside(header.dragCat)
+            }
+        }
+        //  Im Optionen-Modus sichtbar machen, dass hier etwas zu greifen ist.
+        opacity: catDrag.active ? 0.6 : 1.0
 
         //  Nimmt ZWEIERLEI an: einen app-intern gezogenen Tag-Chip (-> der Tag
         //  wechselt die Kategorie) und eine gezogene DATEI (-> sie wird Mitglied
@@ -41,8 +76,25 @@ Column {
             objectName: "catHeaderDrop"      // Griff für tests/tags/tst_dropdelivery
             anchors.fill: parent
             onDropped: function(drop) {
+                //  Eine Kategorie auf diese hier: sie wird deren Unterkategorie.
+                //  `moveCategory` weist einen Zug in den EIGENEN Teilbaum von
+                //  selbst ab - der Knoten ginge sonst verloren.
+                //  **`drop.accept()` ist hier PFLICHT.** Ohne sie liefert
+                //  `Drag.drop()` beim Ziehenden `Qt.IgnoreAction`, und der hält
+                //  den Zug für „ins Leere gefallen" - eine auf eine andere
+                //  Kategorie gezogene Kategorie wanderte deshalb anschliessend
+                //  auf die Hauptebene, statt dorthin zu gehen, wo man sie
+                //  hingezogen hat (Nutzerbefund 2026-09-04). Angenommen wird
+                //  auch dann, wenn der Vorgang selbst abgelehnt wird: die
+                //  Fläche HAT ihn bearbeitet.
+                if (drop.source && drop.source.dragCat !== undefined) {
+                    nodeRoot.panel.moveCategoryInto(drop.source.dragCat, nodeRoot.node.id)
+                    drop.accept()
+                    return
+                }
                 if (drop.source && drop.source.dragTag !== undefined) {
                     nodeRoot.panel.moveTag(drop.source.dragTag, drop.source.dragFromCat, nodeRoot.node.id)
+                    drop.accept()
                     return
                 }
                 if (drop.hasUrls) {
@@ -55,19 +107,42 @@ Column {
         }
 
         Row {
-            anchors.fill: parent
+            anchors { left: parent.left; right: menuBtn.left; top: parent.top
+                      bottom: parent.bottom }
             anchors.leftMargin: 6 + nodeRoot.depth * 14
-            anchors.rightMargin: 6
+            anchors.rightMargin: 4
             spacing: 6
 
-            ToolButton {
+            //  Auf-/Zuklappen. **Der Platz bleibt IMMER stehen**, auch wenn es
+            //  nichts aufzuklappen gibt: sonst sprang die ganze Zeile nach
+            //  rechts, sobald ein Tag oder eine Unterkategorie dazukam
+            //  (Nutzerbefund 2026-09-04). Und das Zeichen ist GEZEICHNET, kein
+            //  Dreieck aus der Schrift (Regel 28) - das sah je nach System
+            //  anders aus und folgte dem Theme nicht.
+            Item {
+                id: expander
                 anchors.verticalCenter: parent.verticalCenter
                 width: 18; height: 18
-                visible: nodeRoot.node.children.length > 0 || nodeRoot.node.tags.length > 0
-                text: nodeRoot.collapsed ? "\u25B8" : "\u25BE"
-                font.pixelSize: 10
-                padding: 0
-                onClicked: nodeRoot.collapsed = !nodeRoot.collapsed
+                readonly property bool hasKids: nodeRoot.node.children.length > 0
+                                                || nodeRoot.node.tags.length > 0
+                Rectangle {
+                    anchors.fill: parent
+                    radius: 4
+                    visible: expander.hasKids && expHover.hovered
+                    color: Qt.rgba(App.themeTextPrimary.r, App.themeTextPrimary.g,
+                                   App.themeTextPrimary.b, 0.12)
+                }
+                DrawnIcon {
+                    anchors.centerIn: parent
+                    visible: expander.hasKids
+                    name: nodeRoot.collapsed ? "chevron-right" : "chevron-down"
+                    size: 11
+                    color: App.themeTextMuted
+                }
+                HoverHandler { id: expHover; enabled: expander.hasKids
+                               cursorShape: Qt.PointingHandCursor }
+                TapHandler { enabled: expander.hasKids
+                             onTapped: nodeRoot.collapsed = !nodeRoot.collapsed }
             }
 
             Rectangle {
@@ -89,29 +164,55 @@ Column {
                 color: App.themeTextPrimary
                 font.pixelSize: 12
                 elide: Text.ElideRight
-                width: parent.width - 160
+                //  Was nach Klapp-Knopf, Farbpunkt und Häkchen übrig bleibt.
+                width: Math.max(0, parent.width - 74)
             }
+        }
 
-            ToolButton {
-                anchors.verticalCenter: parent.verticalCenter
-                width: 22; height: 22
-                text: "\u22EE"
-                onClicked: ctxMenu.open()
-                ThemedMenu {
-                    id: ctxMenu
-                    MenuItem { text: App.uiText(App.language, "SettingsCatNodeAddSub"); onTriggered: nodeRoot.panel.promptAddSubcategory(nodeRoot.node.id) }
-                    MenuItem { text: App.uiText(App.language, "TagBarPlaceholder"); onTriggered: nodeRoot.panel.promptAddTag(nodeRoot.node.id) }
-                    MenuItem { text: App.uiText(App.language, "SettingsCatNodeRename");     onTriggered: nodeRoot.panel.promptRename(nodeRoot.node.id, nodeRoot.node.name) }
-                    MenuSeparator {}
-                    MenuItem { text: App.uiText(App.language, "SettingsCatNodeSetUniform"); onTriggered: nodeRoot.panel.promptUniformColor(nodeRoot.node.id) }
-                    MenuItem {
-                        text: App.uiText(App.language, "SettingsCatNodeClearUniform")
-                        enabled: nodeRoot.node.uniform
-                        onTriggered: nodeRoot.panel.tagsCtl.setCategoryUniformColor(nodeRoot.node.id, false, nodeRoot.node.color, false)
+        //  Die drei Punkte stehen FEST am rechten Rand - unabhängig von der
+        //  Ebene. Vorher liefen sie im Zeilen-`Row` mit und rutschten mit jeder
+        //  Einrückung weiter nach rechts (Nutzerbefund 2026-09-04).
+        Item {
+            id: menuBtn
+            anchors { right: parent.right; rightMargin: 6
+                      verticalCenter: parent.verticalCenter }
+            width: 22; height: 22
+
+            Rectangle {
+                anchors.fill: parent
+                radius: 4
+                visible: menuHover.hovered
+                color: Qt.rgba(App.themeTextPrimary.r, App.themeTextPrimary.g,
+                               App.themeTextPrimary.b, 0.12)
+            }
+            //  Gezeichnet, nicht als Zeichen aus der Schrift (Regel 28).
+            Column {
+                anchors.centerIn: parent
+                spacing: 2
+                Repeater {
+                    model: 3
+                    delegate: Rectangle {
+                        width: 3; height: 3; radius: 1.5
+                        color: App.themeTextMuted
                     }
-                    MenuSeparator {}
-                    MenuItem { text: App.uiText(App.language, "BookmarkDelete"); onTriggered: nodeRoot.panel.promptDelete(nodeRoot.node.id) }
                 }
+            }
+            HoverHandler { id: menuHover; cursorShape: Qt.PointingHandCursor }
+            TapHandler { onTapped: ctxMenu.open() }
+            ThemedMenu {
+                id: ctxMenu
+                MenuItem { text: App.uiText(App.language, "SettingsCatNodeAddSub"); onTriggered: nodeRoot.panel.promptAddSubcategory(nodeRoot.node.id) }
+                MenuItem { text: App.uiText(App.language, "TagBarPlaceholder"); onTriggered: nodeRoot.panel.promptAddTag(nodeRoot.node.id) }
+                MenuItem { text: App.uiText(App.language, "SettingsCatNodeRename");     onTriggered: nodeRoot.panel.promptRename(nodeRoot.node.id, nodeRoot.node.name) }
+                MenuSeparator {}
+                MenuItem { text: App.uiText(App.language, "SettingsCatNodeSetUniform"); onTriggered: nodeRoot.panel.promptUniformColor(nodeRoot.node.id) }
+                MenuItem {
+                    text: App.uiText(App.language, "SettingsCatNodeClearUniform")
+                    enabled: nodeRoot.node.uniform
+                    onTriggered: nodeRoot.panel.tagsCtl.setCategoryUniformColor(nodeRoot.node.id, false, nodeRoot.node.color, false)
+                }
+                MenuSeparator {}
+                MenuItem { text: App.uiText(App.language, "BookmarkDelete"); onTriggered: nodeRoot.panel.promptDelete(nodeRoot.node.id) }
             }
         }
 
@@ -161,9 +262,12 @@ Column {
 
                 // Effektive Farbe: Einheitsfarbe der Kategorie (bzw. vererbt),
                 // sonst die Eigenfarbe des Tags - beim Deaktivieren automatisch zurück.
+                //  Über `panel.tagColorOf`, nicht direkt über den Controller:
+                //  nur so hängt die Bindung am Auffrisch-Zähler des Panels
+                //  (s. dort - ein Funktionsaufruf allein bindet an nichts).
                 readonly property color effColor: nodeRoot.node.tagUniform
                                                   ? nodeRoot.node.tagColor
-                                                  : nodeRoot.panel.tagsCtl.tagColor(chip.modelData)
+                                                  : nodeRoot.panel.tagColorOf(chip.modelData)
 
                 height: 24; radius: 12
                 width: chipRow.implicitWidth + 16
@@ -172,6 +276,9 @@ Column {
                 border.color: chip.active ? chip.effColor : App.themeBorder
                 border.width: chip.active ? 2 : 1
 
+                property real homeX: 0
+                property real homeY: 0
+                z: dragHandler.active ? 10 : 0
                 Drag.active: dragHandler.active
                 Drag.source: chip
                 Drag.hotSpot.x: width / 2
@@ -198,7 +305,26 @@ Column {
 
                 DragHandler {
                     id: dragHandler
-                    onActiveChanged: if (!active) chip.Drag.drop()
+                    //  **Ins Leere gezogen = aus DIESER Kategorie heraus.**
+                    //  `Drag.drop()` liefert `Qt.IgnoreAction`, wenn keine
+                    //  Ablegefläche den Zug angenommen hat - die Sammelfläche
+                    //  der Shell nimmt nur Dateien an, also bleibt ein Chip,
+                    //  den man irgendwohin fallen lässt, wirklich unangenommen.
+                    //  Entfernt wird NUR aus der Kategorie, aus der er kam
+                    //  (Festlegung des Nutzers 2026-09-03); der Vorgang steht
+                    //  danach in der Rückgängig-Leiste.
+                    onActiveChanged: {
+                        if (active) {
+                            chip.homeX = chip.x; chip.homeY = chip.y
+                            return
+                        }
+                        const wirkung = chip.Drag.drop()
+                        //  Zurück an den Platz - s. `TagCategoryPanel` ▸ Chip.
+                        chip.x = chip.homeX
+                        chip.y = chip.homeY
+                        if (wirkung === Qt.IgnoreAction)
+                            nodeRoot.panel.dropTagOutside(chip.modelData, chip.dragFromCat)
+                    }
                 }
 
                 //  ── Kachel auf den Tag ziehen ⇒ Datei bekommt ihn ──

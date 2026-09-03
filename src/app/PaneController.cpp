@@ -61,6 +61,26 @@ PaneController::PaneController(ISettings& settings, ThumbnailLoader& loader,
                                .arg(tag).arg(count));
     });
 
+    //  Rueckgaengig der Tag-Seitenleiste: der Stapel haelt Schnappschuesse
+    //  EINES Ordners - beim Wechsel ist er hinfaellig.
+    connect(&m_folders, &FolderService::folderOpened, &m_tags, [this](const QString&) {
+        m_tags.clearUndo();
+    });
+    connect(&m_tags, &TagManager::tagUndoApplied, this,
+            [this](const QString& label, int subfolders, bool complete, bool redo) {
+        //  Wurden Sidecars von Unterordnern zurueckgeschrieben, sind die im
+        //  Speicher gehaltenen Kopien der aufgeklappten Bereiche veraltet.
+        if (subfolders > 0) m_media.dropScopeSidecars();
+        if (!complete)
+            emit statusMessage(Strings::get(StringKey::TagUndoPartial, label));
+        else if (subfolders > 0)
+            emit statusMessage(Strings::get(StringKey::TagUndoDoneSub)
+                                   .arg(label).arg(subfolders));
+        else
+            emit statusMessage(Strings::get(redo ? StringKey::TagRedoDone
+                                                 : StringKey::TagUndoDone, label));
+    });
+
     //  „Alle Dateien anzeigen": der Schalter lebt in den Einstellungen, die
     //  Regel im Modell - beim Umschalten liest es den Ordner neu.
     m_media.setShowAllFiles(m_settings.showAllFiles());

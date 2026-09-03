@@ -54,6 +54,16 @@ open (archives, executables).
 Why: anything narrower would hide the `.bak` backups the switch exists to reveal.
 Workaround: unknown types carry an extension badge, so they are recognisable.
 
+**A file created with an extension the gallery does not know is invisible until
+"Show all files" is on.**
+Why: what appears as a tile is decided by the extension (`MediaItem::detectType`), and an
+unknown one counts as `Unknown`. A name with no extension at all only shows up if it is one
+of the known extensionless names (`LICENSE`, `README`, `Makefile`, `Dockerfile`, …) - so a
+file called `NOTIZEN` stays hidden.
+Workaround / status: the status line says so at the moment of creation ("only visible with
+'Show all files'"). The switch is deliberately **not** flipped for you - it is your setting
+(user's decision, 2026-09-03). The file itself is created either way.
+
 **Deleting goes to the trash - where there is one.**
 Why: on systems without a working trash the app refuses to delete rather than
 removing a file for good.
@@ -161,14 +171,38 @@ Consequence: a tag created in one folder does not appear in another; moving a fi
 into another folder carries its tag with it only if the target folder does not
 already define that tag differently.
 
-**Deleting a tag cannot be undone.**
-Why: the gallery's undo stack carries file operations only (delete, move, restore); there
-has never been an undo for tags, in the open folder or anywhere else. With *Delete a tag in
-subfolders as well* on (the default), one confirmation now removes the tag from the whole
-tree below the open folder.
-Workaround / status: the panel asks before deleting, and the status line says how many
-subfolders were touched. Switch the setting off (*Settings -> Tags*) to keep deletion
-confined to the open folder.
+**The tag undo only reaches back over the current folder, and only one folder at a time.**
+Why: it works by snapshotting the folder's JSON sidecar before each change, and a snapshot
+is only meaningful for the folder it came from. Opening another folder therefore clears the
+stack, and a step whose folder is no longer the open one is discarded rather than written
+back. The same holds for the second pane: each half has its own stack.
+Workaround / status: undo what you want to undo before you navigate away. Up to 20 steps
+are kept (16 MB of snapshots in total); older steps fall off the bottom.
+
+**Undoing a tag deletion that swept a very large tree may not restore every subfolder.**
+Why: the sweep keeps the previous content of each sidecar it rewrites, capped at 512 folders
+or 8 MB (RAM is priority 1 in this project). Beyond that cap the open folder is still fully
+restored, but the subfolders below it are not.
+Workaround / status: the status line says so explicitly when it happens ("the subfolders
+could only be restored in part") instead of pretending the tree came back. In practice a
+sidecar is a few kilobytes, so the cap corresponds to a tree of several hundred tagged
+folders.
+
+**The tag undo and redo have no keyboard shortcut.**
+Why: `Ctrl+Z` in the gallery is the *file* undo (move, rename, delete). Binding a second
+`Ctrl+Z` to tags would make the key unpredictable - you could not tell in advance whether it
+brings back a file or a tag. The two stacks are deliberately separate (user's decision,
+2026-09-03).
+Workaround / status: the bar at the foot of the tag panel is the way; its two marks name what
+each button would do, so nothing happens blindly.
+
+**Tags and categories share one undo history, not one each.**
+Why: a great many operations touch both - deleting a tag also strips it from every category,
+and the converter rewrites both - so a separate stack per section could not be kept honest
+(user's decision, 2026-09-03). The bar therefore always shows the newest step of the whole
+folder, whichever section it came from.
+Workaround / status: nothing to work around; the two sides of the bar name exactly what each
+button would do, and hovering spells the notation out in full.
 
 ---
 
@@ -599,10 +633,6 @@ what it still cannot do stays behind in the sections above.
   into words), i.e. a new dependency plus its own dictionary and a second
   checking path next to Hunspell - a separate piece of work, not started. Arabic, by contrast, only needs the `hunspell-ar` dictionary
   installed - no code change.
-- **Undoing a tag change** - `Ctrl+Z` in the gallery takes back file operations
-  (delete, move), including a multi-file deletion in one step, but tag and
-  category changes are not on that stack at all. Deleting a tag across a folder
-  tree therefore cannot be taken back.
 - **Whitespace markers** (Kate's `»` for tabs and dots for spaces) are
   deliberately not built - the user decided against them on 2026-09-02.
 - **More languages.** 27 are covered. Each new one is a table entry in
@@ -610,6 +640,15 @@ what it still cannot do stays behind in the sections above.
   code changes as long as one of the five scanner kinds fits.
 - **Writing tags** (changing title or artist of an audio file) - reading is solid,
   writing is deliberately not built: one wrong byte damages the file.
+- **DATEV files as a table.** A DATEV export (`EXTF`, booking batch) already opens
+  as text, because `.csv` and `.txt` are text files - but it opens as a wall of
+  semicolons, and nothing recognises it for what it is. Planned: recognition from
+  the *content* rather than the extension (the same file ships as `.csv` and as
+  `.txt` - the two samples in `tests/` are byte for byte identical), a reader of
+  our own, and a table view with the header summary and the debit/credit totals,
+  switchable against the raw text the way the HTML preview is. **Reading only** -
+  the app will not write into a bookkeeping file. Details and what has been
+  measured on the samples: `NEXT.md` §3.
 
 ---
 

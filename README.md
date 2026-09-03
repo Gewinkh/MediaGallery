@@ -101,7 +101,7 @@ A regression suite is built by default and can be executed with `ctest`:
 
 ```bash
 ctest --test-dir build --output-on-failure   # Run all tests
-ctest --test-dir build -R docx               # Run a specific 
+ctest --test-dir build -R docx               # Run a specific
 ```
 
 Disable tests during configuration:
@@ -127,14 +127,11 @@ The `tests/` directory is not included in the published repository. If it is mis
 ## Changelog
 
 ### Latest
-- Expanded text editor with syntax highlighting, folding, minimap, line numbers, bracket matching, indent guides, and find/replace.
-- Added support for more file types and languages, including Dart, Perl, R, QML, HTML/XML, and additional configuration files.
-- Improved search with automatic pattern/regex support across the gallery, text editor, PDF, and DOCX.
-- Improved editor behavior with smoother selection scrolling, reliable Page Up/Down, stable folding, and safer handling of large files.
-- Added editor themes with save/load support and separate Text Editor design settings.
-- Improved text editing with configurable tab width, spaces-by-default, auto-save, and better PDF export.
-- Improved gallery text previews and file-type handling, including content-based .ts detection.
-- Improved settings UI with persistent collapsible groups and better layout.
+- Improved tag and category management with drag & drop, re-parenting, tag picking, and reliable updates.
+- Added undo and redo for tag and category changes, separate from file undo.
+- Fixed tag and category operations including renaming, nesting, conversion, colors, and drag behavior.
+- Improved category headers with consistent positioning and dedicated controls.
+- Added custom empty files with any user-defined extension.
 
 ---
 
