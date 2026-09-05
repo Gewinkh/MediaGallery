@@ -7,65 +7,40 @@ import "../settings"
 import "../tags"
 import "../viewer"
 
-// ─────────────────────────────────────────────────────────────────────────────
-//  GalleryPane.qml - EINE vollständige Hälfte des Hauptfensters: eigene Menüs
-//  (Datei/Ordner), Filterleiste, Kachelraster, Tag-Panel UND eigene
-//  Vollbild-Ansicht (bis zu zwei Dateien nebeneinander, bei nur einer Hälfte
-//  bis zu vier).
-//
-//  ERZEUGT WIRD SIE VON `PaneHost` (src/app/PaneHost.h) mit einem EIGENEN
-//  QML-Kontext: `mediaModel`, `galleryModel` und `Tags` zeigen darin auf die
-//  Objekte DIESER Hälfte, `Pane` ist ihr `PaneController`. Deshalb steht in
-//  dieser Datei - und in allem, was sie erzeugt - nirgends „Hälfte A oder B".
-//
-//  WAS HIER LIEGT: alles, was zu EINEM offenen Ordner gehört, samt den Menüs
-//  „Datei" und „Ordner" (Festlegung des Nutzers: appweit sind nur „Ansicht" und
-//  „Einstellungen", die stehen in der Leiste ganz oben).
-//  WAS NICHT: Fenster-Vollbild, Ablegeleisten und die Dialoge, die das ganze
-//  Fenster brauchen - die hostet die `ApplicationShell`.
-// ─────────────────────────────────────────────────────────────────────────────
+// EINE vollständige Hälfte des Hauptfensters. `PaneHost` erzeugt sie mit einem EIGENEN QML-Kontext, in
+// dem `mediaModel`, `galleryModel` und `Tags` auf die Objekte dieser Hälfte zeigen - deshalb steht hier
+// nirgends "Hälfte A oder B". Fensterweites (Vollbild, Ablegeleisten, Dialoge) hostet die Shell.
 Item {
     id: pane
 
-    //  Zeigt DIESE Hälfte ihre Einträge als Liste? Im Player-Modus entscheidet
-    //  `Audio.listLayout`, sonst `App.galleryListLayout` - zwei Hälften können
-    //  also verschieden stehen. EINE Quelle, weil zwei Dinge daran hängen: die
-    //  Darstellung der Galerie UND worauf `Strg` + `+`/`-` bzw. `Strg` + Rad
-    //  wirken.
+    // EINE Quelle, weil zwei Dinge daran hängen: die Darstellung der Galerie UND worauf Strg + '+'/'-' bzw.
+    // Strg + Rad wirken. Zwei Hälften können verschieden stehen.
     readonly property bool listMode: pane.playerMode ? Audio.listLayout
                                                      : App.galleryListLayout
-    objectName: "galleryPane"      // Griff für tests/bench (Regel 31)
+    objectName: "galleryPane"      // Griff für tests/bench
 
-    // ── Von der Shell gesetzt ───────────────────────────────────────────────
     property bool showClose: false      // zwei Hälften ⇒ „Schließen" statt „Beenden"
     property bool paneFocused: true     // hat diese Hälfte den Fokus?
     property bool splitActive: false    // gibt es überhaupt zwei Hälften?
     property int  paneIndex: 0         // Platz in `App.panes` (Shell setzt ihn)
     property bool immersive: false      // Fenster-Vollbild (F) - gehört der Shell
-    //  Pfad der Datei in der aktiven Kachel dieser Hälfte (für den Fenstertitel).
     property string activeFilePath: ""
     //  Die aktive Vollbild-Kachel selbst - für die Übergabe an den Player-Modus
     //  (Stelle der Wiedergabe, Anhalten). Nur gesetzt, solange eine offen ist.
     property var    activeViewer: null
 
-    // ── Meldungen nach oben ─────────────────────────────────────────────────
     signal extractRequested(string folder)     // „PDF-Seiten…" (Dialog hostet die Shell)
-    //  Eine oder MEHRERE Dateien auf eine Ordnerkachel gezogen.
     signal folderDropRequested(var sourcePaths, string folderPath)
     signal externalDropRequested(var urls, string folderPath)
     signal statusRequested(string text)
     signal focusRequested()                    // diese Hälfte ist jetzt gemeint
     signal closeRequested()                    // Datei ▸ Schließen (nur bei zwei Hälften)
     signal immersiveToggleRequested()
-    //  Zug an der eigenen Leiste: die Shell entscheidet, ob getauscht wird
-    //  (losgelassen über der anderen Hälfte). `x` ist eine SZENEN-Koordinate.
     signal barDragMoved(real x)
     signal barDragReleased(real x)
 
-    // ── Player-Modus (Alt+A) ────────────────────────────────────────────────
-    //  Er filtert die Galerie auf Audio (und, wenn eingestellt, Video) und
-    //  schaltet das Öffnen um: ein Doppelklick SPIELT, statt die Vollbild-
-    //  Ansicht zu öffnen. Die Leiste erscheint erst, wenn wirklich etwas läuft.
+    // Der Player-Modus filtert die Galerie auf Audio (und optional Video) und schaltet das Öffnen um: ein
+    // Doppelklick SPIELT. Die Leiste erscheint erst, wenn wirklich etwas läuft.
     property bool playerMode: false
 
     //  Zustand des Tags/Kategorien-Panels. Er liegt HIER und nicht im Panel,
@@ -73,22 +48,14 @@ Item {
     //  (s. `catPanelLoader`) - vorher gäbe es niemanden, der ihn hielte.
     property bool tagsSectionOn: false
     property bool catsSectionOn: false
-    //  Der Filterzustand VOR dem Umschalten - beim Verlassen kommt er zurück.
     property var  _savedFilter: null
 
     //  Besitzt DIESE Hälfte die laufende Wiedergabe? Nur dann gehören ihr die
     //  Leiste und die große Ansicht - sonst stünde der Player in beiden Galerien.
     readonly property bool playerMine: Audio.owner === PaneCtl
 
-    //  Der Platz DIESER Haelfte in `App.panes`. **Nicht `pane.paneIndex`
-    //  allein:** die Shell bindet die Eigenschaft erst, wenn der `PaneHost`
-    //  sein `item` hat - also NACH `Component.onCompleted`. Dort stand deshalb
-    //  noch die Vorgabe 0, und die zweite Haelfte fragte ihren Player-Merker
-    //  mit 0 statt 1 ab (vom Nutzer gemeldet: der Player-Modus der rechten
-    //  Haelfte kam nach dem Neustart nicht zurueck; bei beiden Haelften
-    //  verbrauchte die linke sogar das Bit der rechten mit).
-    //  Das Modell weiss den Platz zu JEDEM Zeitpunkt - `addPane` traegt die
-    //  Haelfte ein, bevor das Delegat entsteht.
+    // Nicht `pane.paneIndex` allein: die Shell bindet ihn erst, wenn der PaneHost sein `item` hat - also NACH
+    // `Component.onCompleted`, wo noch 0 stand und die zweite Hälfte ihren Player-Merker mit 0 abfragte.
     function _myIndex() {
         const i = App.indexOfPane(PaneCtl)
         return i >= 0 ? i : pane.paneIndex
@@ -103,11 +70,8 @@ Item {
                                   audio:  galleryModel.showAudio,
                                   pdfs:   galleryModel.showPdfs,
                                   texts:  galleryModel.showTexts }
-            //  Die WEISSE Liste entscheidet (`MediaProxyModel::isPlayableType`) -
-            //  die Häkchen darunter bleiben trotzdem stimmig, damit die
-            //  Medien-Rubrik der Filterleiste zeigt, was wirklich zu sehen ist.
-            //  Ohne die weisse Liste lief alles Unbekannte (ZIP, XLSX, OTH …) an
-            //  jedem Häkchen vorbei.
+            // Die WEISSE Liste entscheidet (`MediaProxyModel::isPlayableType`); ohne sie lief alles Unbekannte (ZIP, XLSX)
+            // an jedem Häkchen vorbei. Die Häkchen bleiben trotzdem stimmig.
             galleryModel.onlyPlayable = true
             galleryModel.showImages = false
             galleryModel.showPdfs   = false
@@ -116,36 +80,20 @@ Item {
             galleryModel.showVideos = Audio.showVideos
             pane.playerMode = true
             PaneCtl.playerMode = true            // überlebt das Neubauen der Hälfte
-            //  … und den Programmstart, MIT dem Platz dieser Hälfte: sonst
-            //  bekäme ihn beim nächsten Start die zuerst gebaute, und bei
-            //  geteiltem Fenster standen Player und Galerie vertauscht
-            //  (vom Nutzer gemeldet).
             Audio.rememberPlayerMode(true, pane._myIndex())
-            //  Läuft in der ANDEREN Hälfte gerade etwas, wird es ihr nicht
-            //  weggenommen. Liegt dagegen nur ein Titel bereit (wiederhergestellt
-            //  oder pausiert), übernimmt diese Hälfte ihn - genau das erwartet
-            //  man, wenn man mitten in der Wiedergabe Alt+A drückt.
             if (!Audio.owner || !Audio.active) Audio.owner = PaneCtl
             pane._pushQueue()
             return
         }
 
-        //  Verlassen: die Wiedergabe dieser Hälfte endet mit dem Modus - sonst
-        //  bliebe eine Kachel markiert und ein unsichtbarer Titel liefe weiter.
         if (pane.playerMine) {
             Audio.stop()
             Audio.owner = null
         }
         PaneCtl.playerViewOpen = false
         if (pane._playerPage && paneStack.depth > 1) paneStack.pop()
-        //  Filter zurück. Ist nichts gemerkt (Modus überlebte einen Ordner-
-        //  wechsel oder wurde von außen gesetzt), gilt der Grundzustand: ALLES
-        //  an - ein Rest-Filter „nur Audio" wäre die schlimmere Überraschung.
-        //  Gemerkt wird der Zustand VOR dem Modus. Ist keiner da - oder war er
-        //  selbst schon „nur Ton" (etwa weil der Modus einen Neustart oder eine
-        //  Teilung überlebt hat) -, gilt der Grundzustand ALLES AN: mit einem
-        //  Rest-Filter „nur Audio" stünde man sonst vor einer halbleeren
-        //  Galerie und wüsste nicht, warum.
+        // Gemerkt wird der Zustand VOR dem Modus. Ist keiner da - oder war er selbst schon "nur Ton" -, gilt ALLES AN:
+        // mit einem Rest-Filter "nur Audio" stünde man vor einer halbleeren Galerie und wüsste nicht, warum.
         galleryModel.onlyPlayable = false
         const f = pane._savedFilter
         const meaningful = f && (f.images || f.pdfs || f.texts)
@@ -160,32 +108,19 @@ Item {
         Audio.rememberPlayerMode(false, pane._myIndex())
     }
 
-    //  Beim Aufbau der Hälfte: War sie im Player-Modus (Teilung/Zusammenlegen
-    //  baut die Hälften neu), oder war es beim letzten Beenden die erste Hälfte?
-    //  Dann geht es dort weiter, wo aufgehört wurde.
     Component.onCompleted: {
         if (PaneCtl.playerMode) {
-            //  Der Filter steht schon auf Ton (die Modelle sind C++-seitig und
-            //  haben das Neubauen überlebt) - nur der QML-Zustand fehlt.
             pane.playerMode = true
             if (!Audio.owner) Audio.owner = PaneCtl
             pane._pushQueue()
-            //  Lag die große Ansicht oben, kommt sie zurück - sonst stünde man
-            //  nach dem Teilen unvermittelt in der Galerie.
             if (PaneCtl.playerViewOpen) pane.openPlayerView()
         } else if (Audio.takePlayerModeRestore(pane._myIndex())) {
-            //  Gilt EINMAL je Programmlauf (s. AudioController) und NUR für die
-            //  Hälfte, die den Modus beim Beenden hatte - eine später
-            //  hinzugefügte bekommt ihn nicht.
             pane.setPlayerMode(true)
         }
     }
 
-    //  Alt+A aus einer OFFENEN DATEI heraus: zurück zur Galerie, in den
-    //  Player-Modus - und war es eine Audiodatei, läuft sie dort weiter, an der
-    //  Stelle, an der sie stand (Festlegung des Nutzers). Die Wiedergabe der
-    //  Kachel läuft über `MediaPlayer`, die des Player-Modus über die eigene
-    //  Kette; „weiterlaufen" heißt deshalb: dort anhalten, hier aufnehmen.
+    // Alt+A aus einer offenen Datei: zurück zur Galerie in den Player-Modus, eine Audiodatei läuft an derselben
+    // Stelle weiter. Die Kachel spielt über `MediaPlayer`, der Modus über die eigene Kette - dort anhalten, hier aufnehmen.
     function enterPlayerFromViewer() {
         const path = pane.activeFilePath
         var pos = -1
@@ -195,7 +130,6 @@ Item {
             wasRunning = pane.activeViewer.mediaRunning()
             pane.activeViewer.pauseMedia()
         }
-        //  Typ NOCH VOR dem Umschalten bestimmen: danach filtert die Galerie.
         const row = path.length > 0 ? galleryModel.rowForPath(path) : -1
         const type = row >= 0 ? galleryModel.mediaTypeAt(row) : -1
         const isSound = type === 2 || (Audio.showVideos && type === 1)
@@ -209,14 +143,12 @@ Item {
         if (!wasRunning) Audio.togglePlay()      // stand still ⇒ still bleiben
     }
 
-    //  Einen Titel dieser Hälfte anspielen (Klick, Doppelklick, große Ansicht).
     function playHere(filePath) {
         Audio.owner = PaneCtl
         if (Audio.currentPath !== filePath)
             Audio.playFile(filePath, pane._visibleAudioPaths())
     }
 
-    // ── Große Player-Ansicht (Doppelklick oder Klick auf die Leiste) ────────
     property var _playerPage: null
     function openPlayerView() {
         if (!pane.playerMode) return
@@ -229,8 +161,6 @@ Item {
         }
     }
 
-    //  Die SICHTBARE Liste IST die Warteschlange - Filter und Sortierung der
-    //  Galerie bestimmen damit auch die Reihenfolge der Wiedergabe.
     function _visibleAudioPaths() {
         var out = []
         for (var i = 0; i < galleryModel.count; ++i) {
@@ -241,32 +171,17 @@ Item {
         return out
     }
     function _pushQueue() {
-        //  Nur der Besitzer schreibt die Warteschlange - sonst risse die andere
-        //  Hälfte mit ihrem Filter die laufende Liste an sich.
         if (!pane.playerMode || !(pane.playerMine || !Audio.active)) return
         const list = pane._visibleAudioPaths()
-        //  Eine LEERE Liste wird nie eingespielt: beim Start ist der Ordner noch
-        //  nicht gelesen, und der wiederhergestellte Titel stünde danach allein
-        //  da (Nutzerbefund, zweimal). Zu spielen gäbe es aus einer leeren Liste
-        //  ohnehin nichts.
         if (list.length === 0 && Audio.queue.length > 0) return
         Audio.setQueue(list)
     }
 
-    //  Ordnerwechsel ⇒ die Liste dieses Ordners ist zu Ende (Festlegung des
-    //  Nutzers). Läuft der Player in DIESER Hälfte, hört er auf.
     Connections {
         target: PaneCtl
         function onFolderOpened(path) {
             if (!pane.playerMode) return
-            //  Der alte Titel gehört zum alten Ordner: anhalten UND wegräumen,
-            //  sonst bliebe die Leiste mit einem Titel stehen, den man von hier
-            //  aus gar nicht mehr bedienen kann.
             if (pane.playerMine) Audio.stopAndClear()
-            //  Lag etwas ÜBER der Galerie (große Player-Ansicht oder eine offene
-            //  Datei), gehört es zum alten Ordner: zurück zur Galerie. Der
-            //  Player-MODUS bleibt dabei an (Festlegung des Nutzers) - nur der
-            //  Titel ist weg, die neue Liste steht bereit.
             if (paneStack.depth > 1) {
                 PaneCtl.playerViewOpen = false
                 pane.popFullscreen()
@@ -274,47 +189,30 @@ Item {
             pane._pushQueue()
         }
     }
-    //  „Videos mitzeigen" umgestellt, WÄHREND der Modus läuft: der Filter zieht
-    //  sofort nach, sonst müsste man Alt+A zweimal drücken.
     Connections {
         target: Audio
         function onOptionsChanged() {
             if (pane.playerMode) galleryModel.showVideos = Audio.showVideos
         }
     }
-    //  Filter oder Sortierung geändert ⇒ neue Warteschlange; der laufende Titel
-    //  bleibt dabei stehen (`PlayQueue::setItems`).
     Connections {
         target: galleryModel
         function onFilterChanged() { pane._pushQueue() }
         function onSortChanged()   { pane._pushQueue() }
-        //  Beim Start steht der Ordner noch nicht, wenn die Hälfte den
-        //  Player-Modus aufnimmt - die Warteschlange bestünde sonst nur aus dem
-        //  wiederhergestellten Titel und wäre nach ihm zu Ende (Nutzerbefund).
         function onCountChanged()  { pane._pushQueue() }
     }
 
-    //  Zeigt diese Hälfte gerade ihre Galerie (nicht die Vollbild-Ansicht)?
     readonly property bool galleryActive: paneStack.depth === 1
-    //  Tastenkürzel greifen nur in der FOKUSSIERTEN Hälfte und nur auf der
-    //  Galerie-Seite - sonst lüde ein „R" beide Ordner neu.
     readonly property bool _keysLive: pane.galleryActive && pane.paneFocused
-    //  Liegt die große Player-Ansicht oben?
     readonly property bool playerPageActive: paneStack.depth > 1
                                              && pane._playerPage !== null
                                              && paneStack.currentItem === pane._playerPage
-    //  Die Audio-Tasten (Leertaste, Pfeile) gelten AUCH dort - sie gehören zur
-    //  Wiedergabe, nicht zur Galerie.
     readonly property bool _audioKeysLive: pane.paneFocused && pane.playerMode
                                            && pane.playerMine
                                            && (pane.galleryActive || pane.playerPageActive)
 
-    //  Griffe für die Shell (sie kennt die Kinder dieser Datei nicht).
     function focusGallery()     { if (paneStack.currentItem) paneStack.currentItem.forceActiveFocus() }
     function openFolderDialog() { folderDialog.open() }
-    //  Bei EINER Hälfte stehen „Datei" und „Ordner" oben in der großen Leiste
-    //  (wie vor dem Zwei-Fenster-Modus) - sie klappt die Menüs DIESER Hälfte
-    //  auf, statt sie ein zweites Mal zu bauen.
     function popupFileMenu(anchor)   { fileMenu.popup(anchor, 0, anchor.height + 3) }
     function popupFolderMenu(anchor) { bookmarksMenu.popup(anchor, 0, anchor.height + 3) }
     function fileMenuOpen()   { return fileMenu.opened }
@@ -327,15 +225,10 @@ Item {
         return cut >= 0 ? s.slice(cut + 1) : s
     }
 
-    //  Der Zeiger bestimmt, welche Hälfte gemeint ist: wer über einer Hälfte
-    //  steht, arbeitet in ihr. Ein Klick tut dasselbe (der Zeiger ist ja dort),
-    //  ohne dass ein Fänger den Kindern ihre Ereignisse wegnimmt.
     HoverHandler {
         onHoveredChanged: if (hovered) pane.focusRequested()
     }
 
-    //  ── Vorbefüllung für „Ordner hinzufügen" ────────────────────────────────
-    //  Der geöffnete Ordner, sofern er noch NICHT gespeichert ist - sonst "".
     function _normalizedFolderPath(p) {
         if (!p) return ""
         var s = String(p)
@@ -351,21 +244,14 @@ Item {
         return cur
     }
 
-    // ── Menüleiste der Hälfte: Datei + Ordner ───────────────────────────────
     Rectangle {
         id: paneMenuStrip
         anchors { left: parent.left; right: parent.right; top: parent.top }
-        //  Nur im ZWEI-Fenster-Modus: bei einer Hälfte stehen „Datei" und
-        //  „Ordner" oben in der großen Leiste, alle vier Menüs in EINER Zeile
-        //  wie vor dem Umbau. Im Vollbild einer Datei ist die Leiste ohnehin
-        //  weg - die Kachel bringt ihre eigene Kopfzeile mit.
         visible: pane.splitActive && pane.galleryActive && !pane.immersive
         height: visible ? 28 : 0
         color: App.themeMenuBarBg
         Rectangle { anchors.bottom: parent.bottom; width: parent.width; height: 1
                     color: App.themeBorder }
-        //  Nur bei zwei Hälften: ein Strich in Akzentfarbe zeigt, welche gemeint
-        //  ist. Bei einer Hälfte wäre die Markierung sinnlos.
         Rectangle {
             visible: pane.splitActive && pane.paneFocused
             anchors { left: parent.left; right: parent.right; top: parent.top }
@@ -391,8 +277,6 @@ Item {
             }
         }
 
-        //  Auch hier blätterbar (Strg + Rad), damit in einer schmalen Hälfte
-        //  kein Knopf unerreichbar wird.
         ScrollableBar {
             anchors { left: parent.left; leftMargin: 6; right: folderLbl.left; rightMargin: 8
                       verticalCenter: parent.verticalCenter }
@@ -402,10 +286,8 @@ Item {
             MenuBtn { label: App.menuBookmarksText; menu: bookmarksMenu }
         }
 
-        //  ── Die Leiste ist der GRIFF der Hälfte ─────────────────────────────
-        //  Sie an die andere Seite ziehen tauscht die beiden Hälften. Der
-        //  Fänger liegt hinter den Menüknöpfen (sie melden sich zuerst), zieht
-        //  also nur dort, wo nichts anderes zuständig ist.
+        // Die Leiste ist der GRIFF der Hälfte: an die andere Seite gezogen tauscht sie die beiden. Der Fänger liegt
+        // hinter den Menüknöpfen, zieht also nur dort, wo nichts anderes zuständig ist.
         DragHandler {
             id: barDrag
             target: null
@@ -416,8 +298,6 @@ Item {
             onActiveChanged: if (!active) pane.barDragReleased(centroid.scenePosition.x)
         }
 
-        //  Der Name des offenen Ordners rechts in der Leiste - bei zwei Hälften
-        //  ist sonst nicht zu sehen, wo man ist.
         Text {
             id: folderLbl
             anchors { right: parent.right; rightMargin: 10; verticalCenter: parent.verticalCenter }
@@ -429,10 +309,6 @@ Item {
             elide: Text.ElideMiddle
         }
 
-        // ── Datei ────────────────────────────────────────────────────────────
-        //  „Beenden" wird bei zwei Hälften zu „Schließen" und schließt GENAU
-        //  diese Hälfte (Festlegung des Nutzers) - so bleibt der Knopf beisammen,
-        //  statt die Menüs zu zerstreuen.
         ThemedMenu {
             id: fileMenu
             MenuItem { text: App.menuOpenFolderText; onTriggered: folderDialog.open() }
@@ -454,17 +330,10 @@ Item {
 
     ThemedMenu {
         id: bookmarksMenu
-        objectName: "bookmarksMenu"      // Griff für tests/bench (Regel 31)
+        objectName: "bookmarksMenu"      // Griff für tests/bench
 
         MenuItem {
             text: App.bookmarkAddText
-            // Öffnet denselben Hinzufügen-Dialog wie Einstellungen ▸ Lesezeichen
-            // (Anzeigename + Pfad + Durchsuchen). Ist gerade ein Ordner geöffnet
-            // und noch NICHT in den gespeicherten Ordnern, wird sein Pfad
-            // vorbefüllt (case-sensitiver Vergleich, Trailing-Separatoren
-            // normalisiert) - er bleibt vor dem Bestätigen frei änderbar.
-            // Ohne offenen (oder mit bereits gespeichertem) Ordner öffnet der
-            // Dialog wie bisher leer.
             onTriggered: pane.openBookmarkAdd(pane._bookmarkPrefillPath())
         }
         MenuSeparator {
@@ -482,9 +351,6 @@ Item {
             height: visible ? implicitHeight : 0
         }
 
-        // Vorlage für dynamisch erzeugte Lesezeichen-Einträge.
-        // Instantiator + insertItem() ist in Qt6 defekt (QTBUG-69922) ->
-        // Items werden manuell per rebuildBookmarks() erzeugt und verwaltet.
         Component {
             id: bookmarkItemComponent
             MenuItem {
@@ -493,16 +359,12 @@ Item {
             }
         }
 
-        //  Kopfzeile einer Lesezeichen-Gruppe. BEWUSST KEIN `MenuItem`:
-        //  ein Menüeintrag schließt beim Auslösen das Menü - Auf- und
-        //  Zuklappen soll das Menü aber offen lassen. Ein gewöhnliches
-        //  `Item` im Menü-ListView tut genau das.
+        // BEWUSST KEIN `MenuItem`: ein Menüeintrag schließt beim Auslösen das Menü - Auf- und Zuklappen soll es aber
+        // offen lassen. Ein gewöhnliches `Item` im Menü-ListView tut genau das.
         Component {
             id: bookmarkGroupComponent
             Item {
                 id: groupRow
-                //  IDENTITÄT ist der volle Pfad ("Persönlich/Lernen") - der
-                //  angezeigte Text ist nur das letzte Glied.
                 property string groupPath: ""
                 property string groupName: ""
                 property bool   collapsed: false
@@ -525,8 +387,6 @@ Item {
                 }
                 Row {
                     anchors.fill: parent
-                    //  Je Ebene 14 px mehr Einzug - dieselbe Stufung wie bei den
-                    //  Einträgen darunter, damit Kopf und Inhalt eine Spalte bilden.
                     anchors.leftMargin: 10 + groupRow.depth * 14
                     anchors.rightMargin: 12
                     spacing: 6
@@ -558,16 +418,11 @@ Item {
             }
         }
 
-        // Aktuell aktive dynamische Items (zum sauberen Entfernen beim Rebuild).
         property var dynamicBookmarkItems: []
 
-        //  Baut aus `App.bookmarkTree` auf. Das ist eine FLACHE Zeilenliste in
-        //  Anzeigereihenfolge - je Zeile eine Gruppe oder ein Lesezeichen, mit
-        //  `depth` als Einrücktiefe. Zeilen unter einer zugeklappten Gruppe
-        //  tragen `hidden` und werden übersprungen; C++ hat die Ebenen dafür
-        //  schon abgelaufen, das Menü muss nichts nachrechnen.
+        // `App.bookmarkTree` ist eine FLACHE Zeilenliste in Anzeigereihenfolge mit `depth` als Einrücktiefe; Zeilen
+        // unter einer zugeklappten Gruppe tragen `hidden`. C++ hat die Ebenen schon abgelaufen.
         function rebuildBookmarks() {
-            // Alte dynamische Items entfernen
             for (var i = 0; i < dynamicBookmarkItems.length; i++)
                 bookmarksMenu.removeItem(dynamicBookmarkItems[i])
             dynamicBookmarkItems = []
@@ -590,8 +445,6 @@ Item {
                     var item = bookmarkItemComponent.createObject(bookmarksMenu, {
                         text:         row.name,
                         bookmarkPath: row.path,
-                        //  Eingerückt, damit ein Eintrag sichtbar zu seiner
-                        //  Gruppe gehört (Menüs kennen keine Einzüge).
                         leftPadding:  10 + row.depth * 14
                     })
                     bookmarksMenu.addItem(item)
@@ -609,7 +462,6 @@ Item {
     }
     }
 
-    // ── Galerie ⇄ Vollbild dieser Hälfte ────────────────────────────────────
     StackView {
         id: paneStack
         anchors { left: parent.left; right: parent.right
@@ -617,8 +469,6 @@ Item {
                   bottom: playerBar.visible ? playerBar.top : parent.bottom }
         initialItem: galleryComponent
 
-        //  Übergangsstil aus den Einstellungen; bewusst nur GPU-günstige
-        //  Transforms (x/scale/opacity) - kein Relayout während der Animation.
         readonly property bool _txSlide: App.pageTransition === "slide"
         readonly property int  _txDur:   240
 
@@ -655,32 +505,18 @@ Item {
         Item {
             id: galleryPage
 
-            //  Tastatur-Fokus an die Galerie, sobald die Seite aktiv ist - sonst
-            //  scrollen ihre Pfeiltasten nie. Ein blosses `focus: true` an der
-            //  GalleryView reicht NICHT: gemessen bleibt sie damit auf
-            //  `activeFocus = false`, der Fokus liegt beim Wurzelelement. Gleiche
-            //  Lehre wie bei der geteilten Ansicht (`_focusActivePane`).
             StackView.onActivated: galleryView.forceActiveFocus()
             Component.onCompleted: if (StackView.status === StackView.Active)
                                        galleryView.forceActiveFocus()
 
-            // ── Tastenkürzel (nur auf der Galerie-Seite, nicht im Vollbild) ──
-            //  Alt+S = Optionen umschalten (einheitlich mit dem Media Viewer),
-            //  R = Ordner/Vorschau neu laden, B = Vorschau-Sperre (blockieren ⇄
-            //  neu laden). Einzeltasten werden von fokussierten Textfeldern via
-            //  Shortcut-Override unterdrückt.
             Shortcut {
                 sequence: "Alt+S"; enabled: pane._keysLive
-                //  Nur DIESE Hälfte: mit zwei Galerien nebeneinander soll der
-                //  Modus dort gelten, wo man ihn eingeschaltet hat.
                 onActivated: PaneCtl.optionsVisible = !PaneCtl.optionsVisible
             }
             Shortcut {
                 sequence: "R"; enabled: pane._keysLive
                 onActivated: PaneCtl.refreshCurrentFolder()
             }
-            //  F5 = neu laden (Standard-Alias zu „R"); Ctrl+O = Ordner öffnen.
-            //  Beide nur auf der Galerie-Seite (nur wenn die Galerie sichtbar ist).
             Shortcut {
                 sequence: "F5"; enabled: pane._keysLive
                 onActivated: PaneCtl.refreshCurrentFolder()
@@ -689,19 +525,11 @@ Item {
                 sequence: "Ctrl+O"; enabled: pane._keysLive
                 onActivated: folderDialog.open()
             }
-            //  ── Alt+<- : zurueck aus einem Unterordner ───────────────────────
-            //  Nur der Rueckweg, kein Vorwaerts: hinein fuehrt der Doppelklick
-            //  auf die Ordnerkachel. Auf den Stapel kommt ausschliesslich ein
-            //  Abstieg (App.openSubfolder) - ein Lesezeichen oder ein Drop
-            //  verlaesst den Baum und leert ihn.
             Shortcut {
                 sequence: "Alt+Left"
                 enabled: pane._keysLive && PaneCtl.canNavigateBack
                 onActivated: PaneCtl.navigateBack()
             }
-            //  F schaltet das immersive Vollbild auch AUF DER GALERIE um - bis
-            //  jetzt ging das nur mit einer offenen Datei, obwohl gerade die
-            //  Galerie von der zusätzlichen Fläche profitiert.
             Shortcut {
                 sequence: "F"; enabled: pane._keysLive
                 onActivated: {
@@ -709,14 +537,10 @@ Item {
                     pane.immersiveToggleRequested()
                 }
             }
-            //  Strg+F springt ins Suchfeld der Filterleiste (dieselbe Taste wie
-            //  die Suche in der PDF-Ansicht - dort gehört sie der Kachel).
             Shortcut {
                 sequence: "Ctrl+F"; enabled: pane._keysLive
                 onActivated: filterBar.focusSearch()
             }
-            //  Alt+A schaltet den Player-Modus dieser Hälfte um - auch aus einer
-            //  offenen Datei heraus (s. `enterPlayerFromViewer`).
             Shortcut {
                 sequence: "Alt+A"
                 enabled: pane.paneFocused
@@ -724,9 +548,6 @@ Item {
                              ? pane.togglePlayerMode()
                              : pane.enterPlayerFromViewer()
             }
-            //  Leertaste = Start/Pause, Pfeile = Titel wechseln - aber NUR im
-            //  Player-Modus und nicht, während jemand tippt (dort gehört die
-            //  Leertaste dem Text; gleiche Prüfung wie bei Strg+Z).
             Shortcut {
                 sequence: "Space"
                 enabled: pane._audioKeysLive
@@ -742,29 +563,14 @@ Item {
                 enabled: pane._audioKeysLive && Audio.hasTrack
                 onActivated: if (!galleryView._editableTextFocused()) Audio.previous()
             }
-            //  ── Rückgängig / Wiederholen für DATEI-Vorgänge ─────────────────
-            //  Gilt NUR auf der Galerie-Seite: in den Editoren gehört Strg+Z dem
-            //  Dokument. Und nicht, während jemand in einem Feld tippt - dort
-            //  gehört die Taste dem Text (dieselbe Prüfung wie die Pfeiltasten
-            //  der Galerie, deshalb ihre Funktion und keine zweite Kopie).
-            //  ── Tastenfolgen AUSGESCHRIEBEN, nicht ueber `StandardKey` ──────
-            //  `QKeySequence::keyBindings` geht ueber das Plattform-Thema, und
-            //  das antwortet je Sitzung anders. GEMESSEN auf diesem Rechner:
-            //      offscreen : Redo -> Ctrl+Y, Alt+Shift+Backspace, Ctrl+Shift+Z, Redo
-            //      Wayland   : Redo -> NUR Ctrl+Shift+Z
-            //  Unter Wayland war Strg+Y damit an gar nichts gebunden: die Taste
-            //  kam nachweislich in der App an (Mitschnitt `MG_KEYLOG`), es gab
-            //  nur nichts, was sie beansprucht haette. Jede Messung mit
-            //  `offscreen` zeigte das Gegenteil - deshalb steht hier jetzt, was
-            //  gelten SOLL, statt zu fragen, was der Desktop gerade meint.
-            //  `Ctrl` bleibt portabel: QKeySequence bildet es auf macOS auf Cmd ab.
+            // Undo/Redo für DATEI-Vorgänge, nur auf der Galerie-Seite und nicht während jemand in einem Feld tippt.
+            // Tastenfolgen AUSGESCHRIEBEN statt über StandardKey: `QKeySequence::keyBindings` geht über das
+            // Plattform-Thema - offscreen vier Redo-Folgen, unter Wayland nur Ctrl+Shift+Z, Strg+Y an nichts gebunden.
             Shortcut {
                 sequences: [ "Ctrl+Z" ]; enabled: pane._keysLive
                 onActivated: {
                     if (galleryView._editableTextFocused()) return
                     const name = mediaModel.undoFileOpName()
-                    //  Eine geloeschte Mehrfachauswahl geht als EIN Schritt
-                    //  zurueck - die Meldung nennt deshalb auch die Zahl.
                     const n = mediaModel.undoFileOpCount()
                     pane.statusRequested(mediaModel.undoFileOp()
                         ? App.uiText(App.language, "FileUndoRestored") + name
@@ -786,17 +592,9 @@ Item {
                         : App.uiText(App.language, "FileRedoNothing"))
                 }
             }
-            //  ── Mehrfachauswahl ─────────────────────────────────────────────
-            //  Strg+A waehlt alles, was der Filter gerade durchlaesst (nicht den
-            //  ganzen Ordner - man kann nur waehlen, was man sieht), Strg+C legt
-            //  die Auswahl in die Zwischenablage. Esc gehoert NICHT hierher,
-            //  sondern an den Tastaturfokus der Galerie (s. GalleryView
-            //  `Keys.onEscapePressed`): ein `Shortcut` haette einem offenen
-            //  Dialog seine Escape-Taste weggenommen - Kuerzel werden VOR den
-            //  Tastenereignissen ausgewertet, das Popup waere offen geblieben.
-            //  Beide ABGESCHALTET, solange jemand tippt - nicht nur „tut
-            //  nichts": ein aktives Kuerzel VERBRAUCHT die Taste, und dann
-            //  haette das Suchfeld sein eigenes Strg+A bzw. Strg+C verloren.
+            // Strg+A wählt, was der Filter durchlässt - man kann nur wählen, was man sieht. Esc gehört NICHT hierher,
+            // sondern an `Keys.onEscapePressed` der GalleryView: Kürzel werden VOR den Tastenereignissen ausgewertet,
+            // ein Shortcut nähme einem offenen Dialog seine Escape-Taste. Beim Tippen abgeschaltet - ein aktives Kürzel VERBRAUCHT die Taste.
             Shortcut {
                 sequence: "Ctrl+A"
                 enabled: pane._keysLive && !galleryView._editableTextFocused()
@@ -814,10 +612,6 @@ Item {
                                              .replace("%1", n))
                 }
             }
-            //  Strg+V: die Dateien aus der Zwischenablage in den OFFENEN Ordner
-            //  dieser Hälfte kopieren - derselbe Weg wie ein Zug von aussen
-            //  (`handleDroppedUrls`), also mit denselben Regeln und derselben
-            //  Namensbehandlung. Ordner werden dabei übergangen.
             Shortcut {
                 sequence: "Ctrl+V"
                 enabled: pane._keysLive && !galleryView._editableTextFocused()
@@ -832,8 +626,6 @@ Item {
                                          .replace("%1", urls.length))
                 }
             }
-            //  Wie viele sind gewaehlt? Ohne Rueckmeldung raet man, was ein
-            //  „Loeschen" gleich trifft.
             Connections {
                 target: mediaModel
                 function onSelectionChanged() {
@@ -853,14 +645,8 @@ Item {
                     }
                 }
             }
-            // Strg + '+'/'-' (inkl. '='): Kachelgröße ändern. Nur eindeutige
-            // Sequenzen - StandardKey.ZoomIn würde zusätzlich "Ctrl++" liefern und
-            // den Shortcut mehrdeutig machen (feuert dann gar nicht).
-            //  In der LISTEN-Darstellung gibt es keine Kachelgröße, sondern
-            //  eine Zeilenhöhe - sonst verstellte das Zoomen unsichtbar die
-            //  Kacheln und schlüge erst beim Umschalten durch (vom Nutzer
-            //  gemeldet). Kleinere Schrittweite, weil eine Zeile mit 46 px
-            //  startet und nicht mit 200.
+            // Nur eindeutige Sequenzen - `StandardKey.ZoomIn` liefert zusätzlich "Ctrl++" und macht den Shortcut
+            // mehrdeutig, er feuert dann gar nicht. Im Listen-Modus gilt die Zeilenhöhe: sie startet bei 46 px, nicht 200.
             Shortcut {
                 sequences: ["Ctrl++", "Ctrl+="]
                 enabled: pane._keysLive
@@ -874,23 +660,14 @@ Item {
 
             FilterBar {
                 id: filterBar
-                //  Der Tag-Controller DIESER Hälfte - daran hängt das Auffrischen
-                //  der Tagfarben (s. `tagRev` dort).
                 tagsCtl: PaneCtl.tags
-                //  Im Player-Modus stehen nur Audio und Video zur Wahl.
                 audioOnly: pane.playerMode
                 anchors { left: parent.left; right: parent.right; top: parent.top }
                 onEnterAddToTagMode: function(tag) { galleryView.enterAddToTagMode(tag) }
-                // Panel-Steuerung: Tag- und Kategorie-Abschnitt des Seitenpanels
-                // INDIVIDUELL schaltbar; der Zustand lebt im TagCategoryPanel und
-                // wird hier für die Aktiv-Anzeige der Toggle-Zeilen gespiegelt.
                 tagPanelVisible: pane.tagsSectionOn
                 categoryPanelVisible: pane.catsSectionOn
                 onTagPanelToggled:      pane.tagsSectionOn = !pane.tagsSectionOn
                 onCategoryPanelToggled: pane.catsSectionOn = !pane.catsSectionOn
-                // „Extrahieren": Ordner asynchron nach PDFs durchsuchen; das
-                // Ergebnis öffnet unten (onFolderPdfsReady) den Auswahldialog.
-                // Das Flag grenzt uns gegen Scans anderer Aufrufer ab (Singleton).
                 onNewFolderRequested: function(folder) {
                     galleryView.promptNewFolder(folder)
                 }
@@ -901,21 +678,11 @@ Item {
 
             GalleryView {
                 id: galleryView
-                //  Der Tag-Controller DIESER Haelfte (nicht die fokusfolgende
-                //  Fassade) - daran haengt das Rueckgaengig der Tag-Modi.
                 tagsCtl: PaneCtl.tags
-                //  Liste statt Kachelraster - ZWEI getrennte Schalter, weil es
-                //  zwei verschiedene Fragen sind:
-                //   • Im Player-Modus entscheidet `Audio.listLayout`
-                //     (Einstellungen ▸ Audio, Vorgabe AN) - so sieht man auch auf
-                //     den ersten Blick, in welchem Modus man ist.
-                //   • Sonst `App.galleryListLayout` (Einstellungen ▸ Ansicht,
-                //     Vorgabe AUS).
-                //  Der Filter bleibt davon UNBERÜHRT: `onlyPlayable` hängt allein
-                //  am Player-Modus (s. `_togglePlayerMode`), im Normalmodus sind
-                //  also alle Dateien zu sehen - Liste hin oder her.
+                // Zwei getrennte Schalter, weil es zwei Fragen sind: im Player-Modus entscheidet `Audio.listLayout`
+                // (Vorgabe AN, so sieht man den Modus), sonst `App.galleryListLayout`. Der Filter bleibt unberührt -
+                // `onlyPlayable` hängt allein am Player-Modus.
                 listMode: pane.listMode
-                //  Optionen-Modus dieser Hälfte (Alt+S).
                 optionsVisible: PaneCtl.optionsVisible
                 anchors {
                     left: parent.left
@@ -926,9 +693,6 @@ Item {
                 }
                 onActivated: function(filePath) {
                     if (pane.pendingAddFile) { pane.addFileFromGallery(filePath); return }
-                    //  Im Player-Modus öffnet der Doppelklick die GROSSE Ansicht
-                    //  (Titel, Fortschritt, Warteschlange) - das Vollbild der
-                    //  Datei bleibt zu, man geht ja weiter durch die Liste.
                     if (pane.playerMode) {
                         pane.playHere(filePath)
                         pane.openPlayerView()
@@ -936,20 +700,13 @@ Item {
                     }
                     pane.pushFullscreen(filePath)
                 }
-                //  Einfacher Klick: im Player-Modus spielt er sofort, ohne die
-                //  Ansicht zu wechseln (Wunsch des Nutzers).
                 onFileClicked: function(filePath) {
                     if (pane.playerMode && !pane.pendingAddFile) pane.playHere(filePath)
                 }
-                //  Doppelklick auf eine Ordnerkachel: hinein. Waehrend der Modus
-                //  „Datei zur geteilten Ansicht waehlen" laeuft, wird NICHT der
-                //  Ordner gewechselt - der Modus wartet auf eine DATEI.
                 onFolderOpenRequested: function(folderPath) {
                     if (pane.pendingAddFile) return
                     PaneCtl.openSubfolder(folderPath)
                 }
-                //  Aktionen aus der Kopfzeile eines aufgeklappten Bereichs -
-                //  sie zielen auf DESSEN Ordner.
                 onCreateFileRequested: function(folderPath) {
                     filterBar.openCreateFor(folderPath)
                 }
@@ -959,24 +716,15 @@ Item {
                 onFolderDropRequested: function(sourcePaths, folderPath) {
                     pane.folderDropRequested(sourcePaths, folderPath)
                 }
-                //  Dateien von AUSSEN landen in dem Ordner, ueber dem
-                //  losgelassen wurde (geprueft in AppController).
                 onExternalDropRequested: function(urls, folderPath) {
                     pane.externalDropRequested(urls, folderPath)
                 }
                 onStatusRequested: function(text) { pane.statusRequested(text) }
-                //  „Ton als Audiodatei sichern": die Arbeit macht `Audio`
-                //  asynchron, das Aufnehmen der neuen Datei danach `PaneCtl`
-                //  (s. Connections weiter unten).
                 onAudioExtractRequested: function(filePath) {
                     Audio.extractAudio(filePath)
                 }
             }
 
-            //  Ergebnis des Ton-Sicherns. `Audio` ist APPWEIT - deshalb setzen
-            //  BEIDE Hälften denselben Ruf ab; `adoptSiblingFile` prüft selbst,
-            //  ob die neue Datei im Ordner DIESER Hälfte liegt, und tut sonst
-            //  nichts. Ein Merker je Hälfte wäre dafür die zweite Wahrheit.
             Connections {
                 target: Audio
                 function onExtractFinished(ok, source, target) {
@@ -985,29 +733,16 @@ Item {
                 }
             }
 
-            //  ── Tags/Kategorien-Panel: erst bauen, wenn es gebraucht wird ──
-            //  Beide Abschnitte starten ausgeblendet - das Panel war also bei
-            //  JEDEM Start da, ohne je sichtbar zu sein. Gemessen kostete das
-            //  165 der 218 ms, die das Aufbauen der Oberfläche insgesamt
-            //  brauchte (§0-Priorität 2 und 4). Der ZUSTAND liegt deshalb jetzt
-            //  hier in der Hälfte, nicht im Panel: er muss auch dann gelten,
-            //  wenn es das Panel (noch) gar nicht gibt.
+            // Panel erst bauen, wenn es gebraucht wird: beide Abschnitte starten ausgeblendet, es war also bei jedem Start
+            // da, ohne je sichtbar zu sein (165 der 218 ms Aufbauzeit). Der ZUSTAND liegt deshalb hier in der Hälfte.
             Loader {
                 id: catPanelLoader
                 active: pane.tagsSectionOn || pane.catsSectionOn
                 visible: active
                 width: Math.min(300, galleryPage.width * 0.45)
                 anchors { right: parent.right; top: filterBar.bottom; bottom: parent.bottom }
-                //  **`source` (URL), NICHT `sourceComponent`**: eine inline
-                //  hingeschriebene Komponente zwingt QML, die Datei samt ihren
-                //  Abhängigkeiten schon beim Übersetzen der Hälfte zu laden -
-                //  gemessen brachte der Loader so exakt NICHTS (216 ms wie
-                //  vorher). Erst mit der URL wird die Datei wirklich erst beim
-                //  Einschalten gelesen: 216 -> 56 ms.
                 source: active ? "qrc:/qml/tags/TagCategoryPanel.qml" : ""
                 onLoaded: {
-                    //  Die Tags/Kategorien DIESER Hälfte - `Tags` wäre appweit
-                    //  und folgte dem Mauszeiger (s. TagCategoryPanel ▸ tagsCtl).
                     item.tagsCtl = PaneCtl.tags
                     item.folderSource = PaneCtl
                 }
@@ -1027,7 +762,6 @@ Item {
                 }
             }
 
-            // ── Hinzufügen-Modus-Banner (Datei zur geteilten Ansicht wählen) ─
             Rectangle {
                 id: addBanner
                 visible: pane.pendingAddFile
@@ -1051,7 +785,6 @@ Item {
                 }
             }
 
-            // ── Modus-Banner (Gruppen-/Add-to-Tag-Modus verlassen) ───────────
             Rectangle {
                 id: modeBanner
                 visible: galleryView.tagMode !== 0
@@ -1077,54 +810,26 @@ Item {
         }
     }
 
-    // ── Geteilte Ansicht (Splitscreen): bis zu 4 Dateien NEBENEINANDER ────────
-    //  Anders als klassische Tabs zeigt die Vollbild-Seite mehrere Dateien
-    //  GLEICHZEITIG - analog zum 2-/3-/4-Spieler-Splitscreen: zwei Dateien
-    //  nebeneinander, drei als 2 oben + 1 unten (volle Breite), vier als 2×2.
-    //  So lässt sich bequem parallel arbeiten/vergleichen.
-    //
-    //  • Jede Kachel ist ein eigenständiger FullscreenViewer (eigene Kopfleiste,
-    //    eigene <-/->-Navigation über das Galerie-Modell).
-    //  • „+" (Kopfleiste jeder Kachel, direkt neben dem Datum-Button) öffnet
-    //    einen Datei-Dialog und fügt die gewählte Datei als weitere Kachel hinzu.
-    //  • Zurück/Esc einer Kachel SCHLIESST genau diese Datei (RAM sofort frei);
-    //    war es die letzte Kachel, geht es zurück zur Galerie.
-    //  • Bei mehr als einer Kachel entfällt die untere Hover-Navigation der
-    //    Kacheln (Pfeile + Zähler) - sie kehrt zurück, sobald nur noch eine
-    //    Datei offen ist (splitActive-Flag je Viewer).
-    //  Bei ZWEI Hälften darf jede höchstens zwei Dateien zeigen - insgesamt
-    //  bleibt es damit bei vier (Festlegung des Nutzers).
+    // Geteilte Ansicht: bis zu vier Dateien gleichzeitig (2 nebeneinander, 3 als 2 oben + 1 unten, 4 als 2x2).
+    // Jede Kachel ist ein eigenständiger FullscreenViewer mit eigener Navigation; Zurück/Esc schliesst genau
+    // diese Datei und gibt ihren RAM sofort frei. Bei zwei Hälften zeigt jede höchstens zwei.
     readonly property int maxOpenFiles: pane.splitActive ? 2 : 4
     ListModel { id: openFilesModel }   // Rolle: path (aktueller Pfad der Kachel)
 
-    // Geometrie einer Kachel je Index/Anzahl (kleine Lücke g als Trennfuge).
-    // Einstellbare Split-Verhältnisse (per Divider-Drag; auf sinnvolle Grenzen
-    // geklemmt). splitV = vertikale Trennung (Spalten), splitH = horizontale.
     property real splitV: 0.5
     property real splitH: 0.5
     readonly property real _splitMin: 0.15
     readonly property real _splitMax: 0.85
 
-    // ── Docking-Layoutzustand (Session-lokal, KEIN Persistieren) ──────────────
-    //  Das bestehende paneRect-System wurde zum Slot-System erweitert:
-    //  layout2:   Anordnung bei 2 Dateien - "cols" (nebeneinander, Standard)
-    //             oder "rows" (übereinander).
-    //  layout3:   Seite der GROSSEN Kachel bei 3 Dateien - "bottom" (Standard:
-    //             zwei kleine oben, eine große unten), "top", "left", "right".
-    //  slotOrder: Zuordnung Layout-Slot -> Modell-Index (openFilesModel).
-    //             Slots sind layoutfest definiert (s. _slotRect). Drag&Drop,
-    //             Schließen und Hinzufügen ordnen NUR diese Liste bzw. die
-    //             Layout-Variante um - das Modell selbst bleibt unangetastet,
-    //             kein Viewer wird dadurch zerstört oder neu geladen (reine
-    //             Geometrie-Bindings, performant identisch zum alten System).
+    // Docking-Layout, session-lokal und bewusst nicht persistiert. `slotOrder` bildet Layout-Slot -> Modell-
+    // Index ab; Ziehen, Schliessen und Hinzufügen ordnen NUR diese Liste um - das Modell bleibt unangetastet,
+    // kein Viewer wird dadurch zerstört oder neu geladen.
     property string layout2: "cols"
     property string layout3: "bottom"
     property var    slotOrder: []
 
-    // Reine Slot-Geometrie eines LAYOUTS (unabhängig vom Modell). Slots:
-    //  count 2 "cols": 0 = links, 1 = rechts · "rows": 0 = oben, 1 = unten
-    //  count 3: 0/1 = die zwei KLEINEN Kacheln (Lesereihenfolge), 2 = die GROSSE
-    //  count 4: 0 = oben-links, 1 = oben-rechts, 2 = unten-links, 3 = unten-rechts
+    // Reine Slot-Geometrie eines Layouts, unabhängig vom Modell. Bei 3 Kacheln sind 0/1 die kleinen
+    // (Lesereihenfolge) und 2 die große; bei 4 läuft es zeilenweise von oben-links.
     function _slotRect(slot, count, l2, l3, W, H) {
         var g = 2
         var rV = Math.max(_splitMin, Math.min(pane.splitV, _splitMax))
@@ -1159,7 +864,6 @@ Item {
                 if (slot === 0) return { x: 0,      y: 0,      w: vs,          h: hs }
                 return                 { x: 0,      y: hs + g, w: vs,          h: H - g - hs }
             }
-            // "bottom" (Standard): zwei kleine oben, eine große unten
             if (slot === 0) return { x: 0,      y: 0,      w: vs,          h: hs }
             if (slot === 1) return { x: vs + g, y: 0,      w: W - g - vs,  h: hs }
             return                 { x: 0,      y: hs + g, w: W,           h: H - g - hs }
@@ -1174,9 +878,6 @@ Item {
                  h: rowi === 0 ? topH : H - g - topH }
     }
 
-    // Slot eines Modell-Index (defensive Identität, falls slotOrder gerade
-    // nicht synchron ist - transient WÄHREND einer Modelländerung im selben
-    // JS-Block; gerendert wird erst nach dessen Abschluss, also nie sichtbar).
     function _slotOfIndex(index, count) {
         if (slotOrder.length === count) {
             var s = slotOrder.indexOf(index)
@@ -1191,10 +892,6 @@ Item {
 
     function _identity(n) { var a = []; for (var i = 0; i < n; i++) a.push(i); return a }
 
-    // ── Slot-Übergänge bei Anzahl-Wechsel („sinngemäß erhalten") ──────────────
-    //  Nach einem append (neuer Modell-Index = count-1) die Slot-Zuordnung so
-    //  fortschreiben, dass die bestehenden Kacheln ihre relative Anordnung
-    //  behalten und die neue Datei die frei werdende Fläche bekommt.
     function _paneAdded() {
         var n = openFilesModel.count
         var S = (slotOrder.length === n - 1) ? slotOrder.slice() : _identity(n - 1)
@@ -1202,26 +899,16 @@ Item {
         if (n <= 1) { slotOrder = [0]; return }
         if (n === 2) { slotOrder = [S[0], ni]; return }
         if (n === 3) {
-            // "cols" -> beide bisherigen bleiben nebeneinander (obere Hälfte),
-            //          die Neue wird große Kachel unten (Standard-3er-Layout);
-            // "rows" -> beide bisherigen bleiben übereinander (linke Hälfte),
-            //          die Neue wird große Kachel rechts.
             layout3 = (layout2 === "rows") ? "right" : "bottom"
             slotOrder = [S[0], S[1], ni]
             return
         }
-        // n === 4: Übergang ins 2×2 je bisherigem 3er-Layout - die große Kachel
-        // behält den ersten Quadranten ihrer Hälfte, die Neue den frei werdenden.
         if (layout3 === "top")        slotOrder = [S[2], ni,   S[0], S[1]]
         else if (layout3 === "left")  slotOrder = [S[2], S[0], ni,   S[1]]
         else if (layout3 === "right") slotOrder = [S[0], S[2], S[1], ni]
         else /* bottom */             slotOrder = [S[0], S[1], S[2], ni]
     }
 
-    //  Vor dem Entfernen von Modell-Index ri: neue Slot-Zuordnung + ggf. neues
-    //  Layout bestimmen - die ANGRENZENDE Kachel übernimmt die frei werdende
-    //  Fläche. Liefert die NEUE slotOrder (Indizes > ri bereits dekrementiert);
-    //  der Aufrufer weist sie NACH dem Modell-remove zu.
     function _slotsAfterRemove(ri) {
         var n = openFilesModel.count
         var S = (slotOrder.length === n) ? slotOrder.slice() : _identity(n)
@@ -1231,15 +918,9 @@ Item {
             R = [S[rs === 0 ? 1 : 0]]
         } else if (n === 3) {
             if (rs === 2) {
-                // Große Kachel weg -> die zwei kleinen behalten ihre Achse:
-                // oben/unten-Layout hatte sie nebeneinander -> Spalten;
-                // links/rechts-Layout hatte sie übereinander -> Zeilen.
                 layout2 = (layout3 === "left" || layout3 === "right") ? "rows" : "cols"
                 R = [S[0], S[1]]
             } else {
-                // Kleine Kachel weg -> verbleibende kleine + große teilen sich
-                // die Fläche entlang der bisherigen Halbierungsachse; die
-                // Reihenfolge spiegelt die bisherigen Positionen.
                 var small = S[rs === 0 ? 1 : 0]
                 var big   = S[2]
                 if (layout3 === "bottom")    { layout2 = "rows"; R = [small, big] }
@@ -1248,8 +929,6 @@ Item {
                 else /* right */             { layout2 = "cols"; R = [small, big] }
             }
         } else if (n === 4) {
-            // 2×2 -> 3: der ZEILEN-Nachbar des entfernten Quadranten wird zur
-            // großen Kachel seiner Zeile (übernimmt die frei werdende Fläche).
             if (rs === 0)      { layout3 = "top";    R = [S[2], S[3], S[1]] }
             else if (rs === 1) { layout3 = "top";    R = [S[2], S[3], S[0]] }
             else if (rs === 2) { layout3 = "bottom"; R = [S[0], S[1], S[3]] }
@@ -1266,12 +945,8 @@ Item {
         return -1
     }
 
-    // ── Docking-Drag (Kopfleisten-Drag der Kacheln) ───────────────────────────
-    //  Zustand + Zonenmodell (VS-Code-artig). Getroffen wird ein sichtbarer
-    //  INDIKATOR (Rand-Zonen bei 2/3 Dateien, Ecken bei 3); außerhalb der
-    //  Indikatoren gilt die Kachel unter dem Cursor als TAUSCH-Ziel. Bei
-    //  4 Dateien gibt es AUSSCHLIESSLICH den Positionstausch (kein Layout-
-    //  Wechsel) - daher dort keine Indikatoren.
+    // Getroffen wird ein sichtbarer INDIKATOR (Randzonen bei 2/3 Dateien, Ecken bei 3); außerhalb gilt die Kachel
+    // unter dem Zeiger als Tausch-Ziel. Bei vier Dateien gibt es nur den Positionstausch, daher keine Indikatoren.
     property bool dragActive: false
     property int  dragIndex: -1
     property real dragX: 0
@@ -1304,8 +979,6 @@ Item {
         dragZone = { kind: "none" }
     }
 
-    //  Sichtbare Drop-Indikatoren je Anzahl (Position/Größe in Split-Seiten-
-    //  Koordinaten). Rand-Mitten bei 2 UND 3 Dateien, Ecken zusätzlich bei 3.
     function _zoneIndicators(count, W, H) {
         var s = 46, m = 14
         var list = []
@@ -1343,8 +1016,6 @@ Item {
         return { kind: "none" }
     }
 
-    //  Vorschau der Zielfläche der GEZOGENEN Datei für die getroffene Zone -
-    //  zeigt das Layout-Ergebnis an, BEVOR gedroppt wird.
     function _zonePreviewRect(z, W, H) {
         var count = openFilesModel.count
         if (z.kind === "swap")
@@ -1365,9 +1036,6 @@ Item {
         return { x: 0, y: 0, w: 0, h: 0 }
     }
 
-    //  Positionstausch zweier Kacheln - NUR slotOrder wird umgestellt (kein
-    //  Modell-Umbau: die Viewer bleiben samt Zustand am Leben, nur die
-    //  Geometrie-Bindings wechseln).
     function _applySwap(a, b) {
         if (a === b || a < 0 || b < 0) return
         var n = openFilesModel.count
@@ -1378,11 +1046,6 @@ Item {
         slotOrder = S
     }
 
-    //  Zwei verbleibende Kacheln auf zwei Ziel-Slots verteilen: die Zuordnung
-    //  mit dem geringeren Gesamtabstand der Kachel-MITTEN (aktuell -> Ziel)
-    //  gewinnt - jede Kachel bleibt so möglichst nah an ihrer bisherigen
-    //  Position („sinngemäß"). Muss VOR dem Umstellen von layout*/slotOrder
-    //  laufen (liest die aktuellen Positionen über paneRect).
     function _assignNearest(idxA, idxB, slotP, slotQ, l3) {
         var pg = _splitPageItem
         var W = pg ? pg.width : 1, H = pg ? pg.height : 1
@@ -1397,10 +1060,6 @@ Item {
                ? { p: idxA, q: idxB } : { p: idxB, q: idxA }
     }
 
-    //  Rand-Zone: bei 2 Dateien Layout + Reihenfolge setzen (gezogene Datei
-    //  bekommt die Zonen-Seite); bei 3 Dateien wird die gezogene Datei zur
-    //  GROSSEN Kachel dieser Seite, die übrigen zwei teilen sich die andere
-    //  Hälfte (Slot-Verteilung positionsnah).
     function _applyEdgeDrop(di, side) {
         var count = openFilesModel.count
         if (count === 2) {
@@ -1417,10 +1076,6 @@ Item {
         slotOrder = [asg.p, asg.q, di]
     }
 
-    //  Ecken-Zone (nur 3 Dateien): die gezogene Datei wird KLEINE Kachel in
-    //  diesem Quadranten; die frei werdende große Fläche geht vollständig an
-    //  die angrenzende Kachel (positionsnahe Verteilung der übrigen zwei auf
-    //  den zweiten kleinen Slot und den großen Slot der anderen Hälfte).
     function _applyCornerDrop(di, corner) {
         if (openFilesModel.count !== 3) return
         var l3 = (corner === "tl" || corner === "tr") ? "bottom" : "top"
@@ -1435,11 +1090,6 @@ Item {
         slotOrder = S
     }
 
-    // Kachel schließen (Zurück/Esc einer Datei). Letzte Kachel -> zurück zur
-    // Galerie. Die Slot-Zuordnung wird VOR dem remove berechnet („sinngemäß
-    // erhalten": die angrenzende Kachel übernimmt die frei werdende Fläche)
-    // und NACH dem remove zugewiesen - dazwischen greift die Identitäts-
-    // Absicherung in _slotOfIndex (nie gerendert, gleicher JS-Block).
     function closeFilePane(i) {
         if (i < 0 || i >= openFilesModel.count) return
         var R = _slotsAfterRemove(i)
@@ -1449,22 +1099,9 @@ Item {
             popFullscreen()
     }
 
-    // „+": weitere Datei zur geteilten Ansicht hinzufügen. Statt eines
-    // Datei-Dialogs kehrt die Ansicht zur GALERIE (Hauptfenster) zurück - die
-    // offenen Kacheln bleiben im Modell erhalten. Ein Klick in der Galerie wählt
-    // die nächste Datei; danach wird die geteilte Ansicht wiederhergestellt.
-    //
-    // WICHTIG (Issue-Fix): Die Split-Seite wird als PERSISTENTES Item genau
-    // EINMAL erzeugt und dieses Item gepusht - nicht die Component. StackView
-    // zerstört beim Pop nur selbst erzeugte Items; ein gepushtes Fremd-Item
-    // überlebt den Pop (Qt blendet es aus und gibt die Ownership zurück).
-    // Dadurch bleiben ALLE Viewer beim „+"-Rücksprung in die Galerie am Leben
-    // - PDFs behalten Seite/Scrollposition, Bilder ihren Zoom, Texte ihre
-    // Scrollstelle. Vorher zerstörte der Pop die per Component erzeugte Seite
-    // samt Viewern; der erneute Push baute alles frisch -> Seite 1.
-    // popFullscreen() leert weiterhin das Modell -> alle Viewer werden sofort
-    // freigegeben (RAM-Priorität unverändert); nur der leere Seiten-Rahmen
-    // bleibt für die Wiederverwendung bestehen.
+    // Die Split-Seite wird als PERSISTENTES Item genau einmal erzeugt und dieses Item gepusht, nicht die
+    // Component: StackView zerstört beim Pop nur selbst erzeugte Items. So überleben alle Viewer den
+    // "+"-Rücksprung in die Galerie - vorher baute der erneute Push alles frisch auf Seite 1.
     property Item _splitPageItem: null
     function _splitPage() {
         if (!_splitPageItem)
@@ -1482,7 +1119,6 @@ Item {
         if (paneStack.depth > 1)
             paneStack.pop()                 // NICHT leeren - Kacheln bleiben im Modell UND am Leben
     }
-    // Datei aus der Galerie zur geteilten Ansicht hinzufügen (Klick im Hinzufügen-Modus).
     function addFileFromGallery(p) {
         pane.pendingAddFile = false
         if (p !== undefined && p.length > 0
@@ -1494,7 +1130,6 @@ Item {
         if (paneStack.depth < 2)
             paneStack.push(_splitPage())          // geteilte Ansicht wiederherstellen
     }
-    // Hinzufügen abbrechen -> zurück zur (unveränderten) geteilten Ansicht.
     function cancelAddFile() {
         pane.pendingAddFile = false
         if (paneStack.depth < 2 && openFilesModel.count > 0)
@@ -1507,28 +1142,16 @@ Item {
         Item {
             id: splitPage
 
-            // Lade-Gating: die schwere Medienlast erst NACH dem StackView-Übergang
-            // anstoßen - die Viewer sitzen in Loadern UNTER der Seite (StackView.view
-            // wäre dort null), daher gated die Seite die Loader-Aktivierung.
-            // Nur bei Active setzen: das persistente Item existiert bereits VOR
-            // dem ersten Push (s. _splitPage()) - dort ist StackView.view noch
-            // null, das darf das Gating nicht auslösen. Einmal ready, bleibt
-            // ready (beim „+"-Rücksprung laufen die Viewer bewusst weiter).
+            // Lade-Gating: die schwere Medienlast erst NACH dem StackView-Übergang anstoßen - die Viewer sitzen in Loadern
+            // unter der Seite. Nur bei Active setzen: das persistente Item existiert schon vor dem ersten Push.
             property bool pageReady: false
             function _checkReady() {
                 if (StackView.status === StackView.Active)
                     pageReady = true
             }
-            //  Tastatur-Fokus auf die aktive Kachel legen. NÖTIG bei JEDEM
-            //  Sichtbarwerden der Seite, nicht nur beim ersten: Beim zweiten
-            //  Öffnen ist `pageReady` schon true (die Seite ist persistent), der
-            //  Kachel-Loader lädt also SOFORT beim Befüllen des Modells - also
-            //  VOR dem StackView-Push. Das `forceActiveFocus()` im `onLoaded`
-            //  läuft dann auf einer Seite, die noch gar nicht die aktive ist,
-            //  und der anschließende Push nimmt den Fokus wieder weg
-            //  (`activeFocusItem` = QQuickRootItem). Ergebnis: die Kachel sah
-            //  richtig aus, reagierte aber auf KEINE Taste mehr - F, <-/-> und Esc
-            //  hängen alle am `Keys.onPressed` des FullscreenViewer.
+            // Fokus bei JEDEM Sichtbarwerden setzen, nicht nur beim ersten: die Seite ist persistent, der Kachel-Loader
+            // lädt schon beim Befüllen des Modells und damit VOR dem StackView-Push, der den Fokus danach wieder
+            // wegnimmt. Ergebnis war eine Kachel, die richtig aussah, aber auf keine Taste mehr reagierte.
             function _focusActivePane() {
                 const l = paneRepeater.itemAt(splitPage.activePaneIndex)
                 if (l && l.item) l.item.forceActiveFocus()
@@ -1539,21 +1162,14 @@ Item {
             }
             onActivePaneIndexChanged: _focusActivePane()
 
-            // Trennfugen-Hintergrund (scheint in der 2 px-Lücke zwischen Kacheln durch).
             Rectangle { anchors.fill: parent; color: "#0a0a0a" }
 
             readonly property int paneCount: openFilesModel.count
 
-            //  Aktive Kachel (Split-View): genau EINE trägt die fensterweiten
-            //  Tastenkürzel scharf (paneActive) -> keine Mehrdeutigkeit bei 2–4
-            //  offenen Dateien. Ein Klick in eine Kachel (paneActivated) oder das
-            //  Laden einer neu hinzugefügten Kachel setzt den Index; beim
-            //  Schließen wird er in den gültigen Bereich geklemmt.
             property int activePaneIndex: 0
             onPaneCountChanged: activePaneIndex =
                 Math.max(0, Math.min(activePaneIndex, paneCount - 1))
 
-            // ── Kacheln: ein FullscreenViewer je Datei, per Split-Layout platziert ─
             Repeater {
                 id: paneRepeater
                 model: openFilesModel
@@ -1562,35 +1178,25 @@ Item {
                     required property int index
                     required property string path
 
-                    // Kachel-Geometrie nach Split-Layout (reagiert auf Anzahl/Größe).
                     readonly property var _r: pane.paneRect(index, splitPage.paneCount,
                                                              splitPage.width, splitPage.height)
                     x: _r.x; y: _r.y
                     width: _r.w; height: _r.h
 
-                    // Alle sichtbaren Kacheln sind aktiv (Splitscreen zeigt sie parallel).
                     active: splitPage.pageReady
 
                     sourceComponent: FullscreenViewer {
                         id: paneViewer
                         startPath: paneLoader.path
-                        // Mehr als eine Datei offen -> untere Hover-Navigation der Kachel
-                        // (Pfeile + Zähler) ausblenden; bei genau einer Datei wieder an.
                         splitActive: splitPage.paneCount > 1
                         canAddMore:  splitPage.paneCount < pane.maxOpenFiles
-                        // Nur die aktive Kachel trägt ihre fensterweiten Kürzel scharf.
                         paneActive:  paneLoader.index === splitPage.activePaneIndex
                         onPaneActivated: splitPage.activePaneIndex = paneLoader.index
-                        // Immersives Vollbild (F): Zustand kommt vom Shell, der
-                        // Wunsch geht dorthin zurück (Fenster + Menüleiste).
                         immersive: pane.immersive
                         optionsVisible: PaneCtl.optionsVisible
                         onImmersiveToggleRequested: pane.immersiveToggleRequested()
                         onBackRequested:    pane.closeFilePane(paneLoader.index)
                         onAddFileRequested: pane.requestAddFile()
-                        // Docking: Kopfleisten-Drag dieser Kachel an die Shell
-                        // durchreichen (Viewer-Koordinaten -> Split-Seite; das
-                        // Loader-Item sitzt bei (0,0) im Loader -> identisch).
                         onPaneDragStarted:  pane.beginPaneDrag(paneLoader.index)
                         onPaneDragMoved: (x, y) => {
                             var p = paneLoader.mapToItem(splitPage, x, y)
@@ -1602,11 +1208,6 @@ Item {
                         }
                         onPaneDragCanceled: pane.cancelPaneDrag()
 
-                        //  Fenstertitel: nur die AKTIVE Kachel schreibt ihren Pfad
-                        //  in die Shell. `when` sorgt dafür, dass beim Wechsel der
-                        //  aktiven Kachel genau eine Bindung gilt; `RestoreNone`
-                        //  verhindert, dass eine inaktiv werdende Kachel den Wert
-                        //  auf ihren alten Stand zurücksetzt.
                         Binding {
                             target: pane
                             property: "activeFilePath"
@@ -1624,11 +1225,9 @@ Item {
                     }
                     onLoaded: {
                         item.forceActiveFocus()
-                        // Neu geladene (zuletzt hinzugefügte) Kachel wird aktiv.
                         splitPage.activePaneIndex = paneLoader.index
                     }
 
-                    // Kachel-Pfad folgt der <-/->-Navigation IM Viewer (Modell nachziehen).
                     Connections {
                         target: paneLoader.item
                         ignoreUnknownSignals: true
@@ -1641,14 +1240,8 @@ Item {
                 }
             }
 
-            // ── Ziehbare Trenner (Divider) ────────────────────────────────────
-            //  Sichtbarkeit/Ausdehnung folgt der Layout-Variante:
-            //  vertikal  - 2 Spalten ("cols"), alle 3er-Layouts (bei großer
-            //              Kachel oben/unten nur in der Hälfte mit den kleinen
-            //              Kacheln, bei links/rechts volle Höhe), 2×2;
-            //  horizontal - 2 Zeilen ("rows"), alle 3er-Layouts (bei großer
-            //              Kachel links/rechts nur in der kleinen Hälfte), 2×2.
-            //  Ziehen setzt pane.splitV / pane.splitH (geklemmt) -> paneRect folgt.
+            // Sichtbarkeit und Ausdehnung folgen der Layout-Variante; bei den 3er-Layouts läuft der Trenner nur durch die
+            // Hälfte mit den kleinen Kacheln. Ziehen setzt `pane.splitV`/`splitH` geklemmt, `paneRect` folgt.
             readonly property real _gap: 2
             readonly property real _vX: (splitPage.width  - _gap) * Math.max(pane._splitMin, Math.min(pane.splitV, pane._splitMax))
             readonly property real _hY: (splitPage.height - _gap) * Math.max(pane._splitMin, Math.min(pane.splitH, pane._splitMax))
@@ -1706,21 +1299,14 @@ Item {
                 }
             }
 
-            // ── Docking-Overlay: Drop-Zonen + Layout-Vorschau + Drag-Geist ────
-            //  Nur während eines Kopfleisten-Drags sichtbar (pane.dragActive).
-            //  Rand-Indikatoren (2/3 Dateien) + Ecken (3 Dateien); außerhalb der
-            //  Indikatoren markiert die Kachel unter dem Cursor den Positions-
-            //  tausch. Die Vorschaufläche zeigt das Layout-Ergebnis des Drops.
             Item {
                 id: dockOverlay
                 anchors.fill: parent
                 visible: pane.dragActive
                 z: 100
 
-                // Dezentes Abdunkeln - hebt Zonen und Vorschau vom Inhalt ab.
                 Rectangle { anchors.fill: parent; color: Qt.rgba(0, 0, 0, 0.25) }
 
-                // Vorschau der Zielfläche (Layout-Ergebnis der getroffenen Zone).
                 Rectangle {
                     readonly property var _pr: pane.dragActive
                         ? pane._zonePreviewRect(pane.dragZone, dockOverlay.width, dockOverlay.height)
@@ -1734,7 +1320,6 @@ Item {
                     border.width: 2
                 }
 
-                // Rand-/Ecken-Indikatoren (bei 4 Dateien bewusst leer - nur Tausch).
                 Repeater {
                     model: pane.dragActive
                            ? pane._zoneIndicators(splitPage.paneCount,
@@ -1756,10 +1341,6 @@ Item {
                         border.color: hot ? App.themeAccent : Qt.rgba(1, 1, 1, 0.35)
                         border.width: 1
 
-                        // Rand-Symbol: Richtungspfeil, GEZEICHNET (Regel 28).
-                        // Vorher standen hier zwei ASCII-Zeichen und zwei
-                        // Unicode-Pfeile nebeneinander - vier Richtungen in zwei
-                        // verschiedenen Bauarten, entsprechend ungleich schwer.
                         DrawnIcon {
                             anchors.centerIn: parent
                             visible: zoneInd.modelData.kind === "edge"
@@ -1770,8 +1351,6 @@ Item {
                                        top: "arrow-up", bottom: "arrow-down" })[zoneInd.modelData.side]
                                   : ""
                         }
-                        // Ecken-Glyphe: Quadrat-Umriss mit gefülltem Viertel -
-                        // gezeichnet statt Sonderzeichen (fontunabhängig).
                         Item {
                             anchors.centerIn: parent
                             width: 20; height: 20
@@ -1791,7 +1370,6 @@ Item {
                     }
                 }
 
-                // Drag-Geist: Dateiname der gezogenen Kachel folgt dem Cursor.
                 Rectangle {
                     visible: pane.dragActive && pane.dragIndex >= 0
                     x: pane.dragX + 14; y: pane.dragY + 10
@@ -1810,9 +1388,6 @@ Item {
         }
     }
 
-    // Navigations-API.
-    //  Galerie-Doppelklick -> frische Einzel-Kachel (die vorherige Ansicht ist beim
-    //  Verlassen ohnehin geschlossen). Weitere Kacheln kommen über den „+"-Button.
     function pushFullscreen(filePath) {
         var p = filePath !== undefined ? filePath : ""
         if (p.length === 0) return
@@ -1829,32 +1404,15 @@ Item {
             paneStack.pop()                 // die leere Split-Seite überlebt (persistentes Item)
     }
 
-    // ── Player-Leiste ───────────────────────────────────────────────────────
-    //  Erst sichtbar, wenn ein Titel gewählt ist (Festlegung des Nutzers) - und
-    //  nur in der Hälfte, die die Wiedergabe BESITZT: in der anderen Galerie
-    //  hätte sie nichts zu suchen.
-    //  ── Player-Leiste: LAZY ─────────────────────────────────────────────────
-    //  Sie entstand beim Bau JEDER Galerie-Hälfte, obwohl sie nur im
-    //  Player-Modus mit bereitliegendem Titel überhaupt sichtbar ist.
-    //  Gemessen an `bench_qmlcost --einzeln qml/gallery/GalleryPane.qml`:
-    //  sie kostet dort ~9 ms und ~4 MB RSS.
-    //
-    //  Laden und Entladen kostet nichts: `AudioPlayerBar` führt AUSSER dem
-    //  Signal `expandRequested` keine einzige eigene Eigenschaft - alles kommt
-    //  aus `Audio`. Es gibt also keinen Zustand, den ein Entladen verlöre.
-    //  Geladen wird über eine URL, damit die Datei erst zur Laufzeit übersetzt
-    //  wird (Muster wie `HtmlHost.qml` und der Lesezeichen-Dialog unten).
+    // LAZY: die Leiste entstand beim Bau JEDER Galerie-Hälfte, obwohl sie nur im Player-Modus sichtbar ist -
+    // gemessen ~9 ms und ~4 MB RSS. Entladen kostet nichts, `AudioPlayerBar` hält ausser `expandRequested`
+    // keinen eigenen Zustand. Über eine URL geladen, damit die Datei erst zur Laufzeit übersetzt wird.
     Loader {
         id: playerBar
-        //  `hasTrack` statt `active`: nach dem Wiederherstellen liegt ein Titel
-        //  bereit, ohne zu laufen - die Leiste muss ihn zeigen können.
-        //  In der großen Ansicht ist sie weg, dort steht alles schon oben.
         active: pane.playerMode && pane.playerMine && Audio.hasTrack
                 && !pane.playerPageActive
-        //  `visible` MUSS an `active` hängen: der `paneStack` ankert sein
-        //  unteres Ende an `playerBar.visible ? playerBar.top : parent.bottom`.
-        //  Ein Loader ist von sich aus sichtbar - ohne diese Zeile wäre die
-        //  Bedingung immer wahr.
+        // `visible` MUSS an `active` hängen: der `paneStack` ankert sein unteres Ende an `playerBar.visible`, und ein
+        // Loader ist von sich aus sichtbar - die Bedingung wäre sonst immer wahr.
         visible: playerBar.active
         source: "qrc:/qml/gallery/AudioPlayerBar.qml"
         anchors { left: parent.left; right: parent.right; bottom: parent.bottom }
@@ -1864,9 +1422,6 @@ Item {
         }
     }
 
-    //  Die große Ansicht entsteht erst beim ersten Öffnen und bleibt dann als
-    //  Item bestehen (Muster wie die Vollbild-Seite: `StackView` zerstört
-    //  Fremd-Items beim Pop nicht, der Zustand überlebt).
     Component {
         id: playerViewComponent
         AudioPlayerView {
@@ -1877,8 +1432,6 @@ Item {
         }
     }
 
-    //  Das Datum sollte an der DATEI stehen; geht das nicht (schreibgeschützt,
-    //  fremdes Dateisystem), bleibt es beim Sidecar - und der Nutzer erfährt es.
     Connections {
         target: mediaModel
         function onFileDateNotWritten(fileName) {
@@ -1887,29 +1440,19 @@ Item {
         }
     }
 
-    // ── Dialoge dieser Hälfte ───────────────────────────────────────────────
     FileChooser {
         id: folderDialog
         title: App.menuOpenFolderText
         fileMode: FileChooser.Directory
         onAccepted: PaneCtl.openFolderUrl(folderDialog.selectedFolder)
     }
-    //  ── Lesezeichen-Dialog: LAZY ────────────────────────────────────────────
-    //  Er entstand bisher beim Bau JEDER Galerie-Hälfte, obwohl man ihn erst
-    //  braucht, wenn jemand „Ordner hinzufügen" wählt. Er ist kein kleiner
-    //  Dialog: er bringt einen vollständigen `FileChooser` mit.
-    //
-    //  Geladen wird über eine URL, nicht über einen `Component`-Block: so wird
-    //  `BookmarkEditDialog.qml` erst zur LAUFZEIT übersetzt. Ein inline
-    //  `Component` verschöbe nur das Erzeugen, das Übersetzen liefe weiter beim
-    //  Start mit (dasselbe Muster und dieselbe Begründung wie in `HtmlHost.qml`).
+    // LAZY: der Dialog entstand beim Bau JEDER Galerie-Hälfte, obwohl man ihn erst bei "Ordner hinzufügen" braucht
+    // - und er bringt einen vollständigen FileChooser mit. Über eine URL geladen, sonst liefe das Übersetzen beim Start mit.
     Loader {
         id: bookmarkEditLoader
         active: false
         source: "qrc:/qml/settings/BookmarkEditDialog.qml"
     }
-    //  Beim ersten Aufruf laden, dann öffnen. `active = true` lädt synchron
-    //  (`asynchronous` ist aus), `item` steht also unmittelbar danach.
     function openBookmarkAdd(prefillPath) {
         bookmarkEditLoader.active = true
         if (bookmarkEditLoader.item) bookmarkEditLoader.item.openAdd(prefillPath)

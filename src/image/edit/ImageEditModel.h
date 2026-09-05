@@ -1,18 +1,7 @@
 #pragma once
-// ══════════════════════════════════════════════════════════════════════════════
-//  ImageEditModel.h - Listenmodell der Overlay-Annotationen EINES Bildes.
-// ══════════════════════════════════════════════════════════════════════════════
-//
-//  ROLLE IM SYSTEM (analog PdfEditModel)
-//  ─────────────────────────────────────
-//  Einzige Wahrheitsquelle des Overlays: QML (Repeater) bindet die Rollen;
-//  Undo-Kommandos und der Controller mutieren AUSSCHLIESSLICH über die
-//  apply*/insert*/remove*-Methoden (gezielte dataChanged-Rollen -> kein
-//  Delegate-Neuaufbau beim Tippen/Ziehen/Zeichnen, nur Property-Updates).
-//
-//  RAM: reine Werte-Structs (QVector<ImageAnnotation>), keine Bitmaps. Selbst
-//  ein Overlay mit hunderten Strichen bleibt im KB-Bereich.
-// ══════════════════════════════════════════════════════════════════════════════
+// Listenmodell der Overlay-Annotationen EINES Bildes und einzige Wahrheitsquelle des Overlays: mutiert wird nur
+// über die apply*/insert*/remove*-Methoden mit gezielten dataChanged-Rollen - kein Delegate-Neuaufbau beim Tippen.
+// Reine Werte-Structs, keine Bitmaps; auch hunderte Striche bleiben im KB-Bereich.
 
 #include <QAbstractListModel>
 #include <QVector>
@@ -42,13 +31,13 @@ public:
     QVariant data(const QModelIndex& index, int role) const override;
     QHash<int, QByteArray> roleNames() const override;
 
-    // ── Lesender Zugriff (Controller / Kommandos / Export) ────────────────────
+    // Lesender Zugriff (Controller / Kommandos / Export)
     int  indexOfId(int id) const;
     const ImageAnnotation* annById(int id) const;
     QVector<ImageAnnotation> annotations() const { return m_anns; }   // Kopie (Export/Sidecar)
     int  count() const { return m_anns.size(); }
 
-    // ── Mutationen - NUR ImageEditController + Undo-Kommandos ─────────────────
+    // Mutationen - NUR ImageEditController + Undo-Kommandos
     void resetAnns(const QVector<ImageAnnotation>& anns);            // Sidecar-Load
     void insertAnnAt(int row, const ImageAnnotation& ann);
     bool removeById(int id, ImageAnnotation* removed = nullptr, int* removedRow = nullptr);

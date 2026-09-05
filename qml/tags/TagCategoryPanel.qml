@@ -5,26 +5,9 @@ import QtQuick.Dialogs
 import MediaGallery 1.0
 import "../common"
 
-// ─────────────────────────────────────────────────────────────────────────────
-//  TagCategoryPanel.qml - einheitliches Panel-System für Tags UND Kategorien
-//  (rechte Seitenleiste; ersetzt TagCategoryPanel(QWidget)).
-//
-//  Aufbau (ein Panel, zwei strukturell gleichwertige Abschnitte, gemeinsamer
-//  SectionHeader - keine UI-Duplikation):
-//    • Abschnitt „Tags":       ALLE Tags als Chips mit klarem Aktiv-/Inaktiv-
-//                              Zustand (Toggle gegen galleryModel.tagFilter).
-//                              „+" im Kopf erstellt einen neuen Tag.
-//    • Abschnitt „Kategorien": bestehender Baum aus panel.tagsCtl.categoriesTree() über
-//                              rekursive CategoryNode-Knoten. „+" im Kopf
-//                              erstellt eine neue Wurzelkategorie.
-//
-//  Filter-Konsistenz (referenzbasiert):
-//    Referenzquelle für den Tag-Filter ist AUSSCHLIESSLICH der Proxy
-//    (galleryModel.tagFilter); activeTagFilter ist nur ein reaktiver Spiegel.
-//    Beim ABWÄHLEN einer Kategorie werden abhängige aktive Unterkategorien und
-//    deren Tags mit deaktiviert - außer sie werden von einem anderen weiterhin
-//    aktiven Filter referenziert (siehe toggleCategory).
-// ─────────────────────────────────────────────────────────────────────────────
+// Ein Panel, zwei gleichwertige Abschnitte (Tags als Chips, Kategorien als rekursiver CategoryNode-Baum) mit
+// gemeinsamem SectionHeader. Referenzquelle des Tag-Filters ist AUSSCHLIESSLICH der Proxy, `activeTagFilter`
+// nur ein Spiegel. Beim Abwählen gehen abhängige Unterkategorien mit - ausser ein anderer Filter hält sie.
 Rectangle {
     id: panel
     color: App.themeSidebarBg
@@ -34,26 +17,16 @@ Rectangle {
     signal enterAddToTagMode(string tag)
     signal enterGroupMode(string tag)
 
-    // Individuelle Abschnitts-Sichtbarkeit (gesteuert über Filter ▸ Tags &
-    // Kategorien): das Panel selbst ist sichtbar, solange mindestens ein
-    // Abschnitt aktiv ist (Bindung in ApplicationShell).
     property bool showTagsSection: true
     property bool showCategoriesSection: true
 
-    //  WELCHE Tags/Kategorien? Die des EIGENEN Ordners - nicht die der gerade
-    //  fokussierten Hälfte. `Tags` ist appweit und folgt dem Fokus; da der Fokus
-    //  dem Mauszeiger folgt, wechselte der Inhalt des Panels, sobald die Maus
-    //  über die andere Hälfte fuhr (Nutzerbefund). Die Galerie reicht deshalb
-    //  ihren eigenen `PaneCtl.tags` herein; in den Einstellungen bleibt die
-    //  Vorgabe stehen, dort IST die Fassade gemeint.
+    // Die Tags des EIGENEN Ordners, nicht die der fokussierten Hälfte: `Tags` ist appweit und folgt dem Fokus, der
+    // dem Mauszeiger folgt - der Inhalt wechselte, sobald die Maus über die andere Hälfte fuhr.
     property var tagsCtl: Tags
-    //  Ebenso der Ordnerwechsel: der EIGENE zählt.
     property var folderSource: App
 
-    //  Rueckgaengig-Leiste: EINE, am Fuss des Panels, und deutlich sichtbar.
-    //  Zwei getrennte Leisten (Tags/Kategorien) waren ueberlegt und wieder
-    //  verworfen - viele Vorgaenge fassen beides an, die Trennung haette mehr
-    //  Fragen aufgeworfen als beantwortet (Festlegung des Nutzers 2026-09-03).
+    // EINE Rückgängig-Leiste am Fuß des Panels. Zwei getrennte (Tags/Kategorien) waren überlegt und verworfen -
+    // viele Vorgänge fassen beides an.
     readonly property bool hasUndo: (panel.tagsCtl && (panel.tagsCtl.canUndo
                                                        || panel.tagsCtl.canRedo)) ? true : false
     readonly property int  undoBarHeight: panel.hasUndo ? 44 : 0
@@ -61,17 +34,10 @@ Rectangle {
     property var tree: []
     property var allTagsModel: []
     property var activeCategories: []
-    // Reaktiver Spiegel von galleryModel.tagFilter (NIE direkt mutieren -
-    // Mutationen laufen immer über den Proxy, der Spiegel folgt via Connections).
     property var activeTagFilter: []
 
-    //  Zähler, der bei jeder Tag-/Kategorie-Änderung hochgeht. **Er ist die
-    //  Abhängigkeit, die den Farb-Bindungen fehlte:** `tagColor(...)` ist ein
-    //  FUNKTIONSaufruf, und darauf erzeugt QML keine Bindung - eine geänderte
-    //  Tagfarbe kam deshalb erst an, wenn die Delegates neu gebaut wurden
-    //  (beide Panels aus und wieder ein; Nutzerbefund 2026-09-03). `allTags()`
-    //  liefert bei einer reinen Farbänderung dieselbe Liste, der Repeater baut
-    //  also von sich aus nichts neu. Wer `tagColorOf` ruft, hängt daran mit.
+    // Zähler, der bei jeder Tag-/Kategorie-Änderung hochgeht - die Abhängigkeit, die den Farb-Bindungen fehlte:
+    // `tagColor(..)` ist ein Funktionsaufruf. `allTags` liefert bei reiner Farbänderung dieselbe Liste.
     property int tagRev: 0
     function tagColorOf(tag) {
         void panel.tagRev                 // s. oben - die Bindung braucht sie
@@ -92,9 +58,6 @@ Rectangle {
         function onCategoriesChanged() { panel.refresh() }
         function onTagsChanged()       { panel.refresh() }
     }
-    // Beim Ordnerwechsel/-start neu ziehen: JsonStorage lädt die Tags/Kategorien
-    // eines Ordners OHNE tagsChanged/categoriesChanged zu emittieren - ohne
-    // diesen Hook bliebe das Panel bis zur ersten Mutation leer.
     Connections {
         target: panel.folderSource
         function onFolderOpened(path) { panel.refresh() }
@@ -104,11 +67,9 @@ Rectangle {
         function onFilterChanged() { panel.activeTagFilter = galleryModel.tagFilter }
     }
 
-    // ── Zustands-Callbacks (auch für CategoryNode) ────────────────────────────
     function isCategoryActive(id) { return activeCategories.indexOf(id) >= 0 }
     function isTagActive(tag)     { return activeTagFilter.indexOf(tag) >= 0 }
 
-    //  Namensliste nach Suchbegriff filtern (Groß-/Kleinschreibung egal).
     function filterList(names, needle) {
         const n = (needle || "").trim().toLowerCase()
         if (n.length === 0) return names
@@ -117,7 +78,6 @@ Rectangle {
             if (String(names[i]).toLowerCase().indexOf(n) >= 0) out.push(names[i])
         return out
     }
-    //  Dasselbe für die flache Kategorienliste (Einträge mit `name`/`id`).
     function filterCats(needle) {
         const all = panel.tagsCtl.categoriesFlat()
         const n = (needle || "").trim().toLowerCase()
@@ -128,7 +88,7 @@ Rectangle {
         return out
     }
 
-    // ── Referenz-Helfer für die Kaskadenlogik ─────────────────────────────────
+    // Referenz-Helfer für die Kaskadenlogik
     //  Alle Prüfungen laufen über den aktuellen Baum (tree) - per ID, nicht per
     //  Name (Referenzbasis: TagCategory.id).
     function _findNode(nodes, id) {
@@ -139,14 +99,12 @@ Rectangle {
         }
         return null
     }
-    // Alle Kategorie-IDs des Teilbaums INKLUSIVE des Knotens selbst.
     function _subtreeIds(node) {
         var out = [node.id]
         for (var i = 0; i < node.children.length; i++)
             out = out.concat(_subtreeIds(node.children[i]))
         return out
     }
-    // Alle Tags des Teilbaums (Knoten + rekursiv alle Unterkategorien).
     function _subtreeTags(node) {
         var out = node.tags.slice()
         for (var i = 0; i < node.children.length; i++) {
@@ -156,7 +114,6 @@ Rectangle {
         }
         return out
     }
-    // Vorfahren-IDs (Wurzel -> …) eines Knotens; null, wenn nicht gefunden.
     function _ancestorIds(nodes, id) {
         for (var i = 0; i < nodes.length; i++) {
             if (nodes[i].id === id) return []
@@ -166,7 +123,6 @@ Rectangle {
         return null
     }
 
-    // ── Kategorie an-/abwählen (mit referenzbasierter Kaskade beim Abwählen) ──
     function toggleCategory(id, on) {
         var a = activeCategories.slice()
         var i = a.indexOf(id)
@@ -184,10 +140,6 @@ Rectangle {
         if (node) {
             var subIds = _subtreeIds(node)
 
-            // 1) Abhängige aktive Unterkategorien deaktivieren.
-            //    AUSNAHME: Eine Unterkategorie bleibt aktiv, wenn ein weiterhin
-            //    aktiver Vorfahre AUSSERHALB des abgewählten Teilbaums sie noch
-            //    referenziert (z. B. eine aktive übergeordnete Wurzelkategorie).
             var kept = []
             for (var k = 0; k < a.length; k++) {
                 var cid = a[k]
@@ -202,10 +154,6 @@ Rectangle {
             }
             a = kept
 
-            // 2) Tag-Kaskade: Tags des abgewählten Teilbaums aus dem Tag-Filter
-            //    entfernen - AUSSER ein verbleibender aktiver Kategorie-Teilbaum
-            //    referenziert den Tag weiterhin (Referenzzählung über die
-            //    Teilbaum-Tags aller noch aktiven Kategorien).
             var removedTags = _subtreeTags(node)
             if (removedTags.length > 0) {
                 var stillRef = ({})
@@ -241,53 +189,30 @@ Rectangle {
     }
     function moveTag(tag, fromCat, toCat) { panel.tagsCtl.moveTagToCategory(tag, fromCat, toCat) }
 
-    // ── Abgelegte Dateien zuordnen (gemeinsam für beide Abschnitte) ───────────
-    //  Aufgerufen von den Chips DIESES Panels und von CategoryNode; die Regeln
-    //  gehören deshalb an EINE Stelle. Zugewiesen wird immer nur HINZUFÜGEND -
-    //  ein Zug ist eine Zuweisung, kein Umschalter (sonst nähme ein zweiter Zug
-    //  einer Datei ihren Tag wieder weg).
+    // Aufgerufen von den Chips dieses Panels UND von CategoryNode, deshalb liegen die Regeln an EINER Stelle.
+    // Zugewiesen wird immer nur hinzufügend - ein Zug ist eine Zuweisung, kein Umschalter.
     function dropFilesOnTag(urls, tag) {
-        //  `mediaModel.addTag` überspringt Dateien, die nicht zum offenen Ordner
-        //  gehören - von außen hereingezogene Fremddateien laufen also ins Leere.
         for (var i = 0; i < urls.length; i++)
             mediaModel.addTag(App.localPath(urls[i]), tag)
     }
     function dropFilesOnCategory(urls, catId) {
         for (var i = 0; i < urls.length; i++) {
             var p = App.localPath(urls[i])
-            //  Kategorien sind über den DATEINAMEN adressiert (wie das
-            //  Tag-System), gespeichert wird im Sidecar des offenen Ordners -
-            //  deshalb hier die Ordnerprüfung, die addTag selbst mitbringt.
             if (!mediaModel.hasFile(p)) continue
             var name = String(p).split("/").pop()
             if (!panel.tagsCtl.fileInCategory(catId, name))
                 panel.tagsCtl.toggleFileInCategory(catId, name)
         }
     }
-    //  Ein Tag-Chip, der INS LEERE fällt: aus der Kategorie nehmen, aus der er
-    //  kam - und nur aus dieser. Die Regel gehört ins Panel, wie alle anderen
-    //  Ablege-Regeln auch; `CategoryNode` stellt nur fest, dass niemand den Zug
-    //  angenommen hat.
-    //  Ist der Optionen-Modus (Alt+S) dieser Hälfte an? Nur dann lassen sich
-    //  Kategorien per Zug umhängen - im Normalbetrieb ist die Kopfzeile zum
-    //  Anklicken da.
+    // Ein Tag-Chip, der ins Leere fällt, wird aus der Kategorie genommen, aus der er kam - die Regel gehört ins
+    // Panel wie alle Ablege-Regeln, `CategoryNode` stellt nur fest, dass niemand den Zug annahm.
     readonly property bool editMode: (panel.folderSource
                                       && panel.folderSource.optionsVisible === true)
 
-    //  Eine Kategorie unter eine andere hängen. Die Regel liegt im Panel wie
-    //  alle Ablege-Regeln; `moveCategory` weist einen Zug in den eigenen
-    //  Teilbaum selbst ab.
     function moveCategoryInto(catId, newParentId) {
         if (!catId || !newParentId || catId === newParentId) return
-        //  **Nicht in den EIGENEN Teilbaum.** `moveCategory` weist das ohnehin
-        //  ab, aber stillschweigend - auf dem Bildschirm sah es aus, als sei
-        //  etwas eingefroren (Nutzerbefund 2026-09-03). Hier wird es früher
-        //  entschieden, und der zurückspringende Kopf ist die Antwort.
-        //  In den EIGENEN Teilbaum gezogen: dann TAUSCHEN die beiden ihre
-        //  Plätze, statt dass gar nichts passiert - jede nimmt ihre Tags,
-        //  Dateien und übrigen Unterkategorien mit (Festlegung des Nutzers
-        //  2026-09-04). Ein echtes Verschieben ginge dort nicht: der Ast, an
-        //  dem man zieht, hinge dann in sich selbst.
+        // Nicht in den EIGENEN Teilbaum: `moveCategory` weist das ab, aber stillschweigend - auf dem Bildschirm sah es
+        // eingefroren aus. Hier TAUSCHEN die beiden stattdessen ihre Plätze; ein Verschieben hinge den Ast in sich selbst.
         const node = panel._findNode(panel.tree, catId)
         if (node && panel._subtreeIds(node).indexOf(newParentId) >= 0) {
             panel.tagsCtl.swapCategories(catId, newParentId)
@@ -296,10 +221,6 @@ Rectangle {
         panel.tagsCtl.moveCategory(catId, newParentId)
     }
 
-    //  Eine Kategorie, die INS LEERE fällt, wird zur Hauptkategorie - das
-    //  Gegenstück zum Tag-Chip, der so seine Kategorie verlässt. Eine, die
-    //  ohnehin schon oben liegt, bleibt unangetastet (sonst rutschte sie nur
-    //  ans Ende der Liste).
     function dropCategoryOutside(catId) {
         if (!catId) return
         const oben = panel._ancestorIds(panel.tree, catId)
@@ -320,9 +241,6 @@ Rectangle {
         namePrompt.onAcceptFn = function(v) { panel.tagsCtl.addSubcategory(parentId, v, Qt.rgba(0,0.7,0.63,1), false) }
         namePrompt.open()
     }
-    //  Tag zu einer Kategorie: ANLEGEN oben, AUSWÄHLEN unten.
-    //  Vorher gab es nur ein Namensfeld - man musste den Tag also exakt
-    //  abtippen, obwohl er schon existierte (Nutzerbefund 2026-09-03).
     function promptAddTag(catId) {
         tagPick.targetCat = catId
         tagPick.open()
@@ -339,15 +257,9 @@ Rectangle {
     }
     function promptDelete(id) { deleteCatId = id; confirmDelete.open() }
     property string deleteCatId: ""
-    //  Derselbe Weg für Tags: erst fragen. Ein gelöschter Tag verschwindet aus
-    //  ALLEN Dateien des Ordners - das darf kein Versehen sein.
     function promptDeleteTag(name) { deleteTagName = name; confirmDeleteTag.open() }
     property string deleteTagName: ""
 
-    // ── Gemeinsamer Abschnittskopf (Titel + „+"-Button) ───────────────────────
-    //  EIN Kopf-Baustein für beide Abschnitte -> einheitliche Steuerung ohne
-    //  UI-Duplikation.
-    //  Einen neuen Tag anlegen (Kopf-Knopf UND Kontextmenü nutzen denselben Weg).
     function promptNewTag() {
         namePrompt.title = App.uiText(App.language, "CatPanelNewTag")
         namePrompt.value = ""
@@ -361,7 +273,6 @@ Rectangle {
         namePrompt.open()
     }
 
-    //  Suchfeld eines Abschnitts - dieselbe Optik wie die Suche der Filterleiste.
     component SectionSearch: Rectangle {
         id: sf
         property alias text: sfInput.text
@@ -388,8 +299,6 @@ Rectangle {
             placeholderText: sf.placeholder
             background: null
         }
-        //  Leeren - solange etwas drinsteht, ist die „hinzufügen"-Zeile weg,
-        //  der Knopf ist also der Weg zurück (Festlegung des Nutzers).
         Rectangle {
             id: sfClear
             anchors { right: parent.right; rightMargin: 5; verticalCenter: parent.verticalCenter }
@@ -403,18 +312,9 @@ Rectangle {
         }
     }
 
-    // ── Rückgängig für TAG-Vorgänge ──────────────────────────────────────────
-    //  BEWUSST GETRENNT vom Rückgängig der Dateien (Strg+Z in der Galerie,
-    //  `MediaModel`): dieser Stapel trägt ausschließlich Tag- und
-    //  Kategorie-Vorgänge des EIGENEN Ordners, und er hat deshalb auch kein
-    //  Tastenkürzel - ein zweites Strg+Z wäre nicht vorhersagbar (Festlegung
-    //  des Nutzers 2026-09-03).
-    //  ── Die beiden Knöpfe ────────────────────────────────────────────
-    //  Gezeichnete Pfeile (Regel 28), 30x30 - groß genug, um sie ohne
-    //  Zielen zu treffen.
-    //  Eine Marke: gezeichnetes Symbol (Mülleimer beim Löschen) plus die
-    //  Stücke aus C++, jedes in seiner Farbe und kursiv, wenn es gekürzt ist.
-    //  Leere Marke = keine Breite; die andere Seite bekommt den Platz.
+    // Rückgängig für TAG-Vorgänge, bewusst getrennt vom Datei-Stapel der Galerie: dieser trägt nur Tag- und
+    // Kategorie-Vorgänge des eigenen Ordners und hat deshalb kein Tastenkürzel - ein zweites Strg+Z wäre nicht
+    // vorhersagbar. Eine leere Marke bekommt keine Breite, die andere Seite den Platz.
     component MarkRow: Row {
         id: mr
         property var    marks: []
@@ -430,8 +330,6 @@ Rectangle {
             width: visible ? 14 : 0
             name: mr.iconName.length > 0 ? mr.iconName : "trash"
             size: 14
-            //  Der Mülleimer trägt die Farbe des ersten Stückes - so gehört er
-            //  zur Richtung, für die er steht.
             color: mr.marks.length > 0 && mr.marks[0].color ? mr.marks[0].color
                                                             : App.themeTextMuted
         }
@@ -446,12 +344,10 @@ Rectangle {
                 font.pixelSize: 12
                 font.italic: modelData.italic === true
                 font.bold: true
-                //  Zusammen dürfen die Stücke die halbe Leiste nicht sprengen.
                 width: Math.min(implicitWidth, Math.max(24, mr.maxW - 20))
                 elide: Text.ElideRight
             }
         }
-        //  Der volle Text (Namen und Pfade ungekürzt) beim Zeigen darauf.
         HoverHandler { id: mrHover }
         ToolTip.visible: mrHover.hovered && mr.fullText.length > 0
         ToolTip.delay: 400
@@ -493,20 +389,12 @@ Rectangle {
         ToolTip.text: ab.tip
     }
 
-    //  Zwei Knöpfe in der MITTE, links die Marke dessen, was ZURÜCK täte, rechts
-    //  die dessen, was VOR täte.
-    //
-    //  **Warum nicht die vergangene Tat:** dort stand vorher „was passiert ist",
-    //  während der Knopf daneben das Gegenteil tat - ein Löschen zeigte `-1 T:b`,
-    //  und Zurück fügte hinzu. Jetzt steht auf jeder Seite, was ihr eigener Knopf
-    //  bewirken würde, in der Farbe DIESER Richtung (Zurück eines Löschens ist
-    //  also grün). Ist eine Seite nicht möglich, bleibt sie LEER und ihr Knopf
-    //  grau (Festlegung des Nutzers 2026-09-03).
+    // Auf jeder Seite steht, was ihr EIGENER Knopf bewirken würde, in der Farbe dieser Richtung (Zurück eines
+    // Löschens ist grün). Vorher stand dort die vergangene Tat, während der Knopf daneben das Gegenteil tat.
     component UndoBar: Rectangle {
         id: ub
         color: Qt.rgba(App.themeAccent.r, App.themeAccent.g, App.themeAccent.b, 0.10)
 
-        //  Trennlinie nach oben.
         Rectangle {
             anchors { left: parent.left; right: parent.right; top: parent.top }
             height: 1
@@ -515,14 +403,10 @@ Rectangle {
 
         readonly property bool hasL: panel.tagsCtl ? panel.tagsCtl.canUndo : false
         readonly property bool hasR: panel.tagsCtl ? panel.tagsCtl.canRedo : false
-        //  Der Platz, den sich die beiden Seiten teilen. Ist eine leer, bekommt
-        //  die andere alles - „die aktive Seite bekommt den Platz".
         readonly property int freeW: Math.max(0, ub.width - 78)
         readonly property int sideW: (ub.hasL && ub.hasR) ? Math.floor(ub.freeW / 2)
                                                           : ub.freeW
 
-        //  Alles in EINER zentrierten Reihe: so stehen die Knöpfe in der Mitte
-        //  des Inhalts, und eine leere Seite verschenkt keinen Platz.
         Row {
             anchors.centerIn: parent
             width: Math.min(parent.width - 12, implicitWidth)
@@ -599,7 +483,6 @@ Rectangle {
     Column {
         anchors.fill: parent
 
-        // ── Abschnitt 1: Tags ─────────────────────────────────────────────────
         SectionHeader {
             visible: panel.showTagsSection
             width: parent.width
@@ -612,8 +495,6 @@ Rectangle {
             id: tagsArea
             visible: panel.showTagsSection
             width: parent.width
-            // Natürliche Höhe, gedeckelt auf ~35 % des Panels (bzw. volle Höhe,
-            // wenn der Kategorien-Abschnitt ausgeblendet ist); darüber scrollbar.
             height: Math.min(tagsCol.implicitHeight,
                              panel.showCategoriesSection ? Math.floor(panel.height * 0.35)
                                                          : panel.height - 34 - panel.undoBarHeight)
@@ -645,27 +526,14 @@ Rectangle {
                             required property var modelData
 
                             readonly property color tc: panel.tagColorOf(pChip.modelData)
-                            // Klarer Toggle-Zustand: aktiv = gefüllt + Häkchen + kräftiger Rand.
                             readonly property bool active: panel.isTagActive(pChip.modelData)
 
-                            //  ── Chip in eine Kategorie ziehen ──────────────
-                            //  Dieselben Nutzdaten wie die Chips UNTER einer
-                            //  Kategorie (`CategoryNode`), damit die vorhandene
-                            //  Ablegefläche des Kategorie-Kopfes beide annimmt.
-                            //  `dragFromCat` bleibt leer: dieser Chip kommt aus
-                            //  der Liste, nicht aus einer Kategorie - deshalb
-                            //  wird beim Ablegen nur HINZUGEFÜGT, und ein Zug
-                            //  ins Leere nimmt ihn nirgendwo weg.
+                            // Dieselben Nutzdaten wie die Chips unter einer Kategorie, damit die Ablegefläche des Kategorie-Kopfes beide
+                            // annimmt. `dragFromCat` bleibt leer: dieser Chip kommt aus der Liste, es wird nur HINZUGEFÜGT.
                             property string dragTag: modelData
                             property string dragFromCat: ""
-                            //  **Der Chip muss an seinen Platz zurück.** Ein
-                            //  `DragHandler` VERSCHIEBT sein Ziel; das `Flow`
-                            //  darüber setzt `x`/`y` aber nur beim Auslegen neu.
-                            //  Ohne das Zurücksetzen blieb der Chip liegen, wo
-                            //  man ihn fallen ließ - er sah aus, als sei er aus
-                            //  der Tag-Liste verschwunden, und kam erst beim
-                            //  Aus- und Einschalten des Panels wieder
-                            //  (Nutzerbefund 2026-09-03).
+                            // Der Chip muss an seinen Platz zurück: ein `DragHandler` verschiebt sein Ziel, das `Flow` darüber setzt `x`/`y`
+                            // aber nur beim Auslegen neu. Ohne das Zurücksetzen blieb er liegen, wo man ihn fallen ließ.
                             property real homeX: 0
                             property real homeY: 0
                             Drag.active: pDrag.active
@@ -714,15 +582,8 @@ Rectangle {
                                 }
                             }
 
-                            //  ── Kachel auf den Tag ziehen ⇒ Datei bekommt ihn ──
-                            //  Die Kachel zieht als PLATTFORM-Zug hinaus
-                            //  (`Drag.Automatic`, `text/uri-list`, s. MediaTile) -
-                            //  landet er wieder im eigenen Fenster, kommt er hier
-                            //  als gewöhnlicher Datei-Drop an, genau wie einer aus
-                            //  dem Dateimanager. Deshalb funktioniert dieselbe
-                            //  Fläche auch für von außen hereingezogene Dateien.
-                            //  Zugewiesen wird per `addTag` (nie umgeschaltet):
-                            //  ein Zug ist eine Zuweisung, kein Schalter.
+                            // Die Kachel zieht als PLATTFORM-Zug hinaus; landet er wieder im eigenen Fenster, kommt er hier als
+                            // gewöhnlicher Datei-Drop an - dieselbe Fläche nimmt deshalb auch Dateien von außen. Immer `addTag`, nie Toggle.
                             DropArea {
                                 id: chipDrop
                                 anchors.fill: parent
@@ -733,8 +594,6 @@ Rectangle {
                                     drop.acceptProposedAction()
                                 }
                             }
-                            //  Rückmeldung beim Ziehen darüber - sonst rät man,
-                            //  ob der Chip den Zug überhaupt annimmt.
                             Rectangle {
                                 anchors.fill: parent
                                 radius: parent.radius
@@ -776,11 +635,6 @@ Rectangle {
                     color: App.themeTextMuted; font.pixelSize: 12
                 }
 
-                //  Rechtsklick auf die FREIE Fläche des Abschnitts legt ebenfalls
-                //  an - dort steht man, wenn noch kein Tag da ist. Liegt dagegen
-                //  ein Chip unter dem Zeiger, gehört der Klick IHM (er bietet
-                //  zusätzlich „Tag löschen"); ohne diese Prüfung öffnete sich
-                //  hier das falsche Menü (Nutzerbild `deleteTag.png`).
                 TapHandler {
                     acceptedButtons: Qt.RightButton
                     onTapped: function(point) {
@@ -798,13 +652,11 @@ Rectangle {
             }
         }
 
-        // Visuelle Trennung der beiden Abschnitte.
         Rectangle {
             visible: panel.showTagsSection && panel.showCategoriesSection
             width: parent.width; height: 1; color: App.themeBorder
         }
 
-        // ── Abschnitt 2: Kategorien ───────────────────────────────────────────
         SectionHeader {
             visible: panel.showCategoriesSection
             width: parent.width
@@ -816,7 +668,6 @@ Rectangle {
         ScrollView {
             visible: panel.showCategoriesSection
             width: parent.width
-            // Resthöhe unter dem (ggf. ausgeblendeten) Tags-Abschnitt.
             height: panel.height
                     - (panel.showTagsSection ? 34 + tagsArea.height : 0)
                     - (panel.showTagsSection && panel.showCategoriesSection ? 1 : 0)
@@ -827,8 +678,6 @@ Rectangle {
                 id: treeColumn
                 width: panel.width - 12
                 x: 6
-                //  Gleiche Luft wie im Tag-Abschnitt darüber: dort stand das
-                //  Suchfeld frei, hier klebte es an Kopfzeile und Baum.
                 topPadding: 6; bottomPadding: 6
                 spacing: 6
 
@@ -896,10 +745,6 @@ Rectangle {
                     topPadding: 12
                 }
 
-                //  Rechtsklick auf die freie Fläche legt eine Kategorie an -
-                //  derselbe Griff wie im Tag-Abschnitt darüber, mit derselben
-                //  Prüfung: liegt eine Kategorie (oder das Suchfeld) unter dem
-                //  Zeiger, gehört der Klick dorthin.
                 TapHandler {
                     acceptedButtons: Qt.RightButton
                     onTapped: function(point) {
@@ -916,7 +761,6 @@ Rectangle {
         }
     }
 
-    // ── Namens-Prompt ───────────────────────────────────────────────────────
     Popup {
         id: namePrompt
         modal: true; focus: true; anchors.centerIn: Overlay.overlay; padding: 16
@@ -948,22 +792,14 @@ Rectangle {
         }
     }
 
-    // ── Tag zu einer Kategorie hinzufügen ────────────────────────────────────
-    //  ZWEI Wege in einem Fenster, durch eine Linie getrennt (Festlegung des
-    //  Nutzers 2026-09-03):
-    //   • oben ein Feld - Eingabe legt an UND weist zu; ein bereits vorhandener
-    //     Name weist einfach den vorhandenen zu (`addTagToCategory` registriert
-    //     ohnehin nur, was es noch nicht gibt).
-    //   • unten die Tags des Ordners, die dieser Kategorie noch fehlen, als
-    //     scrollbare Liste. Das Feld oben FILTERT sie zugleich - man tippt zwei
-    //     Buchstaben und klickt, statt den Namen abzuschreiben.
+    // Zwei Wege in einem Fenster: oben ein Feld, dessen Eingabe anlegt UND zuweist; unten die Tags des Ordners,
+    // die dieser Kategorie fehlen. Das Feld filtert die Liste zugleich - tippen und klicken statt abschreiben.
     Popup {
         id: tagPick
         objectName: "tagPickPopup"
         modal: true; focus: true; anchors.centerIn: Overlay.overlay; padding: 14
         property string targetCat: ""
 
-        //  Die Tags des Ordners OHNE die, die der Kategorie schon gehören.
         function candidates() {
             const node = panel._findNode(panel.tree, tagPick.targetCat)
             const drin = node ? node.tags : []
@@ -997,7 +833,6 @@ Rectangle {
                 onAccepted: tagPick.assign(pickField.text)
             }
             Button {
-                //  Der ausdrückliche Weg „anlegen" - Enter im Feld tut dasselbe.
                 enabled: pickField.text.trim().length > 0
                 height: 26; font.pixelSize: 11
                 text: App.uiText(App.language, "TagPickCreate")
@@ -1010,7 +845,6 @@ Rectangle {
                 text: App.uiText(App.language, "TagPickExisting")
                 color: App.themeTextMuted; font.pixelSize: 11
             }
-            //  Kleine, scrollbare Liste - sie darf das Fenster nicht sprengen.
             ScrollView {
                 width: 280
                 height: Math.min(180, Math.max(28, pickList.count * 28))
@@ -1064,12 +898,9 @@ Rectangle {
         }
     }
 
-    // ── Farbwahl ────────────────────────────────────────────────────────────
     ColorDialog {
         id: colorDialog
         property string targetCat: ""
-        // Einheitsfarbe aus dem Panel vererbt an den gesamten Teilbaum (Tags,
-        // Unter- und verschachtelte Unterkategorien) - die erwartete Wirkung.
         onAccepted: panel.tagsCtl.setCategoryUniformColor(targetCat, true, selectedColor, true)
     }
 
@@ -1081,16 +912,11 @@ Rectangle {
         visible: height > 0
     }
 
-    //  Rückfrage vor dem Löschen eines TAGS (s. `promptDeleteTag`). Ein
-    //  gelöschter Tag verschwindet aus ALLEN Dateien des Ordners.
     Popup {
         id: confirmDeleteTag
         modal: true; focus: true; anchors.centerIn: Overlay.overlay; padding: 16
-        //  **Eingabetaste bestaetigt** (Wunsch des Nutzers: JEDE Loeschrueckfrage,
-        //  nicht nur die der Entf-Taste). Ein `Popup` bringt das - anders als ein
-        //  `Dialog` - nicht mit, also von Hand. **Der Handler gehoert ans
-        //  `contentItem`**, nicht ans Popup: dort feuert er nicht (gemessen,
-        //  s. `GalleryView`).
+        // Eingabetaste bestätigt - ein `Popup` bringt das anders als ein `Dialog` nicht mit. Der Handler gehört ans
+        // `contentItem`, am Popup selbst feuert er nicht (gemessen).
         function confirm() {
             panel.tagsCtl.deleteTag(panel.deleteTagName)
             confirmDeleteTag.close()
@@ -1118,11 +944,9 @@ Rectangle {
         }
     }
 
-    // ── Löschbestätigung ──────────────────────────────────────────────────────
     Popup {
         id: confirmDelete
         modal: true; focus: true; anchors.centerIn: Overlay.overlay; padding: 16
-        //  **Eingabetaste bestaetigt** - s. `confirmDeleteTag`.
         function confirm() {
             panel.tagsCtl.deleteCategory(panel.deleteCatId)
             confirmDelete.close()

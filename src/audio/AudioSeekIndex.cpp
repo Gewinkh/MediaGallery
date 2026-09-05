@@ -9,7 +9,7 @@ namespace {
 constexpr qint64 kChunk    = 256 * 1024;
 constexpr qint64 kMaxFrame = 64 * 1024;      // Schutzgrenze je Rahmen
 
-// ── MPEG-1/2/2.5 Audio (MP1/MP2/MP3) ────────────────────────────────────────
+// MPEG-1/2/2.5 Audio (MP1/MP2/MP3)
 //  Kopf: 11 Bit Sync, 2 Bit Version, 2 Bit Layer, 1 Bit CRC, 4 Bit Bitrate,
 //  2 Bit Abtastrate, 1 Bit Padding. Länge und Abtastwerte folgen daraus.
 struct FrameInfo {
@@ -60,7 +60,7 @@ bool mpegFrame(const uchar* p, qint64 avail, FrameInfo* out) {
     return true;
 }
 
-// ── AC-3 und E-AC-3 ─────────────────────────────────────────────────────────
+// AC-3 und E-AC-3
 //  Beide beginnen mit 0x0B77. AC-3 nennt seine Länge über `frmsizecod`,
 //  E-AC-3 direkt über `frmsiz` (in 16-Bit-Wörtern).
 bool ac3Frame(const uchar* p, qint64 avail, FrameInfo* out) {
@@ -104,7 +104,6 @@ bool ac3Frame(const uchar* p, qint64 avail, FrameInfo* out) {
     return false;
 }
 
-// ── AAC in ADTS ─────────────────────────────────────────────────────────────
 bool adtsFrame(const uchar* p, qint64 avail, FrameInfo* out) {
     if (avail < 7) return false;
     if (p[0] != 0xFF || (p[1] & 0xF6) != 0xF0) return false;   // Sync + Layer 00
@@ -172,13 +171,8 @@ Position findFrame(const QString& path, qint64 targetMs,
     qint64 samples = 0;
     int    rate    = 0;
     QByteArray buf;
-    //  Der zuletzt gesehene Rahmen, der NICHT hinter der Zielstelle beginnt.
-    //  Genau der wird gesucht: der Aufrufer setzt dort auf und überspringt den
-    //  kleinen Rest bis zur genauen Stelle. Ein Rahmen DAHINTER wäre falsch -
-    //  der Ton begänne nach der Stelle, und der Aufrufer könnte nichts mehr
-    //  überspringen (gefunden am 2026-08-21: genau daran fiel jeder Sprung
-    //  zurück auf den langsamen Weg, wenn die Zielzeit nicht zufällig auf eine
-    //  Rahmengrenze fiel).
+    // Gesucht ist der letzte Rahmen, der NICHT hinter der Zielstelle beginnt: dort setzt der Aufrufer auf und
+    // überspringt den Rest. Ein Rahmen dahinter wäre falsch - der Ton begänne nach der Stelle, nichts mehr zu kürzen.
     qint64 lastAt = -1, lastSamples = 0;
 
     while (true) {
@@ -238,7 +232,6 @@ Position findFrame(const QString& path, qint64 targetMs,
     return pos;
 }
 
-// ── TailDevice ──────────────────────────────────────────────────────────────
 TailDevice::TailDevice(const QString& path, qint64 from, QObject* parent)
     : QIODevice(parent), m_file(path), m_from(std::max<qint64>(0, from)) {}
 

@@ -5,7 +5,7 @@ import MediaGallery 1.0
 import "../common"
 import "../gallery"
 
-// ── Audio: Klangregelung und Verhalten des Player-Modus (Alt+A) ──────────────
+// Audio: Klangregelung und Verhalten des Player-Modus (Alt+A)
 //  Die Regler sind DIESELBE Datei wie am Player (`AudioEqPanel`) - zwei
 //  Fassungen liefen sonst auseinander.
 Item {
@@ -21,7 +21,6 @@ Item {
             width: root.width
             spacing: 14
 
-            // ── Equalizer ─────────────────────────────────────────────────────
             SettingsGroup {
                 key: "audio.audio-eq"
                 title: App.uiText(App.language, "AudioEqTitle")
@@ -57,7 +56,6 @@ Item {
                 }
             }
 
-            // ── Darstellung ───────────────────────────────────────────────────
             SettingsGroup {
                 key: "audio.audio-layout"
                 title: App.uiText(App.language, "AudioLayoutTitle")
@@ -100,7 +98,6 @@ Item {
                 }
             }
 
-            // ── Player-Modus ──────────────────────────────────────────────────
             SettingsGroup {
                 key: "audio.audio-player-mode"
                 title: App.uiText(App.language, "AudioPlayerMode")
@@ -136,7 +133,6 @@ Item {
                     wrapMode: Text.WordWrap
                 }
 
-                // ── Lautstärke ────────────────────────────────────────────────
                 RowLayout {
                     Layout.fillWidth: true
                     spacing: 8
@@ -161,7 +157,7 @@ Item {
                 }
             }
 
-            // ── Ton aus Videos sichern ────────────────────────────────────────
+            // Ton aus Videos sichern
             //  Ausgelöst wird es am Video (Rechtsklick auf die Kachel) oder in
             //  der Warteschlange des Players; hier stehen nur die Vorgaben.
             SettingsGroup {

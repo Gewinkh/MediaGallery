@@ -4,18 +4,8 @@ import QtQuick.Controls
 import MediaGallery 1.0
 import "../common"
 
-// ─────────────────────────────────────────────────────────────────────────────
-//  ImageEditPanel.qml - Werkzeug- & Eigenschaften-Panel des Bild-Editors, in
-//  ZWEI Layouts in einer Datei (Analog PdfEditPanel):
-//   • horizontal:false -> RECHTE SEITENLEISTE (Standard)
-//   • horizontal:true  -> OBERE LEISTE („wie Word") - Ribbon
-//  Die Dock-Position teilt sich der Bild-Editor mit dem PDF-Editor über die
-//  globale Einstellung PdfEdit.panelOnTop (Einstellungen ▸ Editor).
-//
-//  ZIEL-ID: Regler wirken auf die AUSWAHL (ctl.selectedId) - oder, wenn nichts
-//  ausgewählt ist, auf die VORLAGE für neue Annotationen (id −1). So setzt man
-//  „erst Farbe/Breite, dann zeichnen" (Stil-Erben).
-// ─────────────────────────────────────────────────────────────────────────────
+// Werkzeug- und Eigenschaften-Panel des Bild-Editors in zwei Layouts; die Dock-Position teilt er sich mit dem
+// PDF-Editor (`PdfEdit.panelOnTop`). Regler wirken auf die Auswahl oder, ohne sie, auf die Vorlage (id -1).
 Item {
     id: panel
 
@@ -42,7 +32,6 @@ Item {
     implicitWidth: horizontal ? 0 : 320
     implicitHeight: horizontal ? 62 : 0
 
-    // ── Wiederverwendbare Buttons ─────────────────────────────────────────────
     component ToolBtn: Rectangle {
         id: tbt
         property string glyph: ""
@@ -147,9 +136,7 @@ Item {
     }
     Component.onCompleted: refreshFromSelection()
 
-    // ══════════════════════════════════════════════════════════════════════════
     //  VARIANTE A - rechte Seitenleiste (Standard)
-    // ══════════════════════════════════════════════════════════════════════════
     Rectangle {
         anchors.fill: parent
         visible: !panel.horizontal
@@ -163,7 +150,6 @@ Item {
             anchors.margins: 12
             spacing: 12
 
-            // Kopf
             Item {
                 width: parent.width; height: 24
                 Text { anchors.left: parent.left; anchors.verticalCenter: parent.verticalCenter
@@ -201,7 +187,6 @@ Item {
                 color: App.themeTextMuted; font.pixelSize: 11
             }
 
-            // ── TEXT-Eigenschaften ────────────────────────────────────────────
             Column {
                 visible: panel.showText
                 width: parent.width; spacing: 8
@@ -212,10 +197,8 @@ Item {
                     model: panel.ctl.standardFonts()
                     onActivated: panel.ctl.setAnnFont(panel.targetId, currentText)
                 }
-                //  Substitutions-Hinweis: „diese Familie wird als jene
-                //  gezeichnet". Der Pfeil ist ein SYMBOL, also gezeichnet
-                //  (Regel 28) - er sitzt in der ersten Zeile des Textes, damit
-                //  ein umbrechender Name darunter bündig weiterläuft.
+                // Der Pfeil ist ein SYMBOL, also gezeichnet - er sitzt in der ersten Zeile des Textes, damit ein umbrechender
+                // Name darunter bündig weiterläuft.
                 Row {
                     visible: panel.ctl.resolvedFont(panel.info.fontFamily) !== panel.info.fontFamily
                     width: parent.width; spacing: 5
@@ -311,7 +294,6 @@ Item {
                 }
             }
 
-            // ── STRICH-/FORM-Eigenschaften ────────────────────────────────────
             Column {
                 visible: panel.showStroke || panel.showFill
                 width: parent.width; spacing: 8
@@ -365,7 +347,6 @@ Item {
                 }
             }
 
-            // Auswahl-Aktionen
             Row {
                 visible: panel.hasSel
                 spacing: 8
@@ -391,7 +372,7 @@ Item {
 
             //  Es gibt GENAU EINE Trennlinie im Panel - die unter der
             //  Werkzeugreihe. Die zweite (vor dem Dokument-Bereich) ist entfallen.
-            // ── Dokument (Speichern / Export) ─────────────────────────────────
+            // Dokument (Speichern / Export)
             Row {
                 spacing: 8
                 Rectangle {
@@ -437,9 +418,7 @@ Item {
         }
     }
 
-    // ══════════════════════════════════════════════════════════════════════════
     //  VARIANTE B - obere Leiste („wie Word"; horizontal:true)
-    // ══════════════════════════════════════════════════════════════════════════
     Rectangle {
         anchors.fill: parent
         visible: panel.horizontal
@@ -456,7 +435,6 @@ Item {
             Row {
                 id: ribbon
                 height: parent.height; spacing: 12
-                // Werkzeuge
                 Column { anchors.verticalCenter: parent.verticalCenter; spacing: 2
                     Row { spacing: 4
                         ToolBtn { iconName: "select"; toolValue: 0 }
@@ -485,18 +463,13 @@ Item {
                                    onActivated: panel.ctl.setAnnUnderline(panel.targetId, !panel.info.underline) }
                     }
                 }
-                // Linienbreite (Strich/Form)
                 Column { visible: panel.showStroke || panel.showFill; anchors.verticalCenter: parent.verticalCenter; spacing: 2
                     RibbonLabel { text: App.uiText(App.language, "ImageEditWidthLabel"); width: parent.width }
                     SpinBox { id: lwBoxH; from: 1; to: 200; stepSize: 1; value: 4; width: 100
                               onValueModified: panel.ctl.setAnnLineWidth(panel.targetId, value) }
                 }
-                //  KEIN zweiter Trenner vor dem Dokument-Teil: die Eigenschaften
-                //  dazwischen sind ohne Auswahl unsichtbar, dann rückten die
-                //  beiden Striche aneinander und sahen wie eine Doppellinie aus
-                //  (Nutzerbefund). Es bleibt der EINE Trenner hinter den
-                //  Werkzeugen - wie im senkrechten Panel.
-                // Dokument
+                // KEIN zweiter Trenner vor dem Dokument-Teil: die Eigenschaften dazwischen sind ohne Auswahl unsichtbar, dann
+                // rückten die beiden Striche aneinander.
                 Column { anchors.verticalCenter: parent.verticalCenter; spacing: 2
                     Row { spacing: 6
                         Rectangle {
@@ -520,7 +493,6 @@ Item {
                 }
             }
         }
-        // Schließen fest rechts
         Rectangle {
             anchors.right: parent.right; anchors.rightMargin: 8; anchors.verticalCenter: parent.verticalCenter
             width: 26; height: 26; radius: 5

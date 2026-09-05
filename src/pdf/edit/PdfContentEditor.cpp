@@ -12,20 +12,10 @@
 #include <cstdio>
 #include <cstring>
 
-// ══════════════════════════════════════════════════════════════════════════════
-//  Alle Helfer liegen in einem anonymen Namespace - reine Byte-Arbeit, kein Qt-
-//  Objektzustand. Bei JEDER Unsicherheit geben die Funktionen einen Fehler
-//  zurück; PdfContentEditor::editText bricht dann ab (Aufrufer -> Raster-Export).
-// ══════════════════════════════════════════════════════════════════════════════
 namespace {
 
-//  Die generischen PDF-Objekt-Helfer liegen jetzt in
-//  PdfObjects.h - sie werden auch vom Vektor-Export gebraucht und sind
-//  bewusst nur EINMAL vorhanden (dieselbe streng geprüfte Byte-Arbeit
-//  zweimal zu pflegen wäre die schlechtere Lösung).
 using namespace mg::pdfobj;
 
-// PDF-Paren-String -> Bytes (Escapes auflösen). in zeigt HINTER '('.
 QByteArray decodeParenString(const QByteArray& b, qint64 open, qint64 closeExcl) {
     QByteArray out; qint64 i = open + 1;
     while (i < closeExcl - 1) {
@@ -54,12 +44,8 @@ QByteArray decodeParenString(const QByteArray& b, qint64 open, qint64 closeExcl)
     return out;
 }
 
-// Bytes -> PDF-Paren-String "(...)".
-//  ( ) \ werden escapt; Bytes ausserhalb des druckbaren ASCII zusaetzlich
-//  OKTAL (\ddd). Das ist nötig, seit auch Nicht-ASCII-Kodierungen (WinAnsi/
-//  MacRoman) unterstützt werden: rohe Bytes ≥ 0x80 im String wären zwar nach
-//  Spezifikation erlaubt, aber \ddd ist die robuste, 7-Bit-sichere Form und
-//  vermeidet Ärger mit Werkzeugen, die den Strom als Text behandeln.
+// Bytes -> PDF-Paren-String. `( ) \` werden escapt, Bytes außerhalb des druckbaren ASCII zusätzlich oktal:
+// seit auch WinAnsi und MacRoman unterstützt werden, ist `\ddd` die robuste, 7-Bit-sichere Form.
 QByteArray encodeParenBytes(const QByteArray& bytes) {
     QByteArray out = "(";
     for (char c : bytes) {
@@ -75,23 +61,9 @@ QByteArray encodeParenBytes(const QByteArray& bytes) {
     return out;
 }
 
-// Ein Textzeige-Treffer im Content-Stream: Byte-Bereich des zu ersetzenden
-// Operanden (String bei Tj bzw. Array bei TJ), der dekodierte ASCII-Text und ob
-// es ein TJ-Array ist (dann muss der Ersatz ein Array bleiben).
-//  `opEnd` = Byte-Position HINTER dem Operator-Schlüsselwort (Tj/TJ). Damit
-//  lässt sich prüfen, ob zwei Treffer UNMITTELBAR aufeinander folgen: liegt
-//  zwischen dem Operator des einen und dem Operanden des nächsten nur
-//  Leerraum, zeichnen beide ohne dazwischenliegende Positionierung (Td/TD/Tm/
-//  T*/Tf …) weiter - nur dann darf ihr Text als EINE zusammenhängende Stelle
-//  behandelt werden (s. `runsAreAdjacent`).
-//  `bytes` sind die ROHEN Stringbytes (bei TJ: alle String-Elemente
-//  aneinandergehängt). Sie werden ERST in editText entschlüsselt, wo die
-//  Kodierung der aktiven Schrift bekannt ist - vorher stünde nur eine
-//  Latin-1-Vermutung zur Verfügung, die bei WinAnsi/MacRoman falsch wäre.
-//  `fontRes` ist der Ressourcenname der zuletzt per `Tf` gesetzten Schrift.
-//  `size`/`charSp`/`wordSp` sind der Textzustand AN DIESER STELLE (Tf/Tc/Tw).
-//  Die Teil-Redaktion (s. unten) braucht sie, um die entstehende Lücke exakt
-//  auszugleichen - und lehnt ab, sobald sie ihn nicht sicher kennt.
+// Byte-Bereich des zu ersetzenden Operanden plus Textzustand an der Stelle.
+// opEnd liegt hinter dem Operator - damit erkennt showsAreAdjacent, ob zwei Treffer
+// ohne Positionierung dazwischen folgen. bytes bleiben roh bis die Kodierung feststeht.
 struct ShowHit { qint64 start; qint64 end; qint64 opEnd;
                  QByteArray bytes; bool isArray; QByteArray fontRes;
                  double size = 0.0; double charSp = 0.0; double wordSp = 0.0; };
@@ -102,14 +74,10 @@ QVector<ShowHit> scanTextShows(const QByteArray& c) {
     QVector<ShowHit> hits;
     const qint64 n = c.size();
     qint64 i = 0;
-    // „Letzter Operand": Bereich + Typ (0 = keiner, 1 = String, 2 = Array).
     qint64 lastStart = -1, lastEnd = -1; int lastType = 0; QByteArray lastBytes;
     QByteArray lastName;      // zuletzt gesehener /Name-Operand (für Tf)
     QByteArray curFont;       // aktive Schrift laut letztem "…Tf"
-    //  Textzustand: Schriftgröße (Tf), Zeichen- und Wortabstand (Tc/Tw).
     double curSize = 0.0, curCharSp = 0.0, curWordSp = 0.0;
-    //  Der zuletzt gesehene Zahlen-Operand (Tf/Tc/Tw brauchen ihn - jeweils
-    //  den LETZTEN vor dem Operator).
     double num2 = 0.0;
     while (i < n) {
         char ch = c[i];
@@ -130,7 +98,6 @@ QVector<ShowHit> scanTextShows(const QByteArray& c) {
         }
         if (ch == '[') {
             qint64 e = skipValue(c, i);
-            // Array-Text = Verkettung seiner String-Elemente (Zahlen = Spacing).
             QByteArray inner = c.mid(i, e-i);
             QByteArray t; qint64 j = 0;
             while (j < inner.size()) {
@@ -153,7 +120,6 @@ QVector<ShowHit> scanTextShows(const QByteArray& c) {
             num2 = c.mid(ns2, i - ns2).toDouble();
             continue;
         }
-        // Keyword/Operator
         qint64 s = i; while (i<n && !isWs(c[i]) && !isDelim(c[i])) ++i;
         const QByteArray op = c.mid(s, i-s);
         if (op == "BI") {                                    // Inline-Bild -> bis EI
@@ -174,14 +140,9 @@ QVector<ShowHit> scanTextShows(const QByteArray& c) {
     return hits;
 }
 
-//  Folgen zwei Treffer UNMITTELBAR aufeinander? Nur wenn zwischen dem Operator
-//  des ersten und dem Operanden des zweiten ausschließlich Leerraum (oder ein
-//  Kommentar) steht. Jede andere Anweisung dazwischen - insbesondere
-//  Positionierung (Td/TD/Tm/T*) oder ein Schriftwechsel (Tf) - bedeutet, dass
-//  die Stücke an verschiedenen Stellen bzw. in verschiedenen Schriften
-//  gezeichnet werden; sie dürfen dann NICHT zu einer Fundstelle zusammengefasst
-//  werden, weil der Ersatz sonst an die Position des ERSTEN Stücks rutschen und
-//  der Zeilenumbruch bzw. die Schriftzuordnung verloren gehen würde.
+// Zwei Treffer folgen nur dann unmittelbar aufeinander, wenn dazwischen ausschließlich Leerraum steht.
+// Positionierung oder Schriftwechsel heißt: die Stücke stehen anderswo - zusammengefasst rutschte der Ersatz
+// an die Position des ERSTEN, und Zeilenumbruch oder Schriftzuordnung gingen verloren.
 bool showsAreAdjacent(const QByteArray& c, const ShowHit& a, const ShowHit& b) {
     qint64 i = a.opEnd;
     while (i < b.start) {
@@ -197,14 +158,8 @@ bool showsAreAdjacent(const QByteArray& c, const ShowHit& a, const ShowHit& b) {
 }
 
 
-// ══════════════════════════════════════════════════════════════════════════════
-//  GEMEINSAME GRUNDLAGE der beiden Einstiege (`editText` und `redactAreas`)
-//
-//  Beide brauchen exakt dasselbe Gerüst: Datei prüfen, klassische xref, Objekte,
-//  Seitenbaum, Content-Stream einer Seite, inkrementelles Update schreiben. Das
-//  steht deshalb EINMAL hier - dieselbe streng geprüfte Byte-Arbeit zweimal zu
-//  pflegen wäre die schlechtere Lösung (gleiche Begründung wie bei PdfObjects.h).
-// ══════════════════════════════════════════════════════════════════════════════
+// Gemeinsame Grundlage von `editText` und `redactAreas`: Datei prüfen, klassische xref, Objekte, Seitenbaum,
+// Content-Stream, inkrementelles Update. Dieselbe Byte-Arbeit zweimal zu pflegen wäre die schlechtere Lösung.
 
 using FailFn = std::function<bool(const char*)>;
 
@@ -223,9 +178,6 @@ struct DocCtx {
     }
     QByteArray dictOf(int num) const { return dictOfObject(bodyOf(num)); }
 
-    //  Entpackte Nutzdaten eines Stream-Objekts (roh oder /FlateDecode).
-    //  Wird für /Contents UND für /ToUnicode-CMaps gebraucht; `ok` bleibt
-    //  false bei fremdem Filter oder defektem Strom.
     QByteArray streamDataOf(int num, bool* ok) const {
         *ok = false;
         const QByteArray body = bodyOf(num);
@@ -242,7 +194,6 @@ struct DocCtx {
         const qint64 ep = body.indexOf("endstream", sp);
         if (ep < 0) return {};
         qint64 len = ep - sp;
-        //  /Length darf eine REFERENZ sein (s. pdfobj::streamLength).
         const qint64 dl = streamLength(d, buf, objs);
         if (dl >= 0 && dl <= len) len = dl;
         const QByteArray raw = body.mid(sp, len);
@@ -265,7 +216,6 @@ bool loadDoc(const QString& path, DocCtx* d, const FailFn& fail) {
     if (buf.size() < 32 || !buf.startsWith("%PDF-")) return fail("kein PDF");
     if (buf.contains("/Encrypt")) return fail("verschlüsselt");
 
-    // Letztes startxref lesen + prüfen, dass es eine KLASSISCHE xref-Tabelle ist.
     const int sxi = buf.lastIndexOf("startxref");
     if (sxi < 0) return fail("kein startxref");
     qint64 prevXrefOffset;
@@ -282,7 +232,6 @@ bool loadDoc(const QString& path, DocCtx* d, const FailFn& fail) {
     const QHash<int, ObjLoc> objs = scanObjects(buf);
     if (objs.isEmpty()) return fail("keine Objekte");
 
-    // /Root ermitteln (Trailer bzw. beliebiges Vorkommen - letztes gewinnt).
     int rootNum = -1, rootGen = 0;
     {
         static const QRegularExpression re(QStringLiteral("/Root\\s+(\\d+)\\s+(\\d+)\\s+R"));
@@ -291,22 +240,18 @@ bool loadDoc(const QString& path, DocCtx* d, const FailFn& fail) {
     }
     if (rootNum < 0 || !objs.contains(rootNum)) return fail("kein /Root");
 
-    // Objektkörper-Zugriff (im Kontext später als DocCtx::bodyOf/dictOf).
     auto bodyOf = [&](int num) -> QByteArray {
         const auto it = objs.constFind(num);
         return (it == objs.constEnd()) ? QByteArray() : objectBody(buf, it->offset);
     };
     auto dictOf = [&](int num) -> QByteArray { return dictOfObject(bodyOf(num)); };
 
-    // Seitenbaum einsammeln (mit vererbtem /Resources), Reihenfolge = Dokument.
     const int pagesRoot = refValue(dictOf(rootNum), "Pages");
     if (pagesRoot < 0) return fail("kein /Pages");
     QVector<int> pageObjs;                 // Objektnummer je Seite
     QVector<QByteArray> pageRes;           // vererbtes /Resources-Dict je Seite
     {
         int guard = 0;
-        // DFS über den Seitenbaum in Dokumentreihenfolge (Kids können Pages-
-        // Knoten oder Page-Blätter sein); vererbtes /Resources wird durchgereicht.
         std::function<bool(int, const QByteArray&, int)> walk =
             [&](int num, const QByteArray& inheritedRes, int depth) -> bool {
                 if (++guard > 100000 || depth > 50) return false;
@@ -320,7 +265,6 @@ bool loadDoc(const QString& path, DocCtx* d, const FailFn& fail) {
                     else { const int rn = refValue(d, "Resources"); if (rn>=0) res = QByteArray("<<")+dictOf(rn)+">>"; }
                 }
                 if (type == "/Page") { pageObjs.push_back(num); pageRes.push_back(res); return true; }
-                // /Pages-Knoten -> /Kids [ ... ]
                 const qint64 kp = findKey(d, "Kids");
                 if (kp < 0 || d[kp] != '[') return false;
                 const qint64 ke = skipValue(d, kp);
@@ -344,9 +288,6 @@ bool loadDoc(const QString& path, DocCtx* d, const FailFn& fail) {
     return true;
 }
 
-//  Content-Stream EINER Seite: Objektnummer, Generation und die ENTPACKTEN
-//  Bytes. Verlangt genau EINEN Stream (kein /Contents-Array) mit bekannten
-//  Schlüsseln und höchstens /FlateDecode.
 struct PageContent { int num = 0; int gen = 0; QByteArray data; };
 
 bool loadPageContent(const DocCtx& doc, int pageIdx, PageContent* out, const FailFn& fail) {
@@ -354,18 +295,15 @@ bool loadPageContent(const DocCtx& doc, int pageIdx, PageContent* out, const Fai
     const QByteArray pdict = doc.dictOf(doc.pageObjs[pageIdx]);
     const QByteArray& buf  = doc.buf;
     const auto& objs       = doc.objs;
-        // /Contents muss EIN Stream sein (kein Array).
         const qint64 cp = findKey(pdict, "Contents");
         if (cp < 0) return fail("kein /Contents");
         if (pdict[cp] == '[') return fail("/Contents-Array -> Fallback");
         const int cnum = refValue(pdict, "Contents");
         if (cnum < 0 || !objs.contains(cnum)) return fail("/Contents-Ref");
 
-        // Content-Objekt: Dict (nur /Length,/Filter erlaubt) + Stream-Rohdaten.
         const auto cit = objs.constFind(cnum);
         const QByteArray cbody = objectBody(buf, cit->offset);
         const QByteArray cdict = dictOfObject(cbody);
-        // Nur bekannte Schlüssel? (sonst gingen sie beim Neuschreiben verloren)
         {
             static const QRegularExpression kre(QStringLiteral("/([A-Za-z0-9]+)"));
             auto it = kre.globalMatch(QString::fromLatin1(cdict));
@@ -373,12 +311,10 @@ bool loadPageContent(const DocCtx& doc, int pageIdx, PageContent* out, const Fai
                 if (k!="Length" && k!="Filter" && k!="DecodeParms" && k!="DL" && k!="FlateDecode")
                     return fail("unbekannte Stream-Schlüssel -> Fallback"); }
         }
-        // Filter
         const QByteArray filt = nameValue(cdict, "Filter");
         const bool flate = (filt == "/FlateDecode");
         if (!filt.isEmpty() && !flate) return fail("fremder Stream-Filter -> Fallback");
 
-        // Rohdaten zwischen stream…endstream.
         qint64 sPos = cbody.indexOf("stream");
         if (sPos < 0) return fail("kein stream");
         sPos += 6;
@@ -386,7 +322,6 @@ bool loadPageContent(const DocCtx& doc, int pageIdx, PageContent* out, const Fai
         if (sPos < cbody.size() && cbody[sPos]=='\n') ++sPos;
         qint64 ePos = cbody.indexOf("endstream", sPos);
         if (ePos < 0) return fail("kein endstream");
-        // /Length bevorzugen (falls direkte Zahl), sonst bis endstream.
         qint64 rawLen = ePos - sPos;
         const qint64 declLen = streamLength(cdict, buf, objs);
         if (declLen >= 0 && declLen <= rawLen) rawLen = declLen;
@@ -403,8 +338,6 @@ bool loadPageContent(const DocCtx& doc, int pageIdx, PageContent* out, const Fai
 
 struct NewObj { int num; int gen; QByteArray data; };  // data = inflatierter Content
 
-//  Die geänderten Content-Objekte als inkrementelles Update ans Original hängen
-//  (append-only): neue Objektfassungen + kleine xref-Sektion + Trailer mit /Prev.
 bool writeIncremental(const DocCtx& doc, const QHash<int, NewObj>& edited,
                       const QString& outputPath, const FailFn& fail) {
     const QByteArray& buf = doc.buf;
@@ -412,7 +345,6 @@ bool writeIncremental(const DocCtx& doc, const QHash<int, NewObj>& edited,
     const int rootNum     = doc.rootNum;
     const int rootGen     = doc.rootGen;
     const qint64 prevXrefOffset = doc.prevXref;
-    // ── Inkrementelles Update anhängen ──────────────────────────────────────
     QByteArray out = buf;
     if (!out.endsWith('\n')) out += '\n';
     int maxObj = 0; for (int num : objs.keys()) maxObj = qMax(maxObj, num);
@@ -432,7 +364,6 @@ bool writeIncremental(const DocCtx& doc, const QHash<int, NewObj>& edited,
         out += "\nendstream\nendobj\n";
     }
 
-    // Neue klassische XRef-Sektion (je Objekt eine Subsektion) + Trailer.
     std::sort(xentries.begin(), xentries.end(), [](const XEntry&a,const XEntry&b){ return a.num<b.num; });
     const qint64 xrefOff = out.size();
     out += "xref\n";
@@ -456,9 +387,6 @@ bool writeIncremental(const DocCtx& doc, const QHash<int, NewObj>& edited,
 }
 
 
-// ══════════════════════════════════════════════════════════════════════════════
-//  SCHWÄRZEN: Zeichen aus einem Zeigeoperator herausschneiden
-// ══════════════════════════════════════════════════════════════════════════════
 
 //  Ein herausgeschnittener Lauf, gemessen in den ZUSAMMENGEFÜGTEN Bytes eines
 //  Zeigeoperators (so zählt auch `PdfGlyph::byteOffset`).
@@ -468,24 +396,16 @@ struct ByteCut {
     qreal  advancePt = 0.0; // Vorschub der entfernten Zeichen in Seiten-Punkten
 };
 
-//  Den Zeigeoperator neu schreiben. Der Ersatz ist IMMER ein `[…] TJ`-Array -
-//  auch für ein `Tj`: nur ein Array kann den Ausgleichsversatz aufnehmen, der
-//  die entstehende Lücke schließt. Zahlen (Kerning) zwischen den Gliedern
-//  bleiben unangetastet; sie verschieben unabhängig von den entfernten Zeichen.
-//  `ok` bleibt false, wenn der Operand nicht sicher zerlegbar ist.
 QByteArray rebuildShowWithoutCuts(const QByteArray& content, const ShowHit& h,
                                   const QVector<ByteCut>& cuts, qreal tjUnitPt,
                                   bool* ok) {
     *ok = false;
     if (tjUnitPt <= 0.0) return {};
 
-    //  Ausgleich für EINEN Schnitt: ein TJ-Versatz von −1000 schiebt um
-    //  `tjUnitPt` nach rechts, also gilt n = −1000 · Lücke / tjUnitPt.
     auto shiftNumber = [&](qreal advPt) {
         return QByteArray::number(-1000.0 * advPt / tjUnitPt, 'f', 2);
     };
 
-    //  Ein Element beisteuern: die behaltenen Stücke + Ausgleich je Schnitt.
     QByteArray out = "[";
     qint64 base = 0;                       // Offset dieses Elements im Gesamttext
     auto emitString = [&](const QByteArray& bytes) {
@@ -509,8 +429,6 @@ QByteArray rebuildShowWithoutCuts(const QByteArray& content, const ShowHit& h,
     if (!h.isArray) {
         emitString(h.bytes);
     } else {
-        //  Array zerlegen wie `scanTextShows`: Strings beisteuern, Zahlen
-        //  wörtlich übernehmen.
         const QByteArray arr = content.mid(h.start, h.end - h.start);
         if (!arr.startsWith('[')) return {};
         qint64 k = 1;
@@ -540,11 +458,8 @@ QByteArray rebuildShowWithoutCuts(const QByteArray& content, const ShowHit& h,
     return out;
 }
 
-//  Zählt eine Glyphe als „unter dem Balken"? Jede Berührung zählt - eine
-//  Glyphe, die nur halb verdeckt ist, stünde sonst VOLLSTÄNDIG weiter in der
-//  Textebene und wäre auslesbar. Nur ein Hauch von Überlappung (unter 15 % der
-//  Glyphenfläche) zählt nicht: sonst risse ein etwas zu hoch gezogener Balken
-//  die Nachbarzeile mit, deren Zeichen sichtbar NEBEN dem Balken stehen.
+// Jede Berührung zählt - eine nur halb verdeckte Glyphe stünde sonst vollständig weiter in der Textebene.
+// Unter 15 % Überlappung zählt nicht: sonst risse ein zu hoch gezogener Balken die Nachbarzeile mit.
 bool glyphIsCovered(const QRectF& glyph, const QRectF& area) {
     const QRectF sect = glyph.intersected(area);
     if (sect.isEmpty()) return false;
@@ -555,7 +470,6 @@ bool glyphIsCovered(const QRectF& glyph, const QRectF& area) {
 
 }  // namespace
 
-// ══════════════════════════════════════════════════════════════════════════════
 namespace mg {
 
 bool PdfContentEditor::editText(const QString& inputPath, const QString& outputPath,
@@ -565,15 +479,12 @@ bool PdfContentEditor::editText(const QString& inputPath, const QString& outputP
 
     DocCtx doc;
     if (!loadDoc(inputPath, &doc, fail)) return false;
-    //  Kurznamen, damit die geprüfte Logik darunter unverändert bleibt.
     const QVector<int>& pageObjs = doc.pageObjs;
     const QVector<QByteArray>& pageRes = doc.pageRes;
     auto bodyOf = [&](int num) { return doc.bodyOf(num); };
     auto dictOf = [&](int num) { return doc.dictOf(num); };
     auto streamDataOf = [&](int num, bool* ok) { return doc.streamDataOf(num, ok); };
 
-    // Ersetzungen nach Seite gruppieren; Vorbedingungen je betroffener Seite prüfen
-    // und die neuen (inflateten) Content-Bytes bilden.
     QHash<int, NewObj> edited;             // Content-ObjNum -> neuer Inhalt
 
     for (const PdfTextEdit& ed : edits) {
@@ -590,10 +501,8 @@ bool PdfContentEditor::editText(const QString& inputPath, const QString& outputP
         // Font-Sicherheit + Kodierung je Ressourcenname (/F1 -> Encoding).
         //  KEIN /Type0 (CID) - dafür fehlt das CMap-Round-Tripping.
         QHash<QByteArray, mg::pdfenc::Encoding> fontEnc;
-        //  Glyphenbreiten je Schrift-Ressource: /FirstChar + /Widths (in
-        //  1/1000 em). NUR einfache Schriften; fehlt eines von beidem, bleibt
-        //  die Ressource hier ungenannt - die Teil-Redaktion lehnt dann ab,
-        //  statt mit geschätzten Breiten zu rechnen.
+        // Glyphenbreiten je Schrift-Ressource aus /FirstChar und /Widths, NUR für einfache Schriften. Fehlt eines von
+        // beidem, bleibt die Ressource ungenannt - die Teil-Redaktion lehnt dann ab, statt zu schätzen.
         struct FontWidths { int firstChar = 0; QVector<double> widths; };
         QHash<QByteArray, FontWidths> fontW;
         {
@@ -603,9 +512,6 @@ bool PdfContentEditor::editText(const QString& inputPath, const QString& outputP
             if (res[fp] == '<') { qint64 e = skipValue(res, fp); fontDict = res.mid(fp+2, (e-2)-(fp+2)); }
             else { const int fn = refValue(res, "Font"); if (fn<0) return fail("Font-Ref"); fontDict = dictOf(fn); }
 
-            //  Das Font-Dict ist "/F1 5 0 R /F2 6 0 R …" - Name und Objekt
-            //  paarweise auslesen, damit die Kodierung dem im Content-Stream
-            //  benutzten Ressourcennamen zugeordnet werden kann.
             qint64 i = 0;
             while (i < fontDict.size()) {
                 while (i < fontDict.size() && isWs(fontDict[i])) ++i;
@@ -622,12 +528,8 @@ bool PdfContentEditor::editText(const QString& inputPath, const QString& outputP
                 const int fn = m.captured(1).toInt();
                 const QByteArray fd = dictOf(fn);
 
-                //  ── Type0 (CID) ────────────────────────────────────────────
-                //  Die Stringbytes sind hier 2-Byte-CIDs, also Glyphennummern
-                //  der (meist als Teilmenge eingebetteten) Schrift. Welches
-                //  Zeichen dahintersteht, sagt einzig die /ToUnicode-CMap.
-                //  Unterstützt wird NUR /Identity-H: bei einer anderen
-                //  /Encoding-CMap wäre schon die Zerlegung in Codes unklar.
+                // Type0: die Stringbytes sind 2-Byte-CIDs, welches Zeichen dahintersteht sagt einzig die /ToUnicode-CMap.
+                // Unterstützt wird NUR /Identity-H - bei einer anderen /Encoding-CMap wäre schon die Zerlegung unklar.
                 if (nameValue(fd, "Subtype") == "/Type0") {
                     const QByteArray encName = nameValue(fd, "Encoding");
                     if (encName != "/Identity-H")
@@ -648,7 +550,6 @@ bool PdfContentEditor::editText(const QString& inputPath, const QString& outputP
                     continue;
                 }
 
-                //  /Encoding: Name ODER Dict (letzteres ggf. als Referenz).
                 QByteArray encVal;
                 const qint64 ep = findKey(fd, "Encoding");
                 if (ep >= 0) {
@@ -694,34 +595,13 @@ bool PdfContentEditor::editText(const QString& inputPath, const QString& outputP
         const int cnum = pc.num;
         QByteArray content = pc.data;
 
-        // Auf bereits (für diese Seite) editierten Inhalt weiterarbeiten, falls
-        // mehrere Ersetzungen dieselbe Seite betreffen.
         if (edited.contains(cnum)) content = edited.value(cnum).data;
 
-        // ── Treffer suchen ──────────────────────────────────────────────────
-        //  Der Originaltext muss GENAU EINMAL vorkommen - entweder als EIN
-        //  Tj-String/TJ-Array oder, seit der Erweiterung, verteilt über eine
-        //  FOLGE unmittelbar aufeinanderfolgender Zeige-Operatoren.
-        //
-        //  Warum das nötig ist: Erzeuger zerlegen eine Zeile regelmäßig in
-        //  mehrere Operatoren - etwa `(Hal) Tj (lo) Tj` nach einem Kerning-Paar
-        //  oder abwechselnde Tj/TJ-Stücke. Der Text steht dann VISUELL
-        //  zusammenhängend auf einer Zeile, war für die Suche aber nie
-        //  auffindbar, und jede solche Ersetzung fiel auf den Raster-Export
-        //  zurück.
-        //
-        //  Sicherheit: eine Folge zählt nur, wenn zwischen ihren Gliedern
-        //  ausschließlich Leerraum steht (`showsAreAdjacent`) - sobald
-        //  Positionierung oder ein Schriftwechsel dazwischenliegt, bricht die
-        //  Folge ab. Damit kann der Ersatz nie über einen Zeilenumbruch oder
-        //  eine Schriftgrenze hinweg zusammengezogen werden.
+        // Der Originaltext muss genau einmal vorkommen - als ein Tj/TJ oder als Folge
+        // unmittelbar aufeinanderfolgender Zeigeoperatoren (Erzeuger zerlegen Zeilen).
+        // Eine Folge zaehlt nur bei reinem Leerraum dazwischen, nie ueber einen Umbruch.
         const QVector<ShowHit> hits = scanTextShows(content);
 
-        //  Die Rohbytes jedes Treffers werden mit der Kodierung SEINER Schrift
-        //  entschlüsselt. Ist die Schrift unbekannt (kein passendes /Tf oder
-        //  fehlender Ressourceneintrag), gilt die konservative ASCII-Tabelle -
-        //  Nicht-ASCII-Bytes werden dann zu U+FFFD und passen sicher auf keinen
-        //  Originaltext, statt zufällig zu treffen.
         const mg::pdfenc::Encoding asciiFallback;
         auto encOfHit = [&](const ShowHit& h) -> const mg::pdfenc::Encoding& {
             const auto it = fontEnc.constFind(h.fontRes);
@@ -742,35 +622,15 @@ bool PdfContentEditor::editText(const QString& inputPath, const QString& outputP
                 if (acc.size() > ed.original.size())
                     break;                        // schon zu lang -> abbrechen
                 if (acc == ed.original) {
-                    //  Kürzeste Folge ab k gewinnt; über alle k zählen wir die
-                    //  Fundstellen, um Mehrdeutigkeit zu erkennen.
                     if (matchCount == 0) { matchStart = k; matchLen = j - k + 1; }
                     ++matchCount;
                     break;
                 }
             }
         }
-        // ── TEIL-REDAKTION: der Text steht MITTEN in EINEM Zeige-String ─────
-        //  Der Weg oben ersetzt nur GANZE Zeige-Strings (bzw. Folgen davon).
-        //  Für das Schwärzen ist das zu grob: „Name Muster Geheim" steht oft in
-        //  EINEM Tj, und nur „Geheim" soll verschwinden.
-        //
-        //  Das Herauslösen verschiebt den Rest der Zeile nach links - es sei
-        //  denn, die entstehende Lücke wird ausgeglichen. Genau das tut der
-        //  TJ-Versatz: `(Name Muster ) -2778 (…)` schiebt um 2.778 · Schriftgröße
-        //  nach rechts, also exakt um die Breite der entfernten Zeichen.
-        //  Gerechnet wird NUR mit den Breiten, die die Schrift selbst mitbringt
-        //  (`/Widths`) - geschätzt wird nichts.
-        //
-        //  BEWUSST ENG (sonst Ablehnung, nie Raten):
-        //   • nur ENTFERNEN (leerer Ersatz) - ein anderer Text hätte eine
-        //     eigene Breite, die zusätzlich zu verrechnen wäre,
-        //   • nur ein einfacher `Tj`-String (ein TJ-Array bringt eigene
-        //     Versätze mit, die mitgerechnet werden müssten),
-        //   • Zeichen- und Wortabstand müssen 0 sein (Tc/Tw gehen sonst in die
-        //     Vorschubrechnung ein),
-        //   • Schriftgröße bekannt, Breiten für JEDES entfernte Zeichen da,
-        //   • der Text kommt im Dokument genau EINMAL vor.
+        // Teil-Redaktion: steht der Text mitten in EINEM Tj, wird er herausgeloest und die
+        // Luecke ueber den TJ-Versatz ausgeglichen, gerechnet nur mit /Widths der Schrift.
+        // Bewusst eng: nur Entfernen, nur einfaches Tj, Tc/Tw = 0, Breiten bekannt, einmalig.
         bool partial = false;
         int  partialHit = -1, partialAt = -1;
         if (matchCount == 0 && ed.replacement.isEmpty()) {
@@ -778,7 +638,6 @@ bool PdfContentEditor::editText(const QString& inputPath, const QString& outputP
             for (int k = 0; k < hits.size(); ++k) {
                 const int at = hitText[k].indexOf(ed.original);
                 if (at < 0) continue;
-                //  Mehrfach in DERSELBEN Zeichenkette? Dann ist es mehrdeutig.
                 if (hitText[k].indexOf(ed.original, at + 1) >= 0) { found += 2; break; }
                 ++found;
                 partialHit = k;
@@ -811,7 +670,6 @@ bool PdfContentEditor::editText(const QString& inputPath, const QString& outputP
             if (whole.size() != h.bytes.size())
                 return fail("Byte-/Zeichenlänge weichen ab -> Fallback");
 
-            //  Breite der entfernten Zeichen (1/1000 em) aufsummieren.
             double removed = 0.0;
             for (int k = 0; k < ed.original.size(); ++k) {
                 const int code = static_cast<unsigned char>(h.bytes.at(partialAt + k));
@@ -824,12 +682,8 @@ bool PdfContentEditor::editText(const QString& inputPath, const QString& outputP
             const QByteArray prefix = h.bytes.left(partialAt);
             const QByteArray suffix = h.bytes.mid(partialAt + ed.original.size());
 
-            //  Neues TJ-Array: Vorderteil, Versatz (negativ = nach rechts),
-            //  Hinterteil. Leere Teile werden weggelassen.
             QByteArray arr = "[";
             if (!prefix.isEmpty()) arr += encodeParenBytes(prefix);
-            //  Steht nichts mehr dahinter, braucht es auch keinen Ausgleich -
-            //  dann verschiebt sich nichts.
             if (!suffix.isEmpty()) {
                 arr += " " + QByteArray::number(-removed, 'f', 0) + " ";
                 arr += encodeParenBytes(suffix);
@@ -842,16 +696,9 @@ bool PdfContentEditor::editText(const QString& inputPath, const QString& outputP
             continue;
         }
 
-        //  Der GESAMTE Ersatz wandert in das ERSTE Glied der Folge; alle
-        //  weiteren Glieder werden geleert (ihre Operatoren bleiben stehen, sie
-        //  zeichnen nur nichts mehr). Da die Folge nachweislich ohne
-        //  Positionierung dazwischen auskommt, beginnt der Ersatz exakt an der
-        //  Stelle, an der der Originaltext begann.
-        //  Von HINTEN nach vorn ersetzen, damit die vorderen Byte-Offsets
-        //  gültig bleiben.
-        //  Der Ersatz muss in der Kodierung der Schrift AN DER FUNDSTELLE
-        //  darstellbar sein - sonst stünden im PDF Bytes, die diese Schrift gar
-        //  nicht kennt. Nicht darstellbar -> sauber ablehnen (Raster-Fallback).
+        // Der ganze Ersatz geht in das erste Glied, die weiteren werden geleert - ohne
+        // Positionierung dazwischen beginnt er exakt an der alten Stelle. Von hinten nach
+        // vorn ersetzen. Nicht in der Kodierung darstellbar heisst ablehnen.
         QByteArray replBytes;
         if (!encOfHit(hits[matchStart]).encode(ed.replacement, &replBytes))
             return fail("Ersatztext in der Schriftkodierung nicht darstellbar -> Fallback");
@@ -875,9 +722,6 @@ bool PdfContentEditor::editText(const QString& inputPath, const QString& outputP
 }
 
 
-// ══════════════════════════════════════════════════════════════════════════════
-//  redactAreas - GEOMETRISCHES Schwärzen (ohne Kenntnis des Textes)
-// ══════════════════════════════════════════════════════════════════════════════
 bool PdfContentEditor::redactAreas(const QString& inputPath, const QString& outputPath,
                                    const QVector<PdfRedactArea>& areas, QString* err) {
     auto fail = [&](const char* m) { if (err) *err = QString::fromLatin1(m); return false; };
@@ -886,7 +730,6 @@ bool PdfContentEditor::redactAreas(const QString& inputPath, const QString& outp
     DocCtx doc;
     if (!loadDoc(inputPath, &doc, fail)) return false;
 
-    //  Flächen nach Seite bündeln.
     QHash<int, QVector<QRectF>> byPage;
     for (const PdfRedactArea& a : areas) {
         if (a.page < 0 || a.page >= doc.pageObjs.size()) return fail("Seitenindex außerhalb");
@@ -902,10 +745,8 @@ bool PdfContentEditor::redactAreas(const QString& inputPath, const QString& outp
         const int page = pit.key();
         const QVector<QRectF>& rects = pit.value();
 
-        //  ── Gedrehte Seiten ablehnen ────────────────────────────────────────
-        //  Die Flächen kommen in ANZEIGE-Koordinaten; `PdfTextLayout` misst in
-        //  ungedrehtem PDF-Raum. Bei /Rotate ≠ 0 passt beides nicht zusammen -
-        //  lieber der Raster-Weg als ein Balken über der falschen Stelle.
+        // Gedrehte Seiten ablehnen: die Flächen kommen in ANZEIGE-Koordinaten, `PdfTextLayout` misst ungedreht. Bei
+        // /Rotate != 0 passt beides nicht zusammen - lieber der Raster-Weg als ein Balken an der falschen Stelle.
         {
             int num = doc.pageObjs[page];
             for (int depth = 0; depth < 8 && num > 0; ++depth) {
@@ -923,25 +764,17 @@ bool PdfContentEditor::redactAreas(const QString& inputPath, const QString& outp
         PageContent pc;
         if (!loadPageContent(doc, page, &pc, fail)) return false;
 
-        //  ── Text der Seite vermessen ────────────────────────────────────────
         mg::PdfPageText pt;
         QString lerr;
         if (!mg::PdfTextLayout::buildForPage(inputPath, page, &pt, &lerr))
             return fail("Textebene nicht vermessbar -> Fallback");
-        //  Beide Wege müssen DENSELBEN Strom sehen - sonst zeigen die
-        //  Byte-Offsets der Glyphen woanders hin als der Strom, den wir neu
-        //  schreiben. `contentObj` ist die harte Zusage „genau EIN Strom"
-        //  (−1 = mehrteilig); die Vermessung hängt an jeden Teil noch ein
-        //  Zeilenende an, deshalb wird auf ANFANG verglichen, nicht auf
-        //  Gleichheit.
+        // Beide Wege müssen DENSELBEN Strom sehen, sonst zeigen die Byte-Offsets der Glyphen woanders hin als der Strom,
+        // den wir schreiben. Verglichen wird auf ANFANG: die Vermessung hängt an jeden Teil ein Zeilenende an.
         if (pt.contentObj != pc.num || !pt.content.startsWith(pc.data))
             return fail("Textebene und Content-Strom weichen ab -> Fallback");
 
-        //  ── Form-XObjects ablehnen ──────────────────────────────────────────
-        //  `PdfTextLayout` steigt NICHT in XObjects hinab. Zeichnet die Seite
-        //  ein Formular-XObject, könnte darin Text unter dem Balken stehen, den
-        //  wir weder sehen noch entfernen - genau die Lücke, die das Werkzeug
-        //  nicht haben darf.
+        // Form-XObjects ablehnen: `PdfTextLayout` steigt nicht in XObjects hinab, dort könnte Text unter dem Balken
+        // stehen, den wir weder sehen noch entfernen.
         {
             const QByteArray res = doc.pageRes.value(page);
             const qint64 xp = findKey(res, "XObject");
@@ -967,11 +800,8 @@ bool PdfContentEditor::redactAreas(const QString& inputPath, const QString& outp
             }
         }
 
-        //  ── Bild unter dem Balken -> ABLEHNEN ────────────────────────────────
-        //  Text lässt sich aus dem Strom entfernen, Bildpunkte nicht: Über einem
-        //  Bild wäre der Balken nur eine Decke, und das Original bliebe in der
-        //  Datei. Genau der Fall einer gescannten Seite - dafür ist der
-        //  Raster-Weg da, der die Punkte selbst überschreibt.
+        // Bild unter dem Balken -> ablehnen: Text lässt sich aus dem Strom entfernen, Bildpunkte nicht - der Balken wäre
+        // nur eine Decke und das Original bliebe in der Datei. Dafür ist der Raster-Weg da.
         for (const QRectF& img : pt.imagePaints)
             for (const QRectF& r : rects)
                 if (!img.intersected(r).isEmpty())
@@ -980,10 +810,8 @@ bool PdfContentEditor::redactAreas(const QString& inputPath, const QString& outp
         if (pt.glyphs.isEmpty())
             continue;                       // nichts Auslesbares unter dem Balken
 
-        //  ── Betroffene Glyphen je Zeigeoperator sammeln ─────────────────────
-        //  `showIndex` zeigt auf `pt.spans`; die Byte-Grenzen einer Glyphe
-        //  ergeben sich aus dem Offset der NÄCHSTEN Glyphe desselben Operators
-        //  (bzw. dem Ende seiner Bytes) - so stimmt es auch bei Zwei-Byte-Codes.
+        // `showIndex` zeigt auf `pt.spans`; die Byte-Grenzen einer Glyphe ergeben sich aus dem Offset der NÄCHSTEN
+        // Glyphe desselben Operators - so stimmt es auch bei Zwei-Byte-Codes.
         QHash<int, QVector<int>> hitGlyphs;         // spanIndex -> Glyphen-Indizes
         for (int gi = 0; gi < pt.glyphs.size(); ++gi) {
             const mg::PdfGlyph& g = pt.glyphs.at(gi);
@@ -995,7 +823,6 @@ bool PdfContentEditor::redactAreas(const QString& inputPath, const QString& outp
         if (hitGlyphs.isEmpty())
             continue;
 
-        //  Byte-Ende einer Glyphe innerhalb ihres Operators.
         auto glyphByteEnd = [&](int gi) -> qint64 {
             const mg::PdfGlyph& g = pt.glyphs.at(gi);
             if (gi + 1 < pt.glyphs.size() && pt.glyphs.at(gi + 1).showIndex == g.showIndex)
@@ -1004,12 +831,10 @@ bool PdfContentEditor::redactAreas(const QString& inputPath, const QString& outp
             return sp.bytes.size();
         };
 
-        //  Zeigeoperatoren im ENTPACKTEN Strom (dieselben Bytes wie oben).
         const QVector<ShowHit> hits = scanTextShows(pc.data);
         QHash<qint64, int> hitByStart;
         for (int k = 0; k < hits.size(); ++k) hitByStart.insert(hits[k].start, k);
 
-        //  Ersetzungen sammeln, danach von HINTEN einsetzen (Offsets bleiben gültig).
         struct Splice { qint64 from; qint64 to; QByteArray text; };
         QVector<Splice> splices;
 
@@ -1026,7 +851,6 @@ bool PdfContentEditor::redactAreas(const QString& inputPath, const QString& outp
             if (sp.tjUnitPt <= 0.0)
                 return fail("Textzustand unbekannt -> Fallback");
 
-            //  Zusammenhängende Läufe bilden (Glyphen kommen sortiert an).
             QVector<int> gidx = hit.value();
             std::sort(gidx.begin(), gidx.end());
             QVector<ByteCut> cuts;
@@ -1060,9 +884,6 @@ bool PdfContentEditor::redactAreas(const QString& inputPath, const QString& outp
     }
 
     if (edited.isEmpty()) {
-        //  Unter den Balken stand nichts Entfernbares - das ist KEIN Fehler,
-        //  aber es gibt auch nichts zu schreiben. Der Aufrufer bekommt trotzdem
-        //  eine Ausgabe, damit der weitere Weg (Balken zeichnen) gleich bleibt.
         QFile::remove(outputPath);
         if (!QFile::copy(inputPath, outputPath)) return fail("Kopie fehlgeschlagen");
         return true;
@@ -1071,10 +892,8 @@ bool PdfContentEditor::redactAreas(const QString& inputPath, const QString& outp
     if (!writeIncremental(doc, edited, outputPath, fail))
         return false;
 
-    //  ── SELBSTPRÜFUNG an der ERGEBNISDATEI ──────────────────────────────────
-    //  Die Zusage lautet „der Text ist weg". Sie wird gemessen, nicht
-    //  angenommen: steht nach dem Schreiben noch eine Glyphe unter einem
-    //  Balken, gilt der Lauf als gescheitert und die Ausgabe wird verworfen.
+    // Die Zusage lautet "der Text ist weg" und wird gemessen, nicht angenommen: steht nach dem Schreiben noch eine
+    // Glyphe unter einem Balken, gilt der Lauf als gescheitert und die Ausgabe wird verworfen.
     for (int page : touchedPages) {
         QVector<mg::PdfGlyph> glyphs;
         if (!mg::PdfTextLayout::buildForPage(outputPath, page, &glyphs, nullptr)) {

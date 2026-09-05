@@ -2,15 +2,8 @@ import QtQuick
 import QtQuick.Templates as T
 import MediaGallery 1.0
 
-// ─────────────────────────────────────────────────────────────────────────────
-//  Button.qml - gethemter Standard-Button (Stil "style").
-//
-//  Ersetzt die eckige, palettengetriebene Fusion-Variante durch die Optik der
-//  handgebauten Leisten-Knöpfe der App (ChromeBtn/MenuBtn/SettingsTab): Radius 6,
-//  Karten-Hintergrund, Rahmen in Themenfarbe, weiche Hover-/Druck-Zustände.
-//  Alle Farben kommen aus dem App-Singleton -> das frei einstellbare Farbschema
-//  wirkt auch auf die Standard-Controls, unabhängig vom Desktop-Palette-Theme.
-// ─────────────────────────────────────────────────────────────────────────────
+// Gethemter Standard-Button statt der eckigen, palettengetriebenen Fusion-Variante. Alle Farben aus dem
+// App-Singleton, damit das frei einstellbare Farbschema auch die Standard-Controls trifft.
 T.Button {
     id: control
 

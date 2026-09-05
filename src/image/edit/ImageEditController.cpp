@@ -23,15 +23,11 @@
 #include <QtMath>
 #include <utility>
 
-// ═════════════════════════════════════════════════════════════════════════════
 //  Gemeinsames Overlay-Rendering (Anzeige-Delegate UND Export nutzen dieselbe
 //  Geometrie -> WYSIWYG). Als freie Funktion, damit der Worker sie ohne
 //  Controller-Instanz aufrufen kann; die QML-Delegates spiegeln sie 1:1.
-// ═════════════════════════════════════════════════════════════════════════════
 namespace {
 
-// Pfeilspitze: zwei kurze Schenkel am Endpunkt, Länge/Winkel aus der Linien-
-// breite abgeleitet (identisch in QML).
 void drawArrowHead(QPainter& p, const QPointF& from, const QPointF& to, qreal lineWidth) {
     const qreal ang = std::atan2(to.y() - from.y(), to.x() - from.x());
     const qreal len = qMax<qreal>(14.0, lineWidth * 4.0);
@@ -93,8 +89,6 @@ void drawAnnotation(QPainter& p, const ImageAnnotation& a) {
         break;
     }
     case ImageAnnKind::Text: {
-        // Post-it-Optik: Schatten -> Papier -> Eselsohr (nur bei Papier-Alpha > 0),
-        // dann Text via QTextLayout - geometrisch identisch zum QML-Delegate.
         const bool paper = a.highlight.alpha() > 0;
         if (paper) {
             p.setPen(Qt::NoPen);
@@ -160,11 +154,9 @@ void drawAnnotation(QPainter& p, const ImageAnnotation& a) {
     p.restore();
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
 //  ImageExportTask - rendert Original + Overlay in eine NEUE Bildkopie.
 //  Lädt eine EIGENE QImage (kein geteiltes Handle), zeichnet die Annotationen
 //  1:1 in Bild-Pixeln darüber und schreibt atomar via QSaveFile im Quellformat.
-// ─────────────────────────────────────────────────────────────────────────────
 class ImageExportTask : public QRunnable {
 public:
     using CancelFlag = std::shared_ptr<std::atomic<bool>>;
@@ -257,22 +249,16 @@ private:
 
 } // namespace
 
-// ═════════════════════════════════════════════════════════════════════════════
-//  ImageEditController
-// ═════════════════════════════════════════════════════════════════════════════
 ImageEditController::ImageEditController(QObject* parent) : QObject(parent) {
     m_stack.setUndoLimit(kUndoLimit);
     m_pool.setMaxThreadCount(1);
 
-    // Text-Vorlage mit sinnvollen Startwerten (übernimmt der erste addText).
     m_textTpl.kind = ImageAnnKind::Text;
 
     connect(&m_stack, &QUndoStack::canUndoChanged, this, [this] { emit undoStateChanged(); });
     connect(&m_stack, &QUndoStack::canRedoChanged, this, [this] { emit undoStateChanged(); });
     connect(&m_stack, &QUndoStack::cleanChanged,   this, [this] { emit dirtyChanged(); });
     connect(&m_model, &ImageEditModel::countChanged, this, [this] { emit annCountChanged(); });
-    //  Zahl der offenen Änderungen folgt JEDER Modelländerung - auch
-    //  Undo/Redo und dem Laden des Sidecars.
     connect(&m_model, &QAbstractItemModel::dataChanged,  this, [this] { emit trackedChanged(); });
     connect(&m_model, &QAbstractItemModel::rowsInserted, this, [this] { emit trackedChanged(); });
     connect(&m_model, &QAbstractItemModel::rowsRemoved,  this, [this] { emit trackedChanged(); });
@@ -302,9 +288,6 @@ ImageEditController::~ImageEditController() {
     m_pool.waitForDone();
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-//  Modus / Werkzeug / Auswahl
-// ─────────────────────────────────────────────────────────────────────────────
 void ImageEditController::setEditMode(bool on) {
     if (m_editMode == on)
         return;
@@ -319,8 +302,6 @@ void ImageEditController::setTool(int t) {
         return;
     finishOpenSessions();
     m_tool = t;
-    // Beim Wechsel auf ein Zeichen-Werkzeug die Auswahl aufheben (keine
-    // schwebende Toolbar über einer alten Auswahl während des Zeichnens).
     if (t != Select)
         setSelectedId(-1);
     emit toolChanged();
@@ -339,9 +320,6 @@ void ImageEditController::bumpSelectionRev() {
     emit selectionRevChanged();
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-//  Dokument-Lebenszyklus
-// ─────────────────────────────────────────────────────────────────────────────
 void ImageEditController::setDocument(const QString& pathOrUrl) {
     const QString local = mg::toLocalPath(pathOrUrl);
     if (local == m_docPath)
@@ -354,13 +332,11 @@ void ImageEditController::setDocument(const QString& pathOrUrl) {
     m_docPath = local;
     setSelectedId(-1);
     setTool(Select);
-    //  Der Schalter gehört zum BILD: das nächste bringt seinen eigenen mit.
     if (m_recording) { m_recording = false; emit recordingChanged(); }
     m_stack.clear();
     m_model.clearAll();
     m_nextId = 1;
 
-    // Natürliche Bildgröße aus dem Header (billig; nur Metadaten).
     m_imgW = 0; m_imgH = 0;
     if (!m_docPath.isEmpty()) {
         QImageReader reader(m_docPath);
@@ -391,7 +367,6 @@ void ImageEditController::releaseDocument() {
 }
 
 void ImageEditController::setImageSize(int w, int h) {
-    // Fallback für Formate, die QImageReader nicht messen konnte.
     if (w <= 0 || h <= 0 || (m_imgW == w && m_imgH == h))
         return;
     if (m_imgW > 0 && m_imgH > 0)
@@ -400,9 +375,6 @@ void ImageEditController::setImageSize(int w, int h) {
     emit imageSizeChanged();
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-//  Vorlagen (Stil-Erben)
-// ─────────────────────────────────────────────────────────────────────────────
 ImageAnnotation ImageEditController::seededText() const {
     ImageAnnotation a = m_textTpl;                  // Schrift/Farben/Deckkraft/Ausrichtung
     a.kind = ImageAnnKind::Text;
@@ -446,9 +418,6 @@ void ImageEditController::mirrorToTemplate(ImageAnnField f, const QVariant& v, b
     emit defaultRevChanged();
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-//  Annotationen erzeugen / entfernen
-// ─────────────────────────────────────────────────────────────────────────────
 int ImageEditController::addText(qreal xPx, qreal yPx) {
     if (m_docPath.isEmpty())
         return -1;
@@ -457,7 +426,6 @@ int ImageEditController::addText(qreal xPx, qreal yPx) {
 
     ImageAnnotation a = seededText();
     a.id = m_nextId++;
-    // Standardgröße: ~28 % Bildbreite, zwei Zeilenhöhen; in das Bild geklemmt.
     const qreal w = qMin(qMax(140.0, imgW * 0.28), qMax(140.0, imgW - 8.0));
     const qreal h = qMax(kMinAnnPx, a.fontSizePx * 2.0 + 2.0 * kBoxPaddingPx);
     const qreal x = qMax(0.0, qMin(xPx, qMax(0.0, imgW - w)));
@@ -491,7 +459,6 @@ int ImageEditController::beginDraw(int kind, qreal xPx, qreal yPx) {
         a.rect = QRectF(xPx, yPx, 0.0, 0.0);
         break;
     }
-    // LIVE einfügen (Vorschau) - KEIN Kommando; das kommt erst bei endDraw().
     m_model.insertAnnAt(m_model.count(), a);
     m_drawId = a.id;
     return a.id;
@@ -534,26 +501,18 @@ void ImageEditController::endDraw(int id) {
     if (!a) return;
     ImageAnnotation copy = *a;
 
-    // Entartete Zeichnungen verwerfen (reiner Klick ohne Zug).
     const bool tooSmall =
         (copy.isStroke() && copy.points.size() < 2)
         || (!copy.isStroke() && (copy.rect.width() < 3.0 && copy.rect.height() < 3.0));
-    // Die Live-Instanz wieder entfernen (ohne Kommando) …
     m_model.removeById(id);
     if (tooSmall)
         return;
-    // … und als EIN Add-Kommando neu einsetzen (Undo entfernt die Zeichnung).
     pushAdd(copy);
-    // Vorlage der Zeichen-Defaults aktualisieren (Stil-Erben).
     m_defStroke = copy.stroke; m_defLineWidth = copy.lineWidth; m_defFill = copy.fill;
     ++m_defaultRev; emit defaultRevChanged();
     setSelectedId(copy.id);
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-//  Nachverfolgte Änderungen - Semantik wie im PDF-Editor (dort ausführlich
-//  begründet, s. Structure.md ▸ ## PdfEdit).
-// ─────────────────────────────────────────────────────────────────────────────
 void ImageEditController::pushAdd(ImageAnnotation& a) {
     if (m_recording)
         a.track = ImageTrackState::Added;
@@ -672,9 +631,6 @@ void ImageEditController::removeAnn(int id) {
     pushCommand(new ImageEditRemoveCommand(&m_model, copy, row));
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-//  Copy / Paste (inkl. Text)
-// ─────────────────────────────────────────────────────────────────────────────
 void ImageEditController::copySelected() {
     const ImageAnnotation* a = m_model.annById(m_selectedId);
     if (!a)
@@ -691,10 +647,8 @@ void ImageEditController::paste() {
     a.id = m_nextId++;
     const qreal imgW = m_imgW > 0 ? m_imgW : (a.rect.right() + 200.0);
     const qreal imgH = m_imgH > 0 ? m_imgH : (a.rect.bottom() + 200.0);
-    // Leicht versetzt, damit die Kopie sichtbar neben dem Original liegt.
     qreal dx = qMax<qreal>(16.0, imgW * 0.03);
     qreal dy = qMax<qreal>(16.0, imgH * 0.03);
-    // Versatz klemmen, damit die Kopie im Bild bleibt.
     if (a.rect.right()  + dx > imgW) dx = qMax<qreal>(0.0, imgW - a.rect.right());
     if (a.rect.bottom() + dy > imgH) dy = qMax<qreal>(0.0, imgH - a.rect.bottom());
     a.rect.translate(dx, dy);
@@ -706,9 +660,6 @@ void ImageEditController::paste() {
     setSelectedId(a.id);
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-//  Geometrie-Session (Verschieben/Skalieren; Striche mit Punkt-Transformation)
-// ─────────────────────────────────────────────────────────────────────────────
 void ImageEditController::beginGeometryEdit(int id) {
     finishOpenSessions();
     const ImageAnnotation* a = m_model.annById(id);
@@ -765,9 +716,6 @@ void ImageEditController::finishDrawSession() {
         endDraw(m_drawId);
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-//  Text-Session
-// ─────────────────────────────────────────────────────────────────────────────
 void ImageEditController::beginTextEdit(int id) {
     finishOpenSessions();
     const ImageAnnotation* a = m_model.annById(id);
@@ -800,13 +748,8 @@ void ImageEditController::finishTextSession() {
         pushCommand(new ImageEditTextCommand(&m_model, id, m_textOld, a->text));
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-//  Stil/Format
-// ─────────────────────────────────────────────────────────────────────────────
 void ImageEditController::setAnnField(int id, ImageAnnField f, const QVariant& v) {
     if (id < 0) {
-        // Nur die Vorlage/Default für neue Annotationen setzen (kein Kommando).
-        // Für Zeichen-Felder -> Zeichen-Default, sonst Text-Vorlage.
         const bool draw = (f == ImageAnnField::Stroke || f == ImageAnnField::LineWidth
                            || f == ImageAnnField::Fill);
         mirrorToTemplate(f, v, !draw);
@@ -831,7 +774,6 @@ void ImageEditController::setAnnField(int id, ImageAnnField f, const QVariant& v
     case ImageAnnField::VAlign:    old = a->vAlign;     break;
     default: return;
     }
-    // Vorlage nachziehen (Stil-Erben), unabhängig davon, ob sich der Wert ändert.
     mirrorToTemplate(f, v, a->kind == ImageAnnKind::Text);
     if (old == v)
         return;
@@ -869,7 +811,6 @@ void ImageEditController::setAnnVAlign(int id, int vAlign) {
     setAnnField(id, ImageAnnField::VAlign, qBound(0, vAlign, 1));
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
 QVariantMap ImageEditController::annInfo(int id) const {
     QVariantMap m;
     const ImageAnnotation* a = m_model.annById(id);
@@ -877,7 +818,6 @@ QVariantMap ImageEditController::annInfo(int id) const {
     if (!a)
         return m;
     m.insert(QStringLiteral("kind"),           static_cast<int>(a->kind));
-    //  Nachverfolgung: 0 keine, 1 neu, 2 gelöscht (Kontextmenü/Anzeige).
     m.insert(QStringLiteral("track"),          static_cast<int>(a->track));
     m.insert(QStringLiteral("isStroke"),       a->isStroke());
     m.insert(QStringLiteral("isText"),         a->kind == ImageAnnKind::Text);
@@ -924,9 +864,6 @@ QVariantMap ImageEditController::defaultInfo() const {
     return m;
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-//  Undo/Redo
-// ─────────────────────────────────────────────────────────────────────────────
 void ImageEditController::pushCommand(QUndoCommand* cmd) {
     m_stack.push(cmd);                              // führt redo() sofort aus
 }
@@ -943,9 +880,6 @@ void ImageEditController::redo() {
     m_stack.redo();
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-//  Sidecar-Persistenz
-// ─────────────────────────────────────────────────────────────────────────────
 QString ImageEditController::sidecarPath(const QString& imgPath) {
     return imgPath + QStringLiteral(".mgedit.json");
 }
@@ -1024,9 +958,6 @@ bool ImageEditController::loadOverlay(const QString& imgPath) {
     return true;
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-//  Export
-// ─────────────────────────────────────────────────────────────────────────────
 QString ImageEditController::uniqueCopyPath(const QString& imgPath, const QString& ext) {
     const QFileInfo fi(imgPath);
     const QString dir  = fi.absolutePath();
@@ -1044,7 +975,6 @@ QString ImageEditController::uniqueCopyPath(const QString& imgPath, const QStrin
 QString ImageEditController::exportTargetPath() const {
     if (m_docPath.isEmpty())
         return {};
-    // Quellformat spiegeln: JPG->JPG, PNG->PNG, sonst PNG.
     const QString srcExt = QFileInfo(m_docPath).suffix().toLower();
     QString outExt = (srcExt == QLatin1String("jpg") || srcExt == QLatin1String("jpeg")
                       || srcExt == QLatin1String("png")) ? srcExt : QStringLiteral("png");
@@ -1061,7 +991,6 @@ void ImageEditController::exportImage() {
     if (target.isEmpty())
         return;
 
-    // Format-Kennung + Qualität aus der Zielendung.
     const QString outExt = QFileInfo(target).suffix().toLower();
     QByteArray fmt;
     int quality = -1;
@@ -1089,9 +1018,6 @@ void ImageEditController::exportTaskFinished(bool ok, const QString& target,
     emit exportFinished(ok, target, error);
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-//  Schriften (feste Editor-Palette wie PdfEditController)
-// ─────────────────────────────────────────────────────────────────────────────
 QStringList ImageEditController::standardFonts() const {
     return { QStringLiteral("Times New Roman"),
              QStringLiteral("Arial"),

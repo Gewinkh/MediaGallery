@@ -4,27 +4,13 @@ import QtQuick.Controls
 import MediaGallery 1.0
 import "../common"
 
-// ─────────────────────────────────────────────────────────────────────────────
-//  ImageSurface.qml - Bild-Anzeige mit PDF-artigem Zoom/Pan UND dezentralem
-//  Bild-Editor (nicht-destruktive Annotationen). Ersetzt die frühere simple
-//  img.scale-Komponente im FullscreenViewer.
-//
-//  DEZENTRAL: jede Kachel (Split-View) hat ihre EIGENE ImageEditController-
-//  Instanz (via qmlRegisterType) -> unabhängige Auswahl/Undo/Export je Bild.
-//
-//  ANSICHT: Ein Flickable trägt das Bild in Anzeige-Pixeln (natürliche Größe ×
-//  dispScale). Pan = Ziehen (Ansichtsmodus oder Auswahl-Werkzeug); Zoom =
-//  Mausrad (mittig verankert, wie PdfSurface). „An Fenster anpassen" / „100 %".
-//
-//  EDIT: Werkzeuge (Auswahl/Text/Stift/Pfeil/Rechteck/Ellipse) im andockbaren
-//  Panel; die schwebende Toolbar erscheint über der Auswahl. Sidecar/Export
-//  übernimmt der Controller (WYSIWYG, Quellformat).
-// ─────────────────────────────────────────────────────────────────────────────
+// Bild-Anzeige mit Zoom/Pan und dezentralem Editor: jede Kachel hat ihre EIGENE ImageEditController-Instanz,
+// also unabhängige Auswahl, Undo und Export je Bild. Ein Flickable trägt das Bild in Anzeige-Pixeln, Zoom
+// ist mittig verankert wie in PdfSurface. Sidecar und Export übernimmt der Controller.
 Item {
     id: root
     objectName: "imageSurface"        // Prüfstand: MG_BENCH_INVOKE/MG_BENCH_WHEEL
 
-    // ── Vom FullscreenViewer gesetzt ──────────────────────────────────────────
     property string source: ""
     property real   topInset: 0
     property real   bottomInset: 0
@@ -33,26 +19,20 @@ Item {
     //  = immer true (Vorgabe).
     property bool   paneActive: true
 
-    // Dezentraler Editor-Controller DIESER Kachel.
     property ImageEditController editCtl: ImageEditController {}
 
-    // ── Ansichtszustand ───────────────────────────────────────────────────────
     property real dispScale: 1.0                 // angezeigte Pixel je Bild-Pixel
     property bool _fitMode: true                 // an Fenster angepasst?
     readonly property real minScale: 0.05
     readonly property real maxScale: 16.0
 
-    // ── Editor-Zustand (von Delegates/Toolbar/Panel gelesen) ──────────────────
     property bool notesVisible: true
     property int  editCommitRev: 0               // Bump -> offene Textbearbeitungen schließen
     property int  _autoEditId: -1                // frisch erzeugte Text-Notiz -> sofort editieren
     property bool editPanelVisible: false
 
-    //  „Ein Bild ist DA" - nicht „gerade wird nicht geladen". Beim Wechsel der
-    //  Dekodier-Stufe bleibt das alte Bild dank `retainWhileLoading` sichtbar;
-    //  ginge `docReady` dabei auf false, verschwände die Werkzeugleiste und der
-    //  Inhalt spränge um 40 px, obwohl sich auf der Fläche nichts tut. Beim
-    //  Wechsel der Datei wird es zurückgesetzt (s. onSourceChanged).
+    // "Ein Bild ist DA" - nicht "gerade wird nicht geladen": beim Stufenwechsel bleibt das alte Bild dank
+    // `retainWhileLoading` sichtbar; ginge `docReady` auf false, verschwände die Leiste und der Inhalt spränge 40 px.
     readonly property bool docReady: img.status === Image.Ready || _everReady
     property bool _everReady: false
     readonly property int  natW: editCtl.imageWidth  > 0 ? editCtl.imageWidth  : img.implicitWidth
@@ -61,26 +41,11 @@ Item {
     readonly property real dispH: Math.max(1, natH * dispScale)
     readonly property real fitScale: (natW > 0 && natH > 0 && view.width > 0 && view.height > 0)
                                      ? Math.min(view.width / natW, view.height / natH) : 1.0
-    //  ── Wie viele Pixel muss das Bild WIRKLICH dekodieren? ───────────────────
-    //  Ein 27-MP-Foto in voller Auflösung sind 108 MB im Speicher (dazu dieselbe
-    //  Textur) - eingepasst in ein 1400 px breites Fenster zeigt der Bildschirm
-    //  davon nicht einmal ein Zwanzigstel. Dekodiert wird deshalb nur, was die
-    //  Ansicht gerade braucht, und zwar in STUFEN (Verdopplungen) wie bei den
-    //  Miniaturen: Zoomen innerhalb einer Stufe dekodiert nicht neu, erst der
-    //  Stufenwechsel tut es - und bei 100 % ist es wieder das volle Bild, also
-    //  unverändert scharf. 0 = Größe unbekannt -> nativ dekodieren (Rückfall,
-    //  aus dem `natW` überhaupt erst entsteht).
+    // Ein 27-MP-Foto sind 108 MB im Speicher, davon zeigt ein 1400 px breites Fenster nicht ein Zwanzigstel.
+    // Dekodiert wird in STUFEN: Zoomen innerhalb einer Stufe dekodiert nicht neu, bei 100 % ist es das volle Bild.
     readonly property int decodeWant: {
-        //  NUR wenn der Controller die Datei selbst vermessen hat. Der Rückfall
-        //  `natW = img.implicitWidth` dürfte hier nicht einfliessen: dann hinge
-        //  die Stufe an der zuletzt dekodierten Grösse und schriebe sich selbst
-        //  fest (die Notizen lägen danach in der falschen Skala).
         if (editCtl.imageWidth <= 0 || editCtl.imageHeight <= 0) return 0
         if (natW <= 0 || natH <= 0) return 0
-        //  Solange die Fläche ihre Größe noch nicht kennt, steht `dispScale`
-        //  auf 1.0 - dekodiert würde also einmal das VOLLE Bild, nur um beim
-        //  Einpassen sofort wieder verworfen zu werden (gemessen: 108 MB
-        //  Spitze für nichts). Bis dahin die kleinste Stufe.
         if (view.width <= 0 || view.height <= 0) return Math.min(1024, Math.max(natW, natH))
         const nat  = Math.max(natW, natH)
         const need = Math.max(dispW, dispH)
@@ -90,25 +55,12 @@ Item {
         return Math.min(stage, nat)
     }
 
-    //  Was WIRKLICH dekodiert wird. Zwei Unterschiede zur reinen Rechnung
-    //  `decodeWant`, beide gegen den Befund „beim Ziehen am Fensterrand ist das
-    //  Bild kurz weg" (gemessen: 2 Stufenwechsel und 24 % der Messpunkte ohne
-    //  fertiges Bild in EINEM Zug):
-    //   · Sie WÄCHST nur, solange dieselbe Datei offen ist. Ein kleineres
-    //     Fenster dekodiert damit nie neu - die vorhandenen Pixel reichen ja.
-    //   · Sie folgt der Rechnung erst nach RUHE. Ein Zug über zehn Größen löst
-    //     so eine Dekodierung aus, nicht zehn.
-    //  Beim Dateiwechsel wird sie zurückgesetzt (s. onSourceChanged), sonst
-    //  schleppte ein kleines Bild die Stufe des vorherigen großen mit.
-    //  Nebenwirkung, die dazugehört: `decodeDim` wird ZUGEWIESEN statt gebunden
-    //  - damit ist der Ring `decodeDim -> sourceSize -> implicitWidth -> natW ->
-    //  dispW -> decodeDim` aufgetrennt, den Qt bisher als Bindungsschleife meldete.
+    // Was WIRKLICH dekodiert wird - gegen "beim Ziehen am Fensterrand ist das Bild kurz weg" (gemessen: 2
+    // Stufenwechsel und 24 % der Messpunkte ohne fertiges Bild in EINEM Zug). Wächst nur, folgt der Rechnung erst
+    // nach Ruhe. ZUGEWIESEN statt gebunden, sonst meldet Qt den Ring decodeDim -> sourceSize -> natW als Schleife.
     property int decodeDim: 0
 
     onDecodeWantChanged: {
-        //  Erstes Mal (und nach jedem Dateiwechsel) SOFORT - sonst dekodierte
-        //  das `Image` einmal die volle Auflösung, nur um sie beim Einpassen
-        //  gleich wieder zu verwerfen.
         if (root.decodeDim <= 0) { root.decodeDim = root.decodeWant; return }
         if (root.decodeWant > root.decodeDim) decodeGrow.restart()
     }
@@ -127,7 +79,6 @@ Item {
         img.source = ""
     }
 
-    // ── Zoom / Fit ────────────────────────────────────────────────────────────
     function _clampScale(s) { return Math.max(root.minScale, Math.min(s, root.maxScale)) }
     function setDispScale(s) {
         const ns = _clampScale(s)
@@ -145,27 +96,21 @@ Item {
     function fitToWindow() { root._fitMode = true; root.dispScale = root.fitScale; view.contentX = 0; view.contentY = 0 }
     function actualSize()  { setDispScale(1.0) }
 
-    // Fenster-Resize: im Fit-Modus neu einpassen; sonst dispScale HALTEN (kein
-    // Springen - der Flickable klemmt die Position selbst neu). Behebt das
-    // Zurückspringen beim Größenändern/Hinzufügen einer Datei in der Split-Ansicht.
     onFitScaleChanged: if (root._fitMode) root.dispScale = root.fitScale
 
     onSourceChanged: {
         root.editCtl.setDocument(source)
-        //  Stufe für die NEUE Datei neu bestimmen - „nur wachsen" gilt je Datei.
         decodeGrow.stop()
         root._everReady = false
         root.decodeDim = root.decodeWant
         img.source = source ? App.fileUrl(source) : ""
         root._fitMode = true
         root.editPanelVisible = false
-        // dispScale nach dem Laden einpassen (natW/natH stehen dann sicher).
         Qt.callLater(root.fitToWindow)
     }
 
     Rectangle { anchors.fill: parent; color: App.themeBackground }
 
-    // ══ Ansichtsfläche (unter der Toolbar, über der unteren Navigation) ═══════
     Flickable {
         id: view
         anchors { left: parent.left; right: parent.right
@@ -200,8 +145,6 @@ Item {
                 smooth: true
                 mipmap: true
                 autoTransform: false               // gespeicherte Orientierung = Export = WYSIWYG
-                //  Nur EINE Kante vorgeben - die andere rechnet Qt seitenrichtig
-                //  dazu. Siehe root.decodeDim.
                 sourceSize: root.decodeDim > 0
                             ? (root.natW >= root.natH ? Qt.size(root.decodeDim, 0)
                                                       : Qt.size(0, root.decodeDim))
@@ -210,9 +153,6 @@ Item {
                 //  fertig ist - sonst ist die Fläche währenddessen leer, und
                 //  genau das hat der Nutzer als „Bild ist kurz weg" gesehen.
                 retainWhileLoading: true
-                // Fallback, falls QImageReader das Format nicht messen konnte.
-                // NUR dann: sonst meldete die Stufe (z. B. 2048) sich als native
-                // Bildgröße, und alle Notizen lägen in der falschen Skala.
                 onStatusChanged: {
                     if (status !== Image.Ready) return
                     root._everReady = true
@@ -221,14 +161,11 @@ Item {
                 }
             }
 
-            // Leeren Bereich antippen hebt die Auswahl auf (nur Auswahl-Werkzeug;
-            // Ziehen bleibt dem Flickable = Schwenken).
             TapHandler {
                 enabled: root.editCtl.editMode && root.editCtl.tool === 0
                 onTapped: root.editCtl.selectedId = -1
             }
 
-            // ── Annotationen ──────────────────────────────────────────────────
             Repeater {
                 model: root.editCtl.annModel
                 delegate: ImageEditBox {
@@ -239,7 +176,6 @@ Item {
                 }
             }
 
-            // ── Zeichnen / Text erstellen (Edit-Modus, Werkzeug ≠ Auswahl) ────
             MouseArea {
                 id: drawArea
                 anchors.fill: parent
@@ -270,7 +206,6 @@ Item {
                 }
             }
 
-            // ── Schwebende Format-Toolbar über der Auswahl ────────────────────
             ImageEditToolbar {
                 imgScale: root.dispScale
                 contentW: imgWrap.width
@@ -279,7 +214,6 @@ Item {
             }
         }
 
-        // Mausrad zoomt (Bild hat keinen Scrollinhalt) - mittig verankert.
         MouseArea {
             anchors.fill: parent
             acceptedButtons: Qt.NoButton
@@ -291,7 +225,6 @@ Item {
         }
     }
 
-    // ── Ladefehler-Hinweis ────────────────────────────────────────────────────
     Text {
         anchors.centerIn: parent
         visible: img.status === Image.Error
@@ -299,12 +232,9 @@ Item {
         color: "#ff8a80"; font.pixelSize: 14; z: 5
     }
 
-    // ══ Toolbar (unter der globalen Leiste) ═══════════════════════════════════
     Rectangle {
         id: toolbar
         anchors { left: parent.left; right: parent.right; top: parent.top; topMargin: root.topInset }
-        //  42 px wie im DOCX-Editor - die drei Editor-Leisten sind
-        //  bewusst gleich hoch (Nutzerwunsch: überall konsistent).
         height: 42
         color: App.themeToolbarBg
         visible: root.docReady
@@ -336,11 +266,8 @@ Item {
             ToolTip.text: tb.tip; ToolTip.visible: tbHover.hovered && tb.tip.length > 0
         }
 
-        //  LINKS die Werkzeuge (Nutzerentscheidung 2026-08-16): das Bearbeiten
-        //  liegt damit auf derselben Seite wie im PDF- und DOCX-Editor; die
-        //  Ansicht (Zoom) sitzt rechts. Die Transliteration bleibt bewusst
-        //  rechts - sie gehört zur Eingabe, nicht zum Werkzeugkasten.
-        //  Blätterbar wie die übrigen Leisten (Mausrad, mit und ohne Strg).
+        // LINKS die Werkzeuge wie im PDF- und DOCX-Editor, rechts die Ansicht (Zoom). Die Transliteration bleibt
+        // rechts - sie gehört zur Eingabe, nicht zum Werkzeugkasten.
         ScrollableBar {
             anchors { left: parent.left; leftMargin: 10; right: imgToolsRight.left
                       rightMargin: 8; top: parent.top; bottom: parent.bottom }
@@ -356,7 +283,6 @@ Item {
                    disabledLook: !root.editCtl.hasClipboard; onActivated: root.editCtl.paste() }
             Rectangle { visible: root.editCtl.editMode; width: 1; height: 18; color: App.themeBorder
                         anchors.verticalCenter: parent.verticalCenter }
-            // Edit-Modus umschalten
             TBtn { iconName: "pen"; checked: root.editCtl.editMode
                    tip: App.uiText(App.language, "ImageEditToggle")
                    onActivated: {
@@ -365,7 +291,6 @@ Item {
                    } }
         }
 
-        //  Gedeckelt und blätterbar wie die linke Gruppe (s. PdfSurface).
         ScrollableBar {
             id: imgToolsRight
             anchors { right: parent.right; rightMargin: 10
@@ -382,12 +307,11 @@ Item {
                    text: Math.round(root.dispScale * 100) + "%"; color: App.themeTextMuted; font.pixelSize: 11 }
             Rectangle { visible: root.editCtl.editMode; width: 1; height: 18; color: App.themeBorder
                         anchors.verticalCenter: parent.verticalCenter }
-            //  Transliteration bleibt rechts (Nutzerwunsch).
             TranslitButton { visible: root.editCtl.editMode; anchors.verticalCenter: parent.verticalCenter }
         }
     }
 
-    // ══ Andockbares Panel (rechts ODER oben; teilt PdfEdit.panelOnTop) ════════
+    // Andockbares Panel (rechts ODER oben; teilt PdfEdit.panelOnTop)
     //  Rechte Seitenleiste
     ImageEditPanel {
         id: sidePanel
@@ -400,7 +324,6 @@ Item {
         z: 11
         onCloseRequested: root.editPanelVisible = false
     }
-    //  Obere Leiste (Ribbon)
     ImageEditPanel {
         id: topPanel
         visible: root.editCtl.editMode && root.editPanelVisible && PdfEdit.panelOnTop
@@ -411,7 +334,6 @@ Item {
         z: 11
         onCloseRequested: root.editPanelVisible = false
     }
-    // Edit-Modus/Auswahl öffnet das Panel (wie PDF-Editor).
     Connections {
         target: root.editCtl
         function onEditModeChanged() {
@@ -430,7 +352,6 @@ Item {
         }
     }
 
-    // ══ Export-Toast ══════════════════════════════════════════════════════════
     Rectangle {
         id: exportToast
         function show(ok, targetPath, errorText) {
@@ -458,28 +379,23 @@ Item {
         MouseArea { anchors.fill: parent; onClicked: exportToast.opacity = 0.0 }
     }
 
-    // Busy-Anzeige während des Exports.
     Rectangle {
         anchors.fill: parent; color: Qt.rgba(0, 0, 0, 0.25); visible: root.editCtl.busy; z: 19
         Text { anchors.centerIn: parent; text: App.uiText(App.language, "PdfEditExportingToast")
                color: "#ffffff"; font.pixelSize: 14 }
     }
 
-    // ══ Tastenkürzel ══════════════════════════════════════════════════════════
-    //  Notizen-Toggle (Alt+Q, beide Modi).
     Shortcut {
         sequence: "Alt+Q"
         enabled: root.paneActive && root.docReady
         onActivated: root.notesVisible = !root.notesVisible
     }
-    //  Entf löscht die ausgewählte Annotation (nur Edit-Modus, nicht beim Tippen).
     Shortcut {
         sequence: "Delete"
         enabled: root.paneActive && root.docReady && root.editCtl.editMode
                  && root.editCtl.selectedId >= 0 && !root.editCtl.textEditing
         onActivated: { root.commitEditing(); root.editCtl.removeAnn(root.editCtl.selectedId) }
     }
-    //  Kopieren/Einfügen der Annotation (Edit-Modus).
     Shortcut {
         sequence: "Ctrl+C"
         enabled: root.paneActive && root.docReady && root.editCtl.editMode

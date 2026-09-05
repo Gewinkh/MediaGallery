@@ -4,54 +4,19 @@ import QtQuick.Controls
 import MediaGallery 1.0
 import "../common"
 
-// ─────────────────────────────────────────────────────────────────────────────
-//  PdfEditPanel.qml - Werkzeuge + Eigenschaften des PDF-Editors in ZWEI
-//  Layouts:
-//
-//   • horizontal:false (Standard) -> RECHTE SEITENLEISTE (Muster wie die
-//     Audio-Leiste: Sidebar-Fläche, linke Trennlinie, Kopf mit ✕, Flickable).
-//   • horizontal:true -> OBERE LEISTE („wie Word"): kompaktes Ribbon mit
-//     denselben Reglern in Mini-Gruppen (Label über Control), horizontal
-//     scrollbar bei schmalen Fenstern, ✕ rechts.
-//
-//  WERKZEUG-PALETTE (Muster Bild-Editor): Auswählen · Textnotiz · Stift ·
-//  Pfeil · Rechteck · Ellipse. Die Eigenschafts-Regler sind kontextsensitiv:
-//   • Auswahl vorhanden -> Regler der AUSGEWÄHLTEN Annotation (Ziel = Auswahl)
-//   • keine Auswahl     -> Vorlagen-Defaults des AKTIVEN Werkzeugs
-//                         (Ziel = -1 -> Controller setzt nur die Vorlage)
-//
-//  Die Position wählt der Nutzer in den Einstellungen (panel.ctl.panelOnTop);
-//  PdfSurface instanziiert BEIDE Varianten und blendet genau eine ein. Das
-//  Panel öffnet AUTOMATISCH beim Erstellen/Auswählen einer Annotation (kein
-//  Toolbar-Button mehr) und schließt über sein ✕.
-//
-//  BINDUNGS-STRATEGIE: ComboBox/SpinBox/Slider SCHREIBEN ihre Werte bei
-//  Nutzereingaben selbst -> externe Bindungen würden dauerhaft reißen. Deshalb
-//  werden sie IMPERATIV über refreshFromSelection() nachgeführt (getriggert
-//  durch selectionRev/defaultRev/toolChanged; beide Layout-Varianten werden
-//  gemeinsam synchronisiert). Der ColorPicker schreibt selectedColor beim OK
-//  ebenfalls selbst; onColorPicked stellt die Bindung danach explizit über
-//  Qt.binding() wieder her.
-//
-//  DECKKRAFT: Der Slider steuert das Alpha des Notiz-Papiers (Post-it-
-//  Hintergrund). 0 = kein Papier (reiner Text, wie „Keine"); Ziehen erzeugt
-//  dank mergeWith der Feld-Kommandos genau EINEN Undo-Schritt.
-// ─────────────────────────────────────────────────────────────────────────────
+// Werkzeuge und Eigenschaften des PDF-Editors in zwei Layouts (rechte Leiste oder oberes Ribbon); PdfSurface
+// instanziiert beide und blendet eine ein. Mit Auswahl gelten die Regler der Annotation, ohne Auswahl die
+// Vorlage des Werkzeugs. Die Controls schreiben selbst und rissen Bindungen - daher `refreshFromSelection()`.
 Rectangle {
     id: panel
 
     property var  surface: null          // PdfSurface-Root (Commit + Export-Start)
 
-    //  „Als PDF exportieren (Zieldatei)" - der Name kommt erst beim Zeigen dazu,
-    //  und wenn es (noch) keinen gibt, entfallen die Klammern ganz statt leer
-    //  dazustehen.
     function _exportTip() {
         const tip = App.uiText(App.language, "PdfEditExportTip")
         const name = panel.ctl ? String(panel.ctl.exportTargetPath()).split("/").pop() : ""
         return name.length > 0 ? tip + " (" + name + ")" : tip
     }
-    // Dezentraler PDF-Editor-Controller DIESER Kachel (von PdfSurface via
-    // surface.editCtl gesetzt) - ersetzt den früheren globalen PdfEdit-Singleton.
     readonly property PdfEditController ctl: surface ? surface.editCtl : null
     property bool horizontal: false      // false = Seitenleiste, true = Ribbon
 
@@ -62,11 +27,8 @@ Rectangle {
     readonly property bool hasSel: selInfo.exists === true
     readonly property var  info: hasSel ? selInfo
                                         : (panel.ctl.defaultRev, panel.ctl.defaultInfo())
-    // Ziel der Stil-Setter: Auswahl - oder -1 (nur Vorlage, kein Kommando).
     readonly property int  targetId: hasSel ? panel.ctl.selectedId : -1
 
-    // Kontextsensitive Regler-Sichtbarkeit: Art der Auswahl - oder ohne
-    // Auswahl das aktive Werkzeug (Text-Regler beim Text-Werkzeug usw.).
     readonly property bool selIsText:    hasSel && selInfo.isText === true
     readonly property bool selIsReplace: hasSel && selInfo.isReplace === true
     readonly property bool selIsStroke:  hasSel && selInfo.isStroke === true
@@ -77,29 +39,23 @@ Rectangle {
                                         || (!hasSel && panel.ctl.tool >= 2 && panel.ctl.tool <= 5)
     readonly property bool showFill:    selIsShape
                                         || (!hasSel && (panel.ctl.tool === 4 || panel.ctl.tool === 5))
-    // Notiz-Papier (Farbe/„Keine"/Deckkraft) NUR für klassische Post-its.
     readonly property bool showPaper:   selIsText || (!hasSel && panel.ctl.tool === 1)
     // Deckfläche („Text ersetzen"): eigene Farbwahl OHNE „Keine"/Deckkraft -
     // die Cover-Farbe ist frei, bleibt aber immer deckend (Controller erzwingt).
     readonly property bool showCover:   selIsReplace || (!hasSel && panel.ctl.tool === 6)
 
-    // Standard-Papierfarbe, wenn der Deckkraft-Slider aus „Keine" heraus
-    // hochgezogen wird (klassisches Post-it-Gelb, s. PdfEditTypes).
     readonly property color defaultPaper: "#FEF39B"
 
     color: App.themeSidebarBg
-    // Trennlinie: links (Seitenleiste) bzw. unten (Ribbon).
     Rectangle { anchors.left: parent.left; width: 1; height: parent.height
                 color: App.themeBorder; visible: !panel.horizontal }
     Rectangle { anchors.bottom: parent.bottom; width: parent.width; height: 1
                 color: App.themeBorder; visible: panel.horizontal }
 
-    // Klicks/Wheel auf leeren Panel-Flächen abfangen (kein Durchgriff auf die
-    // Seiten-Interaktion darunter) - gleiches Muster wie audioPanel.
     MouseArea { anchors.fill: parent; onWheel: (wheel) => { wheel.accepted = true } }
 
-    // ── Wiederverwendete Mini-Buttons (Inline-Components: nur auf Root-Ebene
-    //    einer QML-Datei zulässig; sichtbar in der gesamten Datei) ─────────────
+    // Wiederverwendete Mini-Buttons (Inline-Components: nur auf Root-Ebene
+    //    einer QML-Datei zulässig; sichtbar in der gesamten Datei)
     component StyleBtn: Rectangle {
         id: sb
         property string glyph: ""
@@ -147,8 +103,6 @@ Rectangle {
         HoverHandler { id: abHover }
         TapHandler { onTapped: panel.ctl.setBoxAlignment(panel.targetId, ab.alignValue) }
     }
-    //  Vertikale Ausrichtung (0 = oben wie Word-Textfeld, 1 = mittig) -
-    //  gleiches Muster wie AlignBtn, schreibt über setBoxVAlign.
     component VAlignBtn: Rectangle {
         id: vb
         property string glyph: ""
@@ -170,16 +124,11 @@ Rectangle {
         HoverHandler { id: vbHover }
         TapHandler { onTapped: panel.ctl.setBoxVAlign(panel.targetId, vb.vAlignValue) }
     }
-    //  Werkzeug-Button der Palette (Muster Bild-Editor): checked = aktives
-    //  Werkzeug; Klick wechselt das Werkzeug (Controller committet Sessions).
     component ToolBtn: Rectangle {
         id: tb
         property string glyph: ""
-        //  Symbol statt Glyphe (Regel 28) - gezeichnet, s. DrawnIcon.
         property string iconName: ""
         property int toolValue: 0
-        //  Nur für die Markier-Knöpfe: zusätzlich der Stil (0/1/2). −1 = kein
-        //  Stil, dann entscheidet allein das Werkzeug über „aktiv".
         property int styleValue: -1
         property string tip: ""
         //  Knöpfe, die KEIN Werkzeug setzen (toolValue < 0), sondern nur etwas
@@ -209,15 +158,9 @@ Rectangle {
                 if (tb.toolValue >= 0)
                     panel.ctl.tool = tb.toolValue
                 tb.clicked()
-                //  ⇄ „Text ersetzen": eine bestehende Text-Markierung wird
-                //  direkt zur Ersetzen-Box. Bewusst HIER (nicht über
-                //  onToolChanged): war ⇄ bereits aktiv, feuert kein Signal -
-                //  der Klick wäre wirkungslos (Nutzerbefund 2026-07-17).
                 if (tb.toolValue === 6 && panel.surface
                         && panel.surface.replaceSelectionNow)
                     panel.surface.replaceSelectionNow()
-                //  ▮ „Schwärzen": genauso - eine bestehende Textauswahl wird
-                //  direkt zur Schwärzung, ohne Auswahl bleibt der Ziehweg.
                 if (tb.toolValue === 9 && panel.surface
                         && panel.surface.startRedact)
                     panel.surface.startRedact()
@@ -226,13 +169,12 @@ Rectangle {
         ToolTip.text: tb.tip
         ToolTip.visible: tbHover.hovered && tb.tip.length > 0
     }
-    //  Ribbon-Gruppe: Mini-Label über dem Control (nur horizontal genutzt).
     component RibbonLabel: Text {
         color: App.themeTextMuted
         font.pixelSize: 9
     }
 
-    // ── Imperative Synchronisation beider Layout-Varianten ────────────────────
+    // Imperative Synchronisation beider Layout-Varianten
     //  Läuft bei Auswahl-/Datenänderung, Vorlagen-Änderung UND Werkzeugwechsel
     //  - panel.info liefert dabei Auswahl ODER Vorlagen-Defaults.
     function refreshFromSelection() {
@@ -251,9 +193,6 @@ Rectangle {
         lwBox.value  = lw
         lwBoxH.value = lw
     }
-    //  Deckkraft anwenden: Basisfarbe ist das aktuelle Papier - oder das
-    //  Standard-Gelb, wenn gerade „Keine" aktiv ist (Slider reaktiviert so
-    //  den Zettel). Alpha 0 == transparent == „Keine".
     function applyOpacity(v) {
         const base = panel.info.hasHighlight ? panel.info.highlightColor
                                              : panel.defaultPaper
@@ -268,9 +207,6 @@ Rectangle {
     }
     Component.onCompleted: refreshFromSelection()
 
-    // ═════════════════════════════════════════════════════════════════════════
-    //  VARIANTE A - rechte Seitenleiste (vertikal)
-    // ═════════════════════════════════════════════════════════════════════════
     Item {
         anchors.fill: parent
         visible: !panel.horizontal
@@ -312,9 +248,6 @@ Rectangle {
                 width: parent.width
                 spacing: 10
 
-                // ═══ Sektion: Werkzeuge ═══════════════════════════════════════
-                //  Ohne Beschriftung - die Werkzeugreihe erklärt sich selbst
-                //  (Nutzerentscheidung, gilt für Bild- UND PDF-Editor).
                 Grid {
                     columns: 3
                     spacing: 4
@@ -324,28 +257,16 @@ Rectangle {
                     ToolBtn { iconName: "arrow"; toolValue: 3; tip: App.uiText(App.language, "ImageEditToolArrow") }
                     ToolBtn { iconName: "rect"; toolValue: 4; tip: App.uiText(App.language, "ImageEditToolRect") }
                     ToolBtn { iconName: "ellipse"; toolValue: 5; tip: App.uiText(App.language, "ImageEditToolEllipse") }
-                    // „Text ersetzen" (PDF-exklusiv): weiße Deckfläche + Textbox.
                     ToolBtn { iconName: "replace"; toolValue: 6; tip: App.uiText(App.language, "PdfEditToolReplace") }
-                    // „Text bearbeiten" (PDF-exklusiv): Caret DIREKT in der
-                    // eingebetteten Textebene - kein Overlay, die Seite bleibt
-                    // vektoriell.
                     ToolBtn { iconName: "caret"; toolValue: 7; tip: App.uiText(App.language, "PdfEditToolCaret") }
-                    // Textmarkierung (PDF-exklusiv): Ziehen über Text markiert,
-                    // unterstreicht oder streicht durch - je nach Stil-Knopf.
                     ToolBtn { iconName: "markup-highlight"; toolValue: 8; styleValue: 0
                               tip: App.uiText(App.language, "PdfMarkupHighlight") }
                     ToolBtn { iconName: "markup-underline"; toolValue: 8; styleValue: 1
                               tip: App.uiText(App.language, "PdfMarkupUnderline") }
                     ToolBtn { iconName: "markup-strike"; toolValue: 8; styleValue: 2
                               tip: App.uiText(App.language, "PdfMarkupStrike") }
-                    // „Schwärzen": deckt ab UND entfernt den Text beim Export
-                    // aus dem Content-Stream. Die Grenzen sagt der einmalige
-                    // Hinweis beim ersten Schwärzen (PdfSurface).
                     ToolBtn { iconName: "redact"; toolValue: 9
                               tip: App.uiText(App.language, "PdfEditToolRedact") }
-                    // Signatur/Stempel: erst die Bilder im ORDNER anbieten (der
-                    // häufige Fall, ganz ohne Dateidialog), „Durchsuchen…"
-                    // fällt auf den Dateidialog der Kachel zurück.
                     ToolBtn { iconName: "signature"; toolValue: -1
                               tip: App.uiText(App.language, "PdfEditToolStamp")
                               onClicked: {
@@ -365,7 +286,6 @@ Rectangle {
 
                 Rectangle { width: parent.width; height: 1; color: App.themeBorder }
 
-                // ═══ Sektion: Eigenschaften (Auswahl ODER Werkzeug-Vorlage) ═══
                 Text {
                     visible: !panel.hasSel && panel.ctl.tool === 0
                     width: parent.width
@@ -374,7 +294,6 @@ Rectangle {
                     wrapMode: Text.WordWrap
                 }
 
-                // Schriftart
                 Text { visible: panel.showText
                        text: App.uiText(App.language, "PdfEditFontLabel")
                        color: App.themeTextMuted; font.pixelSize: 11 }
@@ -393,8 +312,6 @@ Rectangle {
                     visible: panel.showText
                              && panel.ctl.resolvedFont(fontBox.currentText) !== fontBox.currentText
                     width: parent.width; spacing: 5
-                    //  Der Pfeil ist hier ein SYMBOL („wird gezeichnet als"),
-                    //  kein Fließtext - deshalb gezeichnet (Regel 28).
                     DrawnIcon { name: "arrow-right"; size: 11; color: App.themeTextMuted
                                 y: 2 }
                     Text {
@@ -405,7 +322,6 @@ Rectangle {
                     }
                 }
 
-                // Größe + Stil in einer Zeile
                 Row {
                     visible: panel.showText
                     width: parent.width
@@ -438,7 +354,6 @@ Rectangle {
                     }
                 }
 
-                // Ausrichtung (horizontal)
                 Text { visible: panel.showText
                        text: App.uiText(App.language, "PdfEditAlignLabel")
                        color: App.themeTextMuted; font.pixelSize: 11 }
@@ -450,7 +365,6 @@ Rectangle {
                     AlignBtn { iconName: "align-right"; alignValue: 2 }
                 }
 
-                // Vertikale Ausrichtung: oben (Word-Textfeld, Standard) / mittig
                 Text { visible: panel.showText
                        text: App.uiText(App.language, "PdfEditVAlignLabel")
                        color: App.themeTextMuted; font.pixelSize: 11 }
@@ -461,8 +375,6 @@ Rectangle {
                     VAlignBtn { iconName: "valign-middle"; vAlignValue: 1 }
                 }
 
-                // Farben (wiederverwendeter ColorPicker; Bindung nach Nutzer-
-                // Commit explizit wiederherstellen - s. Kopfkommentar).
                 Row {
                     visible: panel.showText
                     width: parent.width
@@ -484,7 +396,6 @@ Rectangle {
                     }
                     Column {
                         spacing: 4
-                        // Nur Post-its: die Deckfläche von „Text ersetzen" ist fix Weiß.
                         visible: panel.showPaper
                         Text { text: App.uiText(App.language, "PdfEditHighlightLabel")
                                color: App.themeTextMuted; font.pixelSize: 11 }
@@ -501,7 +412,6 @@ Rectangle {
                                                                      ? panel.info.highlightColor : panel.defaultPaper)
                                 }
                             }
-                            // „Keine": Papier entfernen (== Deckkraft 0).
                             Rectangle {
                                 width: noneLbl.implicitWidth + 16; height: 26; radius: 6
                                 anchors.verticalCenter: parent.verticalCenter
@@ -518,7 +428,6 @@ Rectangle {
                             }
                         }
                     }
-                    // Deckfläche („Text ersetzen") - nur Farbe, immer deckend.
                     Column {
                         spacing: 4
                         visible: panel.showCover
@@ -538,8 +447,6 @@ Rectangle {
                     }
                 }
 
-                // Deckkraft des Notiz-Papiers (Post-it-Transparenz) - nur
-                // Post-its; die Deckfläche von „Text ersetzen" ist fix Weiß.
                 Text { visible: panel.showPaper
                        text: App.uiText(App.language, "PdfEditOpacityLabel")
                        color: App.themeTextMuted; font.pixelSize: 11 }
@@ -551,7 +458,6 @@ Rectangle {
                     onMoved: panel.applyOpacity(value)
                 }
 
-                // ── Reflow: Verketten/Lösen (nur textführende Auswahl) ────────
                 Rectangle {
                     width: parent.width; height: 30; radius: 6
                     visible: panel.hasSel && (panel.selIsText || panel.selIsReplace)
@@ -575,9 +481,6 @@ Rectangle {
                     }
                 }
 
-                // ═══ Zeichnen: Linienfarbe / -breite / Füllung ════════════════
-                //  (Freihand/Pfeil: Farbe + Breite; Rechteck/Ellipse zusätzlich
-                //  Füllung. Ohne Auswahl -> Vorlage des aktiven Werkzeugs.)
                 Row {
                     visible: panel.showStroke
                     width: parent.width
@@ -631,7 +534,6 @@ Rectangle {
                                                                      ? panel.info.fillColor : "#4de62c2c")
                                 }
                             }
-                            // „Keine": Füllung entfernen (Alpha 0 -> nur Kontur).
                             Rectangle {
                                 width: noFillLbl.implicitWidth + 16; height: 26; radius: 6
                                 anchors.verticalCenter: parent.verticalCenter
@@ -650,8 +552,6 @@ Rectangle {
                     }
                 }
 
-                // Anker-Chip (Box wurde per Zeilenfang auf einer PDF-Textzeile
-                // erstellt).
                 Rectangle {
                     visible: (panel.selIsText || panel.selIsReplace) && panel.info.anchored === true
                     width: chipLbl.implicitWidth + 18; height: 22; radius: 11
@@ -662,8 +562,6 @@ Rectangle {
                            color: App.themeTextPrimary; font.pixelSize: 10 }
                 }
 
-                // Kopieren/Einfügen (kachel-lokale Zwischenablage; Strg+C/V
-                // funktionieren zusätzlich als Shortcuts der Surface).
                 Row {
                     width: parent.width
                     spacing: 8
@@ -708,7 +606,6 @@ Rectangle {
                     }
                 }
 
-                // Löschen (committet zuerst - die Box verschwindet mitsamt Session)
                 Rectangle {
                     visible: panel.hasSel
                     width: parent.width; height: 30; radius: 6
@@ -716,7 +613,6 @@ Rectangle {
                                             : Qt.rgba(0.88, 0.35, 0.35, 0.10)
                     border.color: "#c25a5a"; border.width: 1
                     Text { anchors.centerIn: parent
-                           //  Bei einer Markierung ist „Textbox" schlicht falsch.
                            text: "\u2715  " + App.uiText(App.language,
                                      panel.selInfo.kind === 6 ? "PdfEditDeleteMarkup"
                                                               : "PdfEditDeleteBtn")
@@ -732,11 +628,9 @@ Rectangle {
 
                 Rectangle { width: parent.width; height: 1; color: App.themeBorder }
 
-                // ═══ Sektion: Dokument ════════════════════════════════════════
                 Row {
                     width: parent.width
                     spacing: 8
-                    // Speichern -> Sidecar (bleibt editierbar)
                     Rectangle {
                         width: (parent.width - 8) / 2; height: 32; radius: 6
                         opacity: panel.ctl.dirty ? 1.0 : 0.4
@@ -758,10 +652,6 @@ Rectangle {
                         ToolTip.text: App.uiText(App.language, "PdfEditSaveTip")
                         ToolTip.visible: saveHover.hovered
                     }
-                    //  Export -> neue PDF-Kopie. WELCHER Weg (verlustfrei oder
-                    //  Raster) genommen wird, steht in den Einstellungen
-                    //  (`PdfEdit.exportLossless`) - hier gibt es bewusst nur
-                    //  noch EINEN Knopf, s. `PdfSurface.startExport`.
                     Rectangle {
                         width: (parent.width - 8) / 2; height: 32; radius: 6
                         readonly property bool usable: !panel.ctl.busy && panel.ctl.boxCount > 0
@@ -778,18 +668,9 @@ Rectangle {
                             enabled: parent.usable
                             onTapped: if (panel.surface) panel.surface.startExport()
                         }
-                        //  Ziel und Modus stehen im ToolTip. Früher standen hier
-                        //  zusätzlich ein zweiter Knopf („-> PDF (Text im Stream)")
-                        //  und eine eigene Pfad-Zeile - beides ist entfallen: der
-                        //  Weg ist jetzt eine EINSTELLUNG, keine Entscheidung bei
-                        //  jedem einzelnen Export.
-                        //  Einzeilig, s. Ribbon-Fassung weiter unten.
-                        //  Der Zielname kommt aus einer FUNKTION - eine Bindung
-                        //  darauf wird nie neu ausgewertet und stand deshalb
-                        //  ewig auf dem Stand beim Erzeugen des Panels: leere
-                        //  Klammern „()" (Nutzerbefund). Über `expHover.hovered`
-                        //  hängt sie an etwas, das sich ändert, und wird beim
-                        //  Zeigen frisch gerechnet.
+                        // Der Zielname kommt aus einer FUNKTION - eine Bindung darauf wird nie neu ausgewertet und stand ewig auf
+                        // dem Stand beim Erzeugen des Panels (leere Klammern). Über `expHover.hovered` hängt sie an etwas, das sich
+                        // ändert, und wird beim Zeigen frisch gerechnet.
                         ToolTip.text: expHover.hovered ? panel._exportTip() : ""
                         ToolTip.visible: expHover.hovered
                     }
@@ -798,11 +679,6 @@ Rectangle {
         }
     }
 
-    // ═════════════════════════════════════════════════════════════════════════
-    //  VARIANTE B - obere Leiste („wie Word"; horizontal:true)
-    //  Gleiche Regler in Mini-Gruppen; bei schmalen Fenstern horizontal
-    //  scrollbar. Hinweis-/Zieltexte der Seitenleiste wandern in ToolTips.
-    // ═════════════════════════════════════════════════════════════════════════
     Item {
         anchors.fill: parent
         visible: panel.horizontal
@@ -818,27 +694,15 @@ Rectangle {
             boundsBehavior: Flickable.StopAtBounds
             flickableDirection: Flickable.HorizontalFlick
 
-            //  STRG + Mausrad blättert die Leiste SEITLICH (Rad hoch = nach
-            //  rechts). Nötig, weil das Ribbon bei schmalem Fenster - etwa
-            //  einer halben Bildschirmbreite oder einer Split-View-Kachel -
-            //  rechts abgeschnitten wird und die dortigen Regler sonst nur
-            //  per Ziehen erreichbar waren.
-            //
-            //  OHNE Strg bleibt das Rad unverändert: es fällt an die
-            //  Seitenansicht darunter durch (Scrollen bzw. Strg-loses
-            //  Verhalten dort) - die Leiste kapert das Rad also nicht.
-            //  Eine MouseArea ist zwingend, ein WheelHandler genügt NICHT:
-            //  ein interaktives Flickable verarbeitet Radereignisse vorher
-            //  selbst (s. „Bekannte Workarounds" in Structure.md).
+            // Strg + Rad blättert die Leiste seitlich; bei schmalem Fenster wird das Ribbon rechts abgeschnitten und die
+            // dortigen Regler waren sonst nur per Ziehen erreichbar. Ohne Strg fällt das Rad an die Seitenansicht durch.
+            // MouseArea ist zwingend - ein interaktives Flickable verarbeitet Radereignisse vor jedem WheelHandler selbst.
             SmoothWheelArea {
                 flickable: ribbonFlick
                 horizontal: true
                 requiredModifier: Qt.ControlModifier
             }
 
-            //  Sichtbare Rückmeldung, dass seitlich mehr da ist (und zweiter,
-            //  entdeckbarer Weg zum selben Ziel). Blendet sich aus, sobald die
-            //  Leiste vollständig passt.
             ScrollBar.horizontal: ScrollBar {
                 policy: ribbonFlick.contentWidth > ribbonFlick.width
                         ? ScrollBar.AlwaysOn : ScrollBar.AlwaysOff
@@ -851,7 +715,6 @@ Rectangle {
                 anchors.verticalCenter: parent.verticalCenter
                 spacing: 14
 
-                // ── Werkzeug-Palette (immer sichtbar) ────────────────────────
                 Column {
                     spacing: 2
                     Row {
@@ -862,27 +725,16 @@ Rectangle {
                         ToolBtn { iconName: "arrow"; toolValue: 3; tip: App.uiText(App.language, "ImageEditToolArrow") }
                         ToolBtn { iconName: "rect"; toolValue: 4; tip: App.uiText(App.language, "ImageEditToolRect") }
                         ToolBtn { iconName: "ellipse"; toolValue: 5; tip: App.uiText(App.language, "ImageEditToolEllipse") }
-                        // „Text ersetzen" (PDF-exklusiv): weiße Deckfläche + Textbox.
                         ToolBtn { iconName: "replace"; toolValue: 6; tip: App.uiText(App.language, "PdfEditToolReplace") }
-                        // „Text bearbeiten" (PDF-exklusiv): Caret DIREKT in der
-                        // eingebetteten Textebene.
                         ToolBtn { iconName: "caret"; toolValue: 7; tip: App.uiText(App.language, "PdfEditToolCaret") }
-                        // Textmarkierung (PDF-exklusiv): Ziehen über Text markiert,
-                        // unterstreicht oder streicht durch - je nach Stil-Knopf.
                         ToolBtn { iconName: "markup-highlight"; toolValue: 8; styleValue: 0
                                   tip: App.uiText(App.language, "PdfMarkupHighlight") }
                         ToolBtn { iconName: "markup-underline"; toolValue: 8; styleValue: 1
                                   tip: App.uiText(App.language, "PdfMarkupUnderline") }
                         ToolBtn { iconName: "markup-strike"; toolValue: 8; styleValue: 2
                                   tip: App.uiText(App.language, "PdfMarkupStrike") }
-                        // „Schwärzen": deckt ab UND entfernt den Text beim
-                        // Export aus dem Content-Stream. Die Beschriftung
-                        // bleibt kurz - die Grenzen sagt der einmalige Hinweis
-                        // beim ersten Schwärzen (PdfSurface._redactHintOnce).
                         ToolBtn { iconName: "redact"; toolValue: 9
                                   tip: App.uiText(App.language, "PdfEditToolRedact") }
-                        // Signatur/Stempel: wie in der schmalen Leiste - erst
-                        // die Bilder im Ordner, dann der Dateidialog.
                         ToolBtn { iconName: "signature"; toolValue: -1
                                   tip: App.uiText(App.language, "PdfEditToolStamp")
                                   onClicked: {
@@ -903,7 +755,6 @@ Rectangle {
                 Rectangle { width: 1; height: 34; color: App.themeBorder
                             anchors.verticalCenter: parent.verticalCenter }
 
-                // Ohne Auswahl + Auswahl-Werkzeug: nur Hinweis + Dokument-Gruppe.
                 Text {
                     visible: !panel.hasSel && panel.ctl.tool === 0
                     anchors.verticalCenter: parent.verticalCenter
@@ -980,7 +831,6 @@ Rectangle {
                     }
                 }
                 Column {
-                    // Nur Post-its: die Deckfläche von „Text ersetzen" ist fix Weiß.
                     visible: panel.showPaper
                     spacing: 2
                     Row {
@@ -1005,7 +855,6 @@ Rectangle {
                         }
                     }
                 }
-                // Deckfläche („Text ersetzen") - nur Farbe, immer deckend.
                 Column {
                     visible: panel.showCover
                     spacing: 2
@@ -1022,7 +871,6 @@ Rectangle {
                     }
                 }
 
-                // ── Reflow: Verketten/Lösen (textführende Auswahl) ───────────
                 Rectangle {
                     anchors.verticalCenter: parent.verticalCenter
                     visible: panel.hasSel && (panel.selIsText || panel.selIsReplace)
@@ -1048,7 +896,6 @@ Rectangle {
                     }
                 }
 
-                // ── Zeichnen: Linienfarbe / -breite / Füllung ────────────────
                 Column {
                     visible: panel.showStroke
                     spacing: 2
@@ -1090,7 +937,6 @@ Rectangle {
                                                                  ? panel.info.fillColor : "#4de62c2c")
                             }
                         }
-                        // „Keine": Füllung entfernen (Alpha 0 -> nur Kontur).
                         Rectangle {
                             width: 26; height: 26; radius: 6
                             anchors.verticalCenter: parent.verticalCenter
@@ -1109,7 +955,6 @@ Rectangle {
                     }
                 }
 
-                // Anker-Chip
                 Rectangle {
                     visible: (panel.selIsText || panel.selIsReplace) && panel.info.anchored === true
                     anchors.verticalCenter: parent.verticalCenter
@@ -1121,7 +966,6 @@ Rectangle {
                            color: App.themeTextPrimary; font.pixelSize: 9 }
                 }
 
-                // Kopieren / Einfügen (kachel-lokale Zwischenablage)
                 Rectangle {
                     visible: panel.hasSel
                     anchors.verticalCenter: parent.verticalCenter
@@ -1163,7 +1007,6 @@ Rectangle {
                     ToolTip.visible: pasteHoverH.hovered
                 }
 
-                // Löschen
                 Rectangle {
                     visible: panel.hasSel
                     anchors.verticalCenter: parent.verticalCenter
@@ -1189,7 +1032,6 @@ Rectangle {
                 Rectangle { width: 1; height: 34; color: App.themeBorder
                             anchors.verticalCenter: parent.verticalCenter }
 
-                // ── Dokument-Gruppe (immer sichtbar) ─────────────────────────
                 Rectangle {
                     anchors.verticalCenter: parent.verticalCenter
                     width: 92; height: 30; radius: 6
@@ -1229,22 +1071,14 @@ Rectangle {
                         enabled: parent.usable
                         onTapped: if (panel.surface) panel.surface.startExport()
                     }
-                    // Ribbon hat keinen Platz für den Ziel-Pfad -> ToolTip
-                    // (immer eine neue Kopie „…_bearbeitet(.n).pdf").
-                    // Der zweite Knopf für den verlustfreien Weg ist entfallen;
-                    // welcher Weg läuft, steht in den Einstellungen
-                    // (`PdfEdit.exportLossless`, s. `PdfSurface.startExport`).
-                    //  EINZEILIG: der volle Pfad in einer zweiten Zeile machte den
-                    //  Hinweis doppelt so hoch wie jeden anderen in der Leiste.
-                    //  Der DATEINAME genügt - der Ordner ist der der Quelldatei.
-                    //  s. Ribbon-Fassung oben: erst beim Zeigen rechnen.
+                    // Das Ribbon hat keinen Platz für den Ziel-Pfad, also ToolTip - und EINZEILIG: der volle Pfad machte den Hinweis
+                    // doppelt so hoch wie jeden anderen, der Dateiname genügt. Erst beim Zeigen rechnen (s. Fassung oben).
                     ToolTip.text: expHoverH.hovered ? panel._exportTip() : ""
                     ToolTip.visible: expHoverH.hovered
                 }
             }
         }
 
-        // ✕ fest rechts (außerhalb des scrollenden Bereichs).
         Rectangle {
             id: closeBtnH
             anchors { right: parent.right; rightMargin: 10; verticalCenter: parent.verticalCenter }

@@ -16,7 +16,6 @@
 
 namespace mg::editor {
 
-// ── Der Faerber ──────────────────────────────────────────────────────────────
 Highlighter::Highlighter(QTextDocument* doc)
     : QSyntaxHighlighter(doc) {
     m_palette = activeController() ? activeController()->palette()
@@ -78,10 +77,8 @@ void Highlighter::highlightBlock(const QString& text) {
     setCurrentBlockState(zustandRaus);
 }
 
-//  Hinterlegt jede Fundstelle im Block. Die Farbe ist die AUSWAHLfarbe der
-//  Palette, abgeschwaecht: der gerade angesprungene Treffer ist die echte
-//  Auswahl des Editors und hebt sich dadurch von selbst ab - so braucht es
-//  keine zwanzigste Farbe im Einstellungsdialog.
+// Hinterlegt jede Fundstelle im Block; die Farbe ist die abgeschwächte AUSWAHLfarbe der Palette. Der
+// angesprungene Treffer ist die echte Auswahl und hebt sich von selbst ab - keine zwanzigste Farbe nötig.
 void Highlighter::markiereFundstellen(const QString& text) {
     if (m_searchPattern.isEmpty()) return;
     QTextCharFormat f;
@@ -94,9 +91,7 @@ void Highlighter::markiereFundstellen(const QString& text) {
         setFormat(r.start, r.length, f);
 }
 
-// ── Die QML-Fassade ──────────────────────────────────────────────────────────
 CodeHighlighter::CodeHighlighter(QObject* parent) : QObject(parent) {
-    //  Farbwechsel in den Einstellungen faerbt JEDE offene Kachel sofort um.
     if (EditorController* c = activeController()) {
         connect(c, &EditorController::paletteChanged, this, [this] {
             if (m_highlighter && activeController())
@@ -139,10 +134,8 @@ void CodeHighlighter::neuAufbauen() {
     m_highlighter->setLanguageId(m_languageId);
     tabBreiteAnwenden();
 
-    //  `QQuickTextEdit` setzt die Textoptionen des Dokuments neu, sobald sich
-    //  Umbruch oder Ausrichtung aendern - dabei faellt die Tabulatorbreite
-    //  wieder auf Qts 80 px zurueck. Deshalb nach JEDER Layout-Aenderung erneut
-    //  setzen; die Pruefung in `tabBreiteAnwenden` haelt das billig.
+    // `QQuickTextEdit` setzt die Textoptionen neu, sobald sich Umbruch oder Ausrichtung ändern - dabei fällt die
+    // Tabulatorbreite auf Qts 80 px zurück. Deshalb nach JEDER Layout-Änderung erneut setzen.
     if (auto* lay = doc->documentLayout())
         connect(lay, &QAbstractTextDocumentLayout::documentSizeChanged,
                 this, [this] { tabBreiteAnwenden(); });
@@ -183,20 +176,14 @@ void CodeHighlighter::tabBreiteAnwenden() {
     doc->setDefaultTextOption(opt);
 }
 
-// ── Suchen und Ersetzen ─────────────────────────────────────────────────────
 namespace {
 
 //  Deckel fuer die Trefferliste. Die ANZEIGE „999+" sagt genug, und die Leiste
 //  soll beim Tippen nicht stehenbleiben.
 constexpr int kMaxTreffer = 10000;
 
-//  Alle Fundstellen des Dokuments, in Dokumentkoordinaten, sortiert und
-//  ueberschneidungsfrei. Gesammelt wird BLOCKWEISE - nicht ueber
-//  `QTextDocument::find`: nur so laufen der woertliche und der Muster-Zweig
-//  ueber denselben Text (s. `core/SearchPattern.h`), und der Volltext des
-//  Dokuments muss nicht kopiert werden (am Lesedeckel 8 MB).
-//  Ein Treffer ueber einen Zeilenumbruch hinweg ist damit nicht moeglich -
-//  `QTextDocument::find` konnte das aber ebenfalls nie.
+// Gesammelt wird BLOCKWEISE, nicht über `QTextDocument::find`: nur so laufen wörtlicher und Muster-Zweig über
+// denselben Text, und der Volltext muss nicht kopiert werden. Ein Treffer über einen Zeilenumbruch geht damit nicht.
 QList<mg::search::Range> alleTreffer(const QTextDocument* doc,
                                      const mg::search::Pattern& p) {
     QList<mg::search::Range> raus;

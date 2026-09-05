@@ -4,25 +4,9 @@ import QtQuick.Controls
 import MediaGallery 1.0
 import "../common"
 
-// ─────────────────────────────────────────────────────────────────────────────
-//  PdfEditToolbar.qml - schwebende Kompakt-Toolbar des PDF-Editors (Word-artig).
-//
-//  Lebt EINMAL je Seiten-Delegate (innerhalb von pageImg) und erscheint nur,
-//  wenn die AUSGEWÄHLTE Box auf genau dieser Seite liegt. Position: mittig
-//  über der Box; fehlt oben der Platz, springt sie unter die Box - stets in
-//  die Seite geklemmt.
-//
-//  DATENFLUSS: `info` liest bar.ctl.boxInfo(selectedId) REV-GETRIEBEN neu
-//  (selectionRev bumpt bei Auswahl- UND Datenänderung der ausgewählten Box) -
-//  dasselbe Muster wie _audioRev in PdfSurface. Die Buttons schreiben über die
-//  setBox…-Invokables zurück; aufeinanderfolgende Klicks desselben Feldes
-//  verschmelzen im Undo-Stack zu EINEM Schritt (FieldCommand::mergeWith).
-//
-//  BEWUSST: Stil-Klicks schließen eine offene TEXT-Bearbeitung NICHT ab -
-//  der Nutzer kann beim Tippen fett/kursiv umschalten und weitertippen
-//  (Stil-Kommandos sind von der Text-Session unabhängig). Nur LÖSCHEN
-//  committet vorher (die Box verschwindet ja mitsamt Session).
-// ─────────────────────────────────────────────────────────────────────────────
+// Schwebende Kompakt-Toolbar des PDF-Editors, einmal je Seiten-Delegate; erscheint nur, wenn die ausgewählte
+// Box auf dieser Seite liegt, und bleibt in die Seite geklemmt. `info` liest `ctl.boxInfo(selectedId)`
+// REV-getrieben neu; Klickfolgen auf dasselbe Feld verschmelzen im Undo-Stack (FieldCommand::mergeWith).
 Item {
     id: bar
 
@@ -42,7 +26,6 @@ Item {
     readonly property bool active: bar.ctl.editMode && info.exists === true
                                    && info.page === pageIndex
                                    && (surface ? surface.notesVisible : true)
-    // Art der Auswahl -> kontextsensitive Regler (Text vs. Strich vs. Form).
     readonly property bool isText:    active && info.isText === true
     // „Text ersetzen": volle Text-Regler, aber KEIN Papier-Button (Deckfläche
     // fix Weiß - keine Farbwahl-UI in dieser Phase).
@@ -56,7 +39,6 @@ Item {
     height: 32
     z: 5
 
-    // ── Position relativ zur Box (Pixel) ──────────────────────────────────────
     readonly property real boxX: active ? info.xPt * pageScale : 0
     readonly property real boxY: active ? info.yPt * pageScale : 0
     readonly property real boxW: active ? info.wPt * pageScale : 0
@@ -66,7 +48,6 @@ Item {
                                  : Math.min(boxY + boxH + 10,
                                             Math.max(2, pageH - height - 2))
 
-    // ── Mini-Button (kompakter als PdfToolButton; Glyph darf B/I/U tragen) ────
     component TBtn: Rectangle {
         id: tb
         property string glyph: ""
@@ -117,7 +98,6 @@ Item {
         anchors.centerIn: parent
         spacing: 2
 
-        // ── TEXT-Regler (nur Text-Notizen) ────────────────────────────────────
         TBtn { visible: bar.isTextual; glyph: "B"; boldGlyph: true;      checked: bar.info.bold === true
                onActivated: bar.ctl.setBoxBold(bar.ctl.selectedId, !bar.info.bold) }
         TBtn { visible: bar.isTextual; glyph: "I"; italicGlyph: true;    checked: bar.info.italic === true
@@ -128,7 +108,6 @@ Item {
         Rectangle { visible: bar.isTextual; width: 1; height: 16; color: App.themeBorder
                     anchors.verticalCenter: parent.verticalCenter }
 
-        // ── Schriftgröße ──────────────────────────────────────────────────────
         TBtn { visible: bar.isTextual; iconName: "minus"
                onActivated: bar.ctl.setBoxFontSize(bar.ctl.selectedId,
                                                    Math.max(4, Math.round(bar.info.fontSizePt) - 1)) }
@@ -146,7 +125,6 @@ Item {
         Rectangle { visible: bar.isTextual; width: 1; height: 16; color: App.themeBorder
                     anchors.verticalCenter: parent.verticalCenter }
 
-        // ── Ausrichtung (0=links, 1=zentriert, 2=rechts) ──────────────────────
         TBtn { visible: bar.isTextual; iconName: "align-left"; checked: bar.info.alignment === 0
                onActivated: bar.ctl.setBoxAlignment(bar.ctl.selectedId, 0) }
         TBtn { visible: bar.isTextual; iconName: "align-center"; checked: bar.info.alignment === 1
@@ -157,7 +135,6 @@ Item {
         Rectangle { visible: bar.isTextual; width: 1; height: 16; color: App.themeBorder
                     anchors.verticalCenter: parent.verticalCenter }
 
-        // ── Vertikale Ausrichtung (0=oben wie Word-Textfeld, 1=mittig) ────────
         TBtn { visible: bar.isTextual; iconName: "valign-top"; checked: bar.info.vAlign === 0
                tip: App.uiText(App.language, "PdfEditVAlignLabel")
                onActivated: bar.ctl.setBoxVAlign(bar.ctl.selectedId, 0) }
@@ -168,7 +145,6 @@ Item {
         Rectangle { visible: bar.isTextual; width: 1; height: 16; color: App.themeBorder
                     anchors.verticalCenter: parent.verticalCenter }
 
-        // ── Textfarbe: „A" über aktuellem Farbbalken; öffnet die Palette ──────
         Rectangle {
             visible: bar.isTextual
             width: 26; height: 24; radius: 5
@@ -191,9 +167,6 @@ Item {
             ToolTip.visible: colHover.hovered
         }
 
-        // ── Hervorhebung / Deckfläche: Farbfeld (Schrägstrich = keine) ────────
-        //    Post-it -> Papierfarbe (mit „keine"); „Text ersetzen" -> Cover-Farbe
-        //    (immer deckend, der Controller erzwingt das Alpha).
         Rectangle {
             visible: bar.isTextual
             width: 26; height: 24; radius: 5
@@ -217,8 +190,6 @@ Item {
             ToolTip.visible: hiHover.hovered
         }
 
-        // ── STRICH-/FORM-Regler (Freihand/Pfeil/Rechteck/Ellipse) ─────────────
-        //  Linienfarbe
         Rectangle {
             visible: bar.isStroke || bar.isShape
             width: 26; height: 24; radius: 5
@@ -233,7 +204,6 @@ Item {
             ToolTip.text: App.uiText(App.language, "ImageEditStrokeLabel")
             ToolTip.visible: scHover.hovered
         }
-        //  Linienbreite (PDF-Punkte)
         TBtn { visible: bar.isStroke || bar.isShape; iconName: "minus"
                onActivated: bar.ctl.setBoxLineWidth(bar.ctl.selectedId,
                                                     Math.max(1, Math.round(bar.info.lineWidth) - 1)) }
@@ -247,7 +217,6 @@ Item {
         TBtn { visible: bar.isStroke || bar.isShape; iconName: "plus"
                onActivated: bar.ctl.setBoxLineWidth(bar.ctl.selectedId,
                                                     Math.min(72, Math.round(bar.info.lineWidth) + 1)) }
-        //  Füllung (nur Formen)
         Rectangle {
             visible: bar.isShape
             width: 26; height: 24; radius: 5
@@ -270,13 +239,11 @@ Item {
         Rectangle { width: 1; height: 16; color: App.themeBorder
                     anchors.verticalCenter: parent.verticalCenter }
 
-        // ── Kopieren (dupliziert die Annotation inkl. Text; Einfügen Strg+V) ──
         TBtn {
             iconName: "copy"
             tip: App.uiText(App.language, "ImageEditCopyBtn")
             onActivated: { if (bar.surface) bar.surface.commitEditing(); bar.ctl.copySelected() }
         }
-        // ── Löschen (committet die offene Bearbeitung - Box verschwindet) ─────
         TBtn {
             iconName: "close"; glyphColor: "#e05a5a"
             tip: App.uiText(App.language,
@@ -288,10 +255,6 @@ Item {
         }
     }
 
-    // ── Farbpalette (gemeinsames Popup: Textfarbe/Hervorhebung/Linie/Füllung) ─
-    //  Textfarben + Linienfarben: kräftige Lese-Palette. Hervorhebungen:
-    //  Pastelltöne (Marker-Charakter). „Keine" als erste Kachel bei
-    //  Hervorhebung/Füllung (transparent).
     Popup {
         id: palette
         property string mode: "text"             // text | highlight | stroke | fill
@@ -327,7 +290,6 @@ Item {
         contentItem: Grid {
             columns: 5
             spacing: 6
-            // „Keine"-Kachel nur bei Hervorhebung/Füllung.
             Rectangle {
                 visible: palette.allowNone
                 width: 22; height: 22; radius: 4

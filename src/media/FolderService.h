@@ -5,13 +5,8 @@
 class ISettings;
 class JsonStorage;
 
-// FolderService coordinates folder-open operations:
-//   - persisting the last-opened folder via ISettings
-//   - loading project JSON data via JsonStorage
-//   - preventing redundant reloads
-//
-// The UI calls openFolder(path); the service emits folderOpened when
-// the folder has been loaded and is ready to display.
+// FolderService coordinates folder-open operations: persisting the last-opened folder, loading the project JSON,
+// and preventing redundant reloads. The UI calls openFolder(path); folderOpened fires once the folder is ready.
 class FolderService : public QObject {
     Q_OBJECT
 public:
@@ -28,14 +23,8 @@ public:
     // Saves the current folder's JSON (if any is open).
     void saveCurrentFolder();
 
-    //  Schreibt dieser Dienst den Startordner (`lastFolder`) mit?
-    //
-    //  JEDE Haelfte hat ihren eigenen FolderService, aber es gibt nur EINEN
-    //  Schluessel dafuer. Schrieben alle hinein, ueberschriebe die zuletzt
-    //  benutzte Haelfte den Ordner der ersten - und beim naechsten Start
-    //  standen BEIDE auf demselben Ordner (vom Nutzer gemeldet). Deshalb
-    //  schreibt nur die erste Haelfte; der Ordner der zweiten gehoert zum
-    //  Fensterzustand (`ISettings::secondFolder`).
+    // JEDE Hälfte hat ihren eigenen FolderService, aber es gibt nur EINEN Schlüssel für den Startordner. Schrieben
+    // alle hinein, stünden beim nächsten Start beide auf demselben Ordner - deshalb schreibt nur die erste.
     void setPersistsLastFolder(bool on) { m_persistsLast = on; }
     bool persistsLastFolder() const { return m_persistsLast; }
 

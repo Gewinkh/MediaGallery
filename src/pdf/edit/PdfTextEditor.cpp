@@ -246,7 +246,6 @@ bool spliceAt(const QString& inputPath, const QString& outputPath,
         return fail("Operanden-Bereich ungültig");
     newContent.replace(span.operandStart, span.operandEnd - span.operandStart, repl);
 
-    // ── Inkrementelles Update ───────────────────────────────────────────────
     const auto cit = objs.constFind(page.contentObj);
     if (cit == objs.constEnd()) return fail("Content-Objekt nicht gefunden");
 

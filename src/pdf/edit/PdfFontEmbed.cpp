@@ -149,7 +149,6 @@ bool PdfFontEmbed::build(const QString& family, bool bold, bool italic,
     if (italic) ps += bold ? "Italic" : "-Italic";
     out->psName = ps;
 
-    // ── Breiten für die WinAnsi-Codes 32…255 ────────────────────────────────
     bool eok = false;
     const auto enc = mg::pdfenc::Encoding::fromEncodingValue("/WinAnsiEncoding", &eok);
     if (!eok) return fail("WinAnsi-Tabelle fehlt");

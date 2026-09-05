@@ -27,18 +27,9 @@ constexpr int   kResolution = 96;      // Layout-DPI
 constexpr qreal kMarginMm   = 20.0;    // Rand rundum
 constexpr qreal kFontPt     = 10.0;    // Textschrift (Monospace)
 constexpr qreal kFooterPt   = 8.0;     // Fußzeile („1/3")
-//  Die Tabulatorweite kommt jetzt als Argument (aus der Editor-Einstellung).
-//  Geklemmt wie dort, damit ein verfaelschter Wert nichts zerlegt.
 
-//  Dicktengleiche Schrift des Systems. styleHint + fixedPitch sorgen dafür,
-//  dass ein Rückfall (Familie nicht vorhanden) wieder eine Monospace wählt -
-//  sonst verrutschen genau die Einrückungen, für die sie gewählt wurde.
-//
-//  GEWICHT MEDIUM, nicht Regular: die Tinte ist reines Schwarz (s. unten), der
-//  Regular-Schnitt einer Monospace ist bei 10 pt aber so dünn, dass die Seite in
-//  voller Größe am Bildschirm GRAU wirkt - gemessen 138/255 mittlere Tinte gegen
-//  129 bei Medium; Bold (111) liest sich als Auszeichnung und kommt für Fließtext
-//  nicht in Frage. Fehlt der Medium-Schnitt, wählt Qt den nächstliegenden.
+// `styleHint` + `fixedPitch` sorgen dafür, dass ein Rückfall wieder eine Monospace wählt - sonst verrutschen
+// genau die Einrückungen, für die sie gewählt wurde. MEDIUM, weil Regular bei 10 pt grau wirkt (138/255 gegen 129).
 QFont monoFont() {
     QFont f = QFontDatabase::systemFont(QFontDatabase::FixedFont);
     f.setStyleHint(QFont::Monospace);
@@ -71,8 +62,6 @@ QString targetPathFor(const QString& sourcePath) {
 bool exportToPdf(const QString& text, const QString& targetPath,
                  const QColor& textColor, int tabWidth,
                  QString* err) {
-    //  Unbrauchbare Farbe ⇒ Schwarz. Nie ungeprüft übernehmen: eine
-    //  ungültige QColor malte sonst schwarz-transparent bis unsichtbar.
     const QColor ink = textColor.isValid() ? textColor : QColor(Qt::black);
     if (targetPath.isEmpty()) {
         if (err) *err = QStringLiteral("Kein Zielpfad.");
@@ -99,8 +88,6 @@ bool exportToPdf(const QString& text, const QString& targetPath,
         writer.setResolution(kResolution);
         writer.setTitle(QFileInfo(targetPath).completeBaseName());
 
-        //  Bedruckbare Fläche (Seite abzüglich Ränder) - der QPainter auf einem
-        //  QPdfWriter hat dort seinen Ursprung.
         const QRectF paintRect =
             writer.pageLayout().paintRectPixels(writer.resolution());
 
@@ -108,9 +95,6 @@ bool exportToPdf(const QString& text, const QString& targetPath,
         QFont footFont = font;
         footFont.setPointSizeF(kFooterPt);
 
-        //  Die Fußzeile bekommt einen eigenen Streifen am Fuß der bedruckbaren
-        //  Fläche; der Text wird nur bis darüber umbrochen, sonst liefe die
-        //  letzte Zeile in die Zählung.
         const qreal footerH = QFontMetricsF(footFont, &writer).height() * 1.8;
         const qreal bodyH   = qMax(1.0, paintRect.height() - footerH);
 
@@ -122,8 +106,6 @@ bool exportToPdf(const QString& text, const QString& targetPath,
         //  abgeschnitten zu werden. AnywhereIfNecessary greift bei Zeilen ohne
         //  Leerzeichen (lange Pfade, base64).
         to.setWrapMode(QTextOption::WrapAtWordBoundaryOrAnywhere);
-        //  An echten LEERZEICHEN gemessen und mit derselben Zahl wie im Editor -
-        //  sonst ist derselbe Text gedruckt anders eingerueckt als am Bildschirm.
         to.setTabStopDistance(
             QFontMetricsF(font, &writer).horizontalAdvance(
                 QString(qBound(2, tabWidth, 8), u' ')));
@@ -140,16 +122,9 @@ bool exportToPdf(const QString& text, const QString& targetPath,
         body.replace(QLatin1Char('\r'),     QLatin1Char('\n'));
         td.setPlainText(body);
 
-        //  DER TEXT FLIESST DURCH (eine „unendlich" hohe Seite); umbrochen wird
-        //  unten selbst.
-        //
-        //  Warum nicht td.setPageSize(…, bodyH) und QTextDocument paginieren
-        //  lassen: gemessen legt es die Zeile an der Kante 0,009 px ÜBER die
-        //  Grenze und lässt sie 18 px hinunterragen. Sichtbar ist das nichts,
-        //  aber gezeichnet wird sie damit auf BEIDEN Seiten (Klippen versteckt
-        //  sie nur optisch) - im Textlayer steht die Zeile doppelt, Suche und
-        //  Kopieren finden sie zweimal. Eigene Zeilengrenzen kennen diesen
-        //  Rundungsfall nicht.
+        // Der Text fließt durch eine "unendlich" hohe Seite, umbrochen wird unten selbst. Ließe man QTextDocument
+        // paginieren, legt es die Zeile 0,009 px über die Grenze und zeichnet sie auf BEIDEN Seiten - im Textlayer
+        // stünde sie doppelt, Suche und Kopieren fänden sie zweimal.
         td.setPageSize(QSizeF(paintRect.width(), 1e7));
         //  Auslegen ERZWINGEN: QTextDocument legt faul aus, ohne diesen Aufruf
         //  meldet jeder Block 0 Zeilen und die Seiteneinteilung unten liefe leer.
@@ -193,24 +168,14 @@ bool exportToPdf(const QString& text, const QString& targetPath,
             p.save();
             p.translate(0, -sp.top);
 
-            //  WINZIGER EINZUG (kEps) an Ober- und Unterkante: die Auswahl der zu
-            //  zeichnenden Blöcke arbeitet mit BERÜHRUNG - die Nachbarzeile der
-            //  vorigen/nächsten Seite endet exakt auf der Kante und käme sonst
-            //  mit in den Textlayer (nur optisch weggeklippt, für Suche und
-            //  Kopieren aber vorhanden). Sichtbar kostet der Einzug nichts.
+            // Winziger Einzug an Ober- und Unterkante: die Blockauswahl arbeitet mit BERÜHRUNG, die Nachbarzeile der
+            // vorigen Seite endet exakt auf der Kante und käme sonst in den Textlayer (optisch geklippt, für Suche da).
             constexpr qreal kEps = 0.05;
             const QRectF band(0, sp.top + kEps, paintRect.width(),
                               sp.bottom - sp.top - 2 * kEps);
 
-            //  DIE SCHRIFTFARBE WIRD IMMER GESETZT - über die PALETTE des
-            //  PaintContext, NICHT über die Feder des Malers allein.
-            //  `drawContents` wäre kürzer, nimmt aber die Anwendungspalette: im
-            //  dunklen Theme stand deshalb `0.902 0.902 0.902` (= #E6E6E6,
-            //  `themeTextPrimary`) als Füllfarbe im PDF - das Papier war weiß,
-            //  die Schrift fast auch. Am Prüfstand fiel es nicht auf, weil dort
-            //  die Standardpalette ohnehin schwarz ist. Die Farbe kommt deshalb
-            //  vom AUFRUFER (Datei- bzw. globale Einstellung), nie aus der
-            //  laufenden Anwendung.
+            // Die Schriftfarbe kommt über die PALETTE des PaintContext, nicht über die Feder allein: `drawContents` nähme
+            // die Anwendungspalette - im dunklen Theme stand deshalb #E6E6E6 auf weißem Papier. Sie kommt vom AUFRUFER.
             QAbstractTextDocumentLayout::PaintContext ctx;
             ctx.clip = band;
             ctx.palette.setColor(QPalette::Text, ink);
@@ -219,7 +184,6 @@ bool exportToPdf(const QString& text, const QString& targetPath,
             td.documentLayout()->draw(&p, ctx);
             p.restore();
 
-            //  Fußzeile: ausschließlich die Zählung, mittig und gedämpft.
             p.save();
             p.setFont(footFont);
             p.setPen(QColor(120, 120, 120));

@@ -4,7 +4,7 @@ import QtQuick.Layouts
 import MediaGallery 1.0
 import "../common"
 
-// ── Allgemein: Sprache + Video-Wiedergabe + Render-Backend ───────────────────
+// Allgemein: Sprache + Video-Wiedergabe + Render-Backend
 Item {
     id: root
 
@@ -108,7 +108,6 @@ Item {
                 }
             }
 
-            // ── Vollbild-Animation (Öffnen/Schließen) ─────────────────────────
             SettingsGroup {
                 key: "general.fullscreen-anim"
                 title: App.uiText(App.language, "SettingsGenFullscreenAnim")
@@ -136,7 +135,6 @@ Item {
                 }
             }
 
-            // ── Audio-Player-Akzent (PDF-Audioleiste) ─────────────────────────
             SettingsGroup {
                 key: "general.audio-player"
                 title: App.uiText(App.language, "SettingsGenAudioPlayer")
@@ -164,11 +162,8 @@ Item {
                 }
             }
 
-            // ── Mono-Play (nur eine Wiedergabe gleichzeitig) ───────────────────
-            //  Mono-Play UND Spulschritt in EINER Gruppe (Festlegung des Nutzers
-            //  2026-09-01): beides betrifft dieselbe Sache - wie sich Ton und
-            //  Video beim Abspielen verhalten. Die früheren Gruppentitel leben
-            //  als Zwischenüberschriften weiter.
+            // Mono-Play und Spulschritt in EINER Gruppe: beides betrifft dieselbe Sache - wie sich Ton und Video beim
+            // Abspielen verhalten. Die früheren Gruppentitel leben als Zwischenüberschriften weiter.
             SettingsGroup {
                 key: "general.playback"
                 title: App.uiText(App.language, "SettingsGenMonoPlay")
@@ -222,7 +217,7 @@ Item {
                 }
             }
 
-            // ── Ziehen auf einen Ordner: verschieben oder kopieren ────────────
+            // Ziehen auf einen Ordner: verschieben oder kopieren
             SettingsGroup {
                 key: "general.drop-move"
                 title: App.uiText(App.language, "SettingsDropMoveLabel")
@@ -247,10 +242,8 @@ Item {
                 }
             }
 
-            // ── Spulschritt der Pfeiltasten im Video-Vollbild ──────────────────
-            // ── Rechtschreibprüfung ───────────────────────────────────────────
-            //  PRÜFUNG, nicht Korrektur: markiert wird, ersetzt wird nur auf
-            //  ausdrückliche Wahl im Kontextmenü.
+            // Rechtschreibung ist PRÜFUNG, nicht Korrektur: markiert wird, ersetzt wird nur auf ausdrückliche Wahl im
+            // Kontextmenü.
             SettingsGroup {
                 key: "general.spell"
                 title: App.uiText(App.language, "SettingsGenSpell")
@@ -301,22 +294,15 @@ Item {
                 }
             }
 
-            // ── Suche mit Mustern ─────────────────────────────────────────────
-            //  Steht im ALLGEMEINEN Reiter, weil die Regel für JEDE Suche der
-            //  App gilt (Galerie, Texteditor, PDF, DOCX) - nicht nur für den
-            //  Editor. Der Abschnitt erklärt nur, er schaltet nichts: es gibt
-            //  bewusst keinen Regex-Schalter (s. `core/SearchPattern.h`).
+            // Steht im ALLGEMEINEN Reiter, weil die Regel für JEDE Suche der App gilt, nicht nur für den Editor. Der
+            // Abschnitt erklärt nur, er schaltet nichts - einen Regex-Schalter gibt es bewusst nicht.
             SettingsGroup {
                 key: "general.search-regex"
                 title: App.uiText(App.language, "SettingsSearchGroup")
                 Layout.fillWidth: true
 
-                //  ── Die Tabelle ────────────────────────────────────────
-                //  ZWEI Spalten statt einer Textwand: das Muster links in
-                //  fester Schrift (ein `\d` in Proportionalschrift ist schwer
-                //  zu übertragen), die Erklärung rechts. Beide Spalten sind
-                //  ein Raster, deshalb beginnen ALLE Erklärungen an derselben
-                //  Stelle - egal wie lang das Muster daneben ist.
+                // Zwei Spalten statt einer Textwand: das Muster links in fester Schrift, die Erklärung rechts. Als Raster
+                // beginnen alle Erklärungen an derselben Stelle, egal wie lang das Muster daneben ist.
                 component MusterTabelle: Rectangle {
                     id: tab
                     //  Zeilen der Form „Muster<Tab>Erklärung".
@@ -394,7 +380,6 @@ Item {
                 }
             }
 
-            // ── Render-Backend ────────────────────────────────────────────────
             SettingsGroup {
                 key: "general.render-backend"
                 title: App.uiText(App.language, "SettingsGenRenderBackend")
@@ -461,7 +446,6 @@ Item {
                 }
             }
 
-            // ── Tastenkürzel-Übersicht ────────────────────────────────────────
             SettingsGroup {
                 key: "general.shortcuts"
                 title: App.uiText(App.language, "SettingsGenShortcuts")

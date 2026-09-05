@@ -111,17 +111,9 @@ bool AudioEqualizer::makeBiquad(int band, double gainDb, Biquad* out) const {
     return true;
 }
 
-//  Die groesste Verstaerkung der GANZEN Kette, ueber das Spektrum gesucht.
-//
-//  WARUM NICHT das Maximum der Regler: ein einzelnes Band auf +12 dB hebt nur
-//  um seine Mittenfrequenz herum; breitbandiges Material wird davon knapp 4 dB
-//  lauter, nicht 12. Umgekehrt addieren sich benachbarte Baender - drei auf
-//  +12 dB ergeben mehr als 12. Beides sieht man nur am Frequenzgang.
-//
-//  Gerechnet wird auf einem logarithmischen Raster von 10 Hz bis kurz unter
-//  Nyquist: 512 Punkte reichen, weil die Baender mit Q=1,0 breit sind und
-//  keine schmalen Spitzen haben. Kosten: 10 x 512 Auswertungen, ausgeloest nur
-//  bei einem Reglerwechsel.
+// Die größte Verstärkung der GANZEN Kette, über das Spektrum gesucht - nicht das Maximum der Regler: ein Band auf
+// +12 dB macht breitbandiges Material nur knapp 4 dB lauter, drei benachbarte dagegen mehr als 12.
+// 512 Punkte auf logarithmischem Raster reichen (Q=1,0, keine schmalen Spitzen); nur bei Reglerwechsel.
 double AudioEqualizer::peakGainDb() const {
     std::array<Biquad, kBands> bands {};
     int count = 0;

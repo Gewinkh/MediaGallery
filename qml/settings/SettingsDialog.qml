@@ -5,18 +5,8 @@ import QtQuick.Layouts
 import MediaGallery 1.0
 import "../common"
 
-// ─────────────────────────────────────────────────────────────────────────────
-//  SettingsDialog.qml - vollständige QML-Migration des SettingsDialog (QWidget).
-//
-//  Acht Tabs (Allgemein, Editor, Ansicht/Layout, Tags, Kategorien, Converter,
-//  Design, Lesezeichen). Alle Werte werden über das App-Singleton (AppController,
-//  Settings-Bridge) bzw. Tags-Singleton (TagController) gelesen/geschrieben -
-//  Lesen via Q_PROPERTY/Q_INVOKABLE, Schreiben via Q_INVOKABLE. AppSettings/
-//  ISettings bleiben unverändertes Backend.
-//
-//  Im Shell als Loader-gated Instanz gehalten (RAM-Priorität): erst beim Öffnen
-//  instanziiert, beim Schließen wieder freigegeben.
-// ─────────────────────────────────────────────────────────────────────────────
+// Acht Reiter; alle Werte laufen über die Singletons `App` und `Tags`, AppSettings bleibt unverändertes Backend.
+// Im Shell Loader-gated gehalten (RAM): erst beim Öffnen instanziiert, beim Schließen wieder freigegeben.
 Dialog {
     id: dlg
     //  Griff fuer die Pruefstaende (Muster wie `documentMenu`) - QML-`id`s sind
@@ -45,10 +35,8 @@ Dialog {
     contentItem: ColumnLayout {
         spacing: 0
 
-        // ── Welche Hälfte? (nur im Zwei-Fenster-Modus) ───────────────────────
-        //  Tags, Kategorien und der Konverter arbeiten am SIDECAR eines Ordners.
-        //  Mit zwei Galerien nebeneinander muss man sagen können, welcher gemeint
-        //  ist; ohne Teilung gibt es nichts zu wählen und die Zeile bleibt weg.
+        // Tags, Kategorien und der Konverter arbeiten am SIDECAR eines Ordners; mit zwei Galerien nebeneinander muss
+        // man sagen können, welcher gemeint ist. Ohne Teilung bleibt die Zeile weg.
         RowLayout {
             id: paneChooser
             //  Nur dort, wo es wirklich um EINEN Ordner geht: Tags (3),
@@ -101,7 +89,6 @@ Dialog {
             }
         }
 
-        // ── Tab-Leiste ───────────────────────────────────────────────────────
         TabBar {
             id: tabBar
             objectName: "settingsTabBar"
@@ -109,33 +96,23 @@ Dialog {
             Layout.margins: 12
             Layout.bottomMargin: 0
 
-            //  BESCHNEIDEN, sonst laufen die Reiter aus dem Dialog heraus.
-            //  Die `TabBar` blaettert intern ueber eine `ListView`; ohne `clip`
-            //  malt die aber auch die Eintraege LINKS und RECHTS ausserhalb
-            //  weiter - im schmalen Fenster stand dann der Rest von
-            //  „Allgemein" am Fensterrand und „Lesezeichen" ueber der
-            //  Dialogkante (Nutzerbefund 2026-09-02, `tests/nonContainedBar.png`).
-            //  Beides setzen: `clip` an der Leiste haelt ihre eigenen Kinder,
-            //  `clip` am `contentItem` die geblaetterte Liste.
+            // BESCHNEIDEN, sonst laufen die Reiter aus dem Dialog: die TabBar blättert intern über eine ListView, die ohne
+            // `clip` auch links und rechts außerhalb malt. Beides setzen - an der Leiste und am `contentItem`.
             clip: true
             Component.onCompleted: if (tabBar.contentItem) tabBar.contentItem.clip = true
 
             background: Rectangle { color: "transparent" }
 
-            //  Die Reiter passen in einem schmalen Fenster nicht nebeneinander.
-            //  Die `TabBar` blättert intern über eine `ListView` - sie hört nur
-            //  von sich aus nicht aufs Rad. Dieselbe Komponente wie in den
-            //  übrigen Leisten holt das nach (Mausrad, mit und ohne Strg).
+            // Die `TabBar` blättert intern über eine `ListView`, hört aber von sich aus nicht aufs Rad. Dieselbe
+            // Komponente wie in den übrigen Leisten holt das nach.
             SmoothWheelArea {
                 flickable: tabBar.contentItem
                 horizontal: true
             }
 
             component SettingsTab: TabButton {
-                //  Mindestbreite je Reiter: sonst quetscht die `TabBar` alle auf
-                //  dieselbe Breite und aus „Kategorien" wird „Kate…". Passen sie
-                //  zusammen nicht mehr in die Leiste, blättert sie stattdessen
-                //  (Mausrad, s. `SmoothWheelArea` oben).
+                // Mindestbreite je Reiter: sonst quetscht die `TabBar` alle auf dieselbe Breite und aus "Kategorien" wird
+                // "Kate...". Passen sie zusammen nicht mehr hinein, blättert sie stattdessen.
                 width: Math.max(tabLbl.implicitWidth + 26, 90)
                 contentItem: Text {
                     id: tabLbl
@@ -167,7 +144,6 @@ Dialog {
             SettingsTab { text: App.uiText(App.language, "SettingsTabBookmarks") }
         }
 
-        // ── Tab-Inhalte ──────────────────────────────────────────────────────
         StackLayout {
             id: stack
             objectName: "settingsStack"
@@ -190,7 +166,6 @@ Dialog {
             SettingsBookmarksTab  {}
         }
 
-        // ── Fußzeile ─────────────────────────────────────────────────────────
         RowLayout {
             Layout.fillWidth: true
             Layout.margins: 12

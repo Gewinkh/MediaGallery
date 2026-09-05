@@ -4,33 +4,9 @@
 #include <QString>
 #include <QStringView>
 
-// ─────────────────────────────────────────────────────────────────────────────
-//  SearchPattern.h - EIN Suchbegriff fuer die ganze App.
-//
-//  Der Begriff wird IMMER woertlich gesucht. Traegt er zusaetzlich Sonderzeichen
-//  eines regulaeren Ausdrucks (`\d{4}`, `^#include`, `a|b`) und ist er als
-//  Ausdruck gueltig, wird er ZUSAETZLICH als Muster gesucht und beide
-//  Trefferlisten werden vereinigt.
-//
-//  Warum keine Umschaltung „Regex an/aus", wie sie jede IDE hat:
-//   • Mit Umschalter sucht man frueher oder spaeter `\d{4}` woertlich und
-//     findet nichts, oder man sucht `datei.txt` und bekommt `dateiXtxt` dazu.
-//   • Eine HALBFERTIGE Eingabe hat keinen Fehlerzustand mehr: waehrend man
-//     `(\w+)` tippt, ist `(` kein gueltiger Ausdruck - der Muster-Zweig faellt
-//     dann einfach weg, der woertliche sucht `(` weiter. Kein rotes Feld.
-//
-//  ZWEI Regeln tragen das:
-//   1. Der Muster-Zweig laeuft NUR, wenn der Begriff ein Sonderzeichen enthaelt
-//      UND uebersetzbar ist. Ohne Sonderzeichen waeren beide Zweige identisch -
-//      dann kostet die Vereinigung nichts, weil sie gar nicht stattfindet.
-//   2. Die vereinigte Liste ist UEBERSCHNEIDUNGSFREI (`mergeRanges`). Zwei sich
-//      ueberlappende Treffer nacheinander zu ersetzen zerlegt den Text - das
-//      ist der einzige Weg, auf dem diese Bequemlichkeit gefaehrlich wuerde.
-//
-//  ERSETZT wird immer woertlich: `\1` hat fuer einen woertlichen Treffer keine
-//  Bedeutung, und ein Treffer kann aus beiden Zweigen stammen. Wer `\d{4}` als
-//  Ersatztext eingibt, bekommt genau diese sechs Zeichen.
-// ─────────────────────────────────────────────────────────────────────────────
+// Der Begriff wird immer woertlich gesucht; traegt er gueltige Regex-Sonderzeichen,
+// zusaetzlich als Muster, beide Trefferlisten vereinigt. Kein Umschalter, weil eine
+// halbfertige Eingabe dann keinen Fehlerzustand mehr hat - "(" sucht einfach weiter.
 namespace mg::search {
 
 struct Range {
@@ -71,10 +47,8 @@ public:
     //  der woertliche Zweig laeuft zuerst, weil er der billigere ist.
     bool contains(QStringView hay) const;
 
-    //  Alle Fundstellen, sortiert und ueberschneidungsfrei. `cap` deckelt die
-    //  Anzahl - ein Muster wie `.` trifft sonst jedes Zeichen der Datei.
-    //  LEERE Treffer (`a*` auf einer Leerzeile) werden verworfen: sie waeren
-    //  weder markierbar noch ersetzbar und wuerden endlos laufen.
+    // Alle Fundstellen, sortiert und überschneidungsfrei; `cap` deckelt die Anzahl - ein Muster wie `.` trifft sonst
+    // jedes Zeichen. LEERE Treffer werden verworfen: sie wären weder markierbar noch ersetzbar.
     QList<Range> findAll(QStringView hay, int cap = 100000) const;
 
     //  Erster Treffer, der BEI ODER HINTER `from` beginnt - fuer Suchleisten,

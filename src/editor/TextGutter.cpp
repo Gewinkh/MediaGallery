@@ -11,8 +11,6 @@
 namespace mg::editor {
 
 TextGutter::TextGutter(QQuickItem* parent) : QQuickPaintedItem(parent) {
-    //  Die Spalte nimmt keine Klicks an - sie liegt neben dem Text, nicht
-    //  darueber, und soll das Markieren nicht stoeren.
     setAcceptedMouseButtons(Qt::NoButton);
     setAntialiasing(true);
 }
@@ -29,15 +27,10 @@ void TextGutter::setDocument(QQuickTextDocument* d) {
     m_quickDoc = d;
 
     if (QTextDocument* neu = doc()) {
-        //  Neu zeichnen, sobald sich am Dokument etwas aendert - eine neue Zeile
-        //  verschiebt alle Nummern darunter, und ab einer Stelle mehr braucht
-        //  die Spalte zusaetzlich mehr Breite.
         connect(neu, &QTextDocument::contentsChanged, this, [this] {
             breiteNeuRechnen();
             update();
         });
-        //  Auch das reine Neu-Auslegen (Umbruch an/aus, Breitenaenderung)
-        //  verschiebt die Zeilen, ohne dass sich der Inhalt aendert.
         if (auto* lay = neu->documentLayout())
             connect(lay, &QAbstractTextDocumentLayout::documentSizeChanged,
                     this, [this] { update(); });
@@ -130,26 +123,13 @@ void TextGutter::breiteNeuRechnen() {
     }
 }
 
-//  Malt den Ast einer weich umgebrochenen Zeile.
-//  `blockOben` ist die Oberkante des Blocks in Fensterkoordinaten.
-//
-//  GEOMETRIE (mit dem Nutzer abgesprochen 2026-09-02):
-//   · der senkrechte Strich beginnt an der OBERKANTE der ersten
-//     Fortsetzungszeile - nicht auf halber Hoehe, und nicht schon unter der
-//     Nummer (Variante A);
-//   · er endet auf HALBER Hoehe der letzten Bildschirmzeile, es bleibt also
-//     kein Stueck unter dem letzten Abzweig stehen;
-//   · von jeder Fortsetzungszeile geht auf halber Hoehe ein kurzer Pfeil nach
-//     rechts ab.
-//  Farbe: dieselbe wie die Nummer - und damit auch dieselbe Hervorhebung,
-//  wenn der Cursor in dieser Zeile steht.
+// Der Strich beginnt an der Oberkante der ersten Fortsetzungszeile und endet auf
+// halber Hoehe der letzten; je Fortsetzungszeile geht ein kurzer Pfeil nach rechts ab.
 void TextGutter::zeichneAst(QPainter* p, const QTextLayout& tl,
                             qreal blockOben, const QColor& farbe) {
     const int zeilen = tl.lineCount();
     if (zeilen < 2) return;
 
-    //  Zarter als eine Ziffer, aber nicht duenn: bei einem Geraetepixel war der
-    //  Ast am Bildschirm kaum zu sehen (Nutzerbefund 2026-09-02).
     constexpr qreal kStaerke = 1.6;    // Strichstaerke
     constexpr qreal kStummel = 9.0;    // Laenge des Abzweigs inkl. Spitze
     constexpr qreal kSpitze  = 3.5;    // Laenge der beiden Spitzenstriche
@@ -165,10 +145,8 @@ void TextGutter::zeichneAst(QPainter* p, const QTextLayout& tl,
     p->save();
     p->setPen(stift);
 
-    //  Anfang: Oberkante der ersten FORTSETZUNGSzeile.
-    //  Soll der Strich spaeter bis kurz unter die Nummer hochgezogen werden,
-    //  ist das genau diese eine Zeile - dann die Mitte der ERSTEN Zeile nehmen:
-    //      blockOben + tl.lineAt(0).y() + tl.lineAt(0).height()
+    // Anfang: Oberkante der ersten FORTSETZUNGSzeile. Soll der Strich später bis kurz unter die Nummer
+    // hochgezogen werden, ist das genau diese eine Zeile - dann die Mitte der ERSTEN Zeile nehmen.
     const qreal oben = blockOben + tl.lineAt(1).y();
 
     const QTextLine letzte = tl.lineAt(zeilen - 1);
@@ -180,7 +158,6 @@ void TextGutter::zeichneAst(QPainter* p, const QTextLayout& tl,
         const QTextLine zeile = tl.lineAt(i);
         const qreal mitte = qRound(blockOben + zeile.y() + zeile.height() / 2.0) + 0.5;
         p->drawLine(QPointF(xStrich, mitte), QPointF(xEnde, mitte));
-        //  Spitze: zwei kurze Striche zurueck nach links, oben und unten.
         p->drawLine(QPointF(xEnde, mitte), QPointF(xEnde - kSpitze, mitte - kSpitze));
         p->drawLine(QPointF(xEnde, mitte), QPointF(xEnde - kSpitze, mitte + kSpitze));
     }
@@ -208,7 +185,6 @@ void TextGutter::paint(QPainter* p) {
     QTextBlock block = d->findBlock(qMax(0, trefferPos));
     if (!block.isValid())
         block = d->firstBlock();
-    //  Einen Block zurueck, falls `hitTest` schon in den naechsten gerutscht ist.
     if (block.previous().isValid())
         block = block.previous();
 
@@ -223,8 +199,6 @@ void TextGutter::paint(QPainter* p) {
         const QRectF r = lay->blockBoundingRect(block);
         if (r.top() > unten) break;
         if (r.bottom() >= m_contentY) {
-            //  NUR die erste Bildschirmzeile des Blocks bekommt die Nummer -
-            //  die Fortsetzungszeilen eines weichen Umbruchs bleiben leer.
             const qreal y = r.top() - m_contentY + m_topPadding;
             QTextLayout* tl = block.layout();
             const qreal zeilenhoehe = (tl && tl->lineCount() > 0) ? tl->lineAt(0).height()
@@ -236,11 +210,8 @@ void TextGutter::paint(QPainter* p) {
                         Qt::AlignRight | Qt::AlignVCenter,
                         QString::number(block.blockNumber() + 1));
 
-            //  ── Der Ast der Fortsetzungszeilen ──────────────────────────────
-            //  Statt Leere steht in den Fortsetzungszeilen ein duenner
-            //  senkrechter Strich, von dem je Zeile ein kurzer Pfeil nach rechts
-            //  abzweigt. Er macht sichtbar, wie weit eine logische Zeile reicht,
-            //  ohne eine Nummer vorzutaeuschen, die es dort nicht gibt.
+            // In den Fortsetzungszeilen steht ein dünner senkrechter Strich mit kurzem Pfeil statt Leere: er zeigt, wie weit
+            // eine logische Zeile reicht, ohne eine Nummer vorzutäuschen, die es dort nicht gibt.
             if (tl && tl->lineCount() > 1)
                 zeichneAst(p, *tl, y, farbe);
         }

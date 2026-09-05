@@ -5,17 +5,8 @@ import QtQuick.Layouts
 import MediaGallery 1.0
 import "../common"
 
-// ─────────────────────────────────────────────────────────────────────────────
-//  TextSurface.qml - editierbarer Plain-Text-Editor (ersetzt TextViewer(QWidget)).
-//  Inhalt via Viewer.readTextFile, Speichern via Viewer.writeTextFile (atomar).
-//
-//  • Editierbar (kein read-only mehr); Strg+S oder Speichern-Button schreibt.
-//  • Ungespeicherte Aenderungen werden mit "•" markiert; beim Verlassen
-//    (release) automatisch gespeichert, damit keine Eingaben verloren gehen.
-//  • topInset/bottomInset werden vom FullscreenViewer reserviert -> die globale
-//    Leiste (Dateiname) ueberdeckt den Inhalt NICHT mehr.
-//  • Weiches, web-aehnliches Mausrad-Scrollen (animiert, groesserer Schritt).
-// ─────────────────────────────────────────────────────────────────────────────
+// Editierbarer Plain-Text-Editor; Lesen und atomares Schreiben über `Viewer`. Ungespeicherte Änderungen tragen
+// "•" und werden beim Verlassen automatisch gesichert, damit keine Eingaben verloren gehen.
 Item {
     id: root
 
@@ -26,29 +17,17 @@ Item {
     property string currentPath: ""
     property bool   dirty: false
     property bool   _loading: false
-    //  Datei groesser als der Lesedeckel des ViewerControllers? Dann liegt nur
-    //  ihr Anfang im Editor, und Schreiben wuerde den Rest loeschen. Der Editor
-    //  geht deshalb auf nur lesen; die C++-Seite sperrt zusaetzlich (letzte
-    //  Instanz, s. ViewerController::writeTextFile).
+    // Datei größer als der Lesedeckel? Dann liegt nur ihr Anfang im Editor, und Schreiben löschte den Rest - der
+    // Editor geht auf nur lesen, die C++-Seite sperrt zusätzlich.
     property bool   _readOnly: false
-    //  Läuft gerade ein PDF-Export? (Der Knopf bleibt so lange stumm - der
-    //  Export selbst liegt im Worker, die Oberfläche bleibt bedienbar.)
     property bool   _pdfBusy: false
 
-    //  Schriftfarbe des PDF-Exports. Der Zähler treibt die Neuauswertung: die
-    //  Farbe kommt aus einer Invokable (Ordner-Sidecar), also gibt es kein
-    //  Signal, an dem eine Bindung allein hängen könnte. `App.textPdfColor` steht
-    //  bewusst MIT in der Bindung - ändert sich die globale Vorgabe, zieht eine
-    //  Datei ohne eigene Farbe sofort nach.
+    // Der Zähler treibt die Neuauswertung: die Farbe kommt aus einer Invokable, es gibt also kein Signal, an dem
+    // eine Bindung hängen könnte. `App.textPdfColor` steht mit in der Bindung, damit eine Datei ohne eigene nachzieht.
     property int    _inkRev: 0
     readonly property color _pdfInk: {
-        //  Die globale Vorgabe wird IMMER gelesen, auch wenn sie gleich verworfen
-        //  wird: eine QML-Bindung hängt nur an dem, was sie tatsächlich anfasst -
-        //  stünde sie im else-Zweig, bliebe eine Datei ohne eigene Farbe beim
-        //  Ändern der Vorgabe auf dem alten Wert stehen.
-        //  Über den PFAD ans Modell: die Ausnahme je Datei liegt im Sidecar des
-        //  Ordners, dem die Datei gehört. Kennt das Modell sie nicht (oder hat
-        //  sie keine eigene Wahl), gilt die globale Vorgabe.
+        // Die globale Vorgabe wird IMMER gelesen, auch wenn sie gleich verworfen wird: eine Bindung hängt nur an dem,
+        // was sie anfasst - im else-Zweig bliebe eine Datei ohne eigene Farbe auf dem alten Wert stehen.
         var vorgabe = App.textPdfColor
         if (!(root._inkRev, root.currentPath.length > 0)) return vorgabe
         var own = mediaModel.fileTextPdfColor(root.currentPath)
@@ -58,7 +37,6 @@ Item {
         (root._inkRev, root.currentPath.length > 0)
         && mediaModel.hasFileTextPdfColor(root.currentPath)
 
-    // HTML-Quelltext wird weiterhin gesondert behandelt (s. _wrap).
     readonly property bool _isHtml: {
         var p = root.currentPath.toLowerCase()
         return p.endsWith(".html") || p.endsWith(".htm")
@@ -69,7 +47,7 @@ Item {
     //  weiter waagerecht, damit die Verschachtelung ablesbar bleibt.
     readonly property bool _wrap: Editor.softWrap && !root._isHtml
 
-    //  ── Suchen und Ersetzen (Strg+F) ────────────────────────────────────────
+    //  Suchen und Ersetzen (Strg+F)
     //  Dieselbe Form wie im DOCX-Editor (`DocxSurface` ▸ findBar), damit die App
     //  einheitlich bleibt: Leiste oben rechts, Strg+F auf, Esc zu.
     property bool   _findOpen: false
@@ -79,13 +57,9 @@ Item {
     property string _findStatus: ""
 
     function _openFind() {
-        //  Steht Text unter dem Cursor bereit, wird er übernommen - so muss man
-        //  das gesuchte Wort nicht abtippen (Verhalten jeder IDE).
         if (editor.selectedText.length > 0 && editor.selectedText.indexOf("\n") < 0)
             findField.text = editor.selectedText
         root._findOpen = true
-        //  An das FELD, nicht an den Rahmen: `FField` ist ein `Rectangle` und
-        //  kennt weder `forceActiveFocus` mit Textwirkung noch `selectAll`.
         findField.field.forceActiveFocus()
         findField.field.selectAll()
         root._findRefresh()
@@ -97,8 +71,6 @@ Item {
         decorations.setSearchTerm("", false)
         editor.forceActiveFocus()
     }
-    //  Sucht ab `von` und markiert den Treffer. Die Markierung IST die Anzeige:
-    //  der angesprungene Treffer ist die Auswahl, alle übrigen sind hinterlegt.
     function _findFrom(von, rueckwaerts) {
         if (findField.text.length === 0) { root._findStatus = ""; return }
         const r = syntax.findNext(findField.text, von, root._findCase,
@@ -107,24 +79,17 @@ Item {
             root._findStatus = App.uiText(App.language, "EditorFindNoMatch")
             return
         }
-        //  Liegt der Treffer in einem ZUGEKLAPPTEN Bereich, wird dieser
-        //  aufgeklappt und bleibt es auch danach (Festlegung des Nutzers):
-        //  man springt den Treffer an, also will man ihn sehen. Die uebrigen,
-        //  nicht angesprungenen Treffer bleiben verborgen - ihre Faltmarke
-        //  wird stattdessen hervorgehoben (s. `TextDecorations`).
+        // Liegt der Treffer in einem zugeklappten Bereich, wird dieser aufgeklappt und bleibt es: man springt den
+        // Treffer an, also will man ihn sehen. Die übrigen bleiben verborgen, ihre Faltmarke wird hervorgehoben.
         foldBar.ensureVisible(r.start)
         editor.select(r.start, r.start + r.length)
         root._findStatus = App.uiText(App.language, "EditorFindCounter")
                               .arg(r.index).arg(r.total)
     }
-    //  Weitersuchen ab dem ENDE der aktuellen Auswahl - sonst fände man
-    //  denselben Treffer wieder.
     function _findNext(rueckwaerts) {
         root._findFrom(rueckwaerts ? editor.selectionStart : editor.selectionEnd,
                        rueckwaerts)
     }
-    //  Beim Tippen im Suchfeld: ab dem Anfang der aktuellen Auswahl, damit die
-    //  Suche nicht wegspringt, während man den Begriff verlängert.
     function _findRefresh() {
         root._findFrom(editor.selectionStart, false)
         highlightTimer.restart()
@@ -182,32 +147,16 @@ Item {
 
     Rectangle { anchors.fill: parent; color: Editor.background }
 
-    //  Syntaxfärbung. Hängt sich an das `textDocument` der TextArea; die Sprache
-    //  kommt aus der Dateiendung (Tabelle in C++). Bei unbekannter Endung färbt
-    //  sie nichts und kostet nichts. Steht auf WURZELebene, weil die Statuszeile
-    //  ihren Sprachnamen braucht.
     CodeHighlighter {
         id: syntax
         document: editor.textDocument
         path: root.currentPath
-        //  Breite eines Tabulators in ZEICHEN. Umgerechnet wird in C++, an der
-        //  Schrift des Dokuments - QMLs `FontMetrics` lag um ein Pixel daneben,
-        //  und dann steht ein Tabulator nicht dort, wo vier Leerzeichen enden.
         tabWidth: Editor.tabWidth
     }
 
-    //  ── KEINE eigene Werkzeugleiste mehr ────────────────────────────────────
-    //  Sie ist ersatzlos entfallen (Festlegung des Nutzers 2026-09-03):
-    //   • Speichern: passiert von selbst - beim Verlassen der Datei, beim
-    //     Wechsel auf eine andere und auf dem Auto-Speichern-Takt; `Strg+S`
-    //     bleibt. Die Statuszeile zeigt „geändert", solange etwas offen ist.
-    //   • „-> PDF" samt Farbwahl: steht im Menü „Dokument" des Viewers.
-    //   • Übersicht und Transliteration: stehen in der Leiste darüber, rechts
-    //     neben „Datei hinzufügen".
-    //  Damit bleibt EINE Leiste am oberen Rand statt zweier.
+    // KEINE eigene Werkzeugleiste mehr: Speichern passiert von selbst (Strg+S bleibt), "-> PDF" steht im Menü
+    // "Dokument", Übersicht und Transliteration in der Leiste darüber. Damit bleibt EINE Leiste statt zweier.
 
-    //  Öffentliche Fläche für den Viewer: das Menü „Dokument" bedient den
-    //  PDF-Weg von dort aus, der Text lebt aber hier.
     readonly property color pdfInk: root._pdfInk
     readonly property bool  pdfInkOwn: root._pdfInkOwn
     readonly property bool  pdfBusy: root._pdfBusy
@@ -221,9 +170,6 @@ Item {
         mediaModel.clearFileTextPdfColor(root.currentPath)
         root._inkRev++
     }
-    //  Gedruckt wird der STAND IM EDITOR (nicht der auf Platte) - ungespeicherte
-    //  Änderungen sind also mit im PDF. Die Tabulatorweite kommt aus den
-    //  Editor-Einstellungen, damit gedruckt genauso eingerückt ist wie am Schirm.
     function exportPdf() {
         if (root.currentPath.length === 0 || root._pdfBusy) return
         root._pdfBusy = true
@@ -231,8 +177,6 @@ Item {
                                root._pdfInk, Editor.tabWidth)
     }
 
-    //  Auto-Speichern wie im DOCX-Editor: ohne Speichern-Knopf darf das Sichern
-    //  nicht allein am Verlassen hängen (ein Absturz nähme sonst alles mit).
     Timer {
         interval: Math.max(5, App.autoSaveInterval) * 1000
         repeat: true
@@ -241,11 +185,6 @@ Item {
         onTriggered: root.save()
     }
 
-    // ── Editor (editierbar, eigene Flickable für sauberes Scrollen) ────────────
-    // ── Zeilennummern-Spalte (gezeichnet in C++, kein Item je Zeile) ─────────
-    //  Sie liegt NEBEN dem Text, nicht darüber: sie nimmt keine Klicks an und
-    //  stört das Markieren nicht. Breite bestimmt sie selbst - nur sie kennt
-    //  die Schriftmaße und die höchste Nummer.
     TextGutter {
         id: gutter
         visible: Editor.lineNumbers
@@ -266,21 +205,13 @@ Item {
                              Editor.gutterText.b, 0.25)
     }
 
-    //  Höhe des Textes: beim Falten weiß `paintedHeight` nichts von den
-    //  verborgenen Zeilen (gemessen: Dokument 68017 px, `paintedHeight` blieb
-    //  bei 85017), deshalb kommt sie bei faltbaren Dateien aus dem Dokument.
     readonly property real _textHoehe:
         foldBar.hasRegions && foldBar.documentHeight > 0
             ? foldBar.documentHeight + editor.topPadding + editor.bottomPadding
             : editor.paintedHeight
 
-    //  Wie weit steht der Zeiger beim Ziehen ÜBER oder UNTER dem Fenster?
-    //  0 = drinnen (dann rollt nichts).
-    //  Gerechnet wird über die SZENEN-Position: `point.position` steht in den
-    //  Koordinaten des Textfeldes, und das wandert beim Rollen unter dem
-    //  stillstehenden Zeiger weg - der Abstand wäre nach dem ersten Schritt
-    //  falsch. Die Szene bleibt liegen.
-    //  Zeitpunkt des letzten Rollschrittes (s. `ziehRoller`).
+    // Gerechnet wird über die SZENEN-Position: `point.position` steht in Koordinaten des Textfeldes, und das
+    // wandert beim Rollen unter dem stillstehenden Zeiger weg - der Abstand wäre nach dem ersten Schritt falsch.
     property real _ziehTick: 0
 
     readonly property real _ziehAbstand: {
@@ -291,25 +222,15 @@ Item {
         return 0
     }
 
-    //  Eine Fensterhöhe weiter - NUR die Ansicht. Die Schreibmarke bleibt, wo
-    //  sie ist (Festlegung des Nutzers): man blättert, um etwas nachzusehen,
-    //  nicht um die Eingabestelle zu verlieren. Beim nächsten Tastendruck holt
-    //  `_cursorInsSichtfeld` die Ansicht ohnehin zur Marke zurück.
     function _blaettern(runter) {
         const schritt = flick.height * (runter ? 1 : -1)
         flick.contentY = Math.max(0, Math.min(flick.contentHeight - flick.height,
                                               flick.contentY + schritt))
     }
 
-    //  Die Ansicht dem Cursor nachführen - von Hand, weil `TextArea.flickable`
-    //  dafür nicht mehr zuständig ist (s. dort). Sie wandert NUR, wenn der
-    //  Cursor sonst aus dem Fenster liefe.
     function _cursorInsSichtfeld() {
         const r = editor.positionToRectangle(editor.cursorPosition)
         if (r.height <= 0) return
-        //  Immer geklemmt: `positionToRectangle` kann bei einem gerade
-        //  gefalteten oder noch nicht neu vermessenen Dokument auch Werte
-        //  hinter dem Ende liefern - dann stünde das Fenster im Leeren.
         const max = Math.max(0, flick.contentHeight - flick.height)
         if (r.y < flick.contentY)
             flick.contentY = Math.min(max, Math.max(0, r.y))
@@ -317,11 +238,8 @@ Item {
             flick.contentY = Math.min(max, r.y + r.height - flick.height)
     }
 
-    // ── Faltungsleiste (Qt-Creator-Muster) ───────────────────────────────────
-    //  Schmale Spalte RECHTS von den Nummern, in der Bloecke zu- und
-    //  aufgeklappt werden. Sie erscheint nur, wenn die Datei ueberhaupt
-    //  faltbare Bloecke hat (`hasRegions`, Festlegung des Nutzers) - eine
-    //  `.txt` bekommt sie nie zu sehen.
+    // Faltungsleiste rechts von den Nummern; sie erscheint nur, wenn die Datei überhaupt faltbare Blöcke hat
+    // (`hasRegions`) - eine .txt bekommt sie nie zu sehen.
     TextFoldBar {
         id: foldBar
         objectName: "textFoldBar"
@@ -343,24 +261,14 @@ Item {
         markerColor: Editor.gutterText
     }
 
-    //  Rollt weiter, solange beim Markieren außerhalb des Fensters gezogen
-    //  wird. Die Geschwindigkeit wächst mit dem Abstand zum Rand - nah dran
-    //  kriecht es zeilenweise, weit draußen fliegt es, genau wie in einer IDE.
     Timer {
         id: ziehRoller
         interval: 16                       // rund ein Bild
         repeat: true
         running: zieher.active && root._ziehAbstand !== 0
-        //  Gerollt wird nach VERGANGENER ZEIT, nicht je Auslösung: ein
-        //  Zeitgeber feuert je nach Last unterschiedlich oft, und die
-        //  Geschwindigkeit soll davon nicht abhängen (gemessen: 38 Schritte in
-        //  0,60 s, Summe der Zeitschritte 0,608 s - die Rechnung geht auf).
-        //  KEIN Zuruecksetzen bei `running` - die Bedingung flackert waehrend
-        //  des Rollens (der Abstand wird neu bewertet), und jedes Flackern
-        //  setzte die Zeitrechnung zurueck: `dt` blieb dann immer beim
-        //  Ersatzwert, und das Tempo hing doch wieder an der Auslösungszahl
-        //  (gemessen: dt=0.016 in JEDEM Schritt). Ein veralteter Zeitpunkt ist
-        //  ungefährlich, weil `dt` ohnehin gedeckelt ist.
+        // Gerollt wird nach VERGANGENER ZEIT, nicht je Auslösung: ein Zeitgeber feuert je nach Last unterschiedlich
+        // oft (gemessen: 38 Schritte in 0,60 s, Summe der Zeitschritte 0,608 s). KEIN Zurücksetzen bei `running` - die
+        // Bedingung flackert während des Rollens, und jedes Flackern liess `dt` beim Ersatzwert (gemessen 0.016).
         onTriggered: {
             const jetzt = Date.now()
             const vorher = root._ziehTick
@@ -368,46 +276,27 @@ Item {
             root._ziehTick = jetzt
 
             const weg = root._ziehAbstand
-            //  Nah am Rand kriecht es zeilenweise, weit draußen läuft es
-            //  zügig - aber gedeckelt, sonst schießt eine kleine Handbewegung
-            //  durch die halbe Datei.
             const proSekunde = Math.min(1800, 150 + Math.abs(weg) * 12)
             const tempo = proSekunde * dt * (weg < 0 ? -1 : 1)
             const ziel = Math.max(0, Math.min(flick.contentHeight - flick.height,
                                               flick.contentY + tempo))
             if (ziel === flick.contentY) return
             flick.contentY = ziel
-            //  Die Auswahl mitziehen: ohne das rollte nur die Ansicht, und
-            //  markiert bliebe der Stand von vorhin. Auch hier über die Szene,
-            //  weil das Textfeld gerade unter dem Zeiger weggerollt ist.
-            //
-            //  Die Auswahl endet dabei an der letzten SICHTBAREN Zeile, nicht
-            //  beim Zeiger: sonst steht der Cursor außerhalb des Fensters, die
-            //  Nachführung (`_cursorInsSichtfeld`) rollt zusätzlich hinterher,
-            //  und die Geschwindigkeit hängt nicht mehr an dieser Rechnung
-            //  (gemessen: 1500 px/s auch dort, wo 250 gewollt waren).
+            // Die Auswahl muss mitziehen, sonst rollt nur die Ansicht. Sie endet an der letzten SICHTBAREN Zeile, nicht
+            // beim Zeiger: sonst rollt `_cursorInsSichtfeld` hinterher (gemessen 1500 px/s, wo 250 gewollt waren).
             const p = editor.mapFromItem(null, zieher.point.scenePosition)
             const yInnen = Math.max(flick.contentY + 1,
                                     Math.min(flick.contentY + flick.height - 1, p.y))
             editor.moveCursorSelection(editor.positionAt(p.x, yInnen),
                                        TextEdit.SelectCharacters)
-            //  Und den Stand wieder auf den berechneten Wert setzen: das
-            //  Verschieben der Auswahl führt die Ansicht nach, und die Zeile
-            //  am Rand ragt um ihre Höhe hinaus - jeder Schritt bekam dadurch
-            //  eine Zeile geschenkt (gemessen: 1816 statt 967 px in 0,6 s).
-            //  So gehört der Scrollstand allein dieser Rechnung.
             flick.contentY = ziel
         }
     }
 
-    // ── Übersichtsspalte rechts (Kates „Minimap") ────────────────────────────
-    //  Zeigt die GANZE Datei verkleinert und lässt sich darin scrollen.
-    //  Auf- und zuklappbar über den Knopf in der Werkzeugleiste bzw. die
-    //  Einstellung (`Editor.minimap`) - sie kostet Breite, deshalb ist sie
-    //  standardmäßig aus.
+    // Übersichtsspalte ("Minimap") zeigt die ganze Datei verkleinert und lässt sich darin scrollen. Sie kostet
+    // Breite und ist deshalb standardmäßig aus (`Editor.minimap`).
     TextMinimap {
         id: minimap
-        //  Griff fuer die Pruefstaende (s. `bench_shell t`).
         objectName: "textMinimap"
         visible: Editor.minimap
         anchors { right: parent.right; top: parent.top; topMargin: root.topInset
@@ -421,14 +310,10 @@ Item {
         contentHeight: flick.contentHeight
         backgroundColor: Editor.gutterBackground
         textColor: Editor.text
-        //  Das Sichtfenster ist ein AUFHELLENDER Schleier, kein Rahmen: bei
-        //  drei Pixel je Zeile wäre ein Rahmen dicker als das, was er umfasst.
         viewportColor: Qt.rgba(Editor.text.r, Editor.text.g, Editor.text.b, 0.13)
         borderColor: Qt.rgba(Editor.gutterText.r, Editor.gutterText.g,
                              Editor.gutterText.b, 0.25)
 
-        //  Die Spalte scrollt NICHT selbst - sie bittet darum. So bleibt der
-        //  Scrollstand an einer Stelle (der `Flickable`).
         onScrollRequested: function (ziel) { flick.contentY = ziel }
     }
 
@@ -439,26 +324,12 @@ Item {
             top: parent.top; topMargin: root.topInset; bottom: statusBar.top
         }
         clip: true
-        //  RANDLOS (Wunsch T): kein `margins` mehr und kein eigenes Feld in der
-        //  Fläche - der Text füllt die Kachel von Rand zu Rand, wie in einer IDE.
-        //  Der frühere 12-px-Rand plus das gerundete Hintergrund-Rechteck war
-        //  genau das „extra Feld", das weg sollte.
-        //
-        //  UMBRUCH: der sichtbare („weiche") Umbruch aus den Einstellungen
-        //  (`Editor.softWrap`). Er ist rein optisch - die Datei bekommt davon
-        //  nichts mit, echter Umbruch bleibt Enter. Aus = die Zeile läuft
-        //  waagerecht weiter (wie in VS Code).
+        // RANDLOS: der Text füllt die Kachel von Rand zu Rand wie in einer IDE - der frühere 12-px-Rand mit gerundetem
+        // Rechteck war das "extra Feld", das weg sollte. Der weiche Umbruch ist rein optisch, die Datei merkt nichts.
         contentWidth: root._wrap ? width : editor.paintedWidth
-        //  Beim Falten weiß `paintedHeight` nichts von den verborgenen Zeilen
-        //  (gemessen: Dokument 68017 px, `paintedHeight` blieb bei 85017). Sie
-        //  dazu zu bewegen kostete eine volle Neuberechnung samt Sprung an den
-        //  Dateianfang - deshalb kommt die Höhe bei faltbaren Dateien direkt
-        //  aus dem Dokument (s. `TextFoldBar::documentHeight`).
+        // Beim Falten weiß `paintedHeight` nichts von den verborgenen Zeilen (gemessen: Dokument 68017 px,
+        // `paintedHeight` blieb bei 85017), und sie dazu zu bewegen kostete einen Sprung an den Dateianfang.
         contentHeight: editor.height
-        //  Schrumpft der Inhalt (ein zugeklappter Block, eine kürzere Datei),
-        //  kann der Scrollstand HINTER dem Ende liegen - dann steht das Fenster
-        //  im Leeren. `boundsBehavior` greift dort nicht: es bändigt nur das
-        //  Werfen mit der Maus, nicht ein von Hand gesetztes `contentY`.
         onContentHeightChanged: {
             const max = Math.max(0, contentHeight - height)
             if (contentY > max) contentY = max
@@ -471,18 +342,9 @@ Item {
             policy: root._wrap ? ScrollBar.AlwaysOff : ScrollBar.AsNeeded
         }
 
-        //  ── Hervorhebung der aktuellen Zeile ────────────────────────────────
-        //  Ein Streifen HINTER dem Text (z: -1), über die volle Inhaltsbreite.
-        //  y und Höhe kommen aus `positionToRectangle` - das deckt auch eine
-        //  weich umgebrochene Zeile ab, weil dort die Bildschirmzeile gemeint
-        //  ist, in der der Cursor tatsächlich steht.
-        //
-        //  KEIN `+ topPadding` hier: `positionToRectangle` rechnet die Polsterung
-        //  bereits ein (gemessen: bei `padding: 10` liefert Position 0 y = 10).
-        //  Ein zweites Addieren schob den Streifen um genau diese 10 px nach
-        //  unten - der gemeldete Versatz. Die NUMMERNSPALTE muss das Padding
-        //  dagegen sehr wohl addieren: sie rechnet mit `blockBoundingRect`, und
-        //  das beginnt bei y = 0 (ebenfalls gemessen).
+        // y und Höhe kommen aus `positionToRectangle`, das auch eine weich umgebrochene Zeile trifft. KEIN
+        // `+ topPadding`: die Funktion rechnet die Polsterung schon ein (bei `padding: 10` liefert Position 0 y = 10),
+        // ein zweites Addieren schob den Streifen um 10 px. Die Nummernspalte muss es addieren - `blockBoundingRect` beginnt bei 0.
         Rectangle {
             visible: Editor.highlightCurrentLine && !root._readOnly
                      && editor.activeFocus
@@ -494,9 +356,6 @@ Item {
             color: Editor.currentLine
         }
 
-        //  ── Einrueckungshilfen, Faltmarken, Klammernpaare ───────────────────
-        //  Ein gezeichnetes Element HINTER dem Text, wie der Streifen der
-        //  aktuellen Zeile. Es malt nur, was gerade im Fenster steht.
         TextDecorations {
             id: decorations
             objectName: "textDecorations"
@@ -519,9 +378,6 @@ Item {
             showGuides: Editor.indentGuides
             showBrackets: Editor.matchBrackets
 
-            //  Kräftig genug, um die Stufe zu sehen, blass genug, um beim
-            //  Lesen nicht zu stören (gemessen: bei 0.22 hob sich die Linie
-            //  auf dunklem Grund um drei Helligkeitsstufen ab - zu wenig).
             guideColor: Qt.rgba(Editor.gutterText.r, Editor.gutterText.g,
                                 Editor.gutterText.b, 0.45)
             markerColor: Editor.gutterText
@@ -531,39 +387,20 @@ Item {
                                 Editor.selection.b, 0.55)
         }
 
-        //  ── Das Textfeld ────────────────────────────────────────────────────
-        //  BEWUSST ohne `TextArea.flickable`: diese Anbindung installiert Qts
-        //  „Cursor ins Bild rollen", und das feuert bei JEDER Neuberechnung des
-        //  Layouts - nicht nur, wenn der Cursor sich bewegt. Beim Zuklappen
-        //  eines Blocks oder beim Umlegen eines Schalters in den Einstellungen
-        //  (die Faltungsleiste ändert dabei die Breite) sprang die Ansicht
-        //  deshalb an die Stelle des Cursors, meist an den Dateianfang
-        //  (gemessen: Scrollstand 4000 -> 17). Als gewöhnliches Kind der
-        //  Flickable passiert das nicht mehr; dem Cursor folgt die Ansicht
-        //  weiterhin - aber nur, wenn er sich WIRKLICH bewegt, s.
-        //  `onCursorPositionChanged` und `root._cursorInsSichtfeld()`.
+        // BEWUSST ohne `TextArea.flickable`: diese Anbindung installiert Qts "Cursor ins Bild rollen", und das feuert
+        // bei JEDER Layout-Neuberechnung - beim Zuklappen eines Blocks sprang die Ansicht an den Dateianfang (gemessen:
+        // Scrollstand 4000 -> 17). Als gewöhnliches Kind folgt sie dem Cursor nur, wenn er sich wirklich bewegt.
         TextArea {
             id: editor
-            //  Griff fuer die Pruefstaende (s. `bench_shell t`).
             objectName: "textEditorArea"
             readOnly: root._readOnly
             selectByMouse: true
-            //  Breite an den Viewport binden, sobald umgebrochen wird - sonst
-            //  bliebe die TextArea so breit wie ihre längste Zeile.
             width: root._wrap ? flick.width : Math.max(implicitWidth, flick.width)
-            //  Höhe: mindestens der Viewport (damit man auch in eine kurze
-            //  Datei klicken kann), sonst die Höhe des Dokuments OHNE die
-            //  zugeklappten Zeilen (s. `flick.contentHeight`).
             height: Math.max(root._textHoehe, flick.height)
             onCursorPositionChanged: root._cursorInsSichtfeld()
 
-            //  ── Klick auf die drei Punkte klappt wieder auf ──────────────
-            //  Die Punkte hinter einer zugeklappten Zeile SIND der Knopf, nicht
-            //  nur eine Marke (Festlegung des Nutzers). Ein `TapHandler` nimmt
-            //  den Zeiger nur passiv - das Textfeld behält seine eigene
-            //  Mausbehandlung, Markieren und Cursor setzen gehen weiter.
-            //  Gerechnet wird in den Koordinaten der Zusatzzeichnung, denn dort
-            //  liegen die Punkte.
+            // Die drei Punkte SIND der Knopf, nicht nur eine Marke. Ein `TapHandler` nimmt den Zeiger nur passiv - das
+            // Textfeld behält Markieren und Cursor setzen. Gerechnet wird in den Koordinaten der Zusatzzeichnung.
             TapHandler {
                 acceptedButtons: Qt.LeftButton
                 onTapped: function (punkt) {
@@ -573,13 +410,8 @@ Item {
                 }
             }
 
-            //  ── Markieren über den Rand hinaus ──────────────────────────
-            //  Zieht man mit gedrückter Maustaste aus dem Fenster heraus,
-            //  bekommt das Textfeld keine neuen Mausereignisse mehr - die
-            //  Auswahl bliebe an der letzten sichtbaren Zeile stehen. Der
-            //  `PointHandler` verfolgt den Zeiger, ohne ihn zu greifen (das
-            //  Textfeld behält seine eigene Mausbehandlung), und der Zeitgeber
-            //  darunter rollt weiter, solange der Zeiger draußen steht.
+            // Zieht man aus dem Fenster heraus, bekommt das Textfeld keine Mausereignisse mehr und die Auswahl bliebe an
+            // der letzten sichtbaren Zeile stehen. Der `PointHandler` verfolgt den Zeiger, ohne ihn zu greifen.
             PointHandler {
                 id: zieher
                 objectName: "textZieher"
@@ -587,31 +419,13 @@ Item {
                 target: null
             }
             wrapMode: root._wrap ? TextEdit.Wrap : TextEdit.NoWrap
-            //  Die Farben kommen aus der EDITOR-Palette, nicht aus dem App-Theme:
-            //  der Texteditor hat eigene Profile (s. `Editor`-Singleton).
             color: Editor.text
             selectionColor: Editor.selection
-            // Monospace für Latein (Code/HTML-Bündigkeit); arabische Glyphen fallen
-            // pro Zeichen auf Naskh zurück (QFont-Familienliste aus C++, da QML in
-            // Qt 6.4 kein font.families kennt).
             font: App.fallbackFont("monospace", 13)
-            //  Polsterung statt Rand: der Text klebt nicht an der Kante, die
-            //  FLÄCHE reicht aber bis dorthin - das ist der Unterschied zwischen
-            //  „randlos" und „gequetscht".
             padding: 10
-            //  Kein eigenes Feld mehr (kein `radius`, kein `border`) - die
-            //  Fläche IST der Editor. DURCHSICHTIG, weil die Fläche schon vom
-            //  Rechteck der Wurzel gemalt wird: ein deckender Hintergrund hier
-            //  läge ÜBER den Einrückungshilfen und dem Streifen der aktuellen
-            //  Zeile (beide `z: -1` in der Flickable) und machte sie unsichtbar.
             background: null
-            // Live-Transliteration: gezieltes remove()/insert() statt text-
-            // Neuzuweisung (Undo-Stack + Performance großer Dateien bleiben
-            // intakt); der Guard verhindert Re-Entranz durch die eigene Edition.
-            //  ↓ in der LETZTEN (sichtbaren) Zeile springt ans Zeilenende,
-            //  statt wirkungslos zu bleiben - einheitlich in allen Editoren
-            //  der App (Vergleich der Cursor-Zeilen-y mit dem Textende deckt
-            //  auch umgebrochene Zeilen ab).
+            // Live-Transliteration über gezieltes `remove()`/`insert()` statt Neuzuweisung von `text` - so bleiben
+            // Undo-Stack und Tempo großer Dateien intakt. Pfeil-runter in der letzten Zeile springt ans Zeilenende.
             Keys.onDownPressed: (e) => {
                 const yCur = editor.positionToRectangle(editor.cursorPosition).y
                 const yEnd = editor.positionToRectangle(editor.length).y
@@ -629,11 +443,6 @@ Item {
             function _applyTranslit() {
                 if (editor._trGuard || root._loading || !Translit.enabled)
                     return
-                //  EIN Undo-Schritt statt zwei: `applyInDocument` klammert Loeschen
-                //  und Einfuegen im Dokument zusammen. Der fruehere Weg
-                //  (`remove()` + `insert()`) hinterliess je Tastendruck ZWEI
-                //  Schritte, sodass Strg+Z durch halb umgesetzte Zwischenstaende
-                //  lief („سَلam").
                 editor._trGuard = true
                 const r = Translit.applyInDocument(editor.textDocument,
                                                    editor.cursorPosition)
@@ -642,13 +451,8 @@ Item {
                 editor._trGuard = false
             }
 
-            //  ── Strg+Z / Strg+Y: die Transliteration muss dabei STILLHALTEN ──
-            //  Ein Undo stellt den lateinischen Stand wieder her, `onTextChanged`
-            //  feuert, und die Transliteration schriebe ihn sofort wieder um - was
-            //  selbst ein Undo-Schritt ist. Strg+Z pendelte dadurch endlos zwischen
-            //  zwei Staenden (Nutzerbefund 2026-09-02, arabische Eingabe; belegt in
-            //  `tests/bench/bench_translitundo.cpp`). Der Guard, der ohnehin gegen
-            //  Re-Entranz schuetzt, deckt das mit ab.
+            // Strg+Z / Strg+Y: die Transliteration muss STILLHALTEN. Ein Undo stellt den lateinischen Stand her,
+            // `onTextChanged` feuert, und sie schriebe ihn sofort um - Strg+Z pendelte endlos (`bench_translitundo`).
             function _guardedUndo() {
                 editor._trGuard = true
                 editor.undo()
@@ -664,12 +468,6 @@ Item {
                 editor._applyTranslit()
             }
             Keys.onPressed: function(e) {
-                //  ── Bild auf / Bild ab ──────────────────────────────────
-                //  Qt rechnet eine „Seite" aus der HÖHE DES FELDES - und die
-                //  ist hier die des ganzen Dokuments, seit das Feld nicht mehr
-                //  an der Flickable hängt (s. dort). Eine Seite wäre damit die
-                //  ganze Datei, und die Tasten taten sichtbar nichts.
-                //  Geblättert wird deshalb selbst, um genau EINE Fensterhöhe.
                 if (e.key === Qt.Key_PageDown || e.key === Qt.Key_PageUp) {
                     root._blaettern(e.key === Qt.Key_PageDown)
                     e.accepted = true
@@ -680,8 +478,6 @@ Item {
                 if (e.key === Qt.Key_S) {
                     root.save(); e.accepted = true; return
                 }
-                //  Undo/Redo selbst ausfuehren statt der TextArea zu ueberlassen -
-                //  nur so laesst sich die Transliteration dabei stilllegen.
                 if (e.key === Qt.Key_Z) {
                     if (e.modifiers & Qt.ShiftModifier) editor._guardedRedo()
                     else                                editor._guardedUndo()
@@ -696,16 +492,8 @@ Item {
                 }
             }
 
-            //  ── Tabulatortaste ──────────────────────────────────────────────
-            //  Mit `Editor.tabSpaces` (Vorgabe AN, wie Kate) schreibt sie
-            //  LEERZEICHEN bis zum nächsten Halt statt eines `\t`. Das ist der
-            //  Unterschied, der beim Vergleich zweier Editoren auffällt: Kate
-            //  legt gar keinen Tabulator in die Datei, MediaGallery tat es -
-            //  dieselbe Taste, verschiedener Dateiinhalt (Nutzerbefund
-            //  2026-09-02, `tests/Test.txt`).
-            //  Aufgefüllt wird bis zum NÄCHSTEN Halt, nicht um eine feste Zahl:
-            //  in Spalte 2 sind das bei Breite 4 genau zwei Leerzeichen, nicht
-            //  vier - sonst stünden die Spalten nicht untereinander.
+            // Mit `Editor.tabSpaces` (Vorgabe AN, wie Kate) schreibt die Taste LEERZEICHEN statt eines Tabulators - Kate
+            // legt gar keinen in die Datei. Aufgefüllt wird bis zum NÄCHSTEN Halt, sonst stünden die Spalten versetzt.
             Keys.onTabPressed: function(e) {
                 if (root._readOnly) { e.accepted = true; return }
                 if (!Editor.tabSpaces) { e.accepted = false; return }
@@ -717,23 +505,16 @@ Item {
         }
     }
 
-    //  Hervorheben aller Treffer kostet ein Neufärben des ganzen Dokuments -
-    //  bei 20 000 Zeilen rund 100 ms. Beim Tippen im Suchfeld wird deshalb
-    //  entprellt: das SUCHEN läuft sofort, nur das Hinterlegen wartet kurz.
     Timer {
         id: highlightTimer
         interval: 180
         onTriggered: {
             syntax.highlightMatches(
                 root._findHighlight ? findField.text : "", root._findCase)
-            //  Damit eine zugeklappte Stelle mit Treffer erkennbar wird.
             decorations.setSearchTerm(findField.text, root._findCase)
         }
     }
 
-    // ── Suchleiste (Strg+F) ──────────────────────────────────────────────────
-    //  Aufbau wie im DOCX-Editor: Overlay oben rechts, damit sie nichts
-    //  wegschiebt und der Text an derselben Stelle stehen bleibt.
     Rectangle {
         id: findBar
         visible: root._findOpen
@@ -746,9 +527,6 @@ Item {
         width: findGrid.implicitWidth + 20
         height: findGrid.implicitHeight + 16
 
-        //  Gemeinsamer Feld-Baustein. `text` MUSS als Alias herausstehen -
-        //  ohne das wäre `findField.text` undefined und die ganze Leiste
-        //  funktionslos (dieselbe Falle wie im DOCX-Editor).
         component FField: Rectangle {
             id: ff
             property alias field: innerField
@@ -782,13 +560,8 @@ Item {
             }
         }
 
-        //  Kleiner Knopf. `an` schaltet die Akzentfarbe für die drei Umschalter.
-        //  ALLES über die eigene `id`, nie über `parent`: an der WURZEL einer
-        //  Inline-Komponente zeigt `parent` auf das umgebende Element (hier den
-        //  RowLayout), und in einem `TapHandler` sogar auf die Wurzel der
-        //  ganzen Datei. Beide Fallen stehen in `Structure.md` ▸ Workarounds;
-        //  ohne die id meldete Qt „Unable to assign [undefined] to QString"
-        //  und kein Knopf trug eine Beschriftung.
+        // ALLES über die eigene `id`, nie über `parent`: an der Wurzel einer Inline-Komponente zeigt `parent` auf das
+        // umgebende Element, in einem `TapHandler` sogar auf die Wurzel der Datei - ohne id blieb jede Beschriftung leer.
         component FBtn: Rectangle {
             id: fb
             property string iconName: ""
@@ -801,11 +574,6 @@ Item {
             height: 28; radius: 6
             color: fbHover.hovered ? App.themeCard : "transparent"
             border.color: fb.an ? App.themeAccent : App.themeBorder
-            //  Symbole werden GEZEICHNET (Regel 28) - `▴ ▾ ✕ ≡` als Unicode
-            //  sähen auf jedem System anders aus und folgten nicht dem Theme.
-            //  Reine BUCHSTABEN sind erlaubt und hier auch richtig: „Aa" für
-            //  Groß-/Kleinschreibung und „W" für ganze Wörter sagen mehr als
-            //  jede erfundene Form.
             DrawnIcon {
                 anchors.centerIn: parent
                 visible: fb.iconName.length > 0
@@ -835,7 +603,6 @@ Item {
             rowSpacing: 6
             columnSpacing: 8
 
-            //  Zeile 1: Suchfeld + Navigation + Schalter.
             FField {
                 id: findField
                 ph: App.uiText(App.language, "EditorFindPlaceholder")
@@ -868,8 +635,6 @@ Item {
                        onClicked: root._closeFind() }
             }
 
-            //  Zeile 2: Ersetzen. Ausgegraut, solange die Datei nur lesbar ist -
-            //  dort wäre jedes Ersetzen sinnlos.
             FField {
                 id: replaceField
                 enabled: !root._readOnly
@@ -898,11 +663,6 @@ Item {
         }
     }
 
-    // ── Statuszeile (Kate-Vorbild) ───────────────────────────────────────────
-    //  Zeile/Spalte, Sprache, Kodierung, Zeichenzahl - und der ausführliche
-    //  Platz für „nur lesen": in der Werkzeugleiste steht nur die Marke, hier
-    //  der Grund. Sie sitzt ÜBER dem reservierten `bottomInset`, damit der
-    //  Surface-Vertrag mit dem FullscreenViewer gilt.
     Rectangle {
         id: statusBar
         anchors { left: parent.left; right: parent.right; bottom: parent.bottom
@@ -919,7 +679,6 @@ Item {
                       verticalCenter: parent.verticalCenter }
             spacing: 14
 
-            //  Inline-Komponente statt fünfmal derselbe Text-Block.
             component Feld: Text {
                 color: Editor.gutterText
                 font.pixelSize: 11
@@ -927,9 +686,6 @@ Item {
             }
 
             Feld {
-                //  Zeile und Spalte rechnet die SPALTE mit - dieselbe
-                //  Blockrechnung liefert sie ohnehin. In QML müsste man dafür
-                //  den ganzen Text vor dem Cursor durchzählen.
                 text: App.uiText(App.language, "EditorStatusLineCol")
                           .arg(gutter.cursorLine).arg(gutter.cursorColumn)
             }
@@ -943,9 +699,6 @@ Item {
             }
         }
 
-        //  „Geändert" - der einzige Ort, an dem ungespeicherte Arbeit noch
-        //  sichtbar ist, seit der Speichern-Knopf weg ist. Gespeichert wird von
-        //  selbst (s. oben), aber sehen können muss man es.
         Row {
             anchors { right: parent.right; rightMargin: root._readOnly ? 140 : 10
                       verticalCenter: parent.verticalCenter }
@@ -976,9 +729,6 @@ Item {
         }
     }
 
-    // ── Rückmeldung des PDF-Exports (Muster wie PdfSurface: kurzer Toast, kein
-    //    Dialog - der Export ist eine Nebentätigkeit und soll nicht bestätigt
-    //    werden müssen). Der Pfad wird auf den Dateinamen gekürzt.
     Connections {
         target: Viewer
         function onTextPdfExportFinished(ok, target, error) {
@@ -1019,9 +769,6 @@ Item {
         Timer { id: toastTimer; interval: 3500; onTriggered: toast.visible = false }
     }
 
-    // Weiches, web-aehnliches Mausrad-Scrollen - als Geschwister der Flickable,
-    // damit der Fänger NICHT mit dem Inhalt mitscrollt. NoButton -> Klicks/Markieren
-    // erreichen den Editor.
     NumberAnimation {
         id: scrollAnim
         target: flick; property: "contentY"

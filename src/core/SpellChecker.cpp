@@ -22,12 +22,8 @@ struct SpellChecker::Impl {
     bool encodingOk = false;
 #endif
     QSet<QString> ignored;
-    //  Vorschlaege je Wort. Hunspell erzeugt und bewertet dafuer viele
-    //  Kandidaten - GEMESSEN 6,4 ms fuer EIN Wort, gegen 0,0002 ms fuer
-    //  `isCorrect`. Der Aufruf sitzt im GUI-Faden (Kontextmenue), und dasselbe
-    //  falsch geschriebene Wort steht in einem Text meist mehrfach.
-    //  Klein gehalten: ein Kontextmenue fragt EIN Wort, mehr als eine Handvoll
-    //  verschiedene sieht ein Nutzer in einer Sitzung selten hintereinander.
+    // Vorschläge je Wort merken: Hunspell erzeugt und bewertet viele Kandidaten - gemessen 6,4 ms für EIN Wort
+    // gegen 0,0002 ms für `isCorrect`, und der Aufruf sitzt im GUI-Faden. Klein gehalten, ein Menü fragt EIN Wort.
     mutable QHash<QString, QStringList> sugCache;
     static constexpr int kSugCacheMax = 64;
 };
@@ -218,11 +214,8 @@ std::vector<SpellRange> SpellChecker::checkText(const QString& text) const {
         //  (B2B, MP3) und reine Großschreibung (Abkürzungen wie DOCX) - sonst
         //  wäre die Anzeige voller roter Linien, die niemand abstellen kann.
         if (hasDigit || word.size() < 2) continue;
-        //  Die Abkürzungs-Regel gilt NUR für Schriften, die überhaupt zwei
-        //  Fälle kennen. In Arabisch, Hebräisch, Chinesisch oder Thai ist jedes
-        //  Wort gleich seiner Großform - die Regel hätte dort ALLES übersprungen
-        //  und die Prüfung damit still abgeschaltet, obwohl das Wörterbuch da
-        //  ist und der Fehler erkannt wird.
+        // Die Abkürzungs-Regel gilt NUR für Schriften, die zwei Fälle kennen. In Arabisch, Hebräisch oder Thai ist jedes
+        // Wort gleich seiner Großform - die Regel hätte dort alles übersprungen und die Prüfung still abgeschaltet.
         const bool hasCase = (word != word.toLower());
         if (hasCase && word == word.toUpper()) continue;
         if (isCorrect(word)) continue;

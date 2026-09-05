@@ -1,29 +1,15 @@
 #pragma once
-// ─────────────────────────────────────────────────────────────────────────────
-//  PathUtils.h - gemeinsame, zustandslose Pfad-Helfer.
-//
-//  Zentralisiert `toLocalPath`, das zuvor byte-identisch in ViewerController,
-//  PdfTextController und PdfThumbnailProvider dupliziert war. Header-only
-//  (inline) -> kein zusaetzliches Kompilat, keine Verlinkung noetig.
-// ─────────────────────────────────────────────────────────────────────────────
+// Gemeinsame, zustandslose Pfad-Helfer; zentralisiert `toLocalPath`, das zuvor byte-identisch in drei
+// Controllern dupliziert war. Header-only - kein zusätzliches Kompilat, keine Verlinkung nötig.
 #include <QString>
 #include <QUrl>
 #include <QLatin1String>
 
 namespace mg {
 
-// ─────────────────────────────────────────────────────────────────────────────
-//  Begleitdateien der App - nichts, was der Nutzer als „Medium" ansieht:
-//    • `<Ordner>.json`      Tags, Kategorien, Datum, PDF-Schriftfarbe
-//    • `<datei>.mgedit.json` Notizen/Zeichnungen des PDF- bzw. Bild-Editors
-//    • `<datei>.bak`         Sicherungskopie des DOCX-Editors
-//  Sie werden standardmäßig ausgeblendet; der Schalter „Alle Dateien anzeigen"
-//  (ISettings::showAllFiles) macht sie sichtbar.
-//
-//  EINE Stelle für die Regel: Galerie (MediaModel) und Dateiwähler
-//  (FileBrowseModel) filtern sonst unterschiedlich, und der Nutzer sähe dieselbe
-//  Datei einmal so und einmal so.
-//  folderSidecar = Name der Ordner-JSON (leer = unbekannt, dann nur die Endungen).
+// Begleitdateien: <Ordner>.json, <datei>.mgedit.json, <datei>.bak. Eine Stelle fuer die
+// Regel, sonst filtern Galerie und Dateiwaehler unterschiedlich und der Nutzer saehe
+// dieselbe Datei einmal so und einmal so.
 inline bool isCompanionFile(const QString& fileName,
                             const QString& folderSidecar = QString()) {
     if (!folderSidecar.isEmpty() && fileName == folderSidecar)
@@ -32,10 +18,8 @@ inline bool isCompanionFile(const QString& fileName,
         || fileName.endsWith(QLatin1String(".bak"), Qt::CaseInsensitive);
 }
 
-//  Ordnerpfad OHNE abschliessenden Trenner. Ein „/pfad/zum/ordner/" macht
-//  `QFileInfo::fileName()` zu einem LEERSTRING - daraus wurde der Sidecar-Name
-//  „.json", der nichts mehr traf, und die Ordner-JSON stand plötzlich als
-//  Kachel in der Galerie. Die Wurzel „/" bleibt erhalten.
+// Ordnerpfad OHNE abschließenden Trenner: bei "/pfad/ordner/" liefert `QFileInfo::fileName()` einen LEERSTRING,
+// daraus wurde der Sidecar-Name ".json" - und die Ordner-JSON stand als Kachel in der Galerie.
 inline QString normalizedFolder(const QString& folderPath) {
     QString n = folderPath;
     while (n.size() > 1 && (n.endsWith(QLatin1Char('/')) || n.endsWith(QLatin1Char('\\'))))

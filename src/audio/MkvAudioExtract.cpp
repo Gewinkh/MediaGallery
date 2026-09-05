@@ -10,29 +10,12 @@
 #include <cstring>
 #include <limits>
 
-// ─────────────────────────────────────────────────────────────────────────────
-//  Aufbau einer Matroska-Datei, soweit hier gebraucht:
-//
-//      EBML                        Kopf der Hülle
-//      Segment
-//        Info                      Zeitbasis (TimestampScale), Dauer
-//        Tracks
-//          TrackEntry              je Spur eine
-//            TrackNumber, TrackType (2 = Ton), CodecID, CodecPrivate
-//            Audio: SamplingFrequency, Channels
-//        Cluster                   viele
-//          Timestamp               Zeit des Clusters (in TimestampScale)
-//          SimpleBlock / BlockGroup>Block
-//                                  Spur + Zeitversatz + die ROHEN Pakete
-//
-//  Jedes Element ist: Kennung (VINT mit Markierung) + Länge (VINT ohne
-//  Markierung) + Daten. Herauskopieren heißt: die Pakete der Tonspur einsammeln
-//  und in Ogg-Seiten verpacken - Bytes umsortieren, nicht neu rechnen.
-// ─────────────────────────────────────────────────────────────────────────────
+// Matroska: Segment > Info (Zeitbasis) | Tracks > TrackEntry | Cluster > SimpleBlock.
+// Jedes Element ist Kennung (VINT mit Markierung) + Laenge (VINT ohne) + Daten.
+// Herauskopieren heisst Pakete der Tonspur einsammeln und in Ogg-Seiten verpacken.
 
 namespace {
 
-// ── Schutzgrenzen (Regel 21) ────────────────────────────────────────────────
 constexpr qint64 kMaxHeaderBytes = 16ll << 20;   // Tracks/Info am Stück
 constexpr qint64 kMaxPrivate     = 4ll << 20;    // CodecPrivate
 constexpr qint64 kMaxPacket      = 16ll << 20;   // ein einzelnes Paket
@@ -40,7 +23,6 @@ constexpr qint64 kMaxPackets     = 20'000'000;
 constexpr int    kMaxDepth       = 12;
 constexpr int    kMaxFrames      = 4096;         // Rahmen je Block (Lacing)
 
-// ── EBML-Kennungen ──────────────────────────────────────────────────────────
 constexpr quint32 kIdEbml        = 0x1A45DFA3;
 constexpr quint32 kIdSegment     = 0x18538067;
 constexpr quint32 kIdInfo        = 0x1549A966;
@@ -56,8 +38,6 @@ constexpr quint32 kIdAudio       = 0xE1;
 constexpr quint32 kIdSampleFreq  = 0xB5;
 constexpr quint32 kIdChannels    = 0x9F;
 constexpr quint32 kIdLanguage    = 0x22B59C;   // ISO-639-2, Vorgabe „und"
-//  Inhaltsverzeichnis: `SeekHead` nennt die Lage von `Cues`, `Cues` bildet
-//  Zeitstellen auf Cluster ab. Damit wird ein Sprung ein Sprung.
 constexpr quint32 kIdSeekHead    = 0x114D9B74;
 constexpr quint32 kIdSeek        = 0x4DBB;
 constexpr quint32 kIdSeekId      = 0x53AB;
@@ -126,14 +106,12 @@ bool readSize(const QByteArray& b, qint64 pos, qint64* size, qint64* len,
     return true;
 }
 
-//  Eine vorzeichenlose Ganzzahl aus einem Element (1…8 Byte, big endian).
 quint64 uintOf(const QByteArray& b, qint64 pos, qint64 n) {
     quint64 v = 0;
     for (qint64 i = 0; i < n && i < 8; ++i) v = (v << 8) | u(b)[pos + i];
     return v;
 }
 
-//  Eine Gleitkommazahl (4 oder 8 Byte, big endian).
 double floatOf(const QByteArray& b, qint64 pos, qint64 n) {
     if (n == 4) {
         quint32 bits = quint32(uintOf(b, pos, 4));
@@ -150,10 +128,8 @@ double floatOf(const QByteArray& b, qint64 pos, qint64 n) {
     return 0.0;
 }
 
-// ── Ogg ─────────────────────────────────────────────────────────────────────
-//  Ogg hat eine EIGENE Prüfsumme: dasselbe Polynom wie CRC-32, aber ohne
-//  Spiegelung und ohne Vor-/Nachbehandlung. Wer die gewöhnliche CRC-32 nimmt,
-//  bekommt eine Datei, die jeder Abspieler ablehnt.
+// Ogg hat eine EIGENE Prüfsumme: dasselbe Polynom wie CRC-32, aber ohne Spiegelung und ohne Vor- oder
+// Nachbehandlung. Mit der gewöhnlichen CRC-32 lehnt jeder Abspieler die Datei ab.
 quint32 oggCrc(const QByteArray& page) {
     static quint32 table[256];
     static bool built = false;
@@ -172,26 +148,16 @@ quint32 oggCrc(const QByteArray& page) {
     return crc;
 }
 
-//  Ein Ogg-Schreiber: nimmt Pakete an und legt sie in Seiten ab. Eine Seite
-//  fasst höchstens 255 Segmente à 255 Byte; ein größeres Paket läuft über
-//  mehrere Seiten weiter (Fortsetzungs-Flag).
 class OggWriter {
 public:
     OggWriter(QSaveFile* out, quint32 serial) : m_out(out), m_serial(serial) {}
 
-    //  `granule` ist der Zeitstand NACH diesem Paket; -1 heißt „unbestimmt"
-    //  (gilt für Kopfpakete).
-    //  **`QByteArrayView`, nicht `QByteArray`:** das Paket liegt bereits im
-    //  Cluster-Puffer des Aufrufers. Es dorthin zu kopieren, nur um es
-    //  weiterzureichen, wäre eine Allokation je Rahmen - bei einem Spielfilm
-    //  über 300.000 davon.
+    // `granule` ist der Zeitstand NACH diesem Paket; -1 heißt unbestimmt. `QByteArrayView`, nicht `QByteArray`: das
+    // Paket liegt schon im Cluster-Puffer, eine Kopie wäre eine Allokation je Rahmen - im Spielfilm über 300.000.
     bool write(QByteArrayView packet, qint64 granule, bool bos, bool eos) {
         qint64 at = 0;
         bool first = true;
         do {
-            //  Wie viele Segmente passen noch? Ein Paket endet mit einem
-            //  Segment < 255; ist es exakt ein Vielfaches von 255, braucht es
-            //  ein leeres Abschluss-Segment.
             const qint64 left = packet.size() - at;
             const int segs = int(std::min<qint64>(255, left / 255 + 1));
             m_table.resize(0);                    // behält seine Kapazität
@@ -243,7 +209,6 @@ private:
         for (int i = 0; i < 4; ++i) page[crcAt + i] = char((crc >> (8 * i)) & 0xFF);
 
         ++m_seq;
-        //  Endete die Seite mitten im Paket, ist die nächste eine Fortsetzung.
         m_continued = !table.isEmpty() && uchar(table.back()) == 255;
         return m_out->write(page) == page.size();
     }
@@ -256,14 +221,10 @@ private:
     QByteArray m_table;       // Segmenttafel, wiederverwendet
 };
 
-//  Dauer eines Opus-Pakets in Abtastwerten (48 kHz) - steht im ersten Byte
-//  (TOC) und in der Rahmenzahl dahinter. Nur damit stimmt die Zeitangabe der
-//  Ogg-Seiten auf den Abtastwert genau.
 qint64 opusPacketSamples(QByteArrayView p) {
     if (p.isEmpty()) return 0;
     const uchar toc = uchar(p[0]);
     const int config = toc >> 3;
-    //  Rahmenlänge je Konfiguration, in 48-kHz-Abtastwerten.
     static const int frameSamples[32] = {
         480, 960, 1920, 2880,          // SILK NB   10/20/40/60 ms
         480, 960, 1920, 2880,          // SILK MB
@@ -288,7 +249,6 @@ qint64 opusPacketSamples(QByteArrayView p) {
     return qint64(per) * frames;
 }
 
-// ── Was aus der Quelle gebraucht wird ───────────────────────────────────────
 struct Track {
     quint64    number = 0;
     QString    codec;
@@ -299,7 +259,6 @@ struct Track {
     int        channels = 2;
 };
 
-//  Ein Element im Baum: Kennung, Beginn der DATEN, Länge der Daten.
 struct Elem { quint32 id; qint64 dataAt; qint64 size; qint64 next; bool unknownSize; };
 
 bool nextElem(const QByteArray& b, qint64 pos, qint64 end, Elem* out) {
@@ -311,7 +270,6 @@ bool nextElem(const QByteArray& b, qint64 pos, qint64 end, Elem* out) {
     if (!readSize(b, pos + idLen, &size, &sizeLen, &unknown)) return false;
     const qint64 dataAt = pos + idLen + sizeLen;
     if (unknown) {
-        //  Unbekannte Länge: die Daten reichen bis zum Ende des Elternteils.
         *out = Elem { id, dataAt, end - dataAt, end, true };
         return dataAt <= end;
     }
@@ -320,12 +278,8 @@ bool nextElem(const QByteArray& b, qint64 pos, qint64 end, Elem* out) {
     return true;
 }
 
-//  Das SEGMENT ist die Ausnahme von der Regel: es umfasst die ganze Datei und
-//  ist damit fast immer GRÖSSER als das gelesene Kopfstück. `nextElem` lehnt es
-//  deshalb ab („passt nicht in den Puffer") - und genau daran scheiterte jede
-//  MKV über 16 MB mit `NotMatroska`, also praktisch jeder echte Film.
-//  Hier wird deshalb nur der KOPF des Elements im Puffer verlangt; die Länge
-//  darf bis ans Dateiende reichen, gelesen wird später ohnehin aus der Datei.
+// Das SEGMENT umfasst die ganze Datei und ist damit fast immer größer als das gelesene Kopfstück; `nextElem`
+// lehnte es deshalb ab - daran scheiterte jede MKV über 16 MB. Hier wird nur der KOPF im Puffer verlangt.
 bool segmentElem(const QByteArray& b, qint64 pos, qint64 bufEnd, qint64 fileEnd,
                  Elem* out) {
     quint32 id = 0;
@@ -340,21 +294,14 @@ bool segmentElem(const QByteArray& b, qint64 pos, qint64 bufEnd, qint64 fileEnd,
         *out = Elem { id, dataAt, fileEnd - dataAt, fileEnd, true };
         return true;
     }
-    //  Gegen die DATEI prüfen, nicht gegen den Puffer. Ein Segment, das über
-    //  das Dateiende hinausreicht, wird auf das Dateiende gestutzt - so
-    //  schreiben manche Muxer, die die Größe nicht nachtragen.
     if (size < 0) return false;
     const qint64 endAt = (size > fileEnd - dataAt) ? fileEnd : dataAt + size;
     *out = Elem { id, dataAt, endAt - dataAt, endAt, false };
     return true;
 }
 
-// ── AAC: der einzige Codec, der einen Kopf JE RAHMEN braucht ────────────────
-//  In Matroska liegen AAC-Rahmen NACKT: die Beschreibung (Objekttyp, Rate,
-//  Kanäle) steht ein einziges Mal in `CodecPrivate` als „AudioSpecificConfig".
-//  Ein Abspieler, der eine `.aac`-Datei öffnet, erwartet dagegen vor JEDEM
-//  Rahmen einen ADTS-Kopf mit genau diesen Angaben - ohne ihn bleibt die Datei
-//  stumm. Deshalb wird er hier gebaut: 7 Byte je Rahmen, ohne Prüfsumme.
+// AAC ist der einzige Codec, der einen Kopf JE RAHMEN braucht: in Matroska liegen die Rahmen nackt, die
+// Beschreibung steht einmal in `CodecPrivate`. Ohne den ADTS-Kopf bleibt die Datei stumm.
 struct AdtsConfig {
     int  profile = 1;        // ADTS: 0=Main, 1=LC, 2=SSR, 3=LTP (= AOT - 1)
     int  rateIndex = 4;      // Index in die feste Ratentabelle (4 = 44100)
@@ -362,8 +309,6 @@ struct AdtsConfig {
     bool ok = false;
 };
 
-//  Der AudioSpecificConfig ist ein BITstrom, kein Byte-Format: 5 Bit Objekttyp,
-//  4 Bit Ratenindex, 4 Bit Kanalzahl - nichts davon liegt auf einer Bytegrenze.
 AdtsConfig parseAsc(const QByteArray& asc) {
     AdtsConfig c;
     if (asc.size() < 2) return c;
@@ -407,8 +352,6 @@ AdtsConfig parseAsc(const QByteArray& asc) {
     return c;
 }
 
-//  Ein ADTS-Kopf ohne Prüfsumme (7 Byte). `frameLen` ist die Länge INKLUSIVE
-//  dieses Kopfes - so schreibt es die Norm.
 QByteArray adtsHeader(const AdtsConfig& c, qint64 frameLen) {
     const qint64 total = frameLen + 7;
     QByteArray h(7, '\0');
@@ -423,7 +366,6 @@ QByteArray adtsHeader(const AdtsConfig& c, qint64 frameLen) {
     return h;
 }
 
-//  Die Spur-Beschreibungen einlesen (nur `Tracks`, ohne die Blöcke).
 void readTracks(const QByteArray& b, const Elem& tracks, QVector<Track>* out) {
     Elem e;
     qint64 pos = tracks.dataAt;
@@ -479,9 +421,6 @@ void readTracks(const QByteArray& b, const Elem& tracks, QVector<Track>* out) {
     }
 }
 
-//  Die Rahmen EINES Blocks. `SimpleBlock` und `Block` teilen sich den Aufbau:
-//  Spurnummer (VINT), 16-Bit-Zeitversatz, Flags, dann die Rahmen - je nach
-//  „Lacing" einer oder mehrere.
 bool readBlockFrames(const QByteArray& b, qint64 at, qint64 size,
                      quint64 wantTrack, qint16* relTime,
                      QVector<QPair<qint64, qint64>>* frames) {
@@ -529,7 +468,6 @@ bool readBlockFrames(const QByteArray& b, qint64 at, qint64 size,
         sizes.append(first);
         qint64 prev = first;
         for (int i = 1; i < count - 1; ++i) {
-            //  Ab dem zweiten Rahmen steht die DIFFERENZ, vorzeichenbehaftet.
             qint64 raw = 0, l2 = 0;
             if (!readSize(b, p, &raw, &l2)) return false;
             const qint64 bias = (qint64(1) << (7 * l2 - 1)) - 1;
@@ -553,16 +491,9 @@ bool readBlockFrames(const QByteArray& b, qint64 at, qint64 size,
     return true;
 }
 
-// ── Welche Hülle bekommt welcher Codec? ─────────────────────────────────────
-//  ZWEI Familien, und der Unterschied entscheidet über den ganzen Schreibweg:
-//   • **Ogg** (Opus, Vorbis): die Pakete brauchen Seiten, Segmenttafel und
-//     Zeitstand - sie tragen ihre Länge nicht selbst.
-//   • **Roh** (AC-3, E-AC-3, MPEG-Audio): diese Ströme sind SELBSTRAHMEND -
-//     jeder Rahmen beginnt mit einem Synchronwort und nennt seine Länge. Sie
-//     werden deshalb einfach hintereinander weggeschrieben; genau so liegt ein
-//     `.ac3`/`.eac3`/`.mp3` auch sonst auf der Platte.
-//  Was in KEINE der beiden passt, bleibt `UnsupportedCodec` - AAC etwa bräuchte
-//  erst ADTS-Köpfe aus `CodecPrivate`.
+// Ogg (Opus, Vorbis) braucht Seiten, Segmenttafel und Zeitstand - die Pakete tragen
+// ihre Laenge nicht selbst. Roh (AC-3, MPEG-Audio) ist selbstrahmend und geht
+// hintereinander weg. Alles andere bleibt UnsupportedCodec.
 enum class Wrap { Ogg, Raw, Adts };
 
 struct CodecEntry {
@@ -571,7 +502,6 @@ struct CodecEntry {
     Wrap        wrap;
 };
 
-//  Reihenfolge egal: kein Eintrag ist Präfix eines anderen.
 constexpr CodecEntry kCodecs[] = {
     { "A_OPUS",     "opus", Wrap::Ogg },
     { "A_VORBIS",   "ogg",  Wrap::Ogg },
@@ -593,7 +523,6 @@ QString extensionFor(const QString& codec) {
     return e ? QString::fromLatin1(e->ext) : QStringLiteral("ogg");
 }
 
-//  Die Datei einlesen: Kopf IMMER, Blöcke nur, wenn `writer` gesetzt ist.
 MkvAudio::Result run(const QString& path, MkvAudio::Info* info,
                      QSaveFile* out, const std::atomic<bool>* cancel,
                      int trackIndex = 0) {
@@ -614,8 +543,6 @@ MkvAudio::Result run(const QString& path, MkvAudio::Info* info,
         || seg.id != kIdSegment)
         return MkvAudio::Result::NotMatroska;
 
-    //  Zeitbasis und Spuren stehen VOR den Clustern (so schreibt es jeder
-    //  Muxer); gesucht wird deshalb nur im gelesenen Kopfstück.
     quint64 timeScale = 1000000;         // Vorgabe: 1 ms
     double  durationTicks = 0.0;
     QVector<Track> tracks;
@@ -649,9 +576,6 @@ MkvAudio::Result run(const QString& path, MkvAudio::Info* info,
     info->audioTracks = int(tracks.size());
     if (tracks.isEmpty()) return MkvAudio::Result::NoAudioTrack;
 
-    //  ALLE Tonspuren beschreiben - die Oberfläche kann nur wählen lassen, was
-    //  sie kennt. „und" ist die Vorgabe für „unbestimmt" und sagt nichts, also
-    //  wird sie hier zu leer.
     info->tracks.clear();
     info->tracks.reserve(tracks.size());
     for (const Track& tr : tracks) {
@@ -665,7 +589,6 @@ MkvAudio::Result run(const QString& path, MkvAudio::Info* info,
         info->tracks.append(d);
     }
 
-    //  Ein Index außerhalb ist kein Grund zu scheitern - dann gilt die erste.
     if (trackIndex < 0 || trackIndex >= tracks.size()) trackIndex = 0;
     const Track& t = tracks.at(trackIndex);
     info->codec      = t.codec;
@@ -686,7 +609,7 @@ MkvAudio::Result run(const QString& path, MkvAudio::Info* info,
 
     //  AAC: die Beschreibung muss LESBAR sein, sonst wird jeder Rahmen mit
     //  einem falschen Kopf versehen - eine Datei, die scheinbar geht und in
-    //  Wahrheit rauscht. Lieber sauber ablehnen (Regel 19).
+    //  Wahrheit rauscht. Lieber sauber ablehnen.
     AdtsConfig aac;
     if (adts) {
         aac = parseAsc(t.priv);
@@ -698,13 +621,9 @@ MkvAudio::Result run(const QString& path, MkvAudio::Info* info,
         return MkvAudio::Result::Ok;
     }
 
-    // ── Schreiben ───────────────────────────────────────────────────────────
     OggWriter ogg(out, 0x4D470001u);              // fester Serienwert: „MG"
 
-    //  Der rohe Weg hat keine Kopfpakete - er beginnt sofort mit dem ersten
-    //  Rahmen der Tonspur; bei AAC trägt jeder Rahmen seinen Kopf selbst.
     if (raw || adts) {
-        // nichts vorzuschreiben
     } else if (isOpus) {
         //  Bei Opus IST `CodecPrivate` der OpusHead. Die Kommentare erzeugen
         //  wir - Matroska führt sie an anderer Stelle, und ein Ogg-Opus ohne
@@ -717,8 +636,6 @@ MkvAudio::Result run(const QString& path, MkvAudio::Info* info,
         tags.append(4, '\0');                     // keine Kommentare
         if (!ogg.write(tags, 0, false, false)) return MkvAudio::Result::WriteFailed;
     } else {
-        //  Bei Vorbis stecken DREI Kopfpakete in `CodecPrivate`, mit
-        //  Xiph-Lacing davor: 0x02, Länge 1, Länge 2, dann die drei Pakete.
         const QByteArray& p = t.priv;
         if (p.size() < 3 || uchar(p[0]) != 2) return MkvAudio::Result::Damaged;
         qint64 at = 1;
@@ -741,7 +658,7 @@ MkvAudio::Result run(const QString& path, MkvAudio::Info* info,
         if (!ogg.write(h3, 0, false, false))        return MkvAudio::Result::WriteFailed;
     }
 
-    // ── Die Cluster durchgehen ──────────────────────────────────────────────
+    // Die Cluster durchgehen
     //  Gelesen wird in Stücken: eine MKV kann Gigabyte groß sein, ein Cluster
     //  ist es nie.
     qint64 granule = 0;
@@ -754,7 +671,6 @@ MkvAudio::Result run(const QString& path, MkvAudio::Info* info,
     //  Nur für den rohen Weg: die Zeit des zuletzt gesehenen Blocks. Sie dient
     //  als Rückfall für die Dauer, wenn die Datei kein `Duration` führt.
     qint64 lastBlockMs = 0;
-    //  Die Rahmen EINES Blocks - außerhalb der Schleife, s. unten.
     QVector<QPair<qint64, qint64>> frames;
 
     qint64 pos = seg.dataAt;
@@ -763,7 +679,6 @@ MkvAudio::Result run(const QString& path, MkvAudio::Info* info,
     while (pos < segEnd) {
         if (cancel && cancel->load(std::memory_order_relaxed))
             return MkvAudio::Result::NotOpenable;
-        //  Kopf des nächsten Elements lesen (höchstens 12 Byte).
         if (!f.seek(pos)) return MkvAudio::Result::Damaged;
         const QByteArray hdr = f.read(12);
         if (hdr.size() < 2) break;
@@ -811,9 +726,6 @@ MkvAudio::Result run(const QString& path, MkvAudio::Info* info,
                     if (!found) { cp = nextPos; continue; }
                 }
                 qint16 rel = 0;
-                //  EIN Vektor für die ganze Datei: `resize(0)` behält die
-                //  Kapazität. Je Block einen neuen anzulegen war die letzte
-                //  Allokation, die noch mit der Paketzahl mitwuchs.
                 frames.resize(0);
                 if (!readBlockFrames(cluster, blockAt, blockSize, t.number, &rel, &frames))
                     return MkvAudio::Result::Damaged;
@@ -822,17 +734,12 @@ MkvAudio::Result run(const QString& path, MkvAudio::Info* info,
                     if (fr.second <= 0 || fr.second > kMaxPacket)
                         return MkvAudio::Result::Damaged;
                     if (++packets > kMaxPackets) return MkvAudio::Result::TooLarge;
-                    //  Der Rahmen liegt SCHON im Cluster-Puffer - eine Sicht
-                    //  darauf statt einer Kopie. Das spart je Rahmen eine
-                    //  Allokation und einen Durchlauf durch den Speicher.
                     const QByteArrayView packet(cluster.constData() + fr.first,
                                                 fr.second);
                     audioBytes += packet.size();
 
-                    //  Roh: der Rahmen geht direkt in die Datei - keine Seite,
-                    //  keine Tafel, kein Zurückhalten (es gibt keine
-                    //  Ende-Markierung, die noch gesetzt werden müsste).
-                    //  AAC bekommt seinen 7-Byte-Kopf davor.
+                    // Roh: der Rahmen geht direkt in die Datei - keine Seite, keine Tafel, kein Zurückhalten, es gibt keine
+                    // Ende-Markierung. AAC bekommt seinen 7-Byte-Kopf davor.
                     if (raw || adts) {
                         if (adts) {
                             const QByteArray h = adtsHeader(aac, packet.size());
@@ -857,17 +764,13 @@ MkvAudio::Result run(const QString& path, MkvAudio::Info* info,
                     if (isOpus) {
                         granule += opusPacketSamples(packet);
                     } else {
-                        //  Vorbis: aus der Blockzeit abgeleitet (s. Kopf).
                         const qint64 ms = qint64((clusterTime + rel)
                                                  * double(timeScale) / 1000000.0);
                         granule = std::max<qint64>(granule,
                                                    ms * t.rate / 1000);
                     }
-                    //  Das zurückgehaltene Paket ist eine SICHT in den
-                    //  Cluster-Puffer. Damit sie gültig bleibt, wenn der
-                    //  nächste Cluster gelesen wird, hält `lastCluster` den
-                    //  alten Puffer am Leben - eine `QByteArray`-Kopie ist nur
-                    //  ein Zähler, keine Daten (implizites Teilen).
+                    // Das zurückgehaltene Paket ist eine SICHT in den Cluster-Puffer; `lastCluster` hält den alten Puffer am Leben,
+                    // damit sie beim nächsten Cluster gültig bleibt - eine QByteArray-Kopie ist nur ein Zähler, keine Daten.
                     lastPacket  = packet;
                     lastCluster = cluster;
                     havePending = true;
@@ -893,7 +796,6 @@ MkvAudio::Result run(const QString& path, MkvAudio::Info* info,
 }
 
 
-// ── Ein Element AUS DER DATEI lesen (Kopf allein, ohne die Daten) ───────────
 bool readElemAt(QFile& f, qint64 pos, quint32* id, qint64* dataAt, qint64* size) {
     if (!f.seek(pos)) return false;
     const QByteArray hdr = f.read(12);
@@ -907,7 +809,6 @@ bool readElemAt(QFile& f, qint64 pos, quint32* id, qint64* dataAt, qint64* size)
     return *size >= 0;
 }
 
-//  Der Zeitstempel eines Clusters (erstes Element darin).
 bool clusterTimeAt(QFile& f, qint64 dataAt, qint64 clusterEnd, qint64* ticks) {
     quint32 id = 0;
     qint64 at = dataAt, elemAt = 0, size = 0;
@@ -927,7 +828,7 @@ bool clusterTimeAt(QFile& f, qint64 dataAt, qint64 clusterEnd, qint64* ticks) {
     return false;
 }
 
-// ── Die Zielstelle finden ──────────────────────────────────────────────────
+// Die Zielstelle finden
 //  Erst über das Inhaltsverzeichnis (`Cues`, per `SeekHead` gefunden), sonst
 //  durch Abschreiten der Cluster-Köpfe. Beides liest NUR Köpfe.
 struct StreamStart {
@@ -937,8 +838,6 @@ struct StreamStart {
 };
 
 qint64 cuesPositionOf(QFile& f, qint64 segDataStart, qint64 segEnd) {
-    //  `SeekHead` steht am Anfang des Segments und nennt die Lage von `Cues`
-    //  RELATIV zum Segmentbeginn.
     quint32 id = 0;
     qint64 at = segDataStart, dataAt = 0, size = 0;
     int guard = 0;
@@ -993,7 +892,6 @@ StreamStart findStartViaCues(QFile& f, qint64 segDataStart, qint64 segEnd,
     const qint64 end = dataAt + size;
     qint64 p = dataAt;
     int guard = 0;
-    //  Gesucht ist der LETZTE Eintrag, der nicht hinter der Zielstelle liegt.
     while (p < end && guard++ < 200000) {
         quint32 pid = 0;
         qint64 pAt = 0, pSize = 0;
@@ -1065,7 +963,6 @@ StreamStart findStartByWalking(QFile& f, qint64 segDataStart, qint64 segEnd,
     return out;
 }
 
-// ── Das Gerät: Tonspur ab einem Cluster als roher Strom ────────────────────
 class RawStreamDevice : public QIODevice {
 public:
     RawStreamDevice(const QString& path, quint64 trackNumber, qint64 firstCluster,
@@ -1103,14 +1000,12 @@ protected:
         if (have <= 0) return 0;
         memcpy(data, m_buf.constData() + m_out, size_t(have));
         m_out += have;
-        //  Verbrauchtes wegwerfen, damit der Puffer nicht wächst.
         if (m_out > (4 << 20)) { m_buf.remove(0, int(m_out)); m_out = 0; }
         return have;
     }
     qint64 writeData(const char*, qint64) override { return -1; }
 
 private:
-    //  EINEN Cluster einlesen und die Rahmen der Tonspur anhängen.
     bool fillOneCluster() {
         while (m_at < m_segEnd) {
             quint32 id = 0;
@@ -1192,7 +1087,6 @@ Info probe(const QString& path) {
     return info;
 }
 
-//  Wie `probe`, aber für eine BESTIMMTE Spur (Codec und Endung hängen an ihr).
 Info probeTrack(const QString& path, int trackIndex) {
     Info info;
     const Result r = run(path, &info, nullptr, nullptr, trackIndex);
@@ -1220,8 +1114,6 @@ QIODevice* openRawStream(const QString& srcPath, int trackIndex, qint64 startMs,
                          qint64* actualMs, QObject* parent) {
     if (actualMs) *actualMs = 0;
 
-    //  1) Kopf lesen: Zeitbasis, Spuren, Codec. Genau wie beim Herauskopieren -
-    //     nur dass hier nichts geschrieben wird.
     QFile f(srcPath);
     if (!f.open(QIODevice::ReadOnly) || f.size() < 32) return nullptr;
     const QByteArray head = f.read(std::min<qint64>(f.size(), kMaxHeaderBytes));
@@ -1273,7 +1165,6 @@ QIODevice* openRawStream(const QString& srcPath, int trackIndex, qint64 startMs,
         if (!aac.ok) return nullptr;
     }
 
-    //  3) Die Zielstelle: erst über das Inhaltsverzeichnis, sonst abschreiten.
     const qint64 segEnd = seg.unknownSize ? f.size()
                                           : std::min<qint64>(f.size(), seg.dataAt + seg.size);
     StreamStart start = findStartViaCues(f, seg.dataAt, segEnd, timeScale, startMs);

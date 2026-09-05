@@ -2,17 +2,8 @@ import QtQuick
 import QtQuick.Templates as T
 import MediaGallery 1.0
 
-// ─────────────────────────────────────────────────────────────────────────────
-//  Dialog.qml - gethemter Dialograhmen (Stil "style").
-//
-//  Fusion zeichnete die Titelzeile mit eigenem Hintergrund in `palette.window`
-//  und Radius 2 - in den App-Dialogen (Karten-Hintergrund, Radius 8) ergab das
-//  ein andersfarbiges Band mit eckigen Ecken über der abgerundeten Kante. Hier
-//  ist die Titelzeile transparent (der Dialoghintergrund trägt sie) und der
-//  Fuß-Bereich existiert nur, wenn er wirklich Schaltflächen enthält.
-//  Aufrufstellen, die `background`/`contentItem` selbst setzen, überschreiben
-//  die Vorgaben wie gehabt.
-// ─────────────────────────────────────────────────────────────────────────────
+// Fusion zeichnete die Titelzeile mit eigenem Hintergrund in `palette.window` und Radius 2 - über der
+// abgerundeten Kante der App-Dialoge ein andersfarbiges Band mit eckigen Ecken. Hier ist sie transparent.
 T.Dialog {
     id: control
 

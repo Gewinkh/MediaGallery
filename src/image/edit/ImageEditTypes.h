@@ -1,30 +1,7 @@
 #pragma once
-// ══════════════════════════════════════════════════════════════════════════════
-//  ImageEditTypes.h - Datentypen des Bild-Editor-Overlays (header-only).
-// ══════════════════════════════════════════════════════════════════════════════
-//
-//  KONZEPT (Overlay-Architektur - analog zum PDF-Editor, s. PdfEditTypes.h)
-//  ───────────────────────────────────────────────────────────────────────
-//  Das Original-BILD bleibt UNVERÄNDERT. Alle Bearbeitungen sind
-//  ImageAnnotation-Objekte, die als eigenständige Ebene ÜBER dem Bild liegen:
-//   • Anzeige:   QML zeichnet die Annotationen über das gerenderte Bild.
-//   • Sidecar:   Die Annotationen werden als JSON neben dem Bild gesichert
-//                (<pfad>.mgedit.json) -> bleiben dauerhaft editierbar.
-//   • Export:    Erst der Export rendert Original + Overlay in eine NEUE
-//                Bildkopie (ImageEditController, QImage+QPainter).
-//
-//  KOORDINATEN: Alle Geometrien liegen in NATIVEN BILD-PIXELN (Ursprung
-//  oben-links) - analog zu den „PDF-Punkten" des PDF-Editors. QML rechnet über
-//  `imgScale` (angezeigte Pixel je Bild-Pixel) in Bildschirm-Pixel um; der
-//  Export zeichnet 1:1 in die native Bildauflösung -> WYSIWYG. Schriftgröße und
-//  Linienbreite sind ebenfalls Bild-Pixel (auflösungsecht).
-//
-//  EIN vereinheitlichtes Struct mit `kind`-Enum deckt alle fünf Annotations-
-//  arten ab (Text-Notiz, Freihand, Pfeil, Rechteck, Ellipse):
-//   • Text / Rect / Ellipse -> Geometrie = `rect` (Bounding-Box).
-//   • Freihand / Pfeil       -> Geometrie = `points` (Bild-Pixel); `rect` ist die
-//                              daraus abgeleitete Bounding-Box (Auswahl/Skalieren).
-// ══════════════════════════════════════════════════════════════════════════════
+// Overlay wie beim PDF-Editor: das Bild bleibt unveraendert, Annotationen liegen
+// darueber und im Sidecar. Alle Geometrien in nativen Bild-Pixeln (Ursprung oben-links);
+// Text/Rect/Ellipse haben rect, Freihand/Pfeil points mit abgeleiteter Bounding-Box.
 
 #include <QString>
 #include <QRectF>
@@ -34,7 +11,6 @@
 #include <QJsonObject>
 #include <QJsonArray>
 
-// Art der Annotation (im Sidecar als Ganzzahl gespeichert).
 enum class ImageAnnKind {
     Text     = 0,   // Post-it-artige Textnotiz (volle Parität zum PDF-Editor)
     Freehand = 1,   // Freihand-Stift (Polylinie)
@@ -43,13 +19,8 @@ enum class ImageAnnKind {
     Ellipse  = 4    // Ellipse (Kontur + optionale Füllung)
 };
 
-// Welches Feld ändert sich? (Delta-Undo + gezielte dataChanged-Rollen)
-// Nachverfolgte Änderung („Track Changes") - identisch zum PDF-Editor
-// (`PdfTrackState`), damit Oberfläche und Bedienung dieselbe Semantik teilen.
-//   Added   - während der Aufzeichnung entstanden.
-//   Deleted - während der Aufzeichnung gelöscht; die Annotation BLEIBT bis zur
-//             Entscheidung stehen, sonst ließe sich das Verwerfen der Löschung
-//             nicht mehr zurücknehmen.
+// Nachverfolgte Änderung, identisch zum PDF-Editor (`PdfTrackState`), damit beide dieselbe Semantik teilen.
+// `Deleted` BLEIBT bis zur Entscheidung stehen, sonst ließe sich das Verwerfen der Löschung nicht zurücknehmen.
 enum class ImageTrackState { None = 0, Added = 1, Deleted = 2 };
 
 enum class ImageAnnField {
@@ -71,21 +42,16 @@ enum class ImageAnnField {
     Fill           // Füllfarbe (Rect/Ellipse)
 };
 
-// ─────────────────────────────────────────────────────────────────────────────
-//  ImageAnnotation - EINE Overlay-Annotation (Text/Freihand/Pfeil/Rect/Ellipse).
-// ─────────────────────────────────────────────────────────────────────────────
 struct ImageAnnotation {
     int          id   = 0;                       // laufende Sitzungs-ID (nicht persistiert)
     ImageAnnKind kind = ImageAnnKind::Text;
     QRectF       rect;                           // Bounding-Box in Bild-Pixeln
     QVector<QPointF> points;                     // Freihand/Pfeil: Stützpunkte (Bild-px)
 
-    // ── Zeichnen (Formen + Striche) ──────────────────────────────────────────
     QColor stroke    = QColor(230, 44, 44);      // Linienfarbe (deckend)
     qreal  lineWidth = 4.0;                       // Linienbreite in Bild-Pixeln
     QColor fill      = QColor(0, 0, 0, 0);       // Füllung Rect/Ellipse (a=0 -> nur Kontur)
 
-    // ── Text (kind == Text) - volle Post-it-Parität zum PDF-Editor ───────────
     QString text;
     QString fontFamily = QStringLiteral("Helvetica");
     qreal   fontSizePx = 28.0;                   // Bild-Pixel (nicht Punkte)
@@ -101,8 +67,6 @@ struct ImageAnnotation {
 
     bool isStroke() const { return kind == ImageAnnKind::Freehand || kind == ImageAnnKind::Arrow; }
 
-    // Bounding-Box aus den Punkten neu berechnen (Freihand/Pfeil). Ein
-    // Linienbreiten-Rand hält Auswahlrahmen/Handles außerhalb des Strichs.
     void recomputeBounds() {
         if (points.isEmpty())
             return;
@@ -116,7 +80,7 @@ struct ImageAnnotation {
         rect = QRectF(minX - m, minY - m, (maxX - minX) + 2 * m, (maxY - minY) + 2 * m);
     }
 
-    // ── Sidecar-Serialisierung (IDs werden beim Laden neu vergeben) ───────────
+    // Sidecar-Serialisierung (IDs werden beim Laden neu vergeben)
     // Nachverfolgte Änderung (s. ImageTrackState); im Sidecar als "tr".
     ImageTrackState track = ImageTrackState::None;
 
@@ -187,7 +151,6 @@ struct ImageAnnotation {
         a.alignment  = o.value(QStringLiteral("align")).toInt(0);
         a.vAlign     = o.value(QStringLiteral("valign")).toInt(0);
 
-        // Defensive Klemmen gegen defekte/fremde Sidecar-Dateien.
         if (!a.stroke.isValid())    a.stroke    = QColor(230, 44, 44);
         if (!a.fill.isValid())      a.fill      = QColor(0, 0, 0, 0);
         if (!a.color.isValid())     a.color     = QColor(0, 0, 0);
@@ -200,7 +163,6 @@ struct ImageAnnotation {
         if (a.vAlign    < 0 || a.vAlign    > 1) a.vAlign    = 0;
         if (a.rect.width()  < 1.0) a.rect.setWidth(1.0);
         if (a.rect.height() < 1.0) a.rect.setHeight(1.0);
-        // Bei Strichen die Bounding-Box aus den Punkten sicherstellen.
         if (a.isStroke() && !a.points.isEmpty())
             a.recomputeBounds();
         return a;

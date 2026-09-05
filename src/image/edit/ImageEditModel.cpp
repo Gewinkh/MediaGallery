@@ -1,6 +1,5 @@
 #include "image/edit/ImageEditModel.h"
 
-// ─────────────────────────────────────────────────────────────────────────────
 ImageEditModel::ImageEditModel(QObject* parent) : QAbstractListModel(parent) {}
 
 int ImageEditModel::rowCount(const QModelIndex& parent) const {
@@ -73,7 +72,6 @@ QHash<int, QByteArray> ImageEditModel::roleNames() const {
     return names;
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
 int ImageEditModel::indexOfId(int id) const {
     for (int i = 0; i < m_anns.size(); ++i)
         if (m_anns.at(i).id == id)
@@ -86,7 +84,6 @@ const ImageAnnotation* ImageEditModel::annById(int id) const {
     return row >= 0 ? &m_anns.at(row) : nullptr;
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
 void ImageEditModel::resetAnns(const QVector<ImageAnnotation>& anns) {
     beginResetModel();
     m_anns = anns;
@@ -115,7 +112,6 @@ bool ImageEditModel::removeById(int id, ImageAnnotation* removed, int* removedRo
     return true;
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
 bool ImageEditModel::applyGeometry(int id, const QRectF& r) {
     const int row = indexOfId(id);
     if (row < 0)

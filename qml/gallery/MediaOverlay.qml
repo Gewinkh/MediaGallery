@@ -2,15 +2,8 @@ import QtQuick
 import QtQuick.Controls
 import MediaGallery 1.0
 
-// ─────────────────────────────────────────────────────────────────────────────
-//  MediaOverlay.qml - leichtgewichtige Info-/Interaktionsschicht über einer
-//  Kachel (ersetzt MediaOverlayWidget/Tag-Overlay aus dem Widget-Pfad; KEIN
-//  QWidget, kein eigenes QObject pro Tag - reine QML-Items).
-//
-//  Zeigt: Datei-/Anzeigename (inline umbenennbar), Datum, Tag-Punkte. Im Compact-
-//  Modus (App.optionsVisible == false) nur eine schmale Namenszeile.
-//  Umbenennen/Tag-Toggle delegieren an mediaModel (per Dateipfad).
-// ─────────────────────────────────────────────────────────────────────────────
+// Leichtgewichtige Info-/Interaktionsschicht über einer Kachel - reine QML-Items, kein QObject je Tag. Im
+// Compact-Modus nur eine schmale Namenszeile; Umbenennen und Tag-Toggle delegieren an `mediaModel`.
 Item {
     id: overlay
 
@@ -47,7 +40,6 @@ Item {
         anchors.margins: 6
         spacing: 3
 
-        // ── Name (Anzeige ⇄ Inline-Edit) ────────────────────────────────────
         Item {
             width: parent.width
             height: 18
@@ -95,7 +87,6 @@ Item {
             }
         }
 
-        // ── Datum ───────────────────────────────────────────────────────────
         Text {
             visible: !overlay.compact
             width: parent.width
@@ -105,7 +96,6 @@ Item {
             elide: Text.ElideRight
         }
 
-        // ── Tag-Punkte ──────────────────────────────────────────────────────
         Row {
             visible: !overlay.compact && overlay.tags.length > 0
             spacing: 4
@@ -125,10 +115,8 @@ Item {
             }
         }
 
-        // ── Optionen-Modus (S): „Tags anzeigen" / „Kategorien anzeigen" ─────
-        //  Zwei Buttons je Kachel; Klick zeigt die Liste der jeweiligen Werte
-        //  DIESES Mediums (Tags via mediaModel.tagsOfFile, Kategorien via
-        //  Tags.categoriesForFile - beides frisch aus der JSON-Persistenz).
+        // Zwei Knöpfe je Kachel im Optionen-Modus; der Klick zeigt die Tags bzw. Kategorien DIESES Mediums, beides
+        // frisch aus der Persistenz.
         Row {
             id: optRow
             visible: !overlay.compact
@@ -138,7 +126,7 @@ Item {
                 Math.max(overlay.filePath.lastIndexOf("/"),
                          overlay.filePath.lastIndexOf("\\")) + 1)
 
-            // ── „+"-Button (S-Modus): neuen Tag erstellen - LINKS vom Tags-Button ──
+            // „+"-Button (S-Modus): neuen Tag erstellen - LINKS vom Tags-Button
             //  Bindet an die bestehende Daten-Logik an: mediaModel.addTag registriert
             //  den Tag (falls neu) und weist ihn diesem Medium zu.
             Rectangle {
@@ -173,10 +161,7 @@ Item {
                     }
                 }
             }
-            // ── „+"-Button (S-Modus): neue Kategorie erstellen - LINKS vom
-            //  Kategorien-Button. Tags.addRootCategory liefert die neue
-            //  Kategorie-ID; anschließend wird das Medium via
-            //  Tags.toggleFileInCategory direkt zugeordnet.
+            // "+" legt eine neue Wurzelkategorie an und ordnet das Medium ihr sofort zu (`addRootCategory` liefert die ID).
             Rectangle {
                 width: 18; height: 18; radius: 9
                 color: addCatHover.hovered ? Qt.rgba(1, 1, 1, 0.28) : Qt.rgba(1, 1, 1, 0.12)
@@ -212,7 +197,7 @@ Item {
         }
     }
 
-    // ── Eingabe-Popup: neuen Tag / neue Kategorie erstellen (S-Modus) ────────
+    // Eingabe-Popup: neuen Tag / neue Kategorie erstellen (S-Modus)
     Popup {
         id: addPopup
         property string mode: "tag"          // "tag" | "category"
@@ -280,7 +265,7 @@ Item {
         }
     }
 
-    // ── Werte-Popup (Tags bzw. Kategorien des Mediums) ──────────────────────
+    // Werte-Popup (Tags bzw. Kategorien des Mediums)
     Popup {
         id: valuesPopup
         property string title: ""

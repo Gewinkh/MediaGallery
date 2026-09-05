@@ -4,39 +4,22 @@ import QtQuick.Controls
 import MediaGallery 1.0
 import "../common"
 
-// ─────────────────────────────────────────────────────────────────────────────
-//  AudioPlayerBar.qml - die Leiste unter der Galerie im Player-Modus.
-//
-//  Sie erscheint erst, WENN ein Titel läuft, und nur in der Hälfte, die den
-//  Player besitzt (`Audio.owner`). Alles geht über den `Audio`-Singleton; eigene
-//  Zustände hat sie keine.
-//
-//  AUFBAU: drei Blöcke nebeneinander - links die Steuerung, rechts die
-//  Schalter, dazwischen Titel und Fortschritt. Der mittlere Block liegt
-//  ZWISCHEN den beiden äußeren (nicht in einer Reihe mit ihnen): so bleibt der
-//  Fortschrittsbalken mittig, egal wie lang der Dateiname ist.
-//
-//  Ein Klick auf die Mitte öffnet die große Ansicht (`expandRequested`).
-// ─────────────────────────────────────────────────────────────────────────────
+// Die Leiste unter der Galerie im Player-Modus; erscheint erst, wenn ein Titel läuft, und nur in der Hälfte, die
+// den Player besitzt. Der mittlere Block liegt ZWISCHEN den äußeren, damit der Fortschrittsbalken mittig bleibt.
 Rectangle {
     id: bar
-    objectName: "audioPlayerBar"      // Griff für tests/bench (Regel 31)
+    objectName: "audioPlayerBar"      // Griff für tests/bench
 
-    //  Öffnet die große Player-Ansicht mit Warteschlange.
     signal expandRequested()
 
     implicitHeight: 68
     color: App.themeMenuBarBg
 
-    //  Schmale Hälfte: die drei Blöcke passen nicht mehr nebeneinander. Dann
-    //  bleiben Steuerung und Fortschritt, die Schalter rücken in ein kleines
-    //  Menü, und der Titel weicht dem Platz. Vorher überlappten die Blöcke
-    //  einfach (Nutzerbild `tests/miniPlayer.png`).
+    // Schmale Hälfte: die drei Blöcke passen nicht mehr nebeneinander - Steuerung und Fortschritt bleiben, die
+    // Schalter rücken in ein Menü, der Titel weicht. Vorher überlappten sie einfach.
     readonly property bool narrow: width < 560
     readonly property bool veryNarrow: width < 380
 
-    //  Eine feine Akzentlinie oben - die Leiste soll sich als eigener Bereich
-    //  zu erkennen geben, ohne laut zu werden.
     Rectangle {
         anchors { top: parent.top; left: parent.left; right: parent.right }
         height: 2
@@ -48,8 +31,6 @@ Rectangle {
         }
     }
 
-    // ── Bausteine ───────────────────────────────────────────────────────────
-    //  Ein gezeichneter Knopf (Regel 28: keine Emoji, keine Glyphen).
     component BarBtn: Rectangle {
         id: bb
         property string iconName: ""
@@ -74,7 +55,6 @@ Rectangle {
         ToolTip.text: bb.tip
     }
 
-    // ── Links: die Steuerung ────────────────────────────────────────────────
     Row {
         id: transport
         anchors { left: parent.left; leftMargin: bar.narrow ? 8 : 14
@@ -86,7 +66,6 @@ Rectangle {
             tip: App.uiText(App.language, "AudioPrevious")
             onClicked: Audio.previous()
         }
-        //  Der größte Knopf der Leiste - er wird am häufigsten getroffen.
         Rectangle {
             anchors.verticalCenter: parent.verticalCenter
             width: 40; height: 40; radius: 20
@@ -108,7 +87,7 @@ Rectangle {
         }
     }
 
-    // ── Rechts: Zufall, Wiederholung, Equalizer, Lautstärke ─────────────────
+    // Rechts: Zufall, Wiederholung, Equalizer, Lautstärke
     Row {
         id: rightTools
         anchors { right: parent.right; rightMargin: bar.narrow ? 8 : 14
@@ -222,7 +201,6 @@ Rectangle {
         }
     }
 
-    // ── Mitte: Titel + Fortschritt ──────────────────────────────────────────
     Item {
         id: center
         anchors { left: transport.right; leftMargin: bar.narrow ? 8 : 18
@@ -253,7 +231,6 @@ Rectangle {
             font.pixelSize: 13
             font.bold: true
         }
-        // ── Fortschritt: tippen und ziehen ──────────────────────────────────
         Item {
             id: progress
             anchors { left: parent.left; right: parent.right; bottom: parent.bottom }
@@ -327,12 +304,12 @@ Rectangle {
         }
     }
 
-    // ── Equalizer-Panel ─────────────────────────────────────────────────────
+    // Equalizer-Panel
     //  Dasselbe `AudioEqPanel` steht auch in Einstellungen ▸ Audio; hier bekommt
     //  es nur den Rahmen eines Popups.
     Popup {
         id: eqPopup
-        objectName: "audioEqPopup"    // Griff für tests/bench (Regel 31)
+        objectName: "audioEqPopup"    // Griff für tests/bench
         padding: 12
         //  Höhe/Breite AUS dem Inhalt: sonst standen die unteren Knöpfe (Preset
         //  sichern/löschen) außerhalb des Fensters.

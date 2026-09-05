@@ -4,14 +4,8 @@ import QtQuick.Controls
 import MediaGallery 1.0
 import "../common"
 
-// ─────────────────────────────────────────────────────────────────────────────
-//  SettingsCategoryNode.qml - rekursiver Editor-Knoten des Kategorie-Baums.
-//  Instanziiert sich für Unterkategorien selbst (Loader + source-String, um den
-//  M129-Fehler "Typ kann nicht rekursiv instanziiert werden" zu vermeiden).
-//
-//  Knoten-Schema: { id, name, color, uniform, inherit, tags, fileCount, children }
-//  Mutationen laufen über Tags (TagController) bzw. tab.prompt*()-Callbacks.
-// ─────────────────────────────────────────────────────────────────────────────
+// Rekursiver Editor-Knoten des Kategorie-Baums; für Unterkategorien über Loader + source-String, weil QML einen
+// Typ nicht rekursiv instanziieren kann (M129). Mutationen über `Tags` bzw. die `tab.prompt*()`-Callbacks.
 Column {
     id: nodeRoot
 
@@ -24,7 +18,6 @@ Column {
     spacing: 2
     width: parent ? parent.width : 0
 
-    // ── Kopfzeile ─────────────────────────────────────────────────────────────
     Rectangle {
         width: parent.width
         height: 34
@@ -77,7 +70,6 @@ Column {
                 }
             }
 
-            // Umfärben (nur bei Einheitsfarbe)
             ColorPicker {
                 anchors.verticalCenter: parent.verticalCenter
                 visible: nodeRoot.node.uniform
@@ -115,7 +107,6 @@ Column {
         }
     }
 
-    // ── Tag-Chips ─────────────────────────────────────────────────────────────
     Flow {
         width: parent.width - nodeRoot.depth * 16 - 28
         x: nodeRoot.depth * 16 + 28
@@ -156,7 +147,6 @@ Column {
         }
     }
 
-    // ── Unterkategorien (rekursiv über Loader) ──────────────────────────────────
     Column {
         width: parent.width
         spacing: 2

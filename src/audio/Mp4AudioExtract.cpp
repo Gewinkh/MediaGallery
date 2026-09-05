@@ -8,35 +8,12 @@
 
 #include <limits>
 
-// ─────────────────────────────────────────────────────────────────────────────
-//  Aufbau einer MP4-Datei, soweit hier gebraucht:
-//
-//      ftyp                    Hülle/Marken
-//      moov                    BESCHREIBUNG (klein)
-//        mvhd                  Zeitbasis des Films
-//        trak                  je Spur eine
-//          tkhd
-//          edts/elst           Vorlauf/Schnitt (wird 1:1 übernommen)
-//          mdia
-//            mdhd              Zeitbasis der SPUR
-//            hdlr              'soun' = Ton, 'vide' = Bild
-//            minf/stbl         die Tabellen: wo liegt welcher Block
-//      mdat                    DATEN aller Spuren, verzahnt
-//
-//  Herauskopieren heißt: aus `stbl` die Bereiche der Tonspur ausrechnen, ihre
-//  Bytes hintereinander in ein neues `mdat` schreiben und eine frische
-//  Beschreibung dazu bauen. Übernommen wird `stsd` (der Sample-Eintrag mit
-//  `esds`/AudioSpecificConfig - ohne ihn wäre der Ton nicht dekodierbar) und
-//  `edts`; neu entstehen die Tabellen, weil sich die Lage der Bytes ändert.
-//
-//  EIN Chunk für alles: `stsc` bekommt einen Eintrag, `stco` einen Offset. Das
-//  ist zulässig und die kleinste korrekte Form - die Verzahnung mit einer
-//  Bildspur, für die es die Chunks gab, existiert in einer Audiodatei nicht.
-// ─────────────────────────────────────────────────────────────────────────────
+// MP4: ftyp | moov (Beschreibung: trak > mdia > minf/stbl mit den Tabellen) | mdat.
+// Herauskopieren heisst: aus stbl die Bereiche der Tonspur ausrechnen, die Bytes in
+// ein neues mdat schreiben und eine frische Beschreibung bauen (stsd/edts uebernommen).
 
 namespace {
 
-// ── Schutzgrenzen (Regel 21: Fremddaten werden nie geglaubt) ─────────────────
 constexpr qint64 kMaxMoov     = 64ll << 20;   // 64 MB Beschreibung ist absurd viel
 constexpr qint64 kMaxSamples  = 20'000'000;   // ~30 h AAC bei 43 Blöcken/s
 constexpr int    kMaxTopBoxes = 4096;         // Endlosschleife bei Müll verhindern
@@ -55,7 +32,6 @@ constexpr quint32 kStsd = fcc("stsd"), kStts = fcc("stts"), kStsc = fcc("stsc");
 constexpr quint32 kStsz = fcc("stsz"), kStz2 = fcc("stz2"), kStco = fcc("stco");
 constexpr quint32 kCo64 = fcc("co64"), kEdts = fcc("edts"), kDinf = fcc("dinf");
 constexpr quint32 kDref = fcc("dref"), kUrl  = fcc("url "), kSoun = fcc("soun");
-//  Fragmentierte Dateien: die Sample-Tabellen stecken je Fragment in `traf`.
 constexpr quint32 kTkhd = fcc("tkhd"), kTraf = fcc("traf"), kTfhd = fcc("tfhd");
 constexpr quint32 kTrun = fcc("trun"), kTrex = fcc("trex");
 constexpr int    kMaxMoofs = 200'000;         // Fragmente je Datei
@@ -70,7 +46,6 @@ inline quint64 be64(const uchar* p) {
     return (quint64(be32(p)) << 32) | be32(p + 4);
 }
 
-// ── Box-Läufer über einen SCHON GELESENEN Puffer (moov) ─────────────────────
 struct Box {
     quint32 type = 0;
     qint64  off  = 0;   // Beginn der Box im Puffer
@@ -103,9 +78,6 @@ bool nextBox(const QByteArray& b, qint64 pos, qint64 end, Box* out) {
     return true;
 }
 
-//  Erstes Kind `type` in [start,end). Nicht rekursiv - der Weg wird bewusst
-//  Schritt für Schritt gegangen, damit ein Treffer in der falschen Ebene
-//  (z. B. `stsd` einer Bildspur) nicht versehentlich mitgenommen wird.
 bool child(const QByteArray& b, qint64 start, qint64 end, quint32 type, Box* out) {
     Box box;
     qint64 pos = start;
@@ -121,12 +93,10 @@ bool childOfBox(const QByteArray& b, const Box& parent, quint32 type, Box* out) 
     return child(b, parent.payload(), parent.end(), type, out);
 }
 
-//  Volles Feld einer Tabelle lesen: `n` Werte à 4 Byte ab `off`, mit Prüfung.
 bool haveBytes(const QByteArray& b, qint64 off, qint64 n) {
     return off >= 0 && n >= 0 && off <= b.size() - n;
 }
 
-// ── Was aus der Quelle gebraucht wird ───────────────────────────────────────
 struct SttsEntry { quint32 count; quint32 delta; };
 
 struct Track {
@@ -144,8 +114,6 @@ struct Track {
     qint64  totalBytes = 0;
 };
 
-// ── Die oberste Ebene der DATEI abgehen, ohne sie zu laden ──────────────────
-//  Nur Kopf-Bytes werden gelesen; `moov` kann hinter einem 12-MB-`mdat` liegen.
 bool scanTopLevel(QFile& f, qint64 fileSize, Box* moov, bool* fragmented,
                   bool* sawFtyp, QVector<Box>* moofs = nullptr) {
     qint64 pos = 0;
@@ -177,8 +145,6 @@ bool scanTopLevel(QFile& f, qint64 fileSize, Box* moov, bool* fragmented,
         if (type == kFtyp) *sawFtyp = true;
         if (type == kMoof) {
             *fragmented = true;
-            //  Die Lage jedes Fragments merken - die Sample-Offsets rechnen
-            //  gleich VON HIER aus (`default-base-is-moof`).
             if (moofs && moofs->size() < kMaxMoofs)
                 moofs->append(Box { type, pos, hdr, size });
         }
@@ -191,15 +157,12 @@ bool scanTopLevel(QFile& f, qint64 fileSize, Box* moov, bool* fragmented,
     return found;
 }
 
-// ── Sample-Tabellen einer Spur auflösen ─────────────────────────────────────
-//  Aus `stsc` (wie viele Samples je Chunk), `stco`/`co64` (wo der Chunk liegt)
-//  und `stsz`/`stz2` (wie lang jedes Sample ist) entsteht die flache Liste
-//  „Sample N liegt bei Offset X und ist Y Byte lang".
+// Aus `stsc` (Samples je Chunk), `stco`/`co64` (Chunk-Offset) und `stsz`/`stz2` (Sample-Länge) entsteht die
+// flache Liste "Sample N liegt bei Offset X und ist Y Byte lang".
 bool buildSampleList(const QByteArray& m, const Box& stbl, qint64 fileSize,
                      Track* t, Mp4Audio::Result* err) {
     const uchar* p = reinterpret_cast<const uchar*>(m.constData());
 
-    // ── Sample-Größen ───────────────────────────────────────────────────────
     QVector<quint32> sizes;
     Box b;
     if (childOfBox(m, stbl, kStsz, &b)) {
@@ -219,8 +182,6 @@ bool buildSampleList(const QByteArray& m, const Box& stbl, qint64 fileSize,
                 sizes[int(i)] = be32(p + b.payload() + 12 + qint64(i) * 4);
         }
     } else if (childOfBox(m, stbl, kStz2, &b)) {
-        //  Kompaktform: 4/8/16 Bit je Größe. Selten, aber zulässig - und wer
-        //  sie nicht kennt, liest die Tabelle als Müll.
         if (b.payloadSize() < 12) { *err = Mp4Audio::Result::Damaged; return false; }
         const quint32 fieldSize = p[b.payload() + 7];
         const quint32 count     = be32(p + b.payload() + 8);
@@ -249,7 +210,6 @@ bool buildSampleList(const QByteArray& m, const Box& stbl, qint64 fileSize,
         return false;
     }
 
-    // ── Chunk-Offsets ───────────────────────────────────────────────────────
     QVector<qint64> chunkOffsets;
     if (childOfBox(m, stbl, kStco, &b)) {
         if (b.payloadSize() < 8) { *err = Mp4Audio::Result::Damaged; return false; }
@@ -277,7 +237,6 @@ bool buildSampleList(const QByteArray& m, const Box& stbl, qint64 fileSize,
         return false;
     }
 
-    // ── Sample-zu-Chunk ─────────────────────────────────────────────────────
     struct ScEntry { quint32 firstChunk; quint32 perChunk; };
     QVector<ScEntry> sc;
     if (!childOfBox(m, stbl, kStsc, &b) || b.payloadSize() < 8) {
@@ -301,14 +260,11 @@ bool buildSampleList(const QByteArray& m, const Box& stbl, qint64 fileSize,
     }
     if (sc.isEmpty()) { *err = Mp4Audio::Result::Damaged; return false; }
 
-    // ── Auflösen: je Chunk die Samples hintereinander ───────────────────────
     const int sampleCount = sizes.size();
     t->offsets.reserve(sampleCount);
     t->sizes.reserve(sampleCount);
     int sample = 0;
     for (int c = 0; c < chunkOffsets.size() && sample < sampleCount; ++c) {
-        //  Wie viele Samples in diesem Chunk? Der letzte Eintrag, dessen
-        //  `firstChunk` (1-basiert) noch <= c+1 ist, gilt.
         quint32 perChunk = 0;
         for (int e = sc.size() - 1; e >= 0; --e) {
             if (sc[e].firstChunk <= quint32(c) + 1) { perChunk = sc[e].perChunk; break; }
@@ -332,7 +288,6 @@ bool buildSampleList(const QByteArray& m, const Box& stbl, qint64 fileSize,
     }
     if (t->offsets.isEmpty()) { *err = Mp4Audio::Result::Damaged; return false; }
 
-    // ── Zeit-zu-Sample ──────────────────────────────────────────────────────
     if (!childOfBox(m, stbl, kStts, &b) || b.payloadSize() < 8) {
         *err = Mp4Audio::Result::Damaged; return false;
     }
@@ -369,8 +324,6 @@ bool buildSampleList(const QByteArray& m, const Box& stbl, qint64 fileSize,
     return true;
 }
 
-//  `dref` prüfen: liegen die Daten in DIESER Datei? Ein 'url '-Eintrag mit
-//  gesetztem Flag 1 heißt „selbsttragend"; alles andere zeigt nach außen.
 bool selfContained(const QByteArray& m, const Box& minf) {
     Box dinf, dref;
     if (!childOfBox(m, minf, kDinf, &dinf)) return true;    // fehlt -> Standard
@@ -383,7 +336,6 @@ bool selfContained(const QByteArray& m, const Box& minf) {
     return (be32(p + e.payload()) & 0x00FFFFFF) == 1;       // flags == self
 }
 
-// ── Schreiben ───────────────────────────────────────────────────────────────
 struct Writer {
     QByteArray b;
 
@@ -394,8 +346,6 @@ struct Writer {
     void raw(const QByteArray& d) { b.append(d); }
     void zeros(int n) { b.append(QByteArray(n, '\0')); }
 
-    //  Box öffnen: Platzhalter für die Größe, dann der Typ. `close` trägt die
-    //  wirkliche Größe nach - so muss sie nirgends im Voraus gerechnet werden.
     qint64 open(quint32 type) {
         const qint64 pos = b.size();
         u32(0);
@@ -417,8 +367,6 @@ void writeMatrix(Writer& w) {
     w.u32(0); w.u32(0); w.u32(0x40000000);
 }
 
-//  Baut die ganze Beschreibung. `stcoValuePos` bekommt die Stelle, an der der
-//  Chunk-Offset steht: er ist erst bekannt, wenn die Größe von moov feststeht.
 QByteArray buildMoov(const Track& t, quint32 movieTimescale, qint64* stcoValuePos) {
     Writer w;
     const quint64 movieDuration = t.mediaTimescale > 0
@@ -457,8 +405,6 @@ QByteArray buildMoov(const Track& t, quint32 movieTimescale, qint64* stcoValuePo
     w.u32(0); w.u32(0);                       // Breite/Höhe = 0
     w.close(tkhd);
 
-    //  Der Vorlauf der Quelle wird 1:1 übernommen - er trimmt bei AAC die
-    //  Kodier-Verzögerung. Ohne ihn begänne der Ton hörbar zu früh.
     if (!t.edts.isEmpty()) w.raw(t.edts);
 
     const qint64 mdia = w.open(kMdia);
@@ -553,17 +499,9 @@ QByteArray buildFtyp() {
     return w.b;
 }
 
-// ── Fragmentierte Dateien: die Tabellen stehen in den Fragmenten ────────────
-//  In einer fragmentierten Datei ist `stbl` LEER - jedes `moof` bringt seine
-//  eigene kleine Tabelle mit (`traf` -> `tfhd` + `trun`), und die Daten liegen
-//  im `mdat` direkt dahinter. Zusammengesetzt ergibt das dieselbe flache Liste
-//  „Sample N liegt bei Offset X und ist Y Byte lang", die auch `buildSampleList`
-//  liefert - der Schreiber dahinter merkt keinen Unterschied.
-//
-//  Woher die Zahlen kommen, wenn ein Feld fehlt: `tfhd` kann Vorgaben je
-//  Fragment setzen, `trex` (in `mvex`) welche für die ganze Datei. Fehlt beides
-//  UND das Feld im `trun`, ist die Datei nicht auflösbar - dann wird abgelehnt,
-//  nicht geraten (Regel 19).
+// Fragmentiert: stbl ist leer, jedes moof bringt seine Tabelle mit (tfhd + trun).
+// Vorgaben kommen aus tfhd (je Fragment) oder trex (ganze Datei); fehlt beides und
+// das Feld im trun, wird abgelehnt statt geraten.
 struct TrexDefaults {
     quint32 duration = 0;
     quint32 size     = 0;
@@ -591,7 +529,6 @@ bool buildFragmentedSampleList(QFile& f, qint64 fileSize, const QVector<Box>& mo
             tp = traf.end();
             if (traf.type != kTraf) continue;
 
-            // ── tfhd: für WELCHE Spur, und welche Vorgaben gelten ───────────
             Box tfhd;
             if (!childOfBox(mf, traf, kTfhd, &tfhd) || tfhd.payloadSize() < 8) continue;
             qint64 at = tfhd.payload();
@@ -600,9 +537,6 @@ bool buildFragmentedSampleList(QFile& f, qint64 fileSize, const QVector<Box>& mo
             if (be32(p + at) != trackId) continue;          // andere Spur
             at += 4;
 
-            //  Ohne ausdrückliche Angabe zählt der Anfang des Fragments - so
-            //  schreibt es `default-base-is-moof`, und so tun es alle Muxer,
-            //  die überhaupt fragmentieren.
             qint64 base = moofBox.off;
             if (tfFlags & 0x000001) {                       // base-data-offset
                 if (!haveBytes(mf, at, 8)) return false;
@@ -623,9 +557,6 @@ bool buildFragmentedSampleList(QFile& f, qint64 fileSize, const QVector<Box>& mo
             }
             if (tfFlags & 0x000020) at += 4;                // default-sample-flags
 
-            // ── trun: die Samples dieses Fragments ─────────────────────────
-            //  Mehrere `trun` je `traf` sind erlaubt; ohne eigenen `data_offset`
-            //  schließt der nächste unmittelbar an den vorigen an.
             qint64 cursor = base;
             Box trun;
             qint64 rp = traf.payload();
@@ -651,8 +582,6 @@ bool buildFragmentedSampleList(QFile& f, qint64 fileSize, const QVector<Box>& mo
                 }
                 if (flags & 0x000004) q += 4;               // first-sample-flags
 
-                //  Wie viele Bytes je Sample im `trun` stehen - daraus ergibt
-                //  sich, ob die Tabelle überhaupt vollständig da ist.
                 int per = 0;
                 if (flags & 0x000100) per += 4;             // Dauer
                 if (flags & 0x000200) per += 4;             // Größe
@@ -661,8 +590,6 @@ bool buildFragmentedSampleList(QFile& f, qint64 fileSize, const QVector<Box>& mo
                 if (per > 0 && !haveBytes(mf, q, qint64(count) * per)) return false;
                 if (!(flags & 0x000200) && defSize == 0) return false;   // Größe unbekannt
                 if (!(flags & 0x000100) && defDuration == 0 && count > 0) {
-                    //  Ohne Dauer ist die Zeitachse unbekannt; für das reine
-                    //  Herauskopieren reicht 0, die Länge steht dann in `mdhd`.
                     defDuration = 0;
                 }
                 (void)version;
@@ -683,8 +610,6 @@ bool buildFragmentedSampleList(QFile& f, qint64 fileSize, const QVector<Box>& mo
                     cursor += sz;
                     totalDuration += dur;
 
-                    //  `stts` als Lauflänge - genau wie bei einer gewöhnlichen
-                    //  Datei, damit der Schreiber unverändert bleibt.
                     if (!t->stts.isEmpty() && t->stts.back().delta == dur)
                         ++t->stts.back().count;
                     else
@@ -699,7 +624,6 @@ bool buildFragmentedSampleList(QFile& f, qint64 fileSize, const QVector<Box>& mo
     return true;
 }
 
-// ── Die Quelle einlesen: moov holen, Tonspur heraussuchen ───────────────────
 Mp4Audio::Result readSource(const QString& path, QFile* f, Track* t, Mp4Audio::Info* info,
                             int trackIndex = 0) {
     f->setFileName(path);
@@ -711,7 +635,6 @@ Mp4Audio::Result readSource(const QString& path, QFile* f, Track* t, Mp4Audio::I
     bool fragmented = false, sawFtyp = false;
     QVector<Box> moofs;
     if (!scanTopLevel(*f, fileSize, &moovBox, &fragmented, &sawFtyp, &moofs)) {
-        //  Kein `moov` gefunden: entweder eine ganz andere Hülle oder Bruch.
         return sawFtyp ? Mp4Audio::Result::Damaged : Mp4Audio::Result::NotMp4;
     }
     if (moovBox.size > kMaxMoov) return Mp4Audio::Result::TooLarge;
@@ -720,18 +643,13 @@ Mp4Audio::Result readSource(const QString& path, QFile* f, Track* t, Mp4Audio::I
     if (!f->seek(moovBox.off)) return Mp4Audio::Result::Damaged;
     m = f->read(moovBox.size);
     if (m.size() != moovBox.size) return Mp4Audio::Result::Damaged;
-    //  Ab hier sind die Offsets in `m` relativ zum Beginn der moov-Box.
     Box moov;
     if (!nextBox(m, 0, m.size(), &moov) || moov.type != kMoov)
         return Mp4Audio::Result::Damaged;
 
-    //  Fragmentiert? Dann stehen die Sample-Tabellen in den `moof`-Boxen, nicht
-    //  in `stbl` - der Weg dorthin ist ein anderer, das Ergebnis dasselbe.
     Box mvex;
     const bool hasMvex = childOfBox(m, moov, kMvex, &mvex);
     const bool fragmentedFile = fragmented || hasMvex;
-    //  Vorgaben für die ganze Datei (`trex`); je Fragment darf `tfhd` sie
-    //  überschreiben. Gesucht wird erst, wenn die Spur feststeht.
     TrexDefaults trex;
 
     quint32 movieTimescale = 1000;
@@ -800,7 +718,6 @@ Mp4Audio::Result readSource(const QString& path, QFile* f, Track* t, Mp4Audio::I
             info->tracks.append(d);
         }
 
-        //  Genommen wird die GEWÄHLTE Spur; die übrigen werden nur beschrieben.
         if (haveTrack || info->audioTracks - 1 != trackIndex) continue;
 
         Box mdhd, minf, stbl, stsd, edts;
@@ -819,8 +736,6 @@ Mp4Audio::Result readSource(const QString& path, QFile* f, Track* t, Mp4Audio::I
         if (!childOfBox(m, minf, kStbl, &stbl)) continue;
         if (!childOfBox(m, stbl, kStsd, &stsd) || stsd.payloadSize() < 16) continue;
 
-        //  Sample-Eintrag lesen (Codec, Kanäle, Abtastrate) und prüfen, dass er
-        //  auf die eigene `dref` zeigt.
         const qint64 entry = stsd.payload() + 8;
         if (!haveBytes(m, entry, 36)) continue;
         const quint32 entrySize = be32(p + entry);
@@ -836,7 +751,6 @@ Mp4Audio::Result readSource(const QString& path, QFile* f, Track* t, Mp4Audio::I
 
         Mp4Audio::Result err = Mp4Audio::Result::Damaged;
         if (fragmentedFile) {
-            //  WELCHE Spur ist es? In den Fragmenten steht nur ihre Nummer.
             Box tkhd;
             if (!childOfBox(m, trak, kTkhd, &tkhd) || tkhd.payloadSize() < 20)
                 return Mp4Audio::Result::Damaged;
@@ -845,7 +759,6 @@ Mp4Audio::Result readSource(const QString& path, QFile* f, Track* t, Mp4Audio::I
             if (!haveBytes(m, idOff, 4)) return Mp4Audio::Result::Damaged;
             const quint32 trackId = be32(p + idOff);
 
-            //  `trex` liefert die Vorgaben für genau diese Spur.
             if (hasMvex) {
                 Box trex_;
                 qint64 xp = mvex.payload();
@@ -869,8 +782,6 @@ Mp4Audio::Result readSource(const QString& path, QFile* f, Track* t, Mp4Audio::I
         }
         haveTrack = true;
     }
-    //  Ein Index außerhalb ist kein Grund zu scheitern - dann gilt die erste
-    //  Spur. Der zweite Lauf beschreibt die Spuren neu, deshalb vorher leeren.
     if (!haveTrack && info->audioTracks > 0 && trackIndex != 0) {
         info->tracks.clear();
         info->audioTracks = 0;
@@ -951,8 +862,6 @@ Result extract(const QString& srcPath, const QString& targetPath, Info* infoOut,
     QByteArray ftyp = buildFtyp();
     QByteArray moov = buildMoov(t, t.movieTimescale, &stcoValuePos);
 
-    //  Der Chunk-Offset ist die Stelle, an der die TÖNE beginnen - also hinter
-    //  ftyp, moov und dem Kopf von mdat. Erst jetzt steht er fest.
     const bool big = (t.totalBytes + 16) > 0xFFFFFFFFll;
     const qint64 mdatHdr = big ? 16 : 8;
     const qint64 dataOff = ftyp.size() + moov.size() + mdatHdr;
@@ -980,17 +889,13 @@ Result extract(const QString& srcPath, const QString& targetPath, Info* infoOut,
     }
     if (out.write(hdr.b) != hdr.b.size()) return Result::WriteFailed;
 
-    //  Die Samples liegen in der Quelle meist schon hintereinander (ein Chunk
-    //  = mehrere Samples). Zusammenhängende Bereiche werden deshalb zu EINEM
-    //  Lesevorgang zusammengefasst - sonst wären es bei einer Stunde Ton über
-    //  150 000 Einzel-Lesevorgänge.
     QByteArray buf;
     buf.resize(int(kCopyChunk));
     qint64 i = 0;
     const int n = t.offsets.size();
     while (i < n) {
-        //  Kooperativer Abbruch (Regel 8): geprüft je zusammenhängendem Stück,
-        //  nicht je Byte - dazwischen liegen höchstens ein paar hundert kB.
+        //  Kooperativer Abbruch: geprüft je zusammenhängendem Stück, nicht je
+        //  Byte - dazwischen liegen höchstens ein paar hundert kB.
         if (cancel && cancel->load(std::memory_order_relaxed))
             return Result::NotOpenable;   // ohne commit() bleibt kein Bruchstück
         qint64 runStart = t.offsets[int(i)];

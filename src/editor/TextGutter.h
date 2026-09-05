@@ -6,24 +6,9 @@
 
 class QTextLayout;
 
-// ─────────────────────────────────────────────────────────────────────────────
-//  TextGutter.h - die Zeilennummern-Spalte des Texteditors.
-//
-//  WARUM C++ und nicht QML: eine Spalte aus QML waere ein `Repeater` ueber alle
-//  Zeilen, also 20 000 Items fuer eine mittlere Logdatei. Hier entsteht kein
-//  einziges Item - gemalt werden nur die Bloecke, die gerade im Fenster stehen
-//  (rund vierzig, unabhaengig von der Dateigroesse). Vorbild ist `DocxPageThumb`,
-//  das ebenfalls ein `QQuickPaintedItem` ist.
-//
-//  DER KERN IST DIE UMBRUCH-REGEL: bei sichtbarem („weichem") Umbruch belegt EIN
-//  Absatz mehrere Bildschirmzeilen. Die Nummer steht dann nur an der ERSTEN,
-//  die Fortsetzungszeilen bleiben leer - genau so haelt es Kate, und daran
-//  erkennt man, dass dort kein Enter steht. Das ergibt sich hier von selbst,
-//  weil je BLOCK einmal gemalt wird, nicht je Bildschirmzeile.
-//
-//  Die Spalte liest dasselbe `QTextDocument` wie die `TextArea` daneben. Sie
-//  aendert es nie - sie fragt nur nach Positionen.
-// ─────────────────────────────────────────────────────────────────────────────
+// C++ statt QML: eine Spalte aus QML waere ein Repeater ueber alle Zeilen, also
+// 20.000 Items fuer eine mittlere Logdatei. Hier entsteht kein Item - gemalt werden
+// nur die sichtbaren Bloecke. Bei weichem Umbruch traegt nur die ERSTE Zeile die Nummer.
 namespace mg::editor {
 
 class TextGutter : public QQuickPaintedItem {

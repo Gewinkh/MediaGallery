@@ -20,6 +20,7 @@ stores its data are in **[FEATURES.md](FEATURES.md)**.
 - **Image editor** - non-destructive crop, rotate, adjust and draw, with the same **tracked changes** as the PDF editor; the original file is never overwritten.
 - **DOCX editor** - a loss-preserving Word editor: only what you touch is rewritten. Tables, pictures, contents list, tracked changes (shown and resolvable), spell checking, find & replace, and PDF export.
 - **Text & source editor** - syntax colouring for 27 languages, folding, line numbers, indent guides, bracket matching, find & replace, an overview column and its own colour themes; plus a live HTML preview.
+- **Tables** - `.csv` and `.tsv` open as a table with detected separator and header row; a DATEV booking batch (`EXTF`/`DTVF`) is recognised by its content and additionally shows a file-header summary and debit/credit totals. Read-only.
 - **Live transliteration** - type Latin, get Arabic, Hiragana or Katakana while you write.
 - **Appearance** - every colour of the interface is adjustable, the editor has its own separate palette, and both can be exported and shared.
 
@@ -127,11 +128,12 @@ The `tests/` directory is not included in the published repository. If it is mis
 ## Changelog
 
 ### Latest
-- Improved tag and category management with drag & drop, re-parenting, tag picking, and reliable updates.
-- Added undo and redo for tag and category changes, separate from file undo.
-- Fixed tag and category operations including renaming, nesting, conversion, colors, and drag behavior.
-- Improved category headers with consistent positioning and dedicated controls.
-- Added custom empty files with any user-defined extension.
+- Added CSV/TSV table views with automatic separator and header detection.
+- Added multi-table CSV support with separate tabs and an All view.
+- Added row and column numbers with independent visibility controls.
+- Added DATEV booking batch support with booking tables and debit/credit totals.
+- Improved text editor stability when switching layouts and working with narrow windows.
+- Improved text file encoding support with CP1252 fallback for non-UTF-8 files.
 
 ---
 

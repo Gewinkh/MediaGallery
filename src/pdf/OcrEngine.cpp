@@ -66,11 +66,8 @@ const TessPick& pick() {
 
 QByteArray pickLanguage() { return pick().lang; }
 
-//  Eine Tesseract-Instanz JE FADEN, einmal aufgesetzt und danach
-//  wiederverwendet. `Init` lädt das Sprachmodell und kostet gemessen ~118 ms -
-//  bei jedem Aufruf erneut, obwohl sich nichts daran ändert. TessBaseAPI ist
-//  nicht fadensicher; `thread_local` gibt jedem Faden seine eigene, ohne Sperre
-//  (der Aufrufer ist ohnehin ein 1-Faden-Pool, s. PdfTextController).
+// Eine Tesseract-Instanz JE FADEN, einmal aufgesetzt: `Init` lädt das Sprachmodell und kostet gemessen ~118 ms.
+// TessBaseAPI ist nicht fadensicher; `thread_local` gibt jedem Faden seine eigene, ohne Sperre.
 struct TessSession {
     tesseract::TessBaseAPI api;
     bool ready = false;

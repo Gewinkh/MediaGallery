@@ -4,20 +4,9 @@ import QtQuick.Controls
 import MediaGallery 1.0
 import "../common"
 
-// ─────────────────────────────────────────────────────────────────────────────
-//  ImageEditToolbar.qml - schwebende Kompakt-Toolbar des Bild-Editors.
-//
-//  Liegt EINMAL in der Bild-Ebene von ImageSurface (Kind der content-Ebene ->
-//  folgt Zoom/Pan positionsmäßig, bleibt aber selbst feste Chrome-Größe) und
-//  erscheint über der ausgewählten Annotation. Inhalt passt sich der Art an:
-//   • Text  -> B/I/U, Größe, Ausrichtung, Vertikal, Textfarbe, Hervorhebung
-//   • Strich/Form -> Linienfarbe, Linienbreite, (Form:) Füllung
-//  gemeinsam: Kopieren, Löschen.
-//
-//  DATENFLUSS wie PdfEditToolbar: `info` liest ctl.annInfo(selectedId)
-//  REV-GETRIEBEN (selectionRev) neu; Buttons schreiben über die setAnn…-
-//  Invokables zurück (aufeinanderfolgende Klicks verschmelzen im Undo-Stack).
-// ─────────────────────────────────────────────────────────────────────────────
+// Schwebende Kompakt-Toolbar des Bild-Editors, Kind der content-Ebene - folgt Zoom/Pan, behält aber feste
+// Chrome-Größe. `info` liest `ctl.annInfo(selectedId)` REV-getrieben neu, die Knöpfe schreiben über die
+// setAnn-Invokables zurück; aufeinanderfolgende Klicks verschmelzen im Undo-Stack.
 Item {
     id: bar
 
@@ -90,7 +79,6 @@ Item {
         anchors.centerIn: parent
         spacing: 2
 
-        // ── TEXT-Regler ───────────────────────────────────────────────────────
         TBtn { visible: bar.isText; glyph: "B"; boldGlyph: true; checked: bar.info.bold === true
                onActivated: bar.ctl.setAnnBold(bar.ctl.selectedId, !bar.info.bold) }
         TBtn { visible: bar.isText; glyph: "I"; italicGlyph: true; checked: bar.info.italic === true
@@ -126,7 +114,6 @@ Item {
                tip: App.uiText(App.language, "PdfEditVAlignLabel")
                onActivated: bar.ctl.setAnnVAlign(bar.ctl.selectedId, 1) }
 
-        // Textfarbe
         Rectangle {
             visible: bar.isText; width: 26; height: 24; radius: 5
             color: tcHover.hovered ? Qt.rgba(App.themeTextPrimary.r, App.themeTextPrimary.g, App.themeTextPrimary.b, 0.16) : "transparent"
@@ -140,7 +127,6 @@ Item {
             TapHandler { onTapped: { palette.mode = "text"; palette.open() } }
             ToolTip.text: App.uiText(App.language, "PdfEditColorLabel"); ToolTip.visible: tcHover.hovered
         }
-        // Hervorhebung (Notiz-Papier)
         Rectangle {
             visible: bar.isText; width: 26; height: 24; radius: 5
             color: hiHover.hovered ? Qt.rgba(App.themeTextPrimary.r, App.themeTextPrimary.g, App.themeTextPrimary.b, 0.16) : "transparent"
@@ -156,7 +142,7 @@ Item {
             ToolTip.text: App.uiText(App.language, "PdfEditHighlightLabel"); ToolTip.visible: hiHover.hovered
         }
 
-        // ── STRICH-/FORM-Regler ───────────────────────────────────────────────
+        // STRICH-/FORM-Regler
         // Linienfarbe
         Rectangle {
             visible: bar.isStroke || bar.isShape; width: 26; height: 24; radius: 5
@@ -168,7 +154,6 @@ Item {
             TapHandler { onTapped: { palette.mode = "stroke"; palette.open() } }
             ToolTip.text: App.uiText(App.language, "ImageEditStrokeLabel"); ToolTip.visible: scHover.hovered
         }
-        // Linienbreite
         TBtn { visible: bar.isStroke || bar.isShape; iconName: "minus"
                onActivated: bar.ctl.setAnnLineWidth(bar.ctl.selectedId, Math.max(1, Math.round(bar.info.lineWidth) - 1)) }
         Text {
@@ -179,7 +164,6 @@ Item {
         }
         TBtn { visible: bar.isStroke || bar.isShape; iconName: "plus"
                onActivated: bar.ctl.setAnnLineWidth(bar.ctl.selectedId, Math.min(200, Math.round(bar.info.lineWidth) + 1)) }
-        // Füllung (nur Formen)
         Rectangle {
             visible: bar.isShape; width: 26; height: 24; radius: 5
             color: fcHover.hovered ? Qt.rgba(App.themeTextPrimary.r, App.themeTextPrimary.g, App.themeTextPrimary.b, 0.16) : "transparent"
@@ -198,14 +182,13 @@ Item {
         Rectangle { width: 1; height: 16; color: App.themeBorder
                     anchors.verticalCenter: parent.verticalCenter }
 
-        // ── Kopieren + Löschen (gemeinsam) ────────────────────────────────────
         TBtn { iconName: "copy"; tip: App.uiText(App.language, "ImageEditCopyBtn")
                onActivated: { if (bar.surface) bar.surface.commitEditing(); bar.ctl.copySelected() } }
         TBtn { iconName: "close"; glyphColor: "#e05a5a"; tip: App.uiText(App.language, "PdfEditDeleteBtn")
                onActivated: { if (bar.surface) bar.surface.commitEditing(); bar.ctl.removeAnn(bar.ctl.selectedId) } }
     }
 
-    // ── Farbpalette (Text / Hervorhebung / Linie / Füllung) ───────────────────
+    // Farbpalette (Text / Hervorhebung / Linie / Füllung)
     Popup {
         id: palette
         property string mode: "text"             // text | highlight | stroke | fill

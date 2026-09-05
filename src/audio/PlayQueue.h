@@ -6,22 +6,9 @@
 
 #include "audio/Xoshiro.h"
 
-// ─────────────────────────────────────────────────────────────────────────────
-//  PlayQueue - welcher Titel kommt als Nächstes?
-//
-//  Die Liste kommt aus der Galerie (Anzeigereihenfolge, bereits gefiltert und
-//  sortiert). Diese Klasse hält nur die REIHENFOLGE, in der gespielt wird, und
-//  die Stelle darin - die Wiedergabe selbst macht `AudioEngine`.
-//
-//  ZUFALL = GEMISCHTE LISTE, keine Wiederholung (Festlegung des Nutzers):
-//  Fisher-Yates über eine Indexliste, jeder Titel kommt genau einmal; „Zurück"
-//  geht die Mischung rückwärts. Kosten: 4 Byte je Titel (10 000 Titel = 40 kB)
-//  und ein Durchlauf beim Mischen. Zufallszahlen aus `Xoshiro` (s. dort).
-//
-//  WIEDERHOLUNG × ZUFALL sind frei kombinierbar; es gilt die Tabelle aus
-//  `NEXT.md` ▸ A4. Kern: **„eine wiederholen" gilt nur beim NATÜRLICHEN Ende** -
-//  wer weiterschaltet, bekommt den nächsten nach Zufallsregel.
-// ─────────────────────────────────────────────────────────────────────────────
+// Haelt nur die Reihenfolge und die Stelle darin - die Wiedergabe macht AudioEngine.
+// Zufall = gemischte Liste ohne Wiederholung (Fisher-Yates, 4 Byte je Titel).
+// "Eine wiederholen" gilt nur beim natuerlichen Ende, nicht beim Weiterschalten.
 class PlayQueue : public QObject {
     Q_OBJECT
     Q_PROPERTY(bool shuffle READ shuffle WRITE setShuffle NOTIFY shuffleChanged)
@@ -58,11 +45,8 @@ public:
     int         orderedPos() const { return m_pos; }
     //  Umkehrung für die Anzeige: Platz in der Abspielfolge -> Pfad.
     QString     pathAtOrder(int orderPos) const;
-    //  Was beim NATÜRLICHEN Ende folgen würde, OHNE etwas zu verändern - die
-    //  Grundlage des lückenlosen Übergangs (`AudioEngine::setNextTrack`).
-    //  Leer heißt „hier ist Schluss" - und ebenso im Fall „Zufall + alles
-    //  wiederholen am Listenende": dort wird beim Weiterschalten NEU gemischt,
-    //  welcher Titel dann vorn steht, ist vorher nicht entschieden.
+    // Was beim NATÜRLICHEN Ende folgen würde, ohne etwas zu verändern - Grundlage des lückenlosen Übergangs. Leer
+    // heißt Schluss, ebenso bei "Zufall + alles wiederholen" am Listenende: dort wird beim Weiterschalten neu gemischt.
     QString     peekNext(bool natural = true) const;
     //  Bei diesem Platz der Abspielfolge weitermachen (Klick in der Liste).
     bool        startAtOrder(int orderPos);
@@ -79,10 +63,8 @@ public:
     //  „eine wiederholen"); false = der Nutzer hat weitergeschaltet.
     //  Leerer Rückgabewert heißt: hier ist Schluss.
     QString advance(bool natural);
-    //  ZURÜCK heißt: der Titel, den man WIRKLICH vorher gehört hat - dafür gibt
-    //  es eine Historie. Ohne sie lief „zurück" die aktuelle Ordnung rückwärts,
-    //  und die ändert sich beim Ein-/Ausschalten des Zufalls: man landete dann
-    //  bei einem Titel, der nie gespielt wurde (Nutzerbefund).
+    // ZURÜCK heißt: der Titel, den man WIRKLICH vorher gehört hat - dafür gibt es eine Historie. Ohne sie lief
+    // "zurück" die aktuelle Ordnung rückwärts, und die ändert sich beim Umschalten des Zufalls.
     QString back();
 
 signals:

@@ -1,42 +1,13 @@
 #pragma once
 #include <QString>
 
-// ─────────────────────────────────────────────────────────────────────────────
-//  RhiProber - RHI-Backend-Verwaltung ohne Kindprozesse
-//
-//  Strategie: Crash-Guard + Degradationskette
-//  Beim Start wird ein „startedWith:<backend>"-Flag in QSettings gesetzt.
-//  Beim sauberen Beenden (bzw. ~4 s nach erfolgreichem Start, s. main.cpp)
-//  wird es gelöscht. Ist das Flag beim nächsten Start noch da, ist die App mit
-//  diesem Backend sofort abgestürzt -> es wird EINE Stufe der Degradationskette
-//  zurückgefallen (vulkan/d3d11/metal -> opengl -> software) statt direkt auf
-//  Software: ein defekter Vulkan-Treiber erzwingt so kein unnötig langsames
-//  Software-Rendering, solange OpenGL funktioniert. Crasht auch das Fallback
-//  sofort, fällt der übernächste Start weiter (bis Software).
-//
-//  Zusätzlich:
-//   • Namens-/Plattformvalidierung: unbekannte oder plattformfremde Werte in
-//     QSettings (z. B. „d3d11" in einer nach Linux kopierten Config) fallen
-//     auf den Plattform-Standard (OpenGL) zurück statt - wie zuvor über den
-//     toApi-Default - stillschweigend auf Software.
-//   • Vulkan-Loader-Vorabprüfung: fehlt der Loader komplett (System ohne
-//     ICD/vulkan-icd-loader), wird direkt OpenGL gewählt, ohne erst den
-//     Crash-Guard-Zyklus (Crash -> Neustart -> Fallback) zu durchlaufen.
-//   • Laufzeit-Guard für Gerätewechsel: main.cpp verbindet
-//     QQuickWindow::sceneGraphError mit noteRuntimeFailure() - ein nicht
-//     behebbarer Scene-Graph-Fehler (GPU-Wechsel/Device-Lost) persistiert das
-//     nächstsicherere Backend für den NÄCHSTEN Start, statt dass Qt die App
-//     per qFatal hart beendet.
-//
-//  Backend-Wechsel: einfach in QSettings schreiben + Neustart.
-//  Kein Kindprozess, kein fork(), kein QProcess.
-// ─────────────────────────────────────────────────────────────────────────────
+// Crash-Guard statt Kindprozess: ein Flag beim Start, gelöscht beim sauberen Ende. Steht es noch, ist die App
+// abgestürzt und fällt EINE Stufe der Kette zurück (vulkan/d3d11/metal -> opengl -> software), nicht direkt
+// auf Software. Dazu Namens- und Plattformvalidierung sowie eine Vulkan-Loader-Vorabprüfung.
 class RhiProber {
 public:
-    // Liest das gewünschte Backend aus QSettings (validiert Name + Plattform),
-    // setzt es via QQuickWindow::setGraphicsApi() und schreibt den Crash-Guard.
-    // Nach einem Crash-Start: eine Stufe der Degradationskette zurückfallen.
-    // Muss VOR QGuiApplication-Konstruktion aufgerufen werden.
+    // Liest das gewünschte Backend aus QSettings (Name und Plattform validiert), setzt es über
+    // `QQuickWindow::setGraphicsApi()` und schreibt den Crash-Guard. Muss VOR der QGuiApplication laufen.
     static QString applyStoredBackend();
 
     // Muss beim sauberen App-Ende aufgerufen werden (löscht Crash-Guard).

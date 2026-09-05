@@ -10,10 +10,8 @@
 
 #include "core/ZCodec.h"
 
-// Die Erläuterungen zu jeder Funktion stehen im Header.
 namespace mg::pdfobj {
 
-// ── zlib raw/zlib inflate + deflate ─────────────────────────────────────────
 QByteArray zInflate(const QByteArray& src, bool* ok) {
     *ok = false;
     // Erst der zlib-Rahmen (Normalfall), dann roh - manche Erzeuger schreiben
@@ -32,8 +30,6 @@ QByteArray zDeflate(const QByteArray& src) {
 }
 
 
-// Objekt-Tabelle per Brute-Scan: "N G obj" -> Byte-Offset + Generation (letztes
-// Vorkommen gewinnt = jüngster Inkrement-Save).
 QHash<int, ObjLoc> scanObjects(const QByteArray& b) {
     QHash<int, ObjLoc> map;
     static const QRegularExpression re(QStringLiteral("(\\d+)\\s+(\\d+)\\s+obj"));
@@ -47,8 +43,6 @@ QHash<int, ObjLoc> scanObjects(const QByteArray& b) {
     return map;
 }
 
-// Wert-Ende ab Index i (i zeigt auf das erste Nicht-WS des Wertes). Überspringt
-// Dict/Array/String/Hex/Name/Zahl/Ref/Keyword als GANZE Einheit.
 qint64 skipValue(const QByteArray& b, qint64 i) {
     const qint64 n = b.size();
     while (i < n && isWs(b[i])) ++i;
@@ -90,7 +84,6 @@ qint64 skipValue(const QByteArray& b, qint64 i) {
     if (c == '/') {                                          // Name
         ++i; while (i < n && !isWs(b[i]) && !isDelim(b[i])) ++i; return i;
     }
-    // Zahl/Keyword/Bool - evtl. Referenz "N G R" (drei Tokens).
     auto readToken = [&](qint64 p, QByteArray* tok) -> qint64 {
         while (p < n && isWs(b[p])) ++p;
         const qint64 s = p;
@@ -111,9 +104,6 @@ qint64 skipValue(const QByteArray& b, qint64 i) {
     return p1;                                               // einfacher Token
 }
 
-// Sucht Schlüssel `/key` auf DEPTH 0 im Dict-Inhalt und liefert den Werteanfang
-// (oder -1). Dicts sind /Key Value /Key Value … -> nach jedem Schlüssel wird der
-// WERT via skipValue übersprungen (so kann kein Wert-Name fälschlich matchen).
 qint64 findKey(const QByteArray& dict, const char* key) {
     const QByteArray k = QByteArray("/") + key;
     const qint64 n = dict.size();
@@ -133,7 +123,6 @@ qint64 findKey(const QByteArray& dict, const char* key) {
     return -1;
 }
 
-// Der `<< ... >>`-Inhalt eines Objektkörpers (ohne die äußeren <<>>), oder leer.
 QByteArray dictOfObject(const QByteArray& objBody) {
     const qint64 s = objBody.indexOf("<<");
     if (s < 0) return {};
@@ -142,7 +131,6 @@ QByteArray dictOfObject(const QByteArray& objBody) {
     return objBody.mid(s + 2, (e - 2) - (s + 2));
 }
 
-// Referenz "/key N G R" -> Objektnummer (-1 falls keine).
 int refValue(const QByteArray& dict, const char* key) {
     const qint64 i = findKey(dict, key);
     if (i < 0) return -1;
@@ -168,7 +156,6 @@ qint64 streamLength(const QByteArray& dict, const QByteArray& buf,
     return intValue(dict, "Length");
 }
 
-// Name-Wert "/key /Name" -> "/Name" (oder leer).
 QByteArray nameValue(const QByteArray& dict, const char* key) {
     const qint64 i = findKey(dict, key);
     if (i < 0 || i >= dict.size() || dict[i] != '/') return {};
@@ -177,7 +164,6 @@ QByteArray nameValue(const QByteArray& dict, const char* key) {
     return dict.mid(i, e - i);
 }
 
-// Ganzzahl-Wert "/key 123" (nur direkte Zahl; -1 sonst).
 qint64 intValue(const QByteArray& dict, const char* key) {
     const qint64 i = findKey(dict, key);
     if (i < 0) return -1;
@@ -187,7 +173,6 @@ qint64 intValue(const QByteArray& dict, const char* key) {
     return any ? dict.mid(i, e-i).toLongLong() : -1;
 }
 
-// Objektkörper "N G obj … endobj" ab Offset.
 QByteArray objectBody(const QByteArray& buf, qint64 offset) {
     const qint64 s = buf.indexOf("obj", offset);
     if (s < 0) return {};
@@ -197,9 +182,6 @@ QByteArray objectBody(const QByteArray& buf, qint64 offset) {
 }
 
 
-// ── Zahlen ──────────────────────────────────────────────────────────────────
-//  PDF-Zahlen: höchstens drei Nachkommastellen, kein Exponent, Punkt als
-//  Dezimaltrenner (locale-unabhängig).
 QByteArray num(qreal v) {
     if (!std::isfinite(v)) v = 0.0;
     QByteArray s = QByteArray::number(v, 'f', 3);
@@ -211,8 +193,6 @@ QByteArray num(qreal v) {
     return s;
 }
 
-// ── Strings ─────────────────────────────────────────────────────────────────
-//  ( ) \ escapen, alles ausserhalb des druckbaren ASCII oktal - 7-Bit-sicher.
 QByteArray parenString(const QByteArray& bytes) {
     QByteArray out = "(";
     for (char c : bytes) {
@@ -227,8 +207,6 @@ QByteArray parenString(const QByteArray& bytes) {
     return out + ")";
 }
 
-//  Liest den STRING-Wert ab `i` (Literal `(…)` oder Hex `<…>`) als ROHBYTES.
-//  Liefert false, wenn dort kein String steht oder er unabgeschlossen ist.
 bool readPdfStringBytes(const QByteArray& b, qint64 i, QByteArray* out) {
     if (i < 0 || i >= b.size()) return false;
     if (b[i] == '(') {
@@ -280,8 +258,6 @@ bool readPdfStringBytes(const QByteArray& b, qint64 i, QByteArray* out) {
     return false;
 }
 
-//  PDF-Textstring-Rohbytes -> Text. UTF-16BE erkennt man am BOM; alles andere
-//  ist PDFDocEncoding, das für die belegten Codes mit Latin-1 übereinstimmt.
 QString pdfTextToString(const QByteArray& raw) {
     if (raw.size() >= 2 && static_cast<unsigned char>(raw[0]) == 0xFE
                         && static_cast<unsigned char>(raw[1]) == 0xFF) {
@@ -294,8 +270,6 @@ QString pdfTextToString(const QByteArray& raw) {
     return QString::fromLatin1(raw);
 }
 
-//  Text -> PDF-Textstring. Reines ASCII bleibt lesbar als Literal; alles andere
-//  wird UTF-16BE mit BOM (universell verstanden, im Gegensatz zu Latin-1).
 QByteArray toPdfTextString(const QString& s) {
     bool ascii = true;
     for (const QChar c : s)
@@ -307,7 +281,6 @@ QByteArray toPdfTextString(const QString& s) {
     return "<" + hex + ">";
 }
 
-//  PDF-Name -> Text ohne führenden Schrägstrich; `#xx` wird aufgelöst.
 QString nameToString(const QByteArray& name) {
     QByteArray n = name.startsWith('/') ? name.mid(1) : name;
     QByteArray out;
@@ -322,7 +295,6 @@ QString nameToString(const QByteArray& name) {
     return QString::fromLatin1(out);
 }
 
-//  Text -> PDF-Name mit führendem Schrägstrich; Sonderzeichen als `#xx`.
 QByteArray toPdfName(const QString& s) {
     QByteArray out = "/";
     for (const char c : s.toLatin1()) {
@@ -334,8 +306,6 @@ QByteArray toPdfName(const QString& s) {
     return out;
 }
 
-// ── Dict-Werkzeug ───────────────────────────────────────────────────────────
-//  Rohes Wert-Stück von `/key` (leer, wenn nicht vorhanden).
 QByteArray rawValue(const QByteArray& dict, const char* key) {
     const qint64 p = findKey(dict, key);
     if (p < 0) return {};
@@ -343,7 +313,6 @@ QByteArray rawValue(const QByteArray& dict, const char* key) {
     return (e > p) ? dict.mid(p, e - p).trimmed() : QByteArray();
 }
 
-//  Setzt/ersetzt `/key` im Dict-INHALT (ohne die äußeren `<< >>`).
 QByteArray setDictKey(QByteArray dict, const char* key, const QByteArray& value) {
     const qint64 p = findKey(dict, key);
     if (p < 0) return dict + " /" + key + " " + value + " ";
@@ -352,7 +321,6 @@ QByteArray setDictKey(QByteArray dict, const char* key, const QByteArray& value)
     return dict;
 }
 
-//  Alle Schlüsselnamen auf Ebene 0 eines Dict-Inhalts, in Dokumentreihenfolge.
 QList<QByteArray> dictKeys(const QByteArray& dict) {
     QList<QByteArray> keys;
     const qint64 n = dict.size();
@@ -370,7 +338,6 @@ QList<QByteArray> dictKeys(const QByteArray& dict) {
     return keys;
 }
 
-//  Bis zu vier Zahlen aus einem `[ … ]`-Stück.
 QVector<double> numbersOfArray(const QByteArray& arr) {
     QVector<double> v;
     const QByteArray inner = arr.startsWith('[') ? arr.mid(1, arr.size() - 2) : arr;
@@ -384,7 +351,6 @@ QVector<double> numbersOfArray(const QByteArray& arr) {
     return v;
 }
 
-// ── PdfDoc ──────────────────────────────────────────────────────────────────
 QByteArray PdfDoc::bodyOf(int n) const {
     const auto it = objs.constFind(n);
     return (it == objs.constEnd()) ? QByteArray() : objectBody(buf, it->offset);
@@ -477,7 +443,6 @@ bool PdfDoc::load(const QString& path, QString* err) {
     }
     if (this->rootNum < 0 || !this->objs.contains(this->rootNum)) return fail("kein /Root");
 
-    //  Seitenbaum in Dokumentreihenfolge (gleiches Muster wie PdfVectorExport).
     {
         int guard = 0;
         std::function<bool(int,int)> walk = [&](int n, int depth) -> bool {
@@ -498,8 +463,6 @@ bool PdfDoc::load(const QString& path, QString* err) {
     }
     if (this->pageObjs.isEmpty()) return fail("keine Seiten");
 
-    //  Annotation -> Seite: je Seite die /Annots-Referenzen einsammeln. Das ist
-    //  die verlässliche Richtung; /P in der Annotation ist optional.
     {
         static const QRegularExpression are(QStringLiteral("(\\d+)\\s+(\\d+)\\s+R"));
         for (int pi = 0; pi < this->pageObjs.size(); ++pi) {
@@ -513,7 +476,6 @@ bool PdfDoc::load(const QString& path, QString* err) {
     return true;
 }
 
-// ── IncrementalUpdate ───────────────────────────────────────────────────────
 IncrementalUpdate::IncrementalUpdate(const PdfDoc& doc)
     : m_out(doc.buf), m_rootNum(doc.rootNum), m_prevXref(doc.prevXref) {
     if (!m_out.endsWith('\n')) m_out += '\n';
@@ -557,8 +519,6 @@ bool IncrementalUpdate::commit(const QString& outputPath, QString* err) {
     if (m_entries.isEmpty())            return fail("nichts zu schreiben");
     if (m_rootNum < 0 || m_prevXref < 0) return fail("Quelle unvollstaendig");
 
-    //  Je Objekt EIN xref-Abschnitt: die Nummern sind nicht zwingend
-    //  zusammenhaengend, und Abschnitte der Laenge 1 sind zulaessig.
     QVector<Entry> sorted = m_entries;
     std::sort(sorted.begin(), sorted.end(),
               [](const Entry& a, const Entry& b) { return a.num < b.num; });
@@ -583,7 +543,6 @@ bool IncrementalUpdate::commit(const QString& outputPath, QString* err) {
     return true;
 }
 
-// ── Koordinaten ─────────────────────────────────────────────────────────────
 QPointF toDisplay(double ux, double uy, const QSizeF& box, int rot) {
     switch (rot) {
     case 90:  return QPointF(uy, ux);

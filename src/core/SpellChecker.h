@@ -1,17 +1,7 @@
 #pragma once
-// ─────────────────────────────────────────────────────────────────────────────
-//  SpellChecker - Rechtschreib-PRÜFUNG (unterkringeln + Vorschläge), NICHT
-//  Autokorrektur: der Text wird nie von selbst verändert.
-//
-//  Hunspell ist eine OPTIONALE Abhängigkeit - dasselbe Muster wie ZLIB
-//  (s. `core/ZCodec`): fehlt die Bibliothek ODER das Wörterbuch, meldet
-//  `available()` false, jedes Wort gilt als richtig und die Oberfläche zeigt
-//  den Grund an. Ohne dieses Muster hinge der ganze Editor an einem Paket, das
-//  auf keinem der drei Zielsysteme mitgeliefert wird.
-//
-//  Threadsicherheit: EINE Instanz gehört EINEM Thread. Die Prüfung läuft im
-//  Worker (Regel 8); die Instanz wird dort erzeugt und stirbt dort.
-// ─────────────────────────────────────────────────────────────────────────────
+// Rechtschreib-PRÜFUNG, nicht Autokorrektur: der Text wird nie von selbst verändert. Hunspell ist OPTIONAL wie
+// ZLIB - fehlt Bibliothek oder Wörterbuch, meldet `available()` false und jedes Wort gilt als richtig.
+// EINE Instanz gehört EINEM Thread; sie entsteht im Worker und stirbt dort.
 
 #include <QString>
 #include <QStringList>
@@ -56,11 +46,8 @@ public:
     //  Ein Wort für diese Sitzung als richtig annehmen („Ignorieren").
     void ignoreWord(const QString& word);
 
-    //  Einen ganzen Absatz prüfen: liefert die Stellen der unbekannten Wörter.
-    //  Die Wortzerlegung gehört hierher, damit Anzeige und Kontextmenü
-    //  dieselbe haben: Buchstaben und Ziffern zählen zum Wort, dazu Apostroph
-    //  und Bindestrich INNERHALB (nicht am Rand). Wörter mit Ziffern und
-    //  reine Großschreibung (Abkürzungen) werden übersprungen.
+    // Die Wortzerlegung gehört hierher, damit Anzeige und Kontextmenü dieselbe haben: Buchstaben und Ziffern zählen
+    // zum Wort, Apostroph und Bindestrich nur INNERHALB. Wörter mit Ziffern und reine Großschreibung entfallen.
     std::vector<SpellRange> checkText(const QString& text) const;
 
 private:

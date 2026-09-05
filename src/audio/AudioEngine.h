@@ -16,26 +16,9 @@ class AudioPull;
 class QAudioDecoder;
 class QAudioSink;
 
-// ─────────────────────────────────────────────────────────────────────────────
-//  AudioEngine - die eigene Wiedergabekette für Audiodateien.
-//
-//      Datei -> QAudioDecoder -> AudioRing -> Preamp+Equalizer -> QAudioSink
-//
-//  WARUM NICHT `QMediaPlayer`: er gibt seine Samples nicht heraus, es gibt für
-//  den Ton keine Abgriffstelle (für das Bild schon: `QVideoSink`). Ein echter
-//  Equalizer braucht deshalb eine eigene Kette. Videos bleiben unangetastet und
-//  laufen weiter über `MediaPlayer` (ohne EQ) - s. `README.md` ▸ Planned.
-//
-//  DREI EIGENHEITEN, die man kennen muss:
-//   • **`QAudioDecoder` kann nicht springen.** Für einen Sprung wird er neu
-//     gestartet und bis zur Zielstelle verworfen. Dekodieren läuft bei MP3/AAC
-//     ~50–100× schneller als die Wiedergabe; die Kosten misst `bench_audio`.
-//   • **Die Position rechnet die Kette selbst** aus den ausgegebenen Frames -
-//     der Dekoder läuft der Ausgabe ja voraus.
-//   • **Der Zuliefer-Ruf läuft in Qts Audio-Thread.** Dort passiert nur:
-//     aus dem Ring lesen, Equalizer anwenden, fertig. Keine Zuweisung, kein
-//     Signal, kein Datei-Zugriff.
-// ─────────────────────────────────────────────────────────────────────────────
+// Eigene Kette Datei -> QAudioDecoder -> AudioRing -> Equalizer -> QAudioSink, weil
+// QMediaPlayer seine Samples nicht herausgibt. QAudioDecoder kann nicht springen:
+// fuer einen Sprung wird er neu gestartet und bis zur Zielstelle verworfen.
 class AudioEngine : public QObject {
     Q_OBJECT
     Q_PROPERTY(int state READ stateInt NOTIFY stateChanged)
@@ -56,8 +39,6 @@ public:
     QString currentPath() const { return m_path; }
     qint64  position() const;               // ms
     qint64  duration() const { return m_durationMs; }
-    //  Wie oft der Zieh-Ruf leer ausging und mit Stille auffüllen musste. Genau
-    //  DAS hört man als Knacken/Rauschen - der Prüfstand liest es aus.
     int     underruns() const { return m_underruns.load(std::memory_order_relaxed); }
     qreal   volume() const { return m_volume; }
 
@@ -65,19 +46,12 @@ public:
     Q_INVOKABLE void pause();
     Q_INVOKABLE void resume();
     Q_INVOKABLE void stop();
-    //  Den gemerkten Titel VERGESSEN (Ordnerwechsel). `stop()` allein behält ihn
-    //  bewusst - die Leiste soll nach dem Anhalten noch zeigen, was gewählt ist.
     void forgetCurrent();
     Q_INVOKABLE void seek(qint64 ms);
     Q_INVOKABLE void setVolume(qreal v);
 
-    //  ── Lückenloser Übergang ────────────────────────────────────────────────
-    //  Der Aufrufer meldet an, was NACH dem laufenden Titel kommt (leer =
-    //  nichts). Sobald der laufende Titel restlos im Ring liegt, hängt die Kette
-    //  den nächsten UNMITTELBAR dahinter - dieselbe Senke, derselbe Ring, kein
-    //  Neustart. Ohne Anmeldung endet die Kette wie zuvor mit `finished()`.
-    //  Kommt die Anmeldung zu spät (der Übergang steht schon fest), wird sie
-    //  für den ÜBERNÄCHSTEN Titel vorgemerkt.
+    // Der Aufrufer meldet an, was NACH dem laufenden Titel kommt. Sobald der restlos im Ring liegt, hängt die Kette
+    // den nächsten unmittelbar dahinter - kein Neustart. Eine zu späte Anmeldung gilt dem übernächsten Titel.
     void setNextTrack(const QString& path);
     QString nextTrack() const { return m_nextPath; }
 
@@ -86,10 +60,8 @@ signals:
     void currentPathChanged();
     void positionChanged();
     void durationChanged();
-    //  Der Titel ist NATÜRLICH zu Ende (nicht gestoppt) - die Warteschlange
-    //  entscheidet, was folgt. Kommt NUR, wenn kein nächster Titel angemeldet
-    //  war: beim lückenlosen Übergang läuft die Kette weiter und meldet
-    //  stattdessen `advancedToNext`.
+    // Der Titel ist NATÜRLICH zu Ende - die Warteschlange entscheidet, was folgt. Kommt NUR, wenn kein nächster
+    // angemeldet war: beim lückenlosen Übergang meldet die Kette stattdessen `advancedToNext`.
     void finished();
     //  Der lückenlose Übergang hat stattgefunden - ab jetzt ist `path` der
     //  laufende Titel. Die Warteschlange zieht damit ihren Zeiger nach.
@@ -107,12 +79,10 @@ private:
     //  Einen Dekoder in den Ring leeren. `false` = der Ring ist voll, der Rest
     //  wartet im zugehörigen `pending` auf den nächsten Takt.
     bool feedFrom(QAudioDecoder* dec, std::vector<float>& pending, size_t& at);
-    //  Den angemeldeten Titel hinter dem laufenden anhängen (zweiter Dekoder).
     void startNextDecoder();
     //  Die Ausgabe hat die Nahtstelle erreicht: der nächste Titel ist ab jetzt
     //  der laufende (Pfad, Dauer, Position, Dekoder).
     void promoteNext();
-    //  Vorbereitung verwerfen (Sprung, Stopp, neuer Titel von Hand).
     void clearNext();
     //  Die Senke wird ERST gestartet, wenn genug im Ring liegt - sonst zieht sie
     //  eine Viertelsekunde Stille, bevor der erste Ton kommt (gemessen: 255 ms).
@@ -121,7 +91,6 @@ private:
     void onDecodeFinished();
     void setState(State s);
     void teardown();
-    //  Wird im AUDIO-Thread gerufen: Ring lesen, Equalizer anwenden.
     qint64 pullAudio(char* data, qint64 maxSize);
     //  Wie viel die Ausgabe JETZT abholen könnte (Bytes). Ohne diese Auskunft
     //  fragt `QAudioSink` im Zieh-Betrieb gar nicht erst an - s. AudioEngine.cpp.
@@ -136,7 +105,6 @@ private:
     //  Gerät für den Sprung: zeigt die Datei ab dem Zielrahmen. Gehört der
     //  Kette und wird in `teardown()` mit abgeräumt.
     QIODevice*             m_tail = nullptr;
-    //  Von `seek()` vorbereiteter Strom (Hülle) - `startDecode` übernimmt ihn.
     QIODevice*             m_pendingStream = nullptr;
     //  Nach einem Sprung meldet der Dekoder die Dauer des RESTES - die wird
     //  dann nicht übernommen.
@@ -144,14 +112,10 @@ private:
     QAudioSink*            m_sink = nullptr;
     AudioPull*             m_pull = nullptr;     // gehört uns
     AudioRing              m_ring;
-    //  ZWEI Formate, bewusst getrennt: **gerechnet wird immer in `float`**
-    //  (`m_work` - Dekoder, Ring und Equalizer), ausgegeben wird in dem, was
-    //  das Gerät wirklich nimmt (`m_format`). Beides in einen Topf zu werfen
-    //  war der Grund für das Rauschen: fiel das Gerät auf Int16 zurück, wurden
-    //  Float-Bytes weiterhin roh hineingeschrieben.
+    // ZWEI Formate, bewusst getrennt: gerechnet wird in float (`m_work`), ausgegeben in dem, was das Gerät nimmt
+    // (`m_format`). Beides in einen Topf war der Grund für das Rauschen - bei Int16 gingen Float-Bytes roh hinein.
     QAudioFormat           m_format;      // Senke
     QAudioFormat           m_work;        // Dekoder/Ring/Equalizer (immer Float)
-    //  Zwischenpuffer des Zieh-Rufs (nur nötig, wenn gewandelt werden muss).
     std::vector<float>     m_convBuf;
     //  REST eines dekodierten Stücks, das nicht mehr in den Ring passte. Ohne
     //  ihn ging genau dieser Teil verloren - hörbar als Knacken/Rauschen, weil
@@ -162,10 +126,8 @@ private:
     QString m_path;
     State   m_state = State::Stopped;
 
-    //  ── Lückenloser Übergang ────────────────────────────────────────────────
-    //  Der zweite Dekoder schreibt in DENSELBEN Ring - er darf das, weil jeder
-    //  Dekoder auf `m_work` (Float, Rate und Kanäle der Senke) festgelegt ist:
-    //  zwei Titel unterscheiden sich im Ring nicht mehr voneinander.
+    // Der zweite Dekoder schreibt in DENSELBEN Ring - er darf das, weil jeder Dekoder auf `m_work` festgelegt ist:
+    // zwei Titel unterscheiden sich im Ring nicht mehr voneinander.
     QAudioDecoder*     m_nextDec = nullptr;
     QString            m_nextPath;         // angemeldet, noch nicht begonnen
     QString            m_queuedPath;       // wird gerade nachgeschoben
@@ -181,15 +143,12 @@ private:
     size_t             m_nextPendingAt = 0;
     qreal   m_volume = 0.85;
     qint64  m_durationMs = 0;
-    //  Wie viele Frames die Ausgabe schon gespielt hat (Grundlage der Position).
     std::atomic<qint64> m_framesOut { 0 };
     std::atomic<int>    m_underruns { 0 };
     //  Diagnose (`MG_AUDIO_DUMP=<datei>`): schreibt mit, was der Senke wirklich
     //  übergeben wird - die einzige Möglichkeit, „klingt falsch" zu belegen.
     QFile*  m_dump = nullptr;
-    //  Beim Sprung übersprungene Frames - sie zählen zur Position dazu.
     qint64  m_baseFrames = 0;
-    //  Noch zu verwerfende Frames (Sprung: der Dekoder beginnt immer vorn).
     qint64  m_skipFrames = 0;
     //  Wie viele Frames insgesamt in den Ring geschrieben wurden. Daran hängt
     //  die Ende-Erkennung: gespielt ist erst, was die SENKE ausgegeben hat.

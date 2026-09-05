@@ -15,7 +15,7 @@ void DocxController::setSaveDirect(bool v) {
     emit saveDirectChanged();
 }
 
-// ── Was beim Weg „DOCX -> PDF" gilt ──────────────────────────────────────────
+// Was beim Weg „DOCX -> PDF" gilt
 int DocxController::pdfPageNumberPos() const { return m_settings.docxPdfPageNumberPos(); }
 void DocxController::setPdfPageNumberPos(int pos) {
     if (m_settings.docxPdfPageNumberPos() == pos) return;

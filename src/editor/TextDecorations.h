@@ -7,28 +7,9 @@
 #include <QQuickPaintedItem>
 #include <QQuickTextDocument>
 
-// ─────────────────────────────────────────────────────────────────────────────
-//  TextDecorations.h - alles, was der Editor UEBER den Text zeichnet.
-//
-//  Drei Dinge in EINEM Element, weil sie dieselbe Maschinerie brauchen
-//  (Dokument, Layout, Scrollstand, Schriftmasse) und ein zweiter Durchgang
-//  ueber die sichtbaren Bloecke nichts brachte ausser Kosten:
-//
-//   1. **Einrueckungshilfen** - senkrechte Linien je Einrueckungsstufe. Sie
-//      beantworten „welches `}` gehoert wohin" in tief verschachteltem Code.
-//   2. **Faltmarken** - die drei Punkte hinter einer zugeklappten Zeile
-//      (`void f() {...}`). Enthaelt der verborgene Teil einen SUCHTREFFER,
-//      wird die Marke hervorgehoben: sonst zaehlte die Suchleiste Treffer, die
-//      man nirgends sieht.
-//   3. **Klammernpaare** - ein Kasten hinter der Klammer am Cursor und hinter
-//      ihrer Partnerin; fehlt die Partnerin, wird der Kasten rot.
-//
-//  Gezeichnet wird HINTER dem Text (`z: -1` in QML), wie der Streifen der
-//  aktuellen Zeile. Die Klammernkaesten liegen damit unter den Glyphen - das
-//  ist Absicht: die Schriftfarbe bleibt die des Faerbers, es kommt nur ein
-//  Untergrund dazu. Damit muss der Faerber fuer die Klammern nicht angefasst
-//  werden (er ist auf EINEN Durchgang je Block ausgelegt).
-// ─────────────────────────────────────────────────────────────────────────────
+// Einrueckungshilfen, Faltmarken und Klammernpaare in EINEM Element - sie brauchen
+// dieselbe Maschinerie, ein zweiter Durchgang brachte nur Kosten. Gezeichnet wird
+// HINTER dem Text, damit die Schriftfarbe die des Faerbers bleibt.
 namespace mg::editor {
 
 class TextDecorations : public QQuickPaintedItem {
@@ -109,10 +90,8 @@ public:
     Q_INVOKABLE int bracketA() const { return m_klammerA; }
     Q_INVOKABLE int bracketB() const { return m_klammerB; }
 
-    //  Liegt (x, y) - in den Koordinaten DIESES Elements - auf den drei Punkten
-    //  einer zugeklappten Zeile? Dann die Blocknummer, sonst -1. Die Oberflaeche
-    //  klappt daraufhin wieder auf: die Punkte SIND der Knopf, nicht nur eine
-    //  Marke (Festlegung des Nutzers 2026-09-03).
+    // Liegt (x, y) auf den drei Punkten einer zugeklappten Zeile? Dann die Blocknummer, sonst -1. Die Oberfläche
+    // klappt daraufhin auf: die Punkte SIND der Knopf, nicht nur eine Marke.
     Q_INVOKABLE int foldMarkerAt(qreal x, qreal y) const;
 
 signals:

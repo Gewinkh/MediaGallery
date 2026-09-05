@@ -2,28 +2,12 @@ import QtQuick
 import QtQuick.Controls
 import MediaGallery 1.0
 
-// ─────────────────────────────────────────────────────────────────────────────
-//  ColorPicker.qml - eigenständiger HSV+Alpha-Farbwähler (ersetzt
-//  ColorPickerButton (QWidget) + QColorDialog).
-//
-//  Verwendung:
-//      ColorPicker {
-//          selectedColor: Settings.someColor        // Eingang (lesbar gebunden)
-//          showAlpha: true
-//          onColorPicked: (c) => App.setSomeColor(c) // Ausgang (bei OK)
-//      }
-//
-//  Semantik wie das Widget-Original: Die Farbe wird erst bei „OK" committet
-//  (Signal colorPicked + Aktualisierung von selectedColor). Externe Änderungen
-//  an selectedColor synchronisieren den internen HSV-Zustand.
-//
-//  Performance: Das SV-Feld wird nur neu gezeichnet, wenn sich der Farbton
-//  (Hue) ändert; Cursor/Handles sind reine Item-Overlays ohne Canvas-Repaint.
-// ─────────────────────────────────────────────────────────────────────────────
+// HSV+Alpha-Farbwähler. Die Farbe wird erst bei OK committet (`colorPicked`); externe Änderungen an
+// `selectedColor` synchronisieren den internen HSV-Zustand. Das SV-Feld wird nur bei Hue-Wechsel neu
+// gezeichnet, Cursor und Griffe sind Overlays ohne Canvas-Repaint.
 Item {
     id: root
 
-    // ── Öffentliche API ───────────────────────────────────────────────────────
     property color  selectedColor: "#00b4a0"
     property bool   showAlpha: true
     property string title: App.uiText(App.language, "ColorPickerTitle")
@@ -32,7 +16,6 @@ Item {
     implicitWidth: 40
     implicitHeight: 24
 
-    // ── Interner Arbeits-HSV-Zustand des Popups (0..1) ────────────────────────
     property real _wh: 0      // hue
     property real _ws: 0      // saturation
     property real _wv: 1      // value
@@ -55,7 +38,6 @@ Item {
         return withAlpha ? "#" + _pad2(c.a * 255) + r + g + b : "#" + r + g + b
     }
 
-    // ── Swatch-Button (öffnet das Popup) ──────────────────────────────────────
     Rectangle {
         id: swatch
         anchors.fill: parent
@@ -64,7 +46,6 @@ Item {
         border.color: swatchHover.hovered ? Qt.rgba(1, 1, 1, 0.7)
                                           : Qt.rgba(1, 1, 1, 0.3)
 
-        // Schachbrett für Transparenz
         Canvas {
             anchors.fill: parent
             anchors.margins: 2
@@ -95,16 +76,10 @@ Item {
         }
     }
 
-    // ── Popup mit Picker-UI ───────────────────────────────────────────────────
     Popup {
         id: popup
-        // Größe ergibt sich automatisch aus dem Inhalt (contentItem = Column,
-        // implicitWidth/-Height aus deren Kindern) statt einer hartcodierten
-        // Höhen-Formel - die bisherige feste Höhe (250 + evtl. 26 für Alpha)
-        // war zu knapp bemessen (Titel + SV-Feld + Hue + Vorschau/Hex + Buttons
-        // brauchen mehr Platz als veranschlagt), wodurch der untere Teil des
-        // Popups (Buttons) über den vorgesehenen Rahmen hinausragte. Automatische
-        // Größe ist zudem robust gegenüber Schriftgröße/Style/Plattform.
+        // Größe aus dem Inhalt statt fester Höhenformel: die alte Rechnung (250 + 26 für Alpha) war zu knapp, die
+        // Knöpfe ragten aus dem Rahmen. Automatisch ist zudem robust gegen Schriftgröße und Plattform.
         padding: 16
         modal: true
         focus: true
@@ -128,7 +103,6 @@ Item {
                 font.bold: true
             }
 
-            // ── SV-Feld ────────────────────────────────────────────────────────
             Item {
                 id: svArea
                 width: 240
@@ -137,13 +111,11 @@ Item {
                 Canvas {
                     id: svCanvas
                     anchors.fill: parent
-                    // Nur bei Hue-Wechsel neu zeichnen
                     property real hue: root._wh
                     onHueChanged: requestPaint()
                     onPaint: {
                         var ctx = getContext("2d")
                         ctx.clearRect(0, 0, width, height)
-                        // Basis: voller Farbton
                         ctx.fillStyle = Qt.hsva(hue < 0 ? 0 : hue, 1, 1, 1)
                         ctx.fillRect(0, 0, width, height)
                         // Weiß (links) -> transparent (rechts) = Sättigung
@@ -187,7 +159,6 @@ Item {
                 }
             }
 
-            // ── Hue-Slider ─────────────────────────────────────────────────────
             Item {
                 width: 240; height: 16
                 Canvas {
@@ -219,7 +190,6 @@ Item {
                 }
             }
 
-            // ── Alpha-Slider (optional) ────────────────────────────────────────
             Item {
                 width: 240; height: 16
                 visible: root.showAlpha
@@ -262,7 +232,6 @@ Item {
                 }
             }
 
-            // ── Vorschau + Hex-Eingabe ─────────────────────────────────────────
             Row {
                 spacing: 8
                 Rectangle {
@@ -295,7 +264,6 @@ Item {
                 }
             }
 
-            // ── OK / Abbrechen ─────────────────────────────────────────────────
             Row {
                 spacing: 8
                 anchors.right: parent.right

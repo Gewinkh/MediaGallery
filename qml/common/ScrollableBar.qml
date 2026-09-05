@@ -1,22 +1,9 @@
 import QtQuick
 import QtQuick.Controls
 
-// ─────────────────────────────────────────────────────────────────────────────
-//  ScrollableBar.qml - eine waagerechte Leiste, die bei zu schmalem Fenster
-//  BLÄTTERBAR wird statt ihre Knöpfe abzuschneiden.
-//
-//  Anlass (Nutzerbefund): in einer schmalen Hälfte lagen Menü- und Filterleiste
-//  teils übereinander, und die rechten Knöpfe waren gar nicht mehr erreichbar.
-//
-//  Bedienung wie im DOCX-Editor: **jedes Mausrad** schwenkt die Leiste (mit und
-//  ohne Strg), dazu eine dünne Bildlaufleiste als sichtbarer Hinweis. Wer Strg
-//  aus dem PDF-Editor kennt, findet es hier genauso - beides führt zum Ziel.
-//
-//  NUTZUNG - Kinder werden in eine `Row` gelegt:
-//      ScrollableBar { anchors.fill: parent; spacing: 6
-//          Button { … }  Button { … }
-//      }
-// ─────────────────────────────────────────────────────────────────────────────
+// Waagerechte Leiste, die bei schmalem Fenster BLÄTTERBAR wird statt ihre Knöpfe abzuschneiden -
+// zuvor lagen Menü- und Filterleiste übereinander und die rechten Knöpfe waren unerreichbar.
+// Jedes Mausrad schwenkt sie, mit und ohne Strg (derselbe Griff wie im DOCX-Editor).
 Flickable {
     id: bar
 
@@ -35,13 +22,8 @@ Flickable {
     //  Züge, die der Fläche darunter gehören.
     interactive: bar.overflowing
 
-    //  Eine MouseArea ist zwingend, ein WheelHandler genügt NICHT: ein
-    //  interaktives Flickable verarbeitet Radereignisse vorher selbst
-    //  (s. „Bekannte Workarounds" in Structure.md).
-    //  `requiredModifier: Qt.NoModifier` heißt „jeder Modifikator ist recht" -
-    //  die Komponente reicht nur durch, wenn einer VERLANGT und nicht gedrückt
-    //  ist (s. `SmoothWheelArea`). Wer nur mit Strg schwenken will, setzt
-    //  `wheelModifier: Qt.ControlModifier`.
+    // `requiredModifier: Qt.NoModifier` heißt "jeder Modifikator ist recht" - durchgereicht wird nur, wenn einer
+    // VERLANGT und nicht gedrückt ist. Wer nur mit Strg schwenken will, setzt `wheelModifier`.
     property int wheelModifier: Qt.NoModifier
     SmoothWheelArea {
         flickable: bar
@@ -55,12 +37,8 @@ Flickable {
         opacity: 0.6
     }
 
-    //  Die Reihe ist so hoch wie ihr GRÖSSTES Kind und sitzt mittig in der
-    //  Leiste. Damit stehen beide Sorten Kinder richtig: solche mit
-    //  `anchors.verticalCenter: parent.verticalCenter` (sie zentrieren sich in
-    //  der Reihe) und solche ohne (sie sitzen an deren Oberkante - und die ist
-    //  bereits mittig). Eine Reihe in voller Leistenhöhe hätte die zweite Sorte
-    //  nach oben gedrückt (PDF-Werkzeugleiste).
+    // Die Reihe ist so hoch wie ihr größtes Kind und sitzt mittig: so stehen zentrierte wie nicht zentrierte
+    // Kinder richtig. In voller Leistenhöhe würde die zweite Sorte nach oben gedrückt (PDF-Werkzeugleiste).
     Row {
         id: inner
         y: Math.max(0, (bar.height - height) / 2)

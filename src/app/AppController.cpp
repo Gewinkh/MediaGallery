@@ -37,11 +37,8 @@ AppController::AppController(ISettings& settings, QObject* parent)
     : QObject(parent)
     , m_settings(settings)
 {
-    //  ── Wachhund über die Zwischenablage ────────────────────────────────────
-    //  Kopiert ein ANDERES Programm, verliert unsere gemerkte Dateiliste ihre
-    //  Gültigkeit - sonst fügte `Strg+V` später etwas ein, das gar nicht mehr
-    //  in der Ablage steht. Die eigene Änderung wird über `m_clipSelfSet`
-    //  durchgelassen (sie kommt als dasselbe Signal zurück).
+    // Wachhund über die Zwischenablage: kopiert ein anderes Programm, verliert unsere gemerkte Dateiliste ihre
+    // Gültigkeit. Die eigene Änderung wird über `m_clipSelfSet` durchgelassen - sie kommt als dasselbe Signal zurück.
     if (QClipboard* cb = QGuiApplication::clipboard()) {
         connect(cb, &QClipboard::dataChanged, this, [this] {
             if (m_clipSelfSet) { m_clipSelfSet = false; return; }
@@ -49,7 +46,6 @@ AppController::AppController(ISettings& settings, QObject* parent)
         });
     }
 
-    // Settings (konkrete Instanz für Signale; Datenzugriff über ISettings&)
     AppSettings& as = AppSettings::instance();
     connect(&as, &AppSettings::colorSchemeChanged, this, &AppController::backgroundColorChanged);
     connect(&as, &AppSettings::colorSchemeChanged, this, &AppController::accentColorChanged);
@@ -60,15 +56,11 @@ AppController::AppController(ISettings& settings, QObject* parent)
     connect(&as, &AppSettings::tileArrangementChanged, this, &AppController::tileArrangementChanged);
     connect(&as, &AppSettings::autoSaveSettingsChanged, this, &AppController::autoSaveChanged);
 
-    //  Sicht auf `m_panes` fuer den `Repeater` der Shell (s. PaneListModel).
     m_panesModel = new PaneListModel(m_panes, this);
 }
 
-// ── Die fokussierte Hälfte ───────────────────────────────────────────────────
-//  Diese Fassade hat keinen eigenen Ordner mehr; sie zeigt auf die Hälfte, in
-//  der gerade gearbeitet wird, und reicht alles Ordnerbezogene dorthin weiter.
-//  Beim Wechsel werden die Signale umgehängt und die abhängigen Anzeigen
-//  aufgefrischt - sonst zeigte das Menü den Ordner der anderen Hälfte.
+// Diese Fassade hat keinen eigenen Ordner; sie zeigt auf die Hälfte, in der gerade gearbeitet wird. Beim
+// Wechsel werden die Signale umgehängt - sonst zeigte das Menü den Ordner der anderen Hälfte.
 void AppController::setTagsFacade(TagController* facade) {
     m_tagsFacade = facade;
     if (m_tagsFacade && m_pane) m_tagsFacade->setTagManager(m_pane->tagManager());
@@ -91,11 +83,8 @@ void AppController::setFocusedPane(PaneController* pane) {
         connect(m_pane, &PaneController::optionsVisibleChanged,
                 this, &AppController::optionsVisibleChanged);
     }
-    //  Die appweite `Tags`-Fassade zeigt jetzt auf die Tags DIESER Hälfte
-    //  (Einstellungen ▸ Tags/Kategorien/Konverter arbeiten damit dort, wo
-    //  gerade gearbeitet wird).
-    //  Solange die Einstellungen eine Hälfte FEST gewählt haben, bleibt die
-    //  Fassade dort - sonst wechselte sie unter dem offenen Dialog weg.
+    // Solange die Einstellungen eine Hälfte FEST gewählt haben, bleibt die Fassade dort - sonst wechselte sie
+    // unter dem offenen Dialog weg.
     if (m_settingsPane < 0 && m_tagsFacade && m_pane)
         m_tagsFacade->setTagManager(m_pane->tagManager());
     emit folderChanged();
@@ -105,7 +94,6 @@ void AppController::setFocusedPane(PaneController* pane) {
     emit optionsVisibleChanged();       // der Modus gehört der Hälfte
 }
 
-// ── Die Hälften des Hauptfensters ────────────────────────────────────────────
 QVariantList AppController::panes() const {
     QVariantList out;
     out.reserve(int(m_panes.size()));
@@ -131,17 +119,10 @@ int AppController::indexOfPane(QObject* pane) const {
 QObject* AppController::addPane() {
     if (!m_loader || int(m_panes.size()) >= kMaxPanes) return nullptr;
     auto* pane = new PaneController(m_settings, *m_loader, this);
-    //  Den Startordner schreibt NUR die erste Haelfte. Sonst ueberschreibt die
-    //  zuletzt benutzte Haelfte den gemerkten Ordner der ersten, und beim
-    //  naechsten Start stehen beide auf demselben (vom Nutzer gemeldet).
     pane->folderService().setPersistsLastFolder(m_panes.empty());
-    //  Punktgenau einfuegen: die BESTEHENDE Haelfte darf dabei nicht neu
-    //  gebaut werden, sonst ist ihre geoeffnete Datei weg (s. PaneListModel).
     m_panesModel->beginInsert(int(m_panes.size()));
     m_panes.push_back(pane);
     m_panesModel->endInsert();
-    //  Die erste Hälfte bekommt sofort den Fokus; eine hinzugefügte auch - man
-    //  hat sie gerade aufgemacht, also will man dort arbeiten.
     setFocusedPane(pane);
     emit panesChanged();
     return pane;
@@ -156,16 +137,11 @@ bool AppController::closePane(int index) {
     m_panesModel->endRemove();
     if (m_pane == pane)
         setFocusedPane(m_panes.front());
-    //  Wer jetzt die erste ist, schreibt ab sofort den Startordner - sonst
-    //  merkte sich nach dem Schliessen der ersten Haelfte niemand mehr einen.
     if (!m_panes.empty())
         m_panes.front()->folderService().setPersistsLastFolder(true);
 
-    //  Der Player-Merker haengt am PLATZ der Haelfte (Bit je Platz). Faellt eine
-    //  weg, muss ihr Bit verschwinden und die dahinter muessen aufruecken -
-    //  sonst entsteht die geschlossene Haelfte beim naechsten Start wieder aus
-    //  dem Merker (vom Nutzer gemeldet: „habe einen Screen geschlossen und beim
-    //  Neustart sind wieder zwei da").
+    // Der Player-Merker hängt am PLATZ der Hälfte (Bit je Platz). Fällt eine weg, muss ihr Bit verschwinden und
+    // die dahinter aufrücken - sonst entsteht die geschlossene Hälfte beim nächsten Start wieder aus dem Merker.
     {
         const int alt = m_settings.audioPlayerModeMask();
         int neu = 0;
@@ -176,19 +152,12 @@ bool AppController::closePane(int index) {
         }
         if (neu != alt) m_settings.setAudioPlayerModeMask(neu);
     }
-    //  Den Fensterzustand SOFORT nachziehen, nicht erst beim Beenden: wer eine
-    //  Haelfte schliesst und die App danach anders beendet (Absturz, Abmelden),
-    //  bekam sie beim naechsten Start zurueck (vom Nutzer gemeldet).
     persistPaneFolders();
-    //  Erst melden, dann löschen: QML gibt seine Hälfte im selben Zug frei.
     emit panesChanged();
     pane->deleteLater();
     return true;
 }
 
-//  Welche Ordner stehen wo? Der der ERSTEN Haelfte ist der Startordner, der der
-//  zweiten gehoert zum Fensterzustand. An EINER Stelle geschrieben, damit die
-//  beiden nicht auseinanderlaufen.
 void AppController::persistPaneFolders() {
     if (!m_panes.empty()) {
         const QString first = m_panes.front()->currentFolder();
@@ -209,12 +178,9 @@ QString AppController::secondFolder() const { return m_settings.secondFolder(); 
 
 bool AppController::swapPanes() {
     if (m_panes.size() < 2) return false;
-    //  VERSCHIEBEN, nicht neu bauen: so wandert jede Haelfte mit allem, was in
-    //  ihr offen ist, auf den anderen Platz.
     m_panesModel->beginMove(1, 0);
     std::swap(m_panes[0], m_panes[1]);
     m_panesModel->endMove();
-    //  Der Fokus hängt am OBJEKT, nicht am Platz - er wandert also mit.
     emit panesChanged();
     return true;
 }
@@ -223,8 +189,6 @@ void AppController::setSettingsPaneIndex(int index) {
     const int v = (index >= 0 && index < int(m_panes.size())) ? index : -1;
     if (v == m_settingsPane) return;
     m_settingsPane = v;
-    //  Die Fassade zeigt jetzt auf die gewählte Hälfte (oder wieder auf die
-    //  fokussierte, wenn die Wahl aufgehoben wurde).
     PaneController* target = (v >= 0) ? m_panes[size_t(v)] : m_pane;
     if (m_tagsFacade && target) m_tagsFacade->setTagManager(target->tagManager());
     emit panesChanged();
@@ -237,7 +201,6 @@ void  AppController::setPaneSplit(qreal v) {
     emit paneSplitChanged();
 }
 
-// ── Ordner - alles an die fokussierte Hälfte ─────────────────────────────────
 QString AppController::currentFolder() const {
     return m_pane ? m_pane->currentFolder() : QString();
 }
@@ -250,11 +213,6 @@ void AppController::openSubfolder(const QString& path) { if (m_pane) m_pane->ope
 bool AppController::navigateBack()        { return m_pane && m_pane->navigateBack(); }
 void AppController::refreshCurrentFolder(){ if (m_pane) m_pane->refreshCurrentFolder(); }
 
-// ── Datei-Erstellung (FilterBar „Erstellen") ─────────────────────────────────
-//  Erzeugt eine leere PDF/HTML/TXT im aktuellen Ordner. Alles atomar über
-//  QSaveFile; die leere PDF ist eine EINZELNE weiße A4-Seite aus QPdfWriter
-//  (72 dpi, Ränder 0 - dieselbe Punkt-Skala wie der PDF-Editor-Export, damit
-//  neu erstellte PDFs sofort editierbar sind und WYSIWYG bleiben).
 QString AppController::createEmptyFile(const QString& kind, const QString& baseName,
                                        const QString& targetFolder) {
     const QString open = currentFolder();
@@ -262,7 +220,6 @@ QString AppController::createEmptyFile(const QString& kind, const QString& baseN
         emit statusMessage(Strings::get(StringKey::CreateFileFailed));
         return {};
     }
-    //  Ein Zielordner ist nur INNERHALB des geoeffneten Ordners zulaessig.
     QString folder = open;
     if (!targetFolder.isEmpty() && targetFolder != open) {
         if (!targetFolder.startsWith(open + QLatin1Char('/'))
@@ -273,11 +230,8 @@ QString AppController::createEmptyFile(const QString& kind, const QString& baseN
         folder = targetFolder;
     }
 
-    //  Typ „frei": der eingegebene Name gilt UNVERAENDERT (Endung nach Wahl
-    //  oder gar keine, wie bei `LICENSE`), und die Datei bleibt leer.
     const bool freeName = (kind == QLatin1String("free"));
 
-    // Endung aus dem Typ ableiten (Whitelist).
     QString ext;
     if      (freeName)                      ext.clear();   // steckt im Namen
     else if (kind == QLatin1String("pdf"))  ext = QStringLiteral("pdf");
@@ -289,29 +243,20 @@ QString AppController::createEmptyFile(const QString& kind, const QString& baseN
         return {};
     }
 
-    // Namen säubern: Pfadtrenner raus, führende Punkte weg (keine versteckten
-    // Dateien aus Versehen), Fallback auf einen generischen Namen.
     QString base = baseName.trimmed();
     base.remove(QLatin1Char('/'));
     base.remove(QLatin1Char('\\'));
     while (base.startsWith(QLatin1Char('.')))
         base.remove(0, 1);
     if (freeName) {
-        //  Punkte und Leerzeichen am ENDE weg: „notiz." legt unter Windows
-        //  eine Datei an, die dort niemand mehr oeffnen kann, und `..` bzw. `.`
-        //  waeren gar kein Dateiname. Nach dem Kuerzen der fuehrenden Punkte
-        //  oben bleibt von „.." ohnehin nichts uebrig - der Fall ist hier nur
-        //  noch der leere Name.
+        // Punkte und Leerzeichen am ENDE weg: "notiz." legt unter Windows eine Datei an, die dort niemand mehr öffnen
+        // kann, und `..` wäre gar kein Dateiname.
         while (base.endsWith(QLatin1Char('.')) || base.endsWith(QLatin1Char(' ')))
             base.chop(1);
     }
     if (base.isEmpty())
         base = Strings::get(StringKey::CreateFileTitle);
 
-    //  Bei freier Wahl steckt die Endung IM Namen - sie wird abgetrennt, damit
-    //  die Kollisionsaufloesung sie erhaelt (`notiz (2).xyz`, nicht
-    //  `notiz.xyz (2)`). Ein Punkt an erster Stelle zaehlt nicht als Trenner:
-    //  fuehrende Punkte sind oben schon entfernt.
     if (freeName) {
         const int dot = base.lastIndexOf(QLatin1Char('.'));
         if (dot > 0) {
@@ -322,7 +267,6 @@ QString AppController::createEmptyFile(const QString& kind, const QString& baseN
             base = Strings::get(StringKey::CreateFileTitle);
     }
 
-    // Kollisionen per „ (n)"-Suffix auflösen (wie der Editor-Export).
     const QString dotExt = ext.isEmpty() ? QString()
                                          : QLatin1Char('.') + ext;
     QString path = folder + QLatin1Char('/') + base + dotExt;
@@ -337,8 +281,6 @@ QString AppController::createEmptyFile(const QString& kind, const QString& baseN
     QSaveFile out(path);
     if (out.open(QIODevice::WriteOnly)) {
         if (ext == QLatin1String("pdf")) {
-            // Leere einseitige PDF: begin() legt die erste (weiße) Seite an -
-            // es muss nichts gezeichnet werden.
             QPdfWriter writer(&out);
             writer.setResolution(72);
             writer.setPageSize(QPageSize(QPageSize::A4));
@@ -355,8 +297,6 @@ QString AppController::createEmptyFile(const QString& kind, const QString& baseN
         } else {
             QByteArray bytes;
             if (ext == QLatin1String("html")) {
-                // Minimal-Skelett (UTF-8): sofort im HTML-Vorschau-/Quelltext-
-                // Editor der App nutzbar.
                 bytes = QStringLiteral(
                             "<!DOCTYPE html>\n"
                             "<html lang=\"de\">\n"
@@ -369,11 +309,8 @@ QString AppController::createEmptyFile(const QString& kind, const QString& baseN
                             "</html>\n").arg(base.toHtmlEscaped()).toUtf8();
             }
             else if (ext == QLatin1String("docx")) {
-                // Leeres Word-Dokument (A4, Standardränder 2,5 cm) aus der
-                // eigenen Container-Fabrik - sofort im DOCX-Editor nutzbar.
                 bytes = Docx::Document::emptyDocxBytes(base);
             }
-            // txt und der frei benannte Fall bleiben bewusst 0 Byte.
             if (bytes.isEmpty() || out.write(bytes) == bytes.size())
                 ok = out.commit();
             else
@@ -385,13 +322,9 @@ QString AppController::createEmptyFile(const QString& kind, const QString& baseN
         emit statusMessage(Strings::get(StringKey::CreateFileFailed));
         return {};
     }
-    // Galerie sofort aktualisieren (deterministisch, nicht nur Watcher) - und
-    // zwar die Hälfte, der der Ordner gehört.
     if (m_pane) m_pane->notifyContentsChanged(folder);
-    //  Eine Endung, die die Galerie nicht kennt, ist ohne „Alle Dateien
-    //  anzeigen" unsichtbar - die Datei liegt im Ordner, die Kachel fehlt.
-    //  Gesagt, nicht heimlich behoben: die Einstellung gehoert dem Nutzer
-    //  (Festlegung 2026-09-03).
+    // Eine Endung, die die Galerie nicht kennt, ist ohne "Alle Dateien anzeigen" unsichtbar - die Datei liegt im
+    // Ordner, die Kachel fehlt. Gesagt, nicht heimlich behoben: die Einstellung gehört dem Nutzer.
     const bool invisible = MediaItem::detectType(path) == MediaType::Unknown
                            && !m_settings.showAllFiles();
     emit statusMessage(Strings::get(invisible ? StringKey::CreateFileHiddenHint
@@ -400,10 +333,8 @@ QString AppController::createEmptyFile(const QString& kind, const QString& baseN
     return path;
 }
 
-// ── Drag & Drop ──────────────────────────────────────────────────────────────
 void AppController::handleDroppedUrls(const QList<QUrl>& urls,
                                       const QString& targetFolder) {
-    // 1) Verzeichnis im Drop -> als Galerie-Ordner öffnen (erstes gewinnt).
     for (const QUrl& url : urls) {
         const QString path = url.toLocalFile();
         if (path.isEmpty()) continue;
@@ -413,7 +344,6 @@ void AppController::handleDroppedUrls(const QList<QUrl>& urls,
         }
     }
 
-    // 2) Mediendateien -> in den Zielordner kopieren (leer = der offene).
     const QString open = currentFolder();
     QString folder = open;
     if (!targetFolder.isEmpty() && targetFolder != open
@@ -442,10 +372,8 @@ void AppController::handleDroppedUrls(const QList<QUrl>& urls,
     }
 
     if (copied > 0) {
-        //  NUR fuer den offenen Ordner: `m_storage` IST dessen Sidecar - es auf
-        //  einen Unterordner umzuschalten haenge Modell, Tag-Panel und Filter
-        //  an die falsche Datei. Der Unterordner fuehrt sein eigenes Sidecar
-        //  (s. MediaModel ▸ Sidecar-Sammlung) und liest beim Reload selbst neu.
+        // NUR für den offenen Ordner: `m_storage` IST dessen Sidecar - es auf einen Unterordner umzuschalten hängte
+        // Modell, Tag-Panel und Filter an die falsche Datei. Der Unterordner liest beim Reload selbst neu.
         if (folder == open)
             if (m_pane) m_pane->storage().loadFolder(folder);   // Metadaten für neuen Bestand
         if (m_pane) m_pane->notifyContentsChanged(folder);   // Galerie lädt neu
@@ -459,29 +387,11 @@ void AppController::handleDroppedUrls(const QList<QUrl>& urls,
                               : QStringLiteral("%1 file(s) skipped (already present).").arg(skipped));
 }
 
-// ── Lesezeichen ──────────────────────────────────────────────────────────────
-//  ── Mausrad waehrend eines Zuges ────────────────────────────────────────────
-//  GEMESSEN auf Wayland (MG_DRAGLOG, echter Zug): waehrend eines Zuges erreichen
-//  die Anwendung 892 `DragMove`, aber **kein einziges `Wheel`** und kein
-//  `MouseMove`. Unter Wayland gehoert der Zeiger waehrend eines Zuges dem
-//  Compositor (`wl_data_device`); Achsen-Ereignisse sind kein Teil des
-//  Drag-Protokolls und werden gar nicht erst gesendet. Auf dieser Plattform ist
-//  das Rad im Zug also NICHT zu haben - dort bleibt das Randscrollen der Galerie.
-//
-//  Der Filter bleibt trotzdem: auf X11 und Windows kann das Rad ankommen, und er
-//  kostet nichts. Anwendungsfilter laufen in UMGEKEHRTER Installationsreihenfolge
-//  - deshalb wird unserer nicht sofort gesetzt, sondern ueber einen 0-ms-Timer:
-//  der feuert bereits INNERHALB der Ereignisschleife des Zuges, also nachdem Qt
-//  seinen eigenen Filter gesetzt hat, und liegt damit davor.
-//
-//  Verbraucht wird nichts (`return false`) - der Filter schaut nur zu.
+// Mausrad waehrend eines Zuges: unter Wayland gehoert der Zeiger dem Compositor
+// (gemessen 892 DragMove, 0 Wheel). Der Filter bleibt fuer X11/Windows und wird
+// ueber einen 0-ms-Timer gesetzt, damit er VOR Qts eigenem liegt.
 bool AppController::eventFilter(QObject* watched, QEvent* event) {
     if (m_tileDragActive) {
-        //  DIAGNOSE (nur mit MG_DRAGLOG=1): welche Ereignisse erreichen die
-        //  Anwendung waehrend eines Zuges ueberhaupt? Unter Wayland gehoert der
-        //  Zeiger waehrend eines Zuges dem Compositor, und Achsen-Ereignisse
-        //  sind kein Teil des Drag-Protokolls - dann kommt hier nie ein
-        //  QEvent::Wheel an, und kein Filter kann daran etwas aendern.
         if (m_dragLog) {
             const int t = static_cast<int>(event->type());
             m_dragEventCounts[t] = m_dragEventCounts.value(t, 0) + 1;
@@ -512,7 +422,6 @@ void AppController::beginTileDrag() {
 void AppController::endTileDrag() {
     qApp->removeEventFilter(this);
     if (m_dragLog) {
-        //  Nach Haeufigkeit sortiert waere schoener; die Zahl allein genuegt.
         QStringList seen;
         for (auto it = m_dragEventCounts.constBegin();
              it != m_dragEventCounts.constEnd(); ++it)
@@ -532,11 +441,8 @@ void AppController::setShowHiddenFiles(bool v) {
     if (m_settings.showHiddenFiles() == v) return;
     m_settings.setShowHiddenFiles(v);
     emit showHiddenFilesChanged();
-    //  ALLE Haelften neu einlesen, nicht nur die fokussierte: die Einstellung
-    //  wird beim Umschalten meist aus den EINSTELLUNGEN heraus gesetzt, und dann
-    //  zeigt `m_pane` gar nicht auf die Galerie, die man gerade vor sich hat -
-    //  `refreshCurrentFolder()` lief dann ins Leere (vom Nutzer gemeldet: die
-    //  Einstellung war im Programm, `.gitignore` erschien trotzdem nicht).
+    // ALLE Hälften neu einlesen, nicht nur die fokussierte: umgeschaltet wird meist aus den EINSTELLUNGEN heraus,
+    // und dann zeigt `m_pane` nicht auf die Galerie, die man vor sich hat - `refreshCurrentFolder` lief ins Leere.
     for (PaneController* p : m_panes)
         if (p) p->refreshCurrentFolder();
 }
@@ -569,9 +475,6 @@ void AppController::setScreenWidth(int w) {
 }
 
 void AppController::setListRowHeight(int px) {
-    //  `ISettings` klemmt auf 28…160 - hier wird gegen den GESPEICHERTEN Wert
-    //  verglichen, nicht gegen den übergebenen: am Anschlag feuert das Signal
-    //  sonst bei jedem Radschritt weiter, und jede Kachelzeile rechnete neu.
     const int before = m_settings.galleryListRowHeight();
     m_settings.setGalleryListRowHeight(px);
     const int after = m_settings.galleryListRowHeight();
@@ -595,8 +498,6 @@ void AppController::setSettingsGroupCollapsed(const QString& key, bool collapsed
     if (had == collapsed) return;
     if (collapsed) keys.append(key);
     else           keys.removeAll(key);
-    //  Sortiert ablegen: die Datei bleibt zwischen zwei Laeufen vergleichbar,
-    //  und die Reihenfolge sagt ohnehin nichts aus.
     keys.sort();
     m_settings.setCollapsedSettingsGroups(keys);
     m_settings.sync();
@@ -610,18 +511,12 @@ void AppController::setTextPreviewContent(bool v) {
     if (m_settings.textPreviewContent() == v) return;
     m_settings.setTextPreviewContent(v);
     m_settings.sync();
-    //  Anders als bei der Anordnung reicht Umzeichnen NICHT: das Aussehen
-    //  steckt in der erzeugten Cache-Datei. main.cpp haengt am Signal und
-    //  laesst die sichtbaren Kacheln neu erzeugen.
     emit textPreviewContentChanged();
 }
 
 void AppController::setGalleryListLayout(bool v) {
     if (m_settings.galleryListLayout() == v) return;
     m_settings.setGalleryListLayout(v);
-    //  Kein Neu-Einlesen des Ordners: die Umschaltung ist reine Darstellung.
-    //  `GalleryView` rechnet Zellengröße und Spaltenzahl aus `listMode` neu,
-    //  das Modell bleibt unangetastet.
     m_settings.sync();
     emit galleryListLayoutChanged();
 }
@@ -632,23 +527,9 @@ void AppController::setFileDropMove(bool v) {
     emit fileDropMoveChanged();
 }
 
-// ── Lesezeichen: Einträge, Gruppen, Anzeigereihenfolge ───────────────────────
-//  Ein Eintrag steht als EINE Zeichenkette in den Einstellungen:
-//      "Name\tPfad\tGruppenpfad"  (Gruppe optional, Altformat "Name\tPfad" bzw. "Pfad")
-//  Die Gruppen selbst stehen getrennt davon in ihrer ANZEIGEreihenfolge:
-//      "Gruppenpfad"  bzw.  "Gruppenpfad\t1"  (eingeklappt)
-//
-//  VERSCHACHTELUNG über den PFAD: die Identität einer Gruppe ist ihr voller
-//  Pfad mit "/" als Trenner - "Persönlich", "Persönlich/Lernen". Der Elternteil
-//  steht damit im Namen selbst; es braucht weder eine Kennung noch eine zweite
-//  Liste. Zwei Folgen, die zusammengehören:
-//    • Ein Gruppenname darf kein "/" enthalten (`isUsableGroupName`), sonst
-//      hieße derselbe Text zwei verschiedene Bäume.
-//    • Eine ALTE Konfiguration bleibt gültig, ohne umgeschrieben zu werden:
-//      ihre Gruppennamen sind bereits Pfade ohne Trenner, also Gruppen der
-//      obersten Ebene. Genau das war ihre Bedeutung vorher auch.
-//  Ohne dritte Spalte gehört ein Eintrag zu „ohne Gruppe", und ohne Gruppenliste
-//  gibt es genau diesen einen Abschnitt - also die Liste, die es vorher gab.
+// Ein Eintrag ist eine Zeichenkette "Name\tPfad\tGruppenpfad"; Gruppen stehen
+// getrennt als "Gruppenpfad" bzw. "Gruppenpfad\t1" (eingeklappt). Die Identitaet
+// einer Gruppe ist ihr voller Pfad mit "/" - deshalb darf ein Name kein "/" tragen.
 namespace {
 
 constexpr QChar kGroupSep = QLatin1Char('/');
@@ -682,18 +563,12 @@ QString displayName(const BmEntry& e) {
     return e.name.isEmpty() ? QFileInfo(e.path).fileName() : e.name;
 }
 
-// ── Gruppenpfade ────────────────────────────────────────────────────────────
-//  Alles, was mit dem Trenner zu tun hat, steht HIER - nicht verstreut in den
-//  Verwaltungsfunktionen.
 
-//  Ein einzelnes Glied: nicht leer, kein Trenner, kein Tabulator (der trennt
-//  die Spalten der gespeicherten Zeile).
 bool usableGroupLeaf(const QString& name) {
     const QString t = name.trimmed();
     return !t.isEmpty() && !t.contains(kGroupSep) && !t.contains(QLatin1Char('\t'));
 }
 
-//  Beschneidet jedes Glied und wirft leere weg: "  A / / B " -> "A/B".
 QString normalizeGroupPath(const QString& path) {
     QStringList out;
     const QStringList parts = path.split(kGroupSep);
@@ -718,8 +593,6 @@ QString joinGroup(const QString& parent, const QString& leaf) {
     return parent.isEmpty() ? leaf : (parent + kGroupSep + leaf);
 }
 
-//  Liegt `path` IN `ancestor` (oder ist es selbst)? Der Test hinter dem
-//  Ring-Schutz beim Verschieben und hinter „mitziehen" beim Umbenennen.
 bool isSelfOrBelow(const QString& path, const QString& ancestor) {
     if (ancestor.isEmpty()) return true;                 // alles liegt unter der Wurzel
     if (path.compare(ancestor, Qt::CaseInsensitive) == 0) return true;
@@ -727,8 +600,6 @@ bool isSelfOrBelow(const QString& path, const QString& ancestor) {
     return path.startsWith(prefix, Qt::CaseInsensitive);
 }
 
-//  Ersetzt die Vorsilbe `from` durch `to` - für Umbenennen und Verschieben
-//  eines ganzen Teilbaums. `path` muss vorher `isSelfOrBelow(path, from)` sein.
 QString reparent(const QString& path, const QString& from, const QString& to) {
     return to + path.mid(from.size());
 }
@@ -753,16 +624,10 @@ QList<BmGroup> parseGroups(const QStringList& raw) {
         g.path = normalizeGroupPath(parts.value(0));
         if (g.path.isEmpty()) continue;
         g.collapsed = parts.value(1) == QLatin1String("1");
-        //  Pfade sind eindeutig (ohne Rücksicht auf Groß-/Kleinschreibung) -
-        //  eine von Hand verdoppelte Zeile würde sonst zwei Abschnitte mit
-        //  denselben Mitgliedern zeigen.
         if (groupPos(out, g.path) < 0) out.append(g);
     }
-    //  FEHLENDE VORFAHREN ergänzen: steht "A/B" ohne "A" in der Liste (von Hand
-    //  bearbeitet, oder "A" wurde gelöscht), hinge der ganze Ast an einem
-    //  Elternteil, den die Tiefensuche nie besucht - er wäre unsichtbar. Die
-    //  Vorsilbe wird deshalb angelegt, und zwar DIREKT VOR ihrem Kind, damit
-    //  die Anzeigereihenfolge der Geschwister erhalten bleibt.
+    // FEHLENDE VORFAHREN ergänzen: steht "A/B" ohne "A" in der Liste, hinge der Ast an einem Elternteil, den die
+    // Tiefensuche nie besucht. Angelegt wird DIREKT VOR dem Kind, damit die Reihenfolge der Geschwister bleibt.
     for (int i = 0; i < out.size(); ++i) {
         const QString parent = parentOfGroup(out.at(i).path);
         if (parent.isEmpty() || groupPos(out, parent) >= 0) continue;
@@ -786,9 +651,6 @@ bool AppController::isUsableGroupName(const QString& name) const {
     return usableGroupLeaf(name);
 }
 
-//  Der Abschnitt, in dem ein Eintrag landet: seine Gruppe, sofern es sie gibt -
-//  sonst „ohne Gruppe". Ein von Hand verstellter Gruppenpfad lässt ein
-//  Lesezeichen damit nie verschwinden.
 QString AppController::bookmarkSection(const QString& group) const {
     const QString g = normalizeGroupPath(group);
     if (g.isEmpty()) return QString();
@@ -824,36 +686,13 @@ QString AppController::ensureBookmarkGroup(const QString& fullPath) {
     return sofar;
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-//  Der ganze Baum als FLACHE Zeilenliste, in Anzeigereihenfolge.
-//
-//  Je Zeile:
-//      kind        "group" | "bookmark"
-//      name        angezeigter Text (Gruppe: letztes Glied; Eintrag: sein Name)
-//      group       Gruppe: ihr VOLLER Pfad · Eintrag: der Pfad seiner Gruppe
-//      parent      Pfad der Elterngruppe ("" = oberste Ebene)
-//      depth       Einrücktiefe, 0 = oberste Ebene
-//      hidden      true, wenn ein VORFAHR eingeklappt ist (Zeile nicht zeigen)
-//      path        NUR Eintrag: der Ordner
-//      index       NUR Eintrag: Platz in der gespeicherten Liste (Identität)
-//      collapsed   NUR Gruppe: ist SIE eingeklappt?
-//      count       NUR Gruppe: Zahl der DIREKTEN Kinder (Gruppen + Einträge)
-//      pos         Platz unter den GLEICHARTIGEN Geschwistern - genau der Wert,
-//                  den `moveBookmark`/`moveBookmarkGroup` als `pos` erwarten
-//
-//  Je Ebene erst die Lesezeichen, dann die Untergruppen - ein Ordner steht
-//  damit immer über den Schubladen, die unter ihm liegen.
-//
-//  Tiefensuche mit EIGENEM STAPEL statt Rekursion: die Schachtelungstiefe kommt
-//  aus einer Konfigurationsdatei und ist damit nach oben offen.
-// ─────────────────────────────────────────────────────────────────────────────
+// Flache Zeilenliste in Anzeigereihenfolge; je Zeile kind/name/group/parent/depth/
+// hidden, dazu path+index (Eintrag) bzw. collapsed+count (Gruppe) und pos.
+// Eigener Stapel statt Rekursion: die Schachtelungstiefe kommt aus einer Datei.
 QVariantList AppController::bookmarkTree() const {
     const QStringList raw = m_settings.savedFolders();
     const QList<BmGroup> groups = parseGroups(m_settings.bookmarkGroups());
 
-    //  Einträge EINMAL lesen und ihrem Abschnitt zuordnen. `bookmarkSection`
-    //  zerlegte die Gruppenliste je Eintrag neu - bei vielen Lesezeichen wäre
-    //  das quadratisch, und die Liste steht hier bereits.
     struct Row { QString name, path, section; int index; };
     QList<Row> rows;
     rows.reserve(raw.size());
@@ -868,7 +707,6 @@ QVariantList AppController::bookmarkTree() const {
     QVariantList out;
     out.reserve(groups.size() + rows.size());
 
-    //  Alle Lesezeichen EINER Ebene ausgeben.
     auto emitBookmarks = [&](const QString& parent, int depth, bool hidden) {
         int pos = 0;                       // Platz unter den GESCHWISTERN
         for (const Row& r : std::as_const(rows)) {
@@ -887,7 +725,6 @@ QVariantList AppController::bookmarkTree() const {
         }
     };
 
-    //  Die Plätze der DIREKTEN Untergruppen einer Ebene, in Listenreihenfolge.
     auto childGroups = [&](const QString& parent) {
         QList<int> idx;
         for (int i = 0; i < groups.size(); ++i)
@@ -903,11 +740,9 @@ QVariantList AppController::bookmarkTree() const {
         return n;
     };
 
-    //  Ein Stapeleintrag = eine Gruppe, deren KOPFZEILE noch aussteht.
     struct Frame { int group; int depth; bool hidden; int pos; };
     QList<Frame> stack;
 
-    //  Oberste Ebene: erst ihre Lesezeichen, dann ihre Gruppen.
     emitBookmarks(QString(), 0, false);
     {
         const QList<int> roots = childGroups(QString());
@@ -932,8 +767,6 @@ QVariantList AppController::bookmarkTree() const {
         m.insert(QStringLiteral("pos"),       f.pos);
         out.append(m);
 
-        //  Der Inhalt liegt eine Ebene tiefer und ist verborgen, sobald DIESE
-        //  Gruppe zu ist - oder schon ein Vorfahr zu war.
         const bool inner = f.hidden || g.collapsed;
         emitBookmarks(g.path, f.depth + 1, inner);
         const QList<int> kids = childGroups(g.path);
@@ -944,10 +777,6 @@ QVariantList AppController::bookmarkTree() const {
     return out;
 }
 
-//  Flache Liste NUR der Lesezeichen, in derselben Anzeigereihenfolge - für
-//  Ablegeleiste, Dateiwähler und alles, was Gruppen nicht darstellt.
-//  Eingeklappte Gruppen zählen mit: „zugeklappt" ist eine Frage der Anzeige,
-//  kein Ausschluss.
 QVariantList AppController::savedFolders() const {
     QVariantList out;
     const QVariantList tree = bookmarkTree();
@@ -964,13 +793,9 @@ void AppController::openBookmark(const QString& path) {
     if (m_pane) m_pane->openFolder(path);   // leert den Rückweg (s. openSubfolder)
 }
 
-// ── Lesezeichen-Verwaltung ───────────────────────────────────────────────────
 void AppController::addBookmark(const QString& name, const QString& path,
                                 const QString& group) {
     if (path.trimmed().isEmpty()) return;
-    //  Eine noch unbekannte Gruppe wird angelegt statt verworfen - sonst
-    //  landete der Eintrag stillschweigend woanders, als der Nutzer wählte.
-    //  Mit Pfaden gilt das für den GANZEN Ast: "A/B/C" legt A, B und C an.
     const QString section = ensureBookmarkGroup(group);
 
     QStringList entries = m_settings.savedFolders();
@@ -985,8 +810,6 @@ void AppController::updateBookmark(int index, const QString& name, const QString
     if (path.trimmed().isEmpty()) return;
     if (index < 0 || index >= m_settings.savedFolders().size()) return;
     const QString section = ensureBookmarkGroup(group);
-    //  ERST jetzt lesen: `ensureBookmarkGroup` schreibt die Gruppenliste, nicht
-    //  die Einträge - eine vorher gezogene Kopie wäre trotzdem unnötig alt.
     QStringList entries = m_settings.savedFolders();
     entries[index] = packBookmark(BmEntry{ name.trimmed(), path.trimmed(), section });
     m_settings.setSavedFolders(entries);
@@ -1003,11 +826,8 @@ void AppController::removeBookmark(int index) {
     emit savedFoldersChanged();
 }
 
-// ── Lesezeichen-Gruppen ──────────────────────────────────────────────────────
 void AppController::addBookmarkGroup(const QString& name, const QString& parentPath) {
     if (!usableGroupLeaf(name)) return;
-    //  Die Elterngruppe muss es geben - sonst hinge die neue Gruppe an einem
-    //  Pfad, den niemand sieht. Fehlt sie, wird sie mit angelegt.
     const QString parent = parentPath.trimmed().isEmpty()
                                ? QString()
                                : ensureBookmarkGroup(parentPath);
@@ -1031,22 +851,15 @@ void AppController::renameBookmarkGroup(const QString& path, const QString& newN
     if (pos < 0) return;
 
     const QString to = joinGroup(parentOfGroup(from), newName.trimmed());
-    //  Nur bei WIRKLICH gleichem Namen nichts tun. Eine reine Schreibweisen-
-    //  Aenderung ("Studium" -> "studium") ist eine gueltige Umbenennung: die
-    //  Kollisionspruefung unten findet dabei die Gruppe selbst und laesst sie durch.
     if (to == from) return;
     const int clash = groupPos(groups, to);
     if (clash >= 0 && clash != pos) return;           // Name in dieser Ebene vergeben
 
-    //  Die Gruppe SELBST und jede Untergruppe tragen den alten Namen als
-    //  Vorsilbe - alle ziehen mit, sonst risse der Ast ab.
     for (BmGroup& g : groups)
         if (isSelfOrBelow(g.path, from))
             g.path = reparent(g.path, from, to);
     m_settings.setBookmarkGroups(packGroups(groups));
 
-    //  Die Mitglieder tragen ihren Gruppenpfad selbst - auch die der
-    //  Untergruppen.
     QStringList entries = m_settings.savedFolders();
     for (QString& raw : entries) {
         BmEntry e = parseBookmark(raw);
@@ -1067,14 +880,11 @@ void AppController::removeBookmarkGroup(const QString& path) {
     QList<BmGroup> groups = parseGroups(m_settings.bookmarkGroups());
     if (groupPos(groups, n) < 0) return;
 
-    //  Die Gruppe UND alles darunter verschwindet aus der Ordnung.
     for (int i = groups.size() - 1; i >= 0; --i)
         if (isSelfOrBelow(groups.at(i).path, n))
             groups.removeAt(i);
     m_settings.setBookmarkGroups(packGroups(groups));
 
-    //  Die Lesezeichen des ganzen Astes bleiben - sie rücken nach „ohne
-    //  Gruppe". Eine Gruppe zu schließen darf nie Pfade kosten.
     QStringList entries = m_settings.savedFolders();
     for (QString& raw : entries) {
         BmEntry e = parseBookmark(raw);
@@ -1141,10 +951,8 @@ void AppController::moveBookmarkGroup(const QString& path, const QString& newPar
         m_settings.setSavedFolders(entries);
     }
 
-    //  Platz unter den GESCHWISTERN. Nur der Eintrag der Gruppe selbst zieht
-    //  um; ihre Untergruppen behalten ihre Plätze in der Liste, denn deren
-    //  Reihenfolge zählt nur untereinander (die Tiefensuche liest den Vater aus
-    //  dem Pfad, nicht aus der Position).
+    // Platz unter den GESCHWISTERN: nur der Eintrag der Gruppe selbst zieht um, ihre Untergruppen behalten ihre
+    // Plätze - deren Reihenfolge zählt nur untereinander, und die Tiefensuche liest den Vater aus dem Pfad.
     const int cur = groupPos(groups, to);
     const BmGroup moved = groups.takeAt(cur);
     QList<int> siblings;
@@ -1193,7 +1001,6 @@ void AppController::moveBookmark(int index, const QString& targetGroup, int pos)
     emit savedFoldersChanged();
 }
 
-// ── Galerie-View-State ───────────────────────────────────────────────────────
 int AppController::tileWidth()        const { return m_settings.tileWidth(); }
 int AppController::tileHeight()       const { return m_settings.tileHeight(); }
 int AppController::tileArrangement()  const { return static_cast<int>(m_settings.tileArrangement()); }
@@ -1243,7 +1050,6 @@ void AppController::setManualAreaWidth(int w) {
     emit tileArrangementChanged();
 }
 
-// ── Einstellungen ────────────────────────────────────────────────────────────
 QColor AppController::backgroundColor() const { return m_settings.backgroundColor(); }
 QColor AppController::accentColor()     const { return m_settings.accentColor(); }
 
@@ -1379,10 +1185,8 @@ void AppController::setMonoPlay(bool on) {
     emit monoPlayChanged();
 }
 
-// Spulschritt der Pfeiltasten im Video-Vollbild. Vergleich gegen den bereits
-// GEKLEMMTEN gespeicherten Wert (ISettings klemmt beim Schreiben) - ein
-// Vergleich mit dem rohen Argument würde bei Werten außerhalb des Bereichs
-// jedes Mal neu schreiben und ein Signal auslösen.
+// Vergleich gegen den bereits GEKLEMMTEN gespeicherten Wert: mit dem rohen Argument würde ein Wert außerhalb
+// des Bereichs jedes Mal neu geschrieben und löste ein Signal aus.
 void AppController::setVideoSeekStep(int seconds) {
     const int before = m_settings.videoSeekStep();
     m_settings.setVideoSeekStep(seconds);
@@ -1391,19 +1195,14 @@ void AppController::setVideoSeekStep(int seconds) {
     emit videoSeekStepChanged();
 }
 
-// ─── Mono-Play: Wiedergabe-Koordination ───────────────────────────────────────
-// Zentrale, zustandslose Vermittlung: der Start einer Wiedergabe wird als
-// Broadcast an ALLE Wiedergabestellen gemeldet (inkl. der startenden - sie
-// erkennt sich am eigenen Token und ignoriert die Meldung). Bewusst KEINE
-// Registry/Pointer-Verwaltung: die Stellen leben in QML (Kacheln kommen und
-// gehen), ein reiner Signal-Broadcast ist lebensdauer-sicher und O(1).
+// Mono-Play: zustandslose Vermittlung als Broadcast an ALLE Stellen (die startende erkennt ihr eigenes Token).
+// Bewusst keine Registry - die Stellen leben in QML und kommen und gehen; ein Broadcast ist lebensdauer-sicher.
 void AppController::announcePlayback(const QString& token) {
     if (!m_settings.monoPlay())
         return;                       // Option aus -> parallele Wiedergaben erlaubt
     emit playbackStarted(token);
 }
 
-// ─── RHI-Backend-Wechsel ──────────────────────────────────────────────────────
 bool AppController::trySetRhiBackend(const QString& backend) {
     if (backend.compare(m_settings.rhiBackend(), Qt::CaseInsensitive) == 0)
         return true;
@@ -1426,7 +1225,6 @@ void AppController::toggleOptions() {
     emit optionsVisibleChanged();       // AppSettings sendet hierfür kein Signal
 }
 
-// ── Fensterzustand ───────────────────────────────────────────────────────────
 int  AppController::initialWindowWidth()  const { return m_settings.windowSize().width(); }
 int  AppController::initialWindowHeight() const { return m_settings.windowSize().height(); }
 int  AppController::initialWindowX()      const { return m_settings.windowPos().x(); }
@@ -1450,7 +1248,7 @@ void AppController::saveWindowState(int w, int h, int x, int y, bool maximized) 
     persistPaneFolders();
 }
 
-// ── Tags ─────────────────────────────────────────────────────────────────────
+// Tags
 //  Tags gehören dem Ordner - also der fokussierten Hälfte.
 QStringList AppController::allTags() const {
     return m_pane ? m_pane->tagManager().allTags() : QStringList();
@@ -1458,18 +1256,11 @@ QStringList AppController::allTags() const {
 QColor AppController::tagColor(const QString& tag) const {
     return m_pane ? m_pane->tagManager().tagColor(tag) : QColor();
 }
-//  ENTFALLEN: tagsForFile / addTagToFile / removeTagFromFile / setCustomDate /
-//  clearCustomDate / fileTextPdfColor & Co. Sie nahmen den blanken DATEINAMEN
-//  und trafen damit immer das Sidecar des GEOEFFNETEN Ordners - fuer eine Datei
-//  aus einem aufgeklappten Unterordner also das falsche. Den Ordner einer Datei
-//  kennt das Modell; die Wege liegen jetzt dort (`MediaModel::tagsOfFile`,
-//  `addTag`/`removeTag`, `setCustomDate`/`clearCustomDate`,
-//  `fileTextPdfColor` & Co.) und routen auf das richtige Sidecar.
+// ENTFALLEN: `tagsForFile` & Co. nahmen den blanken DATEINAMEN und trafen damit immer das Sidecar des
+// GEÖFFNETEN Ordners. Die Wege liegen jetzt im Modell, das den Ordner einer Datei kennt.
 
-//  ── Schriftfarbe des TXT->PDF-Exports: nur noch die GLOBALE Vorgabe ─────────
-//  Die Ausnahme JE DATEI liegt im Sidecar des Ordners, dem die Datei gehoert -
-//  und den kennt das Modell, nicht diese Fassade (s. `MediaModel::
-//  fileTextPdfColor` & Co.).
+// Nur noch die GLOBALE Vorgabe: die Ausnahme je Datei liegt im Sidecar des Ordners, dem die Datei gehört -
+// und den kennt das Modell, nicht diese Fassade.
 QColor AppController::textPdfColor() const { return m_settings.textPdfColor(); }
 
 void AppController::setTextPdfColor(const QColor& c) {
@@ -1478,7 +1269,6 @@ void AppController::setTextPdfColor(const QColor& c) {
     emit textPdfColorChanged();
 }
 
-// ── i18n ─────────────────────────────────────────────────────────────────────
 QString AppController::text(int key) const {
     return Strings::get(static_cast<StringKey>(key));
 }
@@ -1496,12 +1286,6 @@ QString AppController::localPath(const QString& urlOrPath) const {
     return mg::toLocalPath(urlOrPath);
 }
 
-//  ── Dateien in die Zwischenablage ───────────────────────────────────────────
-//  Drei Formate nebeneinander, weil die Dateimanager sich nicht einig sind:
-//  `text/uri-list` versteht jeder (Dolphin, Thunar, PCManFM, und es ist auch
-//  das Format des Ziehens), `x-special/gnome-copied-files` braucht die
-//  GNOME-Linie (Nautilus/Nemo/Caja) mit vorangestelltem „copy", und
-//  `text/plain` ist der Rueckfall fuer Terminal und Textfeld.
 int AppController::copyFilesToClipboard(const QStringList& paths) const {
     QClipboard* cb = QGuiApplication::clipboard();
     if (!cb) return 0;
@@ -1542,18 +1326,9 @@ int AppController::copyFilesToClipboard(const QStringList& paths) const {
 QList<QUrl> AppController::clipboardFileUrls() const {
     QClipboard* cb = QGuiApplication::clipboard();
     if (!cb) return {};
-    //  ── Haben WIR zuletzt kopiert? Dann gilt unsere eigene Liste ────────────
-    //  GEMESSEN auf KDE/Wayland (`bench_shell g`): 29 Adressen abgelegt, die
-    //  Systemablage liefert 3 zurueck - und zwar die eines FRUEHEREN Laufs, aus
-    //  einem ganz anderen Ordner. Eine Zwischenablagen-Verwaltung (Klipper,
-    //  erkennbar am Format `application/x-kde-onlyReplaceEmpty`) haelt dort
-    //  einen gekuerzten Stand fest. Innerhalb der App gibt es keinen Grund,
-    //  diesen Verlust hinzunehmen.
-    //  Wann die eigene Liste WIEDER faellt, entscheidet `QClipboard::dataChanged`
-    //  (s. Konstruktor): kopiert ein anderes Programm, ist sie weg.
-    //  Weder `ownsClipboard()` noch ein Inhaltsvergleich taugen dafuer -
-    //  Ersteres meldet unter Wayland falsch, Letzterer scheitert genau dann,
-    //  wenn die Ablage einen ganz fremden (veralteten) Stand haelt.
+    // Haben wir zuletzt kopiert, gilt unsere eigene Liste: Klipper gab von 29 abgelegten
+    // Adressen 3 aus einem frueheren Lauf zurueck. ownsClipboard() meldet unter Wayland
+    // falsch, ein Inhaltsvergleich scheitert genau bei veraltetem Stand.
     if (!m_ownClipFiles.isEmpty()) {
         QList<QUrl> mine;
         for (const QString& p : m_ownClipFiles) {
@@ -1578,12 +1353,8 @@ QList<QUrl> AppController::clipboardFileUrls() const {
 QString AppController::fileUrl(const QString& path) const {
     if (path.isEmpty())
         return QString();
-    // Bereits eine URL? Unverändert zurückgeben - inkl. http(s), da z. B.
-    // PdfMediaHandler::resolvedUri() bei verlinkten (nicht eingebetteten)
-    // Medien eine externe URL statt eines lokalen Pfades liefern kann
-    // (genutzt von VideoSurface für PDF-Video-/Link-Annotationen). Bewusst
-    // keine generische Schema-Erkennung per Doppelpunkt, da Windows-
-    // Laufwerksbuchstaben ("C:\…") sonst fälschlich als Schema gälten.
+    // Bereits eine URL? Unverändert zurückgeben, inkl. http(s) - `PdfMediaHandler::resolvedUri()` liefert bei
+    // verlinkten Medien eine externe URL. Keine Schema-Erkennung per Doppelpunkt, sonst gälte "C:\..." als Schema.
     if (path.startsWith(QStringLiteral("file:"))  ||
         path.startsWith(QStringLiteral("qrc:"))   ||
         path.startsWith(QStringLiteral("image://")) ||
@@ -1609,7 +1380,6 @@ QString AppController::menuBookmarksEmptyText() const { return Strings::get(Stri
 QString AppController::bookmarkAddText()        const { return Strings::get(StringKey::BookmarkAdd); }
 
 
-// ── Theme-Farben ─────────────────────────────────────────────────────────────
 QColor AppController::themeBackground()  const { return m_settings.currentTheme().background; }
 QColor AppController::themeCard()        const { return m_settings.currentTheme().card; }
 QColor AppController::themeTextPrimary() const { return m_settings.currentTheme().textPrimary; }
@@ -1624,7 +1394,6 @@ QColor AppController::themeSidebarBg()   const { return m_settings.currentTheme(
 QColor AppController::themeEditorBgText() const { return m_settings.currentTheme().editorBgText; }
 QColor AppController::themeEditorBgHtml() const { return m_settings.currentTheme().editorBgHtml; }
 
-// ── Editor / Auto-Save (Phase 4) ─────────────────────────────────────────────
 bool AppController::autoSaveEnabled()  const { return m_settings.autoSaveEnabled(); }
 int  AppController::autoSaveInterval() const { return m_settings.autoSaveIntervalSeconds(); }
 
@@ -1640,7 +1409,6 @@ void AppController::setAutoSaveInterval(int seconds) {
     m_settings.sync();
 }
 
-// ── Design / Theme (Phase 4) ─────────────────────────────────────────────────
 int AppController::designProfile() const {
     return static_cast<int>(m_settings.designProfile());
 }

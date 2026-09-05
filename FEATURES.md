@@ -119,6 +119,33 @@ Where a feature stops - the known limits, with the reason behind each one - is i
 - **Clear failure handling**: if a page cannot be loaded or the render process dies, a readable hint replaces the blank area; links that would leave the local file are ignored
 - **Smooth scrolling**: the rendered preview scrolls with animation (Chromium smooth scrolling), consistent with the web-style smooth wheel scrolling of the gallery, PDF, DOCX and text views
 
+## DATEV Files (booking batches)
+- **Recognised by content, not by extension**: a DATEV export opens as a readable table whether it arrives as `.csv` or as `.txt`. The decision is made from the first bytes of the file (`"EXTF";` / `"DTVF";`), so renaming changes nothing
+- **Header summary** on top: identifier, version number and format name in one line (`EXTF 700 - Buchungsstapel`), plus the creation timestamp in readable form. A fold-out block below it lists **all** header fields with their values
+- **Bookings as a table**, with the column names taken from the file itself. By default only the columns that actually carry data are shown (12 to 20 of 125 in a typical batch); one click in the footer switches to all columns
+- **Totals in the footer**: number of bookings, total debit, total credit and the difference - highlighted in red when debit and credit do not balance
+- **Findings are named, not hidden**: rows with a field count that differs from the header, unclosed quotes, or a file that hit the size cap are reported with their line number
+- **Encoding is detected, not assumed**: valid UTF-8 is read as UTF-8, anything else as CP1252 (not Latin-1 - the two differ exactly where the Euro sign and typographic quotes live). LF and CRLF line endings both work
+- **Switch to the raw file** at any time with the table button in the top bar or the matching entry in the *View* menu - the same way the HTML preview toggles against its source
+- **Works with smaller batches too**: neither the number of columns nor their names are built in - both are read from the file, and the totals columns are found by their heading. A reduced DATEV export with a handful of columns opens the same way
+- **Scrolls like the rest of the app**: about half a screen per mouse-wheel notch, smoothly animated - vertically through the bookings, horizontally with `Ctrl`+wheel (or a tilt wheel, or `Shift`+wheel); wheel up brings the right-hand side in
+- **Read-only, deliberately**: MediaGallery never writes into a bookkeeping file. There is no editing, no saving, no export from the table view
+
+## CSV and TSV Files
+- **A `.csv` or `.tsv` opens as a table**, not as a wall of separators. The raw file stays one click away - the same table button in the top bar that switches the DATEV view
+- **The separator is detected, not assumed**: `;` `,` tab and `|` are tried over the first lines, and the one that yields the most consistent field count wins. `;` goes first and wins any tie. The footer states which one was found
+- **Header row detected too**: if the first line carries no numbers and the second does, it becomes the column headings. Otherwise there are no headings and the heading bar stays away rather than showing an empty strip
+- **Row and column numbers** can be switched on from the top bar, next to the table button (it appears only while a table is actually on screen). Each gets its own strip: the row numbers in a column of their own to the left, pinned there while you scroll sideways, and the column numbers in a thin bar above the headings - they never share the line with a column name. Works in the DATEV view too
+- **Several tables in one file get one tab each**: an export that stacks blocks - a title line, a heading row, rows, a blank line, then the next block - is split at those blank lines and shown as tabs above the table, each with its own name and row count. Every block keeps its own columns, its own headings and its own row numbers, and the headings stay put while you scroll it. An **All** tab shows the file flat, exactly as it stands, if the split ever gets it wrong
+- **A block heading is recognised properly**: a line on its own above a wider one is the block name, and then the next line carries the column names - which is what makes a text-only table (names, rooms, office hours) work, where there is no number anywhere to give the heading away
+- **Switching to the raw file keeps your undo history**: the editor is not thrown away when you look at the table, so `Ctrl+Z` still works after you switch back
+- **Quoted fields survive**: commas or semicolons inside `"…"`, doubled quotes as an escaped quote, and line breaks inside a quoted field all read correctly
+- **Encoding and line endings** are handled the same way as everywhere else: valid UTF-8 is UTF-8, anything else is CP1252; LF and CRLF both work
+- **Anything odd is named**: unclosed quotes and files that hit the size cap are reported in the footer with the line number *from the file* - blank lines do not shift the count
+- **Same scrolling as the rest of the app**: about half a screen per wheel notch, `Ctrl`+wheel (or a tilt wheel, or `Shift`) for sideways - wheel up brings the right-hand side in
+- **A DATEV batch stays a DATEV batch** even when it is named `.csv`: the bookkeeping view with its file header and totals takes precedence over the neutral table
+- **Read-only for now**: editing a cell and writing the file back is not built yet
+
 ## Live Transliteration
 - Type in Latin letters and get **Arabic (with full Harakat/diacritics)** or **Japanese (Hiragana/Katakana)** automatically as you type - no separate conversion step
 - Works in the **text editor**, **HTML source view**, and **PDF Editor notes**

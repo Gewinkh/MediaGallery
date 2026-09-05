@@ -13,9 +13,6 @@
 #include <QRunnable>
 
 namespace {
-//  Diagnose wie in `AudioEngine` (MG_LOG_AUDIO=1): zeigt, WANN die Liste gesetzt
-//  wird und was das Wiederherstellen daraus macht. Die Reihenfolge beim Start
-//  war zweimal die Ursache eines Fehlers - sie muss nachvollziehbar sein.
 const bool kLogC = qEnvironmentVariableIntValue("MG_LOG_AUDIO") == 1;
 }  // namespace
 
@@ -39,7 +36,6 @@ AudioController::AudioController(ISettings& settings, QObject* parent)
     , m_engine(m_eq, this)
     , m_queue(this)
 {
-    //  Weiterreichen, was QML sehen will.
     connect(&m_engine, &AudioEngine::stateChanged,    this, &AudioController::stateChanged);
     connect(&m_engine, &AudioEngine::currentPathChanged, this, &AudioController::currentChanged);
     connect(&m_engine, &AudioEngine::positionChanged, this, &AudioController::positionChanged);
@@ -52,7 +48,6 @@ AudioController::AudioController(ISettings& settings, QObject* parent)
     connect(&m_queue, &PlayQueue::currentChanged, this, &AudioController::currentChanged);
     connect(&m_queue, &PlayQueue::itemsChanged,   this, &AudioController::queueChanged);
 
-    //  Der Titel ist NATÜRLICH zu Ende - jetzt entscheidet die Warteschlange.
     connect(&m_engine, &AudioEngine::finished, this, [this] {
         //  Kein lückenloser Übergang möglich gewesen (nichts angemeldet, oder
         //  Zufall am Listenende): der gewohnte Weg mit kurzem Absetzen.
@@ -61,8 +56,6 @@ AudioController::AudioController(ISettings& settings, QObject* parent)
         m_engine.play(next);
     });
 
-    //  Der lückenlose Übergang hat schon stattgefunden - die Warteschlange zieht
-    //  nur noch ihren Zeiger nach und meldet den ÜBERNÄCHSTEN Titel an.
     connect(&m_engine, &AudioEngine::advancedToNext, this, [this](const QString& path) {
         const QString moved = m_queue.advance(/*natural=*/true);
         //  Sicherheitsnetz: liefe die Warteschlange auseinander (Filterwechsel
@@ -72,10 +65,8 @@ AudioController::AudioController(ISettings& settings, QObject* parent)
         armNextTrack();
     });
 
-    //  Wechselt der Titel, gelten andere Tags.
     connect(this, &AudioController::currentChanged, this, &AudioController::refreshTags);
 
-    //  Ändert sich die Liste oder die Reihenfolge, ändert sich auch, was folgt.
     connect(&m_queue, &PlayQueue::itemsChanged,   this, &AudioController::armNextTrack);
     connect(&m_queue, &PlayQueue::currentChanged, this, &AudioController::armNextTrack);
 
@@ -107,7 +98,6 @@ void AudioController::applyGainsToSettings() {
     m_settings.setAudioEqEnabled(m_eq.enabled());
 }
 
-// ── Wiedergabe ───────────────────────────────────────────────────────────────
 void AudioController::playFile(const QString& path, const QStringList& queue) {
     if (path.isEmpty()) return;
     m_queue.setItems(queue.isEmpty() ? QStringList { path } : queue);
@@ -117,10 +107,6 @@ void AudioController::playFile(const QString& path, const QStringList& queue) {
     armNextTrack();
 }
 
-//  Was nach dem laufenden Titel kommt, der Kette anmelden - sie hängt es dann
-//  ohne Absetzen hinter den laufenden. Wird bei JEDER Änderung neu gerufen
-//  (Titelwechsel, Liste, Zufall, Wiederholung), weil sich damit auch der
-//  Nachfolger ändert.
 void AudioController::armNextTrack() {
     m_engine.setNextTrack(m_queue.peekNext(/*natural=*/true));
 }
@@ -133,7 +119,6 @@ void AudioController::setQueue(const QStringList& queue) {
 }
 
 void AudioController::playAt(int index) {
-    //  `index` ist der Platz in der ANGEZEIGTEN Folge (s. `queue`).
     const QString path = m_queue.pathAtOrder(index);
     if (path.isEmpty() || !m_queue.startAtOrder(index)) return;
     m_pendingSeek = 0;
@@ -151,7 +136,6 @@ void AudioController::togglePlay() {
     case AudioEngine::State::Playing: m_engine.pause();  break;
     case AudioEngine::State::Paused:  m_engine.resume(); break;
     case AudioEngine::State::Stopped: {
-        //  Nach dem Wiederherstellen liegt ein Titel bereit, aber nichts läuft.
         const QString p = m_queue.currentPath();
         if (p.isEmpty()) return;
         m_engine.play(p);
@@ -166,7 +150,6 @@ void AudioController::togglePlay() {
 }
 
 void AudioController::next() {
-    //  Weitergeschaltet ⇒ NICHT natürlich: „eine wiederholen" gilt hier nicht.
     const QString p = m_queue.advance(/*natural=*/false);
     if (p.isEmpty()) { m_engine.stop(); return; }
     m_engine.play(p);
@@ -183,7 +166,7 @@ void AudioController::stop() { m_engine.stop(); }
 void AudioController::stopAndClear() {
     //  Der Ordner ist gewechselt: der Titel gehört nicht mehr hierher. Nur
     //  anzuhalten reichte nicht - die Leiste stand weiter da und zeigte einen
-    //  Titel, der zu keinem sichtbaren Ordner mehr gehörte (Nutzerbefund).
+    //  Titel, der zu keinem sichtbaren Ordner mehr gehörte.
     m_engine.stop();
     m_engine.forgetCurrent();       // sonst zeigte die Leiste den alten Titel weiter
     m_queue.setItems(QStringList {});
@@ -214,7 +197,6 @@ void AudioController::setRepeat(int r) {
     emit repeatChanged();
 }
 
-// ── Equalizer ────────────────────────────────────────────────────────────────
 void AudioController::setEqEnabled(bool on) {
     m_eq.setEnabled(on);
     m_settings.setAudioEqEnabled(on);
@@ -232,19 +214,9 @@ QVariantList AudioController::eqFrequencies() const {
     return out;
 }
 
-//  Jeder Griff an einen Regler hebt die Voreinstellung auf: danach passt kein
-//  Name mehr zu dem, was eingestellt ist.
-//  Die Gegenrechnung gegen das Uebersteuern.
-//
-//  Ohne sie klemmt `AudioEqualizer::process` am Ausgang hart - gemessen bei
-//  -1 dBFS Eingang: EIN Band auf +12 dB laesst 1,4 % der Werte am Anschlag
-//  haengen, drei angehobene 3,9 %, alle zehn 66,5 %, bei 13-35 % Klirr. Ein
-//  weicher Begrenzer half nachweislich nicht (12,4 % statt 13,4 % Klirr);
-//  was hilft, ist Luft nach oben zu schaffen.
-//
-//  Ist die Automatik AUS, wird NICHTS gerechnet - `peakGainDb` laeuft dann gar
-//  nicht erst an, und der Regler gehoert ganz dem Nutzer (Festlegung des
-//  Nutzers: wer uebersteuern will, soll das duerfen).
+// Jeder Griff an einen Regler hebt die Voreinstellung auf. Die Gegenrechnung schafft
+// Luft: ohne sie klemmten bei -1 dBFS und einem Band auf +12 dB 1,4 % der Werte am
+// Anschlag, bei allen zehn 66,5 % mit 13-35 % Klirr. Aus heisst: nichts rechnen.
 bool AudioController::eqAutoPreamp() const { return m_settings.audioEqAutoPreamp(); }
 
 void AudioController::applyAutoPreamp() {
@@ -255,9 +227,6 @@ void AudioController::applyAutoPreamp() {
 void AudioController::setEqAutoPreamp(bool on) {
     if (m_settings.audioEqAutoPreamp() == on) return;
     m_settings.setAudioEqAutoPreamp(on);
-    //  Beim Einschalten sofort wirken lassen; beim Ausschalten bleibt der
-    //  zuletzt errechnete Wert stehen - er ist ein gueltiger Startpunkt, und
-    //  ihn ungefragt auf 0 zu reissen waere ein Lautstaerkesprung.
     if (on) { applyAutoPreamp(); applyGainsToSettings(); }
     emit optionsChanged();
     emit eqChanged();
@@ -289,8 +258,6 @@ QStringList AudioController::builtinPresetLines() const {
     return out;
 }
 
-//  Die Zeile einer Voreinstellung. EIGENE gewinnen ueber gleichnamige
-//  mitgelieferte - genau daran haengt das Ueberschreiben.
 QString AudioController::presetLine(const QString& name) const {
     for (const QString& line : m_settings.audioEqPresets())
         if (line.section(QLatin1Char('\t'), 0, 0).trimmed()
@@ -327,9 +294,6 @@ bool AudioController::presetsModified() const {
     return false;
 }
 
-//  Namen in die gespeicherte Reihenfolge bringen. Was dort NICHT steht, haengt
-//  sich hinten an - eine spaeter dazugekommene mitgelieferte Voreinstellung
-//  bleibt damit sichtbar, statt an einer Indexluecke zu verschwinden.
 QStringList AudioController::inStoredOrder(const QStringList& names) const {
     const QStringList order = m_settings.audioEqPresetOrder();
     if (order.isEmpty()) return names;
@@ -348,15 +312,11 @@ QStringList AudioController::inStoredOrder(const QStringList& names) const {
 QStringList AudioController::presetNames() const {
     QStringList out;
     const QStringList hidden = m_settings.audioEqHiddenPresets();
-    //  Mitgelieferte zuerst (in ihrer Programm-Reihenfolge), aber ohne die
-    //  geloeschten; eine ueberschriebene bleibt an ihrem Platz stehen.
     for (const QString& line : builtinPresetLines()) {
         const QString n = line.section(QLatin1Char('\t'), 0, 0);
         if (hidden.contains(n, Qt::CaseInsensitive)) continue;
         out.append(n);
     }
-    //  Danach die eigenen - eine, die eine mitgelieferte ueberschreibt, steht
-    //  schon oben und kommt nicht doppelt.
     for (const QString& line : m_settings.audioEqPresets()) {
         const QString n = line.section(QLatin1Char('\t'), 0, 0).trimmed();
         if (n.isEmpty() || out.contains(n, Qt::CaseInsensitive)) continue;
@@ -375,18 +335,14 @@ void AudioController::applyPreset(const QString& name) {
     for (int i = 0; i < AudioEqualizer::kBands; ++i)
         g.append(parts.at(2 + i).toDouble());
     m_eq.setGains(g);
-    //  Die Voreinstellung bringt ihre eigene Vorverstaerkung mit. Reicht sie
-    //  nicht, korrigiert die Automatik sie nach oben bzw. unten.
     applyAutoPreamp();
     applyGainsToSettings();
     m_activePreset = name;
     emit presetsChanged();
 }
 
-//  Sichern - AUCH auf einen mitgelieferten Namen. Frueher wurde das abgewiesen
-//  („sonst waere Flach irgendwann nicht mehr flach"); der Nutzer will diese
-//  Freiheit ausdruecklich. Der Rueckweg bleibt: die Vorlage steht im Programm,
-//  `resetPreset` holt sie zurueck.
+// Sichern AUCH auf einen mitgelieferten Namen. Der Rückweg bleibt: die Vorlage steht im Programm, `resetPreset`
+// holt sie zurück.
 void AudioController::savePreset(const QString& name) {
     const QString n = name.trimmed();
     if (n.isEmpty()) return;
@@ -408,7 +364,6 @@ void AudioController::savePreset(const QString& name) {
     if (!replaced) own.append(line);
     m_settings.setAudioEqPresets(own);
 
-    //  Wurde derselbe Name zuvor geloescht, kommt er mit dem Sichern zurueck.
     QStringList hidden = m_settings.audioEqHiddenPresets();
     if (hidden.removeIf([&n](const QString& h) {
             return h.compare(n, Qt::CaseInsensitive) == 0; }) > 0)
@@ -419,9 +374,8 @@ void AudioController::savePreset(const QString& name) {
 }
 
 //  Loeschen entfernt den EINTRAG, nicht die Einstellung: die Regler bleiben
-//  stehen, wo sie stehen (Festlegung des Nutzers). Eine mitgelieferte wird
-//  ausgeblendet statt entfernt - sie steht im Programm und kommt ueber
-//  `resetPreset` zurueck.
+//  stehen, wo sie stehen. Eine mitgelieferte wird ausgeblendet statt entfernt
+//  - sie steht im Programm und kommt ueber `resetPreset` zurueck.
 void AudioController::deletePreset(const QString& name) {
     bool changed = false;
 
@@ -441,7 +395,6 @@ void AudioController::deletePreset(const QString& name) {
         }
     }
     if (!changed) return;
-    //  Der Klang bleibt - nur die Zuordnung „das ist gerade jene" faellt weg.
     if (m_activePreset.compare(name, Qt::CaseInsensitive) == 0)
         m_activePreset.clear();
     emit presetsChanged();
@@ -481,8 +434,6 @@ void AudioController::resetAllPresets() {
     if (changed) emit presetsChanged();
 }
 
-//  Reihenfolge aendern. Gespeichert werden NAMEN, nicht Plaetze - s.
-//  `inStoredOrder`.
 void AudioController::movePreset(int from, int to) {
     QStringList names = presetNames();
     if (from < 0 || from >= names.size()) return;
@@ -493,7 +444,6 @@ void AudioController::movePreset(int from, int to) {
     emit presetsChanged();
 }
 
-// ── Optionen ─────────────────────────────────────────────────────────────────
 bool AudioController::showVideos() const { return m_settings.audioShowVideos(); }
 void AudioController::setShowVideos(bool on) {
     if (m_settings.audioShowVideos() == on) return;
@@ -523,7 +473,6 @@ void AudioController::setRememberLast(bool on) {
     emit optionsChanged();
 }
 
-// ── Was im Titel steht ───────────────────────────────────────────────────────
 void AudioController::refreshTags() {
     const QString path = currentPath();
     if (path == m_tagsPath) return;              // derselbe Titel, nichts zu tun
@@ -579,10 +528,8 @@ void AudioController::setExtractToQueue(bool on) {
     emit optionsChanged();
 }
 
-// ── Ton aus einem Video sichern ──────────────────────────────────────────────
-//  Der Arbeiter fasst NUR Pfade an (kein Modell, kein Qt-Objekt des GUI-Fadens)
-//  und meldet sich ausschließlich über die Ereignisschlange zurück - Muster
-//  `PdfExtractTask`.
+// Der Arbeiter fasst NUR Pfade an - kein Modell, kein Qt-Objekt des GUI-Fadens - und meldet sich ausschließlich
+// über die Ereignisschlange zurück.
 class AudioExtractTask : public QRunnable {
 public:
     using CancelFlag = std::shared_ptr<std::atomic<bool>>;
@@ -597,15 +544,11 @@ public:
         setAutoDelete(true);
     }
 
-    //  ZWEI Hüllenfamilien, ein Weg: MP4/M4V/MOV geht über `Mp4AudioExtract`
-    //  (Tonspur -> `.m4a`), MKV/WEBM/MKA über `MkvAudioExtract` (Opus/Vorbis ->
-    //  Ogg). Welcher der beiden zuständig ist, entscheidet die Endung; der
-    //  Zielname entsteht deshalb HIER und nicht im GUI-Faden - bei MKV muss
-    //  dafür die Datei kurz angelesen werden (die Endung hängt am Codec).
+    // Zwei Hüllenfamilien, ein Weg: MP4/MOV über `Mp4AudioExtract`, MKV/WEBM über `MkvAudioExtract`. Der Zielname
+    // entsteht HIER statt im GUI-Faden - bei MKV muss die Datei dafür angelesen werden, die Endung hängt am Codec.
     void run() override {
         QString target;
         int tracks = 0;
-        //  Was der Nutzer lesen soll: der Schlüssel wird im GUI-Faden zum Satz.
         int key = int(StringKey::AudioExtractFailNotMp4);
         bool ok = false;
 
@@ -628,8 +571,6 @@ public:
                 default:                              key = int(StringKey::AudioExtractFailDamaged); break;
             }
         } else if (MkvAudio::isCandidate(m_source)) {
-            //  Die ENDUNG hängt an der gewählten Spur - eine Datei kann Opus
-            //  und E-AC-3 nebeneinander führen.
             target = MkvAudio::targetPathFor(m_source, m_track);
             MkvAudio::Info info;
             const auto r = MkvAudio::extract(m_source, target, &info, m_cancel.get(),
@@ -673,7 +614,6 @@ public:
     AudioProbeTask(AudioController* owner, QString source)
         : m_owner(owner), m_source(std::move(source)) { setAutoDelete(true); }
 
-    //  Die Kanalzahl in Worte - die Zahl allein sagt beim Wählen wenig.
     static QString channelText(int ch) {
         if (ch == 1) return Strings::get(StringKey::AudioChMono);
         if (ch == 2) return Strings::get(StringKey::AudioChStereo);
@@ -683,15 +623,12 @@ public:
         return QString();
     }
 
-    //  Eine Zeile für die Auswahl: „Spur 2 · ENG · Kommentar · Opus · Stereo".
     static QVariantMap describe(int index, const QString& codec, const QString& language,
                                 const QString& name, int channels, bool supported) {
         QStringList parts;
         parts << Strings::get(StringKey::AudioTrackNumber).arg(index + 1);
         if (!language.isEmpty()) parts << language.toUpper();
         if (!name.isEmpty())     parts << name;
-        //  Der Codec-Name der Datei („A_EAC3", „mp4a") ist für den Nutzer
-        //  nichts wert, für die Unterscheidung zweier Spuren aber alles.
         if (!codec.isEmpty())    parts << codec;
         const QString ch = channelText(channels);
         if (!ch.isEmpty())       parts << ch;
@@ -753,8 +690,6 @@ void AudioController::extractAudio(const QString& pathOrUrl, int trackIndex) {
     //  Entscheidung fällt danach in `probeTaskDone`.
     if (trackIndex < 0) {
         if (m_extractPool.maxThreadCount() != 1) m_extractPool.setMaxThreadCount(1);
-        //  Schon das Nachsehen zählt als „beschäftigt": es liest die Datei an,
-        //  und der Knopf, der es ausgelöst hat, soll nicht zweimal gehen.
         if (!m_extractBusy) {
             m_extractBusy = true;
             emit extractBusyChanged();
@@ -762,8 +697,6 @@ void AudioController::extractAudio(const QString& pathOrUrl, int trackIndex) {
         m_extractPool.start(new AudioProbeTask(this, src));
         return;
     }
-    //  Eine Sicherung nach der anderen: der Pool hat einen Faden, ein zweiter
-    //  Auftrag reiht sich ein statt die Platte zu teilen.
     if (m_extractPool.maxThreadCount() != 1) m_extractPool.setMaxThreadCount(1);
     if (!m_extractCancel) m_extractCancel = std::make_shared<std::atomic<bool>>(false);
 
@@ -772,19 +705,15 @@ void AudioController::extractAudio(const QString& pathOrUrl, int trackIndex) {
         emit extractBusyChanged();
     }
     emit message(Strings::get(StringKey::AudioExtractRunning));
-    //  Der Zielname entsteht im Arbeiter: bei MKV hängt die Endung am Codec.
     m_extractPool.start(new AudioExtractTask(this, src, ++m_extractGen, m_extractCancel,
                                              trackIndex));
 }
 
 void AudioController::probeTaskDone(const QString& source, const QVariantList& tracks) {
-    //  Eine Spur (oder gar keine Auskunft): nicht fragen, einfach machen.
-    //  Fragen, wo es nichts zu wählen gibt, ist ein Klick zu viel.
     if (tracks.size() < 2) {
         extractAudio(source, 0);
         return;
     }
-    //  Jetzt liegt es beim Nutzer - und solange gearbeitet wird nicht.
     if (m_extractBusy) {
         m_extractBusy = false;
         emit extractBusyChanged();
@@ -809,8 +738,6 @@ void AudioController::extractTaskDone(bool ok, int messageKey, const QString& so
         return;
     }
 
-    //  Auf Wunsch reiht sich die gesicherte Tonspur gleich ein. Bewusst
-    //  ANHÄNGEN und nicht ersetzen: die laufende Liste bleibt, wie sie ist.
     if (m_settings.audioExtractToQueue()) {
         QStringList items = m_queue.items();
         if (!items.contains(target)) {
@@ -820,8 +747,6 @@ void AudioController::extractTaskDone(bool ok, int messageKey, const QString& so
     }
 
     const QString targetName = QFileInfo(target).fileName();
-    //  Mehrere Tonspuren: dann steht in der Meldung, WELCHE gesichert wurde -
-    //  bei zwei Sprachen ist das der einzige Unterschied, den man später sieht.
     emit message(audioTracks > 1
                      ? Strings::get(StringKey::AudioExtractManyTracks)
                            .arg(targetName).arg(audioTracks).arg(trackIndex + 1)
@@ -849,14 +774,13 @@ bool AudioController::takePlayerModeRestore(int paneIndex) {
 
 void AudioController::rememberPlayerMode(bool on, int paneIndex) {
     //  JE HAELFTE merken, nicht nur „irgendeine": bei geteiltem Fenster stand
-    //  sonst nach dem Neustart der Player auf der falschen Seite (vom Nutzer
-    //  gemeldet). Die andere Haelfte behaelt dabei ihr eigenes Bit.
+    //  sonst nach dem Neustart der Player auf der falschen Seite. Die andere
+    //  Haelfte behaelt dabei ihr eigenes Bit.
     if (paneIndex >= 0 && paneIndex <= 3) {
         const int before = m_settings.audioPlayerModeMask();
         const int bit    = 1 << paneIndex;
         const int after  = on ? (before | bit) : (before & ~bit);
         if (after != before) m_settings.setAudioPlayerModeMask(after);
-        //  Der alte Schalter bleibt die Kurzantwort „stand irgendwo ein Player".
         const bool any = after != 0;
         if (m_settings.audioPlayerMode() != any) {
             m_settings.setAudioPlayerMode(any);
@@ -869,7 +793,6 @@ void AudioController::rememberPlayerMode(bool on, int paneIndex) {
     emit optionsChanged();
 }
 
-// ── Sitzung ──────────────────────────────────────────────────────────────────
 void AudioController::rememberSession() {
     if (!m_settings.audioRememberLast()) return;
     m_settings.setAudioLastFile(m_engine.currentPath());
@@ -880,14 +803,8 @@ void AudioController::restoreSession() {
     if (!m_settings.audioRememberLast()) return;
     const QString last = m_settings.audioLastFile();
     if (last.isEmpty() || !QFileInfo::exists(last)) return;
-    //  NUR bereitlegen: es wird nicht von selbst gespielt (Festlegung des
-    //  Nutzers). Der erste Druck auf ⏯ nimmt Titel und Stelle auf.
-    //
-    //  Steht die Liste des Ordners schon (die Hälfte reicht sie beim Aufnehmen
-    //  des Player-Modus nach), wird sie NICHT ersetzt - sonst bliebe nach dem
-    //  Start genau ein Titel übrig und die Wiedergabe wäre nach ihm zu Ende
-    //  (Nutzerbefund). Wer zuerst kommt, gibt die Liste vor; der gemerkte Titel
-    //  wird nur eingestellt.
+    // NUR bereitlegen, es wird nicht von selbst gespielt. Steht die Liste des Ordners schon, wird sie NICHT ersetzt -
+    // sonst bliebe nach dem Start genau ein Titel übrig und die Wiedergabe wäre nach ihm zu Ende.
     if (kLogC) qDebug("audio: restoreSession(%s) - Liste hat %lld Einträge",
                       qPrintable(last), qint64(m_queue.items().size()));
     if (!m_queue.items().contains(last))

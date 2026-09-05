@@ -17,7 +17,7 @@
 namespace {
 
 //  Ein Verzeichnis lesen - im Worker. Liefert das Ergebnis über eine
-//  QueuedConnection zurück in den GUI-Thread (Hausmuster, CLAUDE.md Regel 8).
+//  QueuedConnection zurück in den GUI-Thread (Hausmuster).
 class ScanTask : public QRunnable {
 public:
     ScanTask(FileBrowseModel* owner, QString dir, QStringList globs, bool hidden, bool showAll,
@@ -93,7 +93,6 @@ void ScanTask::run() {
     }, Qt::QueuedConnection);
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
 
 FileBrowseModel::FileBrowseModel(QObject* parent) : QAbstractListModel(parent) {
     m_pool.setMaxThreadCount(1);

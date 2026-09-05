@@ -15,16 +15,8 @@
 #include <QSet>
 #include <utility>
 
-// ══════════════════════════════════════════════════════════════════════════════
-//  PdfExtractTask - schreibt die Ziel-PDF im Pool-Thread.
-//
-//  Je Quelle zuerst der VERLUSTFREIE Weg (PdfAssembler::addSourcePages plant
-//  vollständig, bevor es schreibt -> ein Fehlschlag hinterlässt keine Fragmente);
-//  nur bei Fehlschlag werden die Seiten DIESER Quelle mit einer EIGENEN
-//  QPdfDocument-Instanz (Thread-Affinität wie PdfThumbRenderTask) gerastert und
-//  als JPEG-Bildseiten in dieselbe Ausgabe gehängt. Kein QObject - der Rückweg
-//  läuft wie bei PdfExportTask über QMetaObject::invokeMethod (queued).
-// ══════════════════════════════════════════════════════════════════════════════
+// Je Quelle zuerst der VERLUSTFREIE Weg - `addSourcePages` plant vollständig, bevor es schreibt, ein Fehlschlag
+// hinterlässt also keine Fragmente. Nur dann werden DEREN Seiten gerastert und als JPEG-Seiten angehängt.
 namespace {
 
 class PdfExtractTask : public QRunnable {
@@ -162,7 +154,7 @@ private:
     CancelFlag            m_cancel;
 };
 
-// ── PdfScanTask - PDF-Liste + Seitenzahlen eines Ordners (globaler Dialog) ──
+// PdfScanTask - PDF-Liste + Seitenzahlen eines Ordners (globaler Dialog)
 class PdfScanTask : public QRunnable {
 public:
     using CancelFlag = std::shared_ptr<std::atomic<bool>>;
@@ -227,9 +219,6 @@ private:
 
 }   // namespace
 
-// ══════════════════════════════════════════════════════════════════════════════
-//  PdfExtractController
-// ══════════════════════════════════════════════════════════════════════════════
 PdfExtractController::PdfExtractController(QObject* parent) : QObject(parent) {
     // EIN Worker: nie zwei Extraktionen/Scans parallel -> RAM-Peak gedeckelt,
     // QSaveFile-Ziele kollidieren nicht (Muster wie PdfThumbnailProvider).
@@ -249,7 +238,6 @@ void PdfExtractController::setBusy(bool b) {
     emit busyChanged();
 }
 
-// ── Namens-Vorschläge ────────────────────────────────────────────────────────
 QString PdfExtractController::defaultSingleName(const QString& pathOrUrl,
                                                 int pageIndex) const {
     const QFileInfo fi(mg::toLocalPath(pathOrUrl));
@@ -262,7 +250,6 @@ QString PdfExtractController::defaultMultiName(const QString& pathOrUrl) const {
     return QStringLiteral("%1-Selected").arg(fi.completeBaseName());
 }
 
-// ── Hilfen ───────────────────────────────────────────────────────────────────
 QString PdfExtractController::makeTargetPath(const QString& folder, QString base,
                                              const QString& fallbackBase) {
     // Säuberung wie AppController::createEmptyFile: Pfadtrenner raus, führende
@@ -299,7 +286,6 @@ QVector<int> PdfExtractController::normalizePages(const QVariantList& pages) {
     return out;
 }
 
-// ── Extraktion ───────────────────────────────────────────────────────────────
 void PdfExtractController::startExtract(QVector<Job> jobs,
                                         const QString& targetPath) {
     // Laufenden Task kooperativ stoppen, neue Generation beginnen.
@@ -367,11 +353,8 @@ void PdfExtractController::extractOrdered(const QVariantList& items,
                                           const QString& baseName) {
     QString folder = mg::toLocalPath(folderOrUrl);
 
-    // Geordnete (path,page)-Paare: Reihenfolge = Ausgabereihenfolge. Duplikate
-    // je (path,page) verwerfen; aufeinanderfolgende Seiten derselben Quelle zu
-    // EINEM Job zusammenfassen (addSourcePages behält die Seitenreihenfolge, s.
-    // CopyPlan::plan) -> Bar-Reihenfolge bleibt exakt erhalten, ohne die Quelle
-    // je Seite neu zu parsen.
+    // Geordnete (path,page)-Paare: Reihenfolge = Ausgabereihenfolge. Duplikate verwerfen, aufeinanderfolgende Seiten
+    // derselben Quelle zu EINEM Job zusammenfassen - ohne die Quelle je Seite neu zu parsen.
     QVector<Job> jobs;
     QSet<QString> seen;
     QString firstPath;
@@ -408,7 +391,6 @@ void PdfExtractController::extractOrdered(const QVariantList& items,
     startExtract(std::move(jobs), target);
 }
 
-// ── Ordner-Scan ──────────────────────────────────────────────────────────────
 void PdfExtractController::scanFolder(const QString& folderOrUrl) {
     const QString folder = mg::toLocalPath(folderOrUrl);
     if (m_cancel) m_cancel->store(true, std::memory_order_relaxed);
@@ -423,7 +405,7 @@ void PdfExtractController::scanFolder(const QString& folderOrUrl) {
     m_pool.start(new PdfScanTask(this, folder, gen, m_cancel));
 }
 
-// ── Task-Rückwege (GUI-Thread, queued) ───────────────────────────────────────
+// Task-Rückwege (GUI-Thread, queued)
 void PdfExtractController::extractTaskFinished(bool ok, const QString& target,
                                                const QString& error,
                                                int generation) {

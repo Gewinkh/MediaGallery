@@ -1,36 +1,7 @@
 #pragma once
-// ══════════════════════════════════════════════════════════════════════════════
-//  PdfFontEmbed.h - eine installierte TrueType-Schrift in ein PDF einbetten
-// ══════════════════════════════════════════════════════════════════════════════
-//
-//  ZWECK
-//  ─────
-//  Der Vektor-Export kannte bisher nur die 14 Standard-PDF-Schriften. Eine
-//  Notiz in einer anderen Familie wurde dabei STILLSCHWEIGEND durch Helvetica
-//  ersetzt - die exportierte Datei sah anders aus als der Bildschirm. Mit
-//  dieser Einheit reist die tatsächliche Schrift mit.
-//
-//  WAS ERZEUGT WIRD
-//  ────────────────
-//  Ein vollständiges TrueType-Schriftprogramm (`sfnt`), aus den Tabellen der
-//  installierten Schrift wieder zusammengesetzt (`QRawFont::fontTable`), plus
-//  die zugehörigen PDF-Objekte: Font-Dict (`/Subtype /TrueType`,
-//  `/WinAnsiEncoding`), `/FontDescriptor` und `/FontFile2`.
-//  `/Widths` stammen aus den echten Vorschubbreiten der Schrift.
-//
-//  BEWUSST NICHT GETAN: Teilmengen-Bildung (Subsetting). Eingebettet wird das
-//  GANZE Schriftprogramm. Subsetting müsste `glyf`/`loca`/`cmap`/`hmtx`
-//  konsistent neu aufbauen - ein eigenes Vorhaben, bei dem ein Fehler eine
-//  unlesbare Datei erzeugt. Der Preis ist Dateigröße; deshalb bettet der
-//  Aufrufer NUR ein, wenn die Familie wirklich keine Standard-14-Entsprechung
-//  hat (s. `needsEmbedding`).
-//
-//  Schlägt irgendetwas fehl (Tabellen nicht lesbar, Schrift nicht gefunden),
-//  liefert `build` false - der Aufrufer weicht dann auf die Ersetzung bzw. den
-//  Raster-Export aus, statt eine kaputte Datei zu schreiben.
-//
-//  ABHÄNGIGKEITEN: Qt6::Core + Qt6::Gui (QRawFont). Kein Q_OBJECT/moc.
-// ══════════════════════════════════════════════════════════════════════════════
+// Bettet eine installierte TrueType-Schrift ein; vorher ersetzte der Vektor-Export jede Familie
+// ohne Standard-14-Entsprechung stillschweigend durch Helvetica. Eingebettet wird das GANZE
+// Schriftprogramm - Subsetting müsste glyf/loca/cmap/hmtx konsistent neu bauen, ein Fehler dort ergibt eine unlesbare Datei.
 
 #include <QByteArray>
 #include <QString>

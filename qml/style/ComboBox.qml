@@ -6,13 +6,8 @@ import QtQuick.Controls
 import QtQuick.Templates as T
 import MediaGallery 1.0
 
-// ─────────────────────────────────────────────────────────────────────────────
-//  ComboBox.qml - gethemtes Auswahlfeld (Stil "style").
-//
-//  Feld wie Button/TextField (Radius 6, Kartenfarbe, Akzentrahmen bei Fokus),
-//  selbstgezeichneter Pfeil (kein Bild/Atlas) und ein gethemtes Popup mit
-//  Akzent-Hinterlegung für den aktuellen Eintrag.
-// ─────────────────────────────────────────────────────────────────────────────
+// Gethemtes Auswahlfeld wie Button und TextField, mit selbst gezeichnetem Pfeil und einem Popup, das den
+// aktuellen Eintrag mit der Akzentfarbe hinterlegt.
 T.ComboBox {
     id: control
 

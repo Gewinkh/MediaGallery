@@ -1,6 +1,5 @@
 #include "pdf/edit/PdfEditModel.h"
 
-// ─────────────────────────────────────────────────────────────────────────────
 PdfEditModel::PdfEditModel(QObject* parent) : QAbstractListModel(parent) {}
 
 int PdfEditModel::rowCount(const QModelIndex& parent) const {
@@ -81,7 +80,6 @@ QHash<int, QByteArray> PdfEditModel::roleNames() const {
     return names;
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
 int PdfEditModel::indexOfId(int id) const {
     for (int i = 0; i < m_boxes.size(); ++i)
         if (m_boxes.at(i).id == id)
@@ -94,7 +92,6 @@ const PdfEditBox* PdfEditModel::boxById(int id) const {
     return row >= 0 ? &m_boxes.at(row) : nullptr;
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
 void PdfEditModel::resetBoxes(const QVector<PdfEditBox>& boxes) {
     beginResetModel();
     m_boxes = boxes;
@@ -123,7 +120,6 @@ bool PdfEditModel::removeById(int id, PdfEditBox* removed, int* removedRow) {
     return true;
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
 bool PdfEditModel::applyGeometry(int id, const QRectF& r) {
     const int row = indexOfId(id);
     if (row < 0)

@@ -2,12 +2,9 @@ import QtQuick
 import QtQuick.Templates as T
 import MediaGallery 1.0
 
-// ─────────────────────────────────────────────────────────────────────────────
 //  Slider.qml - gethemter Schieberegler (Stil "style").
-//
 //  Rinne in Themen-Rahmenfarbe, gefüllter Anteil und Griff in der Akzentfarbe.
 //  Unterstützt beide Ausrichtungen (Farbwähler/Editor nutzen waagerecht).
-// ─────────────────────────────────────────────────────────────────────────────
 T.Slider {
     id: control
 

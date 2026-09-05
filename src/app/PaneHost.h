@@ -7,26 +7,9 @@ class PaneController;
 class QQmlContext;
 class QQmlComponent;
 
-// ─────────────────────────────────────────────────────────────────────────────
-//  PaneHost - erzeugt den QML-Teilbaum EINER Galerie-Hälfte mit einem EIGENEN
-//  QML-Kontext.
-//
-//  WARUM: `mediaModel`, `galleryModel` und `Tags` stehen in rund 200 Zeilen
-//  quer durch `qml/gallery`, `qml/tags` und `qml/viewer`. Mit zwei Hälften
-//  müssen sie je Hälfte auf ANDERE Objekte zeigen. Statt jede dieser Zeilen
-//  umzuschreiben (und jedem Blatt ein `pane`-Argument durchzureichen), bekommt
-//  jede Hälfte ihren eigenen Kontext: dieselben Namen, andere Objekte. Für die
-//  QML-Dateien ändert sich damit NICHTS - sie sahen diese Namen schon vorher
-//  als Kontext-Eigenschaften (aus `main.cpp`).
-//
-//  Gesetzt werden: `mediaModel`, `galleryModel`, `Tags` und `PaneCtl` (der
-//  `PaneController` selbst, für alles Ordnerbezogene). NICHT „Pane" - so heißt
-//  ein Steuerelement in QtQuick.Controls, und der Typname gewinnt.
-//
-//  Nutzung in QML:
-//      PaneHost { pane: einePaneController; source: "qrc:/qml/gallery/GalleryPane.qml" }
-//  Das erzeugte Element füllt den Host; `item` gibt es für Aufrufe von außen.
-// ─────────────────────────────────────────────────────────────────────────────
+// Erzeugt den QML-Teilbaum einer Haelfte mit EIGENEM Kontext: dieselben Namen
+// (mediaModel, galleryModel, Tags, PaneCtl), andere Objekte - sonst muesste jede der
+// ~200 Fundstellen ein pane-Argument durchreichen. Nicht "Pane": der Typ gehoert Qt.
 class PaneHost : public QQuickItem {
     Q_OBJECT
     Q_PROPERTY(PaneController* pane READ pane WRITE setPane NOTIFY paneChanged)

@@ -2,24 +2,12 @@ pragma ComponentBehavior: Bound
 import QtQuick
 import MediaGallery 1.0
 
-// ─────────────────────────────────────────────────────────────────────────────
-//  ImageEditBox.qml - EINE Overlay-Annotation des Bild-Editors (Delegate im
-//  Annotations-Repeater von ImageSurface). Deckt alle fünf Arten ab:
-//  Text-Notiz (Post-it, volle Parität zum PDF-Editor), Freihand, Pfeil,
-//  Rechteck, Ellipse.
-//
-//  KOORDINATEN: Das Modell führt Geometrie in BILD-PIXELN (Ursprung oben-links);
-//  dieses Item rechnet über `imgScale` (angezeigte Pixel je Bild-Pixel) in
-//  Bildschirm-Pixel um -> WYSIWYG zum Export (1:1 in native Auflösung).
-//
-//  SICHTBARKEIT: in BEIDEN Modi sichtbar (Teil des Bild-Eindrucks); Rahmen,
-//  Handles und Maus-Interaktion existieren nur im Edit-Modus mit dem
-//  Auswahl-Werkzeug (tool === Select).
-// ─────────────────────────────────────────────────────────────────────────────
+// EINE Overlay-Annotation des Bild-Editors (Text, Freihand, Pfeil, Rechteck, Ellipse). Das Modell führt die
+// Geometrie in BILD-PIXELN; dieses Item rechnet über `imgScale` um - WYSIWYG zum Export in nativer
+// Auflösung. In beiden Modi sichtbar, Rahmen und Handles nur im Edit-Modus mit dem Auswahl-Werkzeug.
 Item {
     id: box
 
-    // ── Modellrollen (ImageEditModel) ─────────────────────────────────────────
     required property int    annId
     //  Nachverfolgte Änderung: 0 keine, 1 neu, 2 gelöscht (ImageEditModel).
     required property int    trackState
@@ -43,7 +31,6 @@ Item {
     required property int    alignment
     required property int    vAlign
 
-    // ── Vom Surface gesetzt ───────────────────────────────────────────────────
     property real imgScale: 1.0                // angezeigte Pixel je Bild-Pixel
     property real imgWpx: 0                     // Bildgröße (Klemm-Grenzen)
     property real imgHpx: 0
@@ -65,7 +52,7 @@ Item {
     height: Math.max(1, hPx * imgScale)
     z: selected ? 3 : 2
 
-    //  ── Kennzeichnung offener Änderungen (wie im PDF-Editor) ─────────────────
+    //  Kennzeichnung offener Änderungen (wie im PDF-Editor)
     readonly property bool trackedNew: box.trackState === 1
     readonly property bool trackedDel: box.trackState === 2
     opacity: box.trackedDel ? 0.45 : 1.0
@@ -120,7 +107,6 @@ Item {
             edit.focus = false
     }
 
-    // ══ TEXT-NOTIZ (Post-it) ══════════════════════════════════════════════════
     readonly property bool hasPaper: isText && highlightColor.a > 0
 
     Rectangle {                                     // weicher Schattenwurf
@@ -162,7 +148,7 @@ Item {
         }
     }
 
-    // ══ ZEICHNUNG (Freihand / Pfeil / Rechteck / Ellipse) ═════════════════════
+    // ZEICHNUNG (Freihand / Pfeil / Rechteck / Ellipse)
     //  Canvas deckt die Bounding-Box PLUS Linienbreiten-Rand ab (die äußere
     //  Stifthälfte darf nicht abgeschnitten werden - Export zeichnet mittig).
     Canvas {
@@ -247,7 +233,7 @@ Item {
         Component.onCompleted: requestPaint()
     }
 
-    // ── Rahmen (nur Edit-Modus; Akzent bei Auswahl) ───────────────────────────
+    // Rahmen (nur Edit-Modus; Akzent bei Auswahl)
     Rectangle {
         anchors.fill: parent
         color: "transparent"
@@ -258,7 +244,6 @@ Item {
         border.width: box.selected ? 2 : 1
     }
 
-    // ── Text (Anzeige + Inline-Bearbeitung) ───────────────────────────────────
     TextEdit {
         id: edit
         visible: box.isText
@@ -271,8 +256,8 @@ Item {
         activeFocusOnPress: false
         selectByMouse: true
         persistentSelection: false
-        //  ↓ in der letzten Zeile springt ans Zeilenende (einheitlich in allen
-        //  Editoren der App - 2026-07-17).
+        //  Pfeil runter springt in der letzten Zeile ans Zeilenende - einheitlich
+        //  in allen Editoren der App.
         Keys.onDownPressed: (e) => {
             const yCur = edit.positionToRectangle(edit.cursorPosition).y
             const yEnd = edit.positionToRectangle(edit.length).y
@@ -300,11 +285,8 @@ Item {
         function _applyTranslit() {
             if (edit._trGuard || !box.editing || !Translit.enabled)
                 return
-            //  EIN Undo-Schritt statt zwei: `applyInDocument` klammert Loeschen
-            //  und Einfuegen im Dokument zusammen. Der fruehere Weg
-            //  (`remove()` + `insert()`) hinterliess je Tastendruck ZWEI
-            //  Schritte, sodass Strg+Z durch halb umgesetzte Zwischenstaende
-            //  lief („سَلam").
+            // EIN Undo-Schritt statt zwei: `applyInDocument` klammert Löschen und Einfügen zusammen. `remove()` +
+            // `insert()` hinterließ je Tastendruck zwei Schritte, Strg+Z lief durch halb umgesetzte Zwischenstände.
             edit._trGuard = true
             const r = Translit.applyInDocument(edit.textDocument, edit.cursorPosition)
             if (r.changed)
@@ -312,13 +294,8 @@ Item {
             edit._trGuard = false
         }
 
-        //  ── Strg+Z / Strg+Y: die Transliteration muss dabei STILLHALTEN ──
-        //  Ein Undo stellt den lateinischen Stand wieder her, `onTextChanged`
-        //  feuert, und die Transliteration schriebe ihn sofort wieder um - was
-        //  selbst ein Undo-Schritt ist. Strg+Z pendelte dadurch endlos zwischen
-        //  zwei Staenden (Nutzerbefund 2026-09-02, arabische Eingabe; belegt in
-        //  `tests/bench/bench_translitundo.cpp`). Der Guard, der ohnehin gegen
-        //  Re-Entranz schuetzt, deckt das mit ab.
+        // Strg+Z / Strg+Y: die Transliteration muss STILLHALTEN. Ein Undo stellt den lateinischen Stand her,
+        // `onTextChanged` feuert, und sie schriebe ihn sofort um - Strg+Z pendelte endlos (`bench_translitundo`).
         function _guardedUndo() {
             edit._trGuard = true
             edit.undo()
@@ -351,7 +328,6 @@ Item {
     }
     onAnnTextChanged: if (isText && !editing && edit.text !== annText) edit.text = annText
 
-    // ── Platzhalter in leerer Text-Notiz ──────────────────────────────────────
     Text {
         anchors.fill: parent
         anchors.margins: box.ctl.boxPaddingPx * box.imgScale
@@ -364,7 +340,7 @@ Item {
         verticalAlignment: box.vAlign === 1 ? Text.AlignVCenter : Text.AlignTop
     }
 
-    // ── Verschieben + Auswahl + Doppelklick (nur tool === Select) ─────────────
+    // Verschieben + Auswahl + Doppelklick (nur tool === Select)
     MouseArea {
         id: moveArea
         anchors.fill: parent
@@ -401,7 +377,7 @@ Item {
         onDoubleClicked: box.startEditing()
     }
 
-    // ── Größen-Handles: 4 Ecken + 4 Kantenmitten (nur bei Auswahl) ────────────
+    // Größen-Handles: 4 Ecken + 4 Kantenmitten (nur bei Auswahl)
     Repeater {
         model: box.interactive && !box.editing
                ? [ { hx: -1, hy: -1 }, { hx: 0, hy: -1 }, { hx: 1, hy: -1 },

@@ -3,7 +3,9 @@
 #include "app/PaneController.h"
 #include "app/PaneHost.h"
 #include "core/FileBrowseModel.h"
+#include "datev/DatevController.h"
 #include "docx/edit/DocxEditController.h"
+#include "table/TableController.h"
 #include "docx/edit/DocxTextArea.h"
 #include "editor/CodeHighlighter.h"
 #include "editor/TextDecorations.h"
@@ -50,14 +52,16 @@ void registerQmlTypes() {
     qmlRegisterType<mg::editor::CodeHighlighter>("MediaGallery", 1, 0, "CodeHighlighter");
     //  Zeilennummern-Spalte: malt nur die sichtbaren Bloecke (kein Item je Zeile).
     qmlRegisterType<mg::editor::TextGutter>("MediaGallery", 1, 0, "TextGutter");
-    //  Uebersichtsspalte (Minimap): liest die Farben, die der Faerber schon
-    //  in die Bloecke geschrieben hat - sie rechnet nichts nach.
-    //  ACHTUNG: `tests/bench/bench_shell.cpp` registriert dieselben Typen noch
-    //  einmal selbst. Ein neuer Typ gehoert an BEIDE Stellen, sonst bricht der
-    //  Pruefstand mit „X is not a type" (dreimal passiert).
+    // ACHTUNG: `tests/bench/bench_shell.cpp` registriert dieselben Typen noch einmal selbst. Ein neuer Typ gehört
+    // an BEIDE Stellen, sonst bricht der Prüfstand mit "X is not a type" (dreimal passiert).
     qmlRegisterType<mg::editor::TextMinimap>("MediaGallery", 1, 0, "TextMinimap");
     qmlRegisterType<mg::editor::TextFoldBar>("MediaGallery", 1, 0, "TextFoldBar");
     qmlRegisterType<mg::editor::TextDecorations>("MediaGallery", 1, 0, "TextDecorations");
+    //  DATEV-Buchungsstapel: EINE Instanz je Kachel, damit zwei Haelften
+    //  verschiedene Dateien zeigen koennen.
+    qmlRegisterType<mg::datev::DatevController>("MediaGallery", 1, 0, "DatevController");
+    //  Gewoehnliche Tabellendateien (CSV/TSV) - ebenfalls je Kachel.
+    qmlRegisterType<mg::table::TableController>("MediaGallery", 1, 0, "TableController");
 }
 
 }  // namespace mg

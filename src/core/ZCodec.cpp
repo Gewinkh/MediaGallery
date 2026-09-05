@@ -2,12 +2,8 @@
 
 #include <QtEndian>
 
-// ─────────────────────────────────────────────────────────────────────────────
-//  CRC-32 - für BEIDE Bauarten dieselbe Eigenimplementierung. zlibs crc32()
-//  wäre gleichwertig, aber dann liefen zwei Rechenwege durch die Tests statt
-//  einem; die Tabelle kostet 1 KB und ist bitgleich (tst_zcodec prüft das
-//  gegen zlib, wenn zlib da ist).
-// ─────────────────────────────────────────────────────────────────────────────
+// CRC-32 für beide Bauarten als Eigenimplementierung: zlibs `crc32()` wäre gleichwertig, aber dann liefen zwei
+// Rechenwege durch die Tests statt einem. Die Tabelle kostet 1 KB und ist bitgleich.
 namespace {
 
 struct Crc32Table {
@@ -39,10 +35,8 @@ quint32 crc32(const QByteArray& data) {
 
 
 #ifdef MG_HAVE_ZLIB
-// ─────────────────────────────────────────────────────────────────────────────
 //  Mit zlib: direkter Weg. Die Schleifen entsprechen dem, was vorher in
 //  PdfObjects/PdfPageCopier/PdfAudioController/DocxZip je einzeln stand.
-// ─────────────────────────────────────────────────────────────────────────────
 #include <zlib.h>
 #include <cstring>
 
@@ -122,14 +116,8 @@ QByteArray deflate(const QByteArray& src, Wrap wrap, int level, bool* ok) {
 }  // namespace mg::zcodec
 
 #else
-// ─────────────────────────────────────────────────────────────────────────────
-//  Ohne zlib: Qt-Codecs. qCompress/qUncompress stecken in QtCore und benutzen
-//  das zlib, das Qt ohnehin mitbringt - es fehlt nur dessen Kopf-Datei.
-//
-//  Rahmenkunde, auf der beide Richtungen beruhen:
-//      qCompress-Ausgabe = [4 B Größe, big-endian][2 B zlib-Kopf][Deflate][4 B Adler-32]
-//      qUncompress-Eingabe erwartet genau dieselbe Form.
-// ─────────────────────────────────────────────────────────────────────────────
+// Ohne zlib: Qt-Codecs. `qCompress`-Ausgabe = [4 B Größe, big-endian][2 B zlib-Kopf][Deflate][4 B Adler-32];
+// `qUncompress` erwartet genau dieselbe Form.
 namespace mg::zcodec {
 
 bool available() { return false; }
@@ -149,10 +137,8 @@ QByteArray inflate(const QByteArray& src, Wrap wrap, qint64 sizeHint,
         && quint8(src[0]) == 0x1Fu && quint8(src[1]) == 0x8Bu)
         return {};
 
-    //  Größenangabe ist für qUncompress nur der ERSTE Puffer - ist sie zu
-    //  klein, verdoppelt Qt selbst und entpackt erneut. Zu großzügig raten
-    //  kostet RAM, zu knapp kostet Durchläufe; Faktor 6 trifft die üblichen
-    //  Verhältnisse von PDF-Inhaltsströmen.
+    // Die Größenangabe ist für `qUncompress` nur der ERSTE Puffer - zu klein verdoppelt Qt selbst und entpackt
+    // erneut. Faktor 6 trifft die üblichen Verhältnisse von PDF-Inhaltsströmen.
     qint64 hint = (sizeHint > 0) ? sizeHint : src.size() * 6;
     hint = qBound<qint64>(1, hint, kMaxOutput);
 
@@ -172,10 +158,8 @@ QByteArray deflate(const QByteArray& src, Wrap wrap, int level, bool* ok) {
     if (ok) *ok = false;
     const bool raw = (wrap == Wrap::Raw);
 
-    //  Sonderfall leere Eingabe: qCompress liefert dann NUR die 4 Byte
-    //  Größenangabe und gar keinen Deflate-Strom. Beide Rahmen von Hand -
-    //  03 00 ist der leere Endblock, 00 00 00 01 der Adler-32 von "nichts",
-    //  78 01 ein gültiger zlib-Kopf (0x7801 % 31 == 0).
+    // Leere Eingabe: `qCompress` liefert nur die 4 Byte Größenangabe und gar keinen Deflate-Strom. Beide Rahmen
+    // deshalb von Hand - 03 00 ist der leere Endblock, 00 00 00 01 der Adler-32 von nichts.
     if (src.isEmpty()) {
         if (ok) *ok = true;
         return raw ? QByteArray("\x03\x00", 2)

@@ -7,18 +7,8 @@
 #include <QUrl>
 #include <QVariantList>
 
-// ─────────────────────────────────────────────────────────────────────────────
-//  EditorController.h - QML-Singleton `Editor`: die globalen Einstellungen des
-//  Texteditors, Farben WIE Verhalten.
-//
-//  Muster wie `PdfEdit` und `Docx`: ein Singleton fuer das, was appweit gilt,
-//  waehrend der eigentliche Faerber dezentral je Kachel lebt (`CodeHighlighter`
-//  als QML-TYP). Der Faerber hoert auf `paletteChanged` und faerbt neu.
-//
-//  Die Farben sind vom App-Theme GETRENNT (Festlegung des Nutzers 2026-09-02):
-//  eigene Profile, eigener Konfigurator, eigener Ex-/Import. Ein Wechsel des
-//  Oberflaechen-Themas laesst den Editor unberuehrt.
-// ─────────────────────────────────────────────────────────────────────────────
+// QML-Singleton `Editor`: die appweiten Einstellungen des Texteditors - der eigentliche Färber lebt dezentral je
+// Kachel (`CodeHighlighter`) und hört auf `paletteChanged`. Die Farben sind vom App-Theme GETRENNT.
 namespace mg::editor {
 
 class EditorController : public QObject {
@@ -68,25 +58,20 @@ public:
     QColor gutterText()       const { return m_palette.gutterText; }
     QColor gutterTextActive() const { return m_palette.gutterTextActive; }
 
-    //  ── Farbkonfigurator (Design-Reiter, Block „Text-Editor") ──────────────
+    //  Farbkonfigurator (Design-Reiter, Block „Text-Editor")
     //  Die Oberflaeche spricht die Farben ueber ihren Schluessel an ("keyword",
     //  "background"), damit dreizehn Namen nicht in QML und C++ doppelt stehen.
     Q_INVOKABLE QColor colorFor(const QString& key) const;
-    //  Der uebersetzte Anzeigename zu einem Farbschluessel. Er kommt aus C++
-    //  und nicht aus QML, weil ein dort ZUSAMMENGESETZTER String-Key
-    //  (`"EditorColor" + …`) fuer den Katalog-Treiber ein Torso ist - er
-    //  prueft, dass jeder in QML benutzte Schluessel wirklich existiert, und
-    //  das soll er auch koennen.
+    // Der übersetzte Anzeigename kommt aus C++, nicht aus QML: ein dort zusammengesetzter Schlüssel ist für den
+    // Katalog-Treiber ein Torso - der prüft, dass jeder benutzte Schlüssel wirklich existiert.
     Q_INVOKABLE QString colorLabel(const QString& key) const;
     //  Setzt eine Farbe. Wirkt NUR im Custom-Profil; in einem mitgelieferten
     //  Profil waere es ein stiller Verlust beim naechsten Profilwechsel.
     Q_INVOKABLE void   setColorFor(const QString& key, const QColor& c);
     //  Setzt das Custom-Profil auf die Vorgabe zurueck.
     Q_INVOKABLE void   resetCustom();
-    //  Die eigene Palette als JSON sichern bzw. laden. Dasselbe Format, das in
-    //  `[editor]/customPalette` steht - eine gesicherte Datei laesst sich also
-    //  auch von Hand lesen. Beim Laden wird das Profil auf „Custom" gestellt,
-    //  sonst saehe man von der geladenen Palette nichts.
+    // Die eigene Palette als JSON sichern und laden - dasselbe Format wie in `[editor]/customPalette`, also auch
+    // von Hand lesbar. Beim Laden wird das Profil auf "Custom" gestellt, sonst sähe man von der Palette nichts.
     Q_INVOKABLE bool   exportPalette(const QUrl& fileUrl) const;
     Q_INVOKABLE bool   importPalette(const QUrl& fileUrl);
     //  Uebernimmt die Farben eines mitgelieferten Profils ins Custom-Profil -

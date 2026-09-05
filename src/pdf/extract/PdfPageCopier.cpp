@@ -11,14 +11,8 @@
 #include "core/ZCodec.h"
 #include <cstring>
 
-// ══════════════════════════════════════════════════════════════════════════════
-//  Interne Helfer (Datei-lokal): Lexer, Objektmodell, Quelldokument, Plan.
-//  Alles bewusst in einem anonymen Namespace - nach außen existiert nur der
-//  PdfAssembler (Header). Kommentare erklären die PDF-Spezifika (ISO 32000).
-// ══════════════════════════════════════════════════════════════════════════════
 namespace {
 
-// ── Zeichenklassen laut PDF-Spezifikation ────────────────────────────────────
 inline bool isWs(char c) {
     return c == ' ' || c == '\t' || c == '\r' || c == '\n' || c == '\f' || c == '\0';
 }
@@ -29,10 +23,8 @@ inline bool isDelim(char c) {
 inline bool isRegular(char c) { return !isWs(c) && !isDelim(c); }
 inline bool isDigit(char c)   { return c >= '0' && c <= '9'; }
 
-// ── zlib-Inflate (FlateDecode) ───────────────────────────────────────────────
-//  Nur für XRef-/Objekt-Streams nötig (normale Streams werden verbatim
-//  kopiert). Erst zlib-Header versuchen, bei kaputtem Header roh-Deflate
-//  (windowBits −15) - manche Erzeuger schreiben fehlerhafte Header.
+// zlib-Inflate nur für XRef- und Objekt-Streams (normale Streams werden verbatim kopiert). Erst den
+// zlib-Header versuchen, bei kaputtem Header roh-Deflate - manche Erzeuger schreiben fehlerhafte Header.
 QByteArray zlibInflate(const char* src, qint64 len, bool* ok) {
     *ok = false;
     if (!src || len <= 0) return {};
@@ -46,7 +38,6 @@ QByteArray zlibInflate(const char* src, qint64 len, bool* ok) {
                                /*tolerant*/ true, ok);
 }
 
-// ── PNG-Prädiktor-Dekodierung (für XRef-Streams üblich: Predictor 12/„Up") ──
 QByteArray applyPngPredictor(const QByteArray& in, int colors, int bpc, int columns,
                              bool* ok) {
     *ok = false;
@@ -54,8 +45,6 @@ QByteArray applyPngPredictor(const QByteArray& in, int colors, int bpc, int colu
     const int rowLen = (colors * bpc * columns + 7) / 8;
     const int bpp    = qMax(1, (colors * bpc + 7) / 8);
     if (rowLen <= 0 || in.size() % (rowLen + 1) != 0) {
-        // Zeilenraster passt nicht exakt -> defensiv trotzdem zeilenweise lesen,
-        // solange volle Zeilen vorhanden sind.
         if (in.size() < rowLen + 1) return {};
     }
     const int rows = in.size() / (rowLen + 1);
@@ -93,7 +82,6 @@ QByteArray applyPngPredictor(const QByteArray& in, int colors, int bpc, int colu
     return out;
 }
 
-// ── Geparstes PDF-Objekt (Werte-Baum; Skalar-Rohtext bleibt verbatim) ────────
 struct PObj {
     enum T { Null, Bool, Int, Real, Str, Name, Arr, Dict, Stream, Ref };
     T t = Null;
@@ -113,7 +101,6 @@ struct PObj {
     }
 };
 
-// ── Lexer über einem Rohpuffer ───────────────────────────────────────────────
 struct Lexer {
     const char* d = nullptr;
     qint64      n = 0;
@@ -133,7 +120,6 @@ struct Lexer {
             break;
         }
     }
-    // Liest ein reguläres Token (Keyword/Zahl) ab der aktuellen Position.
     QByteArray token() {
         skipWs();
         const qint64 s = p;
@@ -158,8 +144,6 @@ struct Lexer {
     }
 };
 
-// PDF-Name dekodieren (#xx-Escapes) - nur für den Key-VERGLEICH; der Rohtext
-// bleibt für die Ausgabe erhalten.
 QByteArray decodeName(const QByteArray& rawWithSlash) {
     QByteArray out;
     out.reserve(rawWithSlash.size());
@@ -177,7 +161,6 @@ QByteArray decodeName(const QByteArray& rawWithSlash) {
 
 constexpr int kMaxParseDepth = 200;
 
-// Rekursiver Objekt-Parser. Erkennt „N G R"-Referenzen per Lookahead.
 bool parseValue(Lexer& lx, PObj* out, int depth) {
     if (depth > kMaxParseDepth) return false;
     lx.skipWs();
@@ -203,7 +186,6 @@ bool parseValue(Lexer& lx, PObj* out, int depth) {
                 out->dict.append({decodeName(key.raw), val});
             }
         }
-        // Hex-String <...>
         const qint64 s = lx.p;
         ++lx.p;
         while (lx.p < lx.n && lx.d[lx.p] != '>') ++lx.p;
@@ -259,7 +241,6 @@ bool parseValue(Lexer& lx, PObj* out, int depth) {
         }
         const QByteArray numRaw(lx.d + s, static_cast<int>(lx.p - s));
         if (!real && c != '+' && c != '-') {
-            // Lookahead auf „G R" -> indirekte Referenz (zerstörungsfrei).
             const qint64 save = lx.p;
             qint64 gen = 0;
             if (lx.readInt(&gen)) {
@@ -279,7 +260,6 @@ bool parseValue(Lexer& lx, PObj* out, int depth) {
         if (!real) out->i = numRaw.toLongLong();
         return true;
     }
-    // Keywords
     {
         const QByteArray kw = lx.token();
         if (kw == "true" || kw == "false") { out->t = PObj::Bool; out->raw = kw; return true; }
@@ -288,16 +268,12 @@ bool parseValue(Lexer& lx, PObj* out, int depth) {
     }
 }
 
-// ── XRef-Eintrag ─────────────────────────────────────────────────────────────
 struct XEntry {
     int    type = 0;    // 1 = Offset in Datei · 2 = in Objekt-Stream
     qint64 a    = 0;    // type1: Byte-Offset · type2: Objektnummer des ObjStm
     int    b    = 0;    // type1: Generation  · type2: Index im ObjStm
 };
 
-// ─────────────────────────────────────────────────────────────────────────────
-//  SourceDoc - EIN Quell-PDF: mmap, XRef-Kette, Objektauflösung, Seitenbaum.
-// ─────────────────────────────────────────────────────────────────────────────
 class SourceDoc {
 public:
     ~SourceDoc() { close(); }
@@ -312,7 +288,6 @@ public:
     // Spezifikation dagegen ein legitimes `null` (-> *legalNull = true).
     const PObj* getObject(qint64 num, bool* legalNull);
 
-    // Seitenbaum abflachen: Objektnummern + materialisierte Vererbung.
     struct PageInfo {
         qint64 objNum = 0;
         PObj   dict;                 // Original-Seiten-Dictionary
@@ -388,9 +363,6 @@ void SourceDoc::close() {
 }
 
 void SourceDoc::insertEntry(qint64 num, const XEntry& e) {
-    // Erste Sichtung gewinnt (jüngste XRef zuerst gelesen). Freie Einträge
-    // werden gar nicht erst eingetragen - so füllt bei Hybrid-Dateien der
-    // /XRefStm die im klassischen Teil als „frei" markierten ObjStm-Objekte.
     if (num <= 0 || m_xref.contains(num)) return;
     m_xref.insert(num, e);
 }
@@ -405,7 +377,6 @@ void SourceDoc::mergeTrailer(const PObj& dict) {
 }
 
 bool SourceDoc::parseXrefChain(QString* err) {
-    // `startxref` steht am Dateiende; defensiv in den letzten 64 KB suchen.
     const qint64 tail = qMin<qint64>(m_size, 64 * 1024);
     const QByteArray tailBytes = QByteArray::fromRawData(m_data + m_size - tail,
                                                          static_cast<int>(tail));
@@ -445,7 +416,6 @@ bool SourceDoc::parseXrefAt(qint64 offset, QSet<qint64>* visited, QString* err) 
     Lexer lx{m_data, m_size, offset};
     lx.skipWs();
     if (lx.expectKeyword("xref")) {
-        // ── Klassische Tabelle ────────────────────────────────────────────
         for (;;) {
             lx.skipWs();
             if (lx.expectKeyword("trailer")) break;
@@ -467,7 +437,6 @@ bool SourceDoc::parseXrefAt(qint64 offset, QSet<qint64>* visited, QString* err) 
         }
         PObj tdict;
         if (!parseValue(lx, &tdict, 0) || tdict.t != PObj::Dict) return false;
-        // Hybrid-Datei: /XRefStm VOR /Prev verarbeiten (Spez. 7.5.8.4).
         if (const PObj* xs = tdict.find("XRefStm"); xs && xs->t == PObj::Int)
             parseXrefAt(xs->i, visited, err);      // best effort
         mergeTrailer(tdict);
@@ -476,7 +445,6 @@ bool SourceDoc::parseXrefAt(qint64 offset, QSet<qint64>* visited, QString* err) 
         return true;
     }
 
-    // ── XRef-STREAM (PDF 1.5+) ────────────────────────────────────────────
     qint64 num = 0;
     PObj obj;
     if (!parseIndirectAt(offset, &num, &obj) || obj.t != PObj::Stream)
@@ -490,7 +458,6 @@ bool SourceDoc::parseXrefAt(qint64 offset, QSet<qint64>* visited, QString* err) 
     QByteArray data;
     if (!decodeStream(obj, &data)) return false;
 
-    // /Index (Standard: [0 /Size]) -> (start,count)-Paare.
     QVector<QPair<qint64, qint64>> ranges;
     if (const PObj* idx = obj.find("Index"); idx && idx->t == PObj::Arr) {
         for (int k = 0; k + 1 < idx->arr.size(); k += 2)
@@ -519,7 +486,6 @@ bool SourceDoc::parseXrefAt(qint64 offset, QSet<qint64>* visited, QString* err) 
             const qint64 onum = r.first + k;
             if (type == 1)      insertEntry(onum, {1, f2, static_cast<int>(f3)});
             else if (type == 2) insertEntry(onum, {2, f2, static_cast<int>(f3)});
-            // Typ 0 (frei) und unbekannte Typen: überspringen.
         }
     }
     mergeTrailer(obj);
@@ -528,7 +494,6 @@ bool SourceDoc::parseXrefAt(qint64 offset, QSet<qint64>* visited, QString* err) 
     return true;
 }
 
-// „N G obj … endobj" an einem Datei-Offset parsen (inkl. Stream-Erkennung).
 bool SourceDoc::parseIndirectAt(qint64 offset, qint64* numOut, PObj* out) {
     if (offset < 0 || offset >= m_size) return false;
     Lexer lx{m_data, m_size, offset};
@@ -540,13 +505,11 @@ bool SourceDoc::parseIndirectAt(qint64 offset, qint64* numOut, PObj* out) {
 
     lx.skipWs();
     if (out->t == PObj::Dict && lx.expectKeyword("stream")) {
-        // Stream-Daten beginnen nach CRLF oder LF direkt hinter dem Keyword.
         if (lx.p < lx.n && lx.d[lx.p] == '\r') ++lx.p;
         if (lx.p < lx.n && lx.d[lx.p] == '\n') ++lx.p;
         out->t = PObj::Stream;
         out->streamPos = lx.p;
 
-        // /Length auflösen (darf indirekt sein).
         qint64 len = -1;
         if (const PObj* L = out->find("Length")) {
             if (L->t == PObj::Int) {
@@ -575,7 +538,6 @@ bool SourceDoc::parseIndirectAt(qint64 offset, qint64* numOut, PObj* out) {
             const int idx = hay.indexOf("endstream");
             if (idx < 0) return false;
             qint64 realLen = idx;
-            // EOL unmittelbar vor `endstream` zählt nicht zu den Daten.
             while (realLen > 0 && (m_data[out->streamPos + realLen - 1] == '\n'
                                    || m_data[out->streamPos + realLen - 1] == '\r'))
                 --realLen;
@@ -646,7 +608,6 @@ bool SourceDoc::ensureObjStm(qint64 stmNum) {
     QByteArray data;
     if (!decodeStream(stm, &data)) return false;
 
-    // Kopf: N Paare „objnum offset" (Offsets relativ zu /First).
     QVector<QPair<qint64, qint64>> pairs;
     Lexer hl{data.constData(), data.size(), 0};
     for (qint64 k = 0; k < N->i && k < 100'000; ++k) {
@@ -671,7 +632,6 @@ const PObj* SourceDoc::getObject(qint64 num, bool* legalNull) {
             indexObjStmsByScan();
             return getObject(num, legalNull);
         }
-        // Referenz auf nicht existierendes Objekt ist laut Spez. `null`.
         if (legalNull) *legalNull = true;
         return nullptr;
     }
@@ -717,7 +677,6 @@ bool SourceDoc::reconstructByScan(QString* err) {
         const int kwPos = at;
         at += 3;
         if (kwPos + 3 < hay.size() && isRegular(hay.at(kwPos + 3))) continue;
-        // Rückwärts: WS, Generationszahl, WS, Objektnummer.
         int p = kwPos - 1;
         while (p >= 0 && isWs(hay.at(p))) --p;
         const int genEnd = p;
@@ -740,7 +699,6 @@ bool SourceDoc::reconstructByScan(QString* err) {
     }
     m_xref = found;
 
-    // /Root aus dem letzten Trailer …
     if (!m_trailer.find("Root")) {
         int tpos = hay.lastIndexOf("trailer");
         while (tpos >= 0 && !m_trailer.find("Root")) {
@@ -751,7 +709,6 @@ bool SourceDoc::reconstructByScan(QString* err) {
             tpos = (tpos > 0) ? hay.lastIndexOf("trailer", tpos - 1) : -1;
         }
     }
-    // … oder notfalls über die /Type/Catalog-Suche.
     if (!m_trailer.find("Root")) {
         for (auto it = m_xref.constBegin(); it != m_xref.constEnd(); ++it) {
             bool legalNull = false;
@@ -840,7 +797,6 @@ bool SourceDoc::flattenPages(QVector<PageInfo>* out, QString* err) {
             if (err) *err = QStringLiteral("node");
             return false;
         }
-        // Vererbbare Attribute dieses Knotens übernehmen (Kind schlägt Eltern).
         Frame nx = fr;
         if (const PObj* v = node->find("Resources")) nx.inhRes   = *v;
         if (const PObj* v = node->find("MediaBox"))  nx.inhMedia = *v;
@@ -854,7 +810,6 @@ bool SourceDoc::flattenPages(QVector<PageInfo>* out, QString* err) {
                             || (!kids && (!type || type->t != PObj::Name
                                           || decodeName(type->raw) != "Pages"));
         if (kids && kids->t == PObj::Arr && !isPage) {
-            // Kinder in UMGEKEHRTER Reihenfolge stapeln -> Dokumentreihenfolge.
             for (int k = kids->arr.size() - 1; k >= 0; --k)
                 if (kids->arr[k].t == PObj::Ref)
                     stack.append({kids->arr[k].i, nx.inhRes, nx.inhMedia,
@@ -877,12 +832,8 @@ bool SourceDoc::flattenPages(QVector<PageInfo>* out, QString* err) {
     return true;
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-//  CopyPlan - plant die verlustfreie Übernahme EINER Quelle vollständig im
-//  Speicher (Segmente), damit ein Fehlschlag die Ausgabe nicht fragmentiert.
-//  Stream-ROHDATEN bleiben als (Offset,Länge)-Spans auf dem Quell-Mapping -
-//  kein Byte-Kopieren großer Inhalte vor dem eigentlichen Schreiben.
-// ─────────────────────────────────────────────────────────────────────────────
+// Plant die verlustfreie Übernahme EINER Quelle vollständig im Speicher, damit ein Fehlschlag die Ausgabe nicht
+// fragmentiert. Stream-Rohdaten bleiben als Spans auf dem Quell-Mapping - kein Byte-Kopieren vor dem Schreiben.
 struct Segment {
     QByteArray bytes;          // ODER …
     qint64     srcOff = -1;    // … Span in der Quelldatei
@@ -897,11 +848,8 @@ struct PlannedObject {
 
 class CopyPlan {
 public:
-    //  `pages` ist der EINMAL abgeflachte Seitenbaum der Quelle, `carriedMap`
-    //  die Zuordnung Quell-Objnr. -> neue Objnr. aus FRÜHEREN Aufrufen zu
-    //  derselben Quelle. Beides zusammen macht wiederholte Aufrufe billig: der
-    //  Struktur-Parse entfällt, und schon geschriebene Objekte (Schriften,
-    //  Ressourcen) werden nicht ein zweites Mal geplant.
+    // `pages` ist der EINMAL abgeflachte Seitenbaum, `carriedMap` die Zuordnung alter auf neue Objektnummern aus
+    // früheren Aufrufen. Beides macht Wiederholungen billig: kein zweiter Struktur-Parse, keine doppelten Objekte.
     CopyPlan(SourceDoc* doc, int firstNewNum,
              const QVector<SourceDoc::PageInfo>* pages,
              QHash<qint64, int> carriedMap)
@@ -917,7 +865,6 @@ public:
     const QVector<PlannedObject>& objects() const { return m_objects; }
     int nextNum() const { return m_next; }
     const QVector<int>& pageNewNums() const { return m_pageNewNums; }
-    //  Fortgeschriebene Zuordnung für den nächsten Aufruf zu dieser Quelle.
     QHash<qint64, int> takeMap() { return std::move(m_map); }
 
 private:
@@ -956,10 +903,8 @@ bool CopyPlan::serializeValue(const PObj& v, QByteArray* out, int depth) {
     case PObj::Name:  out->append(v.raw);   return true;
     case PObj::Ref: {
         if (m_allPageNums.contains(v.i)) {
-            // Referenz auf eine Seite: gewählte Seiten werden umgemappt (z. B.
-            // /P einer Annotation, Link-Ziel innerhalb der Auswahl), NICHT
-            // gewählte werden zu `null` gekappt (verhindert, dass der
-            // Graph-Abschluss das restliche Dokument mitzieht).
+            // Referenz auf eine Seite: gewählte werden umgemappt, NICHT gewählte zu `null` gekappt - das verhindert, dass
+            // der Graph-Abschluss das restliche Dokument mitzieht.
             const auto it = m_map.constFind(v.i);
             if (it == m_map.constEnd()) { out->append("null"); return true; }
             out->append(QByteArray::number(it.value()));
@@ -986,7 +931,6 @@ bool CopyPlan::serializeValue(const PObj& v, QByteArray* out, int depth) {
             if (v.t == PObj::Stream && kv.first == "Length")
                 continue;                        // wird als Literal neu geschrieben
             out->append('/');
-            // Key-Rohtext ist dekodiert gespeichert -> re-escapen, falls nötig.
             for (const char c : kv.first) {
                 if (isRegular(c) && c != '#' && static_cast<uchar>(c) > 0x20) {
                     out->append(c);
@@ -1018,7 +962,6 @@ bool CopyPlan::planObject(qint64 srcNum, int newNum) {
     const PObj* obj = m_doc->getObject(srcNum, &legalNull);
     if (!obj) {
         if (!legalNull) return false;            // struktureller Fehler -> Abbruch
-        // Referenz auf nicht existierendes Objekt = laut Spezifikation `null`.
         PlannedObject po;
         po.newNum = newNum;
         po.segs.append({QByteArray("null"), -1, 0});
@@ -1042,11 +985,8 @@ bool CopyPlan::planObject(qint64 srcNum, int newNum) {
 }
 
 bool CopyPlan::planPage(const SourceDoc::PageInfo& pi, int newNum, int rotDelta) {
-    // Zusätzliche Drehung (Seite drehen im Editor): Die Eigendrehung der
-    // Quellseite - eigenes /Rotate oder ein vom Seitenbaum geerbtes - wird um
-    // `rotDelta` weitergedreht und als EIN materialisierter Wert geschrieben.
-    // Das Original bleibt dabei unangetastet (es wird nur kopiert), und der
-    // Seiteninhalt selbst bleibt byteweise erhalten.
+    // Die Eigendrehung der Quellseite - eigenes oder geerbtes /Rotate - wird um `rotDelta` weitergedreht und als EIN
+    // materialisierter Wert geschrieben. Das Original bleibt unangetastet, der Seiteninhalt byteweise erhalten.
     rotDelta = ((rotDelta % 360) + 360) % 360;
     int rotOut = -1;                                 // −1 = keine Drehung schreiben
     if (rotDelta != 0) {
@@ -1135,7 +1075,6 @@ bool CopyPlan::plan(const QVector<int>& pageIndices, const QVector<int>& rotatio
         }
         m_pageNewNums.append(c.second);
     }
-    // Transitiven Abschluss abarbeiten (Deckel gegen entartete Dateien).
     while (!m_queue.isEmpty()) {
         if (m_objects.size() > 250'000) {
             if (err) *err = QStringLiteral("closure");
@@ -1152,20 +1091,9 @@ bool CopyPlan::plan(const QVector<int>& pageIndices, const QVector<int>& rotatio
 
 }   // namespace
 
-// ══════════════════════════════════════════════════════════════════════════════
-//  PdfAssembler
-// ══════════════════════════════════════════════════════════════════════════════
-// ── Geparste Quellen dieses Laufs ────────────────────────────────────────────
-//  Warum es das gibt: Mischt der Nutzer in der Werkbank Seiten mehrerer PDFs,
-//  entsteht je Wechsel ein eigener Auftrag - `addSourcePages` traf dieselbe
-//  Datei dann bei JEDEM Wechsel neu und parste sie jedes Mal komplett; zugleich
-//  wanderten die geteilten Objekte (Schriften!) bei jedem Aufruf ein weiteres
-//  Mal in die Ausgabe. Gemessen an 100 verschränkten Seiten aus zwei Dateien:
-//  58,7 ms und 784 KB gegen 1,6 ms und 177 KB bei EINEM Auftrag.
-//
-//  Gedeckelt auf kMaxCachedSources Quellen (LRU). Wird eine Quelle verdrängt,
-//  fällt der Lauf für sie exakt auf das frühere Verhalten zurück - langsamer
-//  und größer, aber nie falsch.
+// Ohne Zwischenspeicher parste addSourcePages dieselbe Datei bei jedem Wechsel neu
+// und legte geteilte Objekte (Schriften) mehrfach ab: an 100 verschraenkten Seiten
+// 58,7 ms / 784 KB gegen 1,6 ms / 177 KB. Verdraengt (LRU) faellt es aufs Alte zurueck.
 namespace { constexpr int kMaxCachedSources = 8; }
 
 struct PdfAssembler::SourceCache {
@@ -1182,7 +1110,6 @@ struct PdfAssembler::SourceCache {
 PdfAssembler::PdfAssembler(QIODevice* out)
     : m_sources(std::make_unique<SourceCache>()), m_out(out) {}
 
-//  Out-of-line, weil `SourceCache` erst hier vollständig ist.
 PdfAssembler::~PdfAssembler() = default;
 
 bool PdfAssembler::writeRaw(const QByteArray& bytes, QString* err) {
@@ -1206,7 +1133,6 @@ bool PdfAssembler::begin(QString* err) {
     if (m_begun) return true;
     m_begun = true;
     m_offsets.resize(3);                          // 0 (frei) + 1 Katalog + 2 Baum
-    // Binärmarker-Kommentar signalisiert 8-Bit-Inhalt (Spez.-Empfehlung).
     return writeRaw(QByteArrayLiteral("%PDF-1.7\n%\xE2\xE3\xCF\xD3\n"), err);
 }
 
@@ -1222,7 +1148,6 @@ bool PdfAssembler::addSourcePages(const QString& sourcePath,
         if (err) *err = QStringLiteral("state");
         return false;
     }
-    //  Quelle aus dem Zwischenspeicher holen oder einmalig parsen.
     SourceCache::Entry* entry = nullptr;
     auto hit = m_sources->byPath.find(sourcePath);
     if (hit != m_sources->byPath.end()) {
@@ -1233,7 +1158,6 @@ bool PdfAssembler::addSourcePages(const QString& sourcePath,
         QVector<SourceDoc::PageInfo> flat;
         if (!doc->flattenPages(&flat, err)) return false;
 
-        //  Platz schaffen: den am längsten unbenutzten Eintrag verdrängen.
         while (m_sources->byPath.size() >= kMaxCachedSources) {
             auto oldest = m_sources->byPath.begin();
             for (auto it = m_sources->byPath.begin(); it != m_sources->byPath.end(); ++it)
@@ -1248,14 +1172,11 @@ bool PdfAssembler::addSourcePages(const QString& sourcePath,
     entry->used = ++m_sources->tick;
     SourceDoc& doc = *entry->doc;
 
-    // Erst VOLLSTÄNDIG planen - schlägt hier etwas fehl, wurde noch kein Byte
-    // geschrieben und der Aufrufer kann für DIESE Quelle rastern. Die
-    // Zuordnung früherer Aufrufe wird mitgegeben (geteilte Objekte nur einmal)
-    // und danach fortgeschrieben.
+    // Erst VOLLSTÄNDIG planen: schlägt hier etwas fehl, wurde noch kein Byte geschrieben und der Aufrufer kann für
+    // DIESE Quelle rastern. Die Zuordnung früherer Aufrufe wird mitgegeben und danach fortgeschrieben.
     CopyPlan plan(&doc, m_nextObj, &entry->pages, entry->map);
     if (!plan.plan(pages, rotations, err)) return false;
 
-    // Dann in einem Rutsch schreiben (Stream-Spans direkt vom Quell-Mapping).
     for (const PlannedObject& po : plan.objects()) {
         if (!beginObject(po.newNum, err)) return false;
         for (const Segment& s : po.segs) {
@@ -1289,7 +1210,6 @@ bool PdfAssembler::addRasterPage(const QByteArray& jpeg, int pxW, int pxH,
     const int cntObj  = m_nextObj++;
     const int pageObj = m_nextObj++;
 
-    // Bild-XObject (JPEG bleibt JPEG: DCTDecode, kein Re-Encoding).
     if (!beginObject(imgObj, err)) return false;
     QByteArray d = "<< /Type /XObject /Subtype /Image /Width "
                  + QByteArray::number(pxW) + " /Height " + QByteArray::number(pxH)
@@ -1300,7 +1220,6 @@ bool PdfAssembler::addRasterPage(const QByteArray& jpeg, int pxW, int pxH,
         || !writeRaw(QByteArrayLiteral("\nendstream\nendobj\n"), err))
         return false;
 
-    // Inhaltsstrom: Bild vollflächig auf die Seite skalieren.
     const QByteArray content = "q " + QByteArray::number(wPt, 'f', 4) + " 0 0 "
                              + QByteArray::number(hPt, 'f', 4)
                              + " 0 0 cm /Im0 Do Q";
@@ -1309,7 +1228,6 @@ bool PdfAssembler::addRasterPage(const QByteArray& jpeg, int pxW, int pxH,
                       + " >>\nstream\n" + content + "\nendstream\nendobj\n", err))
         return false;
 
-    // Seite
     if (!beginObject(pageObj, err)) return false;
     if (!writeRaw("<< /Type /Page /Parent 2 0 R /MediaBox [0 0 "
                       + QByteArray::number(wPt, 'f', 4) + ' '
@@ -1328,18 +1246,15 @@ bool PdfAssembler::addBlankPage(const QSizeF& pagePt, QString* err) {
         if (err) *err = QStringLiteral("state");
         return false;
     }
-    // A4-Fallback, falls eine unbrauchbare Größe hereingereicht wird.
     const double wPt = pagePt.width()  > 1.0 ? pagePt.width()  : 595.276;
     const double hPt = pagePt.height() > 1.0 ? pagePt.height() : 841.890;
     const int cntObj  = m_nextObj++;
     const int pageObj = m_nextObj++;
 
-    // Leerer Inhaltsstrom - nichts zu zeichnen; der Seitengrund ist weiß.
     if (!beginObject(cntObj, err)) return false;
     if (!writeRaw(QByteArrayLiteral("<< /Length 0 >>\nstream\n\nendstream\nendobj\n"), err))
         return false;
 
-    // Seite (keine Ressourcen, eigene MediaBox).
     if (!beginObject(pageObj, err)) return false;
     if (!writeRaw("<< /Type /Page /Parent 2 0 R /MediaBox [0 0 "
                       + QByteArray::number(wPt, 'f', 4) + ' '
@@ -1360,7 +1275,6 @@ bool PdfAssembler::finish(QString* err) {
         if (err) *err = QStringLiteral("nopages");
         return false;
     }
-    // Seitenbaum (Objekt 2)
     if (!beginObject(2, err)) return false;
     QByteArray kids;
     for (int pn : std::as_const(m_pageObjs))
@@ -1368,13 +1282,11 @@ bool PdfAssembler::finish(QString* err) {
     if (!writeRaw("<< /Type /Pages /Count " + QByteArray::number(m_pageObjs.size())
                       + " /Kids [ " + kids + "] >>\nendobj\n", err))
         return false;
-    // Katalog (Objekt 1)
     if (!beginObject(1, err)) return false;
     if (!writeRaw(QByteArrayLiteral("<< /Type /Catalog /Pages 2 0 R >>\nendobj\n"),
                   err))
         return false;
 
-    // Klassische XRef-Tabelle (überall akzeptiert) + Trailer.
     const qint64 xrefPos = m_pos;
     const int count = m_offsets.size();
     QByteArray x = "xref\n0 " + QByteArray::number(count) + "\n"

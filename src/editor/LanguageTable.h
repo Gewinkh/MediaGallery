@@ -5,23 +5,10 @@
 #include <QStringList>
 #include <QStringView>
 
-// ─────────────────────────────────────────────────────────────────────────────
-//  LanguageTable.h - die Sprachen als DATEN, nicht als Code.
-//
-//  Eine neue Sprache ist ein Eintrag in `LanguageTable.cpp` und sonst nichts:
-//  Scanner-Art, Schluesselwoerter, Typwoerter, Kommentarzeichen, Begrenzer.
-//  Der Zerleger (`SyntaxScanner`) kennt nur die vier Arten unten, nie eine
-//  einzelne Sprache - sonst waechst mit jeder Sprache auch der Code, und genau
-//  das wollte der Auftrag vermeiden.
-//
-//  Die Zuordnung Endung -> Sprache steht EBENFALLS hier (nicht als if-Kette).
-//  `.h` ist der Sonderfall: es zaehlt als C/C++, weil das im Baum dieses
-//  Projekts die einzige vorkommende Bedeutung ist.
-// ─────────────────────────────────────────────────────────────────────────────
+// Die Sprachen als DATEN, nicht als Code: eine neue Sprache ist ein Eintrag in `LanguageTable.cpp` und sonst
+// nichts. Der Zerleger kennt nur die vier Arten unten, nie eine einzelne Sprache. `.h` zählt als C/C++.
 namespace mg::editor {
 
-//  Wie eine Zeile zerlegt wird. Die meisten Klammer-Sprachen unterscheiden sich
-//  nur in der Wortliste - dafuer gibt es genau EINE Art.
 enum class ScannerKind : quint8 {
     PlainText,   // keine Faerbung (txt, log, csv …)
     CLike,       // // und /* */, "…" '…', Praeprozessor mit #
@@ -44,8 +31,6 @@ enum class FoldKind : quint8 {
     Keywords    // Lua/Ruby/CMake - `function`/`do`/`if` bis `end`/`endif`
 };
 
-//  Ein Wortfeld als Zeiger + Laenge. Die Felder liegen sortiert im Programm
-//  (static const), damit die Suche binaer laufen kann und nichts allokiert.
 enum class ColonStyle : quint8 { None, Anywhere, LineStart };
 
 struct WordList {
@@ -67,19 +52,12 @@ struct LanguageDef {
     QLatin1StringView blockClose;     // "*/"
 
     bool preprocHash   = false;       // '#' als erstes Zeichen = Direktive
-    //  CSS-Eigenheiten. Als TABELLENFELD und nicht als Sonderweg im Zerleger:
-    //  beides global zu machen ginge schief - `#` ist anderswo ein Operator,
-    //  und „Wort vor Doppelpunkt" traefe in C++ jede Sprungmarke und jedes
-    //  `case x:`, in Python jede Typangabe.
+    // CSS-Eigenheiten als TABELLENFELD, nicht als Sonderweg im Zerleger: global gemacht ginge es schief - `#` ist
+    // anderswo ein Operator, und "Wort vor Doppelpunkt" träfe jede Sprungmarke und jedes `case x:`.
     bool hashColors    = false;       // #fff / #F2F1EC ist eine Farbe (Zahl)
-    //  Wann ist ein Wort vor ':' ein Eigenschaftsname?
-    //   Anywhere  - CSS: `body{background:x;color:y}` steht oft in EINER Zeile,
-    //               ein Eigenschaftsname beginnt dort keine Zeile.
-    //   LineStart - QML: nur wenn davor auf der Zeile nichts als Bezeichner und
-    //               Punkte stehen (`anchors.fill:`). So bleibt der Doppelpunkt
-    //               einer Bedingung (`a ? b : c`) ungefaerbt.
+    // Wann ist ein Wort vor ':' ein Eigenschaftsname? `Anywhere` für CSS, wo mehrere Regeln in einer Zeile stehen;
+    // `LineStart` für QML, damit der Doppelpunkt einer Bedingung (`a ? b : c`) ungefärbt bleibt.
     ColonStyle propertyColon = ColonStyle::None;
-    //  Grossgeschriebenes Wort vor '{' ist ein Typ (QML: `Rectangle {`).
     bool typeBeforeBrace = false;
     bool tripleQuotes  = false;       // ''' bzw. """ ueber mehrere Zeilen
     bool rawStrings    = false;       // R"( … )" ueber mehrere Zeilen
@@ -94,23 +72,16 @@ struct LanguageDef {
     WordList foldClose;
 };
 
-//  Sprache zu einem Dateipfad. Nie nullptr: unbekannte Endungen liefern den
-//  PlainText-Eintrag, damit der Aufrufer keinen Sonderfall braucht.
 const LanguageDef& languageForPath(QStringView path);
 
-//  Sprache ueber ihren Bezeichner ("cpp"). Nie nullptr, s. o.
 const LanguageDef& languageForId(QStringView id);
 
-//  Der PlainText-Eintrag - „keine Faerbung", aber ein gueltiger Eintrag.
 const LanguageDef& plainTextLanguage();
 
-//  Alle Endungen, die der Editor kennt (ohne Punkt, kleingeschrieben). Fuer
-//  Pruefstaende und Gegenproben: die Galerie MUSS jede davon als Textdatei
-//  fuehren, sonst faerbt der Editor eine Sprache, die sich nicht oeffnen laesst
-//  (s. `media/MediaItem.h`).
+// Alle Endungen, die der Editor kennt. Für Prüfstände und Gegenproben: die Galerie MUSS jede davon als
+// Textdatei führen, sonst färbt der Editor eine Sprache, die sich nicht öffnen lässt.
 QStringList knownExtensions();
 
-//  Steht das Wort in der (sortierten) Liste? Binaersuche, ohne Allokation.
 bool containsWord(const WordList& list, QStringView word);
 
 }  // namespace mg::editor

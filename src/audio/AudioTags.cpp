@@ -8,13 +8,11 @@
 
 namespace {
 
-// ── Schutzgrenzen (Regel 21) ────────────────────────────────────────────────
 constexpr qint64 kMaxTagBytes   = 32ll << 20;   // ID3-Block, moov, Ogg-Vorspann
 constexpr qint64 kMaxCoverBytes = 16ll << 20;   // ein Bild
 constexpr int    kMaxFields     = 4096;         // Frames/Kommentare je Datei
 constexpr qint64 kOggScanBytes  = 4ll << 20;    // so weit wird nach dem Kommentar gesucht
 
-// ── Rohlesen mit Grenzen ────────────────────────────────────────────────────
 inline bool have(const QByteArray& b, qint64 off, qint64 n) {
     return off >= 0 && n >= 0 && off <= b.size() - n;
 }
@@ -43,9 +41,6 @@ const uchar* u(const QByteArray& b) {
     return reinterpret_cast<const uchar*>(b.constData());
 }
 
-// ── ID3 ─────────────────────────────────────────────────────────────────────
-//  Textkodierung eines ID3-Feldes. 0 = Latin-1, 1 = UTF-16 mit BOM,
-//  2 = UTF-16BE, 3 = UTF-8. Alles andere ist ungültig.
 QString id3Text(quint8 enc, const QByteArray& data) {
     if (data.isEmpty()) return {};
     QString s;
@@ -66,10 +61,8 @@ QString id3Text(quint8 enc, const QByteArray& data) {
     case 3: s = QString::fromUtf8(data); break;
     default: return {};
     }
-    //  Abschließende Nullen wegnehmen - aber ERST JETZT. Vorher, auf den rohen
-    //  Bytes, verstümmelte es UTF-16: dort endet ein gewöhnlicher Buchstabe
-    //  („t" = 0x74 0x00) selbst auf einem Nullbyte, und der Text verlor sein
-    //  letztes Zeichen (gemessen: „Nachtfahr" statt „Nachtfahrt").
+    // Abschließende Nullen wegnehmen - aber ERST JETZT: auf den rohen Bytes verstümmelte es UTF-16, wo auch ein
+    // gewöhnlicher Buchstabe auf einem Nullbyte endet (gemessen: "Nachtfahr" statt "Nachtfahrt").
     while (s.endsWith(QChar(u'\0'))) s.chop(1);
     return s;
 }
@@ -170,7 +163,6 @@ void readId3v2(const QByteArray& tag, int major, bool unsyncAll,
     }
 }
 
-//  ID3v1: die letzten 128 Byte. Nur ein Rückfall - feste Feldlängen, Latin-1.
 void readId3v1(QFile& f, AudioTags::Tags* out) {
     if (f.size() < 128) return;
     if (!f.seek(f.size() - 128)) return;
@@ -184,12 +176,10 @@ void readId3v1(QFile& f, AudioTags::Tags* out) {
     if (out->title.isEmpty())  out->title  = field(3, 30);
     if (out->artist.isEmpty()) out->artist = field(33, 30);
     if (out->album.isEmpty())  out->album  = field(63, 30);
-    //  ID3v1.1: Kommentar ist auf 28 Byte gekürzt, danach 0 und die Nummer.
     if (out->trackNo == 0 && b[125] == '\0' && quint8(b[126]) > 0)
         out->trackNo = quint8(b[126]);
 }
 
-// ── Vorbis-Kommentare (FLAC und Ogg teilen sich das Format) ─────────────────
 void readVorbisComments(const QByteArray& b, qint64 at, AudioTags::Tags* out,
                         bool withCover);
 
@@ -252,7 +242,6 @@ void readVorbisComments(const QByteArray& b, qint64 at, AudioTags::Tags* out,
         else if (key == "TRACKNUMBER")
             out->trackNo = QString::fromUtf8(val).split('/').first().toInt();
         else if (key == "METADATA_BLOCK_PICTURE") {
-            //  In Ogg steht das Bild base64-kodiert IM Kommentar.
             if (val.size() > int(kMaxCoverBytes) * 2) continue;
             const QByteArray raw = QByteArray::fromBase64(val);
             if (!raw.isEmpty()) readFlacPicture(raw, out, withCover);
@@ -260,7 +249,6 @@ void readVorbisComments(const QByteArray& b, qint64 at, AudioTags::Tags* out,
     }
 }
 
-// ── FLAC ────────────────────────────────────────────────────────────────────
 void readFlac(QFile& f, AudioTags::Tags* out, bool withCover) {
     qint64 at = 4;                                    // hinter „fLaC"
     for (int block = 0; block < 128; ++block) {
@@ -273,7 +261,6 @@ void readFlac(QFile& f, AudioTags::Tags* out, bool withCover) {
         at += 4;
         if (size < 0 || at + size > f.size() || size > kMaxTagBytes) return;
 
-        //  Nur die beiden Blöcke, die uns angehen: Kommentare und Bild.
         if (type == 4 || type == 6) {
             const QByteArray body = f.read(size);
             if (body.size() != size) return;
@@ -285,11 +272,8 @@ void readFlac(QFile& f, AudioTags::Tags* out, bool withCover) {
     }
 }
 
-// ── Ogg (Vorbis und Opus) ───────────────────────────────────────────────────
-//  Gesucht wird das ZWEITE Paket des Datenstroms: bei Vorbis beginnt es mit
-//  0x03 "vorbis", bei Opus mit "OpusTags". Pakete dürfen über Seiten hinweg
-//  laufen - deshalb werden die Segmente eingesammelt, bis eines kürzer als 255
-//  ist (das schließt ein Paket ab).
+// Gesucht wird das ZWEITE Paket des Datenstroms (Vorbis: 0x03 "vorbis", Opus: "OpusTags"). Pakete dürfen über
+// Seiten hinweg laufen - die Segmente werden eingesammelt, bis eines kürzer als 255 ist.
 void readOgg(QFile& f, AudioTags::Tags* out, bool withCover) {
     //  Ohne Bild genügt der Anfang: die Kommentare stehen im zweiten Paket.
     //  Mit Bild darf es mehr sein - dort steckt es base64-kodiert mit drin.
@@ -327,10 +311,6 @@ void readOgg(QFile& f, AudioTags::Tags* out, bool withCover) {
     }
 }
 
-// ── MP4/M4A: moov/udta/meta/ilst ────────────────────────────────────────────
-//  Ein eigener, winziger Box-Läufer: der in `Mp4AudioExtract.cpp` arbeitet auf
-//  den Sample-Tabellen und ist dort im anonymen Namensraum richtig aufgehoben -
-//  ihn herauszuziehen wäre ein Umbau an laufendem Code (Regel 12) für 30 Zeilen.
 struct Box {
     quint32 type;
     qint64  off, hdr, size;
@@ -401,7 +381,6 @@ void readIlst(const QByteArray& m, const Box& ilst, AudioTags::Tags* out, bool w
             continue;
         }
         if (item.type == fcc("trkn")) {
-            //  Zwei 16-Bit-Zahlen: Nummer und Gesamtzahl.
             if (n >= 4) out->trackNo = int(be16(p + at + 2));
             continue;
         }
@@ -415,8 +394,6 @@ void readIlst(const QByteArray& m, const Box& ilst, AudioTags::Tags* out, bool w
 }
 
 void readMp4(QFile& f, AudioTags::Tags* out, bool withCover) {
-    //  Oberste Ebene abgehen, bis `moov` gefunden ist - es kann hinter einem
-    //  großen `mdat` liegen.
     qint64 pos = 0;
     const qint64 fileSize = f.size();
     int guard = 0;
@@ -460,11 +437,8 @@ void readMp4(QFile& f, AudioTags::Tags* out, bool withCover) {
     }
 }
 
-//  Steht in einem Feld NICHTS Sichtbares, gilt es als nicht gesetzt. Manche
-//  Werkzeuge „leeren" den Titel, indem sie ein unsichtbares Zeichen
-//  hineinschreiben statt das Feld wegzulassen (gemessen: ein Titel aus genau
-//  einem U+2800 BRAILLE PATTERN BLANK). Ohne diese Prüfung stünde in der
-//  Anzeige eine leere Zeile, statt auf den Dateinamen zurückzufallen.
+// Manche Werkzeuge "leeren" den Titel mit einem unsichtbaren Zeichen, statt das Feld wegzulassen (gemessen: ein
+// Titel aus genau einem U+2800). Ohne diese Prüfung stünde eine leere Zeile da, statt auf den Dateinamen zu fallen.
 bool invisibleField(const QString& s) {
     for (const QChar c : s) {
         if (c.isSpace()) continue;
@@ -476,7 +450,6 @@ bool invisibleField(const QString& s) {
     return true;
 }
 
-//  Ein Tag lesen - der gemeinsame Weg für beide öffentlichen Funktionen.
 AudioTags::Tags readInto(const QString& path, bool withCover) {
     AudioTags::Tags t;
     QFile f(path);
@@ -514,7 +487,6 @@ AudioTags::Tags readInto(const QString& path, bool withCover) {
     } else if (head.mid(4, 4) == "ftyp" || head.mid(4, 4) == "moov") {
         readMp4(f, &t, withCover);
     } else {
-        //  Keine bekannte Hülle vorn - vielleicht liegt hinten ein ID3v1.
         readId3v1(f, &t);
     }
 

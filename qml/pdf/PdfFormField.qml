@@ -4,45 +4,20 @@ import QtQuick.Controls
 import MediaGallery 1.0
 import "../common"
 
-// ─────────────────────────────────────────────────────────────────────────────
-//  PdfFormField.qml - EIN ausfüllbares Formularfeld (Widget-Annotation) über
-//  einer PDF-Seite. Delegate des Formular-Repeaters jeder Seite in PdfSurface.
-//
-//  WARUM ES DIESES OVERLAY GIBT: Qt PDF zeichnet Widget-Annotationen NICHT -
-//  PDFium malt sie ausschließlich über FPDF_FFLDraw, das Qt PDF nicht anbietet
-//  (RenderFlag::Annotations ändert daran nichts). Dieses Item ist deshalb die
-//  EINZIGE Darstellung der Felder, nicht bloß eine Eingabehilfe: Ohne es sähe
-//  ein Formular in der App leer aus.
-//
-//  KOORDINATEN: `field` liefert Position/Größe in PDF-PUNKTEN mit Ursprung
-//  oben-links der ANGEZEIGTEN Quellseite; `pageScale` (Pixel je Punkt) rechnet
-//  auf die Anzeige um. Eine zusätzliche Drehung aus dem Seiten-Plan (`rot`)
-//  wird hier gerechnet - die Feldrechtecke stehen in der Datei ungedreht.
-//
-//  WYSIWYG: Schriftgröße, Innenabstand (2 pt) und die senkrechte Ausrichtung
-//  entsprechen exakt dem Erscheinungsbild, das PdfFormFields::fillAndSave in
-//  die gespeicherte PDF schreibt.
-//
-//  WERT-SYNC (bewusst KEINE text-Bindung - Zweiweg-Konflikt beim Tippen, s.
-//  PdfEditBox): Anzeige -> Modell läuft live über ctl.setFormValue(); Modell ->
-//  Anzeige nur, solange das Feld NICHT den Fokus hat (Optionsgruppen und
-//  dasselbe Feld auf mehreren Seiten ziehen sich so gegenseitig nach).
-// ─────────────────────────────────────────────────────────────────────────────
+// EIN ausfüllbares Formularfeld über einer PDF-Seite - und die EINZIGE Darstellung: Qt PDF zeichnet Widget-
+// Annotationen nicht (PDFium malt sie nur über FPDF_FFLDraw), ohne dieses Overlay sähe ein Formular leer aus.
+// Wert-Sync bewusst ohne Bindung: zum Modell live, zurück nur, solange das Feld NICHT den Fokus hat.
 Item {
     id: ff
 
-    //  Ein Eintrag aus PdfEditController::formFields (QVariantMap).
     required property var field
-    //  Vom Seiten-Delegate gesetzt.
     property real pageScale: 1.0
     property real pageWPt: 612           // ANGEZEIGTE Seitengröße (inkl. Plan-Drehung)
     property real pageHPt: 792
     property PdfEditController ctl: null
 
-    // ── Feld-Eigenschaften ────────────────────────────────────────────────────
-    //  type: 0 unbekannt, 1 Text, 2 Ankreuzfeld, 3 Optionsfeld, 4 Auswahl,
-    //        5 Druckknopf (s. mg::PdfFieldType). Unterschriftenfelder kommen
-    //        gar nicht erst an - sie werden schon beim Lesen übergangen.
+    // `type`: 0 unbekannt, 1 Text, 2 Ankreuzfeld, 3 Optionsfeld, 4 Auswahl, 5 Druckknopf. Unterschriftenfelder
+    // kommen gar nicht erst an - sie werden schon beim Lesen übergangen.
     readonly property string fieldName: ff.field.name
     readonly property int    fieldType: ff.field.type
     readonly property bool   readOnly:  ff.field.readOnly === true
@@ -64,10 +39,8 @@ Item {
     readonly property bool checkedState: ff.field.onState.length > 0
                                          && ff.currentValue === ff.field.onState
 
-    // ── Geometrie (inkl. Drehung aus dem Seiten-Plan) ─────────────────────────
     readonly property int  rot: ((ff.field.rot % 360) + 360) % 360
     readonly property bool quarter: ff.rot === 90 || ff.rot === 270
-    //  Maße der UNGEDREHTEN Quellseite (die Feldrechtecke beziehen sich darauf).
     readonly property real srcWPt: ff.quarter ? ff.pageHPt : ff.pageWPt
     readonly property real srcHPt: ff.quarter ? ff.pageWPt : ff.pageHPt
     readonly property real rxPt: ff.rot === 90  ? (ff.srcHPt - (ff.field.yPt + ff.field.hPt))
@@ -85,8 +58,6 @@ Item {
     y: ff.ryPt * ff.pageScale
     width:  Math.max(3, ff.rwPt * ff.pageScale)
     height: Math.max(3, ff.rhPt * ff.pageScale)
-    //  Über den Seiten-Fängern, aber unter den Notizen des Editors (die dürfen
-    //  sich frei über die Seite legen).
     z: 1
 
     //  Schrift wie im geschriebenen Erscheinungsbild: „automatisch" heißt
@@ -96,8 +67,8 @@ Item {
                                    : Math.max(4, Math.min(ff.rhPt * 0.62, 12))
     readonly property real padPx: 2.0 * ff.pageScale
 
-    // ── Fläche (Acrobat-artige Tönung; die Seite darunter ist immer weiß, die
-    //    Farben sind deshalb bewusst FEST und nicht themenabhängig) ────────────
+    // Fläche (Acrobat-artige Tönung; die Seite darunter ist immer weiß, die
+    //    Farben sind deshalb bewusst FEST und nicht themenabhängig)
     Rectangle {
         anchors.fill: parent
         radius: Math.min(3, parent.height / 4)
@@ -114,7 +85,6 @@ Item {
     ToolTip.text: ff.field.tooltip
     HoverHandler { id: hoverArea }
 
-    // ── Textfeld (einzeilig) ──────────────────────────────────────────────────
     TextInput {
         id: textInput
         visible: ff.isText && ff.field.multiline !== true
@@ -132,7 +102,6 @@ Item {
         maximumLength: ff.field.maxLen > 0 ? ff.field.maxLen : 32767
         echoMode: ff.field.password === true ? TextInput.Password : TextInput.Normal
         onTextEdited: if (ff.ctl) ff.ctl.setFormValue(ff.fieldName, text)
-        //  Modell -> Anzeige nur ohne Fokus (sonst Zweiweg-Konflikt beim Tippen).
         Component.onCompleted: text = ff.currentValue
         Connections {
             target: ff
@@ -143,7 +112,6 @@ Item {
         }
     }
 
-    // ── Textfeld (mehrzeilig) ─────────────────────────────────────────────────
     TextEdit {
         id: textArea
         visible: ff.isText && ff.field.multiline === true
@@ -168,10 +136,8 @@ Item {
         }
     }
 
-    // ── Ankreuzfeld / Optionsfeld ─────────────────────────────────────────────
-    //  Selbst gezeichnet (Häkchen bzw. Punkt): Die Zustände liegen als fertige
-    //  Erscheinungsbilder in der Datei, sichtbar macht sie aber erst dieses
-    //  Overlay - und es muss auf JEDER Seitengröße mitskalieren.
+    // Häkchen und Punkt selbst gezeichnet: die Zustände liegen zwar als fertige Erscheinungsbilder in der Datei,
+    // sichtbar macht sie aber erst dieses Overlay - und es muss auf jeder Seitengröße mitskalieren.
     Item {
         anchors.fill: parent
         visible: ff.isCheck || ff.isRadio
@@ -225,14 +191,11 @@ Item {
         }
     }
 
-    // ── Auswahlfeld (/Ch) ─────────────────────────────────────────────────────
     Item {
         id: choiceBox
         anchors.fill: parent
         visible: ff.isChoice
 
-        //  Anzeigetext zum aktuellen EXPORTWERT (options ⇄ optionValues); ohne
-        //  Treffer wird der Wert selbst gezeigt (freie Eingabe/Fremdwert).
         readonly property int valueIndex: ff.field.optionValues.indexOf(ff.currentValue)
         Text {
             anchors.fill: parent

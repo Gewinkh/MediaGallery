@@ -24,15 +24,8 @@ QString letter(Thing t) {
     return {};
 }
 
-//  Der Klammerausdruck vor dem Doppelpunkt: wo das Ding sitzt.
-//  Kein Pfad -> leer. Eine Ebene -> `K:wurzel`.
-//
-//  Ab zwei Ebenen gehen die beiden Fassungen auseinander:
-//   • GEKUERZT (`shorten`): `+n(K:wurzel)` - gezeigt werden erste und letzte
-//     Ebene, die dazwischen werden gezaehlt (Festlegung des Nutzers).
-//   • VOLL: die ganze Verschachtelung, `U(U(K:c):b):a`. Der Hover soll die
-//     KOMPLETTE Notation zeigen, nicht noch einmal die gekuerzte samt einer
-//     zerlegten Kette daneben (Nutzerbefund 2026-09-03).
+// Der Klammerausdruck vor dem Doppelpunkt: wo das Ding sitzt. Ab zwei Ebenen gehen die Fassungen auseinander -
+// gekürzt `+n(K:wurzel)` mit erster und letzter Ebene, voll die ganze Verschachtelung für den Hover.
 QString parentExpr(const QStringList& path, bool shorten) {
     if (path.isEmpty()) return {};
     if (shorten) {

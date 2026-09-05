@@ -1,18 +1,8 @@
 import QtQuick
 import MediaGallery 1.0
 
-// ─────────────────────────────────────────────────────────────────────────────
-//  HtmlHost.qml - Zwischenschicht vor `HtmlSurface`.
-//
-//  Zweck unverändert (früher eine Inline-Komponente im `FullscreenViewer`):
-//  `HtmlSurface.qml` wird per URL erst zur LAUFZEIT übersetzt - der
-//  QtWebEngine-Import (und damit die WebEngineView) wird also nie angefasst,
-//  solange WebEngine nicht bereit ist. Der innere Loader ist hart auf
-//  `WebEngine.ready` gegated.
-//
-//  Eigene Datei geworden, weil der `surface`-Loader seine Fläche jetzt über
-//  eine URL wählt (s. `ViewerNote.qml`).
-// ─────────────────────────────────────────────────────────────────────────────
+// Zwischenschicht vor `HtmlSurface`: die wird per URL erst zur LAUFZEIT übersetzt, der QtWebEngine-Import also
+// nie angefasst, solange WebEngine nicht bereit ist. Der innere Loader ist hart auf `WebEngine.ready` gegated.
 Item {
     id: htmlHost
     property string source: ""

@@ -4,16 +4,11 @@ import QtQuick.Controls
 import MediaGallery 1.0
 import "../common"
 
-// ─────────────────────────────────────────────────────────────────────────────
-//  CategoryNode.qml - ein (rekursiver) Knoten des Kategorie-Baums (ersetzt
-//  CategoryNode aus TagCategoryPanel.cpp). Instanziiert sich für Unterkategorien
-//  selbst. Tags sind ziehbare Chips; eine DropArea nimmt auf einen anderen Knoten
-//  gezogene Tags entgegen -> nodeRoot.panel.tagsCtl.moveTagToCategory.
-// ─────────────────────────────────────────────────────────────────────────────
+// Ein rekursiver Knoten des Kategorie-Baums, der sich für Unterkategorien selbst instanziiert. Tags sind
+// ziehbare Chips; eine DropArea nimmt auf den Knoten gezogene Tags entgegen (`moveTagToCategory`).
 Column {
     id: nodeRoot
 
-    // Knoten: { id, name, color, uniform, inherit, tags, fileCount, children }
     required property var node
     required property int depth
     required property var panel       // TagCategoryPanel (Callbacks/aktiver Filter)
@@ -23,7 +18,6 @@ Column {
     spacing: 2
     width: parent ? parent.width : 0
 
-    // ── Kopfzeile ─────────────────────────────────────────────────────────────
     Rectangle {
         id: header
         width: parent.width
@@ -32,17 +26,12 @@ Column {
                                      : (headerHover.hovered ? App.themeCard : "transparent")
         radius: 5
 
-        //  ── Kategorie UMHÄNGEN (nur im Optionen-Modus, Alt+S) ─────────────
-        //  Eine Kategorie auf eine andere ziehen macht sie zu deren
-        //  Unterkategorie. **Nur im Optionen-Modus:** im Normalbetrieb ist die
-        //  Kopfzeile zum Anklicken da (auf-/zuklappen, filtern), und ein
-        //  versehentliches Umhängen des halben Baums wäre teuer. Der Zug ist
-        //  DERSELBE Mechanismus wie beim Tag-Chip, nur mit `dragCat` statt
-        //  `dragTag` - `catHeaderDrop` unterscheidet danach.
+        // Kategorie umhängen nur im Optionen-Modus (Alt+S): im Normalbetrieb ist die Kopfzeile zum Anklicken da, und ein
+        // versehentliches Umhängen des halben Baums wäre teuer. Derselbe Mechanismus wie beim Tag-Chip, nur mit `dragCat`.
         property string dragCat: nodeRoot.node.id
         //  Zurück an den Platz - s. `TagCategoryPanel` ▸ Chip. Ohne das blieb
         //  die Kopfzeile liegen, wo man sie fallen ließ, und verdeckte den neu
-        //  gezeichneten Baum: es sah eingefroren aus (Nutzerbefund 2026-09-03).
+        //  gezeichneten Baum: es sah eingefroren aus.
         property real homeX: 0
         property real homeY: 0
         Drag.active: catDrag.active
@@ -58,35 +47,22 @@ Column {
                 const wirkung = header.Drag.drop()
                 header.x = header.homeX
                 header.y = header.homeY
-                //  Ins Leere gezogen: die Kategorie wird zur Hauptkategorie.
                 if (wirkung === Qt.IgnoreAction)
                     nodeRoot.panel.dropCategoryOutside(header.dragCat)
             }
         }
-        //  Im Optionen-Modus sichtbar machen, dass hier etwas zu greifen ist.
         opacity: catDrag.active ? 0.6 : 1.0
 
-        //  Nimmt ZWEIERLEI an: einen app-intern gezogenen Tag-Chip (-> der Tag
-        //  wechselt die Kategorie) und eine gezogene DATEI (-> sie wird Mitglied
-        //  dieser Kategorie). Bewusst EINE Fläche für beides: zwei
-        //  übereinanderliegende DropAreas würden einander den Zug wegnehmen -
-        //  geliefert wird immer nur an die oberste.
+        // Nimmt ZWEIERLEI an: einen Tag-Chip (der Tag wechselt die Kategorie) und eine gezogene Datei (sie wird
+        // Mitglied). Bewusst EINE Fläche - zwei übereinander nähmen einander den Zug weg, geliefert wird nur an die oberste.
         DropArea {
             id: dropArea
             objectName: "catHeaderDrop"      // Griff für tests/tags/tst_dropdelivery
             anchors.fill: parent
             onDropped: function(drop) {
-                //  Eine Kategorie auf diese hier: sie wird deren Unterkategorie.
-                //  `moveCategory` weist einen Zug in den EIGENEN Teilbaum von
-                //  selbst ab - der Knoten ginge sonst verloren.
-                //  **`drop.accept()` ist hier PFLICHT.** Ohne sie liefert
-                //  `Drag.drop()` beim Ziehenden `Qt.IgnoreAction`, und der hält
-                //  den Zug für „ins Leere gefallen" - eine auf eine andere
-                //  Kategorie gezogene Kategorie wanderte deshalb anschliessend
-                //  auf die Hauptebene, statt dorthin zu gehen, wo man sie
-                //  hingezogen hat (Nutzerbefund 2026-09-04). Angenommen wird
-                //  auch dann, wenn der Vorgang selbst abgelehnt wird: die
-                //  Fläche HAT ihn bearbeitet.
+                // `drop.accept` ist hier PFLICHT: ohne sie liefert `Drag.drop` beim Ziehenden `Qt.IgnoreAction`, der hält den
+                // Zug für ins Leere gefallen, und die Kategorie wanderte auf die Hauptebene statt dorthin, wo man sie hinzog.
+                // Angenommen wird auch, wenn `moveCategory` ablehnt (Zug in den eigenen Teilbaum) - die Fläche HAT ihn bearbeitet.
                 if (drop.source && drop.source.dragCat !== undefined) {
                     nodeRoot.panel.moveCategoryInto(drop.source.dragCat, nodeRoot.node.id)
                     drop.accept()
@@ -113,12 +89,6 @@ Column {
             anchors.rightMargin: 4
             spacing: 6
 
-            //  Auf-/Zuklappen. **Der Platz bleibt IMMER stehen**, auch wenn es
-            //  nichts aufzuklappen gibt: sonst sprang die ganze Zeile nach
-            //  rechts, sobald ein Tag oder eine Unterkategorie dazukam
-            //  (Nutzerbefund 2026-09-04). Und das Zeichen ist GEZEICHNET, kein
-            //  Dreieck aus der Schrift (Regel 28) - das sah je nach System
-            //  anders aus und folgte dem Theme nicht.
             Item {
                 id: expander
                 anchors.verticalCenter: parent.verticalCenter
@@ -164,14 +134,13 @@ Column {
                 color: App.themeTextPrimary
                 font.pixelSize: 12
                 elide: Text.ElideRight
-                //  Was nach Klapp-Knopf, Farbpunkt und Häkchen übrig bleibt.
                 width: Math.max(0, parent.width - 74)
             }
         }
 
         //  Die drei Punkte stehen FEST am rechten Rand - unabhängig von der
-        //  Ebene. Vorher liefen sie im Zeilen-`Row` mit und rutschten mit jeder
-        //  Einrückung weiter nach rechts (Nutzerbefund 2026-09-04).
+        //  Ebene. Vorher liefen sie im Zeilen-`Row` mit und rutschten mit
+        //  jeder Einrückung weiter nach rechts.
         Item {
             id: menuBtn
             anchors { right: parent.right; rightMargin: 6
@@ -185,7 +154,6 @@ Column {
                 color: Qt.rgba(App.themeTextPrimary.r, App.themeTextPrimary.g,
                                App.themeTextPrimary.b, 0.12)
             }
-            //  Gezeichnet, nicht als Zeichen aus der Schrift (Regel 28).
             Column {
                 anchors.centerIn: parent
                 spacing: 2
@@ -218,9 +186,6 @@ Column {
 
         HoverHandler { id: headerHover }
 
-        //  Rechtsklick auf die Kopfzeile öffnet dasselbe Menü wie der „⋮"-Knopf
-        //  (Unterkategorie/Tag anlegen, umbenennen, löschen) - man sucht die
-        //  Funktion dort, wo man gerade steht.
         TapHandler {
             acceptedButtons: Qt.RightButton
             onTapped: nodeCtxMenu.open()
@@ -239,7 +204,6 @@ Column {
         }
     }
 
-    // ── Tag-Chips ─────────────────────────────────────────────────────────────
     Flow {
         width: parent.width - nodeRoot.depth * 14 - 12
         x: nodeRoot.depth * 14 + 24
@@ -252,7 +216,6 @@ Column {
                 id: chip
                 required property var modelData
 
-                // Drag-Nutzdaten (von der DropArea ausgelesen).
                 property string dragTag: modelData
                 property string dragFromCat: nodeRoot.node.id
 
@@ -260,11 +223,8 @@ Column {
                 // Panels): aktiv = gefüllt + Häkchen + kräftiger Rand.
                 readonly property bool active: nodeRoot.panel.isTagActive(chip.modelData)
 
-                // Effektive Farbe: Einheitsfarbe der Kategorie (bzw. vererbt),
-                // sonst die Eigenfarbe des Tags - beim Deaktivieren automatisch zurück.
-                //  Über `panel.tagColorOf`, nicht direkt über den Controller:
-                //  nur so hängt die Bindung am Auffrisch-Zähler des Panels
-                //  (s. dort - ein Funktionsaufruf allein bindet an nichts).
+                // Über `panel.tagColorOf`, nicht direkt über den Controller: nur so hängt die Bindung am Auffrisch-Zähler des
+                // Panels - ein Funktionsaufruf allein bindet an nichts.
                 readonly property color effColor: nodeRoot.node.tagUniform
                                                   ? nodeRoot.node.tagColor
                                                   : nodeRoot.panel.tagColorOf(chip.modelData)
@@ -305,14 +265,8 @@ Column {
 
                 DragHandler {
                     id: dragHandler
-                    //  **Ins Leere gezogen = aus DIESER Kategorie heraus.**
-                    //  `Drag.drop()` liefert `Qt.IgnoreAction`, wenn keine
-                    //  Ablegefläche den Zug angenommen hat - die Sammelfläche
-                    //  der Shell nimmt nur Dateien an, also bleibt ein Chip,
-                    //  den man irgendwohin fallen lässt, wirklich unangenommen.
-                    //  Entfernt wird NUR aus der Kategorie, aus der er kam
-                    //  (Festlegung des Nutzers 2026-09-03); der Vorgang steht
-                    //  danach in der Rückgängig-Leiste.
+                    // Ins Leere gezogen = aus DIESER Kategorie heraus: `Drag.drop` liefert `Qt.IgnoreAction`, wenn keine Fläche
+                    // angenommen hat, und die Sammelfläche der Shell nimmt nur Dateien. Entfernt wird nur aus der Herkunftskategorie.
                     onActiveChanged: {
                         if (active) {
                             chip.homeX = chip.x; chip.homeY = chip.y
@@ -327,12 +281,8 @@ Column {
                     }
                 }
 
-                //  ── Kachel auf den Tag ziehen ⇒ Datei bekommt ihn ──
-                //  Gleiche Fläche wie im Tags-Abschnitt des Panels; ein Tag
-                //  unter einer Kategorie soll sich nicht anders verhalten als
-                //  derselbe Tag in der Liste darüber. `keys` grenzt sauber gegen
-                //  den Chip-Zug ab (der trägt keine Schlüssel) - sonst nähme
-                //  diese Fläche dem Kategorie-Kopf das Verschieben weg.
+                // Gleiche Ablegefläche wie im Tags-Abschnitt - ein Tag unter einer Kategorie soll sich nicht anders verhalten.
+                // `keys` grenzt gegen den Chip-Zug ab (der trägt keine), sonst nähme sie dem Kopf das Verschieben weg.
                 DropArea {
                     id: chipDrop
                     objectName: "catTagChipDrop"   // Griff für tests/tags/tst_dropdelivery
@@ -377,21 +327,16 @@ Column {
         }
     }
 
-    // ── Unterkategorien (rekursiv) ─────────────────────────────────────────────
-    // Hinweis: Direktes `CategoryNode { }` hier würde mit pragma ComponentBehavior: Bound
-    // den Fehler M129 ("Typ kann nicht rekursiv instanziiert werden") auslösen.
-    // Lösung: Loader mit source-String -> kein statischer Typ-Verweis zur Compile-Zeit.
+    // Direktes `CategoryNode { }` löst mit `pragma ComponentBehavior: Bound` den Fehler M129 aus ("Typ kann nicht
+    // rekursiv instanziiert werden") - deshalb ein Loader mit source-String, kein statischer Typ-Verweis.
     Column {
         width: parent.width
         spacing: 2
         visible: !nodeRoot.collapsed
         Repeater {
             model: nodeRoot.node.children
-            //  setSource() statt `source:`: CategoryNode benutzt `required
-            //  property`, die nur bei der Erzeugung belegt werden koennen.
-            //  Mit `source:` brach Qt die Erzeugung ab („Required property …
-            //  was not initialized"), onLoaded feuerte nie - UNTERkategorien
-            //  waren dadurch auch im Hauptbildschirm unsichtbar.
+            // `setSource()` statt `source:`: CategoryNode benutzt `required property`, die sich nur bei der Erzeugung
+            // belegen lassen - mit `source:` brach Qt ab, `onLoaded` feuerte nie und Unterkategorien blieben unsichtbar.
             delegate: Loader {
                 id: childLoader
                 required property var modelData

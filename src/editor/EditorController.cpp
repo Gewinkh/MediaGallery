@@ -12,10 +12,8 @@ using namespace Qt::Literals::StringLiterals;
 namespace mg::editor {
 namespace {
 
-//  Der aktive Controller. Ein Zeiger und kein Singleton-Muster: es gibt genau
-//  eine Instanz, sie gehoert `main.cpp`, und der Faerber braucht nur Lesezugriff
-//  auf die Palette. Ein eigenes `instance()` wuerde die Lebensdauer verschleiern
-//  (die Bridges werden VOR der Engine erzeugt und NACH ihr zerstoert).
+// Ein Zeiger und kein Singleton-Muster: es gibt genau eine Instanz, sie gehört `main.cpp`, und der Färber
+// braucht nur Lesezugriff. Ein eigenes `instance()` verschleierte die Lebensdauer.
 EditorController* s_active = nullptr;
 
 EditorProfile toProfile(int p) {

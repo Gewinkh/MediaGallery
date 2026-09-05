@@ -5,9 +5,7 @@
 #include <QFile>
 #include <QtEndian>
 
-// ─────────────────────────────────────────────────────────────────────────────
 //  Interne Helfer: Little-Endian-Lesen/Schreiben über QByteArray/QIODevice.
-// ─────────────────────────────────────────────────────────────────────────────
 namespace {
 
 quint16 rd16(const uchar* p) { return qFromLittleEndian<quint16>(p); }
@@ -28,9 +26,7 @@ constexpr quint32 kSigEocd    = 0x06054b50;   // End of Central Directory
 
 namespace DocxZip {
 
-// ─────────────────────────────────────────────────────────────────────────────
 //  zlib (raw, windowBits −15)
-// ─────────────────────────────────────────────────────────────────────────────
 QByteArray inflateRaw(const QByteArray& comp, quint32 expectedSize, bool* ok) {
     if (ok) *ok = false;
     // RAM-Kantenschutz: DOCX-Teile sind klein; Deckel steckt in ZCodec.
@@ -64,9 +60,6 @@ quint32 crcOf(const QByteArray& data) {
     return mg::zcodec::crc32(data);
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-//  Reader
-// ─────────────────────────────────────────────────────────────────────────────
 Reader::~Reader() { close(); }
 
 void Reader::close() {
@@ -168,10 +161,8 @@ bool Reader::open(const QString& path, QString* err) {
                                 .arg(en.method);
             close(); return false;
         }
-        // Ohne ZLIB gebaut: ZIP-Einträge sind ROHES Deflate, das der
-        // Qt-Fallback nicht entpacken kann (s. ZCodec.h). Hier abweisen statt
-        // später an einem CRC-Fehler - der Grund wäre dann nicht mehr zu
-        // erkennen. Store(0) bleibt lesbar.
+        // Ohne ZLIB gebaut: ZIP-Einträge sind ROHES Deflate, das der Qt-Fallback nicht entpacken kann. Hier abweisen
+        // statt später an einem CRC-Fehler - der Grund wäre dann nicht mehr zu erkennen. Store(0) bleibt lesbar.
         if (en.method == 8 && !mg::zcodec::available()) {
             if (err) *err = QStringLiteral(
                 "Ohne ZLIB gebaut: DOCX-Dateien werden nicht unterstützt.");
@@ -255,11 +246,8 @@ QByteArray Reader::fileData(int index, bool* ok) const {
         if (!infOk)
             return {};
     }
-    // Integrität: CRC muss stimmen (schützt vor stiller Korruption).
-    // Gilt für BEIDE Methoden - gespeicherte (unkomprimierte) Einträge kamen
-    // vorher ungeprüft durch, obwohl gerade sie durch einen Bytefehler in der
-    // Datei unbemerkt verfälscht werden können (Deflate wäre dabei mit hoher
-    // Wahrscheinlichkeit schon am Strom selbst gescheitert).
+    // CRC muss stimmen, für BEIDE Methoden: gespeicherte (unkomprimierte) Einträge kamen vorher ungeprüft durch,
+    // obwohl gerade sie durch einen Bytefehler unbemerkt verfälscht werden können.
     if (crcOf(plain) != e.crc32)
         return {};
     if (ok) *ok = true;
@@ -270,9 +258,6 @@ QByteArray Reader::fileData(const QString& name, bool* ok) const {
     return fileData(indexOf(name), ok);
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-//  Writer
-// ─────────────────────────────────────────────────────────────────────────────
 Writer::Writer(QIODevice* target) : m_dev(target) {}
 
 bool Writer::writeLocal(const Entry& e, const QByteArray& data, QString* err) {

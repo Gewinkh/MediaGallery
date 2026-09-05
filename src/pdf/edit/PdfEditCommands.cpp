@@ -2,9 +2,6 @@
 #include "pdf/edit/PdfEditModel.h"
 #include "pdf/edit/PdfEditController.h"
 
-// ─────────────────────────────────────────────────────────────────────────────
-//  Textebene (Caret-Werkzeug)
-// ─────────────────────────────────────────────────────────────────────────────
 PdfEditTextOpCommand::PdfEditTextOpCommand(PdfEditController* ctl, const PdfTextOp& op)
     : m_ctl(ctl), m_op(op) {}
 
@@ -16,9 +13,6 @@ void PdfEditTextOpCommand::undo() {
     m_ctl->revokeLastTextOp();
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-//  Hinzufügen
-// ─────────────────────────────────────────────────────────────────────────────
 PdfEditAddCommand::PdfEditAddCommand(PdfEditModel* model, const PdfEditBox& box, int row)
     : m_model(model), m_box(box), m_row(row) {}
 
@@ -30,9 +24,6 @@ void PdfEditAddCommand::undo() {
     m_model->removeById(m_box.id);
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-//  Entfernen
-// ─────────────────────────────────────────────────────────────────────────────
 PdfEditRemoveCommand::PdfEditRemoveCommand(PdfEditModel* model, const PdfEditBox& box, int row)
     : m_model(model), m_box(box), m_row(row) {}
 
@@ -44,9 +35,6 @@ void PdfEditRemoveCommand::undo() {
     m_model->insertBoxAt(m_row, m_box);
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-//  Geometrie
-// ─────────────────────────────────────────────────────────────────────────────
 PdfEditGeometryCommand::PdfEditGeometryCommand(PdfEditModel* model, int id,
                                                int oldPage, const QRectF& oldRect,
                                                const QVector<QPointF>& oldPts,
@@ -64,9 +52,6 @@ void PdfEditGeometryCommand::undo() {
     m_model->applyPlacementPoints(m_id, m_oldPage, m_old, m_oldPts);
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-//  Text
-// ─────────────────────────────────────────────────────────────────────────────
 PdfEditTextCommand::PdfEditTextCommand(PdfEditModel* model, int id,
                                        const QString& oldText, const QString& newText)
     : m_model(model), m_id(id), m_old(oldText), m_new(newText) {}
@@ -79,9 +64,6 @@ void PdfEditTextCommand::undo() {
     m_model->applyText(m_id, m_old);
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-//  Reflow-Verkettung
-// ─────────────────────────────────────────────────────────────────────────────
 PdfEditChainCommand::PdfEditChainCommand(PdfEditModel* model, int id,
                                          int oldNext, int newNext)
     : m_model(model), m_id(id), m_old(oldNext), m_new(newNext) {}
@@ -89,9 +71,6 @@ PdfEditChainCommand::PdfEditChainCommand(PdfEditModel* model, int id,
 void PdfEditChainCommand::redo() { m_model->setChainNext(m_id, m_new); }
 void PdfEditChainCommand::undo() { m_model->setChainNext(m_id, m_old); }
 
-// ─────────────────────────────────────────────────────────────────────────────
-//  Stil-/Formatfeld
-// ─────────────────────────────────────────────────────────────────────────────
 PdfEditFieldCommand::PdfEditFieldCommand(PdfEditModel* model, int id, PdfEditField field,
                                          const QVariant& oldValue, const QVariant& newValue)
     : m_model(model), m_id(id), m_field(field), m_old(oldValue), m_new(newValue) {}
@@ -118,9 +97,6 @@ bool PdfEditFieldCommand::mergeWith(const QUndoCommand* other) {
     return true;
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-//  Seiten-Plan
-// ─────────────────────────────────────────────────────────────────────────────
 PdfEditPagePlanCommand::PdfEditPagePlanCommand(PdfEditController* ctl,
         const QVector<PdfPlanPage>& oldPlan, const QVector<PdfPlanPage>& newPlan)
     : m_ctl(ctl), m_old(oldPlan), m_new(newPlan) {}

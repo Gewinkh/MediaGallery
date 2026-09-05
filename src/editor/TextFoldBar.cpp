@@ -31,9 +31,6 @@ TextFoldBar::TextFoldBar(QQuickItem* parent) : QQuickPaintedItem(parent) {
 }
 
 TextFoldBar::~TextFoldBar() {
-    //  Die Datei wird geschlossen, das Dokument lebt aber weiter (die
-    //  `TextArea` besitzt es): verborgene Bloecke wieder sichtbar machen,
-    //  sonst bliebe der naechste Inhalt teilweise unsichtbar.
     if (QTextDocument* d = doc()) {
         if (!m_gefaltet.isEmpty()) {
             m_gefaltet.clear();
@@ -48,13 +45,16 @@ QTextDocument* TextFoldBar::doc() const {
 }
 
 qreal TextFoldBar::requiredWidth() const {
-    //  Etwas breiter als der Pfeil, damit er sich anklicken laesst.
     return qMax(14.0, QFontMetricsF(m_font).height() * 0.9);
 }
 
 void TextFoldBar::setDocument(QQuickTextDocument* d) {
     if (d == m_quickDoc) return;
-    if (QTextDocument* alt = doc()) disconnect(alt, nullptr, this, nullptr);
+    if (QTextDocument* alt = doc()) {
+        disconnect(alt, nullptr, this, nullptr);
+        //  Die Lage ist ein eigenes Objekt - der `disconnect` oben erreicht sie nicht.
+        if (auto* lay = alt->documentLayout()) disconnect(lay, nullptr, this, nullptr);
+    }
     m_quickDoc = d;
     m_gefaltet.clear();
     m_hatBereiche = false;
@@ -79,6 +79,14 @@ void TextFoldBar::setDocument(QQuickTextDocument* d) {
                 });
         connect(neu, &QTextDocument::contentsChanged, this,
                 [this] { emit documentHeightChanged(); update(); });
+        //  Wird das Fenster schmaler, bricht der weiche Umbruch den Text auf
+        //  mehr Bildschirmzeilen um: die Lage wird hoeher, OHNE dass sich der
+        //  Inhalt aendert. Ohne dieses Signal bleibt die daran gebundene
+        //  Rollhoehe auf dem Wert der breiten Fassung stehen, und das Dateiende
+        //  ist nicht mehr erreichbar.
+        if (auto* lay = neu->documentLayout())
+            connect(lay, &QAbstractTextDocumentLayout::documentSizeChanged, this,
+                    [this] { emit documentHeightChanged(); update(); });
     }
     emit documentChanged();
     neuErfassen();
@@ -87,7 +95,6 @@ void TextFoldBar::setDocument(QQuickTextDocument* d) {
 void TextFoldBar::setPath(const QString& p) {
     if (p == m_path) return;
     m_path = p;
-    //  Neue Datei = neuer Anfang, auch fuer die Klebrigkeit der Leiste.
     m_gefaltet.clear();
     m_hatBereiche = false;
     emit pathChanged();
@@ -142,8 +149,6 @@ void TextFoldBar::neuErfassen() {
     const QList<FoldRegion> alt = m_bereiche;
     m_bereiche = scanFolds(doc(), languageForPath(m_path), m_tabWidth);
 
-    //  Bereiche, die es nicht mehr gibt, koennen auch nicht mehr zugeklappt
-    //  sein - sonst blieben Zeilen verborgen, zu denen nichts mehr gehoert.
     if (!m_gefaltet.isEmpty()) {
         QSet<int> gueltig;
         for (const FoldRegion& r : std::as_const(m_bereiche))
@@ -154,7 +159,6 @@ void TextFoldBar::neuErfassen() {
         }
     }
 
-    //  KLEBRIG: einmal sichtbar, bleibt sichtbar (s. Kopf).
     const bool vorher = m_hatBereiche;
     if (!m_bereiche.isEmpty()) m_hatBereiche = true;
     if (m_hatBereiche != vorher) emit regionsChanged();
@@ -162,10 +166,8 @@ void TextFoldBar::neuErfassen() {
 }
 
 const FoldRegion* TextFoldBar::bereichAb(int block) const {
-    //  Der WEITESTE Bereich, der bei diesem Block beginnt (die Liste ist nach
-    //  Start sortiert, bei gleichem Start der weitere zuerst). Binaer gesucht:
-    //  gefragt wird je gemaltem Block, und eine grosse Quelldatei hat leicht
-    //  fuenfhundert Bereiche.
+    // Der WEITESTE Bereich, der bei diesem Block beginnt (nach Start sortiert, bei gleichem Start der weitere
+    // zuerst). Binär gesucht: gefragt wird je gemaltem Block, und eine große Quelldatei hat leicht 500 Bereiche.
     const auto it = std::lower_bound(m_bereiche.cbegin(), m_bereiche.cend(), block,
                                      [](const FoldRegion& r, int b) { return r.start < b; });
     if (it == m_bereiche.cend() || it->start != block) return nullptr;
@@ -242,11 +244,8 @@ void TextFoldBar::bereichAnwenden(const FoldRegion& r, bool verbergen) {
         }
     }
 
-    //  NUR den betroffenen Bereich neu umbrechen lassen. Frueher stand hier
-    //  `markContentsDirty(0, characterCount())` plus ein Umlegen von
-    //  `wrapMode`; das kostete gemessen 66 ms statt 1 ms auf 5 000 Zeilen -
-    //  und `TextEdit` rollte dabei den Cursor ins Bild, sprang also an den
-    //  Dateianfang, sobald man irgendwo unten zuklappte.
+    // NUR den betroffenen Bereich neu umbrechen lassen: `markContentsDirty(0, characterCount())` plus Umlegen von
+    // `wrapMode` kostete 66 ms statt 1 ms auf 5000 Zeilen - und `TextEdit` sprang dabei an den Dateianfang.
     const QTextBlock von = d->findBlockByNumber(r.start);
     const QTextBlock bis = d->findBlockByNumber(qMin(r.end + 1, d->blockCount() - 1));
     if (von.isValid() && bis.isValid())
@@ -290,13 +289,8 @@ void TextFoldBar::nachDemFalten(int startBlock, qreal hoeheVorher,
         }
     }
 
-    //  ── Der Scrollstand ────────────────────────────────────────────────
-    //  Nur EINE Sache, seit die `TextArea` kein `TextArea.flickable` mehr ist
-    //  (s. `TextSurface.qml`): liegt die geaenderte Stelle KOMPLETT ueber der
-    //  Sicht, verschiebt sich alles Darunterliegende - dann muss der Stand um
-    //  dieselbe Hoehe mitwandern, sonst stuende ploetzlich anderer Text im
-    //  Fenster. Klickt man auf einen sichtbaren Pfeil, bleibt alles stehen,
-    //  ohne dass hier etwas zu tun waere.
+    // Liegt die geänderte Stelle KOMPLETT über der Sicht, verschiebt sich alles Darunterliegende - dann muss der
+    // Scrollstand um dieselbe Höhe mitwandern, sonst stünde plötzlich anderer Text im Fenster.
     if (!m_flick || !standHalten) return;
     const QTextBlock sb = d->findBlockByNumber(startBlock);
     if (!sb.isValid()) return;
@@ -382,12 +376,10 @@ void TextFoldBar::paint(QPainter* p) {
 
         QPolygonF dreieck;
         if (m_gefaltet.contains(b.blockNumber())) {
-            //  Zugeklappt: Spitze nach rechts („da steckt noch was").
             dreieck << QPointF(mitteX - kPfeil * 0.5, mitteY - kPfeil)
                     << QPointF(mitteX + kPfeil * 0.7, mitteY)
                     << QPointF(mitteX - kPfeil * 0.5, mitteY + kPfeil);
         } else {
-            //  Offen: Spitze nach unten.
             dreieck << QPointF(mitteX - kPfeil, mitteY - kPfeil * 0.5)
                     << QPointF(mitteX + kPfeil, mitteY - kPfeil * 0.5)
                     << QPointF(mitteX, mitteY + kPfeil * 0.7);

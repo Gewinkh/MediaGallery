@@ -4,49 +4,26 @@ import QtQuick.Controls
 import MediaGallery 1.0
 import "../common"
 
-// ─────────────────────────────────────────────────────────────────────────────
-//  AudioEqPanel.qml - die zehn Regler, die Vorverstärkung und die
-//  Voreinstellungen.
-//
-//  Bewusst ein schlichtes `Item`, KEIN Popup: dieselbe Datei dient beiden
-//  Stellen - als Inhalt des Popups an der Player-Leiste und eingebettet in
-//  Einstellungen ▸ Audio. Zwei Fassungen derselben Regler liefen sonst
-//  auseinander.
-//
-//  Alle Werte kommen aus `Audio` und gehen sofort dorthin zurück; das Panel
-//  hält keinen eigenen Zustand.
-// ─────────────────────────────────────────────────────────────────────────────
+// Bewusst ein schlichtes Item, KEIN Popup: dieselbe Datei dient dem Popup an der Player-Leiste und der
+// Einbettung in Einstellungen ▸ Audio. Alle Werte kommen aus `Audio` und gehen sofort dorthin zurück.
 Item {
     id: panel
 
-    //  ── Klick-Sperre ────────────────────────────────────────────────────────
-    //  ZUERST im Baum, liegt damit UNTER allen Bedienelementen: die nehmen ihre
-    //  Klicks weiterhin selbst, alles Uebrige schluckt diese Flaeche. Ohne sie
-    //  fiel ein Klick ins Panel auf die Kachel dahinter durch und wechselte den
-    //  Titel (vom Nutzer gemeldet: „klickt man automatisch durch den Button
-    //  durch und wechselt auch die Audio").
+    // Klick-Sperre, zuerst im Baum und damit UNTER allen Bedienelementen: die nehmen ihre Klicks weiter selbst.
+    // Ohne sie fiel ein Klick ins Panel auf die Kachel dahinter durch und wechselte den Titel.
     MouseArea {
         anchors.fill: parent
         acceptedButtons: Qt.AllButtons
         onWheel: function(w) { w.accepted = true }
     }
-    objectName: "audioEqPanel"        // Griff für tests/bench (Regel 31)
+    objectName: "audioEqPanel"        // Griff für tests/bench
 
-    //  VERWALTEN (löschen, zurücksetzen, Reihenfolge) gibt es nur in den
-    //  EINSTELLUNGEN - Festlegung des Nutzers. Am Player wählt man eine
-    //  Voreinstellung und sichert höchstens eine neue; alles Aufräumen wäre
-    //  dort Ballast und im Eifer schnell versehentlich getroffen.
-    //  Bewusst Pfeilknöpfe für die Reihenfolge und kein Ziehen wie bei den
-    //  Lesezeichen: die Liste ist kurz, und ein Zug in einer 24-px-Zeile
-    //  innerhalb eines scrollenden Einstellungs-Blatts trifft man schlecht.
+    // VERWALTEN (löschen, zurücksetzen, Reihenfolge) gibt es nur in den Einstellungen - am Player wäre es Ballast
+    // und im Eifer schnell versehentlich getroffen. Pfeilknöpfe statt Ziehen: eine 24-px-Zeile trifft man schlecht.
     property bool manageable: false
 
-    //  Die Breite kommt AUS dem Inhalt: die Zeile mit Namensfeld und den beiden
-    //  Preset-Knöpfen ist breiter als die zehn Regler, und bei fester Breite
-    //  stand der letzte Knopf außerhalb des Panels (Nutzerbefund).
-    //  Untergrenze 300 px: unter der Breite bricht der Inhalt um (s. `Flow`),
-    //  statt aus dem Fenster zu laufen - in einer schmalen Hälfte stand das
-    //  Popup sonst über dem Rand (Nutzerbild `tests/miniEQ.png`).
+    // Breite AUS dem Inhalt: die Zeile mit Namensfeld und Preset-Knöpfen ist breiter als die zehn Regler, bei
+    // fester Breite stand der letzte Knopf außerhalb. Untergrenze 300 px, darunter bricht der Inhalt um.
     implicitWidth: Math.max(300, Math.min(520, presetRow.implicitWidth))
     implicitHeight: body.implicitHeight
 
@@ -55,7 +32,7 @@ Item {
         width: panel.width
         spacing: 10
 
-        // ── Kopfzeile: an/aus, Voreinstellung, alles auf null ───────────────
+        // Kopfzeile: an/aus, Voreinstellung, alles auf null
         //  `Flow` statt `Row`: bei schmalem Panel rutschen die Knöpfe in die
         //  nächste Zeile, statt rechts hinauszulaufen.
         Flow {
@@ -79,7 +56,6 @@ Item {
             }
         }
 
-        // ── Die zehn Bänder ─────────────────────────────────────────────────
         Row {
             id: bandRow
             width: parent.width
@@ -96,8 +72,6 @@ Item {
 
                     Text {
                         anchors.horizontalCenter: parent.horizontalCenter
-                        //  31 … 16k - vierstellig aufwärts abgekürzt, sonst
-                        //  passt die Beschriftung nicht unter den Regler.
                         text: {
                             const f = bandCol.modelData
                             return f >= 1000 ? (Math.round(f / 100) / 10) + "k"
@@ -123,8 +97,6 @@ Item {
                             x: bandSlider.width / 2 - 2
                             width: 4; height: bandSlider.height; radius: 2
                             color: Qt.rgba(1, 1, 1, 0.14)
-                            //  Der Ausschlag geht von der MITTE aus (0 dB) -
-                            //  eine Füllung von unten läge bei jedem Regler an.
                             Rectangle {
                                 width: parent.width; radius: parent.radius
                                 color: App.themeAccent
@@ -153,7 +125,6 @@ Item {
             }
         }
 
-        // ── Vorverstärkung ──────────────────────────────────────────────────
         Flow {
             width: parent.width
             spacing: 8
@@ -169,15 +140,12 @@ Item {
                 id: preampSlider
                 width: 160
                 height: 20
-                //  Nach unten weiter als nach oben: die Gegenrechnung gegen das
-                //  Übersteuern braucht bei mehreren angehobenen Bändern bis zu
-                //  18 dB Luft (gemessen), +12 dB nach oben bleibt für alle, die
-                //  bewusst übersteuern wollen.
+                // Nach unten weiter als nach oben: die Gegenrechnung gegen das Übersteuern braucht bei mehreren angehobenen
+                // Bändern bis zu 18 dB Luft (gemessen).
                 from: -24; to: 12; stepSize: 0.5
                 value: Audio.eqPreamp
                 onMoved: Audio.eqPreamp = value
 
-                //  Null liegt jetzt bei zwei Dritteln, nicht in der Mitte.
                 readonly property real _zeroX: 24 / 36
 
                 background: Rectangle {
@@ -209,13 +177,8 @@ Item {
             }
         }
 
-        // ── Voreinstellungen als LISTE ──────────────────────────────────────
-        //  Statt eines Auswahlfeldes: nur so sieht man auf einen Blick, was es
-        //  gibt, welche gerade gilt und welche mitgelieferte verändert wurde.
-        //  Ein Klick wählt, das Disketten-Zeichen sichert die aktuellen Regler
-        //  AUF DIESE Zeile (überschreibt also auch eine mitgelieferte), das
-        //  Rückgängig-Zeichen holt eine mitgelieferte Vorlage zurück, das X
-        //  entfernt den Eintrag - der Klang bleibt dabei stehen.
+        // Liste statt Auswahlfeld: nur so sieht man, was es gibt, welche gilt und welche mitgelieferte verändert wurde.
+        // Diskette sichert die Regler auf die Zeile, Rückgängig holt die Vorlage zurück - der Klang bleibt stehen.
         Text {
             text: App.uiText(App.language, "AudioEqPreset")
             color: App.themeTextMuted
@@ -224,8 +187,6 @@ Item {
 
         Rectangle {
             width: parent.width
-            //  Gedeckelt, damit das Popup an der Player-Leiste nicht wächst,
-            //  bis es aus dem Fenster ragt; darüber wird gescrollt.
             height: Math.min(146, Math.max(24, presetList.contentHeight + 2))
             color: Qt.rgba(App.themeTextPrimary.r, App.themeTextPrimary.g,
                            App.themeTextPrimary.b, 0.05)
@@ -243,11 +204,8 @@ Item {
                 boundsBehavior: Flickable.StopAtBounds
                 ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
 
-                //  Nur in den EINSTELLUNGEN: eine letzte Zeile mit „+", die aus
-                //  den aktuellen Reglern eine neue Voreinstellung anlegt. Sie
-                //  gehört ans Ende der Liste, weil man dort verwaltet - am
-                //  Player führt der Weg weiter über „Sichern" (Festlegung des
-                //  Nutzers: dort wird nur gewählt und gesichert).
+                // Nur in den Einstellungen: die letzte Zeile mit "+" legt aus den aktuellen Reglern eine neue Voreinstellung
+                // an. Am Player führt der Weg über "Sichern".
                 footer: Item {
                     width: presetList.width
                     height: panel.manageable ? 26 : 0
@@ -300,8 +258,6 @@ Item {
                         Audio.activePreset === prow.modelData
                     readonly property bool isBuiltin:
                         Audio.presetIsBuiltin(prow.modelData)
-                    //  Nur eine VERÄNDERTE mitgelieferte hat etwas
-                    //  zurückzusetzen (`presetsChanged` treibt die Bindung).
                     readonly property bool canReset:
                         Audio.presetsModified !== undefined
                         && prow.isBuiltin
@@ -322,8 +278,6 @@ Item {
                     }
                     HoverHandler { id: rowHover }
                     TapHandler {
-                        //  Exklusiv greifen - sonst reicht der Druck an das
-                        //  Element dahinter weiter (Standardregel).
                         gesturePolicy: TapHandler.ReleaseWithinBounds
                         onTapped: Audio.applyPreset(prow.modelData)
                     }
@@ -341,12 +295,8 @@ Item {
                         font.bold: prow.isActive
                     }
 
-                    //  Ein kleines Zeichen-Knöpfchen (Regel 28: gezeichnet).
-                    //  EIGENE `id` statt `parent`: auf der Ebene der angehängten
-                    //  Eigenschaften (`ToolTip.text`) meint `parent` den
-                    //  VISUELLEN Elternteil - also die `Row`, nicht den Knopf.
-                    //  Ohne die id blieb der Hilfetext `undefined` (QML meldete
-                    //  „Unable to assign [undefined] to QString").
+                    // EIGENE `id` statt `parent`: auf der Ebene der angehängten Eigenschaften meint `parent` den VISUELLEN
+                    // Elternteil - also die `Row`, nicht den Knopf; der Hilfetext blieb sonst undefined.
                     component RowBtn: Rectangle {
                         id: rb
                         property string icon: ""
@@ -408,12 +358,8 @@ Item {
             }
         }
 
-        // ── Fusszeile ───────────────────────────────────────────────────────
-        //  Am Player steht hier NUR das Sichern (mit dem Disketten-Zeichen); es
-        //  öffnet ein kleines Fenster, in dem man entweder einen Namen vergibt
-        //  ODER - darunter, durch eine Linie getrennt - eine vorhandene
-        //  Voreinstellung überschreibt. In den EINSTELLUNGEN kommt der
-        //  Sammel-Knopf „Mitgelieferte zurücksetzen" dazu.
+        // Am Player steht hier nur das Sichern; es öffnet ein Fenster für einen neuen Namen oder das Überschreiben
+        // einer vorhandenen Voreinstellung. In den Einstellungen kommt "Mitgelieferte zurücksetzen" dazu.
         Flow {
             id: presetRow
             width: parent.width
@@ -472,10 +418,6 @@ Item {
                             }
                         }
 
-                        //  Die Trennlinie ist die Aussage: darunter wird NICHTS
-                        //  Neues angelegt, sondern etwas Vorhandenes ersetzt.
-                        //  Sie sagt das allein - die Zeile darunter wiederholte
-                        //  nur, was die Liste ohnehin zeigt (Nutzerwunsch).
                         Rectangle {
                             width: savePop.availableWidth
                             height: 1
@@ -524,7 +466,6 @@ Item {
                 }
             }
             Button {
-                //  Nur in den Einstellungen, und nur wenn es etwas zurückzusetzen gibt.
                 visible: panel.manageable && Audio.presetsModified
                 text: App.uiText(App.language, "AudioEqPresetResetAll")
                 onClicked: Audio.resetAllPresets()

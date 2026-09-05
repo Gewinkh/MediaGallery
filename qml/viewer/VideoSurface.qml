@@ -5,32 +5,18 @@ import QtMultimedia
 import MediaGallery 1.0
 import "../common"
 
-// ─────────────────────────────────────────────────────────────────────────────
-//  VideoSurface.qml - interner Video-Player (ersetzt VideoPlayer(QWidget)+
-//  MultimediaWidgets). MediaPlayer + VideoOutput + AudioOutput, vollständig in
-//  QML. Steuerung (Play/Pause/Seek/Volume/Mute) als QML; Auto-Hide der Leiste.
-//
-//  RAM/Perf: Quelle wird nur gesetzt, solange diese Surface aktiv ist; beim
-//  Verlassen ruft der Aufrufer release() -> stop() + source = "" -> Dekoder frei.
-// ─────────────────────────────────────────────────────────────────────────────
+// Interner Video-Player, vollständig in QML. Die Quelle wird nur gesetzt, solange die Surface aktiv ist; beim
+// Verlassen ruft der Aufrufer `release()` und gibt den Dekoder frei.
 Item {
     id: root
 
     property string source: ""
     property bool   active: true
-    // Von FullscreenViewer gesetzt (Höhe der globalen unteren Navigation
-    // ◀ N/M ▶), damit die eigene Steuerleiste (unten) sie nicht überdeckt.
-    // Weich animiert, damit die Leiste beim Ein-/Ausblenden der Navigation
-    // mitgleitet statt zu springen (180 ms, passend zur bottomNav-Fade-Dauer).
     property real   bottomInset: 0
     Behavior on bottomInset { NumberAnimation { duration: 180 } }
 
-    // ── Mono-Play ─────────────────────────────────────────────────────────────
-    //  Eindeutiges Token dieser Wiedergabestelle (Objekt-Identität -> je Kachel/
-    //  Instanz verschieden). Beim Play-Start meldet sich der Player über
-    //  App.announcePlayback; startet eine ANDERE Stelle (fremdes Token),
-    //  pausiert diese hier - Position bleibt erhalten (Pause, kein Stop).
-    //  App sendet playbackStarted NUR bei aktivierter Mono-Play-Option.
+    // Mono-Play: eindeutiges Token je Wiedergabestelle. Startet eine andere Stelle, PAUSIERT diese hier - kein
+    // Stop, damit die Position erhalten bleibt. `App` sendet `playbackStarted` nur bei aktivierter Option.
     readonly property string _playToken: "video-" + root
 
     Connections {
@@ -47,9 +33,6 @@ Item {
         player.source = ""
     }
 
-    // Relatives Spulen (Millisekunden, negativ = zurück) - genutzt von den
-    // Pfeiltasten im Vollbild (FullscreenViewer). Geklemmt auf [0, duration];
-    // bei noch unbekannter Dauer (duration <= 0) passiert nichts.
     function seekBy(deltaMs) {
         if (player.duration <= 0 || !player.seekable) return
         player.position = Math.max(0, Math.min(player.position + deltaMs,
@@ -57,20 +40,14 @@ Item {
         root.showControls()
     }
 
-    // Steuerleiste einblenden und den Auto-Hide-Timer neu starten.
     function showControls() {
         root._controlsShown = true
         hideTimer.restart()
     }
 
     onSourceChanged: {
-        // Rohen lokalen Pfad in eine korrekt kodierte file://-URL wandeln -
-        // analog zu Image/HtmlSurface. MediaPlayer.source ist QUrl-typisiert;
-        // ein roher String ohne Schema wird von QML relativ zur Basis-URL der
-        // Komponente (qrc:/qml/…) aufgelöst -> ungültige qrc-Ressource, daher
-        // die Fehlermeldung "Attempting to play invalid Qt resource" beim
-        // Öffnen von Video-/Audio-Dateien. App.fileUrl() (QUrl::fromLocalFile)
-        // kodiert zudem Sonderzeichen (Leerzeichen, CJK/Arabisch, …) korrekt.
+        // `MediaPlayer.source` ist QUrl-typisiert: ein roher String ohne Schema wird relativ zur Basis-URL der
+        // Komponente aufgelöst - daher "Attempting to play invalid Qt resource". `App.fileUrl()` kodiert auch Sonderzeichen.
         player.source = source.length > 0 ? App.fileUrl(source) : ""
         if (source.length > 0 && active)
             player.play()
@@ -78,8 +55,6 @@ Item {
 
     Rectangle { anchors.fill: parent; color: "#000000" }
 
-    //  Für die Übergabe an den Player-Modus (Alt+A aus einer offenen Datei):
-    //  die Stelle, an der man gerade steht, und ob es läuft.
     function pausePlayback() { if (player.playbackState === MediaPlayer.PlayingState) player.pause() }
     readonly property int  playbackPositionMs: player.position
     readonly property bool playbackRunning: player.playbackState === MediaPlayer.PlayingState
@@ -114,7 +89,6 @@ Item {
         horizontalAlignment: Text.AlignHCenter
     }
 
-    // ── Klick auf Videofläche: Play/Pause ────────────────────────────────────
     MouseArea {
         anchors.fill: parent
         onClicked: player.playbackState === MediaPlayer.PlayingState ? player.pause() : player.play()
@@ -122,14 +96,8 @@ Item {
         hoverEnabled: true
     }
 
-    // ── Auto-Hide der Steuerleiste ───────────────────────────────────────────
-    //  Die Leiste wird NIE ausgeblendet, solange der Zeiger auf ihr steht oder
-    //  ein Regler gezogen wird. Zuvor lief der Timer weiter, sobald der Zeiger
-    //  die Leiste erreichte: über ihr bekam die darunterliegende MouseArea keine
-    //  Bewegungen mehr, der Timer feuerte nach 2,5 s und die Leiste blendete sich
-    //  genau beim Zugreifen weg. Im ausgeblendeten Zustand ist sie zudem nicht
-    //  mehr bedienbar (enabled/visible) - eine unsichtbare, aber weiterhin
-    //  klickbare Leiste schluckte sonst Klicks auf die Videofläche.
+    // Die Leiste wird nie ausgeblendet, solange der Zeiger auf ihr steht: zuvor bekam die MouseArea darunter keine
+    // Bewegungen mehr und die Leiste verschwand genau beim Zugreifen. Ausgeblendet ist sie zudem nicht bedienbar.
     property bool _controlsShown: true
     Timer {
         id: hideTimer
@@ -144,7 +112,6 @@ Item {
         }
     }
 
-    // ── Steuerleiste ─────────────────────────────────────────────────────────
     Rectangle {
         id: controls
         anchors { left: parent.left; right: parent.right; bottom: parent.bottom }
@@ -156,27 +123,21 @@ Item {
         enabled: root._controlsShown
         Behavior on opacity { NumberAnimation { duration: 200 } }
 
-        //  Hält die Leiste sichtbar, solange der Zeiger auf ihr steht, und holt
-        //  sie beim Betreten sofort zurück.
         HoverHandler {
             id: controlsHover
             onHoveredChanged: if (hovered) root.showControls()
         }
 
-        //  RowLayout statt Row: Der Fortschrittsregler bekam seine Breite früher
-        //  als `parent.width - 320` - in schmalen Kacheln (geteilte Ansicht) wurde
-        //  das negativ, der Regler schrumpfte auf 0 und war nicht mehr greifbar.
-        //  Jetzt füllt er den Rest und behält eine Mindestbreite.
+        // RowLayout statt Row: der Fortschrittsregler bekam seine Breite früher als `parent.width - 320` - in schmalen
+        // Kacheln wurde das negativ, er schrumpfte auf 0 und war nicht mehr greifbar.
         RowLayout {
             anchors.fill: parent
             anchors.leftMargin: 12
             anchors.rightMargin: 12
             spacing: 10
 
-            //  GEZEICHNET, nicht als Glyphe (Regel 28): ⏸ und ▶ kommen aus
-            //  verschiedenen Unicode-Blöcken und werden von der Schrift
-            //  unterschiedlich groß gerastert - der Pause-Knopf sah dadurch
-            //  kleiner aus als der Play-Knopf (Nutzerbefund).
+            // GEZEICHNET, nicht als Glyphe: Pause und Play kommen aus verschiedenen Unicode-Blöcken und werden
+            // unterschiedlich groß gerastert - der Pause-Knopf sah dadurch kleiner aus.
             ToolButton {
                 Layout.preferredWidth: 36; Layout.preferredHeight: 36
                 onClicked: player.playbackState === MediaPlayer.PlayingState ? player.pause() : player.play()
@@ -188,8 +149,6 @@ Item {
             }
 
             Text {
-                //  Beim Ziehen zeigt die Uhr die ZIELZEIT, nicht die laufende
-                //  Wiedergabe - sonst zöge man blind.
                 text: root.formatTime(seek.pressed ? seek.value : player.position)
                 color: "white"
                 font.pixelSize: 11
@@ -201,25 +160,16 @@ Item {
                 Layout.minimumWidth: 60
                 from: 0
                 to: Math.max(1, player.duration)
-                //  Der Griff folgt dem Player - aber NICHT während des Ziehens
-                //  (sonst zöge die laufende Wiedergabe ihn zurück). Als eigenes
-                //  Binding statt `value: pressed ? value : …`, das sich selbst
-                //  referenziert (Binding-Schleife).
+                // Der Griff folgt dem Player, aber NICHT während des Ziehens - sonst zöge die laufende Wiedergabe ihn zurück.
+                // Als eigenes Binding, weil `value: pressed ? value : ...` sich selbst referenzierte.
                 Binding on value {
                     when: !seek.pressed
                     value: player.position
                     restoreMode: Binding.RestoreNone
                 }
 
-                //  ── Gesprungen wird beim LOSLASSEN, nicht beim Ziehen ───────
-                //  `onMoved` feuert während eines Zuges laufend; jeder Sprung
-                //  zwingt den Player auf ein Schlüsselbild und füllt seinen
-                //  Puffer neu. Beim Ziehen über eine Stunde Film kamen so
-                //  Dutzende Sprünge zusammen - das ist das Ruckeln. Ein
-                //  einzelner Sprung kostet dagegen wenig (gemessen: 65 ms auf
-                //  45 min in einer 1,5-GB-Datei).
-                //  Mit Tastatur (Pfeiltasten) oder einem Klick auf die Leiste
-                //  gibt es keinen Zug - dann wird sofort gesprungen.
+                // Gesprungen wird beim LOSLASSEN: `onMoved` feuert während des Zuges laufend, und jeder Sprung zwingt den
+                // Player auf ein Schlüsselbild - ein einzelner kostet dagegen 65 ms auf 45 min in einer 1,5-GB-Datei.
                 property real pendingSeek: -1
                 onMoved: {
                     if (seek.pressed) seek.pendingSeek = seek.value

@@ -5,18 +5,8 @@
 #include <QJsonObject>
 #include <QString>
 
-// ─────────────────────────────────────────────────────────────────────────────
-//  SyntaxPalette.h - die Farben des Texteditors, GETRENNT vom App-Theme.
-//
-//  Festlegung des Nutzers (2026-09-02): der Texteditor bekommt eigene Profile
-//  und einen eigenen Farbkonfigurator. Er teilt sich mit der Oberflaeche keine
-//  einzige Farbe - ein Wechsel des App-Themes laesst den Editor unberuehrt und
-//  umgekehrt. Deshalb steht hier eine EIGENE Struktur und nicht ein weiteres
-//  Feld in `ThemeColors`.
-//
-//  Vier Profile, damit die Reihe im Design-Reiter voll wird (drei mitgelieferte
-//  plus „Custom") - dieselbe Aufteilung wie bei den Oberflaechen-Profilen.
-// ─────────────────────────────────────────────────────────────────────────────
+// Die Farben des Texteditors, GETRENNT vom App-Theme: eigene Profile, eigener Konfigurator, keine gemeinsame
+// Farbe. Deshalb eine eigene Struktur statt eines weiteren Feldes in `ThemeColors`.
 namespace mg::editor {
 
 enum class EditorProfile { Nightfall, Paper, Ember, Custom };

@@ -247,6 +247,8 @@ mg_domain(mg_core
         src/core/ZCodec.h
         src/core/PdfGlyphRuns.cpp
         src/core/PdfGlyphRuns.h
+        src/core/TextEncoding.cpp
+        src/core/TextEncoding.h
     LIBS
         Qt6::Core Qt6::Gui Qt6::Quick
 )
@@ -479,6 +481,34 @@ mg_domain(mg_imageedit
         mg_core
 )
 
+#  ── Tabellen: getrennte Textdateien (CSV/TSV) lesen und zeigen ──────────────
+#  Der Leser ist reines C++ an Qt6::Core; der Controller haengt an Qt6::Qml,
+#  weil er seinen Zustand nach QML meldet. Die DATEV-Domaene sitzt darauf.
+mg_domain(mg_table
+    SOURCES
+        src/table/DelimitedText.cpp
+        src/table/DelimitedText.h
+        src/table/TableController.cpp
+        src/table/TableController.h
+    LIBS
+        mg_core Qt6::Qml
+)
+
+#  ── DATEV: Buchungsstapel lesen und als Tabelle zeigen ──────────────────────
+#  Zerleger und Formatkatalog sind reines C++ an Qt6::Core; der Controller
+#  haengt an Qt6::Qml, weil er seinen Zustand nach QML meldet. NUR lesend.
+mg_domain(mg_datev
+    SOURCES
+        src/datev/DatevCsv.cpp
+        src/datev/DatevCsv.h
+        src/datev/DatevFormat.cpp
+        src/datev/DatevFormat.h
+        src/datev/DatevController.cpp
+        src/datev/DatevController.h
+    LIBS
+        mg_table Qt6::Qml
+)
+
 mg_domain(mg_app
     SOURCES
         src/app/AppController.cpp
@@ -498,7 +528,7 @@ mg_domain(mg_app
         src/app/TransliterationController.cpp
         src/app/TransliterationController.h
     LIBS
-        mg_core mg_media mg_tags mg_pdf mg_pdfedit mg_docx
+        mg_core mg_media mg_tags mg_pdf mg_pdfedit mg_docx mg_datev mg_table
         Qt6::Qml Qt6::WebEngineQuick Qt6::Svg Qt6::Quick
 )
 

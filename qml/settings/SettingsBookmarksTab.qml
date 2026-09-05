@@ -5,37 +5,12 @@ import QtQuick.Layouts
 import MediaGallery 1.0
 import "../common"
 
-// ── Lesezeichen: gespeicherte Ordner in VERSCHACHTELTEN Gruppen verwalten ────
-//
-//  Die Liste ist EINE FLACHE ZEILENLISTE (`App.bookmarkTree`) in genau der
-//  Reihenfolge, die auch das Hauptmenü ▸ Ordner zeigt: je Zeile eine Gruppe
-//  oder ein Lesezeichen, eingerückt nach `depth`. Zeilen unter einer
-//  zugeklappten Gruppe tragen `hidden` und werden übersprungen.
-//
-//  WARUM FLACH und nicht geschachtelt: über die Grenze zweier ineinander
-//  liegender `Repeater` hinweg ließe sich nichts ziehen - genau das ist hier
-//  aber der Zweck. Die Schachtelung steckt deshalb in `depth`, nicht im Baum
-//  der Elemente.
-//
-//  ZIEHEN UND ABLEGEN:
-//   • Am **Griff** links zieht man ein Lesezeichen ODER eine ganze Gruppe.
-//     Gezogen wird ein STELLVERTRETER (`dragGhost`) statt der Zeile selbst:
-//     die Zeilen liegen in einem Layout, das eine verschobene Zeile sofort
-//     zurückrückt - der Zug sähe aus, als hinge er fest.
-//   • Ablegen auf einer GRUPPENzeile: hinein, ans Ende. Für eine Gruppe heißt
-//     das „wird zur Untergruppe".
-//   • Ablegen auf einer LESEZEICHENzeile: in deren Gruppe, an deren Platz.
-//   • Ablegen auf dem **schmalen Streifen** über einer Gruppenzeile: davor, auf
-//     DERSELBEN Ebene - nur so lassen sich Geschwister-Gruppen ordnen, ohne
-//     dass jedes Ablegen sofort verschachtelt. Der Streifen erscheint nur
-//     während ein Gruppen-Zug läuft.
-//   • Ablegen auf der Kopfzeile „Ohne Gruppe": zurück auf die oberste Ebene.
-// ─────────────────────────────────────────────────────────────────────────────
+// Die Liste ist EINE FLACHE Zeilenliste (`App.bookmarkTree`), eingerückt nach `depth`: über die Grenze zweier
+// ineinander liegender Repeater hinweg liesse sich nichts ziehen - genau das ist hier der Zweck. Gezogen wird
+// ein STELLVERTRETER, weil das Layout eine verschobene Zeile sofort zurückrückt.
 Item {
     id: root
 
-    //  Nur die sichtbaren Zeilen - eine zugeklappte Gruppe verbirgt ihren
-    //  ganzen Ast, und C++ hat das bereits ausgerechnet (`hidden`).
     readonly property var rows: {
         var all = App.bookmarkTree
         var out = []
@@ -45,17 +20,10 @@ Item {
     }
     readonly property bool hasRows: rows.length > 0
 
-    // Index für den Lösch-Dialog (Hinzufügen/Bearbeiten liegt in BookmarkEditDialog).
     property int deleteIndex: -1
-    // Gruppe, die gerade umbenannt oder gelöscht wird (voller Pfad).
     property string groupTarget: ""
-    // Elterngruppe einer NEUEN Gruppe (voller Pfad; leer = oberste Ebene).
     property string groupParent: ""
 
-    //  Kleiner, gezeichneter Knopf (Regel 28): Zahnrad zum Bearbeiten,
-    //  Mülltonne zum Löschen. Der frühere Text-Knopf brauchte je Zeile zweimal
-    //  gut 70 px Breite - bei tief eingerückten Zeilen blieb für den Namen
-    //  kaum etwas übrig.
     component IconBtn: Rectangle {
         id: ib
         property string iconName: ""
@@ -128,7 +96,7 @@ Item {
                 width: root.width
                 spacing: 4
 
-                // ── „Ohne Gruppe" - die oberste Ebene als Ablegeziel ─────────
+                // „Ohne Gruppe" - die oberste Ebene als Ablegeziel
                 //  Ohne diese Zeile käme nichts mehr aus einer Gruppe heraus.
                 Rectangle {
                     Layout.fillWidth: true
@@ -162,7 +130,6 @@ Item {
                     }
                 }
 
-                // ── Eine Zeile je Gruppe / je Lesezeichen ────────────────────
                 Repeater {
                     model: root.rows
                     delegate: ColumnLayout {
@@ -171,22 +138,14 @@ Item {
                         required property var modelData
 
                         readonly property bool   isGroup: line.modelData.kind === "group"
-                        //  Gruppe: ihr eigener Pfad · Eintrag: der Pfad seiner Gruppe.
                         readonly property string groupPath: line.modelData.group
                         readonly property int    depth: line.modelData.depth
 
                         Layout.fillWidth: true
                         spacing: 0
 
-                        //  Einfügestreifen: „davor, auf DERSELBEN Ebene" - nur
-                        //  so lassen sich Geschwister-Gruppen ordnen, denn ein
-                        //  Ablegen AUF einer Gruppe verschachtelt.
-                        //  **Der Platz wird IMMER reserviert**, sichtbar wird nur
-                        //  die Farbe: erschiene der Streifen erst beim Zug, sprängen
-                        //  in dem Moment alle Zeilen um 10 px nach unten - man
-                        //  zielte auf eine Zeile, die beim Loslassen woanders steht
-                        //  (im Zugbild von `bench_qmlscene` gesehen). Nebenbei
-                        //  trennt der Zwischenraum die Gruppen sichtbar.
+                        // Einfügestreifen "davor, auf DERSELBEN Ebene" - ein Ablegen AUF einer Gruppe verschachtelt. Der Platz wird
+                        // IMMER reserviert, sichtbar wird nur die Farbe: sonst sprängen beim Zug alle Zeilen um 10 px nach unten.
                         Rectangle {
                             id: beforeStrip
                             readonly property bool groupDrag: dragGhost.payloadKind === "group"
@@ -235,8 +194,6 @@ Item {
                             border.color: App.themeBorder
                             border.width: 1
 
-                            //  Gruppe: hinein, ans Ende. Eintrag: in seine
-                            //  Gruppe, an seinen Platz.
                             DropArea {
                                 id: rowDrop
                                 anchors.fill: parent
@@ -267,7 +224,6 @@ Item {
                                 anchors.rightMargin: 8
                                 spacing: 6
 
-                                // Griff - zieht Eintrag ODER ganze Gruppe.
                                 Item {
                                     implicitWidth: 16; implicitHeight: 16
                                     DrawnIcon {
@@ -295,7 +251,6 @@ Item {
                                     }
                                 }
 
-                                // Auf-/Zuklappen - auf JEDER Ebene.
                                 Item {
                                     implicitWidth: line.isGroup ? 16 : 0
                                     implicitHeight: 16
@@ -314,7 +269,6 @@ Item {
                                     }
                                 }
 
-                                // ── Gruppe: Name + Zahl der direkten Kinder ──
                                 Text {
                                     visible: line.isGroup
                                     Layout.fillWidth: line.isGroup
@@ -332,7 +286,6 @@ Item {
                                     color: App.themeTextMuted; font.pixelSize: 11
                                 }
 
-                                // ── Eintrag: Name + Pfad ─────────────────────
                                 ColumnLayout {
                                     visible: !line.isGroup
                                     Layout.fillWidth: !line.isGroup
@@ -353,7 +306,6 @@ Item {
                                     }
                                 }
 
-                                //  Untergruppe anlegen - nur an einer Gruppe.
                                 IconBtn {
                                     visible: line.isGroup
                                     iconName: "plus"
@@ -416,10 +368,8 @@ Item {
         }
     }
 
-    // ── Stellvertreter des Zuges ─────────────────────────────────────────────
-    //  Ein einziges Item für ALLE Züge dieses Reiters. Es hängt an `root` (kein
-    //  Layout), lässt sich also frei bewegen, und trägt die Nutzlast, die die
-    //  Ablegeflächen auslesen.
+    // Ein einziges Stellvertreter-Item für ALLE Züge dieses Reiters. Es hängt an `root` statt an einem Layout,
+    // lässt sich also frei bewegen, und trägt die Nutzlast für die Ablegeflächen.
     Rectangle {
         id: dragGhost
         z: 100
@@ -472,10 +422,8 @@ Item {
         }
     }
 
-    // ── Hinzufügen / Bearbeiten (geteilt mit ApplicationShell) ───────────────
     BookmarkEditDialog { id: bookmarkEditDialog }
 
-    // ── Gruppe anlegen / umbenennen ─────────────────────────────────────────
     Dialog {
         id: groupDialog
         modal: true
@@ -484,8 +432,6 @@ Item {
         width: 420
         background: Rectangle { color: App.themeCard; border.color: App.themeBorder; radius: 8 }
 
-        //  Anlegen: `groupTarget` leer, `groupParent` sagt WO. Umbenennen:
-        //  `groupTarget` ist der volle Pfad, umbenannt wird nur sein letztes Glied.
         function openAdd(parentPath) {
             root.groupTarget = ""
             root.groupParent = parentPath
@@ -580,11 +526,8 @@ Item {
         standardButtons: Dialog.Yes | Dialog.No
         background: Rectangle { color: App.themeCard; border.color: App.themeBorder; radius: 8 }
         onAccepted: App.removeBookmarkGroup(root.groupTarget)
-        //  **Eingabetaste bestaetigt.** `focus: true` am Dialog UND ein
-        //  `Keys`-Handler am `contentItem` - beides noetig: `standardButtons`
-        //  allein wertet `Return` NICHT aus (der Fokus liegt dann auf der
-        //  `DialogButtonBox`, und die hat keinen Vorgabe-Knopf), und ein
-        //  `Keys`-Handler am Dialog selbst feuert gar nicht. Beides gemessen.
+        // `focus: true` am Dialog UND ein `Keys`-Handler am `contentItem` - beides nötig: `standardButtons` allein
+        // wertet `Return` nicht aus (Fokus auf der DialogButtonBox ohne Vorgabe-Knopf), und `Keys` am Dialog feuert nie.
         focus: true
         contentItem: Item {
             focus: true
@@ -609,13 +552,9 @@ Item {
         standardButtons: Dialog.Yes | Dialog.No
         background: Rectangle { color: App.themeCard; border.color: App.themeBorder; radius: 8 }
         onAccepted: App.removeBookmark(root.deleteIndex)
-        //  **Eingabetaste bestaetigt.** Begruendung s. `groupDeleteDialog`.
         focus: true
-        // Umbrechender Text in einem Item mit FESTER implicitWidth: Als
-        // contentItem bestimmt dessen implicitWidth die Dialogbreite. Ein
-        // umbrechender Text meldet dagegen eine implicitWidth, die von seiner
-        // (vom Dialog gesetzten) Breite abhängt -> Rückkopplung
-        // Dialog.implicitWidth ⇄ Textumbruch ("Binding loop detected").
+        // Umbrechender Text in einem Item mit FESTER `implicitWidth`: als contentItem bestimmt dessen implicitWidth die
+        // Dialogbreite, ein umbrechender Text meldet dagegen eine, die von seiner gesetzten Breite abhängt.
         contentItem: Item {
             focus: true
             Keys.onReturnPressed: function(e) { deleteDialog.accept(); e.accepted = true }
@@ -631,7 +570,5 @@ Item {
         }
     }
 
-    //  Weiches, schnelles Mausrad-Scrollen (Galerie-Muster) statt der festen
-    //  60 px je Rastung von `Flickable`.
     SmoothWheelArea { flickable: bmScroll.contentItem }
 }

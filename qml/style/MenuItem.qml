@@ -2,18 +2,8 @@ import QtQuick
 import QtQuick.Templates as T
 import MediaGallery 1.0
 
-// ─────────────────────────────────────────────────────────────────────────────
-//  MenuItem.qml - gethemter Menüeintrag (Stil "style").
-//
-//  Ersetzt Fusions hellgraues Kästchen mit Bitmap-Haken durch dieselbe
-//  abgerundete Akzent-Markierung wie `CheckBox.qml` und zeichnet den
-//  Untermenü-Pfeil selbst (schriftart-/atlasfrei).
-//
-//  WICHTIG - `background.implicitWidth: 200`: `ThemedMenu` in
-//  `ApplicationShell.qml` berechnet die Menübreite aus `max(item.implicitWidth)`
-//  mit 200 px als Mindestmaß (Fusion-Verhalten, s. Runde 2026-07-25, 2). Ohne
-//  diese implizite Breite kollabieren die Menü-Popups wieder zum „Strich".
-// ─────────────────────────────────────────────────────────────────────────────
+// Gethemter Menüeintrag mit abgerundeter Akzent-Markierung und selbst gezeichnetem Untermenü-Pfeil.
+// `background.implicitWidth: 200` ist Pflicht - ThemedMenu rechnet die Menübreite daraus, sonst kollabiert das Popup.
 T.MenuItem {
     id: control
 
@@ -29,16 +19,8 @@ T.MenuItem {
     spacing: 8
     font.pixelSize: 13
 
-    //  ── Markierung loslassen, wenn der Zeiger weg ist ───────────────────────
-    //  Qt setzt beim Überfahren `Menu.currentIndex` auf den Eintrag und lässt
-    //  ihn dort stehen - fährt man vom Eintrag weg (aus dem Menü hinaus oder auf
-    //  eine Zeile, die kein `MenuItem` ist), bleibt er markiert, obwohl die Maus
-    //  längst woanders ist (Nutzerbefund am Dokument-Menü).
-    //
-    //  Aufgeräumt wird VERZÖGERT (`Qt.callLater`), und nur, wenn dieser Eintrag
-    //  dann noch der markierte ist: beim Wechsel auf den Nachbarn setzt DIESER
-    //  den Index zuerst auf sich - ein sofortiges Löschen nähme ihm die frische
-    //  Markierung wieder weg.
+    // Qt setzt `Menu.currentIndex` beim Überfahren und lässt ihn stehen - fährt man aus dem Menü hinaus, bleibt der
+    // Eintrag markiert. Verzögert aufräumen und nur, wenn er dann noch markiert ist: der Nachbar setzt den Index zuerst.
     onHoveredChanged: if (!control.hovered) Qt.callLater(control._dropStaleHighlight)
     function _dropStaleHighlight() {
         if (control.hovered || !control.menu) return

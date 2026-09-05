@@ -80,9 +80,6 @@ void DocxEditController::setModified(bool m) {
     emit modifiedChanged();
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-//  Laden - asynchron (QRunnable + Generationszähler; Muster PdfTextController)
-// ─────────────────────────────────────────────────────────────────────────────
 void DocxEditController::setSource(const QString& s) {
     const QString path = mg::toLocalPath(s);
     if (m_source == path)
@@ -114,7 +111,6 @@ void DocxEditController::setSource(const QString& s) {
             const bool ok = doc->load(m_path, &err);
             auto c = m_c;
             const int gen = m_gen;
-            //  Übergabe an den GUI-Thread (QueuedConnection-Äquivalent).
             QMetaObject::invokeMethod(qApp, [c, gen, doc, ok, err]() {
                 if (!c || gen != c->m_loadGen) { delete doc; return; }
                 if (ok) {
@@ -141,9 +137,6 @@ void DocxEditController::setSource(const QString& s) {
     QThreadPool::globalInstance()->start(new LoadTask(self, path, gen));
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-//  Positions-Helfer
-// ─────────────────────────────────────────────────────────────────────────────
 QString DocxEditController::blockText(int i) const {
     if (i < 0 || i >= m_doc.blocks.size()) return {};
     return m_doc.blocks.at(i).plainText();
@@ -161,10 +154,8 @@ bool DocxEditController::isEditableParagraph(int i) const {
     return true;
 }
 
-//  Gehören zwei Blöcke in DIESELBE Zelle (bzw. beide in den Rumpf)? Das ist die
-//  Grenze, über die keine STRUKTUR-Änderung laufen darf: ein Absatz-Merge über
-//  eine Zellgrenze würde eine Zelle auflösen und damit die Tabelle zerstören -
-//  die Datei bliebe zwar wohlgeformt, aber der Inhalt wäre verschoben.
+// Gehören zwei Blöcke in DIESELBE Zelle? Das ist die Grenze, über die keine STRUKTUR-Änderung laufen darf: ein
+// Absatz-Merge über eine Zellgrenze löste eine Zelle auf - die Datei bliebe wohlgeformt, der Inhalt verschoben.
 bool DocxEditController::sameCell(int i, int j) const {
     if (i == j) return true;
     if (i < 0 || j < 0 || i >= m_doc.blocks.size() || j >= m_doc.blocks.size())
@@ -176,10 +167,8 @@ bool DocxEditController::sameCell(int i, int j) const {
     return a.row == b.row && a.col == b.col;
 }
 
-//  Mehrblock-Operationen auf die Zelle des ANKERS begrenzen. Eine Selektion darf
-//  quer über Zellen laufen (Kopieren ist harmlos); LÖSCHEN darf es nicht, sonst
-//  verschwänden Zellgrenzen. Statt die Aktion zu verweigern, wird der Bereich
-//  gekürzt - so bleibt Strg+A + Entf im Rumpf benutzbar.
+// Mehrblock-Operationen auf die Zelle des ANKERS begrenzen: Kopieren quer über Zellen ist harmlos, LÖSCHEN
+// nicht. Statt die Aktion zu verweigern, wird der Bereich gekürzt - so bleibt Strg+A + Entf im Rumpf nutzbar.
 void DocxEditController::clampRangeToCell(int b1, int& b2) const {
     while (b2 > b1 && !sameCell(b1, b2)) --b2;
 }
@@ -216,15 +205,11 @@ int DocxEditController::ensureRunBoundary(Block& b, int pos) const {
         if (pos == acc)
             return i;                                   // Grenze existiert
         if (pos < acc + len) {
-            //  Run teilen: beide Hälften erben rPr (Original-Span bzw. schon
-            //  materialisiertes Fragment) und werden dirty (Neuaufbau nötig).
             Run right = r;
             right.text = r.text.mid(pos - acc);
             right.dirty = true;
             r.text.truncate(pos - acc);
             r.dirty = true;
-            //  rPr der rechten Hälfte materialisieren (Span zeigt weiterhin
-            //  auf dasselbe Original-Fragment - verbatim geteilt ist ok).
             b.runs.insert(i + 1, right);
             return i + 1;
         }
@@ -233,11 +218,8 @@ int DocxEditController::ensureRunBoundary(Block& b, int pos) const {
     return b.runs.size();
 }
 
-//  Zwei Runs duerfen nur verschmelzen, wenn NICHTS an ihnen verlorengeht:
-//  beide gewoehnlicher Text (kein opaker Fremdinhalt, keine nachverfolgte
-//  Aenderung, keine Ersatz-Rohform) und beide mit demselben wirksamen `w:rPr`.
-//  Das Zeichenformat `fmt` wird zusaetzlich verglichen - `rprSpan` und `fmt`
-//  koennen auseinanderlaufen, solange ein Run noch nicht materialisiert ist.
+// Zwei Runs dürfen nur verschmelzen, wenn nichts verlorengeht: beide gewöhnlicher Text mit demselben wirksamen
+// `w:rPr`. `fmt` wird zusätzlich verglichen - beide können auseinanderlaufen, solange ein Run nicht materialisiert ist.
 int DocxEditController::coalesceRuns(Block& b) const {
     if (!b.dirty || b.runs.size() < 2) return 0;
     const QStringView xml = m_doc.docXml();
@@ -265,7 +247,6 @@ void DocxEditController::removeRangeInBlock(Block& b, int p1, int p2) const {
     if (p1 >= p2) return;
     const int i2 = ensureRunBoundary(b, p2);
     const int i1 = ensureRunBoundary(b, p1);
-    //  Runs [i1, i2') entfernen - i2 nach dem zweiten Split neu bestimmen.
     int acc = 0, end = b.runs.size();
     for (int i = 0; i < b.runs.size(); ++i) {
         if (acc == p2 && i >= i1) { end = i; break; }
@@ -278,10 +259,8 @@ void DocxEditController::removeRangeInBlock(Block& b, int p1, int p2) const {
     b.dirty = true;
 }
 
-//  Absatz an `pos` teilen. Der neue Absatz erbt Zelle, pPr und ParFmt - er ist
-//  derselbe Absatz, nur ab dieser Stelle. `dropBreakAtPos` schluckt ein dort
-//  stehendes `w:br`-Zeichen: aus dem Zeilenumbruch wird die Absatzgrenze,
-//  sonst bliebe er als leere erste Zeile im neuen Absatz stehen.
+// Der neue Absatz erbt Zelle, pPr und ParFmt - er ist derselbe Absatz, nur ab dieser Stelle. `dropBreakAtPos`
+// schluckt ein dort stehendes `w:br`: aus dem Zeilenumbruch wird die Absatzgrenze.
 int DocxEditController::splitParagraphAt(int blockIdx, int pos, bool dropBreakAtPos) {
     if (blockIdx < 0 || blockIdx >= m_doc.blocks.size()) return blockIdx;
     Block& blk = m_doc.blocks[blockIdx];
@@ -292,8 +271,6 @@ int DocxEditController::splitParagraphAt(int blockIdx, int pos, bool dropBreakAt
     const int k = ensureRunBoundary(blk, pos);
     Block nb;
     nb.kind    = Block::Paragraph;
-    //  In DERSELBEN Zelle bleiben - sonst stünde der neue Absatz nach dem
-    //  Speichern ausserhalb der Tabelle (wie in `insertText`).
     nb.tableId = blk.tableId;
     nb.row     = blk.row;
     nb.col     = blk.col;
@@ -308,10 +285,8 @@ int DocxEditController::splitParagraphAt(int blockIdx, int pos, bool dropBreakAt
     return blockIdx + 1;
 }
 
-//  Die Zeilen [from,to) eines Absatzes, dessen Zeilen nur durch `w:br` getrennt
-//  sind, zu einem EIGENEN Absatz machen. Nötig, weil eine Absatzvorlage sonst
-//  zwangsläufig ALLE Zeilen trifft - der Nutzer markiert aber eine Zeile.
-//  Erst HINTEN teilen: eine Teilung vorne verschöbe sonst die hintere Stelle.
+// Zeilen, die nur durch `w:br` getrennt sind, zu einem EIGENEN Absatz machen - sonst trifft eine Absatzvorlage
+// zwangsläufig alle. Erst HINTEN teilen: eine Teilung vorne verschöbe die hintere Stelle.
 int DocxEditController::splitOffLines(int blockIdx, int from, int to) {
     if (blockIdx < 0 || blockIdx >= m_doc.blocks.size()) return -1;
     const Block& blk = m_doc.blocks.at(blockIdx);
@@ -319,9 +294,6 @@ int DocxEditController::splitOffLines(int blockIdx, int from, int to) {
     if (!t.contains(Docx::kLineBreak)) return -1;          // nichts zu teilen
     if (from <= 0 && to >= t.size()) return -1;            // schon der ganze Absatz
 
-    //  Hinten: der Umbruch steht AUF `to` (er trennt die letzte gewählte Zeile
-    //  von der nächsten). Vorne steht er auf `from - 1` - dort wird geteilt,
-    //  sonst bliebe er als leere Schlusszeile im ersten Absatz stehen.
     if (to < t.size())  splitParagraphAt(blockIdx, to, /*dropBreakAtPos=*/true);
     if (from > 0)       return splitParagraphAt(blockIdx, from - 1, /*dropBreakAtPos=*/true);
     return blockIdx;
@@ -377,30 +349,9 @@ void DocxEditController::clearPending() {
     m_pendingPos   = -1;
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-//  Word-Verhalten: Wird das LETZTE Zeichen einer Zeile gelöscht, behält die
-//  Zeile ihr eigenes Zeichenformat, statt auf ihr Absatz-/Stil-Format
-//  zurückzufallen (Nutzerbefund: eine per Enter aus einer 20-pt-Zeile
-//  entstandene Zeile sprang nach dem Leerlöschen wieder auf 20 pt).
-//
-//  WO das Format lebt - der TRÄGER-RUN:
-//  Ein Enter am Zeilenende legt im neuen Absatz einen LEEREN Run an, der das
-//  rPr der alten Zeile erbt. Genau dieser Run ist das Gegenstück zur
-//  Absatzmarke in Word: Er trägt kein Zeichen, bestimmt aber, wie der Absatz
-//  aussieht und womit das nächste Tippen fortsetzt. Das ist gewollt - ohne ihn
-//  würde ein Enter die Formatierung der Vorzeile NICHT fortführen.
-//  Der Fehler war, dass dieser Träger nach dem Leerlöschen weiter das ALTE
-//  Format (20 pt) trug: Solange das Pending-Format lebte, überdeckte es das
-//  zwar - verließ der Cursor die Zeile aber einmal, kam wieder 20 pt zurück.
-//  Deshalb wird der Träger jetzt UMGESCHRIEBEN statt nur überdeckt; das Format
-//  überlebt damit Cursor-Wechsel, Speichern und Neuladen.
-//
-//  Gesetzt werden NUR die Felder, die vom Stil-Format des leeren Absatzes
-//  abweichen: minimales rPr (Verlusterhaltungs-/RAM-Prinzip), gleiches Bild.
-//  Gibt es keinen Träger (der Absatz hatte nie einen), wird einer angelegt -
-//  ein leerer `<w:r>` mit rPr ist gültiges OOXML und genau das, was Word für
-//  eine formatierte, leere Zeile schreibt.
-// ─────────────────────────────────────────────────────────────────────────────
+// Word behaelt beim Leerloeschen einer Zeile ihr Zeichenformat. Traeger ist der leere
+// Run, den ein Enter mit geerbtem rPr anlegt; er wird UMGESCHRIEBEN statt nur vom
+// Pending-Format ueberdeckt - sonst kam das alte Format beim Cursorwechsel zurueck.
 void DocxEditController::keepFormatOnEmptiedBlock(int bi, const RunFmt& had) {
     if (!isEditableParagraph(bi))
         return;
@@ -417,16 +368,12 @@ void DocxEditController::keepFormatOnEmptiedBlock(int bi, const RunFmt& had) {
     if (had.color.isValid() && had.color != base.color)  { p.color  = had.color;  p.set |= RunFmt::FColor; }
     clearPending();
 
-    //  Träger suchen (erster nicht-opaker Run des leeren Absatzes).
     int carrier = -1;
     for (int i = 0; i < blk.runs.size(); ++i) {
         if (!blk.runs.at(i).opaque) { carrier = i; break; }
     }
 
     if (p.set == 0) {
-        //  Nichts weicht vom Stil ab: einen vorhandenen Träger von seinem
-        //  ALTEN (geerbten) rPr befreien, damit er nicht weiter ein fremdes
-        //  Format festhält. Ohne Träger ist ohnehin nichts zu tun.
         if (carrier >= 0) {
             Run& r = blk.runs[carrier];
             r.rprXml.clear();
@@ -439,24 +386,18 @@ void DocxEditController::keepFormatOnEmptiedBlock(int bi, const RunFmt& had) {
     }
 
     if (carrier < 0) {
-        //  Kein Träger vorhanden -> einen leeren anlegen (Word-Äquivalent der
-        //  formatierten Absatzmarke).
         Run r;
         r.rprMaterialized = true;                 // startet ohne rPr
         r.dirty = true;
         blk.runs.append(r);
         carrier = blk.runs.size() - 1;
     } else {
-        //  Vorhandenen Träger auf ein FRISCHES rPr setzen: sonst bliebe das
-        //  geerbte Format (20 pt) unter den neu gesetzten Feldern erhalten.
         Run& r = blk.runs[carrier];
         r.rprXml.clear();
         r.rprMaterialized = true;
         r.fmt = RunFmt();
     }
 
-    //  Felder über denselben Weg schreiben wie das Pending-Format beim Tippen
-    //  (applyPendingTo pflegt rPr-XML UND das geparste RunFmt konsistent).
     const RunFmt save = m_pending;
     m_pending = p;
     applyPendingTo(blk.runs[carrier]);
@@ -464,9 +405,6 @@ void DocxEditController::keepFormatOnEmptiedBlock(int bi, const RunFmt& had) {
     blk.dirty = true;
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-//  Cursor & Selektion
-// ─────────────────────────────────────────────────────────────────────────────
 void DocxEditController::setCursor(int block, int pos, bool keepAnchor) {
     if (m_doc.blocks.isEmpty()) return;
     block = qBound(0, block, int(m_doc.blocks.size()) - 1);
@@ -474,7 +412,6 @@ void DocxEditController::setCursor(int block, int pos, bool keepAnchor) {
     if (m_cursor.block == block && m_cursor.pos == pos
         && (keepAnchor || !m_cursor.hasSelection()))
         return;
-    //  Jede Cursor-Bewegung hebt die Objekt-Auswahl der Tabelle wieder auf.
     m_tableObjectSel = -1;
     m_cursor.block = block;
     m_cursor.pos   = pos;
@@ -519,18 +456,8 @@ void DocxEditController::clearSelection() {
     emit cursorChanged();
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-//  Kommando-Anwendung (Undo/Redo-Pfad)
-// ─────────────────────────────────────────────────────────────────────────────
-// ─── Randlineale (Seitenränder) ──────────────────────────────────────────────
-//  Die Ränder treiben die GANZE Auslegung (Zeilenbreite, Umbruch, Seitenzahl)
-//  und über sie auch den PDF-Export - der malt die Bildschirm-Auslegung. Es
-//  genügt deshalb, das Dokument zu ändern und ein vollständiges Neu-Auslegen
-//  anzustoßen; einen zweiten Weg für die Ausgabe gibt es nicht.
-//  Gemessen wird gegen den STANDARD (2,5 cm), nicht gegen den Ladestand:
-//  „Zurücksetzen" soll dorthin führen, wo die meisten Dokumente stehen -
-//  sonst wäre der eigene, einmal gespeicherte Wert beim nächsten Öffnen der
-//  neue „Standard" (Festlegung des Nutzers).
+// Die Ränder treiben die GANZE Auslegung und über sie den PDF-Export; es genügt, das Dokument zu ändern und neu
+// auszulegen. Gemessen wird gegen den STANDARD (2,5 cm), sonst würde der einmal gespeicherte Wert zum Standard.
 bool DocxEditController::marginsChanged() const {
     return marginsChangedH() || marginsChangedV();
 }
@@ -569,12 +496,10 @@ bool DocxEditController::marginsChangedV() const {
     return s.marTop != kStandardMarginTw || s.marBottom != kStandardMarginTw;
 }
 
-//  Das Zurücksetzen gehört auf die Kette DESSELBEN Lineals - sonst liesse es
-//  sich nicht zurücknehmen, ohne die andere Seite mitzunehmen.
 bool DocxEditController::resetPageMargins(int axis) {
     //  Jeder Zurücksetzen-Knopf gehört SEINEM Lineal: der am waagerechten
-    //  stellt links/rechts zurück, der am senkrechten oben/unten. Vorher setzten
-    //  beide alles zurück (vom Nutzer gemeldet).
+    //  stellt links/rechts zurück, der am senkrechten oben/unten. Vorher
+    //  setzten beide alles zurück.
     const Docx::SectionProps& cur = m_doc.section();
     const qreal std = kStandardMarginTw * kTwipToMm;
     const bool h = (axis == 0 || axis == 1);
@@ -614,9 +539,7 @@ void DocxEditController::applyBlocks(int first, int oldCount,
     bumpFormat();
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
 //  Edit-Scope: Bereich kopieren -> mutieren -> Kommando mit Vorher/Nachher.
-// ─────────────────────────────────────────────────────────────────────────────
 struct DocxEditController::EditScope {
     DocxEditController* c;
     int first;
@@ -654,12 +577,8 @@ struct DocxEditController::EditScope {
             after.append(c->m_doc.blocks.at(first + i));
         c->setModified(true);
         emit c->blocksReplaced(first, oldCount, newCount);
-        //  Die geaenderten Absaetze neu bewerten. Ohne das blieb ein Wort rot
-        //  markiert, nachdem man es berichtigt hatte - `applyBlocks` tat es
-        //  laengst, aber dort kommt nur Undo/Redo vorbei; JEDE Eingabe laeuft
-        //  hier durch. Der Deckel auf `newCount` haelt es billig: ein
-        //  Tastendruck betrifft EINEN Absatz, und die Pruefung selbst laeuft
-        //  im Pool (s. `spellRequest`).
+        // Die geänderten Absätze neu bewerten: ohne das blieb ein Wort rot, nachdem man es berichtigt hatte -
+        // `applyBlocks` tut es längst, aber dort kommt nur Undo/Redo vorbei. Der Deckel auf `newCount` hält es billig.
         c->spellInvalidate(first, newCount);
         emit c->cursorChanged();
         c->bumpFormat();
@@ -672,9 +591,6 @@ struct DocxEditController::EditScope {
     }
 };
 
-// ─────────────────────────────────────────────────────────────────────────────
-//  Text-Operationen
-// ─────────────────────────────────────────────────────────────────────────────
 void DocxEditController::insertText(const QString& raw) {
     if (!m_ready || raw.isEmpty()) return;
     //  Ins Inhaltsverzeichnis wird nicht geschrieben - sein Inhalt kommt aus
@@ -749,7 +665,6 @@ void DocxEditController::insertText(const QString& raw) {
         curPos += parts.at(0).size();
     }
     for (int pi = 1; pi < parts.size(); ++pi) {
-        //  Absatz-Split an curPos: Rest wandert in einen NEUEN Absatz.
         Block& blk = m_doc.blocks[curBlock];
         const int k = ensureRunBoundary(blk, curPos);
         Block nb;
@@ -792,11 +707,8 @@ void DocxEditController::insertText(const QString& raw) {
 }
 
 void DocxEditController::insertParagraphBreak() {
-    //  Word-Verhalten: Enter in einem LEEREN Listenabsatz beendet die Liste,
-    //  statt einen weiteren leeren Punkt anzulegen - der Cursor bleibt in
-    //  DERSELBEN Zeile, nur ohne Aufzählung/Nummerierung. (Der erste Enter
-    //  nach einem befüllten Punkt führt die Liste normal fort: der neue
-    //  Absatz erbt das pPr inkl. w:numPr.)
+    // Word-Verhalten: Enter in einem LEEREN Listenabsatz beendet die Liste, statt einen weiteren leeren Punkt
+    // anzulegen - der Cursor bleibt in derselben Zeile, nur ohne Aufzählung.
     if (m_ready && !m_cursor.hasSelection() && isEditableParagraph(m_cursor.block)) {
         const Block& b = m_doc.blocks.at(m_cursor.block);
         if (b.textLength() == 0 && m_doc.resolvePar(b).numId > 0) {
@@ -811,11 +723,8 @@ void DocxEditController::insertParagraphBreak() {
 void DocxEditController::insertLineBreak()      { insertText(QString(kLineBreak)); }
 void DocxEditController::insertClearBreak()     { insertText(QString(Docx::kClearBreak)); }
 
-//  Deckt die Selektion eine GANZE Tabelle ab, löschen Entf/Rücktaste die
-//  Tabelle statt nur den Zellinhalt der ersten Zelle (`clampRangeToCell` kürzt
-//  eine zellübergreifende Selektion sonst auf eine Zelle). Das ist der Weg,
-//  über den sich eine Tabelle mit der Tastatur entfernen lässt: Rahmen
-//  anklicken (-> `selectTable`) oder über alle Zellen ziehen, dann Entf.
+// Deckt die Selektion eine GANZE Tabelle ab, löschen Entf/Rücktaste die Tabelle statt nur den Zellinhalt
+// (`clampRangeToCell` kürzt sonst auf eine Zelle). Das ist der Weg, eine Tabelle mit der Tastatur zu entfernen.
 bool DocxEditController::deleteSelectedTable() {
     if (!m_ready || m_tableObjectSel < 0 || m_doc.blocks.isEmpty())
         return false;
@@ -832,11 +741,8 @@ bool DocxEditController::deleteSelectedTable() {
     return true;
 }
 
-//  Ganze Tabelle als OBJEKT auswählen (Klick auf ihren Rahmen). Nur dieser
-//  ausdrückliche Zustand lässt Entf/Rücktaste die Tabelle löschen - eine mit
-//  der Maus über alle Zellen gezogene Selektion bleibt wie bisher auf ihre
-//  Zelle geklemmt (`clampRangeToCell`), damit ein Ziehen keine Tabelle
-//  wegreißt.
+// Ganze Tabelle als OBJEKT auswählen (Klick auf den Rahmen). Nur dieser Zustand lässt Entf sie löschen - eine
+// gezogene Selektion bleibt auf ihre Zelle geklemmt, damit ein Ziehen keine Tabelle wegreißt.
 void DocxEditController::selectTable(int tableId) {
     if (!m_ready) return;
     const int first = m_doc.tableFirstBlock(tableId);
@@ -918,15 +824,8 @@ void DocxEditController::deleteBackward() {
     //  Am Absatzanfang: mit dem VORHERIGEN Absatz verschmelzen.
     int prev = bi - 1;
     if (prev < 0) return;                           // nichts zu tun -> Pending hält
-    //  ZELLGRENZE: der vorherige Absatz steht in einer anderen Zelle (oder im
-    //  Rumpf) -> NICHT verschmelzen. Sonst fiele eine Zellgrenze weg und die
-    //  Tabelle verlöre eine Zelle. Der Cursor bleibt einfach stehen.
     if (!sameCell(bi, prev))
         return;
-    //  VERZEICHNIS: nie hineinverschmelzen. Sonst zieht ein Rücktaste-Druck am
-    //  Absatzanfang den ganzen Absatz in den Feld-Absatz - er gilt dann als
-    //  Verzeichnis, sein Text ist unsichtbar und nicht mehr bearbeitbar
-    //  (genau so ist tests/ER.docx entstanden).
     if (m_doc.isTocParagraph(m_doc.blocks.at(prev))) {
         setCursor(prev, 0, false);
         return;
@@ -1007,22 +906,16 @@ void DocxEditController::deleteForward() {
     scope.commit(1);
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-//  Zeichenformat
-// ─────────────────────────────────────────────────────────────────────────────
-//  Steht der Cursor in einem Inhaltsverzeichnis? Dort ist NUR Schriftart und
-//  -größe einstellbar; getippt wird nicht (der Inhalt entsteht aus den
-//  Überschriften des Dokuments).
+// Im Inhaltsverzeichnis ist NUR Schriftart und -größe einstellbar; getippt wird nicht, der Inhalt entsteht aus
+// den Überschriften des Dokuments.
 bool DocxEditController::cursorInToc() const {
     if (!m_ready || m_doc.blocks.isEmpty()) return false;
     const int bi = qBound(0, m_cursor.block, m_doc.blocks.size() - 1);
     return m_doc.isTocParagraph(m_doc.blocks.at(bi));
 }
 
-//  Schriftart/-größe des Verzeichnis-Absatzes: geschrieben wird in sein
-//  `w:pPr/w:rPr` - die OOXML-Stelle für das Format der Absatzmarke, die Word
-//  auch auf das Feldergebnis anwendet. Der Feld-Run selbst bleibt unangetastet
-//  (er ist opak und geht verbatim heraus).
+// Geschrieben wird in `w:pPr/w:rPr` - die OOXML-Stelle für das Format der Absatzmarke, die Word auch auf das
+// Feldergebnis anwendet. Der Feld-Run bleibt unangetastet und geht verbatim heraus.
 void DocxEditController::applyTocCharFormat(int field, const QVariant& value) {
     if (field != RunFmt::FFont && field != RunFmt::FSize)
         return;                      // fett/kursiv/Farbe: bewusst nicht
@@ -1153,9 +1046,6 @@ void DocxEditController::setFontSizePt(qreal pt) {
 }
 void DocxEditController::setTextColor(const QColor& c) { applyCharFormat(RunFmt::FColor, c); }
 
-// ─────────────────────────────────────────────────────────────────────────────
-//  Absatzformat
-// ─────────────────────────────────────────────────────────────────────────────
 void DocxEditController::applyParProp(const QString& propName, const QString& newXml,
                                       const std::function<void(ParFmt&)>& mut) {
     if (!m_ready) return;
@@ -1262,12 +1152,8 @@ void DocxEditController::setParagraphStyle(const QString& styleId) {
                                  : QStringLiteral("<w:pStyle w:val=\"%1\"/>")
                                        .arg(Document::xmlEscape(id));
 
-    //  ── Nur die MARKIERTEN Zeilen, nicht der ganze Absatz ───────────────────
-    //  Viele Dokumente trennen mehrere Überschriften nur durch `w:br` (Beleg:
-    //  `tests/ER.docx`, ein Absatz mit sechs Zeilen). Eine Absatzvorlage trifft
-    //  zwangsläufig den GANZEN Absatz - wer eine Zeile markiert, formatierte so
-    //  auch alles darunter (Nutzerbefund). Deshalb wird der Absatz vorher an
-    //  seinen Zeilenumbrüchen geteilt; Teilen und Vorlage sind EIN Undo-Schritt.
+    // Nur die MARKIERTEN Zeilen: viele Dokumente trennen mehrere Überschriften nur durch `w:br`, eine Absatzvorlage
+    // trifft aber zwangsläufig den ganzen Absatz. Teilen und Vorlage sind EIN Undo-Schritt.
     int b1, p1, b2, p2;
     orderedSelection(b1, p1, b2, p2);
     if (b1 == b2 && isEditableParagraph(b1)) {
@@ -1323,20 +1209,14 @@ void DocxEditController::insertTable(int rows, int cols) {
     }
     at = qBound(0, at, m_doc.blocks.size());
 
-    //  Der Undo-Schnappschuss deckt einen LEEREN Bereich ab (reines Einfügen):
-    //  vorher 0 Blöcke, nachher rows*cols. Das Kommando kann das bereits.
-    //  Die TableDef bleibt beim Rückgängig in m_tables stehen - sie ist ohne
-    //  zugehörige Blöcke inert (die Emission läuft über die Blöcke) und wird
-    //  beim Wiederherstellen mit derselben tableId wieder benutzt.
+    // Der Undo-Schnappschuss deckt einen LEEREN Bereich ab (reines Einfügen). Die TableDef bleibt beim Rückgängig in
+    // `m_tables` stehen - ohne Blöcke ist sie inert und wird beim Wiederherstellen mit derselben tableId benutzt.
     EditScope scope(this, at, 0);
     const int before = int(m_doc.blocks.size());
     const int first = m_doc.insertTable(at, rows, cols);
     if (first < 0) return;
-    //  Die GEMESSENE Zahl neuer Blöcke, nicht rows*cols: das Modell hängt hinter
-    //  die Tabelle noch einen leeren Absatz, falls dort keiner steht (Word macht
-    //  es genauso - ohne ihn käme der Cursor an einer Tabelle am Dokumentende
-    //  nie wieder heraus). Mit der alten festen Zahl bliebe dieser Absatz beim
-    //  Rückgängigmachen stehen.
+    // Die GEMESSENE Zahl neuer Blöcke, nicht rows*cols: das Modell hängt hinter die Tabelle noch einen leeren Absatz,
+    // falls dort keiner steht. Mit der festen Zahl bliebe dieser Absatz beim Rückgängigmachen stehen.
     const int added = int(m_doc.blocks.size()) - before;
     m_cursor = { first, 0, first, 0 };
     clearPending();
@@ -1366,10 +1246,8 @@ void DocxEditController::insertTableOfContents() {
     scope.commit(1);
 }
 
-//  Unterschrift/Stempel: Bild einsetzen UND sofort verankern. Beides gehört
-//  für den Nutzer zusammen (er will es frei hinschieben), deshalb EIN
-//  Undo-Schritt über ein Makro. Danach ist das Bild ausgewählt - die
-//  Ziehpunkte der Kachel hängen an der Auswahl.
+// Bild einsetzen UND sofort verankern gehört für den Nutzer zusammen, deshalb EIN Undo-Schritt über ein Makro.
+// Danach ist das Bild ausgewählt - die Ziehpunkte der Kachel hängen an der Auswahl.
 void DocxEditController::insertSignatureImage(const QString& fileUrl) {
     if (!m_ready) return;
     const QString path = mg::toLocalPath(fileUrl);
@@ -1387,10 +1265,8 @@ void DocxEditController::insertSignatureImage(const QString& fileUrl) {
     const int bi  = qBound(0, m_cursor.block, qMax(0, m_doc.blocks.size() - 1));
     const int pos = qMax(0, m_cursor.pos - 1);      // Objekt-Zeichen des Bildes
 
-    //  ZUERST auswählen, dann verankern: `setImageFloating` findet das Bild
-    //  über den Cursor (`imageAtCursor`) - und `paragraphImage` als Rückfall
-    //  greift nur bei einem Absatz, der NUR aus dem Bild besteht. Eine
-    //  Unterschrift steht aber meist hinter Text.
+    // ZUERST auswählen, dann verankern: `setImageFloating` findet das Bild über den Cursor, und `paragraphImage`
+    // als Rückfall greift nur bei einem reinen Bild-Absatz - eine Unterschrift steht aber meist hinter Text.
     setCursor(bi, pos, false);
     setCursor(bi, pos + 1, true);
 
@@ -1431,10 +1307,8 @@ void DocxEditController::insertImageData(const QByteArray& bytes,
     insertImageBytes(bytes, ext, cxEmu, cyEmu);
 }
 
-//  Das Bild kommt AN DIE CURSOR-STELLE in den laufenden Absatz - genau wie in
-//  Word. Steht der Cursor in einem leeren Absatz, sieht das aus wie früher
-//  („Bild allein in seiner Zeile"); mitten im Text steht es IM Text, und zwei
-//  Bilder hintereinander stehen nebeneinander (s. DocxTextArea, Zeilenbänder).
+// Das Bild kommt AN DIE CURSOR-STELLE in den laufenden Absatz, genau wie in Word: in einem leeren Absatz steht
+// es allein, mitten im Text steht es IM Text, und zwei Bilder hintereinander stehen nebeneinander.
 void DocxEditController::insertImageBytes(const QByteArray& bytes,
                                           const QString& ext,
                                           qint64 cxEmu, qint64 cyEmu) {
@@ -1460,12 +1334,8 @@ void DocxEditController::insertImageBytes(const QByteArray& bytes,
     scope.commit(1);
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-//  Rechtschreib-PRÜFUNG - absatzweise, asynchron, ohne den Text anzufassen
-// ─────────────────────────────────────────────────────────────────────────────
-//  Ein Auftrag je Absatz auf einem Pool mit EINEM Thread: die Reihenfolge
-//  bleibt die Tippreihenfolge, und `m_spell` (das Wörterbuch) gehört genau
-//  diesem Thread - es wird dort erzeugt und nie vom GUI-Thread berührt.
+// Ein Auftrag je Absatz auf einem Pool mit EINEM Thread: die Reihenfolge bleibt die Tippreihenfolge, und
+// `m_spell` gehört genau diesem Thread - dort erzeugt und nie vom GUI-Thread berührt.
 namespace {
 class SpellTask : public QRunnable {
 public:
@@ -1574,10 +1444,8 @@ void DocxEditController::spellRequest(int block) {
     if (block < 0 || block >= m_doc.blocks.size()) return;
     const Docx::Block& b = m_doc.blocks.at(block);
     if (b.kind != Docx::Block::Paragraph) return;
-    //  Laeuft fuer diesen Absatz schon eine Pruefung, wird KEINE zweite
-    //  eingereiht - nur vermerkt, dass danach noch einmal zu pruefen ist.
-    //  Sonst haette schnelles Tippen einen Auftrag je Anschlag erzeugt, alle
-    //  auf demselben Absatz, und nur der letzte haette gezaehlt.
+    // Läuft für diesen Absatz schon eine Prüfung, wird KEINE zweite eingereiht - nur vermerkt, dass danach noch
+    // einmal zu prüfen ist. Sonst erzeugte schnelles Tippen einen Auftrag je Anschlag, alle auf demselben Absatz.
     if (m_spellPending.contains(block)) { m_spellStale.insert(block); return; }
     m_spellPending.insert(block);
     m_spellPool->start(new SpellTask(QPointer<DocxEditController>(this), m_spell,
@@ -1596,8 +1464,8 @@ int DocxEditController::spellWordAt(int block, int pos, mg::SpellRange* out) con
     const QVector<mg::SpellRange>& r = spellRanges(block);
     for (const mg::SpellRange& s : r) {
         //  `<` statt `<=` am Ende: die Stelle DIREKT HINTER dem Wort gehoert
-        //  nicht mehr dazu. Mit `<=` traf ein Rechtsklick daneben noch das Wort
-        //  und bot dessen Korrekturen an (vom Nutzer gemeldet).
+        //  nicht mehr dazu. Mit `<=` traf ein Rechtsklick daneben noch das
+        //  Wort und bot dessen Korrekturen an.
         if (pos >= s.start && pos < s.start + s.length) {
             if (out) *out = s;
             return 1;
@@ -1639,9 +1507,7 @@ void DocxEditController::spellIgnoreAt(int block, int pos) {
     spellInvalidate(0, m_doc.blocks.size());
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
 //  Änderungsverfolgung annehmen / verwerfen
-// ─────────────────────────────────────────────────────────────────────────────
 //  Der Run an einer Stelle: die Runs eines Absatzes liegen hintereinander, die
 //  Zeichenposition zählt über sie hinweg.
 static int runIndexAt(const Docx::Block& b, int pos) {
@@ -1697,10 +1563,8 @@ bool DocxEditController::rejectRevisionAt(int block, int pos) {
     return applyRevisionAt(block, pos, false);
 }
 
-//  ── ALLE Änderungen auf einmal ──────────────────────────────────────────────
-//  EIN Undo-Schritt (Makro) über alle betroffenen Absätze. Gearbeitet wird von
-//  HINTEN nach vorn: `applyRevision` kann Runs entfernen, spätere Indizes im
-//  selben Absatz verschöben sich sonst.
+// EIN Undo-Schritt über alle betroffenen Absätze. Gearbeitet wird von HINTEN nach vorn: `applyRevision` kann
+// Runs entfernen, spätere Indizes im selben Absatz verschöben sich sonst.
 int DocxEditController::applyAllRevisions(bool accept) {
     if (!m_ready) return 0;
     int done = 0;
@@ -1733,10 +1597,8 @@ int DocxEditController::applyAllRevisions(bool accept) {
 int DocxEditController::acceptAllRevisions() { return applyAllRevisions(true); }
 int DocxEditController::rejectAllRevisions() { return applyAllRevisions(false); }
 
-//  Wie viele nachverfolgte Änderungen stehen im Dokument, und von wem?
-//  Gezählt werden GRUPPEN: aufeinanderfolgende Runs derselben Art und desselben
-//  Autors sind EINE Änderung - Word zählt genauso, und ein Wort in drei Runs
-//  wäre sonst „drei Änderungen".
+// Gezählt werden GRUPPEN: aufeinanderfolgende Runs derselben Art und desselben Autors sind EINE Änderung -
+// Word zählt genauso, und ein Wort in drei Runs wäre sonst "drei Änderungen".
 void DocxEditController::refreshRevisions() {
     int count = 0;
     QStringList authors;
@@ -1822,9 +1684,6 @@ void DocxEditController::insertPdfPage(const QString& fileUrl, int page) {
     insertImageData(bytes, QStringLiteral("png"));
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-//  Tabellen-Struktur (Kontextmenü)
-// ─────────────────────────────────────────────────────────────────────────────
 void DocxEditController::applyTableDef(int tableId, const Docx::TableDef& def) {
     m_doc.setTableDef(tableId, def);
 }
@@ -1930,13 +1789,8 @@ void DocxEditController::deleteTable(int tableId) {
     scope.commit(0);
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-//  Bildgröße (A2)
-// ─────────────────────────────────────────────────────────────────────────────
-//  Dieselbe Regel wie in der Anzeige (DocxTextArea::updateImageSelection):
-//  entweder der Absatz IST das Bild, oder die Selektion deckt genau sein
-//  Objekt-Zeichen. Beide Seiten müssen sich einig sein - sonst zeigte die
-//  Fläche Ziehpunkte an einem Bild, das der Controller nicht kennt.
+// Dieselbe Regel wie in der Anzeige: entweder der Absatz IST das Bild, oder die Selektion deckt genau sein
+// Objekt-Zeichen. Sonst zeigte die Fläche Ziehpunkte an einem Bild, das der Controller nicht kennt.
 bool DocxEditController::imageAtCursor(int* block, int* run,
                                        Docx::InlineImage* info) const {
     if (!m_ready || m_doc.blocks.isEmpty()) return false;
@@ -2085,8 +1939,6 @@ void DocxEditController::setImageWrapSide(int block, int side) {
     scope.commit(1);
 }
 
-//  Die EINE Auswahl-Regel der Bild-Kommandos: erst der Cursor (auch für ein
-//  Bild IM Text), sonst „der Absatz IST das Bild".
 bool DocxEditController::selectedImage(int block, int* blockOut, int* runOut) const {
     if (!m_ready || m_doc.blocks.isEmpty()) return false;
     const int bi = qBound(0, block < 0 ? m_cursor.block : block,
@@ -2143,30 +1995,20 @@ void DocxEditController::toggleList(bool bullet) {
 void DocxEditController::toggleBullets()   { toggleList(true); }
 void DocxEditController::toggleNumbering() { toggleList(false); }
 
-// ─────────────────────────────────────────────────────────────────────────────
-//  Zwischenablage / Undo
-// ─────────────────────────────────────────────────────────────────────────────
-//  Eigener Zwischenablage-Typ: trägt die Runs MIT ihrem rPr-Fragment, damit
-//  Kopieren/Einfügen innerhalb der App (und zwischen zwei DOCX-Kacheln)
-//  Schriftgröße/-art/Stil/Farbe verlustfrei erhält. Reiner Text (setText)
-//  konnte das nicht - daher der Nutzerbefund „Kopieren verliert Formatierung".
+// Eigener Zwischenablage-Typ: trägt die Runs MIT ihrem rPr-Fragment, damit Kopieren und Einfügen innerhalb der
+// App Schriftgröße, -art, Stil und Farbe verlustfrei erhält. Reiner Text konnte das nicht.
 static const char* const kDocxMime = "application/x-mediagallery-docx-runs";
 static constexpr quint32 kClipMagic   = 0x4D474458u;   // "MGDX"
 static constexpr quint16 kClipVersion = 1;
 
-//  Eigener Typ fürs BILD: die Pixel allein genügen nicht - aus ihnen ließe sich
-//  beim Einfügen nur die native Auflösung zurückrechnen, das Bild käme also in
-//  voller Größe statt in der, die es im Dokument hatte. Hier stehen zusätzlich
-//  die EMU-Maße der Quelle. Das Bild liegt PARALLEL weiter als Pixel in der
-//  Zwischenablage, damit fremde Programme es nach wie vor annehmen.
+// Eigener Typ fürs BILD: aus den Pixeln allein ließe sich nur die native Auflösung zurückrechnen, das Bild käme
+// in voller Größe. Hier stehen die EMU-Maße dazu; die Pixel liegen PARALLEL weiter in der Ablage für fremde Programme.
 static const char* const kDocxImgMime = "application/x-mediagallery-docx-image";
 static constexpr quint32 kImgMagic    = 0x4D474449u;   // "MGDI"
 static constexpr quint16 kImgVersion  = 1;
 
-//  Eigener Typ für die TABELLE: sie ist Blockgruppe UND `TableDef`. Übertragen
-//  wird deshalb kein XML, sondern die REINE FORM (Zeilen, Spalten, Breiten,
-//  Zellinhalt) - in einem fremden Dokument gelten die Spans der Quelle nicht,
-//  das Gerüst muss dort ohnehin neu gebaut werden (über insertTable).
+// Eigener Typ für die TABELLE: übertragen wird kein XML, sondern die REINE FORM (Zeilen, Spalten, Breiten,
+// Zellinhalt) - in einem fremden Dokument gelten die Spans der Quelle nicht, das Gerüst wird dort neu gebaut.
 static const char* const kDocxTblMime = "application/x-mediagallery-docx-table";
 static constexpr quint32 kTblMagic    = 0x4D474454u;   // "MGDT"
 static constexpr quint16 kTblVersion  = 1;
@@ -2207,13 +2049,8 @@ static bool readRuns(QDataStream& ds, QList<Run>* out) {
     return true;
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-//  Selektion -> Blob. Kopiert werden AUSSCHLIESSLICH normale Runs; opake
-//  (Zeichnung/Feld/Hyperlink-Konstrukt) hängen an ihrem Original-XML im
-//  Quelldokument und dürfen nicht in ein anderes verpflanzt werden - sie
-//  entfallen wie bisher schon in der Klartext-Fassung. Die Sentinels
-//  U+FFFC/U+E000 werden mitentfernt (sonst wanderten Platzhalter mit).
-// ─────────────────────────────────────────────────────────────────────────────
+// Kopiert werden AUSSCHLIESSLICH normale Runs; opake (Zeichnung, Feld, Hyperlink) hängen an ihrem Original-XML
+// im Quelldokument und dürfen nicht in ein anderes verpflanzt werden. Die Sentinels werden mitentfernt.
 QByteArray DocxEditController::serializeSelection() const {
     QByteArray blob;
     QDataStream ds(&blob, QIODevice::WriteOnly);
@@ -2276,10 +2113,8 @@ bool DocxEditController::deserializeRuns(const QByteArray& blob,
     return !out->isEmpty();
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
 //  Selektion als HTML-Fragment - damit auch Word/LibreOffice/Browser die
 //  Formatierung übernehmen (die interne MIME-Form kennen sie nicht).
-// ─────────────────────────────────────────────────────────────────────────────
 QString DocxEditController::selectionAsHtml() const {
     int b1, p1, b2, p2;
     orderedSelection(b1, p1, b2, p2);
@@ -2327,12 +2162,8 @@ QString DocxEditController::selectionAsHtml() const {
     return html;
 }
 
-//  Bild in die Zwischenablage: als BILD, nicht als Modell-Ausschnitt. Damit
-//  landet es auch in anderen Programmen, und `paste()` fügt es über die
-//  bestehende Bild-Kette wieder ein - die Beziehung (rId) wandert also nicht
-//  mit, was sie in einem FREMDEN Dokument ohnehin nicht dürfte. Preis: die
-//  Pixel werden neu als PNG kodiert, das Original bleibt aber unangetastet
-//  (kopiert wird ja nur).
+// Bild als BILD in die Ablage, nicht als Modell-Ausschnitt: so landet es auch in anderen Programmen, und
+// `paste()` fügt es über die bestehende Bild-Kette ein - die rId wandert nicht mit, was sie fremd auch nicht dürfte.
 bool DocxEditController::copyImageAtCursor() {
     Docx::InlineImage info;
     int bi = -1, run = -1;
@@ -2386,13 +2217,6 @@ void DocxEditController::deleteImageAtCursor() {
     scope.commit(0);
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-//  Tabelle in die Zwischenablage (R6). Kopiert wird die FORM, nicht das XML:
-//  Zeilen/Spalten/Breiten + je Zelle ihre Absätze. Im Zieldokument baut
-//  `insertTable` daraus ein frisches Gerüst - die Spans der Quelle gelten dort
-//  ohnehin nicht, und ein fremdes `w:tbl` verbatim einzusetzen hieße, Verweise
-//  auf Vorlagen und Nummerierungen des Quelldokuments mitzuschleppen.
-// ─────────────────────────────────────────────────────────────────────────────
 bool DocxEditController::copyTableAtCursor() {
     if (!m_ready || m_doc.blocks.isEmpty()) return false;
     const int bi  = qBound(0, m_cursor.block, m_doc.blocks.size() - 1);
@@ -2670,13 +2494,8 @@ void DocxEditController::paste() {
     if (!t.isEmpty()) insertText(t);
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-//  Einfügen fertiger Runs (Zwischenablage) - Ablauf identisch zu insertText,
-//  nur dass die Runs ihr Format MITBRINGEN (kein Erben vom Nachbarn, kein
-//  Pending). Absatz-Eigenschaften (pPr) übernimmt der Zielabsatz - genau wie
-//  beim Tippen von Enter; damit können keine Listen-/Stil-Verweise (numId,
-//  pStyle) aus einem fremden Dokument ins Ziel lecken.
-// ─────────────────────────────────────────────────────────────────────────────
+// Einfügen fertiger Runs: Ablauf wie `insertText`, nur bringen die Runs ihr Format MIT. Absatz-Eigenschaften
+// übernimmt der Zielabsatz - so lecken keine numId- oder pStyle-Verweise aus einem fremden Dokument herein.
 void DocxEditController::insertRunParagraphs(const QList<QList<Run>>& paras) {
     if (!m_ready || paras.isEmpty()) return;
     int b1, p1, b2, p2;
@@ -2742,10 +2561,8 @@ void DocxEditController::insertRunParagraphs(const QList<QList<Run>>& paras) {
     clearPending();
     scope.commit(curBlock - b1 + 1);
 }
-//  ── Strg+Z geht an die zuletzt angefasste Stelle ─────────────────────────────
-//  Text und die beiden Randlineale führen GETRENNTE Ketten (Festlegung des
-//  Nutzers). Welche gemeint ist, sagt `m_rulerFocus` - gesetzt beim Druck auf
-//  ein Lineal, zurückgesetzt bei jedem Klick oder Tastendruck im Text.
+// Text und die beiden Randlineale führen GETRENNTE Ketten; welche gemeint ist, sagt `m_rulerFocus` - gesetzt
+// beim Druck auf ein Lineal, zurückgesetzt bei jedem Klick oder Tastendruck im Text.
 QUndoStack& DocxEditController::activeStack() {
     if (m_rulerFocus == 1) return m_hMarginStack;
     if (m_rulerFocus == 2) return m_vMarginStack;
@@ -2775,9 +2592,6 @@ void DocxEditController::redo() {
     if (st.canRedo()) st.redo();
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-//  Suchen & Ersetzen
-// ─────────────────────────────────────────────────────────────────────────────
 QString DocxEditController::selectionPlainText() const {
     if (!m_cursor.hasSelection()) return {};
     int b1, p1, b2, p2; orderedSelection(b1, p1, b2, p2);
@@ -2884,10 +2698,8 @@ int DocxEditController::replaceAll(const QString& needle, const QString& replace
     const mg::search::Pattern p(needle, caseSensitive, false);
     int count = 0;
     m_stack.beginMacro(QStringLiteral("Alle ersetzen"));
-    //  Deterministisch von vorne: je Block alle Vorkommen, danach der nächste.
-    //  Beim Ersetzen ändert sich nur der eigene Block (Absatzgrenzen bleiben,
-    //  da needle/replacement absatzintern sind), daher Suche im selben Block
-    //  ab dem Ende des Ersatzes fortsetzen - keine Endlosschleife (Deckel).
+    // Deterministisch von vorne: je Block alle Vorkommen, danach der nächste. Beim Ersetzen ändert sich nur der
+    // eigene Block, deshalb geht die Suche darin ab dem Ende des Ersatzes weiter - keine Endlosschleife.
     const int hardCap = 5'000'000;
     for (int bi = 0; bi < m_doc.blocks.size(); ++bi) {
         if (!isEditableParagraph(bi))
@@ -2911,12 +2723,8 @@ int DocxEditController::replaceAll(const QString& needle, const QString& replace
     return count;
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-//  Live-Transliteration (Latein -> Arabisch/Kana) am Cursor-Absatz - Muster
-//  TextSurface._applyTranslit, nur controllerseitig: liveApply liefert
-//  {changed,start,end,replacement,cursor}; die Ersetzung koalesziert (merge-
-//  Kind 0) mit dem auslösenden Tastendruck zu EINEM Undo-Schritt.
-// ─────────────────────────────────────────────────────────────────────────────
+// Live-Transliteration am Cursor-Absatz, controllerseitig: `liveApply` liefert Bereich und Ersatz; die
+// Ersetzung koalesziert mit dem auslösenden Tastendruck zu EINEM Undo-Schritt.
 void DocxEditController::runTranslit() {
     if (!m_translit || m_cursor.hasSelection()) return;
     const int bi = m_cursor.block;
@@ -2961,14 +2769,8 @@ void DocxEditController::runTranslit() {
     scope.commit(1);
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-//  Toolbar-Format
-// ─────────────────────────────────────────────────────────────────────────────
-//  Aufgelöstes Zeichenformat EINER Stelle. Leerer Absatz (alle Runs gelöscht):
-//  NICHT die docDefaults, sondern das Stil-Format des Absatzes selbst
-//  (resolveRun mit leerem Run läuft die pStyle-Kette ab) - sonst zeigte die
-//  Leiste in einer leergelöschten Überschrift-Zeile ein drittes, mit nichts
-//  übereinstimmendes Format (docDefaults) an.
+// Leerer Absatz (alle Runs gelöscht): NICHT die docDefaults, sondern das Stil-Format des Absatzes selbst - sonst
+// zeigte die Leiste in einer leergelöschten Überschrift ein drittes, mit nichts übereinstimmendes Format.
 RunFmt DocxEditController::resolvedFormatAt(int block, int pos) const {
     if (!isEditableParagraph(block))
         return m_doc.defaultRun();
@@ -3034,9 +2836,7 @@ QVariantMap DocxEditController::currentFormat() const {
     return m;
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
 //  Speichern (asynchron; GUI baut die Ersatzteile, der Worker schreibt)
-// ─────────────────────────────────────────────────────────────────────────────
 QString DocxEditController::exportTargetPath() const {
     const QFileInfo fi(m_source);
     const QString dir  = fi.absolutePath();
@@ -3052,8 +2852,6 @@ QString DocxEditController::exportTargetPath() const {
 }
 
 void DocxEditController::save() {
-    //  Primäre Speicheraktion (Button/Strg+S) - folgt der globalen
-    //  Einstellung: Direkt speichern ODER Kopie exportieren.
     if (AppSettings::instance().docxSaveDirect()) {
         if (!m_ready || m_busy || m_source.isEmpty() || !m_modified)
             return;
@@ -3189,16 +2987,8 @@ void DocxEditController::startSaveWorker(const QString& targetPath, bool direct)
                      m_dropBakAfterSave && direct));
 }
 
-//  Die Sicherungskopie beim Verlassen wieder entfernen.
-//
-//  Sie ist ausdruecklich eine SITZUNGS-Sicherung: sie entsteht beim ersten
-//  direkten Speichern und haelt den Stand davor. Wer die Datei verlaesst, hat
-//  seine Aenderungen angenommen - die Kopie daneben liegen zu lassen, war
-//  unnoetiger Ballast (vom Nutzer gemeldet: „die .bak sollte man nicht sehen").
-//
-//  AUSNAHME: traegt das Dokument nachverfolgte Aenderungen, bleibt sie stehen.
-//  Dort ist der Stand davor noch von Bedeutung, und entfernt wird sie dann von
-//  Hand (Kontextmenue der Kachel ▸ „Sicherungskopie entfernen").
+// Die `.bak` ist eine SITZUNGS-Sicherung: sie entsteht beim ersten direkten Speichern und hält den Stand davor.
+// Wer die Datei verlässt, hat seine Änderungen angenommen. AUSNAHME: bei nachverfolgten Änderungen bleibt sie.
 void DocxEditController::dropBackupIfIdle() {
     m_dropBakOnFinish = false;
     if (!m_bakDone || m_source.isEmpty()) return;
@@ -3209,12 +2999,8 @@ void DocxEditController::dropBackupIfIdle() {
 }
 
 void DocxEditController::release() {
-    //  Ob die Sicherungskopie gehen darf, wird JETZT entschieden - solange
-    //  dieses Objekt noch lebt und `m_revCount` gilt. Das Wegraeumen selbst
-    //  uebernimmt der Schreib-Worker: die Kachel wird gleich abgebaut, und der
-    //  Rueckweg hierher liefe dann ins Leere (vom Nutzer gemeldet: nach blossem
-    //  Zurueckgehen blieb die .bak liegen, nach Strg+S dagegen nicht - dort
-    //  war nichts mehr zu speichern, und der Zweig unten griff synchron).
+    // Ob die Sicherungskopie gehen darf, wird JETZT entschieden - solange dieses Objekt lebt und `m_revCount` gilt.
+    // Das Wegräumen übernimmt der Schreib-Worker: die Kachel wird gleich abgebaut, der Rückweg liefe ins Leere.
     m_dropBakAfterSave = (m_revCount == 0) && !m_source.isEmpty();
 
     //  Beim Verlassen der Kachel automatisch sichern (Muster TextSurface -
@@ -3223,10 +3009,8 @@ void DocxEditController::release() {
         save();
     m_dropBakAfterSave = false;
 
-    //  Laeuft das Speichern noch, muss die Sicherung WARTEN - sonst loeschte
-    //  man sie, waehrend der Schreib-Worker sie noch braucht. Lebt die Kachel
-    //  bis dahin doch, raeumt der Rueckruf auf; sonst hat es der Worker schon
-    //  getan, und `dropBackupIfIdle` findet nichts mehr vor.
+    // Läuft das Speichern noch, muss die Sicherung WARTEN - sonst löschte man sie, während der Schreib-Worker sie
+    // noch braucht. Lebt die Kachel bis dahin, räumt der Rückruf auf; sonst hat es der Worker schon getan.
     if (m_busy) m_dropBakOnFinish = true;
     else        dropBackupIfIdle();
 }

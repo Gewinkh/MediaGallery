@@ -2,17 +2,8 @@
 
 using namespace Qt::Literals::StringLiterals;
 
-// ─────────────────────────────────────────────────────────────────────────────
-//  Die drei mitgelieferten Profile sind EIGENE Zusammenstellungen. Bewusst kein
-//  Nachbau eines bekannten Editor-Themas: dieselbe Lizenzfrage, wegen der
-//  `KSyntaxHighlighting` verworfen wurde, soll hier gar nicht erst entstehen.
-//
-//  Aufgebaut sind sie nach einer Regel, nicht nach Geschmack:
-//   • Kommentar am unauffaelligsten (er soll den Code nicht uebertoenen),
-//   • Zeichenkette und Zahl gemeinsam in einer zweiten Familie,
-//   • Schluesselwort und Typ in einer dritten, deutlich getrennt voneinander,
-//   • Operator dicht an der Textfarbe - er ist ueberall, und bunt waere Unruhe.
-// ─────────────────────────────────────────────────────────────────────────────
+// Die drei mitgelieferten Profile sind EIGENE Zusammenstellungen - kein Nachbau eines bekannten Editor-Themas,
+// dieselbe Lizenzfrage soll gar nicht erst entstehen. Kommentar am unauffälligsten, Operator dicht an der Textfarbe.
 namespace mg::editor {
 namespace {
 

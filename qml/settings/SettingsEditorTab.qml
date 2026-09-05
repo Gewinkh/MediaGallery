@@ -4,7 +4,6 @@ import QtQuick.Layouts
 import MediaGallery 1.0
 import "../common"
 
-// ── Editor: Auto-Speichern ───────────────────────────────────────────────────
 Item {
     id: root
 
@@ -18,16 +17,13 @@ Item {
             width: root.width
             spacing: 16
 
-            //  ── Ansicht des Texteditors ───────────────────────────────────
-            //  Hier steht, was KEINE Farbe ist. Die Farben des Editors haben
-            //  einen eigenen Block im Design-Reiter (eigene Profile, getrennt
-            //  vom Oberflächen-Theme) - Festlegung des Nutzers 2026-09-02.
+            // Hier steht, was KEINE Farbe ist. Die Farben des Editors haben einen eigenen Block im Design-Reiter, mit
+            // eigenen Profilen getrennt vom Oberflächen-Theme.
             SettingsGroup {
                 key: "editor.view"
                 title: App.uiText(App.language, "SettingsEditorViewGroup")
                 Layout.fillWidth: true
 
-                //  Inline-Komponente: dreimal dieselbe Zeile, einmal beschrieben.
                 component EdCheck: CheckBox {
                     contentItem: Text {
                         text: parent.text; color: App.themeTextPrimary
@@ -117,7 +113,7 @@ Item {
                     wrapMode: Text.WordWrap
                 }
 
-                //  ── Tabulator ─────────────────────────────────────────────
+                //  Tabulator
                 //  Zwei getrennte Fragen: die BREITE ist reine Anzeige, die
                 //  TASTE ändert den Dateiinhalt.
                 RowLayout {
@@ -227,41 +223,24 @@ Item {
                 }
             }
 
-            // ── PDF-Editor ────────────────────────────────────────────────────
-            //  Export erzeugt IMMER eine Kopie „…_bearbeitet(.n).pdf" - die
-            //  frühere Überschreib-Option wurde entfernt (Original + Sidecar
-            //  bleiben unangetastet, Notizen bleiben reversibel). Hier nur
-            //  noch die Panel-Position.
+            // Export erzeugt IMMER eine Kopie "..._bearbeitet(.n).pdf" - die frühere Überschreib-Option ist entfallen,
+            // Original und Sidecar bleiben unangetastet. Hier steht nur noch die Panel-Position.
             SettingsGroup {
                 key: "editor.pdf-edit"
                 title: App.uiText(App.language, "SettingsPdfEditGroup")
                 Layout.fillWidth: true
 
-                //  ZWEI GETRENNTE AUSWAHLGRUPPEN - zwingend nötig:
-                //  `RadioButton` ist `autoExclusive` und gruppiert sich dann
-                //  über das ELTERNELEMENT. SettingsGroup steckt aber ALLE
-                //  Kinder in dieselbe innere ColumnLayout (`default property
-                //  alias content: inner.data`), weshalb die vier Knöpfe dieser
-                //  Gruppe eine einzige Auswahl bildeten: ein Klick auf
-                //  „Seiten hinzufügen/entfernen" hob die Panel-Position wieder
-                //  auf (und umgekehrt) - es ließ sich immer nur EINE der beiden
-                //  Einstellungen zeigen. Eine explizite ButtonGroup je
-                //  Sachbereich stellt die Exklusivität wieder korrekt her.
-                //  (Die übrigen SettingsGroups haben je nur ein Auswahlpaar
-                //  und brauchen das daher nicht.)
+                // ZWEI getrennte ButtonGroups sind zwingend: `RadioButton` ist autoExclusive und gruppiert über das
+                // ELTERNELEMENT, und SettingsGroup steckt alle Kinder in dieselbe innere ColumnLayout - die vier Knöpfe
+                // bildeten dadurch EINE Auswahl, ein Klick auf den einen hob den anderen wieder auf.
                 ButtonGroup { id: panelPosGroup }
                 ButtonGroup { id: exportModeGroup }
 
-                // Position der Text-Eigenschaften: rechte Seitenleiste (Standard)
-                // oder obere Leiste im Word-Stil (PdfEdit.panelOnTop, persistiert).
                 Label {
                     text: App.uiText(App.language, "PdfEditPanelPosLabel")
                     color: App.themeTextPrimary
                     font.pixelSize: 13
                 }
-                //  `text` MUSS gesetzt sein: der Stil richtet den Ring nur bei
-                //  nicht-leerem `control.text` links aus, sonst zentriert er ihn
-                //  in `availableWidth` (s. style/RadioButton.qml).
                 RadioButton {
                     id: posRight
                     ButtonGroup.group: panelPosGroup
@@ -289,9 +268,6 @@ Item {
                     }
                 }
 
-                // Seiten hinzufügen/entfernen: Die Änderung wirkt SOFORT in der
-                // PDF (s. PdfEditController::bakeWorking); es gibt dafür keinen
-                // Modus mehr. Der Hinweistext sagt, was das bedeutet.
                 Label {
                     text: App.uiText(App.language, "SettingsPdfPageEditLabel")
                     color: App.themeTextPrimary
@@ -300,17 +276,11 @@ Item {
                 }
                 Label {
                     text: App.uiText(App.language, "SettingsPdfPageEditHint")
-                    //  themeTextMuted - die Hinweisfarbe aller übrigen
-                    //  Erklärtexte. Ohne Einzug: der Text hing früher unter
-                    //  einem Auswahlring, den es hier nicht mehr gibt.
                     color: App.themeTextMuted
                     font.pixelSize: 11
                     wrapMode: Text.WordWrap
                     Layout.fillWidth: true
                 }
-                // Export-Modus: steuert den EINEN „Export"-Knopf des PDF-Editors.
-                // Früher gab es dafür zwei Knöpfe nebeneinander - die Wahl ist
-                // aber eine Grundsatzentscheidung, keine je Export.
                 Label {
                     text: App.uiText(App.language, "SettingsPdfExportLabel")
                     color: App.themeTextPrimary
@@ -345,10 +315,8 @@ Item {
                         wrapMode: Text.WordWrap
                     }
                 }
-                //  Interchange: eigene Notizen als echte PDF-Annotationen
-                //  schreiben. BEWUSST eine CheckBox und KEIN Radio: die Wahl
-                //  ist unabhängig vom Export-Modus darüber (s. auch der Fehler,
-                //  bei dem zwei Radio-Gruppen einander gelöscht haben).
+                // BEWUSST eine CheckBox und kein Radio: die Wahl ist unabhängig vom Export-Modus darüber - zwei Radio-Gruppen
+                // in derselben SettingsGroup löschten einander.
                 CheckBox {
                     id: expAsAnnots
                     text: App.uiText(App.language, "PdfExportAsAnnotationsOption")
@@ -380,11 +348,8 @@ Item {
                 }
             }
 
-            // ── DOCX-Editor ───────────────────────────────────────────────────
-            //  Speicherverhalten (Docx.saveDirect, persistiert): „Direkt
-            //  speichern" schreibt auf die Originaldatei (einmalige .bak je
-            //  Sitzung); „Kopie exportieren" lässt das Original unangetastet
-            //  und erzeugt <Name>_edited(.n).docx.
+            // `Docx.saveDirect`: "Direkt speichern" schreibt auf die Originaldatei (einmalige .bak je Sitzung), "Kopie
+            // exportieren" lässt das Original unangetastet und erzeugt <Name>_edited(.n).docx.
             SettingsGroup {
                 key: "editor.docx"
                 title: App.uiText(App.language, "SettingsDocxGroup")
@@ -437,23 +402,16 @@ Item {
                 }
             }
 
-            // ── Live-Transliteration (Latein -> Arabisch/Kana) ─────────────────
-            //  Schema-Auswahl + editierbare Zuordnungsliste. Die Liste liest
-            //  Translit.mappings(scheme) rev-getrieben (mappingsRev bumpt bei
-            //  jeder Änderung) - kein manuelles Modell-Handling nötig.
+            // Schema-Auswahl plus editierbare Zuordnungsliste; die Liste liest `Translit.mappings(scheme)` rev-getrieben
+            // (`mappingsRev`) - kein eigenes Modell-Handling nötig.
             SettingsGroup {
                 id: trGroup
-                //  OHNE `key` merkt sich die Gruppe ihren Zustand NICHT - sie
-                //  stand nach jedem Öffnen der Einstellungen wieder offen, als
-                //  einzige im ganzen Dialog (Nutzerbefund 2026-09-02). Der
-                //  Schlüssel ist ein STABILER Bezeichner, nie die Überschrift.
+                // OHNE `key` merkt sich die Gruppe ihren Zustand NICHT und stand nach jedem Öffnen wieder offen. Der
+                // Schlüssel ist ein STABILER Bezeichner, nie die Überschrift.
                 key: "editor.translit"
                 title: App.uiText(App.language, "SettingsTranslitGroup")
                 Layout.fillWidth: true
 
-                // Welches Schema wird bearbeitet - initial das aktive, danach
-                // frei wählbar (Änderung im Editor überschreibt die Auswahl
-                // hier NICHT). Component.onCompleted entkoppelt die Bindung.
                 property string editScheme: "ar"
                 Component.onCompleted: editScheme = Translit.scheme
 
@@ -501,8 +459,6 @@ Item {
                     }
                 }
 
-                // Zuordnungsliste (rev-getrieben). Jede Zeile: Key + Wert
-                // editierbar (updateMapping) und ✕ (removeMapping).
                 Repeater {
                     model: (Translit.mappingsRev,
                             Translit.mappings(trGroup.editScheme))
@@ -529,8 +485,6 @@ Item {
                                                            text, valField.text)
                             }
                         }
-                        //  „Taste wird zu Zeichen" - der Pfeil zwischen den
-                        //  beiden Feldern ist ein Symbol, kein Text (Regel 28).
                         DrawnIcon { name: "arrow-right"; size: 13
                                     color: App.themeTextMuted
                                     Layout.alignment: Qt.AlignVCenter }
@@ -565,7 +519,6 @@ Item {
                     }
                 }
 
-                // Neue Zuordnung hinzufügen.
                 RowLayout {
                     Layout.fillWidth: true
                     Layout.topMargin: 4
@@ -626,7 +579,5 @@ Item {
         }
     }
 
-    //  Weiches, schnelles Mausrad-Scrollen (Galerie-Muster) statt der festen
-    //  60 px je Rastung von `Flickable`.
     SmoothWheelArea { flickable: edScroll.contentItem }
 }

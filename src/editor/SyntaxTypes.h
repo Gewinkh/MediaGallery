@@ -1,20 +1,9 @@
 #pragma once
 #include <QtGlobal>
 
-// ─────────────────────────────────────────────────────────────────────────────
-//  SyntaxTypes.h - die gemeinsame Waehrung der Syntaxfaerbung.
-//
-//  EIN Satz Token-Klassen fuer ALLE Sprachen, bewusst so und nicht je Sprache
-//  eigene: die Farben stehen in den Einstellungen, und ein Satz je Sprache
-//  hiesse, dass die Einstellungsseite mit jeder neuen Sprache mitwaechst. Eine
-//  neue Sprache bildet stattdessen in die vorhandenen Klassen ab - genau das
-//  macht „eine Sprache = ein Tabelleneintrag" ueberhaupt erst moeglich.
-//
-//  Die vier letzten Klassen sind fuer Auszeichnungssprachen gedacht (Markdown,
-//  XML/HTML), werden aber nicht dafuer reserviert: `Heading` faerbt in XML den
-//  Tag-Namen, `Link` den Attributnamen. Lieber eine Klasse doppelt nutzen als
-//  eine sechzehnte einfuehren, die im Einstellungsdialog erklaert werden muss.
-// ─────────────────────────────────────────────────────────────────────────────
+// Ein Satz Token-Klassen fuer alle Sprachen: die Farben stehen in den Einstellungen,
+// ein Satz je Sprache liesse die Einstellungsseite mitwachsen. Eine neue Sprache
+// bildet in die vorhandenen Klassen ab - erst das macht "eine Sprache = ein Eintrag".
 namespace mg::editor {
 
 enum class Tok : quint8 {
@@ -36,19 +25,15 @@ enum class Tok : quint8 {
 
 //  Ein gefaerbter Abschnitt INNERHALB einer Zeile. Der Zerleger fuellt davon
 //  eine kleine Liste je Zeile; es entsteht nie eine Liste ueber das ganze
-//  Dokument (§0-Prioritaet 4).
+//  Dokument.
 struct Span {
     qsizetype start;
     qsizetype length;
     Tok       tok;
 };
 
-//  Zustand, den eine Zeile an die naechste weiterreicht. `QSyntaxHighlighter`
-//  merkt sich je Block genau ein int - mehr braucht es nicht, solange jeder
-//  offene Zustand hier hineinpasst.
-//    Bits 0-3  : was gerade offen ist (BlockState)
-//    Bits 4-11 : Begrenzerzeichen einer offenen mehrzeiligen Zeichenkette
-//                bzw. Laenge des offenen Markdown-Codezauns
+// Zustand, den eine Zeile an die nächste weiterreicht - `QSyntaxHighlighter` merkt sich je Block genau ein int.
+// Bits 0-3: was offen ist; Bits 4-11: Begrenzerzeichen bzw. Länge des offenen Markdown-Codezauns.
 enum class BlockState : int {
     None        = 0,
     BlockComment,     // /* … */ laeuft weiter

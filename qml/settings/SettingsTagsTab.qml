@@ -5,7 +5,6 @@ import QtQuick.Layouts
 import MediaGallery 1.0
 import "../common"
 
-// ── Tags: globale Tag-Verwaltung ─────────────────────────────────────────────
 Item {
     id: root
 
@@ -38,10 +37,8 @@ Item {
             }
         }
 
-        //  ── Wie weit reicht „Tag löschen"? ──────────────────────────────────
-        //  Jeder Ordner führt seine Verschlagwortung in einer eigenen Datei;
-        //  ohne diesen Schalter blieb ein gelöschter Tag in jedem Unterordner
-        //  stehen. Standard ist AN.
+        // Jeder Ordner führt seine Verschlagwortung in einer eigenen Datei; ohne diesen Schalter blieb ein gelöschter
+        // Tag in jedem Unterordner stehen. Standard ist AN.
         CheckBox {
             id: subfolderBox
             Layout.fillWidth: true
@@ -140,7 +137,6 @@ Item {
         }
     }
 
-    // ── Dialoge ──────────────────────────────────────────────────────────────
     property string renameTarget: ""
     property string deleteTarget: ""
 
@@ -190,11 +186,8 @@ Item {
         anchors.centerIn: Overlay.overlay
         standardButtons: Dialog.Yes | Dialog.No
         onAccepted: Tags.deleteTag(root.deleteTarget)
-        //  **Eingabetaste bestaetigt.** `focus: true` am Dialog UND ein
-        //  `Keys`-Handler am `contentItem` - beides noetig: `standardButtons`
-        //  allein wertet `Return` NICHT aus (der Fokus liegt dann auf der
-        //  `DialogButtonBox`, und die hat keinen Vorgabe-Knopf), und ein
-        //  `Keys`-Handler am Dialog selbst feuert gar nicht. Beides gemessen.
+        // `focus: true` am Dialog UND ein `Keys`-Handler am `contentItem` - beides nötig: `standardButtons` allein
+        // wertet `Return` nicht aus (Fokus auf der DialogButtonBox ohne Vorgabe-Knopf), und `Keys` am Dialog feuert nie.
         focus: true
         background: Rectangle { color: App.themeCard; border.color: App.themeBorder; radius: 8 }
 

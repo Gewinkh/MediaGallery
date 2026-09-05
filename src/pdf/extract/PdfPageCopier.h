@@ -1,50 +1,7 @@
 #pragma once
-// ══════════════════════════════════════════════════════════════════════════════
-//  PdfPageCopier.h
-// ══════════════════════════════════════════════════════════════════════════════
-//
-//  ZWECK
-//  ─────
-//  VERLUSTFREIE Extraktion ausgewählter Seiten aus PDF-Dateien in eine NEUE PDF
-//  auf ROH-OBJEKTEBENE (Textebene, Vektoren, Schriften und eingebettete
-//  Annotationen bleiben 1:1 erhalten). Qt selbst kann PDF-Seiten nicht
-//  vektoriell durchreichen (QPdfDocument rendert nur) - deshalb parst diese
-//  Klasse die PDF-Struktur direkt, wie es das Projekt für eingebettete Audios
-//  bereits tut (PdfAudioController/PdfMediaHandler), hier jedoch vollständig:
-//
-//   • XRef: klassische Tabellen UND XRef-STREAMS (PDF 1.5+), inkl. /Prev-Ketten,
-//     Hybrid-Dateien (/XRefStm) und FlateDecode mit PNG-Prädiktoren.
-//   • OBJEKT-STREAMS (/Type/ObjStm): komprimierte Objekte werden dekodiert und
-//     daraus geparst (das können die bestehenden Roh-Parser des Projekts nicht).
-//   • Recovery: ist die XRef-Kette defekt, wird die Objekttabelle per
-//     Brute-Scan („N G obj") rekonstruiert (letztes Vorkommen gewinnt =
-//     jüngster Inkrement-Save) und der Katalog notfalls per /Type/Catalog-Suche
-//     gefunden.
-//
-//  KOPIE-VERFAHREN
-//  ───────────────
-//  Je gewählter Seite wird der transitive Objektgraph (Ressourcen, Fonts,
-//  XObjects, Inhaltsströme, Annotationen …) eingesammelt, umnummeriert und
-//  verbatim in die Ziel-PDF geschrieben - Stream-Rohdaten werden UNVERÄNDERT
-//  (samt /Filter) aus dem Quell-Mapping kopiert, es wird nichts neu kodiert.
-//  Vererbte Seitenattribute (/Resources /MediaBox /CropBox /Rotate) werden aus
-//  dem Seitenbaum materialisiert. Referenzen auf NICHT gewählte Seiten (z. B.
-//  GoTo-Ziele von Link-Annotationen) werden zu `null` gekappt, damit der
-//  Graph-Abschluss nicht das halbe Dokument mitzieht.
-//
-//  RAM: Die Quelldatei wird per QFile::map (mmap) gelesen - kein Heap-Vollload,
-//  auch bei 100–300-MB-PDFs; nur dekodierte XRef-/Objekt-Streams liegen
-//  transient im Speicher. Passt zur RAM-Priorität (§0, Prio 1 der MD).
-//
-//  GRENZEN (-> Aufrufer nutzt den Raster-Fallback, s. PdfExtractController):
-//   • Verschlüsselte PDFs (/Encrypt) - Strings/Streams wären umzuschlüsseln.
-//   • Exotische XRef-Filter/Prädiktoren außerhalb von FlateDecode/PNG.
-//  addSourcePages() plant dafür ZUERST vollständig im Speicher und schreibt
-//  erst bei Erfolg - ein Fehlschlag hinterlässt KEINE Fragmente in der Ausgabe.
-//
-//  ABHÄNGIGKEITEN: nur Qt6::Core + mg::zcodec (beides bestehende Projekt-
-//  Abhängigkeiten) -> isoliert testbar, keine neue Bibliothek (§0-Priorität 3).
-// ══════════════════════════════════════════════════════════════════════════════
+// Verlustfreie Extraktion auf ROH-OBJEKTEBENE: Qt kann PDF-Seiten nicht vektoriell durchreichen (QPdfDocument
+// rendert nur). Beherrscht XRef-Streams, Objekt-Streams und Brute-Scan-Recovery; Streams werden verbatim samt
+// /Filter kopiert, Verweise auf ungewählte Seiten zu `null` gekappt. Gelesen per mmap - kein Heap-Vollload.
 
 #include <QByteArray>
 #include <QString>
@@ -66,18 +23,13 @@ public:
     // (Obj 2). Genau einmal vor allen add*-Aufrufen aufrufen.
     bool begin(QString* err);
 
-    // Übernimmt die angegebenen Seiten (0-basiert, aufsteigend erwartet) der
-    // Quelldatei VERLUSTFREI. Liefert false bei nicht kopierbarer Quelle
-    // (verschlüsselt/defekt/exotisch) - dann wurde für diese Quelle NICHTS
-    // geschrieben und der Aufrufer kann pro Datei auf Rasterung ausweichen.
+    // Übernimmt die Seiten (0-basiert, aufsteigend erwartet) VERLUSTFREI. false bei nicht kopierbarer Quelle -
+    // dann wurde für sie NICHTS geschrieben und der Aufrufer kann je Datei auf Rasterung ausweichen.
     bool addSourcePages(const QString& sourcePath, const QVector<int>& pages,
                         QString* err);
 
-    // Wie oben, zusätzlich mit einer DREHUNG je übernommener Seite (Grad,
-    // Vielfaches von 90; parallel zu `pages`, leer = keine). Der Wert wirkt
-    // ZUSÄTZLICH zur Eigendrehung der Quellseite und wird als materialisiertes
-    // /Rotate der Zielseite geschrieben - der Seiteninhalt selbst bleibt
-    // byteweise unverändert (Grundlage von „Seite drehen" im PDF-Editor).
+    // Wie oben, zusätzlich mit einer DREHUNG je Seite (Vielfaches von 90, parallel zu `pages`). Sie wirkt ZUSÄTZLICH
+    // zur Eigendrehung und wird als materialisiertes /Rotate geschrieben; der Seiteninhalt bleibt unverändert.
     bool addSourcePages(const QString& sourcePath, const QVector<int>& pages,
                         const QVector<int>& rotations, QString* err);
 
@@ -86,35 +38,17 @@ public:
     bool addRasterPage(const QByteArray& jpeg, int pxW, int pxH,
                        const QSizeF& pagePt, QString* err);
 
-    // Leere (weiße) Seite mit der gegebenen Größe in PDF-Punkten anhängen
-    // (Aufgabe 3 „+ Seite" - Aufrufer nutzt A4 = 595.276 × 841.890 pt). Ohne
-    // Ressourcen, leerer Inhaltsstrom - der PDF-Seitengrund ist per Definition
-    // weiß. Verlustfrei einreihbar zwischen kopierte Quellseiten.
+    // Leere Seite mit der gegebenen Größe anhängen, ohne Ressourcen und mit leerem Inhaltsstrom - der
+    // PDF-Seitengrund ist per Definition weiß. Verlustfrei einreihbar zwischen kopierte Quellseiten.
     bool addBlankPage(const QSizeF& pagePt, QString* err);
 
-    // Schließt die Datei ab: Seitenbaum, Katalog, XRef-Tabelle, Trailer.
     bool finish(QString* err);
 
-    // Bisher registrierte Seiten (für Fortschritt/Plausibilität).
     int pageCount() const { return m_pageObjs.size(); }
 
-    // Schreibt `sourcePath` VOLLSTÄNDIG NEU nach `outputPath`: alle Seiten in
-    // ihrer Reihenfolge verlustfrei kopiert, jedes Objekt genau EINMAL, mit
-    // frischer XRef-Tabelle und OHNE /Prev-Kette.
-    //
-    // WOZU: Alle schreibenden Einheiten des Projekts arbeiten inkrementell
-    // (anhängen, Originalbytes bleiben). Für „Text schwärzen" ist genau das
-    // die Lücke: Der Text ist aus der Anzeige verschwunden, steht aber noch in
-    // den alten Bytes der Datei - ein Hex-Editor findet ihn. Nach diesem
-    // Neuschreiben ist nur noch der aktuelle Stand in der Datei; was kein
-    // Objekt des Seitengraphen mehr ist, wird nicht mitkopiert.
-    //
-    // PREIS (der Aufrufer muss ihn kennen): Der Katalog entsteht neu - was
-    // NICHT am Seitengraphen hängt, geht verloren: `/AcroForm` (Formulare
-    // deshalb vorher mit `mg::PdfFormFields::flatten` festschreiben),
-    // Lesezeichen, benannte Ziele, Dokument-Metadaten, Seitenbeschriftungen.
-    // Deshalb wird NICHT jede Ausgabe so geschrieben, sondern nur die, die es
-    // braucht.
+    // Schreibt die Datei VOLLSTÄNDIG neu, jedes Objekt einmal, ohne /Prev-Kette. Nötig fürs Schwärzen: alle anderen
+    // Einheiten hängen an, der Text wäre aus der Anzeige verschwunden, stünde aber noch in den alten Bytes.
+    // PREIS: der Katalog entsteht neu - /AcroForm (vorher `flatten`), Lesezeichen, Ziele und Metadaten fallen weg.
     static bool rebuild(const QString& sourcePath, const QString& outputPath,
                         QString* err);
 
@@ -125,17 +59,11 @@ public:
 
 private:
     bool writeRaw(const QByteArray& bytes, QString* err);
-    // Beginnt ein neues Objekt „<num> 0 obj“ und merkt den Offset. Liefert num.
     bool beginObject(int num, QString* err);
 
-    //  Geparste Quellen DIESES Laufs (Definition in der .cpp). Ein
-    //  Auswahlauftrag ruft `addSourcePages` je zusammenhängendem Block auf;
-    //  mischt der Nutzer Seiten mehrerer PDFs, trifft dieselbe Quelle immer
-    //  wieder. Der Zwischenspeicher hält je Quelle den Struktur-Parse UND die
-    //  Zuordnung Quell-Objektnummer -> neue Objektnummer, damit geteilte
-    //  Objekte (Schriften, Ressourcen) genau EINMAL in die Ausgabe wandern.
-    //  Gedeckelt (LRU); darüber hinaus fällt der Lauf auf das alte Verhalten
-    //  zurück - langsamer und größer, aber nie falsch.
+    // Ein Auswahlauftrag ruft `addSourcePages` je zusammenhängendem Block auf; gemischte Seiten treffen dieselbe
+    // Quelle immer wieder. Der Zwischenspeicher hält je Quelle Struktur-Parse und Objektnummern-Zuordnung, damit
+    // geteilte Objekte genau EINMAL in die Ausgabe wandern. Gedeckelt (LRU), darüber gilt das alte Verhalten.
     struct SourceCache;
     std::unique_ptr<SourceCache> m_sources;
 

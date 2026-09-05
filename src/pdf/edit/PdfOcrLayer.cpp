@@ -20,11 +20,8 @@ const char* const kMarker = "% MediaGallery-OCR";
 //  eine Zahl an (s. uniqueFontName).
 const char* const kFontBase = "/MGOCR";
 
-// ── WinAnsi (Latin-1-Teilmenge) ──────────────────────────────────────────────
-//  Bewusst NUR der Bereich, in dem WinAnsi und Latin-1 übereinstimmen: alles
-//  darüber müsste zeichenweise umgesetzt werden, und ein falsches Byte hieße
-//  „die Suche findet das falsche Wort". Ein Wort mit einem Zeichen außerhalb
-//  wird ganz übersprungen, nicht verstümmelt.
+// Bewusst NUR der Bereich, in dem WinAnsi und Latin-1 übereinstimmen: darüber müsste zeichenweise umgesetzt
+// werden, und ein falsches Byte hieße "die Suche findet das falsche Wort". Sonst wird das Wort übersprungen.
 bool toWinAnsi(const QString& s, QByteArray* out) {
     out->clear();
     out->reserve(s.size());
@@ -38,7 +35,6 @@ bool toWinAnsi(const QString& s, QByteArray* out) {
     return !out->isEmpty();
 }
 
-// ── Helvetica-Vorschubbreiten (1/1000 em) ────────────────────────────────────
 const QHash<ushort, ushort>& helveticaWidths() {
     static const QHash<ushort, ushort> map = [] {
         QHash<ushort, ushort> m;
@@ -95,7 +91,6 @@ QByteArray inheritedResources(const PdfDoc& doc, int pageObj) {
 
 }  // namespace
 
-// ─────────────────────────────────────────────────────────────────────────────
 bool PdfOcrLayer::hasLayer(const QString& path) {
     QFile f(path);
     if (!f.open(QIODevice::ReadOnly))
@@ -154,7 +149,6 @@ bool PdfOcrLayer::write(const QString& inputPath, const QString& outputPath,
                                                               : QByteArray();
         const QByteArray fontName  = uniqueFontName(fontInner);
 
-        //  ── Inhaltsstrom bauen ───────────────────────────────────────────────
         QByteArray ops;
         ops += kMarker;
         ops += "\nq\nBT\n3 Tr\n";                 // 3 Tr = unsichtbar
@@ -172,10 +166,8 @@ bool PdfOcrLayer::write(const QString& inputPath, const QString& outputPath,
             const double size = r.height();
             const double baseY = r.bottom() - r.height() * 0.18;
 
-            //  Anzeige-Raum -> Benutzerraum. Die DREHUNG der Seite steckt in
-            //  der Abbildung; statt sie noch einmal von Hand herzuleiten, wird
-            //  die Textmatrix aus drei abgebildeten Punkten gewonnen: Ursprung,
-            //  ein Schritt entlang der Grundlinie und einer nach oben.
+            // Anzeige-Raum -> Benutzerraum: die Drehung der Seite steckt in der Abbildung. Statt sie noch einmal von Hand
+            // herzuleiten, wird die Textmatrix aus drei abgebildeten Punkten gewonnen.
             const QPointF p0 = toUser(r.left(),       baseY,     box, rot);
             const QPointF px = toUser(r.left() + 1.0, baseY,     box, rot);
             const QPointF py = toUser(r.left(),       baseY - 1.0, box, rot);
@@ -204,7 +196,7 @@ bool PdfOcrLayer::write(const QString& inputPath, const QString& outputPath,
         const int streamObj = up.reserveObjNum();
         up.addStream(streamObj, 0, QByteArray(), ops);
 
-        //  ── Seite fortschreiben: /Contents ergänzen, /Resources sichern ─────
+        //  Seite fortschreiben: /Contents ergänzen, /Resources sichern
         const QByteArray oldContents = rawValue(pageDict, "Contents");
         QByteArray newContents;
         if (oldContents.startsWith('[')) {

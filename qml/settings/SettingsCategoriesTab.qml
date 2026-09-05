@@ -5,7 +5,6 @@ import QtQuick.Layouts
 import MediaGallery 1.0
 import "../common"
 
-// ── Kategorien: rekursiver Baum-Editor ───────────────────────────────────────
 Item {
     id: tab
 
@@ -19,7 +18,6 @@ Item {
         function onTagsChanged()       { tab.refresh() }
     }
 
-    // ── Prompt-API (von den Knoten aufgerufen) ───────────────────────────────
     property string pId: ""
     property string pName: ""
 
@@ -64,13 +62,8 @@ Item {
 
                 Repeater {
                     model: tab.treeModel
-                    //  setSource() STATT `source:` - SettingsCategoryNode benutzt
-                    //  `required property`, und die lassen sich AUSSCHLIESSLICH
-                    //  bei der Erzeugung belegen. `source:` erzeugt sofort und
-                    //  ohne Startwerte: Qt bricht die Erzeugung mit „Required
-                    //  property … was not initialized" ab, `onLoaded` feuert nie
-                    //  und der Baum blieb komplett leer - obwohl categoriesTree()
-                    //  die Kategorien korrekt lieferte (Nutzerbefund 2026-07-23).
+                    // `setSource` statt `source:`: SettingsCategoryNode benutzt `required property`, die sich ausschließlich bei der
+                    // Erzeugung belegen lassen - mit `source:` bricht Qt ab, `onLoaded` feuert nie und der Baum blieb leer.
                     delegate: Loader {
                         id: rootLoader
                         required property var modelData
@@ -93,7 +86,6 @@ Item {
         }
     }
 
-    // ── Dialoge ──────────────────────────────────────────────────────────────
     Dialog {
         id: newCatDialog
         title: App.uiText(App.language, "CatPanelAddCategory")
@@ -145,11 +137,8 @@ Item {
         anchors.centerIn: Overlay.overlay
         standardButtons: Dialog.Yes | Dialog.No
         onAccepted: Tags.deleteCategory(tab.pId)
-        //  **Eingabetaste bestaetigt.** `focus: true` am Dialog UND ein
-        //  `Keys`-Handler am `contentItem` - beides noetig: `standardButtons`
-        //  allein wertet `Return` NICHT aus (der Fokus liegt dann auf der
-        //  `DialogButtonBox`, und die hat keinen Vorgabe-Knopf), und ein
-        //  `Keys`-Handler am Dialog selbst feuert gar nicht. Beides gemessen.
+        // `focus: true` am Dialog UND ein `Keys`-Handler am `contentItem` - beides nötig: `standardButtons` allein
+        // wertet `Return` nicht aus (Fokus auf der DialogButtonBox ohne Vorgabe-Knopf), und `Keys` am Dialog feuert nie.
         focus: true
         background: Rectangle { color: App.themeCard; border.color: App.themeBorder; radius: 8 }
         // s. SettingsBookmarksTab: feste implicitWidth des contentItem bricht

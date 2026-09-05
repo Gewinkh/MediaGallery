@@ -2,13 +2,8 @@ import QtQuick
 import QtQuick.Templates as T
 import MediaGallery 1.0
 
-// ─────────────────────────────────────────────────────────────────────────────
-//  ScrollBar.qml - schlanke, gethemte Bildlaufleiste (Stil "style").
-//
-//  Ohne Pfeil-Schaltflächen und ohne Rinnen-Rahmen: nur ein abgerundeter Griff,
-//  der bei Hover/Zug breiter und kräftiger wird. Die Leiste zeichnet dadurch pro
-//  Bild ein einziges Rechteck statt der fünf Fusion-Elemente.
-// ─────────────────────────────────────────────────────────────────────────────
+// Schlanke Bildlaufleiste ohne Pfeile und Rinnenrahmen: nur ein abgerundeter Griff, der bei Hover breiter wird
+// - ein Rechteck je Bild statt der fünf Fusion-Elemente.
 T.ScrollBar {
     id: control
 

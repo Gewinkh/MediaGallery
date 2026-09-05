@@ -2,13 +2,8 @@ import QtQuick
 import QtQuick.Templates as T
 import MediaGallery 1.0
 
-// ─────────────────────────────────────────────────────────────────────────────
-//  SpinBox.qml - gethemtes Zahlenfeld (Stil "style").
-//
-//  Feld wie TextField (Radius 6, Kartenfarbe, Akzentrahmen bei Fokus); die
-//  beiden Schaltflächen sitzen rechts als abgerundete Halbfelder mit selbst
-//  gezeichnetem +/− (schriftartunabhängig, kein Bild/Atlas).
-// ─────────────────────────────────────────────────────────────────────────────
+// Feld wie TextField; die beiden Schaltflächen sitzen rechts als abgerundete Halbfelder mit selbst gezeichnetem
+// Plus und Minus, also schriftartunabhängig und ohne Textur.
 T.SpinBox {
     id: control
 

@@ -1,24 +1,7 @@
 #pragma once
-// ─────────────────────────────────────────────────────────────────────────────
-//  DocxZip - minimaler ZIP-Reader/-Writer für den DOCX-Editor (OOXML-Container).
-//
-//  Abhängigkeiten: Qt6::Core + mg::zcodec (src/core/ZCodec.h) - keine neue
-//  Bibliothek; Muster PdfPageCopier. Kein Q_OBJECT/moc -> isoliert testbar.
-//  ZLIB ist dadurch OPTIONAL; ohne sie weist Reader::open Einträge mit
-//  Methode 8 ab, also praktisch jedes DOCX (Begründung in ZCodec.h).
-//
-//  Kernprinzip (Verlusterhaltung, §0): Der Writer übernimmt ALLE nicht
-//  angefassten Einträge als ROH-KOPIE - die komprimierten Datenbytes, CRC,
-//  Größen und Methode stammen 1:1 aus der Quelle (KEIN Neu-Komprimieren).
-//  Nur gezielt ersetzte Einträge (z. B. word/document.xml) werden neu
-//  deflatiert. Die Container-Rahmung (lokale Header/Zentralverzeichnis) wird
-//  normalisiert geschrieben (Größen im lokalen Header statt Data-Descriptor),
-//  was für Office-Reader transparent ist.
-//
-//  Grenzen (bewusst, DOCX-tauglich): kein ZIP64 (DOCX << 4 GB), keine
-//  Verschlüsselung, Methoden nur Store(0)/Deflate(8). Verletzungen führen zu
-//  sauberen Fehlermeldungen statt stiller Korruption.
-// ─────────────────────────────────────────────────────────────────────────────
+// Minimaler ZIP-Leser/-Schreiber fuer OOXML. Verlusterhaltung: nicht angefasste
+// Eintraege werden als ROH-KOPIE uebernommen (Bytes, CRC, Groessen, Methode aus der
+// Quelle), nur ersetzte neu deflatiert. Kein ZIP64, keine Verschluesselung.
 
 #include <QString>
 #include <QByteArray>
@@ -48,10 +31,8 @@ struct Entry {
     QByteArray comment;             // Eintrags-Kommentar (verbatim)
 };
 
-// ── Reader ───────────────────────────────────────────────────────────────────
-//  Liest das Zentralverzeichnis (EOCD-Suche vom Dateiende) und erlaubt
-//  gezielten Zugriff: rawData() = komprimierte Bytes 1:1, fileData() =
-//  dekomprimiert (zlib raw inflate bei Methode 8).
+// Liest das Zentralverzeichnis (EOCD-Suche vom Dateiende) und erlaubt gezielten Zugriff: `rawData()` =
+// komprimierte Bytes 1:1, `fileData()` = dekomprimiert.
 class Reader {
 public:
     ~Reader();
@@ -71,11 +52,8 @@ private:
     QList<Entry> m_entries;
 };
 
-// ── Writer ───────────────────────────────────────────────────────────────────
-//  Schreibt Einträge in Aufrufreihenfolge auf ein beliebiges QIODevice
-//  (QSaveFile für atomare Datei-Ersetzung, QBuffer für In-Memory-Erzeugung).
-//  addRaw() übernimmt einen Quell-Eintrag byteidentisch (Datenbytes + CRC +
-//  Größen + Methode + Zeitstempel + Attribute); addFile() deflatiert neu.
+// Schreibt Einträge in Aufrufreihenfolge auf ein beliebiges QIODevice. `addRaw()` übernimmt einen Quell-Eintrag
+// byteidentisch (Daten, CRC, Größen, Methode, Zeitstempel, Attribute); `addFile()` deflatiert neu.
 class Writer {
 public:
     explicit Writer(QIODevice* target);              // muss offen + schreibbar sein
@@ -98,7 +76,7 @@ private:
     bool           m_finished = false;
 };
 
-// ── Codec-Helfer über mg::zcodec (raw deflate, windowBits −15 = ZIP) ────────
+// Codec-Helfer über mg::zcodec (raw deflate, windowBits −15 = ZIP)
 QByteArray inflateRaw(const QByteArray& comp, quint32 expectedSize, bool* ok);
 QByteArray deflateRaw(const QByteArray& plain, bool* ok);
 quint32    crcOf(const QByteArray& data);

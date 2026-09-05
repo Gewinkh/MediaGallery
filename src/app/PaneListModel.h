@@ -7,23 +7,9 @@
 
 class PaneController;
 
-// ─────────────────────────────────────────────────────────────────────────────
-//  PaneListModel - die Hälften des Fensters ALS MODELL, nicht als Liste.
-//
-//  WARUM ein Modell und nicht die vorhandene `QVariantList panes`:
-//  Ein `Repeater` über eine LISTE hat kein Einfügen und kein Entfernen - er
-//  kennt nur „die Liste ist eine andere" und baut daraufhin ALLE Delegates
-//  neu. Gemessen (Wegwerf-Treiber, Qt 6): eine Hälfte dazu -> die bestehende
-//  wird zerstört und neu erzeugt; eine Hälfte zu -> dasselbe. In der App
-//  bedeutete das: die geöffnete Datei der anderen Hälfte war weg, samt
-//  Zoomstand, Seite und ungespeicherten Notizen.
-//  Ein `QAbstractListModel` meldet Einfügen/Entfernen/Verschieben punktgenau -
-//  bestehende Delegates bleiben stehen, und ein Tausch VERSCHIEBT die Hälfte
-//  samt allem, was in ihr offen ist.
-//
-//  Die Liste selbst gehört weiterhin dem `AppController`; dieses Modell hält
-//  nur eine Referenz darauf und wird von dort um jede Änderung geklammert.
-// ─────────────────────────────────────────────────────────────────────────────
+// Ein Repeater ueber eine LISTE kennt kein Einfuegen: er baut alle Delegates neu, und
+// die geoeffnete Datei der anderen Haelfte war samt Zoom und Notizen weg. Ein
+// QAbstractListModel meldet punktgenau - ein Tausch verschiebt die Haelfte mit Inhalt.
 class PaneListModel : public QAbstractListModel {
     Q_OBJECT
 public:

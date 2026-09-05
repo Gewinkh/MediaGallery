@@ -2,30 +2,16 @@ import QtQuick
 import QtQuick.Controls
 import MediaGallery 1.0
 
-// ─────────────────────────────────────────────────────────────────────────────
-//  AudioTrackDialog.qml - „Welche Tonspur?"
-//
-//  Er erscheint NUR, wenn eine Datei mehr als eine Tonspur hat (Mehrsprachig-
-//  keit, Audiokommentar). Der Controller meldet das über `trackChoiceNeeded`
-//  und liefert dabei fertige Zeilen mit - hier wird nichts mehr zusammengebaut,
-//  nur angezeigt (Regel 7: Logik in C++).
-//
-//  Gehostet wird er von der SHELL, nicht von einer Hälfte: `Audio` ist ein
-//  Singleton für das ganze Fenster - läge der Dialog je Hälfte vor, gingen bei
-//  zwei Hälften zwei Fenster gleichzeitig auf.
-//
-//  Verwendung:
-//      AudioTrackDialog { id: trackDlg }
-//      Connections { target: Audio
-//          function onTrackChoiceNeeded(src, tracks) { trackDlg.openFor(src, tracks) } }
-// ─────────────────────────────────────────────────────────────────────────────
+// Erscheint nur, wenn eine Datei mehr als eine Tonspur hat; der Controller liefert über
+// `trackChoiceNeeded` fertige Zeilen mit. Gehostet von der SHELL, nicht von einer Hälfte: `Audio` ist
+// ein Singleton fürs ganze Fenster - je Hälfte gingen bei zwei Hälften zwei Dialoge auf.
 Dialog {
     id: dlg
     modal: true
     anchors.centerIn: Overlay.overlay
     standardButtons: Dialog.NoButton
     title: App.uiText(App.language, "AudioTrackChooseTitle")
-    objectName: "audioTrackDialog"          // Griff für tests/bench (Regel 31)
+    objectName: "audioTrackDialog"          // Griff für tests/bench
 
     property string source: ""
     property var    tracks: []

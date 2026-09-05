@@ -41,8 +41,6 @@ void TagManager::scheduleCategoriesChanged() {
 
 void TagManager::flushPendingSignals() {
     m_signalTimer.stop();
-    //  Ende des Durchlaufs = Ende des Rueckgaengig-Schritts. Was danach kommt,
-    //  ist ein neuer Schritt (s. `beginUndoStep`).
     m_undoStepOpen = false;
     const bool t = m_tagsDirty, c = m_catsDirty;
     m_tagsDirty = m_catsDirty = false;   // VOR dem Melden - ein Empfaenger darf
@@ -50,10 +48,8 @@ void TagManager::flushPendingSignals() {
     if (c) emit categoriesChanged();
 }
 
-// ── Rueckgaengig fuer Tag-Vorgaenge (s. Header) ──────────────────────────────
 void TagManager::beginUndoStep(const mg::tagmark::Mark& mark) {
     if (!m_storage) return;
-    //  Jede neue Mutation macht den Wiederherstellen-Stapel hinfaellig.
     if (!m_redo.isEmpty()) { m_redo.clear(); emit undoStackChanged(); }
     //  In einer Gruppe entsteht GENAU EIN Schritt - beim ersten Mal, mit der
     //  Marke der Gruppe.
@@ -74,10 +70,8 @@ void TagManager::beginUndoStep(const mg::tagmark::Mark& mark) {
     if (m_undoGroupDepth > 0) m_undoGroupStepId = step.id;
     pruneUndo();
 
-    //  Ohne laufende Ereignisschleife kann der Null-Timer die Sammelgrenze nie
-    //  setzen - dann wird auch nicht gesammelt (Testtreiber). Mit Schleife wird
-    //  der Timer sicherheitshalber angestossen, selbst wenn keine Meldung
-    //  ansteht: er ist es, der `m_undoStepOpen` wieder zurueckstellt.
+    // Ohne laufende Ereignisschleife kann der Null-Timer die Sammelgrenze nie setzen - dann wird auch nicht
+    // gesammelt. Mit Schleife wird er sicherheitshalber angestoßen: er stellt `m_undoStepOpen` zurück.
     if (QCoreApplication::instance()) {
         m_undoStepOpen = true;
         if (!m_signalTimer.isActive()) m_signalTimer.start();
@@ -147,16 +141,10 @@ TagManager::UndoStep* TagManager::undoStepById(quint64 id) {
 }
 
 void TagManager::clearUndo() {
-    //  `m_sweepsPending` bleibt stehen: der Durchgang ist noch unterwegs und
-    //  meldet sich selbst ab (`attachSweepUndo`).
-    //  Eine offene Gruppe wird dagegen GESCHLOSSEN: ihr Schritt gehoerte zum
-    //  alten Ordner. Ein spaeteres `endUndoGroup` laeuft dann ins Leere - das
-    //  ist der sichere Ausgang, sonst schluckte eine nie geschlossene Gruppe
-    //  jeden weiteren Schritt.
+    // `m_sweepsPending` bleibt stehen: der Durchgang ist noch unterwegs und meldet sich selbst ab. Eine offene
+    // Gruppe wird dagegen GESCHLOSSEN - sonst schluckte sie jeden weiteren Schritt.
     m_undoGroupDepth   = 0;
     m_undoGroupCounted = false;
-    //  Auch die Sammelgrenze: sonst faellt eine Mutation im SELBEN Durchlauf
-    //  wie das Leeren ohne eigenen Schritt hindurch.
     m_undoStepOpen     = false;
     m_undoGroupMark    = {};
     m_undoGroupHasMark = false;
@@ -189,14 +177,9 @@ void TagManager::applyStep(QList<UndoStep>& from, QList<UndoStep>& to, bool redo
         m_undoBytes -= step.bytes;
         if (m_undoBytes < 0) m_undoBytes = 0;
     }
-    //  Ein noch laufender Unterordner-Durchgang haengt an diesem Schritt - er
-    //  darf danach nichts mehr anhaengen.
     if (m_undoSweepId == step.id) m_undoSweepId = 0;
     if (m_undoGroupStepId == step.id) m_undoGroupStepId = 0;
 
-    //  Sicherung: der Stand gehoert zu EINEM Ordner. Zeigt der Speicher
-    //  inzwischen woandershin, wird nichts zurueckgeschrieben - lieber kein
-    //  Rueckgaengig als ein fremder Ordner mit fremden Tags.
     const QString folder = m_storage->folderPath();
     if (step.folder != folder) {
         m_undo.clear();
@@ -206,7 +189,6 @@ void TagManager::applyStep(QList<UndoStep>& from, QList<UndoStep>& to, bool redo
         return;
     }
 
-    //  Das Gegenstueck: derselbe Vorgang, aber mit dem Stand von JETZT.
     UndoStep back;
     back.id     = m_undoNextId++;
     back.mark   = step.mark;
@@ -215,10 +197,8 @@ void TagManager::applyStep(QList<UndoStep>& from, QList<UndoStep>& to, bool redo
     back.bytes  = back.state.size();
     back.foreignComplete = step.foreignComplete;
 
-    //  Zuerst die fremden Sidecars (Unterordner), dann der offene Ordner.
     int restored = 0;
     for (auto it = step.foreign.cbegin(); it != step.foreign.cend(); ++it) {
-        //  Fuer den Rueckweg festhalten, wie die Datei JETZT aussieht.
         QByteArray jetzt;
         QFile cur(it.key());
         if (cur.open(QIODevice::ReadOnly)) jetzt = cur.readAll();
@@ -258,16 +238,11 @@ void TagManager::attachSweepUndo(quint64 stepId,
                                  const QHash<QString, QByteArray>& before,
                                  bool complete) {
     if (stepId == 0) return;
-    //  Erst abmelden - auch wenn der Schritt inzwischen weg ist (Ordnerwechsel,
-    //  aus dem Stapel gefallen); sonst bliebe `canUndo` fuer immer falsch.
     if (m_sweepsPending > 0) --m_sweepsPending;
     UndoStep* step = undoStepById(stepId);
     if (!step) { emit undoStackChanged(); return; }
-    //  HINEINMISCHEN, nicht ersetzen: im selben Durchlauf koennen zwei Tags
-    //  geloescht worden sein - dann laufen zwei Durchgaenge auf denselben
-    //  Schritt zu, und der zweite haette den ersten sonst weggeworfen. Wo
-    //  beide denselben Ordner kennen, gilt der AELTERE Stand: er liegt weiter
-    //  zurueck, und genau dorthin soll das Rueckgaengig fuehren.
+    // HINEINMISCHEN, nicht ersetzen: im selben Durchlauf können zwei Tags gelöscht worden sein, und der zweite
+    // Durchgang hätte den ersten sonst weggeworfen. Wo beide denselben Ordner kennen, gilt der ÄLTERE Stand.
     for (auto it = before.cbegin(); it != before.cend(); ++it) {
         if (step->foreign.contains(it.key())) continue;
         step->foreign.insert(it.key(), it.value());
@@ -279,26 +254,19 @@ void TagManager::attachSweepUndo(quint64 stepId,
     emit undoStackChanged();
 }
 
-// ── Die Marken der einzelnen Vorgaenge (s. `TagUndoMark.h`) ──────────────────
+// Die Marken der einzelnen Vorgaenge (s. `TagUndoMark.h`)
 namespace {
 using namespace mg::tagmark;
 
-//  Ist die Kategorie eine Wurzel oder eine Unterkategorie? Das entscheidet der
-//  Pfad: leer = Hauptebene.
 Thing catThing(const QStringList& path) {
     return path.isEmpty() ? Thing::Category : Thing::Subcategory;
 }
 }  // namespace
 
-//  Eine Zuordnung: eroeffnet einen Schritt und schreibt seine `+n/-m`-Marke
-//  fort. Der Schritt sammelt, was im selben Durchlauf bzw. in derselben
-//  Zuordnungs-Sitzung anfaellt - daran haengt, ob „drei einzelne Klicks" drei
-//  Schritte sind oder einer (Festlegung des Nutzers: EINZELN, ausser es war
-//  wirklich eine Gruppe).
+// Eine Zuordnung eröffnet einen Schritt und schreibt seine `+n/-m`-Marke fort. Der Schritt sammelt, was im
+// selben Durchlauf oder derselben Sitzung anfällt - drei einzelne Klicks sind drei Schritte.
 void TagManager::beginCountedStep(bool added, mg::tagmark::Thing t,
                                   const QString& name, const QStringList& path) {
-    //  Gehoert die Marke einer FREMDEN Gruppe (Konverter), bleibt sie stehen -
-    //  eine Zuordnung, die nebenbei darin passiert, ist nicht der Vorgang.
     const bool fremdeGruppe = m_undoGroupDepth > 0 && m_undoGroupHasMark
                               && !m_undoGroupCounted;
     beginUndoStep(mkCounted(added ? 1 : 0, added ? 0 : 1, t, name, path));
@@ -320,7 +288,6 @@ void TagManager::beginCountedStep(bool added, mg::tagmark::Thing t,
                                 step.cntName, step.cntPath);
 }
 
-// ── Tag basics ────────────────────────────────────────────────────────────────
 QStringList TagManager::allTags() const { return m_storage->allTags(); }
 QColor      TagManager::tagColor(const QString& tag) const { return m_storage->tagColor(tag); }
 
@@ -377,8 +344,6 @@ QStringList TagManager::filesWithTag(const QString& tag) const {
 void TagManager::deleteTag(const QString& tag) {
     beginUndoStep(mg::tagmark::mkSimple(mg::tagmark::Verb::Delete,
                                       mg::tagmark::Thing::Tag, tag, {}));
-    //  Der Unterordner-Durchgang, den `tagDeleted` gleich anstoesst, haengt
-    //  seine Schnappschuesse an DIESEN Schritt (s. `sweepSubfolders`).
     m_undoSweepId = m_undo.isEmpty() ? 0 : m_undo.last().id;
     //  Aus ALLEN Kategorien - auch den verschachtelten. Die Schleife lief
     //  früher nur über die oberste Ebene; in einer Unterkategorie blieb der
@@ -391,28 +356,15 @@ void TagManager::deleteTag(const QString& tag) {
     };
     strip(m_storage->categoriesRef());
     m_storage->deleteTag(tag);
-    // Sofort persistieren - nicht erst beim nächsten anderweitigen Save.
-    // JsonStorage::saveFolder prüft dabei selbst, ob danach noch Tags/
-    // Kategorien/Datei-Metadaten übrig sind, und entfernt andernfalls die
-    // JSON-Datei komplett statt eines leeren Stubs.
     m_storage->saveCurrentFolder();
     scheduleTagsChanged();
     scheduleCategoriesChanged();
     emit tagDeleted(tag);
 }
 
-// ── Denselben Tag aus den Sidecars aller UNTERordner entfernen ───────────────
-//  Jeder Ordner fuehrt seine Verschlagwortung in einer eigenen Datei
-//  `<ordner>/<ordnername>.json`. Ohne diesen Durchgang blieb ein geloeschter
-//  Tag in jedem Unterordner stehen (Nutzerbefund).
-//
-//  Der Durchgang laeuft im Hintergrund (Regel 8) und fasst NUR die Ordner an,
-//  in denen der Tag wirklich vorkommt - ein Baum mit hundert Ordnern schreibt
-//  sonst hundert Dateien neu, obwohl drei betroffen sind.
-//
-//  `JsonStorage` wird IM FADEN erzeugt und dort auch wieder abgeraeumt (sein
-//  `QTimer` gehoert damit diesem Faden); gespeichert wird ueber `saveFolder`
-//  (sofort), nie ueber `saveCurrentFolder` (sammelnder Timer).
+// Fasst nur die Ordner an, in denen der Tag wirklich vorkommt - sonst schreibt ein
+// Baum mit hundert Ordnern hundert Dateien neu. JsonStorage wird IM Faden erzeugt
+// und dort abgeraeumt; gespeichert ueber saveFolder, nie ueber den sammelnden Timer.
 void TagManager::sweepSubfolders(const QString& rootFolder, const QString& tag) {
     if (rootFolder.isEmpty() || tag.isEmpty()) {
         m_undoSweepId = 0;              // sonst griffe der naechste Durchgang danach
@@ -439,10 +391,8 @@ void TagManager::sweepSubfolders(const QString& rootFolder, const QString& tag) 
         }
         void run() override {
             int touched = 0;
-            //  Fuer das Rueckgaengig: der ROHE Inhalt jedes angefassten
-            //  Sidecars, BEVOR er ueberschrieben wird. Gedeckelt (§0-Prio 4) -
-            //  reisst der Deckel, bleibt der offene Ordner umkehrbar und der
-            //  Baum nicht; `complete` sagt das dem Nutzer.
+            // Für das Rückgängig: der ROHE Inhalt jedes angefassten Sidecars, BEVOR er überschrieben wird. Gedeckelt -
+            // reißt der Deckel, bleibt der offene Ordner umkehrbar und der Baum nicht; `complete` sagt das dem Nutzer.
             QHash<QString, QByteArray> before;
             qint64 beforeBytes = 0;
             bool   complete = true;
@@ -506,7 +456,6 @@ void TagManager::renameTag(const QString& oldName, const QString& newName) {
                                           mg::tagmark::Thing::Tag, oldName, {},
                                           mg::tagmark::Thing::Tag, newName, {}));
     QColor c = m_storage->tagColor(oldName);
-    // Rename in all categories
     std::function<void(QList<TagCategory>&)> rename = [&](QList<TagCategory>& list){
         for (auto& cat : list) {
             int i = cat.tags.indexOf(oldName);
@@ -516,7 +465,7 @@ void TagManager::renameTag(const QString& oldName, const QString& newName) {
     };
     rename(m_storage->categoriesRef());
     //  UMBENENNEN, nicht loeschen-und-neu-anlegen: der alte Weg nahm den Tag
-    //  jeder Datei weg (Nutzerbefund 2026-09-03, nachgemessen).
+    //  jeder Datei weg (nachgemessen).
     m_storage->renameTag(oldName, newName);
     m_storage->setTagColor(newName, c);
     m_storage->saveCurrentFolder();
@@ -524,7 +473,6 @@ void TagManager::renameTag(const QString& oldName, const QString& newName) {
     scheduleCategoriesChanged();
 }
 
-// ── Categories ────────────────────────────────────────────────────────────────
 QList<TagCategory>& TagManager::categories() {
     return m_storage->categoriesRef();
 }
@@ -587,7 +535,6 @@ void TagManager::moveCategory(const QString& id, const QString& newParentId) {
     const TagCategory* node = findById(m_storage->categoriesRef(), id);
     if (!node) return;
 
-    // Ziel darf nicht im Teilbaum des zu verschiebenden Knotens liegen.
     if (!newParentId.isEmpty()) {
         std::function<bool(const TagCategory&)> contains = [&](const TagCategory& c) {
             if (c.id == newParentId) return true;
@@ -596,7 +543,6 @@ void TagManager::moveCategory(const QString& id, const QString& newParentId) {
             return false;
         };
         if (contains(*node)) return;
-        // Ziel muss existieren, sonst nichts tun (kein stiller Wurzel-Fallback).
         if (!findById(m_storage->categoriesRef(), newParentId)) return;
     }
 
@@ -618,7 +564,6 @@ void TagManager::moveCategory(const QString& id, const QString& newParentId) {
     if (newParentId.isEmpty()) {
         m_storage->categoriesRef().append(moved); // -> Hauptebene (Wurzel)
     } else {
-        // Parent NACH dem Entfernen frisch suchen (Container kann realloziert sein).
         TagCategory* parent = findById(m_storage->categoriesRef(), newParentId);
         if (parent) parent->children.append(moved);
         else        m_storage->categoriesRef().append(moved);   // Absicherung
@@ -642,10 +587,8 @@ void TagManager::setCategoryUniformColor(const QString& id, bool uniform, const 
     cat->inheritColorToChildren = uniform && inheritToChildren;
     if (uniform)
         cat->color = color;
-    // NICHT destruktiv: die Eigenfarben der Kinder werden NICHT überschrieben.
-    // Die Vererbung wird beim Aufbau des Baums (TagController::buildNodes) rein
-    // rechnerisch angewandt -> beim Deaktivieren kehrt jede Farbe automatisch
-    // zur Eigenfarbe zurück (Anforderung: "restore original color").
+    // NICHT destruktiv: die Eigenfarben der Kinder werden nicht überschrieben. Die Vererbung wird beim Aufbau des
+    // Baums rein rechnerisch angewandt - beim Deaktivieren kehrt jede Farbe automatisch zurück.
     m_storage->saveCurrentFolder();
     scheduleCategoriesChanged();
 }
@@ -661,8 +604,6 @@ void TagManager::addTagToCategory(const QString& catId, const QString& tag) {
     }
     m_storage->ensureTagRegistered(tag);
     if (!cat->tags.contains(tag)) cat->tags.append(tag);
-    // Emit first so UI updates, then save - prevents any signal-triggered
-    // rebuild from racing with the write.
     scheduleTagsChanged();
     scheduleCategoriesChanged();
     m_storage->saveCurrentFolder();
@@ -685,7 +626,6 @@ void TagManager::removeTagFromCategory(const QString& catId, const QString& tag)
 void TagManager::moveTagToCategory(const QString& tag,
                                    const QString& fromCatId,
                                    const QString& toCatId) {
-    //  Zwei Mutationen, EIN Rueckgaengig-Schritt (s. Header).
     {
         QStringList von = mg::tagmark::pathOf(m_storage->categoriesRef(), fromCatId);
         if (const TagCategory* c = findById(m_storage->categoriesRef(), fromCatId))
@@ -702,7 +642,6 @@ void TagManager::moveTagToCategory(const QString& tag,
     endUndoGroup();
 }
 
-// ── Datei ↔ Kategorie (direkte Mitgliedschaft) ────────────────────────────────
 void TagManager::addFileToCategory(const QString& catId, const QString& fileName) {
     if (fileName.isEmpty()) return;
     TagCategory* cat = findById(m_storage->categoriesRef(), catId);
@@ -713,8 +652,6 @@ void TagManager::addFileToCategory(const QString& catId, const QString& fileName
     }
     cat->files.append(fileName);
     m_storage->saveCurrentFolder();
-    // categoriesChanged zieht den Proxy-Kategoriefilter (m_activeCatFiles) und
-    // alle QML-Ansichten (fileCount, Panels) nach.
     scheduleCategoriesChanged();
 }
 
@@ -736,8 +673,6 @@ bool TagManager::fileInCategory(const QString& catId, const QString& fileName) c
 }
 
 namespace {
-// Rekursiver Sammler: alle Kategorien, denen die Datei DIREKT angehört.
-// pick wählt, ob Name oder ID gesammelt wird.
 void collectFileCategories(const QList<TagCategory>& list, const QString& fileName,
                            QStringList& out, bool ids) {
     for (const auto& cat : list) {
@@ -760,7 +695,6 @@ QStringList TagManager::categoryIdsForFile(const QString& fileName) const {
     return out;
 }
 
-// ── Static helpers ────────────────────────────────────────────────────────────
 TagCategory* TagManager::findById(QList<TagCategory>& list, const QString& id) {
     for (auto& cat : list) {
         if (cat.id == id) return &cat;
@@ -849,9 +783,6 @@ void TagManager::swapCategories(const QString& aId, const QString& bId) {
         *atPath(roots, wa) = kopieB;
         *atPath(roots, wb) = kopieA;
     } else {
-        //  Einer ist Vorfahr des anderen: der NACHFAHR nimmt den Platz des
-        //  Vorfahren ein, der Vorfahr wird sein Kind. Der Vorfahr behaelt dabei
-        //  alle seine uebrigen Kinder - nur der Nachfahr wechselt die Seite.
         const QString hochId = bInA ? aId : bId;
         const QString tiefId = bInA ? bId : aId;
 

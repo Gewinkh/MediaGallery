@@ -3,20 +3,8 @@ import QtQuick.Controls
 import QtQuick.Layouts
 import MediaGallery 1.0
 
-// ─────────────────────────────────────────────────────────────────────────────
-//  TileSizeDialog.qml - Kachelgröße per Live-Drag-Vorschau einstellen
-//  (ersetzt TileSizeDialog/DragResizePreview (QWidget)).
-//
-//  Verwendung im Shell:
-//      TileSizeDialog { id: tileSizeDialog }
-//      ... onTriggered: tileSizeDialog.openDialog()
-//
-//  - Liest Startwerte aus App.tileWidth / App.tileHeight beim Öffnen.
-//  - Schreibt bei „Übernehmen" via App.setTileSize(w, h); die Galerie reagiert
-//    über das bestehende tileSizeChanged-Binding.
-//  - Grid-Geometrie (margin = 12, spacing = 8) spiegelt GalleryView, damit die
-//    Vorschau maßstabsgetreu ist.
-// ─────────────────────────────────────────────────────────────────────────────
+// Kachelgröße per Live-Vorschau. Die Grid-Geometrie (margin 12, spacing 8) spiegelt GalleryView, damit die
+// Vorschau massstabsgetreu ist.
 Dialog {
     id: dlg
     title: App.uiText(App.language, "SettingsViewTileSize")
@@ -26,7 +14,6 @@ Dialog {
     anchors.centerIn: Overlay.overlay
     standardButtons: Dialog.NoButton
 
-    // Geometrie-Konstanten - identisch zu GalleryView
     readonly property int gMargin: 12
     readonly property int gSpacing: 8
     readonly property int minDim: 40
@@ -37,7 +24,6 @@ Dialog {
     readonly property int maxW: App.maxTileWidth
     readonly property int maxH: App.maxTileHeight
 
-    // Arbeits-Zustand
     property int workW: 160
     property int workH: 200
 
@@ -71,7 +57,6 @@ Dialog {
             font.pixelSize: 12
         }
 
-        // ── Live-Vorschau ──────────────────────────────────────────────────────
         Rectangle {
             Layout.fillWidth: true
             Layout.fillHeight: true
@@ -89,14 +74,8 @@ Dialog {
                 property int th: dlg.workH
                 property bool dragging: false
 
-                // ── Maßstab: Miniatur des ECHTEN Anwendungsfensters ────────────
-                //  Die Vorschau zeichnet das komplette Fenster verkleinert, mit
-                //  FESTEM Maßstab (nur von der Fenstergröße abhängig, NICHT von
-                //  der Kachelgröße): Spalten/Zeilen entsprechen dadurch exakt
-                //  der echten Galerie, und der Griff folgt der Maus auch bei
-                //  großen Kacheln. (Früher wuchs die Kachel nur bis zu einem
-                //  62-%-Deckel und „fror" dann sichtbar ein - ab dieser Größe
-                //  war die Vorschau nicht mehr originalgetreu.)
+                // Die Vorschau zeichnet das ganze Fenster verkleinert mit FESTEM Maßstab (nur von der Fenstergröße abhängig,
+                // nicht von der Kachelgröße): Spalten und Zeilen entsprechen so der echten Galerie, der Griff folgt der Maus.
                 readonly property real winW: Overlay.overlay ? Overlay.overlay.width  : 1280
                 readonly property real winH: Overlay.overlay ? Overlay.overlay.height : 800
                 readonly property real availW: Math.max(1, width  - 8)
@@ -160,7 +139,6 @@ Dialog {
 
                             var isFirst = (r === 0 && c === 0)
 
-                            // Kachel-Hintergrund
                             ctx.fillStyle = isFirst ? Qt.rgba(accent.r, accent.g, accent.b, 0.55)
                                                     : card
                             roundRect(ctx, x, y, stw, sth, 6)
@@ -169,7 +147,6 @@ Dialog {
                             ctx.strokeStyle = isFirst ? accent : border
                             ctx.stroke()
 
-                            // Thumbnail-Platzhalter
                             if (sth > 60) {
                                 var ix = x + 6, iy = y + 6, iw = stw - 12, ih = sth - 38
                                 if (iw > 0 && ih > 0) {
@@ -187,7 +164,6 @@ Dialog {
                                 }
                             }
 
-                            // Label-Leiste
                             if (sth > 40) {
                                 ctx.fillStyle = isFirst ? textC : muted
                                 ctx.font = Math.max(7, Math.floor(stw / 16)) + "px sans-serif"
@@ -208,7 +184,6 @@ Dialog {
                         szLabel += "  (" + Math.round(fitScale * 100) + "%)"
                     ctx.fillText(szLabel, dlg.gMargin + 5, dlg.gMargin + 5)
 
-                    // Resize-Griff
                     var hx = handleX(), hy = handleY(), rad = dlg.handleHit
                     ctx.beginPath()
                     ctx.arc(hx, hy, rad, 0, 2 * Math.PI)
@@ -221,7 +196,6 @@ Dialog {
                     ctx.strokeStyle = "rgba(0,255,220,0.65)"
                     ctx.stroke()
 
-                    // Pfeil-Andeutung
                     ctx.strokeStyle = "rgba(255,255,255,0.9)"
                     ctx.lineWidth = 1.5
                     ctx.beginPath()
@@ -242,15 +216,12 @@ Dialog {
                     ctx.closePath()
                 }
 
-                // ── Drag-Interaktion ────────────────────────────────────────────
                 property real dragStartX: 0
                 property real dragStartY: 0
                 property int  sizeAtStartW: 0
                 property int  sizeAtStartH: 0
-                //  Maßstab beim Drag-Start festhalten: die Griff-Bewegung in
-                //  Bildschirm-Pixeln wird darüber in REALE Kachel-Pixel
-                //  zurückgerechnet (sonst würde der wachsende Maßstab-Nenner den
-                //  Drag nahe der Fitgrenze durchdrehen lassen).
+                // Maßstab beim Zug-Start festhalten: die Griff-Bewegung wird darüber in reale Kachel-Pixel zurückgerechnet -
+                // sonst ließe der wachsende Nenner den Zug nahe der Fitgrenze durchdrehen.
                 property real scaleAtStart: 1.0
 
                 MouseArea {
@@ -288,7 +259,6 @@ Dialog {
             }
         }
 
-        // ── Numerische Steuerung ─────────────────────────────────────────────────
         RowLayout {
             Layout.fillWidth: true
             spacing: 12
@@ -320,7 +290,6 @@ Dialog {
             }
         }
 
-        // ── Aktionsschaltflächen ─────────────────────────────────────────────────
         RowLayout {
             Layout.fillWidth: true
             Item { Layout.fillWidth: true }

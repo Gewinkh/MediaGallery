@@ -10,7 +10,6 @@
  */
 namespace SK { Q_NAMESPACE
 enum class StringKey {
-    // MainWindow / Menus
     MenuFile,
     MenuView,
     MenuSettings,
@@ -22,7 +21,6 @@ enum class StringKey {
     MenuUnsplitWindow,         // Ansicht: Teilung aufheben
     MenuSwapPanes,             // Ansicht: Hälften tauschen
     SettingsPaneLabel,         // Einstellungen: „Ordnerbezogene Angaben von:"
-    //  ── Audio-Player mit Equalizer ──
     AudioPlayerMode,
     AudioShuffle,
     AudioRepeatOff,
@@ -42,7 +40,7 @@ enum class StringKey {
     AudioEqClipHint,
     SettingsTabAudio,
     AudioShowVideos,
-    //  ── „Ton aus Video sichern" (MP4 -> M4A, ohne Neukodierung) ──
+    //  „Ton aus Video sichern" (MP4 -> M4A, ohne Neukodierung)
     AudioExtractMenu,
     AudioExtractGroup,
     AudioExtractInheritTags,
@@ -61,7 +59,7 @@ enum class StringKey {
     AudioExtractFailWrite,
     AudioExtractFailRead,
     AudioExtractManyTracks,
-    //  ── Auswahl der Tonspur (mehr als eine in der Datei) ──
+    //  Auswahl der Tonspur (mehr als eine in der Datei)
     //  Datum ließ sich nicht an die Datei schreiben (schreibgeschützt o. ä.)
     DateNotWrittenToFile,
     AudioTrackChooseTitle,
@@ -71,8 +69,8 @@ enum class StringKey {
     AudioChMono,
     AudioChStereo,
     AudioChMulti,
-    //  ── DOCX -> PDF: Rand und Seitenzahl ──
-    //  ── Randlineale des DOCX-Editors ────────────────────────────────────────
+    //  DOCX -> PDF: Rand und Seitenzahl
+    //  Randlineale des DOCX-Editors
     DocxRulerResetTip,         // Hilfetext des Zurücksetzen-Knopfes
     DocxRulerTopTip,           // Hilfetext des waagerechten Lineals
     DocxRulerSideTip,          // Hilfetext des senkrechten Lineals
@@ -106,7 +104,6 @@ enum class StringKey {
     MenuVideoNative,
     MenuVideoExternal,
 
-    // FilterBar
     FilterAudio,
     FilterMedia,
     FilterDate,
@@ -119,7 +116,6 @@ enum class StringKey {
     FilterTagModeInklusiv,
     FilterBtn,                // Sammel-Knopf „Filter" in der Filterleiste
 
-    // SettingsDialog
     SettingsTitle,
     SettingsTabGeneral,
     SettingsTabDesign,
@@ -131,7 +127,7 @@ enum class StringKey {
     SettingsTagDeleteSubfoldersHint,  // … und was das bedeutet
     TagDeletedInSubfolders,           // Statuszeile: „%1" in %2 Unterordnern entfernt
 
-    //  ── Rueckgaengig der Tag-Seitenleiste (getrennt vom Datei-Rueckgaengig) ──
+    //  Rueckgaengig der Tag-Seitenleiste (getrennt vom Datei-Rueckgaengig)
     //  Die %1-Platzhalter tragen den betroffenen Tag- bzw. Kategorienamen; die
     //  Beschriftung eines Schrittes entsteht in `TagManager`, nicht in QML.
     TagUndoTip2,               // Hover ueber dem Redo-Knopf
@@ -146,15 +142,12 @@ enum class StringKey {
     TagUndoDoneSub,
     TagUndoPartial,
 
-    // MetadataEditor
     MetaTitle,
     MetaReset,
 
-    // TagBar / TagWidget
     TagBarPlaceholder,
     TagBarDropdownHeader,
 
-    // Category panel / context menus
     CatPanelAddCategory,
     CatPanelNewSubcategory,
     CatPanelRename,
@@ -165,17 +158,14 @@ enum class StringKey {
     TagPickNone,
     TagPickCreate,
 
-    // FilterBar / HoverDropdown
     FilterCatNewName,
     FilterTagRenamePrompt,
 
-    // SettingsDialog – Categories tab
     SettingsTabCategories,
     SettingsCatNewLabel,
     SettingsCatRenameTitle,
     SettingsTagColorTitle,
 
-    // SettingsDialog – Design tab
     SettingsDesignBaseColors,
     SettingsDesignBgGradient,
     SettingsDesignAccent,
@@ -193,7 +183,6 @@ enum class StringKey {
     ConverterSubcatToCat,
     ConverterCatToSubcat,
 
-    // Saved Folders / Bookmarks
     MenuBookmarks,
     MenuBookmarksEmpty,
     BookmarkAdd,
@@ -201,7 +190,7 @@ enum class StringKey {
     BookmarkDelete,
     BookmarkPathLabel,
     BookmarkBrowse,
-    //  ── Gruppen im Menü „Ordner" und in Einstellungen ▸ Lesezeichen ──
+    //  Gruppen im Menü „Ordner" und in Einstellungen ▸ Lesezeichen
     BookmarkGroupAdd,
     BookmarkGroupNewTitle,
     BookmarkGroupRenameTitle,
@@ -219,7 +208,6 @@ enum class StringKey {
     BookmarkGroupParentLabel,
     BookmarkGroupParentRoot,
 
-    // Text editor / filter
     EditorAutoSave,
     EditorSave,
     TextExportPdf,            // Texteditor-Toolbar: Button „-> PDF"
@@ -247,7 +235,6 @@ enum class StringKey {
     CtxRemoveBackup,          // Kontextmenü: vorherige Fassung (.bak) löschen
     CtxRemoveEditsAsk,        // Rückfrage vor dem Löschen der Notizen
     CtxRemoveBackupAsk,       // Rückfrage vor dem Löschen der vorherigen Fassung
-    // ── Migration: vereinheitlichte UI-Strings (vormals qsTr/hartcodiert) ──
     SettingsGenFullscreenAnim,
     SettingsGenAnimSlide,
     SettingsGenAnimFade,
@@ -278,7 +265,6 @@ enum class StringKey {
     DocxSpellSuggestions,
     DocxSpellIgnore,
     DocxSpellNoSuggestion,
-    //  Änderungsverfolgung: annehmen/verwerfen (Kontextmenü)
     DocxRevAccept,
     DocxRevReject,
     SettingsViewTileSize,
@@ -354,7 +340,6 @@ enum class StringKey {
     SettingsBookFolderPath,
     SettingsBookDisplayName,
     SettingsBookChooseFolder,
-    //  Eigener Datei-/Ordnerwähler (qml/common/FileChooser.qml)
     ChooserPlaces,
     ChooserName,
     ChooserOpen,
@@ -416,7 +401,6 @@ enum class StringKey {
     PdfNoAudioOnPage,
     PdfAudioItemLabel,
 
-    // ── Batch 2: weitere vereinheitlichte UI-Strings ──
     FilterModeAnyDesc,
     FilterModeAllDesc,
     FilterModeExclusiveDesc,
@@ -471,7 +455,7 @@ enum class StringKey {
     ViewerShowSource,
     ViewerPreviewCrashed,
 
-    // ── Batch 3: Filter-Tag-Hinzufügen, Kachel-Kontextmenü, Optionen-Buttons ──
+    // Batch 3: Filter-Tag-Hinzufügen, Kachel-Kontextmenü, Optionen-Buttons
     FilterAddTagBtn,           // "Hinzufügen" (Tag zur Filterliste)
     FilterAddTagPlaceholder,   // Eingabefeld-Placeholder
     CtxAddTag,                 // Kontextmenü: Tag hinzufügen
@@ -481,7 +465,7 @@ enum class StringKey {
     OverlayShowCategories,     // Optionen-Modus: Kategorien anzeigen
     OverlayNoValues,           // Platzhalter: keine Werte vorhanden
 
-    // ── Batch 4: Panel-System Tags & Kategorien / S-Modus-Erweiterung ──
+    // Batch 4: Panel-System Tags & Kategorien / S-Modus-Erweiterung
     PanelSectionTags,          // Panel-Abschnittstitel: Tags
     PanelAddTagTip,            // „+"-Button: neuen Tag erstellen
     PanelAddCategoryTip,       // „+"-Button: neue Kategorie erstellen
@@ -491,7 +475,7 @@ enum class StringKey {
     FilterTagPanelRow,         // Filter-Popup: Toggle-Zeile „Tag-Panel"
     FilterCatPanelRow,         // Filter-Popup: Toggle-Zeile „Kategorie-Panel"
 
-    // ── PDF-Editor (Overlay-Textboxen; PdfSurface/PdfEdit*-QML) ──
+    // PDF-Editor (Overlay-Textboxen; PdfSurface/PdfEdit*-QML)
     PdfEditToggleTip,          // Toolbar: Bearbeitungsmodus ein/aus
     PdfEditUndoTip,            // Toolbar: Rückgängig
     PdfEditRedoTip,            // Toolbar: Wiederholen
@@ -508,7 +492,6 @@ enum class StringKey {
     PdfEditCaretLoading,       // Hinweis: Zeichen-Layout der Seite wird geladen
     PdfEditCaretUnavailable,   // Hinweis: Seite nicht zeichenweise bearbeitbar
     PdfEditTextOpFailed,       // Toast: Änderung an der Textebene nicht möglich
-    // ── DOCX-Editor (2026-07-16) ─────────────────────────────────────────────
     CreateFileTypeDocx,       // „+ Erstellen"-Auswahl: leeres DOCX
     SettingsDocxGroup,        // Einstellungen ▸ Editor: Gruppentitel
     DocxSaveModeLabel,        // Einstellungen: Label über den Radiobuttons
@@ -547,7 +530,6 @@ enum class StringKey {
     DocxTablePaste,           // Kontextmenü: Tabelle aus der Ablage einfügen
     DocxTableDelete,
     DocxTableLocked,          // verbundene Zellen -> Struktur unveränderlich
-    // Bildgröße (Kontextmenü + Ziehpunkte)
     DocxImageSize,
     DocxImageInline,
     DocxImageFloating,
@@ -597,7 +579,7 @@ enum class StringKey {
     PdfEditColorLabel,         // Panel: Textfarbe
     PdfEditHighlightLabel,     // Panel: Hervorhebung (Box-Hintergrund)
     PdfEditCoverLabel,         // Panel: Deckfläche (Cover-Farbe von „Text ersetzen")
-    //  ── Dokument durchsuchbar machen (unsichtbare Textebene, Scans) ────────
+    //  Dokument durchsuchbar machen (unsichtbare Textebene, Scans)
     PdfSearchableMenu,         // Dokument-Menü: „Dokument durchsuchbar machen"
     PdfSearchableRunning,      // Toast: Fortschritt (%1 von %2 Seiten)
     PdfSearchableDoneToast,    // Toast: fertig (%1 Seiten, %2 Wörter)
@@ -608,7 +590,6 @@ enum class StringKey {
     PdfSearchableAlreadyTip,   // Menü-Hinweis: schon durchsuchbar
     LibMissingZlib,            // Hover-Hinweis: Feature braucht ZLIB
 
-    //  ── Unterordner in der Galerie ─────────────────────────────────────────
     FolderMediaCount,          // Ordnerkachel: „%1 Medien"
     FolderEmpty,               // Ordnerkachel: leerer Ordner
     FolderNew,                 // Knopf „+ Ordner"
@@ -647,14 +628,13 @@ enum class StringKey {
     PdfEditExportingToast,     // Toast: Fortschritt Seite %1/%2
     SettingsPdfEditGroup,      // Settings-Editor-Tab: Gruppentitel
 
-    // ── PDF-Editor Runde 2: Post-it-Notizen + Panel-Position ──
+    // PDF-Editor Runde 2: Post-it-Notizen + Panel-Position
     PdfEditNotesToggleTip,     // Toolbar: Notizen ein-/ausblenden (Alt+Q)
     PdfEditOpacityLabel,       // Panel: Deckkraft des Notiz-Hintergrunds
     PdfEditPanelPosLabel,      // Settings: Position der Text-Eigenschaften
     PdfEditPanelPosRight,      // Settings-Option: rechte Seitenleiste
     PdfEditPanelPosTop,        // Settings-Option: obere Leiste (Word-Stil)
 
-    // ── Datei-Erstellung (FilterBar „Erstellen") ──
     CreateFileBtn,             // Button-Beschriftung
     CreateFileTitle,           // Popup-Titel
     CreateFileNameLabel,       // Eingabefeld-Label
@@ -669,9 +649,7 @@ enum class StringKey {
     CreateFileDone,            // Statuszeile: Erstellt: %1
     CreateFileFailed,          // Statuszeile: Erstellen fehlgeschlagen
 
-    // ── Galerie-Kontextmenü: Datei löschen ──
     CtxDeleteFile,             // Kontextmenü-Eintrag „Datei löschen…"
-    //  ── Mehrfachauswahl der Galerie ─────────────────────────────────────────
     CtxCopyFiles,              // Kontextmenü „Kopieren" (Strg+C)
     CtxDeleteSelection,        // „%1 Objekte löschen…" (Mehrfachauswahl)
     SelDeleteTitle,            // Rückfrage-Titel „Mehrere löschen?"
@@ -683,7 +661,6 @@ enum class StringKey {
     DropBatchCount,            // „%1 Dateien" - Zug mit mehreren Dateien
     SelPasted,                 // „%1 eingefügt" (Strg+V in der Galerie)
     SelPasteEmpty,             // „Die Zwischenablage enthält keine Dateien"
-    //  ── Equalizer-Voreinstellungen ──────────────────────────────────────────
     AudioEqPresetOverwriteTip, // Hilfetext: aktuelle Regler auf diese Zeile
     AudioEqPresetDeleteTip,    // Hilfetext: Eintrag entfernen
     AudioEqPresetResetTip,     // Hilfetext: mitgelieferte Vorlage zurückholen
@@ -701,7 +678,6 @@ enum class StringKey {
     DeleteMediaText,           // Dialog-Text „%1 wird in den Papierkorb …"
     DeleteMediaConfirm,        // Dialog-Bestätigungsknopf „Löschen"
 
-    // ── Live-Transliteration (Latein -> Arabisch/Kana) ──
     TranslitTip,               // Button-Tooltip
     TranslitOff,               // Popup: Aus
     TranslitArabic,            // Popup: Arabisch (mit Harakat)
@@ -715,13 +691,12 @@ enum class StringKey {
     TranslitResetBtn,          // Settings: Schema auf Standard zurücksetzen
     TranslitHint,              // Settings: Erklärungstext
 
-    // ── Geteilte Ansicht / Splitscreen (bis zu 4 Dateien nebeneinander) ──
+    // Geteilte Ansicht / Splitscreen (bis zu 4 Dateien nebeneinander)
     SplitAddFile,              // Tooltip: weitere Datei zur geteilten Ansicht hinzufügen
     SplitMaxReached,           // Statuszeile: Maximum von 4 offenen Dateien erreicht
     SplitPickPrompt,           // Galerie-Banner: Datei zum Hinzufügen anklicken
     SplitCancel,               // Galerie-Banner: Hinzufügen abbrechen
 
-    // ── Bild-Editor ───────────────────────────────────────────────────────────
     ImageEditToggle,           // Toolbar: Bild-Bearbeitung umschalten
     ImageFitWindow,            // Toolbar: an Fenster anpassen
     ImageActualSize,           // Toolbar: 100 %
@@ -743,7 +718,6 @@ enum class StringKey {
     ImageEditCopyBtn,          // Annotation kopieren
     ImageEditPasteBtn,         // Annotation einfügen
 
-    // ── PDF-Seiten-Extraktion ────────────────────────────────────────────────
     CtxExtractPage,            // Kontextmenü: „Seite extrahieren"
     CtxExtractPages,           // Kontextmenü: „Mehrere Seiten extrahieren…"
     ExtractNameTitle,          // Namensdialog: Titel
@@ -763,7 +737,6 @@ enum class StringKey {
     SettingsViewExtractStyleHint,  // Einstellungen: Hinweistext
     ExtractStyleFrame,         // Einstellungen: „Rahmen"
     ExtractStyleOverlay,       // Einstellungen: „Überlagerung"
-    // ── PDF: Seiten hinzufügen/entfernen (Aufgabe 3) ─────────────────────────
     SettingsPdfPageEditLabel,   // Einstellungen ▸ Editor (PDF): Label über den Radios
     SettingsPdfPageEditHint,    // Einstellungen: Hinweistext
     SettingsPdfExportLabel,     // Einstellungen ▸ Editor (PDF): Label über den Export-Radios
@@ -801,7 +774,6 @@ enum class StringKey {
     PdfPageImportedBadge,       // Vorschauleiste: Marke „eingefügt"
     PdfCaretPageNotEditable,    // Hinweis: Seite nicht zeichenweise bearbeitbar
     PdfReflowOverflow,          // Hinweis: Absatz voll, Rest steht in der letzten Zeile
-    // Formularfelder (AcroForm)
     PdfFormSaveTip,             // Tooltip: ausgefülltes Formular speichern
     PdfFormSavedToast,          // Toast: Formular in „%1" gespeichert
     PdfFormSaveFailedToast,     // Toast: Formular konnte nicht gespeichert werden (%1)
@@ -818,21 +790,18 @@ enum class StringKey {
     SettingsViewExtractLayoutHint, // Hinweistext
     ExtractLayoutWorkbench,        // Radio: Werkbank (neu)
     ExtractLayoutCompact,          // Radio: Kompakt (minimalistisch)
-    // Werkbank-Dialog (Drei-Panel)
     ExtractWorkPdfs,               // Panel links: „PDFs"
     ExtractWorkPages,              // Panel rechts: „Seiten"
     ExtractWorkOrder,              // Auswahlleiste: „Auswahl · Reihenfolge = Ausgabe"
     ExtractWorkHint,               // Werkbank: Bedien-Hinweis (Klick/Drag&Drop)
     ExtractWorkDropHint,           // Leere Auswahlleiste: „Seiten hierher ziehen"
-    //  ── Texteditor: Datei groesser als der Lesedeckel (nur lesen) ──
+    //  Texteditor: Datei groesser als der Lesedeckel (nur lesen)
     TextReadOnlyBadge,             // Kurzmarke in der Werkzeugleiste
     TextReadOnlyTip,               // Erklaerung dazu (Tooltip)
-    //  ── Statuszeile des Texteditors ──
     EditorStatusLineCol,           // „Zeile %1, Spalte %2"
     EditorStatusLines,             // „Zeilen" (hinter der Zahl)
     EditorStatusPlain,             // Sprache unbekannt -> „Text"
     EditorStatusWrapOn,            // „Umbruch"
-    //  ── Editor-Reiter: Ansicht ──
     SettingsEditorViewGroup,
     SettingsEditorLineNumbers,
     SettingsEditorCurrentLine,
@@ -841,7 +810,6 @@ enum class StringKey {
     SettingsEditorTabWidth,
     SettingsEditorTabSpaces,
     SettingsEditorTabSpacesHint,
-    //  ── Suchleiste des Texteditors (Strg+F) ──
     EditorFindPlaceholder,
     EditorReplacePlaceholder,
     EditorFindPrev,
@@ -872,10 +840,8 @@ enum class StringKey {
     SettingsSearchGroup,
     SettingsSearchTable,
     SettingsSearchExamples,
-    //  ── Design-Reiter: die zwei grossen Bloecke + Editor-Farben ──
-    //  Die Farbnamen folgen dem Schluessel aus `SyntaxPalette::tokenKey`:
-    //  QML baut den Key als "EditorColor" + Schluessel mit grossem
-    //  Anfangsbuchstaben, damit die neunzehn Namen nicht doppelt stehen.
+    // Die Farbnamen folgen dem Schlüssel aus `SyntaxPalette::tokenKey`: QML baut den Key als "EditorColor" plus
+    // Schlüssel mit großem Anfangsbuchstaben, damit die neunzehn Namen nicht doppelt stehen.
     SettingsDesignBlockUi,
     SettingsDesignBlockEditor,
     SettingsEditorProfileLabel,
@@ -904,10 +870,40 @@ enum class StringKey {
     EditorColorEmphasis,
     EditorColorLink,
     EditorColorCode,
-    //  ── Ansicht-Reiter: Vorschau von Textdateien ──
     SettingsViewPreviewGroup,
     SettingsViewTextPreview,
     SettingsViewTextPreviewHint,
+    DatevFieldIdent,
+    DatevFieldVersion,
+    DatevFieldFormatName,
+    DatevFieldCreated,
+    DatevFieldCurrency,
+    DatevShowTable,
+    DatevShowSource,
+    DatevHeaderTitle,
+    DatevBookings,
+    DatevSumDebit,
+    DatevSumCredit,
+    DatevSumDiff,
+    DatevAllColumns,
+    DatevUsedColumns,
+    DatevBalanced,
+    DatevUnbalanced,
+    DatevTruncated,
+    DatevCp1252,
+    DatevWarnings,
+    DatevReadOnly,
+    DatevLoadError,
+    DatevBusy,
+    TableSeparator,
+    TableTabSep,
+    TableHeaderRow,
+    TableRows,
+    TableColumns,
+    TableLoadError,
+    TableNumbersTip,
+    TableBlock,
+    TableAllBlocks,
 };
 Q_ENUM_NS(StringKey)
 }  // namespace SK

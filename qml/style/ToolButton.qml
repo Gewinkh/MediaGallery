@@ -2,16 +2,8 @@ import QtQuick
 import QtQuick.Templates as T
 import MediaGallery 1.0
 
-// ─────────────────────────────────────────────────────────────────────────────
-//  ToolButton.qml - flacher Werkzeug-Knopf (Stil "style").
-//
-//  Fusion zeichnete hier einen vollflächigen Knopf-Block mit Verlauf und Rahmen -
-//  in den Leisten (Zurück-Pfeil des Viewers, Sortier-Richtung, Baum-Klapppfeile,
-//  Video-Steuerung) wirkte das als „Kasten" um ein reines Glyph. Diese Variante
-//  folgt dem Muster der handgebauten `ChromeBtn` der Vollbild-Leiste: standardmäßig
-//  KEINE Fläche, erst bei Hover/Druck eine abgerundete, dezente Hinterlegung;
-//  „checked" trägt die Akzentfarbe.
-// ─────────────────────────────────────────────────────────────────────────────
+// Flacher Werkzeug-Knopf: Fusions vollflächiger Block mit Verlauf und Rahmen wirkte in den Leisten als "Kasten"
+// um ein reines Glyph. Fläche erst bei Hover/Druck; "checked" trägt die Akzentfarbe.
 T.ToolButton {
     id: control
 

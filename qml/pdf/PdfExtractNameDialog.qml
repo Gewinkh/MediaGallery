@@ -2,27 +2,9 @@ import QtQuick
 import QtQuick.Controls
 import MediaGallery 1.0
 
-// ─────────────────────────────────────────────────────────────────────────────
-//  PdfExtractNameDialog.qml - Namensdialog der Extraktion.
-//
-//  Geteilt von drei Aufrufstellen (Anforderung „gleiches Verhalten"):
-//   • PdfSurface ▸ Kontextmenü ▸ „Seite extrahieren"        (Einzelseite)
-//   • PdfPageSelectDialog ▸ „Extrahieren"                    (Mehrfachauswahl)
-//   • dito im globalen Ordner-Modus                          (Name = PFLICHT)
-//
-//  Verhalten laut Anforderung:
-//   • Eingegeben wird NUR der Basisname - „.pdf" ergänzt die App automatisch
-//     und zeigt es als statisches Suffix rechts neben dem Feld (kein
-//     zusätzlicher Eingabeschritt).
-//   • Leeres Feld: Platzhalter zeigt den Default-Namen; Bestätigen ohne
-//     Eingabe übernimmt ihn (accepted("") -> Controller nutzt den Default).
-//     Im Pflicht-Modus (requireName, global) bleibt „Extrahieren" gesperrt,
-//     bis ein Name eingegeben wurde.
-//   • Kollisionen („ (1)", „ (2)" …) löst der Controller beim Schreiben auf.
-//
-//  Optik nach dem Muster des „Erstellen"-Popups der FilterBar
-//  (themeMenuBarBg, themeBorder, Radius 6, kompakte Buttons).
-// ─────────────────────────────────────────────────────────────────────────────
+// Namensdialog der Extraktion, geteilt von drei Aufrufstellen. Eingegeben wird nur der Basisname, ".pdf"
+// ergänzt die App; ein leeres Feld übernimmt den Default, im Pflicht-Modus (`requireName`, global) bleibt
+// der Knopf gesperrt. Kollisionen (" (1)", " (2)") löst der Controller beim Schreiben auf.
 Item {
     id: root
 

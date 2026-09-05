@@ -1,20 +1,6 @@
-// ─────────────────────────────────────────────────────────────────────────────
-//  FolderImagePicker - Bilder aus dem Ordner des Dokuments als Miniaturen,
-//  daneben der Weg in den Dateidialog. Beide Editoren (DOCX und PDF) bieten
-//  dieselbe Abkürzung an, deshalb liegt sie EINMAL hier.
-//
-//  Vertrag:
-//   • `entries`         - `[{name, url}]`, kommt aus `folderImages()` des
-//                          jeweiligen Controllers.
-//   • `hostWidth`       - Breite, in die das Popup passen muss (die Kachel,
-//                          nicht der Bildschirm). Daraus ergibt sich die
-//                          SPALTENZAHL; feste 396 px ragten in der geteilten
-//                          Ansicht über den sichtbaren Bereich hinaus.
-//   • `picked(url)`     - eine Miniatur wurde gewählt.
-//   • `browseRequested()` - „Durchsuchen…"; der Aufrufer öffnet seinen Dialog.
-//  Die Miniaturen laden ASYNCHRON und nur für sichtbare Delegates;
-//  `sourceSize` deckelt die dekodierte Größe (RAM = Priorität 1).
-// ─────────────────────────────────────────────────────────────────────────────
+// Bilder aus dem Dokumentordner als Miniaturen; beide Editoren bieten dieselbe Abkürzung an, deshalb
+// liegt sie EINMAL hier. `hostWidth` ist die Breite der KACHEL, nicht des Bildschirms - feste 396 px
+// ragten in der geteilten Ansicht hinaus. Miniaturen laden asynchron, `sourceSize` deckelt sie.
 import QtQuick
 import QtQuick.Controls
 //  Ohne diesen Import ist `App` in einer AUSGELAGERTEN Komponente unbekannt
@@ -76,11 +62,8 @@ Popup {
             model: pick.entries
             boundsBehavior: Flickable.StopAtBounds
             ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
-            //  Ohne das scrollt Qt in ~60-px-Rastungen (Nutzerbefund
-            //  „Scrollen ist langsam"). `flickable` MUSS über die id gesetzt
-            //  werden, nicht über `parent`: SmoothWheelArea setzt selbst
-            //  `parent: flickable` - mit `flickable: parent` entsteht eine
-            //  BINDUNGSSCHLEIFE und die Komponente bleibt wirkungslos.
+            // `flickable` MUSS über die id gesetzt werden, nicht über `parent`: SmoothWheelArea setzt selbst
+            // `parent: flickable` - mit `flickable: parent` entsteht eine Bindungsschleife und nichts wirkt.
             SmoothWheelArea { flickable: grid }
             delegate: Rectangle {
                 required property var modelData

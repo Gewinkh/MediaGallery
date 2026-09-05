@@ -1,76 +1,7 @@
 #pragma once
-// ══════════════════════════════════════════════════════════════════════════════
-//  PdfTextReflow.h - ABSATZ-UMBRUCH in der eingebetteten Textebene
-// ══════════════════════════════════════════════════════════════════════════════
-//
-//  ZWECK
-//  ─────
-//  `PdfTextEditor` schiebt beim Tippen den Rest DERSELBEN Zeige-Anweisung mit -
-//  wie ein Textverarbeitungsprogramm innerhalb einer Zeile. Text, den das PDF
-//  über eigene Positionierung (`Td`/`Tm`) setzt, bleibt dagegen stehen: Eine
-//  Zeile läuft über den rechten Rand hinaus, statt in die nächste umzubrechen
-//  (README ▸ Planned). Dieses Modul schließt genau diese Lücke: Es erkennt den
-//  ABSATZ um eine Zeichenposition, bricht ihn neu um und schreibt die Zeilen
-//  zurück.
-//
-//  WARUM ALS ZWEITER GANG (nach dem Schreiben, nicht währenddessen)
-//  ────────────────────────────────────────────────────────────────
-//  Die Vorschubbreite JEDES Zeichens steht bereits im Layout der Seite
-//  (`PdfTextLayout`, Breiten ausschließlich aus dem Dokument). Wird der Umbruch
-//  auf die BEREITS geänderte Datei angewendet, tragen auch die neu getippten
-//  Zeichen schon ihre gemessene Breite - es muss nichts geschätzt werden.
-//
-//  ABSATZ-ERKENNUNG (Geometrie, keine Semantik)
-//  ────────────────────────────────────────────
-//  Zeilen = Glyphen gleicher Grundlinie. Ein Absatz ist ein Block
-//  aufeinanderfolgender Zeilen mit gleichem Zeilenabstand (±25 %), gleicher
-//  Schriftgröße (±5 %) und gemeinsamer linker Kante (die ERSTE Zeile darf
-//  eingezogen sein). Nach oben/unten begrenzt ihn eine Zeile, die den rechten
-//  Rand NICHT ausfüllt - die endet den Absatz (klassische Heuristik; eine
-//  kurze Zeile fließt nicht weiter).
-//
-//  UMBRUCH
-//  ───────
-//  Wortweise, gierig, mit den gemessenen Vorschubbreiten; jede Zeile behält
-//  ihre EIGENE linke Kante (Einzug der ersten Zeile bleibt erhalten) und endet
-//  am gemeinsamen rechten Rand.
-//
-//  WÄCHST DER ABSATZ?
-//  ──────────────────
-//  Passt der Text nicht mehr in die vorhandenen Zeilen, bekommt der Absatz eine
-//  ZUSÄTZLICHE Zeile - und alles darunter rückt eine Zeilenhöhe nach unten.
-//  Das ist nur zulässig, wenn
-//   • unter dem Absatz ausschließlich TEXT steht (`PdfPageText::paints` ist dort
-//     leer): Bilder und Vektorgrafik würden nicht mitwandern,
-//   • jede Zeile darunter eine umschreibbare Positionierung hat
-//     (`Tm` absolut -> y anpassen; `Td`/`TD` relativ -> EINMAL je Textobjekt;
-//     `'`/`"` setzen die Zeile selbst -> nicht verschiebbar),
-//   • der Zeilenabstand in TEXTRAUM bestimmbar ist (zwei Zeilen mit `Tm`, bzw.
-//     der Sprung eines `Td`) - geraten wird nichts,
-//   • und nach dem Verschieben nichts von der Seite fällt.
-//  Sonst trägt die letzte Zeile den Rest und `overflow` meldet es.
-//
-//  ZURÜCKGESCHRIEBEN wird wie überall im PDF-Teil als INKREMENTELLES UPDATE
-//  (Originalbytes 1:1 + neues Content-Objekt + XRef mit `/Prev`). Je Zeile
-//  nimmt der ERSTE Zeigeoperator den neuen Text auf, die übrigen Operatoren
-//  DERSELBEN Zeile werden geleert - dieselbe Technik, mit der
-//  `PdfContentEditor` eine über mehrere Operatoren verteilte Zeile ersetzt.
-//  Die Zeilen behalten dadurch ihre eigene Positionierung, es wird nichts
-//  verschoben.
-//
-//  BEWUSST BEGRENZT (sonst false, der Aufrufer ändert dann nichts):
-//   • unverschlüsselt, klassische xref, EIN `/Contents`-Strom je Seite,
-//   • alle Zeilen des Absatzes nutzen DIESELBE Schrift (sonst ginge die
-//     Auszeichnung eines fett gesetzten Wortes beim Zusammenziehen verloren),
-//   • der neue Zeilentext muss in der Kodierung dieser Schrift darstellbar sein,
-//   • Blocksatz wird nicht wiederhergestellt: die Zeilen stehen danach
-//     linksbündig am gemeinsamen Rand (die Wortabstände einer neu umbrochenen
-//     Zeile ließen sich sonst nur raten).
-//  Ein Fehlschlag schreibt NICHTS (kein Fragment).
-//
-//  ABHÄNGIGKEITEN: Qt6::Core + ZLIB (über PdfObjects/PdfTextLayout).
-//  Kein Q_OBJECT/moc; isoliert testbar.
-// ══════════════════════════════════════════════════════════════════════════════
+// Absatz-Umbruch in der eingebetteten Textebene - `PdfTextEditor` schiebt nur den Rest DERSELBEN Zeige-
+// Anweisung mit, eine über `Td`/`Tm` gesetzte Zeile lief über den rechten Rand hinaus. ZWEITER Gang nach dem
+// Schreiben: so tragen auch die neu getippten Zeichen ihre gemessene Breite. Blocksatz wird nicht wiederhergestellt.
 
 #include <QString>
 #include <QStringList>
@@ -91,11 +22,8 @@ struct PdfReflowPlan {
     QStringList newLines;       // Zeilentexte NACH dem Umbruch (gleiche Anzahl)
     bool changed  = false;      // unterscheiden sich alt und neu?
     bool overflow = false;      // Rest passte nicht -> letzte Zeile trägt ihn
-    //  Der Absatz hat eine Zeile GEWONNEN (`newLines` ist dann um eins länger
-    //  als `oldLines`): Alles darunter rückt beim Schreiben eine Zeilenhöhe
-    //  nach unten. Nur möglich, wenn unter dem Absatz ausschließlich Text steht
-    //  (Grafik wandert nicht mit), dessen Positionierung umschreibbar ist und
-    //  nichts von der Seite fällt - sonst bleibt es bei `overflow`.
+    // Der Absatz hat eine Zeile GEWONNEN: alles darunter rückt eine Zeilenhöhe nach unten. Nur möglich, wenn dort
+    // ausschließlich Text mit umschreibbarer Positionierung steht und nichts von der Seite fällt.
     bool grew     = false;
     //  Zeilenabstand im TEXTRAUM (nur bei `grew`): So weit rückt alles unter
     //  dem Absatz nach unten. Aus zwei aufeinanderfolgenden Zeilen abgelesen,
@@ -111,21 +39,14 @@ public:
     static bool planParagraph(const PdfPageText& page, int glyphIndex,
                               PdfReflowPlan* out, QString* err = nullptr);
 
-    //  Plant und SCHREIBT (inkrementelles Update nach `outputPath`). Liefert
-    //  false, wenn der Absatz nicht sicher umbrechbar ist; `plan` (optional)
-    //  erhält auch dann das Zwischenergebnis, soweit es zustande kam.
-    //  Ist nichts zu tun (`changed == false`), wird NICHT geschrieben und
-    //  `false` mit `err == "unveraendert"` gemeldet.
+    // Plant und SCHREIBT (inkrementelles Update). false, wenn der Absatz nicht sicher umbrechbar ist; `plan` erhält
+    // auch dann das Zwischenergebnis. Ist nichts zu tun, wird NICHT geschrieben.
     static bool reflowParagraph(const QString& inputPath, const QString& outputPath,
                                 int pageIndex, int glyphIndex,
                                 PdfReflowPlan* plan = nullptr, QString* err = nullptr);
 
-    //  Wohin wandert eine Schreibmarke, die vor dem Umbruch beim Zeichen
-    //  `glyphIndex` stand? Der Umbruch verschiebt LEERZEICHEN zwischen den
-    //  Zeilen (der Strom trägt am Zeilenende keines) - die Folge der übrigen
-    //  Zeichen bleibt dagegen unverändert. Genau daran wird die Marke geführt:
-    //  Es zählt, wie viele NICHT-Leerzeichen vor ihr stehen. Liefert den neuen
-    //  Index (bei `glyphIndex` vor dem Absatz unverändert).
+    // Wohin wandert eine Schreibmarke, die vor dem Umbruch bei `glyphIndex` stand? Der Umbruch verschiebt nur
+    // LEERZEICHEN zwischen den Zeilen - geführt wird die Marke deshalb an der Zahl der Nicht-Leerzeichen vor ihr.
     static int mapCaretIndex(const PdfReflowPlan& plan, int glyphIndex);
 };
 

@@ -17,7 +17,6 @@ using namespace mg::pdfobj;
 
 namespace {
 
-//  Bytes -> PDF-Paren-String (wie PdfTextEditor/PdfVectorExport: 7-Bit-sicher).
 QByteArray parenBytes(const QByteArray& b) {
     QByteArray out = "(";
     for (char c : b) {
@@ -32,7 +31,6 @@ QByteArray parenBytes(const QByteArray& b) {
     return out + ")";
 }
 
-// ── Eine erkannte Zeile ──────────────────────────────────────────────────────
 struct Line {
     int   first = 0, last = 0;      // Glyphen-Indizes, inklusive
     qreal x0 = 0, x1 = 0;           // linke/rechte Kante (PDF-Punkte)
@@ -40,10 +38,8 @@ struct Line {
     qreal fontSize = 0;             // größte Schriftgröße der Zeile
 };
 
-//  Glyphen in Zeilen gruppieren. Neue Zeile, sobald die Oberkante um mehr als
-//  eine halbe Schriftgröße springt oder der Text spürbar nach LINKS zurückgeht
-//  (Zeilenanfang) - beides ist unabhängig davon, ob der Erzeuger `Td`, `T*`
-//  oder `Tm` benutzt hat.
+// Glyphen in Zeilen gruppieren: neue Zeile, sobald die Oberkante um mehr als eine halbe Schriftgröße springt
+// oder der Text spürbar nach LINKS zurückgeht - unabhängig davon, ob der Erzeuger `Td`, `T*` oder `Tm` nutzt.
 QVector<Line> groupLines(const QVector<mg::PdfGlyph>& g) {
     QVector<Line> lines;
     for (int i = 0; i < g.size(); ++i) {
@@ -75,7 +71,6 @@ QVector<Line> groupLines(const QVector<mg::PdfGlyph>& g) {
     return lines;
 }
 
-//  Text einer Zeile (Glyphen sind in Lesereihenfolge).
 QString lineText(const QVector<mg::PdfGlyph>& g, const Line& l) {
     QString s;
     s.reserve(l.last - l.first + 1);
@@ -84,7 +79,6 @@ QString lineText(const QVector<mg::PdfGlyph>& g, const Line& l) {
     return s;
 }
 
-//  Mittlere Vorschubbreite eines Bereichs (Fallback für die Wortlücke).
 qreal avgAdvance(const QVector<mg::PdfGlyph>& g, int from, int to) {
     qreal sum = 0; int n = 0;
     for (int i = from; i <= to && i < g.size(); ++i) {
@@ -93,15 +87,12 @@ qreal avgAdvance(const QVector<mg::PdfGlyph>& g, int from, int to) {
     return n > 0 ? sum / n : 0.0;
 }
 
-//  Eine umzuschreibende Anweisung (Positionierung einer Zeile unterhalb des
-//  Absatzes bzw. die neu eingefügte Zeile).
 struct Edit {
     qint64     start = 0;
     qint64     end   = 0;      // == start -> Einfügung
     QByteArray bytes;
 };
 
-//  Zahl PDF-gerecht (Punkt als Trenner, keine Exponenten, kurz).
 QByteArray pnum(qreal v) {
     if (!std::isfinite(v)) v = 0.0;
     QByteArray b = QByteArray::number(v, 'f', 3);
@@ -109,13 +100,8 @@ QByteArray pnum(qreal v) {
     return (b == "-0") ? QByteArray("0") : b;
 }
 
-//  Kann die Zeile, die dieser Span beginnt, um `dy` (TEXTRAUM, positiv =
-//  nach unten) verschoben werden? Liefert die Ersatz-Anweisung.
-//   • `Tm` ist ABSOLUT -> die y-Komponente wird verkleinert; danach tragen
-//     nachfolgende RELATIVE Sprünge die Verschiebung ohnehin mit.
-//   • `Td`/`TD` sind relativ -> genau EINMAL je Textobjekt anfassen.
-//   • `T*` und `'`/`"` setzen die Zeile aus dem Zeilenabstand - ohne eigene
-//     Anweisung lässt sich dort nichts verschieben.
+// `Tm` ist ABSOLUT - die y-Komponente wird verkleinert, nachfolgende relative Sprünge tragen die Verschiebung
+// mit. `Td`/`TD` sind relativ und werden genau EINMAL je Textobjekt angefasst; `T*` und `'`/`"` gar nicht.
 bool shiftStatement(const mg::PdfShowSpan& sp, qreal dy, bool alreadyShifted,
                     Edit* out, bool* nowShifted) {
     *nowShifted = alreadyShifted;
@@ -143,10 +129,8 @@ bool shiftStatement(const mg::PdfShowSpan& sp, qreal dy, bool alreadyShifted,
     return false;                                     // nicht verschiebbar
 }
 
-//  Darf der Absatz eine Zeile gewinnen? Prüft GEOMETRIE und SCHREIBBARKEIT:
-//  keine Grafik unterhalb, jede Zeile darunter verschiebbar, Zeilenabstand im
-//  Textraum bestimmbar, nichts fällt von der Seite. `dyText` liefert den
-//  Abstand, um den verschoben wird.
+// Darf der Absatz eine Zeile gewinnen? Geprüft werden Geometrie UND Schreibbarkeit: keine Grafik unterhalb,
+// jede Zeile darunter verschiebbar, Zeilenabstand im Textraum bestimmbar, nichts fällt von der Seite.
 bool canGrowParagraph(const mg::PdfPageText& page, const QVector<Line>& lines,
                       int start, int end, qreal leading, qreal* dyText) {
     const qreal boundary = lines.at(end).top + 0.5 * leading;   // Grenze „darunter"
@@ -185,10 +169,8 @@ bool canGrowParagraph(const mg::PdfPageText& page, const QVector<Line>& lines,
     }
     if (dy <= 0.0001) return false;
 
-    //  (3) Jede Zeile UNTERHALB muss verschiebbar sein.
-    //  Die neue Zeile wird IM Textobjekt des Absatzes eingefügt und schiebt die
-    //  dortige Textmatrix bereits eine Zeile tiefer - relative Sprünge danach
-    //  erben das, ein neues Textobjekt (BT) setzt es zurück.
+    // Die neue Zeile wird IM Textobjekt des Absatzes eingefügt und schiebt dessen Textmatrix schon eine Zeile
+    // tiefer - relative Sprünge danach erben das, ein neues `BT` setzt es zurück.
     bool shifted = true;
     int  curObj  = last->objIndex;
     for (int li = end + 1; li < lines.size(); ++li) {
@@ -233,13 +215,12 @@ bool PdfTextReflow::planParagraph(const PdfPageText& page, int glyphIndex,
     const QVector<Line> lines = groupLines(g);
     if (lines.isEmpty()) return fail("keine Zeile erkannt");
 
-    //  Zeile des Zeichens.
     int hit = -1;
     for (int i = 0; i < lines.size(); ++i)
         if (gi >= lines.at(i).first && gi <= lines.at(i).last) { hit = i; break; }
     if (hit < 0) return fail("Zeile nicht gefunden");
 
-    // ── Absatz eingrenzen ───────────────────────────────────────────────────
+    // Absatz eingrenzen
     //  Schritt 1: Block gleicher Bauart (Zeilenabstand, Schriftgröße, linke
     //  Kante). Der Zeilenabstand ergibt sich aus dem Nachbarn der Trefferzeile.
     const qreal fs = lines.at(hit).fontSize;
@@ -259,20 +240,12 @@ bool PdfTextReflow::planParagraph(const PdfPageText& page, int glyphIndex,
     while (from > 0 && sameKind(lines.at(from - 1), lines.at(from))) --from;
     while (to + 1 < lines.size() && sameKind(lines.at(to), lines.at(to + 1))) ++to;
 
-    //  Schritt 2: gemeinsamer rechter Rand + Toleranz („die Zeile ist voll").
-    //  WICHTIG: Der Rand darf NICHT einfach die größte rechte Kante sein. Genau
-    //  die Zeile, in die gerade getippt wurde, steht ja über den Rand hinaus -
-    //  sie würde ihn sonst selbst definieren, und nichts bräche je um. Ragt die
-    //  breiteste Zeile deutlich über alle anderen hinaus, gilt daher die
-    //  zweitgrößte Kante als Rand (bei gleichmäßigem Satz sind beide gleich).
+    // Der rechte Rand darf NICHT einfach die größte Kante sein: genau die Zeile, in die getippt wurde, steht über
+    // den Rand hinaus und definierte ihn sonst selbst. Ragt die breiteste deutlich hinaus, gilt die zweitgrößte.
     const qreal adv = avgAdvance(g, lines.at(from).first, lines.at(to).last);
     const qreal fullTol = qMax(2.5 * adv, 0.5 * fs);
-    //  Woran erkennt man, dass die BREITESTE Zeile über den Rand hinausragt
-    //  (weil gerade hineingetippt wurde) und nicht selbst der Rand IST?
-    //  Daran, dass ihr LETZTES WORT den Überstand erklärt: Ein sauberer Umbruch
-    //  hätte genau dieses Wort nach unten geschoben. Ist der Überstand größer,
-    //  sind die übrigen Zeilen einfach kürzer (kurze Schlusszeile, eigener
-    //  Absatz davor) - dann bleibt die breiteste Zeile der Rand.
+    // Woran erkennt man, dass die breiteste Zeile über den Rand hinausragt und nicht selbst der Rand IST? Daran,
+    // dass ihr LETZTES WORT den Überstand erklärt - ein sauberer Umbruch hätte genau dieses Wort geschoben.
     int widest = from;
     for (int i = from; i <= to; ++i)
         if (lines.at(i).x1 > lines.at(widest).x1) widest = i;
@@ -310,7 +283,6 @@ bool PdfTextReflow::planParagraph(const PdfPageText& page, int glyphIndex,
     out->firstGlyph = lines.at(start).first;
     out->lineCount  = end - start + 1;
 
-    // ── Wörter mit gemessener Breite sammeln ────────────────────────────────
     struct Word { QString text; qreal width = 0; };
     QVector<Word> words;
     qreal spaceW = 0;
@@ -338,7 +310,6 @@ bool PdfTextReflow::planParagraph(const PdfPageText& page, int glyphIndex,
     if (spaceW <= 0) spaceW = qMax(0.25 * fs, 0.5 * adv);
     if (words.isEmpty()) return fail("keine Wörter im Absatz");
 
-    // ── Gierig neu umbrechen; jede Zeile behält ihre eigene linke Kante ─────
     QVector<QString> fresh;
     int w = 0;
     auto fillLine = [&](qreal capacity) {
@@ -358,7 +329,7 @@ bool PdfTextReflow::planParagraph(const PdfPageText& page, int glyphIndex,
     for (int li = start; li <= end; ++li)
         fresh << fillLine(rightMax - lines.at(li).x0);
 
-    // ── Passt der Rest nicht mehr: darf der Absatz eine ZEILE gewinnen? ─────
+    // Passt der Rest nicht mehr: darf der Absatz eine ZEILE gewinnen?
     if (w < words.size()) {
         qreal dyText = 0.0;
         if (canGrowParagraph(page, lines, start, end, leading, &dyText)) {
@@ -380,10 +351,8 @@ bool PdfTextReflow::planParagraph(const PdfPageText& page, int glyphIndex,
     }
 
     out->newLines = fresh;
-    //  Vergleich auf WORTEBENE: Der Umbruch schreibt einfache Leerzeichen; im
-    //  Strom kann dieselbe Zeile mit Randleerzeichen oder doppeltem Abstand
-    //  stehen. Ohne diese Normalisierung würde jeder Aufruf eine Änderung
-    //  melden und die Datei ohne Not neu schreiben.
+    // Vergleich auf WORTEBENE: der Umbruch schreibt einfache Leerzeichen, im Strom kann dieselbe Zeile doppelte
+    // Abstände tragen. Ohne diese Normalisierung meldete jeder Aufruf eine Änderung und schriebe die Datei neu.
     auto norm = [](const QStringList& in) {
         QStringList out;
         for (const QString& s : in)
@@ -403,11 +372,9 @@ int PdfTextReflow::mapCaretIndex(const PdfReflowPlan& plan, int glyphIndex) {
     if (off >= oldText.size())
         return plan.firstGlyph + newText.size(); // hinter dem Absatz -> ans Ende
 
-    //  So viele NICHT-Leerzeichen stehen vor der Marke …
     int want = 0;
     for (int i = 0; i < off; ++i)
         if (!oldText.at(i).isSpace()) ++want;
-    //  … und genau davor steht sie auch danach wieder.
     int seen = 0;
     for (int i = 0; i < newText.size(); ++i) {
         if (seen == want && !newText.at(i).isSpace())
@@ -429,7 +396,6 @@ bool PdfTextReflow::reflowParagraph(const QString& inputPath, const QString& out
     if (buf.size() < 32 || !buf.startsWith("%PDF-")) return fail("kein PDF");
     if (buf.contains("/Encrypt")) return fail("verschlüsselt");
 
-    //  Klassische xref verlangt (wie im übrigen PDF-Teil).
     const int sxi = buf.lastIndexOf("startxref");
     if (sxi < 0) return fail("kein startxref");
     qint64 prevXref = -1;
@@ -453,7 +419,6 @@ bool PdfTextReflow::reflowParagraph(const QString& inputPath, const QString& out
     if (planOut) *planOut = plan;
     if (!plan.changed) return fail("unveraendert");
 
-    // ── Zeilen auf ihre Zeigeoperatoren abbilden ────────────────────────────
     const QVector<Line> lines = groupLines(page.glyphs);
     if (plan.firstLine < 0 || plan.firstLine + plan.lineCount > lines.size())
         return fail("Zeilen passen nicht zum Plan");
@@ -498,13 +463,11 @@ bool PdfTextReflow::reflowParagraph(const QString& inputPath, const QString& out
             }
     }
 
-    // ── Kodierung der Schrift (dieselbe Auflösung wie beim Tippen) ──────────
     const QHash<int, ObjLoc> objs = scanObjects(buf);
     pdfenc::Encoding enc;
     if (!PdfTextEditor::encodingForPageFont(buf, pageIndex, perLine.at(0).fontRes, &enc))
         return fail("Schriftkodierung nicht bestimmbar");
 
-    // ── Neuen Content-Stream bauen: je Zeile erster Operator = Text, Rest leer
     QVector<Edit> repls;
     for (int li = 0; li < plan.lineCount; ++li) {
         const LineSpans& ls = perLine.at(li);
@@ -522,7 +485,6 @@ bool PdfTextReflow::reflowParagraph(const QString& inputPath, const QString& out
         }
     }
 
-    // ── Gewachsener Absatz: neue Zeile anlegen, alles darunter nach unten ────
     if (plan.grew) {
         if (plan.newLines.size() != plan.lineCount + 1)
             return fail("Plan und Zeilenzahl passen nicht zusammen");
@@ -549,7 +511,6 @@ bool PdfTextReflow::reflowParagraph(const QString& inputPath, const QString& out
             posStmt += " Tm";
         } else if ((lastSp.posOp == "Td" || lastSp.posOp == "TD")
                    && lastSp.posArgs.size() >= 2) {
-            //  x bleibt, wo die letzte Zeile steht -> nur der Zeilensprung.
             posStmt = "0 " + pnum(-plan.growDyText) + " Td";
         } else {
             return fail("neue Zeile nicht positionierbar");
@@ -561,7 +522,6 @@ bool PdfTextReflow::reflowParagraph(const QString& inputPath, const QString& out
         const QByteArray run = "\n" + posStmt + " " + parenBytes(encoded) + " Tj";
         repls.push_back({ ip, ip, run });          // Einfügung (start == end)
 
-        //  Alles UNTERHALB des Absatzes eine Zeilenhöhe tiefer setzen.
         const QVector<Line> allLines = lines;
         const qreal boundary = allLines.at(lastLine).top
                              + 0.5 * qMax(1.0, allLines.at(lastLine).fontSize);
@@ -590,7 +550,6 @@ bool PdfTextReflow::reflowParagraph(const QString& inputPath, const QString& out
     for (const Edit& r : std::as_const(repls))
         newContent.replace(r.start, r.end - r.start, r.bytes);
 
-    // ── Inkrementelles Update (wie PdfTextEditor) ───────────────────────────
     const auto cit = objs.constFind(page.contentObj);
     if (cit == objs.constEnd()) return fail("Content-Objekt nicht gefunden");
 

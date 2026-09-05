@@ -1,42 +1,7 @@
 #pragma once
-// ══════════════════════════════════════════════════════════════════════════════
-//  PdfTextController.h
-// ══════════════════════════════════════════════════════════════════════════════
-//
-//  ZWECK
-//  ─────
-//  Liefert die browser-artige TEXTAUSWAHL der PDF-Hauptansicht: Ziehen markiert
-//  Text, Strg+C kopiert ihn. Quelle ist die EINGEBETTETE Textebene des PDFs
-//  (kein OCR) - fuer digitale PDFs praktisch kostenlos.
-//
-//  WARUM EINE EIGENE KLASSE (und KEIN QML-PdfSelection auf root.doc)?
-//   • Die Hauptansicht skaliert ihre Seiten ueber fitScale*zoom (nicht ueber
-//     renderScale). Eine eigene C++-Bruecke gibt VOLLE Kontrolle ueber die
-//     Koordinaten-Abbildung (normalisiert [0..1] ↔ PDF-Punkte) und haengt nicht
-//     an den internen Koordinaten-Annahmen des QML-PdfSelection.
-//   • Die Auswahl laeuft ueber QPdfDocument::getSelection(page, start, end) ->
-//     QPdfSelection. Deren bounds() sind Rechteck-Polygone mit Ursprung
-//     oben-links in PUNKTEN - exakt das, was wir normalisiert an QML zurueck-
-//     geben (wie die bestehenden Annotation-Overlays).
-//
-//  RAM-BEWUSST (Prio 1)
-//   • LAZY: Das Auswahl-Dokument wird ERST geladen, wenn der Nutzer tatsaechlich
-//     zu markieren beginnt (prepare() beim ersten Press). Reines Ansehen/Scrollen
-//     eines PDFs kostet damit KEIN zusaetzliches QPdfDocument.
-//   • Es ist immer hoechstens EIN Auswahl-Dokument resident (das aktive). Beim
-//     Verlassen/Wechseln gibt PdfSurface es ueber releaseDocument() frei.
-//   • Das Dokument haelt nur die Seitenstruktur + bei Bedarf den Text der
-//     abgefragten Seite (PDFium-Cache) - KEINE Seitenbitmaps.
-//
-//  ASYNC-MUSTER (Projektkonvention, wie PdfScanTask/PdfThumbRenderTask)
-//   • prepare() stoesst einen QRunnable an (eigener QThreadPool, maxThreadCount=1),
-//     der eine EIGENE QPdfDocument-Instanz laedt (Parsen blockiert nie den
-//     GUI-Thread). Nach erfolgreichem Laden wird das Dokument auf den GUI-Thread
-//     verschoben und per Qt::QueuedConnection uebergeben. Eine Generationszahl
-//     verwirft veraltete Ladevorgaenge (schnelles Vor/Zurueck ist sicher).
-//
-//  Registrierung: qmlRegisterSingletonInstance(…, "PdfText", …) in main.cpp.
-// ══════════════════════════════════════════════════════════════════════════════
+// Browser-artige Textauswahl aus der eingebetteten Textebene; eigene Brücke statt QML-PdfSelection, weil die
+// Hauptansicht über fitScale*zoom skaliert und die Koordinaten-Abbildung hier in der Hand bleibt.
+// Lazy: das Auswahl-Dokument entsteht erst beim ersten Markieren, höchstens eines.
 
 #include "core/SearchPattern.h"
 
@@ -57,16 +22,10 @@ class QPdfSelection;
 
 class PdfTextController : public QObject {
     Q_OBJECT
-    // true, sobald fuer den aktiven Pfad ein Auswahl-Dokument geladen ist.
     Q_PROPERTY(bool ready READ isReady NOTIFY readyChanged)
-    // Zuletzt markierter Text (für die Aktivierung der Kopier-Aktion in QML).
     Q_PROPERTY(QString selectedText READ selectedText NOTIFY selectedTextChanged)
-    // ── Suche im Dokument ─────────────────────────────────────────────────────
-    //  Anzahl der Treffer der laufenden/letzten Suche.
     Q_PROPERTY(int  searchCount READ searchCount NOTIFY searchChanged)
-    //  Läuft noch (die Seiten werden STÜCKWEISE durchsucht, s. .cpp).
     Q_PROPERTY(bool searching READ searching NOTIFY searchChanged)
-    //  Der aktuelle Suchbegriff (leer = keine Suche).
     Q_PROPERTY(QString searchTerm READ searchTerm NOTIFY searchChanged)
 public:
     explicit PdfTextController(QObject* parent = nullptr);
@@ -83,71 +42,42 @@ public:
     // Ein anderer Pfad verwirft das vorherige Dokument.
     Q_INVOKABLE void prepare(const QString& pathOrUrl);
 
-    // Gibt das aktive Auswahl-Dokument frei (RAM) und hebt die Auswahl auf.
-    // Verwirft zugleich einen evtl. laufenden Ladevorgang.
     Q_INVOKABLE void releaseDocument();
 
-    // Markiert Text zwischen zwei NORMALISIERTEN Punkten [0..1] (Ursprung
-    // oben-links) auf 'page'. Liefert die Highlight-Rechtecke als Liste
-    // normalisierter Maps { x, y, w, h } (wie die Annotation-Overlays).
-    // Merkt sich zugleich den Text fuer copyToClipboard(). Leer, falls das
-    // Dokument noch nicht geladen ist oder kein Text getroffen wurde.
+    // Markiert Text zwischen zwei normalisierten Punkten und liefert die Highlight-Rechtecke `{ x, y, w, h }`.
+    // Merkt sich zugleich den Text für `copyToClipboard()`.
     Q_INVOKABLE QVariantList selectionBetween(int page,
                                               double nx0, double ny0,
                                               double nx1, double ny1);
 
-    // Markiert den GESAMTEN Text einer Seite (Strg+A). Gleiche Rueckgabeform.
     Q_INVOKABLE QVariantList selectAllOnPage(int page);
 
-    // Hebt die aktuelle Auswahl auf (z. B. reiner Klick ohne Ziehen).
     Q_INVOKABLE void clearSelection();
 
-    // ── PDF-Editor: Zeilenfang (Snapping) ─────────────────────────────────────
-    //  Liefert die erkannten TEXTZEILEN einer Seite als normalisierte Rechtecke
-    //  { x, y, w, h } (Ursprung oben-links). Quelle ist getAllText() - die
-    //  Fragment-Polygone werden nach vertikaler Mitte gruppiert und je Zeile
-    //  vereinigt. Leer, wenn das Auswahl-Dokument (lazy) noch nicht geladen ist
-    //  oder die Seite keine Textebene hat -> der Editor fällt dann auf freie
-    //  Platzierung zurück.
+    // Zeilenfang: die erkannten Textzeilen einer Seite als normalisierte Rechtecke, aus `getAllText()` nach
+    // vertikaler Mitte gruppiert. Leer, wenn das Dokument noch nicht geladen ist - der Editor platziert dann frei.
     Q_INVOKABLE QVariantList textLineRects(int page);
 
-    // ── PDF-Editor: „Text ersetzen" (Vorbefüllungs-Sonde) ─────────────────────
-    //  Prüft den NORMALISIERT [0..1] aufgezogenen Bereich gegen die erkannten
-    //  Textzeilen der Seite. Getroffene Zeilen (vertikale Überlappung ≥ 35 %
-    //  der Zeilenhöhe bzw. ≥ 80 % der Aufzieh-Höhe, horizontale Überlappung
-    //  > 0) werden VEREINIGT - die Box schnappt exakt auf die Zeilen-Bounds.
-    //  Rückgabe: { found, x, y, w, h (normalisiert, Union), lineH (normalisierte
-    //  Ø-Zeilenhöhe -> Schriftgröße), text (eingebetteter Text unter der
-    //  Fläche) }. found=false ohne Textebene/Treffer -> der Editor fällt STILL
-    //  auf die unbefüllte Box zurück (Anforderung: kein Hinweis-Dialog).
-    //  BEWUSST seiteneffektfrei: verändert weder die sichtbare Auswahl noch
-    //  selectedText (Strg+C des Nutzers bleibt unberührt).
+    // Prueft den aufgezogenen Bereich gegen die erkannten Textzeilen; getroffene werden
+    // vereinigt, die Box schnappt auf die Zeilen-Bounds. Ohne Treffer faellt der Editor
+    // STILL auf die unbefuellte Box zurueck. Seiteneffektfrei - selectedText bleibt.
     Q_INVOKABLE QVariantMap replaceProbe(int page, double nx0, double ny0,
                                          double nx1, double ny1);
 
-    //  Datei NEU einlesen, obwohl der Pfad derselbe blieb. `prepare` ist
-    //  bewusst idempotent und täte hier nichts - nötig ist das, wenn die Datei
-    //  SELBST umgeschrieben wurde: Seitenoperationen und „Dokument durchsuchbar
-    //  machen" ändern sie unter gleichem Namen.
+    // Datei NEU einlesen, obwohl der Pfad derselbe blieb: `prepare` ist bewusst idempotent und täte hier nichts.
+    // Nötig, wenn die Datei SELBST umgeschrieben wurde - Seitenoperationen und OCR ändern sie unter gleichem Namen.
     Q_INVOKABLE void reload();
 
-    // Kopiert den zuletzt markierten Text in die System-Zwischenablage.
     Q_INVOKABLE void copyToClipboard();
 
-    // ── Suche ─────────────────────────────────────────────────────────────────
-    //  search: startet eine neue Suche (leerer Begriff hebt sie auf). Die Seiten
-    //  werden STÜCKWEISE durchsucht, damit die Oberfläche nicht stehenbleibt -
-    //  Fortschritt/Ende meldet `searchChanged`.
+    // `search` startet eine neue Suche (leerer Begriff hebt sie auf). Die Seiten werden STÜCKWEISE durchsucht,
+    // damit die Oberfläche nicht stehenbleibt; Fortschritt und Ende meldet `searchChanged`.
     Q_INVOKABLE void search(const QString& needle);
     Q_INVOKABLE void clearSearch();
-    //  Treffer-Rechtecke EINER Seite, normalisiert [0..1] wie `selectionBetween`
-    //  (die Anzeige zeichnet sie wie eine Auswahl).
     Q_INVOKABLE QVariantList searchHitsOnPage(int page) const;
-    //  EIN Treffer für die Ergebnisliste/Navigation:
-    //  { page, x, y, w, h, before, after }.
     Q_INVOKABLE QVariantMap searchHit(int index) const;
 
-    // ── Intern (vom Worker-Thread per QueuedConnection aufgerufen) ────────────
+    // Intern (vom Worker-Thread per QueuedConnection aufgerufen)
     //  Nimmt ein fertig geladenes (oder fehlgeschlagenes = nullptr) Dokument auf
     //  dem GUI-Thread entgegen. NICHT direkt aus QML aufrufen.
     void adoptDocument(QPdfDocument* doc, const QString& localPath, int generation);
@@ -155,12 +85,9 @@ public:
 signals:
     void readyChanged();
     void selectedTextChanged();
-    //  Suchzustand geändert (neue Treffer, Fortschritt, Ende).
     void searchChanged();
 
 private:
-    // Baut aus einer QPdfSelection die normalisierte Rechteckliste und merkt den
-    // Text. pageSize ist die Seitengroesse in Punkten (zum Normalisieren).
     QVariantList applySelection(const QPdfSelection& sel, int page,
                                 double pageWidthPts, double pageHeightPts);
 
@@ -179,22 +106,15 @@ private:
 
     QString       m_selText;         // zuletzt markierter Text
 
-    // ── Suche ────────────────────────────────────────────────────────────────
-    //  EIN Treffer. `rect` steht in PDF-Punkten mit Ursprung oben-links -
-    //  genau so liefert QPdfSearchModel sie (gemessen), also dieselbe
-    //  Konvention wie im ganzen Editor.
-    //  EIN Treffer = EINE Fundstelle, auch wenn sie über mehrere Rechtecke
-    //  gezeichnet wird. PDFium liefert je Fundstelle so viele Rechtecke, wie sie
-    //  Zeige-Operatoren berührt - und manche Erzeuger (dieses DOCX->PDF etwa)
-    //  setzen JEDES Zeichen einzeln. Ein Rechteck = ein Treffer zu zählen ergab
-    //  dort „7 Treffer" für das eine Wort „Stellen" (Nutzerbefund).
+    // EIN Treffer = EINE Fundstelle, auch wenn sie über mehrere Rechtecke gezeichnet wird: PDFium liefert je
+    // Fundstelle so viele, wie sie Zeige-Operatoren berührt, und manche Erzeuger setzen JEDES Zeichen einzeln -
+    // ein Rechteck je Treffer ergab dort "7 Treffer" für das eine Wort "Stellen".
     struct SearchHit {
         int             page = 0;
         QList<QRectF>   rects;      // alle Teilstücke DIESER Fundstelle
         QString         before;
         QString         after;
 
-        //  Umschließendes Rechteck - für das Anspringen (▲/▼).
         QRectF bounds() const {
             QRectF b;
             for (const QRectF& r : rects) b = b.isNull() ? r : b.united(r);
@@ -207,16 +127,10 @@ private:
     //  `QPdfSearchModel` (der liefert Rechtecke und Kontext gratis), der
     //  Muster-Zweig ueber den Seitentext. Siehe `core/SearchPattern.h`.
     mg::search::Pattern m_searchPattern;
-    //  Nächste zu durchsuchende Seite (−1 = keine Suche läuft). QPdfSearchModel
-    //  arbeitet LAZY je Seite (gemessen: erst `resultsOnPage(p)` durchsucht sie)
-    //  - der Timer holt sie stückweise, damit eine 500-Seiten-Datei die
-    //  Oberfläche nicht einfriert.
     int                m_searchPage = -1;
     QPdfSearchModel*   m_searchModel = nullptr;
-    //  Dokument, zu dem die Treffer gehören. Ohne diesen Vergleich hätte der
-    //  Kurzschluss „derselbe Begriff -> nichts tun" eine Suche verschluckt, die
-    //  VOR dem Öffnen eingetippt wurde (sie lief nie, der Begriff stand aber
-    //  schon da).
+    // Dokument, zu dem die Treffer gehören: ohne diesen Vergleich verschluckte der Kurzschluss "derselbe Begriff
+    // -> nichts tun" eine Suche, die VOR dem Öffnen eingetippt wurde.
     QPdfDocument*      m_searchedDoc = nullptr;
     QTimer             m_searchTimer;
     void stepSearch();

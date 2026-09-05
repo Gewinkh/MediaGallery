@@ -5,27 +5,9 @@
 
 class QTextDocument;
 
-// ─────────────────────────────────────────────────────────────────────────────
-//  FoldScanner.h - welche Bloecke einer Datei lassen sich zuklappen?
-//
-//  Ergebnis ist eine flache, nach Startzeile sortierte Liste von Bereichen in
-//  BLOCKNUMMERN. Geschachtelte Bereiche stehen beide darin (eine Funktion und
-//  die `if`-Bloecke darin); wer den aeusseren zuklappt, verbirgt die inneren
-//  mit - sie bleiben in der Liste, sind aber nicht mehr sichtbar.
-//
-//  WARUM EIN EIGENER DURCHGANG und nicht der Zustand des Faerbers: der Faerber
-//  fuehrt je Block genau EIN int (`QSyntaxHighlighter`), und das ist mit dem
-//  Zustand mehrzeiliger Zeichenketten bereits belegt. Vor allem aber wuerde
-//  eine Verschachtelungstiefe IM Blockzustand bedeuten, dass ein getipptes `{`
-//  jeden folgenden Block neu faerbt - am Lesedeckel von 8 MB waeren das rund
-//  200 000 Bloecke JE TASTENDRUCK. Der eigene Durchgang laeuft stattdessen
-//  gebuendelt, kurz nachdem die Eingabe steht (s. `TextFoldBar`).
-//
-//  Kosten: der Durchgang benutzt denselben Zerleger wie die Faerbung, weil ein
-//  `{` in einer Zeichenkette oder einem Kommentar keine Klammer ist. Gemessen
-//  auf `PdfEditController.cpp` (4 722 Zeilen): 6,58 ms fuer die reine Faerbung,
-//  6,83 ms mit der Faltungserfassung - also rund 4 % Aufpreis.
-// ─────────────────────────────────────────────────────────────────────────────
+// Eigener Durchgang statt Färber-Zustand: der führt je Block genau ein int, das schon belegt ist - eine Tiefe
+// darin hieße, dass ein getipptes `{` alle folgenden Blöcke neu färbt (am 8-MB-Deckel rund 200.000 je
+// Tastendruck). Kosten des eigenen Laufs: 6,58 -> 6,83 ms an 4722 Zeilen, also rund 4 %.
 namespace mg::editor {
 
 struct FoldRegion {
@@ -36,10 +18,8 @@ struct FoldRegion {
     }
 };
 
-//  Alle faltbaren Bereiche des Dokuments. Leere Liste, wenn die Sprache nichts
-//  zu falten hat (`FoldKind::None`) oder das Dokument fehlt.
-//  `tabWidth` zaehlt nur fuer `FoldKind::Indent` - ein Tabulator rueckt bis zum
-//  naechsten Vielfachen davon ein.
+// Alle faltbaren Bereiche; leere Liste, wenn die Sprache nichts zu falten hat. `tabWidth` zählt nur für
+// `FoldKind::Indent` - ein Tabulator rückt bis zum nächsten Vielfachen davon ein.
 QList<FoldRegion> scanFolds(const QTextDocument* doc, const LanguageDef& def,
                             int tabWidth);
 

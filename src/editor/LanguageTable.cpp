@@ -3,16 +3,8 @@
 #include <QHash>
 #include <algorithm>
 
-// ─────────────────────────────────────────────────────────────────────────────
-//  LanguageTable.cpp - ERZEUGT, aber von Hand gepflegt: die Wortlisten wurden
-//  einmal sortiert erzeugt (scratchpad/gen_table.py) und stehen seitdem hier.
-//  WICHTIG: jede Liste MUSS sortiert bleiben - `containsWord` sucht binaer.
-//  Der Treiber `tst_editor_langtable` prueft die Sortierung, eine von Hand
-//  eingefuegte Zeile an falscher Stelle faellt dort sofort auf.
-//
-//  Eine neue Sprache = ein `LanguageDef` unten + eine Zeile in `s_byExtension`.
-//  KEIN neuer Code im Zerleger, solange eine der vorhandenen Scanner-Arten passt.
-// ─────────────────────────────────────────────────────────────────────────────
+// Die Wortlisten wurden einmal sortiert erzeugt und werden seitdem von Hand gepflegt. Jede Liste MUSS sortiert
+// bleiben - `containsWord` sucht binär; `tst_editor_langtable` prüft das. Neue Sprache = ein `LanguageDef` mehr.
 using namespace Qt::Literals::StringLiterals;
 
 namespace mg::editor {
@@ -102,8 +94,6 @@ static const QLatin1StringView k_kw_kotlin[] = {
     "suspend"_L1, "tailrec"_L1, "this"_L1, "throw"_L1, "true"_L1, "try"_L1, "typealias"_L1,
     "val"_L1, "var"_L1, "vararg"_L1, "when"_L1, "where"_L1, "while"_L1
 };
-//  Dart - Klammer-Sprache wie Java; `async`/`await` und `late` sind die
-//  Eigenheiten, die man beim Lesen sucht.
 static const QLatin1StringView k_kw_dart[] = {
     "abstract"_L1, "as"_L1, "assert"_L1, "async"_L1, "await"_L1, "break"_L1,
     "case"_L1, "catch"_L1, "class"_L1, "const"_L1, "continue"_L1, "covariant"_L1,
@@ -121,7 +111,6 @@ static const QLatin1StringView k_ty_dart[] = {
     "double"_L1, "dynamic"_L1, "int"_L1, "num"_L1, "void"_L1
 };
 
-//  Perl - Skriptsprache mit `#`-Kommentaren.
 static const QLatin1StringView k_kw_perl[] = {
     "and"_L1, "bless"_L1, "do"_L1, "each"_L1, "else"_L1, "elsif"_L1, "eq"_L1,
     "eval"_L1, "exists"_L1, "for"_L1, "foreach"_L1, "ge"_L1, "gt"_L1, "if"_L1,
@@ -132,7 +121,6 @@ static const QLatin1StringView k_kw_perl[] = {
     "wantarray"_L1, "while"_L1
 };
 
-//  R - Statistiksprache, `#`-Kommentare, `<-` als Zuweisung.
 static const QLatin1StringView k_kw_r[] = {
     "break"_L1, "else"_L1, "for"_L1, "function"_L1, "if"_L1, "in"_L1,
     "library"_L1, "next"_L1, "repeat"_L1, "require"_L1, "return"_L1, "while"_L1
@@ -307,24 +295,15 @@ static const QLatin1StringView k_ty_swift[] = {
 template <int N>
 constexpr WordList wl(const QLatin1StringView (&a)[N]) { return WordList{ a, N }; }
 
-//  ── Die Sprachen ────────────────────────────────────────────────────────────
-//  Reihenfolge egal; gefunden wird ueber `s_byExtension` bzw. `s_byId`.
-//  ── Warnung gezielt aus, NUR fuer die Tabelle ───────────────────────────────
-//  Die Eintraege stehen als designierte Initialisierer da (`.lineComment = …`),
-//  weil das die einzige Form ist, in der eine Sprache mit dreizehn Feldern noch
-//  in einem Zug lesbar bleibt - und Lesbarkeit ist hier der ganze Zweck: „eine
-//  neue Sprache = ein Eintrag" faellt in sich zusammen, sobald man dreizehn
-//  Klammerwerte in der richtigen Reihenfolge abzaehlen muss.
-//  GCC meldet fuer JEDES ausgelassene Feld -Wmissing-field-initializers, obwohl
-//  alle Felder in `LanguageDef` einen Vorgabewert tragen und das Auslassen also
-//  genau das Gewollte tut (C kennt diese Ausnahme, C++ nicht). Das waeren rund
-//  40 neue Warnungen fuer nichts. Die Ausnahme gilt nur bis zum `pop` unten.
+// Designierte Initialisierer, damit eine Sprache mit dreizehn Feldern lesbar bleibt.
+// GCC meldet dafuer -Wmissing-field-initializers, obwohl alle Felder Vorgaben haben
+// (C kennt die Ausnahme, C++ nicht) - rund 40 Warnungen fuer nichts, daher aus.
 #if defined(__GNUC__)
 #  pragma GCC diagnostic push
 #  pragma GCC diagnostic ignored "-Wmissing-field-initializers"
 #endif
 
-// ── Wortpaare fuer `FoldKind::Keywords` ──────────────────────────────────────
+// Wortpaare fuer `FoldKind::Keywords`
 //  Sortiert wie alle Wortlisten (Binaersuche). `else`/`elseif` stehen in KEINER
 //  der beiden Listen: sie oeffnen nichts und schliessen nichts.
 constexpr QLatin1StringView k_fo_lua[]   = { "do"_L1, "for"_L1, "function"_L1,
@@ -343,8 +322,6 @@ const LanguageDef s_plain {
 };
 
 const LanguageDef s_langs[] = {
-    //  C/C++ - Vorbild fuer jede weitere Klammer-Sprache. `rawStrings` deckt
-    //  R"( … )" ab, das ueber Zeilen laufen darf.
     { .id = "cpp"_L1, .label = "C++"_L1, .kind = ScannerKind::CLike,
       .keywords = wl(k_kw_cpp), .types = wl(k_ty_cpp),
       .lineComment = "//"_L1, .blockOpen = "/*"_L1, .blockClose = "*/"_L1,
@@ -377,7 +354,6 @@ const LanguageDef s_langs[] = {
       .keywords = wl(k_kw_rust), .types = wl(k_ty_rust),
       .lineComment = "//"_L1, .blockOpen = "/*"_L1, .blockClose = "*/"_L1 , .fold = FoldKind::Braces },
 
-    //  PHP kennt ZWEI Formen des Zeilenkommentars - dafuer ist lineComment2 da.
     { .id = "php"_L1, .label = "PHP"_L1, .kind = ScannerKind::CLike,
       .keywords = wl(k_kw_php), .types = wl(k_ty_php),
       .lineComment = "//"_L1, .lineComment2 = "#"_L1,
@@ -416,7 +392,6 @@ const LanguageDef s_langs[] = {
       .keywords = wl(k_kw_lua), .types = wl(k_ty_lua),
       .lineComment = "--"_L1, .blockOpen = "--[["_L1, .blockClose = "]]"_L1 , .fold = FoldKind::Keywords, .foldOpen = wl(k_fo_lua), .foldClose = wl(k_fc_lua) },
 
-    //  CMake und SQL schreiben ihre Schluesselwoerter beliebig gross oder klein.
     { .id = "cmake"_L1, .label = "CMake"_L1, .kind = ScannerKind::Script,
       .keywords = wl(k_kw_cmake), .lineComment = "#"_L1, .caseSensitive = false , .fold = FoldKind::Keywords, .foldOpen = wl(k_fo_cmake), .foldClose = wl(k_fc_cmake) },
 
@@ -437,8 +412,6 @@ const LanguageDef s_langs[] = {
 
     { .id = "json"_L1, .label = "JSON"_L1, .kind = ScannerKind::CLike , .fold = FoldKind::Braces },
 
-    //  QML: dieselbe Scanner-Art wie JavaScript, nur eine andere Wortliste -
-    //  genau der Fall, fuer den die Tabelle da ist.
     { .id = "qml"_L1, .label = "QML"_L1, .kind = ScannerKind::CLike,
       .keywords = wl(k_kw_qml), .types = wl(k_ty_qml),
       .lineComment = "//"_L1, .blockOpen = "/*"_L1, .blockClose = "*/"_L1,
@@ -451,9 +424,6 @@ const LanguageDef s_langs[] = {
     { .id = "toml"_L1, .label = "TOML"_L1, .kind = ScannerKind::Ini,
       .lineComment = "#"_L1 , .fold = FoldKind::Sections },
 
-    //  Valgrind-Unterdrueckungen (`tests/*.supp`): Bloecke in geschweiften
-    //  Klammern, `#` als Kommentar. Keine Wortliste - es gibt keine
-    //  Schluesselwoerter, nur Namen.
     { .id = "supp"_L1, .label = "Suppressions"_L1, .kind = ScannerKind::Script,
       .lineComment = "#"_L1 , .fold = FoldKind::Braces },
 };
@@ -462,8 +432,6 @@ const LanguageDef s_langs[] = {
 #  pragma GCC diagnostic pop
 #endif
 
-//  Bezeichner-Suche in beiden Textarten - die Tabelle traegt QLatin1StringView,
-//  die oeffentliche Schnittstelle QStringView.
 const LanguageDef* findById(QLatin1StringView id) {
     for (const LanguageDef& d : s_langs)
         if (d.id == id) return &d;
@@ -475,10 +443,8 @@ const LanguageDef* findById(QStringView id) {
     return nullptr;
 }
 
-//  Endung -> Sprach-Bezeichner. BEWUSST eine Tabelle und keine if-Kette: eine
-//  neue Endung ist eine Zeile. `.h` zaehlt als C/C++ - im Baum dieses Projekts
-//  gibt es keine andere Bedeutung, und Objective-C raten waere schlimmer als
-//  eine feste Wahl.
+// Endung -> Sprach-Bezeichner, bewusst eine Tabelle und keine if-Kette: eine neue Endung ist eine Zeile.
+// `.h` zählt als C/C++ - Objective-C zu raten wäre schlimmer als eine feste Wahl.
 struct ExtEntry { QLatin1StringView ext; QLatin1StringView lang; };
 
 const ExtEntry s_byExtension[] = {
@@ -517,7 +483,6 @@ const ExtEntry s_byExtension[] = {
     { "toml"_L1, "ini"_L1 },
 };
 
-//  Dateien OHNE Endung, die trotzdem eine Sprache haben (Kleinschreibung).
 const ExtEntry s_byBaseName[] = {
     { "cmakelists"_L1, "cmake"_L1 },
     { "makefile"_L1,   "shell"_L1 },
@@ -552,8 +517,6 @@ const LanguageDef& languageForId(QStringView id) {
 const LanguageDef& languageForPath(QStringView path) {
     if (path.isEmpty()) return s_plain;
 
-    //  Nur den Dateinamen betrachten - ein Ordner darf keine Sprache bestimmen
-    //  (ein Pfad wie /home/x.py/notiz waere sonst Python).
     qsizetype trenner = path.lastIndexOf(u'/');
 #ifdef Q_OS_WIN
     trenner = qMax(trenner, path.lastIndexOf(u'\\'));

@@ -266,11 +266,8 @@ QRectF TextDecorations::zeichenRect(int position) const {
 void TextDecorations::zeichneHilfen(QPainter* p) {
     QTextDocument* d = doc();
     if (!d) return;
-    //  Gemessen wird an der SCHRIFT DES DOKUMENTS, nicht an der aus QML: die
-    //  QML-Schrift traegt eine Ersatzfamilien-Liste (`fallbackFont`), und
-    //  `QFontMetricsF` darauf lieferte gemessen 2,86 px je Leerzeichen statt
-    //  der tatsaechlichen ~7,8 - die Linien saessen dann am linken Rand statt
-    //  an der Einrueckung. Dieselbe Falle wie beim Tabulator-Abstand.
+    // Gemessen wird an der SCHRIFT DES DOKUMENTS, nicht an der aus QML: die trägt eine Ersatzfamilien-Liste, und
+    // `QFontMetricsF` darauf lieferte 2,86 px je Leerzeichen statt ~7,8 - die Linien säßen am linken Rand.
     const QFontMetricsF fm(d->defaultFont());
     const qreal zeichenB = fm.horizontalAdvance(QLatin1Char(' '));
     const qreal stufe = zeichenB * m_tabWidth;
@@ -279,10 +276,8 @@ void TextDecorations::zeichneHilfen(QPainter* p) {
     p->setPen(Qt::NoPen);
     p->setBrush(m_guideColor);
 
-    //  Beim ERSTEN SICHTBAREN Block anfangen, nicht vorne im Dokument: der
-    //  Durchgang lief sonst je Bild ueber alle Bloecke der Datei - bei 20 000
-    //  Zeilen ist das bei jedem Scrollschritt spuerbar. `hitTest` findet die
-    //  Stelle direkt (dasselbe Muster wie in der Nummernspalte).
+    // Beim ERSTEN SICHTBAREN Block anfangen, nicht vorne im Dokument: der Durchgang lief sonst je Bild über alle
+    // Blöcke - bei 20.000 Zeilen bei jedem Scrollschritt spürbar. `hitTest` findet die Stelle direkt.
     QAbstractTextDocumentLayout* lay = d->documentLayout();
     QTextBlock start = d->findBlock(qMax(0, lay->hitTest(QPointF(0, m_contentY),
                                                          Qt::FuzzyHit)));
@@ -311,10 +306,8 @@ void TextDecorations::zeichneHilfen(QPainter* p) {
         else      letzterEinzug = spalte;
         if (y + bb.height() < 0) continue;
 
-        //  Je Stufe eine Linie - die Stufe 0 (linker Rand) bekommt keine, dort
-        //  steht schon die Nummernspalte.
-        //  Nur bis EINE Stufe VOR der eigenen Einrueckung - eine Linie auf
-        //  dem ersten Zeichen der Zeile stuende im Text statt daneben.
+        // Je Stufe eine Linie; Stufe 0 bekommt keine, dort steht schon die Nummernspalte. Nur bis EINE Stufe vor der
+        // eigenen Einrückung - eine Linie auf dem ersten Zeichen stünde im Text statt daneben.
         for (int s = 1; s * m_tabWidth < spalte; ++s) {
             const qreal x = m_leftPad + s * stufe;
             if (x > width()) break;

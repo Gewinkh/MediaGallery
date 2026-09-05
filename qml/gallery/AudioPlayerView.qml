@@ -4,27 +4,14 @@ import QtQuick.Controls
 import MediaGallery 1.0
 import "../common"
 
-// ─────────────────────────────────────────────────────────────────────────────
-//  AudioPlayerView.qml - die GROSSE Player-Ansicht einer Hälfte.
-//
-//  Sie wird auf den `paneStack` der Hälfte geschoben (wie das Vollbild einer
-//  Datei) und zeigt, was die Leiste nicht zeigen kann: den Titel groß, den
-//  Fortschritt breit - und vor allem die WARTESCHLANGE, also was danach kommt.
-//
-//  Sie hält keinen eigenen Zustand: alles kommt aus `Audio`. Die Leiste bleibt
-//  darunter stehen, damit die Bedienung an derselben Stelle bleibt.
-//
-//  Kein Cover: eine Titelbild-Anzeige bräuchte ID3-Auswertung (steht in
-//  `NEXT.md`). Stattdessen zeichnet die Fläche einen ruhigen Verlauf mit einem
-//  Notensymbol - gezeichnet, nicht als Datei (Regel 28).
-// ─────────────────────────────────────────────────────────────────────────────
+// Die große Player-Ansicht einer Hälfte: Titel groß, Fortschritt breit und vor allem die WARTESCHLANGE. Kein
+// Cover - das bräuchte ID3-Auswertung; stattdessen ein gezeichneter Verlauf mit Notensymbol.
 Item {
     id: view
-    objectName: "audioPlayerView"     // Griff für tests/bench (Regel 31)
+    objectName: "audioPlayerView"     // Griff für tests/bench
 
     signal backRequested()
 
-    //  Dateiname ohne Pfad und ohne Endung.
     function _name(p) {
         if (!p) return ""
         const cut = Math.max(p.lastIndexOf("/"), p.lastIndexOf("\\"))
@@ -38,14 +25,9 @@ Item {
         color: App.themeBackground
     }
 
-    // ── Kopfzeile: zurück ───────────────────────────────────────────────────
-    //  Schmale Hälfte (geteilter Bildschirm, kleines Fenster): dann ist für
-    //  zwei Spalten kein Platz - die Warteschlange tritt an die Stelle des
-    //  laufenden Titels und wird über die Kopfzeile umgeschaltet. Gemessener
-    //  Anlass: bei ~400 px Breite überlappten Steuerung und Liste.
+    // Schmale Hälfte: für zwei Spalten ist kein Platz, die Warteschlange tritt an die Stelle des laufenden Titels
+    // und wird über die Kopfzeile umgeschaltet. Gemessener Anlass: bei ~400 px überlappten Steuerung und Liste.
     readonly property bool narrow: width < 720
-    //  Im schmalen Fenster tritt die Warteschlange AN DIE STELLE des laufenden
-    //  Titels, im breiten steht sie daneben - und lässt sich dort zuklappen.
     property bool showQueue: false
     property bool queueOpen: true
     readonly property bool queueVisible: view.narrow ? view.showQueue : view.queueOpen
@@ -58,8 +40,6 @@ Item {
 
         Rectangle {
             id: backBtn
-            //  Er endet VOR den Schaltern rechts - in einer schmalen Hälfte lag
-            //  die Beschriftung sonst unter ihnen (Nutzerbild `smallPlayer.png`).
             readonly property real avail: headTools.x - 10 - 8
             anchors { left: parent.left; leftMargin: 10; verticalCenter: parent.verticalCenter }
             width: Math.max(30, Math.min(backRow.width + 18, backBtn.avail))
@@ -88,8 +68,6 @@ Item {
             TapHandler { onTapped: view.backRequested() }
         }
 
-        //  Rechts dieselben Schalter wie in der Leiste - die ist hier
-        //  ausgeblendet, ihre Funktionen dürfen deshalb nicht fehlen.
         Row {
             id: headTools
             anchors { right: parent.right; rightMargin: 12
@@ -120,8 +98,6 @@ Item {
                 ToolTip.text: hb.tip
             }
 
-            //  Umschalter „Warteschlange": schmal blendet er sie ANSTELLE des
-            //  Titels ein, breit klappt er die Spalte zu und auf.
             HeadBtn {
                 iconName: "list"
                 on: view.queueVisible
@@ -177,7 +153,6 @@ Item {
         }
     }
 
-    //  Dasselbe Panel wie an der Leiste (eine Fassung der Regler, s. dort).
     Popup {
         id: viewEqPopup
         objectName: "audioViewEqPopup"
@@ -194,7 +169,6 @@ Item {
         contentItem: AudioEqPanel { id: viewEqContent }
     }
 
-    // ── Links: der laufende Titel ───────────────────────────────────────────
     Item {
         id: nowPane
         visible: !view.narrow || !view.showQueue
@@ -235,9 +209,6 @@ Item {
                     id: cover
                     objectName: "playerCover"
                     anchors.fill: parent
-                    //  `sourceSize` bestimmt, in welcher Größe der Anbieter das
-                    //  Bild überhaupt erst aufbaut - ein 1500er Titelbild würde
-                    //  sonst in voller Auflösung im Speicher liegen.
                     sourceSize.width: Math.round(coverBox.width)
                     sourceSize.height: Math.round(coverBox.height)
                     fillMode: Image.PreserveAspectCrop
@@ -258,14 +229,11 @@ Item {
                 width: parent.width
                 horizontalAlignment: Text.AlignHCenter
                 elide: Text.ElideMiddle
-                //  Der Titel aus den Datei-Tags; ohne sie der Dateiname
-                //  (`AudioController::trackTitle` entscheidet das).
                 text: Audio.trackTitle || App.uiText(App.language, "AudioNoTrack")
                 color: App.themeTextPrimary
                 font.pixelSize: 20
                 font.bold: true
             }
-            //  Interpret und Album - nur, wenn die Datei sie hergibt.
             Text {
                 width: parent.width
                 visible: Audio.trackSubtitle.length > 0
@@ -277,7 +245,6 @@ Item {
                 font.pixelSize: 13
             }
 
-            // ── Fortschritt, breit ──────────────────────────────────────────
             Item {
                 width: parent.width
                 height: 26
@@ -302,12 +269,8 @@ Item {
                     color: App.themeAccent
                     visible: Audio.duration > 0
                 }
-                //  Trefferfläche über dem Balken (der Balken selbst ist dünn).
-                //  WICHTIG: die Breite über die `id` ansprechen. Ein nacktes
-                //  `width` in einem Handler löst NICHT auf das umgebende Element
-                //  auf, sondern auf die Wurzel der Datei - der Sprung landete
-                //  dadurch an der falschen Stelle (derselbe Fehler wie zuvor
-                //  beim Lautstärkeregler).
+                // Trefferfläche über dem dünnen Balken. Die Breite über die `id` ansprechen: ein nacktes `width` löst im
+                // Handler nicht auf das umgebende Element auf, sondern auf die Wurzel der Datei - der Sprung landete falsch.
                 Item {
                     id: seekArea
                     anchors { left: parent.left; right: parent.right; top: parent.top }
@@ -337,7 +300,6 @@ Item {
                 }
             }
 
-            // ── Steuerung ───────────────────────────────────────────────────
             Row {
                 anchors.horizontalCenter: parent.horizontalCenter
                 spacing: view.narrow ? 6 : 14
@@ -394,7 +356,6 @@ Item {
         }
     }
 
-    // ── Rechts: die Warteschlange ───────────────────────────────────────────
     Rectangle {
         id: queuePane
         visible: view.queueVisible
@@ -426,8 +387,6 @@ Item {
             clip: true
             model: Audio.queue
             currentIndex: Audio.queueIndex
-            //  Beim Titelwechsel mitziehen, aber nicht springen, während jemand
-            //  in der Liste blättert.
             highlightFollowsCurrentItem: true
             boundsBehavior: Flickable.StopAtBounds
             ScrollBar.vertical: ScrollBar {}
@@ -461,9 +420,6 @@ Item {
                               right: saveSound.visible ? saveSound.left : parent.right
                               rightMargin: 12; verticalCenter: parent.verticalCenter }
                     elide: Text.ElideMiddle
-                    //  `titleOf` liest den Kopf der Datei EINMAL je Pfad und
-                    //  merkt sich das Ergebnis (Cache im Controller) - beim
-                    //  Blättern wird also nicht je Zeile erneut gelesen.
                     text: Audio.titleOf(row.modelData)
                     color: row.index === Audio.queueIndex ? App.themeAccent
                                                           : App.themeTextPrimary
@@ -471,12 +427,8 @@ Item {
                     font.bold: row.index === Audio.queueIndex
                 }
 
-                //  Ist dieser Eintrag ein VIDEO (Einstellungen ▸ Audio ▸ Videos
-                //  mitzeigen), lässt sich seine Tonspur hier als Datei sichern.
-                //  BLEIBEND sichtbar, nicht erst bei Zeigerkontakt: die Zeile
-                //  zeigt den Namen ohne Endung, man sähe einer Zeile sonst gar
-                //  nicht an, dass sie ein Video ist. Gedämpft, bis man darauf
-                //  zeigt - Videos sind in einer Wiedergabeliste die Ausnahme.
+                // Bei einem Video lässt sich die Tonspur hier als Datei sichern. BLEIBEND sichtbar, nicht erst bei
+                // Zeigerkontakt: die Zeile zeigt den Namen ohne Endung, man sähe ihr sonst nicht an, dass sie ein Video ist.
                 Rectangle {
                     id: saveSound
                     objectName: "queueSaveSound"
@@ -494,8 +446,6 @@ Item {
                     ToolTip.visible: saveHover.hovered
                     ToolTip.text: App.uiText(App.language, "AudioExtractMenu")
                     HoverHandler { id: saveHover }
-                    //  Der Zug auf die ZEILE spielt den Titel - dieser Griff
-                    //  muss ihn deshalb abfangen, sonst täte ein Klick beides.
                     TapHandler {
                         gesturePolicy: TapHandler.ReleaseWithinBounds
                         onTapped: if (!Audio.extractBusy) Audio.extractAudio(row.modelData)

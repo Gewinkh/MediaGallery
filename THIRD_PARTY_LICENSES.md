@@ -122,6 +122,8 @@ see [Third-party components inside Qt](#third-party-components-inside-qt).
 | Hunspell | direct | 1.7.3 | MPL-1.1 / GPL-2.0 / LGPL-2.1 tri-license | build + run | **yes** |
 | Adobe font metric data (derived numeric values) | data in this tree | - | origin: Adobe AFM data (`APAFML`); applicability to the reproduced values **`Needs verification`** | data in source | no |
 | Adobe Glyph List names (subset) | data in this tree | - | BSD-3-Clause (AGL data as published by Adobe) | data in source | no |
+| CP1252 code page mapping (32 values) | data in this tree | - | character encoding mapping; no code taken | data in source | no |
+| DATEV file format (`EXTF`/`DTVF`) | format read by own code | 700 | no material taken; official field catalogue **`Needs verification`** | reading only | no |
 
 ---
 
@@ -497,12 +499,24 @@ Glyph List names those encodings and Latin-1 require.
 - Only the subset needed for those encodings is present. No Adobe source code is
   contained.
 
-### Format specification constants
+### CP1252 code page mapping (`src/core/TextEncoding.cpp`)
 
-Container and codec parsers carry the constants their formats define, for example
-the MPEG bitrate and sample rate tables in `src/audio/AudioSeekIndex.cpp` and the
-PDF default values in `src/pdf/edit/PdfTextLayout.cpp`. These are values fixed by
-the respective format specifications and are required to read the format at all.
+- **Origin of the values:** generated on the reference machine from Python's
+  built-in `cp1252` codec (`bytes([b]).decode('cp1252')`), i.e. from the standard
+  library present locally, not copied from a document or another project.
+- **What is present in MediaGallery:** 32 numeric code points. No code and no
+  table file from any third party.
+
+### DATEV file format (`src/datev/`)
+
+MediaGallery reads DATEV booking batches (`EXTF`/`DTVF`, format version 700). The
+reader, the tokenizer and the table view are written for this project; **no DATEV
+code, library, API or documentation file is contained or shipped**.
+
+- The test files provide concrete examples of the DATEV format, including the identifier, separator,
+ quoting and column names. The reader itself is MediaGallery's own implementation.
+- No column table, no specification text and no other DATEV material has been
+  copied into this repository.
 
 ---
 
@@ -713,7 +727,13 @@ answered, because answering them requires information outside this repository:
    They cannot show how the files were written. Whether any of them is a
    derivative work of a Qt-supplied style is a question about their history, and
    is left open rather than answered by their imports.
-7. **The license of any trained data or dictionary a distribution adds.**
+7. **The DATEV field catalogue and its terms.** The header field names in
+   `src/datev/DatevFormat.cpp` cover only what the sample files themselves state.
+   Whether DATEV's published format description may be used as the source for the
+   remaining field names, and under what conditions, has not been established -
+   the official page could not be read (it renders its content in the browser, so
+   fetching it returns an empty document). Nothing has been taken from it.
+8. **The license of any trained data or dictionary a distribution adds.**
    Tesseract's Apache-2.0 and Hunspell's tri-license cover those libraries only.
    `*.traineddata` files and `.aff`/`.dic` dictionaries are separate works under
    their own terms, and none is shipped or contained today. Anything added later

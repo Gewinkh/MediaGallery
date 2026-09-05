@@ -6,26 +6,12 @@
 #include <QFileInfo>
 #include <QSet>
 
-// Docx steht VOR Unknown (Viewer-Typtabelle: 5 = DOCX-Editor); Typen werden
-// stets frisch aus der Endung erkannt - keine numerische Persistenz.
-//
-// Folder steht am ENDE, obwohl Ordner in der Galerie ZUERST erscheinen: die
-// Zahlen sind in QML festgeschrieben (MediaTile: 5 = Docx, 6 = Unknown), ein
-// Einschub davor haette jede dieser Stellen verschoben. Die Reihenfolge der
-// Anzeige macht ohnehin MediaProxyModel::lessThan, nicht der Enum-Wert.
+// Docx steht VOR Unknown (Viewer-Typtabelle: 5 = DOCX-Editor); Typen werden stets frisch aus der Endung erkannt.
+// Folder steht am ENDE, weil die Zahlen in QML festgeschrieben sind - ein Einschub hätte jede Stelle verschoben.
 enum class MediaType { Image, Video, Audio, Pdf, Text, Docx, Unknown, Folder };
 
-// ─────────────────────────────────────────────────────────────────────────────
-//  Rein lexikalische Pfad-Zerlegung (kein QFileInfo, kein Dateisystemzugriff).
-//
-//  fileName()/extension() liegen im HEISSESTEN Pfad der Galerie: MediaModel::data
-//  liefert FileNameRole je sichtbarer Zeile, MediaProxyModel::filterAcceptsRow
-//  fragt sie fuer JEDE Zeile bei jedem Filterlauf ab, JsonStorage::applyToItems
-//  fuer jedes Item jeder Ladecharge. Ein QFileInfo je Aufruf allozierte dafuer
-//  jedes Mal ein QFileInfoPrivate + QFileSystemEntry und parste den Pfad neu.
-//  Die Zerlegung ist rein textuell (beide Trenner, wie im uebrigen Projekt) und
-//  liefert fuer lokale Pfade dasselbe Ergebnis.
-// ─────────────────────────────────────────────────────────────────────────────
+// Rein lexikalische Pfad-Zerlegung, kein QFileInfo: `fileName()`/`extension()` liegen im heißesten Pfad der
+// Galerie (je sichtbarer Zeile, je Filterlauf, je Item jeder Ladecharge), und QFileInfo allozierte jedes Mal neu.
 namespace mg {
 
 inline QStringView baseNameView(QStringView path) {
@@ -37,11 +23,6 @@ inline QStringView baseNameView(QStringView path) {
     return path.mid(sep + 1);
 }
 
-// Endung OHNE Punkt - identisch zu QFileInfo::suffix(): alles nach dem LETZTEN
-// Punkt des Dateinamens. Ein fuehrender Punkt zaehlt dabei sehr wohl mit
-// (".gitignore" -> "gitignore"); genau darauf beruht die Erkennung der
-// endungslos wirkenden Textdateien in detectType (txtExts enthaelt "gitignore",
-// "gitattributes", "env"). Nur ein Name ganz OHNE Punkt hat keine Endung.
 inline QStringView suffixView(QStringView path) {
     const QStringView name = baseNameView(path);
     const qsizetype dot = name.lastIndexOf(QLatin1Char('.'));
@@ -56,18 +37,13 @@ struct MediaItem {
     QString displayName;    // Shown in UI (may differ from filename)
     QStringList tags;
     QDateTime dateTime;     // Effective date (custom or file date)
-    //  Ob ein Datum von Hand gesetzt wurde, steht nicht mehr hier: es wird bei
-    //  Bedarf aus der DATEI beantwortet (Änderungsdatum gegen Erstellungsdatum,
-    //  s. MediaModel::hasCustomDate). Das Feld bleibt als Platzhalter für den
-    //  Aufbau der Struktur erhalten und wird nirgends mehr gelesen.
+    // Ob ein Datum von Hand gesetzt wurde, wird bei Bedarf aus der DATEI beantwortet (Änderungs- gegen
+    // Erstellungsdatum). Das Feld bleibt nur als Platzhalter für den Aufbau der Struktur und wird nie gelesen.
     qint64 fileSize = 0;
     MediaType type = MediaType::Unknown;
 
-    //  Ordner-GELTUNGSBEREICH dieser Zeile: Index in die Bereichstabelle von
-    //  MediaModel (0 = der geoeffnete Ordner, >0 = ein aufgeklappter
-    //  Unterordner). Bewusst ein int und kein Pfad-String: Filter und
-    //  Sortierung brauchen ihn bei JEDEM Vergleich, und nur der Index fuehrt in
-    //  O(1) zur Elternkette (der Pfad allein taete das nicht).
+    // Ordner-Geltungsbereich als Index in die Bereichstabelle (0 = geöffneter Ordner). Bewusst ein int und kein
+    // Pfad-String: Filter und Sortierung brauchen ihn bei JEDEM Vergleich, und nur der Index führt in O(1) zur Kette.
     int scope = 0;
 
     bool isFolder() const { return type == MediaType::Folder; }
@@ -85,12 +61,8 @@ struct MediaItem {
             "mp4","mkv","avi","mov","wmv","flv","webm","m4v","mpg","mpeg",
             "3gp","ogv","ts","m2ts","vob","rmvb","asf","divx","xvid"
         };
-        //  `eac3`/`ec3`/`mp2`/`aac` stehen hier NICHT nur der Vollständigkeit
-        //  halber: das sind Endungen, die die App SELBST erzeugt („Audio
-        //  extrahieren"). Fehlten sie, landete das eigene Ergebnis als
-        //  unbekannter Typ in der Galerie - sichtbar nur unter „alle Dateien
-        //  anzeigen", nicht abspielbar, ohne Kachelbild. Jedes Format hier ist
-        //  mit dem Dekoder des Players geprüft.
+        // `eac3`/`ec3`/`mp2`/`aac` stehen hier, weil die App sie SELBST erzeugt ("Audio extrahieren"). Fehlten sie,
+        // landete das eigene Ergebnis als unbekannter Typ in der Galerie - nicht abspielbar, ohne Kachelbild.
         static const QSet<QString> audExts = {
             "mp3","flac","wav","ogg","oga","aac","m4a","m4b","wma","opus",
             "aiff","aif","ape","mka","alac","dsf","dff","wv","tta","spx","amr",
@@ -104,12 +76,8 @@ struct MediaItem {
             "cs","go","rs","rb","php","swift","kt","lua","r","m","f90","cmake","mk",
             "log","csv","tsv","gitignore","gitattributes","env","dockerfile","makefile",
             "qml","qrc","pro","pri","supp",
-            //  Diese Liste MUSS jede Endung enthalten, die
-            //  `src/editor/LanguageTable.cpp` kennt - sonst faerbt der Editor
-            //  eine Sprache, die sich gar nicht oeffnen laesst („Kein
-            //  Vorschau-Renderer"). Genau so passiert mit `.dart` und `.pl`
-            //  (Nutzerbefund 2026-09-03); `tests/media/tst_mediaitem.cpp`
-            //  vergleicht beide Listen seitdem gegeneinander.
+            // Diese Liste MUSS jede Endung enthalten, die `LanguageTable.cpp` kennt - sonst färbt der Editor eine Sprache,
+            // die sich gar nicht öffnen lässt (so passiert mit `.dart` und `.pl`). `tst_mediaitem` vergleicht beide Listen.
             "dart","pl","pm"
         };
         const QString ext = mg::suffixView(path).toString().toLower();
@@ -119,12 +87,9 @@ struct MediaItem {
         if (ext == "pdf") return MediaType::Pdf;
         if (ext == "docx") return MediaType::Docx;   // Word-Dokumente (DOCX-Editor)
         if (txtExts.contains(ext)) return MediaType::Text;
-        // Extension-less text files (e.g. "Makefile", "Dockerfile")
         const QString name = mg::baseNameView(path).toString().toLower();
-        //  Endungslose Textdateien, die in jedem Projekt vorkommen. Ohne sie
-        //  meldet der Viewer „Kein Vorschau-Renderer fuer diesen Typen" -
-        //  eine LICENSE liess sich dadurch gar nicht ansehen (Nutzerbefund
-        //  2026-09-02). Kleingeschrieben verglichen, `name` ist es bereits.
+        // Endungslose Textdateien, die in jedem Projekt vorkommen: ohne sie meldet der Viewer "Kein
+        // Vorschau-Renderer für diesen Typen" - eine LICENSE ließ sich dadurch gar nicht ansehen.
         static const QSet<QString> textNamen = {
             "makefile", "dockerfile", "license", "licence", "copying",
             "notice", "authors", "contributors", "changelog", "changes",

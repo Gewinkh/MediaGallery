@@ -9,24 +9,19 @@
 #include <charconv>
 #include <cstring>
 
-//  Alles hier arbeitet auf ROHEN Fremddaten (der eigenen Ausgabe zwar, aber
-//  über eine Bibliotheksgrenze hinweg) - vor jedem Zugriff wird die Grenze
-//  geprüft, und jede Unstimmigkeit führt zum Abbruch mit unveränderter Eingabe
-//  (Regel 21). Getestet in tests/core/tst_pdfglyphruns.cpp.
+// Alles hier arbeitet auf ROHEN Fremddaten: vor jedem Zugriff wird die Grenze geprüft, und jede Unstimmigkeit
+// führt zum Abbruch mit unveränderter Eingabe.
 
 namespace {
 
-//  Glyphenbreiten eines CID-Zeichensatzes. `/W` führt die Ausnahmen, `/DW` die
-//  Vorgabe für alles Übrige (bei einer Monospace-Schrift schreibt Qt NUR `/DW`).
-//  Der Wert muss exakt der sein, mit dem auch der Betrachter rechnet - der
-//  Zwischenwert im `TJ` wird daraus abgeleitet.
+// Glyphenbreiten eines CID-Zeichensatzes: `/W` führt die Ausnahmen, `/DW` die Vorgabe (bei einer Monospace
+// schreibt Qt NUR `/DW`). Der Wert muss exakt der sein, mit dem auch der Betrachter rechnet.
 struct Widths {
     QHash<int, double> w;
     double             dw = 1000.0;      // Vorgabe der Spezifikation
     double value(int glyph) const { return w.value(glyph, dw); }
 };
 
-// ── kleine Leser auf einem Byte-Bereich ──────────────────────────────────────
 
 inline bool isWs(char c) {
     return c == ' ' || c == '\n' || c == '\r' || c == '\t' || c == '\f' || c == '\0';
@@ -147,7 +142,6 @@ int intValue(const QByteArray& dict, const char* key) {
     return toInt(token(dict, &i), &v) ? v : -1;
 }
 
-// ── Datei-Gerüst ─────────────────────────────────────────────────────────────
 
 struct Objects {
     QHash<int, qsizetype> offset;        // Objektnummer -> Byte-Offset
@@ -240,7 +234,6 @@ QByteArray dictOf(const Objects& o, int num) {
     return b.mid(ds, de - ds);
 }
 
-// ── Ströme ───────────────────────────────────────────────────────────────────
 
 struct Stream {
     QByteArray dict;
@@ -301,11 +294,8 @@ QByteArray buildStreamObject(int num, const QByteArray& data, bool flate) {
     return out;
 }
 
-// ── /W eines CID-Zeichensatzes ───────────────────────────────────────────────
-//
-//  Zwei Formen erlaubt die Spezifikation: `c [w w w …]` und `c_first c_last w`.
-//  Qt schreibt die erste; die zweite kostet vier Zeilen und macht den Leser
-//  vollständig.
+// Zwei Formen erlaubt die Spezifikation: `c [w w w ...]` und `c_first c_last w`. Qt schreibt die erste; die
+// zweite kostet vier Zeilen und macht den Leser vollständig.
 bool readWidths(const QByteArray& dict, Widths* out) {
     if (dict.isEmpty()) return false;
     const int dw = intValue(dict, "DW");
@@ -352,17 +342,14 @@ bool readWidths(const QByteArray& dict, Widths* out) {
     }
 }
 
-// ── Der Umbau des Inhaltsstroms ──────────────────────────────────────────────
 
 struct Line { qsizetype start; qsizetype end; };   // ohne '\n', ohne '\r'
 
 //  „x y Td <hhhh> Tj" - der einzige Fall, den Qt für eine Glyphe schreibt.
 struct GlyphOp { double dx; double dy; int glyph; };
 
-//  Der Inhaltsstrom eines grossen Dokuments hat Hunderttausende solcher
-//  Zeilen. Deshalb lesen die beiden Erkenner OHNE Zwischenkopie direkt auf den
-//  Bytes - mit `token()` (das je Wort ein QByteArray anlegt) kostete allein
-//  dieser Lauf mehr als das Packen des Stroms.
+// Der Inhaltsstrom eines großen Dokuments hat hunderttausende solcher Zeilen: die Erkenner lesen deshalb OHNE
+// Zwischenkopie direkt auf den Bytes - mit `token()` kostete allein dieser Lauf mehr als das Packen des Stroms.
 inline void skipWsP(const char*& p, const char* e) { while (p < e && isWs(*p)) ++p; }
 
 //  Zahl in der Form, die Qt schreibt: [-+]?Ziffern[.Ziffern] - kein Exponent.
@@ -413,7 +400,6 @@ bool parseGlyphOp(const QByteArray& d, const Line& ln, GlyphOp* g) {
     return p == e;
 }
 
-//  „/F11 15 Tf"
 bool parseFontOp(const QByteArray& d, const Line& ln, QByteArray* name, double* size) {
     const char* p = d.constData() + ln.start;
     const char* e = d.constData() + ln.end;
@@ -486,10 +472,8 @@ QByteArray transformContent(const QByteArray& in,
             chain.append(g);
             ++j;
         }
-        //  Zusammenfassen NUR, wenn danach `ET` steht. `Td` verschiebt die
-        //  ZEILEN-Matrix; ein `TJ` tut das nicht. Käme nach der Kette ein
-        //  weiteres `Td`, bezöge es sich plötzlich auf den Ketten-ANFANG statt
-        //  auf die letzte Glyphe - der Rest der Seite verrutschte.
+        // Zusammenfassen NUR, wenn danach `ET` steht: `Td` verschiebt die Zeilen-Matrix, ein `TJ` nicht. Käme danach
+        // ein weiteres `Td`, bezöge es sich auf den Ketten-ANFANG - der Rest der Seite verrutschte.
         bool endsAtEt = false;
         if (j < lines.size()) {
             const char* q = in.constData() + lines.at(j).start;
@@ -533,8 +517,7 @@ QByteArray transformContent(const QByteArray& in,
     return out;
 }
 
-// ── ToUnicode: Ziel U+0009 -> U+0020 ─────────────────────────────────────────
-//
+// ToUnicode: Ziel U+0009 -> U+0020
 //  Ersetzt wird ausschliesslich an ZIEL-Stellen. Ein blindes Suchen nach
 //  „<0009>" träfe auch einen QUELL-Code 0x0009 und zerstörte die Tabelle.
 QByteArray fixToUnicode(const QByteArray& in, bool* changed) {
@@ -618,7 +601,7 @@ QByteArray mergeGlyphRuns(const QByteArray& pdf) {
     if (!readXref(pdf, xrefPos, &o))  return pdf;
     if (!cutBodies(pdf, xrefPos, &o)) return pdf;
 
-    //  ── Seiten einsammeln: Inhaltsstrom + Zeichensätze je Ressourcenname ────
+    //  Seiten einsammeln: Inhaltsstrom + Zeichensätze je Ressourcenname
     struct PageJob { int content; QHash<QByteArray, Widths> fonts; };
     QList<PageJob> jobs;
     QSet<int>      toUnicodeObjs;
@@ -674,7 +657,6 @@ QByteArray mergeGlyphRuns(const QByteArray& pdf) {
     }
     if (jobs.isEmpty() && toUnicodeObjs.isEmpty()) return pdf;
 
-    //  ── Inhaltsströme umschreiben ───────────────────────────────────────────
     QHash<int, QByteArray> newBody;
     int merged = 0;
     for (const PageJob& job : std::as_const(jobs)) {
@@ -699,7 +681,6 @@ QByteArray mergeGlyphRuns(const QByteArray& pdf) {
         newBody.insert(job.content, buildStreamObject(job.content, packed, s.flate));
     }
 
-    //  ── ToUnicode berichtigen ───────────────────────────────────────────────
     for (const int num : std::as_const(toUnicodeObjs)) {
         Stream s;
         if (!readStream(o, num, &s)) continue;            // kein Grund abzubrechen
@@ -723,7 +704,7 @@ QByteArray mergeGlyphRuns(const QByteArray& pdf) {
 
     if (newBody.isEmpty()) return pdf;
 
-    //  ── Datei neu schreiben: Kopf, Objekte in DATEI-Reihenfolge, frisches
+    //  Datei neu schreiben: Kopf, Objekte in DATEI-Reihenfolge, frisches
     //     xref. Objektnummern bleiben, also bleiben alle Verweise gültig; ein
     //     nicht mehr benutztes Längen-Objekt bleibt einfach stehen.
     QByteArray out;

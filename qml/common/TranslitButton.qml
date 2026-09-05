@@ -2,17 +2,8 @@ import QtQuick
 import QtQuick.Controls
 import MediaGallery 1.0
 
-// ─────────────────────────────────────────────────────────────────────────────
-//  TranslitButton.qml - Umschalter der Live-Transliteration (oben rechts in
-//  TextSurface und in der PDF-Editor-Toolbar).
-//
-//  • Klick öffnet ein kleines Popup: „Aus" + die drei Schemata (Arabisch mit
-//    Harakat, Japanisch–Hiragana, Japanisch–Katakana). Die Auswahl setzt
-//    Translit.scheme UND aktiviert; „Aus" deaktiviert nur (Schema bleibt).
-//  • Der Glyph zeigt das aktive Schema (ع / あ / ア); Akzent-Rahmen = aktiv.
-//  • Zustand + Schema sind global (Translit-Singleton, persistiert) - der
-//    Button ist überall nur eine Sicht darauf.
-// ─────────────────────────────────────────────────────────────────────────────
+// Umschalter der Live-Transliteration: das Popup setzt `Translit.scheme` und aktiviert, "Aus" deaktiviert nur.
+// Zustand und Schema sind global und persistiert - der Knopf ist überall nur eine Sicht darauf.
 Rectangle {
     id: root
 
@@ -42,7 +33,6 @@ Rectangle {
     ToolTip.text: App.uiText(App.language, "TranslitTip")
     ToolTip.visible: hover.hovered && !menu.opened
 
-    // ── Schema-Auswahl ────────────────────────────────────────────────────────
     Popup {
         id: menu
         x: root.width - width

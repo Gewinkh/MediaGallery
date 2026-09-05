@@ -3,30 +3,9 @@
 #include <QQuickPaintedItem>
 #include <QQuickTextDocument>
 
-// ─────────────────────────────────────────────────────────────────────────────
-//  TextMinimap.h - die Uebersichtsspalte des Texteditors (Kates „Minimap").
-//
-//  Zeigt die GANZE Datei stark verkleinert: je Zeile ein paar Pixel hoch, die
-//  Zeichen als farbige Balken in den Farben der Syntaxfaerbung. Man sieht damit
-//  die FORM des Dokuments - Einrueckungen, Bloecke, Leerzeilen - und kann darin
-//  scrollen, ohne sie zu lesen.
-//
-//  ZWEI Entscheidungen tragen das Ganze:
-//
-//  1. **Es wird kein Text gezeichnet, sondern Balken.** Bei zwei bis drei Pixel
-//     Zeilenhoehe waere Text ohnehin nicht lesbar, und ihn zu rastern kostete
-//     je Zeile ein Vielfaches. Balken sagen dasselbe: wo Code steht, wo
-//     eingerueckt ist, wo eine Zeichenkette beginnt.
-//
-//  2. **Die Farben werden NICHT neu berechnet.** Der Faerber hat sie laengst in
-//     die Bloecke geschrieben (`QTextBlock::layout()->formats()`); die Minimap
-//     liest sie nur ab. Ein eigener Durchlauf durch den Zerleger waere ein
-//     zweiter voller Durchgang durch die Datei - fuer dieselbe Information.
-//
-//  Gemalt werden nur die Zeilen, die gerade in der Spalte stehen (rund 250 bei
-//  3 px Zeilenhoehe), nie das ganze Dokument. Passt die Datei nicht in die
-//  Spalte, scrollt die Spalte SELBST mit - im Verhaeltnis zum Dokument.
-// ─────────────────────────────────────────────────────────────────────────────
+// Zeigt die ganze Datei als farbige Balken, nicht als Text - bei drei Pixel Zeilenhoehe
+// waere Text unlesbar und teuer. Die Farben kommen aus den Bloecken des Faerbers
+// (layout()->formats()), ein eigener Zerleger-Lauf waere ein zweiter voller Durchgang.
 namespace mg::editor {
 
 class TextMinimap : public QQuickPaintedItem {

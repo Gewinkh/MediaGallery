@@ -4,14 +4,8 @@ import QtQuick.Controls
 import MediaGallery 1.0
 import "../common"
 
-// ─────────────────────────────────────────────────────────────────────────────
-//  TagBar.qml - Tags einer Datei anzeigen/bearbeiten (ersetzt TagBar/TagPill aus
-//  TagWidget.cpp). Reine QML-Items; Mutationen via Modell (mediaModel.addTag/
-//  removeTagFromFile). Tag-Auswahl-Dropdown speist sich aus Tags.allTags().
-//
-//  Reaktiv: lokale tagModel wird bei fileName-Wechsel und Tags.tagsChanged neu
-//  aus mediaModel.tagsOfFile() gezogen (Funktionen, keine Bindings).
-// ─────────────────────────────────────────────────────────────────────────────
+// Tags einer Datei anzeigen und bearbeiten; reine QML-Items, Mutationen über das Modell. Das lokale `tagModel`
+// wird bei Dateiwechsel und `Tags.tagsChanged` neu aus `mediaModel.tagsOfFile()` gezogen - Funktionen, keine Bindings.
 Item {
     id: bar
 
@@ -89,7 +83,6 @@ Item {
             }
         }
 
-        // ── Hinzufügen ────────────────────────────────────────────────────────
         Row {
             visible: bar.editable
             spacing: 4

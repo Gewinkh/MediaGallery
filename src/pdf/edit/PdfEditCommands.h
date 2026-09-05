@@ -1,23 +1,7 @@
 #pragma once
-// ══════════════════════════════════════════════════════════════════════════════
-//  PdfEditCommands.h - Delta-Kommandos des Undo/Redo-Systems.
-// ══════════════════════════════════════════════════════════════════════════════
-//
-//  RAM-EFFIZIENZ (Anforderung: KEINE vollständigen Snapshots)
-//  ──────────────────────────────────────────────────────────
-//  Jedes Kommando speichert nur das DELTA genau EINER Box:
-//   • Add/Remove  -> die eine Box (das ist ihr minimales Delta) + Zeile
-//   • Geometry    -> id + altes/neues Rechteck
-//   • Text        -> id + alter/neuer String
-//   • Field       -> id + Feld + alter/neuer QVariant
-//  Der QUndoStack (QtGui seit Qt 6 - kein Widgets-Bezug) hält damit selbst bei
-//  langen Sitzungen nur Kilobytes. Kontinuierliche Gesten (Ziehen/Tippen)
-//  erzeugen über die Session-API des Controllers ohnehin nur EIN Kommando.
-//
-//  Hinweis Erst-redo(): push() führt redo() sofort aus. Bei Session-Kommandos
-//  (Geometry/Text) trägt das Modell den neuen Wert bereits -> das erneute
-//  Anwenden ist ein idempotentes No-Op (applyX prüft auf Gleichheit).
-// ══════════════════════════════════════════════════════════════════════════════
+// Undo/Redo-Kommandos: jedes hält nur das Delta EINER Box, keine Snapshots - der Stack bleibt auch
+// nach langen Sitzungen bei Kilobytes. push() führt redo() sofort aus; bei Session-Kommandos trägt
+// das Modell den Wert schon, das erneute Anwenden ist ein idempotentes No-Op.
 
 #include <QUndoCommand>
 #include <QVariant>
@@ -29,13 +13,8 @@
 class PdfEditModel;
 class PdfEditController;
 
-// ─────────────────────────────────────────────────────────────────────────────
-//  Seiten-Plan ändern (Seite hinzufügen/entfernen/umsortieren/drehen/importieren).
-//  EIN Kommando je Op (Delta alt->neu Plan). redo()/undo() rufen
-//  PdfEditController::applyPlan() -> Ansicht + (destruktiv) Datei-Neuschrieb
-//  folgen dem Undo/Redo. Der Plan ist eine Liste kleiner Structs (vier ints je
-//  Seite) - auch bei tausend Seiten wenige Kilobyte, also kein Snapshot-Problem.
-// ─────────────────────────────────────────────────────────────────────────────
+// Seiten-Plan ändern - EIN Kommando je Op (Delta alt -> neu). Der Plan ist eine Liste kleiner Structs (vier ints
+// je Seite), auch bei tausend Seiten wenige Kilobyte.
 class PdfEditPagePlanCommand : public QUndoCommand {
 public:
     PdfEditPagePlanCommand(PdfEditController* ctl,
@@ -49,13 +28,8 @@ private:
     QVector<PdfPlanPage> m_new;
 };
 
-// ─────────────────────────────────────────────────────────────────────────────
-//  Änderung an der EINGEBETTETEN Textebene (Werkzeug „Text bearbeiten").
-//  Delta = genau EINE PdfTextOp; undo() entfernt die zuletzt angewendete Op
-//  wieder. Das ist immer die richtige, weil der QUndoStack streng LIFO
-//  arbeitet: Die Ops stehen in der Liste in exakt der Reihenfolge, in der ihre
-//  Kommandos auf dem Stack liegen.
-// ─────────────────────────────────────────────────────────────────────────────
+// Delta = genau EINE PdfTextOp; `undo()` entfernt die zuletzt angewendete. Das ist immer die richtige, weil der
+// QUndoStack streng LIFO arbeitet - die Ops stehen in der Reihenfolge ihrer Kommandos.
 class PdfEditTextOpCommand : public QUndoCommand {
 public:
     PdfEditTextOpCommand(PdfEditController* ctl, const PdfTextOp& op);
@@ -66,9 +40,7 @@ private:
     PdfTextOp          m_op;
 };
 
-// ─────────────────────────────────────────────────────────────────────────────
 //  Textbox hinzufügen (undo entfernt sie wieder - Zeile bleibt stabil).
-// ─────────────────────────────────────────────────────────────────────────────
 class PdfEditAddCommand : public QUndoCommand {
 public:
     PdfEditAddCommand(PdfEditModel* model, const PdfEditBox& box, int row);
@@ -80,9 +52,7 @@ private:
     int           m_row;
 };
 
-// ─────────────────────────────────────────────────────────────────────────────
 //  Textbox entfernen (undo fügt sie an der alten Zeile wieder ein).
-// ─────────────────────────────────────────────────────────────────────────────
 class PdfEditRemoveCommand : public QUndoCommand {
 public:
     PdfEditRemoveCommand(PdfEditModel* model, const PdfEditBox& box, int row);
@@ -94,13 +64,8 @@ private:
     int           m_row;
 };
 
-// ─────────────────────────────────────────────────────────────────────────────
-//  Verschieben/Skalieren - EIN Kommando je Drag-Session (Delta alt->neu).
-//  Trägt neben dem Rechteck auch die SEITE (seitenübergreifendes Verschieben:
-//  Undo bringt die Box auf die alte Seite zurück) UND die PUNKTE (Freihand/
-//  Pfeil werden beim Verschieben/Skalieren mit-transformiert; Undo stellt
-//  beides wieder her). Für punktlose Annotationen sind die Vektoren leer.
-// ─────────────────────────────────────────────────────────────────────────────
+// EIN Kommando je Zieh-Session. Trägt neben dem Rechteck auch die SEITE (seitenübergreifendes Verschieben) und
+// die PUNKTE (Freihand und Pfeil werden mit-transformiert); für punktlose Annotationen sind die Vektoren leer.
 class PdfEditGeometryCommand : public QUndoCommand {
 public:
     PdfEditGeometryCommand(PdfEditModel* model, int id,
@@ -121,9 +86,7 @@ private:
     QVector<QPointF> m_newPts;
 };
 
-// ─────────────────────────────────────────────────────────────────────────────
 //  Textänderung - EIN Kommando je Bearbeitungs-Session (Delta alt->neu).
-// ─────────────────────────────────────────────────────────────────────────────
 class PdfEditTextCommand : public QUndoCommand {
 public:
     PdfEditTextCommand(PdfEditModel* model, int id,
@@ -137,9 +100,7 @@ private:
     QString       m_new;
 };
 
-// ─────────────────────────────────────────────────────────────────────────────
 //  Reflow-Verkettung setzen/lösen (chainNext einer Box) - undo-fähig.
-// ─────────────────────────────────────────────────────────────────────────────
 class PdfEditChainCommand : public QUndoCommand {
 public:
     PdfEditChainCommand(PdfEditModel* model, int id, int oldNext, int newNext);
@@ -152,13 +113,8 @@ private:
     int           m_new;
 };
 
-// ─────────────────────────────────────────────────────────────────────────────
-//  Stil-/Formatfeld (Bold/Italic/Underline/Größe/Farbe/Hervorhebung/
-//  Ausrichtung/Schriftart). Aufeinanderfolgende Änderungen DESSELBEN Feldes
-//  derselben Box verschmelzen (mergeWith) - SpinBox-Klickserien erzeugen so
-//  einen einzigen Undo-Schritt; hebt sich eine Serie exakt auf (alt == neu),
-//  verwirft setObsolete() das Kommando ganz.
-// ─────────────────────────────────────────────────────────────────────────────
+// Aufeinanderfolgende Änderungen DESSELBEN Feldes derselben Box verschmelzen - eine SpinBox-Serie ergibt einen
+// Undo-Schritt; hebt sie sich exakt auf, verwirft `setObsolete()` das Kommando ganz.
 class PdfEditFieldCommand : public QUndoCommand {
 public:
     static constexpr int kCommandId = 4711;

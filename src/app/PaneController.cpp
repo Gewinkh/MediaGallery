@@ -20,13 +20,11 @@ PaneController::PaneController(ISettings& settings, ThumbnailLoader& loader,
     , m_media(m_storage, m_tags, loader)
     , m_proxy()
 {
-    //  Startwert des Optionen-Modus aus den Einstellungen (s. Q_PROPERTY).
     m_optionsVisible = settings.optionsVisible();
 
     m_proxy.setSourceModel(&m_media);
     m_proxy.setTagManager(&m_tags);
 
-    //  Ordner öffnen -> Modell lädt ihn.
     connect(&m_folders, &FolderService::folderOpened, &m_media, &MediaModel::loadFolder);
     connect(&m_folders, &FolderService::folderOpened, this, &PaneController::folderOpened);
     connect(&m_folders, &FolderService::folderOpened, this, &PaneController::folderChanged);
@@ -38,7 +36,6 @@ PaneController::PaneController(ISettings& settings, ThumbnailLoader& loader,
         m_media.applyDeepFilter(m_proxy.criteria(), m_proxy.activeCategoryNames());
     });
 
-    //  Tag-/Kategorie-Änderungen dieser Hälfte weiterreichen.
     connect(&m_tags, &TagManager::tagsChanged,       this, &PaneController::tagsChanged);
     connect(&m_tags, &TagManager::categoriesChanged, this, &PaneController::categoriesChanged);
 
@@ -54,22 +51,16 @@ PaneController::PaneController(ISettings& settings, ThumbnailLoader& loader,
     connect(&m_tags, &TagManager::subfolderSweepFinished, this,
             [this](const QString& tag, int count) {
         if (count <= 0) return;                 // nirgends vorgekommen - nichts zu melden
-        //  Die im Speicher gehaltenen Sidecars der aufgeklappten Unterordner
-        //  sind jetzt veraltet: wegwerfen und neu lesen.
         m_media.dropScopeSidecars();
         emit statusMessage(Strings::get(StringKey::TagDeletedInSubfolders)
                                .arg(tag).arg(count));
     });
 
-    //  Rueckgaengig der Tag-Seitenleiste: der Stapel haelt Schnappschuesse
-    //  EINES Ordners - beim Wechsel ist er hinfaellig.
     connect(&m_folders, &FolderService::folderOpened, &m_tags, [this](const QString&) {
         m_tags.clearUndo();
     });
     connect(&m_tags, &TagManager::tagUndoApplied, this,
             [this](const QString& label, int subfolders, bool complete, bool redo) {
-        //  Wurden Sidecars von Unterordnern zurueckgeschrieben, sind die im
-        //  Speicher gehaltenen Kopien der aufgeklappten Bereiche veraltet.
         if (subfolders > 0) m_media.dropScopeSidecars();
         if (!complete)
             emit statusMessage(Strings::get(StringKey::TagUndoPartial, label));
@@ -81,8 +72,6 @@ PaneController::PaneController(ISettings& settings, ThumbnailLoader& loader,
                                                  : StringKey::TagUndoDone, label));
     });
 
-    //  „Alle Dateien anzeigen": der Schalter lebt in den Einstellungen, die
-    //  Regel im Modell - beim Umschalten liest es den Ordner neu.
     m_media.setShowAllFiles(m_settings.showAllFiles());
 }
 
@@ -90,7 +79,6 @@ PaneController::~PaneController() = default;
 
 QString PaneController::currentFolder() const { return m_folders.currentFolder(); }
 
-// ── Ordner öffnen ────────────────────────────────────────────────────────────
 void PaneController::openFolderUrl(const QUrl& url) {
     const QString path = url.isLocalFile() ? url.toLocalFile() : url.toString();
     openFolder(path);
@@ -98,8 +86,6 @@ void PaneController::openFolderUrl(const QUrl& url) {
 
 void PaneController::openFolder(const QString& path) {
     if (path.isEmpty()) return;
-    //  Ein AUSGEWÄHLTER Ordner ist kein Abstieg - der Rückweg bezieht sich auf
-    //  den vorherigen Baum und ist damit hinfällig.
     clearFolderHistory();
     m_folders.openFolder(path);
 }
@@ -113,24 +99,13 @@ void PaneController::refreshCurrentFolder() {
     const QString folder = m_folders.currentFolder();
     if (folder.isEmpty()) return;
     m_storage.loadFolder(folder);
-    //  Das VERZEICHNIS wieder einlesen, nicht nur die Beidatei. Vorher stand
-    //  hier allein `m_storage.loadFolder` - das laedt Tags und Kategorien neu,
-    //  laesst die Dateiliste aber unangetastet. Wer den Ordner aktualisierte,
-    //  bekam deshalb weder neu hinzugekommene Dateien noch die Wirkung einer
-    //  Einstellung, die den Leser betrifft.
-    //
-    //  **`reload()`, NICHT `loadFolder()`**: letzteres steigt beim SELBEN Ordner
-    //  sofort wieder aus (`folderPath == m_folder && !m_items.isEmpty()`) - ein
-    //  Aktualisieren desselben Ordners war damit wirkungslos. `reload()` baut
-    //  bedingungslos neu auf, und genau darauf beruht auch der Schalter „alle
-    //  Dateien anzeigen" (vom Nutzer gemeldet: versteckte Dateien erschienen
-    //  erst, wenn man ZUSAETZLICH jenen Schalter umlegte).
+    // reload(), nicht loadFolder(): letzteres steigt beim selben Ordner sofort wieder aus,
+    // ein Aktualisieren waere damit wirkungslos.
     m_media.reload();
     emit folderContentsChanged();
     emit statusMessage(Strings::get(StringKey::MenuRefresh));
 }
 
-// ── Hinein und zurück ────────────────────────────────────────────────────────
 void PaneController::openSubfolder(const QString& path) {
     if (path.isEmpty()) return;
     const QString current = m_folders.currentFolder();
@@ -147,9 +122,6 @@ void PaneController::openSubfolder(const QString& path) {
 }
 
 bool PaneController::navigateBack() {
-    //  Einträge, die nicht mehr taugen (Ordner gelöscht, schon offen), werden
-    //  verworfen statt den Rückweg zu blockieren - dieselbe Linie wie beim
-    //  Datei-Undo in MediaModel.
     while (!m_backStack.isEmpty()) {
         const QString prev = m_backStack.takeLast();
         if (prev.isEmpty() || prev == m_folders.currentFolder()
@@ -175,13 +147,9 @@ bool PaneController::adoptSiblingFile(const QString& sourcePath,
     const QString src = mg::toLocalPath(sourcePath);
     const QString dst = mg::toLocalPath(newPath);
     const QString folder = QFileInfo(dst).absolutePath();
-    //  Nur die Hälfte, in der die Datei wirklich liegt, macht etwas. Mit zwei
-    //  Galerien setzen beide denselben Ruf ab - die andere fällt hier heraus.
     if (mg::normalizedFolder(folder) != mg::normalizedFolder(m_folders.currentFolder()))
         return false;
 
-    //  ERST neu einlesen: ohne Zeile im Modell hätte die neue Datei nichts, an
-    //  dem ein Tag hängen könnte (`MediaModel::addTag` sucht die Zeile).
     m_media.reload();
     emit folderContentsChanged();
     if (!inheritTags) return true;
@@ -189,7 +157,6 @@ bool PaneController::adoptSiblingFile(const QString& sourcePath,
     for (const QString& tag : m_media.tagsOfFile(src))
         m_media.addTag(dst, tag);
 
-    //  Kategorien führen DATEINAMEN, nicht Pfade (s. TagManager).
     const QString srcName = QFileInfo(src).fileName();
     const QString dstName = QFileInfo(dst).fileName();
     for (const QString& catId : m_tags.categoryIdsForFile(srcName))
@@ -197,10 +164,8 @@ bool PaneController::adoptSiblingFile(const QString& sourcePath,
     return true;
 }
 
-// ── Inhalt hat sich geändert ─────────────────────────────────────────────────
-//  Mit zwei Hälften ist „der Ordner" nicht mehr eindeutig: eine Datei, die in
-//  Hälfte A angelegt wird, geht Hälfte B nichts an, solange dort ein anderer
-//  Ordner offen ist. Ohne Angabe gilt es für die eigene Hälfte.
+// Mit zwei Hälften ist "der Ordner" nicht mehr eindeutig: eine Datei, die in Hälfte A entsteht, geht Hälfte B
+// nichts an, solange dort ein anderer Ordner offen ist. Ohne Angabe gilt es für die eigene Hälfte.
 void PaneController::notifyContentsChanged(const QString& folder) {
     if (!folder.isEmpty()
         && mg::normalizedFolder(folder) != mg::normalizedFolder(m_folders.currentFolder()))

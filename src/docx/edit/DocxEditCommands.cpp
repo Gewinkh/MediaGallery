@@ -36,7 +36,6 @@ void DocxReplaceBlocksCommand::undo() {
     m_ctl->applyBlocks(m_first, m_after.size(), m_before, m_curBefore);
 }
 
-// ─── Seitenränder ────────────────────────────────────────────────────────────
 DocxSectionCommand::DocxSectionCommand(DocxEditController* ctl,
                                        Docx::Document::SectionState before,
                                        Docx::Document::SectionState after)

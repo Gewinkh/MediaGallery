@@ -4,34 +4,17 @@ import QtQuick.Layouts
 import MediaGallery 1.0
 import "../common"
 
-// ── Wiederverwendbarer Dialog: gespeicherten Ordner (Lesezeichen) anlegen/ändern
-//
-//  Identisches Verhalten an beiden Aufrufstellen:
-//    • Einstellungen ▸ Lesezeichen ▸ "+ Ordner hinzufügen"
-//    • Hauptmenü ▸ Ordner ▸ "Ordner hinzufügen"
-//
-//  Die Komponente ist self-contained: Sie kapselt den modalen Eingabedialog
-//  (Anzeigename + Pfad + Durchsuchen) samt Ordner-Wähler und schreibt direkt
-//  über die globalen Singletons App.addBookmark / App.updateBookmark.
-//
-//  API:
-//    openAdd(prefillPath[, group])   -> Formular im Hinzufügen-Modus; optionaler
-//                                      vorbefüllter Pfad (bleibt frei änderbar)
-//                                      und optionale Vorauswahl der Gruppe
-//    openEdit(index, name, path, group) -> vorbefülltes Formular (Bearbeiten)
-// ─────────────────────────────────────────────────────────────────────────────
+// Lesezeichen anlegen oder ändern, identisch an beiden Aufrufstellen (Einstellungen und Hauptmenü ▸ Ordner).
+// Self-contained: kapselt Eingabedialog samt Ordner-Wähler und schreibt direkt über App.addBookmark /
+// App.updateBookmark. Einstieg über `openAdd(pfad[, gruppe])` bzw. `openEdit(index, name, pfad, gruppe)`.
 Item {
     id: root
 
     // -1 = Hinzufügen, >=0 = Bearbeiten (Index in App.savedFolders)
     property int editIndex: -1
 
-    //  Auswahlliste der Gruppe: „ohne" + JEDE angelegte Gruppe, auch die tief
-    //  liegenden, in der Reihenfolge des Menüs. Der leere Eintrag steht bewusst
-    //  an Position 0.
-    //  Je Eintrag zwei Dinge: `path` ist die Identität ("Persönlich/Lernen"),
-    //  `label` das, was man liest - nach Tiefe eingerückt, damit die
-    //  Verschachtelung in einer Klappliste überhaupt zu erkennen ist.
+    // Auswahlliste der Gruppe: "ohne" an Position 0 plus jede angelegte Gruppe in Menü-Reihenfolge. `path` ist die
+    // Identität, `label` das Gelesene - nach Tiefe eingerückt, sonst ist die Verschachtelung nicht zu erkennen.
     readonly property var groupItems: {
         var out = [{ path: "", label: App.uiText(App.language, "BookmarkGroupNone") }]
         var rows = App.bookmarkTree
@@ -71,7 +54,6 @@ Item {
         editDialog.open()
     }
 
-    // ── Eingabedialog (Hinzufügen / Bearbeiten) ──────────────────────────────
     Dialog {
         id: editDialog
         modal: true
@@ -148,7 +130,7 @@ Item {
                 }
             }
 
-            // ── Aktionsschaltflächen (eigener Footer statt standardButtons:
+            // Aktionsschaltflächen (eigener Footer statt standardButtons:
             //    folgt App.language statt der Qt-Systemlocale, mit Luft zum Rand)
             RowLayout {
                 Layout.fillWidth: true
@@ -168,7 +150,6 @@ Item {
         }
     }
 
-    // ── Ordner-Auswahl (füllt nur das Pfadfeld) ──────────────────────────────
     FileChooser {
         id: folderDialog
         title: App.uiText(App.language, "SettingsBookChooseFolder")

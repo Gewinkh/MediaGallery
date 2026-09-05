@@ -1,27 +1,7 @@
 #pragma once
-// ══════════════════════════════════════════════════════════════════════════════
-// PdfMediaHandler.h
-// ══════════════════════════════════════════════════════════════════════════════
-//
-// Qt6's QPdfDocument has NO public API for annotations or embedded files.
-// This class works around that hard limit by reading the raw PDF byte stream
-// and parsing:
-//
-//   /Subtype /Sound   -> audio annotation  (existing)
-//   /Subtype /Screen  -> video annotation  (RichMedia / Rendition action)
-//   /Subtype /Movie   -> legacy movie annotation
-//   /EmbeddedFile     -> embedded file streams (audio or video)
-//
-// Extracted streams are written to the OS temp directory and exposed as
-// MediaAnnotation records, each with:
-//   - page index
-//   - normalised rect [0..1] in page-space (y=0 top)
-//   - local file path to the extracted media
-//   - media type (Audio / Video / Unknown)
-//   - human-readable label
-//
-// PdfViewer owns one PdfMediaHandler and queries it after every document load.
-// ══════════════════════════════════════════════════════════════════════════════
+// QPdfDocument bietet keine API fuer Annotationen oder eingebettete Dateien; hier wird
+// der Rohstrom nach /Sound, /Screen, /Movie und /EmbeddedFile durchsucht. Extrahierte
+// Stroeme landen im Temp-Verzeichnis, je Treffer Seite, normiertes Rechteck und Pfad.
 
 #include <QString>
 #include <QRectF>
@@ -29,9 +9,7 @@
 #include <QObject>
 #include <QPdfDocument>
 
-// ─────────────────────────────────────────────────────
 // MediaAnnotation  –  one clickable media region
-// ─────────────────────────────────────────────────────
 struct MediaAnnotation {
     enum class Type { Audio, Video, Link, Unknown };
 
@@ -42,16 +20,12 @@ struct MediaAnnotation {
     QString label;                  // /Contents or /NM
     Type    type      = Type::Unknown;
 
-    // Returns the best playback URI
     QString resolvedUri() const {
         if (!sourcePath.isEmpty()) return sourcePath;
         return sourceUrl;
     }
 };
 
-// ─────────────────────────────────────────────────────
-// PdfMediaHandler
-// ─────────────────────────────────────────────────────
 class PdfMediaHandler : public QObject {
     Q_OBJECT
 public:
@@ -61,7 +35,6 @@ public:
     // Call once after the document is Ready.
     void scanDocument(const QString& pdfPath);
 
-    // All annotations across all pages
     const QVector<MediaAnnotation>& allAnnotations() const { return m_annotations; }
 
     // In scanDocument() angelegte Temp-Dateien (extrahierte Medienstreams).
@@ -74,7 +47,6 @@ private:
     QStringList              m_tempFiles;   // for cleanup
     QString                  m_pdfPath;
 
-    // ── Raw PDF parsing helpers ──────────────────────
     void parseAnnotations(const QByteArray& data);
     void parseOneAnnotation(const QByteArray& data, qsizetype hitPos,
                             const QByteArray& subtypeTag);
@@ -84,7 +56,6 @@ private:
     void resolveRichMediaUrl(const QByteArray& data, qsizetype searchFrom,
                              MediaAnnotation& ann);
 
-    // ── Utilities ────────────────────────────────────
     static QRectF     parseNormalisedRect(const QByteArray& rectBytes,
                                           const QSizeF& pagePointSize);
     static QByteArray dictValue(const QByteArray& dict, const QByteArray& key);

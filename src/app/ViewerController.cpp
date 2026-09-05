@@ -2,7 +2,9 @@
 #include "pdf/PdfMediaHandler.h"
 #include "core/PathUtils.h"
 #include "core/MemoryUtils.h"   // mg::trimHeap - RSS-Rückgabe nach Annotations-LRU-Eviction
+#include "core/TextEncoding.h"
 #include "core/TextPdfExporter.h"
+#include "datev/DatevCsv.h"
 
 #include <QPdfDocument>
 #include <QFile>
@@ -18,10 +20,8 @@
 #include <QPointer>
 #include <utility>
 
-// ─────────────────────────────────────────────────────────────────────────────
 //  Hilfsfunktion: MediaAnnotation-Vektor -> QVariantList (QML-tauglich).
 //  Frei (static), damit Worker-Task und synchrone Variante sie teilen.
-// ─────────────────────────────────────────────────────────────────────────────
 static QVariantList annotationsToVariant(const QVector<MediaAnnotation>& anns) {
     QVariantList out;
     out.reserve(anns.size());
@@ -40,11 +40,9 @@ static QVariantList annotationsToVariant(const QVector<MediaAnnotation>& anns) {
     return out;
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
 //  Roh-Scan eines PDFs ohne GUI-Thread. Laedt das Dokument LOKAL (lebt nur fuer
 //  die Dauer des Scans -> kein RAM-Wachstum), scannt die Annotationen und reicht
 //  das Ergebnis per QueuedConnection an den ViewerController zurueck.
-// ─────────────────────────────────────────────────────────────────────────────
 namespace {
 class PdfScanTask : public QRunnable {
 public:
@@ -66,10 +64,8 @@ public:
             // Abspielen gebraucht und erst beim App-Ende vom Owner entfernt.
         }
 
-        // Ergebnis auf den GUI-Thread marshallen. Der Owner wird als QPointer
-        // gehalten und im GUI-Thread erneut geprueft: ein roher Zeiger waere
-        // beim Zerstoeren des Owners waehrend des Scans (App-Shutdown) bereits
-        // fuer den invokeMethod-Aufruf selbst ungueltig.
+        // Der Owner wird als QPointer gehalten und im GUI-Thread erneut geprüft: ein roher Zeiger wäre beim Zerstören
+        // des Owners während des Scans schon für den `invokeMethod`-Aufruf selbst ungültig.
         QPointer<ViewerController> owner = m_owner;
         if (!owner) return;
         const QString path = m_path;
@@ -85,7 +81,6 @@ private:
 };
 } // namespace
 
-// ─────────────────────────────────────────────────────────────────────────────
 ViewerController::ViewerController(QObject* parent) : QObject(parent) {}
 
 ViewerController::~ViewerController() {
@@ -103,17 +98,26 @@ QString ViewerController::readTextFile(const QString& filePathOrUrl) const {
     const QByteArray raw = f.read(kMaxTextBytes);
     f.close();
 
-    // UTF-8 mit Fehlerprüfung; bei ungültigen Sequenzen Latin-1-Fallback.
-    QStringDecoder dec(QStringDecoder::Utf8);
-    QString text = dec.decode(raw);
-    if (dec.hasError())
-        text = QString::fromLatin1(raw);
+    //  UTF-8 mit Fehlerpruefung, sonst CP1252 - nicht Latin-1: die beiden gehen
+    //  bei 0x80-0x9F auseinander, und genau dort liegen Euro-Zeichen und
+    //  typografische Anfuehrungszeichen.
+    const QString text = mg::decodeUnknownText(raw);
 
-    //  BEWUSST KEIN Hinweistext mehr im Inhalt: der Vermerk „Datei gekürzt"
-    //  stand frueher IM Puffer und wurde beim Speichern mit in die Datei
-    //  geschrieben. Der Hinweis gehoert in die Oberflaeche, nicht in die Daten -
-    //  sie fragt ueber textFileTruncated nach und sperrt das Schreiben.
+    // BEWUSST kein Hinweistext im Inhalt: der Vermerk "Datei gekürzt" stand früher IM Puffer und wurde beim
+    // Speichern mit in die Datei geschrieben. Der Hinweis gehört in die Oberfläche, nicht in die Daten.
     return text;
+}
+
+bool ViewerController::isDatevFile(const QString& filePathOrUrl) const {
+    const QString path = mg::toLocalPath(filePathOrUrl);
+    QFile f(path);
+    if (!f.open(QIODevice::ReadOnly)) return false;
+    return mg::datev::looksLikeDatev(f.read(64));
+}
+
+bool ViewerController::isTableFile(const QString& filePathOrUrl) const {
+    const QString e = QFileInfo(mg::toLocalPath(filePathOrUrl)).suffix().toLower();
+    return e == QLatin1String("csv") || e == QLatin1String("tsv");
 }
 
 bool ViewerController::textFileTruncated(const QString& filePathOrUrl) const {
@@ -154,9 +158,7 @@ bool ViewerController::openExternally(const QString& filePathOrUrl) const {
     return QDesktopServices::openUrl(QUrl::fromLocalFile(path));
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
 //  LRU-Pflege (nur GUI-Thread -> keine Synchronisation noetig).
-// ─────────────────────────────────────────────────────────────────────────────
 void ViewerController::touchCache(const QString& path) {
     m_cacheOrder.removeAll(path);
     m_cacheOrder.append(path);                 // juengster Eintrag ans Ende
@@ -177,9 +179,7 @@ void ViewerController::insertIntoCache(const QString& path, const QVariantList& 
         mg::trimHeap();
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
 //  Asynchrone Anforderung (aus QML). Blockiert nie den GUI-Thread.
-// ─────────────────────────────────────────────────────────────────────────────
 void ViewerController::requestPdfAnnotations(const QString& filePathOrUrl) {
     const QString path = mg::toLocalPath(filePathOrUrl);
     if (path.isEmpty() || !QFileInfo::exists(path)) {
@@ -208,13 +208,8 @@ void ViewerController::requestPdfAnnotations(const QString& filePathOrUrl) {
     QThreadPool::globalInstance()->start(new PdfScanTask(this, path));
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-//  Text -> PDF (Knopf „-> PDF" im Texteditor).
-//
-//  Der Text kommt aus dem EDITOR mit; die Quelldatei wird nur fuer den Zielnamen
-//  gebraucht und nicht angefasst. Paginieren + Zeichnen laufen im Worker, weil
-//  eine grosse Datei sonst den UI-Thread anhielte (Regel 17).
-// ─────────────────────────────────────────────────────────────────────────────
+// Der Text kommt aus dem EDITOR mit; die Quelldatei wird nur für den Zielnamen gebraucht und nicht angefasst.
+// Paginieren und Zeichnen laufen im Worker, sonst hielte eine große Datei den UI-Thread an.
 void ViewerController::exportTextToPdf(const QString& filePathOrUrl,
                                        const QString& content,
                                        const QColor& textColor,
@@ -264,9 +259,7 @@ void ViewerController::exportTextToPdf(const QString& filePathOrUrl,
         new TextPdfTask(this, content, target, textColor, tabWidth));
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
 //  Ergebnis-Uebernahme auf dem GUI-Thread (vom Worker via QueuedConnection).
-// ─────────────────────────────────────────────────────────────────────────────
 void ViewerController::applyScanResult(const QString& path, const QVariantList& anns,
                                        const QStringList& tempFiles) {
     m_inFlight.remove(path);
@@ -277,6 +270,4 @@ void ViewerController::applyScanResult(const QString& path, const QVariantList& 
     emit pdfAnnotationsReady(path, anns);
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
 //  Synchrone Variante (Kompatibilitaet). Nutzt denselben Resultcache.
-// ─────────────────────────────────────────────────────────────────────────────

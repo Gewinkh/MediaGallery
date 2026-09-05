@@ -5,19 +5,17 @@ import QtQuick.Layouts
 import MediaGallery 1.0
 import "../common"
 
-// ── Design: Profile + Custom-Theme-Editor ────────────────────────────────────
 Item {
     id: root
 
-    //  DesignProfile::Custom - der LETZTE Eintrag. Er ist am 2026-09-02 von 8
-    //  auf 7 gerueckt, weil „Neon Purple" entfallen ist (s. `ISettings.h`).
+    //  DesignProfile::Custom - der LETZTE Eintrag; von 8 auf 7 gerueckt, seit
+    //  „Neon Purple" entfallen ist (s. `ISettings.h`).
     readonly property int customIndex: 7
     readonly property bool customActive: App.designProfile === root.customIndex
 
     property var profiles: []
     function refreshProfiles() { profiles = App.designProfiles() }
 
-    // ── Arbeitskopie des Custom-Themes (reaktive Einzel-Properties) ──────────
     property string twName: "Custom"
     property color twBackground: "#0a1216"
     property color twCard: "#121c22"
@@ -89,7 +87,6 @@ Item {
         }
     }
 
-    // Live-Vorschau: wirkt sichtbar nur, wenn das Custom-Profil aktiv ist.
     function applyLive() {
         if (root.customActive) App.setCustomThemeFromMap(buildMap())
     }
@@ -100,12 +97,8 @@ Item {
         function onThemeChanged() { root.refreshProfiles() }
     }
 
-    // ── Der GROSSE Block (zweite Ebene) ──────────────────────────────────────
-    //  Er muss ANDERS aussehen als die `SettingsGroup`s darin, sonst liest sich
-    //  die Verschachtelung als „Fenster im Fenster" - dieselbe Lehre, an der die
-    //  zweite Reiterleiste im Allgemein-Reiter gescheitert ist. Deshalb:
-    //  DUNKLERE Fläche als die Gruppen (Festlegung des Nutzers), abgesetzter
-    //  Rahmen, größerer und fetter Kopf mit Trennlinie darunter.
+    // Der große Block muss ANDERS aussehen als die `SettingsGroup`s darin, sonst liest sich die Verschachtelung als
+    // "Fenster im Fenster" - dieselbe Lehre, an der die zweite Reiterleiste gescheitert ist.
     component BigGroup: Rectangle {
         id: big
         default property alias content: innerCol.data
@@ -114,8 +107,6 @@ Item {
         property bool collapsed: false
 
         Layout.fillWidth: true
-        //  Dunkler als `themeCard`: der Block liegt UNTER den Gruppen, nicht
-        //  auf derselben Ebene.
         color: Qt.rgba(0, 0, 0, 0.22)
         border.color: App.themeBorder
         border.width: 1
@@ -172,7 +163,6 @@ Item {
         }
     }
 
-    // ── Wiederverwendbare Farbzeile ──────────────────────────────────────────
     component ColorRow: RowLayout {
         id: cr
         property string label: ""
@@ -207,11 +197,9 @@ Item {
             width: root.width
             spacing: 14
 
-            // ══ Block 1: OBERFLAECHE ═════════════════════════════════════
             BigGroup {
                 title: App.uiText(App.language, "SettingsDesignBlockUi")
                 groupKey: "design.block.ui"
-                // ── Profil-Auswahl ────────────────────────────────────────────────
                 SettingsGroup {
                     key: "design.profile"
                     title: App.uiText(App.language, "SettingsDesignProfileLabel")
@@ -219,9 +207,6 @@ Item {
 
                     GridLayout {
                         Layout.fillWidth: true
-                        //  VIER je Reihe: mit acht Profilen sind das genau zwei
-                        //  volle Reihen (Festlegung des Nutzers 2026-09-02, dafuer
-                        //  ist „Neon Purple" entfallen).
                         columns: 4
                         rowSpacing: 8; columnSpacing: 8
 
@@ -263,7 +248,6 @@ Item {
                                             elide: Text.ElideRight
                                             Layout.fillWidth: true
                                         }
-                                        // Mini-Swatches
                                         Row {
                                             spacing: 3
                                             Repeater {
@@ -291,7 +275,6 @@ Item {
                     }
                 }
 
-                // ── Custom-Editor ─────────────────────────────────────────────────
                 ColumnLayout {
                     Layout.fillWidth: true
                     spacing: 14
@@ -322,8 +305,6 @@ Item {
                         Layout.fillWidth: true
                         RowLayout {
                             Layout.fillWidth: true; spacing: 8
-                            // Rechtsbündig wie die Farbfelder der ColorRow: das Label
-                            // füllt die Zeile, die Box rückt an den rechten Rand.
                             Label { text: App.uiText(App.language, "SettingsDesignAccentType"); color: App.themeTextPrimary
                                     Layout.fillWidth: true; elide: Text.ElideRight }
                             ComboBox {
@@ -501,11 +482,8 @@ Item {
 
             }
 
-            // ══ Block 2: TEXT-EDITOR ═════════════════════════════════════
-            //  Voellig eigen: eigene Profile, eigene Palette, eigener Konfigurator.
-            //  Er teilt sich mit der Oberflaeche KEINE Farbe - ein Wechsel des
-            //  App-Themes laesst den Editor unberuehrt und umgekehrt
-            //  (Festlegung des Nutzers 2026-09-02).
+            // Der Texteditor teilt sich mit der Oberfläche KEINE Farbe: eigene Profile, eigene Palette, eigener
+            // Konfigurator - ein Wechsel des App-Themes lässt ihn unberührt und umgekehrt.
             BigGroup {
                 title: App.uiText(App.language, "SettingsDesignBlockEditor")
                 groupKey: "design.block.editor"
@@ -517,8 +495,6 @@ Item {
 
                     GridLayout {
                         Layout.fillWidth: true
-                        //  VIER in EINER Reihe - genau die vier Profile
-                        //  (drei mitgelieferte + Eigenes).
                         columns: 4
                         rowSpacing: 8; columnSpacing: 8
 
@@ -554,8 +530,6 @@ Item {
                                         elide: Text.ElideRight
                                         Layout.fillWidth: true
                                     }
-                                    //  Drei Proben wie bei den Oberflaechen-Karten:
-                                    //  Flaeche, Schluesselwort, Zeichenkette.
                                     Row {
                                         spacing: 4
                                         Repeater {
@@ -595,9 +569,6 @@ Item {
                             visible: Editor.customActive
                             onClicked: Editor.resetCustom()
                         }
-                        //  Sichern und Laden wie beim Oberflächen-Thema - nur
-                        //  dass hier die EDITOR-Palette in die Datei geht
-                        //  (dasselbe JSON, das in den Einstellungen steht).
                         Button {
                             text: App.uiText(App.language, "SettingsDesignExportBtn")
                             onClicked: edExportDialog.open()
@@ -609,10 +580,6 @@ Item {
                     }
                 }
 
-                //  Die Farbzeilen. Der Schluessel steht EINMAL da; den Namen
-                //  liefert `Editor.colorLabel` aus C++ - ein in QML
-                //  zusammengesetzter String-Key waere fuer den Katalog-Treiber
-                //  (`core.strings`) ein Torso.
                 component EdColorRow: RowLayout {
                     id: ecr
                     property string colorKey: ""
@@ -638,8 +605,6 @@ Item {
                     }
                 }
 
-                //  Nur im Profil „Custom" bedienbar - anderswo waere die
-                //  Aenderung beim naechsten Profilwechsel still weg.
                 SettingsGroup {
                     key: "design.editor.surface"
                     title: App.uiText(App.language, "SettingsEditorSurfaceGroup")
@@ -677,10 +642,6 @@ Item {
                     EdColorRow { colorKey: "code" }
                 }
 
-                //  Vorschau: dieselbe Palette, ohne dass man eine Datei oeffnen
-                //  muss. Bewusst gestellter Text statt eines echten Editors -
-                //  ein zweiter `TextArea` mit eigenem Faerber kostete Speicher
-                //  fuer nichts.
                 SettingsGroup {
                     key: "design.editor.preview"
                     title: App.uiText(App.language, "SettingsEditorPreviewGroup")
@@ -697,7 +658,6 @@ Item {
                             anchors.fill: parent
                             anchors.margins: 1
 
-                            //  Nummernspalte der Vorschau
                             Rectangle {
                                 width: 34; height: parent.height
                                 color: Editor.gutterBackground
@@ -722,8 +682,6 @@ Item {
                                 id: vorschau
                                 padding: 10
                                 spacing: 2
-                                //  Jede Zeile zeigt andere Klassen - so sieht man
-                                //  beim Einstellen sofort, was sich aendert.
                                 Text {
                                     font: App.fallbackFont("monospace", 12)
                                     textFormat: Text.StyledText
@@ -770,8 +728,6 @@ Item {
         }
     }
 
-    //  Ex- und Import der EDITOR-Palette (die beiden darunter gehören dem
-    //  Oberflächen-Thema).
     FileChooser {
         id: edExportDialog
         title: App.uiText(App.language, "SettingsEditorExportTitle")
@@ -808,7 +764,5 @@ Item {
         onAccepted: { if (App.importCustomTheme(selectedFile)) root.loadTheme() }
     }
 
-    //  Weiches, schnelles Mausrad-Scrollen (Galerie-Muster) statt der festen
-    //  60 px je Rastung von `Flickable`.
     SmoothWheelArea { flickable: designScroll.contentItem }
 }

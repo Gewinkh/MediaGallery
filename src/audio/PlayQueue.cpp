@@ -42,10 +42,8 @@ QString PlayQueue::currentPath() const {
     return (i >= 0 && i < m_items.size()) ? m_items.at(i) : QString();
 }
 
-//  Die Reihenfolge neu aufbauen. `keepItemIndex` ist der Titel, der gerade
-//  läuft: er bleibt vorn und an seiner Stelle, alles danach wird (bei Zufall)
-//  neu gemischt. Ohne das würde jede Filteränderung den laufenden Titel
-//  wegreißen.
+// `keepItemIndex` ist der laufende Titel: er bleibt vorn und an seiner Stelle, alles danach wird bei Zufall neu
+// gemischt. Ohne das risse jede Filteränderung den laufenden Titel weg.
 void PlayQueue::rebuildOrder(int keepItemIndex) {
     const int n = int(m_items.size());
     m_order.resize(n);
@@ -127,7 +125,7 @@ QString PlayQueue::advance(bool natural) {
     if (m_order.isEmpty() || m_pos < 0) return {};
 
     //  „Eine wiederholen" gilt NUR beim natürlichen Ende - wer weiterschaltet,
-    //  will den nächsten (Festlegung des Nutzers).
+    //  will den nächsten.
     if (natural && m_repeat == Repeat::One)
         return currentPath();
 

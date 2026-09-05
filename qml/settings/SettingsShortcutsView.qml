@@ -2,29 +2,9 @@ import QtQuick
 import MediaGallery 1.0
 import "../common"
 
-// ─────────────────────────────────────────────────────────────────────────────
-//  SettingsShortcutsView.qml - gethemte Tastenkürzel-Übersicht (Einstellungen ▸
-//  Allgemein). Zeigt je Kontext (Galerie, Medienansicht, PDF-/Bild-/DOCX-/
-//  Texteditor) die WIRKLICH implementierten Kürzel mit Funktion + Tasten.
-//
-//  Datenquelle ist ein reines JS-Modell (unten). Die Funktionsbeschreibungen
-//  sind hier BEWUSST zweisprachig inline (de/en) statt über eigene String-Keys:
-//  eine Kürzel-Referenz ist EINE zusammenhängende Tabelle - Funktion + Tasten
-//  stehen so an einer Stelle beisammen, ohne den (gezählten) Strings-Katalog um
-//  ~35 Einzweck-Labels aufzublähen. Die Kontext-Überschriften laufen dagegen
-//  über String-Keys (wiederverwendbar, s. ShortcutCtx*).
-//
-//  Wichtig: Diese Liste ist die nutzersichtbare Wahrheit über die Kürzel und
-//  MUSS mit den tatsächlichen Shortcut{}-Definitionen (ApplicationShell,
-//  FullscreenViewer, PdfSurface, ImageSurface, DocxSurface, TextSurface)
-//  übereinstimmen. Bei Änderungen dort hier UND in der README-Tabelle nachziehen.
-// ─────────────────────────────────────────────────────────────────────────────
-//  Wurzel ist bewusst ein Item mit einer inneren Column: Eine Column als
-//  Layout-Kind würde ihre implicitWidth aus der Breite ihrer Kinder ableiten,
-//  die ihrerseits an die von der ColumnLayout gesetzte Breite gebunden ist -
-//  eine Rückkopplung, die bei jeder Geometrieänderung eine komplette
-//  Neuberechnung der Einstellungsseite anstößt. Das Item meldet implicitWidth 0
-//  (Layout.fillWidth bestimmt die Breite) und nur die Höhe nach oben.
+// Tastenkürzel-Übersicht aus einem reinen JS-Modell; die Beschreibungen stehen bewusst zweisprachig inline,
+// statt den Strings-Katalog um ~35 Einzweck-Labels aufzublähen. Diese Liste ist die nutzersichtbare Wahrheit -
+// Änderungen an den Shortcut{}-Definitionen hier UND in der README nachziehen.
 Item {
     id: rootCol
     implicitHeight: col.implicitHeight
@@ -93,11 +73,8 @@ Item {
     component Kbd: Rectangle {
         id: kbd
         property string label: ""
-        //  Die PFEILTASTEN tragen ihr Zeichen als Symbol - hier ist der Pfeil
-        //  die Taste, und eine Taste zeigt man als Bild, nicht als zwei
-        //  Schriftzeichen (Regel 28). Der Pfeil kann dabei ALLEIN stehen ("->")
-        //  oder am Ende eines zusammengesetzten Kürzels ("Alt+<-") - deshalb
-        //  wird die Beschriftung geteilt statt nur verglichen.
+        // Die Pfeiltasten tragen ihr Zeichen als Symbol - hier IST der Pfeil die Taste. Er kann allein stehen oder am
+        // Ende eines zusammengesetzten Kürzels, deshalb wird die Beschriftung geteilt statt nur verglichen.
         readonly property string arrowPart:
             kbd.label.endsWith("->") ? "->" : (kbd.label.endsWith("<-") ? "<-" : "")
         readonly property string textPart:

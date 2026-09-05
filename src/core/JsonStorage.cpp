@@ -39,7 +39,6 @@ QColor JsonStorage::randomTagColor() {
     return palette[QRandomGenerator::global()->bounded(palette.size())];
 }
 
-// ── JSON helpers for categories ───────────────────────────────────────────────
 QJsonObject JsonStorage::categoryToJson(const TagCategory& cat) {
     QJsonObject obj;
     obj["id"]           = cat.id;
@@ -86,25 +85,13 @@ TagCategory JsonStorage::categoryFromJson(const QJsonObject& obj) {
     return cat;
 }
 
-// ── Dateizentrisches JSON-Format (kompakt, speichereffizient) ─────────────────
-//   {
-//     "files": { "img.jpg": { "t": ["tag1","tag2"], "d": "ISO8601" }, ... },
-//     "tagColors": { "TagName": "#rrggbb", ... },
-//     "categories": [...]
-//   }
-// Schlüssel sind abgekürzt: "t" = Tags, "d" = Datum.
-// Nur nicht-leere Felder werden geschrieben -> minimale JSON auch bei großen
-// Sammlungen. Ein Versions-Marker ("v") wird seit 2026-07 weder geschrieben
-// noch ausgewertet - das Legacy-Format (tag-zentrisch) und die zugehörige
-// Migration wurden entfernt; ältere Dateien mit "v"-Feld laden weiterhin,
-// das Feld wird schlicht ignoriert und beim nächsten Speichern entfernt.
+// Dateizentrisch: { files: { name: { t: [tags], d: ISO8601 } }, tagColors, categories }.
+// Nur nicht-leere Felder werden geschrieben. Ein altes "v"-Feld wird ignoriert.
 void JsonStorage::loadNewFormat(const QJsonObject& root) {
-    // Tag colors
     QJsonObject tagColors = root["tagColors"].toObject();
     for (auto it = tagColors.begin(); it != tagColors.end(); ++it)
         m_tagColors[it.key()] = QColor(it.value().toString("#64b4a0"));
 
-    // Per-file data
     QJsonObject files = root["files"].toObject();
     for (auto it = files.begin(); it != files.end(); ++it) {
         QJsonObject o = it.value().toObject();
@@ -131,7 +118,6 @@ void JsonStorage::loadNewFormat(const QJsonObject& root) {
     }
 }
 
-// ── Load / Save ───────────────────────────────────────────────────────────────
 void JsonStorage::loadFolder(const QString& folderPath) {
     //  Ein ausstehender Schreibvorgang gehört zum BISHERIGEN Ordner - er muss
     //  raus, bevor `m_folderPath` weiterzeigt, sonst landet er im falschen
@@ -156,12 +142,10 @@ void JsonStorage::loadFolder(const QString& folderPath) {
 
     loadNewFormat(root);
 
-    // Categories are format-independent
     QJsonArray cats = root["categories"].toArray();
     for (const auto& c : cats) m_categories.append(categoryFromJson(c.toObject()));
 }
 
-// ── Stand der Datei merken / prüfen / fremde Änderungen übernehmen ───────────
 void JsonStorage::noteDiskStamp(const QString& path) {
     const QFileInfo fi(path);
     m_diskMTime = fi.exists() ? fi.lastModified() : QDateTime();
@@ -175,12 +159,8 @@ bool JsonStorage::diskChangedSince(const QString& path) const {
     return fi.size() != m_diskSize || fi.lastModified() != m_diskMTime;
 }
 
-//  Die Datei hat sich seit unserem Lesen geändert - also hat jemand anderes
-//  geschrieben (die zweite Hälfte auf demselben Ordner, ein anderes Programm).
-//  Übernommen wird, was wir NICHT kennen; wo beide etwas wissen, gewinnt das
-//  HINZUFÜGEN: Tags werden vereinigt. Das kann im Grenzfall ein soeben
-//  entferntes Tag zurückbringen - der umgekehrte Fehler wäre der Verlust einer
-//  fremden Verschlagwortung, und Verlust wiegt schwerer.
+// Die Datei hat sich seit unserem Lesen geändert - jemand anderes hat geschrieben. Übernommen wird, was wir nicht
+// kennen; wo beide etwas wissen, gewinnt das HINZUFÜGEN: der Verlust fremder Verschlagwortung wöge schwerer.
 void JsonStorage::mergeForeignChanges(const QString& path) {
     if (!diskChangedSince(path)) return;
 
@@ -204,27 +184,21 @@ void JsonStorage::mergeForeignChanges(const QString& path) {
 }
 
 void JsonStorage::saveFolder(const QString& folderPath) {
-    //  Ein expliziter Speicherbefehl erledigt zugleich, was gesammelt wurde -
-    //  sonst schriebe der Timer gleich darauf ein zweites Mal dasselbe.
     if (folderPath == m_folderPath) {
         m_saveTimer.stop();
         m_savePending = false;
     }
-    //  Erst fremde Änderungen übernehmen (s. oben), dann das Ganze schreiben.
     mergeForeignChanges(m_jsonPath.isEmpty()
                             ? folderPath + "/" + QFileInfo(folderPath).fileName() + ".json"
                             : m_jsonPath);
 
     QJsonObject root;
 
-    // ── Compact file-centric section ──────────────────────────────────────────
-    // Only writes entries that have actual data (tags, custom date, PDF text
-    // colour). Keys are short ("t", "d", "c") to minimise file size across large
-    // collections.
+    // Compact file-centric section: only entries with actual data (tags, custom date, PDF text colour). Keys are
+    // short ("t", "d", "c") to keep large collections small.
     QJsonObject filesObj;
     for (auto it = m_fileMeta.cbegin(); it != m_fileMeta.cend(); ++it) {
         const FileMeta& meta = it.value();
-        //  Ohne Daten kein Eintrag - das spart bei großen Sammlungen viel.
         if (meta.tags.isEmpty() && !meta.textPdfColor.isValid())
             continue;
 
@@ -242,13 +216,12 @@ void JsonStorage::saveFolder(const QString& folderPath) {
     if (!filesObj.isEmpty())
         root["files"] = filesObj;
 
-    // ── Tag color registry ────────────────────────────────────────────────────
+    // Tag color registry
     // Collect tags used anywhere (files + categories) so the registry stays clean.
     QSet<QString> usedTags;
     for (auto it = m_fileMeta.cbegin(); it != m_fileMeta.cend(); ++it)
         for (const QString& t : it.value().tags) usedTags.insert(t);
 
-    // Collect tags from category tree without std::function overhead
     struct CatTagCollector {
         static void collect(const QList<TagCategory>& cats, QSet<QString>& out) {
             for (const TagCategory& cat : cats) {
@@ -265,7 +238,6 @@ void JsonStorage::saveFolder(const QString& folderPath) {
     if (!tagColorsObj.isEmpty())
         root["tagColors"] = tagColorsObj;
 
-    // ── Categories ────────────────────────────────────────────────────────────
     QJsonArray cats;
     for (const auto& cat : m_categories) cats.append(categoryToJson(cat));
     if (!cats.isEmpty())
@@ -275,12 +247,8 @@ void JsonStorage::saveFolder(const QString& folderPath) {
                        ? folderPath + "/" + QFileInfo(folderPath).fileName() + ".json"
                        : m_jsonPath;
 
-    // Keine tatsächlichen Daten vorhanden (weder Datei-Metadaten noch Tags
-    // noch Kategorien) -> KEINE Leerdatei ("{}") anlegen. Das verhindert,
-    // dass allein durch das Öffnen/Wechseln eines Ordners eine JSON entsteht.
-    // Existiert bereits eine (nun leere gewordene) Datei - z. B. weil der
-    // letzte Tag/die letzte Kategorie gerade gelöscht wurde - wird sie entfernt,
-    // statt einen leeren Stub zu hinterlassen.
+    // Keine tatsächlichen Daten -> KEINE Leerdatei anlegen: sonst entstünde allein durch das Öffnen eines Ordners
+    // eine JSON. Eine bestehende, nun leere Datei wird entfernt statt als Stub zu bleiben.
     const bool hasContent = root.contains("files") || root.contains("tagColors")
                              || root.contains("categories");
     if (!hasContent) {
@@ -290,13 +258,8 @@ void JsonStorage::saveFolder(const QString& folderPath) {
         return;
     }
 
-    // ATOMAR schreiben (QSaveFile: Temp-Datei + Rename). Diese Datei ist die
-    // EINZIGE Quelle aller Tags, Kategorien und Custom-Daten eines Ordners und
-    // wird bei jeder Mutation komplett neu geschrieben. Mit open(WriteOnly)
-    // wurde sie dabei zuerst auf 0 Bytes gekuerzt - ein Absturz, ein voller
-    // Datentraeger oder ein Stromausfall im Schreibfenster hinterliess eine
-    // leere/halbe Datei und damit den TOTALVERLUST der Verschlagwortung.
-    // Wie bei ViewerController::writeTextFile und den Editor-Exporten.
+    // ATOMAR schreiben (QSaveFile): diese Datei ist die EINZIGE Quelle aller Tags und Daten eines Ordners und wird
+    // bei jeder Mutation neu geschrieben. Mit `open(WriteOnly)` war sie zuerst auf 0 Bytes gekürzt - Totalverlust.
     const QByteArray bytes = QJsonDocument(root).toJson(QJsonDocument::Indented);
     QSaveFile f(path);
     if (!f.open(QIODevice::WriteOnly | QIODevice::Truncate))
@@ -309,17 +272,9 @@ void JsonStorage::saveFolder(const QString& folderPath) {
     noteDiskStamp(path);     // ab jetzt sind WIR der Stand der Datei
 }
 
-// ── Schnappschuss / Wiederherstellen (Rueckgaengig der Tag-Seitenleiste) ─────
-//  BEWUSST NICHT das JSON der Platte. Gemessen an einem Ordner mit 5000
-//  Dateien, 15.000 Zuordnungen und 300 Kategorien: den JSON-Baum aufzubauen
-//  kostete 10,3 ms und ihn zu setzen weitere 3,0 ms - je Nutzergeste. Ein
-//  `QDataStream` ueber dieselben drei Behaelter kommt ohne Zwischenbaum aus.
-//
-//  Zwei weitere Gruende sprechen dafuer: der Schnappschuss verlaesst den
-//  Prozess NIE (er lebt nur im Rueckgaengig-Stapel), und er muss MEHR
-//  enthalten als die Datei - die Platte fuehrt nur die tatsaechlich benutzten
-//  Tagfarben, ein frisch angelegter Tag ohne Datei und ohne Kategorie stuende
-//  also gar nicht darin und kaeme durch ein Rueckgaengig nicht zurueck.
+// Bewusst nicht das JSON der Platte: an 5000 Dateien kostete der Baum 10,3 ms plus
+// 3,0 ms je Geste. Der Schnappschuss verlaesst den Prozess nie und muss MEHR
+// enthalten - die Datei fuehrt nur benutzte Tagfarben.
 namespace {
 constexpr quint32 kSnapMagic   = 0x4D47'5447;   // "MGTG"
 constexpr quint16 kSnapVersion = 1;
@@ -363,9 +318,9 @@ QByteArray JsonStorage::tagStateSnapshot() const {
     ds << quint32(m_categories.size());
     for (const TagCategory& c : m_categories) writeCat(ds, c);
 
-    //  GEPACKT im Stapel liegen (Regel 9: RAM zuerst). Gemessen am selben
-    //  Ordner: 578 KB roh -> 78 KB, dafuer 1,9 ms. Stufe 1 und nicht 9 -
-    //  hoehere Stufen kosteten deutlich mehr Zeit fuer wenige Prozent.
+    //  GEPACKT im Stapel liegen (RAM zuerst). Gemessen am selben Ordner: 578
+    //  KB roh -> 78 KB, dafuer 1,9 ms. Stufe 1 und nicht 9 - hoehere Stufen
+    //  kosteten deutlich mehr Zeit fuer wenige Prozent.
     return qCompress(out, 1);
 }
 
@@ -409,10 +364,8 @@ void JsonStorage::restoreTagState(const QByteArray& snapshot) {
 
 void JsonStorage::saveCurrentFolder() {
     if (m_folderPath.isEmpty()) return;
-    //  Sammeln setzt eine laufende Ereignisschleife voraus - der Null-Timer
-    //  feuert sonst nie. Ohne sie (Testtreiber, Kommandozeilenwege, Abbau beim
-    //  Beenden) wird SOFORT geschrieben; das ist der sichere Fall, nicht der
-    //  Ausnahmefall.
+    // Sammeln setzt eine laufende Ereignisschleife voraus - der Null-Timer feuert sonst nie. Ohne sie (Testtreiber,
+    // Abbau beim Beenden) wird SOFORT geschrieben; das ist der sichere Fall, nicht der Ausnahmefall.
     if (!m_deferSaves || !QCoreApplication::instance()) {
         saveFolder(m_folderPath);
         return;
@@ -432,7 +385,6 @@ void JsonStorage::flushPendingSave() {
     saveFolder(m_folderPath);           // saveFolder darf nicht erneut anstoßen
 }
 
-// ── File metadata ─────────────────────────────────────────────────────────────
 QStringList JsonStorage::getTags(const QString& f) const {
     return m_fileMeta.value(f).tags;
 }
@@ -451,7 +403,6 @@ void JsonStorage::clearTextPdfColor(const QString& f) {
 }
 
 
-// ── Tag registry ──────────────────────────────────────────────────────────────
 QColor JsonStorage::tagColor(const QString& tag) const {
     return m_tagColors.value(tag, QColor(100, 180, 160));
 }
@@ -481,12 +432,10 @@ QStringList JsonStorage::filesWithTag(const QString& tag) const {
 void JsonStorage::renameTag(const QString& oldName, const QString& newName) {
     if (oldName.isEmpty() || newName.isEmpty() || oldName == newName) return;
 
-    //  Die Registrierung: Farbe mitnehmen, alten Namen loeschen.
     const QColor c = m_tagColors.value(oldName, QColor(100, 180, 160));
     m_tagColors.remove(oldName);
     m_tagColors.insert(newName, c);
 
-    //  Die Datei-Zuordnungen: AN ORT UND STELLE umschreiben, nicht wegwerfen.
     for (auto it = m_fileMeta.begin(); it != m_fileMeta.end(); ++it) {
         const int i = it->tags.indexOf(oldName);
         if (i < 0) continue;
@@ -501,12 +450,9 @@ void JsonStorage::deleteTag(const QString& tag) {
         it->tags.removeAll(tag);
 }
 
-// ── Apply to items ────────────────────────────────────────────────────────────
 void JsonStorage::applyToItems(QVector<MediaItem>& items) const {
-    //  Ordner OHNE Sidecar sind der Normalfall - dann gibt es nichts zu
-    //  übertragen, und `fileName()` (das je Aufruf eine Zeichenkette anlegt)
-    //  wird gar nicht erst gerufen. Bei einem Ordner mit 300 Dateien sind das
-    //  300 Allokationen weniger, beim Aufklappen eines Baumes entsprechend mehr.
+    // Ordner OHNE Sidecar sind der Normalfall - dann gibt es nichts zu übertragen, und `fileName()` wird gar nicht
+    // erst gerufen: bei einem Ordner mit 300 Dateien 300 Allokationen weniger.
     if (m_fileMeta.isEmpty()) return;
 
     for (auto& item : items) {

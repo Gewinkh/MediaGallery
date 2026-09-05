@@ -620,6 +620,139 @@ Workaround / status: deliberate; write a more specific pattern.
 
 ---
 
+## CSV and TSV files
+
+**A `.txt` never becomes a table, even when it is one.**
+What you notice: a semicolon-separated export saved as `.txt` - DATEV's own
+*individual ASCII format* among them - opens in the text editor, and no table
+button appears.
+Why: the decision is made on the extension (`.csv`/`.tsv`) on purpose. Sniffing
+the content of every `.txt` would turn log files, key-value dumps and anything
+else with separators into tables, and a `.txt` is a text file first.
+Workaround / status: rename the file to `.csv`, and it opens as a table. Whether
+`.txt` should get an opt-in switch is an open question, kept in `NEXT.md` §3c.
+
+**The table shows; it does not edit.**
+What you notice: there is no cell editing, no inserting or deleting rows, no
+sorting, no search, and no saving.
+Why: display was built first on purpose. Editing needs a mutable model, undo,
+and a writer that leaves the untouched parts of the file byte-for-byte alone -
+each of those is its own piece of work.
+Workaround / status: edit in the text view, which is a full editor. The order of
+the next steps is recorded in `NEXT.md` §3c: search, then sorting, then editing.
+
+**Very wide or very tall files are read up to 32 MB.**
+What you notice: the footer says the file was too large and only the beginning
+is shown.
+Why: the same deliberate cap as the DATEV view. Measured with `bench_datev`:
+835 bytes per row at 125 columns, so the cap is roughly 100,000 rows and 82 MB
+of memory.
+Workaround / status: the text view has its own, lower cap of 8 MB. Streaming the
+table instead of holding it in memory has not been built.
+
+**The separator and the header row are guessed, and cannot be corrected.**
+What you notice: a file whose first lines are untypical - a long free-text
+preamble, say - can end up split on the wrong character, or its first row is
+taken for data when it is a heading. The footer states what was found, but there
+is no switch to change it.
+Why: the guess scores `;` `,` tab and `|` over the first 20 lines by how
+consistent a field count each produces (`;` wins any tie), and the header row is
+taken when line 1 carries no numbers and line 2 does. Manual switches for both
+were built and then removed on request - they occupied the footer permanently
+for a case that rarely arises.
+Workaround / status: the text view shows the file as it is. If the guess turns
+out to miss in practice, the switches are a small addition - the properties are
+still there, only the buttons are gone.
+
+**Tables in one file are split at blank lines only.**
+What you notice: an export that stacks several tables without an empty line
+between them stays one table. Conversely, a blank line in the middle of a single
+table splits it into two tabs.
+Why: the blank line is the only separator that is actually *in* the file. Every
+other rule - a change in field count, a row without numbers - would be a guess,
+and guessing wrong tears apart a file that was fine.
+Workaround / status: the **All** tab always shows the file flat, exactly as it
+stands, so nothing is hidden by a wrong split. `tests/uni_datenbank.csv` is the
+sample this was built against (5 blocks, 167 rows including the 4 gaps).
+
+**A block title is assumed, not known.**
+What you notice: a data row that happens to hold a single field and sits at the
+top of a block is taken for the block's name, and the row below it for its
+column headings.
+Why: that is the shape these exports have (title, headings, rows), and it is the
+only way a text-only table can be recognised at all - a list of names, rooms and
+office hours contains no number that would give the heading row away.
+Workaround / status: the **All** tab shows every row as data. The rule is pinned
+down in `tests/table/tst_delimited.cpp`, including the cases where it must *not*
+fire (a single-column list, a title with only one row under it).
+
+---
+
+## DATEV files
+
+**Most header fields are shown as "Dateikopf 7", "Dateikopf 8" and so on.**
+What you notice: the fold-out header block names five fields (identifier, version
+number, format name, creation time, currency) and shows the other 26 by position
+only, even though they carry real values.
+Why: only those five can be read off the file itself - the identifier spells
+itself out, the timestamp parses as a timestamp, the currency as an ISO code. The
+official field catalogue lives on `developer.datev.de`, and that page is a
+JavaScript application: fetched as HTML it returns no content at all, so the
+catalogue could not be taken from the authoritative source. Naming the rest from
+memory would put unverified claims in front of a bookkeeper.
+Workaround / status: every value is visible, only its label is missing. The
+catalogue is a table (`src/datev/DatevFormat.cpp`, one entry per field and format
+version) - filling it in is a single edit once the official list is at hand.
+
+**A booking batch larger than 32 MB is cut off.**
+What you notice: the footer says the file was too large and only the beginning is
+shown; the totals then cover only the rows that were read.
+Why: a deliberate cap in `DatevController`, separate from the 8 MB cap of the text
+editor. Measured with `bench_datev`: 50,000 bookings are a 16.3 MB file, take
+987 ms to parse and cost 40.8 MB of RSS (835 bytes per booking - the rows keep
+only the fields that are filled; storing all 125 slots cost 4178 bytes per
+booking, i.e. 204 MB for the same file). At the cap that is roughly 100,000
+bookings and 82 MB.
+Workaround / status: split the batch, or read it in the raw text view, which has
+its own 8 MB cap. Streaming the table instead of holding it in memory has not
+been built.
+
+**No writing, no editing, no export.**
+What you notice: the table has no edit mode and no save button, and the text view
+of a DATEV file behaves like any other text file.
+Why: deliberate. One wrongly written field in a bookkeeping file is a damage no
+convenience makes up for.
+Workaround / status: not planned to change.
+
+**Only files that start with `"EXTF";` or `"DTVF";` become a table.**
+What you notice: a DATEV export that does not carry that identifier in its first
+line - notably a file written in DATEV's separate, user-configured *individual
+ASCII format* - opens as plain text like any other `.csv` or `.txt`.
+Why: the decision is made on that identifier alone, deliberately. Recognising a
+booking batch by "it has semicolons and numbers" would hide every ordinary CSV in
+a folder behind a bookkeeping view. A file that *does* carry the identifier works
+regardless of how small it is: neither the number of columns nor their names are
+hard-coded, and the totals columns are located by their heading (pinned down in
+`tests/datev/tst_datevcsv.cpp` with a reduced batch of 5 header fields and 5
+columns).
+Workaround / status: read such a file in the text view. Supporting the individual
+ASCII format needs its actual shape first - DATEV's own description of it could
+not be retrieved (all three of their documentation hosts render their content in
+the browser and return an empty document when fetched).
+
+**A quote inside an unquoted region is guessed, not resolved.**
+What you notice: a field written as `" "Normalabschr. immater. VermG" "` keeps its
+inner quotes; other tools may show it without them.
+Why: the sample contains exactly this, and DATEV's own writer produced it. The
+reader treats a single `"` as a field end only when a separator or the line end
+follows, so the inner quotes stay part of the text rather than truncating it
+after `" "`. That is a decision, not a certainty: the file is genuinely ambiguous
+at this point.
+Workaround / status: the raw view shows the line as it stands. The case is pinned
+down in `tests/datev/tst_datevcsv.cpp` so it does not change unnoticed.
+
+---
+
 ## Not built yet
 
 Not limits of the built thing - **planned work**, kept here so there is one place
@@ -640,15 +773,24 @@ what it still cannot do stays behind in the sections above.
   code changes as long as one of the five scanner kinds fits.
 - **Writing tags** (changing title or artist of an audio file) - reading is solid,
   writing is deliberately not built: one wrong byte damages the file.
-- **DATEV files as a table.** A DATEV export (`EXTF`, booking batch) already opens
-  as text, because `.csv` and `.txt` are text files - but it opens as a wall of
-  semicolons, and nothing recognises it for what it is. Planned: recognition from
-  the *content* rather than the extension (the same file ships as `.csv` and as
-  `.txt` - the two samples in `tests/` are byte for byte identical), a reader of
-  our own, and a table view with the header summary and the debit/credit totals,
-  switchable against the raw text the way the HTML preview is. **Reading only** -
-  the app will not write into a bookkeeping file. Details and what has been
-  measured on the samples: `NEXT.md` §3.
+- **Searching inside a table.** The next step for the CSV view, and the only one
+  already decided: same shape as the editor's find bar (`Ctrl+F` opens, `Esc`
+  closes). Still open: whether it searches every column or a chosen one, whether
+  it jumps to the row or filters, and whether it stays inside the selected block.
+- **Sorting, hiding columns, freezing the first column, copying a cell.** All
+  deliberately deferred - each is its own piece of work, and the order they are
+  built in is a decision to take rather than to drift into.
+- **Editing a table and writing it back.** Reading is solid; editing needs a
+  mutable model, undo, and a writer that leaves the untouched part of the file
+  byte-for-byte alone. Three constraints are already fixed for whenever it
+  starts: every cell stays text (guessing a type and reformatting on save
+  destroys data), only changed rows get rewritten, and the changes live as an
+  overlay beside the compact rows rather than replacing them. A formula engine
+  is explicitly *not* part of this - a CSV cannot store one anyway.
+- **`.txt` as a table.** Only `.csv` and `.tsv` open as tables; a semicolon
+  export saved as `.txt` stays text. An opt-in switch would be small and needs
+  no guessing, but it has not been asked for.
+
 
 ---
 

@@ -4,23 +4,12 @@
 #include <iterator>
 #include <QVector>
 
-// ══════════════════════════════════════════════════════════════════════════════
-//  PdfEncodings.cpp - Tabellen der einfachen PDF-Textkodierungen.
-//
-//  DATENTABELLEN: WinAnsiEncoding und MacRomanEncoding legt die
-//  PDF-Spezifikation fest (ISO 32000-1, Anhang D); die Glyphennamen folgen der
-//  Adobe Glyph List. Ausgeschrieben ist nur die hier gebrauchte Teilmenge.
-//  Sie stehen bewusst hier statt im Content-Editor: die
-//  Zuordnung Byte ↔ Unicode wird auch beim direkten Bearbeiten der Textebene
-//  gebraucht (README ▸ Planned) und hat mit dem Splicing nichts zu tun.
-//
-//  0x20–0x7E ist in allen unterstuetzten Kodierungen ASCII; abgebildet werden
-//  daher nur die Bereiche, die abweichen.
-// ══════════════════════════════════════════════════════════════════════════════
+// WinAnsi und MacRoman legt die PDF-Spezifikation fest (ISO 32000-1, Anhang D), die Glyphennamen folgen der
+// Adobe Glyph List; ausgeschrieben ist nur die gebrauchte Teilmenge. 0x20-0x7E ist überall ASCII - abgebildet
+// werden nur die abweichenden Bereiche.
 
 namespace mg::pdfenc {
 namespace {
-// WinAnsi weicht von Latin-1 NUR im Bereich 0x80–0x9F ab (CP1252-Block).
 struct CodeUni { quint8 code; char16_t uni; };
 const CodeUni kWinAnsiHigh[] = {
     { 0x80, 0x20AC },
@@ -52,7 +41,6 @@ const CodeUni kWinAnsiHigh[] = {
     { 0x9F, 0x0178 },
 };
 
-// MacRoman: der gesamte Bereich 0x80–0xFF weicht ab.
 const char16_t kMacRomanHigh[128] = {
     0x00C4, 0x00C5, 0x00C7, 0x00C9, 0x00D1, 0x00D6, 0x00DC, 0x00E1,
     0x00E0, 0x00E2, 0x00E4, 0x00E3, 0x00E5, 0x00E7, 0x00E9, 0x00E8,
@@ -72,9 +60,6 @@ const char16_t kMacRomanHigh[128] = {
     0x00AF, 0x02D8, 0x02D9, 0x02DA, 0x00B8, 0x02DD, 0x02DB, 0x02C7,
 };
 
-// Adobe-Glyphennamen -> Unicode (Teilmenge: alles, was WinAnsi/MacRoman/
-// Standard und Latin-1 brauchen). Unbekannte Namen -> Ersetzung wird
-// abgelehnt (Aufrufer faellt auf Raster zurueck) statt zu raten.
 struct GlyphUni { const char* name; char16_t uni; };
 const GlyphUni kGlyphs[] = {
     { "A", 0x0041 },
@@ -306,7 +291,6 @@ const GlyphUni kGlyphs[] = {
 };
 } // namespace
 
-// ── Glyphenname -> Unicode ────────────────────────────────────────────────────
 QChar glyphToUnicode(const QByteArray& glyphName) {
     if (glyphName.isEmpty())
         return {};
@@ -325,7 +309,6 @@ QChar glyphToUnicode(const QByteArray& glyphName) {
         && !glyphName.startsWith("uni"))
         return hexToChar(glyphName.mid(1));
 
-    //  Namensliste (sortiert erzeugt -> binäre Suche).
     int lo = 0, hi = int(std::size(kGlyphs)) - 1;
     while (lo <= hi) {
         const int mid = (lo + hi) / 2;
@@ -337,7 +320,6 @@ QChar glyphToUnicode(const QByteArray& glyphName) {
     return {};
 }
 
-// ── Encoding ────────────────────────────────────────────────────────────────
 QChar Encoding::toUnicode(quint8 code) const {
     const auto d = m_diffToUni.constFind(code);
     if (d != m_diffToUni.constEnd())
@@ -455,7 +437,6 @@ Encoding Encoding::fromEncodingValue(const QByteArray& encValue, bool* ok) {
     if (!v.startsWith("<<"))
         return e;
 
-    //  Dict: /BaseEncoding auslesen …
     const int bp = v.indexOf("/BaseEncoding");
     if (bp >= 0) {
         int i = bp + 13;
@@ -469,7 +450,6 @@ Encoding Encoding::fromEncodingValue(const QByteArray& encValue, bool* ok) {
         }
     }
 
-    //  … und /Differences [ code /name /name … code /name … ] anwenden.
     const int dp = v.indexOf("/Differences");
     if (dp >= 0) {
         const int as = v.indexOf('[', dp);
@@ -501,7 +481,6 @@ Encoding Encoding::fromEncodingValue(const QByteArray& encValue, bool* ok) {
                     }
                     if (cur >= 0 && cur <= 255) {
                         e.m_diffToUni.insert(quint8(cur), c);
-                        //  Erste Zuordnung gewinnt in der Rückrichtung.
                         if (!e.m_uniToCode.contains(c))
                             e.m_uniToCode.insert(c, quint8(cur));
                         ++cur;
@@ -516,7 +495,6 @@ Encoding Encoding::fromEncodingValue(const QByteArray& encValue, bool* ok) {
 }
 
 
-// ── Type0 / Identity-H: /ToUnicode-CMap ─────────────────────────────────────
 namespace {
 
 //  Ein Hex-String "<0041>" -> Bytes. Liefert false bei ungerader Ziffernzahl
@@ -535,7 +513,6 @@ bool hexStringBytes(const QByteArray& tok, QByteArray* out) {
     return true;
 }
 
-//  UTF-16BE-Bytes -> QString (die CMap-Zielwerte sind immer UTF-16BE).
 QString utf16beToString(const QByteArray& b) {
     if (b.isEmpty() || (b.size() % 2) != 0)
         return {};
@@ -599,7 +576,6 @@ Encoding Encoding::fromCidToUnicode(const QByteArray& cmap, bool* ok) {
 
     for (int i = 0; i < t.size(); ++i) {
         if (t[i] == "beginbfchar") {
-            //  Paare: <src> <dst>
             int j = i + 1;
             while (j + 1 < t.size() && t[j] != "endbfchar") {
                 QByteArray sb, db;
@@ -614,7 +590,6 @@ Encoding Encoding::fromCidToUnicode(const QByteArray& cmap, bool* ok) {
             i = j; continue;
         }
         if (t[i] == "beginbfrange") {
-            //  Entweder <lo> <hi> <dstStart> oder <lo> <hi> [ <d1> <d2> … ]
             int j = i + 1;
             while (j < t.size() && t[j] != "endbfrange") {
                 if (j + 2 >= t.size()) return e;

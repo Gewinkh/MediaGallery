@@ -23,11 +23,8 @@ TagController::TagController(TagManager& mgr, QObject* parent)
     setTagManager(mgr);
 }
 
-//  Umhängen: die alten Verbindungen lösen, die neuen knüpfen und die Anzeige
-//  auffrischen - sonst zeigte die Fassade weiter die Tags der alten Hälfte.
 void TagController::setTagManager(TagManager& mgr) {
     if (m_mgr == &mgr) {
-        //  Erstaufbau (Konstruktor): Verbindungen fehlen noch.
         if (!m_wired) m_wired = true;
         else return;
     } else {
@@ -36,7 +33,6 @@ void TagController::setTagManager(TagManager& mgr) {
     }
     connect(m_mgr, &TagManager::tagsChanged,       this, &TagController::tagsChanged);
     connect(m_mgr, &TagManager::categoriesChanged, this, &TagController::categoriesChanged);
-    // Tag-Farbänderungen sind auch ein "tagsChanged" für reine Listen-Bindings.
     connect(m_mgr, &TagManager::tagColorChanged,   this, [this](const QString&, const QColor&) {
         emit tagsChanged();
     });
@@ -46,7 +42,6 @@ void TagController::setTagManager(TagManager& mgr) {
     emit undoStackChanged();
 }
 
-// ── Rueckgaengig (s. Header) ─────────────────────────────────────────────────
 bool         TagController::canUndo() const  { return m_mgr->canUndo(); }
 bool         TagController::canRedo() const  { return m_mgr->canRedo(); }
 QVariantList TagController::undoMark() const { return m_mgr->undoMark(); }
@@ -67,7 +62,6 @@ void TagController::beginTagModeGroup(const QString& tag) {
                           /*counted=*/true);
 }
 
-// ── Tags ─────────────────────────────────────────────────────────────────────
 QStringList TagController::allTags() const            { return m_mgr->allTags(); }
 QColor      TagController::tagColor(const QString& t) const { return m_mgr->tagColor(t); }
 
@@ -84,7 +78,6 @@ void TagController::renameTag(const QString& oldName, const QString& newName) {
     m_mgr->renameTag(oldName, n);
 }
 
-// ── Kategorie-Baum ────────────────────────────────────────────────────────────
 QVariantList TagController::buildNodes(const QList<TagCategory>& cats,
                                        const QColor& inherited) const {
     QVariantList out;
@@ -100,10 +93,8 @@ QVariantList TagController::buildNodes(const QList<TagCategory>& cats,
         // wirkt ODER die Kategorie selbst eine Einheitsfarbe gesetzt hat.
         const bool   tagUniform = cascaded || c.uniformColor;
         const QColor tagColor   = cascaded ? inherited : c.color;
-        // An die Kinder weitergereichte Kaskade: bestehende fortsetzen, sonst
-        // nur starten, wenn diese Kategorie uniform UND vererbend ist. Nicht
-        // destruktiv - die Eigenfarben der Kinder bleiben unangetastet und
-        // kehren beim Deaktivieren automatisch zurück.
+        // An die Kinder weitergereichte Kaskade: bestehende fortsetzen, sonst nur starten, wenn diese Kategorie uniform
+        // UND vererbend ist. Nicht destruktiv - die Eigenfarben bleiben und kehren beim Deaktivieren zurück.
         const QColor childCascade = cascaded
             ? inherited
             : (c.uniformColor && c.inheritColorToChildren ? c.color : QColor());
@@ -167,7 +158,6 @@ void TagController::moveCategory(const QString& id, const QString& newParentId) 
     m_mgr->moveCategory(id, newParentId);
 }
 
-// ── Tag ↔ Kategorie ───────────────────────────────────────────────────────────
 void TagController::addTagToCategory(const QString& catId, const QString& tag) {
     m_mgr->addTagToCategory(catId, tag);
 }
@@ -180,13 +170,8 @@ void TagController::moveTagToCategory(const QString& tag, const QString& fromCat
     m_mgr->moveTagToCategory(tag, fromCatId, toCatId);
 }
 
-// ── Datei ↔ Kategorie ─────────────────────────────────────────────────────────
-// Flache Liste des (rekursiven) Kategorienbaums für Menüs: Der Anzeigename ist
-// der Pfad „Eltern / Kind", damit gleichnamige Unterkategorien unterscheidbar
-// bleiben. Reihenfolge = Baumreihenfolge (Tiefensuche).
 QVariantList TagController::categoriesFlat() const {
     QVariantList out;
-    // Farbe wie im Baum kaskadieren, damit Menü-Farbpunkte zur Panel-Anzeige passen.
     std::function<void(const QList<TagCategory>&, const QString&, const QColor&)> walk =
         [&](const QList<TagCategory>& cats, const QString& prefix, const QColor& inherited) {
             for (const TagCategory& c : cats) {
@@ -249,17 +234,9 @@ void TagController::setFilesInCategory(const QString& catId,
     }
 }
 
-// ── Converter: Tag ↔ Unterkategorie (Phase 4) ────────────────────────────────
-//  DIE DATEIEN ZIEHEN MIT. Ein Tag ist nur ueber die Dateien etwas wert, die
-//  ihn tragen; wird er zur Kategorie, gehoeren sie in deren `files`-Liste -
-//  daran haengen die Anzeige (`fileCount`), der Kategorie-Filter und der
-//  Rueckweg `convertSubcategoryToTag`. Ohne das stand nach dem Umwandeln eine
-//  LEERE Kategorie da (Nutzerbefund 2026-09-03).
-//
-//  Der Tag selbst wird dabei AUFGEBRAUCHT: er verschwindet aus der Registry und
-//  von den Dateien. Frueher trug ihn die neue Kategorie hinterher noch als
-//  Tag-Chip - der filterte nach dem Umwandeln aber nichts mehr, weil keine
-//  Datei ihn mehr hatte. So ist der Weg Tag -> Kategorie -> Tag verlustfrei.
+// Die Dateien ziehen mit: ein Tag ist nur ueber seine Dateien etwas wert, also gehoeren
+// sie in die files-Liste der neuen Kategorie - sonst stand dort eine leere.
+// Der Tag wird aufgebraucht, damit der Weg Tag -> Kategorie -> Tag verlustfrei bleibt.
 void TagController::convertTagToSubcategory(const QString& tag,
                                             const QString& parentCatId,
                                             const QString& newSubcatName) {
@@ -274,7 +251,6 @@ void TagController::convertTagToSubcategory(const QString& tag,
     QString name = newSubcatName.trimmed();
     if (name.isEmpty()) name = t;
 
-    //  Vier Mutationen, EIN Rueckgaengig-Schritt (s. `TagManager`).
     {
         QStringList ziel = mg::tagmark::pathOf(m_mgr->categories(), parentCatId);
         if (const TagCategory* p = m_mgr->categoryById(parentCatId)) ziel.append(p->name);
@@ -285,16 +261,12 @@ void TagController::convertTagToSubcategory(const QString& tag,
     }
     const UndoGroupGuard guard(m_mgr);
 
-    // 1. Unterkategorie unter parentCatId mit der Tag-Farbe anlegen - MIT den
-    //    Dateien, die den Tag tragen (s. Kopf dieses Abschnitts).
     TagCategory sub  = TagCategory::create(name);
     sub.color        = m_mgr->tagColor(t);
     sub.uniformColor = true;
     sub.files        = m_mgr->filesWithTag(t);
     m_mgr->addSubcategory(parentCatId, sub);
 
-    // 2. Tag aufbrauchen: aus der Registry, von den Dateien, aus allen
-    //    Kategorien. Er lebt ab jetzt als Unterkategorie weiter.
     m_mgr->deleteTag(t);
 }
 
@@ -312,15 +284,12 @@ void TagController::convertTagToRootCategory(const QString& tag, const QString& 
         mg::tagmark::Thing::Category, name, {}));
     const UndoGroupGuard guard(m_mgr);
 
-    // 1. Hauptkategorie mit der Tag-Farbe anlegen (ID ist vorab bekannt:
-    //    create()) - MIT den Dateien, die den Tag tragen.
     TagCategory cat  = TagCategory::create(name);
     cat.color        = m_mgr->tagColor(t);
     cat.uniformColor = true;
     cat.files        = m_mgr->filesWithTag(t);
     m_mgr->addCategory(cat);
 
-    // 2. Tag aufbrauchen (s. Kopf dieses Abschnitts).
     m_mgr->deleteTag(t);
 }
 
@@ -343,15 +312,11 @@ void TagController::convertSubcategoryToTag(const QString& subcatId) {
     }
     const UndoGroupGuard guard(m_mgr);
 
-    // 1. Neuen Tag mit der Farbe der Unterkategorie registrieren.
     m_mgr->setTagColor(tagName, tagColor);
 
-    // 2. Alle Dateien der Unterkategorie erhalten diesen Tag - der Rueckweg
-    //    zu Schritt 1 der beiden Konverter oben.
     const QStringList files = subcat->files;
     for (const QString& fileName : files)
         m_mgr->addTagToFile(fileName, tagName);
 
-    // 3. Unterkategorie löschen.
     m_mgr->deleteCategory(subcatId);
 }

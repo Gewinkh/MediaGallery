@@ -5,23 +5,8 @@ import QtQuick.Layouts
 import MediaGallery 1.0
 import "../common"
 
-// ─────────────────────────────────────────────────────────────────────────────
-//  SettingsConverterTab.qml - universeller Konverter zwischen Tag,
-//  Unterkategorie und (Haupt-)Kategorie in JEDER Richtung.
-//
-//  Die Richtung wird über EIN Dropdown gewählt; die UI darunter passt sich der
-//  gewählten Richtung an (Quelle, ggf. Ziel-Kategorie, ggf. neuer Name):
-//    • Tag -> Unterkategorie   Tags.convertTagToSubcategory(tag, parent, name)
-//    • Tag -> Kategorie        Tags.convertTagToRootCategory(tag, name)
-//    • Unterkategorie -> Tag   Tags.convertSubcategoryToTag(id)
-//    • Kategorie -> Tag        Tags.convertSubcategoryToTag(id)  (gleiche Logik)
-//    • Unterkategorie -> Kat.  Tags.moveCategory(id, "")         (-> Hauptebene)
-//    • Kategorie -> Unterkat.  Tags.moveCategory(id, parentId)
-//
-//  Die frühere JSON-Migration (altes tag-zentrisches Format -> v2) wurde
-//  entfernt - das Legacy-Format wird nicht mehr unterstützt und die JSONs
-//  tragen keinen Versions-Marker mehr (siehe JsonStorage).
-// ─────────────────────────────────────────────────────────────────────────────
+// Universeller Konverter zwischen Tag, Unterkategorie und Kategorie in jeder Richtung; die Richtung wählt ein
+// Dropdown, die UI darunter passt sich an. Kategorie -> Tag nutzt dieselbe Logik wie Unterkategorie -> Tag.
 Item {
     id: root
 
@@ -65,10 +50,8 @@ Item {
         function onCategoriesChanged() { root.refresh() }
     }
 
-    // ── Richtungs-Definition (steuert die adaptive UI) ────────────────────────
-    //  source:      "tag" | "sub" | "root"  -> Quell-Dropdown + Beschriftung
-    //  needsParent: Ziel-Kategorie-Dropdown sichtbar
-    //  needsName:   Namensfeld sichtbar (neue Kategorie wird erstellt)
+    // `source`: "tag" | "sub" | "root" steuert Quell-Dropdown und Beschriftung; `needsParent` zeigt das
+    // Ziel-Dropdown, `needsName` das Namensfeld für eine neu erstellte Kategorie.
     readonly property var modes: [
         { label: App.uiText(App.language, "ConverterTagToSubcat"),  hint: App.uiText(App.language, "SettingsConvTagToSubHint"),
           source: "tag",  needsParent: true,  needsName: true,  op: "t2s" },
@@ -134,11 +117,8 @@ Item {
             spacing: 14
 
             SettingsGroup {
-                //  NICHT klappbar (Festlegung des Nutzers): diese eine Gruppe
-                //  IST der ganze Reiter - wie bei Tags und Kategorien, die gar
-                //  keine Gruppe haben. Ein Pfeil böte hier nur an, die Seite
-                //  leer zu machen. Ohne Klappen auch nichts zu merken, also
-                //  kein `key`.
+                // NICHT klappbar: diese eine Gruppe IST der ganze Reiter - ein Pfeil böte hier nur an, die Seite leer zu
+                // machen. Ohne Klappen auch nichts zu merken, also kein `key`.
                 collapsible: false
                 title: App.uiText(App.language, "SettingsTabConverter")
                 Layout.fillWidth: true
@@ -147,7 +127,6 @@ Item {
                     Layout.fillWidth: true
                     columns: 2; columnSpacing: 12; rowSpacing: 8
 
-                    // ── Richtung ─────────────────────────────────────────────
                     Label { text: App.uiText(App.language, "SettingsConvModeLabel"); color: App.themeTextPrimary }
                     ComboBox {
                         id: modeBox
@@ -155,8 +134,8 @@ Item {
                         model: root.modes
                         textRole: "label"
                         //  Beschriftung und Aufklappliste zeigen den Pfeil
-                        //  GEZEICHNET (Regel 28) - `textRole` bleibt gesetzt,
-                        //  damit die Suche/Tastaturauswahl weiter am Text hängt.
+                        //  GEZEICHNET - `textRole` bleibt gesetzt, damit die
+                        //  Suche/Tastaturauswahl weiter am Text hängt.
                     }
                 }
 
@@ -167,7 +146,6 @@ Item {
                     color: App.themeTextMuted; font.pixelSize: 11
                 }
 
-                // ── Adaptive Eingaben je Richtung ─────────────────────────────
                 GridLayout {
                     Layout.fillWidth: true
                     columns: 2; columnSpacing: 12; rowSpacing: 8

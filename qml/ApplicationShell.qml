@@ -9,25 +9,14 @@ import "settings"
 import "tags"
 import "viewer"
 
-// ─────────────────────────────────────────────────────────────────────────────
-//  ApplicationShell.qml - Wurzel-Fenster der QML-UI.
-//
-//  Phase 3: Die Galerie-Seite trägt jetzt die FilterBar (oben) und ein optional
-//  einblendbares TagCategoryPanel (rechte Seitenleiste). Die Vollbild-Seite des
-//  StackView ist der vollständige FullscreenViewer (Bild/Video/PDF/Text/Audio).
-// ─────────────────────────────────────────────────────────────────────────────
+// Wurzel-Fenster der QML-UI: die Galerie-Seite trägt FilterBar und ein optional einblendbares
+// TagCategoryPanel, die Vollbild-Seite des StackView den FullscreenViewer.
 ApplicationWindow {
     id: shell
     visible: true
 
-    //  ── Bildschirm, auf dem dieses Fenster steht, an `App` melden ───────────
-    //  Nur ein WINDOW weiß das verlässlich: `Window.screen` folgt dem Umziehen
-    //  auf einen anderen Monitor. Das an ein Item angehängte `Screen` tut das
-    //  NICHT, solange das Item in einem geschlossenen Popup sitzt - es meldet
-    //  dann den PRIMÄREN Bildschirm (gemessen 2026-09-02 auf zwei Monitoren:
-    //  1536 primär, 1920 der zweite; im geschlossenen Popup kam immer 1536).
-    //  Genau daran hing die Obergrenze der manuellen Kachelbreite, und sie blieb
-    //  deshalb beim Wechsel auf den größeren Monitor stehen (vom Nutzer gemeldet).
+    // Nur ein WINDOW kennt den Bildschirm verlässlich - das an ein Item angehängte `Screen` meldet im
+    // geschlossenen Popup den PRIMÄREN (gemessen 1536 statt 1920).
     readonly property int _screenW: shell.screen ? shell.screen.width : 0
     on_ScreenWChanged: App.setScreenWidth(shell._screenW)
 
@@ -36,9 +25,6 @@ ApplicationWindow {
     x: App.initialWindowX
     y: App.initialWindowY
 
-    //  Fenstertitel: „MediaGallery - <Ordner> / <Datei>". Der Dateiname steht
-    //  hier, weil die Kopfleiste der Kachel ihn nicht mehr trägt (dort sitzt jetzt
-    //  das Ansichts-Menü). Ohne offene Datei bleibt es beim Ordner.
     title: {
         const basis = App.currentFolder.length > 0
                       ? ("MediaGallery - " + folderName(App.currentFolder))
@@ -48,8 +34,6 @@ ApplicationWindow {
                : basis
     }
 
-    //  Pfad der Datei in der AKTIVEN Kachel; die Kacheln melden ihn über ein
-    //  `Binding` mit `when: paneActive` (s. Repeater der Split-Seite).
     property string activeFilePath: ""
 
     color: App.themeBackground
@@ -63,13 +47,8 @@ ApplicationWindow {
     palette.highlight:  App.themeAccent
     palette.highlightedText: App.themeBackground
     palette.mid:        App.themeBorder
-    //  Schattierungs-Rollen: hier BEWUSST noch einmal, obwohl main.cpp sie
-    //  bereits auf der QGuiApplication-Palette setzt. Datei-/Ordnerdialoge
-    //  öffnen als EIGENES Fenster und erben die Palette ihres ELTERNfensters,
-    //  nicht die der Anwendung (gemessen) - ohne diese Zeilen zeichnet Qts
-    //  Dialog-Implementierung Rahmen, Trenner und Seitenleiste aus der
-    //  Systempalette und wirkt als Fremdkörper im Theme.
-    //  Werte identisch zu `applyThemePalette` in main.cpp halten.
+    // Hier noch einmal, obwohl main.cpp sie auf der QGuiApplication-Palette setzt: Dateidialoge öffnen als
+    // eigenes Fenster und erben die Palette ihres ELTERNfensters. Werte identisch zu `applyThemePalette` halten.
     palette.light:      Qt.lighter(App.themeCard, 1.3)
     palette.midlight:   Qt.lighter(App.themeBorder, 1.2)
     palette.dark:       Qt.darker(App.themeBackground, 1.2)
@@ -79,31 +58,15 @@ ApplicationWindow {
 
     property string statusText: ""
 
-    //  Zeigt die fokussierte Hälfte gerade ihre Galerie? Daran hängen die
-    //  Ablegeleisten (im Vollbild einer Datei gibt es keine Kacheln zu ziehen).
-    //  Die Hälften melden es über ihre `galleryActive`-Eigenschaft.
     property bool galleryVisible: true
-    //  Das QML-Element der ERSTEN Hälfte - für die Menüknöpfe oben, solange es
-    //  nur eine gibt. Wird vom Wiederholer gesetzt.
     property Item firstPaneItem: null
-    //  Während eine Hälfte an ihrer Leiste gezogen wird und über der anderen
-    //  steht: Vorschau auf den Tausch.
     property bool swapPreview: false
 
-    // ── Immersives Vollbild (Taste F im Media Viewer) ─────────────────────────
-    //  Blendet die App-Chrome aus: Fenster auf Vollbild (Titelleiste/Dekoration
-    //  weg), Menüleiste weg, Kachel-Chrome der Viewer weg (dort: obere Leiste +
-    //  untere Vor/Zurück-Navigation, s. FullscreenViewer.immersive). Erneutes F
-    //  (oder Esc) stellt alles wieder her.
-    //  Fenstergeometrie/-zustand VOR dem Vollbild merken: `visibility` liefert im
-    //  Vollbild nur noch FullScreen und width/height die Bildschirmmaße - ohne
-    //  diese Sicherung würde ein Beenden im Vollbild die gespeicherte
-    //  Fensterposition/-größe mit den Bildschirmmaßen überschreiben.
+    // Geometrie und Fensterzustand VOR dem Vollbild merken: `visibility` liefert dann nur noch FullScreen und
+    // width/height die Bildschirmmaße - ein Beenden im Vollbild überschriebe sonst die gespeicherte Größe damit.
     property bool immersiveFullscreen: false
     property int  _preImmersiveVisibility: Window.Windowed
     property rect _preImmersiveGeometry: Qt.rect(0, 0, 0, 0)
-    //  Haben WIR den Fensterzustand umgeschaltet? Nur dann dürfen wir ihn beim
-    //  Verlassen wieder anfassen.
     property bool _windowWasSwitched: false
 
     function setImmersive(on) {
@@ -112,12 +75,8 @@ ApplicationWindow {
             shell._preImmersiveVisibility = shell.visibility
             shell._preImmersiveGeometry = Qt.rect(shell.x, shell.y, shell.width, shell.height)
             shell.immersiveFullscreen = true
-            //  **War das Fenster schon im Vollbild, wird es NICHT angefasst** -
-            //  weder beim Betreten noch beim Verlassen. Wer die App per
-            //  Fenstermanager auf Vollbild gestellt hat, bekommt durch F nur die
-            //  Chrome weg und behält seinen Fensterzustand. Ein blindes Setzen
-            //  und späteres „Zurücksetzen" warf das Fenster hier auf seine
-            //  normale Größe zurück.
+            // War das Fenster schon im Vollbild, wird es nicht angefasst - F nimmt dann nur die Chrome weg. Blindes
+            // Setzen und späteres Zurücksetzen warf es auf seine normale Größe zurück.
             shell._windowWasSwitched = (shell.visibility !== Window.FullScreen)
             if (shell._windowWasSwitched)
                 shell.visibility = Window.FullScreen
@@ -126,12 +85,8 @@ ApplicationWindow {
             if (!shell._windowWasSwitched)
                 return                     // Fenster gehörte uns nie
             shell._windowWasSwitched = false
-            //  Deterministisch zurück: ERST in den normalen Zustand samt
-            //  gemerkter Geometrie, DANN ggf. maximieren. Der direkte Sprung
-            //  Vollbild -> Maximiert ist eine reine Wertzuweisung, die manche
-            //  Fenstermanager verschlucken; über den Zwischenschritt gibt es in
-            //  jedem Fall einen echten Zustandswechsel, und die Geometrie sitzt
-            //  danach auch als „normale" Fläche des Fensters richtig.
+            // Erst in den normalen Zustand samt gemerkter Geometrie, dann maximieren: den direkten Sprung Vollbild ->
+            // Maximiert verschlucken manche Fenstermanager.
             shell.visibility = Window.Windowed
             const g = shell._preImmersiveGeometry
             if (g.width > 0) {
@@ -144,15 +99,8 @@ ApplicationWindow {
     }
     function toggleImmersive() { setImmersive(!shell.immersiveFullscreen) }
 
-    // ── Globale PDF-Seiten-Extraktion (FilterBar ▸ „Extrahieren") ─────────────
-    //  PdfExtract ist ein Singleton, das AUCH jede PdfSurface nutzt -> diese
-    //  Flags markieren, ob der laufende Scan/Auftrag von HIER stammt; nur dann
-    //  reagiert die Shell auf die Ergebnis-Signale.
     property bool _scanPending: false
     property bool _extractPending: false
-    //  Ordner, in dem die laufende Seiten-Extraktion arbeitet. Leer = der
-    //  geoeffnete Ordner; die Kopfzeile eines aufgeklappten Bereichs setzt
-    //  hier ihren eigenen.
     property string _extractFolder: ""
     function _extractTarget() {
         return shell._extractFolder.length > 0 ? shell._extractFolder
@@ -161,37 +109,23 @@ ApplicationWindow {
     property string _extractName: ""
 
     Component.onCompleted: {
-        //  Erstmeldung des Bildschirms; danach hält `on_ScreenWChanged` es
-        //  nach. KEIN eigenes `Component.onCompleted` dafür - ein zweites
-        //  wäre „Property value set multiple times", und die Shell lädt dann
-        //  gar nicht mehr (am Prüfstand gesehen).
         App.setScreenWidth(shell._screenW)
         if (App.startMaximized)
             shell.visibility = Window.Maximized
         App.restoreLastFolder()
-        //  Zwei-Fenster-Modus der letzten Sitzung wiederherstellen. Der Fokus
-        //  geht danach zurück auf die erste Hälfte - dort hat man aufgehört.
-        //  Die zweite Hälfte entsteht auch dann, wenn sie KEINEN Ordner
-        //  hatte, aber im Player-Modus stand: dort zeigt sie die Warteschlange,
-        //  `secondFolder()` bleibt leer, und die Hälfte wäre ersatzlos
-        //  verschwunden (vom Nutzer gemeldet: der Modus kam nur für die linke
-        //  Hälfte zurück).
+        // Die zweite Hälfte entsteht auch ohne Ordner, wenn sie im Player-Modus stand: dort zeigt sie die
+        // Warteschlange, `secondFolder` bleibt leer, und sie wäre ersatzlos verschwunden.
         var second = App.secondFolder()
         if (second.length > 0 || Audio.playerModePaneRemembered(1)) {
             var p = App.addPane()
             if (p && second.length > 0) p.openFolder(second)
             App.focusPane(0)
         }
-        //  Zuletzt gespielten Titel BEREITLEGEN (nicht abspielen) - er wartet
-        //  auf den ersten Druck auf ⏯.
         Audio.restoreSession()
     }
 
     onClosing: function(close) {
-        //  Titel und Stelle merken, solange die Wiedergabe noch steht.
         Audio.rememberSession()
-        // Im immersiven Vollbild den GEMERKTEN Fensterzustand sichern - sonst
-        // startet die App beim nächsten Mal in Bildschirmgröße an Position 0,0.
         if (shell.immersiveFullscreen) {
             const g = shell._preImmersiveGeometry
             App.saveWindowState(g.width, g.height, g.x, g.y,
@@ -208,17 +142,9 @@ ApplicationWindow {
         return i >= 0 ? n.substring(i + 1) : n
     }
 
-    // ── „Ordner hinzufügen": Vorbefüllung mit dem aktuellen Ordner ────────────
-    //  Pfad für den Duplikat-Vergleich normalisieren: NUR abschließende
-    //  Separatoren entfernen („C:\Test" ≡ „C:\Test\"), Vergleich bleibt
-    //  case-SENSITIV. Wurzelpfade („/", „C:\") bleiben unangetastet (das
-    //  Muster verlangt ein Nicht-Separator-Zeichen vor den Separatoren).
     function _normalizedFolderPath(p) {
         return p.replace(/([^\/\\])[\/\\]+$/, "$1")
     }
-    //  Liefert den aktuell geöffneten Ordner, sofern er noch NICHT in den
-    //  gespeicherten Ordnern steht - sonst "" (Dialog öffnet dann leer).
-    //  (Wird nur noch von der Hälfte gebraucht - dort steht eine eigene Fassung.)
     function _bookmarkPrefillPath() {
         var cur = App.currentFolder
         if (cur.length === 0) return ""
@@ -229,39 +155,17 @@ ApplicationWindow {
         return cur
     }
 
-    // ── Menüleiste ───────────────────────────────────────────────────────────
-    //  ThemedMenu: bisher folgten die Menü-POPUPS (Datei/Ansicht/Einstellungen/
-    //  Ordner + deren Untermenüs) NICHT der in Einstellungen ▸ Design gewählten
-    //  Menüleisten-Farbe (App.themeMenuBarBg) - nur die Leiste selbst (via
-    //  palette.button) war korrekt eingefärbt, die aufklappenden Popups nutzten
-    //  weiterhin die Fusion-Standardfarbe. Analog zum bereits korrekt
-    //  eingefärbten Filter-Popup (FilterBar.qml) bekommt jedes Menu hier
-    //  denselben expliziten Hintergrund.
-    //  `ThemedMenu` liegt jetzt als eigene Datei unter `qml/common/` - die
-    //  Kontextmenüs (Kachel, PDF-Seite, Tag-Chips) brauchen dieselbe Fassung,
-    //  und eine Inline-Komponente ist außerhalb dieser Datei nicht erreichbar.
 
-    //  EIGENE Menüleiste statt der nativen `MenuBar`: Die Fusion-`MenuBar`
-    //  belegt (wie ihr Widgets-Pendant) die ALT-Taste für Menü-Navigation/
-    //  Mnemoniks - sprachabhängig und per API nicht abschaltbar; das kollidierte
-    //  mit den App-Kürzeln (Alt+S/Alt+Q/Alt+<-). Diese Leiste ist eine gethemte
-    //  Button-Reihe, die die `Menu`-Popups per KLICK öffnet -> die Alt-Taste
-    //  gehört ausschließlich den App-Shortcuts, sprachunabhängig. Die
-    //  Menü-Inhalte (inkl. Lesezeichen-Logik) sind unverändert.
+    // EIGENE Menüleiste statt der nativen `MenuBar`: Fusion belegt die ALT-Taste für Mnemoniks, sprachabhängig
+    // und per API nicht abschaltbar - das kollidierte mit Alt+S/Alt+Q/Alt+<-.
     menuBar: Rectangle {
         id: menuStrip
-        //  Nur auf der Galerie-Seite sichtbar: eine geöffnete Datei bekommt die
-        //  ungeteilte Fensterfläche (dedizierte Vollbild-Ansicht) - die Kachel
-        //  bringt ihre eigene Kopfleiste inkl. Zurück-Knopf mit. ApplicationWindow
-        //  nimmt eine unsichtbare `menuBar` aus dem Layout, es bleibt also kein
-        //  Leerstreifen stehen. Im immersiven Vollbild (F) ist sie ebenfalls weg.
         visible: !shell.immersiveFullscreen
         implicitHeight: 32
         color: App.themeMenuBarBg
         Rectangle { anchors.bottom: parent.bottom; width: parent.width; height: 1
                     color: App.themeBorder }
 
-        //  Ein Knopf, der das Menü der EINEN Hälfte aufklappt (nur ungeteilt).
         component PaneMenuBtn: Rectangle {
             id: pmb
             property string label: ""
@@ -303,27 +207,18 @@ ApplicationWindow {
             }
         }
 
-        //  Blätterbar statt abgeschnitten: in einem schmalen Fenster passten die
-        //  Menüknöpfe nicht mehr in die Zeile und die rechten waren gar nicht
-        //  erreichbar. Strg + Mausrad blättert (Muster aus dem PDF-Editor).
         ScrollableBar {
             id: menuBtnRow
             anchors { left: parent.left; leftMargin: 6; right: parent.right; rightMargin: 6
                       verticalCenter: parent.verticalCenter }
             height: parent.height
             spacing: 2
-            //  APPWEIT: „Ansicht" und „Einstellungen" gelten für beide Hälften
-            //  und stehen immer hier oben. „Datei" und „Ordner" gehören der
-            //  Hälfte: bei ZWEI Hälften stehen sie in deren eigener Leiste, bei
-            //  EINER hier in derselben Zeile - dann sieht die Leiste aus wie vor
-            //  dem Zwei-Fenster-Modus (Festlegung des Nutzers).
             PaneMenuBtn { label: App.menuFileText;  folder: false; visible: !paneArea.split }
             MenuBtn { label: App.menuViewText;      menu: viewMenu }
             MenuBtn { label: App.menuSettingsText;  menu: settingsMenu }
             PaneMenuBtn { label: App.menuBookmarksText; folder: true; visible: !paneArea.split }
         }
 
-        // ── Menü-Popups (per Klick geöffnet - KEINE MenuBar/Alt-Navigation) ────
         ThemedMenu {
             id: viewMenu
             MenuItem {
@@ -341,9 +236,6 @@ ApplicationWindow {
                 }
             }
             MenuSeparator {}
-            //  Immersives Vollbild (F): betrifft das FENSTER, nicht die Datei -
-            //  deshalb hier oben und nicht mehr im Menü der Kachel. Gilt auch auf
-            //  der Galerie, wo die zusätzliche Fläche am meisten bringt.
             MenuItem {
                 text: App.uiText(App.language, "ViewMenuImmersive")
                 checkable: true
@@ -351,7 +243,6 @@ ApplicationWindow {
                 onTriggered: shell.toggleImmersive()
             }
             MenuSeparator {}
-            //  Zweite Galerie daneben - jede Hälfte hat ihren eigenen Ordner.
             MenuItem {
                 text: App.paneCount > 1 ? App.uiText(App.language, "MenuUnsplitWindow")
                                         : App.uiText(App.language, "MenuSplitWindow")
@@ -360,11 +251,6 @@ ApplicationWindow {
                     else                   App.addPane()
                 }
             }
-            //  Hälften tauschen. Der GRIFF dafür ist die Leiste der Hälfte -
-            //  die ist aber weg, sobald dort eine Datei offen ist (die Kachel
-            //  bringt ihre eigene Kopfzeile mit). Ohne diesen Eintrag ließen
-            //  sich zwei Hälften mit geöffneten Dateien überhaupt nicht mehr
-            //  tauschen (Nutzerbefund).
             MenuItem {
                 text: App.uiText(App.language, "MenuSwapPanes")
                 enabled: App.paneCount > 1
@@ -393,39 +279,24 @@ ApplicationWindow {
 
     }
 
-    // ── Die Hälften des Hauptfensters ───────────────────────────────────────
-    //  Eine oder zwei vollwertige Galerien nebeneinander. Jede bekommt ihren
-    //  Teilbaum von `PaneHost` mit EIGENEM QML-Kontext (s. src/app/PaneHost.h) -
-    //  darin zeigen `mediaModel`, `galleryModel` und `Tags` auf ihre Objekte.
     Item {
         id: paneArea
-        objectName: "paneArea"      // Griff für tests/bench (Regel 31)
+        objectName: "paneArea"      // Griff für tests/bench
         anchors.fill: parent
 
         readonly property bool split: App.paneCount > 1
 
-        //  Zeigt die Hälfte i gerade ihre Galerie, ist dort also KEINE Datei
-        //  offen? (`itemAt` liefert den `PaneHost`, dessen `item` die Galerie.)
         function _paneEmpty(i) {
             const h = paneRepeater.itemAt(i)
             return !(h && h.item) || h.item.galleryActive
         }
-        //  Teilung aufheben: eine Hälfte MUSS weichen - aber nie die, in der
-        //  etwas offen ist, solange die andere leer ist. Vorher stand hier fest
-        //  `closePane(1)`; damit verschwand die geöffnete Datei der rechten
-        //  Hälfte, obwohl links nur die Galerie stand (Nutzerbefund), und wer
-        //  rechts arbeitete, schloss mit dem Eintrag seine EIGENE Hälfte.
         function unsplit() {
             const focused = Math.max(0, App.focusedPaneIndex)
             const other   = (focused === 0) ? 1 : 0
-            //  Regel: es geht die unfokussierte Hälfte - es sei denn, die
-            //  fokussierte ist leer und die andere nicht. Dann geht die leere,
-            //  und es geht nichts verloren.
             if (_paneEmpty(focused) && !_paneEmpty(other)) App.closePane(focused)
             else                                          App.closePane(other)
         }
         readonly property real dividerW: 6
-        //  Breite der linken Hälfte aus dem gespeicherten Verhältnis.
         readonly property real leftW: split
             ? Math.max(120, Math.min(width - dividerW - 120,
                                      Math.round((width - dividerW) * App.paneSplit)))
@@ -433,11 +304,8 @@ ApplicationWindow {
 
         Repeater {
             id: paneRepeater
-            //  **Modell, NICHT `App.panes`**: ueber eine Liste baut ein
-            //  `Repeater` bei jeder Aenderung ALLE Delegates neu - die zweite
-            //  Haelfte aufzumachen zerstoerte damit die erste samt der dort
-            //  geoeffneten Datei, das Schliessen ebenso (gemessen). Das Modell
-            //  meldet Einfuegen/Entfernen/Verschieben punktgenau.
+            // Modell, NICHT `App.panes`: über eine Liste baut ein Repeater bei jeder Änderung ALLE Delegates neu - die
+            // zweite Hälfte aufzumachen zerstörte damit die erste samt geöffneter Datei (gemessen).
             model: App.panesModel
             delegate: PaneHost {
                 id: paneHost
@@ -455,16 +323,6 @@ ApplicationWindow {
 
                 onLoadFailed: function(err) { console.warn("Hälfte nicht ladbar:", err) }
 
-                //  Das Element der ERSTEN Hälfte für die Menüknöpfe oben.
-                //  **Muss eine Bindung sein, keine Zuweisung in `onItemChanged`:**
-                //  Wird die linke Hälfte geschlossen, rutscht die rechte auf
-                //  Platz 0, OHNE dass ihr `item` sich ändert - `onItemChanged`
-                //  feuerte dann nie, und `firstPaneItem` blieb auf dem gerade
-                //  zerstörten Element stehen (also null). Die Knöpfe „Datei"
-                //  und „Ordner" oben waren damit für den Rest der Sitzung tot
-                //  (gemessen, `tests/bench/bench_shell.cpp`).
-                //  `RestoreNone`: die weichende Hälfte darf den Wert beim
-                //  Abschalten nicht auf ihren alten Stand zurückdrehen.
                 Binding {
                     target: shell
                     property: "firstPaneItem"
@@ -473,7 +331,6 @@ ApplicationWindow {
                     restoreMode: Binding.RestoreNone
                 }
 
-                //  Zustand hinein …
                 Binding { target: paneHost.item; property: "splitActive"; value: paneArea.split
                           when: paneHost.item !== null }
                 Binding { target: paneHost.item; property: "showClose";   value: paneArea.split
@@ -487,8 +344,6 @@ ApplicationWindow {
                           value: shell.immersiveFullscreen
                           when: paneHost.item !== null }
 
-                //  Die fokussierte Hälfte sagt der Shell, ob ihre Galerie zu
-                //  sehen ist und welche Datei oben liegt (Ablegeleisten, Titel).
                 Binding {
                     target: shell
                     property: "galleryVisible"
@@ -503,7 +358,6 @@ ApplicationWindow {
                     restoreMode: Binding.RestoreNone
                 }
 
-                //  … und Meldungen heraus.
                 Connections {
                     target: paneHost.item
                     function onFocusRequested() { App.focusPane(paneHost.index) }
@@ -527,10 +381,6 @@ ApplicationWindow {
                         App.handleDroppedUrls(urls, folderPath)
                     }
                     function onImmersiveToggleRequested() { shell.toggleImmersive() }
-                    //  Leiste gezogen: über der ANDEREN Hälfte losgelassen ⇒
-                    //  tauschen. Während des Zugs zeigt ein Schatten, wohin es
-                    //  geht - ohne Rückmeldung wäre nicht zu sehen, dass die
-                    //  Leiste überhaupt ein Griff ist.
                     function onBarDragMoved(x) {
                         const p = paneArea.mapFromItem(null, x, 0)
                         shell.swapPreview = (paneHost.index === 0)
@@ -549,8 +399,6 @@ ApplicationWindow {
             }
         }
 
-        //  Tausch-Vorschau: die ganze Fläche bekommt einen Akzentrahmen, damit
-        //  sichtbar ist, dass beim Loslassen getauscht wird.
         Rectangle {
             visible: shell.swapPreview
             anchors.fill: parent
@@ -561,7 +409,6 @@ ApplicationWindow {
             z: 50
         }
 
-        // ── Trenner: zieht das Verhältnis ───────────────────────────────────
         Rectangle {
             id: paneDivider
             visible: paneArea.split
@@ -586,15 +433,8 @@ ApplicationWindow {
     }
 
 
-    // ── Drag & Drop ───────────────────────────────────────────────────────────
-    //  `z: -1` ist PFLICHT, nicht Kosmetik: Ein Zug wird immer nur an die
-    //  OBERSTE annehmende DropArea unter dem Zeiger geliefert (gemessen -
-    //  danach ist Schluss, tiefere Flächen sehen ihn nie). Diese Fläche hier
-    //  füllt das ganze Fenster, steht ohne `keys` für JEDE Nutzlast offen und
-    //  ist als spät deklariertes Kind der Wurzel automatisch obenauf - sie
-    //  verschluckte damit die Ablegeflächen der Tag-/Kategorien-Seitenleiste
-    //  vollständig. Nach unten gelegt greift sie nur noch dort, wo keine
-    //  besondere Fläche zuständig ist.
+    // `z: -1` ist PFLICHT: ein Zug geht immer nur an die OBERSTE annehmende DropArea unter dem Zeiger. Diese
+    // füllt das ganze Fenster und verschluckte sonst die Ablegeflächen der Tag-Seitenleiste vollständig.
     DropArea {
         z: -1
         anchors.fill: parent
@@ -606,20 +446,11 @@ ApplicationWindow {
         }
     }
 
-    // ── Ablegeleiste für die ORDNER dieser Ansicht (nur während eines Zuges) ─
-    //  Warum es sie gibt: während eines Zuges gehört der Zeiger dem Compositor,
-    //  das Mausrad erreicht die Anwendung gar nicht (gemessen, s. `config.md` ▸
-    //  „Ziehen"). Um einen Ordner zu erreichen, der aus dem Bild gescrollt ist,
-    //  bliebe nur das Randscrollen. Diese Leiste bringt statt dessen die Ziele
-    //  zum Zeiger: sie zeigt den geöffneten Ordner und jeden Ordner, der gerade
-    //  in der Galerie steht - eingerückt nach Tiefe.
-    //
-    //  Dasselbe Muster wie die Lesezeichen-Leiste darunter; sie kostet keinen
-    //  dauerhaften Platz.
+    // Während eines Zuges gehört der Zeiger dem Compositor, das Mausrad erreicht die Anwendung nicht - ein aus
+    // dem Bild gescrollter Ordner wäre nur über Randscrollen erreichbar. Die Leiste bringt die Ziele zum Zeiger.
     Rectangle {
         id: folderDropBar
         z: 91
-        //  Nur auf der Galerie-Seite und nur, wenn es überhaupt Ordner gibt.
         visible: App.tileDragActive && shell.galleryVisible
                  && folderDropRepeater.count > 0
         anchors { left: parent.left; right: parent.right; bottom: bookmarkDropBar.top }
@@ -628,11 +459,8 @@ ApplicationWindow {
         color: App.themeMenuBarBg
         border.color: App.themeAccent; border.width: 1
 
-        //  Die Ziele werden EINMAL beim Beginn des Zuges eingesammelt - während
-        //  des Zuges ändert sich die Galerie nicht, und eine Bindung über alle
-        //  Zeilen liefe bei jedem Ereignis neu.
-        //  NICHT an `visible` hängen: `visible` fragt `folderDropRepeater.count`
-        //  ab, der wiederum an `targets` hängt - die Leiste käme nie hoch.
+        // Ziele werden EINMAL beim Beginn des Zuges eingesammelt. NICHT an `visible` hängen: das fragt `count` ab,
+        // der wiederum an `targets` hängt - die Leiste käme nie hoch.
         property var targets: []
         Connections {
             target: App
@@ -705,12 +533,6 @@ ApplicationWindow {
         }
     }
 
-    //  Der geöffnete Ordner und jeder Ordner, der gerade in der Galerie steht -
-    //  in der sichtbaren Reihenfolge, mit ihrer Tiefe.
-    //  ── Welche Hälfte ist gemeint? ──────────────────────────────────────────
-    //  Die Shell hat seit dem Zwei-Fenster-Modus KEIN eigenes Modell mehr. Für
-    //  die Ablegeleisten zählt die Hälfte, in der der Zug BEGANN - der Zeiger
-    //  wandert währenddessen über die andere, und der Fokus folgt ihm.
     property int _dragPaneIndex: 0
     Connections {
         target: App
@@ -723,9 +545,6 @@ ApplicationWindow {
         var list = App.panes
         return (i >= 0 && i < list.length) ? list[i] : (list.length > 0 ? list[0] : null)
     }
-    //  Für eine DATEI zählt nicht der Fokus, sondern wer sie hat: nur das Modell
-    //  ihres Ordners darf sie verschieben (`transferToFolder` weist alles
-    //  Fremde ab). Deshalb wird die Hälfte über den Pfad gesucht.
     function _modelOwning(path) {
         var list = App.panes
         for (var i = 0; i < list.length; i++) {
@@ -755,17 +574,11 @@ ApplicationWindow {
         return out
     }
 
-    //  Eine abgelegte Nutzlast in einen Ordner geben - app-intern verschieben
-    //  bzw. kopieren, von aussen kopieren. "App-intern" heisst IRGENDEINE
-    //  Haelfte, nicht nur die unter dem Zeiger; die Galerie entscheidet mit
-    //  derselben Frage (`GalleryView._appOwnsFile`).
     function _dropUrlsOnFolder(urls, destFolder) {
         if (!urls || urls.length === 0 || destFolder.length === 0) return
         const src = App.localPath(urls[0])
         const owner = shell._modelOwning(src)
         if (owner && owner.ownsFile(src)) {
-            //  Ein Zug kann MEHRERE Dateien tragen (Mehrfachauswahl). In den
-            //  EIGENEN Ordner abzulegen ist keine Bewegung und faellt weg.
             const paths = []
             for (var i = 0; i < urls.length; ++i) {
                 const p = App.localPath(urls[i])
@@ -780,12 +593,6 @@ ApplicationWindow {
         }
     }
 
-    // ── Ablegeleiste für Lesezeichen (nur WÄHREND eines Kachel-Zuges) ────────
-    //  Der Zug einer Kachel ist ein PLATTFORM-Zug; landet er im eigenen Fenster,
-    //  kommt er hier als gewöhnlicher Datei-Drop an. Die Leiste erscheint nur,
-    //  solange gezogen wird (`App.tileDragActive`) - ein Ziel, das keinen
-    //  dauerhaften Platz kostet. Sie liegt über allem, weil ein Zug immer nur an
-    //  die OBERSTE annehmende Fläche geht.
     Rectangle {
         id: bookmarkDropBar
         z: 90
@@ -838,16 +645,9 @@ ApplicationWindow {
         }
     }
 
-    //  Eine gezogene Datei in einen Ordner ablegen - auf einem LESEZEICHEN oder
-    //  auf einer ORDNERKACHEL der Galerie; beide Wege sind derselbe Vorgang.
-    //  Die Regeln stehen im Modell (`transferToFolder`); hier bleibt nur die
-    //  Rückfrage bei einem belegten Namen und die Meldung.
-    //  ── Mehrere Dateien: eine Warteschlange ─────────────────────────────────
-    //  Ein Zug kann seit der Mehrfachauswahl mehrere Dateien tragen. Sie werden
-    //  der Reihe nach abgearbeitet; stoesst eine auf einen belegten Namen, wird
-    //  die Schlange ANGEHALTEN, der Dialog gefragt und danach weitergemacht.
-    //  Eine Sammelantwort („fuer alle") gibt es bewusst nicht - jede Kollision
-    //  ist eine eigene Entscheidung ueber eine fremde Datei.
+    // Ablegen auf einem Lesezeichen oder einer Ordnerkachel ist derselbe Vorgang; die Regeln stehen im
+    // Modell (`transferToFolder`). Mehrere Dateien laufen als Warteschlange: bei belegtem Namen wird
+    // ANGEHALTEN und gefragt - eine Sammelantwort gibt es bewusst nicht, jede Kollision ist eine eigene Entscheidung.
     property var    _dropQueue: []
     property string _dropDest: ""
     property int    _dropOk: 0
@@ -890,8 +690,6 @@ ApplicationWindow {
         if (result === 0) { shell._dropOk++; shell._dropLast = String(path).split("/").pop() }
         else              { shell._dropFail++ }
     }
-    //  Eine Meldung fuer den ganzen Zug: bei einer Datei ihr Name (wie bisher),
-    //  bei mehreren die Zahl.
     function _reportDropBatch(move) {
         if (shell._dropOk === 1 && shell._dropFail === 0)
             shell.statusText = App.uiText(App.language, move ? "DropMoved" : "DropCopied")
@@ -908,7 +706,6 @@ ApplicationWindow {
     }
 
 
-    // ── Rückfrage bei belegtem Namen (Ersetzen / Umbenennen / Abbrechen) ─────
     Dialog {
         id: collisionDialog
         property string srcPath: ""
@@ -962,8 +759,6 @@ ApplicationWindow {
                         TapHandler {
                             onTapped: {
                                 collisionDialog.close()
-                                //  Abbrechen gilt NUR fuer diese Datei - der
-                                //  Rest des Zuges laeuft weiter.
                                 if (colBtn.modelData.mode !== 0) {
                                     const owner = shell._modelOwning(collisionDialog.srcPath)
                                     if (owner) {
@@ -984,15 +779,6 @@ ApplicationWindow {
         }
     }
 
-    // ── Globale PDF-Seiten-Extraktion: Auswahldialog + Rückmeldungen ─────────
-    //  Dieselbe Komponente wie in der PdfSurface, nur mit allen PDFs des
-    //  Ordners und Namenspflicht (requireName) - die Ausgabe landet im
-    //  aktuellen Ordner, deshalb hostet die Shell den Dialog (sie kennt
-    //  Overlay und Statuszeile).
-    //  Erst beim Öffnen erzeugt (Muster `settingsLoader` unten): der Dialog ist
-    //  mit Abstand die größte Komponente der Shell, wird aber nur gebraucht,
-    //  wenn jemand wirklich Seiten aus den PDFs des Ordners zieht. Eager
-    //  erzeugt kostete er gemessen einen guten Teil der Startzeit.
     Component {
         id: globalExtractComponent
         PdfPageSelectDialog {
@@ -1002,8 +788,6 @@ ApplicationWindow {
             onExtractRequested: (items, name) => {
                 shell._extractPending = true
                 shell._extractName    = name
-                // items = [{path,page}] in Auswahlreihenfolge (Werkbank) bzw.
-                // Originalreihenfolge (kompakt) -> extractOrdered erhält die Reihenfolge.
                 PdfExtract.extractOrdered(items, shell._extractTarget(), name)
             }
         }
@@ -1037,9 +821,6 @@ ApplicationWindow {
         function onExtractFinished(ok, targetPath, errorText) {
             if (!shell._extractPending) return
             shell._extractPending = false
-            // ERST aktualisieren, DANN die eigene Meldung setzen: der Refresh
-            // emittiert selbst eine statusMessage („Aktualisiert"), die sonst
-            // unsere Erfolgsmeldung sofort wieder überschriebe.
             if (ok) App.refreshCurrentFolder()
             shell.statusText = ok
                 ? App.uiText(App.language, "ExtractOkToast")
@@ -1049,21 +830,12 @@ ApplicationWindow {
         }
     }
 
-    //  ── Meldungen: eingeblendeter TOAST statt Statusleiste ───────────────────
-    //  Der frühere `footer` (24-px-Streifen) ist entfernt - er stand in JEDER
-    //  Ansicht und kostete überall Fläche, im Vollbild lag er quer unter dem
-    //  Video. `statusText` blieb als Sammelstelle bestehen; alle Melder
-    //  (globale PDF-Extraktion, „max. 4 Dateien", Ordnerwechsel,
-    //  `App.statusMessage`) schreiben unverändert dorthin. Angezeigt wird das
-    //  jetzt wie in den Kacheln: ein Toast, der sich selbst ausblendet und
-    //  KEINE Fläche kostet (Overlay, klickdurchlässig).
     Timer { id: statusClearTimer; interval: 4000; onTriggered: shell.statusText = "" }
 
     Rectangle {
         id: statusToast
         parent: Overlay.overlay
         z: 9999
-        //  Unten mittig, mit Abstand zum Rand - im Vollbild wie in der Galerie.
         anchors.horizontalCenter: parent ? parent.horizontalCenter : undefined
         anchors.bottom: parent ? parent.bottom : undefined
         anchors.bottomMargin: 28
@@ -1090,13 +862,9 @@ ApplicationWindow {
     Connections {
         target: App
         function onStatusMessage(text) { shell.statusText = text; statusClearTimer.restart() }
-        //  Offene Kacheln räumt die Hälfte selbst ab (sie kennt ihren Ordner).
         function onFolderOpened(path)  { shell.statusText = path; statusClearTimer.restart() }
     }
 
-    //  Meldungen der Wiedergabe: Fehler der Kette und der Verlauf des
-    //  Ton-Sicherns. Sie gehen hier auf denselben Toast wie alles andere -
-    //  vorher fielen sie ins Leere, weil ihnen niemand zuhörte.
     Connections {
         target: Audio
         function onMessage(text) {
@@ -1107,10 +875,7 @@ ApplicationWindow {
     }
 
 
-    // ── Lesezeichen anlegen/bearbeiten (geteilt mit SettingsBookmarksTab) ──────
 
-    // ── Kachelgrößen-Dialog (Phase 4) ─────────────────────────────────────────
-    //  Ebenfalls erst beim Öffnen - er erscheint über einen Menüeintrag.
     Component { id: tileSizeComponent; TileSizeDialog {} }
     Loader {
         id: tileSizeLoader
@@ -1118,10 +883,6 @@ ApplicationWindow {
         sourceComponent: tileSizeComponent
     }
 
-    //  „Welche Tonspur?" - erscheint nur, wenn die Datei mehr als eine hat.
-    //  Er gehört der SHELL: `Audio` ist ein Singleton, je Hälfte gehostet
-    //  gingen bei zwei Hälften zwei Fenster gleichzeitig auf.
-    //  Erscheint nur, wenn eine Datei mehr als eine Tonspur hat - also selten.
     Component { id: audioTrackComponent; AudioTrackDialog {} }
     Loader {
         id: audioTrackLoader
@@ -1136,9 +897,6 @@ ApplicationWindow {
         }
     }
 
-    // ── Einstellungs-Dialog (Phase 4) ─────────────────────────────────────────
-    // Loader-gated: erst beim Öffnen instanziiert, beim Schließen wieder
-    // freigegeben (RAM-Priorität - der Dialog mit acht Tabs lebt nicht dauerhaft).
     Component {
         id: settingsComponent
         SettingsDialog {}

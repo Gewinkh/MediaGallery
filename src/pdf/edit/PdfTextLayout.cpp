@@ -15,22 +15,18 @@ using namespace mg::pdfobj;
 
 namespace {
 
-// ── 3×2-Matrix [a b c d e f] wie in PDF ─────────────────────────────────────
 struct Mat {
     qreal a = 1, b = 0, c = 0, d = 1, e = 0, f = 0;
-    //  this ⋅ m  (erst this, dann m anwenden - PDF-Reihenfolge)
     Mat mul(const Mat& m) const {
         return { a*m.a + b*m.c,        a*m.b + b*m.d,
                  c*m.a + d*m.c,        c*m.b + d*m.d,
                  e*m.a + f*m.c + m.e,  e*m.b + f*m.d + m.f };
     }
     QPointF map(qreal x, qreal y) const { return QPointF(a*x + c*y + e, b*x + d*y + f); }
-    //  Längenmaßstab in x- bzw. y-Richtung (für Breite/Höhe der Zeichen).
     qreal scaleX() const { return std::hypot(a, b); }
     qreal scaleY() const { return std::hypot(c, d); }
 };
 
-// ── Breitentabelle EINES Fonts ──────────────────────────────────────────────
 struct FontMetrics {
     mg::pdfenc::Encoding enc;
     bool     cid      = false;      // 2-Byte-Codes
@@ -47,7 +43,6 @@ struct FontMetrics {
     }
 };
 
-//  Zahlen aus einem PDF-Array "[ 1 2 3 ]" (nur Zahlen, verschachtelt nicht).
 QVector<qreal> numbersIn(const QByteArray& arr) {
     QVector<qreal> out;
     int i = 0;
@@ -136,7 +131,6 @@ bool PdfTextLayout::buildForPage(const QString& pdfPath, int pageIndex,
     }
     if (rootNum < 0) return fail("kein /Root");
 
-    //  Seitenbaum -> gesuchte Seite samt geerbtem /Resources.
     int pageNum = -1;
     QByteArray pageRes;
     {
@@ -173,7 +167,6 @@ bool PdfTextLayout::buildForPage(const QString& pdfPath, int pageIndex,
     }
     if (pageNum < 0) return fail("Seite nicht gefunden");
 
-    //  Seitenhöhe (für die Spiegelung nach oben-links).
     qreal pageH = 0.0;
     {
         int cur = pageNum;
@@ -190,7 +183,6 @@ bool PdfTextLayout::buildForPage(const QString& pdfPath, int pageIndex,
     }
     if (pageH <= 0.0) return fail("Seitenhöhe unbekannt");
 
-    // ── Fonts der Seite samt Breiten ────────────────────────────────────────
     QHash<QByteArray, FontMetrics> fonts;
     {
         const qint64 fp = findKey(pageRes, "Font");
@@ -237,7 +229,6 @@ bool PdfTextLayout::buildForPage(const QString& pdfPath, int pageIndex,
                 fm.enc = mg::pdfenc::Encoding::fromCidToUnicode(cm, &cok);
                 if (!cok) return fail("/ToUnicode nicht auswertbar");
 
-                //  Breiten des Nachfahren-Fonts: /DW (Standard 1000) + /W.
                 int desc = -1;
                 const qint64 dp = findKey(fd, "DescendantFonts");
                 if (dp >= 0 && fd[dp] == '[') {
@@ -252,7 +243,6 @@ bool PdfTextLayout::buildForPage(const QString& pdfPath, int pageIndex,
                 fm.defWidth = (dw >= 0) ? qreal(dw) : 1000.0;   // Spezifikation: 1000
                 const qint64 wp = findKey(dd, "W");
                 if (wp >= 0 && dd[wp] == '[') {
-                    //  /W kennt zwei Formen:  c [w1 w2 …]   und   cFirst cLast w
                     const qint64 we = skipValue(dd, wp);
                     const QByteArray warr = dd.mid(wp + 1, (we - 1) - (wp + 1));
                     int k = 0;
@@ -287,7 +277,6 @@ bool PdfTextLayout::buildForPage(const QString& pdfPath, int pageIndex,
                     }
                 }
             } else {
-                //  Einfacher Font: /Encoding + /FirstChar + /Widths.
                 QByteArray encVal;
                 const qint64 ep = findKey(fd, "Encoding");
                 if (ep >= 0) {
@@ -313,14 +302,9 @@ bool PdfTextLayout::buildForPage(const QString& pdfPath, int pageIndex,
                         fm.widths.insert(quint32(first + j), ws[j]);
                 }
 
-                //  KEINE (oder unvollständige) /Widths? Bei einer der 14
-                //  Standardschriften ist das ERLAUBT - die Spezifikation
-                //  erwartet, dass der Betrachter ihre Maße kennt. Genau daran
-                //  scheiterte „Text bearbeiten" auf solchen Dokumenten.
-                //  Gefüllt wird über die Kodierung der Schrift (Code -> Zeichen ->
-                //  Breite), damit WinAnsi, MacRoman und /Differences
-                //  gleichermaßen stimmen. Bereits vorhandene Werte aus /Widths
-                //  bleiben unangetastet - die Datei weiß es besser.
+                // Fehlende /Widths sind bei einer der 14 Standardschriften ERLAUBT - die Spezifikation erwartet, dass der
+                // Betrachter ihre Maße kennt. Gefüllt wird über die Kodierung (Code -> Zeichen -> Breite); vorhandene Werte
+                // bleiben unangetastet, die Datei weiß es besser.
                 int baseCount = 0;
                 if (const mg::BaseWidth* table = mg::baseFontWidths(baseFont, &baseCount)) {
                     for (quint32 code = 0; code < 256; ++code) {
@@ -344,7 +328,6 @@ bool PdfTextLayout::buildForPage(const QString& pdfPath, int pageIndex,
     }
     if (fonts.isEmpty()) return fail("keine auswertbaren Fonts");
 
-    // ── Content-Stream(s) der Seite ─────────────────────────────────────────
     QByteArray content;
     {
         const QByteArray pd = dictOf(pageNum);
@@ -374,7 +357,6 @@ bool PdfTextLayout::buildForPage(const QString& pdfPath, int pageIndex,
         page->content = content;
     }
 
-    // ── Textzustand simulieren ──────────────────────────────────────────────
     Mat ctm;                       // Grafikmatrix
     QVector<Mat> ctmStack;
     Mat tm, tlm;                   // Text- und Textzeilen-Matrix
@@ -382,21 +364,16 @@ bool PdfTextLayout::buildForPage(const QString& pdfPath, int pageIndex,
     QByteArray curFontRes;
     qreal fsize = 0, charSp = 0, wordSp = 0, hscale = 1.0, leading = 0, rise = 0;
     int showIndex = 0;
-    //  Beginn des zuletzt gelesenen Operanden (fuer die Span-Aufzeichnung).
     qint64 lastOperandStart = -1, lastOperandEnd = -1;
 
-    //  Operanden-Puffer (PDF ist postfix: erst Operanden, dann Operator).
     QVector<QByteArray> ops;
     auto numAt = [&](int fromEnd) -> qreal {
         const int i = ops.size() - fromEnd;
         return (i >= 0 && i < ops.size()) ? ops[i].toDouble() : 0.0;
     };
 
-    //  Eine Zeichenkette zeigen und die Glyphen eintragen.
-    //  `byteBase` = Offset dieser Bytes innerhalb der ZUSAMMENGEFÜGTEN Bytes
-    //  des Zeigeoperators (`PdfShowSpan::bytes`). Bei `Tj` ist er 0, bei `TJ`
-    //  wächst er über die Array-Glieder - nur so zeigt `PdfGlyph::byteOffset`
-    //  auf dieselbe Stelle, an der die Weiterverarbeitung schneidet.
+    // `byteBase` ist der Offset dieser Bytes innerhalb der ZUSAMMENGEFÜGTEN Bytes des Zeigeoperators: bei `Tj` 0,
+    // bei `TJ` wachsend - nur so zeigt `PdfGlyph::byteOffset` auf dieselbe Stelle, an der später geschnitten wird.
     auto showBytes = [&](const QByteArray& bytes, qint64 byteBase = 0) {
         if (!fm || !fm->valid) return true;                   // ohne Font nichts zu tun
         const int step = fm->cid ? 2 : 1;
@@ -440,12 +417,10 @@ bool PdfTextLayout::buildForPage(const QString& pdfPath, int pageIndex,
     //  Anfang der laufenden ANWEISUNG (erster Operand) - nötig, um eine
     //  Positionierung später vollständig ersetzen zu können.
     qint64 stmtStart = -1;
-    //  Zuletzt gesetzte Positionierung (gilt für die folgenden Zeigeoperatoren).
     qint64     posStart = -1, posEnd = -1;
     QByteArray posOp;
     QVector<qreal> posArgs;
     int        objIndex = 0;              // laufende Nummer des Textobjekts (BT)
-    //  Hülle des gerade aufgebauten Pfades (Benutzerraum) + Gültigkeit.
     QRectF pathBox;
     bool   pathValid = false;
     auto addPoint = [&](qreal x, qreal y) {
@@ -471,7 +446,6 @@ bool PdfTextLayout::buildForPage(const QString& pdfPath, int pageIndex,
         if (painted && pathValid) notePaint(pathBox.normalized());
         pathValid = false;
     };
-    //  Ein XObject/Inline-Bild füllt das Einheitsquadrat der aktuellen Matrix.
     auto noteUnitSquare = [&]() {
         const QPointF a = ctm.map(0, 0), b = ctm.map(1, 0);
         const QPointF c = ctm.map(1, 1), d = ctm.map(0, 1);
@@ -575,7 +549,6 @@ bool PdfTextLayout::buildForPage(const QString& pdfPath, int pageIndex,
                 const QByteArray& tok = ops.last();
                 QByteArray bytes;
                 if (tok.startsWith('(')) {
-                    //  Escapes auflösen (gleiche Regeln wie PdfContentEditor).
                     for (int k = 1; k + 1 < tok.size(); ++k) {
                         if (tok[k] != '\\') { bytes += tok[k]; continue; }
                         if (++k + 1 > tok.size()) break;
@@ -598,7 +571,6 @@ bool PdfTextLayout::buildForPage(const QString& pdfPath, int pageIndex,
                 PdfShowSpan sp;
                 sp.operandStart = lastOperandStart; sp.operandEnd = lastOperandEnd;
                 sp.isArray = false; sp.bytes = bytes; sp.fontRes = curFontRes;
-                //  Umrechnung TJ-Versatz -> Seiten-Punkte (s. PdfShowSpan).
                 sp.tjUnitPt = fsize * hscale * ctm.scaleX() * tm.scaleX();
                 //  Bei ' und " setzt der Zeigeoperator SELBST die neue Zeile -
                 //  eine eigene Positionierung gibt es dafür nicht.

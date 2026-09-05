@@ -31,12 +31,8 @@ void PaneHost::componentComplete() {
     rebuild();
 }
 
-//  Reihenfolge ist hier alles: der Teilbaum wird verzögert gelöscht
-//  (`deleteLater`), seine Bindungen laufen also noch einen Durchlauf weiter.
-//  Wird der KONTEXT sofort gelöscht, greifen sie ins Leere - sichtbar als
-//  „TypeError: Cannot read property … of undefined" beim Umbau. Deshalb geht
-//  auch der Kontext über `deleteLater`, und zwar NACH dem Element: die
-//  Warteschlange arbeitet in der Reihenfolge des Eintragens.
+// Reihenfolge ist hier alles: der Teilbaum wird verzögert gelöscht, seine Bindungen laufen also noch einen
+// Durchlauf weiter. Deshalb geht auch der Kontext über `deleteLater`, und zwar NACH dem Element.
 void PaneHost::clearItem() {
     if (m_item) {
         m_item->setParentItem(nullptr);
@@ -78,10 +74,8 @@ void PaneHost::rebuild() {
     m_context->setContextProperty(QStringLiteral("mediaModel"),   m_pane->mediaModelObject());
     m_context->setContextProperty(QStringLiteral("galleryModel"), m_pane->galleryModelObject());
     m_context->setContextProperty(QStringLiteral("Tags"),         m_pane->tagsObject());
-    //  NICHT „Pane": das ist ein Steuerelement-Typ aus QtQuick.Controls, und
-    //  Typnamen werden beim Übersetzen aufgelöst - sie gewinnen gegen
-    //  Kontext-Eigenschaften. Der Name blieb dann still auf dem Typ stehen
-    //  („Cannot read property … of undefined", am Prüfstand gefunden).
+    // NICHT "Pane": das ist ein Typ aus QtQuick.Controls, und Typnamen werden beim Übersetzen aufgelöst - sie
+    // gewinnen gegen Kontext-Eigenschaften, der Name blieb dann still auf dem Typ stehen.
     m_context->setContextProperty(QStringLiteral("PaneCtl"),      m_pane);
 
     m_component = new QQmlComponent(engine, m_source, this);

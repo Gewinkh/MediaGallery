@@ -4,40 +4,12 @@ import QtQuick.Shapes
 import QtQuick.Window
 import MediaGallery 1.0
 
-// ─────────────────────────────────────────────────────────────────────────────
-//  DrawnIcon.qml - jedes Bedien-Symbol als GEZEICHNETE Form (Regel 28).
-//
-//  Ersetzt den früheren Weg „SVG-Datei + IconProvider + ThemedIcon": keine
-//  Textur, kein Bild-Cache, kein Rastern je Farbe/Größe - die Formen hängen als
-//  Rechtecke (und wo nötig als `Shape`) im Szenengraph und werden vom Renderer
-//  gebatcht. Die Farbe ist eine gewöhnliche Bindung: ein Themenwechsel färbt um,
-//  ohne dass irgendetwas neu geladen wird.
-//
-//  RASTER: Alle Formen sind im 24×24-Raster beschrieben (dasselbe, in dem die
-//  früheren Symbole gezeichnet waren) und werden über `scale` auf `size`
-//  gebracht - die Zahlen unten sind damit direkt lesbar und bleiben bei jeder
-//  Größe stimmig. Strichstärke 2, runde Enden.
-//
-//  TABELLE statt 36 Dateien: `_table` beschreibt jedes Symbol aus vier Sorten
-//  von Grundformen, die vier `Repeater` unten zeichnen:
-//      lines  [x1,y1,x2,y2,(w)]      Strich mit runden Enden (Rechteck + Drehung)
-//      boxes  [x,y,w,h,(r)]          Rahmen (Rechteck mit Rand)
-//      rings  [cx,cy,r]              Kreis-Rahmen
-//      fills  [x,y,w,h,(r),(alpha)]  gefüllte Fläche
-//  Neun Symbole brauchen zusätzlich eine echte KURVE oder ein Vieleck, das aus
-//  Rechtecken nicht entsteht (Ellipse, Auge, U, Undo/Redo-Bogen, Unterschrift,
-//  Stift, Diskette, Zeiger) - nur die tragen ein `Shape`, s. `_curve`.
-//
-//  Nutzung (Muster aller Leisten/Panels):
-//      property string iconName: ""       // "pen"
-//      Text      { …; visible: btn.iconName.length === 0 }
-//      DrawnIcon { anchors.centerIn: parent; name: btn.iconName
-//                  visible: btn.iconName.length > 0 }
-// ─────────────────────────────────────────────────────────────────────────────
+// Jedes Bedien-Symbol als gezeichnete Form statt SVG + Cache: keine Textur, kein Rastern je Farbe
+// oder Größe, ein Themenwechsel ist eine gewöhnliche Bindung. Alle Formen im 24x24-Raster, per
+// `scale` auf `size`; `_table` beschreibt sie aus lines/boxes/rings/fills, echte Kurven aus `_curve`.
 Item {
     id: root
 
-    //  Name des Symbols, z. B. "pen". Unbekannt/leer ⇒ es wird nichts gezeichnet.
     property string name: ""
     property real   size: 16
     property color  color: App.themeTextPrimary
@@ -50,29 +22,19 @@ Item {
     readonly property var _def: root._table[root.name] !== undefined
                                 ? root._table[root.name] : ({})
 
-    //  Ein Rasterschritt in Zielpixeln. Die Rechtecke werden damit GLEICH in der
-    //  Endgröße aufgebaut statt über `scale` vergrößert: Qt legt seinen
-    //  Antialiasing-Saum in ITEM-Koordinaten an, ein skaliertes Rechteck bekommt
-    //  ihn deshalb mitvergrößert und sieht klotzig aus (am Prüfstand bei 110 px
-    //  deutlich sichtbar). `Shape` ist davon nicht betroffen - dessen Kurven
-    //  werden im Fragment aufgelöst, es darf skaliert werden.
+    // Rechtecke gleich in Zielpixeln aufbauen statt über `scale`: Qt legt den Antialiasing-Saum in ITEM-
+    // Koordinaten an, ein skaliertes Rechteck bekommt ihn mitvergrößert. `Shape` ist davon nicht betroffen.
     readonly property real _u: root.size / 24
 
-    //  Einrasten geschieht auf GERÄTEpixel, nicht auf logische. Bei 125/150/200 %
-    //  Skalierung ist ein logisches Pixel kein Rasterschritt mehr - auf ganze
-    //  logische Pixel gerundet läge die Kante wieder mitten in einem Gerätepixel
-    //  und das Symbol sähe grau und unruhig aus, genau wie ganz ohne Einrasten.
+    // Eingerastet wird auf GERÄTEpixel: bei 125/150/200 % ist ein logisches Pixel kein Rasterschritt mehr - darauf
+    // gerundet läge die Kante wieder mitten in einem Gerätepixel und das Symbol wirkte grau.
     readonly property real _dpr: Screen.devicePixelRatio > 0 ? Screen.devicePixelRatio : 1
-    //  Auf das Gerätepixel-Raster gerundeter Wert (in logischen Pixeln).
     function _q(v) { return Math.round(v * root._dpr) / root._dpr }
-    //  Kleinste sinnvolle Strichstärke: EIN Gerätepixel.
     function _qw(v) { return Math.max(1 / root._dpr, root._q(v)) }
 
     readonly property var _lines: root._def.lines !== undefined ? root._def.lines : []
-    //  Achsenparallel ⇒ eingerastetes Rechteck (scharf). Schräg ⇒ `Shape` mit
-    //  Kurven-Renderer: ein GEDREHTES Rechteck rastert seine Kanten nicht
-    //  spiegelbildlich, weshalb die beiden Balken des „close"-X sichtbar
-    //  unterschiedlich schwer wirkten.
+    // Achsenparallel = eingerastetes Rechteck (scharf), schräg = `Shape`: ein gedrehtes Rechteck rastert seine
+    // Kanten nicht spiegelbildlich, die beiden Balken des "close"-X wirkten unterschiedlich schwer.
     readonly property var _axisLines: root._lines.filter(function (l) {
         return l[0] === l[2] || l[1] === l[3]
     })
@@ -83,12 +45,8 @@ Item {
     Item {
         anchors.fill: parent
 
-        //  Striche mit runden Enden: ein Rechteck der Länge len + w (die runden
-        //  Kappen verlängern eine Strecke um w/2 je Ende).
-        //  ACHSENPARALLELE Striche rasten auf ganze Pixel ein und werden NICHT
-        //  gedreht: bei 16 px ist ein 2-Einheiten-Strich sonst 1,33 px breit,
-        //  liegt also zwischen zwei Pixelreihen und wirkt grau und unruhig.
-        //  Schräge bleiben ungerastert - dort wäre Einrasten sinnlos.
+        // Ein Strich ist ein Rechteck der Länge len + w (runde Kappen verlängern um w/2 je Ende). Achsenparallele
+        // rasten auf ganze Pixel: bei 16 px läge ein 1,33 px breiter Strich zwischen zwei Pixelreihen und wirkte grau.
         Repeater {
             model: root._axisLines
             delegate: Rectangle {
@@ -97,12 +55,9 @@ Item {
                 readonly property real sw: (modelData.length > 4 ? modelData[4] : 2) * root._u
                 readonly property real len: Math.hypot(modelData[2] - modelData[0],
                                                        modelData[3] - modelData[1]) * root._u
-                //  Eingerastete Strichstärke, mindestens ein Pixel.
                 readonly property real swS: root._qw(sw)
-                //  IMMER von der MITTE aus einrasten, nie von der Kante: sonst
-                //  landen zwei Formen, die dieselbe Mittellinie teilen (Schaft
-                //  und Balken des „caret"), einen halben Pixel auseinander -
-                //  die Symmetrie zerfällt genau dort, wo sie auffällt.
+                // IMMER von der MITTE aus einrasten, nie von der Kante: sonst landen zwei Formen mit derselben Mittellinie
+                // (Schaft und Balken des "caret") einen halben Pixel auseinander.
                 color: root.color
                 width: horiz ? root._q(len) + swS : swS
                 height: horiz ? swS : root._q(len) + swS
@@ -112,7 +67,6 @@ Item {
             }
         }
 
-        //  Schräge Striche: eine Strecke mit runden Enden im Kurven-Renderer.
         Repeater {
             model: root._diagLines
             delegate: Shape {
@@ -133,9 +87,6 @@ Item {
             }
         }
 
-        //  Rahmen. Qt zeichnet den Rand NACH INNEN, die Vorlage mittig auf der
-        //  Kante - deshalb um einen halben Strich nach außen versetzt. Kanten und
-        //  Randstärke rasten wie die Striche auf ganze Pixel ein.
         Repeater {
             model: root._def.boxes !== undefined ? root._def.boxes : []
             delegate: Rectangle {
@@ -153,9 +104,6 @@ Item {
             }
         }
 
-        //  Kreis-Rahmen (Rechteck mit halbem Radius ist exakt ein Kreis).
-        //  Der Durchmesser rastet ein, damit der Kreis rund bleibt und nicht
-        //  auf einer Seite einen halben Pixel breiter ausfällt.
         Repeater {
             model: root._def.rings !== undefined ? root._def.rings : []
             delegate: Rectangle {
@@ -173,7 +121,6 @@ Item {
             }
         }
 
-        //  Gefüllte Flächen (die Balken des Schwärzens) - ebenfalls eingerastet.
         Repeater {
             model: root._def.fills !== undefined ? root._def.fills : []
             delegate: Rectangle {
@@ -189,12 +136,8 @@ Item {
             }
         }
 
-        //  BUCHSTABE als Symbolkern (Regel 28 lässt reine Buchstaben zu). Nötig
-        //  dort, wo der Sinn am Buchstaben hängt: „a" mit Strich heißt
-        //  durchgestrichen, eine gezeichnete Ersatzform las sich als Bauteil.
-        //  `letterY` verschiebt die Grundlinie, weil eine zentrierte Textzeile die
-        //  ZEILENBOX zentriert, nicht die Glyphe - bei Kleinbuchstaben sitzt der
-        //  sichtbare Körper sonst zu hoch.
+        // Buchstabe als Symbolkern, wo der Sinn am Buchstaben hängt. `letterY` verschiebt die Grundlinie, weil eine
+        // zentrierte Textzeile die ZEILENBOX zentriert, nicht die Glyphe.
         Text {
             visible: root._def.letter !== undefined
             text: root._def.letter !== undefined ? root._def.letter : ""
@@ -207,8 +150,6 @@ Item {
                 + (root._def.letterY !== undefined ? root._def.letterY : 0) * root._u
         }
 
-        //  Der krumme Anteil - nur bei den neun Symbolen, die ihn brauchen.
-        //  Hier bleibt das 24er-Raster samt `scale`, s. Begründung bei `_u`.
         Item {
             width: 24
             height: 24
@@ -221,7 +162,6 @@ Item {
         }
     }
 
-    //  ── Kurven und Vielecke ──────────────────────────────────────────────────
     function _curve(n) {
         switch (n) {
         case "ellipse":           return cEllipse
@@ -244,15 +184,11 @@ Item {
         return null
     }
 
-    //  Ein Punkt im 24er-Raster, in Polarkoordinaten um die Mitte - nur fuer
-    //  das Zahnrad, dessen Zaehne auf einem Kreis sitzen.
     function _polar(r, deg) {
         const t = deg * Math.PI / 180
         return Qt.point(12 + r * Math.cos(t), 12 + r * Math.sin(t))
     }
 
-    //  Kranz des Zahnrads: acht Zaehne, je vier Punkte (Fuss - Kopf - Kopf -
-    //  Fuss). Aussen 10.2 + halbe Strichstaerke bleibt innerhalb des Rasters.
     function _gearOutline() {
         const teeth = 8, rIn = 7.0, rOut = 10.2
         const step = 360 / teeth
@@ -291,8 +227,6 @@ Item {
         Shape {
             anchors.fill: parent
             preferredRendererType: Shape.CurveRenderer
-            //  Der Koerper laeuft nach unten leicht zusammen - das macht aus
-            //  einem Kasten eine Tonne.
             Outline {
                 startX: 6.2; startY: 7.5
                 PathLine { x: 7.2;  y: 20.5 }
@@ -400,9 +334,6 @@ Item {
         Shape {
             anchors.fill: parent
             preferredRendererType: Shape.CurveRenderer
-            //  Breiterer Körper (4,8 statt 4,2 Einheiten quer) und mittig im
-            //  24er-Kasten (x und y je 4,5…19,6): bei 16 px war der schmale
-            //  Stift kaum noch als Stift zu erkennen.
             Outline {
                 startX: 4.5; startY: 19.6
                 PathLine { x: 5.9;  y: 14.7 }
@@ -430,7 +361,6 @@ Item {
         }
     }
 
-    //  Wiedergabe-Dreieck: gefülltes Vieleck mit leicht gerundeten Ecken.
     Component {
         id: cPlay
         Shape {
@@ -449,7 +379,6 @@ Item {
         }
     }
 
-    //  Ring der Wiederholung: fast geschlossener Kreis + Pfeilspitze am Ende.
     Component {
         id: cLoop
         Shape {
@@ -459,7 +388,6 @@ Item {
                 PathAngleArc { centerX: 12; centerY: 12; radiusX: 7.5; radiusY: 7.5
                                startAngle: -50; sweepAngle: 305 }
             }
-            //  Spitze am oberen Ende des Rings, nach rechts zeigend.
             ShapePath {
                 strokeColor: "transparent"
                 fillColor: root.color
@@ -471,9 +399,6 @@ Item {
         }
     }
 
-    //  Seite drehen: derselbe Ring, aber als RICHTUNGSANZEIGE gedacht - im
-    //  Menü steht nur noch „Drehen", die Richtung sagt allein das Symbol.
-    //  Winkel: 0 Grad liegt auf 3 Uhr, positive Werte laufen im Uhrzeigersinn.
     Component {
         id: cRotateRight
         Shape {
@@ -486,17 +411,9 @@ Item {
                 PathAngleArc { centerX: 12; centerY: 12; radiusX: 6.4; radiusY: 6.4
                                startAngle: 220; sweepAngle: -260 }
             }
-            //  Spitze wie beim Wiederholungs-Ring gebaut, nur groesser: SENKRECHTE
-            //  Grundlinie, die den Bogen kreuzt, Spitze nach aussen. Eine sauber
-            //  tangential gerechnete Spitze sah am Pruefstand LOSGELOEST aus - sie
-            //  wird an der Kreuzungsstelle zu schmal, um den Strich zu decken.
-            //  Groesser als beim Ring, weil im Menue nur noch „Drehen" steht und
-            //  die RICHTUNG die ganze Aussage ist.
-            //  **Welche der beiden gespiegelten Formen „rechts" heisst, ist eine
-            //  Frage des LESENS, nicht der Geometrie.** Die Zuordnung folgt der
-            //  Festlegung des Nutzers (2026-08-26); die AKTION dahinter ist
-            //  unabhaengig davon geprueft: `rotatePage(v,-90)` dreht die Seite
-            //  nachweislich nach links (`bench_pageorder`, schwarze Seitenecke).
+            // Spitze auf SENKRECHTER Grundlinie, die den Bogen kreuzt: tangential gerechnet wird sie an der
+            // Kreuzung zu schmal, um den Strich zu decken, und sah losgelöst aus. Welche der gespiegelten Formen
+            // "rechts" heisst, ist eine Frage des Lesens - die Aktion dahinter ist mit `bench_pageorder` geprüft.
             ShapePath {
                 strokeColor: "transparent"
                 fillColor: root.color
@@ -508,8 +425,6 @@ Item {
         }
     }
 
-    //  Gespiegelt an x = 12 (Spiegeln per `scale: -1` würde den
-    //  Antialiasing-Saum mitspiegeln, s. Regel 28 - deshalb eigene Zahlen).
     Component {
         id: cRotateLeft
         Shape {
@@ -549,16 +464,11 @@ Item {
         }
     }
 
-    //  ── Die 44 Symbole ───────────────────────────────────────────────────────
     readonly property var _table: ({
         "align-center": { lines: [[4,6,20,6], [7,12,17,12], [6,18,18,18]] },
         "align-left":   { lines: [[4,6,20,6], [4,12,14,12], [4,18,17,18]] },
         "align-right":  { lines: [[4,6,20,6], [10,12,20,12], [7,18,20,18]] },
         "arrow":        { lines: [[5,19,19,5], [12,5,19,5], [19,5,19,12]] },
-        //  Richtungspfeile mit Schaft - NICHT die Chevrons: die tragen im PDF
-        //  die Seiten-Navigation, und zwei Bedeutungen dürfen nicht dieselbe
-        //  Form haben. Schaft achsenparallel (rastet scharf ein), Spitze schräg
-        //  (läuft über `Shape`, s. oben).
         "arrow-right":  { lines: [[5,12,19,12], [13.5,6.5,19,12], [19,12,13.5,17.5]] },
         "arrow-left":   { lines: [[5,12,19,12], [10.5,6.5,5,12], [5,12,10.5,17.5]] },
         "arrow-up":     { lines: [[12,5,12,19], [6.5,10.5,12,5], [12,5,17.5,10.5]] },
@@ -576,34 +486,14 @@ Item {
                           boxes: [[8,8,12,12,1.5]] },
         "ellipse":      { },
         "eye":          { rings: [[12,12,2.5]] },
-        //  Blatt mit drei Textzeilen - Gegenstueck zum "folder" im "+"-Menue
-        //  der Filterleiste ("Datei erstellen" gegen "Ordner anlegen").
         "file":         { boxes: [[6,3,12,18,1]],
                           lines: [[9,9,15,9], [9,13,15,13], [9,17,13,17]] },
         "fit-window":   { lines: [[8,9,6,9], [6,9,6,7], [16,9,18,9], [18,9,18,7],
                                   [8,15,6,15], [6,15,6,17], [16,15,18,15], [18,15,18,17]],
                           boxes: [[3.5,4.5,17,15,1]] },
-        //  Ordner: Reiter + Korpus als gefuellte Flaechen. Bewusst gefuellt und
-        //  nicht als Rahmen - die Ordnerkachel zeigt das Symbol gross, und ein
-        //  2-px-Rahmen wirkt in dieser Groesse duenn und leer.
         "folder":       { fills: [[3,5.5,8.5,3,1], [3,7,18,12.5,1.5]] },
-        //  Offener Ordner: Rueckwand blasser (Alpha), Vorderblatt tiefer und
-        //  breiter davor - die Stufe dazwischen liest sich als „aufgeklappt".
-        //  Zwei Toene aus EINER Farbe, weil `fills` einen Alpha-Wert kennt.
-        //  Zahnrad: der Kranz ist eine echte Vielecklinie mit acht Zaehnen
-        //  (`_gearOutline`), die Nabe ein Ring. Aus Rechtecken entstuende er
-        //  nicht - die Zaehne stehen auf 45 Grad, und ein GEDREHTES Rechteck
-        //  rastert seine Kanten nicht spiegelbildlich (Regel 28).
         "gear":         { rings: [[12,12,3.4]] },
-        //  Vorhaengeschloss: Buegel ist ein RING, Koerper eine gefuellte
-        //  Flaeche - und weil `fills` NACH `rings` gezeichnet wird, deckt
-        //  der Koerper die untere Haelfte des Rings ab. Uebrig bleibt der
-        //  Bogen darueber. Kein Schluesselloch: bei 12 px waere es ein
-        //  Fleck, und eine Aussparung kennt die Tabelle nicht.
         "lock":         { rings: [[12,10,3.2]], fills: [[4.5,10,15,10,2]] },
-        //  Muelltonne: Deckel, Griff und die zwei Rippen sind achsenparallel
-        //  und damit Striche; nur der leicht verjuengte Koerper braucht eine
-        //  Schraege und steht deshalb in `_curve`.
         "trash":        { lines: [[3.5,6.5,20.5,6.5],
                                   [9,3.5,15,3.5], [9,3.5,9,6.5], [15,3.5,15,6.5],
                                   [10,11,10,17.5], [14,11,14,17.5]] },
@@ -612,29 +502,13 @@ Item {
         "image":        { lines: [[4,17,9,12], [9,12,13,16], [13,16,16,14], [16,14,20,17]],
                           boxes: [[3.5,5,17,14,1.5]], rings: [[8.5,10,1.6]] },
         "markup-highlight": { lines: [[3.5,18,20.5,18,3]], boxes: [[3.5,6,17,8,1]] },
-        //  Ein „a" mit Strich mittendurch - wie in Textverarbeitungen. Das frühere
-        //  T las sich als Bauteil des Symbols, nicht als Buchstabe (Nutzerbefund);
-        //  der Sinn „durchgestrichener TEXT" hängt aber am Buchstaben.
-        //  „S" mit Strich - dieselbe Wahl wie in LibreOffice (Colibre, Breeze und
-        //  Elementary zeigen dort alle drei ein S). Das frühere T las sich als
-        //  Bauteil statt als Buchstabe; Words „abc" wäre bei 16 px matschig.
-        //  `letterY` hebt die Glyphe an, bis der Strich durch ihre MITTE geht:
-        //  eine zentrierte Textzeile zentriert die ZEILENBOX, nicht die Tinte
-        //  (gemessen: ein halbes Rastermaß Versatz).
         "markup-strike":    { letter: "S", letterSize: 0.80, letterY: -0.5,
                               lines: [[4,12,20,12,2.5]] },
         "markup-underline": { lines: [[5,20,19,20]] },
         "minus":        { lines: [[5,12,19,12]] },
-        //  Zwinge (der Metallring) quer zur Achse; der Körper steht in `_curve`.
         "pen":          { lines: [[13.24,7.28,16.59,10.77]] },
-        //  Wiedergabe/Pause der Audio-Leiste. Die Pause sind zwei Balken (reine
-        //  Rechtecke, s. Regel 28); das Dreieck der Wiedergabe ist ein Vieleck
-        //  und steht deshalb in `_curve`.
         "pause":        { fills: [[7,5,4,14,1], [13,5,4,14,1]] },
         "play":         { },
-        //  Wiederholung: ein geschlossener Ring mit Pfeilspitze (`_curve`).
-        //  „loop-one" trägt zusätzlich eine kleine, dicke 1 in der Mitte - ohne
-        //  ihren Fuß, sonst passt sie nicht in den Ring.
         "list":         { lines: [[9,6,20,6], [9,12,20,12], [9,18,20,18]],
                           fills: [[4,5,2,2,1], [4,11,2,2,1], [4,17,2,2,1]] },
         "loop":         { },
@@ -642,7 +516,6 @@ Item {
                           lines: [[9.6,10.7,11.0,9.1]] },
         "plus":         { lines: [[12,5,12,19], [5,12,19,12]] },
         "rect":         { boxes: [[3.5,6,17,12,1]] },
-        //  Seite drehen - reine Kurven, s. `_curve`.
         "rotate-left":  { },
         "rotate-right": { },
         "redact":       { fills: [[3,4,18,2,1,0.45], [3,16,13,2,1,0.45], [2.5,9,19,5.5,1]] },
@@ -655,7 +528,6 @@ Item {
         "select":       { },
         "signature":    { lines: [[4,21,20,21]] },
         "snap":         { lines: [[4,7,20,7], [4,12,20,12], [4,17,20,17]] },
-        //  Gitter in exakten Dritteln (die Vorlage teilte 6/5.5/5.5 bzw. 5/5/4).
         "table":        { lines: [[3.5,9.67,20.5,9.67], [3.5,14.33,20.5,14.33],
                                   [9.17,5,9.17,19], [14.83,5,14.83,19]],
                           boxes: [[3.5,5,17,14,1]] },

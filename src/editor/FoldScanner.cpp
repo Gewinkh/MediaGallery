@@ -202,10 +202,8 @@ QList<FoldRegion> scanFolds(const QTextDocument* doc, const LanguageDef& def,
     }
 
     case FoldKind::Tags: {
-        //  Ein Stapel offener Tags. Leere Elemente (`<br>`, `<img>`) und
-        //  selbstschliessende (`… />`) eroeffnen nichts; ein `</x>` ohne
-        //  Partner wird verworfen, statt den Stapel zu zerlegen - echtes HTML
-        //  ist selten sauber geschachtelt.
+        // Ein Stapel offener Tags: leere (`<br>`) und selbstschließende eröffnen nichts, ein `</x>` ohne Partner wird
+        // verworfen statt den Stapel zu zerlegen - echtes HTML ist selten sauber geschachtelt.
         static constexpr QLatin1StringView kLeer[] = {
             "area"_L1, "base"_L1, "br"_L1, "col"_L1, "embed"_L1, "hr"_L1, "img"_L1,
             "input"_L1, "link"_L1, "meta"_L1, "source"_L1, "track"_L1, "wbr"_L1

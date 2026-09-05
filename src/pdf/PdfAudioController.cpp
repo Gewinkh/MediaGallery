@@ -15,16 +15,10 @@
 #include <cstring>
 #include "core/ZCodec.h"
 
-// ══════════════════════════════════════════════════════════════════════════════
-//  Roh-PDF-Parser-Helfer (frei, im anonymen Namespace) + Worker-Tasks.
-//  Bewusst KEIN QPdfDocument: Seitengroessen kommen aus /MediaBox, alles andere
-//  aus dem rohen Bytestrom. Voraussetzung (von den Ziel-PDFs erfuellt): KLASSISCHE
-//  Objekte (kein /ObjStm-komprimiertes Objekt-/XRef-Stream-Layout) -> per „N G obj"
-//  scanbar.
-// ══════════════════════════════════════════════════════════════════════════════
+// Bewusst KEIN QPdfDocument: Seitengrößen kommen aus /MediaBox, alles andere aus dem rohen Bytestrom.
+// Voraussetzung (von den Ziel-PDFs erfüllt): klassische Objekte, also per "N G obj" scanbar.
 namespace {
 
-//  Kooperativer Abbruch (Muster wie PdfEditController/ThumbnailLoader).
 using CancelFlag = std::shared_ptr<std::atomic<bool>>;
 inline bool aborted(const CancelFlag& c) {
     return c && c->load(std::memory_order_relaxed);
@@ -51,7 +45,6 @@ inline bool isWs(char c)    { return c==' '||c=='\t'||c=='\r'||c=='\n'||c=='\f'|
 inline bool isDelim(char c) { return isWs(c)||c=='('||c==')'||c=='<'||c=='>'||c=='['||c==']'||c=='{'||c=='}'||c=='/'||c=='%'; }
 inline void skipWs(const QByteArray& d, qsizetype& i) { while (i < d.size() && isWs(d[i])) ++i; }
 
-// Liest eine vorzeichenlose Ganzzahl ab i (i wird hinter die Ziffern gesetzt). -1 = keine.
 long readUInt(const QByteArray& d, qsizetype& i) {
     const qsizetype s = i;
     while (i < d.size() && d[i] >= '0' && d[i] <= '9') ++i;
@@ -60,8 +53,6 @@ long readUInt(const QByteArray& d, qsizetype& i) {
     return ok ? v : -1;
 }
 
-// Position eines Namens-SCHLUESSELS (Token-Grenze: Folgezeichen ist Delimiter ->
-// „/A" matcht NICHT „/AA"/„/Annot").
 qsizetype keyPos(const QByteArray& d, const char* key, qsizetype from = 0) {
     const QByteArray k(key);
     qsizetype p = from;
@@ -74,7 +65,6 @@ qsizetype keyPos(const QByteArray& d, const char* key, qsizetype from = 0) {
     return -1;
 }
 
-// Liest ein (ggf. verschachteltes) Dictionary ab der naechsten „<<" hinter `from`.
 QByteArray readDictAt(const QByteArray& d, qsizetype from) {
     const qsizetype lt = d.indexOf("<<", from);
     if (lt < 0) return {};
@@ -86,15 +76,12 @@ QByteArray readDictAt(const QByteArray& d, qsizetype from) {
     return {};
 }
 
-// Direkter Ganzzahlwert eines Schluessels (kein Ref-Aufloesen). def bei Fehlen.
 long intDirect(const QByteArray& dict, const char* key, long def) {
     const qsizetype kp = keyPos(dict, key); if (kp < 0) return def;
     qsizetype v = kp + qstrlen(key); skipWs(dict, v);
     const long a = readUInt(dict, v); return a < 0 ? def : a;
 }
 
-// Erste Objektnummer eines Schluessels, dessen Wert eine indirekte Referenz „N G R"
-// ist. Ueberspringt gleichnamige NAMENS-Werte (z. B. „/S /Sound" vor „/Sound N R").
 int firstRefForKey(const QByteArray& dict, const char* key) {
     const qsizetype klen = qstrlen(key);
     qsizetype from = 0;
@@ -111,7 +98,6 @@ int firstRefForKey(const QByteArray& dict, const char* key) {
     }
 }
 
-// Erste indirekte Referenz „N G R" irgendwo in den Bytes.
 int firstAnyRef(const QByteArray& d) {
     qsizetype i = 0;
     while (i < d.size()) {
@@ -125,7 +111,6 @@ int firstAnyRef(const QByteArray& d) {
     return -1;
 }
 
-// Verschachteltes Dictionary als Wert eines Schluessels („/AA<<…>>").
 QByteArray nestedDictForKey(const QByteArray& dict, const char* key) {
     const qsizetype kp = keyPos(dict, key); if (kp < 0) return {};
     qsizetype v = kp + qstrlen(key); skipWs(dict, v);
@@ -133,7 +118,6 @@ QByteArray nestedDictForKey(const QByteArray& dict, const char* key) {
     return {};
 }
 
-// Array-Wert „[ … ]" eines Schluessels (z. B. /Rect, /MediaBox).
 QByteArray bracketValue(const QByteArray& dict, const char* key) {
     const qsizetype kp = keyPos(dict, key); if (kp < 0) return {};
     qsizetype v = kp + qstrlen(key); skipWs(dict, v);
@@ -144,8 +128,6 @@ QByteArray bracketValue(const QByteArray& dict, const char* key) {
     return {};
 }
 
-// String-Wert „( … )" eines Schluessels (z. B. /T, /Contents). Einfache Klammer-
-// balance (Labels enthalten praktisch nie maskierte Klammern).
 QString stringValue(const QByteArray& dict, const char* key) {
     const qsizetype kp = keyPos(dict, key); if (kp < 0) return {};
     qsizetype v = kp + qstrlen(key); skipWs(dict, v);
@@ -161,7 +143,6 @@ QString stringValue(const QByteArray& dict, const char* key) {
     return {};
 }
 
-// /Length: direkter Wert ODER indirekte Referenz (dann Zielobjekt lesen).
 long lengthValue(const QByteArray& d, const QHash<int,qsizetype>& off, const QByteArray& dict) {
     const qsizetype kp = keyPos(dict, "/Length"); if (kp < 0) return -1;
     qsizetype v = kp + 7; skipWs(dict, v);
@@ -199,7 +180,6 @@ QSizeF mediaBoxSize(const QByteArray& pageDict) {
     return QSizeF(qAbs(v[2] - v[0]), qAbs(v[3] - v[1]));
 }
 
-// Normalisiertes Rechteck [0..1], y=0 oben (PDF-Ursprung unten links -> gespiegelt).
 QRectF parseNormalisedRect(const QByteArray& rectBytes, const QSizeF& ps) {
     if (rectBytes.size() < 2) return {};
     const QByteArray inner = rectBytes.mid(1, rectBytes.size() - 2).trimmed();
@@ -214,15 +194,12 @@ QRectF parseNormalisedRect(const QByteArray& rectBytes, const QSizeF& ps) {
     return QRectF(x1 / pw, 1.0 - y2 / ph, (x2 - x1) / pw, (y2 - y1) / ph);
 }
 
-// Alle Vorkommen eines Musters.
 QVector<qsizetype> findAll(const QByteArray& d, const char* pat) {
     QVector<qsizetype> r; const QByteArray p(pat); qsizetype i = 0;
     while ((i = d.indexOf(p, i)) >= 0) { r.append(i); i += p.size(); }
     return r;
 }
 
-// Objektnummer -> Byte-Offset HINTER „obj" (Start des Objektkoerpers). „endobj"
-// wird nicht als Deklaration gewertet (Zeichen vor „obj" muss Whitespace sein).
 QHash<int,qsizetype> buildObjectOffsets(const QByteArray& d, const CancelFlag& cancel) {
     QHash<int,qsizetype> map; qsizetype p = 0;
     int tick = 0;
@@ -247,19 +224,15 @@ QHash<int,qsizetype> buildObjectOffsets(const QByteArray& d, const CancelFlag& c
     return map;
 }
 
-// Dictionary des Objekts, das `pos` enthaelt (naechstes „obj" rueckwaerts).
 QByteArray enclosingObjDict(const QByteArray& d, qsizetype pos) {
     const qsizetype k = d.lastIndexOf("obj", pos); if (k < 0) return {};
     const qsizetype lt = d.indexOf("<<", k); if (lt < 0 || lt > pos) return {};
     return readDictAt(d, lt);
 }
 
-// Aufloesung Annotation/Widget -> Objektnummer des Sound-Streams (-1 wenn keiner).
 int resolveSoundObj(const QByteArray& d, const QHash<int,qsizetype>& off, const QByteArray& annotDict) {
-    // (a) Klassische /Subtype /Sound-Annotation: /Sound zeigt direkt auf den Stream.
     const int direct = firstRefForKey(annotDict, "/Sound");
     if (direct > 0) return direct;
-    // (b) Widget-Button: Aktion ueber /A (Ref) oder /AA<</D N 0 R …>>.
     int actionObj = firstRefForKey(annotDict, "/A");
     if (actionObj <= 0) { const QByteArray aa = nestedDictForKey(annotDict, "/AA"); if (!aa.isEmpty()) actionObj = firstAnyRef(aa); }
     QByteArray actionDict;
@@ -271,7 +244,6 @@ int resolveSoundObj(const QByteArray& d, const QHash<int,qsizetype>& off, const 
     return m > 0 ? m : -1;
 }
 
-// Sound-Stream-Parameter + Byte-Offsets der Stream-Daten ermitteln.
 bool soundStreamInfo(const QByteArray& d, const QHash<int,qsizetype>& off, int soundObj,
                      int& bits, int& ch, int& rate, bool& flate,
                      qsizetype& streamStart, qsizetype& streamLen) {
@@ -301,7 +273,6 @@ bool soundStreamInfo(const QByteArray& d, const QHash<int,qsizetype>& off, int s
     return streamLen > 0;
 }
 
-// Objektnummern aus einem /Kids-Array „[16 0 R 17 0 R …]".
 QVector<int> kidsRefs(const QByteArray& dict) {
     QVector<int> r;
     const QByteArray arr = bracketValue(dict, "/Kids");
@@ -316,8 +287,6 @@ QVector<int> kidsRefs(const QByteArray& dict) {
     return r;
 }
 
-// Wurzel-/Pages-Objekt ermitteln: Trailer /Root -> Catalog -> /Pages (autoritativ),
-// Fallback letztes /Type /Catalog-Objekt.
 int findRootPagesObj(const QByteArray& d, const QHash<int,qsizetype>& off) {
     int catalog = -1;
     const qsizetype tr = d.lastIndexOf("trailer");
@@ -332,7 +301,6 @@ int findRootPagesObj(const QByteArray& d, const QHash<int,qsizetype>& off) {
     return firstRefForKey(catDict, "/Pages");
 }
 
-// Seitenbaum in Lesereihenfolge abflachen (echte /Page-Objekte in /Kids-Folge).
 void flattenPages(const QByteArray& d, const QHash<int,qsizetype>& off, int num,
                   QVector<int>& out, QSet<int>& visited, int depth) {
     if (num <= 0 || depth > 50 || visited.contains(num) || !off.contains(num)) return;
@@ -343,16 +311,13 @@ void flattenPages(const QByteArray& d, const QHash<int,qsizetype>& off, int num,
     for (int k : kidsRefs(dict)) flattenPages(d, off, k, out, visited, depth + 1);
 }
 
-// ── Haupt-Scan: alle eingebetteten Audio-Clips eines PDFs (nur Metadaten) ──────
 QVector<PdfAudioClip> scanClips(const QByteArray& d, const CancelFlag& cancel) {
     QVector<PdfAudioClip> out;
     const QHash<int,qsizetype> off = buildObjectOffsets(d, cancel);
     if (aborted(cancel)) return {};
 
-    // Seitenobjekte in AUTORITATIVER Lesereihenfolge (Seitenbaum /Pages->/Kids).
-    // Reines Byte-Offset-Scannen waere falsch: Illustrator-Inkrement-Saves
-    // hinterlassen verwaiste /Type/Page-Objekte und die Datei-Reihenfolge ist
-    // nicht die Seitenfolge.
+    // Seitenobjekte in AUTORITATIVER Lesereihenfolge über den Seitenbaum: reines Byte-Offset-Scannen wäre falsch -
+    // Inkrement-Saves hinterlassen verwaiste /Type/Page-Objekte, und die Dateireihenfolge ist nicht die Seitenfolge.
     QVector<int> pageObjs; QHash<int,QSizeF> pageSize;
     {
         const int rootPages = findRootPagesObj(d, off);
@@ -397,18 +362,15 @@ QVector<PdfAudioClip> scanClips(const QByteArray& d, const CancelFlag& cancel) {
         out.append(c); seen.insert(sObj);
     };
 
-    // Pass A: Widget-Buttons mit Sound-Aktion.
     if (aborted(cancel)) return {};
     { QVector<qsizetype> hits = findAll(d, "/Subtype/Widget"); hits += findAll(d, "/Subtype /Widget");
       for (qsizetype p : hits) { if (aborted(cancel)) return {};
                                  const QByteArray ad = enclosingObjDict(d, p); if (!ad.isEmpty()) addAnnot(ad); } }
-    // Pass B: klassische /Subtype /Sound-Annotationen.
     if (aborted(cancel)) return {};
     { QVector<qsizetype> hits = findAll(d, "/Subtype/Sound"); hits += findAll(d, "/Subtype /Sound");
       for (qsizetype p : hits) { if (aborted(cancel)) return {};
                                  const QByteArray ad = enclosingObjDict(d, p); if (!ad.isEmpty()) addAnnot(ad); } }
 
-    // Stabile Reihenfolge: Seite, dann von oben nach unten, dann links nach rechts.
     std::sort(out.begin(), out.end(), [](const PdfAudioClip& a, const PdfAudioClip& b) {
         if (a.page != b.page) return a.page < b.page;
         if (a.rect.y() != b.rect.y()) return a.rect.y() < b.rect.y();
@@ -418,21 +380,17 @@ QVector<PdfAudioClip> scanClips(const QByteArray& d, const CancelFlag& cancel) {
     return out;
 }
 
-// ── Inflate (FlateDecode) über den ZCodec-Shim. Wrap::Auto = Kopf selbst
-//    erkennen; ohne ZLIB gebaut heißt das „zlib-gerahmt, kein gzip". ──────────
 QByteArray zlibInflate(const QByteArray& in) {
     bool ok = false;
     return mg::zcodec::inflate(in, mg::zcodec::Wrap::Auto, 0,
                                /*tolerant*/ true, &ok);
 }
 
-// 16-bit-Samples Big-Endian -> Little-Endian (PDF-/Sound-Reihenfolge -> WAV).
 void byteswap16(QByteArray& b) {
     char* p = b.data(); const qsizetype n = b.size() - (b.size() & 1);
     for (qsizetype i = 0; i + 1 < n; i += 2) std::swap(p[i], p[i+1]);
 }
 
-// 44-Byte-RIFF/WAVE-PCM-Header (Little-Endian).
 QByteArray wavHeader(qint64 dataLen, int channels, int rate, int bits) {
     QByteArray h;
     const auto u32 = [&](quint32 v){ h.append(char(v & 0xff)); h.append(char((v>>8) & 0xff)); h.append(char((v>>16) & 0xff)); h.append(char((v>>24) & 0xff)); };
@@ -455,20 +413,15 @@ QByteArray readSlice(const QString& path, qsizetype start, qsizetype len) {
 QString writeTempWav(const QString& pdfPath, int id, int gen, const QByteArray& bytes) {
     const QString dir  = QStandardPaths::writableLocation(QStandardPaths::TempLocation);
     const QString base = QFileInfo(pdfPath).completeBaseName();
-    // Pfad-Hash gegen Kollisionen zwischen gleichnamigen PDFs verschiedener Ordner.
     const QString tag  = QString::number(qHash(pdfPath) & 0xffff, 16);
-    // Generationszahl im Namen: JEDE Dokument-Session schreibt in FRISCHE Dateien
-    // (keine Pfad-Wiederverwendung). Beim erneuten Öffnen desselben PDFs kann die
-    // Extraktion damit nie mit einer evtl. noch offenen/gesperrten WAV der
-    // vorherigen Session kollidieren (Windows-Dateisperre -> open(WriteOnly)
-    // schlug fehl -> clipReady mit leerer URL -> „jede zweite Datei stumm").
+    // Generationszahl im Namen: JEDE Dokument-Session schreibt in frische Dateien. Sonst kollidierte die Extraktion
+    // beim erneuten Öffnen mit einer noch gesperrten WAV der vorigen Session - leere URL, jede zweite Datei stumm.
     const QString path = dir + QString("/mgaudio_%1_%2_g%3_%4.wav")
                                    .arg(base, tag).arg(gen).arg(id);
     QFile f(path); if (!f.open(QIODevice::WriteOnly)) return {};
     f.write(bytes); f.close(); return path;
 }
 
-// ── Worker: Metadaten-Scan ────────────────────────────────────────────────────
 class PdfAudioScanTask : public QRunnable {
 public:
     PdfAudioScanTask(PdfAudioController* o, QString path, int gen, CancelFlag cancel)
@@ -492,7 +445,6 @@ private:
     PdfAudioController* m_owner; QString m_path; int m_gen; CancelFlag m_cancel;
 };
 
-// ── Worker: Einzel-Clip-Extraktion (inflate -> swap -> WAV) ─────────────────────
 class PdfAudioExtractTask : public QRunnable {
 public:
     PdfAudioExtractTask(PdfAudioController* o, QString path, PdfAudioClip c, int gen,
@@ -533,9 +485,6 @@ private:
 
 } // namespace
 
-// ══════════════════════════════════════════════════════════════════════════════
-//  PdfAudioController - alle Member laufen auf dem GUI-Thread (keine Sync noetig).
-// ══════════════════════════════════════════════════════════════════════════════
 PdfAudioController::PdfAudioController(QObject* parent)
     : QObject(parent), m_cancel(std::make_shared<std::atomic<bool>>(false)) {
     m_pool.setMaxThreadCount(1);   // Scan + Extraktion serialisieren (RAM/Disk-schonend)
@@ -591,7 +540,6 @@ QVariantList PdfAudioController::clips() const {
 void PdfAudioController::requestClip(int id) {
     if (id < 0 || id >= m_clips.size()) return;
 
-    // Cache-Treffer -> sofort (queued, damit QML einheitlich asynchron reagiert).
     if (m_wavCache.contains(id)) {
         m_wavOrder.removeAll(id); m_wavOrder.append(id);
         const WavEntry e = m_wavCache.value(id); const int gen = m_gen;
@@ -608,10 +556,8 @@ void PdfAudioController::requestClip(int id) {
 
 void PdfAudioController::releaseDocument() {
     ++m_gen;                                  // laufende Tasks werden verworfen
-    //  Die Generationszahl verwarf bisher nur das ERGEBNIS - der Task lief
-    //  vollständig weiter und belegte den 1-Thread-Pool. Beim schnellen Blättern
-    //  durch mehrere PDFs stauten sich so komplette Datei-Scans hintereinander.
-    //  Jetzt bricht der laufende Task auch tatsächlich ab.
+    // Die Generationszahl verwarf bisher nur das ERGEBNIS - der Task lief weiter und belegte den 1-Thread-Pool,
+    // beim schnellen Blättern stauten sich komplette Datei-Scans. Jetzt bricht er auch wirklich ab.
     cancelRunningTasks();
     m_path.clear();
     m_clips.clear();
@@ -627,7 +573,6 @@ void PdfAudioController::releaseDocument() {
     if (was) emit readyChanged();
 }
 
-// ── Vom Worker via QueuedConnection (GUI-Thread) ──────────────────────────────
 void PdfAudioController::applyScan(const QString& path, const QVector<PdfAudioClip>& clips, int gen) {
     if (gen != m_gen || path != m_path) return;   // veraltet / anderes Dokument
     m_clips = clips;

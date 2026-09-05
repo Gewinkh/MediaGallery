@@ -2,13 +2,8 @@ import QtQuick
 import QtQuick.Templates as T
 import MediaGallery 1.0
 
-// ─────────────────────────────────────────────────────────────────────────────
-//  CheckBox.qml - abgerundeter, gethemter Haken (Stil "style").
-//
-//  Statt des eckigen Fusion-Kästchens mit grauem Bitmap-Haken: Radius-5-Feld,
-//  im Zustand „an" in der Akzentfarbe gefüllt, Haken als zwei gedrehte Balken
-//  (schriftartunabhängig, kein Bild/Atlas -> kein zusätzlicher Texturspeicher).
-// ─────────────────────────────────────────────────────────────────────────────
+// Abgerundeter, gethemter Haken statt des eckigen Fusion-Kästchens: im Zustand "an" in der Akzentfarbe gefüllt,
+// der Haken aus zwei gedrehten Balken - schriftartunabhängig und ohne Textur.
 T.CheckBox {
     id: control
 

@@ -2,9 +2,6 @@
 #include <QMap>
 #include <QMetaEnum>
 
-// ─────────────────────────────────────────────────────────────────────────────
-// German strings
-// ─────────────────────────────────────────────────────────────────────────────
 static const QMap<StringKey, QString> s_de = {
     { StringKey::MenuFile,              "Datei" },
     { StringKey::MenuView,              "Ansicht" },
@@ -189,7 +186,6 @@ static const QMap<StringKey, QString> s_de = {
     { StringKey::SettingsDesignExportTitle,     "Theme exportieren" },
     { StringKey::SettingsDesignImportTitle,     "Theme importieren" },
 
-    // Converter
     { StringKey::ConverterTagToSubcat,    "Tag zu Unterkategorie" },
     { StringKey::ConverterSubcatToTag,    "Unterkategorie zu Tag" },
     { StringKey::ConverterTagToCat,       "Tag zu Kategorie" },
@@ -201,13 +197,9 @@ static const QMap<StringKey, QString> s_de = {
 
     // Uniform-color UI (replaces hardcoded German strings)
 
-    // Hauptfenster-Leisten
 
-    // Converter – lokalisierte Hinweistexte
 
-    // PdfViewer – lokalisierte Texte
 
-    // Saved Folders / Bookmarks
     { StringKey::MenuBookmarks,          "Ordner" },
     { StringKey::MenuBookmarksEmpty,     "(keine gespeicherten Ordner)" },
     { StringKey::BookmarkAdd,            "Ordner hinzufügen" },
@@ -271,7 +263,6 @@ static const QMap<StringKey, QString> s_de = {
     { StringKey::CtxRemoveBackupAsk,
       "Die gesicherte Fassung von VOR deinen Änderungen löschen? Die Datei "
       "selbst bleibt unverändert; Strg+Z holt die Sicherung zurück." },
-    // ── Migration: vereinheitlichte UI-Strings ──
     { StringKey::SettingsGenFullscreenAnim,  "Vollbild-Animation" },
     { StringKey::SettingsGenAnimSlide,  "Verschieben (seitlich)" },
     { StringKey::SettingsGenAnimFade,  "Überblenden (weicher Zoom)" },
@@ -427,7 +418,6 @@ static const QMap<StringKey, QString> s_de = {
     { StringKey::PdfNoAudioOnPage,  "Keine Audios auf dieser Seite." },
     { StringKey::PdfAudioItemLabel,  "Audio %1" },
 
-    // ── Batch 2 ──
     { StringKey::FilterModeAnyDesc,  "Mindestens einer der gewählten Tags" },
     { StringKey::FilterModeAllDesc,  "Alle gewählten Tags müssen vorhanden sein" },
     { StringKey::FilterModeExclusiveDesc,  "Ausschließlich die gewählten Tags" },
@@ -497,7 +487,6 @@ static const QMap<StringKey, QString> s_de = {
     { StringKey::FilterTagPanelRow,    "Tag-Panel" },
     { StringKey::FilterCatPanelRow,    "Kategorie-Panel" },
 
-    // ── PDF-Editor (Overlay-Textboxen) ──
     { StringKey::PdfEditToggleTip,         "Bearbeitungsmodus (Overlay)" },
     { StringKey::PdfEditUndoTip,           "Rückgängig" },
     { StringKey::PdfEditRedoTip,           "Wiederholen" },
@@ -646,14 +635,13 @@ static const QMap<StringKey, QString> s_de = {
     { StringKey::PdfEditExportingToast,    "Exportiere… Seite %1/%2" },
     { StringKey::SettingsPdfEditGroup,     "PDF-Editor" },
 
-    // ── PDF-Editor Runde 2: Post-it-Notizen + Panel-Position ──
+    // PDF-Editor Runde 2: Post-it-Notizen + Panel-Position
     { StringKey::PdfEditNotesToggleTip,    "Notizen ein-/ausblenden (Alt+Q)" },
     { StringKey::PdfEditOpacityLabel,      "Deckkraft" },
     { StringKey::PdfEditPanelPosLabel,     "Position der Text-Eigenschaften" },
     { StringKey::PdfEditPanelPosRight,     "Rechts (Seitenleiste)" },
     { StringKey::PdfEditPanelPosTop,       "Oben (Leiste wie Word)" },
 
-    // ── Datei-Erstellung (FilterBar „Erstellen") ──
     { StringKey::CreateFileBtn,            "Erstellen" },
     { StringKey::CreateFileTitle,          "Neue Datei erstellen" },
     { StringKey::CreateFileNameLabel,      "Dateiname" },
@@ -666,7 +654,6 @@ static const QMap<StringKey, QString> s_de = {
     { StringKey::CreateFileDone,           "Erstellt: %1" },
     { StringKey::CreateFileFailed,         "Datei konnte nicht erstellt werden." },
 
-    // ── Galerie-Kontextmenü: Datei löschen ──
     { StringKey::CtxDeleteFile,            "Datei löschen…" },
     { StringKey::CtxCopyFiles,             "Kopieren" },
     { StringKey::CtxDeleteSelection,       "%1 Objekte löschen…" },
@@ -696,7 +683,6 @@ static const QMap<StringKey, QString> s_de = {
     { StringKey::DeleteMediaText,          "„%1“ wird in den Papierkorb verschoben." },
     { StringKey::DeleteMediaConfirm,       "Löschen" },
 
-    // ── Live-Transliteration ──
     { StringKey::TranslitTip,              "Transliteration (Latein zu Arabisch/Japanisch)" },
     { StringKey::TranslitOff,              "Aus" },
     { StringKey::TranslitArabic,           "Arabisch (mit Harakat)" },
@@ -714,7 +700,6 @@ static const QMap<StringKey, QString> s_de = {
     { StringKey::SplitPickPrompt,          "Datei anklicken, um sie zur geteilten Ansicht hinzuzufügen" },
     { StringKey::SplitCancel,              "Abbrechen" },
 
-    // ── Bild-Editor ───────────────────────────────────────────────────────────
     { StringKey::ImageEditToggle,          "Bild bearbeiten" },
     { StringKey::ImageFitWindow,           "An Fenster anpassen" },
     { StringKey::ImageActualSize,          "100 %" },
@@ -736,7 +721,6 @@ static const QMap<StringKey, QString> s_de = {
     { StringKey::ImageEditCopyBtn,         "Kopieren" },
     { StringKey::ImageEditPasteBtn,        "Einfügen" },
 
-    // ── PDF-Seiten-Extraktion ────────────────────────────────────────────────
     { StringKey::CtxExtractPage,           "Seite extrahieren" },
     { StringKey::CtxExtractPages,          "Mehrere Seiten extrahieren…" },
     { StringKey::ExtractNameTitle,         "Neue PDF benennen" },
@@ -907,12 +891,40 @@ static const QMap<StringKey, QString> s_de = {
     { StringKey::SettingsViewPreviewGroup,              "Vorschau von Textdateien" },
     { StringKey::SettingsViewTextPreview,               "Inhalt mit Syntaxfärbung zeigen" },
     { StringKey::SettingsViewTextPreviewHint,           "An: die Kachel zeigt die ersten Zeilen der Datei in denselben Farben wie der Editor - eine .cpp sieht damit anders aus als eine .md oder .py. Aus: statt des Inhalts steht nur der Dateityp da (CPP, PY, MD …). Gilt für Kacheln und für die Listendarstellung." },
+    { StringKey::DatevFieldIdent,                             "Kennung" },
+    { StringKey::DatevFieldVersion,                           "Versionsnummer" },
+    { StringKey::DatevFieldFormatName,                        "Formatname" },
+    { StringKey::DatevFieldCreated,                           "Erzeugt am" },
+    { StringKey::DatevFieldCurrency,                          "Währung" },
+    { StringKey::DatevShowTable,                              "Als Tabelle anzeigen" },
+    { StringKey::DatevShowSource,                             "Dateiinhalt anzeigen" },
+    { StringKey::DatevHeaderTitle,                            "Dateikopf" },
+    { StringKey::DatevBookings,                               "Buchungen" },
+    { StringKey::DatevSumDebit,                               "Summe Soll" },
+    { StringKey::DatevSumCredit,                              "Summe Haben" },
+    { StringKey::DatevSumDiff,                                "Differenz" },
+    { StringKey::DatevAllColumns,                             "Alle Spalten" },
+    { StringKey::DatevUsedColumns,                            "Nur gefüllte Spalten" },
+    { StringKey::DatevBalanced,                               "Soll und Haben gleichen sich aus" },
+    { StringKey::DatevUnbalanced,                             "Soll und Haben gleichen sich NICHT aus" },
+    { StringKey::DatevTruncated,                              "Datei zu groß - nur der Anfang wird gezeigt" },
+    { StringKey::DatevCp1252,                                 "Kodierung CP1252 (kein gültiges UTF-8)" },
+    { StringKey::DatevWarnings,                               "Auffälligkeiten" },
+    { StringKey::DatevReadOnly,                               "Nur lesen - MediaGallery schreibt nicht in Buchungsdateien." },
+    { StringKey::DatevLoadError,                              "Die Datei lässt sich nicht als DATEV-Datei lesen." },
+    { StringKey::DatevBusy,                                   "Wird gelesen …" },
+    { StringKey::TableSeparator,                              "Trennzeichen" },
+    { StringKey::TableTabSep,                                 "Tabulator" },
+    { StringKey::TableHeaderRow,                              "Erste Zeile = Spaltennamen" },
+    { StringKey::TableRows,                                   "Zeilen" },
+    { StringKey::TableColumns,                                "Spalten" },
+    { StringKey::TableLoadError,                              "Die Datei lässt sich nicht als Tabelle lesen." },
+    { StringKey::TableNumbersTip,                             "Zeilen- und Spaltennummern" },
+    { StringKey::TableBlock,                                  "Tabelle" },
+    { StringKey::TableAllBlocks,                              "Alles" },
 
 };
 
-// ─────────────────────────────────────────────────────────────────────────────
-// English strings
-// ─────────────────────────────────────────────────────────────────────────────
 static const QMap<StringKey, QString> s_en = {
     { StringKey::MenuFile,              "File" },
     { StringKey::MenuView,              "View" },
@@ -1097,7 +1109,6 @@ static const QMap<StringKey, QString> s_en = {
     { StringKey::SettingsDesignExportTitle,     "Export Theme" },
     { StringKey::SettingsDesignImportTitle,     "Import Theme" },
 
-    // Converter
     { StringKey::ConverterTagToSubcat,    "Tag to subcategory" },
     { StringKey::ConverterSubcatToTag,    "Subcategory to tag" },
     { StringKey::ConverterTagToCat,       "Tag to category" },
@@ -1107,15 +1118,10 @@ static const QMap<StringKey, QString> s_en = {
 
     // Design – PDF viewer / sidebar / button colors
 
-    // Uniform-color UI
 
-    // Main-window chrome bars
 
-    // Converter – localized hint texts
 
-    // PdfViewer – localized texts
 
-    // Saved Folders / Bookmarks
     { StringKey::MenuBookmarks,          "Folders" },
     { StringKey::MenuBookmarksEmpty,     "(no saved folders)" },
     { StringKey::BookmarkAdd,            "Add Folder" },
@@ -1179,7 +1185,6 @@ static const QMap<StringKey, QString> s_en = {
     { StringKey::CtxRemoveBackupAsk,
       "Delete the saved version from BEFORE your changes? The file itself stays "
       "untouched; Ctrl+Z brings the saved version back." },
-    // ── Migration: vereinheitlichte UI-Strings ──
     { StringKey::SettingsGenFullscreenAnim,  "Fullscreen Animation" },
     { StringKey::SettingsGenAnimSlide,  "Slide (horizontal)" },
     { StringKey::SettingsGenAnimFade,  "Fade (soft zoom)" },
@@ -1335,7 +1340,6 @@ static const QMap<StringKey, QString> s_en = {
     { StringKey::PdfNoAudioOnPage,  "No audio on this page." },
     { StringKey::PdfAudioItemLabel,  "Audio %1" },
 
-    // ── Batch 2 ──
     { StringKey::FilterModeAnyDesc,  "At least one of the selected tags" },
     { StringKey::FilterModeAllDesc,  "All selected tags must be present" },
     { StringKey::FilterModeExclusiveDesc,  "Exclusively the selected tags" },
@@ -1405,7 +1409,6 @@ static const QMap<StringKey, QString> s_en = {
     { StringKey::FilterTagPanelRow,    "Tag panel" },
     { StringKey::FilterCatPanelRow,    "Category panel" },
 
-    // ── PDF editor (overlay text boxes) ──
     { StringKey::PdfEditToggleTip,         "Edit mode (overlay)" },
     { StringKey::PdfEditUndoTip,           "Undo" },
     { StringKey::PdfEditRedoTip,           "Redo" },
@@ -1554,14 +1557,13 @@ static const QMap<StringKey, QString> s_en = {
     { StringKey::PdfEditExportingToast,    "Exporting… page %1/%2" },
     { StringKey::SettingsPdfEditGroup,     "PDF editor" },
 
-    // ── PDF editor round 2: sticky notes + panel position ──
+    // PDF editor round 2: sticky notes + panel position
     { StringKey::PdfEditNotesToggleTip,    "Show/hide notes (Alt+Q)" },
     { StringKey::PdfEditOpacityLabel,      "Opacity" },
     { StringKey::PdfEditPanelPosLabel,     "Text properties position" },
     { StringKey::PdfEditPanelPosRight,     "Right (side panel)" },
     { StringKey::PdfEditPanelPosTop,       "Top (Word-style bar)" },
 
-    // ── File creation (filter bar "Create") ──
     { StringKey::CreateFileBtn,            "Create" },
     { StringKey::CreateFileTitle,          "Create new file" },
     { StringKey::CreateFileNameLabel,      "File name" },
@@ -1574,7 +1576,6 @@ static const QMap<StringKey, QString> s_en = {
     { StringKey::CreateFileDone,           "Created: %1" },
     { StringKey::CreateFileFailed,         "Could not create file." },
 
-    // ── Gallery context menu: delete file ──
     { StringKey::CtxDeleteFile,            "Delete file…" },
     { StringKey::CtxCopyFiles,             "Copy" },
     { StringKey::CtxDeleteSelection,       "Delete %1 items…" },
@@ -1604,7 +1605,6 @@ static const QMap<StringKey, QString> s_en = {
     { StringKey::DeleteMediaText,          "“%1” will be moved to the trash." },
     { StringKey::DeleteMediaConfirm,       "Delete" },
 
-    // ── Live transliteration ──
     { StringKey::TranslitTip,              "Transliteration (Latin to Arabic/Japanese)" },
     { StringKey::TranslitOff,              "Off" },
     { StringKey::TranslitArabic,           "Arabic (with harakat)" },
@@ -1622,7 +1622,6 @@ static const QMap<StringKey, QString> s_en = {
     { StringKey::SplitPickPrompt,          "Click a file to add it to the split view" },
     { StringKey::SplitCancel,              "Cancel" },
 
-    // ── Image editor ──────────────────────────────────────────────────────────
     { StringKey::ImageEditToggle,          "Edit image" },
     { StringKey::ImageFitWindow,           "Fit to window" },
     { StringKey::ImageActualSize,          "100%" },
@@ -1644,7 +1643,6 @@ static const QMap<StringKey, QString> s_en = {
     { StringKey::ImageEditCopyBtn,         "Copy" },
     { StringKey::ImageEditPasteBtn,        "Paste" },
 
-    // ── PDF page extraction ──────────────────────────────────────────────────
     { StringKey::CtxExtractPage,           "Extract page" },
     { StringKey::CtxExtractPages,          "Extract multiple pages…" },
     { StringKey::ExtractNameTitle,         "Name the new PDF" },
@@ -1813,12 +1811,40 @@ static const QMap<StringKey, QString> s_en = {
     { StringKey::SettingsViewPreviewGroup,              "Preview of text files" },
     { StringKey::SettingsViewTextPreview,               "Show the content with syntax colours" },
     { StringKey::SettingsViewTextPreviewHint,           "On: the tile shows the first few lines of the file in the same colours as the editor, so a .cpp looks different from a .md or a .py. Off: the file type is shown instead of the content (CPP, PY, MD …). Applies to tiles and to the list view." },
+    { StringKey::DatevFieldIdent,                             "Identifier" },
+    { StringKey::DatevFieldVersion,                           "Version number" },
+    { StringKey::DatevFieldFormatName,                        "Format name" },
+    { StringKey::DatevFieldCreated,                           "Created" },
+    { StringKey::DatevFieldCurrency,                          "Currency" },
+    { StringKey::DatevShowTable,                              "Show as table" },
+    { StringKey::DatevShowSource,                             "Show file content" },
+    { StringKey::DatevHeaderTitle,                            "File header" },
+    { StringKey::DatevBookings,                               "Bookings" },
+    { StringKey::DatevSumDebit,                               "Total debit" },
+    { StringKey::DatevSumCredit,                              "Total credit" },
+    { StringKey::DatevSumDiff,                                "Difference" },
+    { StringKey::DatevAllColumns,                             "All columns" },
+    { StringKey::DatevUsedColumns,                            "Only filled columns" },
+    { StringKey::DatevBalanced,                               "Debit and credit balance" },
+    { StringKey::DatevUnbalanced,                             "Debit and credit do NOT balance" },
+    { StringKey::DatevTruncated,                              "File too large - only the beginning is shown" },
+    { StringKey::DatevCp1252,                                 "Encoding CP1252 (not valid UTF-8)" },
+    { StringKey::DatevWarnings,                               "Findings" },
+    { StringKey::DatevReadOnly,                               "Read-only - MediaGallery does not write to accounting files." },
+    { StringKey::DatevLoadError,                              "The file cannot be read as a DATEV file." },
+    { StringKey::DatevBusy,                                   "Reading …" },
+    { StringKey::TableSeparator,                              "Separator" },
+    { StringKey::TableTabSep,                                 "Tab" },
+    { StringKey::TableHeaderRow,                              "First row = column names" },
+    { StringKey::TableRows,                                   "Rows" },
+    { StringKey::TableColumns,                                "Columns" },
+    { StringKey::TableLoadError,                              "The file cannot be read as a table." },
+    { StringKey::TableNumbersTip,                             "Row and column numbers" },
+    { StringKey::TableBlock,                                  "Table" },
+    { StringKey::TableAllBlocks,                              "All" },
 
 };
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Lookup
-// ─────────────────────────────────────────────────────────────────────────────
 QString Strings::get(StringKey key, Language lang) {
     const QMap<StringKey, QString>& map = (lang == Language::English) ? s_en : s_de;
     return map.value(key, QStringLiteral("?"));

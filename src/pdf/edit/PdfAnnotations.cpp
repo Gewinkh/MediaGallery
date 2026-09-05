@@ -9,13 +9,10 @@
 
 using namespace mg::pdfobj;
 
-// Die Erläuterungen zum Gesamtverfahren stehen im Header.
 namespace {
 
-// ── Arten ───────────────────────────────────────────────────────────────────
-//  /Subtype -> Art. Alles, was hier NICHT auftaucht, gehört entweder einer
-//  anderen Einheit (Widget/Link/Medien) oder ist uns unbekannt - beides führt
-//  zum Überspringen, nie zum Raten.
+// `/Subtype` bestimmt die Art. Alles, was hier nicht auftaucht, gehört einer anderen Einheit oder ist uns
+// unbekannt - beides führt zum Überspringen, nie zum Raten.
 mg::PdfAnnotKind kindOf(const QByteArray& subtype) {
     if (subtype == "/Text")      return mg::PdfAnnotKind::Text;
     if (subtype == "/FreeText")  return mg::PdfAnnotKind::FreeText;
@@ -29,10 +26,8 @@ mg::PdfAnnotKind kindOf(const QByteArray& subtype) {
     return mg::PdfAnnotKind::Unknown;
 }
 
-// ── Farben ──────────────────────────────────────────────────────────────────
-//  PDF-Farbarrays: 1 Zahl = Grau, 3 = RGB, 4 = CMYK, 0 Zahlen = „keine Farbe"
-//  (das ist erlaubt und heißt transparent). Werte werden geklemmt, damit ein
-//  defektes Dokument keine unsinnige Farbe erzeugt.
+// PDF-Farbarrays: 1 Zahl = Grau, 3 = RGB, 4 = CMYK, 0 Zahlen = keine Farbe (erlaubt, heißt transparent).
+// Werte werden geklemmt, damit ein defektes Dokument keine unsinnige Farbe erzeugt.
 QColor colorOfArray(const QByteArray& arr) {
     if (!arr.startsWith('['))
         return {};
@@ -46,10 +41,8 @@ QColor colorOfArray(const QByteArray& arr) {
     }
 }
 
-// ── Verschachtelte Zahlen-Arrays (/InkList) ─────────────────────────────────
-//  Liefert je Unter-Array die Zahlenfolge. Steht dort ausnahmsweise eine flache
-//  Liste (manche Erzeuger schreiben `[x y x y]` statt `[[x y x y]]`), wird sie
-//  als EIN Strich gelesen, statt die Annotation zu verwerfen.
+// Liefert je Unter-Array die Zahlenfolge. Steht dort ausnahmsweise eine flache Liste (manche Erzeuger schreiben
+// `[x y x y]` statt `[[x y x y]]`), wird sie als EIN Strich gelesen, statt die Annotation zu verwerfen.
 QVector<QVector<double>> groupsOfArray(const QByteArray& arr) {
     QVector<QVector<double>> out;
     if (!arr.startsWith('['))
@@ -74,7 +67,7 @@ QVector<QVector<double>> groupsOfArray(const QByteArray& arr) {
     return out;
 }
 
-// ── /DA (nur /FreeText) ─────────────────────────────────────────────────────
+// /DA (nur /FreeText)
 //  „/Helv 12 Tf 0 0 1 rg" -> Größe und Textfarbe. Fehlt etwas, bleibt es beim
 //  Standardwert; geraten wird nicht.
 void parseDa(const QByteArray& da, qreal* sizePt, QColor* color) {
@@ -102,11 +95,8 @@ void parseDa(const QByteArray& da, qreal* sizePt, QColor* color) {
     }
 }
 
-// ── Rechteck ────────────────────────────────────────────────────────────────
-//  /Rect ist ein Paar GEGENÜBERLIEGENDER Ecken in beliebiger Reihenfolge -
-//  erst normalisieren, dann beide Ecken in Anzeigekoordinaten abbilden und
-//  daraus wieder ein normalisiertes Rechteck bauen (bei 90°/270° tauschen
-//  Breite und Höhe, deshalb nicht einfach Punkt + Größe).
+// `/Rect` ist ein Paar GEGENÜBERLIEGENDER Ecken in beliebiger Reihenfolge - erst normalisieren, dann beide Ecken
+// abbilden und daraus ein neues Rechteck bauen: bei 90/270 Grad tauschen Breite und Höhe.
 bool rectOf(const QByteArray& raw, const QSizeF& box, int rot, QRectF* out) {
     if (!raw.startsWith('['))
         return false;
@@ -122,7 +112,7 @@ bool rectOf(const QByteArray& raw, const QSizeF& box, int rot, QRectF* out) {
     return true;
 }
 
-// ── Strichbreite ────────────────────────────────────────────────────────────
+// Strichbreite
 //  /BS << /W n >> hat Vorrang vor dem alten /Border [h v w]; fehlt beides,
 //  gilt die PDF-Vorgabe 1.
 qreal borderWidthOf(const mg::pdfobj::PdfDoc& doc, const QByteArray& dict) {
@@ -145,15 +135,12 @@ qreal borderWidthOf(const mg::pdfobj::PdfDoc& doc, const QByteArray& dict) {
 }
 
 
-// ── Schreiben: Bausteine ────────────────────────────────────────────────────
-//  Farbe -> PDF-Array „[r g b]" (leer, wenn ungültig = „keine Farbe").
 QByteArray colorArray(const QColor& c) {
     if (!c.isValid())
         return {};
     return "[" + num(c.redF()) + " " + num(c.greenF()) + " " + num(c.blueF()) + "]";
 }
 
-//  Farbe als Zeichenbefehl-Operanden („r g b").
 QByteArray rgbOps(const QColor& c) {
     return num(c.redF()) + " " + num(c.greenF()) + " " + num(c.blueF());
 }
@@ -220,10 +207,8 @@ QVector<QString> wrapText(const QString& text, qreal widthPt, qreal sizePt) {
     return lines;
 }
 
-//  Der Inhalt EINES Erscheinungsbildes, gezeichnet im LOKALEN Raum der
-//  Annotation: (0|0) ist die untere linke Ecke ihres Rechtecks. `w`/`h` sind
-//  seine Maße in Punkten. `fontRes` ist true, wenn der Strom eine Schrift
-//  braucht (nur FreeText/Text) - der Aufrufer hängt sie dann in /Resources.
+// Der Inhalt EINES Erscheinungsbildes im LOKALEN Raum der Annotation: (0|0) ist die untere linke Ecke ihres
+// Rechtecks. `fontRes` ist true, wenn der Strom eine Schrift braucht - der Aufrufer hängt sie in /Resources.
 QByteArray appearanceOps(const mg::PdfAnnotation& a, qreal w, qreal h,
                          const QVector<QPointF>& localLine,
                          const QVector<QVector<QPointF>>& localInk,
@@ -395,7 +380,6 @@ bool PdfAnnotations::read(const QString& path, QVector<PdfAnnotation>* out,
             if (!rectOf(rawValue(dict, "Rect"), box, rot, &a.rect))
                 continue;                   // ohne /Rect ist nichts platzierbar
 
-            //  Texte: /Contents und /T können Referenzen sein.
             auto textOf = [&](const char* key) -> QString {
                 const QByteArray raw = doc.resolved(dict, key);
                 QByteArray bytes;
@@ -512,7 +496,6 @@ bool PdfAnnotations::write(const QString& inputPath, const QString& outputPath,
         return fontObj;
     };
 
-    //  Neue Annotationsobjekte je Seite (Objektnummern).
     QHash<int, QVector<int>> perPage;
 
     for (const PdfAnnotation& a : annots) {
@@ -522,7 +505,6 @@ bool PdfAnnotations::write(const QString& inputPath, const QString& outputPath,
             return fail(QStringLiteral("Seitenmaß nicht lesbar"));
         const int rot = doc.pageRotate(pageObj);
 
-        //  Rechteck: beide Ecken in den Benutzerraum, dann normalisieren.
         const QPointF u1 = toUser(a.rect.left(),  a.rect.top(),    box, rot);
         const QPointF u2 = toUser(a.rect.right(), a.rect.bottom(), box, rot);
         const qreal ux0 = qMin(u1.x(), u2.x()), ux1 = qMax(u1.x(), u2.x());
@@ -578,11 +560,9 @@ bool PdfAnnotations::write(const QString& inputPath, const QString& outputPath,
                      " /BBox [0 0 " + num(w) + " " + num(h) + "]"
                      " /Resources " + res, ops);
 
-        //  Das Annotationsobjekt.
         QByteArray d = "<< /Type /Annot /Subtype " + subtypeName(a.kind);
         d += " /Rect [" + num(ux0) + " " + num(uy0) + " " + num(ux1) + " " + num(uy1) + "]";
         d += " /P " + QByteArray::number(pageObj) + " 0 R";
-        //  Bit 3 = Print (soll mitgedruckt werden), Bit 2 = Hidden.
         d += " /F " + QByteArray::number(a.hidden ? 6 : 4);
         if (!a.contents.isEmpty()) d += " /Contents " + toPdfTextString(a.contents);
         if (!a.author.isEmpty())   d += " /T "        + toPdfTextString(a.author);
@@ -667,7 +647,6 @@ bool PdfAnnotations::write(const QString& inputPath, const QString& outputPath,
         for (int n : it.value())
             refs += QByteArray::number(n) + " 0 R ";
 
-        //  Bestehende Einträge übernehmen - ohne die gestrichenen.
         auto keptOf = [&](const QByteArray& arr) {
             QByteArray kept;
             static const QRegularExpression re(QStringLiteral("(\\d+)\\s+(\\d+)\\s+R"));

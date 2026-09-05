@@ -22,18 +22,8 @@
 #include <utility>
 #include <algorithm>
 
-// ─────────────────────────────────────────────────────────────────────────────
-//  PdfLoadTask - laedt das Auswahl-Dokument OHNE GUI-Thread.
-//
-//  Oeffnet eine EIGENE QPdfDocument-Instanz (Parsen blockiert nie die GUI),
-//  verschiebt sie nach Erfolg auf den GUI-Thread und reicht sie per
-//  QueuedConnection an den Controller. Bei Fehler wird nullptr uebergeben.
-//  Die mitgefuehrte Generationszahl erlaubt dem Controller, veraltete Ergebnisse
-//  (schnelles Vor/Zurueck) zu verwerfen.
-//
-//  Hinweis: Die QPointer-/Context-Form von invokeMethod verwirft den Aufruf
-//  automatisch, falls der Controller zwischenzeitlich zerstoert wurde.
-// ─────────────────────────────────────────────────────────────────────────────
+// Lädt das Auswahl-Dokument ohne GUI-Thread: eigene QPdfDocument-Instanz, nach Erfolg auf den GUI-Thread
+// verschoben und per QueuedConnection übergeben. Die Generationszahl verwirft veraltete Ergebnisse.
 namespace {
 class PdfLoadTask : public QRunnable {
 public:
@@ -47,7 +37,6 @@ public:
         const bool ok = (doc->load(m_path) == QPdfDocument::Error::None
                          && doc->status() == QPdfDocument::Status::Ready);
         if (ok) {
-            // Kuenftige Nutzung erfolgt ausschliesslich auf dem GUI-Thread.
             doc->moveToThread(QCoreApplication::instance()->thread());
         } else {
             delete doc;                 // Loeschen auf eigenem Thread -> ok
@@ -57,12 +46,8 @@ public:
         PdfTextController* owner = m_owner;
         const QString path = m_path;
         const int     gen  = m_gen;
-        //  Das Dokument gehoert dem Lambda: wird das geposte Ereignis nie
-        //  ausgefuehrt (Controller wird gerade zerstoert - ~QObject verwirft
-        //  anhaengige Ereignisse), gibt der unique_ptr es beim Zerstoeren des
-        //  Lambdas frei. Mit dem rohen Zeiger blieb in genau diesem Fall ein
-        //  komplett geparstes QPdfDocument (MB-Bereich) verwaist im Speicher -
-        //  bei jedem Schliessen einer PDF-Kachel waehrend des Ladens.
+        // Das Dokument gehört dem Lambda: wird das gepostete Ereignis nie ausgeführt (Controller wird gerade zerstört),
+        // gibt der `unique_ptr` es frei. Mit dem rohen Zeiger blieb ein geparstes QPdfDocument verwaist im Speicher.
         std::unique_ptr<QPdfDocument> owned(doc);
         QMetaObject::invokeMethod(owner, [owner, d = std::move(owned), path, gen]() mutable {
             owner->adoptDocument(d.release(), path, gen);
@@ -77,7 +62,6 @@ private:
 
 } // namespace
 
-// ─────────────────────────────────────────────────────────────────────────────
 PdfTextController::PdfTextController(QObject* parent) : QObject(parent) {
     // Genau EIN Worker: nie sind zwei der teuren QPdfDocument-Instanzen
     // gleichzeitig am Laden -> RAM-Peak bleibt gedeckelt.
@@ -89,32 +73,24 @@ PdfTextController::~PdfTextController() {
     // (und sein Dokument-Kind) verschwindet.
     m_pool.clear();
     m_pool.waitForDone();
-    // m_doc ist als Kind von 'this' geparented -> wird automatisch geloescht.
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-//  Lazy, asynchron: stoesst (nur falls noetig) das Laden des Auswahl-Dokuments an.
-// ─────────────────────────────────────────────────────────────────────────────
 void PdfTextController::prepare(const QString& pathOrUrl) {
     const QString local = mg::toLocalPath(pathOrUrl);
     if (local.isEmpty() || !QFileInfo::exists(local))
         return;
 
-    // Bereits aktiv oder bereits am Laden -> nichts zu tun (idempotent).
     if ((local == m_activePath && m_doc) || local == m_pendingPath)
         return;
 
-    // Neues Ziel: vorheriges Ergebnis (falls noch unterwegs) wird verworfen.
     ++m_generation;
     m_pendingPath = local;
     m_pool.start(new PdfLoadTask(this, local, m_generation));
 }
 
 void PdfTextController::reload() {
-    //  `prepare` kehrt bei gleichem Pfad sofort zurück (idempotent). Wurde die
-    //  DATEI selbst umgeschrieben - Seitenoperationen, neue Textebene -, muss
-    //  sie trotzdem neu gelesen werden, sonst arbeitet die Auswahl und die
-    //  Suche weiter auf dem alten Stand.
+    // `prepare` kehrt bei gleichem Pfad sofort zurück. Wurde die DATEI selbst umgeschrieben (Seitenoperationen,
+    // neue Textebene), muss sie trotzdem neu gelesen werden - sonst arbeiten Auswahl und Suche auf dem alten Stand.
     const QString path = m_activePath;
     if (path.isEmpty())
         return;
@@ -122,13 +98,9 @@ void PdfTextController::reload() {
     prepare(path);
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-//  Ergebnis-Uebernahme auf dem GUI-Thread (vom Worker via QueuedConnection).
-// ─────────────────────────────────────────────────────────────────────────────
 void PdfTextController::adoptDocument(QPdfDocument* doc, const QString& localPath,
                                       int generation) {
     if (generation != m_generation) {
-        // Veraltet (zwischenzeitlich prepare()/releaseDocument()) -> verwerfen.
         if (doc)
             delete doc;     // doc lebt auf dem GUI-Thread -> direktes delete ok
         return;
@@ -161,7 +133,6 @@ void PdfTextController::adoptDocument(QPdfDocument* doc, const QString& localPat
     }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
 void PdfTextController::releaseDocument() {
     ++m_generation;                 // evtl. laufenden Ladevorgang verwerfen
     //  Laufende Suche zuerst stoppen: ihr Modell hält das Dokument, das gleich
@@ -187,7 +158,6 @@ void PdfTextController::releaseDocument() {
     clearSelection();
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
 QVariantList PdfTextController::selectionBetween(int page,
                                                  double nx0, double ny0,
                                                  double nx1, double ny1) {
@@ -210,7 +180,6 @@ QVariantList PdfTextController::selectionBetween(int page,
     return {};
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
 QVariantList PdfTextController::selectAllOnPage(int page) {
     if (!m_doc || page < 0 || page >= m_doc->pageCount())
         return {};
@@ -222,20 +191,15 @@ QVariantList PdfTextController::selectAllOnPage(int page) {
     const QPdfSelection sel = m_doc->getAllText(page);
     if (sel.isValid() && !sel.text().isEmpty())
         return applySelection(sel, page, ps.width(), ps.height());
-    //  s. selectionBetween: ohne Textebene nichts zu markieren.
     return {};
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
 //  Aus der QPdfSelection die normalisierten Highlight-Rechtecke bauen und den
 //  Text merken. bounds() liefert Rechteck-Polygone in Punkten (Ursprung
 //  oben-links) -> boundingRect()/Seitengroesse ergibt normalisierte [0..1]-Rects.
-// ─────────────────────────────────────────────────────────────────────────────
 QVariantList PdfTextController::applySelection(const QPdfSelection& sel, int page,
                                                double pageWidthPts,
                                                double pageHeightPts) {
-    //  `page` gehört zur Signatur (Symmetrie zu applySelection), die Umrechnung
-    //  braucht ihn nicht - die Rechtecke sind bereits seitenrelativ.
     Q_UNUSED(page)
     QVariantList rects;
     QString text;
@@ -262,12 +226,8 @@ QVariantList PdfTextController::applySelection(const QPdfSelection& sel, int pag
     return rects;
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-//  Zeilenfang des PDF-Editors: Fragment-Rechtecke aus getAllText() nach
-//  vertikaler Mitte sortieren und zu ZEILEN vereinigen. Toleranz = 60 % der
-//  kleineren Fragmenthöhe (robust gegen Hoch-/Tiefstellungen und leicht
-//  versetzte Runs derselben Zeile).
-// ─────────────────────────────────────────────────────────────────────────────
+// Zeilenfang: Fragment-Rechtecke nach vertikaler Mitte sortieren und zu ZEILEN vereinigen. Toleranz 60 % der
+// kleineren Fragmenthöhe - robust gegen Hoch-/Tiefstellungen und leicht versetzte Runs derselben Zeile.
 QList<QRectF> PdfTextController::lineRectsPts(int page) const {
     if (!m_doc || page < 0 || page >= m_doc->pageCount())
         return {};
@@ -332,13 +292,8 @@ QVariantList PdfTextController::textLineRects(int page) {
     return out;
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-//  „Text ersetzen"-Sonde: getroffene Zeilen vereinigen (Zeilen-Einschnappen),
-//  Ø-Zeilenhöhe für die Schriftgröße ableiten und den EINGEBETTETEN Text unter
-//  der vereinigten Fläche extrahieren. Der Text wird über getSelection zwischen
-//  den (leicht eingerückten) Ecken der Union geholt - bewusst OHNE die
-//  Nutzer-Auswahl (m_selText) anzufassen.
-// ─────────────────────────────────────────────────────────────────────────────
+// Sonde für "Text ersetzen": getroffene Zeilen vereinigen, Zeilenhöhe für die Schriftgröße ableiten und den
+// eingebetteten Text unter der Fläche holen - bewusst OHNE die Nutzer-Auswahl (`m_selText`) anzufassen.
 QVariantMap PdfTextController::replaceProbe(int page, double nx0, double ny0,
                                             double nx1, double ny1) {
     QVariantMap out;
@@ -350,10 +305,8 @@ QVariantMap PdfTextController::replaceProbe(int page, double nx0, double ny0,
     if (ps.isEmpty())
         return out;
 
-    // Aufgezogener Bereich in Punkten (normalisiert -> Punkte, Ecken sortiert).
     const QRectF drag(QPointF(qMin(nx0, nx1) * ps.width(),  qMin(ny0, ny1) * ps.height()),
                       QPointF(qMax(nx0, nx1) * ps.width(),  qMax(ny0, ny1) * ps.height()));
-    // Entartete Klicks (kein echtes Aufziehen) treffen bewusst nichts.
     if (drag.width() < 2.0 || drag.height() < 2.0)
         return out;
 
@@ -395,7 +348,6 @@ QVariantMap PdfTextController::replaceProbe(int page, double nx0, double ny0,
     return out;
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
 void PdfTextController::clearSelection() {
     if (!m_selText.isEmpty()) {
         m_selText.clear();
@@ -403,23 +355,11 @@ void PdfTextController::clearSelection() {
     }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
 
-// ─────────────────────────────────────────────────────────────────────────────
-//  Suche im Dokument
-//
-//  GRUNDLAGE: `QPdfSearchModel` (Qt PDF). Gemessen an einem Testdokument liefert
-//  es seine Rechtecke in PDF-PUNKTEN mit Ursprung OBEN-LINKS - dieselbe
-//  Konvention wie der ganze Editor, es muss also nichts gespiegelt werden. Es
-//  arbeitet allerdings **lazy**: Erst `resultsOnPage(p)` durchsucht Seite p.
-//  Deshalb holt ein Timer die Seiten STÜCKWEISE; ein 500-Seiten-Dokument würde
-//  die Oberfläche sonst für Sekunden einfrieren (Regel 17).
-//
-// ─────────────────────────────────────────────────────────────────────────────
+// `QPdfSearchModel` liefert seine Rechtecke in PDF-Punkten mit Ursprung oben-links (gemessen), also dieselbe
+// Konvention wie der Editor. Es arbeitet aber lazy - deshalb holt ein Timer die Seiten STÜCKWEISE.
 void PdfTextController::search(const QString& needle) {
     const QString term = needle.trimmed();
-    //  Kurzschluss NUR, wenn derselbe Begriff für DIESES Dokument bereits
-    //  gelaufen ist (s. m_searchedDoc).
     if (term == m_searchTerm && !term.isEmpty() && m_doc && m_searchedDoc == m_doc)
         return;
     m_hits.clear();
@@ -479,10 +419,8 @@ void PdfTextController::stepSearch() {
                 m_hits.push_back(h);
         }
     }
-    //  ── Muster-Zweig ────────────────────────────────────────────────────
-    //  Nur wenn der Begriff Sonderzeichen traegt und uebersetzbar war. Der
-    //  Seitentext liegt im SELBEN Indexraum wie `getSelectionAtIndex`
-    //  (nachgemessen), daraus kommen die Rechtecke.
+    // Muster-Zweig nur, wenn der Begriff Sonderzeichen trägt und übersetzbar war. Der Seitentext liegt im SELBEN
+    // Indexraum wie `getSelectionAtIndex` (nachgemessen), daraus kommen die Rechtecke.
     if (m_searchPattern.usesRegex()) {
         for (int p = m_searchPage; p < end; ++p) {
             const QString seite = m_doc->getAllText(p).text();

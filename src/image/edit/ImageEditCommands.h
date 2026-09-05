@@ -1,18 +1,7 @@
 #pragma once
-// ══════════════════════════════════════════════════════════════════════════════
-//  ImageEditCommands.h - Delta-Kommandos des Undo/Redo-Systems (Bild-Editor).
-// ══════════════════════════════════════════════════════════════════════════════
-//
-//  RAM-EFFIZIENZ (analog PdfEditCommands): KEINE vollständigen Snapshots. Jedes
-//  Kommando speichert nur das DELTA genau EINER Annotation:
-//   • Add/Remove  -> die eine Annotation (ihr minimales Delta) + Zeile
-//   • Geometry    -> id + altes/neues Rechteck + alte/neue Punkte (Striche)
-//   • Text        -> id + alter/neuer String
-//   • Field       -> id + Feld + alter/neuer QVariant (mergefähig)
-//  Der QUndoStack (QtGui seit Qt 6 - kein Widgets-Bezug) hält damit selbst bei
-//  langen Sitzungen nur Kilobytes. Kontinuierliche Gesten (Ziehen/Zeichnen/
-//  Tippen) erzeugen über die Session-API des Controllers ohnehin nur EIN Kommando.
-// ══════════════════════════════════════════════════════════════════════════════
+// Delta-Kommandos statt Schnappschuessen: jedes speichert nur die Aenderung EINER
+// Annotation. Der Stapel bleibt damit auch in langen Sitzungen bei Kilobytes;
+// fortlaufende Gesten erzeugen ueber die Session-API ohnehin nur ein Kommando.
 
 #include <QUndoCommand>
 #include <QVariant>
@@ -23,9 +12,7 @@
 
 class ImageEditModel;
 
-// ─────────────────────────────────────────────────────────────────────────────
 //  Annotation hinzufügen (undo entfernt sie wieder - Zeile bleibt stabil).
-// ─────────────────────────────────────────────────────────────────────────────
 class ImageEditAddCommand : public QUndoCommand {
 public:
     ImageEditAddCommand(ImageEditModel* model, const ImageAnnotation& ann, int row);
@@ -37,9 +24,7 @@ private:
     int             m_row;
 };
 
-// ─────────────────────────────────────────────────────────────────────────────
 //  Annotation entfernen (undo fügt sie an der alten Zeile wieder ein).
-// ─────────────────────────────────────────────────────────────────────────────
 class ImageEditRemoveCommand : public QUndoCommand {
 public:
     ImageEditRemoveCommand(ImageEditModel* model, const ImageAnnotation& ann, int row);
@@ -51,11 +36,9 @@ private:
     int             m_row;
 };
 
-// ─────────────────────────────────────────────────────────────────────────────
 //  Verschieben/Skalieren - EIN Kommando je Drag-Session (Delta alt->neu).
 //  Trägt neben dem Rechteck auch die PUNKTE (Freihand/Pfeil werden beim
 //  Verschieben/Skalieren mit-transformiert; Undo stellt beides wieder her).
-// ─────────────────────────────────────────────────────────────────────────────
 class ImageEditGeometryCommand : public QUndoCommand {
 public:
     ImageEditGeometryCommand(ImageEditModel* model, int id,
@@ -72,9 +55,7 @@ private:
     QVector<QPointF>    m_newPts;
 };
 
-// ─────────────────────────────────────────────────────────────────────────────
 //  Textänderung - EIN Kommando je Bearbeitungs-Session (Delta alt->neu).
-// ─────────────────────────────────────────────────────────────────────────────
 class ImageEditTextCommand : public QUndoCommand {
 public:
     ImageEditTextCommand(ImageEditModel* model, int id,
@@ -88,13 +69,8 @@ private:
     QString         m_new;
 };
 
-// ─────────────────────────────────────────────────────────────────────────────
-//  Stil-/Formatfeld (Bold/Italic/Underline/Größe/Farbe/Hervorhebung/
-//  Ausrichtung/Schriftart/Linienfarbe/-breite/Füllung). Aufeinanderfolgende
-//  Änderungen DESSELBEN Feldes derselben Annotation verschmelzen (mergeWith) -
-//  Slider-/SpinBox-Serien erzeugen so einen einzigen Undo-Schritt; hebt sich
-//  eine Serie exakt auf, verwirft setObsolete() das Kommando ganz.
-// ─────────────────────────────────────────────────────────────────────────────
+// Aufeinanderfolgende Änderungen DESSELBEN Feldes derselben Annotation verschmelzen - eine Slider-Serie ergibt
+// einen einzigen Undo-Schritt; hebt sie sich exakt auf, verwirft `setObsolete()` das Kommando ganz.
 class ImageEditFieldCommand : public QUndoCommand {
 public:
     static constexpr int kCommandId = 4712;

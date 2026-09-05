@@ -203,9 +203,7 @@ signals:
 
 private:
     explicit AppSettings(QObject* parent = nullptr);
-    //  `mutable`, weil `designProfile() const` einen alten gespeicherten Wert
-    //  einmalig umrechnet und zurueckschreibt (s. Schema-Nummer dort). Das ist
-    //  keine Zustandsaenderung nach aussen - dieselbe Frage liefert danach
-    //  dieselbe Antwort, nur ohne die Umrechnung noch einmal zu brauchen.
+    // `mutable`, weil `designProfile() const` einen alten gespeicherten Wert einmalig umrechnet und zurückschreibt.
+    // Nach außen ändert das nichts - dieselbe Frage liefert danach dieselbe Antwort.
     mutable QSettings m_settings;
 };

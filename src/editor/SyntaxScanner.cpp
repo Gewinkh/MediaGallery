@@ -2,15 +2,8 @@
 
 #include <QChar>
 
-// ─────────────────────────────────────────────────────────────────────────────
-//  Aufbau: EINE Routine (`scanCode`) bedient CLike UND Script - die beiden
-//  unterscheiden sich nur in Feldern der Tabelle (Kommentarzeichen,
-//  Praeprozessor, dreifache Anfuehrung), nicht im Ablauf. Nur Markdown, Markup
-//  und INI brauchen einen eigenen Weg, weil ihre Struktur nicht aus Woertern und
-//  Klammern besteht.
-//
-//  Wer eine neue Klammer-Sprache hinzufuegt, aendert hier NICHTS.
-// ─────────────────────────────────────────────────────────────────────────────
+// EINE Routine (`scanCode`) bedient CLike UND Script - sie unterscheiden sich nur in Feldern der Tabelle, nicht
+// im Ablauf. Nur Markdown, Markup und INI brauchen einen eigenen Weg; eine neue Klammer-Sprache ändert hier nichts.
 namespace mg::editor {
 namespace {
 
@@ -46,11 +39,8 @@ inline bool passt(QStringView zeile, qsizetype i, QLatin1StringView was) {
     return zeile.sliced(i, was.size()).compare(was) == 0;
 }
 
-//  Zeichenkette ab `i` (das Anfuehrungszeichen steht auf `i`). Liefert die
-//  Position NACH der Zeichenkette. Rueckschraegstrich hebt das naechste Zeichen
-//  auf. Endet die Zeile vorher, hoert die Zeichenkette am Zeilenende auf - in
-//  Klammer-Sprachen laeuft sie nicht weiter (das waere ein Tippfehler, und ihn
-//  ueber das halbe Dokument einzufaerben hilft niemandem).
+// Liefert die Position NACH der Zeichenkette; Rückschrägstrich hebt das nächste Zeichen auf. Endet die Zeile
+// vorher, hört sie am Zeilenende auf - einen Tippfehler über das halbe Dokument einzufärben hilft niemandem.
 qsizetype ueberspringeZeichenkette(QStringView zeile, qsizetype i) {
     const QChar begrenzer = zeile[i];
     qsizetype j = i + 1;
@@ -83,7 +73,6 @@ qsizetype ueberspringeZahl(QStringView zeile, qsizetype i) {
         if (c == u'.' && !punktGesehen && j + 1 < zeile.size() && zeile[j + 1].isDigit()) {
             punktGesehen = true; ++j; continue;
         }
-        //  Exponent: das Vorzeichen gehoert noch zur Zahl.
         if ((c == u'e' || c == u'E') && j + 1 < zeile.size()
             && (zeile[j + 1].isDigit() || zeile[j + 1] == u'+' || zeile[j + 1] == u'-')) {
             j += 2; continue;
@@ -94,10 +83,8 @@ qsizetype ueberspringeZahl(QStringView zeile, qsizetype i) {
     return j;
 }
 
-//  Steht vor Position `i` auf dieser Zeile NICHTS ausser Leerraum, Bezeichnern
-//  und Punkten? Damit trennt sich eine QML-Eigenschaftsbindung
-//  (`anchors.fill: parent`) von einer Bedingung (`a ? b : c`) - ohne die Zeile
-//  zu parsen und ohne dass ein Doppelpunkt irgendwo mitten im Ausdruck traefe.
+// Steht vor Position `i` nichts außer Leerraum, Bezeichnern und Punkten? Damit trennt sich eine
+// QML-Eigenschaftsbindung von einer Bedingung (`a ? b : c`) - ohne die Zeile zu parsen.
 bool nurBezeichnerDavor(QStringView zeile, qsizetype i) {
     for (qsizetype k = 0; k < i; ++k) {
         const QChar c = zeile[k];
@@ -123,11 +110,9 @@ QChar naechstesSichtbares(QStringView zeile, qsizetype i) {
     return i < zeile.size() ? zeile[i] : QChar(u'\0');
 }
 
-// ── Klammer- und Skriptsprachen ──────────────────────────────────────────────
 int scanCode(QStringView zeile, const LanguageDef& def, int stateIn, SpanList& out) {
     qsizetype i = 0;
 
-    //  1) Was aus der Vorzeile offen ist, zuerst zu Ende bringen.
     switch (stateKind(stateIn)) {
     case BlockState::BlockComment: {
         const qsizetype ende = def.blockClose.isEmpty()
@@ -142,11 +127,8 @@ int scanCode(QStringView zeile, const LanguageDef& def, int stateIn, SpanList& o
         break;
     }
     case BlockState::MultiString: {
-        //  Nutzlast: 0 = R"( … )" (C++), sonst der Code des Begrenzerzeichens
-        //  einer dreifachen Anfuehrung.
-        //  Die 1 steht fuer die Vorlagenzeichenkette mit Gravis - als
-        //  Zeichencode ist sie nie gueltig, also passt der dritte Fall in
-        //  dieselbe Nutzlast.
+        // Nutzlast: 0 = R"( ... )", sonst der Code des Begrenzerzeichens einer dreifachen Anführung. Die 1 steht für die
+        // Vorlagenzeichenkette mit Gravis - als Zeichencode nie gültig, also passt der dritte Fall in dieselbe Nutzlast.
         const int nutz = statePayload(stateIn);
         const QString schluss = nutz == 0 ? QStringLiteral(")\"")
                               : nutz == 1 ? QStringLiteral("`")
@@ -165,7 +147,6 @@ int scanCode(QStringView zeile, const LanguageDef& def, int stateIn, SpanList& o
         break;
     }
 
-    //  2) Praeprozessor bzw. Shebang: nur ganz am Anfang der Zeile.
     if (i == 0) {
         qsizetype k = 0;
         while (k < zeile.size() && zeile[k].isSpace()) ++k;
@@ -187,19 +168,16 @@ int scanCode(QStringView zeile, const LanguageDef& def, int stateIn, SpanList& o
         }
     }
 
-    //  3) Der eigentliche Durchlauf.
     while (i < zeile.size()) {
         const QChar c = zeile[i];
 
         if (c.isSpace()) { ++i; continue; }
 
-        //  Zeilenkommentar (zwei moegliche Formen, s. PHP: // und #)
         if (passt(zeile, i, def.lineComment) || passt(zeile, i, def.lineComment2)) {
             schiebe(out, i, zeile.size() - i, Tok::Comment);
             return makeState(BlockState::None);
         }
 
-        //  Blockkommentar
         if (passt(zeile, i, def.blockOpen)) {
             const qsizetype ende = zeile.indexOf(def.blockClose, i + def.blockOpen.size());
             if (ende < 0) {
@@ -212,7 +190,6 @@ int scanCode(QStringView zeile, const LanguageDef& def, int stateIn, SpanList& o
             continue;
         }
 
-        //  Roh-Zeichenkette R"( … )" - darf ueber Zeilen laufen.
         if (def.rawStrings && c == u'R' && i + 2 < zeile.size()
             && zeile[i + 1] == u'"' && zeile[i + 2] == u'(') {
             const qsizetype ende = zeile.indexOf(QStringLiteral(")\""), i + 3);
@@ -225,7 +202,6 @@ int scanCode(QStringView zeile, const LanguageDef& def, int stateIn, SpanList& o
             continue;
         }
 
-        //  Vorlagenzeichenkette `` ` … ` `` (JavaScript/QML) - ueber Zeilen.
         if (def.templateStrings && c == u'`') {
             qsizetype j = i + 1;
             while (j < zeile.size() && zeile[j] != u'`') {
@@ -241,7 +217,6 @@ int scanCode(QStringView zeile, const LanguageDef& def, int stateIn, SpanList& o
             continue;
         }
 
-        //  Dreifache Anfuehrung (Python) - darf ueber Zeilen laufen.
         if (def.tripleQuotes && (c == u'"' || c == u'\'')
             && i + 2 < zeile.size() && zeile[i + 1] == c && zeile[i + 2] == c) {
             const QString schluss(3, c);
@@ -255,7 +230,6 @@ int scanCode(QStringView zeile, const LanguageDef& def, int stateIn, SpanList& o
             continue;
         }
 
-        //  Gewoehnliche Zeichenkette
         if (c == u'"' || c == u'\'' || c == u'`') {
             const qsizetype nach = ueberspringeZeichenkette(zeile, i);
             schiebe(out, i, nach - i, Tok::String);
@@ -263,7 +237,6 @@ int scanCode(QStringView zeile, const LanguageDef& def, int stateIn, SpanList& o
             continue;
         }
 
-        //  Farbwert #fff / #F2F1EC (nur wo die Tabelle es erlaubt, s. CSS).
         if (def.hashColors && c == u'#') {
             qsizetype j = i + 1;
             while (j < zeile.size() && istHexZiffer(zeile[j])) ++j;
@@ -274,8 +247,6 @@ int scanCode(QStringView zeile, const LanguageDef& def, int stateIn, SpanList& o
             }
         }
 
-        //  Zahl - aber nur, wenn keine Ziffer MITTEN in einem Bezeichner steht
-        //  (`wert2` ist ein Name, keine Zahl).
         if (c.isDigit() && (i == 0 || !istWortZeichen(zeile[i - 1]))) {
             const qsizetype nach = ueberspringeZahl(zeile, i);
             schiebe(out, i, nach - i, Tok::Number);
@@ -283,24 +254,16 @@ int scanCode(QStringView zeile, const LanguageDef& def, int stateIn, SpanList& o
             continue;
         }
 
-        //  Wort
         if (istWortAnfang(c)) {
             qsizetype j = i;
             while (j < zeile.size() && istWortZeichen(zeile[j])) ++j;
             QStringView wort = zeile.sliced(i, j - i);
 
-            //  Grossschreibung ist bei CMake/SQL egal - dort wird zum Vergleich
-            //  klein geschrieben (kostet eine kurze Kopie, aber nur dort).
             const QString klein = def.caseSensitive ? QString() : wort.toString().toLower();
             const QStringView pruef = def.caseSensitive ? wort : QStringView(klein);
 
-            //  TYPEN ZUERST, dann Schluesselwoerter: `int`, `bool` und `void`
-            //  stehen in C++/Java/C# in BEIDEN Listen (sie sind grammatisch
-            //  Schluesselwoerter und zugleich Typnamen). Wer faerbt, erwartet
-            //  sie in der Farbe von `QString`, nicht in der von `if` - genauso
-            //  haelt es Kate. Woerter, die WIRKLICH nur Schluesselwoerter sind
-            //  (`static` in PHP, `function` in Lua), stehen deshalb gar nicht
-            //  erst in der Typliste.
+            // TYPEN ZUERST, dann Schlüsselwörter: `int`, `bool` und `void` stehen in beiden Listen. Wer färbt, erwartet sie
+            // in der Farbe von `QString`, nicht in der von `if` - reine Schlüsselwörter stehen deshalb nicht in der Typliste.
             if (containsWord(def.types, pruef))
                 schiebe(out, i, j - i, Tok::Type);
             else if (containsWord(def.keywords, pruef))
@@ -315,14 +278,11 @@ int scanCode(QStringView zeile, const LanguageDef& def, int stateIn, SpanList& o
                          || (def.propertyColon == ColonStyle::LineStart
                              && nurBezeichnerDavor(zeile, i))))
                 schiebe(out, i, j - i, Tok::Type);
-            //  … und die GLIEDER davor: `anchors` in `anchors.fill:` gehoert
-            //  zur selben Eigenschaft. Ohne das faerbte nur das letzte Glied.
             else if (def.propertyColon == ColonStyle::LineStart
                      && naechstesSichtbares(zeile, j) == u'.'
                      && nurBezeichnerDavor(zeile, i)
                      && kettenEndeIstDoppelpunkt(zeile, j))
                 schiebe(out, i, j - i, Tok::Type);
-            //  sonst: Normal, kein Eintrag
             i = j;
             continue;
         }
@@ -333,9 +293,6 @@ int scanCode(QStringView zeile, const LanguageDef& def, int stateIn, SpanList& o
                    && !passt(zeile, j, def.lineComment)
                    && !passt(zeile, j, def.lineComment2)
                    && !passt(zeile, j, def.blockOpen)
-                   //  Vor einem Farbwert ANHALTEN: `#` steht in der
-                   //  Operatorliste, sonst schluckte der Lauf `:#F2F1EC` als
-                   //  ein Stueck und die Farbe waere nie erkannt worden.
                    && !(def.hashColors && j > i && zeile[j] == u'#'))
                 ++j;
             if (j == i) ++j;                       // Kommentaranfang direkt hier
@@ -349,10 +306,8 @@ int scanCode(QStringView zeile, const LanguageDef& def, int stateIn, SpanList& o
     return makeState(BlockState::None);
 }
 
-//  Zerlegt den Abschnitt [von, bis) einer HTML-Zeile in der EINGEBETTETEN
-//  Sprache (CSS bzw. JavaScript) und haengt die Abschnitte - auf die Zeile
-//  umgerechnet - an `out`. Rueckgabe: der Zustand des eingebetteten Zerlegers
-//  fuer die naechste Zeile (nur die Art, sie passt in die Nutzlast).
+// Zerlegt den Abschnitt in der EINGEBETTETEN Sprache (CSS bzw. JavaScript) und hängt die Abschnitte - auf die
+// Zeile umgerechnet - an `out`. Rückgabe ist der Zustand für die nächste Zeile.
 int scanEingebettet(QStringView zeile, qsizetype von, qsizetype bis,
                     BlockState art, int subZustand, SpanList& out) {
     if (bis <= von) return subZustand;
@@ -367,7 +322,6 @@ int scanEingebettet(QStringView zeile, qsizetype von, qsizetype bis,
     return int(stateKind(raus));
 }
 
-//  Welcher eingebettete Zustand gehoert zu diesem Tag-Namen?
 BlockState eingebettetFuer(QStringView name) {
     if (name.compare(QLatin1StringView("style"), Qt::CaseInsensitive) == 0)
         return BlockState::EmbeddedCss;
@@ -381,7 +335,6 @@ QLatin1StringView schlussTag(BlockState art) {
                                           : QLatin1StringView("</script>");
 }
 
-// ── Auszeichnungssprachen: XML / HTML ────────────────────────────────────────
 int scanMarkup(QStringView zeile, const LanguageDef& def, int stateIn, SpanList& out) {
     qsizetype i = 0;
 
@@ -393,11 +346,8 @@ int scanMarkup(QStringView zeile, const LanguageDef& def, int stateIn, SpanList&
         i = nach;
     }
 
-    //  Laeuft aus der Vorzeile ein <style>- oder <script>-Block weiter? Dann
-    //  wird bis zum schliessenden Tag in der EINGEBETTETEN Sprache zerlegt.
-    //  Ohne das bliebe der groesste Teil einer typischen HTML-Seite ungefaerbt:
-    //  in der Pruefdatei `tests/Japanisch A1 Lernzettel.html` sind es 176 von
-    //  800 Zeilen, die allein im <style>-Block stehen.
+    // Läuft ein <style>- oder <script>-Block aus der Vorzeile weiter, wird bis zum schließenden Tag in der
+    // EINGEBETTETEN Sprache zerlegt. Ohne das bliebe der größte Teil einer HTML-Seite ungefärbt (176 von 800 Zeilen).
     const BlockState offen = stateKind(stateIn);
     if (offen == BlockState::EmbeddedCss || offen == BlockState::EmbeddedJs) {
         const QLatin1StringView schluss = schlussTag(offen);
@@ -410,14 +360,8 @@ int scanMarkup(QStringView zeile, const LanguageDef& def, int stateIn, SpanList&
         i = ende;                       // ab dem </style> wieder Markup
     }
 
-    //  Merkt sich zwischen Tag-Name und schliessender Spitzklammer, dass gleich
-    //  eine eingebettete Sprache beginnt.
     BlockState startetGleich = BlockState::None;
-    //  Merkt sich zwischen Attributnamen und Wert, dass ein Inline-`style="…"`
-    //  folgt - dessen Inhalt ist CSS und wird auch so zerlegt.
     bool naechsterWertIstCss = false;
-    //  Dasselbe fuer `onclick="…"` und die uebrigen `on*`-Attribute: darin
-    //  steht JavaScript, keine Zeichenkette.
     bool naechsterWertIstJs = false;
 
     while (i < zeile.size()) {
@@ -435,7 +379,6 @@ int scanMarkup(QStringView zeile, const LanguageDef& def, int stateIn, SpanList&
                 i = nach;
                 continue;
             }
-            //  <?xml … ?> und <!DOCTYPE …> sind Direktiven
             if (i + 1 < zeile.size() && (zeile[i + 1] == u'?' || zeile[i + 1] == u'!')) {
                 qsizetype ende = zeile.indexOf(u'>', i);
                 if (ende < 0) ende = zeile.size() - 1;
@@ -443,7 +386,6 @@ int scanMarkup(QStringView zeile, const LanguageDef& def, int stateIn, SpanList&
                 i = ende + 1;
                 continue;
             }
-            //  Gewoehnliches Tag: '<' bzw. '</' als Operator, dann der Name.
             qsizetype j = i + 1;
             if (j < zeile.size() && zeile[j] == u'/') ++j;
             schiebe(out, i, j - i, Tok::Operator);
@@ -463,8 +405,6 @@ int scanMarkup(QStringView zeile, const LanguageDef& def, int stateIn, SpanList&
             const qsizetype len = (c == u'/') ? 2 : 1;
             schiebe(out, i, len, Tok::Operator);
             i += len;
-            //  Hier faengt der eingebettete Block an. Ein leeres Tag (`/>`)
-            //  hat keinen Inhalt und zaehlt deshalb nicht.
             if (startetGleich != BlockState::None && len == 1) {
                 const QLatin1StringView schluss = schlussTag(startetGleich);
                 const qsizetype ende = zeile.indexOf(schluss, i, Qt::CaseInsensitive);
@@ -481,9 +421,6 @@ int scanMarkup(QStringView zeile, const LanguageDef& def, int stateIn, SpanList&
         if (c == u'"' || c == u'\'') {
             const qsizetype nach = ueberspringeZeichenkette(zeile, i);
             if ((naechsterWertIstCss || naechsterWertIstJs) && nach - i >= 2) {
-                //  Die Anfuehrungszeichen bleiben Zeichenkette, der Inhalt wird
-                //  als CSS gelesen: `style="grid-template-columns:repeat(5,1fr)"`
-                //  war sonst ein einziger gruener Block.
                 schiebe(out, i, 1, Tok::String);
                 scanEingebettet(zeile, i + 1, nach - 1,
                                 naechsterWertIstJs ? BlockState::EmbeddedJs
@@ -498,9 +435,6 @@ int scanMarkup(QStringView zeile, const LanguageDef& def, int stateIn, SpanList&
             continue;
         }
 
-        //  HTML-Entitaet: &nbsp; &amp; &#12354; - ein Literal, kein Fliesstext.
-        //  Deckel bei 12 Zeichen, damit ein einzelnes `&` im Text nicht den
-        //  halben Absatz einfaerbt.
         if (c == u'&') {
             qsizetype j = i + 1;
             const qsizetype grenze = qMin(zeile.size(), i + 12);
@@ -514,8 +448,6 @@ int scanMarkup(QStringView zeile, const LanguageDef& def, int stateIn, SpanList&
 
         if (c == u'=') { schiebe(out, i, 1, Tok::Operator); ++i; continue; }
 
-        //  Ein Wort ist hier ein Attributname, wenn ein '=' folgt; sonst
-        //  Fliesstext und bleibt ungefaerbt.
         if (istWortAnfang(c)) {
             qsizetype j = i;
             while (j < zeile.size() && (istWortZeichen(zeile[j]) || zeile[j] == u'-'
@@ -527,7 +459,6 @@ int scanMarkup(QStringView zeile, const LanguageDef& def, int stateIn, SpanList&
                 naechsterWertIstCss =
                     attribut.compare(QLatin1StringView("style"),
                                      Qt::CaseInsensitive) == 0;
-                //  `onclick`, `onload`, `onmouseover` … - der Wert ist Code.
                 naechsterWertIstJs =
                     attribut.size() > 2
                     && attribut.first(2).compare(QLatin1StringView("on"),
@@ -542,7 +473,6 @@ int scanMarkup(QStringView zeile, const LanguageDef& def, int stateIn, SpanList&
     return makeState(BlockState::None);
 }
 
-// ── INI / TOML ───────────────────────────────────────────────────────────────
 int scanIni(QStringView zeile, const LanguageDef& def, int /*stateIn*/, SpanList& out) {
     qsizetype i = 0;
     while (i < zeile.size() && zeile[i].isSpace()) ++i;
@@ -560,7 +490,6 @@ int scanIni(QStringView zeile, const LanguageDef& def, int /*stateIn*/, SpanList
         return makeState(BlockState::None);
     }
 
-    //  schluessel = wert
     const qsizetype gleich = zeile.indexOf(u'=');
     if (gleich > i) {
         qsizetype ende = gleich;
@@ -581,12 +510,9 @@ int scanIni(QStringView zeile, const LanguageDef& def, int /*stateIn*/, SpanList
     return makeState(BlockState::None);
 }
 
-// ── Markdown ─────────────────────────────────────────────────────────────────
-//  Der Sonderweg, den die Tabelle nicht abbilden kann: Betonung, Listen,
-//  Codezaeune und Verweise greifen ineinander und haengen an der POSITION in der
-//  Zeile, nicht an Woertern.
+// Der Sonderweg, den die Tabelle nicht abbilden kann: Betonung, Listen, Codezäune und Verweise greifen
+// ineinander und hängen an der POSITION in der Zeile, nicht an Wörtern.
 int scanMarkdown(QStringView zeile, const LanguageDef&, int stateIn, SpanList& out) {
-    //  1) Offener Codezaun: alles darin ist Code, bis der Zaun schliesst.
     if (stateKind(stateIn) == BlockState::CodeFence) {
         const int zeichen = statePayload(stateIn);
         qsizetype k = 0;
@@ -595,14 +521,12 @@ int scanMarkdown(QStringView zeile, const LanguageDef&, int stateIn, SpanList& o
         while (k + zaehler < zeile.size() && zeile[k + zaehler].unicode() == char16_t(zeichen))
             ++zaehler;
         schiebe(out, 0, zeile.size(), Tok::CodeSpan);
-        //  Drei gleiche Zeichen schliessen den Zaun wieder.
         return zaehler >= 3 ? makeState(BlockState::None) : stateIn;
     }
 
     qsizetype start = 0;
     while (start < zeile.size() && zeile[start] == u' ') ++start;
 
-    //  2) Codezaun oeffnen (``` oder ~~~)
     if (start < zeile.size() && (zeile[start] == u'`' || zeile[start] == u'~')) {
         const QChar z = zeile[start];
         int zaehler = 0;
@@ -613,13 +537,11 @@ int scanMarkdown(QStringView zeile, const LanguageDef&, int stateIn, SpanList& o
         }
     }
 
-    //  3) Eingerueckter Codeblock (vier Leerzeichen oder ein Tabulator)
     if (start >= 4 || (!zeile.isEmpty() && zeile[0] == u'\t')) {
         schiebe(out, 0, zeile.size(), Tok::CodeSpan);
         return makeState(BlockState::None);
     }
 
-    //  4) Ueberschrift (# … ######) - die ganze Zeile, damit sie sich abhebt.
     if (start < zeile.size() && zeile[start] == u'#') {
         int grad = 0;
         while (start + grad < zeile.size() && zeile[start + grad] == u'#') ++grad;
@@ -629,7 +551,6 @@ int scanMarkdown(QStringView zeile, const LanguageDef&, int stateIn, SpanList& o
         }
     }
 
-    //  5) Setext-Ueberschrift bzw. waagerechte Linie: === bzw. --- allein
     if (start < zeile.size()) {
         const QChar z = zeile[start];
         if (z == u'=' || z == u'-' || z == u'*' || z == u'_') {
@@ -646,7 +567,6 @@ int scanMarkdown(QStringView zeile, const LanguageDef&, int stateIn, SpanList& o
 
     qsizetype i = start;
 
-    //  6) Zitat und Listenzeichen am Zeilenanfang
     if (i < zeile.size() && zeile[i] == u'>') {
         qsizetype j = i;
         while (j < zeile.size() && (zeile[j] == u'>' || zeile[j] == u' ')) ++j;
@@ -666,11 +586,9 @@ int scanMarkdown(QStringView zeile, const LanguageDef&, int stateIn, SpanList& o
         }
     }
 
-    //  7) Der Rest der Zeile: Inline-Code, Betonung, Verweise.
     while (i < zeile.size()) {
         const QChar c = zeile[i];
 
-        //  `code`
         if (c == u'`') {
             const qsizetype ende = zeile.indexOf(u'`', i + 1);
             if (ende > 0) {
@@ -680,7 +598,6 @@ int scanMarkdown(QStringView zeile, const LanguageDef&, int stateIn, SpanList& o
             }
         }
 
-        //  [Text](Ziel) und ![Alt](Ziel) - der ganze Ausdruck wird Verweis.
         if (c == u'[' || (c == u'!' && i + 1 < zeile.size() && zeile[i + 1] == u'[')) {
             const qsizetype klammerAuf = (c == u'!') ? i + 1 : i;
             const qsizetype klammerZu = zeile.indexOf(u']', klammerAuf + 1);
@@ -694,7 +611,6 @@ int scanMarkdown(QStringView zeile, const LanguageDef&, int stateIn, SpanList& o
             }
         }
 
-        //  **fett**, *kursiv*, __fett__, _kursiv_
         if (c == u'*' || c == u'_') {
             const int laenge = (i + 1 < zeile.size() && zeile[i + 1] == c) ? 2 : 1;
             //  Ein Unterstrich MITTEN in einem Wort ist kein Auszeichner

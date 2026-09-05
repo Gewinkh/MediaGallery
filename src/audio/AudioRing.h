@@ -2,20 +2,9 @@
 #include <QMutex>
 #include <vector>
 
-// ─────────────────────────────────────────────────────────────────────────────
-//  AudioRing - der kleine Vorrat zwischen Dekoder und Ausgabe.
-//
-//  EIN Schreiber (der Dekoder, im GUI-Thread) und EIN Leser (der Zuliefer-Ruf
-//  der Ausgabe, in Qts Audio-Thread). Der Puffer ist bewusst KLEIN (~200 ms):
-//  eine ganze Datei zu dekodieren kostete bei fünf Minuten Stereo/48 kHz rund
-//  115 MB - RAM ist Priorität 1. 200 ms sind ~38 kB und überbrücken jede
-//  Nachschub-Verzögerung, die eine Platte macht.
-//
-//  Geschützt wird mit einem MUTEX, nicht schlossfrei: die kritischen Abschnitte
-//  sind zwei `memcpy` von wenigen kB, und ein selbst gebauter schlossfreier Ring
-//  wäre die Art von Cleverness, die man ein Jahr später nicht mehr versteht
-//  (§0-Priorität 5 vor 2). Ob das trägt, misst `bench_audio` (Unterläufe).
-// ─────────────────────────────────────────────────────────────────────────────
+// Ein Schreiber (Dekoder, GUI-Thread), ein Leser (Zieh-Ruf, Audio-Thread). Bewusst
+// klein (~200 ms = 38 kB): eine ganze Datei zu dekodieren kostete bei fuenf Minuten
+// Stereo/48 kHz rund 115 MB. Mutex statt schlossfrei - zwei memcpy von wenigen kB.
 class AudioRing {
 public:
     //  Fassungsvermögen in EINZELWERTEN (Frames × Kanäle), nicht in Bytes.

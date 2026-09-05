@@ -1,9 +1,6 @@
 #include "image/edit/ImageEditCommands.h"
 #include "image/edit/ImageEditModel.h"
 
-// ─────────────────────────────────────────────────────────────────────────────
-//  Hinzufügen
-// ─────────────────────────────────────────────────────────────────────────────
 ImageEditAddCommand::ImageEditAddCommand(ImageEditModel* model, const ImageAnnotation& ann, int row)
     : m_model(model), m_ann(ann), m_row(row) {}
 
@@ -15,9 +12,6 @@ void ImageEditAddCommand::undo() {
     m_model->removeById(m_ann.id);
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-//  Entfernen
-// ─────────────────────────────────────────────────────────────────────────────
 ImageEditRemoveCommand::ImageEditRemoveCommand(ImageEditModel* model, const ImageAnnotation& ann, int row)
     : m_model(model), m_ann(ann), m_row(row) {}
 
@@ -29,9 +23,6 @@ void ImageEditRemoveCommand::undo() {
     m_model->insertAnnAt(m_row, m_ann);
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-//  Geometrie (Rechteck + Punkte)
-// ─────────────────────────────────────────────────────────────────────────────
 ImageEditGeometryCommand::ImageEditGeometryCommand(ImageEditModel* model, int id,
                                                    const QRectF& oldRect, const QVector<QPointF>& oldPts,
                                                    const QRectF& newRect, const QVector<QPointF>& newPts)
@@ -47,9 +38,6 @@ void ImageEditGeometryCommand::undo() {
     m_model->applyGeometryPoints(m_id, m_oldRect, m_oldPts);
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-//  Text
-// ─────────────────────────────────────────────────────────────────────────────
 ImageEditTextCommand::ImageEditTextCommand(ImageEditModel* model, int id,
                                            const QString& oldText, const QString& newText)
     : m_model(model), m_id(id), m_old(oldText), m_new(newText) {}
@@ -62,9 +50,6 @@ void ImageEditTextCommand::undo() {
     m_model->applyText(m_id, m_old);
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-//  Stil-/Formatfeld
-// ─────────────────────────────────────────────────────────────────────────────
 ImageEditFieldCommand::ImageEditFieldCommand(ImageEditModel* model, int id, ImageAnnField field,
                                              const QVariant& oldValue, const QVariant& newValue)
     : m_model(model), m_id(id), m_field(field), m_old(oldValue), m_new(newValue) {}

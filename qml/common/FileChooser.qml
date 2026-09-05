@@ -2,28 +2,9 @@ import QtQuick
 import QtQuick.Controls
 import MediaGallery 1.0
 
-// ─────────────────────────────────────────────────────────────────────────────
-//  FileChooser.qml - der EIGENE Datei-/Ordnerwähler der App.
-//
-//  WARUM: Qts `FileDialog`/`FolderDialog` öffnen ein eigenes Fenster, dessen
-//  Liste in Qts eigener `FileDialog.qml` steckt. Dort ist `SmoothWheelArea`
-//  nicht einhängbar - die Liste sprang deshalb in Stufen, während alles andere
-//  in der App animiert scrollt; auch das Aussehen war nur über die Palette
-//  steuerbar. Dieser Wähler ist ein `Popup` IM Fenster: gleiche Farben, gleiches
-//  Scrollen, gleiche Tastaturbedienung wie der Rest der App.
-//
-//  VERTRAG (bewusst wie bei Qts Dialog, damit die Aufrufstellen sich kaum
-//  ändern): `title`, `nameFilters`, `fileMode`, `defaultSuffix`, `currentFolder`,
-//  Ergebnis in `selectedFile`/`selectedFolder`, Signal `accepted`, `open()`.
-//
-//      FileChooser {
-//          id: dlg
-//          title: "Bild wählen"
-//          fileMode: FileChooser.OpenFile
-//          nameFilters: [ "Bilder (*.png *.jpg)" ]
-//          onAccepted: benutze(dlg.selectedFile)
-//      }
-// ─────────────────────────────────────────────────────────────────────────────
+// Eigener Datei-/Ordnerwähler als Popup IM Fenster. Qts FileDialog öffnet ein eigenes Fenster, dessen
+// Liste in Qts FileDialog.qml steckt - `SmoothWheelArea` ist dort nicht einhängbar, die Liste sprang
+// in Stufen. Vertrag bewusst wie bei Qts Dialog, damit die Aufrufstellen sich kaum ändern.
 Popup {
     id: root
 
@@ -33,8 +14,6 @@ Popup {
     property var    nameFilters: []
     property int    fileMode: FileChooser.OpenFile
     property string defaultSuffix: ""
-    //  Startverzeichnis (URL wie bei Qts Dialog) - leer = zuletzt benutztes
-    //  bzw. das Heimatverzeichnis.
     property url    currentFolder
     //  Ergebnis. `selectedFiles` trägt bei MEHRFACHAUSWAHL alle gewählten
     //  Dateien (sonst genau eine); `selectedFile` bleibt die erste - die
@@ -42,8 +21,6 @@ Popup {
     property url    selectedFile
     property url    selectedFolder
     property var    selectedFiles: []
-    //  Mehrfachauswahl zulassen (nur beim ÖFFNEN sinnvoll - beim Speichern und
-    //  bei der Ordnerwahl gibt es genau ein Ziel).
     property bool   multiSelect: false
     readonly property bool _multi: multiSelect && fileMode === FileChooser.OpenFile
 
@@ -64,18 +41,14 @@ Popup {
 
     readonly property bool _saveMode: fileMode === FileChooser.SaveFile
     readonly property bool _dirMode:  fileMode === FileChooser.Directory
-    //  Der gewählte Name (Datei ODER Unterordner) - leer heißt „der Ordner selbst".
     property string _chosenName: ""
     property int    _filterIndex: 0
     //  „Neuer Ordner": Eingabe läuft IN der Pfadleiste (s. dort), damit kein
     //  zweites Popup über dem Wähler liegt.
     property bool   _dirEditActive: false
     property string _dirError: ""
-    //  Zeilen der Mehrfachauswahl (Indizes im Modell). `currentIndex` bleibt
-    //  daneben bestehen - er führt die Tastatur.
-    //  Orte der Seitenleiste: Standard-Orte PLUS die Lesezeichen der App - wer
-    //  einen Ordner gespeichert hat, will ihn auch hier mit einem Klick
-    //  erreichen. Doppelte und verschwundene Pfade fallen heraus.
+    // Orte der Seitenleiste: Standard-Orte plus die Lesezeichen der App; doppelte und verschwundene Pfade fallen
+    // heraus. `currentIndex` bleibt daneben bestehen - er führt die Tastatur.
     readonly property var _places: {
         App.savedFolders                       // Bindung an die Lesezeichen
         const out = fs.places()
@@ -98,7 +71,6 @@ Popup {
     property int    _anchorRow: -1
     function _isPicked(i) { return _picked.indexOf(i) >= 0 }
     function _clearPicked() { _picked = []; _anchorRow = -1 }
-    //  Klick mit Umschalt/Strg - die Regeln, die jeder Dateiverwalter hat.
     function _pickRow(i, ctrl, shift) {
         if (!_multi || fs.entryIsDir(i)) { _clearPicked(); return }
         let out = _picked.slice()
@@ -119,9 +91,6 @@ Popup {
         _picked = out
     }
 
-    //  Anlegen und Ergebnis melden. Die Rückgabewerte kommen aus
-    //  `FileBrowseModel::createFolder` (0 ok · 1 Name unbrauchbar · 2 gibt es
-    //  schon · 3 fehlgeschlagen) - die Sprache wählt hier die Oberfläche.
     function _createFolder(name) {
         const rc = fs.createFolder(name)
         if (rc === 0) {
@@ -150,8 +119,6 @@ Popup {
                                                         root.nameFilters.length - 1)] ]
     }
 
-    //  Zwischen zwei Aufrufen soll der Wähler dort stehen, wo er zuletzt war -
-    //  sonst fängt jedes Öffnen wieder im Heimatverzeichnis an.
     property string _lastFolder: ""
 
     onAboutToShow: {
@@ -170,7 +137,6 @@ Popup {
     }
     onClosed: root._lastFolder = fs.folder
 
-    // ── Ergebnis zusammensetzen und melden ───────────────────────────────────
     function _finish() {
         if (root._dirMode) {
             //  Im Ordner-Modus zählt der markierte UNTERordner, sonst der
@@ -207,7 +173,6 @@ Popup {
         root.close()
         root.accepted()
     }
-    //  Eine Zeile aktivieren: Ordner betreten, Datei übernehmen.
     function _activate(row) {
         if (row < 0) return
         if (fs.entryIsDir(row)) {
@@ -224,7 +189,6 @@ Popup {
         root._finish()
     }
 
-    //  Existiert die Zieldatei schon? Dann heißt der Knopf „Überschreiben".
     readonly property bool _willOverwrite: {
         if (!_saveMode) return false
         const n = nameField.text.trim()
@@ -239,14 +203,12 @@ Popup {
     }
 
     contentItem: Item {
-        // ── Kopfzeile ────────────────────────────────────────────────────────
         Rectangle {
             id: head
             anchors { top: parent.top; left: parent.left; right: parent.right }
             height: 44
             color: App.themeToolbarBg
             radius: 10
-            //  Nur oben runden: ein zweites Rechteck deckt die untere Rundung.
             Rectangle {
                 anchors { left: parent.left; right: parent.right; bottom: parent.bottom }
                 height: 12
@@ -261,7 +223,6 @@ Popup {
                 elide: Text.ElideRight
                 width: parent.width - 60
             }
-            //  Schließen.
             Rectangle {
                 id: closeBtn
                 anchors { right: parent.right; rightMargin: 8; verticalCenter: parent.verticalCenter }
@@ -276,7 +237,6 @@ Popup {
             }
         }
 
-        // ── Orte-Leiste ──────────────────────────────────────────────────────
         Rectangle {
             id: places
             anchors { top: head.bottom; left: parent.left; bottom: foot.top }
@@ -326,7 +286,6 @@ Popup {
             SmoothWheelArea { flickable: placesList }
         }
 
-        // ── Pfadzeile ────────────────────────────────────────────────────────
         Rectangle {
             id: pathBar
             anchors { top: head.bottom; left: places.right; right: parent.right }
@@ -355,10 +314,6 @@ Popup {
                 ToolTip.visible: upHover.hovered
                 ToolTip.text: App.uiText(App.language, "ChooserUp")
             }
-            //  ── Neuer Ordner ────────────────────────────────────────────
-            //  Angelegt wird IM aktuellen Verzeichnis; die Eingabe ersetzt so
-            //  lange die Brotkrumen, statt ein zweites Popup über das erste zu
-            //  legen (verschachtelte Popups fangen sich gegenseitig den Fokus).
             Rectangle {
                 id: newDirBtn
                 anchors { right: parent.right; rightMargin: 8
@@ -426,7 +381,6 @@ Popup {
                     TapHandler { onTapped: root._dirEditActive = false }
                 }
             }
-            //  Brotkrumen: jedes Segment ist anklickbar.
             Flickable {
                 id: crumbFlick
                 visible: !root._dirEditActive
@@ -436,7 +390,6 @@ Popup {
                 contentWidth: crumbRow.width
                 clip: true
                 interactive: true
-                //  Immer das ENDE zeigen - dort steht der aktuelle Ordner.
                 onContentWidthChanged: contentX = Math.max(0, contentWidth - width)
                 Row {
                     id: crumbRow
@@ -480,16 +433,12 @@ Popup {
             }
         }
 
-        // ── Dateiliste ───────────────────────────────────────────────────────
         Rectangle {
             id: listBox
             anchors { top: pathBar.bottom; left: places.right; right: parent.right
                       bottom: foot.top }
             color: App.themeBackground
 
-            //  ── Spaltenköpfe: klicken sortiert, nochmal klicken dreht um ──
-            //  Ordner bleiben in jeder Richtung vorn (das macht das Modell) -
-            //  sonst müsste man zum Hochgehen erst durch alle Dateien scrollen.
             Rectangle {
                 id: colHead
                 anchors { top: parent.top; left: parent.left; right: parent.right
@@ -503,7 +452,6 @@ Popup {
                     delegate: Item {
                         required property var modelData
                         readonly property bool active: fs.sortKey === modelData.key
-                        //  Gleiche Spaltenkanten wie die Zeilen darunter.
                         x: modelData.key === 0 ? 10
                            : (modelData.key === 1 ? colHead.width - 224
                                                   : colHead.width - 120)
@@ -620,7 +568,6 @@ Popup {
                 }
                 ScrollBar.vertical: ScrollBar { }
 
-                //  Tastatur: ↑/↓ wählen, Eingabe aktiviert, Rücktaste geht hoch.
                 Keys.onReturnPressed: root._activate(list.currentIndex)
                 Keys.onEnterPressed:  root._activate(list.currentIndex)
                 Keys.onBackPressed:   if (fs.canGoUp) fs.cdUp()
@@ -634,7 +581,6 @@ Popup {
             SmoothWheelArea { flickable: list }
         }
 
-        // ── Fußzeile: Name, Filter, Knöpfe ───────────────────────────────────
         Rectangle {
             id: foot
             anchors { bottom: parent.bottom; left: parent.left; right: parent.right }

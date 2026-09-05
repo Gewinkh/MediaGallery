@@ -3,24 +3,9 @@ import QtQuick.Layouts
 import MediaGallery 1.0
 import "../common"
 
-// ─────────────────────────────────────────────────────────────────────────────
-//  SettingsGroup.qml - einheitlicher Titel-Container (ersetzt QGroupBox-Stil).
-//  Kinder werden in die innere ColumnLayout aufgenommen (default property alias).
-//  implicitHeight/Width leiten sich aus dem Inhalt ab -> passt in ColumnLayouts.
-//
-//  AUF- UND ZUKLAPPEN: Jede Gruppe mit einer Überschrift lässt sich zuklappen;
-//  der Zustand überlebt den Neustart, sofern die Gruppe einen `key` trägt.
-//   • **`key` ist ein STABILER Bezeichner** ("view.tiles"), NICHT die
-//     Überschrift - die ist übersetzt und hieße nach einem Sprachwechsel
-//     anders, der gemerkte Zustand wäre verloren.
-//   • **Ohne `key` klappt die Gruppe trotzdem**, merkt es sich aber nicht.
-//   • Gelesen wird EINMAL beim Entstehen, geschrieben beim Umschalten - kein
-//     Signal nötig, es gibt keinen zweiten Leser (s. `AppController`).
-//
-//  Die HÖHE muss mitgehen: `implicitHeight` kommt aus dem Inhalt. Würde nur der
-//  Inhalt unsichtbar geschaltet, behielte die Gruppe ihre volle Höhe und es sähe
-//  aus, als klemme das Klappen.
-// ─────────────────────────────────────────────────────────────────────────────
+// Einheitlicher Titel-Container; Kinder kommen in die innere ColumnLayout. Der Klappzustand überlebt den
+// Neustart, sofern die Gruppe einen `key` trägt - einen STABILEN Bezeichner ("view.tiles"), nicht die
+// übersetzte Überschrift. Die HÖHE muss mitgehen, sonst behielte die Gruppe zugeklappt ihre volle Höhe.
 Rectangle {
     id: group
     property string title: ""
@@ -29,10 +14,8 @@ Rectangle {
 
     //  Stabiler Schlüssel für den gemerkten Klappzustand; leer = nicht gemerkt.
     property string key: ""
-    //  Eine Gruppe ohne Überschrift hat nichts, woran man klappen könnte -
-    //  deshalb die Vorgabe. Ein Reiter kann es zusätzlich ABSCHALTEN, wenn seine
-    //  einzige Gruppe der ganze Reiter ist: dort wäre ein Pfeil nur ein Weg,
-    //  sich die Seite selbst wegzuklicken (Converter, Festlegung des Nutzers).
+    // Eine Gruppe ohne Überschrift hat nichts, woran man klappen könnte - daher die Vorgabe. Abschalten kann es
+    // ein Reiter, dessen einzige Gruppe der ganze Reiter ist (Converter).
     property bool collapsible: group.title.length > 0
     property bool collapsed: false
 

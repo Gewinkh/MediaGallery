@@ -3,21 +3,9 @@
 
 namespace mg {
 
-// ─────────────────────────────────────────────────────────────────────────────
-//  Xoshiro128++ - Zufallszahlen für die Wiedergabereihenfolge.
-//
-//  WARUM NICHT `rand()`: es ist global (nicht threadsicher), seine Verteilung
-//  ist schwach, und jede Plattform liefert eine andere Folge - eine Mischung
-//  wäre damit weder gleichmäßig noch nachstellbar. `std::mt19937` wiederum
-//  schleppt 2,5 kB Zustand mit; für „welcher Titel kommt als Nächstes" ist das
-//  eine Kanone auf einen Spatz (§0-Priorität 4).
-//
-//  Xoshiro128++ ist der Gegenentwurf: **16 Byte Zustand**, ~5 Rechenschritte je
-//  Zahl, gute Verteilung (BigCrush-fest in dieser Wortbreite). Header-only.
-//
-//  Nachstellbarkeit: mit demselben Saatwert kommt dieselbe Folge - die
-//  Testtreiber prüfen die Mischung damit deterministisch.
-// ─────────────────────────────────────────────────────────────────────────────
+// 16 Byte Zustand, ~5 Schritte je Zahl. rand() ist global und je Plattform anders,
+// mt19937 schleppt 2,5 kB mit. Mit demselben Saatwert kommt dieselbe Folge - die
+// Testtreiber pruefen die Mischung damit deterministisch.
 class Xoshiro {
 public:
     //  Saat: EIN 64-Bit-Wert wird über SplitMix64 auf vier 32-Bit-Wörter
@@ -47,10 +35,8 @@ public:
         return result;
     }
 
-    //  Gleichverteilt in [0, bound). Der Rest-Trick braucht EINE
-    //  Multiplikation statt einer Division; die Nachprüfung schlägt nur in
-    //  seltenen Fällen zu und hält die Verteilung exakt gleichmäßig - ein
-    //  blankes `% bound` bevorzugt die kleinen Werte.
+    // Gleichverteilt in [0, bound): der Rest-Trick braucht EINE Multiplikation statt einer Division, die Nachprüfung
+    // schlägt selten zu. Ein blankes `% bound` bevorzugt die kleinen Werte.
     uint32_t below(uint32_t bound) {
         if (bound <= 1) return 0;
         uint64_t m = uint64_t(next()) * uint64_t(bound);

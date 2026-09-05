@@ -1,18 +1,7 @@
 #pragma once
-// ─────────────────────────────────────────────────────────────────────────────
-//  DocxEditCommands - Undo/Redo des DOCX-Editors.
-//
-//  Ein EINZIGER Kommandotyp deckt alle Bearbeitungen ab (Muster „Zustand des
-//  betroffenen Bereichs vorher/nachher"): ReplaceBlockRangeCommand ersetzt
-//  einen zusammenhängenden Block-Bereich [first, first+oldCount) durch die
-//  gespeicherten Nachher-Blöcke. Das trägt Tippen, Löschen, Absatz-Split/
-//  Merge, Zeichen-/Absatzformatierung und Listen gleichermaßen - Blöcke sind
-//  klein (Runs = Spans + kurze Strings), daher RAM-freundlich (Regel 3).
-//
-//  Tipp-Koaleszenz: aufeinanderfolgende Zeichen-Eingaben im selben Absatz
-//  verschmelzen über mergeWith() zu EINEM Undo-Schritt (Word-üblich), Cursor-
-//  Positionen wandern mit.
-// ─────────────────────────────────────────────────────────────────────────────
+// Ein einziger Kommandotyp deckt alles ab: ReplaceBlockRangeCommand ersetzt einen
+// Blockbereich durch die gespeicherten Nachher-Bloecke. Aufeinanderfolgende Eingaben
+// im selben Absatz verschmelzen ueber mergeWith zu einem Undo-Schritt.
 
 #include "docx/DocxDocument.h"
 #include <QUndoCommand>
@@ -40,10 +29,8 @@ public:
                              const DocxCursor& curBefore, const DocxCursor& curAfter,
                              int mergeKind = -1);
 
-    //  Struktur-Änderungen an einer Tabelle (Zeile/Spalte/Breite) mutieren
-    //  NEBEN den Blöcken auch das Gerüst (TableDef). Ohne diesen Schnappschuss
-    //  liefe Undo auseinander: die Blöcke kämen zurück, das Gerüst behielte die
-    //  zusätzliche Zeile - und beim Speichern entstünde eine leere Geisterzeile.
+    // Struktur-Änderungen an einer Tabelle mutieren NEBEN den Blöcken auch das Gerüst (`TableDef`). Ohne diesen
+    // Schnappschuss liefe Undo auseinander - beim Speichern entstünde eine leere Geisterzeile.
     void snapshotTable(int tableId, const Docx::TableDef& before,
                        const Docx::TableDef& after);
 
@@ -65,15 +52,8 @@ private:
     Docx::TableDef      m_tblBefore, m_tblAfter;
 };
 
-// ─────────────────────────────────────────────────────────────────────────────
-//  DocxSectionCommand - Seitenränder (Randlineale).
-//
-//  Eigener Kommandotyp und kein Block-Schnappschuss: die Ränder ändern KEINEN
-//  Block, sondern die Seiteneinrichtung - davon hängt die ganze Auslegung ab
-//  (Zeilenbreite, Umbruch, Seitenzahl). Gesichert werden deshalb die Werte UND
-//  das umgeschriebene `w:sectPr`; beides gehört zusammen, weil das eine die
-//  Anzeige treibt und das andere das Speichern.
-// ─────────────────────────────────────────────────────────────────────────────
+// Eigener Kommandotyp statt Block-Schnappschuss: die Ränder ändern keinen Block, sondern die Seiteneinrichtung.
+// Gesichert werden die Werte UND das umgeschriebene `w:sectPr` - das eine treibt die Anzeige, das andere das Speichern.
 class DocxSectionCommand : public QUndoCommand {
 public:
     DocxSectionCommand(DocxEditController* ctl,

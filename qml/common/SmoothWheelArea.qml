@@ -1,29 +1,8 @@
 import QtQuick
 
-// ─────────────────────────────────────────────────────────────────────────────
-//  SmoothWheelArea.qml - weiches, schnelles Mausrad-Scrollen für ein `Flickable`
-//  (z. B. das `contentItem` eines `ScrollView`).
-//
-//  WARUM: Qts `Flickable` scrollt je Rastung fest
-//  `QStyleHints::wheelScrollLines() * 20 px` - gemessen **60 px**, unabhängig von
-//  der Sichthöhe. Bei den langen Einstellungsseiten (Allgemein: ~1835 px Inhalt
-//  auf ~448 px Sichtfläche) sind das über 20 Rastungen bis zum Ende; das Scrollen
-//  wirkt zäh. Galerie, PDF-Seitenraster und PDF-Liste ersetzen dieses Verhalten
-//  längst durch „~45 % Sichthöhe je Rastung + kurze Animation" - diese Komponente
-//  bündelt genau dieses etablierte Muster zum Wiederverwenden.
-//
-//  WIE: Eine `MouseArea` mit `acceptedButtons: Qt.NoButton` über der Sichtfläche
-//  fängt NUR Radereignisse ab; Klicks, Doppelklicks, Hover und Ziehen laufen
-//  ungehindert an die Controls darunter. (Ein `WheelHandler` genügt nicht - ein
-//  interaktives `Flickable` verarbeitet Radereignisse vorher selbst, s.
-//  „Bekannte Workarounds" in Structure.md.)
-//
-//  NUTZUNG - irgendwo im selben Dokument deklarieren, die Komponente hängt sich
-//  selbst als DIREKTES Kind des Flickable ein (nicht in dessen `contentItem`, sie
-//  scrollt also nicht mit) und liegt über dem Inhalt:
-//      ScrollView { id: sv; anchors.fill: parent }
-//      SmoothWheelArea { flickable: sv.contentItem }
-// ─────────────────────────────────────────────────────────────────────────────
+// Qt scrollt ein Flickable fest mit wheelScrollLines * 20 px (gemessen 60), unabhängig von der Sichthöhe - auf
+// den langen Einstellungsseiten über 20 Rastungen bis zum Ende. Ersetzt das durch ~45 % Sichthöhe je Rastung;
+// MouseArea, weil ein interaktives Flickable Radereignisse vor jedem WheelHandler selbst verarbeitet.
 MouseArea {
     id: wheelArea
 
@@ -38,10 +17,8 @@ MouseArea {
     //  Browser und Editoren für seitliches Scrollen benutzen.
     property bool horizontal: false
 
-    //  Erforderlicher Modifikator (`Qt.NoModifier` = keiner). Ist einer gesetzt,
-    //  laufen Radereignisse OHNE ihn UNVERÄNDERT weiter nach unten durch - die
-    //  bestehende Bedeutung des Rades an dieser Stelle bleibt also erhalten
-    //  (im PDF-Editor z. B. Strg+Rad = Ribbon seitlich, Rad allein = Seiten).
+    // Ist ein Modifikator gesetzt, laufen Radereignisse OHNE ihn unverändert nach unten durch - die bestehende
+    // Bedeutung des Rades an dieser Stelle bleibt also erhalten.
     property int requiredModifier: Qt.NoModifier
 
     //  Direktes Kind des Flickable (NICHT dessen `contentItem`) -> bleibt beim

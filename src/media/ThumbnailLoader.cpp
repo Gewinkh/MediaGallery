@@ -34,17 +34,8 @@
 #include "editor/LanguageTable.h"
 #include "editor/SyntaxScanner.h"
 
-// ─── Disk-Cache-Helfer ───────────────────────────────────────────────────────
 namespace {
 
-// Cache-Verzeichnis EINMAL je Prozess ermitteln und anlegen.
-//
-// Vorher lief mkpath() bei JEDEM cacheKeyFor()-Aufruf - also je sichtbarer
-// Kachel und je Anforderung, auch auf dem GUI-Thread (Schnellpfad in
-// requestThumbnail). mkpath prueft/erzeugt dabei die gesamte Pfadkette
-// (mehrere Syscalls) und war damit beim Scrollen die teuerste Einzeloperation
-// des Schnellpfads. Der Pfad ist prozessweit konstant -> einmal genuegt.
-// Q_GLOBAL_STATIC-freie Variante: function-local static, thread-safe seit C++11.
 const QString& cacheDir() {
     static const QString dir = []() {
         const QString base = QStandardPaths::writableLocation(QStandardPaths::CacheLocation)
@@ -55,28 +46,9 @@ const QString& cacheDir() {
     return dir;
 }
 
-//  `stilTag` beschreibt das AUSSEHEN einer Text-Kachel (Vorschau an/aus +
-//  Fingerabdruck der Editor-Palette). Er ist leer fuer alle anderen Medien -
-//  ein Farbwechsel im Editor darf keine Bild-, Video- oder PDF-Kachel
-//  ungueltig machen.
 QString cacheKeyFor(const QString& path, int dim, const QString& stilTag = QString()) {
-    // mtime einbeziehen -> ersetzte/bearbeitete Dateien erhalten frische Thumbnails.
-    // v4: feste Generierungsgröße (kThumbDim) statt variabler Kachelgröße.
-    // v5: HTML/HTM rendern jetzt als Design-Karte statt Quelltext -> alte
-    //     gecachte Quelltext-Thumbnails müssen einmalig invalidiert werden.
-    // v6: verbesserte Extraktion (Hero-Klassen-Farben, Arabisch-Sterne,
-    //     Bilingual-Titel-Split) -> Karten erneut regenerieren.
-    // v7: arabischer Display-Titel als Haupttitel + Sekundärzeile, div-Untertitel.
-    // v8: PDF-Thumbnails werden jetzt immer auf weißen Untergrund compositet
-    //     (statt ggf. transparent->schwarz beim JPEG-Export) -> alte, fälschlich
-    //     schwarze PDF-Thumbnails müssen einmalig neu generiert werden.
-    //     (Bei künftigen Änderungen an der Thumbnail-Darstellung weiter hochzählen.)
-    // v9: Audiodateien zeigen ihr eingebettetes TITELBILD statt der gezeichneten
-    //     Welle - ohne Hochzählen behielten alle bereits erzeugten Kacheln die
-    //     Welle, obwohl der Code längst das Bild liefert.
-    // Seit den Kachelgrößen-Stufen geht die AKTUELLE Zielgröße (dim) in den
-    // Schlüssel ein: jede Stufe hat eigene Cache-Dateien; ein Stufenwechsel
-    // erzeugt sie neu, ein Rückwechsel findet die alten wieder.
+    // Hochzaehlen, sobald sich die Darstellung aendert - sonst behalten erzeugte Kacheln
+    // ihr altes Bild. Die Zielgroesse geht mit in den Schluessel: je Stufe eigene Dateien.
     static const int kCacheVersion = 9;
     const qint64 mtime = QFileInfo(path).lastModified().toMSecsSinceEpoch();
     const QByteArray raw =
@@ -92,7 +64,6 @@ QString cacheKeyFor(const QString& path, int dim, const QString& stilTag = QStri
 
 } // namespace
 
-// ─── ThumbnailLoader ─────────────────────────────────────────────────────────
 ThumbnailLoader::ThumbnailLoader(QObject* parent)
     : QObject(parent)
     , m_pool(new QThreadPool(this))
@@ -104,10 +75,6 @@ ThumbnailLoader::ThumbnailLoader(QObject* parent)
 
 bool ThumbnailLoader::setTextPreviewStyle(bool zeigeInhalt,
                                          const mg::editor::SyntaxPalette& p) {
-    //  Der Fingerabdruck geht in den Cache-Schluessel: aendert sich die
-    //  Einstellung oder eine Farbe, sind die alten Kacheln ungueltig. Ohne das
-    //  behielte jede bereits erzeugte Kachel ihr Aussehen, bis die Datei
-    //  angefasst wird.
     const QByteArray roh = QJsonDocument(p.toJson()).toJson(QJsonDocument::Compact);
     const QString tag = (zeigeInhalt ? QStringLiteral("c") : QStringLiteral("t"))
         + QString::fromLatin1(
@@ -124,8 +91,7 @@ int ThumbnailLoader::quantizeDim(int needPx) {
     if (needPx <= 512)  return 512;
     if (needPx <= 1024) return 1024;
     if (needPx <= 2048) return 2048;
-    return 4096;   // harter Deckel (RAM-Prio 1) - auch wenn die Galeriefläche
-                   // auf sehr großen Bildschirmen breiter wäre
+    return 4096;   // harter Deckel - auch wenn die Galeriefläche
 }
 
 bool ThumbnailLoader::setTargetDim(int needPx) {
@@ -136,7 +102,6 @@ bool ThumbnailLoader::setTargetDim(int needPx) {
 }
 
 ThumbnailLoader::~ThumbnailLoader() {
-    // Alle laufenden Tasks kooperativ stoppen, dann auf den Pool warten.
     {
         QMutexLocker lk(&m_mutex);
         for (auto& f : m_flags)
@@ -151,12 +116,8 @@ void ThumbnailLoader::requestThumbnail(const QString& filePath) {
     {
         QMutexLocker lk(&m_mutex);
         if (m_pending.contains(filePath)) {
-            //  Schon in Arbeit - aber ist er inzwischen ABBESTELLT? Dann wirft
-            //  der laufende Auftrag sein Ergebnis weg, und ein blosses
-            //  „bereits in Arbeit" verloere die Anforderung fuer immer: die
-            //  Kachel bliebe leer, bis irgendetwas sie erneut anstoesst (vom
-            //  Nutzer als „Vorschau laedt manchmal nicht" gemeldet).
-            //  Deshalb vormerken: `done` fordert danach von selbst neu an.
+            // Schon in Arbeit - aber inzwischen ABBESTELLT? Dann wirft der laufende Auftrag sein Ergebnis weg, und ein
+            // bloßes "bereits in Arbeit" verlöre die Anforderung für immer. Deshalb vormerken, `done` fordert neu an.
             const auto it = m_flags.constFind(filePath);
             const bool cancelled = (it != m_flags.constEnd()) && it.value()
                                    && it.value()->load(std::memory_order_relaxed);
@@ -165,12 +126,6 @@ void ThumbnailLoader::requestThumbnail(const QString& filePath) {
         }
     }
 
-    // ── Schneller Pfad: Cache-Datei existiert bereits ────────────────────────
-    //  Kein Pool-Dispatch, kein Decode - nur eine Existenzprüfung und ein
-    //  queued Signal. Das ist der Normalfall beim Scrollen über bereits
-    //  generierte Thumbnails und hält den Pool für echte Misses frei.
-    //  Nur Text-Kacheln haengen am Stil - alle anderen behalten ihren
-    //  Schluessel, damit ein Farbwechsel im Editor sie nicht neu erzeugt.
     const QString stilTag = (mg::refineType(filePath, MediaItem::detectType(filePath)) == MediaType::Text)
                                 ? m_textStil.tag : QString();
     const QString cachePath = cacheKeyFor(filePath, m_targetDim, stilTag);
@@ -182,7 +137,6 @@ void ThumbnailLoader::requestThumbnail(const QString& filePath) {
         return;
     }
 
-    // ── Miss: Task mit Abbruch-Flag + Priorität einreihen ────────────────────
     const uint64_t gen = m_generation.load(std::memory_order_relaxed);
     auto flag = std::make_shared<std::atomic<bool>>(false);
     auto* task = new ThumbnailTask(filePath, QSize(m_targetDim, m_targetDim), gen, flag,
@@ -210,15 +164,10 @@ void ThumbnailLoader::requestThumbnail(const QString& filePath) {
             rearm = m_rearm.remove(path);
             stale = (taskGen != m_generation.load(std::memory_order_relaxed));
         }
-        //  Waehrend der Abbruch lief, hat ihn jemand wieder angefordert - jetzt
-        //  ist der Pfad frei, also neu einreihen. Ohne das bliebe die
-        //  Anforderung auf der Strecke.
         if (rearm && !stale) {
             requestThumbnail(path);
             return;
         }
-        // Nach cancelAll() (stale) oder gezieltem Abbruch: still verwerfen,
-        // damit die Modell-Zeile NICHT als „failed“ markiert wird.
         if (stale || cancelled) return;
 
         if (ok)
@@ -227,7 +176,6 @@ void ThumbnailLoader::requestThumbnail(const QString& filePath) {
             emit thumbnailFailed(path);
     }, Qt::QueuedConnection);
 
-    // Neuere Anforderung = höhere Priorität -> gerade sichtbare Kacheln zuerst.
     m_pool->start(task, ++m_priority);
 }
 
@@ -244,10 +192,8 @@ void ThumbnailLoader::cancelThumbnail(const QString& filePath) {
             task = qit.value();
     }
 
-    // Laufende Tasks kooperativ abbrechen.
     if (flag) flag->store(true, std::memory_order_relaxed);
 
-    // Noch nicht gestartete Tasks direkt aus der Queue nehmen -> sie laufen nie.
     if (task && m_pool->tryTake(task)) {
         {
             QMutexLocker lk(&m_mutex);
@@ -257,17 +203,13 @@ void ThumbnailLoader::cancelThumbnail(const QString& filePath) {
         }
         delete task;   // autoDelete greift nicht, da aus dem Pool entnommen
     }
-    // Falls bereits gestartet: Flag sorgt für frühen Abbruch; done() räumt auf.
 }
 
 void ThumbnailLoader::cancelAll() {
-    // Noch nicht gestartete Tasks entfernen & löschen (autoDelete).
     m_pool->clear();
-    // Laufende Ergebnisse über Generationswechsel verwerfen …
     m_generation.fetch_add(1, std::memory_order_relaxed);
 
     QMutexLocker lock(&m_mutex);
-    // … und laufende Tasks zusätzlich kooperativ abbrechen.
     for (auto& f : m_flags)
         if (f) f->store(true, std::memory_order_relaxed);
     m_flags.clear();
@@ -276,7 +218,6 @@ void ThumbnailLoader::cancelAll() {
     m_rearm.clear();
 }
 
-// ─── ThumbnailTask ───────────────────────────────────────────────────────────
 ThumbnailTask::ThumbnailTask(const QString& path, const QSize& size, uint64_t generation,
                              std::shared_ptr<std::atomic<bool>> cancel,
                              const TextPreviewStyle& stil)
@@ -287,7 +228,6 @@ ThumbnailTask::ThumbnailTask(const QString& path, const QSize& size, uint64_t ge
 }
 
 void ThumbnailTask::run() {
-    // Früher Ausstieg, falls bereits vor dem Start abgebrochen.
     if (cancelled()) {
         emit done(m_path, QString(), false, m_generation);
         return;
@@ -297,13 +237,11 @@ void ThumbnailTask::run() {
                                 ? m_stil.tag : QString();
     const QString cachePath = cacheKeyFor(m_path, m_size.width(), stilTag);
 
-    // Disk-Cache-Treffer: keine Dekodierung nötig (nur Existenzprüfung im Pool).
     if (QFileInfo::exists(cachePath)) {
         emit done(m_path, cachePath, true, m_generation);
         return;
     }
 
-    // Vor dem teuren Decode erneut prüfen (Kachel evtl. schon weggescrollt).
     if (cancelled()) {
         emit done(m_path, QString(), false, m_generation);
         return;
@@ -325,7 +263,6 @@ void ThumbnailTask::run() {
         return;
     }
 
-    // Nach dem Decode, vor dem Speichern: abgebrochene Ergebnisse verwerfen.
     if (cancelled()) {
         emit done(m_path, QString(), false, m_generation);
         return;
@@ -336,11 +273,8 @@ void ThumbnailTask::run() {
 }
 
 QImage ThumbnailTask::generateAudioThumbnail(const QString& path, const QSize& size) {
-    //  Trägt die Datei ein TITELBILD, ist es die Kachel - es sagt mehr als
-    //  jede gezeichnete Welle. Gelesen wird dafür nur der Kopf der Datei
-    //  (`AudioTags`, derselbe Leser wie im Player), und das Ergebnis landet im
-    //  gewöhnlichen Miniaturen-Cache: der Kopf wird also EINMAL gelesen, nicht
-    //  bei jedem Blättern. Ohne Bild bleibt alles wie bisher.
+    // Trägt die Datei ein TITELBILD, ist es die Kachel. Gelesen wird nur der Kopf der Datei, und das Ergebnis landet
+    // im gewöhnlichen Miniaturen-Cache - der Kopf wird also einmal gelesen, nicht bei jedem Blättern.
     const QByteArray cover = AudioTags::readCover(path);
     if (!cover.isEmpty()) {
         QImage art;
@@ -391,26 +325,14 @@ QImage ThumbnailTask::generateAudioThumbnail(const QString& path, const QSize& s
     return pix;
 }
 
-//  ── Speicher-Budget für gleichzeitige VOLLBILD-Dekodierungen ────────────────
-//  Ein JPEG wird beim Lesen mitskaliert (libjpeg rechnet in DCT-Stufen
-//  herunter), der Puffer bleibt also winzig. Ein PNG kann das nicht: es wird
-//  IMMER in voller Auflösung dekodiert und erst danach verkleinert - bei
-//  4000x3000 sind das 48 MB, und acht Pool-Fäden gleichzeitig ergaben in einem
-//  Ordner aus lauter solchen PNGs gemessene **421 MB Spitze** (Regel 9: RAM ist
-//  Prio 1).
-//  Gedeckelt wird deshalb der SPEICHER, nicht die Fadenzahl: jeder grosse
-//  Dekodierer nimmt sich so viele Megabyte aus dem Budget, wie sein Bild
-//  braucht. Ein 12-MP-PNG (48 MB) lässt drei weitere neben sich zu, ein
-//  50-MP-Scan (200 MB) läuft allein - eine feste Zahl Plätze könnte Letzteres
-//  nicht (8 x 200 MB) und würde Ersteres unnötig bremsen.
-//  Gemessen an 200 grossen PNGs: Spitze 421 -> 324 MB, erster Schirm 350 ->
-//  400 ms. Kleine Bilder und ALLE JPEGs laufen unbehindert weiter.
+// Gedeckelt wird der SPEICHER, nicht die Fadenzahl: ein PNG wird immer in voller
+// Aufloesung dekodiert (4000x3000 = 48 MB), acht Faeden ergaben 421 MB Spitze.
+// Jeder grosse Dekodierer nimmt sich sein Budget; gemessen 421 -> 324 MB.
 constexpr int kBigDecodeBudgetMb = 192;
 QSemaphore& bigDecodeBudget() {
     static QSemaphore sem(kBigDecodeBudgetMb);
     return sem;
 }
-//  Ab dieser Pixelzahl gilt ein Bild als gross (12 MB Puffer bei 4 Byte/Pixel).
 constexpr qint64 kBigDecodePixels = 3'000'000;
 
 QImage ThumbnailTask::generateImageThumbnail(const QString& path, const QSize& size) {
@@ -434,7 +356,6 @@ QImage ThumbnailTask::generateImageThumbnail(const QString& path, const QSize& s
     QImage img;
     {
         if (cost > 0) bigDecodeBudget().acquire(cost);
-        //  Der Freigeber gibt auch dann zurück, wenn `read()` wirft.
         QSemaphoreReleaser back(cost > 0 ? &bigDecodeBudget() : nullptr, cost);
         img = reader.read();
     }
@@ -447,8 +368,6 @@ QImage ThumbnailTask::generateImageThumbnail(const QString& path, const QSize& s
 }
 
 QImage ThumbnailTask::generateVideoThumbnail(const QString& path, const QSize& size) {
-    // QMediaPlayer benötigt eine Event-Loop und darf NICHT im generischen Pool-
-    // Worker laufen -> dedizierter QThread, plattformübergreifend korrekt.
     QImage result;
 
     QThread thread;
@@ -489,10 +408,8 @@ QImage ThumbnailTask::generateVideoThumbnail(const QString& path, const QSize& s
         player->play();
     });
 
-    // Die Sperre wird VOR thread.start() genommen: der Frame-Handler laeuft im
-    // Player-Thread und kann sonst zwischen start() und wait() feuern - sein
-    // wakeAll() ginge dann ins Leere und der Aufruf wartete die volle
-    // Zeitschranke ab, obwohl das Bild laengst da war (verlorenes Wakeup).
+    // Die Sperre wird VOR `thread.start()` genommen: der Frame-Handler läuft im Player-Thread und kann sonst
+    // zwischen start() und wait() feuern - sein `wakeAll()` ginge ins Leere (verlorenes Wakeup).
     {
         QMutexLocker lk(&mutex);
         thread.start();
@@ -503,9 +420,6 @@ QImage ThumbnailTask::generateVideoThumbnail(const QString& path, const QSize& s
         }
     }
 
-    // Aufraeumen im Player-Thread. Die Lambda faengt NUR Zeiger per Wert -
-    // sie darf den Stack dieses Frames nicht mehr berühren, falls das Warten
-    // unten wider Erwarten scheitert.
     QMetaObject::invokeMethod(player, [player, sink]() {
         player->stop();
         delete player;
@@ -514,10 +428,8 @@ QImage ThumbnailTask::generateVideoThumbnail(const QString& path, const QSize& s
     thread.quit();
 
     if (!thread.wait(5000)) {
-        // Backend haengt: hier unbegrenzt weiterwarten blockiert zwar diesen
-        // einen Pool-Worker, verhindert aber den sicheren Absturz durch
-        // „QThread: Destroyed while thread is still running" (qFatal) beim
-        // Verlassen dieses Gueltigkeitsbereichs.
+        // Backend hängt: hier unbegrenzt weiterzuwarten blockiert zwar diesen Pool-Worker, verhindert aber den
+        // sicheren Absturz durch "QThread: Destroyed while thread is still running".
         thread.wait();
     }
     return result;
@@ -541,14 +453,8 @@ QImage ThumbnailTask::generatePdfThumbnail(const QString& path, const QSize& siz
     if (img.isNull())
         return fallbackPdfThumbnail(size);
 
-    // QPdfDocument::render() liefert bei manchen Dokumenten (abhängig vom
-    // internen PDFium-Renderpfad, z. B. schlanke, bildarme Text-PDFs) ein
-    // Bild mit TRANSPARENTEM statt weißem Seitenhintergrund - nur tatsächlich
-    // gezeichnete Inhalte (Text, farbige Emoji) sind opak. Da der Disk-Cache
-    // als JPEG (kein Alphakanal) gespeichert wird, würde der transparente
-    // Bereich beim Speichern zu SCHWARZ statt WEISS. Daher hier immer explizit
-    // auf einen weißen Untergrund compositen - für bereits opake Renderings
-    // (Normalfall) ändert das sichtbar nichts.
+    // `QPdfDocument::render()` liefert bei manchen Dokumenten einen TRANSPARENTEN statt weißen Seitenhintergrund;
+    // der Disk-Cache ist JPEG ohne Alphakanal, daraus würde SCHWARZ. Deshalb immer explizit auf Weiß compositen.
     QImage flattened(img.size(), QImage::Format_RGB32);
     flattened.fill(Qt::white);
     {
@@ -619,15 +525,6 @@ static void drawExtensionBadge(QPainter& p, const QSize& size, const QString& ex
     p.drawText(badge, Qt::AlignCenter, label);
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-//  HTML-„Design-Karte" - generische Hero-Nachbildung (statt Quelltext-Thumbnail)
-//
-//  Bildet den HERO-BLOCK der Seite als Mini-Karte nach: kein WebEngine, keine
-//  Meta-Tags, kein Editieren der Dateien. Rein durch Parsen dessen, was die
-//  Lern-Sheets gemeinsam haben - <header class="hero"> mit .eyebrow / <h1> /
-//  .sub sowie CSS-Variablen (--bg/--ink/…). Funktioniert über verschiedene
-//  Themes hinweg (hell/dunkel, LTR/RTL, mit/ohne Muster).
-// ─────────────────────────────────────────────────────────────────────────────
 namespace {
 
 struct HtmlMeta {
@@ -639,7 +536,6 @@ struct HtmlMeta {
     bool    valid() const { return !title.isEmpty(); }
 };
 
-// HTML-Entities dekodieren (numerisch + die in den Sheets üblichen benannten).
 QString htmlDecodeEntities(QString s) {
     static const QRegularExpression reNum(QStringLiteral("&#(x?)([0-9a-fA-F]+);"));
     {
@@ -683,7 +579,6 @@ QString htmlDecodeEntities(QString s) {
     return out;
 }
 
-// Tags entfernen, Entities dekodieren, Weichtrennzeichen weg, Whitespace glätten.
 QString htmlStrip(QString s) {
     static const QRegularExpression reTag(QStringLiteral("<[^>]*>"));
     s.remove(reTag);
@@ -693,7 +588,6 @@ QString htmlStrip(QString s) {
     return s.simplified();
 }
 
-// CSS-Custom-Properties einsammeln (erstes Vorkommen gewinnt).
 QHash<QString, QString> cssVars(const QString& css) {
     QHash<QString, QString> v;
     static const QRegularExpression re(QStringLiteral("--([a-z0-9-]+)\\s*:\\s*([^;}]+)"),
@@ -707,7 +601,6 @@ QHash<QString, QString> cssVars(const QString& css) {
     return v;
 }
 
-// var(--x[, fallback]) rekursiv auflösen.
 QString cssResolve(QString val, const QHash<QString, QString>& v, int depth = 0) {
     val = val.trimmed();
     if (depth > 6) return val;
@@ -758,7 +651,6 @@ QColor parseCssColor(QString tok) {
     return QColor::fromString(tok);
 }
 
-// Erstes Farb-Token aus einer Deklaration (var() vorher aufgelöst).
 QColor firstColor(QString decl, const QHash<QString, QString>& v) {
     if (decl.isEmpty()) return QColor();
     decl = cssResolve(decl, v);
@@ -776,23 +668,18 @@ HtmlMeta extractHtmlMeta(const QString& path) {
     HtmlMeta r;
     QFile f(path);
     if (!f.open(QIODevice::ReadOnly)) return r;
-    // Ganze Datei (bis 4 MB) - der Hero kann hinter großem <head>/<style> liegen.
     const QString t = QString::fromUtf8(f.read(4 * 1024 * 1024));
     f.close();
     if (t.isEmpty()) return r;
 
     const QHash<QString, QString> vars = cssVars(t);
 
-    // Hero-Block + Hero-Klasse(n) isolieren (Klasse -> Quelle für Farben)
     QString block, heroClass;
     {
-        // 1) <header …class="…hero…">…</header>
         static const QRegularExpression reHeroHdr(QStringLiteral("<header[^>]*class=\"([^\"]*hero[^\"]*)\"[^>]*>(.*?)</header>"),
             QRegularExpression::CaseInsensitiveOption | QRegularExpression::DotMatchesEverythingOption);
-        // 2) beliebiges Element mit Hero-artiger Klasse -> Fenster ab dort (verschachtelte divs)
         static const QRegularExpression reHeroOpen(QStringLiteral("<(?:div|section|header|main)[^>]*class=\"([^\"]*(?:hero|masthead|banner|cover|intro|frontispiece|page-header|titlebar|kopf|titel)[^\"]*)\"[^>]*>"),
             QRegularExpression::CaseInsensitiveOption);
-        // 3) beliebiger <header>
         static const QRegularExpression reAnyHdr(QStringLiteral("<header\\b[^>]*>(.*?)</header>"),
             QRegularExpression::CaseInsensitiveOption | QRegularExpression::DotMatchesEverythingOption);
         const auto m1 = reHeroHdr.match(t);
@@ -807,7 +694,6 @@ HtmlMeta extractHtmlMeta(const QString& path) {
         }
     }
 
-    // Titel = erstes <h1>; Fallback <title>
     {
         static const QRegularExpression re(QStringLiteral("<h1[^>]*>(.*?)</h1>"),
             QRegularExpression::CaseInsensitiveOption | QRegularExpression::DotMatchesEverythingOption);
@@ -828,8 +714,6 @@ HtmlMeta extractHtmlMeta(const QString& path) {
     }
     if (r.title.isEmpty()) return r;       // ungültig -> Quelltext-Fallback
 
-    // Prominenter arabischer Display-Titel im Hero (Element mit überwiegend
-    // arabischem, kurzem Text) -> Haupttitel; bisheriges lat. <h1> -> Sekundärzeile.
     {
         static const QRegularExpression reNode(QStringLiteral(">([^<>]+)<"));
         QString arTitle;
@@ -853,7 +737,6 @@ HtmlMeta extractHtmlMeta(const QString& path) {
         }
     }
 
-    // Eyebrow / Kicker
     {
         static const QRegularExpression re(QStringLiteral("<(\\w+)[^>]*class=\"[^\"]*(?:eyebrow|kicker|overline|topline)[^\"]*\"[^>]*>(.*?)</\\1>"),
             QRegularExpression::CaseInsensitiveOption | QRegularExpression::DotMatchesEverythingOption);
@@ -861,7 +744,6 @@ HtmlMeta extractHtmlMeta(const QString& path) {
         if (m.hasMatch()) r.eyebrow = htmlStrip(m.captured(2));
     }
 
-    // Untertitel
     {
         static const QRegularExpression re(QStringLiteral("<(p|div|h2|h3)[^>]*class=\"[^\"]*(?:subtitle|untertitel|sub|lead|deck|tagline|standfirst|intro)[^\"]*\"[^>]*>(.*?)</\\1>"),
             QRegularExpression::CaseInsensitiveOption | QRegularExpression::DotMatchesEverythingOption);
@@ -875,7 +757,6 @@ HtmlMeta extractHtmlMeta(const QString& path) {
         }
     }
 
-    // Zweisprachiger Titel (lateinisch + CJK) -> CJK-Teil als Untertitel abspalten
     {
         static const QRegularExpression reCjk(QStringLiteral("[\\x{3000}-\\x{30FF}\\x{4E00}-\\x{9FFF}\\x{FF00}-\\x{FFEF}]"));
         static const QRegularExpression reLat(QStringLiteral("[A-Za-z\\x{00C0}-\\x{024F}]"));
@@ -890,7 +771,6 @@ HtmlMeta extractHtmlMeta(const QString& path) {
         }
     }
 
-    // Farben - Quelle: Hero-Element-Klasse(n) -> .hero -> body -> CSS-Variablen
     const QStringList heroToks = heroClass.split(QRegularExpression(QStringLiteral("\\s+")), Qt::SkipEmptyParts);
     auto ruleColor = [&](const QString& selector, const char* a, const char* b) -> QColor {
         const QString body = cssRuleBody(t, selector);
@@ -898,7 +778,6 @@ HtmlMeta extractHtmlMeta(const QString& path) {
         if (d.isEmpty() && b) d = cssProp(body, QString::fromLatin1(b));
         return firstColor(d, vars);
     };
-    // Hintergrund
     for (const QString& tok : heroToks) {
         r.bg = ruleColor(QChar(u'.') + tok, "background", "background-color");
         if (r.bg.isValid()) break;
@@ -909,7 +788,6 @@ HtmlMeta extractHtmlMeta(const QString& path) {
     if (!r.bg.isValid()) r.bg = QColor(0x15, 0x24, 0x2E);
     r.dark = relLuminance(r.bg) < 0.5;
 
-    // Textfarbe
     for (const QString& tok : heroToks) {
         r.text = ruleColor(QChar(u'.') + tok, "color", nullptr);
         if (r.text.isValid()) break;
@@ -920,7 +798,6 @@ HtmlMeta extractHtmlMeta(const QString& path) {
         r.text = r.dark ? QColor(0xED, 0xF3, 0xF4) : (ink.isValid() ? ink : QColor(0x15, 0x24, 0x2E));
     }
 
-    // Akzent: .eyebrow .dot {background} -> h1 .tbl {color} -> saturierteste Variable
     {
         QString dotBody = cssRuleBody(t, QStringLiteral(".eyebrow .dot"));
         if (dotBody.isEmpty()) dotBody = cssRuleBody(t, QStringLiteral(".dot"));
@@ -951,17 +828,14 @@ HtmlMeta extractHtmlMeta(const QString& path) {
     r.sub = firstColor(cssProp(cssRuleBody(t, QStringLiteral(".sub")), QStringLiteral("color")), vars);
     if (!r.sub.isValid()) r.sub = r.dark ? QColor(0xA9, 0xBE, 0xC4) : QColor(0x7C, 0x76, 0x6B);
 
-    // Arabischer Kontext (für Layout-Richtung & Sterndekor)
     static const QRegularExpression reArab(QStringLiteral("[\\x{0600}-\\x{06FF}]"));
     const bool arabicCtx = reArab.match(t).hasMatch();
     {
         static const QRegularExpression reHtmlRtl(QStringLiteral("<html[^>]*dir=\"rtl\""), QRegularExpression::CaseInsensitiveOption);
         static const QRegularExpression reBodyRtl(QStringLiteral("<body[^>]*dir=\"rtl\""), QRegularExpression::CaseInsensitiveOption);
-        // RTL-Layout nur, wenn der Titel selbst arabisch ist (lat. Titel bleibt LTR)
         r.rtl = reHtmlRtl.match(t).hasMatch() || reBodyRtl.match(t).hasMatch() || reArab.match(r.title).hasMatch();
     }
 
-    // Textur: arabischer Kontext / ornamentales Hero-Muster -> Sterne; linear-gradient -> Gitter
     {
         QString heroCss;
         static const QRegularExpression reHeroRules(QStringLiteral("\\.hero(?:::?[a-z-]+)?\\s*\\{([^}]*)\\}"),
@@ -976,7 +850,6 @@ HtmlMeta extractHtmlMeta(const QString& path) {
         else                           r.texture = 0;
     }
 
-    // Niveau-Chip (CEFR) aus Titel/Untertitel/Eyebrow
     {
         static const QRegularExpression reLvl(QStringLiteral("\\b([ABC][12])(?:\\s*[\\x{2013}\\x{2014}-]\\s*([ABC][12]))?\\b"));
         const QString sources[3] = { r.title, r.subtitle, r.eyebrow };
@@ -1002,7 +875,6 @@ QImage ThumbnailTask::generateHtmlCardThumbnail(const QString& path, const QSize
     p.setRenderHint(QPainter::Antialiasing);
     p.setRenderHint(QPainter::TextAntialiasing);
 
-    // ── Textur ──────────────────────────────────────────────────────────────
     if (m.texture == 1) {                    // feines Gitter
         const int step = qMax(16, W / 16);
         p.setPen(QPen(m.dark ? QColor(255, 255, 255, 14) : QColor(0, 0, 0, 12), 1));
@@ -1036,7 +908,6 @@ QImage ThumbnailTask::generateHtmlCardThumbnail(const QString& path, const QSize
         return f;
     };
 
-    // ── Niveau-Chip (Ecke); Inhalt beginnt darunter -> keine Überlappung ───────
     int contentTop = qMax(20, H * 10 / 100);
     if (!m.chip.isEmpty()) {
         QFont cf = baseFont(qMax(12, H / 30), true);
@@ -1056,13 +927,11 @@ QImage ThumbnailTask::generateHtmlCardThumbnail(const QString& path, const QSize
         contentTop = qMax(contentTop, int(chip.bottom()) + qMax(10, H / 40));
     }
 
-    // Linker Akzentbalken nur bei cleanen Karten (keine Textur), LTR
     if (m.texture == 0 && !rtl)
         p.fillRect(QRect(0, 0, qMax(4, W / 100), H), m.accent);
 
     int y = contentTop;
 
-    // ── Eyebrow ───────────────────────────────────────────────────────────────
     if (!m.eyebrow.isEmpty()) {
         QFont ef = baseFont(qMax(11, H / 34), false);
         ef.setLetterSpacing(QFont::AbsoluteSpacing, qMax(1.0, H / 280.0));
@@ -1075,7 +944,7 @@ QImage ThumbnailTask::generateHtmlCardThumbnail(const QString& path, const QSize
         y += fm.height() + qMax(6, H / 42);
     }
 
-    // ── Titel (umbrochen, ggf. verkleinert bis 3 Zeilen passen) ────────────────
+    // Titel (umbrochen, ggf. verkleinert bis 3 Zeilen passen)
     {
         const int maxPct = m.secondaryTitle.isEmpty() ? 40 : 30;
         int px = qMax(20, H / 11);
@@ -1095,7 +964,7 @@ QImage ThumbnailTask::generateHtmlCardThumbnail(const QString& path, const QSize
         y += needH + qMax(6, H / (m.secondaryTitle.isEmpty() ? 38 : 60));
     }
 
-    // ── Sekundärzeile (lat. Titel unter dem arab. Display-Titel) ───────────────
+    // Sekundärzeile (lat. Titel unter dem arab. Display-Titel)
     if (!m.secondaryTitle.isEmpty()) {
         QFont stf = baseFont(qMax(14, H / 20), true);
         p.setFont(stf);
@@ -1106,7 +975,6 @@ QImage ThumbnailTask::generateHtmlCardThumbnail(const QString& path, const QSize
         y += fm.height() + qMax(8, H / 44);
     }
 
-    // ── Akzentlinie ────────────────────────────────────────────────────────────
     {
         const int lw = qMax(28, W / 5);
         const int lh = qMax(2, H / 190);
@@ -1115,7 +983,7 @@ QImage ThumbnailTask::generateHtmlCardThumbnail(const QString& path, const QSize
         y += lh + qMax(8, H / 42);
     }
 
-    // ── Untertitel (auf Platz über der Namensleiste begrenzt) ──────────────────
+    // Untertitel (auf Platz über der Namensleiste begrenzt)
     if (!m.subtitle.isEmpty()) {
         QFont sf = baseFont(qMax(11, H / 30), false);
         p.setFont(sf);
@@ -1166,11 +1034,8 @@ QImage ThumbnailTask::generateTypeCardThumbnail(const QString& path, const QSize
     p.setPen(stil.palette.text);
     p.drawText(pix.rect(), Qt::AlignCenter, typ);
 
-    //  BEWUSST nichts weiter: „Vorschau aus" heisst der Dateityp und sonst
-    //  nichts. Ein Zwischenstand hatte einen farbigen Strich darunter, der die
-    //  Typen unterscheiden sollte - er kann es nicht, weil die Farbe der
-    //  PALETTE gehoert und nicht der Sprache, und sah damit auf jeder Kachel
-    //  gleich aus.
+    // BEWUSST nichts weiter: "Vorschau aus" heißt der Dateityp und sonst nichts. Ein farbiger Strich kann die Typen
+    // nicht unterscheiden - die Farbe gehört der PALETTE, nicht der Sprache, und sah auf jeder Kachel gleich aus.
     p.end();
     return pix;
 }
@@ -1245,12 +1110,8 @@ QImage ThumbnailTask::generateTextThumbnail(const QString& path, const QSize& si
         const qsizetype zeichen = gekuerzt ? qMax<qsizetype>(0, sichtbar.size() - 1)
                                            : line.size();
 
-        //  Abschnittsweise malen, jedes Zeichen GENAU EINMAL: erst die Luecke
-        //  vor einem Span in der Grundfarbe, dann der Span in seiner Farbe.
-        //  Die x-Position kommt aus `horizontalAdvance` des Praefixes und nicht
-        //  aus einer Multiplikation mit der Zeichenbreite - sonst verrutschte
-        //  jede Zeile mit einem doppelt breiten Zeichen (CJK) oder einer
-        //  Ersatzglyphe.
+        // Abschnittsweise malen, jedes Zeichen GENAU EINMAL: erst die Lücke vor einem Span, dann der Span. Die
+        // x-Position kommt aus `horizontalAdvance` - eine Multiplikation verrutschte bei CJK oder Ersatzglyphen.
         qsizetype pos = 0;
         const auto male = [&](qsizetype von, qsizetype len, const QColor& c) {
             if (len <= 0) return;
@@ -1281,10 +1142,6 @@ QImage ThumbnailTask::generateTextThumbnail(const QString& path, const QSize& si
 }
 
 QImage ThumbnailTask::generateDocxThumbnail(const QString& path, const QSize& size) {
-    //  DOCX-Karte: erste Absätze als Klartext (Docx::Document::plainTextPreview
-    //  - eigener ZIP/XML-Reader je Aufruf, threadsicher im Thumbnail-Worker)
-    //  auf Word-blauem Verlauf mit Proportionalschrift + DOCX-Badge; ohne
-    //  lesbaren Text fällt die Karte auf das Dokument-Symbol zurück.
     const QString text = Docx::Document::plainTextPreview(path, 6);
     if (text.trimmed().isEmpty())
         return fallbackTextThumbnail(path, size);
