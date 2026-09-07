@@ -378,6 +378,32 @@ Item {
                     quelle: App.uiText(App.language, "SettingsSearchExamples")
                     textFarbe: App.themeTextMuted
                 }
+
+                //  Dieselbe Tabelle, anderer Inhalt: wie die Ablage eines
+                //  Ordners aufgebaut ist. Sie erklaert nur - geschaltet wird
+                //  hier nichts, das Format ist nicht waehlbar.
+                Label {
+                    Layout.fillWidth: true
+                    Layout.topMargin: 14
+                    text: App.uiText(App.language, "SettingsStorageGroup")
+                    color: App.themeTextPrimary
+                    font.bold: true
+                }
+                Label {
+                    Layout.fillWidth: true
+                    text: App.uiText(App.language, "SettingsStorageIntro")
+                    color: App.themeTextMuted
+                    wrapMode: Text.WordWrap
+                }
+                MusterTabelle {
+                    Layout.topMargin: 4
+                    quelle: App.uiText(App.language, "SettingsStorageTable")
+                }
+                MusterTabelle {
+                    Layout.topMargin: 6
+                    quelle: App.uiText(App.language, "SettingsStorageEffect")
+                    textFarbe: App.themeTextMuted
+                }
             }
 
             SettingsGroup {

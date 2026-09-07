@@ -840,6 +840,10 @@ enum class StringKey {
     SettingsSearchGroup,
     SettingsSearchTable,
     SettingsSearchExamples,
+    SettingsStorageGroup,        // Erklaerkasten: die Ablage der Tags
+    SettingsStorageIntro,
+    SettingsStorageTable,
+    SettingsStorageEffect,
     // Die Farbnamen folgen dem Schlüssel aus `SyntaxPalette::tokenKey`: QML baut den Key als "EditorColor" plus
     // Schlüssel mit großem Anfangsbuchstaben, damit die neunzehn Namen nicht doppelt stehen.
     SettingsDesignBlockUi,
@@ -873,6 +877,9 @@ enum class StringKey {
     SettingsViewPreviewGroup,
     SettingsViewTextPreview,
     SettingsViewTextPreviewHint,
+    SettingsViewPdfPreview,
+    SettingsViewImagePreview,
+    SettingsViewKindPreviewHint,
     DatevFieldIdent,
     DatevFieldVersion,
     DatevFieldFormatName,
@@ -904,6 +911,25 @@ enum class StringKey {
     TableNumbersTip,
     TableBlock,
     TableAllBlocks,
+    TableFindWholeCell,       // Suchbalken: nur ganze Zellen als Treffer
+    TableFindCellLabel,       // Beschriftung desselben Knopfes
+    TableFindOtherBlocks,
+    TableFindGoOther,
+    TableFindGoOtherTip,
+    StorageViewRaw,
+    StorageViewReadable,
+    StorageViewTip,
+    StorageReadOnlyTip,
+    CtxFileInfo,
+    InfoTitle,
+    InfoName,
+    InfoType,
+    InfoSize,
+    InfoCreated,
+    InfoModified,
+    InfoLocation,
+    InfoFolderNoSize,     // „keine hier, %1 in anderen Tabellen"
+    TableFindSearching,       // waehrend der Lauf im Arbeitsfaden laeuft
 };
 Q_ENUM_NS(StringKey)
 }  // namespace SK

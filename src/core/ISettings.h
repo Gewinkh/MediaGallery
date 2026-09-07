@@ -139,6 +139,11 @@ public:
 
     virtual bool textPreviewContent() const = 0;
     virtual void setTextPreviewContent(bool v) = 0;
+    //  Aus heisst: gar keine Miniatur erzeugen, die Kachel zeigt nur den Typ.
+    virtual bool pdfPreviewContent() const = 0;
+    virtual void setPdfPreviewContent(bool v) = 0;
+    virtual bool imagePreviewContent() const = 0;
+    virtual void setImagePreviewContent(bool v) = 0;
 
     virtual bool monoPlay() const = 0;
     virtual void setMonoPlay(bool v) = 0;

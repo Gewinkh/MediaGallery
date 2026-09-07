@@ -91,6 +91,11 @@ public:
 
     void notifyContentsChanged(const QString& folder = QString());
 
+    //  Eine andere Haelfte hat den Sidecar DIESES Ordners geschrieben: von der
+    //  Platte nachlesen. Die Galerie wird nicht neu gebaut - nur die Zeilen,
+    //  deren Tags sich wirklich geaendert haben, melden sich.
+    void uebernimmFremdenStand();
+
     // Eine NEBEN einer Quelldatei entstandene Datei aufnehmen: Ordner neu einlesen und auf Wunsch Tags und
     // Kategorien übernehmen. Gehört der Ordner nicht dieser Hälfte, passiert nichts - beide rufen blind.
     Q_INVOKABLE bool adoptSiblingFile(const QString& sourcePath,

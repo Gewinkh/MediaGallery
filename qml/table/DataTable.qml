@@ -21,6 +21,51 @@ Item {
     //  Zeilenspalte ist FEST - sie rollt senkrecht mit, waagerecht nicht.
     property bool showNumbers: false
 
+    //  Suche: `searchRevision` steigt bei jeder Aenderung im Controller. Die
+    //  Zell-Bindung LIEST sie - ohne einen gelesenen Wert wertet QML sie nie
+    //  neu aus, und die Markierung bliebe auf dem Stand des ersten Bildes.
+    property int searchRevision: 0
+    property int currentRow: -1
+    property int currentColumn: -1
+    //  Linke Kante und Breite einer Spalte. Die Spaltenliste kennt Luecken
+    //  (DATEV blendet leere Spalten aus), deshalb ueber `index`, nicht ueber
+    //  die Position in der Liste.
+    function _spalteX(spalte) {
+        var x = 0
+        for (var i = 0; i < root._spalten.length; ++i) {
+            if (root._spalten[i].index === spalte) return x
+            x += root._breite(root._spalten[i].chars)
+        }
+        return -1
+    }
+    function _spalteBreite(spalte) {
+        for (var i = 0; i < root._spalten.length; ++i)
+            if (root._spalten[i].index === spalte) return root._breite(root._spalten[i].chars)
+        return 0
+    }
+
+    //  Eine Zelle ins Bild holen (Sprung zum Treffer). Eine bereits sichtbare
+    //  Zeile bleibt, wo sie ist - sonst spraenge die Ansicht bei jedem Schritt.
+    function zeigeZelle(zeile, spalte) {
+        if (zeile < 0) return
+        rollAnim.stop()
+        rollAnimX.stop()
+        const y = zeile * root.rowHeight
+        if (y < liste.contentY || y + root.rowHeight > liste.contentY + liste.height) {
+            const maxY = Math.max(0, liste.contentHeight - liste.height)
+            liste.contentY = Math.max(0, Math.min(y - liste.height / 3, maxY))
+        }
+        if (spalte < 0) return
+        const x = root._spalteX(spalte)
+        const breite = root._spalteBreite(spalte)
+        if (x < 0 || breite <= 0) return
+        const maxX = Math.max(0, flick.contentWidth - flick.width)
+        if (x < flick.contentX)
+            flick.contentX = Math.max(0, Math.min(x - 20, maxX))
+        else if (x + breite > flick.contentX + flick.width)
+            flick.contentX = Math.max(0, Math.min(x + breite - flick.width + 20, maxX))
+    }
+
     readonly property alias rows: liste
     readonly property alias area: flick
 
@@ -198,6 +243,29 @@ Item {
                            ? Qt.rgba(Editor.text.r, Editor.text.g, Editor.text.b, 0.05)
                            : "transparent"
                 }
+                //  Suchtreffer: je Zeile entstehen nur so viele Marken, wie
+                //  die Zeile Treffer hat - ohne laufende Suche also keine. Je
+                //  Zelle eine (unsichtbare) Marke kostete gemessen 3,78 -> 4,32 ms
+                //  je Bild, auch wenn niemand sucht.
+                Repeater {
+                    model: (root.searchRevision > 0 && root.provider)
+                           ? root.provider.rowMatches(zeile.index) : []
+                    delegate: Rectangle {
+                        required property var modelData
+                        readonly property bool laufend:
+                            zeile.index === root.currentRow && modelData === root.currentColumn
+                        x: root._spalteX(modelData) + 1
+                        width: Math.max(0, root._spalteBreite(modelData) - 2)
+                        y: 1
+                        height: zeile.height - 2
+                        radius: 2
+                        color: Qt.rgba(App.themeAccent.r, App.themeAccent.g,
+                                       App.themeAccent.b, laufend ? 0.55 : 0.20)
+                        border.width: laufend ? 1 : 0
+                        border.color: App.themeAccent
+                    }
+                }
+
                 Row {
                     Repeater {
                         model: root._spalten
@@ -205,6 +273,7 @@ Item {
                             required property var modelData
                             width: root._breite(modelData.chars)
                             height: zeile.height
+
                             Text {
                                 anchors { fill: parent; leftMargin: 8; rightMargin: 8 }
                                 verticalAlignment: Text.AlignVCenter

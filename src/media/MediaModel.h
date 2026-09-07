@@ -3,6 +3,7 @@
 #include <QDir>
 #include <QVector>
 #include <QHash>
+#include <QVariantMap>
 #include <QString>
 #include <QStringList>
 #include <QElapsedTimer>
@@ -109,6 +110,10 @@ public:
     void setShowAllFiles(bool v);
     bool showAllFiles() const { return m_showAllFiles; }
 
+    //  Aus heisst: gar keine Miniatur anfordern - das spart Rendern, Cache und
+    //  den Speicher, den ein Bild sonst haelt.
+    void setPreviewKinds(bool pdf, bool image);
+
     // Aufgeklappter Inhalt kommt als weitere Zeilen desselben Modells (eigener Bereich).
     // m_expanded haelt Pfade statt Bereiche: der Zustand ueberlebt ein reload(), und
     // Zuklappen vergisst die Enkel nicht.
@@ -189,6 +194,10 @@ public:
     Q_INVOKABLE bool        hasFileTextPdfColor(const QString& filePath) const;
     Q_INVOKABLE void        setFileTextPdfColor(const QString& filePath, const QColor& c);
     Q_INVOKABLE void        clearFileTextPdfColor(const QString& filePath);
+
+    //  Fuer den „Infos"-Eintrag. Kommt vom DATEISYSTEM, nicht aus der Ablage -
+    //  dieselbe Wahrheit, die auch ein Dateimanager zeigt.
+    Q_INVOKABLE QVariantMap fileInfo(const QString& filePath) const;
 
     Q_INVOKABLE void toggleTag(const QString& filePath, const QString& tag);
     // Nur hinzufuegen, nie entfernen: ein Zug auf einen Tag ist eine Zuweisung,
@@ -347,6 +356,16 @@ private:
     int           m_pendingScope = -1;      // Bereich des laufenden Iterators
     QList<int>    m_scanQueue;              // wartende Bereiche
     bool          m_showAllFiles = false;   // s. setShowAllFiles
+    //  Fingerabdruck des offenen Ordners: Name, Groesse und Datum jeder NICHT
+    //  begleitenden Datei. Der Watcher meldet auch das Schreiben des eigenen
+    //  Sidecars - seit das im Arbeitsfaden laeuft, faellt es aus der
+    //  Watcher-Sperre heraus und trieb die Galerie in einen vollen Neubau.
+    quint64       m_dirFinger = 0;
+    quint64       ordnerFingerabdruck() const;
+
+    bool          m_pdfPreview   = true;    // s. setPreviewKinds
+    bool          m_imagePreview = true;
+    bool          vorschauAus(int row) const;
     QTimer        m_fillTimer;        // 0-ms-Timer: speist Chargen, gibt dazwischen ab
     // Vorgemerkte Abbestellungen und der 0-ms-Timer, der sie ausfuehrt.
     bool          m_pendingInvalidate = false;

@@ -140,6 +140,16 @@ void TextDecorations::setMatchColor(const QColor& c) {
     m_matchColor = c; emit styleChanged(); update();
 }
 
+void TextDecorations::setSearchColor(const QColor& c) {
+    if (c == m_searchColor) return;
+    m_searchColor = c; emit styleChanged(); update();
+}
+
+void TextDecorations::setShowSearch(bool v) {
+    if (v == m_showSearch) return;
+    m_showSearch = v; emit styleChanged(); update();
+}
+
 void TextDecorations::setSearchTerm(const QString& term, bool caseSensitive) {
     m_suche = mg::search::Pattern(term, caseSensitive, false);
     trefferBereicheNeu();
@@ -392,9 +402,61 @@ void TextDecorations::zeichneKlammern(QPainter* p) {
     }
 }
 
+//  Die Treffer der Suchleiste als Flaeche hinter dem Text - nur fuer die
+//  SICHTBAREN Zeilen. Frueher setzte der Faerber dafuer ein Zeichenformat je
+//  Block; das erklaert den Block fuer geaendert, und Qt vermisst das Dokument
+//  neu (gemessen 124 ms bei 1000 und 10,3 s bei 10 000 Zeilen, in denen jede
+//  Zeile einen Treffer traegt - je Tastendruck in der Suchleiste).
+void TextDecorations::zeichneFundstellen(QPainter* p) {
+    QTextDocument* d = doc();
+    if (!d || m_suche.isEmpty()) return;
+    QAbstractTextDocumentLayout* lay = d->documentLayout();
+    if (!lay) return;
+
+    QTextBlock start = d->findBlock(qMax(0, lay->hitTest(QPointF(0, m_contentY),
+                                                         Qt::FuzzyHit)));
+    if (!start.isValid()) start = d->firstBlock();
+    if (start.previous().isValid()) start = start.previous();
+
+    QList<QRectF> flaechen;
+    for (QTextBlock b = start; b.isValid(); b = b.next()) {
+        if (!b.isVisible()) continue;
+        const QRectF bb = lay->blockBoundingRect(b);
+        const qreal y = bb.top() - m_contentY + m_topPad;
+        if (y > height()) break;
+
+        const QString zeile = b.text();
+        if (zeile.isEmpty()) continue;
+        QTextLayout* tl = b.layout();
+        if (!tl) continue;
+        //  Deckel wie im Faerber zuvor: eine Zeile mit Zehntausenden Treffern
+        //  ist kein Fall, den ein Mensch ansieht.
+        for (const mg::search::Range& r : m_suche.findAll(zeile, 2000)) {
+            const QTextLine line = tl->lineForTextPosition(int(r.start));
+            if (!line.isValid()) continue;
+            const qreal x1 = line.cursorToX(int(r.start));
+            const qreal x2 = line.cursorToX(int(r.start + r.length));
+            flaechen.append(QRectF(m_leftPad + qMin(x1, x2), y + line.y(),
+                                   qAbs(x2 - x1), line.height()));
+        }
+    }
+    if (flaechen.isEmpty()) return;
+
+    //  In EINEM Zug und ohne Kantenglaettung: die Flaechen sind achsenparallel,
+    //  ein weicher Rand waere an ihnen nicht zu sehen.
+    const bool aa = p->testRenderHint(QPainter::Antialiasing);
+    p->setRenderHint(QPainter::Antialiasing, false);
+    p->setPen(Qt::NoPen);
+    p->setBrush(m_searchColor);
+    p->drawRects(flaechen.constData(), int(flaechen.size()));
+    p->setRenderHint(QPainter::Antialiasing, aa);
+}
+
 void TextDecorations::paint(QPainter* p) {
     if (!doc()) return;
     p->setRenderHint(QPainter::Antialiasing, true);
+    //  Zuerst die Fundstellen: sie liegen hinter allem anderen.
+    if (m_showSearch) zeichneFundstellen(p);
     if (m_guides) zeichneHilfen(p);
     zeichneFaltmarken(p);
     zeichneKlammern(p);

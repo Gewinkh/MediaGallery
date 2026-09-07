@@ -65,6 +65,7 @@ TableController::TableController(QObject* parent) : QObject(parent) {
 
 TableController::~TableController() {
     if (m_abbruch) m_abbruch->store(true);
+    if (m_suchAbbruch) m_suchAbbruch->store(true);
     m_pool.waitForDone();
 }
 
@@ -78,6 +79,7 @@ void TableController::setSource(const QString& pathOrUrl) {
 
 void TableController::neuLesen() {
     if (m_abbruch) m_abbruch->store(true);
+    clearSearch();
     m_datei.reset();
     m_fehler.clear();
     m_spalten.clear();
@@ -161,6 +163,97 @@ void TableController::setCurrentBlock(int i) {
     spaltenNeuRechnen();
     emit blockChanged();
     emit stateChanged();
+    //  Die Treffer zaehlen ab der ersten Datenzeile DIESES Blocks - im neuen
+    //  Block zeigten die alten Nummern auf beliebige Zeilen.
+    if (!m_suchText.isEmpty()) { m_suchAb = 0; sucheStarten(); }
+}
+
+void TableController::search(const QString& text, bool caseSensitive,
+                             bool wholeCell, int fromRow) {
+    m_suchText = text;
+    m_suchOpt.gross = caseSensitive;
+    m_suchOpt.ganzeZelle = wholeCell;
+    m_suchAb = qMax(0, fromRow);
+    sucheStarten();
+}
+
+void TableController::sucheStarten() {
+    if (m_suchAbbruch) m_suchAbbruch->store(true);
+    m_andereBloecke = 0;
+    if (!m_datei || m_suchText.isEmpty()) {
+        m_suchLaeuft = false;
+        m_suche.leeren();
+        emit searchChanged();
+        return;
+    }
+    m_suchLaeuft = true;
+    emit searchChanged();
+
+    const Bereich b = aktiv();
+    //  Je Block zaehlen, sobald es mehr als einen gibt.
+    QList<BlockBereich> bloecke;
+    if (m_bereiche.size() > 1) {
+        bloecke.reserve(m_bereiche.size());
+        for (const Bereich& x : m_bereiche)
+            bloecke.append({ x.daten, x.bis });
+    }
+    m_suchAbbruch = std::make_shared<std::atomic<bool>>(false);
+    auto* self = this;
+    //  Die Datei haelt sich ueber den Anker am Leben, auch wenn inzwischen eine
+    //  andere gelesen wird.
+    m_pool.start(new SuchTask(this, m_datei, &m_datei->zeilen, b.daten, b.bis,
+                              m_suchText, m_suchOpt, {},
+                              bloecke, m_suchAbbruch,
+                              [self](QList<Treffer> t, bool mehr, QList<int> proBlock) {
+                                  self->suchErgebnis(std::move(t), mehr, std::move(proBlock));
+                              }));
+}
+
+void TableController::suchErgebnis(QList<Treffer> treffer, bool mehr,
+                                   QList<int> proBlock) {
+    m_suchLaeuft = false;
+    m_trefferProBlock = std::move(proBlock);
+    //  „anderswo" heisst: alles ausser dem gerade gezeigten Block.
+    m_andereBloecke = 0;
+    for (int i = 0; i < m_trefferProBlock.size(); ++i)
+        if (i != m_block) m_andereBloecke += m_trefferProBlock.at(i);
+    m_suche.setzeTreffer(std::move(treffer), mehr);
+    m_suche.gehZuAb(m_suchAb);
+    emit searchChanged();
+}
+
+QVariantList TableController::otherBlocksWithMatches() const {
+    QVariantList out;
+    for (int i = 0; i < m_trefferProBlock.size() && i < m_bloecke.size(); ++i) {
+        if (i == m_block || m_trefferProBlock.at(i) <= 0) continue;
+        QVariantMap m = m_bloecke.at(i).toMap();
+        m.insert(QStringLiteral("count"), m_trefferProBlock.at(i));
+        out.append(m);
+    }
+    return out;
+}
+
+void TableController::jumpToBlock(int index) {
+    if (index < 0 || index >= m_bereiche.size()) return;
+    setCurrentBlock(index);
+    //  Von vorn: der Sprung soll beim ERSTEN Treffer der Tabelle landen.
+    m_suchAb = 0;
+    sucheStarten();
+}
+
+void TableController::stepMatch(int delta) {
+    if (m_suche.anzahl() == 0) return;
+    m_suche.schritt(delta);
+    emit searchChanged();
+}
+
+void TableController::clearSearch() {
+    if (m_suchAbbruch) m_suchAbbruch->store(true);
+    m_suchText.clear();
+    m_suchLaeuft = false;
+    m_andereBloecke = 0;
+    m_suche.leeren();
+    emit searchChanged();
 }
 
 bool TableController::headerRow() const {
@@ -183,6 +276,7 @@ void TableController::spaltenNeuRechnen() {
 
     const QStringList namen = b.kopf >= 0 ? m_datei->zeilen.at(b.kopf).alle() : QStringList();
     m_spalten.reserve(m_spaltenZahl);
+
     for (int i = 0; i < m_spaltenZahl; ++i) {
         //  Ohne Kopfzeile bleibt der Name LEER - die Nummer kommt aus der
         //  eigenen Leiste (Schalter in der oberen Leiste). Beides zugleich
@@ -217,6 +311,14 @@ bool TableController::rowEmpty(int row) const {
     if (!m_datei) return false;
     const int z = aktiv().daten + row;
     return z >= 0 && z < m_datei->zeilen.size() && m_datei->zeilen.at(z).isEmpty();
+}
+
+QVariantList TableController::rowMatches(int row) const {
+    QVariantList out;
+    const QList<int> spalten = m_suche.spaltenIn(row);
+    out.reserve(spalten.size());
+    for (int s : spalten) out.append(s);
+    return out;
 }
 
 QString TableController::cell(int row, int column) const {

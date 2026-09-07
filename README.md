@@ -128,12 +128,16 @@ The `tests/` directory is not included in the published repository. If it is mis
 ## Changelog
 
 ### Latest
-- Added CSV/TSV table views with automatic separator and header detection.
-- Added multi-table CSV support with separate tabs and an All view.
-- Added row and column numbers with independent visibility controls.
-- Added DATEV booking batch support with booking tables and debit/credit totals.
-- Improved text editor stability when switching layouts and working with narrow windows.
-- Improved text file encoding support with CP1252 fallback for non-UTF-8 files.
+- **Added MGStorage**, a faster and significantly smaller folder file format.
+- **Added folder file viewer** with readable and raw/hex views.
+- **Improved folder file performance** for saving, loading, tagging, and undo/redo.
+- **Improved tag and category management** with fewer gallery rebuilds and better synchronization.
+- **Added table search** with navigation between multiple tables.
+- **Added file information** to tile context menus.
+- **Added PDF and image preview controls** in View settings.
+- **Improved file type labels** in list view.
+- **Improved text editor search performance** on large files.
+- **Improved thumbnail loading order** and scrolling responsiveness.
 
 ---
 

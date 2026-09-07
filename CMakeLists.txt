@@ -9,9 +9,6 @@ set(CMAKE_AUTORCC ON)
 # ──────────────────────────────────────────────────────────────────────────────
 #  BAUZEIT
 #
-#  Gemessen am 2026-08-28 (roh, ohne ccache, Release, i7-11370H = 4 Kerne / 8
-#  Faeden). Vollbau von Grund auf, Sekunden:
-#
 #      --parallel        1       2       4       8
 #      -O3 ohne LTO      150.3   84.8    52.4    49.4
 #      -O3 MIT LTO        88.4   59.5    46.1    43.9   <- Vorgabe (MG_LTO)
@@ -49,9 +46,8 @@ set(CMAKE_AUTORCC ON)
 #      -O2             147.8 s / 46.1 s
 #      -O1             105.8 s / 33.8 s
 #
-#  Die Stufe ist BEWUSST NICHT gesenkt: sie tauscht Laufzeit gegen Bauzeit, und
-#  Laufzeit steht in `CLAUDE.md` §0 auf Platz 2. Wer beim Entwickeln schneller
-#  bauen will, setzt sie fuer SEINEN Ordner:
+#  Die Stufe ist BEWUSST NICHT gesenkt: sie tauscht Laufzeit gegen Bauzeit.
+#  Wer beim Entwickeln schneller bauen will, setzt sie fuer SEINEN Ordner:
 #      cmake -S. -B build-schnell -DCMAKE_BUILD_TYPE=Release \
 #            -DCMAKE_CXX_FLAGS_RELEASE="-O1 -DNDEBUG"
 #
@@ -81,9 +77,8 @@ set(MG_UNITY_BATCH 12 CACHE STRING "Quellen je Buendel (nur bei MG_UNITY=ON)")
 #  braucht in der Spitze 2.5 GB (668 MB je Prozess) - unkritisch.
 #
 #  `check_ipo_supported` statt blindem Einschalten: auf einem Compiler ohne
-#  Unterstuetzung soll das Projekt bauen, nicht scheitern (Portabilitaet,
-#  §0-Prioritaet 3). Nur fuer optimierte Bauarten - in einem Debug-Bau kostet
-#  LTO Zeit und erschwert das Debuggen.
+#  Unterstuetzung soll das Projekt bauen, nicht scheitern. Nur fuer optimierte
+#  Bauarten - in einem Debug-Bau kostet LTO Zeit und erschwert das Debuggen.
 if(MG_LTO)
     include(CheckIPOSupported)
     check_ipo_supported(RESULT MG_IPO_OK OUTPUT MG_IPO_WHY)
@@ -229,6 +224,8 @@ mg_domain(mg_core
         src/core/Strings.h
         src/core/JsonStorage.cpp
         src/core/JsonStorage.h
+        src/core/MGStorage.cpp
+        src/core/MGStorage.h
         src/core/SearchPattern.cpp
         src/core/SearchPattern.h
         src/core/RhiProber.cpp
@@ -490,6 +487,8 @@ mg_domain(mg_table
         src/table/DelimitedText.h
         src/table/TableController.cpp
         src/table/TableController.h
+        src/table/TableSearch.cpp
+        src/table/TableSearch.h
     LIBS
         mg_core Qt6::Qml
 )

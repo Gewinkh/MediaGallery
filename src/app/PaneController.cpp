@@ -42,6 +42,22 @@ PaneController::PaneController(ISettings& settings, ThumbnailLoader& loader,
     //  Tag gelöscht -> auf Wunsch auch aus allen UNTERordnern. Die Entscheidung
     //  fällt hier, nicht im `TagManager`: der kennt weder die Einstellung noch
     //  den geöffneten Ordner. Standard ist AN (s. `ISettings`).
+    //  Ein Filter auf einen geloeschten Tag liess die Galerie leer und einen Chip
+    //  ohne Tag dahinter stehen. Der Filter zieht deshalb mit.
+    connect(&m_tags, &TagManager::tagDeleted, this, [this](const QString& tag) {
+        QStringList f = m_proxy.tagFilter();
+        if (f.removeAll(tag) > 0) m_proxy.setTagFilter(f);
+    });
+    connect(&m_tags, &TagManager::tagRenamed, this,
+            [this](const QString& oldName, const QString& newName) {
+        QStringList f = m_proxy.tagFilter();
+        const int i = f.indexOf(oldName);
+        if (i < 0) return;
+        if (f.contains(newName)) f.removeAt(i);     // sonst staende er zweimal
+        else                     f[i] = newName;
+        m_proxy.setTagFilter(f);
+    });
+
     connect(&m_tags, &TagManager::tagDeleted, this, [this](const QString& tag) {
         if (!m_settings.deleteTagsInSubfolders()) return;
         const QString folder = m_folders.currentFolder();
@@ -104,6 +120,13 @@ void PaneController::refreshCurrentFolder() {
     m_media.reload();
     emit folderContentsChanged();
     emit statusMessage(Strings::get(StringKey::MenuRefresh));
+}
+
+void PaneController::uebernimmFremdenStand() {
+    const QString folder = m_folders.currentFolder();
+    if (folder.isEmpty()) return;
+    m_storage.loadFolder(folder);
+    m_tags.notePersistedStateReloaded();
 }
 
 void PaneController::openSubfolder(const QString& path) {

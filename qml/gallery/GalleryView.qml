@@ -65,7 +65,15 @@ Rectangle {
         root.selAnchor = proxyRow
     }
 
+    //  Im Add-to-Tag-Modus gibt es keine Auswahl - ein Klick setzt dort den Tag.
+    //  Strg+A muss deshalb dasselbe tun, sonst waehlt es unsichtbar etwas aus,
+    //  und der naechste Klick sieht aus, als haette es nie gewirkt.
     function selectAll() {
+        if (root.tagMode === 2 && root.modeTag.length > 0) {
+            const an = !galleryModel.allVisibleTagged(root.modeTag)
+            galleryModel.tagAllVisible(root.modeTag, an)
+            return
+        }
         galleryModel.selectAllVisible()
         root.selAnchor = galleryModel.count > 0 ? 0 : -1
     }
@@ -653,6 +661,7 @@ Rectangle {
                             companionDialog.kind = kind
                             companionDialog.open()
                         }
+                        onInfoRequested: function(p) { infoDialog.zeige(p) }
                     }
                 }
             }
@@ -838,6 +847,94 @@ Rectangle {
                     enabled: nameField.text.trim().length > 0
                     onClicked: newFolderDialog.apply()
                 }
+            }
+        }
+    }
+
+    //  EIN Dialog fuer die ganze Flaeche - je Kachel einer waere bei tausenden
+    //  Kacheln tausendmal derselbe Aufbau.
+    Dialog {
+        id: infoDialog
+        property var d: ({})
+
+        function zeige(pfad) {
+            const m = mediaModel.fileInfo(pfad)
+            if (!m || !m.name) return
+            infoDialog.d = m
+            infoDialog.open()
+        }
+        //  Lesbar, und die genaue Zahl dahinter - die ist beim Vergleichen
+        //  die eigentliche Auskunft.
+        function groesse(b) {
+            if (b === undefined || b < 0) return App.uiText(App.language, "InfoFolderNoSize")
+            const e = ["B", "KB", "MB", "GB", "TB"]
+            let v = b, i = 0
+            while (v >= 1024 && i < e.length - 1) { v /= 1024; ++i }
+            const kurz = (i === 0) ? (b + " B")
+                                   : (v.toFixed(v < 10 ? 2 : 1) + " " + e[i])
+            return (i === 0) ? kurz : kurz + "  (" + b.toLocaleString(Qt.locale()) + " B)"
+        }
+        function zeit(t) {
+            return (t && !isNaN(t.getTime()) && t.getFullYear() > 1971)
+                   ? t.toLocaleString(Qt.locale(), Locale.ShortFormat) : ""
+        }
+
+        anchors.centerIn: parent
+        modal: true
+        focus: true
+        padding: 18
+        standardButtons: Dialog.Close
+        background: Rectangle {
+            color: App.themeCard; radius: 10
+            border.color: App.themeBorder; border.width: 1
+        }
+        contentItem: Column {
+            spacing: 10
+            Text {
+                text: App.uiText(App.language, "InfoTitle")
+                color: App.themeTextPrimary
+                font.pixelSize: 14; font.bold: true
+            }
+            Grid {
+                columns: 2
+                columnSpacing: 16
+                rowSpacing: 6
+
+                component Feld: Text {
+                    color: App.themeTextMuted
+                    font.pixelSize: 12
+                }
+                component Wert: Text {
+                    width: 320
+                    color: App.themeTextPrimary
+                    font.pixelSize: 12
+                    elide: Text.ElideMiddle
+                }
+
+                Feld { text: App.uiText(App.language, "InfoName") }
+                Wert { text: infoDialog.d.name || "" }
+
+                Feld { text: App.uiText(App.language, "InfoType") }
+                Wert { text: infoDialog.d.typeLabel || "" }
+
+                Feld { text: App.uiText(App.language, "InfoSize") }
+                Wert { text: infoDialog.groesse(infoDialog.d.bytes) }
+
+                //  Ohne Erstelldatum faellt die Zeile weg.
+                Feld {
+                    text: App.uiText(App.language, "InfoCreated")
+                    visible: infoDialog.zeit(infoDialog.d.created).length > 0
+                }
+                Wert {
+                    text: infoDialog.zeit(infoDialog.d.created)
+                    visible: text.length > 0
+                }
+
+                Feld { text: App.uiText(App.language, "InfoModified") }
+                Wert { text: infoDialog.zeit(infoDialog.d.modified) }
+
+                Feld { text: App.uiText(App.language, "InfoLocation") }
+                Wert { text: infoDialog.d.folder || "" }
             }
         }
     }

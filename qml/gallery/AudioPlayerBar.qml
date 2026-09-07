@@ -236,10 +236,14 @@ Rectangle {
             anchors { left: parent.left; right: parent.right; bottom: parent.bottom }
             height: 16
 
+            //  KEIN `width: visible ? implicitWidth : 0` an einem `Text`: Qt
+            //  meldet dafuer eine Bindungsschleife (die Breite haengt an der
+            //  eigenen natuerlichen Breite) und rechnet sie bei jeder
+            //  Groessenaenderung neu. Der Platz wird stattdessen im Rand des
+            //  Fortschrittsbalkens beruecksichtigt.
             Text {
                 id: posLbl
                 visible: !bar.narrow
-                width: visible ? implicitWidth : 0
                 anchors { left: parent.left; verticalCenter: parent.verticalCenter }
                 text: Audio.formatTime(Audio.position)
                 color: App.themeTextMuted
@@ -248,7 +252,6 @@ Rectangle {
             Text {
                 id: durLbl
                 visible: !bar.narrow
-                width: visible ? implicitWidth : 0
                 anchors { right: parent.right; verticalCenter: parent.verticalCenter }
                 text: Audio.formatTime(Audio.duration)
                 color: App.themeTextMuted
@@ -257,7 +260,13 @@ Rectangle {
 
             Item {
                 id: trackArea
-                anchors { left: posLbl.right; leftMargin: 8; right: durLbl.left; rightMargin: 8
+                //  An den Rand des Elternteils, nicht an die Marken: eine
+                //  unsichtbare Marke behaelt ihre Breite, und in der schmalen
+                //  Leiste soll der Balken durchlaufen.
+                anchors { left: parent.left
+                          leftMargin: 8 + (bar.narrow ? 0 : posLbl.width)
+                          right: parent.right
+                          rightMargin: 8 + (bar.narrow ? 0 : durLbl.width)
                           verticalCenter: parent.verticalCenter }
                 height: 16                      // Trefferfläche, sichtbar sind 5 px
 

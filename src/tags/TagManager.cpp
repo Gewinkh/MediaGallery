@@ -39,6 +39,11 @@ void TagManager::scheduleCategoriesChanged() {
     if (!m_signalTimer.isActive()) m_signalTimer.start();
 }
 
+void TagManager::notePersistedStateReloaded() {
+    scheduleTagsChanged();
+    scheduleCategoriesChanged();
+}
+
 void TagManager::flushPendingSignals() {
     m_signalTimer.stop();
     m_undoStepOpen = false;
@@ -48,14 +53,24 @@ void TagManager::flushPendingSignals() {
     if (c) emit categoriesChanged();
 }
 
-void TagManager::beginUndoStep(const mg::tagmark::Mark& mark) {
+void TagManager::beginUndoStep(const mg::tagmark::Mark& mark, bool deltaFaehig) {
     if (!m_storage) return;
     if (!m_redo.isEmpty()) { m_redo.clear(); emit undoStackChanged(); }
     //  In einer Gruppe entsteht GENAU EIN Schritt - beim ersten Mal, mit der
     //  Marke der Gruppe.
     if (m_undoGroupDepth > 0) {
-        if (m_undoGroupStepId != 0) return;
+        if (m_undoGroupStepId != 0) {
+            //  Ein Vorgang, der mehr aendert als Datei-Tags, hebt den offenen
+            //  Delta-Schritt auf den ganzen Stand - SOLANGE er noch nichts
+            //  geaendert hat.
+            if (!deltaFaehig) {
+                if (UndoStep* offen = undoStepById(m_undoGroupStepId))
+                    aufSchnappschussHeben(*offen);
+            }
+            return;
+        }
     } else if (m_undoStepOpen) {
+        if (!deltaFaehig && !m_undo.isEmpty()) aufSchnappschussHeben(m_undo.last());
         return;                            // schon ein Schritt in diesem Durchlauf
     }
 
@@ -63,8 +78,17 @@ void TagManager::beginUndoStep(const mg::tagmark::Mark& mark) {
     step.id     = m_undoNextId++;
     step.mark   = (m_undoGroupDepth > 0 && m_undoGroupHasMark) ? m_undoGroupMark : mark;
     step.folder = m_storage->folderPath();
-    step.state  = m_storage->tagStateSnapshot();
-    step.bytes  = step.state.size();
+    if (deltaFaehig) {
+        //  Kein Schnappschuss: der Schritt sammelt gleich, was er anfasst. Die
+        //  Farbtabelle als Ganzes mitzunehmen kostet nichts (implizit geteilt)
+        //  und faengt einen Tag, der in diesem Schritt erst entsteht.
+        step.delta        = true;
+        step.colorsBefore = m_storage->tagColors();
+        step.bytes        = 0;
+    } else {
+        step.state = m_storage->tagStateSnapshot();
+        step.bytes = step.state.size();
+    }
     m_undo.append(step);
     m_undoBytes += step.bytes;
     if (m_undoGroupDepth > 0) m_undoGroupStepId = step.id;
@@ -106,7 +130,8 @@ void TagManager::noteForeignFolder(const QString& folderPath, const mg::tagmark:
     UndoStep& step = m_undo.last();
 
     const QString side = folderPath + QLatin1Char('/')
-                       + QFileInfo(folderPath).fileName() + QStringLiteral(".json");
+                       + QFileInfo(folderPath).fileName()
+                       + QLatin1String(JsonStorage::kEndung);
     if (step.foreign.contains(side)) return;      // in diesem Schritt schon gesichert
 
     QByteArray before;                            // leer = gab es vorher nicht
@@ -120,6 +145,59 @@ void TagManager::noteForeignFolder(const QString& folderPath, const mg::tagmark:
     step.bytes += before.size();
     m_undoBytes += before.size();
     step.foreign.insert(side, before);
+    pruneUndo();
+}
+
+//  Die Tags EINER Datei sichern, bevor sie sich aendern. Nur fuer Delta-
+//  Schritte, und je Datei nur einmal - der erste Stand ist der, der zurueckmuss.
+void TagManager::merkeDateiVorher(const QString& fileName) {
+    if (!m_storage || fileName.isEmpty()) return;
+    UndoStep* step = (m_undoGroupDepth > 0 && m_undoGroupStepId != 0)
+                         ? undoStepById(m_undoGroupStepId)
+                         : (m_undo.isEmpty() ? nullptr : &m_undo.last());
+    if (!step || !step->delta || step->tagsBefore.contains(fileName)) return;
+    step->tagsBefore.insert(fileName, m_storage->getTags(fileName));
+    const int vorher = step->bytes;
+    step->bytes = deltaGroesse(*step);
+    m_undoBytes += step->bytes - vorher;
+}
+
+//  Grobe Groesse eines Delta-Schritts fuer den RAM-Deckel: Name plus Tags.
+int TagManager::deltaGroesse(const UndoStep& step) {
+    int n = 0;
+    for (auto it = step.tagsBefore.cbegin(); it != step.tagsBefore.cend(); ++it) {
+        n += int(it.key().size()) * 2 + 16;
+        for (const QString& t : it.value()) n += int(t.size()) * 2 + 8;
+    }
+    return n;
+}
+
+//  Ein Delta reicht nicht mehr: der Schritt bekommt den ganzen Stand. Der muss
+//  den Stand VOR dem Schritt zeigen - also erst das Delta zurueckdrehen, dann
+//  den Schnappschuss nehmen, dann wieder vorspulen.
+void TagManager::aufSchnappschussHeben(UndoStep& step) {
+    if (!step.delta || !m_storage) return;
+
+    QHash<QString, QStringList> jetzt;
+    for (auto it = step.tagsBefore.cbegin(); it != step.tagsBefore.cend(); ++it) {
+        jetzt.insert(it.key(), m_storage->getTags(it.key()));
+        m_storage->setTags(it.key(), it.value());
+    }
+    const QHash<QString, QColor> farbenJetzt = m_storage->tagColors();
+    m_storage->setTagColors(step.colorsBefore);
+
+    const int vorher = step.bytes;
+    step.state = m_storage->tagStateSnapshot();
+    step.bytes = int(step.state.size());
+    m_undoBytes += step.bytes - vorher;
+
+    m_storage->setTagColors(farbenJetzt);
+    for (auto it = jetzt.cbegin(); it != jetzt.cend(); ++it)
+        m_storage->setTags(it.key(), it.value());
+
+    step.delta = false;
+    step.tagsBefore.clear();
+    step.colorsBefore.clear();
     pruneUndo();
 }
 
@@ -193,9 +271,19 @@ void TagManager::applyStep(QList<UndoStep>& from, QList<UndoStep>& to, bool redo
     back.id     = m_undoNextId++;
     back.mark   = step.mark;
     back.folder = folder;
-    back.state  = m_storage->tagStateSnapshot();
-    back.bytes  = back.state.size();
     back.foreignComplete = step.foreignComplete;
+    //  Ein Delta wird mit einem Delta beantwortet: dieselben Dateien, ihr
+    //  JETZIGER Stand. Der ganze Stand faellt damit auf beiden Seiten weg.
+    if (step.delta) {
+        back.delta        = true;
+        back.colorsBefore = m_storage->tagColors();
+        for (auto it = step.tagsBefore.cbegin(); it != step.tagsBefore.cend(); ++it)
+            back.tagsBefore.insert(it.key(), m_storage->getTags(it.key()));
+        back.bytes = deltaGroesse(back);
+    } else {
+        back.state = m_storage->tagStateSnapshot();
+        back.bytes = int(back.state.size());
+    }
 
     int restored = 0;
     for (auto it = step.foreign.cbegin(); it != step.foreign.cend(); ++it) {
@@ -215,8 +303,17 @@ void TagManager::applyStep(QList<UndoStep>& from, QList<UndoStep>& to, bool redo
         if (f.commit()) ++restored;
     }
 
-    m_storage->restoreTagState(step.state);
-    if (!folder.isEmpty()) m_storage->saveFolder(folder);
+    if (step.delta) {
+        for (auto it = step.tagsBefore.cbegin(); it != step.tagsBefore.cend(); ++it)
+            m_storage->setTags(it.key(), it.value());
+        m_storage->setTagColors(step.colorsBefore);
+    } else {
+        m_storage->restoreTagState(step.state);
+    }
+    //  Ueber den SAMMELNDEN Weg wie jede andere Aenderung: geschrieben wird am
+    //  Ende des Ereignisdurchlaufs im Arbeitsfaden, nicht zwischen Tastendruck
+    //  und naechstem Bild. Wer die Datei liest, flusht vorher ohnehin.
+    if (!folder.isEmpty()) m_storage->saveCurrentFolder();
 
     to.append(back);
     if (&to == &m_undo) {
@@ -266,10 +363,11 @@ Thing catThing(const QStringList& path) {
 // Eine Zuordnung eröffnet einen Schritt und schreibt seine `+n/-m`-Marke fort. Der Schritt sammelt, was im
 // selben Durchlauf oder derselben Sitzung anfällt - drei einzelne Klicks sind drei Schritte.
 void TagManager::beginCountedStep(bool added, mg::tagmark::Thing t,
-                                  const QString& name, const QStringList& path) {
+                                  const QString& name, const QStringList& path,
+                                  bool deltaFaehig) {
     const bool fremdeGruppe = m_undoGroupDepth > 0 && m_undoGroupHasMark
                               && !m_undoGroupCounted;
-    beginUndoStep(mkCounted(added ? 1 : 0, added ? 0 : 1, t, name, path));
+    beginUndoStep(mkCounted(added ? 1 : 0, added ? 0 : 1, t, name, path), deltaFaehig);
     if (m_undo.isEmpty() || fremdeGruppe) return;
 
     UndoStep& step = m_undo.last();
@@ -303,7 +401,8 @@ void TagManager::setTagColor(const QString& tag, const QColor& c) {
 void TagManager::addTagToFile(const QString& fileName, const QString& tag) {
     QStringList tags = m_storage->getTags(fileName);
     if (!tags.contains(tag)) {
-        beginCountedStep(true, mg::tagmark::Thing::Tag, tag, {});
+        beginCountedStep(true, mg::tagmark::Thing::Tag, tag, {}, /*deltaFaehig=*/true);
+        merkeDateiVorher(fileName);
         tags.append(tag);
         m_storage->setTags(fileName, tags);
         m_storage->saveCurrentFolder();
@@ -325,7 +424,8 @@ void TagManager::createTag(const QString& name, const QColor& color) {
 void TagManager::removeTagFromFile(const QString& fileName, const QString& tag) {
     QStringList tags = m_storage->getTags(fileName);
     if (tags.contains(tag)) {
-        beginCountedStep(false, mg::tagmark::Thing::Tag, tag, {});
+        beginCountedStep(false, mg::tagmark::Thing::Tag, tag, {}, /*deltaFaehig=*/true);
+        merkeDateiVorher(fileName);
         tags.removeAll(tag);
         m_storage->setTags(fileName, tags);
         m_storage->saveCurrentFolder();
@@ -400,10 +500,12 @@ void TagManager::sweepSubfolders(const QString& rootFolder, const QString& tag) 
                             QDirIterator::Subdirectories);
             while (it.hasNext()) {
                 const QString dir = it.next();
-                const QString side = dir + QLatin1Char('/')
-                                   + QFileInfo(dir).fileName() + QStringLiteral(".json");
-                if (!QFile::exists(side))
-                    continue;               // Ordner ohne Sidecar: nichts zu tun
+                const QString basis = dir + QLatin1Char('/') + QFileInfo(dir).fileName();
+                const QString side = basis + QLatin1String(JsonStorage::kEndung);
+                //  Auch Ordner beruecksichtigen, deren Ablage noch im alten
+                //  Format liegt - sie wird beim Speichern umgewandelt.
+                if (!QFile::exists(side) && !QFile::exists(basis + QStringLiteral(".json")))
+                    continue;               // Ordner ohne Ablage: nichts zu tun
                 JsonStorage st;
                 st.loadFolder(dir);
                 if (!st.allTags().contains(m_tag))
@@ -471,6 +573,7 @@ void TagManager::renameTag(const QString& oldName, const QString& newName) {
     m_storage->saveCurrentFolder();
     scheduleTagsChanged();
     scheduleCategoriesChanged();
+    emit tagRenamed(oldName, newName);
 }
 
 QList<TagCategory>& TagManager::categories() {

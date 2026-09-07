@@ -25,7 +25,6 @@ public:
     void setPalette(const SyntaxPalette& p);
     QString languageId() const { return m_languageId; }
 
-    void setSearchTerm(const QString& term, bool caseSensitive);
 
 protected:
     void highlightBlock(const QString& text) override;
@@ -33,12 +32,10 @@ protected:
 private:
     QString       m_languageId;
     SyntaxPalette m_palette;
-    mg::search::Pattern m_searchPattern;
     //  Fertige Formate je Token-Klasse: `QTextCharFormat` bei JEDEM Block neu
     //  zu bauen waere die teuerste Zeile des ganzen Wegs.
     QTextCharFormat m_formats[int(Tok::Count)];
     void rebuildFormats();
-    void markiereFundstellen(const QString& text);
 };
 
 //  Die QML-Fassade. Haelt genau einen `Highlighter` und haengt ihn um, wenn
@@ -88,7 +85,6 @@ public:
                                            bool caseSensitive, bool wholeWords);
     Q_INVOKABLE int replaceAll(const QString& needle, const QString& replacement,
                                bool caseSensitive, bool wholeWords);
-    Q_INVOKABLE void highlightMatches(const QString& needle, bool caseSensitive);
 
     Q_INVOKABLE bool usesRegex(const QString& needle) const;
 

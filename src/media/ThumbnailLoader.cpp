@@ -68,9 +68,16 @@ ThumbnailLoader::ThumbnailLoader(QObject* parent)
     : QObject(parent)
     , m_pool(new QThreadPool(this))
 {
-    const int threads = qMin(8, qMax(2, QThread::idealThreadCount()));
+    //  Nur fuer Pruefstaende: mit EINEM Faden ist die Abarbeitung die
+    //  Warteschlange selbst und damit ueberhaupt beobachtbar.
+    const int erzwungen = qEnvironmentVariableIntValue("MG_THUMB_THREADS");
+    const int threads = erzwungen > 0 ? erzwungen
+                                      : qMin(8, qMax(2, QThread::idealThreadCount()));
     m_pool->setMaxThreadCount(threads);
     m_pool->setExpiryTimeout(30000);
+    m_welle.setSingleShot(true);
+    m_welle.setInterval(0);
+    connect(&m_welle, &QTimer::timeout, this, [this] { ++m_priority; });
 }
 
 bool ThumbnailLoader::setTextPreviewStyle(bool zeigeInhalt,
@@ -176,7 +183,9 @@ void ThumbnailLoader::requestThumbnail(const QString& filePath) {
             emit thumbnailFailed(path);
     }, Qt::QueuedConnection);
 
-    m_pool->start(task, ++m_priority);
+    //  Alle Anforderungen dieses Durchlaufs teilen sich eine Prioritaet.
+    if (!m_welle.isActive()) m_welle.start();
+    m_pool->start(task, m_priority);
 }
 
 void ThumbnailLoader::cancelThumbnail(const QString& filePath) {
@@ -1046,6 +1055,9 @@ QImage ThumbnailTask::generateTextThumbnail(const QString& path, const QSize& si
     //  auch fuer HTML: wer den Inhalt nicht sehen will, will auch keine
     //  Design-Karte.
     if (!stil.zeigeInhalt)
+        return generateTypeCardThumbnail(path, size, stil);
+    //  Die eigene Ablage ist binaer - ihre Bytes als Text waeren Zeichensalat.
+    if (path.endsWith(QLatin1String(".mgstore"), Qt::CaseInsensitive))
         return generateTypeCardThumbnail(path, size, stil);
 
     // HTML/HTM -> gerenderte Design-Karte (Hero-Nachbildung) statt Quelltext.

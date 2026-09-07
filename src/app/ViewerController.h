@@ -25,6 +25,10 @@ public:
     static constexpr qint64 kMaxTextBytes = 8 * 1024 * 1024;
 
     Q_INVOKABLE QString readTextFile(const QString& filePathOrUrl) const;
+    //  Die eigene Ablage wird lesbar angezeigt, aber nie zurueckgeschrieben.
+    Q_INVOKABLE bool    isStorageFile(const QString& filePathOrUrl) const;
+    //  Dieselbe Datei als Hex-Auszug - fuer den, der die Bytes selbst sehen will.
+    Q_INVOKABLE QString readStorageRaw(const QString& filePathOrUrl) const;
 
     //  Ist die Datei groesser als der Deckel, liegt also nur ihr Anfang vor?
     //  QML fragt das beim Oeffnen und sperrt dann das Schreiben. Kostet einen

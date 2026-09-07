@@ -461,6 +461,20 @@ void AppSettings::setTextPreviewContent(bool v) {
     m_settings.setValue("gallery/textPreviewContent", v);
 }
 
+bool AppSettings::pdfPreviewContent() const {
+    return m_settings.value("gallery/pdfPreviewContent", true).toBool();
+}
+void AppSettings::setPdfPreviewContent(bool v) {
+    m_settings.setValue("gallery/pdfPreviewContent", v);
+}
+
+bool AppSettings::imagePreviewContent() const {
+    return m_settings.value("gallery/imagePreviewContent", true).toBool();
+}
+void AppSettings::setImagePreviewContent(bool v) {
+    m_settings.setValue("gallery/imagePreviewContent", v);
+}
+
 bool AppSettings::monoPlay() const {
     return m_settings.value("ui/monoPlay", true).toBool();
 }

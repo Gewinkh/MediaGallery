@@ -68,6 +68,7 @@ DatevController::DatevController(QObject* parent) : QObject(parent) {
 
 DatevController::~DatevController() {
     if (m_abbruch) m_abbruch->store(true);
+    if (m_suchAbbruch) m_suchAbbruch->store(true);
     m_pool.waitForDone();
 }
 
@@ -75,6 +76,11 @@ void DatevController::setSource(const QString& pathOrUrl) {
     const QString pfad = mg::toLocalPath(pathOrUrl);
     if (pfad == m_source) return;
     if (m_abbruch) m_abbruch->store(true);
+
+    if (m_suchAbbruch) m_suchAbbruch->store(true);
+    m_suchText.clear();
+    m_suchLaeuft = false;
+    m_suche.leeren();
 
     m_source = pfad;
     m_datei.reset();
@@ -86,6 +92,7 @@ void DatevController::setSource(const QString& pathOrUrl) {
     emit sourceChanged();
     emit columnsChanged();
     emit stateChanged();
+    emit searchChanged();
     if (pfad.isEmpty()) return;
 
     m_abbruch = std::make_shared<std::atomic<bool>>(false);
@@ -119,6 +126,7 @@ void DatevController::spaltenNeuRechnen() {
 
     const int n = int(m_datei->spalten.size());
     m_spalten.reserve(n);
+
     for (int i = 0; i < n; ++i) {
         if (!m_alleSpalten && i < m_datei->spalteGefuellt.size()
             && !m_datei->spalteGefuellt.at(i)) continue;
@@ -138,6 +146,65 @@ void DatevController::setShowAllColumns(bool v) {
     if (v == m_alleSpalten) return;
     m_alleSpalten = v;
     spaltenNeuRechnen();
+    //  Die Suche laeuft ueber die GEZEIGTEN Spalten - mit den ausgeblendeten
+    //  kommen auch deren Treffer dazu.
+    if (!m_suchText.isEmpty()) { m_suchAb = 0; sucheStarten(); }
+}
+
+void DatevController::search(const QString& text, bool caseSensitive,
+                             bool wholeCell, int fromRow) {
+    m_suchText = text;
+    m_suchOpt.gross = caseSensitive;
+    m_suchOpt.ganzeZelle = wholeCell;
+    m_suchAb = qMax(0, fromRow);
+    sucheStarten();
+}
+
+void DatevController::sucheStarten() {
+    if (m_suchAbbruch) m_suchAbbruch->store(true);
+    if (!m_datei || m_suchText.isEmpty()) {
+        m_suchLaeuft = false;
+        m_suche.leeren();
+        emit searchChanged();
+        return;
+    }
+    m_suchLaeuft = true;
+    emit searchChanged();
+
+    //  Nur die gezeigten Spalten: ein Treffer in einer ausgeblendeten waere ein
+    //  Sprung auf eine Zelle, die niemand sieht.
+    QList<bool> maske;
+    if (!m_alleSpalten) maske = m_datei->spalteGefuellt;
+
+    m_suchAbbruch = std::make_shared<std::atomic<bool>>(false);
+    auto* self = this;
+    m_pool.start(new mg::table::SuchTask(
+        this, m_datei, &m_datei->buchungen, 0, int(m_datei->buchungen.size()),
+        m_suchText, m_suchOpt, maske, {}, m_suchAbbruch,
+        [self](QList<mg::table::Treffer> t, bool mehr, QList<int>) {
+            self->suchErgebnis(std::move(t), mehr);
+        }));
+}
+
+void DatevController::suchErgebnis(QList<mg::table::Treffer> treffer, bool mehr) {
+    m_suchLaeuft = false;
+    m_suche.setzeTreffer(std::move(treffer), mehr);
+    m_suche.gehZuAb(m_suchAb);
+    emit searchChanged();
+}
+
+void DatevController::stepMatch(int delta) {
+    if (m_suche.anzahl() == 0) return;
+    m_suche.schritt(delta);
+    emit searchChanged();
+}
+
+void DatevController::clearSearch() {
+    if (m_suchAbbruch) m_suchAbbruch->store(true);
+    m_suchText.clear();
+    m_suchLaeuft = false;
+    m_suche.leeren();
+    emit searchChanged();
 }
 
 QString DatevController::identifier() const {
@@ -190,6 +257,14 @@ int DatevController::rowCount() const {
 
 int DatevController::columnCount() const {
     return m_datei ? int(m_datei->spalten.size()) : 0;
+}
+
+QVariantList DatevController::rowMatches(int row) const {
+    QVariantList out;
+    const QList<int> spalten = m_suche.spaltenIn(row);
+    out.reserve(spalten.size());
+    for (int s : spalten) out.append(s);
+    return out;
 }
 
 QString DatevController::cell(int row, int column) const {

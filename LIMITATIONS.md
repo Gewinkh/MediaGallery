@@ -49,6 +49,19 @@ tiles stay visible but greyed out with a hover note.
 
 ## Gallery and files
 
+
+**With a very large selection the gallery draws more slowly.**
+What you notice: after *Select all* in a folder of several hundred files,
+scrolling is less smooth than with nothing selected.
+Why: every selected tile carries a translucent accent area over the whole tile,
+a badge and a thicker border. Measured with 600 tiles, all selected: **9.7 to
+11.6 ms per frame against 6.0 ms** with none selected; switching off the
+translucent area alone brings it back to 6.9 ms, so that area is 3.5 of the
+4.5 ms. The selection itself is not the cost - setting it takes 1.6 ms for 5,000
+files, and dragging a band 0.16 ms per mouse move.
+Workaround / status: deliberately left as it is - every cheaper way changes how
+a selected tile looks (without the rounded corners the area would stand over the
+card edge, without the area only border and check mark would remain).
 **"Show all files" really shows everything**, including file types the app cannot
 open (archives, executables).
 Why: anything narrower would hide the `.bak` backups the switch exists to reveal.
@@ -152,6 +165,21 @@ The strip's space is reserved permanently, so nothing shifts when a drag starts.
 
 ## Tags and categories
 
+
+**In a very large folder, tagging still costs a few milliseconds.**
+What you notice: in a folder of 20,000 files, assigning a tag takes about 10 ms
+and *Undo* in the tag bar about 13 ms - both below one frame, but measurable.
+Why: measured with `bench_tags`. What remains is `tagsChanged`: every row's tags
+are re-read (7 ms) and the gallery is re-filtered (2 ms) whenever anything about
+tags changes. The two big posts are gone: an undo step for a plain assignment no
+longer stores the whole state but only the files it touches, and the sidecar is
+written in a worker thread instead of between the gesture and the next frame.
+Undo went from 138 ms to 13 ms, an assignment from 21 ms to 10 ms. Dragging a
+category in the panel is free (0.001 ms).
+Workaround / status: what is left would need a signal per file instead of one
+for everything - noted in `NEXT.md`. Steps that change more than file tags
+(categories, colours, renames) still hold a full snapshot; that is deliberate,
+because a wrong undo is worse than a slow one.
 **Setting a date changes the file's modification time - and that has side
 effects.**
 Why: the date is written to the file so the rest of the system sees it. Backup
@@ -165,14 +193,14 @@ Workaround / status: on a read-only file, or a file system that stores no
 creation date, the app says so and changes nothing.
 
 **Tags and categories belong to a folder**, not to the whole library.
-Why: they live in the folder's JSON sidecar next to the media, so a folder can be
+Why: they live in the folder's own `.mgstore` file next to the media, so a folder can be
 moved or copied and keeps its metadata.
 Consequence: a tag created in one folder does not appear in another; moving a file
 into another folder carries its tag with it only if the target folder does not
 already define that tag differently.
 
 **The tag undo only reaches back over the current folder, and only one folder at a time.**
-Why: it works by snapshotting the folder's JSON sidecar before each change, and a snapshot
+Why: it works from the folder's own tag state before each change, and that state
 is only meaningful for the folder it came from. Opening another folder therefore clears the
 stack, and a step whose folder is no longer the open one is discarded rather than written
 back. The same holds for the second pane: each half has its own stack.
@@ -632,14 +660,56 @@ else with separators into tables, and a `.txt` is a text file first.
 Workaround / status: rename the file to `.csv`, and it opens as a table. Whether
 `.txt` should get an opt-in switch is an open question, kept in `NEXT.md` §3c.
 
-**The table shows; it does not edit.**
+**The table shows and searches; it does not edit.**
 What you notice: there is no cell editing, no inserting or deleting rows, no
-sorting, no search, and no saving.
+sorting, and no saving.
 Why: display was built first on purpose. Editing needs a mutable model, undo,
 and a writer that leaves the untouched parts of the file byte-for-byte alone -
 each of those is its own piece of work.
-Workaround / status: edit in the text view, which is a full editor. The order of
-the next steps is recorded in `NEXT.md` §3c: search, then sorting, then editing.
+Workaround / status: edit in the text view, which is a full editor. Searching is
+built (`Ctrl+F`); the order of the remaining steps is recorded in `NEXT.md` §3c.
+
+**The search jumps, it does not filter.**
+What you notice: searching marks the hits and moves to them one by one. It never
+reduces the table to the matching rows, and there is no way to search one chosen
+column.
+Why: the view is a display, not a query tool - a filter would have to say what it
+did to the row numbers and the footer totals, and a column picker needs a place
+in a bar that deliberately holds five controls. Both were left for the step that
+brings sorting and hiding columns.
+Workaround / status: `Zelle` narrows a search to whole-cell matches, which is
+what most column-specific searches are really after.
+
+**A search stops at 200,000 hits.**
+What you notice: searching for a single letter in a very large file shows a count
+with a `+` behind it, and the last hits cannot be reached.
+Why: a deliberate cap. Every hit costs 8 bytes, and a one-letter search over the
+32 MB the reader admits would produce millions of them - measured with
+`bench_tablefind`: 100,000 rows by 20 columns hit the cap after 5 ms.
+Workaround / status: type more characters. The cap is a constant
+(`kMaxTreffer` in `src/table/TableSearch.h`).
+
+**Searching a large table takes a moment.**
+What you notice: with 100,000 rows the count appears a fraction of a second after
+you stop typing, not while you type.
+Why: measured with `bench_tablefind` at 100,000 rows by 20 columns: 57 ms per run
+without case sensitivity, 15 ms with it. The run therefore happens in a worker
+thread and is debounced by 150 ms, so typing does not queue up runs that are
+thrown away.
+Workaround / status: `Aa` makes a search roughly four times faster. Nothing
+blocks meanwhile - the table stays scrollable while the search runs.
+
+**Switching a DATEV batch to "all columns" freezes the window briefly.**
+What you notice: turning on all 125 columns in the footer takes about a tenth of
+a second before the table redraws.
+Why: measured 122 ms at 20,000 bookings. It is not the column widths (computing
+them in one pass instead of per column measured identical) and not the wrapper
+around each cell (removing it measured identical) - it is building 125 text
+elements for every visible row. Scrolling with 125 columns costs 6.7 ms per
+frame against 2.4 ms with 20.
+Workaround / status: leave the view on the filled columns, which is the default.
+A table body drawn as a single item instead of one element per cell is the real
+answer and is noted with the editing plan in `NEXT.md`.
 
 **Very wide or very tall files are read up to 32 MB.**
 What you notice: the footer says the file was too large and only the beginning
@@ -689,6 +759,16 @@ fire (a single-column list, a title with only one row under it).
 ---
 
 ## DATEV files
+
+**The search only covers the columns that are shown.**
+What you notice: `Ctrl+F` in a booking batch does not find a value that sits in
+one of the columns hidden because they are empty in every row - until you switch
+the footer to *all columns*, which searches again.
+Why: a hit in a hidden column would be a jump to a cell nobody can see. A default
+batch shows 20 of 125 columns, and the hidden ones are hidden because they are
+empty, so the case is rare by construction.
+Workaround / status: switch on all columns in the footer; the search re-runs by
+itself.
 
 **Most header fields are shown as "Dateikopf 7", "Dateikopf 8" and so on.**
 What you notice: the fold-out header block names five fields (identifier, version
@@ -773,10 +853,6 @@ what it still cannot do stays behind in the sections above.
   code changes as long as one of the five scanner kinds fits.
 - **Writing tags** (changing title or artist of an audio file) - reading is solid,
   writing is deliberately not built: one wrong byte damages the file.
-- **Searching inside a table.** The next step for the CSV view, and the only one
-  already decided: same shape as the editor's find bar (`Ctrl+F` opens, `Esc`
-  closes). Still open: whether it searches every column or a chosen one, whether
-  it jumps to the row or filters, and whether it stays inside the selected block.
 - **Sorting, hiding columns, freezing the first column, copying a cell.** All
   deliberately deferred - each is its own piece of work, and the order they are
   built in is a decision to take rather than to drift into.

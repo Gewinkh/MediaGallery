@@ -16,6 +16,7 @@
         <file>qml/viewer/TextSurface.qml</file>
         <file>qml/datev/DatevSurface.qml</file>
         <file>qml/table/DataTable.qml</file>
+        <file>qml/table/TableFindBar.qml</file>
         <file>qml/table/TableSurface.qml</file>
         <file>qml/viewer/HtmlSurface.qml</file>
         <file>qml/viewer/HtmlHost.qml</file>

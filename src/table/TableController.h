@@ -3,6 +3,7 @@
 //  Je Kachel eine Instanz, damit zwei Haelften verschiedene Dateien zeigen.
 //  Zeigt nur an; Bearbeiten und Zurueckschreiben sind noch nicht gebaut.
 #include "table/DelimitedText.h"
+#include "table/TableSearch.h"
 
 #include <QObject>
 #include <QStringList>
@@ -37,6 +38,22 @@ class TableController : public QObject {
     Q_PROPERTY(int rowCount    READ rowCount    NOTIFY stateChanged)
     Q_PROPERTY(int columnCount READ columnCount NOTIFY stateChanged)
     Q_PROPERTY(QVariantList columns READ columns NOTIFY stateChanged)
+
+    //  Suche: die Trefferliste entsteht im Arbeitsfaden - gemessen kostet ein
+    //  Lauf ueber 100.000 Zeilen mal 20 Spalten 119 ms, im GUI-Faden waere das
+    //  je Tastendruck ein Ruckler. `searchRevision` steigt bei jeder Aenderung;
+    //  die Anzeige haengt ihre Zell-Bindungen daran.
+    Q_PROPERTY(int  matchCount   READ matchCount   NOTIFY searchChanged)
+    Q_PROPERTY(int  matchIndex   READ matchIndex   NOTIFY searchChanged)
+    Q_PROPERTY(int  matchRow     READ matchRow     NOTIFY searchChanged)
+    Q_PROPERTY(int  matchColumn  READ matchColumn  NOTIFY searchChanged)
+    Q_PROPERTY(bool matchOverflow READ matchOverflow NOTIFY searchChanged)
+    //  Treffer in den ANDEREN Bloecken derselben Datei - nur gezaehlt, wenn im
+    //  gezeigten keiner steht: sonst suchte man in einer Datei mit fuenf
+    //  Tabellen im Nichts, ohne es zu merken.
+    Q_PROPERTY(int  otherBlockMatches READ otherBlockMatches NOTIFY searchChanged)
+    Q_PROPERTY(bool searching     READ searching     NOTIFY searchChanged)
+    Q_PROPERTY(int  searchRevision READ searchRevision NOTIFY searchChanged)
 
     Q_PROPERTY(QStringList warnings READ warnings NOTIFY stateChanged)
     Q_PROPERTY(bool truncated READ truncated NOTIFY stateChanged)
@@ -73,6 +90,35 @@ public:
     //  je sichtbarer Zeile alle Spalten statt der gezeigten.
     Q_INVOKABLE QString cell(int row, int column) const;
 
+    int  matchCount() const  { return m_suche.anzahl(); }
+    int  matchIndex() const  { return m_suche.index(); }
+    int  matchRow() const    { return m_suche.index() < 0 ? -1 : m_suche.aktuell().zeile; }
+    int  matchColumn() const { return m_suche.index() < 0 ? -1 : m_suche.aktuell().spalte; }
+    bool matchOverflow() const { return m_suche.mehr(); }
+    int  otherBlockMatches() const { return m_andereBloecke; }
+    //  Die ANDEREN Tabellen mit Treffern: {index, title, count} - damit die
+    //  Leiste sie benennen und anklickbar machen kann.
+    Q_INVOKABLE QVariantList otherBlocksWithMatches() const;
+    Q_INVOKABLE void jumpToBlock(int index);
+    bool searching() const   { return m_suchLaeuft; }
+    int  searchRevision() const { return m_suche.revision(); }
+
+    //  Neu suchen. `fromRow` ist die Zeile, ab der der erste Treffer gesucht
+    //  wird - die Anzeige gibt ihre oberste sichtbare mit, damit der Sprung
+    //  nicht ans Dateiende zurueckfaellt.
+    Q_INVOKABLE void search(const QString& text, bool caseSensitive,
+                            bool wholeCell, int fromRow);
+    //  Einen Treffer weiter (+1) oder zurueck (-1), umlaufend.
+    Q_INVOKABLE void stepMatch(int delta);
+    Q_INVOKABLE void clearSearch();
+    //  Die Frage je sichtbarer Zeile: WELCHE Spalten sind Treffer? Je Zelle zu
+    //  fragen hiesse, je Zelle eine Marke anzulegen - gemessen 3,78 -> 4,32 ms
+    //  je Bild, auch ohne laufende Suche.
+    Q_INVOKABLE QVariantList rowMatches(int row) const;
+    Q_INVOKABLE bool cellMatches(int row, int column) const {
+        return m_suche.trifft(row, column);
+    }
+
     //  Ist die Zeile eine Leerzeile der Datei? Die Anzeige laesst sie dann
     //  ohne Streifen stehen, damit die Luecke als Luecke zu sehen ist.
     Q_INVOKABLE bool rowEmpty(int row) const;
@@ -81,12 +127,15 @@ signals:
     void sourceChanged();
     void stateChanged();
     void blockChanged();
+    void searchChanged();
 
 private:
     void neuLesen();
     void ergebnisUebernehmen(std::shared_ptr<Datei> d, const QString& fehler);
     void spaltenNeuRechnen();
     void bloeckeNeuBauen();
+    void sucheStarten();
+    void suchErgebnis(QList<Treffer> treffer, bool mehr, QList<int> proBlock);
     //  Der gerade gezeigte Bereich; bei -1 die ganze Datei als EIN Bereich.
     Bereich aktiv() const;
 
@@ -102,8 +151,17 @@ private:
     QStringList  m_warnungen;
     int m_spaltenZahl = 0;
 
+    Suchzustand  m_suche;
+    QString      m_suchText;
+    SuchOptionen m_suchOpt;
+    int          m_suchAb = 0;
+    int          m_andereBloecke = 0;
+    QList<int>   m_trefferProBlock;   // je Bereich, Reihenfolge wie m_bereiche
+    bool         m_suchLaeuft = false;
+
     QThreadPool m_pool;
     std::shared_ptr<std::atomic<bool>> m_abbruch;
+    std::shared_ptr<std::atomic<bool>> m_suchAbbruch;
 };
 
 }  // namespace mg::table

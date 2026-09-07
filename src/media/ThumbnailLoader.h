@@ -4,6 +4,7 @@
 #include <QObject>
 #include <QRunnable>
 #include <QThreadPool>
+#include <QTimer>
 #include <QString>
 #include <QSet>
 #include <QHash>
@@ -68,7 +69,12 @@ private:
     QHash<QString, ThumbnailTask*> m_queued;    // path -> noch nicht beendeter Task
     QHash<QString, CancelFlag>     m_flags;     // path -> kooperatives Abbruch-Flag
     std::atomic<uint64_t>          m_generation{0};
-    int                            m_priority = 0;  // monoton steigend (neueste zuerst)
+    //  Eine Prioritaet JE WELLE: stiege sie mit jeder Anforderung, liefe die
+    //  zuletzt angeforderte zuerst und der Ordner fuellte sich von unten.
+    //  Gleiche Prioritaet haelt QThreadPool in Anforderungsreihenfolge; eine
+    //  neue Welle beim Scrollen bekommt eine hoehere und geht vor.
+    int                            m_priority = 0;
+    QTimer                         m_welle;      // Ende des Ereignisdurchlaufs
 };
 
 //  ThumbnailTask - erzeugt EINE Cache-Datei im Pool-Thread.

@@ -46,6 +46,7 @@ Rectangle {
     signal newCategoryRequested(string filePath)
     signal companionRemoveRequested(string filePath, int kind)
     signal audioExtractRequested(string filePath)
+    signal infoRequested(string filePath)
     signal folderOpenRequested(string folderPath)
     signal folderRenameRequested(string folderPath, string currentName)
     signal folderDeleteRequested(string folderPath, string displayName, int itemCount)
@@ -81,12 +82,24 @@ Rectangle {
                    || (tile.isFolder && tile.expanded))
                   ? App.themeAccent : App.themeBorder
 
+    //  Zustand 3 heisst „Vorschau bewusst aus" - dort steht der Dateityp, kein
+    //  Warnzeichen und kein Wartepunkt.
     Text {
         anchors.centerIn: parent
-        visible: !tile.listMode && !tile.isFolder && tile.thumbState !== 1 && !tile.covered
+        visible: !tile.listMode && !tile.isFolder && !tile.covered
+                 && tile.thumbState !== 1 && tile.thumbState !== 3
         text: tile.thumbState === 2 ? "\u26A0" : "\u2026"
         color: App.themeTextMuted
         font.pixelSize: 22
+    }
+    Text {
+        anchors.centerIn: parent
+        visible: !tile.listMode && !tile.isFolder && !tile.covered
+                 && tile.thumbState === 3 && tile.typeLabel.length > 0
+        text: tile.typeLabel
+        color: App.themeTextMuted
+        font.bold: true
+        font.pixelSize: Math.max(11, Math.min(28, tile.width * 0.22))
     }
 
     Image {
@@ -154,12 +167,14 @@ Rectangle {
             width: Math.max(24, tile.height - 12)
             height: width
 
-            // Textdateien zeigen immer ihren Typ, nie den Inhalt - unabhängig von der Einstellung: bei rund 30 px ist von
-            // fünf Zeilen Quelltext nichts zu erkennen, der Typ dagegen sofort.
-            readonly property bool zeigeTyp: !tile.isFolder && tile.mediaType === 4
-                                             && !tile.covered
+            // Text, PDF und DOCX zeigen hier immer ihren Typ, nie den Inhalt: bei rund 30 px ist von fünf Zeilen oder
+            // einer Seite nichts zu erkennen, der Typ dagegen sofort - und eine leere DOCX fiel sonst auf die
+            // allgemeine Dokumentkarte zurück. Zustand 3 heisst „Vorschau bewusst aus" (die Bilder).
+            readonly property bool zeigeTyp: !tile.isFolder && !tile.covered
                                              && tile.typeLabel.length > 0
-                                             && !tile.covered
+                                             && (tile.mediaType === 4 || tile.mediaType === 3
+                                                 || tile.mediaType === 5
+                                                 || tile.thumbState === 3)
 
             Image {
                 anchors.fill: parent
@@ -257,9 +272,12 @@ Rectangle {
     onMediaTypeChanged:    tile._wantFolderCount()
     Component.onCompleted: tile._wantFolderCount()
 
+    //  Bilder tragen ihr Kuerzel erst, wenn feststeht, dass keine Miniatur mehr
+    //  kommt - waehrend des Ladens waere das Abzeichen ein kurzes Aufblitzen.
     Rectangle {
         visible: !tile.listMode && !tile.isFolder && !tile.covered
                  && tile.thumbState !== 1 && tile.typeLabel.length > 0
+                 && !(tile.mediaType === 0 && tile.thumbState === 0)
         anchors.right: parent.right
         anchors.top: parent.top
         anchors.margins: 6
@@ -598,6 +616,13 @@ Rectangle {
                 height: visible ? implicitHeight : 0
                 text: App.uiText(App.language, "CtxRemoveBackup")
                 onTriggered: tile.companionRemoveRequested(tile.filePath, 2)
+            }
+
+            //  Immer da - auch fuer Ordner und fremde Dateitypen.
+            MenuSeparator {}
+            MenuItem {
+                text: App.uiText(App.language, "CtxFileInfo")
+                onTriggered: tile.infoRequested(tile.filePath)
             }
         }
     }

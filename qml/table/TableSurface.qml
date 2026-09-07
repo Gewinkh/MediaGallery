@@ -16,8 +16,16 @@ Item {
     //  Zeilen- und Spaltennummern; der Schalter dafuer sitzt in der oberen
     //  Leiste neben dem Umschalter Tabelle/Rohtext.
     property bool   showNumbers: false
+    //  Nur die aktive Haelfte darf auf Strg+F antworten.
+    property bool   paneActive: true
 
     readonly property string currentPath: root.source
+
+    property bool _findOpen: false
+    function oeffneSuche() {
+        root._findOpen = true
+        suchBalken.oeffnen()
+    }
 
     TableController {
         id: ctl
@@ -92,12 +100,45 @@ Item {
                                    Editor.gutterText.b, 0.35) }
     }
 
+    //  `root.visible` ist die WIRKSAME Sichtbarkeit (der Rohtext blendet die
+    //  ganze Flaeche aus) - ohne sie faenge auch die unsichtbare Tabelle das
+    //  Strg+F des Texteditors ab.
+    Shortcut {
+        sequence: "Ctrl+F"
+        enabled: root.visible && root.paneActive && ctl.ready
+        onActivated: root.oeffneSuche()
+    }
+
+    //  Der Sprung zum Treffer gehoert der Flaeche, nicht dem Balken: nur sie
+    //  kennt den Tabellenkoerper.
+    Connections {
+        target: ctl
+        function onSearchChanged() {
+            if (!ctl.searching && ctl.matchRow >= 0)
+                tabelle.zeigeZelle(ctl.matchRow, ctl.matchColumn)
+        }
+    }
+
+    TableFindBar {
+        id: suchBalken
+        visible: root._findOpen
+        z: 6
+        anchors { top: reiter.bottom; topMargin: 8
+                  right: parent.right; rightMargin: 18 }
+        ctl: ctl
+        fromRow: Math.floor(tabelle.rows.contentY / tabelle.rowHeight)
+        onGeschlossen: root._findOpen = false
+    }
+
     DataTable {
         id: tabelle
         anchors { left: parent.left; right: parent.right
                   top: reiter.bottom; bottom: fuss.top }
         provider: ctl
         showNumbers: root.showNumbers
+        searchRevision: ctl.searchRevision
+        currentRow: ctl.matchRow
+        currentColumn: ctl.matchColumn
         //  Die Namensleiste erscheint nur, wenn die Datei Spaltennamen traegt -
         //  sonst waere es ein leerer Streifen. Die Nummern haben ihre eigene.
         showHeader: ctl.headerRow

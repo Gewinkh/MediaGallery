@@ -27,6 +27,14 @@ Popup {
     signal accepted()
     signal rejected()
 
+    //  Einstieg fuer lazy ueber eine URL geladene Waehler: der Aufrufer kennt
+    //  den Typ dann nicht und kann `FileChooser.Directory` nicht benennen.
+    function openDirectory(titel) {
+        root.title = titel
+        root.fileMode = FileChooser.Directory
+        root.open()
+    }
+
     //  Der Wähler gehört über ALLES (Menüs, Leisten) und lebt so lange wie das
     //  Fenster - deshalb das Overlay als Elternteil und nicht der Aufrufer.
     parent: Overlay.overlay

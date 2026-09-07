@@ -212,13 +212,19 @@ Datei parse(const QByteArray& raw, QChar trenner) {
             d.zeilenNr.append(nr);
             continue;
         }
-        QString roh = zeilen.at(z).toString();
-        QStringList f = splitRecord(roh, d.trenner, &unbal);
-        while (unbal && z + 1 < zeilen.size()) {
-            ++z;
-            roh += QLatin1Char('\n');
-            roh += zeilen.at(z);
-            f = splitRecord(roh, d.trenner, &unbal);
+        //  Der gewoehnliche Fall zerlegt die SICHT auf die Zeile - eine Kopie
+        //  je Zeile waere bei 50.000 Zeilen der halbe Dateiinhalt noch einmal.
+        QStringList f = splitRecord(zeilen.at(z), d.trenner, &unbal);
+        if (unbal) {
+            //  Erst jetzt eine echte Zeichenkette: nur ein offenes
+            //  Anfuehrungszeichen zieht die naechste Zeile mit herein.
+            QString roh = zeilen.at(z).toString();
+            while (unbal && z + 1 < zeilen.size()) {
+                ++z;
+                roh += QLatin1Char('\n');
+                roh += zeilen.at(z);
+                f = splitRecord(roh, d.trenner, &unbal);
+            }
         }
         if (unbal)
             d.warnungen.append({nr, QStringLiteral("Anfuehrungszeichen nicht geschlossen")});

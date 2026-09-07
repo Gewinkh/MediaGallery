@@ -1,0 +1,111 @@
+#pragma once
+//  TableSearch - Suche ueber die Zeilen einer getrennten Textdatei. Kennt weder
+//  Anzeige noch DATEV: beide Tabellen-Controller benutzen dieselbe Maschine,
+//  damit eine CSV und ein Buchungsstapel auf dieselbe Frage gleich antworten.
+#include "table/DelimitedText.h"
+
+#include <QList>
+#include <QObject>
+#include <QRunnable>
+#include <QString>
+#include <atomic>
+#include <functional>
+#include <memory>
+
+namespace mg::table {
+
+//  Deckel gegen die Suche nach einem einzelnen Buchstaben: bei 300.000 Zeilen
+//  mal 20 Spalten waeren es Millionen Treffer zu je 8 Byte, und ansteuern kann
+//  ein Mensch sie ohnehin nicht.
+inline constexpr int kMaxTreffer = 200'000;
+
+struct Treffer {
+    int zeile = 0;      // Anzeigezeile, gezaehlt ab der ersten Datenzeile
+    int spalte = 0;
+};
+
+struct SuchOptionen {
+    bool gross      = false;    // Gross-/Kleinschreibung beachten
+    bool ganzeZelle = false;    // die Zelle muss dem Text ENTSPRECHEN, nicht ihn enthalten
+};
+
+//  Alle Treffer in [von, bis), aufsteigend nach Zeile und Spalte; `zeile` zaehlt
+//  ab `von`. `spalten` laesst nur die angezeigten Spalten zu - ein Treffer in
+//  einer ausgeblendeten Spalte waere ein Sprung ins Nichts. `abbruch` wird je
+//  Zeile geprueft, `mehr` meldet den erreichten Deckel.
+QList<Treffer> suche(const QList<Zeile>& zeilen, int von, int bis,
+                     const QString& text, SuchOptionen o,
+                     const QList<bool>* spalten = nullptr,
+                     const std::atomic<bool>* abbruch = nullptr,
+                     bool* mehr = nullptr);
+
+//  Der Zustand einer stehenden Suche: die Trefferliste, der laufende Treffer und
+//  die Frage, die die Anzeige je sichtbarer Zelle stellt.
+class Suchzustand {
+public:
+    void setzeTreffer(QList<Treffer> treffer, bool mehr);
+    void leeren();
+
+    int  anzahl() const   { return int(m_treffer.size()); }
+    bool mehr() const     { return m_mehr; }
+    int  index() const    { return m_index; }
+    //  Steigt bei jeder Aenderung. Die Anzeige haengt ihre Zell-Bindungen daran:
+    //  ohne einen gelesenen Wert wertet QML sie nie neu aus.
+    int  revision() const { return m_revision; }
+    Treffer aktuell() const;
+
+    //  Auf den ersten Treffer ab dieser Anzeigezeile, sonst auf den ersten.
+    void gehZuAb(int zeile);
+    //  Einen Treffer weiter (+1) oder zurueck (-1), umlaufend.
+    void schritt(int delta);
+
+    bool trifft(int zeile, int spalte) const;
+    //  Die Trefferspalten EINER Zeile - die Anzeige baut daraus je Zeile nur so
+    //  viele Marken, wie sie braucht (meistens keine).
+    QList<int> spaltenIn(int zeile) const;
+
+private:
+    QList<Treffer> m_treffer;
+    int  m_index    = -1;
+    bool m_mehr     = false;
+    int  m_revision = 0;
+};
+
+//  Der Suchlauf im Arbeitsfaden - beide Tabellen-Controller starten ihn in
+//  ihrem eigenen Ein-Faden-Pool. `anker` haelt die Datei am Leben, aus der
+//  `zeilen` stammt; sie ist unveraenderlich, ein neues Lesen erzeugt eine neue.
+//  Der Sucher zaehlt je Bereich, damit die Leiste nicht nur „woanders steht
+//  noch etwas" sagen, sondern auch hinfuehren kann.
+struct BlockBereich {
+    int von = 0;
+    int bis = 0;
+};
+
+class SuchTask : public QRunnable {
+public:
+    SuchTask(QObject* owner, std::shared_ptr<const void> anker,
+             const QList<Zeile>* zeilen, int von, int bis,
+             QString text, SuchOptionen opt, QList<bool> spalten,
+             QList<BlockBereich> bloecke, std::shared_ptr<std::atomic<bool>> abbruch,
+             std::function<void(QList<Treffer>, bool, QList<int>)> zurueck);
+
+    void run() override;
+
+private:
+    QObject* m_owner;
+    std::shared_ptr<const void> m_anker;
+    const QList<Zeile>* m_zeilen;
+    int m_von;
+    int m_bis;
+    QString m_text;
+    SuchOptionen m_opt;
+    //  Leer = alle Spalten.
+    QList<bool> m_spalten;
+    //  Leer = nicht je Block zaehlen. Sonst eine Zahl je Bereich, den
+    //  gezeigten eingeschlossen - was davon zu sehen ist, entscheidet der Aufrufer.
+    QList<BlockBereich> m_bloecke;
+    std::shared_ptr<std::atomic<bool>> m_abbruch;
+    std::function<void(QList<Treffer>, bool, QList<int>)> m_zurueck;
+};
+
+}  // namespace mg::table

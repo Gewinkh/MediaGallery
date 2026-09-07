@@ -212,7 +212,11 @@ Item {
                                            && (pane.galleryActive || pane.playerPageActive)
 
     function focusGallery()     { if (paneStack.currentItem) paneStack.currentItem.forceActiveFocus() }
-    function openFolderDialog() { folderDialog.open() }
+    function openFolderDialog() {
+        folderDialogLoader.active = true
+        if (folderDialogLoader.item)
+            folderDialogLoader.item.openDirectory(App.menuOpenFolderText)
+    }
     function popupFileMenu(anchor)   { fileMenu.popup(anchor, 0, anchor.height + 3) }
     function popupFolderMenu(anchor) { bookmarksMenu.popup(anchor, 0, anchor.height + 3) }
     function fileMenuOpen()   { return fileMenu.opened }
@@ -311,7 +315,7 @@ Item {
 
         ThemedMenu {
             id: fileMenu
-            MenuItem { text: App.menuOpenFolderText; onTriggered: folderDialog.open() }
+            MenuItem { text: App.menuOpenFolderText; onTriggered: pane.openFolderDialog() }
             MenuItem {
                 text: App.menuRefreshText
                 enabled: PaneCtl.currentFolder.length > 0
@@ -453,11 +457,25 @@ Item {
             }
         }
 
-        Component.onCompleted: rebuildBookmarks()
+        //  Gebaut wird erst beim ÖFFNEN: je Lesezeichen entsteht ein `MenuItem`,
+        //  und beim Start ist das Menü zu. Gemessen an 50 Lesezeichen: 10 ms und
+        //  4,2 MB je Hälfte, für etwas, das niemand sieht.
+        property bool bookmarksDirty: true
+        function ensureBookmarks() {
+            if (!bookmarksDirty) return
+            rebuildBookmarks()
+            bookmarksDirty = false
+        }
+        onAboutToShow: ensureBookmarks()
 
         Connections {
             target: App
-            function onSavedFoldersChanged() { bookmarksMenu.rebuildBookmarks() }
+            function onSavedFoldersChanged() {
+                bookmarksMenu.bookmarksDirty = true
+                //  Bei offenem Menü sofort - sonst sähe man den eigenen
+                //  Handgriff nicht wirken.
+                if (bookmarksMenu.opened) bookmarksMenu.ensureBookmarks()
+            }
         }
     }
     }
@@ -523,7 +541,7 @@ Item {
             }
             Shortcut {
                 sequence: "Ctrl+O"; enabled: pane._keysLive
-                onActivated: folderDialog.open()
+                onActivated: pane.openFolderDialog()
             }
             Shortcut {
                 sequence: "Alt+Left"
@@ -1440,14 +1458,20 @@ Item {
         }
     }
 
-    FileChooser {
-        id: folderDialog
-        title: App.menuOpenFolderText
-        fileMode: FileChooser.Directory
-        onAccepted: PaneCtl.openFolderUrl(folderDialog.selectedFolder)
+    // LAZY, wie der Lesezeichen-Dialog darunter: der Ordnerwähler entstand beim Bau JEDER Galerie-Hälfte, gebraucht
+    // wird er erst beim Öffnen eines Ordners - gemessen 6,4 ms und 7,4 MB je Hälfte.
+    Loader {
+        id: folderDialogLoader
+        active: false
+        source: "qrc:/qml/common/FileChooser.qml"
+        onLoaded: item.accepted.connect(function () {
+            PaneCtl.openFolderUrl(folderDialogLoader.item.selectedFolder)
+        })
     }
+
     // LAZY: der Dialog entstand beim Bau JEDER Galerie-Hälfte, obwohl man ihn erst bei "Ordner hinzufügen" braucht
-    // - und er bringt einen vollständigen FileChooser mit. Über eine URL geladen, sonst liefe das Übersetzen beim Start mit.
+    // - und er bringt einen vollständigen FileChooser mit. Gespart wird das ERZEUGEN; ein `Component` mit dem Typ
+    // darin wäre genauso träge (gemessen: kein Unterschied im Start), die URL macht nur die Abhängigkeit sichtbar.
     Loader {
         id: bookmarkEditLoader
         active: false

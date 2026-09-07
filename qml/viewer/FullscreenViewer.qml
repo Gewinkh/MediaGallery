@@ -393,7 +393,8 @@ FocusScope {
         target: surface.item
         property: "paneActive"
         value: root.paneActive
-        when: surface.item !== null && (root.type === 0 || root.type === 3 || root.type === 5)
+        when: surface.item !== null && (root.type === 0 || root.type === 3 || root.type === 5
+                                        || root._showDatevTable || root._showTable)
         restoreMode: Binding.RestoreNone
     }
 
@@ -481,8 +482,23 @@ FocusScope {
                 }
                 TranslitButton {
                     id: translitBtn
+                    //  Nicht bei der eigenen Ablage: dort laesst sich nichts
+                    //  schreiben, der Knopf staende nur herum.
                     visible: root._textCtl !== null
+                             && root._textCtl.isStorage !== true
                     anchors.verticalCenter: parent.verticalCenter
+                }
+
+                //  Nur bei der eigenen Ablage: lesbar oder die Bytes.
+                ChromeBtn {
+                    id: rohBtn
+                    visible: root._textCtl !== null
+                             && root._textCtl.isStorage === true
+                    anchors.verticalCenter: parent.verticalCenter
+                    kind: "raw"
+                    active: root._textCtl ? root._textCtl.rawView === true : false
+                    tip: App.uiText(App.language, "StorageViewTip")
+                    onActivated: if (root._textCtl) root._textCtl.toggleRaw()
                 }
 
                 ChromeBtn {
@@ -1111,6 +1127,20 @@ FocusScope {
                 Rectangle { x: 7.5; y: 7.5; width: 3; height: 3; radius: 1.5; color: "#e8efed" }
                 Rectangle { x: 3;   y: 12;  width: 3; height: 3; radius: 1.5; color: "#e8efed" }
                 Rectangle { x: 12;  y: 12;  width: 3; height: 3; radius: 1.5; color: "#e8efed" }
+            }
+
+            //  Zwei Reihen Kaestchen: die Bytes der Datei.
+            Item {
+                anchors.fill: parent
+                visible: cb.kind === "raw"
+                Rectangle { anchors.fill: parent; radius: 2; color: "transparent"
+                            border.color: "#e8efed"; border.width: 1.4 }
+                Rectangle { x: 3;    y: 5; width: 2.6; height: 2.6; color: "#e8efed" }
+                Rectangle { x: 7.7;  y: 5; width: 2.6; height: 2.6; color: "#e8efed" }
+                Rectangle { x: 12.4; y: 5; width: 2.6; height: 2.6; color: "#e8efed" }
+                Rectangle { x: 3;    y: 10.4; width: 2.6; height: 2.6; color: "#e8efed" }
+                Rectangle { x: 7.7;  y: 10.4; width: 2.6; height: 2.6; color: "#e8efed" }
+                Rectangle { x: 12.4; y: 10.4; width: 2.6; height: 2.6; color: "#e8efed" }
             }
 
             Item {

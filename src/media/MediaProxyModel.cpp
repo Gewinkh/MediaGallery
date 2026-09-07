@@ -516,6 +516,43 @@ void MediaProxyModel::selectAllVisible() {
     m_src->setSelectedRows(rows);
 }
 
+int MediaProxyModel::tagAllVisible(const QString& tag, bool on) {
+    if (!m_src || tag.isEmpty()) return 0;
+    //  Erst die Zeilen einsammeln, dann setzen: das Setzen meldet Aenderungen,
+    //  und der Filter kann eine Zeile daraufhin aus der Ansicht nehmen.
+    QVector<int> rows;
+    const int n = rowCount();
+    rows.reserve(n);
+    for (int r = 0; r < n; ++r) {
+        const QModelIndex src = mapToSource(index(r, 0));
+        if (src.isValid() && m_src->isFileRow(src.row()))
+            rows.append(src.row());
+    }
+    int getan = 0;
+    for (const int r : rows) {
+        const MediaItem* it = m_src->itemAt(r);
+        if (!it || it->tags.contains(tag) == on) continue;
+        m_src->setTagOnRow(r, tag, on);
+        ++getan;
+    }
+    return getan;
+}
+
+bool MediaProxyModel::allVisibleTagged(const QString& tag) const {
+    if (!m_src || tag.isEmpty()) return false;
+    const int n = rowCount();
+    bool eine = false;
+    for (int r = 0; r < n; ++r) {
+        const QModelIndex src = mapToSource(index(r, 0));
+        if (!src.isValid() || !m_src->isFileRow(src.row())) continue;
+        const MediaItem* it = m_src->itemAt(src.row());
+        if (!it) continue;
+        eine = true;
+        if (!it->tags.contains(tag)) return false;
+    }
+    return eine;
+}
+
 QStringList MediaProxyModel::selectedPaths(bool filesOnly) const {
     if (!m_src) return {};
     QStringList out;

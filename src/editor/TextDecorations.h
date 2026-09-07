@@ -38,6 +38,12 @@ class TextDecorations : public QQuickPaintedItem {
     Q_PROPERTY(QColor bracketColor READ bracketColor WRITE setBracketColor NOTIFY styleChanged)
     Q_PROPERTY(QColor errorColor READ errorColor WRITE setErrorColor NOTIFY styleChanged)
     Q_PROPERTY(QColor matchColor READ matchColor WRITE setMatchColor NOTIFY styleChanged)
+    //  Flaeche hinter einer Fundstelle der Suchleiste. Sie wird HIER gemalt und
+    //  nicht als Zeichenformat gesetzt: ein Format zwingt Qt, den Block neu zu
+    //  vermessen - gemessen 10,3 s, wenn in 10 000 Zeilen jede einen Treffer
+    //  traegt. Gezeichnet kostet es nur die sichtbaren Zeilen.
+    Q_PROPERTY(QColor searchColor READ searchColor WRITE setSearchColor NOTIFY styleChanged)
+    Q_PROPERTY(bool showSearch READ showSearch WRITE setShowSearch NOTIFY styleChanged)
 
 public:
     explicit TextDecorations(QQuickItem* parent = nullptr);
@@ -81,6 +87,10 @@ public:
     void   setErrorColor(const QColor& c);
     QColor matchColor() const { return m_matchColor; }
     void   setMatchColor(const QColor& c);
+    QColor searchColor() const { return m_searchColor; }
+    void   setSearchColor(const QColor& c);
+    bool   showSearch() const { return m_showSearch; }
+    void   setShowSearch(bool v);
 
     //  Suchbegriff der Leiste - nur dafuer, eine zugeklappte Stelle mit Treffer
     //  zu markieren. Leer = nichts markieren.
@@ -104,6 +114,7 @@ signals:
 private:
     QTextDocument* doc() const;
     void klammernSuchen();
+    void zeichneFundstellen(QPainter* p);
     void trefferBereicheNeu();
     void zeichneHilfen(QPainter* p);
     void zeichneFaltmarken(QPainter* p);
@@ -133,6 +144,8 @@ private:
     QColor m_bracketColor = QColor(255, 255, 255, 46);
     QColor m_errorColor   = QColor(220, 80, 80, 90);
     QColor m_matchColor   = QColor(255, 210, 80, 120);
+    QColor m_searchColor  = QColor(120, 160, 255, 120);
+    bool   m_showSearch   = true;
 
     //  Die Klammernsuche laeuft ueber bis zu 5 000 Bloecke. Sie darf deshalb
     //  nur laufen, wenn sich wirklich etwas geaendert hat - sonst zahlt jeder

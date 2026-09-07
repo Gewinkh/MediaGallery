@@ -123,9 +123,28 @@ QObject* AppController::addPane() {
     m_panesModel->beginInsert(int(m_panes.size()));
     m_panes.push_back(pane);
     m_panesModel->endInsert();
+    pane->mediaModel().setPreviewKinds(m_settings.pdfPreviewContent(),
+                                       m_settings.imagePreviewContent());
+    //  Beide Haelften koennen denselben Ordner offen haben. Wer schreibt, sagt es;
+    //  die andere liest nach, sonst stuende dort der Stand von vorher.
+    connect(&pane->storage(), &JsonStorage::folderWritten, this,
+            [this, pane](const QString& folder) {
+        if (folder.isEmpty()) return;
+        for (PaneController* andere : m_panes) {
+            if (andere == pane) continue;
+            if (andere->currentFolder() != folder) continue;
+            andere->uebernimmFremdenStand();
+        }
+    });
     setFocusedPane(pane);
     emit panesChanged();
     return pane;
+}
+
+void AppController::verteileVorschauSchalter() {
+    for (PaneController* pane : m_panes)
+        pane->mediaModel().setPreviewKinds(m_settings.pdfPreviewContent(),
+                                           m_settings.imagePreviewContent());
 }
 
 bool AppController::closePane(int index) {
@@ -512,6 +531,30 @@ void AppController::setTextPreviewContent(bool v) {
     m_settings.setTextPreviewContent(v);
     m_settings.sync();
     emit textPreviewContentChanged();
+}
+
+bool AppController::pdfPreviewContent() const {
+    return m_settings.pdfPreviewContent();
+}
+
+void AppController::setPdfPreviewContent(bool v) {
+    if (m_settings.pdfPreviewContent() == v) return;
+    m_settings.setPdfPreviewContent(v);
+    m_settings.sync();
+    verteileVorschauSchalter();
+    emit pdfPreviewContentChanged();
+}
+
+bool AppController::imagePreviewContent() const {
+    return m_settings.imagePreviewContent();
+}
+
+void AppController::setImagePreviewContent(bool v) {
+    if (m_settings.imagePreviewContent() == v) return;
+    m_settings.setImagePreviewContent(v);
+    m_settings.sync();
+    verteileVorschauSchalter();
+    emit imagePreviewContentChanged();
 }
 
 void AppController::setGalleryListLayout(bool v) {

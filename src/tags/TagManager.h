@@ -72,7 +72,8 @@ public:
     // Rückgängig für TAG-Vorgänge, bewusst getrennt vom Datei-Stapel (`MediaModel::m_undoOps`, Strg+Z): in einem
     // Stapel holte ein Strg+Z mal eine Datei und mal einen Tag zurück. Verfahren ist ein SCHNAPPSCHUSS des Sidecar-
     // Stands, kein Protokoll - das deckt jede Mutation ab, auch die mehrstufigen des Konverters.
-    void beginUndoStep(const mg::tagmark::Mark& mark);
+    //  `deltaFaehig`: der Vorgang aendert NUR die Tags einzelner Dateien.
+    void beginUndoStep(const mg::tagmark::Mark& mark, bool deltaFaehig = false);
     // Mehrere Mutationen zu EINEM Schritt bündeln, auch über Ereignisdurchläufe hinweg (Konverter, Tag-Modi bis
     // "Fertig"). LAZY: der Schritt entsteht erst bei der ersten wirklichen Mutation. `counted` = Zuordnungs-
     // Sitzung, deren Marke jede Zuordnung fortschreibt - sonst überschriebe sie die Marke einer Umwandlung.
@@ -99,12 +100,17 @@ public:
 
     void flushPendingSignals();
 
+    //  Der Stand kam frisch von der Platte (eine andere Haelfte hat geschrieben).
+    //  Kein Rueckgaengig-Schritt: es war nicht unsere Aenderung.
+    void notePersistedStateReloaded();
+
 signals:
     void tagsChanged();
     void tagColorChanged(const QString& tag, const QColor& color);
     void categoriesChanged();
     void subfolderSweepFinished(const QString& tag, int count);
     void tagDeleted(const QString& tag);
+    void tagRenamed(const QString& oldName, const QString& newName);
     void undoStackChanged();
     void tagUndoApplied(const QString& label, int subfolders, bool complete,
                         bool redo);
@@ -118,6 +124,16 @@ private:
         QHash<QString, QByteArray> foreign;
         bool       foreignComplete = true;
         int        bytes = 0;           // grobe Groesse, fuer den RAM-Deckel
+        //  Ein Schritt haelt ENTWEDER den ganzen Stand (`state`) ODER nur die
+        //  Aenderung: die Tags der beruehrten Dateien VORHER und die
+        //  Tag-Registrierung. Eine Zuordnung beruehrt eine Handvoll Dateien;
+        //  der ganze Stand kostete bei 20.000 Dateien 12 ms und 262 KB je
+        //  Schritt. Kommt im selben Durchlauf ein Vorgang dazu, der mehr
+        //  aendert als Datei-Tags, wird der Schritt auf den ganzen Stand
+        //  gehoben (`aufSchnappschussHeben`).
+        bool                        delta = false;
+        QHash<QString, QStringList> tagsBefore;
+        QHash<QString, QColor>      colorsBefore;
         // Nur für Zuordnungs-Schritte: wie viele Dateien dazu- oder weggekommen sind und worauf. Betrifft ein Schritt
         // mehrere Gegenstände, fällt der Gegenstand aus der Marke - `+5` ist ehrlicher als `+5 T:x`, wenn auch T:y dabei war.
         bool                addCounts = false;
@@ -150,8 +166,11 @@ private:
 
     void pruneUndo();
     void applyStep(QList<UndoStep>& from, QList<UndoStep>& to, bool redo);
+    void merkeDateiVorher(const QString& fileName);
+    void aufSchnappschussHeben(UndoStep& step);
+    static int deltaGroesse(const UndoStep& step);
     void beginCountedStep(bool added, mg::tagmark::Thing t, const QString& name,
-                          const QStringList& path);
+                          const QStringList& path, bool deltaFaehig = false);
     UndoStep* undoStepById(quint64 id);
     void attachSweepUndo(quint64 stepId, const QHash<QString, QByteArray>& before,
                          bool complete);

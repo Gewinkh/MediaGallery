@@ -323,13 +323,26 @@ MediaModel::MediaModel(JsonStorage& storage,
 
     // Nur Zeilen des geoeffneten Ordners: m_tagManager schluesselt nach Dateinamen,
     // eine gleichnamige Datei im Unterordner bekaeme sonst fremde Tags.
+    // Gemeldet wird NUR, was sich wirklich geaendert hat: `tagsChanged` kommt auch
+    // beim blossen Anlegen eines Tags, und eine Meldung ueber alle Zeilen liess den
+    // Proxy neu filtern und sortieren - die Galerie baute sichtbar alle Kacheln neu.
     connect(&m_tagManager, &TagManager::tagsChanged, this, [this]() {
         if (m_items.isEmpty()) return;
-        for (auto& it : m_items) {
-            if (it.scope != 0 || it.isFolder()) continue;
-            it.tags = m_tagManager.tagsForFile(it.fileName());
+        int laufAnfang = -1;
+        const auto laufMelden = [this, &laufAnfang](int ende) {
+            if (laufAnfang < 0) return;
+            emit dataChanged(index(laufAnfang), index(ende), { TagsRole });
+            laufAnfang = -1;
+        };
+        for (int r = 0; r < m_items.size(); ++r) {
+            MediaItem& it = m_items[r];
+            if (it.scope != 0 || it.isFolder()) { laufMelden(r - 1); continue; }
+            const QStringList neu = m_tagManager.tagsForFile(it.fileName());
+            if (neu == it.tags) { laufMelden(r - 1); continue; }
+            it.tags = neu;
+            if (laufAnfang < 0) laufAnfang = r;
         }
-        emit dataChanged(index(0), index(m_items.size() - 1), { TagsRole });
+        laufMelden(m_items.size() - 1);
     });
 }
 
@@ -552,6 +565,9 @@ void MediaModel::finishFill() {
               qint64(m_items.size()), m_deepFillTimer.elapsed());
         m_deepFillTimer.invalidate();
     }
+
+    //  Ausgangsstand fuer den Watcher: was jetzt steht, ist der Vergleichspunkt.
+    m_dirFinger = ordnerFingerabdruck();
 
     // Jetzt stehen die Zeilen - jetzt kann die Ansicht ihre Miniaturen anfordern.
     if (m_pendingInvalidate) {
@@ -916,6 +932,24 @@ void MediaModel::setShowAllFiles(bool v) {
     reload();
 }
 
+void MediaModel::setPreviewKinds(bool pdf, bool image) {
+    if (m_pdfPreview == pdf && m_imagePreview == image)
+        return;
+    m_pdfPreview   = pdf;
+    m_imagePreview = image;
+    //  Wie beim Wechsel der Zielgroesse: alles auf ausstehend, die Kacheln
+    //  fordern neu an.
+    refreshThumbnails();
+}
+
+bool MediaModel::vorschauAus(int row) const {
+    const MediaItem* it = itemAt(row);
+    if (!it) return false;
+    if (it->type == MediaType::Pdf)   return !m_pdfPreview;
+    if (it->type == MediaType::Image) return !m_imagePreview;
+    return false;
+}
+
 void MediaModel::reload() {
     if (m_folder.isEmpty()) return;
     m_loader.cancelAll();
@@ -996,6 +1030,13 @@ QString MediaModel::typeLabel(const MediaItem& item) {
     }
     // Nicht erkannte Typen waren an nichts zu erkennen: kein Thumbnail, kein Badge.
     case MediaType::Unknown: return item.extension().toUpper();
+    // Beide brauchen ihr Kuerzel fuer die Listendarstellung und fuer den Fall
+    // „Vorschau aus" - ohne Kuerzel blieb die Kachel dort leer.
+    case MediaType::Docx:
+    case MediaType::Image: {
+        const QString e = item.extension().toUpper();
+        return e.isEmpty() ? QString() : e;
+    }
     default:               return {};
     }
 }
@@ -1039,6 +1080,15 @@ void MediaModel::ensureThumbnail(const QString& filePath) {
     // Ordnerkacheln zeichnen sich selbst - der Loader kennt fuer sie keinen Erzeuger.
     if (m_items.at(row).isFolder()) return;
     if (m_thumbState[row] == 1) return;          // bereits geliefert
+    //  Zustand 3 heisst „bewusst keine" - anders als 2 (fehlgeschlagen), das die
+    //  Kachel als Fehler zeigt.
+    if (vorschauAus(row)) {
+        if (m_thumbState[row] != 3) {
+            m_thumbState[row] = 3;
+            emitRow(row, { ThumbStateRole });
+        }
+        return;
+    }
     m_loader.requestThumbnail(filePath);          // Treffer/Miss klärt der Loader
 }
 
@@ -1704,6 +1754,14 @@ int MediaModel::renameFolder(const QString& folderPath, const QString& newName) 
 
     ++m_suppressWatch;
     const bool ok = QDir().rename(folderPath, target);
+    //  Zieht die Ablage nicht mit, liegt sie zwar noch da, passt aber nicht
+    //  mehr zum Ordner - und der stuende ohne seine Tags da.
+    if (ok) {
+        const QString alt = QDir(target).filePath(mg::folderSidecarName(folderPath));
+        const QString neu = QDir(target).filePath(mg::folderSidecarName(target));
+        if (alt != neu && QFileInfo::exists(alt) && !QFileInfo::exists(neu))
+            QFile::rename(alt, neu);
+    }
     --m_suppressWatch;
     if (!ok) return 3;
 
@@ -2421,6 +2479,37 @@ void MediaModel::clearFileTextPdfColor(const QString& filePath) {
     --m_suppressWatch;
 }
 
+QVariantMap MediaModel::fileInfo(const QString& filePath) const {
+    QVariantMap m;
+    const QFileInfo fi(filePath);
+    if (!fi.exists()) return m;
+
+    m.insert(QStringLiteral("name"), fi.fileName());
+    m.insert(QStringLiteral("path"), fi.absoluteFilePath());
+    m.insert(QStringLiteral("folder"), fi.absolutePath());
+    m.insert(QStringLiteral("isFolder"), fi.isDir());
+    m.insert(QStringLiteral("bytes"), fi.isDir() ? qint64(-1) : fi.size());
+    //  Nicht jedes Dateisystem kennt ein Erstelldatum; die Oberflaeche laesst
+    //  die Zeile dann weg, statt etwas zu erfinden.
+    m.insert(QStringLiteral("created"), fi.birthTime());
+    m.insert(QStringLiteral("modified"), fi.lastModified());
+
+    //  Derselbe Typname wie auf der Kachel; fuer Fremdpfade frisch bestimmt.
+    const int row = rowForPath(filePath);
+    if (const MediaItem* it = itemAt(row)) {
+        m.insert(QStringLiteral("typeLabel"), typeLabel(*it));
+        m.insert(QStringLiteral("mediaType"), int(it->type));
+    } else {
+        MediaItem tmp;
+        tmp.filePath = filePath;
+        tmp.type = fi.isDir() ? MediaType::Folder
+                              : mg::refineType(filePath, MediaItem::detectType(filePath));
+        m.insert(QStringLiteral("typeLabel"), typeLabel(tmp));
+        m.insert(QStringLiteral("mediaType"), int(tmp.type));
+    }
+    return m;
+}
+
 void MediaModel::toggleTag(const QString& filePath, const QString& tag) {
     const int row = rowForPath(filePath);
     if (row < 0 || tag.isEmpty() || !isFileRow(row)) return;
@@ -2434,9 +2523,35 @@ void MediaModel::addTag(const QString& filePath, const QString& tag) {
     setTagOnRow(row, tag, true);
 }
 
+quint64 MediaModel::ordnerFingerabdruck() const {
+    if (m_folder.isEmpty()) return 0;
+    const QString sidecar = mg::folderSidecarName(m_folder);
+    quint64 h = 1469598103934665603ULL;              // FNV-1a
+    const auto misch = [&h](quint64 v) {
+        h ^= v;
+        h *= 1099511628211ULL;
+    };
+    QDirIterator it(m_folder, QDir::Files | QDir::Dirs | QDir::NoDotAndDotDot);
+    while (it.hasNext()) {
+        it.next();
+        const QFileInfo fi = it.fileInfo();
+        if (!fi.isDir() && mg::isCompanionFile(fi.fileName(), sidecar)) continue;
+        misch(qHash(fi.fileName()));
+        misch(quint64(fi.size()));
+        misch(quint64(fi.lastModified().toMSecsSinceEpoch()));
+    }
+    return h;
+}
+
 void MediaModel::onDirectoryChanged() {
     if (m_suppressWatch > 0) return;     // interne Mutation, kein Reload
     if (m_folder.isEmpty()) return;
+    //  Hat sich an den ANGEZEIGTEN Dateien nichts geaendert, war es unser
+    //  eigener Sidecar - ein Neubau der Galerie waere sichtbares Flackern ohne
+    //  jeden Anlass. Das Auflisten kostet weniger als der Neubau, den es spart.
+    const quint64 jetzt = ordnerFingerabdruck();
+    if (jetzt == m_dirFinger) return;
+    m_dirFinger = jetzt;
     reload();
     emit folderContentsChanged();
 }

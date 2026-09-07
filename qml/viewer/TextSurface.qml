@@ -20,6 +20,9 @@ Item {
     // Datei größer als der Lesedeckel? Dann liegt nur ihr Anfang im Editor, und Schreiben löschte den Rest - der
     // Editor geht auf nur lesen, die C++-Seite sperrt zusätzlich.
     property bool   _readOnly: false
+    //  Der Umschalter dazu sitzt in der Kopfleiste des Viewers, nicht hier.
+    property bool   isStorage: false
+    property bool   rawView: false
     property bool   _pdfBusy: false
 
     // Der Zähler treibt die Neuauswertung: die Farbe kommt aus einer Invokable, es gibt also kein Signal, an dem
@@ -67,7 +70,6 @@ Item {
     function _closeFind() {
         root._findOpen = false
         root._findStatus = ""
-        syntax.highlightMatches("", false)
         decorations.setSearchTerm("", false)
         editor.forceActiveFocus()
     }
@@ -134,12 +136,33 @@ Item {
         root._readOnly = false
     }
 
+    //  Beide Sichten kommen frisch von der Platte, keine aus der anderen.
+    function _ablageText() {
+        if (root.source.length === 0) return ""
+        return root.rawView ? Viewer.readStorageRaw(root.source)
+                             : Viewer.readTextFile(root.source)
+    }
+    function toggleRaw() {
+        if (!root.isStorage) return
+        root.rawView = !root.rawView
+        root._loading = true
+        editor.text = root._ablageText()
+        editor.cursorPosition = 0
+        root.dirty = false
+        root._loading = false
+    }
+
     onSourceChanged: {
         root.save()                       // evtl. vorherige Datei sichern
         root._loading = true
         root.currentPath = source
-        root._readOnly = source.length > 0 && Viewer.textFileTruncated(source)
-        editor.text = source.length > 0 ? Viewer.readTextFile(source) : ""
+        //  Eine gekuerzte Datei duerfte man beim Speichern abschneiden; die
+        //  eigene Ablage ist binaer und wird hier nur lesbar dargestellt.
+        root.isStorage = source.length > 0 && Viewer.isStorageFile(source)
+        root.rawView = false
+        root._readOnly = source.length > 0
+                         && (Viewer.textFileTruncated(source) || root.isStorage)
+        editor.text = root._ablageText()
         editor.cursorPosition = 0
         root.dirty = false
         root._loading = false
@@ -385,6 +408,9 @@ Item {
             errorColor: Qt.rgba(0.86, 0.31, 0.31, 0.38)
             matchColor: Qt.rgba(Editor.selection.r, Editor.selection.g,
                                 Editor.selection.b, 0.55)
+            searchColor: Qt.rgba(Editor.selection.r, Editor.selection.g,
+                                 Editor.selection.b, 0.47)
+            showSearch: root._findHighlight
         }
 
         // BEWUSST ohne `TextArea.flickable`: diese Anbindung installiert Qts "Cursor ins Bild rollen", und das feuert
@@ -508,11 +534,10 @@ Item {
     Timer {
         id: highlightTimer
         interval: 180
-        onTriggered: {
-            syntax.highlightMatches(
-                root._findHighlight ? findField.text : "", root._findCase)
-            decorations.setSearchTerm(findField.text, root._findCase)
-        }
+        //  Die Treffer zeichnet `TextDecorations` (hinter dem Text, nur die
+        //  sichtbaren Zeilen). Ein Zeichenformat je Block kostete bei 10 000
+        //  Zeilen 10,3 s, weil Qt dann das Dokument neu vermisst.
+        onTriggered: decorations.setSearchTerm(findField.text, root._findCase)
     }
 
     Rectangle {
@@ -721,7 +746,9 @@ Item {
             anchors { right: parent.right; rightMargin: 10
                       verticalCenter: parent.verticalCenter }
             visible: root._readOnly
-            text: App.uiText(App.language, "TextReadOnlyTip")
+            //  Die Ablage ist nicht zu gross - sie wird nur angezeigt.
+            text: App.uiText(App.language, root.isStorage ? "StorageReadOnlyTip"
+                                                          : "TextReadOnlyTip")
             color: Qt.rgba(1, 0.72, 0.45, 1)
             font.pixelSize: 11
             elide: Text.ElideRight

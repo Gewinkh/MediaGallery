@@ -47,6 +47,8 @@ class AppController : public QObject {
     Q_PROPERTY(bool    showAllFiles    READ showAllFiles    WRITE setShowAllFiles NOTIFY showAllFilesChanged)
     Q_PROPERTY(bool    galleryListLayout READ galleryListLayout WRITE setGalleryListLayout NOTIFY galleryListLayoutChanged)
     Q_PROPERTY(bool    textPreviewContent READ textPreviewContent WRITE setTextPreviewContent NOTIFY textPreviewContentChanged)
+    Q_PROPERTY(bool    pdfPreviewContent  READ pdfPreviewContent  WRITE setPdfPreviewContent  NOTIFY pdfPreviewContentChanged)
+    Q_PROPERTY(bool    imagePreviewContent READ imagePreviewContent WRITE setImagePreviewContent NOTIFY imagePreviewContentChanged)
     Q_PROPERTY(int     listRowHeight   READ listRowHeight   NOTIFY listRowHeightChanged)
     Q_PROPERTY(int     screenWidth     READ screenWidth     NOTIFY screenWidthChanged)
     Q_PROPERTY(bool    deleteTagsInSubfolders READ deleteTagsInSubfolders WRITE setDeleteTagsInSubfolders NOTIFY deleteTagsInSubfoldersChanged)
@@ -301,7 +303,11 @@ public:
     bool showAllFiles() const;
     bool galleryListLayout() const;
     bool textPreviewContent() const;
+    bool pdfPreviewContent() const;
+    bool imagePreviewContent() const;
     void setTextPreviewContent(bool v);
+    void setPdfPreviewContent(bool v);
+    void setImagePreviewContent(bool v);
     bool deleteTagsInSubfolders() const;
     void setDeleteTagsInSubfolders(bool v);
     void setShowAllFiles(bool v);
@@ -362,6 +368,8 @@ signals:
     void galleryListLayoutChanged();
     //  Die Kacheln muessen danach NEU erzeugt werden - main.cpp haengt daran.
     void textPreviewContentChanged();
+    void pdfPreviewContentChanged();
+    void imagePreviewContentChanged();
     void listRowHeightChanged();
     void screenWidthChanged();
     void deleteTagsInSubfoldersChanged();
@@ -405,6 +413,10 @@ private:
     PaneController* m_pane = nullptr;
     //  Die Hälften gehören dieser Fassade (sie überleben QML-Neuaufbauten).
     static constexpr int kMaxPanes = 2;
+    //  An ALLE Haelften, nicht nur die erste - eine Einstellung, die nur links
+    //  wirkt, sieht wie ein Fehler aus.
+    void verteileVorschauSchalter();
+
     std::vector<PaneController*> m_panes;
     //  Sicht auf `m_panes` fuer QML-Repeater; wird von addPane/closePane/
     //  swapPanes um jede Aenderung geklammert.

@@ -131,6 +131,12 @@ public:
     // ein Umschalt-Bereich und ein Auswahlrahmen meinen das, was man sieht, nicht die Modellzeilen.
     Q_INVOKABLE void selectRange(int fromProxyRow, int toProxyRow, bool additive);
     Q_INVOKABLE void selectAllVisible();
+    //  Im Add-to-Tag-Modus ist „alles waehlen" kein Auswaehlen, sondern ein
+    //  Setzen des Tags. Rueckgabe: wie viele Dateien angefasst wurden.
+    Q_INVOKABLE int  tagAllVisible(const QString& tag, bool on);
+    //  Traegt JEDE sichtbare Datei den Tag schon? Entscheidet, in welche
+    //  Richtung das Kuerzel schaltet.
+    Q_INVOKABLE bool allVisibleTagged(const QString& tag) const;
     Q_INVOKABLE QStringList selectedPaths(bool filesOnly = false) const;
 
     // `beginBand` merkt sich den Ausgangsstand, `updateBand` bekommt je Mausbewegung die überdeckten PROXY-Bereiche

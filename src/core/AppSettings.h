@@ -67,6 +67,10 @@ public:
     void setEditorTabSpaces(bool v) override;
     bool textPreviewContent() const override;
     void setTextPreviewContent(bool v) override;
+    bool pdfPreviewContent() const override;
+    void setPdfPreviewContent(bool v) override;
+    bool imagePreviewContent() const override;
+    void setImagePreviewContent(bool v) override;
 
     bool monoPlay() const override;
     void setMonoPlay(bool v) override;

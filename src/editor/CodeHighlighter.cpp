@@ -42,13 +42,6 @@ void Highlighter::setLanguageId(const QString& id) {
     rehighlight();
 }
 
-void Highlighter::setSearchTerm(const QString& term, bool caseSensitive) {
-    if (term == m_searchPattern.literal()
-        && caseSensitive == m_searchPattern.caseSensitive()) return;
-    m_searchPattern = mg::search::Pattern(term, caseSensitive, false);
-    rehighlight();
-}
-
 void Highlighter::setPalette(const SyntaxPalette& p) {
     m_palette = p;
     rebuildFormats();
@@ -58,9 +51,6 @@ void Highlighter::setPalette(const SyntaxPalette& p) {
 void Highlighter::highlightBlock(const QString& text) {
     const LanguageDef& def = languageForId(m_languageId);
     if (def.kind == ScannerKind::PlainText) {
-        //  Auch OHNE Syntax werden Fundstellen hinterlegt - eine `.txt` ist
-        //  genau die Datei, in der man sucht.
-        markiereFundstellen(text);
         setCurrentBlockState(0);
         return;
     }
@@ -73,22 +63,7 @@ void Highlighter::highlightBlock(const QString& text) {
     for (const Span& s : spans)
         setFormat(int(s.start), int(s.length), m_formats[int(s.tok)]);
 
-    markiereFundstellen(text);
     setCurrentBlockState(zustandRaus);
-}
-
-// Hinterlegt jede Fundstelle im Block; die Farbe ist die abgeschwächte AUSWAHLfarbe der Palette. Der
-// angesprungene Treffer ist die echte Auswahl und hebt sich von selbst ab - keine zwanzigste Farbe nötig.
-void Highlighter::markiereFundstellen(const QString& text) {
-    if (m_searchPattern.isEmpty()) return;
-    QTextCharFormat f;
-    QColor c = m_palette.selection;
-    c.setAlpha(120);
-    f.setBackground(c);
-    //  Derselbe Begriff wie in der Leiste - woertlich UND als Muster, damit
-    //  markiert ist, was der Zaehler zaehlt.
-    for (const mg::search::Range& r : m_searchPattern.findAll(text, 2000))
-        setFormat(r.start, r.length, f);
 }
 
 CodeHighlighter::CodeHighlighter(QObject* parent) : QObject(parent) {
@@ -315,11 +290,6 @@ int CodeHighlighter::replaceAll(const QString& needle, const QString& replacemen
 
 bool CodeHighlighter::usesRegex(const QString& needle) const {
     return mg::search::Pattern(needle, false, false).usesRegex();
-}
-
-void CodeHighlighter::highlightMatches(const QString& needle, bool caseSensitive) {
-    if (m_highlighter)
-        m_highlighter->setSearchTerm(needle, caseSensitive);
 }
 
 QString CodeHighlighter::languageLabel() const {

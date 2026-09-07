@@ -23,6 +23,8 @@ Where a feature stops - the known limits, with the reason behind each one - is i
 - **HTML**: Rendered live preview (via Qt WebEngine) alongside the editable source view
 
 ## Gallery & View
+- **Look inside the folder file**: switch on *Show all files*, open the `<FolderName>.mgstore` and the app renders it in readable form - every tag with its colour, every category with its full path, every file with its tags spelled out. A **Raw** button at the top right switches to a hex dump of the actual bytes and back, for when you want to see the format itself. It opens read-only; the file itself stays binary and is only ever written by the app
+- **Turn tile previews off per kind**: Settings -> View -> *Tile previews* has a switch for text files, one for **PDFs** and one for **images**. Off means no thumbnail is produced for those files at all - the tile shows the file type instead. That skips the rendering, the thumbnail cache and the memory a decoded image holds, which is noticeable in folders full of large photos or PDFs. In the **list view** text, PDF and Word files always show their type (at that size a page is unreadable anyway), so only the image switch applies there - and it is the one offered
 - **Text files preview with syntax colours**: a tile shows the first lines of the file in the same colours as the editor, so a `.cpp` looks different from a `.md`, a `.py` or a `.json` at a glance. Truncated lines keep their colouring
 - **A `.ts` file is looked at, not guessed**: the extension means both TypeScript and MPEG transport stream, so the first kilobyte decides - four packets in a row starting with the sync byte make it a video, anything else (an empty file included) is treated as source code and opens in the editor
 - Switchable under Settings -> View: turned off, the tile shows the **file type** instead (CPP, PY, MD …)
@@ -129,6 +131,7 @@ Where a feature stops - the known limits, with the reason behind each one - is i
 - **Switch to the raw file** at any time with the table button in the top bar or the matching entry in the *View* menu - the same way the HTML preview toggles against its source
 - **Works with smaller batches too**: neither the number of columns nor their names are built in - both are read from the file, and the totals columns are found by their heading. A reduced DATEV export with a handful of columns opens the same way
 - **Scrolls like the rest of the app**: about half a screen per mouse-wheel notch, smoothly animated - vertically through the bookings, horizontally with `Ctrl`+wheel (or a tilt wheel, or `Shift`+wheel); wheel up brings the right-hand side in
+- **`Ctrl+F` searches the bookings**: the same find bar as the CSV view (see below), with the same two switches. It searches the columns that are **shown** - switching on *all columns* includes theirs
 - **Read-only, deliberately**: MediaGallery never writes into a bookkeeping file. There is no editing, no saving, no export from the table view
 
 ## CSV and TSV Files
@@ -138,13 +141,18 @@ Where a feature stops - the known limits, with the reason behind each one - is i
 - **Row and column numbers** can be switched on from the top bar, next to the table button (it appears only while a table is actually on screen). Each gets its own strip: the row numbers in a column of their own to the left, pinned there while you scroll sideways, and the column numbers in a thin bar above the headings - they never share the line with a column name. Works in the DATEV view too
 - **Several tables in one file get one tab each**: an export that stacks blocks - a title line, a heading row, rows, a blank line, then the next block - is split at those blank lines and shown as tabs above the table, each with its own name and row count. Every block keeps its own columns, its own headings and its own row numbers, and the headings stay put while you scroll it. An **All** tab shows the file flat, exactly as it stands, if the split ever gets it wrong
 - **A block heading is recognised properly**: a line on its own above a wider one is the block name, and then the next line carries the column names - which is what makes a text-only table (names, rooms, office hours) work, where there is no number anywhere to give the heading away
+- **`Ctrl+F` searches the whole table**: the same find bar as the text editor, top right. It searches **every column of the table you are looking at**, marks every hit, jumps to the current one and keeps the count in view (`3 / 18`). `Enter` goes to the next hit, `Shift+Enter` back, the arrows do the same, and it wraps around at either end. `Esc` closes the bar and clears the marks. **When a file holds several tables**, the bar also names the others that contain the term: a button *"2 more tables"* opens a list with each table and its hit count, and clicking one switches to that table and lands on its first hit - so a term that is not in the table you are looking at is still one click away
+- **Two switches, no more**: `Aa` respects upper and lower case, `Zelle` (*Cell*) only counts a cell that is exactly what you typed, not one that merely contains it. Everything is searched literally
+- **A file with several tables tells you where the hits are**: the search stays inside the tab you are on, and if nothing is there but the file has hits elsewhere, the bar says so (`none here, 12 in other tables`) instead of leaving you with an empty result
+- **A hit that is off to the right is scrolled into view**, not only down to the row; a row that is already on screen stays where it is instead of jumping
+- **The search runs beside the app, not in front of it**: a large table is searched in a worker thread while the view stays responsive, and typing further only starts one search, not one per keystroke (measured: 119 ms for 100,000 rows by 20 columns)
 - **Switching to the raw file keeps your undo history**: the editor is not thrown away when you look at the table, so `Ctrl+Z` still works after you switch back
 - **Quoted fields survive**: commas or semicolons inside `"…"`, doubled quotes as an escaped quote, and line breaks inside a quoted field all read correctly
 - **Encoding and line endings** are handled the same way as everywhere else: valid UTF-8 is UTF-8, anything else is CP1252; LF and CRLF both work
 - **Anything odd is named**: unclosed quotes and files that hit the size cap are reported in the footer with the line number *from the file* - blank lines do not shift the count
 - **Same scrolling as the rest of the app**: about half a screen per wheel notch, `Ctrl`+wheel (or a tilt wheel, or `Shift`) for sideways - wheel up brings the right-hand side in
 - **A DATEV batch stays a DATEV batch** even when it is named `.csv`: the bookkeeping view with its file header and totals takes precedence over the neutral table
-- **Read-only for now**: editing a cell and writing the file back is not built yet
+- **Read-only for now**: editing a cell and writing the file back is not built yet - searching works, sorting does not
 
 ## Live Transliteration
 - Type in Latin letters and get **Arabic (with full Harakat/diacritics)** or **Japanese (Hiragana/Katakana)** automatically as you type - no separate conversion step
@@ -334,7 +342,7 @@ Notes, drawings, redactions and form values are **non-destructive**: they live i
 - **Themed standard controls**: buttons, checkboxes, radio buttons, combo boxes, spin boxes, text fields, sliders, scrollbars, tooltips, **menus** and dialogs are drawn by the app's own control style - rounded corners, accent-colored checked states, consistent hover/pressed animations. This includes **every menu**: the menu bar, right-click menus on tiles, PDF pages and tags, and even the editing menu Qt itself opens in a text field. They follow the selected theme (including custom colors) instead of the desktop color scheme, so the app looks identical on every platform and under every desktop theme
 
 ## Companion Files
-- **The app's own files stay out of the way**: the folder file holding tags and categories, the editors' notes (`<file>.mgedit.json`) and DOCX backups (`.bak`) are **hidden by default** - in the gallery and in the app's own file chooser
+- **The app's own files stay out of the way**: the folder file holding tags and categories (`<FolderName>.mgstore`, plus an older `<FolderName>.json` until it is replaced), the editors' notes (`<file>.mgedit.json`) and DOCX backups (`.bak`) are **hidden by default** - in the gallery and in the app's own file chooser
 - **Show all files** (Settings -> View -> *Files*): shows them anyway - and then really everything, including file types the app does not recognise. Those have no preview picture, so the tile carries a small **badge with the file extension** (`BAK`, `ZIP`, …) - otherwise they were indistinguishable. Nothing is deleted or moved by this switch; it only changes what you see
 - **Delete a companion file without touching the file itself**: right-click a tile -> *Delete notes and drawings* or *Delete previous version*. The entries appear only when such a file actually exists, ask before deleting, and the deletion goes to the system trash - `Ctrl+Z` brings it back like any other file operation
 - **File menu in the header bar**: next to *View*, a **File** menu appears for files that have an editor (PDF, images). It carries *Delete notes and drawings*, which discards every note, drawing, highlight and redaction of that file in one undo step - the same action the page context menu offers in the PDF, now reachable for images too
@@ -342,12 +350,14 @@ Notes, drawings, redactions and form values are **non-destructive**: they live i
 
 ## Metadata & File Management
 - **Date editor**: set a date per file - it is written **to the file itself**, so every file manager, copy and export shows it. Nothing about it is stored in the app's sidecar; the file system already knows both dates. **Reset** puts the file back to its **creation date**, which never changes - so you can set a new date as often as you like and always land back at the same point (on file systems without a creation date, Reset does nothing rather than guess). A read-only file is reported instead of quietly keeping the date app-internal
+- **Info** (right-click a tile, last entry): a small panel with the file's **name, type, size, creation date, modification date and location** - the same facts a file manager shows, read straight from the file system. It works for every kind of file and for folders; the size is given both readably (`1.2 MB`) and exactly (`1,234,567 B`). If the file system keeps no creation date, that line is left out rather than filled with a guess
 - **Delete file**: Red delete button in fullscreen view, plus a right-click "Delete file…" entry on gallery tiles - both with a confirmation dialog; the file goes to the system trash and its metadata/sidecar are cleaned up automatically
 - **Undo a deletion** (`Ctrl+Z` in the gallery, `Ctrl+Shift+Z` or `Ctrl+Y` to delete again): the file comes back out of the trash to exactly where it was, **and so do its tags, its category membership and its custom date**. The stack belongs to the open folder and to the running session - switching folders clears it. If the system offered no trash (the file was deleted for good), no undo is offered rather than a promise that cannot be kept, and an undo never overwrites a file that has meanwhile taken that place again. While you are typing in a field, `Ctrl+Z` belongs to the text
 - **Create file**: the **+** button in the filter bar holds both "create" actions of the gallery - *New folder* and *Create*. *Create* makes an empty PDF, HTML, text or Word file directly in the current folder (PDF starts as one blank A4 page, ready to annotate). A fifth entry, **"Empty file, your own extension"**, takes the name **exactly as you type it** - `notiz.xyz`, `build.ninja`, or no extension at all, the way `LICENSE` has none - and leaves the file empty. Name collisions keep the extension (`notiz (2).xyz`), and dots or spaces at the end of the name are dropped. If the extension is one the gallery does not know, the file is still created and the status line says so plainly: it only shows up once **"Show all files"** is on. That switch is **not** flipped for you - it is your setting
 - **Rename**: Also renames the file on disk. In the fullscreen view the filename in the header is editable **only in options mode (`Alt+S`)** - outside it, the header acts as the drag handle for split-view docking
 - **Drag & Drop**: Drop a folder or individual media files onto the window
-- **JSON storage**: `<FolderName>.json` stored directly in the target folder
+- **The folder file follows the folder**: rename a folder and its `.mgstore` is renamed with it. If a folder was renamed outside the app, its file is adopted back the next time you open it (only when exactly one `.mgstore` is present - the app never guesses between several)
+- **MGStorage folder file**: `<FolderName>.mgstore` stored directly in the target folder - a compact binary file of the app's own (see *Configuration & Data*). An older `<FolderName>.json` is read once and replaced automatically the next time the folder is saved
 
 ## Audio Player Mode (`Alt+A`)
 - **Player mode per pane**: `Alt+A` narrows that gallery to audio files; everything else about the gallery stays as it is (tags, search, filters, context menu). Leaving the mode restores the filter you had before
@@ -496,13 +506,17 @@ Notes, drawings, redactions and form values are **non-destructive**: they live i
 
 All settings are stored via `QSettings` (platform-native). The audio player keeps its own group `audio/`: equalizer on/off, the ten band gains, preamp, your presets (one line each, `Name<TAB>preamp<TAB>10 gains`), *show videos*, *remember last track*, the last file and position, volume, shuffle and repeat.
 
-Per-folder metadata (tags, dates, categories, per-file PDF text colour) is stored as JSON alongside the media:
+Per-folder metadata (tags, tag colours, categories, per-file PDF text colour) is stored in one **MGStorage** file alongside the media:
 ```
 MyPhotos/
 ├── photo1.jpg
 ├── photo2.png
-└── MyPhotos.json
+└── MyPhotos.mgstore
 ```
+
+**MGStorage** is the app's own binary format, built for exactly this data. Every name - tag, category, file - is written **once** and referred to by number afterwards; a set of tags that many files share is written once as well; numbers use as few bytes as they need; sorted lists store differences instead of values; file names that start alike share that start. On a real folder (5000 files, 15.000 assignments, 300 categories) that turned **3.10 MB of JSON into 245 KB** - 12.6 times smaller - and saving got faster in the same step. Settings -> General has a short box explaining the syntax if you are curious.
+
+**Nothing is lost in the switch.** An older `<FolderName>.json` is still read; the first save after that writes the `.mgstore` and removes the old file. The file is written atomically (temp file + rename), so a crash mid-write cannot leave you with an empty one, and if another window changed the same folder in the meantime, both changes are merged rather than one overwriting the other.
 
 Custom themes can be exported to JSON and shared:
 ```json

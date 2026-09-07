@@ -16,8 +16,16 @@ Item {
     property real   bottomInset: 0
     //  Zeilen- und Spaltennummern; der Schalter sitzt in der oberen Leiste.
     property bool   showNumbers: false
+    //  Nur die aktive Haelfte darf auf Strg+F antworten.
+    property bool   paneActive: true
 
     readonly property string currentPath: root.source
+
+    property bool _findOpen: false
+    function oeffneSuche() {
+        root._findOpen = true
+        suchBalken.oeffnen()
+    }
 
     //  Zahlen in der Sprache der Oberflaeche - eine Buchhaltungsdatei ist
     //  deutsch geschrieben, die Oberflaeche muss es nicht sein.
@@ -122,12 +130,44 @@ Item {
     //  Der Koerper ist geteilt (`qml/table/DataTable.qml`) - Rollverhalten,
     //  Balken und Spaltenbreiten sind bei CSV dieselben. DATEV-eigen sind nur
     //  Kopf und Fuss.
+    //  `root.visible` ist die WIRKSAME Sichtbarkeit (der Rohtext blendet die
+    //  ganze Flaeche aus) - ohne sie faenge auch die unsichtbare Tabelle das
+    //  Strg+F des Texteditors ab.
+    Shortcut {
+        sequence: "Ctrl+F"
+        enabled: root.visible && root.paneActive && ctl.ready
+        onActivated: root.oeffneSuche()
+    }
+
+    //  Der Sprung zum Treffer gehoert der Flaeche - nur sie kennt den Koerper.
+    Connections {
+        target: ctl
+        function onSearchChanged() {
+            if (!ctl.searching && ctl.matchRow >= 0)
+                tabelle.zeigeZelle(ctl.matchRow, ctl.matchColumn)
+        }
+    }
+
+    TableFindBar {
+        id: suchBalken
+        visible: root._findOpen
+        z: 6
+        anchors { top: kopf.bottom; topMargin: 8
+                  right: parent.right; rightMargin: 18 }
+        ctl: ctl
+        fromRow: Math.floor(tabelle.rows.contentY / tabelle.rowHeight)
+        onGeschlossen: root._findOpen = false
+    }
+
     DataTable {
         id: tabelle
         anchors { left: parent.left; right: parent.right
                   top: kopf.bottom; bottom: fuss.top }
         provider: ctl
         showNumbers: root.showNumbers
+        searchRevision: ctl.searchRevision
+        currentRow: ctl.matchRow
+        currentColumn: ctl.matchColumn
     }
 
     //  ── Fuss ────────────────────────────────────────────────────────────────

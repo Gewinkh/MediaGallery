@@ -1,5 +1,8 @@
 #include "core/JsonStorage.h"
 
+#include "core/MGStorage.h"
+#include "core/PathUtils.h"
+
 #include <QCoreApplication>
 #include <QJsonDocument>
 #include <QJsonObject>
@@ -7,9 +10,14 @@
 #include <QFile>
 #include <QSaveFile>
 #include <QFileInfo>
+#include <QDir>
+
+#include <unordered_map>
 #include <QRandomGenerator>
 #include <QSet>
 #include <QDataStream>
+
+#include <algorithm>
 
 JsonStorage::JsonStorage(QObject* parent) : QObject(parent) {
     //  Sammelndes Speichern: Ein Null-Timer feuert am Ende des laufenden
@@ -17,7 +25,8 @@ JsonStorage::JsonStorage(QObject* parent) : QObject(parent) {
     //  Tag ziehen), wird zu EINEM Schreibvorgang.
     m_saveTimer.setSingleShot(true);
     m_saveTimer.setInterval(0);
-    connect(&m_saveTimer, &QTimer::timeout, this, &JsonStorage::flushPendingSave);
+    m_savePool.setMaxThreadCount(1);       // Reihenfolge der Schreibvorgaenge
+    connect(&m_saveTimer, &QTimer::timeout, this, &JsonStorage::saveTimerFired);
     //  Beenden: was noch aussteht, muss auf die Platte. Der Destruktor allein
     //  genügt nicht - beim regulären Beenden räumt Qt die Ereignisschleife ab,
     //  bevor lange lebende Objekte fallen.
@@ -127,22 +136,59 @@ void JsonStorage::loadFolder(const QString& folderPath) {
     m_fileMeta.clear();
     m_tagColors.clear();
     m_categories.clear();
-    QFileInfo fi(folderPath);
-    m_jsonPath = folderPath + "/" + fi.fileName() + ".json";
+    m_jsonPath = sidecarPath(folderPath);
 
+    //  Die eigene Ablage zuerst. Gibt es sie nicht, wird die alte JSON gelesen -
+    //  und beim naechsten Speichern durch die neue ersetzt.
     QFile f(m_jsonPath);
-    if (!f.exists() || !f.open(QIODevice::ReadOnly)) return;
+    if (f.exists() && f.open(QIODevice::ReadOnly)) {
+        const QByteArray roh = f.read(kMaxAblageBytes);
+        f.close();
+        noteDiskStamp(m_jsonPath);
+        mg::storage::Ablage a;
+        std::string fehler;
+        if (mg::storage::lies(roh.constData(), std::size_t(roh.size()), a, &fehler)) {
+            uebernimmAblage(a);
+        } else {
+            qWarning() << "JsonStorage:" << m_jsonPath << "nicht lesbar -"
+                       << QString::fromStdString(fehler);
+        }
+        return;
+    }
 
-    QJsonDocument doc = QJsonDocument::fromJson(f.readAll());
+    //  Ordner umbenannt, Ablage nicht: sonst waere alle Verschlagwortung weg,
+    //  obwohl die Datei danebenliegt. Bei mehreren wird nicht geraten.
+    if (const QString verwaist = verwaisteAblage(folderPath); !verwaist.isEmpty()) {
+        QFile alt(verwaist);
+        if (alt.open(QIODevice::ReadOnly)) {
+            const QByteArray roh = alt.read(kMaxAblageBytes);
+            alt.close();
+            mg::storage::Ablage a;
+            if (mg::storage::lies(roh.constData(), std::size_t(roh.size()), a, nullptr)) {
+                uebernimmAblage(a);
+                //  Erst unter dem richtigen Namen schreiben, dann die alte weg.
+                saveFolder(folderPath);
+                if (QFileInfo::exists(m_jsonPath)) QFile::remove(verwaist);
+                return;
+            }
+        }
+    }
+
+    leseAlteJson(altePath(folderPath));
+}
+
+//  Der Leser fuer das ALTE Format. Er bleibt, damit vorhandene Ablagen
+//  aufgehen; geschrieben wird nur noch die eigene Form.
+void JsonStorage::leseAlteJson(const QString& pfad) {
+    QFile f(pfad);
+    if (!f.exists() || !f.open(QIODevice::ReadOnly)) return;
+    const QJsonDocument doc = QJsonDocument::fromJson(f.readAll());
     f.close();
-    noteDiskStamp(m_jsonPath);
     if (!doc.isObject()) return;
 
-    QJsonObject root = doc.object();
-
+    const QJsonObject root = doc.object();
     loadNewFormat(root);
-
-    QJsonArray cats = root["categories"].toArray();
+    const QJsonArray cats = root["categories"].toArray();
     for (const auto& c : cats) m_categories.append(categoryFromJson(c.toObject()));
 }
 
@@ -183,98 +229,324 @@ void JsonStorage::mergeForeignChanges(const QString& path) {
     if (m_categories.isEmpty()) m_categories = disk.m_categories;
 }
 
+QString JsonStorage::sidecarPath(const QString& folderPath) const {
+    return folderPath + "/" + QFileInfo(folderPath).fileName() + kEndung;
+}
+
+//  Genau EINE `.mgstore`, die nicht zum Ordnernamen passt? Dann ist sie die
+//  Ablage dieses Ordners unter altem Namen. Mehrere oder keine: leer.
+QString JsonStorage::verwaisteAblage(const QString& folderPath) const {
+    QDir d(folderPath);
+    const QStringList treffer =
+        d.entryList({ QStringLiteral("*") + QLatin1String(kEndung) }, QDir::Files);
+    if (treffer.size() != 1) return {};
+    const QString name = treffer.first();
+    if (name == mg::folderSidecarName(folderPath)) return {};   // passt ohnehin
+    return d.filePath(name);
+}
+
+QString JsonStorage::altePath(const QString& folderPath) const {
+    return folderPath + "/" + QFileInfo(folderPath).fileName() + QStringLiteral(".json");
+}
+
+namespace {
+
+std::uint32_t alsZahl(const QColor& c) {
+    return c.isValid() ? ((std::uint32_t(c.red()) << 16) | (std::uint32_t(c.green()) << 8)
+                          | std::uint32_t(c.blue()))
+                       : mg::storage::kKeineFarbe;
+}
+
+QColor alsFarbe(std::uint32_t v) {
+    return v == mg::storage::kKeineFarbe
+               ? QColor()
+               : QColor(int((v >> 16) & 0xFF), int((v >> 8) & 0xFF), int(v & 0xFF));
+}
+
+std::string utf8(const QString& s) { return s.toStdString(); }
+QString ausUtf8(const std::string& s) { return QString::fromStdString(s); }
+
+//  Den Kategorienbaum flach machen: `eltern` ist die Nummer der Mutter + 1.
+void flachKategorien(const QList<TagCategory>& baum, std::uint32_t eltern,
+                     const QHash<QString, std::uint32_t>& tagNr,
+                     std::vector<mg::storage::Kategorie>& out) {
+    for (const TagCategory& c : baum) {
+        mg::storage::Kategorie k;
+        k.id       = utf8(c.id);
+        k.name     = utf8(c.name);
+        k.farbe    = alsZahl(c.color.isValid() ? c.color : QColor(100, 180, 160));
+        k.schalter = std::uint8_t((c.uniformColor ? 0x01 : 0)
+                                  | (c.inheritColorToChildren ? 0x02 : 0));
+        k.eltern   = eltern;
+        for (const QString& t : c.tags)
+            if (const auto it = tagNr.constFind(t); it != tagNr.cend()) k.tags.push_back(*it);
+        out.push_back(std::move(k));
+        const std::uint32_t meine = std::uint32_t(out.size());   // Nummer + 1
+        flachKategorien(c.children, meine, tagNr, out);
+    }
+}
+
+}  // namespace
+
+//  Den Stand in die reine C++-Form bringen, aus der `mg::storage` die Bytes
+//  macht. Zwei Dinge passieren dabei:
+//   · Die Tag-KOMBINATIONEN werden gesammelt: gleiche Kombinationen teilen sich
+//     einen Eintrag, die Datei nennt nur noch dessen Nummer.
+//   · Die Kategorie-Zugehoerigkeit wandert von der Kategorie zur DATEI - im
+//     Speicher bleibt sie, wo sie war, nur die Datei fuehrt sie andersherum.
+mg::storage::Ablage JsonStorage::baueAblage(const QHash<QString, FileMeta>& files,
+                                            const QHash<QString, QColor>& colors,
+                                            const QList<TagCategory>& cats) {
+    using namespace mg::storage;
+    Ablage a;
+
+    //  Tagtabelle - sortiert, damit dieselbe Ablage immer dieselben Bytes ergibt.
+    QStringList tagNamen = colors.keys();
+    std::sort(tagNamen.begin(), tagNamen.end());
+    QHash<QString, std::uint32_t> tagNr;
+    a.tags.reserve(tagNamen.size());
+    for (const QString& t : std::as_const(tagNamen)) {
+        tagNr.insert(t, std::uint32_t(a.tags.size()));
+        a.tags.push_back({ utf8(t), alsZahl(colors.value(t, QColor(100, 180, 160))) });
+    }
+
+    flachKategorien(cats, 0, tagNr, a.kategorien);
+
+    //  Kategorie-Zugehoerigkeit je DATEI einsammeln (der Baum in derselben
+    //  Reihenfolge wie oben - `flachKategorien` laeuft ihn genauso ab).
+    QHash<QString, std::vector<std::uint32_t>> katJeDatei;
+    {
+        std::uint32_t nr = 0;
+        std::function<void(const QList<TagCategory>&)> lauf =
+            [&](const QList<TagCategory>& baum) {
+                for (const TagCategory& c : baum) {
+                    const std::uint32_t meine = nr++;
+                    for (const QString& f : c.files) katJeDatei[f].push_back(meine);
+                    lauf(c.children);
+                }
+            };
+        lauf(cats);
+    }
+
+    //  Gleiche Tag-Kombination = ein Eintrag, nachgeschlagen ueber die
+    //  Nummernfolge SELBST: der frueher gebaute Textschluessel ("3,17,") kostete
+    //  je Datei drei Zeichenketten und deren Hash.
+    struct FolgeHash {
+        std::size_t operator()(const std::vector<std::uint32_t>& v) const noexcept {
+            std::size_t h = 1469598103934665603ULL;
+            for (const std::uint32_t n : v) { h ^= n; h *= 1099511628211ULL; }
+            return h;
+        }
+    };
+    std::unordered_map<std::vector<std::uint32_t>, std::uint32_t, FolgeHash> satzNr;
+    std::vector<std::uint32_t> nummern;
+    const auto satzFuer = [&](const QStringList& tags) -> std::uint32_t {
+        nummern.clear();
+        nummern.reserve(std::size_t(tags.size()));
+        for (const QString& t : tags)
+            if (const auto it = tagNr.constFind(t); it != tagNr.cend()) nummern.push_back(*it);
+        if (nummern.empty()) return kOhneSatz;
+        //  NICHT sortieren: die Reihenfolge der Tags an einer Datei ist die, in
+        //  der sie vergeben wurden, und genau so stehen die Chips darunter.
+        const auto it = satzNr.find(nummern);
+        if (it != satzNr.end()) return it->second;
+        const std::uint32_t neu = std::uint32_t(a.saetze.size());
+        satzNr.emplace(nummern, neu);
+        a.saetze.push_back(nummern);
+        return neu;
+    };
+
+    //  Jede Datei, die irgendetwas traegt: Tags, eigene Textfarbe oder eine
+    //  Kategorie. Eine Datei ohne alles kommt nicht in die Ablage.
+    //  Zuerst die Eintraege mit Tags oder Farbe, danach die, die NUR ueber eine
+    //  Kategorie dabei sind. Frueher lief beides ueber ein `QSet` der Namen -
+    //  das hiess je Datei ein Einfuegen und danach noch ein Nachschlagen; im
+    //  Profil standen allein dafuer 2,8 % aller Befehle.
+    const auto traegtEtwas = [](const FileMeta& m) {
+        return !m.tags.isEmpty() || m.textPdfColor.isValid();
+    };
+    a.dateien.reserve(std::size_t(files.size()) + std::size_t(katJeDatei.size()));
+    for (auto it = files.cbegin(); it != files.cend(); ++it) {
+        if (!traegtEtwas(it.value())) continue;
+        Datei d;
+        d.name      = utf8(it.key());
+        d.satz      = satzFuer(it.value().tags);
+        d.textfarbe = alsZahl(it.value().textPdfColor);
+        if (const auto k = katJeDatei.constFind(it.key()); k != katJeDatei.cend())
+            d.kategorien = *k;
+        a.dateien.push_back(std::move(d));
+    }
+    for (auto it = katJeDatei.cbegin(); it != katJeDatei.cend(); ++it) {
+        const auto meta = files.constFind(it.key());
+        if (meta != files.cend() && traegtEtwas(*meta)) continue;   // schon drin
+        Datei d;
+        d.name       = utf8(it.key());
+        d.satz       = kOhneSatz;
+        d.textfarbe  = kKeineFarbe;
+        d.kategorien = it.value();
+        a.dateien.push_back(std::move(d));
+    }
+    return a;
+}
+
+//  Umkehrung: den gelesenen Stand in die Behaelter der Klasse bringen.
+void JsonStorage::uebernimmAblage(const mg::storage::Ablage& a) {
+    m_fileMeta.clear();
+    m_tagColors.clear();
+    m_categories.clear();
+
+    //  Eine QHash waechst durch Umhaengen ALLER Eintraege - bei 20.000 Dateien
+    //  gut ein Dutzend Mal.
+    m_fileMeta.reserve(int(a.dateien.size()));
+    m_tagColors.reserve(int(a.tags.size()));
+
+    QStringList tagNamen;
+    tagNamen.reserve(int(a.tags.size()));
+    for (const mg::storage::Tag& t : a.tags) {
+        const QString name = ausUtf8(t.name);
+        tagNamen.append(name);
+        m_tagColors.insert(name, alsFarbe(t.farbe));
+    }
+
+    //  Die flache Liste wieder zum Baum machen. `eltern` ist die Nummer der
+    //  Mutter + 1; sie steht immer VOR ihrem Kind (der Schreiber laeuft den
+    //  Baum von oben ab), ein Zeiger nach hinten kann also nicht entstehen.
+    std::vector<TagCategory> flach;
+    flach.reserve(a.kategorien.size());
+    for (const mg::storage::Kategorie& k : a.kategorien) {
+        TagCategory c;
+        c.id   = ausUtf8(k.id);
+        c.name = ausUtf8(k.name);
+        c.color = alsFarbe(k.farbe);
+        c.uniformColor           = (k.schalter & 0x01) != 0;
+        c.inheritColorToChildren = (k.schalter & 0x02) != 0;
+        for (const std::uint32_t n : k.tags)
+            if (n < std::uint32_t(tagNamen.size())) c.tags.append(tagNamen.at(int(n)));
+        flach.push_back(std::move(c));
+    }
+
+    //  Dateien: Tags und Farbe an den Eintrag, Kategorie-Zugehoerigkeit an die
+    //  Kategorie - dort, wo der Rest des Programms sie sucht.
+    for (const mg::storage::Datei& d : a.dateien) {
+        const QString name = ausUtf8(d.name);
+        QStringList tags;
+        if (d.satz != mg::storage::kOhneSatz && d.satz < a.saetze.size())
+            for (const std::uint32_t n : a.saetze[d.satz])
+                if (n < std::uint32_t(tagNamen.size())) tags.append(tagNamen.at(int(n)));
+        const QColor farbe = alsFarbe(d.textfarbe);
+        if (!tags.isEmpty() || farbe.isValid()) {
+            FileMeta meta;
+            meta.tags = std::move(tags);
+            meta.textPdfColor = farbe;
+            m_fileMeta.insert(name, std::move(meta));
+        }
+        for (const std::uint32_t k : d.kategorien)
+            if (k < flach.size()) flach[k].files.append(name);
+    }
+
+    //  Von hinten nach vorn einhaengen: ein Kind wird an seine Mutter gegeben,
+    //  bevor die selbst umzieht.
+    for (std::size_t i = flach.size(); i-- > 0;) {
+        const std::uint32_t eltern = a.kategorien[i].eltern;
+        if (eltern == 0 || eltern > flach.size()) continue;
+        flach[eltern - 1].children.prepend(flach[i]);
+        flach[i].id.clear();                    // eingehaengt, nicht mehr Wurzel
+    }
+    for (std::size_t i = 0; i < flach.size(); ++i)
+        if (a.kategorien[i].eltern == 0) m_categories.append(flach[i]);
+}
+
+//  Die Bytes der Ablage. Leer heisst: es gibt nichts zu speichern, die Datei
+//  gehoert geloescht (sonst entstuende allein durch das Oeffnen eines Ordners
+//  eine Ablage).
+QByteArray JsonStorage::baueSidecar(const QHash<QString, FileMeta>& files,
+                                    const QHash<QString, QColor>& colors,
+                                    const QList<TagCategory>& cats) {
+    const mg::storage::Ablage a = baueAblage(files, colors, cats);
+    if (a.leer()) return {};
+    const std::string bytes = mg::storage::schreibe(a);
+    return QByteArray(bytes.data(), qsizetype(bytes.size()));
+}
+
+//  Die fertigen Bytes ablegen. Ohne Inhalt faellt die Datei weg.
+//  ATOMAR (QSaveFile): diese Datei ist die EINZIGE Quelle aller Tags und Daten
+//  eines Ordners. Mit `open(WriteOnly)` war sie zuerst auf 0 Bytes gekuerzt -
+//  Totalverlust.
+static bool schreibeSidecar(const QString& path, const QByteArray& bytes) {
+    //  Die alte JSON-Ablage desselben Ordners - sie faellt weg, sobald die neue
+    //  steht. Erst schreiben, dann loeschen: bricht das Schreiben ab, ist der
+    //  alte Stand noch da.
+    QString alt = path;
+    if (alt.endsWith(QLatin1String(JsonStorage::kEndung)))
+        alt.chop(int(qstrlen(JsonStorage::kEndung)));
+    alt += QStringLiteral(".json");
+
+    if (bytes.isEmpty()) {
+        if (QFile::exists(path)) QFile::remove(path);
+        if (QFile::exists(alt))  QFile::remove(alt);
+        return true;
+    }
+    QSaveFile f(path);
+    if (!f.open(QIODevice::WriteOnly)) {
+        qWarning() << "JsonStorage: kann" << path << "nicht schreiben";
+        return false;
+    }
+    if (f.write(bytes) != bytes.size()) {
+        f.cancelWriting();
+        qWarning() << "JsonStorage: unvollstaendig geschrieben:" << path;
+        return false;
+    }
+    if (!f.commit()) {
+        qWarning() << "JsonStorage: konnte" << path << "nicht abschliessen";
+        return false;
+    }
+    if (QFile::exists(alt)) QFile::remove(alt);
+    return true;
+}
+
 void JsonStorage::saveFolder(const QString& folderPath) {
     if (folderPath == m_folderPath) {
         m_saveTimer.stop();
         m_savePending = false;
     }
-    mergeForeignChanges(m_jsonPath.isEmpty()
-                            ? folderPath + "/" + QFileInfo(folderPath).fileName() + ".json"
-                            : m_jsonPath);
+    const QString path = sidecarPath(folderPath);
+    //  Ein eigener Schreibvorgang ist unterwegs - dann ist die Datei auf der
+    //  Platte nicht "fremd geaendert", sondern gleich unsere eigene.
+    if (m_schreibtGerade == 0) mergeForeignChanges(path);
 
-    QJsonObject root;
-
-    // Compact file-centric section: only entries with actual data (tags, custom date, PDF text colour). Keys are
-    // short ("t", "d", "c") to keep large collections small.
-    QJsonObject filesObj;
-    for (auto it = m_fileMeta.cbegin(); it != m_fileMeta.cend(); ++it) {
-        const FileMeta& meta = it.value();
-        if (meta.tags.isEmpty() && !meta.textPdfColor.isValid())
-            continue;
-
-        QJsonObject o;
-        if (!meta.tags.isEmpty()) {
-            QJsonArray tagsArr;
-            for (const QString& t : meta.tags) tagsArr.append(t);
-            o["t"] = tagsArr;
-        }
-        if (meta.textPdfColor.isValid())
-            o["c"] = meta.textPdfColor.name(QColor::HexRgb);
-
-        filesObj[it.key()] = o;
-    }
-    if (!filesObj.isEmpty())
-        root["files"] = filesObj;
-
-    // Tag color registry
-    // Collect tags used anywhere (files + categories) so the registry stays clean.
-    QSet<QString> usedTags;
-    for (auto it = m_fileMeta.cbegin(); it != m_fileMeta.cend(); ++it)
-        for (const QString& t : it.value().tags) usedTags.insert(t);
-
-    struct CatTagCollector {
-        static void collect(const QList<TagCategory>& cats, QSet<QString>& out) {
-            for (const TagCategory& cat : cats) {
-                for (const QString& t : cat.tags) out.insert(t);
-                collect(cat.children, out);
-            }
-        }
-    };
-    CatTagCollector::collect(m_categories, usedTags);
-
-    QJsonObject tagColorsObj;
-    for (const QString& tag : usedTags)
-        tagColorsObj[tag] = m_tagColors.value(tag, QColor(100, 180, 160)).name();
-    if (!tagColorsObj.isEmpty())
-        root["tagColors"] = tagColorsObj;
-
-    QJsonArray cats;
-    for (const auto& cat : m_categories) cats.append(categoryToJson(cat));
-    if (!cats.isEmpty())
-        root["categories"] = cats;
-
-    QString path = m_jsonPath.isEmpty()
-                       ? folderPath + "/" + QFileInfo(folderPath).fileName() + ".json"
-                       : m_jsonPath;
-
-    // Keine tatsächlichen Daten -> KEINE Leerdatei anlegen: sonst entstünde allein durch das Öffnen eines Ordners
-    // eine JSON. Eine bestehende, nun leere Datei wird entfernt statt als Stub zu bleiben.
-    const bool hasContent = root.contains("files") || root.contains("tagColors")
-                             || root.contains("categories");
-    if (!hasContent) {
-        if (QFile::exists(path))
-            QFile::remove(path);
-        noteDiskStamp(path);
-        return;
-    }
-
-    // ATOMAR schreiben (QSaveFile): diese Datei ist die EINZIGE Quelle aller Tags und Daten eines Ordners und wird
-    // bei jeder Mutation neu geschrieben. Mit `open(WriteOnly)` war sie zuerst auf 0 Bytes gekürzt - Totalverlust.
-    const QByteArray bytes = QJsonDocument(root).toJson(QJsonDocument::Indented);
-    QSaveFile f(path);
-    if (!f.open(QIODevice::WriteOnly | QIODevice::Truncate))
-        return;
-    if (f.write(bytes) != bytes.size()) {
-        f.cancelWriting();     // Original bleibt unangetastet
-        return;
-    }
-    f.commit();
-    noteDiskStamp(path);     // ab jetzt sind WIR der Stand der Datei
+    schreibeSidecar(path, baueSidecar(m_fileMeta, m_tagColors, m_categories));
+    noteDiskStamp(path);
+    emit folderWritten(folderPath);
 }
 
-// Bewusst nicht das JSON der Platte: an 5000 Dateien kostete der Baum 10,3 ms plus
-// 3,0 ms je Geste. Der Schnappschuss verlaesst den Prozess nie und muss MEHR
-// enthalten - die Datei fuehrt nur benutzte Tagfarben.
+//  Derselbe Vorgang, aber Bauen und Schreiben laufen im Arbeitsfaden: bei
+//  20.000 Dateien sind das 40 ms, die sonst zwischen der Geste und dem
+//  naechsten Bild liegen. Der Faden bekommt KOPIEN der drei Behaelter -
+//  implizit geteilt, das kostet beim Uebergeben nichts.
+void JsonStorage::saveFolderAsync(const QString& folderPath) {
+    if (folderPath.isEmpty()) return;
+    const QString path = sidecarPath(folderPath);
+    if (m_schreibtGerade == 0) mergeForeignChanges(path);
+
+    const QHash<QString, FileMeta> files  = m_fileMeta;
+    const QHash<QString, QColor>   colors = m_tagColors;
+    const QList<TagCategory>       cats   = m_categories;
+    ++m_schreibtGerade;
+
+    JsonStorage* self = this;
+    m_savePool.start([self, path, files, colors, cats] {
+        schreibeSidecar(path, baueSidecar(files, colors, cats));
+        QMetaObject::invokeMethod(self, [self, path] { self->schreibvorgangFertig(path); },
+                                  Qt::QueuedConnection);
+    });
+}
+
+void JsonStorage::schreibvorgangFertig(const QString& path) {
+    if (m_schreibtGerade > 0) --m_schreibtGerade;
+    noteDiskStamp(path);
+    emit folderWritten(QFileInfo(path).absolutePath());
+}
+
 namespace {
 constexpr quint32 kSnapMagic   = 0x4D47'5447;   // "MGTG"
 constexpr quint16 kSnapVersion = 1;
@@ -375,14 +647,32 @@ void JsonStorage::saveCurrentFolder() {
         m_saveTimer.start();
 }
 
+//  Der Timer schreibt im Arbeitsfaden - wer wartet, ist niemand: die Geste ist
+//  vorbei, das Bild kann gemalt werden. Ohne Ereignisschleife (Testtreiber,
+//  Abbau) bleibt es beim sofortigen Schreiben.
+void JsonStorage::saveTimerFired() {
+    m_savePending = false;
+    if (m_folderPath.isEmpty()) return;
+    if (QCoreApplication::instance()) saveFolderAsync(m_folderPath);
+    else                              saveFolder(m_folderPath);
+}
+
 void JsonStorage::flushPendingSave() {
     m_saveTimer.stop();
-    if (!m_savePending || m_folderPath.isEmpty()) {
-        m_savePending = false;
-        return;
+    if (m_savePending && !m_folderPath.isEmpty()) {
+        m_savePending = false;          // VOR dem Schreiben zurücksetzen -
+        saveFolder(m_folderPath);       // saveFolder darf nicht erneut anstoßen
     }
-    m_savePending = false;              // VOR dem Schreiben zurücksetzen -
-    saveFolder(m_folderPath);           // saveFolder darf nicht erneut anstoßen
+    m_savePending = false;
+    //  Auf einen laufenden Schreibvorgang WARTEN: wer flusht, will die Datei
+    //  gleich lesen (Ordnerwechsel, Beenden, fremder Leser).
+    if (m_schreibtGerade > 0) {
+        m_savePool.waitForDone();
+        //  Der Rueckruf steht noch in der Warteschlange - der Zeitstempel
+        //  gehoert aber JETZT gesetzt, sonst gilt die eigene Datei als fremd.
+        m_schreibtGerade = 0;
+        noteDiskStamp(sidecarPath(m_folderPath));
+    }
 }
 
 QStringList JsonStorage::getTags(const QString& f) const {

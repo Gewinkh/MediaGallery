@@ -381,13 +381,17 @@ Item {
                 }
             }
 
+            //  In der Listendarstellung zeigen Text und PDF immer ihren Typ - bei
+            //  rund 30 px ist von fuenf Zeilen nichts zu erkennen. Ihre Schalter
+            //  waeren dort wirkungslos und bleiben deshalb weg; der fuer Bilder
+            //  gilt in BEIDEN Darstellungen.
             SettingsGroup {
                 key: "view.text-preview"
                 title: App.uiText(App.language, "SettingsViewPreviewGroup")
                 Layout.fillWidth: true
-                visible: !App.galleryListLayout
 
                 CheckBox {
+                    visible: !App.galleryListLayout
                     text: App.uiText(App.language, "SettingsViewTextPreview")
                     checked: App.textPreviewContent
                     onToggled: App.textPreviewContent = checked
@@ -398,9 +402,41 @@ Item {
                     }
                 }
                 Label {
+                    visible: !App.galleryListLayout
                     Layout.fillWidth: true
                     Layout.leftMargin: 24
                     text: App.uiText(App.language, "SettingsViewTextPreviewHint")
+                    color: App.themeTextMuted
+                    font.pixelSize: 11
+                    wrapMode: Text.WordWrap
+                }
+
+                CheckBox {
+                    visible: !App.galleryListLayout
+                    Layout.topMargin: 6
+                    text: App.uiText(App.language, "SettingsViewPdfPreview")
+                    checked: App.pdfPreviewContent
+                    onToggled: App.pdfPreviewContent = checked
+                    contentItem: Text {
+                        text: parent.text; color: App.themeTextPrimary
+                        leftPadding: parent.indicator.width + 6
+                        verticalAlignment: Text.AlignVCenter
+                    }
+                }
+                CheckBox {
+                    text: App.uiText(App.language, "SettingsViewImagePreview")
+                    checked: App.imagePreviewContent
+                    onToggled: App.imagePreviewContent = checked
+                    contentItem: Text {
+                        text: parent.text; color: App.themeTextPrimary
+                        leftPadding: parent.indicator.width + 6
+                        verticalAlignment: Text.AlignVCenter
+                    }
+                }
+                Label {
+                    Layout.fillWidth: true
+                    Layout.leftMargin: 24
+                    text: App.uiText(App.language, "SettingsViewKindPreviewHint")
                     color: App.themeTextMuted
                     font.pixelSize: 11
                     wrapMode: Text.WordWrap

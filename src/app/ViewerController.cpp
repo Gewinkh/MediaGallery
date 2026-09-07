@@ -1,4 +1,5 @@
 #include "app/ViewerController.h"
+#include "core/MGStorage.h"
 #include "pdf/PdfMediaHandler.h"
 #include "core/PathUtils.h"
 #include "core/MemoryUtils.h"   // mg::trimHeap - RSS-Rückgabe nach Annotations-LRU-Eviction
@@ -98,6 +99,15 @@ QString ViewerController::readTextFile(const QString& filePathOrUrl) const {
     const QByteArray raw = f.read(kMaxTextBytes);
     f.close();
 
+    //  Die eigene Ablage ist binaer - roh angezeigt waere sie Zeichensalat.
+    if (mg::storage::istMGStorage(raw.constData(), std::size_t(raw.size()))) {
+        mg::storage::Ablage a;
+        if (mg::storage::lies(raw.constData(), std::size_t(raw.size()), a, nullptr))
+            return QString::fromStdString(
+                mg::storage::alsText(a, QFileInfo(path).fileName().toStdString()));
+        return {};
+    }
+
     //  UTF-8 mit Fehlerpruefung, sonst CP1252 - nicht Latin-1: die beiden gehen
     //  bei 0x80-0x9F auseinander, und genau dort liegen Euro-Zeichen und
     //  typografische Anfuehrungszeichen.
@@ -106,6 +116,43 @@ QString ViewerController::readTextFile(const QString& filePathOrUrl) const {
     // BEWUSST kein Hinweistext im Inhalt: der Vermerk "Datei gekürzt" stand früher IM Puffer und wurde beim
     // Speichern mit in die Datei geschrieben. Der Hinweis gehört in die Oberfläche, nicht in die Daten.
     return text;
+}
+
+bool ViewerController::isStorageFile(const QString& filePathOrUrl) const {
+    const QString path = mg::toLocalPath(filePathOrUrl);
+    QFile f(path);
+    if (!f.open(QIODevice::ReadOnly)) return false;
+    const QByteArray kopf = f.read(8);
+    return mg::storage::istMGStorage(kopf.constData(), std::size_t(kopf.size()));
+}
+
+QString ViewerController::readStorageRaw(const QString& filePathOrUrl) const {
+    const QString path = mg::toLocalPath(filePathOrUrl);
+    QFile f(path);
+    if (!f.open(QIODevice::ReadOnly)) return {};
+    const QByteArray roh = f.read(kMaxTextBytes);
+    f.close();
+
+    //  Adresse, 16 Bytes, daneben die druckbaren Zeichen - so sind Kennung,
+    //  Blockkennungen und Namen mit blossem Auge zu sehen.
+    QString out;
+    out.reserve(roh.size() * 5);
+    for (qsizetype z = 0; z < roh.size(); z += 16) {
+        out += QStringLiteral("%1  ").arg(z, 8, 16, QLatin1Char('0'));
+        QString klartext;
+        for (int i = 0; i < 16; ++i) {
+            if (z + i < roh.size()) {
+                const auto b = static_cast<unsigned char>(roh.at(z + i));
+                out += QStringLiteral("%1 ").arg(b, 2, 16, QLatin1Char('0'));
+                klartext += (b >= 32 && b < 127) ? QChar(b) : QChar(u'.');
+            } else {
+                out += QStringLiteral("   ");
+            }
+            if (i == 7) out += QLatin1Char(' ');
+        }
+        out += QLatin1Char(' ') + klartext + QLatin1Char('\n');
+    }
+    return out;
 }
 
 bool ViewerController::isDatevFile(const QString& filePathOrUrl) const {

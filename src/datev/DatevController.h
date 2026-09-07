@@ -4,6 +4,7 @@
 //  verschiedene Dateien zeigen koennen. Schreibt nie: in eine Buchungsdatei
 //  zurueckzuschreiben waere ein Schaden, den keine Bequemlichkeit aufwiegt.
 #include "datev/DatevCsv.h"
+#include "table/TableSearch.h"
 
 #include <QObject>
 #include <QStringList>
@@ -41,6 +42,18 @@ class DatevController : public QObject {
     Q_PROPERTY(double sumDebit  READ sumDebit  NOTIFY stateChanged)
     Q_PROPERTY(double sumCredit READ sumCredit NOTIFY stateChanged)
     Q_PROPERTY(double sumDiff   READ sumDiff   NOTIFY stateChanged)
+
+    //  Suche: dieselbe Maschine und dieselben Namen wie in der CSV-Ansicht
+    //  (s. table/TableSearch.h) - beide Flaechen benutzen denselben Suchbalken.
+    //  Der Lauf gehoert in den Arbeitsfaden: gemessen 119 ms je 100.000 Zeilen
+    //  mal 20 Spalten.
+    Q_PROPERTY(int  matchCount   READ matchCount   NOTIFY searchChanged)
+    Q_PROPERTY(int  matchIndex   READ matchIndex   NOTIFY searchChanged)
+    Q_PROPERTY(int  matchRow     READ matchRow     NOTIFY searchChanged)
+    Q_PROPERTY(int  matchColumn  READ matchColumn  NOTIFY searchChanged)
+    Q_PROPERTY(bool matchOverflow READ matchOverflow NOTIFY searchChanged)
+    Q_PROPERTY(bool searching     READ searching     NOTIFY searchChanged)
+    Q_PROPERTY(int  searchRevision READ searchRevision NOTIFY searchChanged)
 
     Q_PROPERTY(QStringList warnings READ warnings NOTIFY stateChanged)
     Q_PROPERTY(bool truncated READ truncated NOTIFY stateChanged)
@@ -81,6 +94,26 @@ public:
     //  je sichtbarer Zeile 125 Zeichenketten statt der zehn gezeigten.
     Q_INVOKABLE QString cell(int row, int column) const;
 
+    int  matchCount() const  { return m_suche.anzahl(); }
+    int  matchIndex() const  { return m_suche.index(); }
+    int  matchRow() const    { return m_suche.index() < 0 ? -1 : m_suche.aktuell().zeile; }
+    int  matchColumn() const { return m_suche.index() < 0 ? -1 : m_suche.aktuell().spalte; }
+    bool matchOverflow() const { return m_suche.mehr(); }
+    bool searching() const   { return m_suchLaeuft; }
+    int  searchRevision() const { return m_suche.revision(); }
+
+    //  Gesucht wird nur in den GEZEIGTEN Spalten - ein Treffer in einer
+    //  ausgeblendeten waere ein Sprung ins Nichts.
+    Q_INVOKABLE void search(const QString& text, bool caseSensitive,
+                            bool wholeCell, int fromRow);
+    Q_INVOKABLE void stepMatch(int delta);
+    Q_INVOKABLE void clearSearch();
+    //  Die Trefferspalten EINER Zeile - die Anzeige legt nur dafuer Marken an.
+    Q_INVOKABLE QVariantList rowMatches(int row) const;
+    Q_INVOKABLE bool cellMatches(int row, int column) const {
+        return m_suche.trifft(row, column);
+    }
+
     //  Buchungen sind nie leer - die Anzeige fragt es trotzdem, weil sie
     //  denselben Tabellenkoerper benutzt.
     Q_INVOKABLE bool rowEmpty(int) const { return false; }
@@ -95,10 +128,13 @@ signals:
     void sourceChanged();
     void stateChanged();
     void columnsChanged();
+    void searchChanged();
 
 private:
     void ergebnisUebernehmen(std::shared_ptr<Datei> d, const QString& fehler);
     void spaltenNeuRechnen();
+    void sucheStarten();
+    void suchErgebnis(QList<mg::table::Treffer> treffer, bool mehr);
 
     QString m_source;
     QString m_fehler;
@@ -111,8 +147,15 @@ private:
     double m_soll = 0.0;
     double m_haben = 0.0;
 
+    mg::table::Suchzustand  m_suche;
+    QString                 m_suchText;
+    mg::table::SuchOptionen m_suchOpt;
+    int  m_suchAb = 0;
+    bool m_suchLaeuft = false;
+
     QThreadPool m_pool;
     std::shared_ptr<std::atomic<bool>> m_abbruch;
+    std::shared_ptr<std::atomic<bool>> m_suchAbbruch;
 };
 
 }  // namespace mg::datev
