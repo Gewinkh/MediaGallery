@@ -492,6 +492,20 @@ bool AppSettings::fileDropMove() const {
 void AppSettings::setFileDropMove(bool v) {
     m_settings.setValue("ui/fileDropMove", v);
 }
+bool AppSettings::textPdfNative() const {
+    return m_settings.value("ui/textPdfNative", false).toBool();
+}
+void AppSettings::setTextPdfNative(bool v) {
+    m_settings.setValue("ui/textPdfNative", v);
+}
+
+bool AppSettings::tableOpensTxt() const {
+    return m_settings.value("ui/tableOpensTxt", false).toBool();
+}
+void AppSettings::setTableOpensTxt(bool v) {
+    m_settings.setValue("ui/tableOpensTxt", v);
+}
+
 bool AppSettings::showAllFiles() const {
     return m_settings.value("ui/showAllFiles", false).toBool();
 }
@@ -790,6 +804,30 @@ bool AppSettings::audioEqAutoPreamp() const {
 }
 void AppSettings::setAudioEqAutoPreamp(bool on) {
     m_settings.setValue("audio/eqAutoPreamp", on);
+}
+
+//  Volle Staerke als Vorgabe - so verhaelt sich der Schalter wie frueher, als
+//  es nur ihn gab. Der Pegel bleibt gespeichert, auch wenn der Schalter aus ist.
+double AppSettings::audioClipLevel() const {
+    return qBound(0.0, m_settings.value("audio/clipLevel", 1.0).toDouble(), 1.0);
+}
+void AppSettings::setAudioClipLevel(double v) {
+    m_settings.setValue("audio/clipLevel", qBound(0.0, v, 1.0));
+}
+
+//  Volle Staerke als Vorgabe: wer den Schalter umlegt, will etwas hoeren. Der
+//  Pegel bleibt gespeichert, auch wenn der Schalter aus ist.
+bool AppSettings::audioDenoiseEnabled() const {
+    return m_settings.value("audio/denoiseEnabled", false).toBool();
+}
+void AppSettings::setAudioDenoiseEnabled(bool on) {
+    m_settings.setValue("audio/denoiseEnabled", on);
+}
+double AppSettings::audioDenoiseLevel() const {
+    return qBound(0.0, m_settings.value("audio/denoiseLevel", 1.0).toDouble(), 1.0);
+}
+void AppSettings::setAudioDenoiseLevel(double v) {
+    m_settings.setValue("audio/denoiseLevel", qBound(0.0, v, 1.0));
 }
 
 QStringList AppSettings::audioEqHiddenPresets() const {

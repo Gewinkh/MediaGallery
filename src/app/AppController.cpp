@@ -136,9 +136,30 @@ QObject* AppController::addPane() {
             andere->uebernimmFremdenStand();
         }
     });
+    //  Der Rueckgaengig-Stapel gehoert dem ORDNER: hat die andere Haelfte
+    //  denselben offen, arbeiten beide auf demselben.
+    connect(pane, &PaneController::undoStackDetached, this,
+            [this, pane] { teileUndoStapel(pane); });
+    teileUndoStapel(pane);
     setFocusedPane(pane);
     emit panesChanged();
     return pane;
+}
+
+//  Zwei Haelften auf demselben Ordner fuehrten je einen eigenen Stapel, obwohl
+//  beide dieselbe Ablage schreiben - die eine nahm dann einen Schritt zurueck,
+//  den die andere laengst ueberholt hatte. Wer denselben Ordner offen hat,
+//  bekommt deshalb denselben Stapel.
+void AppController::teileUndoStapel(PaneController* pane) {
+    if (!pane) return;
+    const QString eigener = mg::normalizedFolder(pane->currentFolder());
+    if (eigener.isEmpty()) return;
+    for (PaneController* andere : m_panes) {
+        if (andere == pane) continue;
+        if (mg::normalizedFolder(andere->currentFolder()) != eigener) continue;
+        pane->tagManager().useUndoStack(andere->tagManager().undoStack());
+        return;
+    }
 }
 
 void AppController::verteileVorschauSchalter() {
@@ -265,8 +286,13 @@ QString AppController::createEmptyFile(const QString& kind, const QString& baseN
     QString base = baseName.trimmed();
     base.remove(QLatin1Char('/'));
     base.remove(QLatin1Char('\\'));
-    while (base.startsWith(QLatin1Char('.')))
-        base.remove(0, 1);
+    //  Ein fuehrender Punkt bleibt NUR beim freien Namen stehen: dort gilt die
+    //  Eingabe unveraendert, und `.gitignore` oder `.env` sind gewoehnliche
+    //  Dateinamen. Bei den vorgegebenen Arten waere ".pdf" dagegen eine
+    //  versteckte Datei ohne Namen.
+    if (!freeName)
+        while (base.startsWith(QLatin1Char('.')))
+            base.remove(0, 1);
     if (freeName) {
         // Punkte und Leerzeichen am ENDE weg: "notiz." legt unter Windows eine Datei an, die dort niemand mehr öffnen
         // kann, und `..` wäre gar kein Dateiname.
@@ -344,11 +370,16 @@ QString AppController::createEmptyFile(const QString& kind, const QString& baseN
     if (m_pane) m_pane->notifyContentsChanged(folder);
     // Eine Endung, die die Galerie nicht kennt, ist ohne "Alle Dateien anzeigen" unsichtbar - die Datei liegt im
     // Ordner, die Kachel fehlt. Gesagt, nicht heimlich behoben: die Einstellung gehört dem Nutzer.
-    const bool invisible = MediaItem::detectType(path) == MediaType::Unknown
-                           && !m_settings.showAllFiles();
+    //  Dasselbe gilt fuer einen fuehrenden Punkt: die Datei ist dann versteckt
+    //  und braucht zusaetzlich „versteckte Dateien anzeigen".
+    const QString neuerName = QFileInfo(path).fileName();
+    const bool invisible = (MediaItem::detectType(path) == MediaType::Unknown
+                            && !m_settings.showAllFiles())
+                        || (neuerName.startsWith(QLatin1Char('.'))
+                            && !m_settings.showHiddenFiles());
     emit statusMessage(Strings::get(invisible ? StringKey::CreateFileHiddenHint
                                               : StringKey::CreateFileDone,
-                                    QFileInfo(path).fileName()));
+                                    neuerName));
     return path;
 }
 
@@ -469,6 +500,22 @@ void AppController::setShowHiddenFiles(bool v) {
 bool AppController::fileDropMove() const { return m_settings.fileDropMove(); }
 
 bool AppController::showAllFiles() const { return m_settings.showAllFiles(); }
+
+bool AppController::textPdfNative() const { return m_settings.textPdfNative(); }
+
+void AppController::setTextPdfNative(bool v) {
+    if (m_settings.textPdfNative() == v) return;
+    m_settings.setTextPdfNative(v);
+    emit textPdfNativeChanged();
+}
+
+bool AppController::tableOpensTxt() const { return m_settings.tableOpensTxt(); }
+
+void AppController::setTableOpensTxt(bool v) {
+    if (m_settings.tableOpensTxt() == v) return;
+    m_settings.setTableOpensTxt(v);
+    emit tableOpensTxtChanged();
+}
 bool AppController::deleteTagsInSubfolders() const { return m_settings.deleteTagsInSubfolders(); }
 void AppController::setDeleteTagsInSubfolders(bool v) {
     if (m_settings.deleteTagsInSubfolders() == v) return;
@@ -1327,6 +1374,11 @@ QString AppController::uiText(const QString& lang, const QString& key) const {
 
 QString AppController::localPath(const QString& urlOrPath) const {
     return mg::toLocalPath(urlOrPath);
+}
+
+void AppController::copyTextToClipboard(const QString& text) const {
+    if (text.isEmpty()) return;
+    if (QClipboard* cb = QGuiApplication::clipboard()) cb->setText(text);
 }
 
 int AppController::copyFilesToClipboard(const QStringList& paths) const {

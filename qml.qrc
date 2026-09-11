@@ -7,6 +7,7 @@
         <file>qml/gallery/AudioPlayerView.qml</file>
         <file>qml/gallery/AudioTrackDialog.qml</file>
         <file>qml/gallery/AudioEqPanel.qml</file>
+        <file>qml/gallery/SuppressorRow.qml</file>
         <file>qml/gallery/MediaTile.qml</file>
         <file>qml/gallery/MediaOverlay.qml</file>
         <file>qml/gallery/FilterBar.qml</file>

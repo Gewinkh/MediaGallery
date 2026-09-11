@@ -32,6 +32,15 @@ PaneController::PaneController(ISettings& settings, ThumbnailLoader& loader,
     //  Rekursive Suche: ändert sich der Filter, durchsucht das Modell den Baum
     //  unterhalb des offenen Ordners. Hier verdrahtet, damit weder Proxy noch
     //  Modell einander kennen müssen.
+    //  Sortiert die Ansicht nach etwas aus dem Verzeichniseintrag, speist das
+    //  Modell gleich so ein - jede Einfuegung wird damit ein Anhaengen.
+    const auto ordnungMelden = [this]() {
+        int feld = 0; bool ab = false;
+        m_media.setFillOrder(m_proxy.eintragsOrdnung(&feld, &ab), feld, ab);
+    };
+    ordnungMelden();
+    connect(&m_proxy, &MediaProxyModel::sortChanged, &m_media, ordnungMelden);
+
     connect(&m_proxy, &MediaProxyModel::filterChanged, &m_media, [this]() {
         m_media.applyDeepFilter(m_proxy.criteria(), m_proxy.activeCategoryNames());
     });
@@ -72,8 +81,12 @@ PaneController::PaneController(ISettings& settings, ThumbnailLoader& loader,
                                .arg(tag).arg(count));
     });
 
-    connect(&m_folders, &FolderService::folderOpened, &m_tags, [this](const QString&) {
-        m_tags.clearUndo();
+    //  Der Rueckgaengig-Stapel gehoert dem ORDNER: beim Wechsel legt diese
+    //  Haelfte ihren ab, wer ihn noch offen hat behaelt ihn. Zugeteilt wird im
+    //  `AppController` - nur er kennt die andere Haelfte.
+    connect(&m_folders, &FolderService::folderOpened, this, [this](const QString&) {
+        m_tags.useUndoStack(nullptr);
+        emit undoStackDetached();
     });
     connect(&m_tags, &TagManager::tagUndoApplied, this,
             [this](const QString& label, int subfolders, bool complete, bool redo) {

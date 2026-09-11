@@ -177,6 +177,38 @@ Item {
             }
         }
 
+        // Die beiden Unterdrücker. Sie stehen dicht beieinander, weil sie
+        // dieselbe Frage beantworten - wie viel wird weggenommen -, und tragen
+        // deshalb dieselbe Form.
+        // In den EINSTELLUNGEN blendet sich der Block aus: dort steht dasselbe
+        // Paar in einer eigenen Gruppe samt Erklärung, und zweimal dieselbe
+        // Bedienung im selben Blatt ist schlimmer als einmal.
+        Column {
+            width: parent.width
+            spacing: 6
+            visible: !panel.manageable
+
+            SuppressorRow {
+                width: parent.width
+                text: App.uiText(App.language, "AudioEqAutoPreamp")
+                wirkung: Audio.clipReduction < -0.05
+                         ? Audio.clipReduction.toFixed(1) + " dB" : ""
+                an: Audio.eqAutoPreamp
+                pegel: Audio.clipLevel
+                onUmgelegt: function (w) { Audio.eqAutoPreamp = w }
+                onVerschoben: function (w) { Audio.clipLevel = w }
+            }
+            SuppressorRow {
+                width: parent.width
+                reglerName: "denoiseLevel"     // Griff für tests/bench
+                text: App.uiText(App.language, "AudioDenoise")
+                an: Audio.denoiseEnabled
+                pegel: Audio.denoiseLevel
+                onUmgelegt: function (w) { Audio.denoiseEnabled = w }
+                onVerschoben: function (w) { Audio.denoiseLevel = w }
+            }
+        }
+
         // Liste statt Auswahlfeld: nur so sieht man, was es gibt, welche gilt und welche mitgelieferte verändert wurde.
         // Diskette sichert die Regler auf die Zeile, Rückgängig holt die Vorlage zurück - der Klang bleibt stehen.
         Text {

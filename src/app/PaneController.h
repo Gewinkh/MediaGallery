@@ -108,6 +108,9 @@ signals:
     void optionsVisibleChanged();
     void folderChanged();
     void folderOpened(const QString& path);
+    //  Die Haelfte hat ihren Rueckgaengig-Stapel abgelegt und einen leeren
+    //  bekommen - der `AppController` teilt jetzt den richtigen zu.
+    void undoStackDetached();
     void folderHistoryChanged();
     void folderContentsChanged();
     void statusMessage(const QString& text);

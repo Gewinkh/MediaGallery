@@ -12,6 +12,7 @@
 #include "audio/AudioEngine.h"
 #include "audio/AudioTags.h"
 #include "audio/AudioEqualizer.h"
+#include "audio/AudioDenoise.h"
 #include "audio/PlayQueue.h"
 
 class ISettings;
@@ -45,7 +46,15 @@ class AudioController : public QObject {
     Q_PROPERTY(qreal eqPreamp READ eqPreamp WRITE setEqPreamp NOTIFY eqChanged)
     Q_PROPERTY(bool eqAutoPreamp READ eqAutoPreamp WRITE setEqAutoPreamp
                NOTIFY optionsChanged)
+    Q_PROPERTY(qreal clipLevel READ clipLevel WRITE setClipLevel NOTIFY optionsChanged)
+    // Wie viel die Gegenrechnung gerade abzieht (dB, nie positiv). Sie steht
+    // NEBEN dem Regler statt darin - siehe `eqPreamp`.
+    Q_PROPERTY(qreal clipReduction READ clipReduction NOTIFY eqChanged)
     Q_PROPERTY(QVariantList eqFrequencies READ eqFrequencies CONSTANT)
+    Q_PROPERTY(bool  denoiseEnabled READ denoiseEnabled WRITE setDenoiseEnabled
+               NOTIFY denoiseChanged)
+    Q_PROPERTY(qreal denoiseLevel   READ denoiseLevel   WRITE setDenoiseLevel
+               NOTIFY denoiseChanged)
     Q_PROPERTY(QStringList presetNames READ presetNames NOTIFY presetsChanged)
     Q_PROPERTY(QString activePreset READ activePreset NOTIFY presetsChanged)
     Q_PROPERTY(bool presetsModified READ presetsModified NOTIFY presetsChanged)
@@ -95,11 +104,22 @@ public:
     bool eqEnabled() const { return m_eq.enabled(); }
     void setEqEnabled(bool on);
     QVariantList eqGains() const;
-    qreal eqPreamp() const { return m_eq.preamp(); }
+    // Der Regler zeigt, was der NUTZER eingestellt hat - nicht die Summe aus
+    // seinem Wert und der Gegenrechnung. Stuende die Summe darin, spraenge er
+    // bei jeder Bewegung des Staerkereglers, und der eigene Wert liesse sich
+    // aus dem Angezeigten nicht mehr herauslesen.
+    qreal eqPreamp() const { return m_userPreamp; }
     bool  eqAutoPreamp() const;
     void  setEqAutoPreamp(bool on);
+    qreal clipLevel() const;
+    void  setClipLevel(qreal v);
+    qreal clipReduction() const;
     void  setEqPreamp(qreal db);
     QVariantList eqFrequencies() const;
+    bool  denoiseEnabled() const { return m_denoise.enabled(); }
+    void  setDenoiseEnabled(bool on);
+    qreal denoiseLevel() const { return m_denoise.level(); }
+    void  setDenoiseLevel(qreal v);
     QStringList  presetNames() const;
     QString      activePreset() const { return m_activePreset; }
     bool         presetsModified() const;
@@ -175,6 +195,7 @@ signals:
     void shuffleChanged();
     void repeatChanged();
     void eqChanged();
+    void denoiseChanged();
     void presetsChanged();
     void optionsChanged();
     void queueChanged();
@@ -203,13 +224,19 @@ private:
 
     ISettings&      m_settings;
     AudioEqualizer  m_eq;
+    AudioDenoise    m_denoise;
     AudioEngine     m_engine;
     PlayQueue       m_queue;
     qint64          m_pendingSeek = 0;
     //  Nur beobachtet, nie besessen: verschwindet die Hälfte, zeigt der Zeiger
     //  ins Leere - deshalb `QPointer`.
     QPointer<QObject> m_owner;
-    void applyAutoPreamp();
+    // Die Vorverstaerkung entsteht aus ZWEI Anteilen: dem Wert, den der Nutzer
+    // selbst gesetzt hat, und der Gegenrechnung gegen das Uebersteuern. Getrennt
+    // gehalten, damit das Auf und Ab des Pegels den eigenen Wert nie verbraucht.
+    void   applyAutoPreamp();
+    double korrektur() const;
+    double m_userPreamp = 0.0;
 
     int               m_restoreMask = -1;
 

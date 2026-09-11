@@ -10,9 +10,12 @@
 #include <QList>
 #include <QVariantList>
 
+#include <memory>
+
 #include "core/JsonStorage.h"
 #include "tags/TagCategory.h"
 #include "tags/TagUndoMark.h"
+#include "tags/TagUndoStack.h"
 
 class TagManager : public QObject {
     Q_OBJECT
@@ -83,18 +86,25 @@ public:
     // Unterordnern, die nicht über diesen Manager laufen. Ohne offenen Schritt wird einer geöffnet.
     void noteForeignFolder(const QString& folderPath, const mg::tagmark::Mark& mark);
 
-    bool         canUndo() const { return !m_undo.isEmpty() && m_sweepsPending == 0; }
-    QVariantList undoMark() const { return m_undo.isEmpty() ? QVariantList() : m_undo.last().mark.backward; }
-    QString      undoIcon() const { return m_undo.isEmpty() ? QString() : m_undo.last().mark.iconBackward; }
+    bool         canUndo() const { return !m_stack->undo.isEmpty() && m_stack->sweepsPending == 0; }
+    QVariantList undoMark() const { return m_stack->undo.isEmpty() ? QVariantList() : m_stack->undo.last().mark.backward; }
+    QString      undoIcon() const { return m_stack->undo.isEmpty() ? QString() : m_stack->undo.last().mark.iconBackward; }
     //  Wiederherstellen - dieselbe Mechanik rueckwaerts. Jede neue Mutation
     //  wirft den Wiederherstellen-Stapel weg (der Ast, den man verlassen hat,
     //  ist damit hinfaellig - so arbeitet jeder Editor).
-    bool         canRedo() const { return !m_redo.isEmpty() && m_sweepsPending == 0; }
-    QVariantList redoMark() const { return m_redo.isEmpty() ? QVariantList() : m_redo.last().mark.forward; }
-    QString      redoIcon() const { return m_redo.isEmpty() ? QString() : m_redo.last().mark.iconForward; }
+    bool         canRedo() const { return !m_stack->redo.isEmpty() && m_stack->sweepsPending == 0; }
+    QVariantList redoMark() const { return m_stack->redo.isEmpty() ? QVariantList() : m_stack->redo.last().mark.forward; }
+    QString      redoIcon() const { return m_stack->redo.isEmpty() ? QString() : m_stack->redo.last().mark.iconForward; }
     void undoLastStep();
     void redoLastStep();
     void clearUndo();
+
+    //  Der Stapel gehoert dem ORDNER. Haben zwei Haelften denselben offen,
+    //  arbeiten beide auf demselben Objekt - sonst nimmt eine Seite einen
+    //  Schritt zurueck, den die andere laengst ueberholt hat. `nullptr` = ein
+    //  frischer, eigener Stapel (das tut ein Ordnerwechsel).
+    std::shared_ptr<TagUndoStack> undoStack() const { return m_stack; }
+    void useUndoStack(std::shared_ptr<TagUndoStack> stack);
 
     void notifyTagsChangedForBench() { emit tagsChanged(); }
 
@@ -116,62 +126,35 @@ signals:
                         bool redo);
 
 private:
-    struct UndoStep {
-        quint64             id = 0;
-        mg::tagmark::Mark   mark;       // beide Richtungen des Vorgangs
-        QString    folder;              // zu welchem Ordner der Stand gehoert
-        QByteArray state;               // Sidecar des offenen Ordners VORHER
-        QHash<QString, QByteArray> foreign;
-        bool       foreignComplete = true;
-        int        bytes = 0;           // grobe Groesse, fuer den RAM-Deckel
-        //  Ein Schritt haelt ENTWEDER den ganzen Stand (`state`) ODER nur die
-        //  Aenderung: die Tags der beruehrten Dateien VORHER und die
-        //  Tag-Registrierung. Eine Zuordnung beruehrt eine Handvoll Dateien;
-        //  der ganze Stand kostete bei 20.000 Dateien 12 ms und 262 KB je
-        //  Schritt. Kommt im selben Durchlauf ein Vorgang dazu, der mehr
-        //  aendert als Datei-Tags, wird der Schritt auf den ganzen Stand
-        //  gehoben (`aufSchnappschussHeben`).
-        bool                        delta = false;
-        QHash<QString, QStringList> tagsBefore;
-        QHash<QString, QColor>      colorsBefore;
-        // Nur für Zuordnungs-Schritte: wie viele Dateien dazu- oder weggekommen sind und worauf. Betrifft ein Schritt
-        // mehrere Gegenstände, fällt der Gegenstand aus der Marke - `+5` ist ehrlicher als `+5 T:x`, wenn auch T:y dabei war.
-        bool                addCounts = false;
-        int                 addN = 0, delN = 0;
-        mg::tagmark::Thing  cntThing = mg::tagmark::Thing::Tag;
-        QString             cntName;
-        QStringList         cntPath;
-        bool                cntMixed = false;
-    };
-    //  Deckel. Ein Schnappschuss eines gut gefuellten Ordners liegt im
-    //  einstelligen KB-Bereich; der Baum-Durchgang ist der Ausreisser, deshalb
-    //  hat er einen eigenen.
-    static constexpr int    kMaxUndoSteps    = 20;
-    static constexpr qint64 kMaxUndoBytes    = 16 * 1024 * 1024;
+    using UndoStep = TagUndoStack::Step;
+
+    //  Eigener Deckel fuer den Baum-Durchgang: er ist der Ausreisser unter den
+    //  Schritten (ein Sidecar je Unterordner).
     static constexpr int    kMaxSweepFolders = 512;
     static constexpr qint64 kMaxSweepBytes   = 8 * 1024 * 1024;
 
-    QList<UndoStep> m_undo;
-    QList<UndoStep> m_redo;
-    qint64          m_undoBytes = 0;
-    quint64         m_undoNextId = 1;
+    std::shared_ptr<TagUndoStack> m_stack;
+    QMetaObject::Connection m_stackConn;
+
     int             m_undoGroupDepth = 0;
     mg::tagmark::Mark m_undoGroupMark;     // Marke der offenen Gruppe
     bool            m_undoGroupHasMark = false;
     bool            m_undoGroupCounted = false;
     quint64         m_undoGroupStepId = 0; // ihr Schritt, 0 = noch keiner
+    //  Der Schritt, den DIESER Manager gerade offen hat. Ueber die Nummer, nicht
+    //  ueber "der oberste": auf einem geteilten Stapel kann der oberste von der
+    //  anderen Haelfte stammen.
+    quint64         m_offenerStepId = 0;
     bool            m_undoStepOpen = false;
     quint64         m_undoSweepId = 0;
-    int             m_sweepsPending = 0;
 
-    void pruneUndo();
     void applyStep(QList<UndoStep>& from, QList<UndoStep>& to, bool redo);
     void merkeDateiVorher(const QString& fileName);
     void aufSchnappschussHeben(UndoStep& step);
     static int deltaGroesse(const UndoStep& step);
     void beginCountedStep(bool added, mg::tagmark::Thing t, const QString& name,
                           const QStringList& path, bool deltaFaehig = false);
-    UndoStep* undoStepById(quint64 id);
+    UndoStep* offenerSchritt();
     void attachSweepUndo(quint64 stepId, const QHash<QString, QByteArray>& before,
                          bool complete);
 

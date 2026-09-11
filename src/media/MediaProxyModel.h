@@ -38,6 +38,12 @@ class MediaProxyModel : public QSortFilterProxyModel {
     Q_PROPERTY(bool tagFilterAnd   READ tagFilterAnd   WRITE setTagFilterAnd   NOTIFY filterChanged)
 
 public:
+    //  Laesst sich die Reihenfolge aus dem Verzeichniseintrag ablesen (Name,
+    //  Zeit, Groesse)? Dann speist das Modell gleich so ein, und jede Einfuegung
+    //  wird ein ANHAENGEN - gemessen: `endInsertRows` 7,9 -> 0,2 ms je Charge.
+    //  Nach TAGS geht es nicht: die stehen im Sidecar.
+    bool eintragsOrdnung(int* feld, bool* absteigend) const;
+
     // Das Filterurteil als ZUSTANDSLOSE Funktion über eine Momentaufnahme: die rekursive Suche muss im Worker
     // entscheiden, ob ein unsichtbarer Ordner einen Treffer enthält. Eine zweite, ungefähre Regel öffnete leere Ordner.
     struct FilterCriteria {

@@ -33,11 +33,15 @@ struct SuchOptionen {
 //  ab `von`. `spalten` laesst nur die angezeigten Spalten zu - ein Treffer in
 //  einer ausgeblendeten Spalte waere ein Sprung ins Nichts. `abbruch` wird je
 //  Zeile geprueft, `mehr` meldet den erreichten Deckel.
+//  `ordnung` (s. `TableSort.h`) laesst den Lauf in ANZEIGEreihenfolge gehen;
+//  ohne sie waere in einer sortierten Tabelle jeder Schritt zum naechsten
+//  Treffer ein Sprung quer durch das Bild.
 QList<Treffer> suche(const QList<Zeile>& zeilen, int von, int bis,
                      const QString& text, SuchOptionen o,
                      const QList<bool>* spalten = nullptr,
                      const std::atomic<bool>* abbruch = nullptr,
-                     bool* mehr = nullptr);
+                     bool* mehr = nullptr,
+                     const QList<int>* ordnung = nullptr);
 
 //  Der Zustand einer stehenden Suche: die Trefferliste, der laufende Treffer und
 //  die Frage, die die Anzeige je sichtbarer Zelle stellt.
@@ -87,7 +91,8 @@ public:
              const QList<Zeile>* zeilen, int von, int bis,
              QString text, SuchOptionen opt, QList<bool> spalten,
              QList<BlockBereich> bloecke, std::shared_ptr<std::atomic<bool>> abbruch,
-             std::function<void(QList<Treffer>, bool, QList<int>)> zurueck);
+             std::function<void(QList<Treffer>, bool, QList<int>)> zurueck,
+             QList<int> ordnung = {});
 
     void run() override;
 
@@ -106,6 +111,9 @@ private:
     QList<BlockBereich> m_bloecke;
     std::shared_ptr<std::atomic<bool>> m_abbruch;
     std::function<void(QList<Treffer>, bool, QList<int>)> m_zurueck;
+    //  Leer = Dateireihenfolge. Die Zaehlung je Block laeuft immer in
+    //  Dateireihenfolge - dort zaehlt nur, WIE VIELE es sind.
+    QList<int> m_ordnung;
 };
 
 }  // namespace mg::table

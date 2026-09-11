@@ -128,16 +128,15 @@ The `tests/` directory is not included in the published repository. If it is mis
 ## Changelog
 
 ### Latest
-- **Added MGStorage**, a faster and significantly smaller folder file format.
-- **Added folder file viewer** with readable and raw/hex views.
-- **Improved folder file performance** for saving, loading, tagging, and undo/redo.
-- **Improved tag and category management** with fewer gallery rebuilds and better synchronization.
-- **Added table search** with navigation between multiple tables.
-- **Added file information** to tile context menus.
-- **Added PDF and image preview controls** in View settings.
-- **Improved file type labels** in list view.
-- **Improved text editor search performance** on large files.
-- **Improved thumbnail loading order** and scrolling responsiveness.
+- **Added noise reduction** with adjustable suppression strength.
+- **Added adjustable clipping correction** with proportional attenuation control.
+- **Improved audio settings** with a shared Suppression group.
+- **Added table sorting**, column hiding/freezing, and cell/row copying.
+- **Added optional `.txt` table views** for column-based text files.
+- **Added coloured text-to-PDF export** using the editor's syntax colours.
+- **Improved table interaction** with better cell selection and horizontal scrolling.
+- **Improved large-folder performance**, reducing opening time by about 4x.
+- **Improved folder, file-type, and hidden-file handling** across the gallery.
 
 ---
 

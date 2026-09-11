@@ -379,6 +379,12 @@ bool MediaProxyModel::fieldLess(const MediaItem* a, const MediaItem* b) const {
     return a->displayName.compare(b->displayName, Qt::CaseInsensitive) < 0;
 }
 
+bool MediaProxyModel::eintragsOrdnung(int* feld, bool* absteigend) const {
+    if (feld) *feld = static_cast<int>(m_field);
+    if (absteigend) *absteigend = m_descending;
+    return m_field != Field::Tags;
+}
+
 bool MediaProxyModel::sameScopeLess(const MediaItem* a, const MediaItem* b) const {
     //  Ordner stehen immer vorn - in BEIDEN Sortierrichtungen. Sie sind der Weg
     //  nach unten, nicht ein Medium unter anderen.

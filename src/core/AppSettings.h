@@ -80,6 +80,10 @@ public:
     void setFileDropMove(bool v) override;
     bool showAllFiles() const override;
     void setShowAllFiles(bool v) override;
+    bool tableOpensTxt() const override;
+    void setTableOpensTxt(bool v) override;
+    bool textPdfNative() const override;
+    void setTextPdfNative(bool v) override;
     bool galleryListLayout() const override;
     void setGalleryListLayout(bool v) override;
     QStringList collapsedSettingsGroups() const override;
@@ -151,6 +155,12 @@ public:
     QStringList audioEqPresets() const override;
     bool        audioEqAutoPreamp() const override;
     void        setAudioEqAutoPreamp(bool on) override;
+    double      audioClipLevel() const override;
+    void        setAudioClipLevel(double v) override;
+    bool        audioDenoiseEnabled() const override;
+    void        setAudioDenoiseEnabled(bool on) override;
+    double      audioDenoiseLevel() const override;
+    void        setAudioDenoiseLevel(double v) override;
     QStringList audioEqHiddenPresets() const override;
     void        setAudioEqHiddenPresets(const QStringList& names) override;
     QStringList audioEqPresetOrder() const override;

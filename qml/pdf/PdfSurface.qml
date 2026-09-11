@@ -1536,8 +1536,17 @@ Item {
                 readonly property real hFit: pts.height > 0 ? (pages.height - 24) / pts.height : 1.0
                 readonly property real fitScale: root.fitMode === "page"
                                                  ? Math.min(wFit, hFit) : wFit
-                readonly property real pageW: pts.width  * fitScale * root.zoom
-                readonly property real pageH: pts.height * fitScale * root.zoom
+                //  Auf GERAETEpixel eingerastet: die Flaeche darunter ist weiss,
+                //  und eine Bruchteilbreite liess davon eine Spalte am rechten
+                //  Rand stehen - bei einem dunklen PDF ein heller Strich, der je
+                //  nach Zoomstufe auftauchte und wieder verschwand (gemessen: ein
+                //  Pixel, x 862 bei 117 %, x 914 bei 140 %).
+                readonly property real _dpr: Screen.devicePixelRatio > 0
+                                             ? Screen.devicePixelRatio : 1
+                readonly property real pageW:
+                    Math.round(pts.width  * fitScale * root.zoom * _dpr) / _dpr
+                readonly property real pageH:
+                    Math.round(pts.height * fitScale * root.zoom * _dpr) / _dpr
                 readonly property bool showAddLine: root.editCtl.editMode
                 height: pageH + 4 + (showAddLine ? 26 : 0)
 
@@ -1604,9 +1613,15 @@ Item {
                         currentFrame: pageCell.index
                         asynchronous: true
                         cache: false
-                        fillMode: Image.PreserveAspectFit
-                        sourceSize.width: pageCell.pageW * Screen.devicePixelRatio
-                        sourceSize.height: pageCell.pageH * Screen.devicePixelRatio
+                        //  `Stretch`, nicht `PreserveAspectFit`: `sourceSize`
+                        //  wird auf ganze Pixel gerundet, das Seitenverhaeltnis
+                        //  weicht danach um Bruchteile ab, und der Letterbox-Rand
+                        //  liess die WEISSE Flaeche darunter als Saum
+                        //  durchscheinen - je nach Zoomstufe mal da, mal nicht.
+                        //  Die Verzerrung ist kleiner als ein Pixel.
+                        fillMode: Image.Stretch
+                        sourceSize.width: Math.round(pageCell.pageW * Screen.devicePixelRatio)
+                        sourceSize.height: Math.round(pageCell.pageH * Screen.devicePixelRatio)
 
                         // Nur auf der Seite mit aktiver Auswahl; Rechtecke normalisiert.
                         Repeater {
@@ -2192,8 +2207,13 @@ Item {
                     // Cache-Buster: hochzaehlen, sobald die Vorschau im RAM-Store liegt.
                     property int rev: 0
                     readonly property size pts: root.doc.pagePointSize(index)
-                    readonly property real thumbW: thumbs.width - 8
-                    readonly property real thumbH: pts.width > 0 ? thumbW * (pts.height / pts.width) : thumbW * 1.414
+                    readonly property real _dpr: Screen.devicePixelRatio > 0 ? Screen.devicePixelRatio : 1
+                    // Auf GANZE Geraetepixel gerastet: eine krumme Hoehe laesst
+                    // zwischen Bild und Rahmen eine halbe Zeile des weissen
+                    // Grundes stehen - auf einer dunklen Seite ein heller Strich.
+                    readonly property real thumbW: Math.round((thumbs.width - 8) * _dpr) / _dpr
+                    readonly property real thumbH: Math.round(
+                        (pts.width > 0 ? thumbW * (pts.height / pts.width) : thumbW * 1.414) * _dpr) / _dpr
                     width: thumbs.width
                     height: thumbH + 18
 
@@ -2221,12 +2241,17 @@ Item {
                             anchors.margins: thumbFrame.border.width
                             asynchronous: true
                             cache: false
-                            fillMode: Image.PreserveAspectFit
+                            // Stretch, nicht PreserveAspectFit: die Flaeche hat
+                            // bereits das Seitenverhaeltnis der Seite, und das
+                            // Einpassen liess oben und unten einen Rand des
+                            // weissen Grundes stehen.
+                            fillMode: Image.Stretch
                             source: root._thumbDocId > 0
                                     ? "image://pdfthumb/" + root._thumbDocId + "/"
                                       + thumbCell.index + "?r=" + thumbCell.rev
                                     : ""
-                            sourceSize.width: thumbCell.thumbW * Screen.devicePixelRatio
+                            sourceSize.width: Math.round(width * thumbCell._dpr)
+                            sourceSize.height: Math.round(height * thumbCell._dpr)
                         }
                         opacity: thumbs.dragIndex === thumbCell.index ? 0.45 : 1.0
                         TapHandler { onTapped: root.goToPage(thumbCell.index) }

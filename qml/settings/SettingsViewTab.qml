@@ -85,6 +85,25 @@ Item {
                     font.pixelSize: 11
                     wrapMode: Text.WordWrap
                 }
+
+                CheckBox {
+                    text: App.uiText(App.language, "SettingsTableTxt")
+                    checked: App.tableOpensTxt
+                    onToggled: App.tableOpensTxt = checked
+                    contentItem: Text {
+                        text: parent.text; color: App.themeTextPrimary
+                        leftPadding: parent.indicator.width + 6
+                        verticalAlignment: Text.AlignVCenter
+                    }
+                }
+                Text {
+                    Layout.fillWidth: true
+                    Layout.leftMargin: 24
+                    text: App.uiText(App.language, "SettingsTableTxtTip")
+                    color: App.themeTextMuted
+                    font.pixelSize: 11
+                    wrapMode: Text.WordWrap
+                }
             }
 
             SettingsGroup {

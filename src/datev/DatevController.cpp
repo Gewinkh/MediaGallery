@@ -82,6 +82,10 @@ void DatevController::setSource(const QString& pathOrUrl) {
     m_suchLaeuft = false;
     m_suche.leeren();
 
+    //  Reihenfolge und Spaltenauswahl gehoeren zur DATEI, nicht zur Flaeche.
+    clearSort();
+    m_versteckt.clear();
+
     m_source = pfad;
     m_datei.reset();
     m_fehler.clear();
@@ -130,6 +134,7 @@ void DatevController::spaltenNeuRechnen() {
     for (int i = 0; i < n; ++i) {
         if (!m_alleSpalten && i < m_datei->spalteGefuellt.size()
             && !m_datei->spalteGefuellt.at(i)) continue;
+        if (m_versteckt.contains(i)) continue;
         QVariantMap m;
         m.insert(QStringLiteral("index"), i);
         m.insert(QStringLiteral("title"), m_datei->spalten.at(i));
@@ -145,6 +150,10 @@ void DatevController::spaltenNeuRechnen() {
 void DatevController::setShowAllColumns(bool v) {
     if (v == m_alleSpalten) return;
     m_alleSpalten = v;
+    //  Der Schalter ist der grosse Griff - was einzeln ausgeblendet war, gilt
+    //  danach nicht mehr, sonst fehlten in "alle Spalten" weiter welche.
+    m_versteckt.clear();
+    if (m_sortSpalte >= 0) clearSort();
     spaltenNeuRechnen();
     //  Die Suche laeuft ueber die GEZEIGTEN Spalten - mit den ausgeblendeten
     //  kommen auch deren Treffer dazu.
@@ -171,19 +180,15 @@ void DatevController::sucheStarten() {
     m_suchLaeuft = true;
     emit searchChanged();
 
-    //  Nur die gezeigten Spalten: ein Treffer in einer ausgeblendeten waere ein
-    //  Sprung auf eine Zelle, die niemand sieht.
-    QList<bool> maske;
-    if (!m_alleSpalten) maske = m_datei->spalteGefuellt;
-
     m_suchAbbruch = std::make_shared<std::atomic<bool>>(false);
     auto* self = this;
     m_pool.start(new mg::table::SuchTask(
         this, m_datei, &m_datei->buchungen, 0, int(m_datei->buchungen.size()),
-        m_suchText, m_suchOpt, maske, {}, m_suchAbbruch,
+        m_suchText, m_suchOpt, spaltenMaske(), {}, m_suchAbbruch,
         [self](QList<mg::table::Treffer> t, bool mehr, QList<int>) {
             self->suchErgebnis(std::move(t), mehr);
-        }));
+        },
+        m_ordnung));
 }
 
 void DatevController::suchErgebnis(QList<mg::table::Treffer> treffer, bool mehr) {
@@ -268,8 +273,114 @@ QVariantList DatevController::rowMatches(int row) const {
 }
 
 QString DatevController::cell(int row, int column) const {
-    if (!m_datei || row < 0 || row >= m_datei->buchungen.size()) return {};
-    return m_datei->buchungen.at(row).wert(column);
+    if (!m_datei) return {};
+    const int z = rohZeile(row);
+    if (z < 0 || z >= m_datei->buchungen.size()) return {};
+    return m_datei->buchungen.at(z).wert(column);
+}
+
+QString DatevController::rowText(int row) const {
+    if (!m_datei) return {};
+    QStringList felder;
+    felder.reserve(m_spalten.size());
+    for (const QVariant& v : m_spalten)
+        felder.append(cell(row, v.toMap().value(QStringLiteral("index")).toInt()));
+    return felder.join(QLatin1Char('\t'));
+}
+
+int DatevController::rohZeile(int anzeige) const {
+    if (m_ordnung.isEmpty()) return anzeige;
+    if (anzeige < 0 || anzeige >= m_ordnung.size()) return -1;
+    return m_ordnung.at(anzeige);
+}
+
+QList<bool> DatevController::spaltenMaske() const {
+    if (!m_datei) return {};
+    const int n = int(m_datei->spalten.size());
+    //  Nur die gezeigten Spalten: ein Treffer in einer ausgeblendeten waere ein
+    //  Sprung auf eine Zelle, die niemand sieht.
+    if (m_alleSpalten && m_versteckt.isEmpty()) return {};
+    QList<bool> maske(n, true);
+    if (!m_alleSpalten) maske = m_datei->spalteGefuellt;
+    for (int s : m_versteckt)
+        if (s >= 0 && s < maske.size()) maske[s] = false;
+    return maske;
+}
+
+void DatevController::sortByColumn(int column) {
+    if (!m_datei || column < 0 || column >= m_datei->spalten.size()) return;
+    if (column != m_sortSpalte) m_sortRichtung = mg::table::SortRichtung::Auf;
+    else if (m_sortRichtung == mg::table::SortRichtung::Auf)
+        m_sortRichtung = mg::table::SortRichtung::Ab;
+    else m_sortRichtung = mg::table::SortRichtung::Keine;
+    m_sortSpalte = (m_sortRichtung == mg::table::SortRichtung::Keine) ? -1 : column;
+    ordnungNeuBauen();
+}
+
+void DatevController::clearSort() {
+    if (m_sortAbbruch) m_sortAbbruch->store(true);
+    const bool hatte = m_sortSpalte >= 0 || !m_ordnung.isEmpty();
+    m_sortSpalte   = -1;
+    m_sortRichtung = mg::table::SortRichtung::Keine;
+    m_sortLaeuft   = false;
+    m_ordnung.clear();
+    if (hatte) { ++m_inhaltRevision; emit sortChanged(); }
+}
+
+void DatevController::ordnungNeuBauen() {
+    if (m_sortAbbruch) m_sortAbbruch->store(true);
+    if (!m_datei || m_sortRichtung == mg::table::SortRichtung::Keine) {
+        m_sortLaeuft = false;
+        m_ordnung.clear();
+        ++m_inhaltRevision;
+        emit sortChanged();
+        if (!m_suchText.isEmpty()) sucheStarten();
+        return;
+    }
+    m_sortLaeuft = true;
+    emit sortChanged();
+
+    m_sortAbbruch = std::make_shared<std::atomic<bool>>(false);
+    auto* self = this;
+    m_pool.start(new mg::table::SortTask(
+        this, m_datei, &m_datei->buchungen, 0, int(m_datei->buchungen.size()),
+        m_sortSpalte, m_sortRichtung, m_sortAbbruch,
+        [self](QList<int> ordnung) { self->sortErgebnis(std::move(ordnung)); }));
+}
+
+void DatevController::sortErgebnis(QList<int> ordnung) {
+    m_sortLaeuft = false;
+    m_ordnung = std::move(ordnung);
+    ++m_inhaltRevision;
+    emit sortChanged();
+    //  Die Trefferzeilen zaehlen in der ANZEIGE - nach einem Wechsel der
+    //  Reihenfolge zeigten die alten auf beliebige Buchungen.
+    if (!m_suchText.isEmpty()) sucheStarten();
+}
+
+void DatevController::setColumnHidden(int column, bool hidden) {
+    if (!m_datei || column < 0 || column >= m_datei->spalten.size()) return;
+    //  Die LETZTE gezeigte Spalte bleibt stehen - eine Tabelle ohne Spalten ist
+    //  eine leere Flaeche, aus der kein Weg zurueckfuehrt.
+    if (hidden && m_spalten.size() <= 1) return;
+    const bool war = m_versteckt.contains(column);
+    if (war == hidden) return;
+    if (hidden) m_versteckt.insert(column);
+    else        m_versteckt.remove(column);
+    if (hidden && column == m_sortSpalte) clearSort();
+    spaltenNeuRechnen();
+    ++m_inhaltRevision;
+    emit sortChanged();
+    if (!m_suchText.isEmpty()) sucheStarten();
+}
+
+void DatevController::showAllHiddenColumns() {
+    if (m_versteckt.isEmpty()) return;
+    m_versteckt.clear();
+    spaltenNeuRechnen();
+    ++m_inhaltRevision;
+    emit sortChanged();
+    if (!m_suchText.isEmpty()) sucheStarten();
 }
 
 }  // namespace mg::datev

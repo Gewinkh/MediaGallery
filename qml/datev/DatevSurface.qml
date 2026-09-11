@@ -138,6 +138,19 @@ Item {
         enabled: root.visible && root.paneActive && ctl.ready
         onActivated: root.oeffneSuche()
     }
+    //  Kopieren bezieht sich auf die ANGEKLICKTE Zelle.
+    Shortcut {
+        //  `sequences`, nicht `sequence`: Qt kennt zu StandardKey.Copy mehrere
+        //  Folgen (Strg+C und Strg+Einfg), und `sequence` nimmt nur die erste.
+        sequences: [ StandardKey.Copy ]
+        enabled: root.visible && root.paneActive && ctl.ready
+        onActivated: tabelle.kopiereZelle()
+    }
+    Shortcut {
+        sequence: "Ctrl+Shift+C"
+        enabled: root.visible && root.paneActive && ctl.ready
+        onActivated: tabelle.kopiereZeile()
+    }
 
     //  Der Sprung zum Treffer gehoert der Flaeche - nur sie kennt den Koerper.
     Connections {
@@ -166,6 +179,7 @@ Item {
         provider: ctl
         showNumbers: root.showNumbers
         searchRevision: ctl.searchRevision
+        contentRevision: ctl.contentRevision
         currentRow: ctl.matchRow
         currentColumn: ctl.matchColumn
     }
@@ -241,6 +255,22 @@ Item {
                     HoverHandler { id: spaltenHover }
                     TapHandler { onTapped: ctl.showAllColumns = !ctl.showAllColumns }
                 }
+                //  Einzeln ausgeblendete Spalten muessen SICHTBAR bleiben, sonst
+                //  sucht man spaeter eine Spalte, die man selbst weggeklickt hat.
+                Feld {
+                    visible: ctl.hiddenColumnCount > 0
+                    color: App.themeAccent
+                    text: App.uiText(App.language, "TableHiddenColumns").arg(ctl.hiddenColumnCount)
+                    MouseArea {
+                        anchors.fill: parent
+                        cursorShape: Qt.PointingHandCursor
+                        hoverEnabled: true
+                        onClicked: ctl.showAllHiddenColumns()
+                        ToolTip.visible: containsMouse
+                        ToolTip.text: App.uiText(App.language, "TableShowAllColumns")
+                    }
+                }
+                Feld { visible: ctl.sorting; text: App.uiText(App.language, "TableSorting") }
                 Feld { visible: ctl.cp1252; text: App.uiText(App.language, "DatevCp1252") }
                 Feld { visible: ctl.truncated; color: "#d2a04f"
                        text: App.uiText(App.language, "DatevTruncated") }

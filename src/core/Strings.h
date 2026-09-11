@@ -831,6 +831,9 @@ enum class StringKey {
     EditorStatusModified,
     TextPdfMenu,
     TextPdfConvert,
+    TextPdfModeOne,
+    TextPdfModeNative,
+    TextPdfModeTip,
     EditorFolding,
     EditorFoldingHint,
     EditorIndentGuides,
@@ -916,6 +919,21 @@ enum class StringKey {
     TableFindOtherBlocks,
     TableFindGoOther,
     TableFindGoOtherTip,
+    TableSortAsc,
+    TableSortDesc,
+    TableSortNone,
+    TableSortTip,
+    TableHideColumn,
+    TableShowAllColumns,
+    TableHiddenColumns,
+    TableFreezeColumn,
+    TableCopyCell,
+    TableCopyRow,
+    TableCopiedCell,
+    TableCopiedRow,
+    TableSorting,
+    SettingsTableTxt,
+    SettingsTableTxtTip,
     StorageViewRaw,
     StorageViewReadable,
     StorageViewTip,
@@ -924,12 +942,17 @@ enum class StringKey {
     InfoTitle,
     InfoName,
     InfoType,
+    InfoTypeFile,
     InfoSize,
     InfoCreated,
     InfoModified,
     InfoLocation,
     InfoFolderNoSize,     // „keine hier, %1 in anderen Tabellen"
     TableFindSearching,       // waehrend der Lauf im Arbeitsfaden laeuft
+    AudioDenoise,             // Schalter „Rauschunterdrueckung"
+    AudioSuppressLevel,       // Beschriftung des Staerkereglers, beide Unterdruecker
+    AudioSuppressTitle,       // Gruppe „Unterdrueckung" in den Einstellungen
+    AudioDenoiseHint,         // was der Regler tut
 };
 Q_ENUM_NS(StringKey)
 }  // namespace SK

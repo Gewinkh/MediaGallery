@@ -2,7 +2,13 @@
 #include "media/MediaModel.h"
 #include "media/MediaProxyModel.h"
 
+#include <QElapsedTimer>
 #include <QVariantMap>
+
+//  MG_LOG_ROWS=1: je Neuaufbau eine Zeile mit Dauer und Umfang. Die Frage, die
+//  am Modell nicht zu beantworten ist: wie oft und wie teuer baut die Galerie
+//  ihre Zeilen waehrend eines Grosseinlesens neu?
+static const bool kLogRows = qEnvironmentVariableIntValue("MG_LOG_ROWS") == 1;
 
 GalleryRowModel::GalleryRowModel(QObject* parent)
     : QAbstractListModel(parent)
@@ -132,6 +138,8 @@ QVector<int> GalleryRowModel::chainOf(int scope) const {
 void GalleryRowModel::rebuildNow() {
     m_rebuildTimer.stop();
     m_lastRebuild.restart();
+    QElapsedTimer dauer;
+    if (kLogRows) dauer.start();
 
     QVector<Row> rows;
     const int n = m_proxy ? m_proxy->rowCount() : 0;
@@ -191,6 +199,12 @@ void GalleryRowModel::rebuildNow() {
     }
 
     applyRows(rows);
+
+    if (kLogRows)
+        qInfo("[rows] Neuaufbau: %.2f ms, %lld Zeilen aus %d Kacheln%s",
+              dauer.nsecsElapsed() / 1e6, static_cast<long long>(m_rows.size()),
+              m_proxy ? m_proxy->rowCount() : 0,
+              (m_src && m_src->isFilling()) ? "  (waehrend des Einlesens)" : "");
 }
 
 // Diff statt beginResetModel: das wirft alle Delegates weg und setzt contentY auf 0 -
@@ -259,6 +273,7 @@ void GalleryRowModel::applyRows(const QVector<Row>& next) {
 
     if (oldMid != newMid)
         emit countChanged();
+
 }
 
 void GalleryRowModel::onSourceDataChanged(const QModelIndex& topLeft,

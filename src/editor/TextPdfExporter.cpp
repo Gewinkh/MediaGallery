@@ -1,6 +1,8 @@
-#include "core/TextPdfExporter.h"
+#include "editor/TextPdfExporter.h"
 
 #include "core/PdfGlyphRuns.h"
+#include "editor/CodeHighlighter.h"
+#include "editor/LanguageTable.h"
 
 #include <QBuffer>
 #include <QPdfWriter>
@@ -20,6 +22,7 @@
 #include <QSaveFile>
 #include <QFileInfo>
 #include <QColor>
+#include <memory>
 
 namespace {
 
@@ -60,9 +63,14 @@ QString targetPathFor(const QString& sourcePath) {
 }
 
 bool exportToPdf(const QString& text, const QString& targetPath,
-                 const QColor& textColor, int tabWidth,
+                 const Stil& stil, int tabWidth,
                  QString* err) {
-    const QColor ink = textColor.isValid() ? textColor : QColor(Qt::black);
+    const QColor ink = stil.tinte.isValid() ? stil.tinte : QColor(Qt::black);
+    //  Gefaerbt wird nur, wenn der Zerleger die Sprache auch kennt - sonst
+    //  haenge ein leeres Blatt am Wunsch statt am Koennen.
+    const bool faerben =
+        stil.syntax
+        && mg::editor::languageForId(stil.sprache).kind != mg::editor::ScannerKind::PlainText;
     if (targetPath.isEmpty()) {
         if (err) *err = QStringLiteral("Kein Zielpfad.");
         return false;
@@ -83,13 +91,20 @@ bool exportToPdf(const QString& text, const QString& targetPath,
         sink.open(QIODevice::WriteOnly);
         QPdfWriter writer(&sink);
         writer.setPageSize(QPageSize(QPageSize::A4));
-        writer.setPageMargins(QMarginsF(kMarginMm, kMarginMm, kMarginMm, kMarginMm),
-                              QPageLayout::Millimeter);
+        //  Der Schreiber bekommt KEINE Raender - den Abstand setzt der Maler
+        //  selbst. Mit Raendern begrenzt Qt die Malflaeche auf das Innere, und
+        //  die Papierfarbe endete an der Randkante statt am Blattrand.
+        writer.setPageMargins(QMarginsF(0, 0, 0, 0), QPageLayout::Millimeter);
         writer.setResolution(kResolution);
         writer.setTitle(QFileInfo(targetPath).completeBaseName());
 
-        const QRectF paintRect =
+        //  Das GANZE Blatt, und darin der Satzspiegel.
+        const QRectF blatt =
             writer.pageLayout().paintRectPixels(writer.resolution());
+        const qreal  rand  = kMarginMm / 25.4 * kResolution;
+        const QRectF paintRect(0, 0,
+                               qMax(1.0, blatt.width()  - 2 * rand),
+                               qMax(1.0, blatt.height() - 2 * rand));
 
         const QFont font = monoFont();
         QFont footFont = font;
@@ -121,6 +136,16 @@ bool exportToPdf(const QString& text, const QString& targetPath,
         body.replace(QLatin1String("\r\n"), QLatin1String("\n"));
         body.replace(QLatin1Char('\r'),     QLatin1Char('\n'));
         td.setPlainText(body);
+
+        //  Gefaerbt wird ueber DENSELBEN Faerber wie im Editor - eine zweite
+        //  Umsetzung liefe gegen die erste, sobald eine Sprache dazukommt.
+        //  Er haengt sich an das Dokument und faerbt beim ersten Auslegen.
+        std::unique_ptr<mg::editor::Highlighter> faerber;
+        if (faerben) {
+            faerber = std::make_unique<mg::editor::Highlighter>(&td);
+            faerber->setPalette(stil.palette);
+            faerber->setLanguageId(stil.sprache);
+        }
 
         // Der Text fließt durch eine "unendlich" hohe Seite, umbrochen wird unten selbst. Ließe man QTextDocument
         // paginieren, legt es die Zeile 0,009 px über die Grenze und zeichnet sie auf BEIDEN Seiten - im Textlayer
@@ -164,9 +189,16 @@ bool exportToPdf(const QString& text, const QString& targetPath,
         for (int pg = 0; pg < pages; ++pg) {
             if (pg > 0) writer.newPage();
 
+            //  Die Flaeche zuerst und ueber das GANZE Blatt, Rand eingeschlossen.
+            //  Die zwei Pixel darueber hinaus fangen die Rundung von
+            //  `paintRectPixels` ab (gemessen: 1588 weisse Pixel, eine Zeile).
+            if (stil.papier.isValid())
+                p.fillRect(blatt.adjusted(-2, -2, 2, 2), stil.papier);
+
             const Span& sp = pageSpans.at(pg);
             p.save();
-            p.translate(0, -sp.top);
+            //  Der Rand steckt jetzt in der Verschiebung, nicht mehr im Schreiber.
+            p.translate(rand, rand - sp.top);
 
             // Winziger Einzug an Ober- und Unterkante: die Blockauswahl arbeitet mit BERÜHRUNG, die Nachbarzeile der
             // vorigen Seite endet exakt auf der Kante und käme sonst in den Textlayer (optisch geklippt, für Suche da).
@@ -176,6 +208,8 @@ bool exportToPdf(const QString& text, const QString& targetPath,
 
             // Die Schriftfarbe kommt über die PALETTE des PaintContext, nicht über die Feder allein: `drawContents` nähme
             // die Anwendungspalette - im dunklen Theme stand deshalb #E6E6E6 auf weißem Papier. Sie kommt vom AUFRUFER.
+            //  Bei Syntaxfaerbung traegt jede Marke ihre eigene Farbe; die
+            //  Palette gilt dann nur noch fuer alles Ungefaerbte.
             QAbstractTextDocumentLayout::PaintContext ctx;
             ctx.clip = band;
             ctx.palette.setColor(QPalette::Text, ink);
@@ -186,8 +220,13 @@ bool exportToPdf(const QString& text, const QString& targetPath,
 
             p.save();
             p.setFont(footFont);
-            p.setPen(QColor(120, 120, 120));
-            p.drawText(QRectF(0, paintRect.height() - footerH,
+            //  Die Fusszeile muss auf dem Papier lesbar bleiben - auf einem
+            //  dunklen Blatt waere ein festes Grau kaum zu sehen. Genommen wird
+            //  deshalb die Grundfarbe, halb durchscheinend.
+            QColor fuss(120, 120, 120);
+            if (stil.papier.isValid()) { fuss = ink; fuss.setAlphaF(0.55f); }
+            p.setPen(fuss);
+            p.drawText(QRectF(rand, rand + paintRect.height() - footerH,
                               paintRect.width(), footerH),
                        Qt::AlignHCenter | Qt::AlignVCenter,
                        QStringLiteral("%1/%2").arg(pg + 1).arg(pages));

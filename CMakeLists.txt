@@ -209,6 +209,9 @@ set(MG_NO_UNITY
     src/pdf/extract/PdfPageCopier.cpp
     src/audio/AudioEqualizer.cpp
     src/docx/DocxZip.cpp
+    #  `kProbeZeilen` heisst in `TableController.cpp` genauso - im Buendel
+    #  kollidieren die beiden anonymen Konstanten.
+    src/table/TableSort.cpp
 )
 if(MG_UNITY)
     set_source_files_properties(${MG_NO_UNITY}
@@ -236,8 +239,6 @@ mg_domain(mg_core
         src/core/FolderImages.h
         src/core/SpellChecker.cpp
         src/core/SpellChecker.h
-        src/core/TextPdfExporter.cpp
-        src/core/TextPdfExporter.h
         src/core/PathUtils.h
         src/core/MemoryUtils.h
         src/core/ZCodec.cpp
@@ -269,6 +270,8 @@ mg_domain(mg_tags
         src/tags/TagController.h
         src/tags/TagUndoMark.cpp
         src/tags/TagUndoMark.h
+        src/tags/TagUndoStack.cpp
+        src/tags/TagUndoStack.h
     LIBS
         mg_core
 )
@@ -322,6 +325,8 @@ mg_domain(mg_editor
         src/editor/EditorController.h
         src/editor/CodeHighlighter.cpp
         src/editor/CodeHighlighter.h
+        src/editor/TextPdfExporter.cpp
+        src/editor/TextPdfExporter.h
         src/editor/TextGutter.cpp
         src/editor/TextGutter.h
         src/editor/TextMinimap.cpp
@@ -445,6 +450,8 @@ mg_domain(mg_audio
         src/audio/PlayQueue.h
         src/audio/AudioEqualizer.cpp
         src/audio/AudioEqualizer.h
+        src/audio/AudioDenoise.cpp
+        src/audio/AudioDenoise.h
         src/audio/AudioRing.cpp
         src/audio/AudioRing.h
         src/audio/AudioEngine.cpp
@@ -489,6 +496,8 @@ mg_domain(mg_table
         src/table/TableController.h
         src/table/TableSearch.cpp
         src/table/TableSearch.h
+        src/table/TableSort.cpp
+        src/table/TableSort.h
     LIBS
         mg_core Qt6::Qml
 )

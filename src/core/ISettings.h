@@ -157,6 +157,18 @@ public:
     virtual bool showAllFiles() const = 0;
     virtual void setShowAllFiles(bool v) = 0;
 
+    //  Eine `.txt` mit Trennzeichen als Tabelle statt als Text oeffnen. AUS als
+    //  Vorgabe: ein Logfile mit Semikolons ginge sonst als Tabelle auf, und die
+    //  meisten `.txt` sind kein Tabellenblatt. DATEV-Dateien sind davon
+    //  unberuehrt - die werden am INHALT erkannt.
+    virtual bool tableOpensTxt() const = 0;
+    virtual void setTableOpensTxt(bool v) = 0;
+
+    //  Text -> PDF in den Farben des Editor-Profils statt in EINER Farbe.
+    //  AUS als Vorgabe: der haeufigste Grund fuer ein PDF ist ein Ausdruck.
+    virtual bool textPdfNative() const = 0;
+    virtual void setTextPdfNative(bool v) = 0;
+
     virtual bool galleryListLayout() const = 0;
     virtual void setGalleryListLayout(bool v) = 0;
 
@@ -260,6 +272,18 @@ public:
     // gerechnet - der Regler gehoert ganz dem Nutzer, auch beim Uebersteuern.
     virtual bool        audioEqAutoPreamp() const = 0;
     virtual void        setAudioEqAutoPreamp(bool on) = 0;
+    // Rauschunterdrueckung: Schalter und Staerke (0..1) liegen GETRENNT. Wer den
+    // Pegel auf null zieht, soll den Schalter anlassen duerfen - und beim
+    // naechsten Aufdrehen dieselbe Staerke wiederfinden.
+    // Staerke der Uebersteuerungs-Gegenrechnung (0..1). Sie skaliert, wie viel
+    // der noetigen Absenkung wirklich angewandt wird; der Schalter daneben
+    // entscheidet nur ueber AN und AUS.
+    virtual double      audioClipLevel() const = 0;
+    virtual void        setAudioClipLevel(double v) = 0;
+    virtual bool        audioDenoiseEnabled() const = 0;
+    virtual void        setAudioDenoiseEnabled(bool on) = 0;
+    virtual double      audioDenoiseLevel() const = 0;
+    virtual void        setAudioDenoiseLevel(double v) = 0;
     virtual QStringList audioEqHiddenPresets() const = 0;
     virtual void        setAudioEqHiddenPresets(const QStringList& names) = 0;
     virtual QStringList audioEqPresetOrder() const = 0;

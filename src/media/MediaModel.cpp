@@ -35,6 +35,10 @@
 
 // MG_LOG_THUMBS=1 protokolliert Anforderung, Abbestellung und Lieferung.
 static const bool kLogThumbs = qEnvironmentVariableIntValue("MG_LOG_THUMBS") == 1;
+//  MG_LOG_FILL=1: je Charge eine Zeile mit Dauer und Stand. Headless ist der
+//  Ordner nach 180 ms eingelesen, in der Shell erst nach 780 ms - die Zeit geht
+//  ZWISCHEN den Chargen verloren, und das sieht man nur hier.
+static const bool kLogFill = qEnvironmentVariableIntValue("MG_LOG_FILL") == 1;
 
 namespace {
 
@@ -258,8 +262,41 @@ private:
 namespace {
 // Erste Charge fuellt typische Viewports; Folgechargen sind groesser, da sie
 // zwischen Event-Loop-Ticks laufen.
+//  Der Name, nach dem die Ansicht sortiert: bei einem Ordner der ganze Name, bei
+//  einer Datei der Teil vor der Endung - genau so setzt `feedChunk` ihn spaeter.
+QString anzeigeName(const QFileInfo& fi, bool istOrdner) {
+    return istOrdner ? fi.fileName() : fi.completeBaseName();
+}
+
 constexpr int kFirstChunk = 256;
 constexpr int kChunk      = 512;
+
+//  Fingerabdruck des offenen Ordners (FNV-1a). Er entsteht an ZWEI Stellen -
+//  beim Fuellen nebenher und beim Watcher-Ereignis. Beide muessen exakt
+//  dieselben Eintraege in derselben Reihenfolge sehen, sonst meldet der Watcher
+//  jeden Ordner als geaendert.
+constexpr quint64 kFingerBasis = 1469598103934665603ULL;
+
+//  Ein Eintrag als Zahl. Die Summe entsteht durch ADDIEREN, nicht durch
+//  Verketten - so haengt der Abdruck nicht an der Reihenfolge, und die ist seit
+//  dem vorsortierten Einspeisen eine andere als die des Verzeichnisses.
+inline quint64 eintragsFinger(QStringView name, qint64 groesse, qint64 msecs) {
+    quint64 h = kFingerBasis;
+    const auto misch = [&h](quint64 v) { h ^= v; h *= 1099511628211ULL; };
+    misch(qHash(name));
+    misch(quint64(groesse));
+    misch(quint64(msecs));
+    return h;
+}
+
+inline void mischeFinger(quint64& h, const QFileInfo& fi) {
+    h += eintragsFinger(fi.fileName(), fi.size(),
+                        fi.lastModified().toMSecsSinceEpoch());
+}
+
+inline bool imFingerabdruck(bool istOrdner, QStringView name, const QString& sidecar) {
+    return istOrdner || !mg::isCompanionFile(name.toString(), sidecar);
+}
 }
 
 MediaModel::MediaModel(JsonStorage& storage,
@@ -392,8 +429,16 @@ void MediaModel::rebuild(const QString& folderPath) {
     endResetModel();
     emit countChanged();
 
-    if (folderPath.isEmpty())
+    //  Beim Fuellen mitgerechnet - die Schleife hat jeden `QFileInfo` ohnehin
+    //  in der Hand. Ein eigener Durchgang danach kostete bei 12.000 Dateien
+    //  47 ms am Stueck, auch beim blossen Aufklappen eines Unterordners.
+    m_fingerAccu  = kFingerBasis;
+    m_fingerValid = true;
+
+    if (folderPath.isEmpty()) {
+        m_fingerValid = false;
         return;
+    }
 
     // Der Sidecar-Name gehoert zum BEREICH: jeder aufgeklappte Unterordner hat
     // seinen eigenen.
@@ -440,9 +485,67 @@ void MediaModel::startScan(int scope) {
         path, QDir::Files | QDir::Dirs | QDir::NoDotAndDotDot | MediaModel::hiddenFlag(),
         QDirIterator::NoIteratorFlags);
     m_pendingScope = scope;
+
+    //  VORSORTIEREN - nur fuer den offenen Ordner; aufgeklappte Unterordner
+    //  kommen als eigene Bereiche nach. Die Ordnung ist dieselbe wie in
+    //  `MediaProxyModel::fieldLess` samt `sameScopeLess`: Ordner immer voran -
+    //  in BEIDEN Richtungen -, darunter das Feld, dann Zeit, dann Name. Weicht
+    //  sie ab, ist das kein Fehler, nur eine Einfuegung mehr in der Mitte.
+    m_vorab.clear();
+    m_vorabIndex = 0;
+    if (m_fillOrder && scope == 0) {
+        QElapsedTimer vorlauf;
+        if (kLogFill) vorlauf.start();
+        while (m_pendingIt->hasNext()) {
+            m_pendingIt->next();
+            const QFileInfo fi = m_pendingIt->fileInfo();
+            VorabEintrag e;
+            e.ordner  = fi.isDir();
+            e.pfad    = fi.filePath();
+            e.name    = anzeigeName(fi, e.ordner);
+            e.msecs   = fi.lastModified(QTimeZone::UTC).toMSecsSinceEpoch();
+            //  Die ECHTE Groesse, auch bei einem Ordner - der Fingerabdruck
+            //  nimmt sie mit. In die Kachel geht dort trotzdem 0.
+            e.groesse = fi.size();
+            m_vorab.append(std::move(e));
+        }
+        //  Dieselbe Ordnung wie `MediaProxyModel::fieldLess` samt
+        //  `sameScopeLess`: Ordner immer voran - in BEIDEN Richtungen -, darunter
+        //  das gewaehlte Feld, bei Gleichstand die Zeit und dann der Name.
+        //  Weicht sie irgendwo ab, ist das kein Fehler, nur eine Einfuegung mehr
+        //  in der Mitte.
+        const int  feld = m_fillField;
+        const bool ab   = m_fillDesc;
+        const auto kleiner = [feld](const VorabEintrag& a, const VorabEintrag& b) {
+            switch (feld) {
+            case 1: {   // Name
+                const int c = a.name.compare(b.name, Qt::CaseInsensitive);
+                if (c != 0) return c < 0;
+                break;
+            }
+            case 3:     // Groesse
+                if (a.groesse != b.groesse) return a.groesse < b.groesse;
+                break;
+            default:    // Datum
+                break;
+            }
+            if (a.msecs != b.msecs) return a.msecs < b.msecs;
+            return a.name.compare(b.name, Qt::CaseInsensitive) < 0;
+        };
+        std::sort(m_vorab.begin(), m_vorab.end(),
+                  [&](const VorabEintrag& a, const VorabEintrag& b) {
+            if (a.ordner != b.ordner) return a.ordner;
+            return ab ? kleiner(b, a) : kleiner(a, b);
+        });
+        m_pendingIt.reset();
+        if (kLogFill)
+            qInfo("[fill] Vorlauf: %lld Eintraege gelesen und geordnet in %.1f ms",
+                  static_cast<long long>(m_vorab.size()), vorlauf.nsecsElapsed() / 1e6);
+    }
 }
 
 bool MediaModel::hasMoreToFill() const {
+    if (m_vorabIndex < m_vorab.size()) return true;
     return (m_pendingIt && m_pendingIt->hasNext()) || !m_scanQueue.isEmpty();
 }
 
@@ -453,13 +556,21 @@ QString MediaModel::sidecarOfScope(int scope) const {
 
 void MediaModel::feedChunk(bool firstChunk) {
     const int budget = firstChunk ? kFirstChunk : kChunk;
+    QElapsedTimer dauer, teil;
+    qint64 tLesen = 0, tEinfuegen = 0, tMelden = 0, tZaehler = 0, tUnter = 0;
+    if (kLogFill) {
+        dauer.start();
+        teil.start();
+        if (firstChunk) m_fillClock.restart();
+    }
 
     // Immer nur ein Bereich je Charge: nur so laesst sich fuer die ganze Charge auf
     // einen Schlag entscheiden, ob die Sidecar-Metadaten gelten.
-    if (!m_pendingIt || !m_pendingIt->hasNext()) {
+    //  Aus der Vorsortierung, solange sie reicht - sonst wie bisher vom Iterator.
+    if (m_vorabIndex >= m_vorab.size() && (!m_pendingIt || !m_pendingIt->hasNext())) {
         if (m_scanQueue.isEmpty()) return;
         startScan(m_scanQueue.takeFirst());
-        if (!m_pendingIt) return;
+        if (!m_pendingIt && m_vorab.isEmpty()) return;
     }
 
     const int     scope   = m_pendingScope;
@@ -469,17 +580,41 @@ void MediaModel::feedChunk(bool firstChunk) {
     batch.reserve(budget);
 
     int produced = 0;
-    while (m_pendingIt->hasNext() && produced < budget) {
-        m_pendingIt->next();
-        const QFileInfo fi = m_pendingIt->fileInfo();
+    while (produced < budget
+           && (m_vorabIndex < m_vorab.size()
+               || (m_pendingIt && m_pendingIt->hasNext()))) {
+        //  Aus der Vorsortierung steht schon alles bereit - die Datei ein
+        //  zweites Mal zu befragen waere ein zweiter `stat` (1,5 ms je Charge).
+        QString pfad, anzeige;
+        QStringView dateiName;
+        bool    istOrdner = false;
+        qint64  msecs = 0, groesse = 0;
+        if (m_vorabIndex < m_vorab.size()) {
+            const VorabEintrag& e = m_vorab.at(m_vorabIndex++);
+            pfad = e.pfad; anzeige = e.name; istOrdner = e.ordner;
+            msecs = e.msecs; groesse = e.groesse;
+        } else {
+            m_pendingIt->next();
+            const QFileInfo fi = m_pendingIt->fileInfo();
+            istOrdner = fi.isDir();
+            pfad      = fi.filePath();
+            anzeige   = istOrdner ? fi.fileName() : fi.completeBaseName();
+            msecs     = fi.lastModified(QTimeZone::UTC).toMSecsSinceEpoch();
+            groesse   = fi.size();
+        }
+        dateiName = mg::baseNameView(pfad);
 
-        if (fi.isDir()) {
+        //  Nur der offene Ordner: der Watcher vergleicht auch nur ihn.
+        if (scope == 0 && m_fingerValid && imFingerabdruck(istOrdner, dateiName, sidecar))
+            m_fingerAccu += eintragsFinger(dateiName, groesse, msecs);
+
+        if (istOrdner) {
             MediaItem item;
-            item.filePath = fi.filePath();
-            // fileName(), nicht completeBaseName(): ein Ordner "Urlaub 2025.alt" heisst so.
-            item.displayName = fi.fileName();
+            item.filePath = pfad;
+            // Der ganze Name: ein Ordner "Urlaub 2025.alt" heisst so.
+            item.displayName = anzeige;
             item.type        = MediaType::Folder;
-            item.dateTime    = fi.lastModified(QTimeZone::UTC);
+            item.dateTime    = QDateTime::fromMSecsSinceEpoch(msecs, QTimeZone::UTC);
             item.fileSize    = 0;
             item.scope       = scope;
             batch.append(std::move(item));
@@ -488,22 +623,21 @@ void MediaModel::feedChunk(bool firstChunk) {
         }
 
         // Die Regel steht in mg::isCompanionFile, damit der Dateiwaehler gleich filtert.
-        if (!m_showAllFiles && mg::isCompanionFile(fi.fileName(), sidecar))
+        if (!m_showAllFiles && mg::isCompanionFile(dateiName.toString(), sidecar))
             continue;
 
         // refineType schaut nur bei mehrdeutigen Endungen in die Datei (heute .ts).
-        const MediaType t = mg::refineType(fi.filePath(),
-                                           MediaItem::detectType(fi.filePath()));
+        const MediaType t = mg::refineType(pfad, MediaItem::detectType(pfad));
         // Alle Dateien anzeigen heisst wirklich alle - sonst bliebe die .bak einer DOCX
         // unsichtbar, obwohl sie ausdruecklich gemeint war.
         if (t == MediaType::Unknown && !m_showAllFiles) continue;
 
         MediaItem item;
-        item.filePath    = fi.filePath();
-        item.displayName = fi.completeBaseName();
-        item.fileSize    = fi.size();
+        item.filePath    = pfad;
+        item.displayName = anzeige;
+        item.fileSize    = groesse;
         item.type        = t;
-        item.dateTime    = fi.lastModified(QTimeZone::UTC);
+        item.dateTime    = QDateTime::fromMSecsSinceEpoch(msecs, QTimeZone::UTC);
         item.scope       = scope;
         batch.append(std::move(item));
         ++produced;
@@ -526,6 +660,7 @@ void MediaModel::feedChunk(bool firstChunk) {
 
     const int first = m_items.size();
     const int last  = first + batch.size() - 1;
+    if (kLogFill) { tLesen = teil.nsecsElapsed(); teil.restart(); }
     beginInsertRows(QModelIndex(), first, last);
     for (auto& item : batch) {
         m_pathToRow.insert(item.filePath, m_items.size());
@@ -534,10 +669,22 @@ void MediaModel::feedChunk(bool firstChunk) {
         m_thumbState.append(0);
         m_selected.append(0);
     }
+    if (kLogFill) { tEinfuegen = teil.nsecsElapsed(); teil.restart(); }
     endInsertRows();
+    if (kLogFill) { tMelden = teil.nsecsElapsed(); teil.restart(); }
     emit countChanged();
+    if (kLogFill) { tZaehler = teil.nsecsElapsed(); teil.restart(); }
 
     queueExpandedFolders(first);
+    if (kLogFill) tUnter = teil.nsecsElapsed();
+
+    if (kLogFill)
+        qInfo("[fill] Charge: %.2f ms gesamt (lesen %.2f · einfuegen %.2f · endInsertRows %.2f "
+              "· zaehler %.2f · unterordner %.2f), %lld Zeilen, %lld ms seit der ersten",
+              dauer.nsecsElapsed() / 1e6, tLesen / 1e6, tEinfuegen / 1e6,
+              tMelden / 1e6, tZaehler / 1e6, tUnter / 1e6,
+              static_cast<long long>(m_items.size()),
+              static_cast<long long>(m_fillClock.isValid() ? m_fillClock.elapsed() : 0));
 }
 
 // So stellt sich ein ganzer aufgeklappter Unterbaum nach einem reload() von
@@ -556,6 +703,15 @@ void MediaModel::queueExpandedFolders(int firstRow) {
 }
 
 void MediaModel::finishFill() {
+    //  Die Vorsortierung hat ihren Zweck erfuellt - der Speicher gehoert wieder
+    //  dem Ordner, nicht der Liste.
+    m_vorab.clear();
+    m_vorab.squeeze();
+    m_vorabIndex = 0;
+
+    if (kLogFill && m_fillClock.isValid())
+        qInfo("[fill] fertig nach %lld ms", static_cast<long long>(m_fillClock.elapsed()));
+
     m_pendingIt.reset();
     m_pendingScope = -1;
 
@@ -566,8 +722,13 @@ void MediaModel::finishFill() {
         m_deepFillTimer.invalidate();
     }
 
-    //  Ausgangsstand fuer den Watcher: was jetzt steht, ist der Vergleichspunkt.
-    m_dirFinger = ordnerFingerabdruck();
+    //  Ausgangsstand fuer den Watcher. Er steht schon: die Fuell-Schleife hat ihn
+    //  mitgerechnet. Ohne gueltigen Sammler (nur ein Unterordner kam dazu) bleibt
+    //  der alte stehen - am offenen Ordner hat sich nichts geaendert.
+    if (m_fingerValid) {
+        m_dirFinger   = m_fingerAccu;
+        m_fingerValid = false;
+    }
 
     // Jetzt stehen die Zeilen - jetzt kann die Ansicht ihre Miniaturen anfordern.
     if (m_pendingInvalidate) {
@@ -921,6 +1082,12 @@ void MediaModel::loadFolder(const QString& rawFolderPath) {
         m_watcher->addPath(folderPath);
 
     emit folderChanged();
+}
+
+void MediaModel::setFillOrder(bool aktiv, int feld, bool absteigend) {
+    m_fillOrder = aktiv;
+    m_fillField = feld;
+    m_fillDesc  = absteigend;
 }
 
 void MediaModel::setShowAllFiles(bool v) {
@@ -2526,19 +2693,15 @@ void MediaModel::addTag(const QString& filePath, const QString& tag) {
 quint64 MediaModel::ordnerFingerabdruck() const {
     if (m_folder.isEmpty()) return 0;
     const QString sidecar = mg::folderSidecarName(m_folder);
-    quint64 h = 1469598103934665603ULL;              // FNV-1a
-    const auto misch = [&h](quint64 v) {
-        h ^= v;
-        h *= 1099511628211ULL;
-    };
-    QDirIterator it(m_folder, QDir::Files | QDir::Dirs | QDir::NoDotAndDotDot);
+    quint64 h = kFingerBasis;
+    //  Derselbe Hidden-Filter wie beim Fuellen. Ohne ihn saehen die beiden Wege
+    //  verschiedene Eintraege, sobald versteckte Dateien gezeigt werden.
+    QDirIterator it(m_folder,
+                    QDir::Files | QDir::Dirs | QDir::NoDotAndDotDot | hiddenFlag());
     while (it.hasNext()) {
         it.next();
         const QFileInfo fi = it.fileInfo();
-        if (!fi.isDir() && mg::isCompanionFile(fi.fileName(), sidecar)) continue;
-        misch(qHash(fi.fileName()));
-        misch(quint64(fi.size()));
-        misch(quint64(fi.lastModified().toMSecsSinceEpoch()));
+        if (imFingerabdruck(fi.isDir(), fi.fileName(), sidecar)) mischeFinger(h, fi);
     }
     return h;
 }

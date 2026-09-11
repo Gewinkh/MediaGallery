@@ -197,7 +197,7 @@ Item {
         if (root.currentPath.length === 0 || root._pdfBusy) return
         root._pdfBusy = true
         Viewer.exportTextToPdf(root.currentPath, editor.text,
-                               root._pdfInk, Editor.tabWidth)
+                               root._pdfInk, Editor.tabWidth, App.textPdfNative)
     }
 
     Timer {

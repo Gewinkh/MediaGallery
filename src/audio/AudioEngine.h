@@ -12,6 +12,7 @@
 #include <vector>
 
 class AudioEqualizer;
+class AudioDenoise;
 class AudioPull;
 class QAudioDecoder;
 class QAudioSink;
@@ -31,7 +32,8 @@ public:
     enum class State { Stopped = 0, Playing = 1, Paused = 2 };
     Q_ENUM(State)
 
-    explicit AudioEngine(AudioEqualizer& eq, QObject* parent = nullptr);
+    explicit AudioEngine(AudioEqualizer& eq, AudioDenoise& denoise,
+                         QObject* parent = nullptr);
     ~AudioEngine() override;
 
     State   state() const { return m_state; }
@@ -101,6 +103,7 @@ private:
     void convertOut(const float* in, char* out, qint64 values) const;
 
     AudioEqualizer&        m_eq;
+    AudioDenoise&          m_denoise;
     QAudioDecoder*         m_decoder = nullptr;
     //  Gerät für den Sprung: zeigt die Datei ab dem Zielrahmen. Gehört der
     //  Kette und wird in `teardown()` mit abgeräumt.

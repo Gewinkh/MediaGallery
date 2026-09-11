@@ -952,8 +952,51 @@ FocusScope {
                 font.pixelSize: 12
             }
 
+            //  Zwei Betriebsarten nebeneinander. Sie schliessen einander aus:
+            //  im nativen Weg gilt die Farbe daneben nicht mehr, also wird sie
+            //  ausgegraut statt stillschweigend uebergangen.
+            Row {
+                spacing: 6
+                Repeater {
+                    model: [
+                        { label: App.uiText(App.language, "TextPdfModeOne"),    nativ: false },
+                        { label: App.uiText(App.language, "TextPdfModeNative"), nativ: true  }
+                    ]
+                    delegate: Rectangle {
+                        required property var modelData
+                        readonly property bool gewaehlt: App.textPdfNative === modelData.nativ
+                        height: 24
+                        width: modeText.implicitWidth + 18
+                        radius: 5
+                        color: gewaehlt ? Qt.rgba(App.themeAccent.r, App.themeAccent.g,
+                                                  App.themeAccent.b, 0.22)
+                                        : (modeHover.hovered ? App.themeCard : "transparent")
+                        border.width: 1
+                        border.color: gewaehlt ? App.themeAccent : App.themeBorder
+                        Text {
+                            id: modeText
+                            anchors.centerIn: parent
+                            text: parent.modelData.label
+                            color: parent.gewaehlt ? App.themeAccent : App.themeTextPrimary
+                            font.pixelSize: 11
+                        }
+                        HoverHandler { id: modeHover }
+                        TapHandler { onTapped: App.textPdfNative = parent.modelData.nativ }
+                    }
+                }
+            }
+            Text {
+                width: 260
+                wrapMode: Text.WordWrap
+                text: App.uiText(App.language, "TextPdfModeTip")
+                color: App.themeTextMuted
+                font.pixelSize: 10
+            }
+
             Row {
                 spacing: 8
+                opacity: App.textPdfNative ? 0.4 : 1.0
+                enabled: !App.textPdfNative
                 ColorPicker {
                     anchors.verticalCenter: parent.verticalCenter
                     width: 34; height: 20

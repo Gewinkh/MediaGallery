@@ -13,6 +13,7 @@ Item {
 
     ScrollView {
         id: audioScroll
+        objectName: "audioScroll"     // Griff fuer tests/bench
         anchors.fill: parent
         contentWidth: availableWidth
         clip: true
@@ -26,26 +27,6 @@ Item {
                 title: App.uiText(App.language, "AudioEqTitle")
                 Layout.fillWidth: true
 
-                CheckBox {
-                    text: App.uiText(App.language, "AudioEqAutoPreamp")
-                    checked: Audio.eqAutoPreamp
-                    onToggled: Audio.eqAutoPreamp = checked
-                    contentItem: Text {
-                        text: parent.text; color: App.themeTextPrimary
-                        leftPadding: parent.indicator.width + 6
-                        verticalAlignment: Text.AlignVCenter
-                    }
-                }
-                Text {
-                    Layout.fillWidth: true
-                    Layout.leftMargin: 24
-                    Layout.bottomMargin: 6
-                    text: App.uiText(App.language, "AudioEqAutoPreampHint")
-                    color: App.themeTextMuted
-                    font.pixelSize: 11
-                    wrapMode: Text.WordWrap
-                }
-
                 AudioEqPanel {
                     Layout.fillWidth: true
                     Layout.preferredHeight: implicitHeight
@@ -53,6 +34,37 @@ Item {
                     //  löschen, zurücksetzen und umsortieren (Wunsch des
                     //  Nutzers); am Player wählt und sichert man nur.
                     manageable: true
+                }
+            }
+
+            //  Beide Unterdrücker in EINER Gruppe: sie beantworten dieselbe
+            //  Frage - was wird weggenommen und wie viel -, und getrennt
+            //  stünde der eine im Equalizer und der andere irgendwo darunter.
+            //  Hier steht auch die Erklärung; am Player sind es nur die Regler.
+            SettingsGroup {
+                key: "audio.suppression"
+                title: App.uiText(App.language, "AudioSuppressTitle")
+                Layout.fillWidth: true
+
+                SuppressorRow {
+                    Layout.fillWidth: true
+                    text: App.uiText(App.language, "AudioEqAutoPreamp")
+                    hinweis: App.uiText(App.language, "AudioEqAutoPreampHint")
+                    wirkung: Audio.clipReduction < -0.05
+                             ? Audio.clipReduction.toFixed(1) + " dB" : ""
+                    an: Audio.eqAutoPreamp
+                    pegel: Audio.clipLevel
+                    onUmgelegt: function (w) { Audio.eqAutoPreamp = w }
+                    onVerschoben: function (w) { Audio.clipLevel = w }
+                }
+                SuppressorRow {
+                    Layout.fillWidth: true
+                    text: App.uiText(App.language, "AudioDenoise")
+                    hinweis: App.uiText(App.language, "AudioDenoiseHint")
+                    an: Audio.denoiseEnabled
+                    pegel: Audio.denoiseLevel
+                    onUmgelegt: function (w) { Audio.denoiseEnabled = w }
+                    onVerschoben: function (w) { Audio.denoiseLevel = w }
                 }
             }
 

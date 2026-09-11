@@ -15,6 +15,7 @@
 
 TagManager::TagManager(JsonStorage* storage, QObject* parent)
     : QObject(parent), m_storage(storage) {
+    useUndoStack(nullptr);
     //  Sammelndes Melden (s. Header): ein Null-Timer feuert am Ende des
     //  laufenden Ereignisdurchlaufs, alles darin wird zu EINER Meldung.
     m_signalTimer.setSingleShot(true);
@@ -46,7 +47,8 @@ void TagManager::notePersistedStateReloaded() {
 
 void TagManager::flushPendingSignals() {
     m_signalTimer.stop();
-    m_undoStepOpen = false;
+    m_undoStepOpen  = false;
+    m_offenerStepId = 0;
     const bool t = m_tagsDirty, c = m_catsDirty;
     m_tagsDirty = m_catsDirty = false;   // VOR dem Melden - ein Empfaenger darf
     if (t) emit tagsChanged();           // erneut aendern, ohne dass es verfaellt
@@ -55,7 +57,7 @@ void TagManager::flushPendingSignals() {
 
 void TagManager::beginUndoStep(const mg::tagmark::Mark& mark, bool deltaFaehig) {
     if (!m_storage) return;
-    if (!m_redo.isEmpty()) { m_redo.clear(); emit undoStackChanged(); }
+    if (!m_stack->redo.isEmpty()) { m_stack->redo.clear(); emit m_stack->changed(); }
     //  In einer Gruppe entsteht GENAU EIN Schritt - beim ersten Mal, mit der
     //  Marke der Gruppe.
     if (m_undoGroupDepth > 0) {
@@ -64,18 +66,20 @@ void TagManager::beginUndoStep(const mg::tagmark::Mark& mark, bool deltaFaehig) 
             //  Delta-Schritt auf den ganzen Stand - SOLANGE er noch nichts
             //  geaendert hat.
             if (!deltaFaehig) {
-                if (UndoStep* offen = undoStepById(m_undoGroupStepId))
+                if (UndoStep* offen = m_stack->byId(m_undoGroupStepId))
                     aufSchnappschussHeben(*offen);
             }
             return;
         }
     } else if (m_undoStepOpen) {
-        if (!deltaFaehig && !m_undo.isEmpty()) aufSchnappschussHeben(m_undo.last());
+        if (!deltaFaehig) {
+            if (UndoStep* offen = offenerSchritt()) aufSchnappschussHeben(*offen);
+        }
         return;                            // schon ein Schritt in diesem Durchlauf
     }
 
     UndoStep step;
-    step.id     = m_undoNextId++;
+    step.id     = m_stack->nextId++;
     step.mark   = (m_undoGroupDepth > 0 && m_undoGroupHasMark) ? m_undoGroupMark : mark;
     step.folder = m_storage->folderPath();
     if (deltaFaehig) {
@@ -89,10 +93,11 @@ void TagManager::beginUndoStep(const mg::tagmark::Mark& mark, bool deltaFaehig) 
         step.state = m_storage->tagStateSnapshot();
         step.bytes = step.state.size();
     }
-    m_undo.append(step);
-    m_undoBytes += step.bytes;
+    m_stack->undo.append(step);
+    m_stack->bytes += step.bytes;
+    m_offenerStepId = step.id;
     if (m_undoGroupDepth > 0) m_undoGroupStepId = step.id;
-    pruneUndo();
+    m_stack->prune();
 
     // Ohne laufende Ereignisschleife kann der Null-Timer die Sammelgrenze nie setzen - dann wird auch nicht
     // gesammelt. Mit Schleife wird er sicherheitshalber angestoßen: er stellt `m_undoStepOpen` zurück.
@@ -100,7 +105,7 @@ void TagManager::beginUndoStep(const mg::tagmark::Mark& mark, bool deltaFaehig) 
         m_undoStepOpen = true;
         if (!m_signalTimer.isActive()) m_signalTimer.start();
     }
-    emit undoStackChanged();
+    emit m_stack->changed();
 }
 
 void TagManager::beginUndoGroup(const mg::tagmark::Mark& mark, bool counted) {
@@ -120,14 +125,16 @@ void TagManager::endUndoGroup() {
         m_undoGroupHasMark = false;
         m_undoGroupCounted = false;
         m_undoGroupStepId  = 0;
+        m_offenerStepId    = 0;
     }
 }
 
 void TagManager::noteForeignFolder(const QString& folderPath, const mg::tagmark::Mark& mark) {
     if (folderPath.isEmpty()) return;
     beginUndoStep(mark);
-    if (m_undo.isEmpty()) return;
-    UndoStep& step = m_undo.last();
+    UndoStep* offen = offenerSchritt();
+    if (!offen) return;
+    UndoStep& step = *offen;
 
     const QString side = folderPath + QLatin1Char('/')
                        + QFileInfo(folderPath).fileName()
@@ -143,23 +150,21 @@ void TagManager::noteForeignFolder(const QString& folderPath, const mg::tagmark:
         return;
     }
     step.bytes += before.size();
-    m_undoBytes += before.size();
+    m_stack->bytes += before.size();
     step.foreign.insert(side, before);
-    pruneUndo();
+    m_stack->prune();
 }
 
 //  Die Tags EINER Datei sichern, bevor sie sich aendern. Nur fuer Delta-
 //  Schritte, und je Datei nur einmal - der erste Stand ist der, der zurueckmuss.
 void TagManager::merkeDateiVorher(const QString& fileName) {
     if (!m_storage || fileName.isEmpty()) return;
-    UndoStep* step = (m_undoGroupDepth > 0 && m_undoGroupStepId != 0)
-                         ? undoStepById(m_undoGroupStepId)
-                         : (m_undo.isEmpty() ? nullptr : &m_undo.last());
+    UndoStep* step = offenerSchritt();
     if (!step || !step->delta || step->tagsBefore.contains(fileName)) return;
     step->tagsBefore.insert(fileName, m_storage->getTags(fileName));
     const int vorher = step->bytes;
     step->bytes = deltaGroesse(*step);
-    m_undoBytes += step->bytes - vorher;
+    m_stack->bytes += step->bytes - vorher;
 }
 
 //  Grobe Groesse eines Delta-Schritts fuer den RAM-Deckel: Name plus Tags.
@@ -189,7 +194,7 @@ void TagManager::aufSchnappschussHeben(UndoStep& step) {
     const int vorher = step.bytes;
     step.state = m_storage->tagStateSnapshot();
     step.bytes = int(step.state.size());
-    m_undoBytes += step.bytes - vorher;
+    m_stack->bytes += step.bytes - vorher;
 
     m_storage->setTagColors(farbenJetzt);
     for (auto it = jetzt.cbegin(); it != jetzt.cend(); ++it)
@@ -198,28 +203,39 @@ void TagManager::aufSchnappschussHeben(UndoStep& step) {
     step.delta = false;
     step.tagsBefore.clear();
     step.colorsBefore.clear();
-    pruneUndo();
+    m_stack->prune();
 }
 
-//  Deckel durchsetzen: die AELTESTEN Schritte fallen zuerst - der jüngste ist
-//  der, den der Nutzer gleich zurueckzunehmen versucht.
-void TagManager::pruneUndo() {
-    while (m_undo.size() > kMaxUndoSteps
-           || (m_undoBytes > kMaxUndoBytes && m_undo.size() > 1)) {
-        m_undoBytes -= m_undo.first().bytes;
-        m_undo.removeFirst();
-    }
-    if (m_undoBytes < 0) m_undoBytes = 0;
+//  Den Stapel wechseln: beim Ordnerwechsel einen frischen, und wenn die andere
+//  Haelfte denselben Ordner offen hat, DEREN Stapel. Die Meldung wird
+//  durchgereicht - beide Leisten zeigen damit denselben Stand.
+void TagManager::useUndoStack(std::shared_ptr<TagUndoStack> stack) {
+    if (stack && stack == m_stack) return;
+    if (m_stackConn) disconnect(m_stackConn);
+    m_undoGroupDepth   = 0;
+    m_undoGroupCounted = false;
+    m_undoGroupHasMark = false;
+    m_undoGroupMark    = {};
+    m_undoGroupStepId  = 0;
+    m_offenerStepId    = 0;
+    m_undoStepOpen     = false;
+    m_undoSweepId      = 0;
+    m_stack = stack ? std::move(stack) : std::make_shared<TagUndoStack>();
+    m_stackConn = connect(m_stack.get(), &TagUndoStack::changed,
+                          this, &TagManager::undoStackChanged);
+    emit undoStackChanged();
 }
 
-TagManager::UndoStep* TagManager::undoStepById(quint64 id) {
-    for (UndoStep& s : m_undo)
-        if (s.id == id) return &s;
-    return nullptr;
+//  Der Schritt, den DIESER Manager offen hat - in einer Gruppe deren Schritt,
+//  sonst der des laufenden Ereignisdurchlaufs. Auf einem geteilten Stapel darf
+//  dafuer nicht "der oberste" genommen werden: der kann von nebenan stammen.
+TagManager::UndoStep* TagManager::offenerSchritt() {
+    const quint64 id = (m_undoGroupDepth > 0) ? m_undoGroupStepId : m_offenerStepId;
+    return id ? m_stack->byId(id) : nullptr;
 }
 
 void TagManager::clearUndo() {
-    // `m_sweepsPending` bleibt stehen: der Durchgang ist noch unterwegs und meldet sich selbst ab. Eine offene
+    // `sweepsPending` bleibt stehen: der Durchgang ist noch unterwegs und meldet sich selbst ab. Eine offene
     // Gruppe wird dagegen GESCHLOSSEN - sonst schluckte sie jeden weiteren Schritt.
     m_undoGroupDepth   = 0;
     m_undoGroupCounted = false;
@@ -227,48 +243,41 @@ void TagManager::clearUndo() {
     m_undoGroupMark    = {};
     m_undoGroupHasMark = false;
     m_undoGroupStepId  = 0;
-    const bool hatteRedo = !m_redo.isEmpty();
-    m_redo.clear();
-    if (m_undo.isEmpty()) {
-        m_undoBytes = 0; m_undoSweepId = 0;
-        if (hatteRedo) emit undoStackChanged();
-        return;
-    }
-    m_undo.clear();
-    m_undoBytes = 0;
-    m_undoSweepId = 0;
-    emit undoStackChanged();
+    m_offenerStepId    = 0;
+    m_undoSweepId      = 0;
+    m_stack->clear();
 }
 
-void TagManager::undoLastStep() { applyStep(m_undo, m_redo, /*redo=*/false); }
-void TagManager::redoLastStep() { applyStep(m_redo, m_undo, /*redo=*/true);  }
+void TagManager::undoLastStep() { applyStep(m_stack->undo, m_stack->redo, /*redo=*/false); }
+void TagManager::redoLastStep() { applyStep(m_stack->redo, m_stack->undo, /*redo=*/true);  }
 
 //  EIN Rumpf fuer beide Richtungen: der oberste Schritt von `from` wird
 //  angewandt, und was VORHER da war, wandert als Gegenstueck auf `to`. Die
 //  Marke bleibt dieselbe - sie beschreibt den Vorgang, nicht die Richtung.
 void TagManager::applyStep(QList<UndoStep>& from, QList<UndoStep>& to, bool redo) {
     if (!m_storage) return;
-    if (from.isEmpty() || m_sweepsPending != 0) return;
+    if (from.isEmpty() || m_stack->sweepsPending != 0) return;
 
     UndoStep step = from.takeLast();
-    if (&from == &m_undo) {
-        m_undoBytes -= step.bytes;
-        if (m_undoBytes < 0) m_undoBytes = 0;
+    if (&from == &m_stack->undo) {
+        m_stack->bytes -= step.bytes;
+        if (m_stack->bytes < 0) m_stack->bytes = 0;
     }
     if (m_undoSweepId == step.id) m_undoSweepId = 0;
     if (m_undoGroupStepId == step.id) m_undoGroupStepId = 0;
+    if (m_offenerStepId == step.id) m_offenerStepId = 0;
 
     const QString folder = m_storage->folderPath();
     if (step.folder != folder) {
-        m_undo.clear();
-        m_redo.clear();
-        m_undoBytes = 0;
-        emit undoStackChanged();
+        m_stack->undo.clear();
+        m_stack->redo.clear();
+        m_stack->bytes = 0;
+        emit m_stack->changed();
         return;
     }
 
     UndoStep back;
-    back.id     = m_undoNextId++;
+    back.id     = m_stack->nextId++;
     back.mark   = step.mark;
     back.folder = folder;
     back.foreignComplete = step.foreignComplete;
@@ -316,14 +325,14 @@ void TagManager::applyStep(QList<UndoStep>& from, QList<UndoStep>& to, bool redo
     if (!folder.isEmpty()) m_storage->saveCurrentFolder();
 
     to.append(back);
-    if (&to == &m_undo) {
-        m_undoBytes += back.bytes;
-        pruneUndo();
+    if (&to == &m_stack->undo) {
+        m_stack->bytes += back.bytes;
+        m_stack->prune();
     }
 
     scheduleTagsChanged();
     scheduleCategoriesChanged();
-    emit undoStackChanged();
+    emit m_stack->changed();
     emit tagUndoApplied(mg::tagmark::plain(step.mark.forward), restored,
                         step.foreignComplete, redo);
 }
@@ -335,20 +344,20 @@ void TagManager::attachSweepUndo(quint64 stepId,
                                  const QHash<QString, QByteArray>& before,
                                  bool complete) {
     if (stepId == 0) return;
-    if (m_sweepsPending > 0) --m_sweepsPending;
-    UndoStep* step = undoStepById(stepId);
-    if (!step) { emit undoStackChanged(); return; }
+    if (m_stack->sweepsPending > 0) --m_stack->sweepsPending;
+    UndoStep* step = m_stack->byId(stepId);
+    if (!step) { emit m_stack->changed(); return; }
     // HINEINMISCHEN, nicht ersetzen: im selben Durchlauf können zwei Tags gelöscht worden sein, und der zweite
     // Durchgang hätte den ersten sonst weggeworfen. Wo beide denselben Ordner kennen, gilt der ÄLTERE Stand.
     for (auto it = before.cbegin(); it != before.cend(); ++it) {
         if (step->foreign.contains(it.key())) continue;
         step->foreign.insert(it.key(), it.value());
         step->bytes  += it.value().size();
-        m_undoBytes  += it.value().size();
+        m_stack->bytes  += it.value().size();
     }
     step->foreignComplete = step->foreignComplete && complete;
-    pruneUndo();
-    emit undoStackChanged();
+    m_stack->prune();
+    emit m_stack->changed();
 }
 
 // Die Marken der einzelnen Vorgaenge (s. `TagUndoMark.h`)
@@ -368,9 +377,10 @@ void TagManager::beginCountedStep(bool added, mg::tagmark::Thing t,
     const bool fremdeGruppe = m_undoGroupDepth > 0 && m_undoGroupHasMark
                               && !m_undoGroupCounted;
     beginUndoStep(mkCounted(added ? 1 : 0, added ? 0 : 1, t, name, path), deltaFaehig);
-    if (m_undo.isEmpty() || fremdeGruppe) return;
+    UndoStep* offen = offenerSchritt();
+    if (!offen || fremdeGruppe) return;
 
-    UndoStep& step = m_undo.last();
+    UndoStep& step = *offen;
     if (!step.addCounts) {                 // erster Zaehler dieses Schrittes
         step.addCounts = true;
         step.cntThing  = t;
@@ -444,7 +454,7 @@ QStringList TagManager::filesWithTag(const QString& tag) const {
 void TagManager::deleteTag(const QString& tag) {
     beginUndoStep(mg::tagmark::mkSimple(mg::tagmark::Verb::Delete,
                                       mg::tagmark::Thing::Tag, tag, {}));
-    m_undoSweepId = m_undo.isEmpty() ? 0 : m_undo.last().id;
+    m_undoSweepId = offenerSchritt() ? offenerSchritt()->id : 0;
     //  Aus ALLEN Kategorien - auch den verschachtelten. Die Schleife lief
     //  früher nur über die oberste Ebene; in einer Unterkategorie blieb der
     //  Tag stehen (`renameTag` daneben war schon immer rekursiv).
@@ -478,8 +488,8 @@ void TagManager::sweepSubfolders(const QString& rootFolder, const QString& tag) 
     const quint64 undoId = m_undoSweepId;
     m_undoSweepId = 0;
     if (undoId != 0) {
-        ++m_sweepsPending;
-        emit undoStackChanged();
+        ++m_stack->sweepsPending;
+        emit m_stack->changed();
     }
 
     class SweepTask : public QRunnable {

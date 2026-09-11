@@ -108,6 +108,20 @@ Item {
         enabled: root.visible && root.paneActive && ctl.ready
         onActivated: root.oeffneSuche()
     }
+    //  Kopieren bezieht sich auf die ANGEKLICKTE Zelle; ohne eine getroffene
+    //  Zelle tut das Kuerzel nichts, statt etwas Beliebiges zu nehmen.
+    Shortcut {
+        //  `sequences`, nicht `sequence`: Qt kennt zu StandardKey.Copy mehrere
+        //  Folgen (Strg+C und Strg+Einfg), und `sequence` nimmt nur die erste.
+        sequences: [ StandardKey.Copy ]
+        enabled: root.visible && root.paneActive && ctl.ready
+        onActivated: tabelle.kopiereZelle()
+    }
+    Shortcut {
+        sequence: "Ctrl+Shift+C"
+        enabled: root.visible && root.paneActive && ctl.ready
+        onActivated: tabelle.kopiereZeile()
+    }
 
     //  Der Sprung zum Treffer gehoert der Flaeche, nicht dem Balken: nur sie
     //  kennt den Tabellenkoerper.
@@ -137,6 +151,7 @@ Item {
         provider: ctl
         showNumbers: root.showNumbers
         searchRevision: ctl.searchRevision
+        contentRevision: ctl.contentRevision
         currentRow: ctl.matchRow
         currentColumn: ctl.matchColumn
         //  Die Namensleiste erscheint nur, wenn die Datei Spaltennamen traegt -
@@ -190,6 +205,26 @@ Item {
                          : (ctl.currentBlock + 1) + "/" + ctl.blockCount)
             }
             Feld { text: App.uiText(App.language, "TableColumns") + ": " + ctl.columnCount }
+            //  Ausgeblendete Spalten muessen SICHTBAR bleiben, sonst sucht man
+            //  spaeter eine Spalte, die man selbst weggeklickt hat. Ein Klick
+            //  holt alle zurueck.
+            Feld {
+                visible: ctl.hiddenColumnCount > 0
+                color: App.themeAccent
+                text: App.uiText(App.language, "TableHiddenColumns").arg(ctl.hiddenColumnCount)
+                MouseArea {
+                    anchors.fill: parent
+                    cursorShape: Qt.PointingHandCursor
+                    onClicked: ctl.showAllColumns()
+                    ToolTip.visible: containsMouse
+                    ToolTip.text: App.uiText(App.language, "TableShowAllColumns")
+                    hoverEnabled: true
+                }
+            }
+            Feld {
+                visible: ctl.sorting
+                text: App.uiText(App.language, "TableSorting")
+            }
 
             //  Was beim Lesen ERKANNT wurde - als Angabe, nicht als Schalter:
             //  das Raten trifft, und vier Knoepfe fuer den Ausnahmefall standen

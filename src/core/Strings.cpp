@@ -28,10 +28,12 @@ static const QMap<StringKey, QString> s_de = {
       "Aus: sie bleiben ausgeblendet - in einem Medienordner ist das meist Beiwerk." },
     { StringKey::AudioEqAutoPreamp,     "Übersteuern verhindern" },
     { StringKey::AudioEqAutoPreampHint,
-      "Der Equalizer senkt die Vorverstärkung selbst so weit ab, dass angehobene "
-      "Bänder nicht über die Vollaussteuerung hinauslaufen - sonst wird abgeschnitten, "
-      "und das klingt kratzig. Die Vorverstärkung bleibt dabei von Hand einstellbar. "
-      "Aus: es wird nichts gerechnet, der Regler gehört ganz Ihnen." },
+      "Angehobene Bänder laufen über die Vollaussteuerung hinaus, werden "
+      "abgeschnitten und klingen kratzig. Dagegen senkt der Equalizer den Pegel "
+      "ab. Die Stärke bestimmt anteilig, wie viel davon wirklich abgezogen wird: "
+      "voll so viel, dass nichts mehr anschlägt, leer gar nichts. Wie viel es "
+      "gerade ist, steht hinter dem Prozentwert. Die Vorverstärkung daneben "
+      "gehört dabei ganz Ihnen und bewegt sich nie von selbst." },
     { StringKey::AudioEqReset,          "Alles auf null" },
     { StringKey::AudioEqPreset,         "Voreinstellung" },
     { StringKey::AudioEqSavePreset,     "Sichern" },
@@ -851,6 +853,9 @@ static const QMap<StringKey, QString> s_de = {
     { StringKey::EditorStatusModified,                                "geändert" },
     { StringKey::TextPdfMenu,                                         "Als PDF speichern …" },
     { StringKey::TextPdfConvert,                                      "Konvertieren" },
+    { StringKey::TextPdfModeOne,                                      "Eine Farbe" },
+    { StringKey::TextPdfModeNative,                                   "Wie im Editor" },
+    { StringKey::TextPdfModeTip,                                      "„Wie im Editor“ nimmt Fläche, Schrift und Syntaxfarben des Editor-Profils mit. Für Ausdrucke ist „Eine Farbe“ die sparsamere Wahl." },
     { StringKey::EditorFolding,                                       "Blöcke ein- und ausklappen" },
     { StringKey::EditorFoldingHint,                                   "Eine schmale Leiste rechts von den Zeilennummern, in der sich Funktionen, Blöcke, Abschnitte oder Überschriften zuklappen lassen - wie in Qt Creator. Sie erscheint nur bei Dateien, die überhaupt faltbare Blöcke haben; eine reine Textdatei bekommt sie nie zu sehen. Zugeklappt bleibt der Text unverändert, es wird nur weniger angezeigt." },
     { StringKey::EditorIndentGuides,                                  "Einrückungshilfen" },
@@ -934,6 +939,21 @@ static const QMap<StringKey, QString> s_de = {
     { StringKey::TableFindOtherBlocks,                        "keine hier, %1 in anderen Tabellen" },
     { StringKey::TableFindGoOther,                            "%1 weitere Tabellen" },
     { StringKey::TableFindGoOtherTip,                         "Tabellen mit Treffern - anklicken springt hin" },
+    { StringKey::TableSortAsc,                                "Aufsteigend sortieren" },
+    { StringKey::TableSortDesc,                               "Absteigend sortieren" },
+    { StringKey::TableSortNone,                               "Dateireihenfolge" },
+    { StringKey::TableSortTip,                                "Klicken sortiert: auf, ab, Dateireihenfolge. Die Datei bleibt unverändert." },
+    { StringKey::TableHideColumn,                             "Spalte ausblenden" },
+    { StringKey::TableShowAllColumns,                         "Alle Spalten zeigen" },
+    { StringKey::TableHiddenColumns,                          "%1 ausgeblendet" },
+    { StringKey::TableFreezeColumn,                           "Erste Spalte feststellen" },
+    { StringKey::TableCopyCell,                               "Zelle kopieren" },
+    { StringKey::TableCopyRow,                                "Zeile kopieren" },
+    { StringKey::TableCopiedCell,                             "Zelle kopiert" },
+    { StringKey::TableCopiedRow,                              "Zeile kopiert" },
+    { StringKey::TableSorting,                                "Wird sortiert …" },
+    { StringKey::SettingsTableTxt,                            "Auch .txt als Tabelle öffnen" },
+    { StringKey::SettingsTableTxtTip,                         "Eine .txt mit Trennzeichen geht dann in der Tabellenansicht auf statt im Texteditor. Ohne Spaltennamen stehen die Spalten nummeriert da. DATEV-Dateien werden ohnehin am Inhalt erkannt." },
     { StringKey::StorageViewRaw,                              "Rohform" },
     { StringKey::StorageViewReadable,                         "Lesbar" },
     { StringKey::StorageViewTip,                              "Zwischen der lesbaren Fassung und den Bytes der Datei wechseln" },
@@ -942,12 +962,20 @@ static const QMap<StringKey, QString> s_de = {
     { StringKey::InfoTitle,                                   "Dateiinformationen" },
     { StringKey::InfoName,                                    "Name" },
     { StringKey::InfoType,                                    "Typ" },
+    { StringKey::InfoTypeFile,                                "Datei" },
     { StringKey::InfoSize,                                    "Größe" },
     { StringKey::InfoCreated,                                 "Erstellt" },
     { StringKey::InfoModified,                                "Geändert" },
     { StringKey::InfoLocation,                                "Ort" },
     { StringKey::InfoFolderNoSize,                            "Ordner" },
     { StringKey::TableFindSearching,                          "sucht …" },
+    { StringKey::AudioDenoise,                                "Rauschunterdrückung" },
+    { StringKey::AudioSuppressLevel,                          "Stärke" },
+    { StringKey::AudioSuppressTitle,                          "Unterdrückung" },
+    { StringKey::AudioDenoiseHint,
+      "Senkt ab, was in einem Frequenzband dauerhaft leise bleibt - Zischen, Brummen, "
+      "Bandrauschen. Voll ist die stärkste Absenkung, leer ändert gar nichts; die "
+      "Regler des Equalizers bleiben dabei unberührt." },
 
 };
 
@@ -977,10 +1005,12 @@ static const QMap<StringKey, QString> s_en = {
       "Off: they stay out of sight - in a media folder they are usually clutter." },
     { StringKey::AudioEqAutoPreamp,     "Prevent clipping" },
     { StringKey::AudioEqAutoPreampHint,
-      "The equalizer lowers the preamp by itself, just enough that boosted bands "
-      "stay below full scale - otherwise they are cut off, which sounds harsh. The "
-      "preamp stays adjustable by hand. Off: nothing is calculated, the slider is "
-      "entirely yours." },
+      "Boosted bands run past full scale, get cut off and sound harsh. The "
+      "equalizer counters that by lowering the level. The strength decides in "
+      "proportion how much is actually taken off: full is just enough that "
+      "nothing clips, empty is nothing at all. The current amount is shown after "
+      "the percentage. The preamp slider stays entirely yours and never moves on "
+      "its own." },
     { StringKey::AudioEqReset,          "Reset all" },
     { StringKey::AudioEqPreset,         "Preset" },
     { StringKey::AudioEqSavePreset,     "Save" },
@@ -1797,6 +1827,9 @@ static const QMap<StringKey, QString> s_en = {
     { StringKey::EditorStatusModified,                                "modified" },
     { StringKey::TextPdfMenu,                                         "Save as PDF …" },
     { StringKey::TextPdfConvert,                                      "Convert" },
+    { StringKey::TextPdfModeOne,                                      "One colour" },
+    { StringKey::TextPdfModeNative,                                   "Like the editor" },
+    { StringKey::TextPdfModeTip,                                      "\"Like the editor\" carries over the profile's background, text and syntax colours. For printing, \"One colour\" is the thriftier choice." },
     { StringKey::EditorFolding,                                       "Fold blocks" },
     { StringKey::EditorFoldingHint,                                   "A narrow bar right of the line numbers that collapses functions, blocks, sections or headings - as in Qt Creator. It only appears for files that actually have foldable blocks; a plain text file never shows it. Folding changes nothing in the file, it only shows less." },
     { StringKey::EditorIndentGuides,                                  "Indent guides" },
@@ -1880,6 +1913,21 @@ static const QMap<StringKey, QString> s_en = {
     { StringKey::TableFindOtherBlocks,                        "none here, %1 in other tables" },
     { StringKey::TableFindGoOther,                            "%1 more tables" },
     { StringKey::TableFindGoOtherTip,                         "Tables with matches - click one to jump there" },
+    { StringKey::TableSortAsc,                                "Sort ascending" },
+    { StringKey::TableSortDesc,                               "Sort descending" },
+    { StringKey::TableSortNone,                               "File order" },
+    { StringKey::TableSortTip,                                "Click to sort: ascending, descending, file order. The file itself is not changed." },
+    { StringKey::TableHideColumn,                             "Hide column" },
+    { StringKey::TableShowAllColumns,                         "Show all columns" },
+    { StringKey::TableHiddenColumns,                          "%1 hidden" },
+    { StringKey::TableFreezeColumn,                           "Freeze first column" },
+    { StringKey::TableCopyCell,                               "Copy cell" },
+    { StringKey::TableCopyRow,                                "Copy row" },
+    { StringKey::TableCopiedCell,                             "Cell copied" },
+    { StringKey::TableCopiedRow,                              "Row copied" },
+    { StringKey::TableSorting,                                "Sorting …" },
+    { StringKey::SettingsTableTxt,                            "Open .txt as a table too" },
+    { StringKey::SettingsTableTxtTip,                         "A .txt with separators then opens in the table view instead of the text editor. Without column names the columns are numbered. DATEV files are recognised by their content anyway." },
     { StringKey::StorageViewRaw,                              "Raw" },
     { StringKey::StorageViewReadable,                         "Readable" },
     { StringKey::StorageViewTip,                              "Switch between the readable form and the bytes of the file" },
@@ -1888,12 +1936,20 @@ static const QMap<StringKey, QString> s_en = {
     { StringKey::InfoTitle,                                   "File information" },
     { StringKey::InfoName,                                    "Name" },
     { StringKey::InfoType,                                    "Type" },
+    { StringKey::InfoTypeFile,                                "File" },
     { StringKey::InfoSize,                                    "Size" },
     { StringKey::InfoCreated,                                 "Created" },
     { StringKey::InfoModified,                                "Modified" },
     { StringKey::InfoLocation,                                "Location" },
     { StringKey::InfoFolderNoSize,                            "Folder" },
     { StringKey::TableFindSearching,                          "searching …" },
+    { StringKey::AudioDenoise,                                "Noise reduction" },
+    { StringKey::AudioSuppressLevel,                          "Strength" },
+    { StringKey::AudioSuppressTitle,                          "Suppression" },
+    { StringKey::AudioDenoiseHint,
+      "Attenuates whatever stays quiet in a frequency band - hiss, hum, tape noise. "
+      "Full is the deepest cut, empty changes nothing at all; the equalizer sliders "
+      "are left untouched." },
 
 };
 

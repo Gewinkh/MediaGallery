@@ -5,8 +5,10 @@
 //  zurueckzuschreiben waere ein Schaden, den keine Bequemlichkeit aufwiegt.
 #include "datev/DatevCsv.h"
 #include "table/TableSearch.h"
+#include "table/TableSort.h"
 
 #include <QObject>
+#include <QSet>
 #include <QStringList>
 #include <QThreadPool>
 #include <QVariantList>
@@ -38,6 +40,16 @@ class DatevController : public QObject {
     Q_PROPERTY(QVariantList columns READ columns NOTIFY columnsChanged)
     Q_PROPERTY(bool showAllColumns READ showAllColumns WRITE setShowAllColumns
                                    NOTIFY columnsChanged)
+    //  Zusaetzlich EINZELN ausgeblendete. Der Schalter oben entscheidet, welche
+    //  Spalten ueberhaupt in Frage kommen; das hier nimmt daraus weitere heraus.
+    Q_PROPERTY(int hiddenColumnCount READ hiddenColumnCount NOTIFY columnsChanged)
+
+    //  Sortieren aendert die DATEI NICHT (s. `table/TableSort.h`) - fuer eine
+    //  Buchhaltungsdatei ist genau das die Bedingung dafuer.
+    Q_PROPERTY(int  sortColumn    READ sortColumn    NOTIFY sortChanged)
+    Q_PROPERTY(bool sortAscending READ sortAscending NOTIFY sortChanged)
+    Q_PROPERTY(bool sorting       READ sorting       NOTIFY sortChanged)
+    Q_PROPERTY(int  contentRevision READ contentRevision NOTIFY sortChanged)
 
     Q_PROPERTY(double sumDebit  READ sumDebit  NOTIFY stateChanged)
     Q_PROPERTY(double sumCredit READ sumCredit NOTIFY stateChanged)
@@ -81,6 +93,23 @@ public:
     QVariantList columns() const { return m_spalten; }
     bool showAllColumns() const  { return m_alleSpalten; }
     void setShowAllColumns(bool v);
+    int  hiddenColumnCount() const { return int(m_versteckt.size()); }
+
+    int  sortColumn() const    { return m_sortSpalte; }
+    bool sortAscending() const { return m_sortRichtung == mg::table::SortRichtung::Auf; }
+    bool sorting() const       { return m_sortLaeuft; }
+    int  contentRevision() const { return m_inhaltRevision; }
+
+    //  Aufsteigend -> absteigend -> Dateireihenfolge.
+    Q_INVOKABLE void sortByColumn(int column);
+    Q_INVOKABLE void clearSort();
+
+    Q_INVOKABLE void setColumnHidden(int column, bool hidden);
+    Q_INVOKABLE bool columnHidden(int column) const { return m_versteckt.contains(column); }
+    Q_INVOKABLE void showAllHiddenColumns();
+
+    //  Eine ganze Zeile als Text, die GEZEIGTEN Spalten mit Tabulator getrennt.
+    Q_INVOKABLE QString rowText(int row) const;
 
     double sumDebit() const  { return m_soll; }
     double sumCredit() const { return m_haben; }
@@ -129,12 +158,20 @@ signals:
     void stateChanged();
     void columnsChanged();
     void searchChanged();
+    void sortChanged();
 
 private:
     void ergebnisUebernehmen(std::shared_ptr<Datei> d, const QString& fehler);
     void spaltenNeuRechnen();
     void sucheStarten();
     void suchErgebnis(QList<mg::table::Treffer> treffer, bool mehr);
+    void ordnungNeuBauen();
+    void sortErgebnis(QList<int> ordnung);
+    //  Anzeigezeile -> Buchung. Ohne Sortierung sind beide dieselbe Zahl.
+    int  rohZeile(int anzeige) const;
+    //  Maske der gezeigten Spalten: der Schalter oben UND die einzeln
+    //  ausgeblendeten zusammen.
+    QList<bool> spaltenMaske() const;
 
     QString m_source;
     QString m_fehler;
@@ -144,6 +181,15 @@ private:
     std::shared_ptr<Datei> m_datei;
     QVariantList m_spalten;
     QStringList  m_warnungen;
+    QSet<int>    m_versteckt;
+
+    int  m_sortSpalte = -1;
+    mg::table::SortRichtung m_sortRichtung = mg::table::SortRichtung::Keine;
+    bool m_sortLaeuft = false;
+    int  m_inhaltRevision = 0;
+    //  Buchungsnummern in Anzeigereihenfolge; leer = Dateireihenfolge.
+    QList<int> m_ordnung;
+    std::shared_ptr<std::atomic<bool>> m_sortAbbruch;
     double m_soll = 0.0;
     double m_haben = 0.0;
 

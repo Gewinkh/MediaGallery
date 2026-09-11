@@ -915,7 +915,11 @@ Rectangle {
                 Wert { text: infoDialog.d.name || "" }
 
                 Feld { text: App.uiText(App.language, "InfoType") }
-                Wert { text: infoDialog.d.typeLabel || "" }
+                //  Eine Datei ohne erkannte Endung hat kein Kuerzel - auf der
+                //  Kachel bleibt das Abzeichen dann absichtlich leer, hier waere
+                //  eine leere Zeile nur ratlos.
+                Wert { text: infoDialog.d.typeLabel
+                             || App.uiText(App.language, "InfoTypeFile") }
 
                 Feld { text: App.uiText(App.language, "InfoSize") }
                 Wert { text: infoDialog.groesse(infoDialog.d.bytes) }

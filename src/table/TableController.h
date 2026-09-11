@@ -4,8 +4,10 @@
 //  Zeigt nur an; Bearbeiten und Zurueckschreiben sind noch nicht gebaut.
 #include "table/DelimitedText.h"
 #include "table/TableSearch.h"
+#include "table/TableSort.h"
 
 #include <QObject>
+#include <QSet>
 #include <QStringList>
 #include <QThreadPool>
 #include <QVariantList>
@@ -36,8 +38,22 @@ class TableController : public QObject {
     Q_PROPERTY(int currentBlock READ currentBlock WRITE setCurrentBlock NOTIFY blockChanged)
 
     Q_PROPERTY(int rowCount    READ rowCount    NOTIFY stateChanged)
+    //  `columnCount` zaehlt ALLE Spalten des Blocks, `columns` traegt nur die
+    //  gezeigten. Die Fusszeile nennt beide - sonst waere nicht zu sehen, dass
+    //  etwas fehlt.
     Q_PROPERTY(int columnCount READ columnCount NOTIFY stateChanged)
     Q_PROPERTY(QVariantList columns READ columns NOTIFY stateChanged)
+    Q_PROPERTY(int hiddenColumnCount READ hiddenColumnCount NOTIFY stateChanged)
+
+    //  Sortieren aendert die DATEI NICHT (s. `TableSort.h`); `sortColumn` ist -1,
+    //  solange die Datei in ihrer eigenen Reihenfolge steht.
+    Q_PROPERTY(int  sortColumn    READ sortColumn    NOTIFY sortChanged)
+    Q_PROPERTY(bool sortAscending READ sortAscending NOTIFY sortChanged)
+    Q_PROPERTY(bool sorting       READ sorting       NOTIFY sortChanged)
+    //  Steigt bei jeder Aenderung an Reihenfolge oder Spaltenauswahl. Die Zellen
+    //  haengen ihre Bindung daran - `cell()` ist eine Funktion, und ohne einen
+    //  gelesenen Wert wertet QML sie nie neu aus.
+    Q_PROPERTY(int  contentRevision READ contentRevision NOTIFY sortChanged)
 
     //  Suche: die Trefferliste entsteht im Arbeitsfaden - gemessen kostet ein
     //  Lauf ueber 100.000 Zeilen mal 20 Spalten 119 ms, im GUI-Faden waere das
@@ -81,6 +97,27 @@ public:
     int rowCount() const;
     int columnCount() const { return m_spaltenZahl; }
     QVariantList columns() const { return m_spalten; }
+    int hiddenColumnCount() const { return int(m_versteckt.size()); }
+
+    int  sortColumn() const    { return m_sortSpalte; }
+    bool sortAscending() const { return m_sortRichtung == SortRichtung::Auf; }
+    bool sorting() const       { return m_sortLaeuft; }
+    int  contentRevision() const { return m_inhaltRevision; }
+
+    //  Aufsteigend -> absteigend -> Dateireihenfolge. Der dritte Klick ist der
+    //  Weg heraus, ohne ein eigenes Bedienelement dafuer.
+    Q_INVOKABLE void sortByColumn(int column);
+    Q_INVOKABLE void clearSort();
+
+    //  Ausgeblendete Spalten werden auch nicht DURCHSUCHT - ein Treffer, den man
+    //  nicht sehen kann, waere ein Sprung ins Nichts.
+    Q_INVOKABLE void setColumnHidden(int column, bool hidden);
+    Q_INVOKABLE bool columnHidden(int column) const { return m_versteckt.contains(column); }
+    Q_INVOKABLE void showAllColumns();
+
+    //  Die GEZEIGTEN Spalten mit Tabulator getrennt - das Format, das eine
+    //  Tabellenkalkulation aus der Zwischenablage wieder in Spalten zerlegt.
+    Q_INVOKABLE QString rowText(int row) const;
 
     QStringList warnings() const { return m_warnungen; }
     bool truncated() const { return m_datei && m_datei->abgeschnitten; }
@@ -128,6 +165,7 @@ signals:
     void stateChanged();
     void blockChanged();
     void searchChanged();
+    void sortChanged();
 
 private:
     void neuLesen();
@@ -136,6 +174,13 @@ private:
     void bloeckeNeuBauen();
     void sucheStarten();
     void suchErgebnis(QList<Treffer> treffer, bool mehr, QList<int> proBlock);
+    void ordnungNeuBauen();
+    void sortErgebnis(QList<int> ordnung);
+    //  Anzeigezeile -> absolute Zeile in der Datei. Der Weg zurueck wird nicht
+    //  gebraucht: der Suchlauf zaehlt selbst in Anzeigezeilen.
+    int  rohZeile(int anzeige) const;
+    //  Maske der gezeigten Spalten fuer den Suchlauf; leer = alle.
+    QList<bool> spaltenMaske() const;
     //  Der gerade gezeigte Bereich; bei -1 die ganze Datei als EIN Bereich.
     Bereich aktiv() const;
 
@@ -150,6 +195,15 @@ private:
     QVariantList m_spalten;
     QStringList  m_warnungen;
     int m_spaltenZahl = 0;
+    QSet<int> m_versteckt;          // absolute Spaltennummern
+
+    int          m_sortSpalte = -1;
+    SortRichtung m_sortRichtung = SortRichtung::Keine;
+    bool         m_sortLaeuft = false;
+    int          m_inhaltRevision = 0;
+    //  Absolute Zeilennummern in Anzeigereihenfolge; leer = Dateireihenfolge.
+    QList<int>   m_ordnung;
+    std::shared_ptr<std::atomic<bool>> m_sortAbbruch;
 
     Suchzustand  m_suche;
     QString      m_suchText;

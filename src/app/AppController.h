@@ -45,6 +45,8 @@ class AppController : public QObject {
     Q_PROPERTY(bool    fileDropMove    READ fileDropMove    WRITE setFileDropMove NOTIFY fileDropMoveChanged)
     Q_PROPERTY(bool    showHiddenFiles READ showHiddenFiles WRITE setShowHiddenFiles NOTIFY showHiddenFilesChanged)
     Q_PROPERTY(bool    showAllFiles    READ showAllFiles    WRITE setShowAllFiles NOTIFY showAllFilesChanged)
+    Q_PROPERTY(bool    tableOpensTxt   READ tableOpensTxt   WRITE setTableOpensTxt NOTIFY tableOpensTxtChanged)
+    Q_PROPERTY(bool    textPdfNative   READ textPdfNative   WRITE setTextPdfNative NOTIFY textPdfNativeChanged)
     Q_PROPERTY(bool    galleryListLayout READ galleryListLayout WRITE setGalleryListLayout NOTIFY galleryListLayoutChanged)
     Q_PROPERTY(bool    textPreviewContent READ textPreviewContent WRITE setTextPreviewContent NOTIFY textPreviewContentChanged)
     Q_PROPERTY(bool    pdfPreviewContent  READ pdfPreviewContent  WRITE setPdfPreviewContent  NOTIFY pdfPreviewContentChanged)
@@ -283,6 +285,10 @@ public:
     // Gegenstück: die Dateien AUS der Zwischenablage, gelesen als `text/uri-list`. Zurück kommen nur Adressen, die
     // es wirklich gibt; Ordner bleiben außen vor.
     Q_INVOKABLE QList<QUrl> clipboardFileUrls() const;
+    //  Reiner Text (Tabellenzelle, Tabellenzeile). Getrennt von
+    //  `copyFilesToClipboard`: das legt drei Formate ab und fuehrt einen
+    //  eigenen Merker - beides waere hier falsch.
+    Q_INVOKABLE void copyTextToClipboard(const QString& text) const;
 
     QString menuFileText()           const;
     QString menuViewText()           const;
@@ -301,6 +307,10 @@ public:
     bool showHiddenFiles() const;
     void setShowHiddenFiles(bool v);
     bool showAllFiles() const;
+    bool tableOpensTxt() const;
+    void setTableOpensTxt(bool v);
+    bool textPdfNative() const;
+    void setTextPdfNative(bool v);
     bool galleryListLayout() const;
     bool textPreviewContent() const;
     bool pdfPreviewContent() const;
@@ -365,6 +375,8 @@ signals:
     void fileDropMoveChanged();
     void showHiddenFilesChanged();
     void showAllFilesChanged();
+    void tableOpensTxtChanged();
+    void textPdfNativeChanged();
     void galleryListLayoutChanged();
     //  Die Kacheln muessen danach NEU erzeugt werden - main.cpp haengt daran.
     void textPreviewContentChanged();
@@ -416,6 +428,9 @@ private:
     //  An ALLE Haelften, nicht nur die erste - eine Einstellung, die nur links
     //  wirkt, sieht wie ein Fehler aus.
     void verteileVorschauSchalter();
+    //  Hat eine andere Haelfte denselben Ordner offen, teilen sich beide deren
+    //  Rueckgaengig-Stapel.
+    void teileUndoStapel(PaneController* pane);
 
     std::vector<PaneController*> m_panes;
     //  Sicht auf `m_panes` fuer QML-Repeater; wird von addPane/closePane/

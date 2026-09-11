@@ -18,7 +18,8 @@ QList<Treffer> suche(const QList<Zeile>& zeilen, int von, int bis,
                      const QString& text, SuchOptionen o,
                      const QList<bool>* spalten,
                      const std::atomic<bool>* abbruch,
-                     bool* mehr) {
+                     bool* mehr,
+                     const QList<int>* ordnung) {
     QList<Treffer> out;
     if (mehr) *mehr = false;
     if (text.isEmpty()) return out;
@@ -33,7 +34,12 @@ QList<Treffer> suche(const QList<Zeile>& zeilen, int von, int bis,
     //  die nie springt (gemessen 5 gegen 13 ms ueber 100.000 Zeilen).
     const bool einZeichen = (nadel == 1);
     const int ende = qMin(bis, int(zeilen.size()));
-    for (int z = qMax(0, von); z < ende; ++z) {
+    //  Mit Reihenfolge laeuft die Schleife ueber die ANZEIGE, ohne ueber die
+    //  Datei. `anzeige` ist in beiden Faellen die Zeile, die gemeldet wird.
+    const int anzahl = ordnung ? int(ordnung->size()) : qMax(0, ende - qMax(0, von));
+    for (int anzeige = 0; anzeige < anzahl; ++anzeige) {
+        const int z = ordnung ? ordnung->at(anzeige) : (qMax(0, von) + anzeige);
+        if (z < 0 || z >= ende) continue;
         //  Je Zeile, nicht je Zelle: der Abbruch soll schnell greifen, aber die
         //  atomare Last nicht die Suche selbst bestimmen.
         if (abbruch && abbruch->load()) return {};
@@ -50,7 +56,7 @@ QList<Treffer> suche(const QList<Zeile>& zeilen, int von, int bis,
               : einZeichen   ? feld.second.contains(text, gross)
                              : (sucher.indexIn(feld.second) >= 0);
             if (!treffer) continue;
-            out.append(Treffer{ z - von, spalte });
+            out.append(Treffer{ anzeige, spalte });
             if (out.size() >= kMaxTreffer) {
                 if (mehr) *mehr = true;
                 return out;
@@ -64,19 +70,21 @@ SuchTask::SuchTask(QObject* owner, std::shared_ptr<const void> anker,
                    const QList<Zeile>* zeilen, int von, int bis,
                    QString text, SuchOptionen opt, QList<bool> spalten,
                    QList<BlockBereich> bloecke, std::shared_ptr<std::atomic<bool>> abbruch,
-                   std::function<void(QList<Treffer>, bool, QList<int>)> zurueck)
+                   std::function<void(QList<Treffer>, bool, QList<int>)> zurueck,
+                   QList<int> ordnung)
     : m_owner(owner), m_anker(std::move(anker)), m_zeilen(zeilen), m_von(von), m_bis(bis),
       m_text(std::move(text)), m_opt(opt), m_spalten(std::move(spalten)),
       m_bloecke(std::move(bloecke)), m_abbruch(std::move(abbruch)),
-      m_zurueck(std::move(zurueck)) {
+      m_zurueck(std::move(zurueck)), m_ordnung(std::move(ordnung)) {
     setAutoDelete(true);
 }
 
 void SuchTask::run() {
     const QList<bool>* maske = m_spalten.isEmpty() ? nullptr : &m_spalten;
     bool mehr = false;
+    const QList<int>* ordnung = m_ordnung.isEmpty() ? nullptr : &m_ordnung;
     QList<Treffer> treffer = suche(*m_zeilen, m_von, m_bis, m_text, m_opt,
-                                   maske, m_abbruch.get(), &mehr);
+                                   maske, m_abbruch.get(), &mehr, ordnung);
     //  Der gezeigte Block wird mitgezaehlt - eine Zeilenspanne mehr, dafuer
     //  ist die Liste vollstaendig.
     QList<int> proBlock;
@@ -85,6 +93,8 @@ void SuchTask::run() {
         for (const BlockBereich& b : m_bloecke) {
             if (m_abbruch->load()) return;
             bool egal = false;
+            //  Ohne Reihenfolge: hier zaehlt nur, WIE VIELE Treffer der Block
+            //  hat - die Reihenfolge einer fremden Tabelle sieht niemand.
             proBlock.append(int(suche(*m_zeilen, b.von, b.bis, m_text, m_opt,
                                       maske, m_abbruch.get(), &egal).size()));
         }

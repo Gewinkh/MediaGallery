@@ -1,11 +1,15 @@
 #include "app/ViewerController.h"
 #include "core/MGStorage.h"
 #include "pdf/PdfMediaHandler.h"
+#include "core/AppSettings.h"
 #include "core/PathUtils.h"
 #include "core/MemoryUtils.h"   // mg::trimHeap - RSS-Rückgabe nach Annotations-LRU-Eviction
 #include "core/TextEncoding.h"
-#include "core/TextPdfExporter.h"
+#include "editor/EditorController.h"
+#include "editor/LanguageTable.h"
+#include "editor/TextPdfExporter.h"
 #include "datev/DatevCsv.h"
+#include "table/DelimitedText.h"
 
 #include <QPdfDocument>
 #include <QFile>
@@ -20,6 +24,37 @@
 #include <QRunnable>
 #include <QPointer>
 #include <utility>
+
+//  Sieht die Datei nach Spalten aus? Gefragt wird nur bei `.txt` und nur, wenn
+//  der Nutzer die Tabellenansicht dafuer verlangt hat. Bedingung: EIN
+//  Trennzeichen ergibt ueber die ersten Zeilen durchgehend dieselbe Feldzahl
+//  von mindestens zwei. Eine Notiz oder ein Logfile faellt damit durch, auch
+//  wenn Semikolons darin vorkommen.
+static bool siehtNachSpaltenAus(const QString& pfad) {
+    QFile f(pfad);
+    if (!f.open(QIODevice::ReadOnly)) return false;
+    const QString text = mg::decodeUnknownText(f.read(64 * 1024));
+    QStringList zeilen;
+    for (const QString& z : text.split(QLatin1Char('\n'))) {
+        const QString t = z.trimmed();
+        if (!t.isEmpty()) zeilen.append(t);
+        if (zeilen.size() >= 20) break;
+    }
+    //  Unter drei Zeilen ist "durchgehend dieselbe Feldzahl" keine Aussage.
+    if (zeilen.size() < 3) return false;
+
+    for (QChar trenner : { QLatin1Char(';'), QLatin1Char('\t'),
+                           QLatin1Char(','), QLatin1Char('|') }) {
+        QHash<int, int> haeufig;
+        for (const QString& z : std::as_const(zeilen))
+            haeufig[int(mg::table::splitRecord(z, trenner).size())]++;
+        int felder = 0, treffer = 0;
+        for (auto it = haeufig.cbegin(); it != haeufig.cend(); ++it)
+            if (it.value() > treffer) { treffer = it.value(); felder = it.key(); }
+        if (felder >= 2 && treffer * 5 >= zeilen.size() * 4) return true;
+    }
+    return false;
+}
 
 //  Hilfsfunktion: MediaAnnotation-Vektor -> QVariantList (QML-tauglich).
 //  Frei (static), damit Worker-Task und synchrone Variante sie teilen.
@@ -164,7 +199,14 @@ bool ViewerController::isDatevFile(const QString& filePathOrUrl) const {
 
 bool ViewerController::isTableFile(const QString& filePathOrUrl) const {
     const QString e = QFileInfo(mg::toLocalPath(filePathOrUrl)).suffix().toLower();
-    return e == QLatin1String("csv") || e == QLatin1String("tsv");
+    if (e == QLatin1String("csv") || e == QLatin1String("tsv")) return true;
+    //  `.txt` nur auf ausdruecklichen Wunsch: ein Logfile mit Semikolons ginge
+    //  sonst als Tabelle auf. Geprueft wird zusaetzlich, dass die Datei
+    //  wirklich Spalten hat - eine gewoehnliche Notiz bleibt Text, auch wenn
+    //  der Schalter an ist.
+    if (e == QLatin1String("txt") && AppSettings::instance().tableOpensTxt())
+        return siehtNachSpaltenAus(mg::toLocalPath(filePathOrUrl));
+    return false;
 }
 
 bool ViewerController::textFileTruncated(const QString& filePathOrUrl) const {
@@ -260,7 +302,8 @@ void ViewerController::requestPdfAnnotations(const QString& filePathOrUrl) {
 void ViewerController::exportTextToPdf(const QString& filePathOrUrl,
                                        const QString& content,
                                        const QColor& textColor,
-                                       int tabWidth) {
+                                       int tabWidth,
+                                       bool native) {
     const QString src    = mg::toLocalPath(filePathOrUrl);
     const QString target = TextPdf::targetPathFor(src);
     if (target.isEmpty()) {
@@ -273,17 +316,33 @@ void ViewerController::exportTextToPdf(const QString& filePathOrUrl,
         return;
     }
 
+    //  Palette und Sprache werden HIER geholt, nicht im Faden: der
+    //  `EditorController` gehoert dem GUI-Faden.
+    TextPdf::Stil stil;
+    stil.tinte = textColor.isValid() ? textColor : QColor(Qt::black);
+    if (native) {
+        const mg::editor::SyntaxPalette pal =
+            mg::editor::activeController()
+                ? mg::editor::activeController()->palette()
+                : mg::editor::paletteForProfile(mg::editor::EditorProfile::Nightfall);
+        stil.palette = pal;
+        stil.tinte   = pal.text;
+        stil.papier  = pal.background;
+        stil.syntax  = true;
+        stil.sprache = mg::editor::languageForPath(src).id;
+    }
+
     class TextPdfTask : public QRunnable {
     public:
-        TextPdfTask(ViewerController* owner, QString text, QString target, QColor ink,
-                    int tabWidth)
+        TextPdfTask(ViewerController* owner, QString text, QString target,
+                    TextPdf::Stil stil, int tabWidth)
             : m_owner(owner), m_text(std::move(text)), m_target(std::move(target)),
-              m_ink(ink), m_tabWidth(tabWidth)
+              m_stil(std::move(stil)), m_tabWidth(tabWidth)
         { setAutoDelete(true); }
 
         void run() override {
             QString err;
-            const bool ok = TextPdf::exportToPdf(m_text, m_target, m_ink, m_tabWidth, &err);
+            const bool ok = TextPdf::exportToPdf(m_text, m_target, m_stil, m_tabWidth, &err);
             // Owner als QPointer: er kann waehrend des Exports (App-Ende)
             // verschwinden - wie bei PdfScanTask.
             QPointer<ViewerController> owner = m_owner;
@@ -298,12 +357,12 @@ void ViewerController::exportTextToPdf(const QString& filePathOrUrl,
         QPointer<ViewerController> m_owner;
         QString                    m_text;
         QString                    m_target;
-        QColor                     m_ink;
+        TextPdf::Stil              m_stil;
         int                        m_tabWidth = 4;
     };
 
     QThreadPool::globalInstance()->start(
-        new TextPdfTask(this, content, target, textColor, tabWidth));
+        new TextPdfTask(this, content, target, stil, tabWidth));
 }
 
 //  Ergebnis-Uebernahme auf dem GUI-Thread (vom Worker via QueuedConnection).

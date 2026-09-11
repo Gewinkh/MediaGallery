@@ -80,6 +80,8 @@ void TableController::setSource(const QString& pathOrUrl) {
 void TableController::neuLesen() {
     if (m_abbruch) m_abbruch->store(true);
     clearSearch();
+    clearSort();
+    m_versteckt.clear();
     m_datei.reset();
     m_fehler.clear();
     m_spalten.clear();
@@ -160,6 +162,10 @@ void TableController::setCurrentBlock(int i) {
     const int neu = (i >= 0 && i < m_bereiche.size()) ? i : -1;
     if (neu == m_block) return;
     m_block = neu;
+    //  Spaltennummern bedeuten im naechsten Block etwas anderes - eine dort
+    //  ausgeblendete oder sortierte Spalte waere eine willkuerlich andere.
+    m_versteckt.clear();
+    clearSort();
     spaltenNeuRechnen();
     emit blockChanged();
     emit stateChanged();
@@ -202,11 +208,12 @@ void TableController::sucheStarten() {
     //  Die Datei haelt sich ueber den Anker am Leben, auch wenn inzwischen eine
     //  andere gelesen wird.
     m_pool.start(new SuchTask(this, m_datei, &m_datei->zeilen, b.daten, b.bis,
-                              m_suchText, m_suchOpt, {},
+                              m_suchText, m_suchOpt, spaltenMaske(),
                               bloecke, m_suchAbbruch,
                               [self](QList<Treffer> t, bool mehr, QList<int> proBlock) {
                                   self->suchErgebnis(std::move(t), mehr, std::move(proBlock));
-                              }));
+                              },
+                              m_ordnung));
 }
 
 void TableController::suchErgebnis(QList<Treffer> treffer, bool mehr,
@@ -278,6 +285,7 @@ void TableController::spaltenNeuRechnen() {
     m_spalten.reserve(m_spaltenZahl);
 
     for (int i = 0; i < m_spaltenZahl; ++i) {
+        if (m_versteckt.contains(i)) continue;
         //  Ohne Kopfzeile bleibt der Name LEER - die Nummer kommt aus der
         //  eigenen Leiste (Schalter in der oberen Leiste). Beides zugleich
         //  zeigte die Zahl doppelt.
@@ -309,7 +317,7 @@ int TableController::rowCount() const {
 
 bool TableController::rowEmpty(int row) const {
     if (!m_datei) return false;
-    const int z = aktiv().daten + row;
+    const int z = rohZeile(row);
     return z >= 0 && z < m_datei->zeilen.size() && m_datei->zeilen.at(z).isEmpty();
 }
 
@@ -323,9 +331,114 @@ QVariantList TableController::rowMatches(int row) const {
 
 QString TableController::cell(int row, int column) const {
     if (!m_datei) return {};
-    const int z = aktiv().daten + row;
+    const int z = rohZeile(row);
     if (z < 0 || z >= m_datei->zeilen.size()) return {};
     return m_datei->zeilen.at(z).wert(column);
+}
+
+QString TableController::rowText(int row) const {
+    if (!m_datei) return {};
+    QStringList felder;
+    felder.reserve(m_spalten.size());
+    for (const QVariant& v : m_spalten)
+        felder.append(cell(row, v.toMap().value(QStringLiteral("index")).toInt()));
+    return felder.join(QLatin1Char('\t'));
+}
+
+//  Anzeigezeile -> Zeile in der Datei. Ohne Sortierung ist das dieselbe
+//  Rechnung wie zuvor; mit Sortierung steht die Antwort in `m_ordnung`.
+int TableController::rohZeile(int anzeige) const {
+    if (m_ordnung.isEmpty()) return aktiv().daten + anzeige;
+    if (anzeige < 0 || anzeige >= m_ordnung.size()) return -1;
+    return m_ordnung.at(anzeige);
+}
+
+QList<bool> TableController::spaltenMaske() const {
+    if (m_versteckt.isEmpty()) return {};
+    QList<bool> maske(m_spaltenZahl, true);
+    for (int s : m_versteckt)
+        if (s >= 0 && s < maske.size()) maske[s] = false;
+    return maske;
+}
+
+void TableController::sortByColumn(int column) {
+    if (column < 0 || column >= m_spaltenZahl) return;
+    if (column != m_sortSpalte)              m_sortRichtung = SortRichtung::Auf;
+    else if (m_sortRichtung == SortRichtung::Auf) m_sortRichtung = SortRichtung::Ab;
+    else                                     m_sortRichtung = SortRichtung::Keine;
+    m_sortSpalte = (m_sortRichtung == SortRichtung::Keine) ? -1 : column;
+    ordnungNeuBauen();
+}
+
+void TableController::clearSort() {
+    if (m_sortAbbruch) m_sortAbbruch->store(true);
+    const bool hatte = m_sortSpalte >= 0 || !m_ordnung.isEmpty();
+    m_sortSpalte   = -1;
+    m_sortRichtung = SortRichtung::Keine;
+    m_sortLaeuft   = false;
+    m_ordnung.clear();
+    if (hatte) { ++m_inhaltRevision; emit sortChanged(); }
+}
+
+void TableController::ordnungNeuBauen() {
+    if (m_sortAbbruch) m_sortAbbruch->store(true);
+    if (!m_datei || m_sortRichtung == SortRichtung::Keine) {
+        m_sortLaeuft = false;
+        m_ordnung.clear();
+        ++m_inhaltRevision;
+        emit sortChanged();
+        //  Die Trefferzeilen zaehlen in der ANZEIGE - nach einem Wechsel der
+        //  Reihenfolge zeigten die alten auf beliebige Zeilen.
+        if (!m_suchText.isEmpty()) sucheStarten();
+        return;
+    }
+    m_sortLaeuft = true;
+    emit sortChanged();
+
+    const Bereich b = aktiv();
+    m_sortAbbruch = std::make_shared<std::atomic<bool>>(false);
+    auto* self = this;
+    m_pool.start(new SortTask(this, m_datei, &m_datei->zeilen, b.daten, b.bis,
+                              m_sortSpalte, m_sortRichtung, m_sortAbbruch,
+                              [self](QList<int> ordnung) {
+                                  self->sortErgebnis(std::move(ordnung));
+                              }));
+}
+
+void TableController::sortErgebnis(QList<int> ordnung) {
+    m_sortLaeuft = false;
+    m_ordnung = std::move(ordnung);
+    ++m_inhaltRevision;
+    emit sortChanged();
+    if (!m_suchText.isEmpty()) sucheStarten();
+}
+
+void TableController::setColumnHidden(int column, bool hidden) {
+    if (column < 0 || column >= m_spaltenZahl) return;
+    //  Die LETZTE Spalte bleibt stehen - eine Tabelle ohne Spalten ist eine
+    //  leere Flaeche, aus der kein Weg zurueckfuehrt.
+    if (hidden && m_spaltenZahl - m_versteckt.size() <= 1) return;
+    const bool war = m_versteckt.contains(column);
+    if (war == hidden) return;
+    if (hidden) m_versteckt.insert(column);
+    else        m_versteckt.remove(column);
+    //  Eine ausgeblendete Spalte darf die Reihenfolge nicht weiter bestimmen.
+    if (hidden && column == m_sortSpalte) clearSort();
+    spaltenNeuRechnen();
+    ++m_inhaltRevision;
+    emit stateChanged();
+    emit sortChanged();
+    if (!m_suchText.isEmpty()) sucheStarten();
+}
+
+void TableController::showAllColumns() {
+    if (m_versteckt.isEmpty()) return;
+    m_versteckt.clear();
+    spaltenNeuRechnen();
+    ++m_inhaltRevision;
+    emit stateChanged();
+    emit sortChanged();
+    if (!m_suchText.isEmpty()) sucheStarten();
 }
 
 }  // namespace mg::table

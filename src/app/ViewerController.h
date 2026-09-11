@@ -55,9 +55,13 @@ public:
     // Schreibt content als PDF neben die Quelle; die Quelldatei bleibt unangetastet.
     // content kommt AUS DEM EDITOR, nicht von Platte - erneutes Einlesen verloere
     // ungespeicherte Aenderungen. tabWidth in Zeichen, damit Druck und Schirm gleich sind.
+    //  `native` faerbt wie der Editor: Flaeche, Grundfarbe und Syntax kommen aus
+    //  dessen Profil, `textColor` gilt dann nicht. Ohne `native` bleibt es beim
+    //  bisherigen Weg - EINE Farbe auf weissem Papier, fuer Ausdrucke.
     Q_INVOKABLE void exportTextToPdf(const QString& filePathOrUrl, const QString& content,
                                      const QColor& textColor = QColor(Qt::black),
-                                     int tabWidth = 4);
+                                     int tabWidth = 4,
+                                     bool native = false);
 
 
     // Intern (vom Worker-Thread per QueuedConnection aufgerufen)

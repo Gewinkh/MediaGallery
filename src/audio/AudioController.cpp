@@ -33,7 +33,8 @@ AudioController::AudioController(ISettings& settings, QObject* parent)
     : QObject(parent)
     , m_settings(settings)
     , m_eq(this)
-    , m_engine(m_eq, this)
+    , m_denoise(this)
+    , m_engine(m_eq, m_denoise, this)
     , m_queue(this)
 {
     connect(&m_engine, &AudioEngine::stateChanged,    this, &AudioController::stateChanged);
@@ -84,7 +85,10 @@ void AudioController::loadSettings() {
     QVector<double> g;
     for (double v : m_settings.audioEqBands()) g.append(v);
     m_eq.setGains(g);
-    m_eq.setPreamp(m_settings.audioEqPreamp());
+    m_userPreamp = m_settings.audioEqPreamp();
+    applyAutoPreamp();
+    m_denoise.setLevel(m_settings.audioDenoiseLevel());
+    m_denoise.setEnabled(m_settings.audioDenoiseEnabled());
     m_engine.setVolume(m_settings.audioVolume());
     m_queue.setShuffle(m_settings.audioShuffle());
     m_queue.setRepeat(static_cast<PlayQueue::Repeat>(m_settings.audioRepeat()));
@@ -94,7 +98,7 @@ void AudioController::applyGainsToSettings() {
     QList<double> out;
     for (double v : m_eq.gains()) out.append(v);
     m_settings.setAudioEqBands(out);
-    m_settings.setAudioEqPreamp(m_eq.preamp());
+    m_settings.setAudioEqPreamp(m_userPreamp);
     m_settings.setAudioEqEnabled(m_eq.enabled());
 }
 
@@ -197,6 +201,24 @@ void AudioController::setRepeat(int r) {
     emit repeatChanged();
 }
 
+//  Schalter und Pegel getrennt: der Pegel bleibt stehen, wenn der Schalter
+//  faellt, und das Auf und Ab des Pegels ruehrt die Equalizer-Regler nicht an -
+//  die Entrauschung ist eine eigene Stufe davor.
+void AudioController::setDenoiseEnabled(bool on) {
+    if (m_denoise.enabled() == on) return;
+    m_denoise.setEnabled(on);
+    m_settings.setAudioDenoiseEnabled(on);
+    emit denoiseChanged();
+}
+
+void AudioController::setDenoiseLevel(qreal v) {
+    const double alt = m_denoise.level();
+    m_denoise.setLevel(v);
+    if (qFuzzyCompare(alt + 1.0, m_denoise.level() + 1.0)) return;
+    m_settings.setAudioDenoiseLevel(m_denoise.level());
+    emit denoiseChanged();
+}
+
 void AudioController::setEqEnabled(bool on) {
     m_eq.setEnabled(on);
     m_settings.setAudioEqEnabled(on);
@@ -219,15 +241,39 @@ QVariantList AudioController::eqFrequencies() const {
 // Anschlag, bei allen zehn 66,5 % mit 13-35 % Klirr. Aus heisst: nichts rechnen.
 bool AudioController::eqAutoPreamp() const { return m_settings.audioEqAutoPreamp(); }
 
+//  Wie viel der noetigen Absenkung gerade angewandt wird. Aus oder Pegel 0
+//  heisst: gar nichts rechnen, der Regler gehoert ganz dem Nutzer.
+double AudioController::korrektur() const {
+    if (!m_settings.audioEqAutoPreamp()) return 0.0;
+    return m_settings.audioClipLevel() * m_eq.suggestedPreamp();
+}
+
+//  Der eigene Wert und die Gegenrechnung ADDIEREN sich. Frueher ersetzte die
+//  Gegenrechnung den Regler - damit war der eigene Wert nach einmal Einschalten
+//  verloren, und der Pegel haette ihn bei jeder Bewegung weiter aufgezehrt.
 void AudioController::applyAutoPreamp() {
-    if (!m_settings.audioEqAutoPreamp()) return;
-    m_eq.setPreamp(m_eq.suggestedPreamp());
+    m_eq.setPreamp(m_userPreamp + korrektur());
 }
 
 void AudioController::setEqAutoPreamp(bool on) {
     if (m_settings.audioEqAutoPreamp() == on) return;
     m_settings.setAudioEqAutoPreamp(on);
-    if (on) { applyAutoPreamp(); applyGainsToSettings(); }
+    applyAutoPreamp();
+    applyGainsToSettings();
+    emit optionsChanged();
+    emit eqChanged();
+}
+
+qreal AudioController::clipLevel() const { return m_settings.audioClipLevel(); }
+
+qreal AudioController::clipReduction() const { return korrektur(); }
+
+void AudioController::setClipLevel(qreal v) {
+    const double neu = qBound(0.0, double(v), 1.0);
+    if (qFuzzyCompare(m_settings.audioClipLevel() + 1.0, neu + 1.0)) return;
+    m_settings.setAudioClipLevel(neu);
+    applyAutoPreamp();
+    applyGainsToSettings();
     emit optionsChanged();
     emit eqChanged();
 }
@@ -241,13 +287,20 @@ void AudioController::setBandGain(int band, qreal db) {
 
 void AudioController::resetBands() {
     m_eq.setGains(QVector<double>(AudioEqualizer::kBands, 0.0));
-    m_eq.setPreamp(0.0);
+    m_userPreamp = 0.0;
+    applyAutoPreamp();
     if (!m_activePreset.isEmpty()) { m_activePreset.clear(); emit presetsChanged(); }
     applyGainsToSettings();
 }
 
+//  Der Regler IST der eigene Wert, ohne Umrechnung. Ein Rueckwaertsrechnen aus
+//  der Summe legte hinter dem Regler eine Zahl ab, die niemand gewaehlt hat:
+//  wer bei voller Staerke auf -6 zieht, bekam +6 als „eigenen" Wert, und beim
+//  Zurueckdrehen kam der zum Vorschein.
 void AudioController::setEqPreamp(qreal db) {
-    m_eq.setPreamp(db);
+    m_userPreamp = qBound(AudioEqualizer::kMinPreampDb,
+                          double(db), AudioEqualizer::kMaxPreampDb);
+    applyAutoPreamp();
     if (!m_activePreset.isEmpty()) { m_activePreset.clear(); emit presetsChanged(); }
     applyGainsToSettings();
 }
@@ -330,7 +383,7 @@ void AudioController::applyPreset(const QString& name) {
     if (line.isEmpty()) return;
     const QStringList parts = line.split(QLatin1Char('\t'));
     if (parts.size() < 2 + AudioEqualizer::kBands) return;
-    m_eq.setPreamp(parts.at(1).toDouble());
+    m_userPreamp = parts.at(1).toDouble();
     QVector<double> g;
     for (int i = 0; i < AudioEqualizer::kBands; ++i)
         g.append(parts.at(2 + i).toDouble());
@@ -347,7 +400,7 @@ void AudioController::savePreset(const QString& name) {
     const QString n = name.trimmed();
     if (n.isEmpty()) return;
 
-    QStringList fields { n, QString::number(m_eq.preamp(), 'f', 2) };
+    QStringList fields { n, QString::number(m_userPreamp, 'f', 2) };
     for (double v : m_eq.gains()) fields.append(QString::number(v, 'f', 2));
     const QString line = fields.join(QLatin1Char('\t'));
 

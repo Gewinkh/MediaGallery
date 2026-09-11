@@ -5,6 +5,7 @@
 #include <QElapsedTimer>
 
 #include "audio/AudioEqualizer.h"
+#include "audio/AudioDenoise.h"
 
 #include <QAudioBuffer>
 #include <QAudioDecoder>
@@ -50,8 +51,8 @@ private:
     AudioEngine* m_owner;
 };
 
-AudioEngine::AudioEngine(AudioEqualizer& eq, QObject* parent)
-    : QObject(parent), m_eq(eq)
+AudioEngine::AudioEngine(AudioEqualizer& eq, AudioDenoise& denoise, QObject* parent)
+    : QObject(parent), m_eq(eq), m_denoise(denoise)
 {
     // "Zu Ende" ist erst, wenn der Ring leer ist UND nichts nachkommt - der Dekoder ist längst fertig, während die
     // Ausgabe spielt. Der Takt ist nötig, weil `bufferReady` nur beim Übergang "nichts da" -> "etwas da" feuert.
@@ -186,6 +187,8 @@ void AudioEngine::startDecode(const QString& path, qint64 skipMs, qint64 byteOff
 
     m_eq.configure(m_format.sampleRate(), m_format.channelCount());
     m_eq.resetState();
+    m_denoise.configure(m_format.sampleRate(), m_format.channelCount());
+    m_denoise.resetState();
 
     const qint64 ringSamples = qint64(m_format.sampleRate()) * m_format.channelCount()
                                * kRingMs / 1000;
@@ -602,6 +605,9 @@ qint64 AudioEngine::pullAudio(char* data, qint64 maxSize) {
         return 0;
     }
 
+    //  Erst entrauschen, dann klanglich formen: der Equalizer soll nicht das
+    //  Rauschen mit anheben, das gleich danach wieder wegsoll.
+    m_denoise.process(work, int(got / ch));
     m_eq.process(work, int(got / ch));
     if (!direct) convertOut(work, data, got);
     m_framesOut.fetch_add(got / ch, std::memory_order_relaxed);

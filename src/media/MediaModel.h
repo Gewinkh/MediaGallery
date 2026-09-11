@@ -107,6 +107,18 @@ public:
     // schreiben sofort.
     void dropScopeSidecars();
 
+    //  Trifft das Modell beim Einspeisen die Ordnung der Ansicht, ist jede
+    //  Einfuegung im Proxy ein ANHAENGEN statt eines Einsetzens in die Mitte.
+    //  `feld` wie `MediaProxyModel::Field`; `aktiv == false` laesst alles wie bisher.
+    void setFillOrder(bool aktiv, int feld, bool absteigend);
+
+    //  Der Abdruck des offenen Ordners, einmal frisch ueber das Verzeichnis und
+    //  einmal so, wie er beim Fuellen entstand. Die beiden MUESSEN uebereinstimmen,
+    //  sonst meldet der Watcher jeden Ordner als geaendert - `tst_fillorder`
+    //  vergleicht genau das.
+    quint64 ordnerFingerabdruck() const;
+    quint64 fuellFingerabdruck() const { return m_dirFinger; }
+
     void setShowAllFiles(bool v);
     bool showAllFiles() const { return m_showAllFiles; }
 
@@ -361,7 +373,12 @@ private:
     //  Sidecars - seit das im Arbeitsfaden laeuft, faellt es aus der
     //  Watcher-Sperre heraus und trieb die Galerie in einen vollen Neubau.
     quint64       m_dirFinger = 0;
-    quint64       ordnerFingerabdruck() const;
+    //  Wird beim Fuellen mitgerechnet. `m_fingerValid` sagt, ob der laufende
+    //  Durchgang den OFFENEN Ordner vollstaendig gesehen hat - ein nachtraeglich
+    //  aufgeklappter Unterordner sieht ihn nicht und laesst den alten stehen.
+    quint64       m_fingerAccu  = 0;
+    bool          m_fingerValid = false;
+
 
     bool          m_pdfPreview   = true;    // s. setPreviewKinds
     bool          m_imagePreview = true;
@@ -420,6 +437,25 @@ private:
     QTimer       m_deepTimer;              // entprellt das Tippen
     // Nur fuer MG_DEEPLOG=1; ungueltig, solange nicht gemessen wird.
     QElapsedTimer m_deepFillTimer;
+    //  Nur fuer MG_LOG_FILL: Uhr ab der ersten Charge.
+    QElapsedTimer m_fillClock;
+
+    //  Die vorsortierten Eintraege des OFFENEN Ordners (s. `setFillOrder`). Sie
+    //  leben nur waehrend des Einlesens: +836 KB bei 12.000 Dateien gegen 467 ms.
+    //  Ein Eintrag haelt alles, was die Zeile braucht - damit `feedChunk` die
+    //  Datei nicht ein zweites Mal befragen muss.
+    struct VorabEintrag {
+        QString pfad;
+        QString name;        // Anzeigename (Ordner: ganz, Datei: ohne Endung)
+        qint64  msecs = 0;   // Aenderungszeit
+        qint64  groesse = 0;
+        bool    ordner = false;
+    };
+    bool m_fillOrder = false;
+    int  m_fillField = 0;
+    bool m_fillDesc  = false;
+    QVector<VorabEintrag> m_vorab;
+    int  m_vorabIndex = 0;
     MediaProxyModel::FilterCriteria m_deepCriteria;
     QStringList  m_deepCategoryNames;
     std::shared_ptr<std::atomic<bool>> m_deepCancel;

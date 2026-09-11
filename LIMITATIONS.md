@@ -203,9 +203,22 @@ already define that tag differently.
 Why: it works from the folder's own tag state before each change, and that state
 is only meaningful for the folder it came from. Opening another folder therefore clears the
 stack, and a step whose folder is no longer the open one is discarded rather than written
-back. The same holds for the second pane: each half has its own stack.
+back.
 Workaround / status: undo what you want to undo before you navigate away. Up to 20 steps
 are kept (16 MB of snapshots in total); older steps fall off the bottom.
+
+**With the same folder open twice, undo in one half also takes back what the other half did.**
+What you notice: the bar in both halves shows the same step, and the next undo is
+always the most recent action, whichever half made it.
+Why: both halves write the same folder file, so there is one history, not two.
+With a stack each, undoing in the left half restored the whole folder state from
+before *its own* step - which brought back a category the right half had deleted
+in the meantime. One stack per folder makes it a line instead: what you undo is
+what was done last.
+Workaround / status: the mark beside the undo arrow always names the step that
+would be taken back, so nothing happens blindly. Different folders keep separate
+stacks, and a half that leaves the folder leaves its history behind for whoever
+still has it open.
 
 **Undoing a tag deletion that swept a very large tree may not restore every subfolder.**
 Why: the sweep keeps the previous content of each sidecar it rewrites, capped at 512 folders
@@ -353,6 +366,32 @@ read.
 Why: their tag format (ASF objects) is not implemented - the four families above
 cover what the app's own formats need.
 
+**Noise reduction leaves the quietest passages of real music alone only up to a
+point.** Anything that stays below roughly -48 dBFS in a frequency band is treated
+as noise and attenuated, so a very quiet, sustained passage can lose a little level
+at high strength (measured: -1.3 dB on quiet music at -40 dBFS, 0.00 dB on normal
+music, -0.01 dB on a loud sustained tone).
+Why: the stage has no way to tell a faint sustained instrument from tape hiss - both
+are quiet and stationary. The cap at -48 dBFS is what keeps loud material safe; it is
+the price for removing hiss at all.
+Workaround / status: pull the strength slider down - it scales the depth in dB, and
+at 0 the stage is bypassed bit for bit.
+
+**Noise reduction needs about 1.4 s of a track before it reaches full depth.**
+Why: the noise floor is the lowest level seen in a sliding window of that length.
+Before the first window closes there is no estimate, and the stage deliberately does
+nothing rather than guess.
+Workaround / status: none needed - the run-in is inaudible, it only means the very
+start of a track is unprocessed.
+
+**Noise reduction is a multiband expander, not spectral subtraction.**
+Why: it removes broadband noise by 28.6 dB at full strength (measured on white noise
+at -60 dBFS) and costs 1.18 % of a core. Spectral subtraction would go deeper but
+needs an FFT with roughly 21 ms of algorithmic delay, which would have to be threaded
+through the gapless track-change machinery.
+Workaround / status: for heavier restoration work, clean the file in a dedicated
+audio editor.
+
 **The equalizer applies to audio files only, never to video.**
 Why: `QMediaPlayer` does not hand out its samples, so the app runs its own
 decode -> ring buffer -> equalizer -> sink chain for audio. Video keeps using
@@ -474,6 +513,19 @@ Workaround: `F` or `Esc` brings it back.
 
 ---
 
+**A very large folder pauses briefly before the first tile appears.**
+What you notice: opening a folder with tens of thousands of files, nothing shows
+for a moment; then everything is there at once and stays put.
+Why: the folder is read once in full and put into the order the view will show it
+in, before the first batch goes out. That is what makes the rest fast - every
+later insertion is an append instead of a squeeze into the middle. Measured at
+12,000 files: the pause is 17-19 ms and the whole read drops from 628 ms to
+161 ms; at 40,000 files the pause is 59 ms and the saving is larger still, because
+the old cost grew with the square of the folder size and the pause only linearly.
+Workaround / status: none needed below a few thousand files, where the pause is
+under 3 ms. Sorting by **tags** skips the pre-pass entirely (tags live in the
+folder file, not in the directory entry) and behaves as it did before.
+
 **A folder full of very large PNGs takes a moment longer than one of JPEGs.**
 Why: a JPEG is shrunk while it is being read (libjpeg decodes in DCT steps), a
 PNG cannot be - it is always decoded at full size first (48 MB for a 12-megapixel
@@ -571,6 +623,25 @@ Evince, `pdftotext`) reads it correctly.
 Why: that export writes a centred "1/3" footer by design; only the DOCX export got
 the choice of position and style.
 
+**The text-to-PDF export in *Like the editor* mode always prints the profile's background.**
+What you notice: with a dark editor profile the PDF is a dark page - which costs
+a lot of toner if it goes to a printer.
+Why: the mode's promise is "what you see in the editor". Its glyph colours are
+chosen against that background; on white paper a dark profile's foreground is
+unreadable in places, so leaving the background out would produce a page that is
+neither one thing nor the other.
+Workaround / status: use *One colour* for anything that ends up on paper - it is
+the default and unchanged. Switching to the light *Paper* profile before
+exporting also works.
+
+**The text-to-PDF export carries no line numbers and ignores folding.**
+What you notice: even in *Like the editor* mode there are no line numbers, and a
+folded block is printed in full.
+Why: folding is the reason for both. A collapsed block that stayed collapsed in
+the PDF would mean text is missing with nothing saying so - which is worse than
+not offering it. Line numbers would then have to say which numbering they mean.
+Workaround / status: not built; the full text is always exported.
+
 **The DOCX editor rewrites only what you touch.**
 Why: the file is kept as it came, so unknown parts survive untouched. Practical
 limit: features the editor does not know are preserved but not editable.
@@ -650,24 +721,48 @@ Workaround / status: deliberate; write a more specific pattern.
 
 ## CSV and TSV files
 
-**A `.txt` never becomes a table, even when it is one.**
-What you notice: a semicolon-separated export saved as `.txt` - DATEV's own
-*individual ASCII format* among them - opens in the text editor, and no table
-button appears.
-Why: the decision is made on the extension (`.csv`/`.tsv`) on purpose. Sniffing
-the content of every `.txt` would turn log files, key-value dumps and anything
-else with separators into tables, and a `.txt` is a text file first.
-Workaround / status: rename the file to `.csv`, and it opens as a table. Whether
-`.txt` should get an opt-in switch is an open question, kept in `NEXT.md` §3c.
+**A `.txt` only becomes a table if it really looks like one - and only on request.**
+What you notice: with *Settings ▸ View ▸ Files ▸ Open .txt as a table too*
+switched off (the default) a semicolon-separated export saved as `.txt` opens in
+the text editor. With it on, some `.txt` files still stay text.
+Why: the switch is deliberately not enough on its own. A `.txt` is a text file
+first, and turning every log file or key-value dump with a stray separator into a
+table would be worse than the problem. So the content is checked as well: one
+separator has to yield the same field count of at least two on 80 % of the first
+20 non-empty lines, and a file with fewer than three lines never qualifies.
+Workaround / status: rename to `.csv` - that always opens as a table, whatever
+the content looks like.
 
-**The table shows and searches; it does not edit.**
-What you notice: there is no cell editing, no inserting or deleting rows, no
-sorting, and no saving.
+**Sorting a date column sorts it as text.**
+What you notice: a column of `01.01.2025`, `15.03.2024` sorts by day first, not
+chronologically.
+Why: only numbers are recognised as such (`1.234,56` and `1,234.56` both work);
+`01.01.2025` has two separators and fails that test, so it falls back to text.
+Recognising dates would mean guessing a format - and guessing a type is exactly
+what this view avoids everywhere else, because guessing wrong on a save destroys
+data.
+Workaround / status: an ISO date (`2025-01-01`) sorts correctly as text. Date
+detection is not built.
+
+**A single `,` or `.` in a number stays ambiguous.**
+What you notice: sorting a column of `1.234` puts it between `1.2` and `1.3`,
+not next to `1234`.
+Why: when both separators appear, the last one is the decimal point, which
+settles `1.234,56` and `1,234.56` alike. With only one present there is nothing
+to decide it, and the German reading (decimal point) was chosen.
+Workaround / status: values inside one column are read consistently, so the
+order within a column stays sensible. No fix planned - the ambiguity is in the
+data, not in the reader.
+
+**The table shows, searches and sorts; it does not edit.**
+What you notice: there is no cell editing, no inserting or deleting rows, and no
+saving.
 Why: display was built first on purpose. Editing needs a mutable model, undo,
 and a writer that leaves the untouched parts of the file byte-for-byte alone -
 each of those is its own piece of work.
-Workaround / status: edit in the text view, which is a full editor. Searching is
-built (`Ctrl+F`); the order of the remaining steps is recorded in `NEXT.md` §3c.
+Workaround / status: edit in the text view, which is a full editor. Sorting,
+hiding columns, freezing the first one and copying a cell or row are built; the
+remaining steps are recorded in `NEXT.md` §3c.
 
 **The search jumps, it does not filter.**
 What you notice: searching marks the hits and moves to them one by one. It never
@@ -675,8 +770,9 @@ reduces the table to the matching rows, and there is no way to search one chosen
 column.
 Why: the view is a display, not a query tool - a filter would have to say what it
 did to the row numbers and the footer totals, and a column picker needs a place
-in a bar that deliberately holds five controls. Both were left for the step that
-brings sorting and hiding columns.
+in a bar that deliberately holds five controls. Both were left aside when sorting and
+hiding columns went in: a filter would still have to answer the row-number
+question, and a column picker still has no place in that bar.
 Workaround / status: `Zelle` narrows a search to whole-cell matches, which is
 what most column-specific searches are really after.
 
@@ -846,16 +942,14 @@ what it still cannot do stays behind in the sections above.
   into words), i.e. a new dependency plus its own dictionary and a second
   checking path next to Hunspell - a separate piece of work, not started. Arabic, by contrast, only needs the `hunspell-ar` dictionary
   installed - no code change.
-- **Whitespace markers** (Kate's `»` for tabs and dots for spaces) are
-  deliberately not built - the user decided against them on 2026-09-02.
 - **More languages.** 27 are covered. Each new one is a table entry in
   `src/editor/LanguageTable.cpp` plus a section in the test driver; no scanner
   code changes as long as one of the five scanner kinds fits.
 - **Writing tags** (changing title or artist of an audio file) - reading is solid,
   writing is deliberately not built: one wrong byte damages the file.
-- **Sorting, hiding columns, freezing the first column, copying a cell.** All
-  deliberately deferred - each is its own piece of work, and the order they are
-  built in is a decision to take rather than to drift into.
+- **Filtering a table instead of jumping between hits, and searching one chosen
+  column.** Both need an answer to what happens to the row numbers and the footer
+  totals; neither is built.
 - **Editing a table and writing it back.** Reading is solid; editing needs a
   mutable model, undo, and a writer that leaves the untouched part of the file
   byte-for-byte alone. Three constraints are already fixed for whenever it
@@ -863,10 +957,6 @@ what it still cannot do stays behind in the sections above.
   destroys data), only changed rows get rewritten, and the changes live as an
   overlay beside the compact rows rather than replacing them. A formula engine
   is explicitly *not* part of this - a CSV cannot store one anyway.
-- **`.txt` as a table.** Only `.csv` and `.tsv` open as tables; a semicolon
-  export saved as `.txt` stays text. An opt-in switch would be small and needs
-  no guessing, but it has not been asked for.
-
 
 ---
 
