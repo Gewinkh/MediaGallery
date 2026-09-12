@@ -9,7 +9,7 @@ CMakeLists.txt.user
 cmake_install.cmake
 install_manifest.txt
 compile_commands.json
-CMakePresets.json
+CMakeUserPresets.json
 CTestTestfile.cmake
 _deps/
 .claude/

@@ -1,0 +1,31 @@
+{
+    "version": 3,
+    "configurePresets": [
+        {
+            "name": "ninja",
+            "displayName": "Ninja (Release)",
+            "generator": "Ninja",
+            "binaryDir": "${sourceDir}/cmake-build-ninja",
+            "cacheVariables": { "CMAKE_BUILD_TYPE": "Release" }
+        },
+        {
+            "name": "ninja-debug",
+            "displayName": "Ninja (Debug)",
+            "generator": "Ninja",
+            "binaryDir": "${sourceDir}/cmake-build-ninja-debug",
+            "cacheVariables": { "CMAKE_BUILD_TYPE": "Debug" }
+        }
+    ],
+    "buildPresets": [
+        { "name": "ninja", "configurePreset": "ninja" },
+        { "name": "ninja-debug", "configurePreset": "ninja-debug" }
+    ],
+    "testPresets": [
+        {
+            "name": "ninja",
+            "configurePreset": "ninja",
+            "output": { "outputOnFailure": true },
+            "execution": { "jobs": 8 }
+        }
+    ]
+}

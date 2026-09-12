@@ -316,7 +316,7 @@ playback as well; patent questions are separate from license questions.
 ## zlib
 
 **Optional.** Enables the DOCX editor. `find_package(ZLIB)`; when found,
-`MG_HAVE_ZLIB` is defined and `mg_core` links `ZLIB::ZLIB`. When absent,
+`MG_HAVE_ZLIB` is defined and `mg_lib` links `ZLIB::ZLIB`. When absent,
 `src/core/ZCodec.cpp` falls back to Qt's `qCompress`/`qUncompress` and only DOCX
 support is disabled - every PDF feature stays available.
 
@@ -365,7 +365,7 @@ document do carry patent considerations.
 
 **Optional.** Enables OCR for scanned PDFs. Found via
 `pkg_check_modules(TESSERACT IMPORTED_TARGET tesseract lept)`; when found,
-`MG_HAVE_TESSERACT` is defined and `mg_pdf` links `PkgConfig::TESSERACT`. When
+`MG_HAVE_TESSERACT` is defined and `mg_lib` links `PkgConfig::TESSERACT`. When
 absent, the OCR feature is disabled and the application states why.
 
 - **Kind:** direct dependency - MediaGallery calls the Tesseract API itself.
@@ -419,7 +419,7 @@ and linked.
 
 **Optional.** Enables spell checking in the DOCX editor. Found via
 `pkg_check_modules(HUNSPELL IMPORTED_TARGET hunspell)`; when found,
-`MG_HAVE_HUNSPELL` is defined and `mg_core` links `PkgConfig::HUNSPELL`. When
+`MG_HAVE_HUNSPELL` is defined and `mg_lib` links `PkgConfig::HUNSPELL`. When
 absent, spell checking stays off and the settings page states why.
 
 - **License:** MPL-1.1 / GPL-2.0 / LGPL-2.1 tri-license. The upstream README

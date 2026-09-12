@@ -40,6 +40,11 @@ stores its data are in **[FEATURES.md](FEATURES.md)**.
   - Linux: GCC 12+ / Clang 15+
   - macOS: Clang 15+
 
+Without `-DCMAKE_BUILD_TYPE`, the project configures as **Release** (`-O3` plus
+link-time optimisation); pass `-DCMAKE_BUILD_TYPE=Debug` for a debug build.
+`cmake --preset ninja` uses the bundled `CMakePresets.json` and builds into its
+own directory.
+
 ### Clone
 ```bash
 git clone https://github.com/Gewinkh/MediaGallery.git
@@ -98,20 +103,19 @@ open build/MediaGallery.app
 
 ### Tests (Developer Only)
 
-A regression suite is built by default and can be executed with `ctest`:
+The regression suite lives in `tests/` and is **not part of this repository** -
+it is development material and stays out of the published tree, so a fresh clone
+has nothing to run and `ctest` reports no tests. The build simply skips the
+directory when it is absent; `-DMG_BUILD_TESTS=OFF` switches it off explicitly.
+
+Where the suite is present, it is built and run with:
 
 ```bash
 ctest --test-dir build --output-on-failure   # Run all tests
-ctest --test-dir build -R docx               # Run a specific
+ctest --test-dir build -R docx               # Run a specific group
 ```
 
-Disable tests during configuration:
-
-```bash
-cmake -B build -DMG_BUILD_TESTS=OFF
-```
-
-The test suite uses plain executables (no external test framework or additional dependencies) and covers:
+It uses plain executables (no external test framework or additional dependencies) and covers:
 
 - DOCX/ZIP parsing
 - Document model behavior
@@ -121,22 +125,13 @@ The test suite uses plain executables (no external test framework or additional 
 - Tracked changes in the PDF and image editor
 - Companion-file handling (hiding, removing, undo)
 
-The `tests/` directory is not included in the published repository. If it is missing, the build automatically skips the test targets, allowing a fresh clone to configure and compile normally.
-
 ---
 
 ## Changelog
 
 ### Latest
-- **Added noise reduction** with adjustable suppression strength.
-- **Added adjustable clipping correction** with proportional attenuation control.
-- **Improved audio settings** with a shared Suppression group.
-- **Added table sorting**, column hiding/freezing, and cell/row copying.
-- **Added optional `.txt` table views** for column-based text files.
-- **Added coloured text-to-PDF export** using the editor's syntax colours.
-- **Improved table interaction** with better cell selection and horizontal scrolling.
-- **Improved large-folder performance**, reducing opening time by about 4x.
-- **Improved folder, file-type, and hidden-file handling** across the gallery.
+- **Build**: `Release` is now the default build type, and a new precompiled-header setup under `pch/` reduces compilation times.
+- **CMake**: Added `CMakePresets.json` for predefined build configurations.
 
 ---
 
