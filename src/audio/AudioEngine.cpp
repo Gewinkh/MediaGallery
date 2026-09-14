@@ -6,6 +6,7 @@
 
 #include "audio/AudioEqualizer.h"
 #include "audio/AudioDenoise.h"
+#include "audio/AudioLimiter.h"
 
 #include <QAudioBuffer>
 #include <QAudioDecoder>
@@ -51,8 +52,9 @@ private:
     AudioEngine* m_owner;
 };
 
-AudioEngine::AudioEngine(AudioEqualizer& eq, AudioDenoise& denoise, QObject* parent)
-    : QObject(parent), m_eq(eq), m_denoise(denoise)
+AudioEngine::AudioEngine(AudioEqualizer& eq, AudioDenoise& denoise,
+                         AudioLimiter& limiter, QObject* parent)
+    : QObject(parent), m_eq(eq), m_denoise(denoise), m_limiter(limiter)
 {
     // "Zu Ende" ist erst, wenn der Ring leer ist UND nichts nachkommt - der Dekoder ist längst fertig, während die
     // Ausgabe spielt. Der Takt ist nötig, weil `bufferReady` nur beim Übergang "nichts da" -> "etwas da" feuert.
@@ -110,6 +112,9 @@ qint64 AudioEngine::position() const {
 }
 
 void AudioEngine::teardown() {
+    //  Anhalten ist ein Sprung: was noch in der Vorausschau liegt, gehoert zum
+    //  abgebrochenen Abschnitt und darf den naechsten nicht mehr erreichen.
+    m_limiter.resetState();
     m_tick.stop();
     m_feed.stop();
     if (m_sink) {
@@ -189,6 +194,12 @@ void AudioEngine::startDecode(const QString& path, qint64 skipMs, qint64 byteOff
     m_eq.resetState();
     m_denoise.configure(m_format.sampleRate(), m_format.channelCount());
     m_denoise.resetState();
+    //  Der Begrenzer traegt eine Vorausschau von 1 ms mit sich. Hier laufen
+    //  ALLE Spruenge durch - neuer Titel, Weiter, Zurueck, Spulen -, und an
+    //  jedem muss der Vorlauf weg sein, sonst reicht der alte Abschnitt in den
+    //  neuen hinein.
+    m_limiter.configure(m_format.sampleRate(), m_format.channelCount());
+    m_limiter.resetState();
 
     const qint64 ringSamples = qint64(m_format.sampleRate()) * m_format.channelCount()
                                * kRingMs / 1000;
@@ -462,6 +473,11 @@ void AudioEngine::promoteNext() {
     m_queuedDurationMs = 0;
     m_boundaryFrames = -1;
 
+    //  Hier wird die Vorausschau bewusst NICHT geleert: der Uebergang ist
+    //  lueckenlos, beide Titel liegen hintereinander im selben Ring. Der Puffer
+    //  gibt der Reihe nach aus, die letzten Werte von A verlassen ihn also VOR
+    //  dem ersten von B - vermischt wird nichts. Ein Leeren an dieser Stelle
+    //  wuerde stattdessen 1 ms verwerfen und als Aussetzer zu hoeren sein.
     if (kLog) qDebug("audio: Übergang vollzogen -> %s", qPrintable(m_path));
     emit currentPathChanged();
     emit durationChanged();
@@ -609,6 +625,9 @@ qint64 AudioEngine::pullAudio(char* data, qint64 maxSize) {
     //  Rauschen mit anheben, das gleich danach wieder wegsoll.
     m_denoise.process(work, int(got / ch));
     m_eq.process(work, int(got / ch));
+    //  Zuletzt begrenzen - er arbeitet auf dem FERTIGEN Signal, sonst hielte er
+    //  eine Decke, die der Equalizer danach wieder reisst.
+    m_limiter.process(work, int(got / ch));
     if (!direct) convertOut(work, data, got);
     m_framesOut.fetch_add(got / ch, std::memory_order_relaxed);
     if (m_dump) m_dump->write(data, got * bps);

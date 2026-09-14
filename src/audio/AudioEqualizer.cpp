@@ -75,45 +75,39 @@ void AudioEqualizer::setEnabled(bool on) {
     emit changed();
 }
 
-//  Anhebungen addieren sich nicht einfach, überlappen sich aber: als
-//  Faustregel reicht die stärkste Anhebung als Gegenwert - mehr wegzunehmen
-//  kostete nur Lautstärke.
-double AudioEqualizer::suggestedPreamp() const {
-    const double peak = peakGainDb();
-    if (peak <= 0.0) return 0.0;
-    return std::max(kMinPreampDb, -peak);
-}
-
-//  Koeffizienten EINES Bandes. `false` heisst: dieses Band traegt nichts bei
-//  (Regler auf null, oder seine Mitte liegt ueber der halben Abtastrate).
+//  Koeffizienten EINES Bandes als BANDPASS. `false` heisst: dieses Band traegt
+//  nichts bei (Regler auf null, oder seine Mitte liegt ueber der halben Rate).
+//  Grundlage ist die exakte Identitaet `H_peak(A,Q) = 1 + (A^2-1)*H_BP(A*Q)`:
+//  ein Peaking-Band IST ein Bandpass-Anteil auf dem Durchgriff, beide teilen
+//  dieselben Pole. Addiert statt kaskadiert verstaerken benachbarte Baender
+//  einander nicht mehr (drei auf +12 dB ergaben in Serie 17,0 dB Spitze).
+//  Das Q MUSS dem Gain folgen (`A*kQ`), sonst stimmt die Bandform nicht.
 bool AudioEqualizer::makeBiquad(int band, double gainDb, Biquad* out) const {
     if (!out || band < 0 || band >= kBands) return false;
     if (std::abs(gainDb) < 1e-9) return false;
 
-    const double A     = std::pow(10.0, gainDb / 40.0);
-    const double w0    = 2.0 * M_PI * frequencies()[size_t(band)] / double(m_sampleRate);
+    const double A  = std::pow(10.0, gainDb / 40.0);
+    const double w0 = 2.0 * M_PI * frequencies()[size_t(band)] / double(m_sampleRate);
     if (w0 >= M_PI) return false;                 // über der halben Rate
-    const double alpha = std::sin(w0) / (2.0 * kQ);
+    const double alpha = std::sin(w0) / (2.0 * (A * kQ));
     const double cosw0 = std::cos(w0);
+    const double a0    = 1.0 + alpha;
 
-    const double b0 =  1.0 + alpha * A;
-    const double b1 = -2.0 * cosw0;
-    const double b2 =  1.0 - alpha * A;
-    const double a0 =  1.0 + alpha / A;
-    const double a1 = -2.0 * cosw0;
-    const double a2 =  1.0 - alpha / A;
-
-    out->b0 = b0 / a0;
-    out->b1 = b1 / a0;
-    out->b2 = b2 / a0;
-    out->a1 = a1 / a0;
-    out->a2 = a2 / a0;
+    //  Der RBJ-Bandpass hat b1 = 0 und b2 = -b0 - das spart im Abspielweg zwei
+    //  Multiplikationen je Band (s. `process`).
+    out->b0 =  alpha / a0;
+    out->b1 =  0.0;
+    out->b2 = -alpha / a0;
+    out->a1 = (-2.0 * cosw0) / a0;
+    out->a2 = (1.0 - alpha) / a0;
+    out->lin = A * A - 1.0;                       // Gewicht des Bandanteils
     return true;
 }
 
-// Die größte Verstärkung der GANZEN Kette, über das Spektrum gesucht - nicht das Maximum der Regler: ein Band auf
-// +12 dB macht breitbandiges Material nur knapp 4 dB lauter, drei benachbarte dagegen mehr als 12.
-// 512 Punkte auf logarithmischem Raster reichen (Q=1,0, keine schmalen Spitzen); nur bei Reglerwechsel.
+// Die größte Verstärkung der GANZEN Kette, über das Spektrum gesucht - nicht das Maximum der Regler.
+// Seit die Bänder ADDIERT statt kaskadiert werden, fällt sie niedriger aus: zehn Regler auf +12 dB ergeben
+// flach +12 dB statt der früheren +18,4 dB Überhöhung.
+// 512 Punkte auf logarithmischem Raster reichen (keine schmalen Spitzen); nur bei Reglerwechsel.
 double AudioEqualizer::peakGainDb() const {
     std::array<Biquad, kBands> bands {};
     int count = 0;
@@ -135,19 +129,22 @@ double AudioEqualizer::peakGainDb() const {
         const double w = 2.0 * M_PI * f / double(m_sampleRate);
         const double c1 = std::cos(w),  s1 = std::sin(w);
         const double c2 = std::cos(2*w), s2 = std::sin(2*w);
-        double mag = 1.0;
+        //  ADDITIV: Durchgriff 1 plus die gewichteten Bandanteile - komplex
+        //  summieren, erst am Ende den Betrag nehmen.
+        double sr = 1.0, si = 0.0;
         for (int b = 0; b < count; ++b) {
             const Biquad& q = bands[size_t(b)];
-            //  |H| = |b0 + b1 e^-jw + b2 e^-2jw| / |1 + a1 e^-jw + a2 e^-2jw|
             const double nr = q.b0 + q.b1 * c1 + q.b2 * c2;
             const double ni =      -(q.b1 * s1 + q.b2 * s2);
             const double dr = 1.0  + q.a1 * c1 + q.a2 * c2;
             const double di =      -(q.a1 * s1 + q.a2 * s2);
             const double den = dr * dr + di * di;
             if (den <= 1e-30) continue;
-            mag *= std::sqrt((nr * nr + ni * ni) / den);
+            //  (nr+j ni)/(dr+j di) = ((nr+j ni)(dr-j di))/den
+            sr += q.lin * (nr * dr + ni * di) / den;
+            si += q.lin * (ni * dr - nr * di) / den;
         }
-        peak = std::max(peak, mag);
+        peak = std::max(peak, std::sqrt(sr * sr + si * si));
     }
     return peak > 1.0 ? 20.0 * std::log10(peak) : 0.0;
 }
@@ -191,20 +188,25 @@ void AudioEqualizer::process(float* samples, int frames) {
     const int active = set->count;
     for (int f = 0; f < frames; ++f) {
         for (int c = 0; c < ch; ++c) {
-            double x = double(samples[f * ch + c]) * double(set->preamp);
+            const double x = double(samples[f * ch + c]) * double(set->preamp);
+            //  Der Durchgriff ist das Eingangssignal, die Baender legen nur
+            //  ihren Anteil darauf - sie hängen NICHT hintereinander.
+            double acc = x;
             for (int b = 0; b < active; ++b) {
                 const Biquad& q = set->band[size_t(b)];
                 //  Der Zustand gehört dem BAND, nicht dem Platz - sonst
                 //  sprängen die Speicher, sobald ein Regler auf null geht.
                 auto& st = m_state[size_t(c) * kBands + size_t(set->slot[size_t(b)])];
-                //  Direct Form II transposed: ein Speicherpaar je Filter.
-                const double y = q.b0 * x + st[0];
-                st[0] = q.b1 * x - q.a1 * y + st[1];
-                st[1] = q.b2 * x - q.a2 * y;
-                x = y;
+                //  Direct Form II transposed, mit `b1 = 0` und `b2 = -b0`:
+                //  drei Multiplikationen statt fünf, bitgleiches Ergebnis.
+                const double bx = q.b0 * x;
+                const double y  = bx + st[0];
+                st[0] = st[1] - q.a1 * y;
+                st[1] = -bx   - q.a2 * y;
+                acc += q.lin * y;
             }
             //  Erst am Ausgang klemmen - dazwischen darf es über 1 gehen.
-            samples[f * ch + c] = float(std::clamp(x, -1.0, 1.0));
+            samples[f * ch + c] = float(std::clamp(acc, -1.0, 1.0));
         }
     }
 }

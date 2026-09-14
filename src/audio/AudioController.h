@@ -10,6 +10,7 @@
 #include <memory>
 
 #include "audio/AudioEngine.h"
+#include "audio/AudioLimiter.h"
 #include "audio/AudioTags.h"
 #include "audio/AudioEqualizer.h"
 #include "audio/AudioDenoise.h"
@@ -163,7 +164,6 @@ public:
 
     Q_INVOKABLE void setBandGain(int band, qreal db);
     Q_INVOKABLE void resetBands();
-    Q_INVOKABLE qreal suggestedPreamp() const { return m_eq.suggestedPreamp(); }
     Q_INVOKABLE void applyPreset(const QString& name);
     Q_INVOKABLE void savePreset(const QString& name);
     Q_INVOKABLE void deletePreset(const QString& name);
@@ -225,6 +225,8 @@ private:
     ISettings&      m_settings;
     AudioEqualizer  m_eq;
     AudioDenoise    m_denoise;
+    //  VOR `m_engine` - die bekommt eine Referenz darauf.
+    AudioLimiter    m_limiter;
     AudioEngine     m_engine;
     PlayQueue       m_queue;
     qint64          m_pendingSeek = 0;

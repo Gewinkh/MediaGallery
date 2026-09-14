@@ -405,6 +405,7 @@ Item {
 
                 Popup {
                     id: savePop
+                    objectName: "eqSavePopup"       // Griff fuer den Pruefstand
                     y: -implicitHeight - 6
                     width: Math.min(280, Math.max(200, panel.width - 40))
                     padding: 10
@@ -462,6 +463,7 @@ Item {
                             clip: true
                             ListView {
                                 id: overList
+                                objectName: "eqOverwriteList"   // Griff fuer den Pruefstand
                                 anchors.fill: parent
                                 model: Audio.presetNames
                                 boundsBehavior: Flickable.StopAtBounds
@@ -486,6 +488,11 @@ Item {
                                     }
                                     HoverHandler { id: oHover }
                                     TapHandler {
+                                        //  Wie jeder andere Tipper hier: die Vorgabe
+                                        //  `DragThreshold` TEILT den Druckpunkt, der
+                                        //  Druck faellt dann zusaetzlich auf die Liste
+                                        //  dahinter und wechselt dort den Titel.
+                                        gesturePolicy: TapHandler.ReleaseWithinBounds
                                         onTapped: {
                                             Audio.savePreset(orow.modelData)
                                             savePop.close()

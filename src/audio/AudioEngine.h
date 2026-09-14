@@ -13,6 +13,7 @@
 
 class AudioEqualizer;
 class AudioDenoise;
+class AudioLimiter;
 class AudioPull;
 class QAudioDecoder;
 class QAudioSink;
@@ -33,7 +34,7 @@ public:
     Q_ENUM(State)
 
     explicit AudioEngine(AudioEqualizer& eq, AudioDenoise& denoise,
-                         QObject* parent = nullptr);
+                         AudioLimiter& limiter, QObject* parent = nullptr);
     ~AudioEngine() override;
 
     State   state() const { return m_state; }
@@ -104,6 +105,7 @@ private:
 
     AudioEqualizer&        m_eq;
     AudioDenoise&          m_denoise;
+    AudioLimiter&          m_limiter;
     QAudioDecoder*         m_decoder = nullptr;
     //  Gerät für den Sprung: zeigt die Datei ab dem Zielrahmen. Gehört der
     //  Kette und wird in `teardown()` mit abgeräumt.

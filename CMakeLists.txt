@@ -137,6 +137,7 @@ add_library(mg_lib STATIC
     src/audio/AudioEngine.cpp
     src/audio/AudioEngine.h
     src/audio/AudioEqualizer.cpp
+    src/audio/AudioLimiter.cpp
     src/audio/AudioEqualizer.h
     src/audio/AudioRing.cpp
     src/audio/AudioRing.h

@@ -130,8 +130,9 @@ It uses plain executables (no external test framework or additional dependencies
 ## Changelog
 
 ### Latest
-- **Build**: `Release` is now the default build type, and a new precompiled-header setup under `pch/` reduces compilation times.
-- **CMake**: Added `CMakePresets.json` for predefined build configurations.
+- **Audio**: Equalizer bands now add up instead of stacking, preventing neighbouring bands from multiplying each other and reducing excessive gain at high settings.
+- **Audio**: **Prevent clipping** is now a limiter with 1 ms look-ahead, keeping quiet passages louder while preventing clipping. Its buffer is flushed on track jumps, seeking, stopping, and other playback changes.
+- **Fix**: **Equalizer preset overwriting** now works correctly, and preset clicks no longer affect the playlist behind the dialog.
 
 ---
 

@@ -492,16 +492,32 @@ planned.
 
 ## Two-pane mode
 
-**A boosted equalizer plays quieter than a flat one.**
-What you notice: raise a band and the music gets noticeably quieter rather than
-louder - one band at +12 dB costs about 12 dB of level.
+**A boosted equalizer still plays quieter in loud passages.**
+What you notice: raise several bands and the loudest parts of a track come back
+about 6 dB quieter, while quiet passages keep their level.
 Why: boosting cannot add headroom, it can only use it up. Either the peaks are
-cut off (harsh, measured at 13-35 % distortion) or the whole signal is lowered to
-make room. *Prevent clipping* does the latter, and it aims at the worst case: the
-loudest frequency the filter chain can produce, not the average.
+cut off (harsh, measured at 3.7 % distortion on a real track) or the signal is
+lowered to make room. *Prevent clipping* does the latter - but as a limiter, so it
+only acts where something actually overshoots. Measured against the fixed
+reduction it replaced: loud passages -6.6 dB either way, quiet ones **-3.3 dB
+instead of -12.0**, both at 0.000 % clipped.
 Workaround / status: turn the volume up, or drag the preamp back yourself - the
-slider keeps working. Turning *Prevent clipping* off in Settings -> Audio brings
-the old behaviour back, distortion included.
+slider keeps working and is no longer touched by the correction. Turning *Prevent
+clipping* off in Settings -> Audio brings the unlimited behaviour back, distortion
+included.
+
+**Saved equalizer presets sound slightly different since the bands stopped
+stacking.**
+What you notice: a preset you saved earlier is a little tamer, most audibly if it
+had several neighbouring bands pushed high.
+Why: the bands now add their share to the signal instead of being chained behind
+one another, so neighbours no longer multiply each other - three bands at +12 dB
+peak at 12.7 dB instead of 17.0. That is the point of the change, and it is what
+makes the preamp unnecessary in most cases, but it does alter what an old preset
+does.
+Workaround / status: nudge the bands you care about; presets save and overwrite
+as before. There is no automatic conversion - the old peaks cannot be recreated
+without bringing the distortion back.
 
 **Two halves, at most four open files** (two per half when split).
 Why: a deliberate cap - beyond that the tiles are too small to work in.

@@ -7,7 +7,8 @@
 #include <QObject>
 #include <QVector>
 
-// Zehn ISO-Oktaven je +-12 dB, RBJ-Peaking-Biquads in Direct Form II transposed;
+// Zehn ISO-Oktaven je +-12 dB, ADDITIV überlagert: Durchgriff plus RBJ-Bandpässe
+// in Direct Form II transposed (Q folgt dem Gain, s. `makeBiquad`);
 // Stereo/48 kHz kostet unter 1 % eines Kerns. Koeffizienten werden nur bei Aenderung
 // gerechnet und als Satz atomar getauscht - im Audio-Pfad liegt kein Schloss.
 class AudioEqualizer : public QObject {
@@ -15,9 +16,8 @@ class AudioEqualizer : public QObject {
 public:
     static constexpr int kBands = 10;
     static constexpr double kMaxGainDb = 12.0;
-    //  Der Preamp reicht WEITER nach unten als nach oben: die Gegenrechnung
-    //  gegen das Uebersteuern braucht bei zehn angehobenen Baendern gut 12,5 dB
-    //  (gemessen), und bei -12 dB blieben 6 % der Werte am Anschlag haengen.
+    //  Der Preamp reicht WEITER nach unten als nach oben - Platz zum Leisermachen
+    //  braucht man oefter als zum Lautermachen.
     static constexpr double kMinPreampDb = -24.0;
     static constexpr double kMaxPreampDb =  12.0;
     static const std::array<double, kBands>& frequencies();
@@ -41,10 +41,6 @@ public:
     // Regler. Aus den Koeffizienten über ein Frequenzraster, nur bei Reglerwechsel, nie je Sample.
     double peakGainDb() const;
 
-    // Vorverstärkung, bei der die Kette gerade nicht mehr übersteuert (negativ, 0 wenn nichts angehoben ist).
-    // Früher stand hier `-größte Anhebung`, was ein einzelnes Band um volle 12 dB absenkte.
-    double suggestedPreamp() const;
-
     void process(float* samples, int frames);
 
     void resetState();
@@ -53,7 +49,9 @@ signals:
     void changed();
 
 private:
-    struct Biquad { double b0 = 1, b1 = 0, b2 = 0, a1 = 0, a2 = 0; };
+    //  `lin` ist das Gewicht des Bandanteils (A^2-1); die Sektion selbst ist
+    //  ein Bandpass, kein Peaking-Filter (s. `makeBiquad`).
+    struct Biquad { double b0 = 1, b1 = 0, b2 = 0, a1 = 0, a2 = 0, lin = 0; };
     // Bänder auf 0 dB stehen gar nicht darin: ein Durchlass-Filter kostet sonst je Sample fünf Multiplikationen für
     // nichts (gemessen: zehn aktive Bänder 1,8 % eines Kerns, zwei 0,4 %).
     struct CoeffSet {

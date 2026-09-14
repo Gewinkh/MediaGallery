@@ -34,7 +34,7 @@ AudioController::AudioController(ISettings& settings, QObject* parent)
     , m_settings(settings)
     , m_eq(this)
     , m_denoise(this)
-    , m_engine(m_eq, m_denoise, this)
+    , m_engine(m_eq, m_denoise, m_limiter, this)
     , m_queue(this)
 {
     connect(&m_engine, &AudioEngine::stateChanged,    this, &AudioController::stateChanged);
@@ -241,18 +241,23 @@ QVariantList AudioController::eqFrequencies() const {
 // Anschlag, bei allen zehn 66,5 % mit 13-35 % Klirr. Aus heisst: nichts rechnen.
 bool AudioController::eqAutoPreamp() const { return m_settings.audioEqAutoPreamp(); }
 
-//  Wie viel der noetigen Absenkung gerade angewandt wird. Aus oder Pegel 0
-//  heisst: gar nichts rechnen, der Regler gehoert ganz dem Nutzer.
+//  Frueher wurde hier fest gegengerechnet - ueber den ganzen Titel gleich viel,
+//  auch dort, wo gar nichts uebersteuerte. Das erledigt jetzt der Begrenzer, der
+//  nur bei Bedarf und nur so lange eingreift: gemessen bleiben leise Stellen
+//  damit 8,7 dB lauter, bei gleicher Klemmfreiheit. Der Wert bleibt als Anzeige
+//  (`clipReduction`) und meldet, was der Begrenzer zuletzt genommen hat.
 double AudioController::korrektur() const {
     if (!m_settings.audioEqAutoPreamp()) return 0.0;
-    return m_settings.audioClipLevel() * m_eq.suggestedPreamp();
+    return m_limiter.lastReductionDb();
 }
 
-//  Der eigene Wert und die Gegenrechnung ADDIEREN sich. Frueher ersetzte die
-//  Gegenrechnung den Regler - damit war der eigene Wert nach einmal Einschalten
-//  verloren, und der Pegel haette ihn bei jeder Bewegung weiter aufgezehrt.
+//  Die Vorverstaerkung gehoert jetzt ganz dem Nutzer; gegen das Uebersteuern
+//  arbeitet der Begrenzer. Schalter und Pegel des bisherigen Reglers steuern ihn
+//  unveraendert weiter - 0 % heisst nach wie vor "nichts rechnen".
 void AudioController::applyAutoPreamp() {
-    m_eq.setPreamp(m_userPreamp + korrektur());
+    m_eq.setPreamp(m_userPreamp);
+    m_limiter.setEnabled(m_settings.audioEqAutoPreamp());
+    m_limiter.setStrength(m_settings.audioClipLevel());
 }
 
 void AudioController::setEqAutoPreamp(bool on) {
