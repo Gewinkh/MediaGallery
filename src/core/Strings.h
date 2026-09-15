@@ -953,6 +953,36 @@ enum class StringKey {
     AudioSuppressLevel,       // Beschriftung des Staerkereglers, beide Unterdruecker
     AudioSuppressTitle,       // Gruppe „Unterdrueckung" in den Einstellungen
     AudioDenoiseHint,         // was der Regler tut
+    TableSaveConflict,
+    TableSaveEncoding,
+    TableSaveFailed,
+    TableEditCell,
+    TableInsertRowAbove,
+    TableInsertRowBelow,
+    TableRemoveRow,
+    TableInsertColLeft,
+    TableInsertColRight,
+    TableRemoveCol,
+    TableRenameCol,
+    TablePaste,
+    TableModified,
+    TableSaving,
+    TableSavedCopy,
+    TableReloadDiscard,
+    TableSaveAsCopy,
+    TableReadOnly,
+    TableFilter,
+    TableFilterAll,
+    TableFilterPlaceholder,
+    TableFilterClear,
+    TableFilterTip,
+    TableFiltered,
+    TableSaved,
+    SettingsTableFilterSyntax,
+    SettingsTableDateOrder,
+    SettingsTableDateOrderTip,
+    TableColumnN,
+    ShortcutCtxTable,           // Abschnitt: Tabelle (CSV/TSV)
 };
 Q_ENUM_NS(StringKey)
 }  // namespace SK

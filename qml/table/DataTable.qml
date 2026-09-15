@@ -10,8 +10,7 @@ import "../common"
 Item {
     id: root
 
-    //  Erwartet: `columns` (Liste aus {index, title, chars}), `rowCount`,
-    //  `cell(zeile, spalte)`.
+    //  Erwartet: `columns` ({index, title, chars}), `rowCount`, `cell(zeile, spalte)`.
     property var provider: null
 
     property int rowHeight: 20
@@ -22,27 +21,25 @@ Item {
     //  Zeilenspalte ist FEST - sie rollt senkrecht mit, waagerecht nicht.
     property bool showNumbers: false
 
-    //  Suche: `searchRevision` steigt bei jeder Aenderung im Controller. Die
-    //  Zell-Bindung LIEST sie - ohne einen gelesenen Wert wertet QML sie nie
-    //  neu aus, und die Markierung bliebe auf dem Stand des ersten Bildes.
+    //  Die Zell-Bindungen LESEN beide Revisionen - `cell()` ist eine Funktion, ohne
+    //  gelesenen Wert wertet QML sie nie neu aus.
     property int searchRevision: 0
     property int currentRow: -1
     property int currentColumn: -1
-    //  Steigt, wenn sich Reihenfolge oder Spaltenauswahl aendern. Die Zellen
-    //  LESEN ihn - `cell()` ist eine Funktion, ohne einen gelesenen Wert wertet
-    //  QML die Bindung nie neu aus und die Tabelle bliebe nach dem Sortieren
-    //  Zeile fuer Zeile auf dem alten Stand.
     property int contentRevision: 0
-    //  Die erste gezeigte Spalte bleibt beim seitlichen Rollen stehen. Sie wird
-    //  als undurchsichtige Flaeche DARUEBER gezeichnet, statt sie aus der
-    //  rollenden Flaeche herauszunehmen: das haette Spaltenkopf, Suchmarken und
-    //  Trefferansteuerung auf zwei Koordinatensysteme aufgeteilt.
+    //  Als undurchsichtige Flaeche DARUEBER gezeichnet, nicht herausgenommen - sonst
+    //  laegen Kopf, Suchmarken und Trefferansteuerung in zwei Koordinatensystemen.
     property bool frozenColumn: false
 
-    //  Die angeklickte Zelle. Sie ist die Grundlage fuers Kopieren; ein Rahmen
-    //  zeigt sie an. Bearbeiten ist damit NICHT gemeint.
+    //  Die gewaehlte Zelle - Grundlage fuer Kopieren, Bearbeiten und Tastatur.
     property int selRow: -1
     property int selColumn: -1
+    //  Offen, solange das Eingabefeld ueber der Zelle steht.
+    property bool bearbeitet: false
+
+    //  Bearbeiten koennen nur Anbieter, die es selbst sagen - DATEV nie.
+    readonly property bool _bearbeitbar: root.provider !== null && root.provider.editable === true
+    readonly property bool _umbaubar: root._bearbeitbar && root.provider.structureEditable === true
 
     readonly property var _ersteSpalte: root._spalten.length > 0 ? root._spalten[0] : null
     readonly property bool _kopfSortiert:
@@ -70,15 +67,65 @@ Item {
         return (z >= 0 && z < liste.count) ? z : -1
     }
 
-    //  Eine kurze Rueckmeldung an Ort und Stelle. Der Weg ueber die Statuszeile
-    //  der Haelfte ginge durch vier Ebenen QML, fuer einen Satz, der nach zwei
-    //  Sekunden wieder weg ist.
-    //  Die Markierung gehoert zum Rechtsklick; jeder Linksklick raeumt sie weg.
     function entmarkiere() {
+        if (root.bearbeitet) root.uebernehme()
         root.selRow = -1
         root.selColumn = -1
     }
 
+    function waehle(zeile, spalte) {
+        if (!root.provider || zeile < 0 || spalte < 0) return
+        root.selRow = Math.max(0, Math.min(zeile, root.provider.rowCount - 1))
+        root.selColumn = spalte
+        root.zeigeZelle(root.selRow, root.selColumn)
+        root.forceActiveFocus()
+    }
+
+    //  Um `dz` Zeilen und `ds` gezeigte Spalten weiter, am Rand angehalten.
+    function _bewege(dz, ds) {
+        if (!root.provider || root._spalten.length === 0) return
+        var pos = 0
+        for (var i = 0; i < root._spalten.length; ++i)
+            if (root._spalten[i].index === root.selColumn) pos = i
+        pos = Math.max(0, Math.min(pos + ds, root._spalten.length - 1))
+        root.waehle(Math.max(0, root.selRow + dz), root._spalten[pos].index)
+    }
+
+    function bearbeiteZelle() {
+        if (!root._bearbeitbar || root.selRow < 0 || root.selColumn < 0) return
+        root.zeigeZelle(root.selRow, root.selColumn)
+        zellEditor.text = root.provider.cell(root.selRow, root.selColumn)
+        root.bearbeitet = true
+        zellEditor.forceActiveFocus()
+        zellEditor.selectAll()
+    }
+    function uebernehme() {
+        if (!root.bearbeitet) return
+        root.bearbeitet = false
+        root.provider.setCell(root.selRow, root.selColumn, zellEditor.text)
+        root.forceActiveFocus()
+    }
+    function verwerfe() {
+        root.bearbeitet = false
+        root.forceActiveFocus()
+    }
+    function _linksGetippt(szene, doppelt) {
+        const p = zellSchicht.mapFromItem(null, szene)
+        const z  = root._zeileBeiY(p.y)
+        const sp = root._spalteBeiX(p.x)
+        if (root.bearbeitet) root.uebernehme()
+        if (z < 0 || sp < 0) { root.entmarkiere(); return }
+        root.waehle(z, sp)
+        if (doppelt) root.bearbeiteZelle()
+    }
+    function einfuegen() {
+        if (!root._bearbeitbar || root.selRow < 0 || root.selColumn < 0) return
+        const text = App.clipboardText()
+        if (text.length > 0) root.provider.pasteText(root.selRow, root.selColumn, text)
+    }
+
+    //  Rueckmeldung an Ort und Stelle; die Statuszeile laege vier Ebenen entfernt.
+    function melde(text) { root._melde(text) }
     function _melde(text) {
         hinweis.text = text
         hinweis.opacity = 1
@@ -105,6 +152,12 @@ Item {
             x += root._breite(root._spalten[i].chars)
         }
         return -1
+    }
+    //  Linke Kante im Sichtfenster; die festgestellte erste Spalte rollt nicht mit.
+    function _zelleX(spalte) {
+        if (root.frozenColumn && root._ersteSpalte && spalte === root._ersteSpalte.index)
+            return 0
+        return root._spalteX(spalte) - root.xOffset
     }
     function _spalteBreite(spalte) {
         for (var i = 0; i < root._spalten.length; ++i)
@@ -152,7 +205,9 @@ Item {
     //  Breite der Zeilenspalte: so viel, wie die groesste Nummer braucht.
     readonly property real _nummernBreite:
         root.showNumbers
-        ? Math.max(34, String(liste.count).length * fm.averageCharacterWidth + 16)
+        ? Math.max(34, String(root.provider && root.provider.totalRows !== undefined
+                              ? root.provider.totalRows : liste.count).length
+                       * fm.averageCharacterWidth + 16)
         : 0
     readonly property real gesamtBreite: {
         var b = 0
@@ -164,15 +219,12 @@ Item {
     //  beide an `xOffset`. Zwei getrennte Flickables liefen sonst auseinander.
     property real xOffset: 0
 
-    //  Die Spaltennummern stehen in einer EIGENEN Leiste ueber den Namen - so
-    //  wie die Zeilennummern in einer eigenen Spalte NEBEN der Tabelle stehen
-    //  und nicht in deren erster Spalte.
+    //  Spaltennummern in einer EIGENEN Leiste ueber den Namen, wie die Zeilennummern daneben.
     Rectangle {
         id: nummernLeiste
         anchors { left: parent.left; right: parent.right; top: parent.top
                   leftMargin: root._nummernBreite }
-        //  Halb so dick wie die Zeilenspalte breit ist waere zu schmal, genau
-        //  so dick wirkt klobig - deshalb 50 % mehr als die urspruenglichen 16.
+        //  So dick wie die Zeilenspalte breit ist wirkt klobig, halb so dick zu schmal.
         height: root.showNumbers ? 24 : 0
         visible: root.showNumbers
         color: Editor.gutterBackground
@@ -197,9 +249,7 @@ Item {
                         font.pixelSize: 10
                         text: modelData.index + 1
                     }
-                    //  Ohne Spaltennamen ist diese Leiste der einzige Kopf, den
-                    //  die Tabelle hat - sie muss deshalb dieselben zwei Griffe
-                    //  tragen wie die Namensleiste.
+                    //  Ohne Spaltennamen der einzige Kopf - also dieselben Griffe.
                     MouseArea {
                         anchors.fill: parent
                         acceptedButtons: Qt.LeftButton | Qt.RightButton
@@ -384,30 +434,23 @@ Item {
         boundsBehavior: Flickable.StopAtBounds
         onContentXChanged: root.xOffset = contentX
 
-        //  Die Leisten ausdruecklich nach oben: sie sind Geschwister des
-        //  mitrollenden Inhalts, und deren Reihenfolge haengt sonst an der
-        //  Reihenfolge im Quelltext. Genau daran ist das seitliche Rollen
-        //  schon einmal gescheitert.
+        //  Leisten ausdruecklich nach oben: als Geschwister des Inhalts hinge ihre
+        //  Reihenfolge sonst am Quelltext (daran scheiterte das seitliche Rollen).
         ScrollBar.horizontal: ScrollBar { policy: ScrollBar.AsNeeded; z: 10 }
 
-        //  Eine Zelle mit RECHTS markieren und ihr Menue oeffnen. Der Helfer
-        //  haengt an der FLAECHE, nicht an einer Schicht darueber: die
-        //  Bildlaufleisten sind Kinder der Flaeche und bekommen den Druck
-        //  dadurch zuerst. `DragThreshold` gibt den Griff wieder her, sobald
-        //  gezogen wird - sonst waere das Rollen weg.
+        //  Rechts an der Flaeche, nicht an einer Schicht darueber: die Leisten bekommen
+        //  den Druck so zuerst, und `DragThreshold` gibt ihn beim Ziehen wieder her.
         TapHandler {
             acceptedButtons: Qt.RightButton
             gesturePolicy: TapHandler.DragThreshold
             onTapped: function (punkt) {
-                //  Der Helfer haengt am MITROLLENDEN Inhalt der Flaeche, die
-                //  Rechenwege unten erwarten Sichtfenster-Koordinaten. Der Weg
-                //  ueber die Szene ist unabhaengig davon, wo er landet.
+                //  Ueber die Szene: der Helfer haengt am mitrollenden Inhalt.
                 const p = zellSchicht.mapFromItem(null, punkt.scenePosition)
                 const z  = root._zeileBeiY(p.y)
                 const sp = root._spalteBeiX(p.x)
                 if (z < 0 || sp < 0) return
-                root.selRow = z
-                root.selColumn = sp
+                if (root.bearbeitet) root.uebernehme()
+                root.waehle(z, sp)
                 const r = root.mapFromItem(null, punkt.scenePosition)
                 zellMenue.popup(r.x, r.y)
             }
@@ -426,10 +469,8 @@ Item {
             cacheBuffer: 400
             boundsBehavior: Flickable.StopAtBounds
 
-            //  Der Balken haengt an der Liste (dann stimmen Groesse, Stand und
-            //  das Ziehen von selbst), wandert als deren Kind aber mit der
-            //  waagerecht rollenden Flaeche mit - deshalb wird er an den
-            //  rechten Rand des SICHTBAREN Ausschnitts gerechnet.
+            //  An der Liste haengen Groesse und Ziehen von selbst; seitlich rollt er aber
+            //  mit und wird deshalb an den Rand des SICHTBAREN Ausschnitts gerechnet.
             ScrollBar.vertical: ScrollBar {
                 policy: ScrollBar.AsNeeded
                 z: 10
@@ -448,6 +489,15 @@ Item {
                     (root.contentRevision >= 0 && root.provider)
                     ? root.provider.rowEmpty(zeile.index) : false
 
+                //  Links waehlt, doppelt bearbeitet. Der Helfer sitzt IN der Zeile:
+                //  die Liste nimmt den linken Druck fuer ihr Rollen an, ein Helfer
+                //  an der Flaeche darueber bekaeme ihn nie (gemessen).
+                TapHandler {
+                    acceptedButtons: Qt.LeftButton
+                    gesturePolicy: TapHandler.DragThreshold
+                    onTapped: function (punkt) { root._linksGetippt(punkt.scenePosition, false) }
+                    onDoubleTapped: function (punkt) { root._linksGetippt(punkt.scenePosition, true) }
+                }
                 Rectangle {
                     anchors.fill: parent
                     color: (!zeile.leer && zeile.index % 2 === 1)
@@ -501,10 +551,8 @@ Item {
         }
     }
 
-    //  Die Zeilennummern stehen NEBEN der waagerecht rollenden Flaeche, nicht
-    //  darin - sonst wanderten sie beim seitlichen Rollen aus dem Bild. Gemalt
-    //  werden nur die sichtbaren: bei fester Zeilenhoehe genuegt dafuer
-    //  Rechnen, kein zweites Modell.
+    //  NEBEN der rollenden Flaeche, sonst wanderten die Nummern seitlich aus dem
+    //  Bild. Nur die sichtbaren; bei fester Zeilenhoehe genuegt Rechnen.
     Rectangle {
         id: nummernSpalte
         visible: root.showNumbers
@@ -530,7 +578,10 @@ Item {
                 verticalAlignment: Text.AlignVCenter
                 color: Editor.gutterText
                 font.pixelSize: 11
-                text: zeile + 1
+                //  Mit Filter die Nummer der Datei - die Luecken bleiben sichtbar.
+                text: (root.contentRevision >= 0 && root.provider
+                       && root.provider.rowNumber !== undefined)
+                      ? root.provider.rowNumber(zeile) : zeile + 1
             }
         }
         Rectangle { anchors.right: parent.right; width: 1; height: parent.height
@@ -538,13 +589,9 @@ Item {
                                    Editor.gutterText.b, 0.25) }
     }
 
-    //  Das Mausrad auf dasselbe Mass wie der Rest der App: rund die halbe
-    //  Sichthoehe je Rastung, weich ueber 180 ms. Qts Vorgabe fuer ein
-    //  Flickable sind feste 60 px - gemessen kamen 72 px an, wo 276 gewollt
-    //  waren. Eine eigene Flaeche statt `SmoothWheelArea`, weil hier ZWEI
-    //  Ziele bedient werden: senkrecht die Liste, waagerecht die Flaeche
-    //  darunter. Eine MouseArea ist zwingend - ein interaktives Flickable
-    //  verarbeitet Radereignisse vor jedem WheelHandler selbst.
+    //  Rad wie im Rest der App: halbe Sichthoehe je Rastung, weich ueber 180 ms (Qt gibt
+    //  60 px vor, gemessen 72 statt 276). Eigene Flaeche, weil ZWEI Ziele rollen; eine
+    //  MouseArea ist zwingend - ein Flickable nimmt Radereignisse vor jedem WheelHandler.
     NumberAnimation {
         id: rollAnim
         target: liste; property: "contentY"
@@ -555,31 +602,20 @@ Item {
         target: flick; property: "contentX"
         duration: 180; easing.type: Easing.OutCubic
     }
-    //  Der Rahmen um die angeklickte Zelle. Eine eigene Flaeche statt eines
-    //  Rechtecks im Zeilen-Delegat: er soll auch dann stehen, wenn die Zeile
-    //  ausserhalb des Delegat-Vorrats liegt.
-    //  Geschwister der rollenden Flaeche, NICHT ihr Kind: eine `Flickable`
-    //  haengt ihre Kinder an den mitrollenden `contentItem`, und dann waeren
-    //  alle Koordinaten doppelt versetzt.
-    //  REIN SICHTBAR, ohne jeden Zeigerhelfer: ein `TapHandler` setzt am Element
-    //  `acceptedMouseButtons` auf ALLE Tasten, und die Schicht liegt ueber der
-    //  waagerechten Bildlaufleiste - die war damit nicht mehr zu treffen.
-    //  Das Anklicken einer Zelle haengt deshalb an der Flaeche selbst.
+    //  Auswahlrahmen und Eingabefeld: Geschwister der Flaeche (als Kind waeren die
+    //  Koordinaten doppelt versetzt), ohne Zeigerhelfer - einer setzte am Element alle
+    //  Tasten an und verdeckte die waagerechte Bildlaufleiste.
     Item {
         id: zellSchicht
         anchors.fill: flick
         clip: true
         z: 3
 
-        //  Der Rahmen um die angeklickte Zelle. Eine eigene Flaeche statt eines
-        //  Rechtecks im Zeilen-Delegat: er soll auch dann stehen, wenn die Zeile
-        //  ausserhalb des Delegat-Vorrats liegt.
+        //  Eigene Flaeche statt im Delegaten: steht auch ausserhalb des Delegat-Vorrats.
         Rectangle {
             visible: root.selRow >= 0 && root.selColumn >= 0
                      && root._spalteX(root.selColumn) >= 0
-            //  `_spalteX` rechnet in INHALTS-Koordinaten, die Schicht liegt im
-            //  Sichtfenster - der Versatz muss also abgezogen werden.
-            x: root._spalteX(root.selColumn) - root.xOffset
+            x: root._zelleX(root.selColumn)
             y: root.selRow * root.rowHeight - liste.contentY
             width: root._spalteBreite(root.selColumn)
             height: root.rowHeight
@@ -589,6 +625,79 @@ Item {
             radius: 2
         }
 
+        //  Nur waehrend des Bearbeitens sichtbar - unsichtbar nimmt es keine
+        //  Taste und keinen Klick an, die Schicht bleibt sonst rein sichtbar.
+        TextField {
+            id: zellEditor
+            objectName: "zellEditor"     // Griff fuer tests/bench
+            visible: root.bearbeitet
+            x: root._zelleX(root.selColumn)
+            y: root.selRow * root.rowHeight - liste.contentY
+            width: Math.max(root._spalteBreite(root.selColumn), 140)
+            height: root.rowHeight
+            topPadding: 0; bottomPadding: 0; leftPadding: 7; rightPadding: 7
+            verticalAlignment: TextInput.AlignVCenter
+            font: root.cellFont
+            color: Editor.text
+            background: Rectangle {
+                color: Editor.background
+                border.color: App.themeAccent
+                border.width: 2
+                radius: 2
+            }
+            Keys.onPressed: function (e) {
+                switch (e.key) {
+                case Qt.Key_Return: case Qt.Key_Enter:
+                    root.uebernehme(); root._bewege(1, 0); e.accepted = true; return
+                case Qt.Key_Tab:
+                    root.uebernehme(); root._bewege(0, 1); e.accepted = true; return
+                case Qt.Key_Backtab:
+                    root.uebernehme(); root._bewege(0, -1); e.accepted = true; return
+                case Qt.Key_Up: case Qt.Key_Down:
+                    root.uebernehme(); root._bewege(e.key === Qt.Key_Up ? -1 : 1, 0)
+                    e.accepted = true; return
+                case Qt.Key_Escape:
+                    root.verwerfe(); e.accepted = true; return
+                }
+            }
+            onActiveFocusChanged: if (!activeFocus && root.bearbeitet) root.uebernehme()
+        }
+    }
+
+    //  Tastatur, sobald eine Zelle gewaehlt ist. Ohne Auswahl bleiben die Pfeile
+    //  beim Viewer (vorherige/naechste Datei).
+    Keys.onPressed: function (e) {
+        if (root.bearbeitet || root.selRow < 0 || root.selColumn < 0 || !root.provider) return
+        const strg = (e.modifiers & Qt.ControlModifier) !== 0
+        const seite = Math.max(1, Math.floor(liste.height / root.rowHeight) - 1)
+        switch (e.key) {
+        case Qt.Key_Up:       root._bewege(-1, 0); e.accepted = true; return
+        case Qt.Key_Down:     root._bewege(1, 0);  e.accepted = true; return
+        case Qt.Key_Left:     root._bewege(0, -1); e.accepted = true; return
+        case Qt.Key_Right:    root._bewege(0, 1);  e.accepted = true; return
+        case Qt.Key_Tab:      root._bewege(0, 1);  e.accepted = true; return
+        case Qt.Key_Backtab:  root._bewege(0, -1); e.accepted = true; return
+        case Qt.Key_PageUp:   root._bewege(-seite, 0); e.accepted = true; return
+        case Qt.Key_PageDown: root._bewege(seite, 0);  e.accepted = true; return
+        case Qt.Key_Home:
+            root._bewege(strg ? -root.selRow : 0, -root._spalten.length); e.accepted = true; return
+        case Qt.Key_End:
+            root._bewege(strg ? root.provider.rowCount : 0, root._spalten.length); e.accepted = true; return
+        case Qt.Key_Escape:   root.entmarkiere(); e.accepted = true; return
+        }
+        //  Eine Markierung zeigt nur - Tippen oder Entf aendern nichts. Bearbeitet wird
+        //  per Doppelklick, F2 oder aus dem Menue.
+        if (e.key === Qt.Key_F2 && root._bearbeitbar) { root.bearbeiteZelle(); e.accepted = true }
+    }
+
+    //  Nach dem Loeschen von Zeilen darf die Auswahl nicht hinter dem Ende stehen.
+    Connections {
+        target: root.provider
+        ignoreUnknownSignals: true
+        function onRowsChanged() {
+            if (root.provider && root.selRow >= root.provider.rowCount)
+                root.selRow = root.provider.rowCount - 1
+        }
     }
 
     //  Rechtsklick auf einen Spaltenkopf.
@@ -630,6 +739,28 @@ Item {
             enabled: root.provider && root.provider.hiddenColumnCount > 0
             onTriggered: root._alleSpaltenZeigen()
         }
+        MenuSeparator { visible: root._umbaubar; height: visible ? implicitHeight : 0 }
+        MenuItem {
+            visible: root._umbaubar; height: visible ? implicitHeight : 0
+            text: App.uiText(App.language, "TableInsertColLeft")
+            onTriggered: root.provider.insertColumn(spaltenMenue.spalte)
+        }
+        MenuItem {
+            visible: root._umbaubar; height: visible ? implicitHeight : 0
+            text: App.uiText(App.language, "TableInsertColRight")
+            onTriggered: root.provider.insertColumn(spaltenMenue.spalte + 1)
+        }
+        MenuItem {
+            visible: root._umbaubar; height: visible ? implicitHeight : 0
+            enabled: root.provider && root.provider.columnCount > 1
+            text: App.uiText(App.language, "TableRemoveCol")
+            onTriggered: root.provider.removeColumn(spaltenMenue.spalte)
+        }
+        MenuItem {
+            visible: root._bearbeitbar && root.showHeader; height: visible ? implicitHeight : 0
+            text: App.uiText(App.language, "TableRenameCol")
+            onTriggered: umbenennen.oeffne(spaltenMenue.spalte)
+        }
         MenuSeparator {}
         MenuItem {
             text: App.uiText(App.language, "TableFreezeColumn")
@@ -643,14 +774,17 @@ Item {
     Menu {
         id: zellMenue
         objectName: "zellMenue"     // Griff fuer tests/bench
-        //  Die Markierung gehoert zum Rechtsklick und verschwindet mit dem
-        //  naechsten Linksklick - EGAL WO. Genau das ist das Schliessen dieses
-        //  Menues: ein Klick daneben laesst es zugehen. Ein eigener Zeigerhelfer
-        //  bekaeme den Druck gar nicht, weil die rollende Flaeche die linke
-        //  Taste fuer sich beansprucht (gemessen: die Markierung blieb stehen).
-        //  Ein Eintrag im Menue feuert vorher, die Auswahl steht ihm also noch
-        //  zur Verfuegung.
-        onClosed: root.entmarkiere()
+        MenuItem {
+            visible: root._bearbeitbar; height: visible ? implicitHeight : 0
+            text: App.uiText(App.language, "TableEditCell")
+            onTriggered: root.bearbeiteZelle()
+        }
+        MenuItem {
+            visible: root._bearbeitbar; height: visible ? implicitHeight : 0
+            text: App.uiText(App.language, "TablePaste")
+            onTriggered: root.einfuegen()
+        }
+        MenuSeparator { visible: root._bearbeitbar; height: visible ? implicitHeight : 0 }
         MenuItem {
             text: App.uiText(App.language, "TableCopyCell")
             enabled: root.selRow >= 0 && root.selColumn >= 0
@@ -660,6 +794,72 @@ Item {
             text: App.uiText(App.language, "TableCopyRow")
             enabled: root.selRow >= 0
             onTriggered: root.kopiereZeile()
+        }
+        MenuSeparator { visible: root._umbaubar; height: visible ? implicitHeight : 0 }
+        MenuItem {
+            visible: root._umbaubar; height: visible ? implicitHeight : 0
+            text: App.uiText(App.language, "TableInsertRowAbove")
+            onTriggered: root.provider.insertRows(root.selRow, 1)
+        }
+        MenuItem {
+            visible: root._umbaubar; height: visible ? implicitHeight : 0
+            text: App.uiText(App.language, "TableInsertRowBelow")
+            onTriggered: root.provider.insertRows(root.selRow + 1, 1)
+        }
+        MenuItem {
+            visible: root._umbaubar; height: visible ? implicitHeight : 0
+            text: App.uiText(App.language, "TableRemoveRow")
+            onTriggered: root.provider.removeRows(root.selRow, 1)
+        }
+        MenuSeparator { visible: root._umbaubar; height: visible ? implicitHeight : 0 }
+        MenuItem {
+            visible: root._umbaubar; height: visible ? implicitHeight : 0
+            text: App.uiText(App.language, "TableInsertColLeft")
+            onTriggered: root.provider.insertColumn(root.selColumn)
+        }
+        MenuItem {
+            visible: root._umbaubar; height: visible ? implicitHeight : 0
+            text: App.uiText(App.language, "TableInsertColRight")
+            onTriggered: root.provider.insertColumn(root.selColumn + 1)
+        }
+        MenuItem {
+            visible: root._umbaubar; height: visible ? implicitHeight : 0
+            enabled: root.provider && root.provider.columnCount > 1
+            text: App.uiText(App.language, "TableRemoveCol")
+            onTriggered: root.provider.removeColumn(root.selColumn)
+        }
+    }
+
+    //  Spalte umbenennen: ein kleines Feld unter dem Spaltenkopf.
+    Popup {
+        id: umbenennen
+        property int spalte: -1
+        function oeffne(sp) {
+            umbenennen.spalte = sp
+            for (var i = 0; i < root._spalten.length; ++i)
+                if (root._spalten[i].index === sp) nameFeld.text = root._spalten[i].title
+            umbenennen.x = Math.max(0, root._zelleX(sp) + root._nummernBreite)
+            umbenennen.y = nummernLeiste.height + spaltenKopf.height
+            umbenennen.open()
+            nameFeld.forceActiveFocus()
+            nameFeld.selectAll()
+        }
+        modal: false
+        dim: false
+        closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
+        padding: 8
+        background: Rectangle {
+            color: App.themeMenuBarBg
+            border.color: App.themeBorder
+            radius: 6
+        }
+        TextField {
+            id: nameFeld
+            width: 200
+            onAccepted: {
+                if (root.provider) root.provider.setColumnName(umbenennen.spalte, nameFeld.text)
+                umbenennen.close()
+            }
         }
     }
 
@@ -726,6 +926,7 @@ Item {
 
     Rectangle {
         id: hinweis
+        objectName: "tabellenHinweis"
         property alias text: hinweisText.text
         anchors { right: parent.right; bottom: parent.bottom; margins: 14 }
         width: hinweisText.implicitWidth + 20
@@ -749,10 +950,8 @@ Item {
 
     MouseArea {
         anchors.fill: flick
-        //  KEINE Tasten: eine `MouseArea`, die Tasten annimmt, verschluckt sie
-        //  fuer alles darunter - mit `LeftButton` hier waren die Bildlaufleisten
-        //  nicht mehr zu bedienen. Das Anklicken einer Zelle macht deshalb ein
-        //  `TapHandler` (s. u.), der nur passiv greift.
+        //  KEINE Tasten: eine MouseArea, die sie annimmt, verschluckt sie fuer alles
+        //  darunter - mit `LeftButton` waren die Bildlaufleisten tot.
         acceptedButtons: Qt.NoButton
         z: 4
         onWheel: function (wheel) {

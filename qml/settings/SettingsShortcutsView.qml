@@ -3,8 +3,8 @@ import MediaGallery 1.0
 import "../common"
 
 // Tastenkürzel-Übersicht aus einem reinen JS-Modell; die Beschreibungen stehen bewusst zweisprachig inline,
-// statt den Strings-Katalog um ~35 Einzweck-Labels aufzublähen. Diese Liste ist die nutzersichtbare Wahrheit -
-// Änderungen an den Shortcut{}-Definitionen hier UND in der README nachziehen.
+// statt den Strings-Katalog um ~50 Einzweck-Labels aufzublähen. Diese Liste ist die EINZIGE Quelle der Kürzel -
+// die Tabelle in FEATURES.md folgt ihr, und core.shortcuts prüft, dass jedes Shortcut{} der Oberfläche hier steht.
 Item {
     id: rootCol
     implicitHeight: col.implicitHeight
@@ -16,9 +16,18 @@ Item {
     readonly property var sections: [
         { headerKey: "ShortcutCtxGallery", rows: [
             { de: "Ordner öffnen",                 en: "Open folder",                 keys: ["Ctrl+O"] },
+            { de: "Ins Suchfeld springen",         en: "Jump to the search field",    keys: ["Ctrl+F"] },
             { de: "Neu laden / Vorschau erneuern", en: "Reload / refresh thumbnails", keys: ["F5", "R"] },
+            { de: "Alles wählen, was der Filter zeigt", en: "Select everything shown", keys: ["Ctrl+A"] },
+            { de: "Auswahl aufheben",              en: "Clear the selection",         keys: ["Esc"] },
+            { de: "Dateien kopieren / einfügen",   en: "Copy / paste files",          keys: ["Ctrl+C", "Ctrl+V"] },
+            { de: "Auswahl löschen",               en: "Delete the selection",        keys: ["Entf"] },
+            { de: "Aus dem Unterordner zurück",    en: "Back out of a subfolder",     keys: ["Alt+<-"] },
             { de: "Optionen-Modus umschalten",     en: "Toggle options mode",         keys: ["Alt+S"] },
             { de: "Audio-Player-Modus umschalten", en: "Toggle audio player mode",    keys: ["Alt+A"] },
+            { de: "Abspielen / Pause (Player-Modus)", en: "Play / pause (player mode)", keys: ["Leertaste"] },
+            { de: "Nächster / vorheriger Titel (Player-Modus)",
+              en: "Next / previous track (player mode)",                              keys: ["->", "<-"] },
             { de: "Vollbild ein-/ausschalten",     en: "Toggle fullscreen",           keys: ["F"] },
             { de: "Vorschau-Sperre umschalten",    en: "Toggle cover mode",           keys: ["B"] },
             { de: "Kachelgröße größer / kleiner",  en: "Tile size larger / smaller",  keys: ["Ctrl++", "Ctrl+-"] },
@@ -37,6 +46,7 @@ Item {
         ] },
         { headerKey: "ShortcutCtxPdf", rows: [
             { de: "Herein- / herauszoomen",        en: "Zoom in / out",               keys: ["+", "-"] },
+            { de: "Im Dokument suchen",            en: "Search the document",         keys: ["Ctrl+F"] },
             { de: "Markierten Text kopieren",      en: "Copy selected text",          keys: ["Ctrl+C"] },
             { de: "Ganze Seite markieren",         en: "Select all text on page",     keys: ["Ctrl+A"] },
             { de: "Notizen ein-/ausblenden",       en: "Toggle note visibility",      keys: ["Alt+Q"] },
@@ -65,7 +75,20 @@ Item {
             { de: "Nächster / vorheriger Treffer", en: "Next / previous match",       keys: ["↵", "Shift+↵"] },
             { de: "Suche schließen",               en: "Close search",                keys: ["Esc"] },
             { de: "Rückgängig / Wiederholen",      en: "Undo / redo",                 keys: ["Ctrl+Z", "Ctrl+Shift+Z", "Ctrl+Y"] },
-            { de: "Einrücken (schreibt Leerzeichen)", en: "Indent (writes spaces)",   keys: ["Tab"] }
+            { de: "Einrücken (schreibt Leerzeichen)", en: "Indent (writes spaces)",   keys: ["Tab"] },
+            { de: "Anfang / Ende der Datei",        en: "Start / end of the file",     keys: ["Ctrl+Home", "Ctrl+End"] },
+            { de: "Seite blättern (Cursor bleibt)", en: "Scroll a page (cursor stays)", keys: ["Page Up", "Page Down"] }
+        ] },
+        { headerKey: "ShortcutCtxTable", rows: [
+            { de: "Zelle markieren",               en: "Mark a cell",                 keys: ["Klick"] },
+            { de: "Zelle bearbeiten",              en: "Edit cell",                   keys: ["Doppelklick", "F2"] },
+            { de: "Markierung bewegen",            en: "Move the mark",               keys: ["->", "<-", "Tab", "Shift+Tab"] },
+            { de: "Zelle / Zeile kopieren",        en: "Copy cell / row",             keys: ["Ctrl+C", "Ctrl+Shift+C"] },
+            { de: "Einfügen (auch mehrere Zellen)", en: "Paste (several cells too)",  keys: ["Ctrl+V"] },
+            { de: "Rückgängig / Wiederholen",      en: "Undo / redo",                 keys: ["Ctrl+Z", "Ctrl+Shift+Z", "Ctrl+Y"] },
+            { de: "Speichern (mit Rückmeldung)",   en: "Save (with a check)",         keys: ["Ctrl+S"] },
+            { de: "Suchen",                        en: "Find",                        keys: ["Ctrl+F"] },
+            { de: "Markierung aufheben",           en: "Remove the mark",             keys: ["Esc"] }
         ] }
     ]
 

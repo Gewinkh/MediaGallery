@@ -104,6 +104,47 @@ QList<Bereich> findBlocks(const Datei& d) {
     return aus;
 }
 
+void Zeile::setzeWert(int spalte, const QString& wert) {
+    if (spalte < 0 || spalte >= kMaxFelderZeile) return;
+    auto it = std::lower_bound(m_gefuellt.begin(), m_gefuellt.end(), quint16(spalte),
+                               [](const std::pair<quint16, QString>& e, quint16 s) {
+                                   return e.first < s;
+                               });
+    const bool da = it != m_gefuellt.end() && it->first == spalte;
+    if (wert.isEmpty()) {
+        if (da) m_gefuellt.erase(it);
+    } else if (da) {
+        it->second = wert;
+    } else {
+        m_gefuellt.insert(it, {quint16(spalte), wert});
+    }
+    if (spalte >= m_felder) m_felder = spalte + 1;
+}
+
+void Zeile::spalteEinfuegen(int spalte) {
+    if (spalte < 0 || spalte > m_felder || m_felder >= kMaxFelderZeile) return;
+    for (auto& e : m_gefuellt)
+        if (e.first >= spalte) ++e.first;
+    ++m_felder;
+}
+
+void Zeile::spalteEntfernen(int spalte) {
+    if (spalte < 0 || spalte >= m_felder) return;
+    for (qsizetype i = 0; i < m_gefuellt.size();) {
+        auto& e = m_gefuellt[i];
+        if (e.first == spalte) { m_gefuellt.removeAt(i); continue; }
+        if (e.first > spalte) --e.first;
+        ++i;
+    }
+    --m_felder;
+}
+
+void Zeile::setzeFelderzahl(int n) {
+    if (n < 0) n = 0;
+    while (!m_gefuellt.isEmpty() && m_gefuellt.last().first >= n) m_gefuellt.removeLast();
+    m_felder = n;
+}
+
 QStringList Zeile::alle() const {
     QStringList aus;
     aus.reserve(m_felder);
@@ -111,8 +152,11 @@ QStringList Zeile::alle() const {
     return aus;
 }
 
-QStringList splitRecord(QStringView zeile, QChar trenner, bool* unbalanciert) {
+QStringList splitRecord(QStringView zeile, QChar trenner, bool* unbalanciert,
+                        bool* gekappt, QList<std::pair<qsizetype, qsizetype>>* grenzen) {
     if (unbalanciert) *unbalanciert = false;
+    if (gekappt) *gekappt = false;
+    if (grenzen) grenzen->clear();
     QStringList felder;
     QString feld;
     feld.reserve(64);
@@ -123,6 +167,7 @@ QStringList splitRecord(QStringView zeile, QChar trenner, bool* unbalanciert) {
         feld.clear();
         bool inKlammer = false;
         bool offen     = false;
+        const qsizetype anfang = i;
         if (i < n && zeile[i] == kKlammer) { inKlammer = offen = true; ++i; }
 
         while (i < n) {
@@ -143,10 +188,17 @@ QStringList splitRecord(QStringView zeile, QChar trenner, bool* unbalanciert) {
             feld.append(kKlammer); ++i;
         }
         if (offen && unbalanciert) *unbalanciert = true;
-        if (feld.size() > kMaxFeldZeichen) feld.truncate(kMaxFeldZeichen);
+        if (feld.size() > kMaxFeldZeichen) {
+            feld.truncate(kMaxFeldZeichen);
+            if (gekappt) *gekappt = true;
+        }
         felder.append(feld);
+        if (grenzen) grenzen->append({anfang, i});
 
-        if (felder.size() >= kMaxFelderZeile) break;
+        if (felder.size() >= kMaxFelderZeile) {
+            if (gekappt && i < n) *gekappt = true;
+            break;
+        }
         if (i >= n) break;
         ++i;                                   // ueber den Trenner
     }
@@ -200,6 +252,7 @@ Datei parse(const QByteArray& raw, QChar trenner) {
     //  die naechste Zeile noch zum selben Datensatz. Ohne dieses Zusammenziehen
     //  zerfiele eine solche Zeile in zwei kaputte.
     bool unbal = false;
+    bool gekappt = false;
     for (qsizetype z = 0; z < zeilen.size(); ++z) {
         if (d.zeilen.size() >= kMaxZeilen) { d.abgeschnitten = true; break; }
         const int nr = int(z) + 1;
@@ -214,7 +267,7 @@ Datei parse(const QByteArray& raw, QChar trenner) {
         }
         //  Der gewoehnliche Fall zerlegt die SICHT auf die Zeile - eine Kopie
         //  je Zeile waere bei 50.000 Zeilen der halbe Dateiinhalt noch einmal.
-        QStringList f = splitRecord(zeilen.at(z), d.trenner, &unbal);
+        QStringList f = splitRecord(zeilen.at(z), d.trenner, &unbal, &gekappt);
         if (unbal) {
             //  Erst jetzt eine echte Zeichenkette: nur ein offenes
             //  Anfuehrungszeichen zieht die naechste Zeile mit herein.
@@ -223,9 +276,10 @@ Datei parse(const QByteArray& raw, QChar trenner) {
                 ++z;
                 roh += QLatin1Char('\n');
                 roh += zeilen.at(z);
-                f = splitRecord(roh, d.trenner, &unbal);
+                f = splitRecord(roh, d.trenner, &unbal, &gekappt);
             }
         }
+        if (gekappt) d.gekappt = true;
         if (unbal)
             d.warnungen.append({nr, QStringLiteral("Anfuehrungszeichen nicht geschlossen")});
         d.zeilen.append(Zeile(f));

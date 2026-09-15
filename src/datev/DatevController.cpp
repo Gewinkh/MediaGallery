@@ -64,6 +64,7 @@ DatevController::DatevController(QObject* parent) : QObject(parent) {
     //  muss die Kopftabelle deshalb neu gelesen werden.
     connect(&AppSettings::instance(), &AppSettings::languageChanged,
             this, &DatevController::stateChanged);
+    connect(this, &DatevController::stateChanged, this, &DatevController::rowsChanged);
 }
 
 DatevController::~DatevController() {
@@ -82,8 +83,16 @@ void DatevController::setSource(const QString& pathOrUrl) {
     m_suchLaeuft = false;
     m_suche.leeren();
 
-    //  Reihenfolge und Spaltenauswahl gehoeren zur DATEI, nicht zur Flaeche.
-    clearSort();
+    //  Reihenfolge, Filter und Spaltenauswahl gehoeren zur DATEI, nicht zur Flaeche.
+    m_filter = {};
+    m_sortSpalte = -1;
+    m_sortRichtung = mg::table::SortRichtung::Keine;
+    if (m_sortAbbruch) m_sortAbbruch->store(true);
+    m_sortLaeuft = false;
+    m_ordnung.clear();
+    m_ordnungAktiv = false;
+    ++m_inhaltRevision;
+    emit sortChanged();
     m_versteckt.clear();
 
     m_source = pfad;
@@ -105,6 +114,12 @@ void DatevController::setSource(const QString& pathOrUrl) {
                               [self](std::shared_ptr<Datei> d, QString fehler) {
                                   self->ergebnisUebernehmen(std::move(d), fehler);
                               }));
+}
+
+void DatevController::reload() {
+    const QString pfad = m_source;
+    m_source.clear();
+    setSource(pfad);
 }
 
 void DatevController::ergebnisUebernehmen(std::shared_ptr<Datei> d, const QString& fehler) {
@@ -153,8 +168,11 @@ void DatevController::setShowAllColumns(bool v) {
     //  Der Schalter ist der grosse Griff - was einzeln ausgeblendet war, gilt
     //  danach nicht mehr, sonst fehlten in "alle Spalten" weiter welche.
     m_versteckt.clear();
-    if (m_sortSpalte >= 0) clearSort();
     spaltenNeuRechnen();
+    const bool filterSpalteWeg = m_filter.spalte >= 0 && !spaltenMaske().value(m_filter.spalte, true);
+    if (filterSpalteWeg) m_filter = {};
+    if (m_sortSpalte >= 0) clearSort();
+    else if (filterSpalteWeg || (m_filter.aktiv() && m_filter.spalte < 0)) ordnungNeuBauen();
     //  Die Suche laeuft ueber die GEZEIGTEN Spalten - mit den ausgeblendeten
     //  kommen auch deren Treffer dazu.
     if (!m_suchText.isEmpty()) { m_suchAb = 0; sucheStarten(); }
@@ -169,9 +187,17 @@ void DatevController::search(const QString& text, bool caseSensitive,
     sucheStarten();
 }
 
+void DatevController::setSlashDateMonthFirst(bool v) {
+    if (v == m_monatZuerst) return;
+    m_monatZuerst = v;
+    if (m_filter.aktiv() || m_sortRichtung != mg::table::SortRichtung::Keine) ordnungNeuBauen();
+    else emit sortChanged();
+}
+
 void DatevController::sucheStarten() {
     if (m_suchAbbruch) m_suchAbbruch->store(true);
-    if (!m_datei || m_suchText.isEmpty()) {
+    //  Ein Filter ohne Treffer zeigt keine Buchung - dort kann nichts stehen.
+    if (!m_datei || m_suchText.isEmpty() || (m_ordnungAktiv && m_ordnung.isEmpty())) {
         m_suchLaeuft = false;
         m_suche.leeren();
         emit searchChanged();
@@ -188,7 +214,7 @@ void DatevController::sucheStarten() {
         [self](QList<mg::table::Treffer> t, bool mehr, QList<int>) {
             self->suchErgebnis(std::move(t), mehr);
         },
-        m_ordnung));
+        m_ordnungAktiv ? m_ordnung : QList<int>()));
 }
 
 void DatevController::suchErgebnis(QList<mg::table::Treffer> treffer, bool mehr) {
@@ -257,7 +283,14 @@ int DatevController::columnChars(int column) const {
 }
 
 int DatevController::rowCount() const {
-    return m_datei ? int(m_datei->buchungen.size()) : 0;
+    if (!m_datei) return 0;
+    return m_ordnungAktiv ? int(m_ordnung.size()) : int(m_datei->buchungen.size());
+}
+
+int DatevController::rowNumber(int row) const {
+    if (!m_filter.aktiv()) return row + 1;
+    const int z = rohZeile(row);
+    return z < 0 ? row + 1 : z + 1;
 }
 
 int DatevController::columnCount() const {
@@ -289,7 +322,7 @@ QString DatevController::rowText(int row) const {
 }
 
 int DatevController::rohZeile(int anzeige) const {
-    if (m_ordnung.isEmpty()) return anzeige;
+    if (!m_ordnungAktiv) return anzeige;
     if (anzeige < 0 || anzeige >= m_ordnung.size()) return -1;
     return m_ordnung.at(anzeige);
 }
@@ -318,41 +351,82 @@ void DatevController::sortByColumn(int column) {
 }
 
 void DatevController::clearSort() {
-    if (m_sortAbbruch) m_sortAbbruch->store(true);
-    const bool hatte = m_sortSpalte >= 0 || !m_ordnung.isEmpty();
     m_sortSpalte   = -1;
     m_sortRichtung = mg::table::SortRichtung::Keine;
-    m_sortLaeuft   = false;
-    m_ordnung.clear();
-    if (hatte) { ++m_inhaltRevision; emit sortChanged(); }
+    //  Ein Filter bleibt stehen - dann gilt dessen Auswahl in Dateireihenfolge.
+    ordnungNeuBauen();
+}
+
+void DatevController::setFilter(int column, const QString& text, bool caseSensitive,
+                                bool wholeCell) {
+    mg::table::FilterRegel neu;
+    neu.spalte = (m_datei && column >= 0 && column < m_datei->spalten.size()) ? column : -1;
+    neu.text = text;
+    neu.opt.gross = caseSensitive;
+    neu.opt.ganzeZelle = wholeCell;
+    if (neu.spalte == m_filter.spalte && neu.text == m_filter.text
+        && neu.opt.gross == m_filter.opt.gross && neu.opt.ganzeZelle == m_filter.opt.ganzeZelle)
+        return;
+    m_filter = neu;
+    ordnungNeuBauen();
+}
+
+void DatevController::clearFilter() {
+    if (!m_filter.aktiv()) return;
+    m_filter = {};
+    ordnungNeuBauen();
 }
 
 void DatevController::ordnungNeuBauen() {
     if (m_sortAbbruch) m_sortAbbruch->store(true);
-    if (!m_datei || m_sortRichtung == mg::table::SortRichtung::Keine) {
+    if (!m_datei || (!m_filter.aktiv() && m_sortRichtung == mg::table::SortRichtung::Keine)) {
         m_sortLaeuft = false;
         m_ordnung.clear();
+        m_ordnungAktiv = false;
+        if (m_datei) { m_soll = m_datei->soll; m_haben = m_datei->haben; }
         ++m_inhaltRevision;
         emit sortChanged();
+        emit rowsChanged();
         if (!m_suchText.isEmpty()) sucheStarten();
         return;
     }
     m_sortLaeuft = true;
     emit sortChanged();
 
+    mg::table::Ordnungsauftrag a;
+    a.von = 0;
+    a.bis = int(m_datei->buchungen.size());
+    a.filter = m_filter;
+    a.spalten = spaltenMaske();
+    a.sortSpalte = m_sortSpalte;
+    a.richtung = m_sortRichtung;
+    a.monatZuerst = a.filter.monatZuerst = m_monatZuerst;
+    const Summenspalten ss = summenSpalten(m_datei->spalten);
     m_sortAbbruch = std::make_shared<std::atomic<bool>>(false);
     auto* self = this;
-    m_pool.start(new mg::table::SortTask(
-        this, m_datei, &m_datei->buchungen, 0, int(m_datei->buchungen.size()),
-        m_sortSpalte, m_sortRichtung, m_sortAbbruch,
-        [self](QList<int> ordnung) { self->sortErgebnis(std::move(ordnung)); }));
+    m_pool.start(new mg::table::OrdnungTask(
+        this, m_datei, &m_datei->buchungen, a, m_sortAbbruch,
+        [self](QList<int> ordnung, bool aktiv, QVariant summen) {
+            self->ordnungErgebnis(std::move(ordnung), aktiv, summen);
+        },
+        [ss](const QList<Zeile>& buchungen, const QList<int>* auswahl) -> QVariant {
+            if (!auswahl) return {};
+            double soll = 0.0, haben = 0.0;
+            summiere(buchungen, ss, auswahl, &soll, &haben);
+            return QVariantList{ soll, haben };
+        }));
 }
 
-void DatevController::sortErgebnis(QList<int> ordnung) {
+void DatevController::ordnungErgebnis(QList<int> ordnung, bool aktiv, const QVariant& summen) {
     m_sortLaeuft = false;
     m_ordnung = std::move(ordnung);
+    m_ordnungAktiv = aktiv;
+    const QVariantList s = summen.toList();
+    if (s.size() == 2) { m_soll = s.at(0).toDouble(); m_haben = s.at(1).toDouble(); }
+    else if (m_datei)  { m_soll = m_datei->soll;      m_haben = m_datei->haben; }
     ++m_inhaltRevision;
     emit sortChanged();
+    emit rowsChanged();
     //  Die Trefferzeilen zaehlen in der ANZEIGE - nach einem Wechsel der
     //  Reihenfolge zeigten die alten auf beliebige Buchungen.
     if (!m_suchText.isEmpty()) sucheStarten();
@@ -367,10 +441,18 @@ void DatevController::setColumnHidden(int column, bool hidden) {
     if (war == hidden) return;
     if (hidden) m_versteckt.insert(column);
     else        m_versteckt.remove(column);
-    if (hidden && column == m_sortSpalte) clearSort();
     spaltenNeuRechnen();
     ++m_inhaltRevision;
-    emit sortChanged();
+    bool neuOrdnen = false;
+    if (hidden && column == m_sortSpalte) {
+        m_sortSpalte = -1;
+        m_sortRichtung = mg::table::SortRichtung::Keine;
+        neuOrdnen = true;
+    }
+    if (hidden && column == m_filter.spalte) { m_filter = {}; neuOrdnen = true; }
+    if (m_filter.aktiv() && m_filter.spalte < 0) neuOrdnen = true;
+    if (neuOrdnen) ordnungNeuBauen();
+    else emit sortChanged();
     if (!m_suchText.isEmpty()) sucheStarten();
 }
 
@@ -379,7 +461,8 @@ void DatevController::showAllHiddenColumns() {
     m_versteckt.clear();
     spaltenNeuRechnen();
     ++m_inhaltRevision;
-    emit sortChanged();
+    if (m_filter.aktiv() && m_filter.spalte < 0) ordnungNeuBauen();
+    else emit sortChanged();
     if (!m_suchText.isEmpty()) sucheStarten();
 }
 

@@ -164,6 +164,10 @@ public:
     virtual bool tableOpensTxt() const = 0;
     virtual void setTableOpensTxt(bool v) = 0;
 
+    //  Ein Datum mit Schraegstrichen in Tabellen als MM/TT/JJJJ statt TT/MM/JJJJ.
+    virtual bool tableDateMonthFirst() const = 0;
+    virtual void setTableDateMonthFirst(bool v) = 0;
+
     //  Text -> PDF in den Farben des Editor-Profils statt in EINER Farbe.
     //  AUS als Vorgabe: der haeufigste Grund fuer ein PDF ist ein Ausdruck.
     virtual bool textPdfNative() const = 0;

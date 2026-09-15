@@ -51,6 +51,16 @@ public:
     //  fuer die Anzeige, ohne dass Speicher dafuer draufgeht.
     void ensureFelder(int n) { if (n > m_felder) m_felder = n; }
 
+    //  Bearbeiten. Ein Wert hinter dem letzten Feld verlaengert die Zeile; ein
+    //  leerer Wert belegt keinen Speicher.
+    void setzeWert(int spalte, const QString& wert);
+    //  Spalte davor einschieben bzw. herausnehmen; die Felder dahinter ruecken.
+    //  Eine Zeile, die gar nicht so weit reicht, bleibt unberuehrt.
+    void spalteEinfuegen(int spalte);
+    void spalteEntfernen(int spalte);
+    //  Auf `n` Felder kuerzen; was dahinter stand, faellt weg.
+    void setzeFelderzahl(int n);
+
 private:
     QList<std::pair<quint16, QString>> m_gefuellt;
     int m_felder = 0;
@@ -68,6 +78,9 @@ struct Datei {
     QChar         trenner = u';';
     bool          cp1252 = false;
     bool          abgeschnitten = false;   // Deckel erreicht
+    //  Ein Feld oder eine Zeile lag ueber ihrem Deckel. Die Anzeige zeigt den
+    //  Rest, zurueckschreiben darf man eine solche Datei aber nicht.
+    bool          gekappt = false;
 };
 
 //  Ein Abschnitt der Datei - ein Block zwischen zwei Leerzeilen. Ausgaben
@@ -93,7 +106,12 @@ QList<Bereich> findBlocks(const Datei& d);
 //  Trenner noch Zeilenende folgt, gilt als Inhalt - eine DATEV-Vorlage enthaelt
 //  `" "Normalabschr. immater. VermG" "`, und ein Zerleger, der dort schliesst,
 //  verliert den halben Text.
-QStringList splitRecord(QStringView zeile, QChar trenner, bool* unbalanciert = nullptr);
+//  `grenzen` bekommt je Feld Anfang und Ende des ROHEN Stuecks (Klammern
+//  eingeschlossen, Trenner nicht) - der Zurueckschreiber kopiert daraus die
+//  Felder, die sich nicht geaendert haben.
+QStringList splitRecord(QStringView zeile, QChar trenner, bool* unbalanciert = nullptr,
+                        bool* gekappt = nullptr,
+                        QList<std::pair<qsizetype, qsizetype>>* grenzen = nullptr);
 
 //  Welches Trennzeichen benutzt die Datei? Gewertet wird ueber die ersten
 //  Zeilen: gesucht ist das Zeichen, das die gleichmaessigste Feldzahl (>= 2)

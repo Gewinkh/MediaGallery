@@ -1,980 +1,516 @@
 # MediaGallery - Limitations
 
-Where the app stops, and why. `FEATURES.md` says what it does, `README.md` gives
-one line per area - **this file is the honest counterpart**: every limit a user
-can run into, with the reason behind it and, where one exists, the way around it.
+Where the app stops, and why. [FEATURES.md](FEATURES.md) says what it does; this
+file is the counterpart. Each entry names what you notice, why it happens, and
+what you can do about it.
 
-Each entry follows the same shape:
-
-> **What you notice** - what actually happens.
-> **Why** - the cause, with the measurement when one was taken.
-> **Workaround / status** - what to do instead, or what is planned.
-
-The sections above are about behaviour you meet in the **running app**. What is
-simply *not built yet* is kept apart at the end of this file, under
-[Not built yet](#not-built-yet) - the two must not blur: "does not work" and
-"does not exist yet" call for different answers.
+What is simply *not built yet* is listed separately at the end, under
+[Not built yet](#not-built-yet).
 
 ---
 
 ## Platform
 
 **Only Linux is built and tested.**
-Why: development happens on Arch with Qt 6.11; the code avoids platform-specific
-paths, but Windows and macOS have never been compiled or run.
-Status: portability is a design priority, not a tested promise.
+Why: development happens on Arch Linux with Qt 6.11. The code avoids
+platform-specific paths, but Windows and macOS have never been compiled.
 
-**True fullscreen (`F`) was only ever seen under KDE/Wayland.**
-Why: leaving fullscreen goes through an explicit *windowed -> remembered geometry
--> maximised* sequence because some window managers swallow the direct jump.
+**True fullscreen (`F`) has only been tested under KDE/Wayland.**
 Workaround: if your window manager behaves differently, `Esc` also leaves it.
 
-**The mouse wheel does not scroll the gallery while you drag a file on Wayland.**
-Why: during a drag the compositor owns the pointer and no wheel event reaches the
-application at all - measured: 892 drag events, 0 wheel events.
-Workaround: the pointer edges scroll the view during a drag, and a bar of the
-visible folders appears at the bottom as a drop target. On X11 the wheel works.
+**On Wayland the mouse wheel does nothing while you drag a file.**
+Why: during a drag the desktop keeps the mouse to itself; the app receives no
+wheel events at all (measured: 892 drag events, 0 wheel events).
+Workaround: move the pointer to the top or bottom edge to scroll, or drop on the
+folder bar that appears at the bottom. On X11 the wheel works.
 
 ---
 
 ## Optional dependencies
 
-**Without ZLIB there is no DOCX editing**, without **Tesseract** no OCR for
-scanned PDFs, without **Hunspell** (plus a dictionary) no spell checking.
-Why: all three are optional at build time so the app stays buildable without them.
-Status: the app builds and runs normally and says why the feature is off - DOCX
-tiles stay visible but greyed out with a hover note.
+**Without ZLIB there is no DOCX editing, without Tesseract no text recognition
+(OCR), without Hunspell no spell checking.**
+Why: all three are optional, so the app can be built without them.
+Workaround: the app runs normally and says why the feature is off.
 
 ---
 
 ## Gallery and files
 
+**Scrolling is less smooth when hundreds of tiles are selected.**
+Why: each selected tile draws a tinted overlay. With 600 selected tiles a frame
+takes about 10 ms instead of 6 ms.
+Workaround: none planned - a cheaper way would change how a selection looks.
 
-**With a very large selection the gallery draws more slowly.**
-What you notice: after *Select all* in a folder of several hundred files,
-scrolling is less smooth than with nothing selected.
-Why: every selected tile carries a translucent accent area over the whole tile,
-a badge and a thicker border. Measured with 600 tiles, all selected: **9.7 to
-11.6 ms per frame against 6.0 ms** with none selected; switching off the
-translucent area alone brings it back to 6.9 ms, so that area is 3.5 of the
-4.5 ms. The selection itself is not the cost - setting it takes 1.6 ms for 5,000
-files, and dragging a band 0.16 ms per mouse move.
-Workaround / status: deliberately left as it is - every cheaper way changes how
-a selected tile looks (without the rounded corners the area would stand over the
-card edge, without the area only border and check mark would remain).
-**"Show all files" really shows everything**, including file types the app cannot
-open (archives, executables).
-Why: anything narrower would hide the `.bak` backups the switch exists to reveal.
-Workaround: unknown types carry an extension badge, so they are recognisable.
+**"Show all files" really shows everything**, including archives and programs.
+Why: anything narrower would hide the `.bak` backups the switch exists for.
+Unknown types carry a badge with their extension.
 
-**A file created with an extension the gallery does not know is invisible until
-"Show all files" is on.**
-Why: what appears as a tile is decided by the extension (`MediaItem::detectType`), and an
-unknown one counts as `Unknown`. A name with no extension at all only shows up if it is one
-of the known extensionless names (`LICENSE`, `README`, `Makefile`, `Dockerfile`, …) - so a
-file called `NOTIZEN` stays hidden.
-Workaround / status: the status line says so at the moment of creation ("only visible with
-'Show all files'"). The switch is deliberately **not** flipped for you - it is your setting
-(user's decision, 2026-09-03). The file itself is created either way.
+**A new file with an unknown extension stays hidden until "Show all files" is on.**
+Why: the gallery decides by extension. Files without one only show up if they are
+well-known names such as `LICENSE` or `Makefile`.
+Workaround: the status line says so when you create the file. The switch is not
+flipped for you - it is your setting.
 
-**Deleting goes to the trash - where there is one.**
-Why: on systems without a working trash the app refuses to delete rather than
-removing a file for good.
+**Deleting only works where a trash exists.**
+Why: without a trash the app refuses rather than deleting a file for good.
 
 **The selection rectangle does not scroll the gallery.**
-What you notice: dragging it to the top or bottom edge does not carry on to the
-tiles above or below, unlike dragging a *file*, which does scroll at the edge.
-Why: the rectangle is evaluated over the rows that are currently laid out. If the
-view scrolled underneath it, tiles would pass through it: what left the viewport
-would be neither visibly selected nor visibly deselected, and the result would
-depend on how fast you dragged. Measured cost of one pointer move over 3000
-files: 230 µs while the selection changes, 55 µs while it does not.
-Workaround: scroll first, then drag - or add to the selection with `Ctrl`+click
-and `Shift`+click, which reach any tile.
+Why: if the view moved underneath it, the result would depend on how fast you
+dragged.
+Workaround: scroll first, then drag - or use `Ctrl`+click and `Shift`+click.
 
-**Any change to a filter clears the selection**, as does opening another folder or
-a refresh.
-Why: a selection the filter has hidden would be a trap - `Ctrl+C` and *Delete*
-would act on files that are not on screen. The same reasoning keeps `Ctrl+A` to
-what the filter is showing rather than the whole folder.
+**Changing a filter clears the selection** (so does opening another folder).
+Why: otherwise `Ctrl+C` or *Delete* could act on files you can no longer see.
 
-**The desktop's clipboard can shorten a long list of copied files.**
-What you notice: you copy many files with `Ctrl+C` and another program
-(a browser, a file manager) receives only the first few - sometimes only one.
-Why: not the copy itself. Measured on KDE/Wayland with 29 files
-(`bench_shell g`): the app hands over 4147 bytes / 29 addresses, and reading the
-system clipboard back gives 429 bytes / 3 addresses, cut in the middle of an
-address - twice out of five runs it was even the clipboard of an **earlier**
-run, from a different folder. The mangled version always carries the format
-`application/x-kde-onlyReplaceEmpty`, the fingerprint of KDE's clipboard manager
-(Klipper). Leaving out `text/plain` does not help (measured, 5 runs each).
-Workaround / status: **inside the app it does not happen** - `Ctrl+V` in the
-gallery uses the list the app remembered when copying, so all files arrive
-(measured: 29 copied, 29 pasted, three runs). For other programs, **dragging**
-the selection works reliably where copying does not - a drag carries the whole
-list. Turning Klipper off (or its "Text selection only" option on) removes the
-problem at its source.
+**Other programs sometimes receive only a few of the files you copied.**
+Why: KDE's clipboard manager (Klipper) cuts long file lists short - measured with
+29 files, only 3 arrived. The app hands over the full list.
+Workaround: pasting inside the app always brings every file. For other programs,
+drag the files instead, or turn Klipper off.
 
 **Folders can be selected, but not dragged or copied.**
-What you notice: a folder tile joins a multi-selection and is deleted with it,
-but dragging the selection leaves it behind, and `Ctrl+C` does not copy it.
-Why: dragging a folder into another program is a promise of its own, not a side
-effect of selecting it; the gallery has never offered it.
+Why: dragging a folder into another program is not offered.
 
-**A multi-file drop asks about each name collision separately.**
-What you notice: dropping 20 files into a folder that already holds five of those
-names brings up the replace/rename question five times.
-Why: there is no "apply to all" - each collision is a decision about a different
-file. Cancelling applies to that one file only; the rest of the drop carries on.
+**Dropping many files asks about each name collision separately.**
+Why: every collision concerns a different file; cancelling skips only that one.
 
-**In the list arrangement the hover overlay is gone - tagging and renaming go
-through the right-click menu.**
-What you notice: with *Settings -> View -> Arrangement* set to *List*, hovering a
-row no longer brings up the strip for editing tags, renaming inline and the
-quick actions. The row still shows the name and coloured tag dots, so you can
-see what a file carries - you just cannot change it from the row itself.
-Everything is still reachable, from the right-click menu instead.
-Why: a row is 46 pixels high, and the overlay is built for a tile - drawn over a
-row it would cover the whole entry including the name. `MediaTile` therefore
-switches the overlay off in list mode, along with the large thumbnail, the type
-badge and the play circle. The same has always been true of player mode; the
-setting only makes it reachable in the normal gallery as well.
-Workaround / status: right-click gives tags, categories, rename and delete;
-switch back to *Tiles* for the overlay.
+**In the list arrangement, tags and renaming go through the right-click menu.**
+Why: a row is too low for the editing strip a tile shows on hover.
+Workaround: right-click, or switch back to *Tiles*.
 
 **A bookmark group name cannot contain a slash.**
-What you notice: typing "C/C++" as a group name leaves the OK button disabled,
-with a line saying why.
-Why: a group is identified by its full path, and "/" is what separates the
-levels - "Personal/Learning" IS the nesting. A slash inside a name would make the
-same text mean two different places in the tree. The same goes for a tab
-character, which separates the columns of the stored line.
-Workaround / status: use another separator in the name ("C, C++" or "C - C++"),
-or make it two groups. Bookmarks themselves are unaffected - their display name
-takes any character.
+Why: the slash separates nesting levels ("Personal/Learning").
+Workaround: write "C, C++" or make two groups. Bookmark names themselves take any
+character.
 
-**Reordering groups that sit side by side needs the thin strip, not the row.**
-What you notice: dragging a group onto another group puts it *inside* it. To
-place it *before* a sibling you have to hit the 10-pixel insert strip that
-appears above each group row while you drag.
-Why: one drop target cannot mean two things. "Into" is the operation the nesting
-exists for, so the row carries it, and the strip carries "before, same level".
-The strip's space is reserved permanently, so nothing shifts when a drag starts.
+**To put a bookmark group before another one, drop it on the thin strip above
+the row.**
+Why: dropping on the row itself puts the group *inside* the other one.
+
+**A folder with tens of thousands of files pauses briefly before the first tile.**
+Why: the folder is read and sorted once up front, which makes the rest much
+faster (12,000 files: 18 ms pause, whole read 161 ms instead of 628 ms).
+Below a few thousand files the pause is under 3 ms.
+
+**A folder of very large PNGs loads a little slower than one of JPEGs.**
+Why: a PNG has to be decoded at full size before it can be shrunk. The app limits
+how many of those run at once, so memory stays low (200 large PNGs: 323 MB
+instead of 421 MB).
+Workaround: none needed; the second visit comes from the thumbnail cache.
 
 ---
 
 ## Tags and categories
 
+**Tagging in a folder of 20,000 files takes about 10 ms.**
+Why: every change re-reads the tags of all rows and filters the gallery again.
+That is still below one frame.
 
-**In a very large folder, tagging still costs a few milliseconds.**
-What you notice: in a folder of 20,000 files, assigning a tag takes about 10 ms
-and *Undo* in the tag bar about 13 ms - both below one frame, but measurable.
-Why: measured with `bench_tags`. What remains is `tagsChanged`: every row's tags
-are re-read (7 ms) and the gallery is re-filtered (2 ms) whenever anything about
-tags changes. The two big posts are gone: an undo step for a plain assignment no
-longer stores the whole state but only the files it touches, and the sidecar is
-written in a worker thread instead of between the gesture and the next frame.
-Undo went from 138 ms to 13 ms, an assignment from 21 ms to 10 ms. Dragging a
-category in the panel is free (0.001 ms).
-Workaround / status: what is left would need a signal per file instead of one
-for everything - noted in `NEXT.md`. Steps that change more than file tags
-(categories, colours, renames) still hold a full snapshot; that is deliberate,
-because a wrong undo is worse than a slow one.
-**Setting a date changes the file's modification time - and that has side
-effects.**
-Why: the date is written to the file so the rest of the system sees it. Backup
-and sync tools notice a changed timestamp and will copy the file again, and the
-gallery's thumbnail for that file is regenerated once (its cache is keyed on the
-modification time).
-Consequence: *Reset* goes back to the file's **creation date**, not to the date
-the file had before - that one is not kept anywhere, by design (no second copy
-of something the file system already stores).
-Workaround / status: on a read-only file, or a file system that stores no
-creation date, the app says so and changes nothing.
+**Setting a date changes the file's modification time.**
+Why: the date is written into the file so every program sees it. Backup and sync
+tools will therefore copy the file again.
+*Reset* returns to the **creation date**, not to the previous date - that one is
+not stored anywhere.
 
-**Tags and categories belong to a folder**, not to the whole library.
-Why: they live in the folder's own `.mgstore` file next to the media, so a folder can be
-moved or copied and keeps its metadata.
-Consequence: a tag created in one folder does not appear in another; moving a file
-into another folder carries its tag with it only if the target folder does not
-already define that tag differently.
+**Tags and categories belong to a folder, not to the whole library.**
+Why: they live in a small file next to the media (`<Folder>.mgstore`), so a
+folder keeps them when you move or copy it.
+A moved file takes its tag along, unless the target folder already has a tag of
+that name.
 
-**The tag undo only reaches back over the current folder, and only one folder at a time.**
-Why: it works from the folder's own tag state before each change, and that state
-is only meaningful for the folder it came from. Opening another folder therefore clears the
-stack, and a step whose folder is no longer the open one is discarded rather than written
-back.
-Workaround / status: undo what you want to undo before you navigate away. Up to 20 steps
-are kept (16 MB of snapshots in total); older steps fall off the bottom.
+**Tag undo only reaches back within the open folder.**
+Why: each step restores that folder's own tag file. Opening another folder clears
+the history. Up to 20 steps are kept.
 
-**With the same folder open twice, undo in one half also takes back what the other half did.**
-What you notice: the bar in both halves shows the same step, and the next undo is
-always the most recent action, whichever half made it.
-Why: both halves write the same folder file, so there is one history, not two.
-With a stack each, undoing in the left half restored the whole folder state from
-before *its own* step - which brought back a category the right half had deleted
-in the meantime. One stack per folder makes it a line instead: what you undo is
-what was done last.
-Workaround / status: the mark beside the undo arrow always names the step that
-would be taken back, so nothing happens blindly. Different folders keep separate
-stacks, and a half that leaves the folder leaves its history behind for whoever
-still has it open.
+**With the same folder open in both halves, they share one undo history.**
+Why: both write the same folder file. The bar always names the step that would be
+taken back.
 
-**Undoing a tag deletion that swept a very large tree may not restore every subfolder.**
-Why: the sweep keeps the previous content of each sidecar it rewrites, capped at 512 folders
-or 8 MB (RAM is priority 1 in this project). Beyond that cap the open folder is still fully
-restored, but the subfolders below it are not.
-Workaround / status: the status line says so explicitly when it happens ("the subfolders
-could only be restored in part") instead of pretending the tree came back. In practice a
-sidecar is a few kilobytes, so the cap corresponds to a tree of several hundred tagged
-folders.
+**Undoing a tag deletion across a huge folder tree may not restore every
+subfolder.**
+Why: the undo keeps at most 512 folders or 8 MB. Beyond that, the open folder
+comes back fully, the subfolders only in part - and the status line says so.
 
-**The tag undo and redo have no keyboard shortcut.**
-Why: `Ctrl+Z` in the gallery is the *file* undo (move, rename, delete). Binding a second
-`Ctrl+Z` to tags would make the key unpredictable - you could not tell in advance whether it
-brings back a file or a tag. The two stacks are deliberately separate (user's decision,
-2026-09-03).
-Workaround / status: the bar at the foot of the tag panel is the way; its two marks name what
-each button would do, so nothing happens blindly.
+**Tag undo has no keyboard shortcut.**
+Why: `Ctrl+Z` in the gallery undoes file operations. A second meaning would make
+the key unpredictable.
+Workaround: use the bar at the bottom of the tag panel.
 
-**Tags and categories share one undo history, not one each.**
-Why: a great many operations touch both - deleting a tag also strips it from every category,
-and the converter rewrites both - so a separate stack per section could not be kept honest
-(user's decision, 2026-09-03). The bar therefore always shows the newest step of the whole
-folder, whichever section it came from.
-Workaround / status: nothing to work around; the two sides of the bar name exactly what each
-button would do, and hovering spells the notation out in full.
+**Tags and categories share one undo history.**
+Why: many actions change both at once, such as deleting a tag that sits in
+categories.
 
 ---
 
 ## PDF
 
-**A text-to-PDF page made up only of very short lines cannot be searched in
-PDFium-based viewers** (Chrome, and this app's own PDF view).
-Why: measured - from about 30 characters of line width upwards everything is
-fine; below that, those viewers read the narrow column as vertically written text
-and hand out every character on its own line, so a word search finds nothing.
-Status: the file itself is correct (every character carries its proper Unicode)
-and other PDF readers are unaffected. Widening the text block from our side did
-not change the viewer's guess.
+**A text-to-PDF page made only of very short lines cannot be searched in Chrome or
+in this app.**
+Why: those viewers mistake a narrow column (under about 30 characters) for
+vertical text. The file itself is correct; other PDF readers find the words.
 
-**Form fields are drawn by the app, not by PDFium.**
-Why: PDFium only renders widget annotations through an API Qt does not expose, so
-the fields are drawn as a QML overlay.
-Consequence: text, checkbox, radio and choice fields work; push buttons are shown
-but inert, and exotic field types may look plainer than in Acrobat.
+**Form fields are drawn by the app.**
+Why: the PDF engine Qt uses cannot draw them.
+Text fields, check boxes, radio buttons and lists work; push buttons are shown
+but do nothing.
 
-**Tracked changes cover adding and deleting an annotation**, not editing an
-existing one (moving, recolouring, retyping).
-Why: tracking that would mean storing the state before every single change.
+**Tracked changes cover adding and deleting annotations, not editing them.**
+Why: tracking every move or colour change would mean storing a copy before each
+one.
 
-**Page changes cannot be undone once you close the file.** Moving, rotating,
-removing or inserting pages is written into the PDF straight away; `Ctrl+Z`
-works only while the document is open.
-Why: deliberate (user's decision, 2026-08-23). The undo source is a temporary
-copy `<name>.mgorig` next to the file, and that copy is deleted when the
-document is closed - keeping it would mean a second full copy of every PDF you
-ever reordered lying next to it.
-Workaround / status: while the file is open, `Ctrl+Z` reaches back to the state
-it had when you opened it. If you need a safety net beyond that, copy the file
-first.
+**Page changes can only be undone while the file is open.**
+Why: moving, rotating, removing or inserting pages is written into the PDF
+immediately. The temporary copy that makes undo possible is deleted when you
+close the file.
+Workaround: copy the file first if you want a safety net.
 
-**Typing into the page text is made permanent by a page change in the same
-session.** Text you typed with the *edit text* tool normally stays reversible
-through the sidecar; if you also moved, rotated or removed a page, it is baked
-into the file when you close it.
-Why: the reordered file is assembled from the edited text layer, so the typed
-characters are already in it - keeping the edit as a pending change too would
-apply it a second time. Notes, drawings, highlights and redactions are not
-affected: they are drawn only on export and stay reversible either way.
+**Typed page text becomes permanent if you also changed pages in the same
+session.**
+Why: the rebuilt file already contains the typed text. Notes, drawings,
+highlights and redactions are not affected.
 
-**Mixing pages from more than eight PDFs in one extraction makes the result
-larger and slower to write.**
-Why: while writing, the assembler keeps the parsed structure and the object map
-of at most eight sources, so shared objects (fonts, resources) of those go into
-the output exactly once. Beyond that the least recently used source is dropped;
-when it comes up again it is parsed anew and its shared objects are written a
-second time. Measured with two sources at 150 interleaved pages: 3.3 ms and
-268 KB inside the cap, 86.2 ms and 1177 KB without it.
-Workaround / status: nothing to do - the result is always correct, only bigger.
-The cap keeps memory bounded while a job runs.
+**Extracting pages from more than eight PDFs at once makes the result larger.**
+Why: to save memory, only eight source files are kept open at a time; shared
+fonts of the others may be written twice. The result is always correct.
 
 **A scanned page has no text until you make the document searchable.**
-Selecting text, the document search, line snapping and the *Replace text*
-prefill all read the PDF's own text layer - a scan has none.
-Why: deliberate. The app no longer keeps a per-page recognition in memory;
-instead *Document -> Make document searchable* writes the words into the file
-once, and everything then works through the normal path.
-Workaround / status: run that action once per scanned document.
+Workaround: run *Document ▸ Make document searchable* once. It writes the
+recognised words into the file.
 
-**Making a document searchable takes about a second per page, and it is not
-faster on more cores.**
-Why: measured on A4 at 200 dpi - 49 ms to render, ~810 ms for Tesseract's LSTM
-recognition. Recognising pages in parallel was built and measured: 16 pages went
-from 13.4 s to 12.1 s with two threads (+10 %) and got *slower* again with four,
-while peak memory rose from 241 MB to 427 MB. The threads demonstrably ran at the
-same time, yet each page took 2.8 s instead of 0.87 s - the work is bound by
-memory bandwidth, not by CPU, and switching off Tesseract's own OpenMP changed
-nothing. So it stays serial: memory is the higher priority here.
-Workaround / status: it reports progress per page and can be cancelled.
+**Making a document searchable takes about one second per page.**
+Why: text recognition is slow, and running pages in parallel was hardly faster
+(+10 %) but nearly doubled memory. It shows progress and can be cancelled.
 
-**The invisible text layer is written in Latin script only.** Words containing
-characters outside WinAnsi/Latin-1 - Arabic, Japanese, Cyrillic - are skipped,
-and the app says how many were.
-Why: those need a CID font with a `/ToUnicode` map in the file; writing one
-correctly is a separate piece of work. Skipping is the honest option - a wrong
-byte would make the search find the wrong word.
+**The recognised text layer holds Latin script only.**
+Why: Arabic, Japanese or Cyrillic would need a special embedded font. Such words
+are skipped - the app says how many - rather than written wrongly.
 
-**OCR mistakes become part of the file.** If a word is read wrongly, that is what
-the search will find from then on, and correcting it means redoing the document.
-Why: inherent to every OCR PDF. Measured on a clean 32-page test scan, 30 of the
-32 pages returned the searched word.
+**Recognition mistakes become part of the file.**
+Why: that is true of every OCR PDF. A misread word is what the search finds.
 
-**On a scanned page, blacking out cannot remove words**, because there are no
-words in the file - only pixels in an image. A text layer does not change that:
-it tells the app where a word sits, but the pixels underneath stay.
-Workaround / status: cover the spot and export with rasterising, so the covered
-pixels are gone from the output.
+**On a scanned page, blacking out cannot remove words** - there are only pixels.
+Workaround: export as an image, so the covered pixels are gone.
 
 **Selecting text on a page rotated by 90 or 180 degrees loses the last
 character.**
-Why: `QPdfDocument::getSelection` behaves that way in Qt 6.11 - measured with
-ordinary, visible text that has nothing to do with this app's OCR; the same file
-reports the full text through `getSelectionAtIndex`, and the character positions
-are correct. Reproduce it with `bench_rotselect`.
-Workaround / status: drag a little past the word, or select the whole page.
+Why: a bug in Qt 6.11; the text itself is correct.
+Workaround: drag a little past the word.
 
 ---
 
 ## Audio player
 
 **A track change is gapless only when the next track is known in advance.**
-Why: the chain pre-decodes the following track into the same output stream. At the
-very end of the queue there is nothing to prepare, and with *shuffle + repeat all*
-the next round is only shuffled once you reach it - so the first track of the new
-round still starts the old way, with a pause of roughly 0.8 s (measured).
-Workaround / status: inside a list, and with repeat one, changes are seamless.
+Why: the next track is prepared while the current one plays. At the end of the
+queue, and when *shuffle + repeat all* starts a new round, there is a short pause
+(about 0.8 s).
 
-**Tags are read, but never written.**
-Why: the reader covers ID3v2/ID3v1, MP4 `ilst`, and Vorbis comments (FLAC, OGG,
-Opus) - writing them back would be a different piece of work with a much higher
-risk (a wrong byte damages the file).
-Workaround / status: use a tag editor; the app picks up the change on the next
-read.
+**Title and artist are read, never written.**
+Why: one wrong byte would damage the file.
+Workaround: use a tag editor; the app picks up the change.
 
-**WMA/ASF files show the file name.**
-Why: their tag format (ASF objects) is not implemented - the four families above
-cover what the app's own formats need.
+**WMA files show their file name instead of the title.**
+Why: their tag format is not supported.
 
-**Noise reduction leaves the quietest passages of real music alone only up to a
-point.** Anything that stays below roughly -48 dBFS in a frequency band is treated
-as noise and attenuated, so a very quiet, sustained passage can lose a little level
-at high strength (measured: -1.3 dB on quiet music at -40 dBFS, 0.00 dB on normal
-music, -0.01 dB on a loud sustained tone).
-Why: the stage has no way to tell a faint sustained instrument from tape hiss - both
-are quiet and stationary. The cap at -48 dBFS is what keeps loud material safe; it is
-the price for removing hiss at all.
-Workaround / status: pull the strength slider down - it scales the depth in dB, and
-at 0 the stage is bypassed bit for bit.
+**Noise reduction can make very quiet music slightly quieter.**
+Why: anything that stays below about -48 dB is treated as noise - a faint
+sustained instrument sounds just like hiss (measured: -1.3 dB on very quiet
+music, 0 dB on normal music).
+Workaround: lower the strength slider; at 0 the signal passes unchanged.
 
-**Noise reduction needs about 1.4 s of a track before it reaches full depth.**
-Why: the noise floor is the lowest level seen in a sliding window of that length.
-Before the first window closes there is no estimate, and the stage deliberately does
-nothing rather than guess.
-Workaround / status: none needed - the run-in is inaudible, it only means the very
-start of a track is unprocessed.
+**Noise reduction needs about 1.4 seconds before it works fully.**
+Why: it first has to hear what the noise floor is. The start of a track is left
+unprocessed.
 
-**Noise reduction is a multiband expander, not spectral subtraction.**
-Why: it removes broadband noise by 28.6 dB at full strength (measured on white noise
-at -60 dBFS) and costs 1.18 % of a core. Spectral subtraction would go deeper but
-needs an FFT with roughly 21 ms of algorithmic delay, which would have to be threaded
-through the gapless track-change machinery.
-Workaround / status: for heavier restoration work, clean the file in a dedicated
-audio editor.
+**Noise reduction is for light hiss, not heavy restoration.**
+Why: it lowers broad noise by about 29 dB and costs almost no CPU. Deeper methods
+would add a delay the gapless playback cannot absorb.
+Workaround: use a dedicated audio editor for damaged recordings.
 
-**The equalizer applies to audio files only, never to video.**
-Why: `QMediaPlayer` does not hand out its samples, so the app runs its own
-decode -> ring buffer -> equalizer -> sink chain for audio. Video keeps using
-`QMediaPlayer` unchanged.
+**The equalizer works on audio files only, not on videos.**
+Why: Qt's video player does not hand out its sound, so audio uses the app's own
+playback chain.
 
-**In M4A, OGG, FLAC and WAV - and for Opus or Vorbis inside a Matroska file -
-a jump still restarts the decoder.**
-Why: `QAudioDecoder` cannot seek in Qt 6. The app works around it in two ways:
-self-framing streams (MP3, MP2, AC-3, E-AC-3, AAC) are entered at the target
-frame, and a Matroska file is read from the cluster the target sits in. Both
-need a stream a decoder can pick up mid-way. Opus and Vorbis cannot do that -
-they need an Ogg wrapper with its header packets - and the remaining containers
-have not been taught yet.
-Measured: jumping to 45 min in an E-AC-3 track 2.8 s -> 21 ms, to 150 min in a
-1.5 GB MKV 9.4 s -> 95 ms; the untouched cases still decode from the start.
-Consequence: unnoticeable at song length (~100 ms for a three-minute file), but
-an hours-long audiobook as M4A would still show the old wait.
-Workaround / status: the index of MP4 and of Ogg is already understood elsewhere
-in the app; using it here is the next step, noted in `NEXT.md`.
+**Jumping inside long M4A, OGG, FLAC or WAV files is slow.**
+Why: for these formats the decoder still starts from the beginning. MP3, AAC,
+AC-3 and most MKV files jump directly (45 minutes into a track: 21 ms instead of
+2.8 s).
+Unnoticeable for songs; noticeable in an hours-long audiobook.
 
-**One playback for the whole app.**
-Why: the player belongs to the half that started it; opening a second track
-replaces the first, and changing that half's folder ends the queue (the queue
-belongs to the folder).
+**There is one playback for the whole app.**
+Why: starting a second track replaces the first, and changing the folder of the
+playing half ends the queue.
 
-**Saving a video's sound works for MP4/M4V/MOV and MKV/WEBM/MKA - not for AVI or WMV.**
-Why: the sound is lifted out byte for byte, which needs a reader per container.
-Two are written (ISO-BMFF and Matroska); AVI and WMV are not planned.
-Workaround / status: other containers say which one they are; their sound still
-*plays* in player mode (Settings -> Audio -> show videos), it just cannot be saved.
+**Saving a video's sound works for MP4/MOV and MKV/WEBM - not for AVI or WMV.**
+Why: the sound is copied byte for byte, which needs a reader for each container.
+AVI and WMV are not planned. Their sound still plays in player mode.
 
-**AAC from MKV/WEBM is saved as `.aac` (ADTS), not as `.m4a`.**
-Why: the frames in Matroska carry no headers; the app builds one ADTS header per
-frame from the file's own `CodecPrivate`. That is a valid, playable file, but a
-different container than the `.m4a` an MP4 source produces.
-Measured on a real file: the decoded waveform is identical to the source
-(deviation 0.000000), with the usual one-frame encoder priming at the start.
-Workaround / status: none needed - every player opens `.aac`. HE-AAC is written
-as its LC core, which is what an ADTS header can express; the decoder still
-picks up the extension from the stream itself.
+**AAC from MKV/WEBM is saved as `.aac`, not `.m4a`.**
+Why: it is the simplest valid form; every player opens it and the sound is
+identical to the source.
 
-**A raw stream (`.ac3`, `.eac3`, `.mp3`, `.aac`) starts at its first frame, not at
-the video's timeline zero.**
-Why: those files have no container and therefore no timestamps - the decoder
-starts where the first frame starts. Measured against the source (waveform
-identical, deviation 0.000000): AC-3 leads by 256 samples (5 ms), MP3 by 1105
-samples (23 ms), E-AC-3 by 0.
-Workaround / status: nothing to do; the offset is far below anything audible.
-AAC leads by 1024 samples (21 ms) for the same reason.
+**A raw sound file (`.ac3`, `.eac3`, `.mp3`, `.aac`) starts a few milliseconds
+earlier than the video.**
+Why: such files have no timestamps. The offset is at most 23 ms - inaudible.
 
 **A 5.1 track stays 5.1.**
-Why: the sound is copied, not re-encoded - mixing it down to stereo would mean
-decoding and encoding again, which is exactly what this feature avoids.
-Consequence: a `.eac3` from a film is a six-channel file; the player mixes it
-down for playback, but the file keeps all channels (and its size).
+Why: the sound is copied, not converted. The player mixes it down for listening,
+but the file keeps all channels.
 
-**For Vorbis the timing of the written file is derived from the source's block
-timestamps.**
-Why: the exact value would need the block sizes from the setup header and the mode
-of every packet. Audible difference: none; the displayed duration can be off by a
-fraction of a second. Opus is exact (computed per packet). Measured on real
-files (`bench_mkvextract`, 12 s of a WEB-DL): Vorbis +1 ms, Opus +14 ms against
-the source, and the decoded waveform is identical in both cases (offset 0,
-largest deviation 0.000000).
+**For Vorbis, the shown duration can be off by a fraction of a second.**
+Why: the exact value would need every packet to be examined. The sound is
+identical.
 
-**After a jump, the saved file lands a few milliseconds away from where the
-video would.**
-Why: the two containers carry their timing differently - Matroska seeks to a
-cluster, Ogg to a page granule. Measured with a foreign decoder (`ffmpeg`,
-jump to 8 s): Opus 1 ms, Vorbis 18 ms earlier than the same jump in the source;
-from the landing point onwards the samples are identical (Vorbis bit for bit,
-Opus 1 of 32768 through the 16-bit rounding).
-Workaround / status: nothing to do - the sound itself is unchanged, only the
-point a player lands on differs.
+**After a jump, a saved Opus or Vorbis file lands up to 18 ms away from the
+video.**
+Why: the containers store timing differently. From that point on, the sound is
+identical.
 
-**A fragmented MP4 whose fragments are missing is still refused.**
-Why: fragmented files themselves work now (the sample tables are read from
-`moof`/`traf`/`trun`), but a file that announces fragments (`mvex`) and contains
-none is a head without a body - writing an empty sound file would be a lie.
-Workaround / status: the message names the reason; such a file is usually a
-truncated download.
+**A streaming MP4 with missing parts cannot be saved.**
+Why: the file announces sound that is not there - usually an incomplete download.
+The message says so.
 
-**A sound track whose frames carry no length of their own cannot be saved
-outside a container.**
-Why: AC-3, E-AC-3, MP3 and AAC each land in a form that players accept (raw
-stream, or ADTS headers built from the file's own description). DTS, ALAC and
-raw PCM have no such target - they would need a container this app does not
-write.
-Workaround / status: the message names the codec case (`unsupported codec`).
+**DTS, ALAC and raw PCM tracks cannot be saved.**
+Why: they would need a container this app does not write.
 
-**The saved file keeps the video's audio format.**
-Why: nothing is re-encoded - that is the point (no quality loss, no encoder, no
-extra dependency). What was AAC in the video is AAC in the `.m4a`.
-Workaround / status: converting to MP3 or FLAC would need an encoder library; not
+**The saved sound keeps the video's format.**
+Why: nothing is re-encoded - no quality loss. Converting to MP3 or FLAC is not
 planned.
+
+**A strongly boosted equalizer plays loud passages quieter.**
+Why: boosting cannot create headroom. *Prevent clipping* lowers only the parts
+that would distort (loud passages about -6.6 dB, quiet ones -3.3 dB).
+Workaround: turn up the volume, or switch *Prevent clipping* off in
+*Settings ▸ Audio* and accept the distortion.
+
+**Older equalizer presets sound slightly tamer.**
+Why: neighbouring bands no longer amplify each other (three bands at +12 dB now
+peak at 12.7 dB instead of 17). That is what removes most distortion.
+Workaround: adjust the bands and save the preset again.
 
 ---
 
 ## Two-pane mode
 
-**A boosted equalizer still plays quieter in loud passages.**
-What you notice: raise several bands and the loudest parts of a track come back
-about 6 dB quieter, while quiet passages keep their level.
-Why: boosting cannot add headroom, it can only use it up. Either the peaks are
-cut off (harsh, measured at 3.7 % distortion on a real track) or the signal is
-lowered to make room. *Prevent clipping* does the latter - but as a limiter, so it
-only acts where something actually overshoots. Measured against the fixed
-reduction it replaced: loud passages -6.6 dB either way, quiet ones **-3.3 dB
-instead of -12.0**, both at 0.000 % clipped.
-Workaround / status: turn the volume up, or drag the preamp back yourself - the
-slider keeps working and is no longer touched by the correction. Turning *Prevent
-clipping* off in Settings -> Audio brings the unlimited behaviour back, distortion
-included.
+**At most four open files** (two per half when the window is split).
+Why: beyond that the tiles are too small to work with.
 
-**Saved equalizer presets sound slightly different since the bands stopped
-stacking.**
-What you notice: a preset you saved earlier is a little tamer, most audibly if it
-had several neighbouring bands pushed high.
-Why: the bands now add their share to the signal instead of being chained behind
-one another, so neighbours no longer multiply each other - three bands at +12 dB
-peak at 12.7 dB instead of 17.0. That is the point of the change, and it is what
-makes the preamp unnecessary in most cases, but it does alter what an old preset
-does.
-Workaround / status: nudge the bands you care about; presets save and overwrite
-as before. There is no automatic conversion - the old peaks cannot be recreated
-without bringing the distortion back.
-
-**Two halves, at most four open files** (two per half when split).
-Why: a deliberate cap - beyond that the tiles are too small to work in.
-
-**In true fullscreen a tile cannot be re-docked.**
-Why: the header of a tile is also its drag handle for docking; while the chrome is
-hidden there is nothing to grab.
-Workaround: `F` or `Esc` brings it back.
+**In true fullscreen a tile cannot be rearranged.**
+Why: the header you would drag is hidden.
+Workaround: press `F` or `Esc` first.
 
 ---
-
-**A very large folder pauses briefly before the first tile appears.**
-What you notice: opening a folder with tens of thousands of files, nothing shows
-for a moment; then everything is there at once and stays put.
-Why: the folder is read once in full and put into the order the view will show it
-in, before the first batch goes out. That is what makes the rest fast - every
-later insertion is an append instead of a squeeze into the middle. Measured at
-12,000 files: the pause is 17-19 ms and the whole read drops from 628 ms to
-161 ms; at 40,000 files the pause is 59 ms and the saving is larger still, because
-the old cost grew with the square of the folder size and the pause only linearly.
-Workaround / status: none needed below a few thousand files, where the pause is
-under 3 ms. Sorting by **tags** skips the pre-pass entirely (tags live in the
-folder file, not in the directory entry) and behaves as it did before.
-
-**A folder full of very large PNGs takes a moment longer than one of JPEGs.**
-Why: a JPEG is shrunk while it is being read (libjpeg decodes in DCT steps), a
-PNG cannot be - it is always decoded at full size first (48 MB for a 12-megapixel
-image) and only then scaled down. To keep that from filling memory, the app lets
-only as many full-size decodes run at once as fit in a 192 MB budget: measured on
-200 twelve-megapixel PNGs, peak memory drops from 421 MB to 323 MB and the first
-screenful of 40 tiles takes 400 ms instead of 350 ms. With ten 27-megapixel PNGs
-the peak drops from 809 MB to 187 MB, and there the first tile even appears twice
-as fast.
-Workaround / status: deliberate; JPEG folders are untouched (1.5 ms per tile) and
-the second visit to any folder comes from the thumbnail cache (0.04 ms per tile).
 
 ## Editors
 
 **A text file over 8 MB opens read-only.**
-What you notice: the Save button is replaced by an orange *Read only* marker,
-and typing does nothing. `Ctrl+S` is silent.
-Why: `ViewerController::readTextFile` loads at most 8 MB so a huge log does not
-freeze the window - only the BEGINNING of the file is in the editor. Writing that
-back would delete everything past the cap. Measured before the lock existed: a
-9,860,000-byte log lost 1,471,361 bytes (14.9 %) after a single keystroke plus
-save, and the notice line "… [Datei gekürzt: > 8 MB]" was written into the file
-along with it. Two locks now stand in the way - the surface refuses to edit
-(`Viewer.textFileTruncated`), and `writeTextFile` refuses the write outright.
-Workaround / status: use an external editor for such files. Raising the cap is
-not the fix - the same 9.6 MB file already costs 2.3 s of frozen window just to
-be laid out by `TextArea`, before any colouring. Loading such a file in pieces is
-its own piece of work and has not been started.
+Why: only the first 8 MB are loaded, so a large log does not freeze the window.
+Saving would cut off the rest of the file, so it is blocked; the status bar says
+why.
+Workaround: use another editor for such files.
 
-**Typing in a very large file gets slower the larger the file is.**
-What you notice: in a file of a few hundred thousand lines each keystroke lags.
-Why: measured with the highlighter attached, ONE block is re-coloured per
-keystroke - the syntax colouring is not the cost. What grows is Qt's own re-layout
-of the document: 2 ms at 20,000 lines, 15 ms at 100,000, 41 ms at 240,000, and
-the same numbers appear with the highlighter switched off. This predates the
-syntax colouring.
-Workaround / status: none inside the editor; the 8 MB cap above keeps it from
-getting worse.
+**Typing gets slower in files with hundreds of thousands of lines.**
+Why: Qt re-arranges the whole document on each keystroke (41 ms at 240,000
+lines). The syntax colouring is not the cause.
 
+**The DOCX margin rulers move the page margins, not the paper.**
+Why: that is what a margin is, in Word too. A narrower text column usually means
+more pages.
 
-**The margin rulers move the page margins, not the paper.**
-What you notice: pulling a margin in gives you a narrower column of text and
-usually MORE pages - it does not shrink the document to fit.
-Why: that is what a page margin is, and it is what Word does. The paper size
-still comes from the document (`w:sectPr/w:pgSz`) and is left alone - a growing
-sheet would no longer be A4 and would be rescaled by printers and viewers. The
-earlier setting "extra margin for PDF export", which drew the page smaller into a
-rectangle and left the page count untouched, has been removed: it was the
-stopgap for exactly this, and the two would have added up.
-
-**Scrolling while you hold a ruler handle counts towards the margin.**
-What you notice: grab a margin handle, keep the button down and turn the wheel -
-the handle stays under your pointer and the margin changes by exactly the
-distance you scrolled, on top of whatever the mouse itself moved.
-Why: deliberate, and necessary - an A4 page is taller than the window, so the
-bottom margin cannot be reached without scrolling. The vertical ruler's scale
-follows the scroll for as long as you hold a handle, instead of following the
-page under your eye (which jumps by a whole page at a time). Measured
-(`bench_docxruler`): the handle sits 1 px from the pointer, scrolling 367 px
-adds exactly 97 mm to the margin, and letting go moves nothing (0 px).
-Workaround / status: it means a long scroll makes a large margin - scroll only
-as far as you need while holding, or let go, scroll, and grab again. The value
-is still clamped so at least 10 mm of writing area remains. The horizontal ruler
-is deliberately unaffected: vertical scrolling must not change the left and
-right margins (measured: 35.5 mm with and without the wheel).
+**Scrolling while holding a ruler handle changes the margin.**
+Why: an A4 page is taller than the window; this is how you reach the bottom
+margin. The distance you scroll is added to the margin.
+Workaround: let go, scroll, and grab the handle again.
 
 **Dragging a ruler changes the document.**
-What you notice: the file is marked as modified and the margins are saved with
-it - Word then shows the same margins.
-Why: they live in the document (`w:sectPr/w:pgMar`), which is the only place
-Word reads them from. `Ctrl+Z` takes a drag back as one step, and the reset
-button on each ruler restores what the file came with. A document that had no
-`w:sectPr` at all gets one written the first time you drag.
+Why: margins are stored in the document - the only place Word reads them from.
+`Ctrl+Z` takes a drag back, the reset button restores 2.5 cm.
 
-**A tab in a document becomes a space in the exported PDF's text.**
-Why: Qt maps the space glyph to U+0009 in the PDF's `ToUnicode` table, so every
-space in an exported file would be read back as a tab. That is corrected on the
-way out (`core/PdfGlyphRuns`), and a real tab - which a page description draws as
-blank space anyway, never as a glyph - is read back as a space along with it.
-Workaround / status: deliberate; the alternative was tabs instead of spaces in
-every exported file.
+**A tab becomes a space in the text of an exported PDF.**
+Why: Qt writes spaces into PDFs in a way that reads back as tabs. The app corrects
+this, and real tabs turn into spaces along with it.
 
-**A PDF made by another Qt program can still read back with its words split.**
-Why: Qt's PDF engine writes one text object per glyph. On a page of short,
-tightly spaced lines PDFium - which drives this app's search and Chrome's PDF
-viewer - then takes the page for vertically written text and puts a line break
-between the letters, so "Hallo" is read as "H" + "allo". Files written *by this
-app* are repaired on the way out (measured on 44 lines of "Hallo wie geht es":
-searching "Hallo" went from 0 hits to 132, and the rendered page is unchanged
-pixel for pixel). A file that arrives from elsewhere is not touched.
-Workaround / status: for a foreign file, a Poppler-based reader (Okular,
-Evince, `pdftotext`) reads it correctly.
+**A PDF from another Qt program may be read back with split words.**
+Why: Chrome and this app then read "Hallo" as "H allo". Files written by this app
+are repaired; foreign files are left untouched.
+Workaround: Okular or Evince read such files correctly.
 
-**The page number in the text-to-PDF export is fixed.**
-Why: that export writes a centred "1/3" footer by design; only the DOCX export got
-the choice of position and style.
+**The page number in the text-to-PDF export is fixed** (centred, "1/3").
+Why: only the DOCX export offers a choice.
 
-**The text-to-PDF export in *Like the editor* mode always prints the profile's background.**
-What you notice: with a dark editor profile the PDF is a dark page - which costs
-a lot of toner if it goes to a printer.
-Why: the mode's promise is "what you see in the editor". Its glyph colours are
-chosen against that background; on white paper a dark profile's foreground is
-unreadable in places, so leaving the background out would produce a page that is
-neither one thing nor the other.
-Workaround / status: use *One colour* for anything that ends up on paper - it is
-the default and unchanged. Switching to the light *Paper* profile before
-exporting also works.
+**The *Like the editor* PDF export always prints the editor's background.**
+Why: its colours only work on that background. A dark theme therefore costs a lot
+of toner.
+Workaround: use *One colour* (the default) for printing.
 
-**The text-to-PDF export carries no line numbers and ignores folding.**
-What you notice: even in *Like the editor* mode there are no line numbers, and a
-folded block is printed in full.
-Why: folding is the reason for both. A collapsed block that stayed collapsed in
-the PDF would mean text is missing with nothing saying so - which is worse than
-not offering it. Line numbers would then have to say which numbering they mean.
-Workaround / status: not built; the full text is always exported.
+**The text-to-PDF export has no line numbers and ignores folding.**
+Why: a folded block in the PDF would mean text missing without notice. The full
+text is always exported.
 
-**The DOCX editor rewrites only what you touch.**
-Why: the file is kept as it came, so unknown parts survive untouched. Practical
-limit: features the editor does not know are preserved but not editable.
+**The DOCX editor only changes what you edit.**
+Why: parts of the file it does not understand are kept unchanged - but they
+cannot be edited either.
 
-**Dragging a margin ruler gets sluggish in a long document.**
-What you notice: on a short document the margin follows the mouse smoothly; the
-longer the document, the more the drag stutters.
-Why: a margin change re-flows the whole document, and the ruler reports on every
-mouse movement, so that work runs once per movement on the UI thread. Measured
-(`bench_docxruler`, per mouse movement): 5.2 ms at 100 paragraphs, 18.4 ms at
-400, 53.7 ms at 1600, **73.1 ms at 4000** - about 14 updates per second at the
-top end.
-Workaround / status: the view itself no longer moves while you drag (that was a
-separate bug and is fixed), so the stutter is the only remaining cost; drag in
-short steps, or set the margin and let go. Coalescing the updates was considered
-and not built: the window system already merges mouse movements, so the
-measurement says it would save nothing that is not already saved.
+**Dragging a margin ruler stutters in long documents.**
+Why: every mouse movement reflows the whole document (about 70 ms at 4,000
+paragraphs).
+Workaround: drag in short steps.
 
 **A very long DOCX keeps its whole layout in memory.**
-Why: the editor measures every paragraph to know where the pages break, and it
-keeps the measured heights and line bands for all of them (only the shaped text
-runs of the visible area are held). Measured on a generated 648-page document:
-166 MB resident, of which 29 MB is the document itself. A 5-page file costs
-15 MB.
-Workaround / status: no upper limit is enforced; typing and paging stay fast at
-that size (0.3 ms per keystroke), so the memory is the only cost.
+Why: page breaks are only known if every paragraph is measured (648 pages: about
+166 MB). Typing stays fast.
 
-**A very large photo is decoded at the size you are looking at, not at its own.**
-Why: a 27-megapixel image is 108 MB in memory, and fitted into a window it shows
-fewer than a twentieth of those pixels - with four files side by side that adds up
-fast. The viewer therefore decodes in steps (the next power of two above the
-displayed size) and switches to the full image at 100 % zoom, where it is sharp
-again. Measured: 250 MB down to 157 MB for one open 27-megapixel photo; the fitted
-view differs from the old one by 0.18 of 255 per pixel on average.
-Workaround / status: deliberate. A JPEG even opens faster this way (55 ms -> 33 ms);
-a PNG opens about 30 % slower (179 ms -> 233 ms), because it has to be decoded at
-full size anyway and is then scaled down - the memory is the trade.
-The decode step only ever *grows* while a file stays open, so making the window
-large and then small again keeps the larger step in memory until you open
-another file. That is the deliberate half of the trade: shrinking the window
-would otherwise re-decode the picture and make it blink.
+**A very large photo is loaded at screen size, not at full size.**
+Why: a 27-megapixel photo needs 108 MB, yet the window shows only a fraction of
+it (one open photo: 157 MB instead of 250 MB). At 100 % zoom the full image is
+loaded. PNGs open about 30 % slower this way; JPEGs faster.
 
-**What Word makes of the app's files has never been checked.**
-Why: every test reads the file back with the app's own parser. Opening one in Word
-is on the list (see `NEXT.md`).
+**Files written by the app have not been checked in Word itself.**
+Why: tests read them back with the app's own reader only.
 
 **A search pattern never reaches across a line break.**
-Why: every search runs per line (text editor) or per paragraph (DOCX) - as
-`QTextDocument::find` always did, since it does not cross block boundaries
-either. So `\d\n\d` finds nothing, and `.*` stops at the end of the line.
-Workaround / status: deliberate. Searching across blocks would mean holding the
-whole document as one string - at the 8 MB read cap that is a second copy of the
-file for every keystroke in the search field.
+Why: search runs line by line (paragraph by paragraph in DOCX), as in most
+editors. `.*` stops at the end of the line.
 
-**A replacement is inserted literally - `\1` does not put back what was found.**
-Why: a hit can come from the literal branch or from the pattern branch (see
-Settings -> General -> *Search with patterns*), and a back-reference has no
-meaning for a literal hit. Making it work would require the mode switch the
-whole design avoids.
-Workaround / status: deliberate.
+**Replacing inserts the text literally - `\1` is not supported.**
+Why: every search is also a literal search, where `\1` has no meaning.
 
-**A pathological pattern can make the editor hang for a moment.**
-Why: Qt's regular expressions have no time limit, and a pattern such as
-`(a+)+$` on a long line can take exponentially long (catastrophic
-backtracking). This is a property of the engine, not of the file.
-Workaround / status: none built. Such patterns are written on purpose rather
-than by accident; the literal branch of the same search is unaffected, and the
-pattern branch only runs at all when the term contains regex characters.
+**A badly written pattern can freeze the editor for a moment.**
+Why: patterns such as `(a+)+$` can take extremely long on a long line; Qt sets no
+time limit.
 
-**In a PDF, the pattern branch stops after 500 hits per page.**
-Why: each hit costs one `getSelectionAtIndex` call to get its rectangles, and a
-pattern like `.` matches every character on the page. The literal branch (Qt's
-own search model) is not capped.
-Workaround / status: deliberate; write a more specific pattern.
+**In a PDF, a pattern search stops after 500 hits per page.**
+Why: a pattern like `.` would match every character. Plain-text search has no
+limit.
 
 ---
 
 ## CSV and TSV files
 
-**A `.txt` only becomes a table if it really looks like one - and only on request.**
-What you notice: with *Settings ▸ View ▸ Files ▸ Open .txt as a table too*
-switched off (the default) a semicolon-separated export saved as `.txt` opens in
-the text editor. With it on, some `.txt` files still stay text.
-Why: the switch is deliberately not enough on its own. A `.txt` is a text file
-first, and turning every log file or key-value dump with a stray separator into a
-table would be worse than the problem. So the content is checked as well: one
-separator has to yield the same field count of at least two on 80 % of the first
-20 non-empty lines, and a file with fewer than three lines never qualifies.
-Workaround / status: rename to `.csv` - that always opens as a table, whatever
-the content looks like.
+**A `.txt` only opens as a table if you allow it and it looks like one.**
+Why: most `.txt` files are notes or logs. With *Settings ▸ View ▸ Files ▸ Open
+.txt as a table too* on, a file still needs the same number of columns on most of
+its first 20 lines.
+Workaround: rename it to `.csv`.
 
-**Sorting a date column sorts it as text.**
-What you notice: a column of `01.01.2025`, `15.03.2024` sorts by day first, not
-chronologically.
-Why: only numbers are recognised as such (`1.234,56` and `1,234.56` both work);
-`01.01.2025` has two separators and fails that test, so it falls back to text.
-Recognising dates would mean guessing a format - and guessing a type is exactly
-what this view avoids everywhere else, because guessing wrong on a save destroys
-data.
-Workaround / status: an ISO date (`2025-01-01`) sorts correctly as text. Date
-detection is not built.
+**Only three date forms are recognised.**
+Why: `01.01.2025`, `2025-01-01` and `01/02/2025` work. `1.1.25` or `Jan 3, 2025`
+would need a guessed century or language. Whether `03/04/2025` is March or April
+is one setting for all tables (*Settings ▸ View ▸ Files*).
+If a single cell in a column is not a date, the whole column is sorted as text.
 
-**A single `,` or `.` in a number stays ambiguous.**
-What you notice: sorting a column of `1.234` puts it between `1.2` and `1.3`,
-not next to `1234`.
-Why: when both separators appear, the last one is the decimal point, which
-settles `1.234,56` and `1,234.56` alike. With only one present there is nothing
-to decide it, and the German reading (decimal point) was chosen.
-Workaround / status: values inside one column are read consistently, so the
-order within a column stays sensible. No fix planned - the ambiguity is in the
-data, not in the reader.
+**`>200` in the filter compares values**, so a cell that literally says `>200` is
+not found this way.
+Workaround: use `Ctrl+F`, which always searches literally.
 
-**The table shows, searches and sorts; it does not edit.**
-What you notice: there is no cell editing, no inserting or deleting rows, and no
-saving.
-Why: display was built first on purpose. Editing needs a mutable model, undo,
-and a writer that leaves the untouched parts of the file byte-for-byte alone -
-each of those is its own piece of work.
-Workaround / status: edit in the text view, which is a full editor. Sorting,
-hiding columns, freezing the first one and copying a cell or row are built; the
-remaining steps are recorded in `NEXT.md` §3c.
+**A single `,` or `.` in a number is read as a decimal separator.**
+Why: `1.234` could be one point two or twelve hundred. The German reading was
+chosen; `1.234,56` and `1,234.56` are always read correctly.
 
-**The search jumps, it does not filter.**
-What you notice: searching marks the hits and moves to them one by one. It never
-reduces the table to the matching rows, and there is no way to search one chosen
-column.
-Why: the view is a display, not a query tool - a filter would have to say what it
-did to the row numbers and the footer totals, and a column picker needs a place
-in a bar that deliberately holds five controls. Both were left aside when sorting and
-hiding columns went in: a filter would still have to answer the row-number
-question, and a column picker still has no place in that bar.
-Workaround / status: `Zelle` narrows a search to whole-cell matches, which is
-what most column-specific searches are really after.
+**A file changed by another program while you edit is not saved over.**
+Why: saving would destroy the other change.
+Workaround: *Save as copy* writes `<name>_edited.<ext>`; *Reload* takes the other
+version. Leaving the file saves the copy automatically.
+
+**In a Windows-1252 file, characters that encoding cannot hold are refused.**
+Why: converting the whole file for one cell would change it everywhere.
+Workaround: remove the character, or leave the file - your changes are then saved
+as a UTF-8 copy.
+
+**Inserting or deleting a column rewrites every line in the file's usual style.**
+Why: those lines no longer have an original form. Editing a cell changes only
+that line.
+
+**Rows and columns can only be added in a table's own tab, not in *All*.**
+Why: in the flat view a new row could belong to either of two tables.
+
+**A filtered or sorted table does not rearrange itself while you edit.**
+Why: a row jumping away while you type is worse, as in any spreadsheet.
+Workaround: set the filter or click the heading again.
+
+**Only one cell can be selected at a time.**
+Why: range selection needs a faster way of drawing the table (see
+[Not built yet](#not-built-yet)). Pasting a block of cells works.
+
+**After the table saved, switching to the raw file clears the raw editor's undo
+history.**
+Why: the raw view reloads the changed file.
 
 **A search stops at 200,000 hits.**
-What you notice: searching for a single letter in a very large file shows a count
-with a `+` behind it, and the last hits cannot be reached.
-Why: a deliberate cap. Every hit costs 8 bytes, and a one-letter search over the
-32 MB the reader admits would produce millions of them - measured with
-`bench_tablefind`: 100,000 rows by 20 columns hit the cap after 5 ms.
-Workaround / status: type more characters. The cap is a constant
-(`kMaxTreffer` in `src/table/TableSearch.h`).
+Why: a one-letter search in a large file would otherwise use a lot of memory.
+Workaround: type more letters.
 
-**Searching a large table takes a moment.**
-What you notice: with 100,000 rows the count appears a fraction of a second after
-you stop typing, not while you type.
-Why: measured with `bench_tablefind` at 100,000 rows by 20 columns: 57 ms per run
-without case sensitivity, 15 ms with it. The run therefore happens in a worker
-thread and is debounced by 150 ms, so typing does not queue up runs that are
-thrown away.
-Workaround / status: `Aa` makes a search roughly four times faster. Nothing
-blocks meanwhile - the table stays scrollable while the search runs.
+**Searching a very large table takes a moment.**
+Why: 100,000 rows take about 57 ms, so the search runs in the background; the
+table stays usable.
+Workaround: switching on `Aa` makes it about four times faster.
 
-**Switching a DATEV batch to "all columns" freezes the window briefly.**
-What you notice: turning on all 125 columns in the footer takes about a tenth of
-a second before the table redraws.
-Why: measured 122 ms at 20,000 bookings. It is not the column widths (computing
-them in one pass instead of per column measured identical) and not the wrapper
-around each cell (removing it measured identical) - it is building 125 text
-elements for every visible row. Scrolling with 125 columns costs 6.7 ms per
-frame against 2.4 ms with 20.
-Workaround / status: leave the view on the filled columns, which is the default.
-A table body drawn as a single item instead of one element per cell is the real
-answer and is noted with the editing plan in `NEXT.md`.
+**Tables are read up to 32 MB.**
+Why: that is about 100,000 rows and 82 MB of memory. Larger files show only their
+beginning, and the footer says so.
 
-**Very wide or very tall files are read up to 32 MB.**
-What you notice: the footer says the file was too large and only the beginning
-is shown.
-Why: the same deliberate cap as the DATEV view. Measured with `bench_datev`:
-835 bytes per row at 125 columns, so the cap is roughly 100,000 rows and 82 MB
-of memory.
-Workaround / status: the text view has its own, lower cap of 8 MB. Streaming the
-table instead of holding it in memory has not been built.
+**The separator and header row are detected automatically and cannot be changed.**
+Why: manual switches were built and removed again - they took up space for a
+rare case. The footer shows what was detected.
+Workaround: the raw view shows the file as it is.
 
-**The separator and the header row are guessed, and cannot be corrected.**
-What you notice: a file whose first lines are untypical - a long free-text
-preamble, say - can end up split on the wrong character, or its first row is
-taken for data when it is a heading. The footer states what was found, but there
-is no switch to change it.
-Why: the guess scores `;` `,` tab and `|` over the first 20 lines by how
-consistent a field count each produces (`;` wins any tie), and the header row is
-taken when line 1 carries no numbers and line 2 does. Manual switches for both
-were built and then removed on request - they occupied the footer permanently
-for a case that rarely arises.
-Workaround / status: the text view shows the file as it is. If the guess turns
-out to miss in practice, the switches are a small addition - the properties are
-still there, only the buttons are gone.
+**Several tables in one file are only split at blank lines.**
+Why: a blank line is the only clear sign in the file; anything else would be a
+guess. The *All* tab always shows the whole file.
 
-**Tables in one file are split at blank lines only.**
-What you notice: an export that stacks several tables without an empty line
-between them stays one table. Conversely, a blank line in the middle of a single
-table splits it into two tabs.
-Why: the blank line is the only separator that is actually *in* the file. Every
-other rule - a change in field count, a row without numbers - would be a guess,
-and guessing wrong tears apart a file that was fine.
-Workaround / status: the **All** tab always shows the file flat, exactly as it
-stands, so nothing is hidden by a wrong split. `tests/uni_datenbank.csv` is the
-sample this was built against (5 blocks, 167 rows including the 4 gaps).
-
-**A block title is assumed, not known.**
-What you notice: a data row that happens to hold a single field and sits at the
-top of a block is taken for the block's name, and the row below it for its
-column headings.
-Why: that is the shape these exports have (title, headings, rows), and it is the
-only way a text-only table can be recognised at all - a list of names, rooms and
-office hours contains no number that would give the heading row away.
-Workaround / status: the **All** tab shows every row as data. The rule is pinned
-down in `tests/table/tst_delimited.cpp`, including the cases where it must *not*
-fire (a single-column list, a title with only one row under it).
+**A single-field line at the top of a block is taken as the table's title.**
+Why: that is how such exports are laid out, and text-only tables can be
+recognised no other way.
+Workaround: the *All* tab shows every row as data.
 
 ---
 
 ## DATEV files
 
-**The search only covers the columns that are shown.**
-What you notice: `Ctrl+F` in a booking batch does not find a value that sits in
-one of the columns hidden because they are empty in every row - until you switch
-the footer to *all columns*, which searches again.
-Why: a hit in a hidden column would be a jump to a cell nobody can see. A default
-batch shows 20 of 125 columns, and the hidden ones are hidden because they are
-empty, so the case is rare by construction.
-Workaround / status: switch on all columns in the footer; the search re-runs by
-itself.
+**Search only covers the columns that are shown.**
+Why: a hit in a hidden column could not be displayed. Hidden columns are empty
+anyway.
+Workaround: switch on *all columns*; the search runs again.
 
-**Most header fields are shown as "Dateikopf 7", "Dateikopf 8" and so on.**
-What you notice: the fold-out header block names five fields (identifier, version
-number, format name, creation time, currency) and shows the other 26 by position
-only, even though they carry real values.
-Why: only those five can be read off the file itself - the identifier spells
-itself out, the timestamp parses as a timestamp, the currency as an ISO code. The
-official field catalogue lives on `developer.datev.de`, and that page is a
-JavaScript application: fetched as HTML it returns no content at all, so the
-catalogue could not be taken from the authoritative source. Naming the rest from
-memory would put unverified claims in front of a bookkeeper.
-Workaround / status: every value is visible, only its label is missing. The
-catalogue is a table (`src/datev/DatevFormat.cpp`, one entry per field and format
-version) - filling it in is a single edit once the official list is at hand.
+**Most header fields are shown by number ("Dateikopf 7") instead of by name.**
+Why: DATEV's official field list could not be retrieved, and names from memory
+would be unreliable. All values are visible.
 
-**A booking batch larger than 32 MB is cut off.**
-What you notice: the footer says the file was too large and only the beginning is
-shown; the totals then cover only the rows that were read.
-Why: a deliberate cap in `DatevController`, separate from the 8 MB cap of the text
-editor. Measured with `bench_datev`: 50,000 bookings are a 16.3 MB file, take
-987 ms to parse and cost 40.8 MB of RSS (835 bytes per booking - the rows keep
-only the fields that are filled; storing all 125 slots cost 4178 bytes per
-booking, i.e. 204 MB for the same file). At the cap that is roughly 100,000
-bookings and 82 MB.
-Workaround / status: split the batch, or read it in the raw text view, which has
-its own 8 MB cap. Streaming the table instead of holding it in memory has not
-been built.
+**Showing all 125 columns of a DATEV batch freezes the window briefly** (about
+0.1 s).
+Why: every visible cell is its own element. A faster way of drawing the table is
+not built yet.
 
-**No writing, no editing, no export.**
-What you notice: the table has no edit mode and no save button, and the text view
-of a DATEV file behaves like any other text file.
-Why: deliberate. One wrongly written field in a bookkeeping file is a damage no
-convenience makes up for.
-Workaround / status: not planned to change.
+**Batches larger than 32 MB are cut off.**
+Why: that is about 100,000 bookings. The totals then cover only what was read.
+Workaround: split the batch.
 
-**Only files that start with `"EXTF";` or `"DTVF";` become a table.**
-What you notice: a DATEV export that does not carry that identifier in its first
-line - notably a file written in DATEV's separate, user-configured *individual
-ASCII format* - opens as plain text like any other `.csv` or `.txt`.
-Why: the decision is made on that identifier alone, deliberately. Recognising a
-booking batch by "it has semicolons and numbers" would hide every ordinary CSV in
-a folder behind a bookkeeping view. A file that *does* carry the identifier works
-regardless of how small it is: neither the number of columns nor their names are
-hard-coded, and the totals columns are located by their heading (pinned down in
-`tests/datev/tst_datevcsv.cpp` with a reduced batch of 5 header fields and 5
-columns).
-Workaround / status: read such a file in the text view. Supporting the individual
-ASCII format needs its actual shape first - DATEV's own description of it could
-not be retrieved (all three of their documentation hosts render their content in
-the browser and return an empty document when fetched).
+**DATEV files cannot be edited or exported.**
+Why: one wrong field in a bookkeeping file does real damage. This will not
+change.
 
-**A quote inside an unquoted region is guessed, not resolved.**
-What you notice: a field written as `" "Normalabschr. immater. VermG" "` keeps its
-inner quotes; other tools may show it without them.
-Why: the sample contains exactly this, and DATEV's own writer produced it. The
-reader treats a single `"` as a field end only when a separator or the line end
-follows, so the inner quotes stay part of the text rather than truncating it
-after `" "`. That is a decision, not a certainty: the file is genuinely ambiguous
-at this point.
-Workaround / status: the raw view shows the line as it stands. The case is pinned
-down in `tests/datev/tst_datevcsv.cpp` so it does not change unnoticed.
+**Only files beginning with `"EXTF";` or `"DTVF";` are shown as a DATEV batch.**
+Why: otherwise ordinary CSV files would be mistaken for bookkeeping data. DATEV's
+free-form *individual ASCII format* opens as plain text.
+
+**A field like `" "Normalabschr. immater. VermG" "` keeps its inner quotes.**
+Why: the file is ambiguous at that point; keeping the quotes loses nothing.
+Workaround: the raw view shows the line exactly as written.
 
 ---
 
 ## Not built yet
 
-Not limits of the built thing - **planned work**, kept here so there is one place
-to look. Once something ships, its entry moves out (into **[FEATURES.md](FEATURES.md)**), and only
-what it still cannot do stays behind in the sections above.
+Planned work, not limits. Once something is built, it moves to
+[FEATURES.md](FEATURES.md).
 
-- **Spell checking for Japanese** - there is no Hunspell dictionary for it, and
-  the approach does not fit: Japanese does not separate words by spaces, while
-  Hunspell checks word by word. It would need a different engine altogether (a
-  morphological analyser such as MeCab, which first has to split the sentence
-  into words), i.e. a new dependency plus its own dictionary and a second
-  checking path next to Hunspell - a separate piece of work, not started. Arabic, by contrast, only needs the `hunspell-ar` dictionary
-  installed - no code change.
-- **More languages.** 27 are covered. Each new one is a table entry in
-  `src/editor/LanguageTable.cpp` plus a section in the test driver; no scanner
-  code changes as long as one of the five scanner kinds fits.
-- **Writing tags** (changing title or artist of an audio file) - reading is solid,
-  writing is deliberately not built: one wrong byte damages the file.
-- **Filtering a table instead of jumping between hits, and searching one chosen
-  column.** Both need an answer to what happens to the row numbers and the footer
-  totals; neither is built.
-- **Editing a table and writing it back.** Reading is solid; editing needs a
-  mutable model, undo, and a writer that leaves the untouched part of the file
-  byte-for-byte alone. Three constraints are already fixed for whenever it
-  starts: every cell stays text (guessing a type and reformatting on save
-  destroys data), only changed rows get rewritten, and the changes live as an
-  overlay beside the compact rows rather than replacing them. A formula engine
-  is explicitly *not* part of this - a CSV cannot store one anyway.
-
----
-
-*Found something that belongs here? It goes into this file with reason and, where
-possible, a measurement - not into the changelog.*
+- **Spell checking for Japanese** - Japanese has no spaces between words, so it
+  would need a different engine (such as MeCab) plus its own dictionary.
+  Arabic only needs the `hunspell-ar` dictionary installed.
+- **More syntax languages** - 27 are covered; each new one is a table entry.
+- **Writing audio tags** (title, artist) - deliberately left out: one wrong byte
+  damages the file.
+- **Formulas, formatting and range selection in tables** - a CSV cannot store
+  formulas or formatting. Range selection waits for a faster way of drawing the
+  table.

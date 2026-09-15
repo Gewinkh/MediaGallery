@@ -99,7 +99,24 @@ FocusScope {
     property bool _rohtextGesehen: false
     //  An der Eigenschaft selbst, nicht in den Knopf-Handlern: `_datevTable`
     //  wird auch aus dem Menue und aus Pruefstaenden gesetzt.
-    on_DatevTableChanged: if (!root._datevTable) root._rohtextGesehen = true
+    //  Tabelle und Rohtext bearbeiten dieselbe Datei. Beim Umschalten schreibt
+    //  die Seite, die man verlaesst, zuerst - die andere liest nur dann neu,
+    //  wenn wirklich geschrieben wurde; sonst behielte sie ihren Verlauf nicht.
+    on_DatevTableChanged: {
+        const tabelle = surface.item && surface.item.controller !== undefined
+                        ? surface.item.controller : null
+        if (!root._datevTable) {
+            if (root._isTable && surface.item && surface.item.uebernehme) surface.item.uebernehme()
+            const geschrieben = root._isTable && tabelle !== null && tabelle.modified === true
+            if (geschrieben) tabelle.flush()
+            if (geschrieben && rohtext.item) rohtext.item.reloadFromDisk()
+            root._rohtextGesehen = true
+        } else if (rohtext.item) {
+            const geaendert = rohtext.item.dirty === true
+            rohtext.item.save()
+            if (geaendert && tabelle) tabelle.reload()
+        }
+    }
     readonly property bool _rohtextAktiv: (root._isDatev || root._isTable)
                                           && !root._datevTable
     readonly property bool _showTable: root._isTable && !root._isDatev && root._datevTable
@@ -120,6 +137,17 @@ FocusScope {
     readonly property var _trackCtl: ((root.type === 3 || root.type === 0) && surface.item
                                       && surface.item.editCtl !== undefined)
                                      ? surface.item.editCtl : null
+    //  Der Controller der gezeigten Tabelle (CSV oder DATEV) - fuer den Filter.
+    readonly property var _tabCtl: ((root._showTable || root._showDatevTable) && surface.item
+                                    && surface.item.controller !== undefined)
+                                   ? surface.item.controller : null
+    function _spaltenName(idx) {
+        if (!root._tabCtl || idx < 0) return App.uiText(App.language, "TableFilterAll")
+        const liste = root._tabCtl.columns
+        for (var i = 0; i < liste.length; ++i)
+            if (liste[i].index === idx && liste[i].title.length > 0) return liste[i].title
+        return App.uiText(App.language, "TableColumnN").arg(idx + 1)
+    }
     readonly property var _pdfCtl: (root.type === 3 && surface.item
                                     && surface.item.editCtl !== undefined)
                                    ? surface.item.editCtl : null
@@ -686,6 +714,50 @@ FocusScope {
                     }
                 }
 
+                //  Filter der Tabelle, gleich neben „Dokument".
+                component KopfMenueKnopf: Rectangle {
+                    id: kmk
+                    property string beschriftung: ""
+                    property bool offen: false
+                    property bool aktiv: false
+                    signal geklickt()
+                    anchors.verticalCenter: parent ? parent.verticalCenter : undefined
+                    width: kmkZeile.implicitWidth + 22; height: 26; radius: 6
+                    color: kmk.offen ? Qt.rgba(1, 1, 1, 0.18)
+                         : (kmkHover.hovered ? Qt.rgba(1, 1, 1, 0.12) : "transparent")
+                    border.width: 1
+                    border.color: kmk.aktiv ? App.themeAccent
+                                            : (kmk.offen ? Qt.rgba(1, 1, 1, 0.35) : Qt.rgba(1, 1, 1, 0.18))
+                    Row {
+                        id: kmkZeile
+                        anchors.centerIn: parent
+                        spacing: 5
+                        Text {
+                            anchors.verticalCenter: parent.verticalCenter
+                            text: kmk.beschriftung
+                            color: "white"; font.pixelSize: 12
+                        }
+                        DrawnIcon {
+                            anchors.verticalCenter: parent.verticalCenter
+                            name: "chevron-down"; size: 10; color: "white"
+                        }
+                    }
+                    HoverHandler { id: kmkHover }
+                    TapHandler { onTapped: kmk.geklickt() }
+                }
+
+                KopfMenueKnopf {
+                    id: filterBtn
+                    objectName: "tableFilterButton"
+                    visible: root._tabCtl !== null
+                    offen: filterPopup.opened
+                    aktiv: root._tabCtl !== null && root._tabCtl.filterActive
+                    beschriftung: aktiv
+                        ? App.uiText(App.language, "TableFilter") + ": "
+                          + root._tabCtl.rowCount + "/" + root._tabCtl.totalRows
+                        : App.uiText(App.language, "TableFilter")
+                    onGeklickt: filterPopup.oeffne(filterBtn)
+                }
                 Rectangle {
                     id: trackBtn
                     visible: root._trackCtl !== null && root._trackCtl.editMode
@@ -918,6 +990,104 @@ FocusScope {
                         onTapped: { choice.picked(optRow.modelData.value); choice.close() }
                     }
                 }
+            }
+        }
+    }
+
+    //  Filter der gezeigten Tabelle: Spalte, Text, Gross/Klein und ganze Zelle.
+    //  Getippt wird entprellt - ein Lauf ueber eine grosse Datei kostet Zeit.
+    Popup {
+        id: filterPopup
+        objectName: "tableFilterPopup"
+        modal: false
+        dim: false
+        closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
+        padding: 10
+        background: Rectangle {
+            color: App.themeMenuBarBg
+            border.color: App.themeBorder
+            radius: 8
+        }
+        property bool gross: false
+        property bool ganz: false
+        function oeffne(knopf) {
+            const p = knopf.mapToItem(root, 0, knopf.height + 4)
+            filterPopup.x = p.x
+            filterPopup.y = p.y
+            const c = root._tabCtl
+            filterSpalte.currentIndex = 0
+            if (c && c.filterColumn >= 0)
+                for (var i = 0; i < c.columns.length; ++i)
+                    if (c.columns[i].index === c.filterColumn) filterSpalte.currentIndex = i + 1
+            filterText.text = c ? c.filterText : ""
+            filterPopup.open()
+            filterText.forceActiveFocus()
+        }
+        function anwenden() {
+            const c = root._tabCtl
+            if (!c) return
+            const idx = filterSpalte.currentIndex <= 0 ? -1
+                        : c.columns[filterSpalte.currentIndex - 1].index
+            if (filterText.text.length === 0) c.clearFilter()
+            else c.setFilter(idx, filterText.text, filterPopup.gross, filterPopup.ganz)
+        }
+        Timer { id: filterEntprellung; interval: 150; onTriggered: filterPopup.anwenden() }
+
+        Row {
+            spacing: 8
+            ComboBox {
+                id: filterSpalte
+                objectName: "tableFilterColumn"
+                width: 170
+                model: {
+                    const liste = [App.uiText(App.language, "TableFilterAll")]
+                    if (root._tabCtl)
+                        for (var i = 0; i < root._tabCtl.columns.length; ++i)
+                            liste.push(root._spaltenName(root._tabCtl.columns[i].index))
+                    return liste
+                }
+                onActivated: filterPopup.anwenden()
+            }
+            TextField {
+                id: filterText
+                objectName: "tableFilterText"
+                width: 200
+                placeholderText: App.uiText(App.language, "TableFilterPlaceholder")
+                onTextEdited: filterEntprellung.restart()
+                onAccepted: { filterEntprellung.stop(); filterPopup.anwenden() }
+            }
+            Button {
+                text: "Aa"
+                checkable: true
+                checked: filterPopup.gross
+                onClicked: { filterPopup.gross = checked; filterPopup.anwenden() }
+                ToolTip.visible: hovered
+                ToolTip.text: App.uiText(App.language, "EditorFindCase")
+            }
+            Button {
+                text: App.uiText(App.language, "TableFindCellLabel")
+                checkable: true
+                checked: filterPopup.ganz
+                onClicked: { filterPopup.ganz = checked; filterPopup.anwenden() }
+                ToolTip.visible: hovered
+                ToolTip.text: App.uiText(App.language, "TableFindWholeCell")
+            }
+            Button {
+                id: filterAufheben
+                implicitWidth: 32
+                enabled: root._tabCtl !== null && root._tabCtl.filterActive
+                contentItem: Item {
+                    DrawnIcon {
+                        anchors.centerIn: parent
+                        name: "close"
+                        size: 14
+                        color: App.themeTextPrimary
+                        opacity: filterAufheben.enabled ? 1.0 : 0.4
+                    }
+                }
+                onClicked: { filterText.text = ""; if (root._tabCtl) root._tabCtl.clearFilter() }
+                ToolTip.visible: hovered
+                ToolTip.text: App.uiText(App.language, "TableFilterClear")
             }
         }
     }

@@ -13,7 +13,6 @@ Item {
 
     ScrollView {
         id: audioScroll
-        objectName: "audioScroll"     // Griff fuer tests/bench
         anchors.fill: parent
         contentWidth: availableWidth
         clip: true

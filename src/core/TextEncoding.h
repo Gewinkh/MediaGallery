@@ -12,6 +12,10 @@ enum class TextEncodingUsed { Utf8, Cp1252 };
 //  dort liegen Euro-Zeichen und typografische Anfuehrungszeichen.
 QString decodeCp1252(const QByteArray& raw);
 
+//  Der Rueckweg. Ein Zeichen, das CP1252 nicht kennt, wird NICHT ersetzt:
+//  `fehlerAn` bekommt seine Position und das Ergebnis ist leer.
+QByteArray encodeCp1252(QStringView text, qsizetype* fehlerAn = nullptr);
+
 //  Ein fuehrendes UTF-8-BOM wird verworfen, nicht als Zeichen geliefert.
 QString decodeUnknownText(const QByteArray& raw, TextEncodingUsed* used = nullptr);
 

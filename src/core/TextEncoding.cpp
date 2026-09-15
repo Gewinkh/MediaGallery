@@ -26,6 +26,28 @@ QString decodeCp1252(const QByteArray& raw) {
     return out;
 }
 
+QByteArray encodeCp1252(QStringView text, qsizetype* fehlerAn) {
+    if (fehlerAn) *fehlerAn = -1;
+    QByteArray out;
+    out.reserve(text.size());
+    for (qsizetype i = 0; i < text.size(); ++i) {
+        const char16_t c = text[i].unicode();
+        if (c < 0x80 || (c >= 0xA0 && c <= 0xFF)) { out.append(char(c)); continue; }
+        int b = -1;
+        //  U+FFFD steht in der Tabelle fuer die unbelegten Bytes und hat
+        //  deshalb keinen Rueckweg.
+        if (c != 0xFFFD)
+            for (int k = 0; k < 32; ++k)
+                if (kHoch[k] == c) { b = 0x80 + k; break; }
+        if (b < 0) {
+            if (fehlerAn) *fehlerAn = i;
+            return {};
+        }
+        out.append(char(b));
+    }
+    return out;
+}
+
 QString decodeUnknownText(const QByteArray& raw, TextEncodingUsed* used) {
     QStringDecoder dec(QStringDecoder::Utf8, QStringDecoder::Flag::Default);
     QString text = dec.decode(raw);

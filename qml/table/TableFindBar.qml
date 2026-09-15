@@ -7,7 +7,7 @@ import "../common"
 
 //  Suchbalken der Tabellen-Flaechen (CSV/TSV und DATEV). Dieselbe Form wie im
 //  Texteditor und im DOCX-Editor, damit die App einheitlich bleibt; ersetzen
-//  kann er nichts - beide Flaechen zeigen nur an.
+//  kann er nichts.
 //  Der Balken haelt die Eingabe, der Controller die Treffer.
 Rectangle {
     id: root

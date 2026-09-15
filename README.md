@@ -13,14 +13,14 @@ stores its data are in **[FEATURES.md](FEATURES.md)**.
 - **Media formats** - images (including RAW and HEIC), video, audio, PDF, text and source files, DOCX and HTML.
 - **Audio player** - `Alt+A` turns the gallery into a player with shuffle, repeat and a 10-band equalizer.
 - **Gallery** - grid view with adjustable tiles, fullscreen, random mode, and a **split view** for up to four files side by side with draggable panes.
-- **Tags & categories** - your own categories and tags per file, stored as JSON next to the media, with filtering and search.
+- **Tags & categories** - your own categories and tags per file, stored in one compact file per folder next to the media, with filtering and search.
 - **PDF viewer** - page thumbnails, search, text selection, and audio/video annotations played in place.
 - **PDF page extraction** - pick pages from one or many PDFs and save them losslessly as a new file.
 - **PDF editor** - notes, drawings, highlights, redaction, signature stamps, form filling, page reordering, text editing and **tracked changes** for your own annotations; export keeps the original content byte-for-byte wherever possible.
 - **Image editor** - non-destructive crop, rotate, adjust and draw, with the same **tracked changes** as the PDF editor; the original file is never overwritten.
 - **DOCX editor** - a loss-preserving Word editor: only what you touch is rewritten. Tables, pictures, contents list, tracked changes (shown and resolvable), spell checking, find & replace, and PDF export.
 - **Text & source editor** - syntax colouring for 27 languages, folding, line numbers, indent guides, bracket matching, find & replace, an overview column and its own colour themes; plus a live HTML preview.
-- **Tables** - `.csv` and `.tsv` open as a table with detected separator and header row; a DATEV booking batch (`EXTF`/`DTVF`) is recognised by its content and additionally shows a file-header summary and debit/credit totals. Read-only.
+- **Tables** - `.csv` and `.tsv` open as an editable table with detected separator and header row, filter and sorting; a DATEV booking batch (`EXTF`/`DTVF`) is recognised by its content, shows a file-header summary and debit/credit totals, and stays read-only.
 - **Live transliteration** - type Latin, get Arabic, Hiragana or Katakana while you write.
 - **Appearance** - every colour of the interface is adjustable, the editor has its own separate palette, and both can be exported and shared.
 
@@ -103,36 +103,18 @@ open build/MediaGallery.app
 
 ### Tests (Developer Only)
 
-The regression suite lives in `tests/` and is **not part of this repository** -
-it is development material and stays out of the published tree, so a fresh clone
-has nothing to run and `ctest` reports no tests. The build simply skips the
-directory when it is absent; `-DMG_BUILD_TESTS=OFF` switches it off explicitly.
-
-Where the suite is present, it is built and run with:
-
-```bash
-ctest --test-dir build --output-on-failure   # Run all tests
-ctest --test-dir build -R docx               # Run a specific group
-```
-
-It uses plain executables (no external test framework or additional dependencies) and covers:
-
-- DOCX/ZIP parsing
-- Document model behavior
-- Path handling
-- Gallery sorting and filtering
-- Tag/category sidecar persistence
-- Tracked changes in the PDF and image editor
-- Companion-file handling (hiding, removing, undo)
+The regression suite is development material and not part of this repository.
+The build skips it when the `tests/` folder is absent.
 
 ---
 
 ## Changelog
 
 ### Latest
-- **Audio**: Equalizer bands now add up instead of stacking, preventing neighbouring bands from multiplying each other and reducing excessive gain at high settings.
-- **Audio**: **Prevent clipping** is now a limiter with 1 ms look-ahead, keeping quiet passages louder while preventing clipping. Its buffer is flushed on track jumps, seeking, stopping, and other playback changes.
-- **Fix**: **Equalizer preset overwriting** now works correctly, and preset clicks no longer affect the playlist behind the dialog.
+- **Feature**: **CSV/TSV table editing** with row and column operations, block pasting, undo, and safe file updates.
+- **Feature**: **Advanced table filtering** with comparisons and date ranges.
+- **Change**: **Improved date sorting** with configurable date formats.
+- **Fix**: **PDF page previews no longer flicker** while scrolling.
 
 ---
 

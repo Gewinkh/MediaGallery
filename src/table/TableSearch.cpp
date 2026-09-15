@@ -14,6 +14,10 @@ bool vorher(const Treffer& a, const Treffer& b) {
 
 }  // namespace
 
+ZellVergleich::ZellVergleich(const QString& text, SuchOptionen o)
+    : m_text(text), m_laenge(text.size()), m_gross(o.gross ? Qt::CaseSensitive : Qt::CaseInsensitive),
+      m_sucher(text, m_gross), m_ganzeZelle(o.ganzeZelle) {}
+
 QList<Treffer> suche(const QList<Zeile>& zeilen, int von, int bis,
                      const QString& text, SuchOptionen o,
                      const QList<bool>* spalten,
@@ -24,15 +28,7 @@ QList<Treffer> suche(const QList<Zeile>& zeilen, int von, int bis,
     if (mehr) *mehr = false;
     if (text.isEmpty()) return out;
 
-    const Qt::CaseSensitivity gross = o.gross ? Qt::CaseSensitive : Qt::CaseInsensitive;
-    //  EIN vorbereiteter Sucher statt `QString::contains` je Zelle: der baut
-    //  seine Sprungtabelle einmal, `contains` faltet die Schreibweise bei jedem
-    //  Aufruf neu.
-    const QStringMatcher sucher(text, gross);
-    const int nadel = int(text.size());
-    //  Bei EINEM Zeichen ist Qts eigener Weg schneller als eine Sprungtabelle,
-    //  die nie springt (gemessen 5 gegen 13 ms ueber 100.000 Zeilen).
-    const bool einZeichen = (nadel == 1);
+    const ZellVergleich vergleich(text, o);
     const int ende = qMin(bis, int(zeilen.size()));
     //  Mit Reihenfolge laeuft die Schleife ueber die ANZEIGE, ohne ueber die
     //  Datei. `anzeige` ist in beiden Faellen die Zeile, die gemeldet wird.
@@ -48,14 +44,7 @@ QList<Treffer> suche(const QList<Zeile>& zeilen, int von, int bis,
         for (const std::pair<quint16, QString>& feld : zeilen.at(z).belegte()) {
             const int spalte = int(feld.first);
             if (spalten && (spalte >= spalten->size() || !spalten->at(spalte))) continue;
-            //  Kuerzer als der Begriff kann nie treffen - der Ausschluss ueber
-            //  die Laenge ist ein Vergleich statt eines Suchlaufs.
-            if (int(feld.second.size()) < nadel) continue;
-            const bool treffer =
-                o.ganzeZelle ? (feld.second.compare(text, gross) == 0)
-              : einZeichen   ? feld.second.contains(text, gross)
-                             : (sucher.indexIn(feld.second) >= 0);
-            if (!treffer) continue;
+            if (!vergleich.trifft(feld.second)) continue;
             out.append(Treffer{ anzeige, spalte });
             if (out.size() >= kMaxTreffer) {
                 if (mehr) *mehr = true;

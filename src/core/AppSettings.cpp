@@ -505,6 +505,12 @@ bool AppSettings::tableOpensTxt() const {
 void AppSettings::setTableOpensTxt(bool v) {
     m_settings.setValue("ui/tableOpensTxt", v);
 }
+bool AppSettings::tableDateMonthFirst() const {
+    return m_settings.value("ui/tableDateMonthFirst", false).toBool();
+}
+void AppSettings::setTableDateMonthFirst(bool v) {
+    m_settings.setValue("ui/tableDateMonthFirst", v);
+}
 
 bool AppSettings::showAllFiles() const {
     return m_settings.value("ui/showAllFiles", false).toBool();

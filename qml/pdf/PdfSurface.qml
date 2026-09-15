@@ -2231,20 +2231,18 @@ Item {
                         anchors.horizontalCenter: parent.horizontalCenter
                         anchors.top: parent.top
                         color: "white"
-                        border.color: thumbCell.index === root.currentPage ? App.themeAccent
-                                                                           : App.themeBorder
-                        border.width: thumbCell.index === root.currentPage ? 2 : 1
-                        // Aus dem RAM-Provider statt PdfPageImage: kein Render am PDFium-Mutex.
+                        border.color: App.themeBorder
+                        border.width: 1
+                        // Rand fest: hing er an der aktuellen Seite, aenderte sich die `sourceSize`,
+                        // und jede verlassene und betretene Vorschau lud neu (Flackern).
                         Image {
                             id: thumbImg
                             anchors.fill: parent
-                            anchors.margins: thumbFrame.border.width
+                            anchors.margins: 1
                             asynchronous: true
                             cache: false
-                            // Stretch, nicht PreserveAspectFit: die Flaeche hat
-                            // bereits das Seitenverhaeltnis der Seite, und das
-                            // Einpassen liess oben und unten einen Rand des
-                            // weissen Grundes stehen.
+                            // Stretch statt Einpassen: die Flaeche hat schon das Seitenformat,
+                            // Einpassen liess oben und unten weissen Grund stehen.
                             fillMode: Image.Stretch
                             source: root._thumbDocId > 0
                                     ? "image://pdfthumb/" + root._thumbDocId + "/"
@@ -2252,6 +2250,13 @@ Item {
                                     : ""
                             sourceSize.width: Math.round(width * thumbCell._dpr)
                             sourceSize.height: Math.round(height * thumbCell._dpr)
+                        }
+                        Rectangle {
+                            anchors.fill: parent
+                            visible: thumbCell.index === root.currentPage
+                            color: "transparent"
+                            border.color: App.themeAccent
+                            border.width: 2
                         }
                         opacity: thumbs.dragIndex === thumbCell.index ? 0.45 : 1.0
                         TapHandler { onTapped: root.goToPage(thumbCell.index) }

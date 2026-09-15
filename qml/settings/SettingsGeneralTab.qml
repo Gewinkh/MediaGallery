@@ -47,8 +47,6 @@ Item {
     }
 
     ScrollView {
-        //  Griff fuer die Pruefstaende (s. `bench_shell de`).
-        objectName: "generalScroll"
         id: genScroll
         anchors.fill: parent
         contentWidth: availableWidth

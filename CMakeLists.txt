@@ -302,10 +302,14 @@ add_library(mg_lib STATIC
     src/table/DelimitedText.h
     src/table/TableController.cpp
     src/table/TableController.h
+    src/table/TableFilter.cpp
+    src/table/TableFilter.h
     src/table/TableSearch.cpp
     src/table/TableSearch.h
     src/table/TableSort.cpp
     src/table/TableSort.h
+    src/table/TableWriter.cpp
+    src/table/TableWriter.h
 
     src/tags/TagCategory.h
     src/tags/TagController.cpp

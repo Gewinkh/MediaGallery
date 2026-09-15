@@ -1,6 +1,7 @@
 #include "table/TableSort.h"
 
 #include <QCollator>
+#include <QDate>
 #include <QMetaObject>
 #include <algorithm>
 
@@ -51,60 +52,144 @@ bool spalteIstZahl(const QList<Zeile>& zeilen, int von, int bis, int spalte) {
     return gesehen > 0;
 }
 
+bool datumsSpanne(QStringView text, bool monatZuerst, bool teil, int* von, int* bis) {
+    const QStringView s = text.trimmed();
+    //  Ohne Liste und ohne Kopie: der Filter fragt das je Zelle, bei 100.000
+    //  Zeilen mal 20 Spalten zwei Millionen Mal.
+    if (s.isEmpty() || s.size() > 10 || !s.front().isDigit()) return false;
+    int wert[3] = {0, 0, 0};
+    int stellen[3] = {0, 0, 0};
+    int n = 1;
+    QChar trenner;
+    for (QChar c : s) {
+        if (c.isDigit()) {
+            if (++stellen[n - 1] > 4) return false;
+            wert[n - 1] = wert[n - 1] * 10 + c.digitValue();
+            continue;
+        }
+        if ((c != u'-' && c != u'.' && c != u'/') || (!trenner.isNull() && c != trenner)
+            || n == 3 || stellen[n - 1] == 0)
+            return false;
+        trenner = c;
+        ++n;
+    }
+    if (stellen[n - 1] == 0) return false;
+    int j = 0, m = 0, t = 0;
+    if (trenner.isNull() || trenner == u'-') {
+        if (stellen[0] != 4 || (n >= 2 && stellen[1] > 2) || (n == 3 && stellen[2] > 2)) return false;
+        j = wert[0];
+        m = n >= 2 ? wert[1] : 0;
+        t = n == 3 ? wert[2] : 0;
+    } else {
+        //  Jahr hinten: T.M.JJJJ bzw. die Schraegstrich-Form; zwei Teile sind M.JJJJ.
+        if (n < 2 || stellen[n - 1] != 4 || stellen[0] > 2 || (n == 3 && stellen[1] > 2)) return false;
+        j = wert[n - 1];
+        if (n == 2)                             { m = wert[0]; }
+        else if (trenner == u'/' && monatZuerst) { m = wert[0]; t = wert[1]; }
+        else                                    { t = wert[0]; m = wert[1]; }
+    }
+    const bool mitTag = (n == 3);
+    const bool mitMonat = (n >= 2);
+    if (j < 1000 || (!mitTag && !teil)) return false;
+    if (!mitMonat) {
+        if (von) *von = j * 10000 + 101;
+        if (bis) *bis = j * 10000 + 1231;
+        return true;
+    }
+    if (m < 1 || m > 12) return false;
+    if (!mitTag) {
+        if (von) *von = j * 10000 + m * 100 + 1;
+        if (bis) *bis = j * 10000 + m * 100 + QDate(j, m, 1).daysInMonth();
+        return true;
+    }
+    if (!QDate(j, m, t).isValid()) return false;
+    if (von) *von = j * 10000 + m * 100 + t;
+    if (bis) *bis = j * 10000 + m * 100 + t;
+    return true;
+}
+
+bool alsDatum(const QString& text, int* schluessel, bool monatZuerst) {
+    return datumsSpanne(text, monatZuerst, false, schluessel, nullptr);
+}
+
+bool spalteIstDatum(const QList<Zeile>& zeilen, int von, int bis, int spalte, bool monatZuerst) {
+    const int ende = qMin(bis, int(zeilen.size()));
+    int gesehen = 0;
+    for (int z = qMax(0, von); z < ende && gesehen < kProbeZeilen; ++z) {
+        const QString w = zeilen.at(z).wert(spalte);
+        if (w.trimmed().isEmpty()) continue;
+        ++gesehen;
+        if (!alsDatum(w, nullptr, monatZuerst)) return false;
+    }
+    return gesehen > 0;
+}
+
 QList<int> sortiere(const QList<Zeile>& zeilen, int von, int bis, int spalte,
-                    SortRichtung richtung, const std::atomic<bool>* abbruch) {
+                    SortRichtung richtung, const std::atomic<bool>* abbruch,
+                    const QList<int>* auswahl, bool monatZuerst) {
     if (richtung == SortRichtung::Keine || spalte < 0) return {};
     const int start = qMax(0, von);
     const int ende  = qMin(bis, int(zeilen.size()));
     if (ende <= start) return {};
 
     QList<int> ordnung;
-    ordnung.reserve(ende - start);
-    for (int z = start; z < ende; ++z) ordnung.append(z);
+    if (auswahl) {
+        ordnung.reserve(auswahl->size());
+        for (int z : *auswahl)
+            if (z >= start && z < ende) ordnung.append(z);
+    } else {
+        ordnung.reserve(ende - start);
+        for (int z = start; z < ende; ++z) ordnung.append(z);
+    }
 
     const bool ab      = (richtung == SortRichtung::Ab);
     const bool zahlen  = spalteIstZahl(zeilen, start, ende, spalte);
+    //  Ein Datum faellt durch die Zahlenpruefung (zwei Punkte); ohne eigene Art
+    //  stuende der 02.01.2025 hinter dem 01.12.2025.
+    const bool daten   = !zahlen && spalteIstDatum(zeilen, start, ende, spalte, monatZuerst);
 
-    //  Die Schluessel werden EINMAL gezogen, nicht bei jedem Vergleich: ein
-    //  Sortierlauf ueber 100.000 Zeilen stellt rund 1,7 Millionen Vergleiche an,
-    //  und `wert()` sucht je Aufruf binaer in den belegten Feldern.
     //  Natuerliche Ordnung: "Datei 10" gehoert hinter "Datei 9", nicht davor.
     QCollator koll;
     koll.setNumericMode(true);
     koll.setCaseSensitivity(Qt::CaseInsensitive);
 
     QList<double> zahl;
-    //  Der VORBEREITETE Sortierschluessel statt `QCollator::compare` je
-    //  Vergleich: gemessen an 100.000 Zeilen 195 -> 42 ms. Ein Sortierlauf
-    //  stellt rund 1,7 Millionen Vergleiche an, und jeder faltete den Text
-    //  sonst neu.
+    //  Schluessel EINMAL gezogen und vorbereitet statt `compare` je Vergleich: rund
+    //  1,7 Millionen Vergleiche je Lauf, gemessen an 100.000 Zeilen 195 -> 42 ms.
     QList<QCollatorSortKey> schluessel;
+    const int m = int(ordnung.size());
     QList<bool> leer;
-    leer.resize(ende - start);
-    if (zahlen) zahl.resize(ende - start);
-    else        schluessel.reserve(ende - start);
+    leer.resize(m);
+    const bool alsWert = zahlen || daten;
+    if (alsWert) zahl.resize(m);
+    else         schluessel.reserve(m);
 
-    for (int i = 0; i < ende - start; ++i) {
-        const QString w = zeilen.at(start + i).wert(spalte).trimmed();
+    //  Schluessel je POSITION in `ordnung` - mit Filter nur ein Teil des Bereichs.
+    for (int i = 0; i < m; ++i) {
+        const QString w = zeilen.at(ordnung.at(i)).wert(spalte).trimmed();
         leer[i] = w.isEmpty();
         if (zahlen) {
             bool ok = false;
             zahl[i] = alsZahl(w, &ok);
+        } else if (daten) {
+            int k = 0;
+            alsDatum(w, &k, monatZuerst);
+            zahl[i] = k;
         } else {
             schluessel.append(koll.sortKey(w));
         }
     }
     if (abbruch && abbruch->load()) return {};
 
-    std::stable_sort(ordnung.begin(), ordnung.end(),
-                     [&](int a, int b) {
-        const int ia = a - start, ib = b - start;
+    QList<int> pos(m);
+    for (int i = 0; i < m; ++i) pos[i] = i;
+    std::stable_sort(pos.begin(), pos.end(), [&](int ia, int ib) {
         //  Leere Zellen IMMER ans Ende, in beiden Richtungen: eine Luecke ist
         //  kein kleiner Wert, und sie oben zu haben verdeckt genau das, wonach
         //  man sortiert hat.
         if (leer[ia] != leer[ib]) return !leer[ia];
         if (leer[ia]) return false;
-        if (zahlen) {
+        if (alsWert) {
             if (zahl[ia] == zahl[ib]) return false;
             return ab ? (zahl[ia] > zahl[ib]) : (zahl[ia] < zahl[ib]);
         }
@@ -115,7 +200,9 @@ QList<int> sortiere(const QList<Zeile>& zeilen, int von, int bis, int spalte,
     });
 
     if (abbruch && abbruch->load()) return {};
-    return ordnung;
+    QList<int> aus(m);
+    for (int i = 0; i < m; ++i) aus[i] = ordnung.at(pos.at(i));
+    return aus;
 }
 
 SortTask::SortTask(QObject* owner, std::shared_ptr<const void> anker,

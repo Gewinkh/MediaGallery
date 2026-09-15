@@ -42,6 +42,18 @@ bool looksLikeDatev(const QByteArray& anfang);
 //  Rohe Bytes -> Datei. Trennzeichen ist bei DATEV immer `;`.
 Datei parse(const QByteArray& raw);
 
+//  Die beiden Spalten der Summen, am NAMEN aus Zeile 2 gesucht; die Position
+//  ist nur der Notnagel, falls eine Version anders ueberschreibt.
+struct Summenspalten {
+    int betrag = -1;
+    int sollHaben = -1;
+};
+Summenspalten summenSpalten(const QStringList& spalten);
+
+//  Soll und Haben ueber die Buchungen in `auswahl` oder, ohne sie, ueber alle.
+void summiere(const QList<Zeile>& buchungen, Summenspalten s, const QList<int>* auswahl,
+              double* soll, double* haben);
+
 //  Betrag in DATEV-Schreibweise (Komma als Dezimaltrenner, Punkt als
 //  Tausenderpunkt) -> Zahl. `ok` bleibt false, wenn nichts Zaehlbares dasteht.
 double parseBetrag(QStringView s, bool* ok = nullptr);

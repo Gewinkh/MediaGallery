@@ -1,534 +1,383 @@
 # MediaGallery - Features
 
-The complete list. `README.md` gives one sentence per area; this file has the
-details, including every keyboard shortcut and where the app keeps its data.
+Everything the app can do, including keyboard shortcuts and where it keeps its
+data. [README.md](README.md) gives one sentence per area; the limits of each
+feature are in [LIMITATIONS.md](LIMITATIONS.md).
 
-Optional dependencies change what is available: without **ZLIB** the DOCX editor
-is disabled, without **Tesseract** there is no OCR for scanned PDFs, and without
-**Hunspell** plus a dictionary there is no spell checking. In each case the app
-builds and runs normally and says why the feature is off.
-
-Where a feature stops - the known limits, with the reason behind each one - is in
-**[LIMITATIONS.md](LIMITATIONS.md)**. This file describes what works.
+Some features need optional libraries: **ZLIB** for the DOCX editor,
+**Tesseract** for text recognition in scanned PDFs, **Hunspell** plus a
+dictionary for spell checking. Without them the app runs normally and says why a
+feature is off.
 
 ---
 
 ## Media Formats
 - **Images**: JPG, PNG, GIF, BMP, WebP, TIFF, HEIC, HEIF, AVIF, SVG, ICO, RAW (CR2, NEF, ARW, DNG)
 - **Videos**: MP4, MKV, AVI, MOV, WMV, WebM, M4V, MPEG, 3GP, OGV, TS, M2TS, VOB, RMVB, ASF, DIVX
-- **Audio**: MP3, FLAC, WAV, OGG/OGA, AAC, M4A/M4B, WMA, Opus, AIFF, APE, ALAC, MP2, AC-3, **E-AC-3 (`.eac3`/`.ec3`)**, DTS, MIDI and more - including every format the app writes itself when saving a video's sound
-- **PDFs**: Full page rendering with thumbnail sidebar and media annotation support
-- **Text files**: TXT, Markdown, source code (C++, Python, Rust, Go, JS/TS, …), configs, scripts, logs, CSV and more - editable directly in the app
-- **Word documents**: DOCX - opened in a built-in, loss-preserving editor (see *DOCX Editor* below)
-- **HTML**: Rendered live preview (via Qt WebEngine) alongside the editable source view
+- **Audio**: MP3, FLAC, WAV, OGG, AAC, M4A/M4B, WMA, Opus, AIFF, APE, ALAC, MP2, AC-3, E-AC-3, DTS, MIDI and more
+- **PDF**: pages with a thumbnail sidebar, including embedded audio and video
+- **Text files**: plain text, Markdown, source code, configuration files, logs - all editable in the app
+- **Tables**: CSV and TSV, plus DATEV booking batches
+- **Word documents**: DOCX, in a built-in editor
+- **HTML**: live preview next to the editable source
 
-## Gallery & View
-- **Look inside the folder file**: switch on *Show all files*, open the `<FolderName>.mgstore` and the app renders it in readable form - every tag with its colour, every category with its full path, every file with its tags spelled out. A **Raw** button at the top right switches to a hex dump of the actual bytes and back, for when you want to see the format itself. It opens read-only; the file itself stays binary and is only ever written by the app
-- **Turn tile previews off per kind**: Settings -> View -> *Tile previews* has a switch for text files, one for **PDFs** and one for **images**. Off means no thumbnail is produced for those files at all - the tile shows the file type instead. That skips the rendering, the thumbnail cache and the memory a decoded image holds, which is noticeable in folders full of large photos or PDFs. In the **list view** text, PDF and Word files always show their type (at that size a page is unreadable anyway), so only the image switch applies there - and it is the one offered
-- **Text files preview with syntax colours**: a tile shows the first lines of the file in the same colours as the editor, so a `.cpp` looks different from a `.md`, a `.py` or a `.json` at a glance. Truncated lines keep their colouring
-- **A `.ts` file is looked at, not guessed**: the extension means both TypeScript and MPEG transport stream, so the first kilobyte decides - four packets in a row starting with the sync byte make it a video, anything else (an empty file included) is treated as source code and opens in the editor
-- Switchable under Settings -> View: turned off, the tile shows the **file type** instead (CPP, PY, MD …)
-- **The list view always shows the file type**, never the content - the square there is about 30 px wide, where five lines of source code are unreadable but `CPP` or `PY` is instantly clear. The setting therefore hides itself while the list layout is active
-- Files without an extension are covered too: `LICENSE`, `COPYING`, `README`, `CHANGELOG`, `Makefile` and `Dockerfile` open as text and show their name as the type
-- **Tiles or list** (*Settings -> View -> Arrangement*): the gallery either lays its entries out as a **tile grid** (the default, unchanged) or puts every folder and every file on a **horizontal row of its own** - small artwork on the left, name, tag dots, and the count or file type on the right. It is the same arrangement player mode uses, but **without its filter**: in the normal gallery every file stays visible, images, PDFs, text and all. The row height is yours to choose - `Ctrl` with `+`/`-` or the wheel, or by hand in the settings. Subfolders still open in place and stay indented by level, and everything keeps working - tags, categories, the context menu, dragging, click and double-click. Player mode is set separately (*Settings -> Audio*), so choosing a list there does not turn your gallery into one
-- **Grid view**: 1–25 columns, zoom with `Ctrl+Scroll` or `Shift+Scroll`
-- **Zooming follows the arrangement**: `Ctrl` with `+`/`-` or the mouse wheel resizes **whatever is on screen** - the tiles in tile view, the **row height** in list view (28 to 160 px, and artwork, text and tag dots grow with it). Each keeps its own size, so switching back and forth never disturbs the other. Both can also be set by hand in *Settings -> View*, where the box shows the tile controls or the row height depending on which arrangement is active
-- **Scrolling the gallery**: mouse wheel (smoothly animated), the scrollbar, or the keyboard - `Up`/`Down` move half a tile row, `PageUp`/`PageDown` a screenful, `Home`/`End` jump to the start or end. The keys scroll the **view**; they do not move a selection. While you are typing in a text field the arrow keys stay with that field. Dragging on the gallery does **not** scroll it - a drag on a tile pulls the file out of the app instead
-- **Tile size dialog**: Adjust tile width/height with a live drag-resize preview
-- **Sizes apply as you set them**: in *Settings -> View* the tile width and height - and the row height in list view - take effect the moment you change them. There is no Apply button: you are watching the gallery while you turn the number, and `Ctrl` with the wheel has always worked that way
-- **Fullscreen gallery**: Prev/Next, Random mode, up to 10× zoom, pan with mouse
-- **Image viewer & editor**: Hardware-accelerated QML viewer with PDF-style zoom/pan (fit-to-window, 100%, wheel-zoom, drag-pan) and a full non-destructive **Image Editor** - see the dedicated section below
-- **Split view**: Open up to **4 files side by side** in the fullscreen view (like a 2-, 3-, or 4-player split screen: 2 = two columns, 3 = two on top + one full-width below, 4 = 2×2). Each pane is an independent viewer with its own header and its own PDF Editor / Image Editor / zoom / playback state; the arrow keys act on the focused pane. The **boundaries between panes can be dragged** to resize the tiles (a column divider for 2 panes, plus a row divider for 3/4 panes). A **"+" button** in each pane's header returns to the gallery and adds the next clicked file as another pane (no file dialog - you pick straight from the gallery). **Back / `Esc`** on a pane closes just that file and frees its memory immediately; closing the last pane returns to the gallery. Resizing the window or adding a pane keeps every pane on its current page/position.
-- **Split view docking (drag & drop)**: Grab a pane by its **header bar** and drag it to rearrange the layout, with **visual drop zones and a live layout preview** (VS Code style). With 2 files you can switch between side-by-side and stacked (drop on an edge zone) or swap positions (drop on the other pane). With 3 files, dropping on an edge zone makes the dragged file the **large pane** on that side (the other two share the remaining half); dropping on a **corner zone** shrinks it back into that quadrant and the adjacent pane takes over the freed area; dropping on another pane swaps positions. With 4 files, dropping on another pane simply **swaps** the two (the 2×2 layout is fixed). Closing or adding panes keeps the arrangement as close as possible to what you set up; the custom layout lasts until the app is closed (not persisted).
-- **Compact mode**: Options mode toggle with `Alt+S` - works in the gallery and inside the open media viewer
-- **Cover mode**: Cover/uncover gallery with `B`
-- **Drop a file on a tag or a category to assign it**: drag a gallery tile onto a **tag** in the right-hand panel - either in the tag section or under a category - and the file gets that tag; drop it on a **category header** and the file joins that category. Dropping only ever **adds** - it never removes an assignment that is already there. Dragging a tag chip onto a category header still moves the tag itself, as before. Files dragged in from outside the app are accepted too, as long as they are in the folder that is currently open (categories and tags are stored per folder)
-- **Drag a file from one half into the other**: with the window split, drag a tile across and drop it either on a **folder tile** or anywhere on the other half's gallery - it lands in the folder that half has open. It follows the same *move or copy* setting as the bookmark bar (**move** by default, switchable in *Settings -> General*), takes its tags, category and custom date along on a move, asks before overwriting, and can be taken back with `Ctrl+Z`. The receiving half refreshes by itself
-- **Drag a file onto a bookmark to file it away**: while you drag a tile, a bar of your saved folders appears at the bottom of the window - drop the file on one and it goes there. By default it is **moved** (switchable to copying in Settings -> General). A move takes the file's **tags, its category and its custom date with it** into the target folder, and leaves nothing behind in the source folder; a copy arrives without them, so the original keeps its own. If the target folder already holds a file of that name, you are asked: replace, rename (`Name (2).ext`) or cancel - nothing is ever overwritten silently. A move can be taken back with `Ctrl+Z` like a deletion
-- **`Delete` removes the selection** - same confirmation as the context menu, and nothing happens without a selection. Deleting several files at once still goes back with a single `Ctrl+Z`. Clicking anywhere in the gallery gives it the keyboard, so the key works even right after you have typed in the search box
-- **`Enter` confirms any delete question, `Esc` cancels it** - files, a whole selection, a folder, a tag, a category, a bookmark, notes and drawings: every confirmation takes the keyboard, not just the mouse
-- **Select several tiles at once**: the gallery works like a file manager. **`Ctrl`+click** toggles a tile in or out of the selection, **`Shift`+click** takes everything from the last tile you touched up to this one (hold `Ctrl` as well to *add* that range to what is already selected), and **dragging on empty space** pulls a **selection rectangle** over the tiles it covers - hold `Ctrl` while you start it to add to the existing selection. **`Ctrl+A`** selects everything the current filter is showing (not the whole folder - you can only select what you can see), and **`Esc`** clears the selection. Any click without a modifier clears it too. Selected tiles carry an accent border, a tinted overlay and a check mark, and the status line tells you how many are selected. Folder tiles can be selected as well.
-  Everything the gallery already does then acts on the whole selection: **dragging** one of the selected tiles takes them all with it (onto a folder tile, onto a bookmark, onto a tag or a category in the side panel, or out of the app entirely - folders stay behind, they are not draggable); the **right-click menu** sets or removes a tag or a category for all of them at once (a tick means *all* of them have it); and **Delete** asks once and puts the whole selection in the trash as a **single** step, so one `Ctrl+Z` brings all of it back. **Renaming stays single** - it always applies to the tile you clicked. Dragging a tile that is *not* part of the selection drags just that one, exactly as before.
-- **Copy and paste files (`Ctrl+C` / `Ctrl+V`)**: `Ctrl+C` copies the selected files (or use *Copy* in a tile's right-click menu); `Ctrl+V` pastes files from the clipboard **into the folder the pane is showing** - including a subfolder you have opened as the main level. Copy in one pane and paste in the other, or paste files you copied in your file manager. Folders are skipped. Pasting inside the app always brings **every** copied file, even where the desktop's clipboard would shorten the list (see [LIMITATIONS.md](LIMITATIONS.md)).
-  While you are typing in the search field, `Ctrl+A`, `Ctrl+C` and `Ctrl+V` belong to that field - they select, copy and paste **text** there, not files. Click back into the gallery and they act on files again.
-- **Drag a file out of the app**: grab a gallery tile and drop it into another program - a file manager, a mail draft, a chat window or a file upload in the browser. The file itself is handed over (as any file manager would), and always as a **copy** - a drop target can never move your file out of its folder. Dragging starts only after a short movement, so clicking, tagging and the context menu are unaffected
-- **Subfolders in the gallery**: the folders inside the open folder are shown as tiles of their own and always come **first**, before any media. A **left click opens a folder in place** - its files are listed right below its tile, without leaving the folder you are in, and this nests as deep as you like. Clicking again closes it, and closing a folder remembers what was open inside it, so opening it again brings the same subtree back. The **Folders** entry in the filter's Media section hides or shows them (hiding also hides the contents of any folder that is currently open). A **double click** on a folder tile goes one step further and opens that folder as the **new main level**; **`Alt+<-`** takes you back the way you came. That back path only ever records the folders you descended into - picking a bookmark or dropping a folder on the window leaves the tree and clears it, so the list stays short. There is no forward step: going in is what the double click is for. Coming back to a folder shows it **exactly as you left it**, with the same subfolders open (remembered for the session, not written to disk). Paging with `->`/`<-` in the fullscreen view stays **inside the folder the open file belongs to** and skips folder tiles; random mode does the same. An opened folder is backed by a **lighter area** that covers exactly its contents and grows or shrinks as files come and go; each nesting level is one shade lighter (a shade darker on a light theme, where "lighter than white" does not exist) and its contents are **indented**, so you can see at a glance that they belong to a subfolder. The folder you opened is marked itself: accent border, a tinted tile and an **open-folder icon**. Each folder tile shows **how many media are inside**, counted in the background so a folder with tens of thousands of entries never stalls the view. Files inside an opened subfolder are **fully yours**: tagging, renaming, dates and deleting all work, and every assignment is stored in that subfolder's own file - open the subfolder directly later and it is all still there, colours included. The **+** button in the filter bar creates a subfolder in the folder you are in (its *New folder* entry). Each opened folder carries a **header of its own** with its name and its own buttons - *Open folder*, *+ Create*, *+ Folder* and *Extract* all act on **that** folder, not on the one you started in. While you drag, moving the pointer to the **top or bottom edge scrolls the gallery** - the closer to the edge, the faster. (The mouse wheel cannot help on Wayland: during a drag the compositor owns the pointer and scroll events never reach the application at all. On X11 the wheel works as well.) Alongside the bookmark bar, a second bar shows **every folder currently in the gallery** - the open folder itself and each subfolder, indented by its level - so a folder that scrolled off-screen is always one drop away. You can also **drag a file onto any folder tile - or anywhere inside an opened folder's area** - to file it away there (moved by default, switchable to copying in Settings -> General; the same rules and the same undo as dropping on a bookmark). Right-clicking a folder offers *Open*, *Rename…* and *Delete…*; deleting goes to the system trash with `Ctrl+Z` to undo, and is refused outright if the system offers no trash - a folder can hold anything, and without a way back that would be the wrong promise. Watching a folder keeps working while subfolders are open: a refresh does not collapse anything
-- **Search and filters reach into subfolders**: typing in the search field, picking a tag or a category searches the **whole tree below the folder you are in** - never above it. Folders holding a hit open up on their own, together with every folder on the way there, and clear the moment you empty the search: what you had opened by hand stays open, what the search opened closes again. The filter list offers the tags of opened subfolders too, each with the colour stored in its own folder - the folder you have open decides the colour, and if only subfolders know the tag, the first one you opened does, so a chip never changes colour between starts. Moving a file into a folder that already uses that tag **keeps that folder's own colour**; the colour only travels along into a folder that does not know the tag yet
-- **Dropping files from outside lands where you let go**: drag files in from a file manager or a browser and they are copied into the folder **under the cursor** - the opened subfolder you are hovering, or the main folder if you drop on empty space. The folder that will receive them lights up while you drag. Dropping a *folder* still opens it as the new main level
-- **Two galleries side by side** (*View -> Split window*): the main screen splits into two independent panes, divided by a **draggable divider**. Each pane has **its own folder, its own filter bar and its own *File* and *Folder* menu**; *View* and *Settings* stay app-wide in the strip on top, because they apply to both. The **same folder may be open twice** - both panes then share the folder's file, and neither loses its tags. The pane you point at is the active one (a thin accent line marks it), and single-key shortcuts (`R`, `B`, `Alt+Left`, `Ctrl+F`, undo/redo) act on that pane only. With two panes, *File -> Quit* becomes *File -> Close* and closes just that pane. Each pane opens **up to two files** side by side, so it is still four in total; a single pane keeps its four. Both folders and the divider position come back on the next start. **Swap the two panes** by dragging one pane's own bar across to the other side, or with *View -> Swap panes* - the menu entry also works while both panes have a file open, where the bar is hidden behind the file's own header. Each pane travels with everything open in it. Splitting the window, closing a pane and swapping never disturb the other pane's open files. *View -> Remove split* always closes the pane you are **not** working in; if that pane holds an open file and yours is just showing the gallery, yours is the one that goes, so removing the split never throws a document away. With a single pane nothing changes: *File*, *View*, *Settings* and *Folder* sit in one row on top, exactly as before. In Settings, the folder-specific pages (tags, categories, converter) get a small **pane chooser** while the screen is split, so you can edit either folder's data without switching panes first
-- **Live folder watch**: New or deleted files are detected automatically
-- **Folder bookmarks**: Save folders under a custom name for one-click access (Menu -> Folder, and Settings -> Bookmarks). "Add Folder" from the menu **pre-fills the path with the currently open folder** if it is not saved yet (comparison is case-sensitive with trailing separators normalized) - the path stays editable before confirming
-- **Bookmark groups, nested as deep as you like**: bookmarks can be sorted into **named groups** ("Personal", "Work", ...), and a group can hold **further groups** - "Personal" > "Learning" > the folders for C, C++ and Vulkan. Groups are containers only; the saved folders are always the leaves. In the **Folder** menu **every level** is one line you can **fold and unfold**, not just the top one: folded it takes a single row, unfolded it lists what is inside, indented one step per level. Folding a group hides its whole subtree, and each group keeps its own fold state - unfold the outer one again and the inner one is still as you left it. The fold state is remembered across restarts, and clicking a group header folds it **without closing the menu**. Bookmarks that are in no group stay at the top, exactly where they were - nothing has to be sorted before the app is usable again
-- **Organising groups (Settings -> Bookmarks)**: the list shows the whole tree, one row per group and per bookmark, indented by level. A group row carries its name, how many things sit **directly** inside it, and three drawn buttons: **+** adds a **subgroup** below it, the **gear** renames it, the **bin** deletes it. Bookmark rows carry the gear (edit) and the bin (delete). **+ Group** at the top creates one on the outermost level. Deleting a group deletes its subgroups too but **never deletes bookmarks** - every folder from the whole subtree returns to the ungrouped section at the top. Renaming or moving a group takes its entire subtree along. A bookmark's group can also be picked in the add/edit dialog, where the list shows every group indented by level and the closed box shows the full path. Group names must not contain a slash - that is what separates the levels
-- **Drag and drop across levels** (Settings -> Bookmarks): grab the **handle** on the left of any row - a bookmark or a whole group. Drop it on a **bookmark row** to put it in that row's group at that position, on a **group row** to put it inside that group, or on the **"Ungrouped" row** at the top to bring it back out to the outermost level. Dropping a group on a group makes it a **subgroup**, subtree and all. To reorder groups that sit side by side, a thin **insert strip** appears above every group row while you drag a group - drop there and it lands in front of that group on the **same** level. A group cannot be dropped inside itself. The dragged entry follows the pointer and the drop target lights up
-- **Window title shows folder and file**: `MediaGallery - <folder> / <file>`; with several files open side by side it follows the active pane
-- **The header bar comes back in fullscreen**: immersive fullscreen (`F`) hides the header as before, but moving the mouse to the **top edge** brings it back over the content - so the View menu and the back button stay reachable. The page does not jump: in fullscreen the bar overlays instead of pushing the content down
-- **View menu in the header bar**: the header of an open file carries a **View** menu next to the back button - random mode, date/metadata, add a file beside this one, switch HTML source/preview, compact mode (`Alt+S`) and immersive fullscreen, each by name instead of only as an icon. The icons on the right keep the two shortcuts worth one click (add a file beside this one, random mode); the date button moved into the menu. The header itself is about 30 % slimmer than before, because the file name moved into the window title; renaming still happens in the header field, which now appears in compact mode (`Alt+S`) where renaming lives
-- **Fullscreen transitions**: Slide or Fade page animation (Settings -> General)
-
-## Text Editor
-- Opens any supported text/source file in a monospace editor inside the fullscreen view
-- **No Save button - and none needed.** The file is written when you leave it, when you switch to another one, and on the auto-save interval; `Ctrl+S` still works, and the status bar shows a dot with *modified* while something is unsaved. This also freed the second toolbar: the editor now has **one** bar (the viewer header), with the overview and transliteration buttons next to *Add file*, and *Save as PDF …* (colour + convert) in the **Document** menu
-- **Auto-Save**: optional timer-based auto-save (configurable interval, Settings -> Text Editor)
-- Proper Arabic/CJK font fallback in the editor (no more missing-glyph "tofu" boxes)
-- **Export as PDF** (**Document** menu -> *Save as PDF …*): writes `<name>.pdf` **beside the source file**; the text file itself is never touched, and an existing PDF of that name is never overwritten (`<name> (2).pdf`, `(3)`, …)
-  - What gets printed is **what stands in the editor**, including unsaved changes
-  - Fixed layout: monospace 10 pt in **medium weight** (indentation, ASCII tables and columns keep their alignment), A4 portrait, 20 mm margins all round, footer carrying **only the page count** (`1/3`, centred) - no file name
-  - **Two ways to print, side by side.** The popup with the Convert button now offers *One colour* and *Like the editor*:
-    - **One colour** (the default) is the way it always was: your colour on white paper, for anything that ends up on a printer
-    - **Like the editor** carries the profile over: the editor's background, its text colour, and - for the 27 languages the scanner knows - **its syntax colouring**, mark by mark. The background is part of it and cannot be switched off: a dark profile's colours on white paper would be unreadable in places, which is exactly what the first mode is for. The choice is remembered
-    - **Not included**: line numbers and folding. A folded block in the PDF would mean text is missing without anything saying so
-  - **Choosable text colour**, with black as the default. It applies to *One colour* mode. The swatch sits in the same popup as the Convert button: what you pick there applies **to this file only** and is remembered in the folder's JSON sidecar next to its tags and date. Once a file has its own colour, a reset button appears next to the swatch and drops it back to the default. The default itself is one setting for all files (Settings -> Text Editor -> *Text colour for text-to-PDF export*)
-  - **The colour never follows the app theme.** It is written into the document, so a theme switch must not change it - before this was pinned down, a dark theme once printed near-white text onto white paper. An unusable stored value falls back to black rather than to something invisible. The medium weight is part of the same promise: at 10 pt a regular monospace is so thin that a full page reads grey on screen even though the ink is solid
-  - Long lines **wrap** (never truncated); tabs are as wide as they are in the editor (the *Tab width* setting, 2…8 characters), so a printed file is indented exactly as it looked on screen; CRLF and old Mac CR line endings are handled
-  - Real text, not an image: the result can be selected, copied and searched (see *Known limitations* for pages made up of very short lines)
-  - Runs in the background - the editor stays usable, and a short status message reports the written file or the error
-- **Syntax highlighting** for the file's language, worked out from its extension. Covers C/C++ (`c cc cpp cxx h hpp hxx`), Python, Markdown, Java, JavaScript/TypeScript, C#, Go, Rust, PHP, Swift, Kotlin, shell (`sh bash zsh`), Ruby, Lua, CMake, YAML, SQL, XML/HTML, CSS/SCSS/LESS, JSON and INI/TOML, plus extension-less `Makefile`, `CMakeLists.txt` and `Dockerfile`. An unknown extension is shown as plain text and costs nothing
-  - Thirteen colour classes shared by **every** language (keyword, type, string, number, comment, preprocessor, function, operator, heading, emphasis, link, code) - so adding a language never adds another row of colour settings
-  - Markdown gets its own treatment: headings, emphasis, lists, block quotes, links, inline code and fenced code blocks, with the fence carrying across lines
-  - **HTML colours its embedded languages too**: everything inside `<style>` is read as CSS and everything inside `<script>` as JavaScript, across line boundaries. In a real page that is usually the bulk of the file
-  - **QML, `.qrc`, `.pro` and `.pri`** are recognised as text files (they used to open on a "no preview renderer" screen). QML gets its own keyword set plus its structure: type names (`Rectangle {`) and property bindings (`anchors.fill:`) are coloured, while the colon of a conditional is left alone
-  - HTML also colours **entities** (`&nbsp;`, `&#12354;`) and the CSS inside an inline `style="…"`
-  - **JavaScript template strings** (`` ` … ` ``) are read as strings even across lines
-  - **`on*` attributes in HTML carry code**: the value of `onclick="…"` is read as JavaScript, the way `style="…"` is read as CSS
-  - In QML the **whole property chain** is coloured (`anchors.fill:`), not just its last part
-  - Typing re-colours **one** line, not the file
-- **Tab width is adjustable (2…8, default 4)**, as in Qt Creator and Kate. (Qt's own default is a fixed 80 pixels regardless of the font, which at 13 px monospace is about ten characters.) **Text -> PDF uses the same width**, so an exported file is indented on paper exactly as it was on screen
-- **The Tab key inserts spaces by default**, up to the next stop - the way Kate does it, so the file looks the same in every editor no matter what tab width is set there. Switchable off (Settings -> Text Editor), which writes a real tab character instead
-- **The view follows the caret, and only the caret.** Typing at the bottom edge, `Page Down`, `Ctrl+End`, or dragging a selection past the edge all scroll the view along - but a change to the *layout* never does. That is why folding a block or flipping a setting no longer throws you back to the top of the file: the editor is deliberately not wired to Qt's "keep the cursor visible on every relayout", it follows the caret itself when the caret actually moves
-- **Every search understands patterns** (regular expressions) - and needs no switch for them. The text you type is **always** searched literally; if it also contains regex characters and makes sense as a pattern, it is searched as a pattern **as well** and both results are merged into one overlap-free list. So searching `\d{4}` finds every four-digit number **and** the literal text `\d{4}`, and a half-typed `(` is not an error - it is simply searched literally. This applies to the **gallery search, the text editor, PDF and DOCX** alike. Replacement is always literal: type `\d{4}` there and you get those six characters. Settings -> General -> *Search with patterns* lists the characters and a few examples
-- **Find and replace** (`Ctrl+F`), as in any IDE: incremental search with a match counter
-  (`3 / 17`), `Enter` / `Shift+Enter` to step through, wrap-around at the end of the file,
-  match case, whole words, and every match highlighted at once. Selected text is picked up when
-  the bar opens, `Esc` closes it. Replace, Replace all - and all replacements are **one** undo
-  step. On a read-only file the replace row is greyed out
-- **Overview column** on the right (Kate's minimap), collapsible from the button next to *Add file* or from the settings: the whole file scaled right down, drawn as coloured bars in the syntax colours rather than as text. It shows the shape of the document - indentation, blocks, blank lines - and you can click and drag in it to scroll. Off by default, because it costs width
-- **Folding**, as in Qt Creator: a narrow bar right of the line numbers collapses functions, blocks, sections or headings. It appears **only for files that actually have foldable blocks** - a plain `.txt` never shows it, and once shown it stays for that file so the text does not jump around while you type. A collapsed block shows `void f() {…}` with the body hidden - **click the three dots to open it again**, or the arrow in the bar; the file itself is untouched, and saving or exporting always writes the whole text. What folds depends on the language: braces (C/C++, Java, JS, C#, Go, Rust, PHP, Swift, Kotlin, Dart, CSS, JSON, QML, shell, Perl, R, Valgrind `.supp`), indentation (Python, YAML), headings and fenced code (Markdown), sections (INI, TOML), **tag pairs** (HTML/XML - void elements such as `<br>` and self-closing tags open nothing, and a stray `</div>` does not derail the rest), and **keyword pairs** (Lua `do`/`end`, Ruby `def`/`end`, CMake `if()`/`endif()`). A search hit inside a collapsed block opens it and leaves it open; hits you have not stepped to are marked on the collapsed line's `…` instead
-- **Indent guides**: a vertical line per indentation level, so you can see which closing bracket belongs where
-- **Bracket matching**: with the cursor on a bracket, it and its partner are highlighted; a bracket **without** a partner turns red. Brackets inside strings and comments are ignored
-- **Borderless surface**: the text fills the tile from edge to edge. The framed, rounded box that used to float inside the tile is gone
-- **Line-number column**, in the style of a code editor. With visual wrap on, a wrapped line keeps ONE number, so you can see at a glance where a real line break is. Instead of empty space, the continuation rows carry a thin vertical line with a small arrow branching off each row - it starts at the top of the first continuation row and ends halfway down the last one, marking exactly how far the logical line reaches
-- **Current-line highlight** behind the line the cursor sits on
-- **Status bar** along the bottom: line and column, number of lines, detected language, encoding, and whether wrapping is on. It is also where the read-only reason is spelled out
-- **Own colour themes, separate from the app theme** (Settings -> Design -> *Text Editor*), **saveable and loadable as JSON** like the interface themes: four editor themes (Nightfall, Paper, Ember, Custom) with their own colour editor for the surface (background, text, current line, selection, line-number column) and the twelve syntax classes, plus a live preview. Switching the app theme leaves the editor untouched, and vice versa
-- **Visual line wrap** (Settings -> Text Editor): long lines wrap on screen the way Kate does it - purely visual, the file is never changed and a real line break is still `Enter`. Turned off, the line runs on horizontally as in VS Code. HTML source always runs on horizontally
-- Line numbers and the current-line highlight can each be switched off (Settings -> Text Editor)
-- **Files larger than 8 MB open read-only.** Only the beginning is loaded, so writing back would destroy the rest - the status bar carries a *Read only* marker explaining why, and saving is refused
-- **Themeable HTML source background** (Settings -> Design)
-
-## HTML Viewer
-- **.html / .htm** files open in a rendered live preview by default, with a one-click toggle back to the editable source view
-- Preview runs fully **offline**: JavaScript stays enabled (quizzes, search, shortcuts keep working) while remote network access is blocked - no external fonts or trackers load
-- **Design-card thumbnails**: instead of showing raw source code, HTML thumbnails are auto-generated from the page's hero section (title, subtitle, colors, RTL/Arabic star patterns or gradients) and refresh automatically when the file changes
-- **Lazy rendering engine**: Qt WebEngine now initializes only the first time you actually open an `.html`/`.htm` file - for a faster start and a lower memory baseline. Until then, HTML files fall back to the editable source view and the preview toggle appears once the engine is ready
-- **Software rendering by design**: the preview runs without GPU acceleration. Local documents rasterize fast enough in software, it avoids a whole class of graphics-driver crashes and hangs, and it saves the memory of a separate GPU process. Advanced users can override it by setting `QTWEBENGINE_CHROMIUM_FLAGS` before starting the app
-- **Clear failure handling**: if a page cannot be loaded or the render process dies, a readable hint replaces the blank area; links that would leave the local file are ignored
-- **Smooth scrolling**: the rendered preview scrolls with animation (Chromium smooth scrolling), consistent with the web-style smooth wheel scrolling of the gallery, PDF, DOCX and text views
-
-## DATEV Files (booking batches)
-- **Recognised by content, not by extension**: a DATEV export opens as a readable table whether it arrives as `.csv` or as `.txt`. The decision is made from the first bytes of the file (`"EXTF";` / `"DTVF";`), so renaming changes nothing
-- **Header summary** on top: identifier, version number and format name in one line (`EXTF 700 - Buchungsstapel`), plus the creation timestamp in readable form. A fold-out block below it lists **all** header fields with their values
-- **Bookings as a table**, with the column names taken from the file itself. By default only the columns that actually carry data are shown (12 to 20 of 125 in a typical batch); one click in the footer switches to all columns
-- **Totals in the footer**: number of bookings, total debit, total credit and the difference - highlighted in red when debit and credit do not balance
-- **Findings are named, not hidden**: rows with a field count that differs from the header, unclosed quotes, or a file that hit the size cap are reported with their line number
-- **Encoding is detected, not assumed**: valid UTF-8 is read as UTF-8, anything else as CP1252 (not Latin-1 - the two differ exactly where the Euro sign and typographic quotes live). LF and CRLF line endings both work
-- **Switch to the raw file** at any time with the table button in the top bar or the matching entry in the *View* menu - the same way the HTML preview toggles against its source
-- **Works with smaller batches too**: neither the number of columns nor their names are built in - both are read from the file, and the totals columns are found by their heading. A reduced DATEV export with a handful of columns opens the same way
-- **Scrolls like the rest of the app**: about half a screen per mouse-wheel notch, smoothly animated - vertically through the bookings, horizontally with `Ctrl`+wheel (or a tilt wheel, or `Shift`+wheel); wheel up brings the right-hand side in
-- **`Ctrl+F` searches the bookings**: the same find bar as the CSV view (see below), with the same two switches. It searches the columns that are **shown** - switching on *all columns* includes theirs
-- **Sorting, hiding columns, freezing the first one and copying a cell or row** work exactly as in the CSV view (see below) - and they are safe here for the same reason the view is: sorting produces an order to read by, it never rewrites the file
-- **Read-only, deliberately**: MediaGallery never writes into a bookkeeping file. There is no editing, no saving, no export from the table view
-
-## CSV and TSV Files
-- **A `.csv` or `.tsv` opens as a table**, not as a wall of separators. The raw file stays one click away - the same table button in the top bar that switches the DATEV view
-- **The separator is detected, not assumed**: `;` `,` tab and `|` are tried over the first lines, and the one that yields the most consistent field count wins. `;` goes first and wins any tie. The footer states which one was found
-- **Header row detected too**: if the first line carries no numbers and the second does, it becomes the column headings. Otherwise there are no headings and the heading bar stays away rather than showing an empty strip
-- **Row and column numbers** can be switched on from the top bar, next to the table button (it appears only while a table is actually on screen). Each gets its own strip: the row numbers in a column of their own to the left, pinned there while you scroll sideways, and the column numbers in a thin bar above the headings - they never share the line with a column name. Works in the DATEV view too
-- **Several tables in one file get one tab each**: an export that stacks blocks - a title line, a heading row, rows, a blank line, then the next block - is split at those blank lines and shown as tabs above the table, each with its own name and row count. Every block keeps its own columns, its own headings and its own row numbers, and the headings stay put while you scroll it. An **All** tab shows the file flat, exactly as it stands, if the split ever gets it wrong
-- **A block heading is recognised properly**: a line on its own above a wider one is the block name, and then the next line carries the column names - which is what makes a text-only table (names, rooms, office hours) work, where there is no number anywhere to give the heading away
-- **`Ctrl+F` searches the whole table**: the same find bar as the text editor, top right. It searches **every column of the table you are looking at**, marks every hit, jumps to the current one and keeps the count in view (`3 / 18`). `Enter` goes to the next hit, `Shift+Enter` back, the arrows do the same, and it wraps around at either end. `Esc` closes the bar and clears the marks. **When a file holds several tables**, the bar also names the others that contain the term: a button *"2 more tables"* opens a list with each table and its hit count, and clicking one switches to that table and lands on its first hit - so a term that is not in the table you are looking at is still one click away
-- **Two switches, no more**: `Aa` respects upper and lower case, `Zelle` (*Cell*) only counts a cell that is exactly what you typed, not one that merely contains it. Everything is searched literally
-- **A file with several tables tells you where the hits are**: the search stays inside the tab you are on, and if nothing is there but the file has hits elsewhere, the bar says so (`none here, 12 in other tables`) instead of leaving you with an empty result
-- **A hit that is off to the right is scrolled into view**, not only down to the row; a row that is already on screen stays where it is instead of jumping
-- **The search runs beside the app, not in front of it**: a large table is searched in a worker thread while the view stays responsive, and typing further only starts one search, not one per keystroke (measured: 119 ms for 100,000 rows by 20 columns)
-- **Switching to the raw file keeps your undo history**: the editor is not thrown away when you look at the table, so `Ctrl+Z` still works after you switch back
-- **Quoted fields survive**: commas or semicolons inside `"…"`, doubled quotes as an escaped quote, and line breaks inside a quoted field all read correctly
-- **Encoding and line endings** are handled the same way as everywhere else: valid UTF-8 is UTF-8, anything else is CP1252; LF and CRLF both work
-- **Anything odd is named**: unclosed quotes and files that hit the size cap are reported in the footer with the line number *from the file* - blank lines do not shift the count
-- **Same scrolling as the rest of the app**: about half a screen per wheel notch, `Ctrl`+wheel (or a tilt wheel, or `Shift`) for sideways - wheel up brings the right-hand side in
-- **A DATEV batch stays a DATEV batch** even when it is named `.csv`: the bookkeeping view with its file header and totals takes precedence over the neutral table
-- **Click a column heading to sort**: ascending, descending, back to file order - three clicks and you are where you started, no extra control needed. The direction is shown as a drawn arrow in the heading. **The file itself is never touched**: only the order in which the view reads the rows changes
-- **A column of numbers sorts as numbers**, not as text - `9` comes before `12`, not after it. Whether a column counts as numeric is decided per column over a sample, so a column with one word in it falls back to text as a whole. Both `1.234,56` and `1,234.56` are understood. Everything else sorts naturally, so `Datei 10` lands behind `Datei 9`, and empty cells go to the end in **both** directions - a gap is not a small value
-- **Sorting runs beside the app**: 100,000 rows take 55 ms as text and 26 ms as numbers, in a worker thread; the footer says *Wird sortiert …* while it does. Rows keep their file order when their values are equal
-- **Hide a column** from the right-click menu on its heading, and bring them all back from the same menu or by clicking the *n hidden* note in the footer - so a column you hid yourself never goes missing quietly. A hidden column is not searched either, and the last remaining one cannot be hidden
-- **Freeze the first column** from the same menu: it stays put while you scroll sideways, heading included
-- **Copy a cell or a whole row**: click a cell to mark it, `Ctrl+C` copies it, `Ctrl+Shift+C` copies the row with tabs between the shown columns - the format a spreadsheet turns back into columns. The right-click menu on a cell offers both
-- **Searching follows the sorted order**: after sorting, stepping to the next hit walks down the screen instead of jumping around the file
-- **Open a `.txt` as a table too** (*Settings ▸ View ▸ Files*, off by default): a `.txt` then opens in the table view **if it really looks like columns** - one separator has to give the same field count on most of the first lines. A note or a log file with a stray semicolon stays text. DATEV batches are recognised by their content anyway and are unaffected. Two files to try it on ship with the source: `tests/tabelle_probe.txt` (opens as a table) and `tests/notiz_probe.txt` (stays text, semicolons and all)
-- **Read-only for now**: editing a cell and writing the file back is not built yet - showing, searching and sorting work
-
-## Live Transliteration
-- Type in Latin letters and get **Arabic (with full Harakat/diacritics)** or **Japanese (Hiragana/Katakana)** automatically as you type - no separate conversion step
-- Works in the **text editor**, **HTML source view**, and **PDF Editor notes**
-- Smart, unambiguous conversion: waits for the next keystroke whenever a shorter match could still extend into a longer one (e.g. holds `a` until it's clear whether `aa` follows)
-- Supports the Arabic definite article (sun/moon letter assimilation), doubled consonants (auto-Shadda), and word-boundary handling
-- Fully customizable mapping tables per script (Settings -> Text Editor), with add/edit/remove/reset controls
-- Toggle button (with scheme picker) available directly in the editor toolbar and the PDF Editor toolbar
-
-## Search (patterns)
-
-The same rule applies to **every** search box in MediaGallery - the gallery filter, the
-text editor's find bar, PDF and DOCX:
-
-- **What you type is always searched literally.** No mode, no switch, nothing to remember.
-- **If it also contains regular-expression characters and makes sense as a pattern, it is
-  searched as a pattern as well**, and both result sets are merged into one list. Searching
-  `\d{4}` therefore finds every four-digit number **and** a file (or line) that literally
-  contains `\d{4}`.
-- **A half-typed pattern is not an error.** While you are typing `(\w+)`, the `(` alone is
-  not a valid expression - the pattern half is simply dropped for that keystroke and the
-  literal search carries on. Nothing blinks red, nothing stops.
-- **Overlapping hits are resolved before anything is replaced.** `\w+ung` and the literal
-  `ung` both hit "Verwaltung"; the merged list keeps one of them, so *Replace all* never
-  writes into the same place twice.
-- **Replacement is always literal.** Type `\d{4}` into the replace field and you get those
-  six characters. There are no back-references (`\1`).
-- Settings -> General -> *Search with patterns* lists the characters and a few examples.
-
-The most useful ones: `.` any character · `\d` a digit · `[abc]` one of these · `*` zero or
-more · `{4}` exactly four times · `^` start of line · `$` end of line · `a|b` either · `\.`
-a literal dot.
-
-## Tags & Categories
-- **Tags**: Per-folder, unlimited, freely named, color-coded
-- **Categories**: Hierarchical tag categories with optional color inheritance
-- **Unified side panel**: Tags and categories live in one panel with two equal sections - all tags as toggleable chips with a clearly visible active/inactive state, plus the full category tree below
-- **Individual panel toggles**: The Filter popup has a merged "Tags & Categories" section where the Tag panel and the Category panel can be shown or hidden independently, each with a clearly visible on/off state
-- **"+" buttons everywhere**: Create new tags and new categories directly from the panel headers, and - in options mode (`Alt+S`) - straight from a media tile, each "+" sitting right next to its corresponding button (new tags/categories are assigned to that file immediately)
-- **Adding a tag to a category: type it or pick it.** The category's *Add tag* entry now opens one window with two ways in: a field on top that creates the tag and assigns it in one go (typing a name that already exists simply assigns that one), and below a line the tags of the folder this category does not have yet, as a small scrollable list. The field filters that list as you type, so two letters and a click are enough - no more copying a name letter by letter
-- **Drag and drop in the tag panel**: drag a tag chip - from the tag list at the top or from under another category - **onto a category header** to put it there. Drop a chip from a category **anywhere else** and it leaves that category, and only that one (a chip taken from the plain tag list never removes anything). In **options mode (`Alt+S`)** the category headers themselves become draggable: drop one onto another and it becomes that one's subcategory, drop one on empty space and it moves up to the top level; dropping one into its **own** subtree makes the two **swap places** instead - the inner one moves up and the outer becomes its child, each keeping its tags, files and remaining subcategories (a plain move is impossible there, the branch would hang inside itself). Every one of these lands in the undo bar
-- **Right-click context menu on tiles**: Assign existing tags or categories to a file directly from a submenu, with already-assigned entries checked, without opening a panel
-- **Smart filter cascade**: Deselecting a category (or subcategory) automatically deactivates its dependent subcategories and tags - unless they are still needed by another active filter, in which case they stay active
-- **Universal converter**: Convert in every direction between tags, subcategories, and top-level categories (Settings -> Converter) - pick the direction from a dropdown and the form adapts to it, and move categories anywhere in the tree. **The files come along**: turning a tag into a category makes every file that carried the tag a member of that category, and turning a category back into a tag gives all its files that tag - so the round trip loses nothing. The tag itself is used up in the process (it is now the category), and a conversion that cannot be carried out - unknown target, unknown tag - changes nothing at all
-- **Undo and redo, right in the tag panel**: as soon as you change anything about tags or categories, a bar appears at the **foot of the panel** with two arrow buttons - back and forward - in the middle, and beside each the short **mark** of what *that* button would do: left what going back would do, right what going forward would do. A direction that is not available stays **empty** and its button is greyed out, so the other side gets the whole width. One click puts the folder's tagging back exactly as it was: the tag itself, its colour, which files carried it, which categories held it. Redo puts it back again; making a new change discards the redo branch, as in any editor. It covers **every** tag and category operation - creating, deleting, renaming, recolouring, assigning to files, moving between categories, and the converter. Deleting a tag that swept through the **subfolders** is undone down there as well, and the status line says how many folders came back (while that sweep is still running the buttons stay inactive, so undo can never restore the open folder and leave the subfolders emptied). It is **deliberately separate from the file undo** (`Ctrl+Z` in the gallery, which undoes moves, renames and deletions) and therefore has **no shortcut of its own** - a second `Ctrl+Z` that sometimes brings back a file and sometimes a tag would be guesswork. Up to 20 steps are kept, and **everything done in one go counts as one step**: dropping 100 files onto a tag is one undo, and so is a whole session in the *Add to tag* / *Group* mode - you click tile after tile, press **Done**, and one click takes the lot back. Clicking tiles one at a time outside such a mode stays one step per click. The stack belongs to the folder: opening another folder clears it (undo restores that folder's own tag file, which would be meaningless anywhere else), and each half of a split window has its own
-- **The mark: what the step was, at a glance.** Instead of a sentence the bar carries a short notation - `T:a` is the tag *a*, `K:a` a category, `U(K:b):a` a subcategory *a* inside category *b*, `T(K:b):a` a tag inside a category. A conversion reads `T:a -> U(K:b):a`, an assignment `+3 T:a`, a mixed session `+3 -1 T:a`. Deleting is prefixed by a drawn waste bin. **The colour says what happened**: green created or assigned, red deleted or removed, blue converted or moved, yellow renamed or recoloured - a colour change even shows the mark twice, painted in the old colour and the new. Because each side shows its own direction, the colours differ too: undoing a deletion is **green** (it puts the tag back) while redoing it is red with the waste bin. Deep paths are collapsed to their first and last level (`T(+2(K:d)):a` = two levels in between), and long names shrink to their initials (`Sommerurlaub 2024 Kroatien` -> `S2K`). Anything shortened is set in **italics**, and hovering a side spells the whole notation out (`T(U(U(K:Reisen):2024):Sommer):Urlaub`). The letters follow the language: `T/K/U` in German, `T/C/S` in English
-- **Search field**: a search box sits right next to the Filter button in the gallery. It filters **live on every keystroke** - no Enter, no button - and matches a substring of the **display name, the file name (including the extension) and the tags**, ignoring case. It searches the **open folder only** (no subfolders, no file contents) and is **combined with every other filter**, so it narrows down whatever the filters already show. The number of hits is shown next to the field, `Ctrl+F` jumps into it, `Esc` clears it and hands the keyboard back to the gallery
-- **Filter modes**: OR, AND, ONLY, INCLUSIVE - combinable with media-type filter
-- **Sorting**: Date, Name, Tags or File size, each ascending or descending. Sorting lives **inside the Filter button** as its own "Sorting" section - field and direction are both plain radio rows, and the section header shows the current setting at a glance ("File Size - Descending"). The filter counter on the button ignores sorting, since something is always sorted
-
-## PDF Viewer
-- Full multi-page rendering via Qt6 PDF, with a thumbnail sidebar for quick navigation
-- Zoom in/out, fit-page, fit-width, single-page and continuous scrolling
-- **Browser-style text selection**: click and drag across the embedded text layer, `Ctrl+C` to copy, `Ctrl+A` to select the page; the selection survives switching into edit mode
-- **Search across the document** (`Ctrl+F`): matches light up on the page while you type, the bar shows "x of n", and ▲/▼ (or Enter) step through them and jump to the right page. Long documents stay responsive - pages are searched in small batches. Scanned pages you ran OCR on take part too, where the recognized line is the match
-- **Embedded audio and video**: annotation playback (Sound, Screen, Movie subtypes) plus a side panel listing every audio clip on the current page with a seek slider; a sidecar audio file next to the PDF is picked up automatically
-
-## PDF Page Extraction
-- **Extract pages from an open PDF**: right-click any page -> **Extract page** (single) or **Extract multiple pages…** (page picker). The new PDF is written next to the source file.
-- **Extract across the whole folder**: the **Extract** button in the filter bar (next to the **+** button) collects **every PDF in the current folder** - pick pages from several files and get them merged into a **single** new PDF.
-- **Workbench layout** (default): the picker is a three-panel workbench - a **PDF list on the left** (the active file is highlighted; a fully-selected file shows a check, a partially-selected one shows an *N / M* count), the **pages of the active PDF on the right**, and a **selection bar at the bottom** that appears once you pick a page. The bar shows each selected page as its own thumbnail; **its left-to-right order is the extraction order**. Reorder pages by **dragging them inside the bar**, remove one by **dragging it out of the bar** (or the small ×). Drag a page from the grid, or a whole PDF from the left list (adds all its pages), straight into the bar; a **+ / −** button on each PDF row toggles all its pages at once.
-- **Compact layout** (optional, *Settings -> View*): a minimalist single grid of all pages with a selection count - for anyone who prefers the simpler, less busy dialog. Output stays in original page order here.
-- **Lossless by default**: pages are copied at the PDF object level, so the **text layer, vector graphics, embedded fonts and annotations stay intact** - no rasterizing, no quality loss. If a source can't be copied that way (e.g. an encrypted file), just that file's pages fall back to a 150 dpi image page in the same output, so you always get a result.
-- **Selection**: a plain **left click** selects/deselects a page - no modifier needed. Hold **Ctrl** and hover a page for a **large preview** (~80% of the dialog) that disappears as soon as you release Ctrl.
-- **Scrolling** in the page grid uses the same smooth wheel behaviour as the main gallery.
-- Page tiles use your gallery tile size; the selected-page highlight style (**frame** or **overlay**) is configurable under *Settings -> View*.
-- **Order**: in the workbench the **selection bar defines the output order**; the compact layout always writes pages in original order. Names default to `<source> - Page N` / `<source>-Selected` (required for the folder-wide mode); `.pdf` is appended automatically and existing names get ` (1)`, ` (2)`, … appended instead of being overwritten.
-
-## PDF Editor
-Notes, drawings, redactions and form values are **non-destructive**: they live in a sidecar file (`<name>.mgedit.json`) next to your PDF, stay editable across sessions, and **Export** writes a new copy (`…_edited(.n).pdf`) - your PDF itself is not touched by them.
-
-**Page operations are the exception, on purpose**: moving, rotating, removing, inserting a blank page and inserting pages from another PDF take effect **in the PDF file itself, immediately**. `Ctrl+Z` takes them back for as long as the file is open (a temporary `.mgorig` copy next to it is what makes that possible); when you close the file - or close the app from the editor - that copy is deleted and the pages stay as they are. Nothing is left lying next to your document.
-
-**Tools** (palette in the dockable panel): select/move · text note · freehand pen · arrow · rectangle · ellipse · replace text · edit text · highlight/underline/strikethrough · black out text · signature or stamp image.
-
-**Notes and drawings**
-- Sticky-note text boxes with full formatting: font family (with a hint when the system substitutes one), size, bold/italic/underline, alignment, vertical alignment, text and paper colour, opacity
-- Drawings with stroke colour, line width in PDF points and (for shapes) fill colour
-- Select, move, resize, copy/paste (`Ctrl+C`/`Ctrl+V`), delete, full undo/redo (`Ctrl+Z` / `Ctrl+Shift+Z`, `Ctrl+Y` also redoes), and a visibility toggle (`Alt+Q`)
-- **Cross-page dragging**: pull an annotation past the top or bottom edge and it moves to the neighbouring page
-- **Line-snapping**: a new note anchors to a detected text line when you place it nearby, or floats freely elsewhere
-- A new note or drawing **inherits the last-used style** (without the text)
-- **Linked text boxes**: chain a box to a follow-up box (**🔗**) and text flows across the chain - the last box grows with its content, and editing anywhere re-flows the whole chain as one undo step
-
-**Working with the text that is already in the page**
-- **Replace text**: drag across the text (or select it and press **⇄**). The box snaps onto the detected line, adopts its font size and comes pre-filled with the embedded text, so you edit instead of retyping. On a scanned page without a text layer it stays usable as a blank patch
-- **Edit text** (⌶): click into the page text and type - characters go into the PDF's own text layer, so the page stays vector and searchable. Arrow keys, `Home`/`End`, `Backspace`/`Delete` work as expected, continuous typing undoes as one step, and the paragraph re-flows as you type (gaining a line and pushing the content below down where that is provably safe)
-- **Highlight, underline, strikethrough**: pick one of the three markers and drag across the text. The mark snaps to the text lines, so a sweep across three lines is **one** marker covering exactly those lines - recolour or delete it in one go. Highlights are translucent so the text stays readable
-- **Black out text**: select the text and press the redaction button (or drag across it with the tool). You get an opaque bar and, on export, removal of the covered text from the document, so it can no longer be selected, copied or found - and the exported copy is written from scratch, so the text is not left behind in its raw bytes either. **The rest of the document stays a document.** Removal no longer depends on recognising the covered text as a string: what sits *under* the bar is cut out of the page geometrically, and the gap is closed so precisely that the rest of the line does not move by a hair. Only where that cannot honestly be done is the page turned into an image - if the bar sits over a **picture** (a scanned page: pixels cannot be cut out of a stream, a bar over them would be a mere cover), if the page draws its text through a form object the app cannot look into, or if the page is rotated. Before, a single redaction whose text could not be matched cost the **whole file** its text layer - a 40-page document with one blacked-out line became 40 images. Whatever happens, the app checks the finished file: if a single character were still standing under a bar, the export falls back to the image route and says so, so a black bar over still-selectable text cannot happen. What blacking out does and does not protect is explained once, the first time you use it, instead of filling every tooltip. On a page without a text layer the app says so rather than doing nothing. A selection that runs **over a line break** is handled too: the check that decides whether anything is left to remove compares both sides without whitespace, because the selection carries a line break that the page's raw glyphs do not - before that, such a redaction went out as vector with the text still readable under the bar
-- **Make a scanned PDF searchable** (*Document* menu, needs Tesseract): the app reads every page that has no text of its own and writes the recognised words **into the PDF itself** as an invisible text layer. Nothing about the page looks different - but from then on the file is searchable and its text can be selected and copied **in every reader**, not only here, and it stays that way. Inside the app, everything that needs text then works on those pages too: the document search, selecting and copying, line-snapping, and the *Replace text* pre-fill. It runs about a second per page and reports progress; pages that already have text are left alone - and if every page already has one, it says so plainly (nothing to do) instead of reporting that no text was found. Latin script only for now - words in another script are skipped rather than written wrongly (see [LIMITATIONS.md](LIMITATIONS.md))
-
-**Forms, foreign annotations, images**
-- **Fill in PDF forms (AcroForm)**: text fields, check boxes, radio groups and drop-down lists become visible and editable right on the page - in view mode as well as edit mode, because a form belongs to the document. Qt's PDF renderer does not draw form widgets at all, so they are drawn as an overlay that matches what gets written into the file. Values are buffered while you type and kept in the sidecar, so a half-filled form survives closing it; the **☑** button writes them into a new copy (`…_ausgefuellt(.n).pdf`) as an incremental update, with a proper appearance stream per field so the values show up in any reader and in print. Read-only fields stay visible but locked. If you reordered, rotated or removed pages, the copy follows what you see: the values are drawn into the pages first and the file is then rebuilt in your order - that copy is a finished document rather than a form you can go on filling in, and the message after saving says so
-- **Annotations from other PDF readers** are picked up when you open a file: sticky notes, text boxes, rectangles, ellipses, lines, freehand drawings, highlights, underlines and strikeouts become normal editable notes. Each remembers which object it came from, so an untouched one is never exported twice and one you edited or deleted is removed from the exported copy instead of lingering underneath
-- **Your own notes as real PDF annotations** (*Settings -> Editor -> PDF Editor*): instead of being drawn into the page they become annotation objects that stay selectable and deletable in other readers. Off by default - drawn notes look identical everywhere. *Replace text* patches and linked boxes are always drawn, and if a page holds one, everything on it is drawn (never a mixture)
-- **Signature and stamp images**: place a PNG or JPEG anywhere on the page; it moves, fades and undoes like any other note and **always scales proportionally** - every handle, corner or edge, keeps the aspect ratio, so a signature can never be stretched out of shape. On export it is embedded into the PDF with its transparency intact, and the same file placed several times is embedded only once
-
-**Pages and export**
-- **Manage pages** (edit mode): the **"+" line** below a page inserts a blank A4 page; right-click for **Remove page**, **Insert pages from PDF…** or the two **Rotate** entries (both read just „Rotate“, followed by a drawn circular arrow showing which way it turns); drag a thumbnail in the sidebar to reorder. Every one of them undoes as a single step, and notes travel and rotate with their page. **All of these change the PDF right away** - open it in any other reader and the pages are where you put them. Inserted pages are copied losslessly, so they survive even if the file you took them from is gone. A note whose page you removed goes with it
-- **One Export button**; which path it takes is a setting (*Settings -> Editor -> PDF Editor -> Export*): **lossless when possible** (default) or **always as an image**. Lossless writes annotations as real vector content, keeps the original page content byte-for-byte and leaves untouched pages alone; for *Replace text* it rewrites the embedded text directly in the content stream, including text split across several show operators, non-ASCII text via the font's encoding, and CID/Type0 fonts via `/ToUnicode`. Notes in a font outside the standard 14 are embedded rather than silently substituted
-- Where lossless is not provably safe the export falls back to the image path - always correct, and you are told when it happens
-- The formatting panel docks as a **right sidebar** or a **Word-style ribbon** (*Settings -> Text Editor*); `Ctrl` + mouse wheel pans the ribbon sideways when the window is narrow
-
-- **Track changes for your annotations**: a **Track changes** button in the header bar (edit mode only) opens a small menu with a **Record** switch. While recording, every note, drawing, highlight or redaction you add counts as an **open change**, and deleting one only *marks* it as deleted instead of removing it - so the deletion can still be taken back. Open changes are framed in the accent colour; ones marked for deletion stay visible but pale and struck through. The menu shows how many are open and offers **Accept all** / **Reject all**; a single one is decided by right-clicking it (*Accept change* / *Reject change*). Accepting keeps a new note and completes a deletion, rejecting does the opposite. Every decision is one undo step - and *Accept all* / *Reject all* is a single one, so one `Ctrl+Z` brings the whole batch back. **What counts as a change**: adding an annotation and deleting one. Editing an existing annotation (moving it, recolouring it, changing its text) stays a normal edit and is not tracked - tracking that would mean storing the state before every single change. The switch belongs to the document: it is kept in the sidecar and applies to that file the next time you open it. **The image editor has the same feature**, with the same button, wording and shortcuts - what you learn in one editor works in the other
-
-## Image Editor
-- Opens on any image via the **✎ Edit** button in the image viewer's toolbar - the original file is **never modified**
-- **Tools**: Select/move, Text note, Freehand pen, Arrow, Rectangle, Ellipse (tool palette in the dockable panel)
-- **Text notes** with the same post-it styling as the PDF Editor: font family, size, bold/italic/underline, horizontal/vertical alignment, text color and note-paper (highlight) color with an opacity slider, plus **live transliteration** (Arabic/Japanese) while typing
-- **Drawings** with adjustable stroke color, line width and (for shapes) fill color
-- **Select / move / resize / delete** any annotation, with full **undo/redo** history and a note-visibility toggle (`Alt+Q`)
-- **Copy & paste** the selected annotation (`Ctrl+C` / `Ctrl+V` or the toolbar button) - duplicates it with all settings and text
-- A newly created note/shape **inherits the last-used style** (only without the text)
-- Notes are saved to a **sidecar file** `<image>.mgedit.json` next to the image (non-destructive) and stay editable across sessions
-- **Export** writes a brand-new image copy `…_bearbeitet(.n).<ext>` with the annotations permanently rendered onto it (QImage + QPainter, WYSIWYG); the copy keeps the **source format** (JPG->JPG, PNG->PNG, otherwise PNG)
-- Formatting panel can be docked as a **right sidebar** or a **Word-style ribbon** at the top (shares the PDF Editor's panel-position setting, Settings -> Text Editor)
-- Fully decentralized: each split-view tile has its **own** independent image editor
-
-## DOCX Editor
-- Opens `.docx` files directly in the viewer/split view as an **editable, page-accurate document**
-- **Loss-preserving by design**: only the XML nodes you actually touch are rewritten - untouched paragraphs, tables, images, headers/footers, styles and every other part of the file are carried over **byte-identically** (the document is never regenerated from scratch); a two-stage self-check on load refuses editing rather than risk silent data loss
-- **Text editing**: type, delete, select (mouse/keyboard), split & merge paragraphs, line breaks (`Shift+Enter`), full **undo/redo** with keystroke coalescing
-- **Character formatting**: font family, size, **bold/italic/underline**, text color - applied to the selection, or to the next typed text when nothing is selected (Word-style pending format)
-- **Formatting-preserving clipboard**: copy/cut keeps font family, size, bold/italic/underline and color when pasting back into the editor (or into another DOCX tile). The clipboard also carries an **HTML** flavour, so pasting into Word, LibreOffice or a browser keeps the formatting too; plain text remains available for everything else
-- **Word-style caret**: the text cursor is drawn in the size of the character that will be typed next - it follows a font-size change immediately, even in an empty line
-- **Line keeps its own formatting**: deleting the last character of a line does *not* make it fall back to the paragraph style (e.g. the heading it inherited its properties from). The line keeps its formatting until you press Backspace again and the caret actually moves into the previous line
-- **Paragraph formatting**: alignment (left/center/right/justify), spacing (line spacing plus space before/after, grouped behind one button), **bulleted & numbered lists** (numbering definitions are created and spliced into `numbering.xml` on save). Pressing Enter in an **empty list item ends the list** instead of adding another bullet - the Word behaviour
-- **Style templates (Formatvorlagen)**: the document's own paragraph styles appear in a toolbar dropdown (the same set Word offers - hidden internal styles stay out of the way). Applying one writes a real `w:pStyle`, so headings keep working in Word; picking the default style removes it again, and direct formatting of the paragraph survives either way
-- **Headings work in every document**: most .docx files define no heading style at all, which used to leave the dropdown with nothing but "Normal". *Heading 1-3* are always offered; the first time you apply one, its definition is written into the document's `styles.xml` with Word's built-in name, so it looks like a heading in the editor straight away *and* Word recognises it (navigation pane, table of contents)
-- **True pagination**: the document is laid out on **real pages** taken from its own page setup (`w:sectPr` - page size, orientation, margins), separated by gaps on your theme background. A paragraph that crosses a page boundary is split **line by line**, exactly where Word breaks it. Because the line width is the page's text width rather than the window's, the page count in a narrow split pane is the same as in Word - a narrow pane scales the page down instead of re-wrapping it
-- **Multi-column layout**: sections set to two or more columns (`w:cols`) are laid out and paginated in columns
-- **Page thumbnails**: a sidebar shows every page as a live miniature with the current page highlighted; clicking one scrolls there. The miniatures are drawn on demand through the same painting path as the page view, so they cost no extra memory. The **wheel moves it by 55 % of its height per notch, smoothly**, exactly like the PDF sidebar (it used to inherit the plain list default: 72 px per notch, with quick follow-up notches swallowed altogether)
-- **Themed, compact toolbar**: every control follows the app theme; on narrow split panes the toolbar **scrolls horizontally with the mouse wheel** - plain wheel, `Shift`+wheel or `Ctrl`+wheel, the same grip the PDF editor's ribbon offers - so nothing is cut off
-- **Insert a table of contents** from the toolbar: it lists the document's headings with a dot leader and the page number from the editor's own pagination, and updates itself when a heading changes. The file keeps a declarative `TOC` field with no page numbers baked in, so Word recalculates them. It sits on **its own page** - the text after it starts on the next one, and a contents list that outgrows a page simply takes the following one, which also carries nothing else (Word gets the same layout through `w:pageBreakBefore`). Typing inside it is not possible; **font and font size** are the two things you can set
-- **Wrap text around a picture**: the picture's right-click menu switches between *In line with text* (the default: the picture is part of the line) and *Wrap text around* (the text flows beside it over its whole height). The latter is written as a real Word floating picture, so it looks the same in Word. A wrapping picture can be **dragged anywhere on the page** - grab it and move it, the text re-flows around its new place, and dropping it over a **different paragraph re-anchors it there** (as Word does), so that paragraph's text wraps around it instead of starting below it - moving and re-anchoring are a single undo step, and the same menu picks the **side the text runs on** (both sides / wider side / left only / right only). With *both sides* - Word's own default - a line is split into a piece left and a piece right of the picture, just like in Word; if one side has no room for a readable column, that line falls back to the wider side. If there is no room for a readable column beside it, the text starts **below** the picture instead of squeezing through a sliver.
-- **Insert a signature or stamp**: the signature button offers the pictures in the document's folder (or a file dialog) and places the chosen one as a *free-floating* picture - selected right away, so you can drag it wherever it belongs. It is written as an ordinary anchored Word picture, so Word can move it too.
-- **Insert a table** (rows/columns from a small popup) or **an image** straight from the toolbar. The image button first offers the pictures **in the document's own folder** as thumbnails - every format Qt can read - with the file dialog one click away; `Ctrl+V` also pastes an image straight from the clipboard
-- **Insert PDF pages as pictures**: picking a PDF in that popup opens the **same page-selection screen as *Extract pages*** - every PDF of the folder on the left, the page grid of the one you clicked on the right, `Ctrl`+hover for a large preview, and a bottom bar that holds the chosen pages in the order you want them inserted
-- **Text runs beside a table** when there is room for it: a table narrow enough to leave a readable column, and short enough to fit on its page, steps out of the flow just like a wrapped picture - the text that follows starts *next to* it and continues below once it outgrows it. Wide tables and tables that span pages keep the old behaviour. To deliberately continue *below* such a table, the right-click menu offers **Continue below the table** - that writes Word's "text wrapping, clear all" break, so Word shows it the same way.
-- **Table context menu** (right-click a cell): insert or delete rows and columns, set the **column widths in millimetres**, or delete the whole table - each as a single undo step. The column total stays constant when you add or remove a column, the way Word does it. A table with **merged cells** is deliberately left untouched (the menu then only offers "Delete table") rather than risk tearing the grid apart
-- **The selection frame follows a table across pages**: a table that is continued on the next page gets **one frame piece per page**, each around exactly the rows shown there, so the frame always sits on the grid rather than floating above it. Its handles resize the table **horizontally** - a table's height comes from what is in its cells, so no handle pretends otherwise.
-- **Delete a whole table from the keyboard**: click its selection frame (the accent-coloured border around the table) to select it as an object, then `Delete` or `Backspace`. Selecting cells by dragging deliberately does *not* do this - it only clears their text, so a stray drag cannot destroy a table
-- **Copy, cut and paste a whole table** (`Ctrl+C` / `Ctrl+X` / `Ctrl+V` with the cursor in a cell and nothing selected, or from the right-click menu): the table is transferred as its *form* - rows, columns, column widths and cell contents with their formatting - and rebuilt in the target document, so it also works between two files. Cut + paste is how you move a table. Other programs receive the cells as tab-separated lines
-- **Resize a picture**: click it to select, then drag any of the **eight handles** - corners keep the aspect ratio, edge midpoints may stretch - or type width and height in millimetres via the context menu. Only the size is rewritten, so crops, effects, alt text and wrapping of a Word-authored picture survive untouched. **Copying a picture keeps that size** - pasting it back inserts it exactly as large as it was, not at its full pixel resolution, while other programs still get the plain image
-- **Tracked changes from Word are shown and can be resolved**: insertions underlined, deletions struck through, one colour per author. A strip above the page says how many there are and who made them, and offers **Accept all** / **Reject all**; right-click resolves a single one. Each is a single undo step, and markup you do not touch stays byte-identical. Recording your own changes is deliberately not offered.
-- **Tables are editable**: they are laid out as real grids (rows, columns including `w:gridSpan`, the document's own column widths) and you can click into a cell and type, with the full undo, formatting and find & replace you have everywhere else. The table has its **true height**, so every page break *after* it lands where Word puts it, and a table longer than a page is **continued on the next one** row by row instead of being pushed along as one block. Structure is protected: Backspace or Delete at a cell edge will not merge cells away, and a table you did not touch stays **byte-identical** in the file
-- **Pictures sit in the text, like in Word**: a picture is inserted **where the cursor is** and is laid out as part of the line, at the size the document asks for (`wp:extent`), scaled down to fit the text width. Insert two pictures in a row and they stand **side by side**; whatever you type after them appears **next to them** as long as there is room, and moves below once there is not. The same holds **inside table cells** (the picture is fitted to the cell and the row grows to match) and in the **PDF export**. Click a picture to select it - handles, size, copy and delete all act on that one picture. The decoded image is only kept while it is near the visible area, and the picture's own bytes are never touched
-- A **table nested inside a cell** is shown as a placeholder (not interpreted) and stays fully intact; other complex blocks remain placeholders too, and embedded objects (images, fields, hyperlinks) are protected as atomic units
-- **Live transliteration** (Arabic/Japanese) while typing, sharing the app-wide schemes
-- **Spell checking**: unknown words get a red wavy underline; right-click one for suggestions or "Ignore word". Marking only - nothing is replaced without you choosing it. Needs a Hunspell dictionary and is off until you switch it on
-- **Find & Replace** (`Ctrl+F`): a themed search bar with next/previous match, match-case toggle, single replace and replace-all. Replace-all is one undo step; the search wraps around and skips tables and other non-text blocks
-- **Two save modes** (Settings -> Text Editor): **Save directly** to the original file or **Export a copy** `<name>_edited(.n).docx` leaving the original untouched; `Ctrl+S` and auto-save on leaving the tile follow the chosen mode. In direct mode there is **no Save button** - the editor saves by itself, on the auto-save interval and when you leave the file (`Ctrl+S` still works, and the dot before the file name still shows unsaved changes); the copy-export mode keeps its button, because each press creates a new file. Saving directly puts a one-time `.bak` next to the file, holding the state before this session's edits - and **removes it again when you leave the document**, so it never clutters the folder. It stays only while the document carries **tracked changes**, where the earlier state still means something; then you remove it yourself (right-click a tile -> *Remove backup*). Deleting a document takes its `.bak` with it, and `Ctrl+Z` brings both back
-- **Export to PDF** (**-> PDF** button in the toolbar): writes a PDF next to the document (`<name>.pdf`, collision-suffixed) in the page size the document asks for; the original `.docx` is kept. The export **draws the very pages the editor shows**, so the PDF has exactly the same page count and the same line breaks as the view. Its text stays selectable and searchable - **whole words, on every kind of page**, including one made of short lines, where PDF readers used to read "H allo" instead of "Hallo" - and each page carries only its own lines - a paragraph running over a page boundary is not repeated in the neighbouring page's text
-- **Margin rulers**: a thin ruler sits above the page and a second one down its right-hand side (the left is taken by the page thumbnails). Drag a handle and the **page margin** moves - the text reflows straight away, the page count follows, and the exported PDF gets exactly the same layout, because it draws what you see. The values are written into the document itself (`w:pgMar`), so **Word shows the same margins**. `Ctrl+Z` takes a whole drag back as one step. The scale is marked in centimetres and drags snap to half a millimetre. All four margins are adjustable. **Each ruler keeps its own undo chain**: after you touch a ruler, `Ctrl+Z` (and `Ctrl+Y`) takes back that ruler's last drag - not the other ruler's, and not what you typed. Click into the text, or type anything there, and `Ctrl+Z` belongs to the document again. Dragging a margin also **keeps your place in the document**: the page reflows around you instead of jumping back to the top. The **reset button** puts that ruler's two margins back to the common standard of **2.5 cm**, so a document you once saved with odd margins still has a way home.
-- **Page number for the export** (*Document* menu in the file's header: *Page number* and *Style* each open a small window with their options). It can sit bottom left, centre or right and reads either "3" or "3 / 12"; it is off by default and never touches the text. **You see it on the page while you edit** - in the view and on the miniatures, not only after exporting - because view, thumbnail and export draw it through the same path
-- **Spell check that keeps up**: correct a word and its red underline goes on its own - no need to right-click and *ignore* it. Words that are still wrong stay marked, because the paragraph is actually re-checked rather than just cleared
-- **The red underlines never reach the PDF.** They are a writing aid and are drawn only on screen; the export and the page thumbnails leave them out
-- **Scripts without upper and lower case are checked too** - Arabic, Hebrew, Chinese, Thai. The rule that skips abbreviations like `DOCX` used to match every word in those scripts and silently switched the check off there, even with the dictionary installed
-- **Create new Word documents** via the gallery's "+" button (empty A4 document, standard margins)
-- Gallery **thumbnails** show the first paragraphs of the document; `.docx` files appear under the Text filter
-- Fully decentralized: each split-view tile has its **own** independent DOCX editor
-
-## Settings window
-- **Every group folds away**: each box in the settings has a small arrow next to its heading - click the heading and the box collapses to a single line. The state is remembered across restarts, per group, so the pages you never touch stay out of the way. Everything starts open, so an update never hides something you were used to seeing. The *Converter* page is the exception: its single box is the whole page, so it has no arrow - the same as *Tags* and *Categories*, which have no box at all
-- **Fewer, larger boxes**: in *View* the arrangement, the tile arrangement and the tile size now share one box - it is the same question in three steps - with the old headings kept as dividers inside it. In *General*, mono play and the seek step share one box, since both are about how playback behaves
-
-## Full Color Customization (Settings -> Design)
-- Two separate blocks, each collapsible: **Interface** and **Text Editor**. They share no colour at all - switching one leaves the other alone
-- **8 built-in interface themes**, four per row: Dark, Dark OLED, Ocean Depth, Inferno Blaze, Midnight Rose, Elegant, Simple, Custom
-- **4 built-in editor themes** in one row: Nightfall (dark), Paper (light), Ember (warm dark), Custom - each with three preview swatches. *Copy into Custom* takes the current theme as a starting point for your own
-- **Custom Theme Editor** with live preview:
-  - Main background (solid or gradient)
-  - Card / panel background
-  - Primary and muted text colors
-  - Border color
-  - Accent color (solid, gradient, or glow)
-  - Glow radius and intensity
-  - Thumbnail card background (solid, gradient, transparent)
-  - Tile hover glow effect
-  - **PDF Viewer** sidebar, toolbar, and scrollbar colors
-  - Sidebar background color
-  - Editor background (HTML source editor surface)
-  - **Text Editor block**: surface colours (background, text, current line, selection, line-number column and its numbers) and the twelve syntax classes (keyword, type, string, number, comment, preprocessor, function, operator, heading, emphasis, link, code), with a live preview
-- Export / Import custom themes as JSON files
-- All color changes apply live without restarting
-- **Themed icons**: every icon in the interface (toolbars, panels, filter bar) is drawn by the app itself from geometric shapes - there are no icon image files. Icons take the theme's text colour as a live binding, so a colour change repaints them instantly instead of reloading images, and they stay sharp at any interface scaling (100 %, 125 %, 150 %, 200 %) because edges snap to whole device pixels
-- **Themed standard controls**: buttons, checkboxes, radio buttons, combo boxes, spin boxes, text fields, sliders, scrollbars, tooltips, **menus** and dialogs are drawn by the app's own control style - rounded corners, accent-colored checked states, consistent hover/pressed animations. This includes **every menu**: the menu bar, right-click menus on tiles, PDF pages and tags, and even the editing menu Qt itself opens in a text field. They follow the selected theme (including custom colors) instead of the desktop color scheme, so the app looks identical on every platform and under every desktop theme
-
-## Companion Files
-- **The app's own files stay out of the way**: the folder file holding tags and categories (`<FolderName>.mgstore`, plus an older `<FolderName>.json` until it is replaced), the editors' notes (`<file>.mgedit.json`) and DOCX backups (`.bak`) are **hidden by default** - in the gallery and in the app's own file chooser
-- **Show all files** (Settings -> View -> *Files*): shows them anyway - and then really everything, including file types the app does not recognise. Those have no preview picture, so the tile carries a small **badge with the file extension** (`BAK`, `ZIP`, …) - otherwise they were indistinguishable. Nothing is deleted or moved by this switch; it only changes what you see
-- **Delete a companion file without touching the file itself**: right-click a tile -> *Delete notes and drawings* or *Delete previous version*. The entries appear only when such a file actually exists, ask before deleting, and the deletion goes to the system trash - `Ctrl+Z` brings it back like any other file operation
-- **File menu in the header bar**: next to *View*, a **File** menu appears for files that have an editor (PDF, images). It carries *Delete notes and drawings*, which discards every note, drawing, highlight and redaction of that file in one undo step - the same action the page context menu offers in the PDF, now reachable for images too
-- **Inside an open PDF**: right-click a page -> *Delete notes and drawings* discards every note, drawing, highlight and redaction of that file in one undo step. Deliberately not a file deletion: the editor still holds the notes in memory and would write them back on the next save
-
-## Metadata & File Management
-- **Date editor**: set a date per file - it is written **to the file itself**, so every file manager, copy and export shows it. Nothing about it is stored in the app's sidecar; the file system already knows both dates. **Reset** puts the file back to its **creation date**, which never changes - so you can set a new date as often as you like and always land back at the same point (on file systems without a creation date, Reset does nothing rather than guess). A read-only file is reported instead of quietly keeping the date app-internal
-- **Info** (right-click a tile, last entry): a small panel with the file's **name, type, size, creation date, modification date and location** - the same facts a file manager shows, read straight from the file system. It works for every kind of file and for folders; the size is given both readably (`1.2 MB`) and exactly (`1,234,567 B`). If the file system keeps no creation date, that line is left out rather than filled with a guess
-- **Delete file**: Red delete button in fullscreen view, plus a right-click "Delete file…" entry on gallery tiles - both with a confirmation dialog; the file goes to the system trash and its metadata/sidecar are cleaned up automatically
-- **Undo a deletion** (`Ctrl+Z` in the gallery, `Ctrl+Shift+Z` or `Ctrl+Y` to delete again): the file comes back out of the trash to exactly where it was, **and so do its tags, its category membership and its custom date**. The stack belongs to the open folder and to the running session - switching folders clears it. If the system offered no trash (the file was deleted for good), no undo is offered rather than a promise that cannot be kept, and an undo never overwrites a file that has meanwhile taken that place again. While you are typing in a field, `Ctrl+Z` belongs to the text
-- **Create file**: the **+** button in the filter bar holds both "create" actions of the gallery - *New folder* and *Create*. *Create* makes an empty PDF, HTML, text or Word file directly in the current folder (PDF starts as one blank A4 page, ready to annotate). A fifth entry, **"Empty file, your own extension"**, takes the name **exactly as you type it** - `notiz.xyz`, `build.ninja`, or no extension at all, the way `LICENSE` has none - and leaves the file empty. Name collisions keep the extension (`notiz (2).xyz`), and dots or spaces at the end of the name are dropped. **A leading dot is kept**, so `.gitignore` and `.env` come out as themselves rather than silently renamed. If the extension is one the gallery does not know - or the name starts with a dot - the file is still created and the status line says so plainly: it only shows up once **"Show all files"** (or *Show hidden files*) is on. Those switches are **not** flipped for you - they are your setting
-- **Rename**: Also renames the file on disk. In the fullscreen view the filename in the header is editable **only in options mode (`Alt+S`)** - outside it, the header acts as the drag handle for split-view docking
-- **Drag & Drop**: Drop a folder or individual media files onto the window
-- **The folder file follows the folder**: rename a folder and its `.mgstore` is renamed with it. If a folder was renamed outside the app, its file is adopted back the next time you open it (only when exactly one `.mgstore` is present - the app never guesses between several)
-- **MGStorage folder file**: `<FolderName>.mgstore` stored directly in the target folder - a compact binary file of the app's own (see *Configuration & Data*). An older `<FolderName>.json` is read once and replaced automatically the next time the folder is saved
-
-## Audio Player Mode (`Alt+A`)
-- **Player mode per pane**: `Alt+A` narrows that gallery to audio files; everything else about the gallery stays as it is (tags, search, filters, context menu). Leaving the mode restores the filter you had before
-- **Videos in the list**: off by default, switchable in Settings -> Audio - with it on, videos join the queue like any track
-- **Player bar** (appears only once a track is playing): previous / play-pause / next, title, elapsed and total time, a progress bar you can tap or drag to seek, shuffle, repeat, equalizer and a volume slider. It belongs to the pane that started the playback - the other half keeps its normal gallery
-- **Full player view**: double-click a track (or click the middle of the bar) and the pane opens a proper player - large title, wide progress bar, big controls, and the **queue** on the right with everything that follows; click any entry to jump to it
-- **A single click plays**, a double click plays and opens the full view
-- **Keys while the player runs**: `Space` starts and pauses, `<-` / `->` walk the queue - in the gallery and in the full view
-- **Previous means what you heard**: the player keeps a history, so `previous` returns to the track that actually played - even if you turned shuffle on or off in between
-- **`Alt+A` from an open file**: leaves the file, switches the pane to player mode and picks the track up where it was playing
-- **The queue can be folded away** in the full view; in a narrow pane it takes the place of the current track instead
-- **Only audio filters**: while player mode is on, the gallery shows **only what can actually be played** - audio, plus video if *Settings -> Audio -> show videos* is on - and nothing else, whatever "show all files" is set to. It is a whitelist, not a list of things to hide: anything the app does not recognise (ZIP, XLSX, …) is out by definition. Folder tiles stay, so you can still walk into subfolders. The filter bar offers just *Audio* and *Video*; leaving the mode restores the filter you had (and, if that is unknown, turns everything back on)
-- **List layout**: player mode can show the gallery as a compact list instead of tiles (the normal gallery has its own switch for the same arrangement, see *Gallery & View*) - small artwork, name, tag dots, type on the right - so you can see at a glance which mode you are in. Everything still works: tags, categories, the context menu, dragging, click and double-click. Pick tiles or list in Settings -> Audio (list is the default)
-- **The mode survives, per pane**: splitting the screen keeps player mode in the pane that had it, and restarting the app puts **each** pane back into the mode it was in - left player and right gallery come back that way round, and so does the reverse. If the pane in player mode had no folder of its own, it is still recreated on start rather than dropped
-- **Rename from the context menu**: files now carry a *Rename…* entry (the only way in list layout, and handy everywhere else)
-- **The visible list is the queue**: whatever the gallery shows - filtered, searched, sorted - is what plays, in that order. Change the filter and the queue follows without interrupting the running track
-- **Shuffle**: a shuffled list without repeats, not a random pick each time; "previous" walks the shuffle backwards
-- **Repeat**: off / one / all, freely combinable with shuffle. **"Repeat one" only applies when a track ends by itself** - pressing next always moves on
-- **Jumping inside a long track is instant** - scrubbing to 45 minutes in a film-length soundtrack used to take about three seconds (the decoder had to run through everything before it); for MP3, MP2, AC-3, E-AC-3 and AAC the app now reads the frame headers, starts the decoder at that exact frame and is there in a few milliseconds
-- **That also works for a video played in player mode** (MKV, WEBM, MKA): the app looks up the target in the file's own index (`Cues`) and feeds the decoder the sound track from that point - a jump to 150 minutes in a 1.5 GB film went from 9.4 s to 0.1 s. Opus and Vorbis inside such a file, and the other containers (M4A, OGG, FLAC, WAV), still take the old route, which is unnoticeable at song length
-- **The gallery tile shows the embedded cover art** of an audio file instead of the drawn waveform - files without one keep the drawn tile
-- **Title, artist and cover art come from the file itself** (ID3v2/ID3v1 in MP3, `ilst` in M4A/MP4, Vorbis comments in FLAC, OGG and Opus): the player shows the real title with artist and album underneath, and the embedded cover instead of the drawn placeholder. The queue lists track titles too. Files without tags keep showing the file name and the drawn placeholder - nothing is lost
-- **Gapless track changes**: the next track is decoded while the current one is still playing and joins it seamlessly - same output stream, no restart, so there is no pause between two tracks. Measured on two 1.5 s pieces: 3.10 s total instead of 3.98 s, i.e. **~0.9 s of silence removed**, and it survives seeking inside the current track. Two cases still take the old route with a short pause: the very end of the queue, and shuffle wrapping around with *repeat all* (the new round is only shuffled when you get there)
-- **Playback survives the fullscreen view**: open a file, look at it, come back - the music keeps playing. It stops when you stop it or when that pane changes folder
-- **The running track is marked** in the gallery with an accent border
-- **A blank title falls back to the file name**: some taggers "empty" a title by writing an invisible character into it instead of leaving the field out. A field with nothing visible in it counts as absent, so the track shows its file name rather than an empty line.
-- **10-band equalizer** (31 Hz - 16 kHz, +/-12 dB each) with preamp and bypass.
-- **The bands add up instead of stacking.** Each band contributes its share to the original signal rather than being chained behind the previous one. Neighbouring sliders therefore no longer multiply each other: three bands at +12 dB used to peak at **17.0 dB**, now **12.7**; all ten at +12 dB used to reach 18.4 dB, now a flat 12. That overshoot was the main source of clipping, and on a real track with all ten sliders up it drops the clipped samples from **21.6 % to 8.4 %** before anything else even steps in.
-- **It does not clip.** Boosting a band makes the signal louder than the format can carry, and what does not fit gets cut off - that is the harsh, gritty sound people blame on "the equalizer". *Prevent clipping* (Settings -> Audio, **on** by default) is a **limiter at the end of the chain**: it splits the finished signal into the same ten octave bands and, whenever the sum would go over the ceiling, asks each band to give way **in proportion to what it contributes** - the loudest one gives the most. A **1 ms look-ahead** lets the reduction be in place before the loud passage arrives. Unlike the fixed correction it replaces, it only acts where something actually overshoots: measured on a real track, quiet passages stay **8.7 dB louder** than with a fixed reduction, at **0.000 % clipped** either way. At strength 0 the stage is skipped entirely and adds no delay at all
-- **The preamp stays yours.** The automatic value is written into the preamp slider, so you can see what the app decided and drag it from there; the slider now runs from **-24 to +12 dB**, so there is room both for the correction and for boosting on purpose. Turn *Prevent clipping* off and nothing is calculated at all - the slider is entirely yours, clipping included
-- **Both suppressors sit together** - *Prevent clipping* and *Noise reduction*, each a switch plus a strength slider, right below the preamp in the equalizer and, with their explanations, in their own *Suppression* group in Settings -> Audio. **Your preamp is never touched by either of them**: the limiter works after the equalizer, so the slider stays exactly where you put it no matter how often you move the strength up and down.
-- **Noise reduction with a strength slider** (in the equalizer, next to the preamp). A switch turns it on, and the slider beside it decides *how much*: full is the deepest cut, empty changes nothing at all, and everything in between scales the depth in decibels - half the slider is half the reduction. It works per frequency band: each band is compared against its own noise floor (the quietest level in the last ~1.4 s), and whatever does not rise clearly above it is pulled down. Measured on white noise at -60 dBFS: **-28.6 dB at full, -14.9 dB at half, -7.5 dB at a quarter**, while a loud sustained tone loses 0.01 dB and ordinary music 0.00 dB. It costs **1.18 % of a core** - less than the equalizer itself
-- **The equalizer sliders are never touched by it.** Noise reduction is a separate stage in front of the equalizer, so you can run the strength up and down as often as you like and your band settings, preamp included, stay exactly where you left them. At strength 0 the stage is skipped entirely, so the audio comes through bit for bit unchanged. Turning the switch off keeps the strength you set - turn it back on and it is still there
-- **Presets are yours to change.** The equalizer shows them as a list: click one to apply it, and one **Save** button opens a small window where you either name a new preset or - below a dividing line - pick an existing one to overwrite. **Deleting, restoring and reordering live in *Settings -> Audio***, not at the player: there you choose and save, nothing more, so nothing gets thrown away in passing. Overwriting works on the five built-ins (Flat, Bass, Voice, Classical, Electronic) too - give *Bass* your own idea of bass; deleting one you never use is done in the settings. Nothing is lost: the built-ins live in the program, so a changed or deleted one carries a **reset icon** that brings the original back, and *Restore built-ins* below the list resets them all at once (your own presets are left alone). **Deleting never changes the sound** - it removes the entry, the sliders stay exactly where they are, so you can save them again under another name. The active preset is highlighted, and it clears itself as soon as you move a slider, because no name fits any more.
-- **Order, delete and restore** all live in *Settings -> Audio*: each row gets up/down arrows, an X, and - for a changed built-in - a reset icon. The order is remembered by name, so a preset added later simply joins the end instead of disappearing.
-- **Adding one there too**: the settings list ends in a **"+" row** that saves the sliders as they stand under a new name, so you can build up your presets in the same place you manage them, without going back to the player.
-- **One playback for the whole app**: in two-pane mode one half can run the player while you work in the other
-- **Extract audio** from a video - reachable from all three places you might be in: *right-click a video tile*, the small save button next to a video in the **player queue**, and the **Document** menu **while the video is open** (so you do not have to close it first): the sound track is lifted out of the MP4 and written next to the video as `<name>.m4a`, **without re-encoding** - the audio is bit-for-bit the one from the video, so there is no quality loss and no waiting for an encoder. A 13 MB video yields a 465 kB audio file. An existing name is never overwritten: the file becomes `<name> (2).m4a`. The video itself stays untouched
-  - The work runs in the background; the result appears as a short message at the top
-  - **The new file inherits the video's tags and categories** (Settings -> Audio, on by default), so it does not land unsorted in the gallery
-  - Optionally the saved track is **appended to the play queue** right away (Settings -> Audio, off by default)
-  - Works for **MP4, M4V, MOV** (the sound becomes an `.m4a`) and for **MKV, WEBM, MKA**, where the extension follows the codec: Opus becomes `.opus`, Vorbis `.ogg`, and **AC-3, E-AC-3 (Dolby Digital Plus) and MP3 are written as the raw stream** (`.ac3`, `.eac3`, `.mp3`) - those formats carry their own frame headers, so they need no container at all. A 1.5 GB film with a 5.1 E-AC-3 track yields a 236 MB `.eac3` in 196 ms using 35 MB of memory (the file is walked cluster by cluster, never loaded), and the app's player opens it
-  - **AAC in a Matroska file** works too: the frames get the ADTS header they need and become an `.aac` that any player opens
-  - **Fragmented (streaming) MP4s** are handled as well - the kind a phone or a streaming server writes, where the sample tables live in the fragments instead of one table at the front
-  - **More than one sound track?** A small dialog asks which one - with its language, name, codec and channel count, so you can tell the Hindi 5.1 track from the English commentary. A file with a single track never asks
-  - Everything else - AVI, WMV, or a codec that fits no target at all - says so plainly instead of failing quietly; see [LIMITATIONS.md](LIMITATIONS.md)
-
-## Playback & UI
-- **Video playback**: Native (Qt Multimedia) or external player
-- **Scrubbing a video jumps when you let go**, not while you drag - the clock on the left shows the time you are heading for. Dragging used to fire a jump per mouse move, and every jump made the player re-buffer; arrow keys and a click on the bar still jump immediately
-- **Audio thumbnails**: Styled previews with waveform decoration and format badge
-- **Text thumbnails**: First few lines of the file rendered in monospace with extension badge
-- **HTML thumbnails**: Auto-generated design cards instead of raw source code (see HTML Viewer)
-- **Language**: English / German - switchable at runtime (Settings -> General)
-- **Audio player accent**: Theme color or Apple Blue for the PDF audio mini-player (Settings -> General)
-- **Mono-Play**: Only one audio/video playback at a time (enabled by default) - starting playback in another split-view pane automatically **pauses** the one already playing (position is kept). Disable it in Settings -> General to allow parallel playback
-- **Graphics backend**: Vulkan, OpenGL, or Software rendering, with an automatic crash-guard that now **degrades gracefully** (Vulkan/D3D11/Metal -> OpenGL -> Software) if a backend fails to start, a Vulkan loader pre-check, validation of stale/foreign config values, and a runtime guard that switches to a safer backend on the next start after a GPU device-loss (Settings -> General)
-- **One menu row per meaning**: the bar at the top of the window carries what belongs to the app, the window and the pane (view options, tile size, split screen, true fullscreen, settings); the header of an open file carries a single **Document** menu with what belongs to that file (metadata/date, source vs. preview, discard edits). No two menus share a name any more
-- **Keyboard-shortcut overview**: a themed, grouped cheat-sheet in **Settings -> General** lists every shortcut with its key combination and function, sorted by context (gallery, media viewer, PDF/image/DOCX/text editor)
-- **Context-correct, language-independent shortcuts**: each shortcut only fires in the surface it belongs to - in split view only the **active pane** reacts, so the same key (e.g. `Ctrl+C`, `Alt+Q`) is never ambiguous across panes; the top menu no longer generates `Alt`+letter accelerators that clashed with app shortcuts, and every shortcut behaves the same regardless of the interface language
-- **Group mode vs. Add-to-tag mode** (right-click a tag in the panel): *group mode* dims every tile that does **not** carry the tag - they stay in place, so you see what is missing - and a **right**-click on a tile toggles the tag. *Add to tag* leaves everything visible and lets a **left**-click toggle it, for working through many files quickly. Both show a banner with a *Done* button; neither filters the gallery (the tag chip does that)
-- **Search in the tag/category panel**: each section filters the folder's tags or categories as you type; categories appear as a flat list of matches, so a hit can be clicked without unfolding its path
-- **Create and delete from the right-click menu**: right-clicking a tag, a category or the empty area of either section offers **+ New…**; right-clicking a tag also offers **Delete tag** (with a confirmation - the tag disappears from every file in the folder, **and from every folder below it**, because each folder keeps its own tagging and a tag left behind down there was the whole problem). *Settings -> Tags* has the switch **Delete a tag in subfolders as well**, on by default; turn it off to confine deletion to the open folder. The sweep runs in the background, touches only the folders that actually carry the tag, and the status line reports how many there were. It reaches **every** folder below the open one, not only the ones currently expanded
-- **Create a tag or category straight from a file**: the *Add tag* / *Add category* submenus of a tile's context menu start with a **+ New…** entry that creates it and assigns it to that file in one step
-- **The panel shows its own folder**: with two galleries side by side, each panel lists the tags and categories of its own half - it no longer follows the mouse
-- **Options mode (`Alt+S`) is per half**, not app-wide
-- **Toolbars that do not fit scroll instead of cutting off**: in a narrow window (or a split pane) the menu bar, the filter bar, the viewer header, the PDF/text/image toolbars and the settings tabs pan sideways with the mouse wheel (with or without `Ctrl`), with a thin scrollbar as a hint - nothing overlaps and no button becomes unreachable
-- **Smooth wheel scrolling in Settings**: the settings pages scroll ~45 % of the visible height per wheel notch with a short eased animation - the same behavior as the gallery and the PDF page grid
-- **The app's own file and folder chooser**: every *Open folder*, *Choose file* and *Save as* now opens a themed chooser **inside the window** instead of Qt's separate dialog - the same colors as the rest of the app, the same **animated wheel scrolling**, a places sidebar (Home, Documents, Pictures, ...), a clickable breadcrumb path, file size and date, a name filter, *Show hidden*, and a Save button that says **Overwrite** when the target file already exists
-- **Dedicated fullscreen view**: opening a file hides the application menu bar - only the viewer and its own header are visible, and the freed space goes to the content
-- **True fullscreen (`F`)**: in the media viewer, `F` also drops the window decoration and the viewer's own header - just the medium (and, for video/audio, the progress bar). `F` again or `Esc` brings everything back; leaving the file does too. If the window was **already fullscreen** (via your window manager), `F` leaves the window alone and only hides the chrome - you keep your window state. From a windowed or maximized window it switches to real fullscreen and returns to exactly that state afterwards. In fullscreen the arrow keys keep browsing images, but **seek** a video or audio track
-- **Keyboard-only file navigation**: the floating Prev/Next buttons at the bottom of the viewer are gone - `->` and `<-` move to the next/previous item, in every view mode
-- **Seek step**: how far `->` / `<-` skip a video in fullscreen, adjustable from 1 to 600 seconds (Settings -> General, default 15 s)
-- **Themes**: Fully customizable - every color, every surface (Settings -> Design)
+A `.ts` file can be TypeScript or a video; the app checks the first bytes to tell
+which. Files without an extension such as `LICENSE`, `README`, `Makefile` or
+`Dockerfile` open as text.
 
 ---
 
+## Gallery & View
+
+**Layout**
+- **Tiles or list** (*Settings ▸ View*): a grid of tiles, or one row per file with small artwork, name, tag dots and file type
+- **Size**: `Ctrl` with `+`/`-` or the mouse wheel changes the tile size (1 to 25 columns) or, in the list, the row height. Changes in the settings apply immediately
+- **Previews**: images, PDFs and text files show their content on the tile; text files in the editor's syntax colours. Each kind can be switched off in *Settings ▸ View* to save memory - the tile then shows the file type
+- **Scrolling**: smooth mouse wheel, scrollbar, or keys (`Up`/`Down`, `Page Up`/`Page Down`, `Home`/`End`)
+- **Compact mode** (`Alt+S`) and **cover mode** (`B`)
+
+**Folders**
+- **Subfolders appear as tiles**, always first. A click opens a folder in place, right below its tile, as deep as you like; a double click makes it the main level, and `Alt+<-` takes you back
+- An opened folder has a lighter background, indented contents and its own header with *Open folder*, *Create*, *New folder* and *Extract*
+- Each folder tile shows how many media are inside
+- **Search and filters include subfolders** below the open folder; folders with hits open by themselves and close again when you clear the search
+- **Live folder watch**: new or deleted files appear automatically
+- **Bookmarks** (*Folder* menu, *Settings ▸ Bookmarks*): save folders under a name, sorted into groups and subgroups. Groups fold open and closed in the menu, and can be rearranged by drag and drop in the settings
+
+**Selecting and moving files**
+- **Select like in a file manager**: `Ctrl`+click, `Shift`+click, drag a rectangle over empty space, `Ctrl+A` for everything the filter shows, `Esc` to clear
+- Everything then works on the whole selection: dragging, tagging from the right-click menu, and deleting - which is one undo step
+- **Copy and paste** with `Ctrl+C` / `Ctrl+V`, also between the app and your file manager
+- **Drag files onto a folder tile, a bookmark or the other half of the window** to move them there (or copy - *Settings ▸ General*). Tags, category and date move along. Name collisions ask: replace, rename or cancel. `Ctrl+Z` undoes it
+- While you drag, a bar with your bookmarks and the folders currently in the gallery appears at the bottom, and the pointer at the top or bottom edge scrolls
+- **Drag files out** into other programs - always as a copy
+- **Drop files from outside** into the folder under the pointer
+- **Delete** with the `Delete` key or the right-click menu. Files go to the trash; `Ctrl+Z` brings them back together with their tags, category and date. `Enter` confirms, `Esc` cancels
+
+**Viewing files**
+- **Fullscreen view** by double click; `->` / `<-` move to the next or previous file, random mode picks one at random
+- **True fullscreen** (`F`): hides the window frame and all bars. Moving the mouse to the top edge brings the header back
+- **Document menu** in the header of an open file: date and metadata, source/preview or table/raw file, and the actions of that file type
+- The window title shows folder and file
+- **Split view**: up to four files side by side in one window. Drag the dividers to resize, drag a header to rearrange the layout, `Esc` closes one file
+- **Two galleries side by side** (*View ▸ Split window*): each half has its own folder and filters, with a draggable divider. The same folder may be open in both. Each half opens up to two files. *View ▸ Swap panes* or dragging a half's bar swaps them; both halves come back on the next start
+- **Page animation**: slide or fade (*Settings ▸ General*)
+
+---
+
+## Text Editor
+- **Saves by itself**: when you leave the file, switch to another, and at an adjustable interval. `Ctrl+S` works too; a dot in the status bar shows unsaved changes
+- **Syntax colouring for 27 languages**, including C/C++, Python, Java, JavaScript/TypeScript, C#, Go, Rust, PHP, Swift, Kotlin, shell, Ruby, Lua, CMake, YAML, SQL, HTML/XML, CSS, JSON, INI/TOML, QML and Markdown. HTML also colours the CSS and JavaScript inside it
+- **Folding**: collapse functions, blocks, sections or headings from a bar next to the line numbers. The file itself is not changed
+- **Find and replace** (`Ctrl+F`): hit counter, match case, whole words, all hits highlighted; *Replace all* is one undo step
+- **Line numbers, current-line highlight, indent guides, bracket matching** (an unmatched bracket turns red)
+- **Overview column** on the right: the whole file in miniature, click or drag to scroll
+- **Line wrap** on screen only (*Settings ▸ Editor*); a wrapped line keeps one line number
+- **Tab width 2 to 8**; the Tab key inserts spaces by default
+- **Status bar**: line, column, language, encoding
+- **Own colour themes**, separate from the app theme: Nightfall, Paper, Ember and Custom, saveable as JSON
+- **Arabic and Japanese text** display correctly thanks to font fallback
+- **Export as PDF** (*Document ▸ Save as PDF*): written next to the file, never overwriting an existing PDF
+  - A4, 10 pt monospace, 20 mm margins, page count at the bottom; long lines wrap, indentation stays
+  - *One colour* (default): your chosen text colour on white. The colour can be set per file
+  - *Like the editor*: background and syntax colours of the editor theme
+  - The text in the PDF can be selected and searched
+- Files over 8 MB open read-only (see [LIMITATIONS.md](LIMITATIONS.md))
+
+---
+
+## HTML Viewer
+- `.html` / `.htm` open as a **rendered preview**, one click away from the editable source
+- Runs **offline**: JavaScript works, but nothing is loaded from the internet
+- Tiles show a **design card** built from the page's title and colours
+- The web engine starts only when you first open an HTML file, which keeps start-up fast and memory low
+- Renders without the graphics card, which avoids driver problems; `QTWEBENGINE_CHROMIUM_FLAGS` overrides this
+- A page that fails to load shows a readable message
+
+---
+
+## CSV and TSV Files
+
+**Reading**
+- **Opens as a table**; the raw file is one click away (table button or *Document* menu)
+- **Separator and header row are detected** (`;` `,` tab `|`); the footer says what was found
+- **Several tables in one file** (separated by blank lines) get one tab each, with an *All* tab showing the whole file
+- **Row and column numbers** can be switched on in the top bar
+- **Encoding**: UTF-8 or Windows-1252, detected automatically
+- Problems such as unclosed quotes are named in the footer with their line number
+- **Open `.txt` as a table too** (*Settings ▸ View ▸ Files*, off by default) - only if the file really has columns
+
+**Search, sort, filter**
+- **`Ctrl+F`** searches the table and shows the hit count. `Aa` matches case, *Cell* only finds exact cell contents. In a file with several tables, the bar names the other tables with hits
+- **Click a heading to sort**: ascending, descending, back to file order. Numbers sort as numbers, dates by calendar (`DD.MM.YYYY`, `YYYY-MM-DD` and `DD/MM/YYYY` or `MM/DD/YYYY` as set in the settings)
+- **Filter** (button right of *Document*): pick a column or all columns, then type text - or a comparison:
+  - numbers: `>200`, `<200`, `>=200`, `<=200`, `100->200`
+  - dates: `2025-01-01+` (from that day), `2025-01-01-` (up to that day), `2025-01->2025-04` (January to end of April); a year or month alone counts as a whole
+  - the row numbers stay those of the file; the drawn X clears the filter
+- **Hide columns** and **freeze the first column** from the heading's right-click menu
+- Sorting and filtering never change the file
+
+**Editing**
+- **A click marks a cell** (for showing someone something); **double click or `F2` edits it**. `Enter` confirms and moves down, `Tab` moves right, `Esc` cancels
+- **Insert and delete rows and columns**, rename columns - from the right-click menu
+- **Paste a block** from a spreadsheet with `Ctrl+V`; copy a cell with `Ctrl+C`, a row with `Ctrl+Shift+C`
+- **Undo and redo** with `Ctrl+Z` / `Ctrl+Y`, also after saving
+- **Saves like the text editor**; `Ctrl+S` confirms with a short *Saved*
+- **Only changed lines change in the file** - quoting, line endings and encoding stay as they were. Values are never reformatted (`1,00` stays `1,00`)
+- **A file changed elsewhere is never overwritten**: you can save a copy (`<name>_edited.<ext>`) or reload
+
+---
+
+## DATEV Files (booking batches)
+- **Recognised by content** (`"EXTF";` / `"DTVF";` at the start), whether named `.csv` or `.txt`
+- **Header summary** on top (format, version, creation time); all header fields fold out below
+- **Bookings as a table**, showing only the columns that contain data; one click shows all 125
+- **Totals in the footer**: number of bookings, debit, credit and difference - red when they do not balance. With a filter on, the totals cover only the filtered bookings
+- **Search, sort, filter, hide columns and copy** work as in the CSV view
+- Works with reduced exports too, as columns are found by their names
+- **Read-only**: the app never writes into a bookkeeping file
+
+---
+
+## Search
+Every search box - gallery, text editor, PDF, DOCX - follows the same rule:
+- **What you type is always searched as plain text.**
+- **If it also works as a pattern (regular expression), it is searched as a pattern too**, and both results are combined. `\d{4}` finds every four-digit number *and* the literal text `\d{4}`
+- A half-typed pattern is not an error; the plain search simply continues
+- **Replacing always inserts plain text**
+- *Settings ▸ General* lists the pattern characters with examples
+
+Most useful: `.` any character · `\d` a digit · `[abc]` one of these · `*` any number
+of times · `{4}` exactly four times · `^` line start · `$` line end · `a|b` either ·
+`\.` a real dot.
+
+---
+
+## Tags & Categories
+- **Tags** per folder, freely named, with colours
+- **Categories** in a tree, holding tags; colours can be passed down
+- **Side panel** with all tags as chips and the category tree, each with its own search field
+- **Gallery search** next to the *Filter* button: filters by name, file name and tags as you type
+- **Filter modes**: OR, AND, ONLY, INCLUSIVE, combined with the media type
+- **Sorting** (inside the *Filter* button): date, name, tags or file size
+- **Assign tags** from a file's right-click menu, with *+ New…* to create one on the spot
+- **Drag and drop**: drop files on a tag or category to assign them; drag tags between categories; in compact mode (`Alt+S`) drag categories into each other
+- **Group mode and Add-to-tag mode** (right-click a tag): tag many files quickly with a click each, then *Done*
+- **Converter** (*Settings ▸ Converter*): turn tags into categories and back - the files come along
+- **Deleting a tag** also removes it in all subfolders (switchable in *Settings ▸ Tags*)
+- **Undo and redo** in a bar at the bottom of the panel, covering every tag and category change (up to 20 steps). Each side shows a short mark of what the button would do, for example `T:holiday` for a tag or `+3 T:holiday` for an assignment to three files, coloured green (added), red (deleted), blue (moved) or yellow (renamed). Hover for the full text
+- Each half of a split window shows the tags of its own folder
+
+---
+
+## PDF Viewer
+- Pages with a thumbnail sidebar; zoom, fit page, fit width
+- **Select and copy text** like in a browser
+- **Search** (`Ctrl+F`) with hits highlighted on the page
+- **Embedded audio and video** play in place; a panel lists the page's audio clips
+
+## PDF Page Extraction
+- **From an open PDF**: right-click a page ▸ *Extract page* or *Extract multiple pages…*
+- **From the whole folder**: the *Extract* button collects all PDFs, and you pick pages from several files into one new PDF
+- **Workbench**: PDF list on the left, pages on the right, and a bar at the bottom whose order is the order of the new file - drag to reorder, drag out to remove. `Ctrl` + hover shows a large preview
+- **Lossless**: pages are copied as they are - text, fonts and vector graphics stay intact. Only files that cannot be copied (for example encrypted ones) become image pages
+- Existing files are never overwritten
+
+## PDF Editor
+Notes, drawings, highlights, redactions and form values are stored in a small
+file next to the PDF (`<name>.mgedit.json`) and stay editable. **Export** writes a
+new copy; the original is not touched.
+
+**Page changes are the exception**: moving, rotating, removing and inserting
+pages change the PDF directly. `Ctrl+Z` undoes them while the file is open.
+
+- **Notes and drawings**: text boxes with full formatting, pen, arrow, rectangle, ellipse. Move, resize, copy, delete, undo. `Alt+Q` hides them all
+- New notes take over the last style; notes can be dragged across pages and snap to text lines
+- **Linked text boxes**: text flows from one box into the next
+- **Replace text**: a box snaps onto a line and comes pre-filled with the existing text
+- **Edit text**: type directly into the page's own text - it stays sharp and searchable
+- **Highlight, underline, strike through**: drag across the text; the mark follows the lines
+- **Black out text**: the covered text is really removed from the exported file, not just hidden. The app checks the result; where removal is impossible (for example over images), the page is exported as an image
+- **Make a scanned PDF searchable** (*Document* menu, needs Tesseract): recognised words are written into the file as invisible text, so it can be searched and copied in any PDF reader
+- **Fill in forms**: text fields, check boxes, radio buttons and lists; values are saved into a new copy
+- **Annotations from other programs** become editable notes
+- **Signatures and stamps**: place a PNG or JPEG; it always keeps its proportions
+- **Pages**: insert blank pages, insert pages from another PDF, rotate, remove, reorder by dragging thumbnails
+- **Export**: lossless where possible (the original page content stays unchanged), otherwise as images - a setting. You are told when the image route is taken
+- **Tracked changes**: with *Record* on, new and deleted annotations count as changes you can accept or reject, one by one or all at once
+- The formatting panel sits on the right or as a ribbon at the top
+
+## Image Editor
+- Opens from the **Edit** button in the image viewer; the original is never changed
+- **Text notes and drawings** with the same tools and formatting as the PDF editor, including tracked changes
+- Notes are saved next to the image (`<image>.mgedit.json`)
+- **Export** writes a new image with the notes drawn in, in the same format (JPG stays JPG, PNG stays PNG)
+
+## DOCX Editor
+- **Opens Word files as real pages**, with the page size, margins and columns of the document. Page breaks fall where Word puts them
+- **Changes only what you edit**; everything else in the file stays byte for byte. If the file cannot be read safely, editing is refused
+- **Text**: typing, selection, paragraphs, line breaks (`Shift+Enter`), undo and redo
+- **Formatting**: font, size, bold, italic, underline, colour, alignment, spacing, bulleted and numbered lists
+- **Styles**: the document's own paragraph styles; *Heading 1-3* are always available and Word recognises them
+- **Copy and paste keep formatting**, also into Word, LibreOffice or a browser
+- **Tables**: insert, type in cells, add or remove rows and columns, set column widths in millimetres, copy, cut and paste whole tables. Long tables continue on the next page; text can run beside narrow tables
+- **Pictures**: insert from the document's folder, from a file or with `Ctrl+V`; resize with handles or in millimetres; place in line or with text wrapped around, and drag freely
+- **Signatures and stamps** as freely placed pictures
+- **PDF pages as pictures**, chosen in the same screen as page extraction
+- **Table of contents** from the headings, on its own page; Word updates the page numbers
+- **Page thumbnails** in a sidebar
+- **Margin rulers** at the top and right: drag to change the margins; Word shows the same. The reset button restores 2.5 cm
+- **Tracked changes from Word** are shown and can be accepted or rejected
+- **Spell checking** with suggestions (needs Hunspell); corrected words lose their underline by themselves. Underlines never appear in the PDF
+- **Find and replace** (`Ctrl+F`)
+- **Saving**: directly into the file (automatically, with a temporary `.bak` backup), or as a copy `<name>_edited.docx` - a setting
+- **Export to PDF**: exactly the pages the editor shows, with selectable text. An optional page number can sit left, centre or right
+- **New Word documents** from the gallery's **+** button
+- Tables inside table cells are shown as placeholders and kept unchanged
+
+---
+
+## Live Transliteration
+- Type Latin letters and get **Arabic (with vowel marks)** or **Japanese (Hiragana/Katakana)** as you type
+- Works in the text editor, the HTML source and PDF notes
+- Handles the Arabic article, doubled consonants and word endings
+- The mapping tables can be edited in *Settings ▸ Editor*
+
+---
+
+## Audio Player Mode (`Alt+A`)
+- **Turns a gallery half into a music player**: only playable files are shown (videos too, if switched on in *Settings ▸ Audio*). Leaving the mode restores your filter
+- **Player bar** with previous, play/pause, next, progress, shuffle, repeat, equalizer and volume
+- **Full player view** (double click): large controls and the queue on the right
+- **The visible list is the queue** - filtered, searched and sorted as the gallery shows it
+- `Space` plays and pauses, `<-` / `->` change tracks; *previous* returns to what you actually heard
+- **Shuffle** without repeats; **repeat** off, one or all
+- **Gapless**: the next track starts without a pause
+- **Title, artist and cover** are read from the file and shown in the player, the queue and on the tile
+- **Fast jumping** in long MP3, AAC, AC-3 and MKV files
+- Playback continues while you look at other files, and each half remembers its mode across restarts
+- **10-band equalizer** (31 Hz to 16 kHz, ±12 dB) with preamp. Bands add up instead of amplifying each other, which avoids most distortion
+- **Prevent clipping** (on by default): a limiter at the end that lowers only the parts that would distort. The preamp is never changed by it
+- **Noise reduction** with a strength slider: lowers background hiss (up to about 29 dB) and leaves normal music untouched. At 0 the sound passes unchanged
+- **Presets**: five built in, your own added; save or overwrite from the equalizer. Delete, reorder and restore built-ins in *Settings ▸ Audio*
+- **Save a video's sound** (right-click a video, the queue, or the *Document* menu): the sound is copied without conversion, so there is no quality loss
+  - MP4, M4V and MOV become `.m4a`; MKV, WEBM and MKA become `.opus`, `.ogg`, `.ac3`, `.eac3`, `.mp3` or `.aac` depending on the sound format
+  - A video with several sound tracks asks which one (language, codec, channels)
+  - The new file takes over the video's tags and can be added to the queue (*Settings ▸ Audio*)
+  - Existing files are never overwritten
+
+---
+
+## Playback & Interface
+- **Video**: built-in player or an external one. A video jumps when you let go of the progress bar
+- **Mono play** (on by default): starting playback in one half pauses the other
+- **Seek step** for `->` / `<-` in fullscreen video: 1 to 600 seconds (*Settings ▸ General*)
+- **Language**: English or German, switchable at runtime
+- **Graphics**: Vulkan, OpenGL or software. If a mode fails to start, the app falls back to a safer one automatically
+- **Keyboard shortcut overview** in *Settings ▸ General*
+- Shortcuts only act where they belong - in a split window only in the active half
+- **The app's own file chooser**, in the app's colours, with places, path, filter and hidden files
+- Bars that do not fit a narrow window **scroll sideways** with the mouse wheel
+- **Settings groups fold away**, and stay folded after a restart
+
+## Colours & Themes (*Settings ▸ Design*)
+- **8 interface themes** (Dark, Dark OLED, Ocean Depth, Inferno Blaze, Midnight Rose, Elegant, Simple, Custom) and **4 editor themes** - independent of each other
+- **Custom theme editor** with live preview: backgrounds (solid or gradient), text, borders, accent and glow, tiles, PDF viewer, editor and syntax colours
+- **Export and import** themes as JSON
+- All icons and controls are drawn by the app itself, so they follow the theme and stay sharp at any display scaling
+
+---
+
+## Files Next to Your Media
+- **The app's own files are hidden by default**: the folder file with tags (`<Folder>.mgstore`), editor notes (`<file>.mgedit.json`) and DOCX backups (`.bak`)
+- **Show all files** (*Settings ▸ View ▸ Files*) shows them - and every other file type, with an extension badge
+- **Delete notes or backups** without the file itself: right-click a tile, or *Document* menu for PDFs and images. Goes to the trash; `Ctrl+Z` brings it back
+- **Look inside the folder file**: open the `.mgstore` to see all tags, categories and assignments in readable form; *Raw* shows the bytes
+
+## Metadata & File Management
+- **Date**: set a file's date; it is written to the file itself. *Reset* returns to the creation date
+- **Info** (right-click ▸ *Info*): name, type, size, dates and location
+- **Create** (the **+** button): new folder, or an empty PDF, HTML, text or Word file, or an empty file with any name
+- **Rename** from the right-click menu, or in the header in compact mode (`Alt+S`)
+- **Drop a folder** on the window to open it
+- **The folder file follows the folder** when you rename it, also outside the app
 
 ---
 
 ## Keyboard Shortcuts
 
+The same list, with every shortcut, is in *Settings ▸ General*.
+
 | Action | Shortcut |
 |--------|----------|
+| **Gallery** | |
 | Open folder | `Ctrl+O` |
-| Jump to the search field (gallery) | `Ctrl+F` |
-| Undo / redo a file deletion (gallery) | `Ctrl+Z` / `Ctrl+Shift+Z` (or `Ctrl+Y`) |
-| Add a tile to the selection / pick a range | `Ctrl`+click / `Shift`+click |
-| Select everything the filter shows (gallery) | `Ctrl+A` |
-| Clear the selection (gallery) | `Esc` |
-| Copy the selected files to the clipboard | `Ctrl+C` |
-| Paste files into the open folder | `Ctrl+V` |
+| Jump to the search field | `Ctrl+F` |
 | Reload / refresh thumbnails | `F5` / `R` |
-| Toggle audio player mode (gallery, or from an open file) | `Alt+A` |
-| True fullscreen (gallery and viewer) | `F` |
-| Scroll a toolbar that does not fit | Mouse wheel (with or without `Ctrl`) |
-| Play / pause (player mode) | `Space` |
-| Previous / next track (player mode) | `<-` / `->` |
-| Toggle options mode (gallery & media viewer) | `Alt+S` |
-| Toggle cover mode | `B` |
-| Open fullscreen view | Double-click |
-| Next item | `->` |
-| Previous item | `<-` |
-| Toggle fullscreen (media viewer) | `F` |
-| Leave fullscreen (before closing the file) | `Esc` |
-| Fullscreen + video/audio: seek forward / back | `->` / `<-` |
-| Back to gallery | `Esc` |
-| Back to gallery (from any viewer) | `Alt+<-` |
-| Back out of a subfolder (gallery) | `Alt+<-` |
-| Save text file | `Ctrl+S` |
-| Find & replace (text editor) | `Ctrl+F` |
-| Next / previous match | `Enter` / `Shift+Enter` |
-| Close the search bar | `Esc` |
-| Undo / redo (text editor) | `Ctrl+Z` / `Ctrl+Shift+Z` (or `Ctrl+Y`) |
-| Search in a table (CSV/TSV, DATEV) | `Ctrl+F` |
-| Sort a table by a column / back to file order | Click the heading (three times) |
-| Column menu (hide, show all, freeze first) | Right-click the heading |
-| Mark a cell in a table | Click |
-| Copy the marked cell / its whole row | `Ctrl+C` / `Ctrl+Shift+C` |
-| Indent (writes spaces by default) | `Tab` |
-| Jump to start / end of the file (text editor) | `Ctrl+Home` / `Ctrl+End` |
-| Page up / page down (text editor, **scrolls only - the caret stays put**) | `Page Up` / `Page Down` |
-| Edit date (fullscreen) | `D` |
-| Open date editor | Calendar button (fullscreen) |
-| Delete file | Delete button (fullscreen) |
-| Confirm a delete question | `Enter` |
-| Cancel a delete question | `Esc` |
-| Image: zoom in / out | Mouse wheel · toolbar `+` / `-` |
-| Image: fit to window / 100% | Toolbar buttons |
-| Image / PDF: pan when zoomed | Left-drag (PDF: on non-text areas) |
-| PDF: zoom in | `+` |
-| PDF: zoom out | `-` |
-| PDF: previous page | `<-` |
-| PDF: next page | `->` |
-| PDF: copy selected text | `Ctrl+C` |
-| PDF: select all text on page | `Ctrl+A` |
-| PDF / Image Editor: toggle note visibility | `Alt+Q` |
-| PDF / Image Editor: delete selected annotation | `Delete` |
-| PDF / Image Editor: copy / paste selected annotation | `Ctrl+C` / `Ctrl+V` |
-| PDF / Image Editor: undo / redo | `Ctrl+Z` / `Ctrl+Shift+Z` (or `Ctrl+Y`) |
-| Image Editor: toggle edit mode | ✎ toolbar button |
-| DOCX: save (follows the chosen save mode) | `Ctrl+S` |
-| DOCX: bold / italic / underline | `Ctrl+B` / `Ctrl+I` / `Ctrl+U` |
-| DOCX: undo / redo | `Ctrl+Z` / `Ctrl+Shift+Z` (or `Ctrl+Y`) |
-| DOCX: select all / copy / cut / paste | `Ctrl+A` / `Ctrl+C` / `Ctrl+X` / `Ctrl+V` |
-| DOCX: line break inside a paragraph | `Shift+Enter` |
-| DOCX: find & replace | `Ctrl+F` |
-| Any editor: jump to end of the last line | `↓` (with `Shift` to select) |
-
----
+| Tile size larger / smaller | `Ctrl` with `+` / `-` or mouse wheel |
+| Select files / pick a range | `Ctrl`+click / `Shift`+click |
+| Select everything shown / clear selection | `Ctrl+A` / `Esc` |
+| Copy / paste files | `Ctrl+C` / `Ctrl+V` |
+| Delete selected files | `Delete` |
+| Undo / redo a file operation | `Ctrl+Z` / `Ctrl+Shift+Z` or `Ctrl+Y` |
+| Back out of a subfolder | `Alt+<-` |
+| Compact mode (gallery and viewer) | `Alt+S` |
+| Cover mode | `B` |
+| Audio player mode | `Alt+A` |
+| Play / pause, previous / next track (player mode) | `Space`, `<-` / `->` |
+| Confirm / cancel a delete question | `Enter` / `Esc` |
+| **Viewer** | |
+| Open a file | Double click |
+| Next / previous file | `->` / `<-` |
+| True fullscreen | `F` |
+| Seek video forward / back (fullscreen) | `->` / `<-` |
+| Back to gallery | `Esc` / `Alt+<-` |
+| Edit date | `D` |
+| **Text editor** | |
+| Save | `Ctrl+S` |
+| Find & replace / next / previous match | `Ctrl+F` / `Enter` / `Shift+Enter` |
+| Close search | `Esc` |
+| Undo / redo | `Ctrl+Z` / `Ctrl+Shift+Z` or `Ctrl+Y` |
+| Indent (writes spaces) | `Tab` |
+| Start / end of file | `Ctrl+Home` / `Ctrl+End` |
+| Scroll a page (cursor stays) | `Page Up` / `Page Down` |
+| **Tables (CSV, TSV, DATEV)** | |
+| Mark a cell / remove the mark | Click / `Esc` |
+| Edit a cell | Double click / `F2` |
+| Confirm and move down / right | `Enter` / `Tab` |
+| Move the mark | Arrow keys, `Tab`, `Page Up/Down`, `Home`/`End` |
+| Copy cell / row | `Ctrl+C` / `Ctrl+Shift+C` |
+| Paste (several cells too) | `Ctrl+V` |
+| Undo / redo | `Ctrl+Z` / `Ctrl+Shift+Z` or `Ctrl+Y` |
+| Save (with a check) | `Ctrl+S` |
+| Search | `Ctrl+F` |
+| Sort by a column | Click the heading |
+| Column menu | Right-click the heading |
+| **PDF and image editor** | |
+| Zoom in / out (PDF) | `+` / `-` |
+| Search the document (PDF) | `Ctrl+F` |
+| Copy text / select page text (PDF) | `Ctrl+C` / `Ctrl+A` |
+| Show / hide notes | `Alt+Q` |
+| Delete selected note | `Delete` |
+| Copy / paste note | `Ctrl+C` / `Ctrl+V` |
+| Undo / redo | `Ctrl+Z` / `Ctrl+Shift+Z` or `Ctrl+Y` |
+| **DOCX editor** | |
+| Save | `Ctrl+S` |
+| Bold / italic / underline | `Ctrl+B` / `Ctrl+I` / `Ctrl+U` |
+| Find & replace | `Ctrl+F` |
+| Select all / copy / cut / paste | `Ctrl+A` / `Ctrl+C` / `Ctrl+X` / `Ctrl+V` |
+| Line break inside a paragraph | `Shift+Enter` |
+| Undo / redo | `Ctrl+Z` / `Ctrl+Shift+Z` or `Ctrl+Y` |
 
 ---
 
 ## Configuration & Data
 
-All settings are stored via `QSettings` (platform-native). The audio player keeps its own group `audio/`: equalizer on/off, the ten band gains, preamp, noise reduction on/off and its strength, your presets (one line each, `Name<TAB>preamp<TAB>10 gains`), *show videos*, *remember last track*, the last file and position, volume, shuffle and repeat.
+Settings are stored the usual way for each system (`QSettings`), including the
+equalizer, presets, volume and the last played track.
 
-Per-folder metadata (tags, tag colours, categories, per-file PDF text colour) is stored in one **MGStorage** file alongside the media:
+Tags, tag colours and categories of a folder are kept in **one file next to the
+media**:
 ```
 MyPhotos/
 ├── photo1.jpg
@@ -536,11 +385,17 @@ MyPhotos/
 └── MyPhotos.mgstore
 ```
 
-**MGStorage** is the app's own binary format, built for exactly this data. Every name - tag, category, file - is written **once** and referred to by number afterwards; a set of tags that many files share is written once as well; numbers use as few bytes as they need; sorted lists store differences instead of values; file names that start alike share that start. On a real folder (5000 files, 15.000 assignments, 300 categories) that turned **3.10 MB of JSON into 245 KB** - 12.6 times smaller - and saving got faster in the same step. Settings -> General has a short box explaining the syntax if you are curious.
+**MGStorage** is the app's own compact binary format. Every tag and file name is
+stored once and then referred to by number, identical tag combinations are stored
+once, and numbers take only as many bytes as they need. On a real folder this
+turned 3.1 MB of JSON into 245 KB. *Settings ▸ General* explains the format with
+an example.
 
-**Nothing is lost in the switch.** An older `<FolderName>.json` is still read; the first save after that writes the `.mgstore` and removes the old file. The file is written atomically (temp file + rename), so a crash mid-write cannot leave you with an empty one, and if another window changed the same folder in the meantime, both changes are merged rather than one overwriting the other.
+An older `<Folder>.json` is still read and replaced on the next save. The file is
+written safely (to a temporary file first), so a crash cannot empty it, and
+changes from two windows are merged.
 
-Custom themes can be exported to JSON and shared:
+Themes can be exported as JSON and shared:
 ```json
 {
   "name": "My Theme",
@@ -550,5 +405,3 @@ Custom themes can be exported to JSON and shared:
   "sidebarBg": "#121c22"
 }
 ```
-
----

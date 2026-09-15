@@ -188,7 +188,6 @@ Item {
 
     ScrollView {
         id: designScroll
-        objectName: "designScroll"
         anchors.fill: parent
         contentWidth: availableWidth
         clip: true

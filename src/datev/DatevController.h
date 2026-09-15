@@ -4,6 +4,7 @@
 //  verschiedene Dateien zeigen koennen. Schreibt nie: in eine Buchungsdatei
 //  zurueckzuschreiben waere ein Schaden, den keine Bequemlichkeit aufwiegt.
 #include "datev/DatevCsv.h"
+#include "table/TableFilter.h"
 #include "table/TableSearch.h"
 #include "table/TableSort.h"
 
@@ -32,7 +33,9 @@ class DatevController : public QObject {
     //  Katalog nicht benannt ist.
     Q_PROPERTY(QVariantList headerFields READ headerFields NOTIFY stateChanged)
 
-    Q_PROPERTY(int rowCount    READ rowCount    NOTIFY stateChanged)
+    //  `rowCount` zaehlt die GEZEIGTEN Buchungen, `totalRows` alle.
+    Q_PROPERTY(int rowCount    READ rowCount    NOTIFY rowsChanged)
+    Q_PROPERTY(int totalRows   READ totalRows   NOTIFY rowsChanged)
     Q_PROPERTY(int columnCount READ columnCount NOTIFY stateChanged)
     //  Sichtbare Spalten als { index, title }. 125 Spalten sind nicht lesbar -
     //  vorgegeben sind deshalb nur die, die in mindestens einer Buchung etwas
@@ -50,10 +53,15 @@ class DatevController : public QObject {
     Q_PROPERTY(bool sortAscending READ sortAscending NOTIFY sortChanged)
     Q_PROPERTY(bool sorting       READ sorting       NOTIFY sortChanged)
     Q_PROPERTY(int  contentRevision READ contentRevision NOTIFY sortChanged)
+    Q_PROPERTY(bool    filterActive READ filterActive NOTIFY sortChanged)
+    Q_PROPERTY(int     filterColumn READ filterColumn NOTIFY sortChanged)
+    Q_PROPERTY(QString filterText   READ filterText   NOTIFY sortChanged)
 
-    Q_PROPERTY(double sumDebit  READ sumDebit  NOTIFY stateChanged)
-    Q_PROPERTY(double sumCredit READ sumCredit NOTIFY stateChanged)
-    Q_PROPERTY(double sumDiff   READ sumDiff   NOTIFY stateChanged)
+    //  Mit Filter ueber die GEZEIGTEN Buchungen - die Fusszeile sagt dann dazu,
+    //  dass es nicht alle sind.
+    Q_PROPERTY(double sumDebit  READ sumDebit  NOTIFY rowsChanged)
+    Q_PROPERTY(double sumCredit READ sumCredit NOTIFY rowsChanged)
+    Q_PROPERTY(double sumDiff   READ sumDiff   NOTIFY rowsChanged)
 
     //  Suche: dieselbe Maschine und dieselben Namen wie in der CSV-Ansicht
     //  (s. table/TableSearch.h) - beide Flaechen benutzen denselben Suchbalken.
@@ -66,6 +74,8 @@ class DatevController : public QObject {
     Q_PROPERTY(bool matchOverflow READ matchOverflow NOTIFY searchChanged)
     Q_PROPERTY(bool searching     READ searching     NOTIFY searchChanged)
     Q_PROPERTY(int  searchRevision READ searchRevision NOTIFY searchChanged)
+    Q_PROPERTY(bool slashDateMonthFirst READ slashDateMonthFirst WRITE setSlashDateMonthFirst
+                                        NOTIFY sortChanged)
 
     Q_PROPERTY(QStringList warnings READ warnings NOTIFY stateChanged)
     Q_PROPERTY(bool truncated READ truncated NOTIFY stateChanged)
@@ -77,6 +87,8 @@ public:
 
     QString source() const { return m_source; }
     void    setSource(const QString& pathOrUrl);
+    //  Liest dieselbe Datei neu - nach einer Aenderung im Rohtext.
+    Q_INVOKABLE void reload();
 
     bool    busy() const  { return m_busy; }
     bool    ready() const { return m_datei && m_datei->ok; }
@@ -89,6 +101,7 @@ public:
     QVariantList headerFields() const;
 
     int rowCount() const;
+    int totalRows() const { return m_datei ? int(m_datei->buchungen.size()) : 0; }
     int columnCount() const;
     QVariantList columns() const { return m_spalten; }
     bool showAllColumns() const  { return m_alleSpalten; }
@@ -99,10 +112,17 @@ public:
     bool sortAscending() const { return m_sortRichtung == mg::table::SortRichtung::Auf; }
     bool sorting() const       { return m_sortLaeuft; }
     int  contentRevision() const { return m_inhaltRevision; }
+    bool    filterActive() const { return m_filter.aktiv(); }
+    int     filterColumn() const { return m_filter.spalte; }
+    QString filterText() const   { return m_filter.text; }
 
     //  Aufsteigend -> absteigend -> Dateireihenfolge.
     Q_INVOKABLE void sortByColumn(int column);
     Q_INVOKABLE void clearSort();
+    //  Wie in der CSV-Ansicht (s. `table/TableFilter.h`); die Datei bleibt, wie sie ist.
+    Q_INVOKABLE void setFilter(int column, const QString& text, bool caseSensitive,
+                               bool wholeCell);
+    Q_INVOKABLE void clearFilter();
 
     Q_INVOKABLE void setColumnHidden(int column, bool hidden);
     Q_INVOKABLE bool columnHidden(int column) const { return m_versteckt.contains(column); }
@@ -122,6 +142,8 @@ public:
     //  EIN Feld - der Weg der Anzeige. Eine ganze Zeile zurueckzugeben kopierte
     //  je sichtbarer Zeile 125 Zeichenketten statt der zehn gezeigten.
     Q_INVOKABLE QString cell(int row, int column) const;
+    //  Mit Filter die Nummer der Buchung, damit die Luecken sichtbar bleiben.
+    Q_INVOKABLE int rowNumber(int row) const;
 
     int  matchCount() const  { return m_suche.anzahl(); }
     int  matchIndex() const  { return m_suche.index(); }
@@ -130,6 +152,8 @@ public:
     bool matchOverflow() const { return m_suche.mehr(); }
     bool searching() const   { return m_suchLaeuft; }
     int  searchRevision() const { return m_suche.revision(); }
+    bool slashDateMonthFirst() const { return m_monatZuerst; }
+    void setSlashDateMonthFirst(bool v);
 
     //  Gesucht wird nur in den GEZEIGTEN Spalten - ein Treffer in einer
     //  ausgeblendeten waere ein Sprung ins Nichts.
@@ -159,6 +183,7 @@ signals:
     void columnsChanged();
     void searchChanged();
     void sortChanged();
+    void rowsChanged();
 
 private:
     void ergebnisUebernehmen(std::shared_ptr<Datei> d, const QString& fehler);
@@ -166,7 +191,7 @@ private:
     void sucheStarten();
     void suchErgebnis(QList<mg::table::Treffer> treffer, bool mehr);
     void ordnungNeuBauen();
-    void sortErgebnis(QList<int> ordnung);
+    void ordnungErgebnis(QList<int> ordnung, bool aktiv, const QVariant& summen);
     //  Anzeigezeile -> Buchung. Ohne Sortierung sind beide dieselbe Zahl.
     int  rohZeile(int anzeige) const;
     //  Maske der gezeigten Spalten: der Schalter oben UND die einzeln
@@ -187,8 +212,10 @@ private:
     mg::table::SortRichtung m_sortRichtung = mg::table::SortRichtung::Keine;
     bool m_sortLaeuft = false;
     int  m_inhaltRevision = 0;
-    //  Buchungsnummern in Anzeigereihenfolge; leer = Dateireihenfolge.
+    //  Buchungsnummern in Anzeigereihenfolge, gueltig bei `m_ordnungAktiv`.
     QList<int> m_ordnung;
+    bool m_ordnungAktiv = false;
+    mg::table::FilterRegel m_filter;
     std::shared_ptr<std::atomic<bool>> m_sortAbbruch;
     double m_soll = 0.0;
     double m_haben = 0.0;
@@ -197,6 +224,7 @@ private:
     QString                 m_suchText;
     mg::table::SuchOptionen m_suchOpt;
     int  m_suchAb = 0;
+    bool m_monatZuerst = false;
     bool m_suchLaeuft = false;
 
     QThreadPool m_pool;

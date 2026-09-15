@@ -46,6 +46,7 @@ class AppController : public QObject {
     Q_PROPERTY(bool    showHiddenFiles READ showHiddenFiles WRITE setShowHiddenFiles NOTIFY showHiddenFilesChanged)
     Q_PROPERTY(bool    showAllFiles    READ showAllFiles    WRITE setShowAllFiles NOTIFY showAllFilesChanged)
     Q_PROPERTY(bool    tableOpensTxt   READ tableOpensTxt   WRITE setTableOpensTxt NOTIFY tableOpensTxtChanged)
+    Q_PROPERTY(bool    tableDateMonthFirst READ tableDateMonthFirst WRITE setTableDateMonthFirst NOTIFY tableDateMonthFirstChanged)
     Q_PROPERTY(bool    textPdfNative   READ textPdfNative   WRITE setTextPdfNative NOTIFY textPdfNativeChanged)
     Q_PROPERTY(bool    galleryListLayout READ galleryListLayout WRITE setGalleryListLayout NOTIFY galleryListLayoutChanged)
     Q_PROPERTY(bool    textPreviewContent READ textPreviewContent WRITE setTextPreviewContent NOTIFY textPreviewContentChanged)
@@ -289,6 +290,7 @@ public:
     //  `copyFilesToClipboard`: das legt drei Formate ab und fuehrt einen
     //  eigenen Merker - beides waere hier falsch.
     Q_INVOKABLE void copyTextToClipboard(const QString& text) const;
+    Q_INVOKABLE QString clipboardText() const;
 
     QString menuFileText()           const;
     QString menuViewText()           const;
@@ -309,6 +311,8 @@ public:
     bool showAllFiles() const;
     bool tableOpensTxt() const;
     void setTableOpensTxt(bool v);
+    bool tableDateMonthFirst() const;
+    void setTableDateMonthFirst(bool v);
     bool textPdfNative() const;
     void setTextPdfNative(bool v);
     bool galleryListLayout() const;
@@ -376,6 +380,7 @@ signals:
     void showHiddenFilesChanged();
     void showAllFilesChanged();
     void tableOpensTxtChanged();
+    void tableDateMonthFirstChanged();
     void textPdfNativeChanged();
     void galleryListLayoutChanged();
     //  Die Kacheln muessen danach NEU erzeugt werden - main.cpp haengt daran.

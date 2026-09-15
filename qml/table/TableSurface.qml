@@ -4,9 +4,8 @@ import QtQuick.Controls
 import MediaGallery 1.0
 
 //  Ansicht einer gewoehnlichen Tabellendatei (CSV/TSV): Spalten, Zeilen, und in
-//  der Fusszeile das, was beim Lesen ENTSCHIEDEN wurde - Trennzeichen und
-//  Kopfzeile. Beides ist umstellbar, weil Raten manchmal danebenliegt.
-//  Zeigt nur an; Bearbeiten ist noch nicht gebaut.
+//  der Fusszeile das, was beim Lesen erkannt wurde, dazu der Stand des Speicherns.
+//  Geschrieben wird wie im Texteditor: beim Verlassen, nach dem Intervall, auf Strg+S.
 Item {
     id: root
 
@@ -20,6 +19,8 @@ Item {
     property bool   paneActive: true
 
     readonly property string currentPath: root.source
+    //  Fuer die Kopfleiste des Viewers (Filter, Spaltensuche, Umschalten).
+    readonly property alias controller: ctl
 
     property bool _findOpen: false
     function oeffneSuche() {
@@ -30,6 +31,18 @@ Item {
     TableController {
         id: ctl
         source: root.source
+        slashDateMonthFirst: App.tableDateMonthFirst
+    }
+
+    //  Ein offenes Eingabefeld zaehlt mit - sonst ginge der letzte Wert verloren.
+    function uebernehme() { tabelle.uebernehme() }
+    function release() { tabelle.uebernehme(); ctl.flush() }
+
+    Timer {
+        interval: Math.max(5, App.autoSaveInterval) * 1000
+        repeat: true
+        running: App.autoSaveEnabled && ctl.modified
+        onTriggered: ctl.save()
     }
 
     Rectangle { anchors.fill: parent; color: Editor.background }
@@ -100,27 +113,65 @@ Item {
                                    Editor.gutterText.b, 0.35) }
     }
 
-    //  `root.visible` ist die WIRKSAME Sichtbarkeit (der Rohtext blendet die
-    //  ganze Flaeche aus) - ohne sie faenge auch die unsichtbare Tabelle das
-    //  Strg+F des Texteditors ab.
+    //  `root.visible` ist die WIRKSAME Sichtbarkeit - sonst finge die ausgeblendete
+    //  Tabelle das Strg+F des Rohtexts ab.
     Shortcut {
         sequence: "Ctrl+F"
         enabled: root.visible && root.paneActive && ctl.ready
         onActivated: root.oeffneSuche()
     }
-    //  Kopieren bezieht sich auf die ANGEKLICKTE Zelle; ohne eine getroffene
-    //  Zelle tut das Kuerzel nichts, statt etwas Beliebiges zu nehmen.
+    //  Waehrend eine Zelle bearbeitet wird, gehoeren alle diese Tasten dem Feld.
+    readonly property bool _tastenFrei: root.visible && root.paneActive && ctl.ready
+                                        && !tabelle.bearbeitet
     Shortcut {
         //  `sequences`, nicht `sequence`: Qt kennt zu StandardKey.Copy mehrere
         //  Folgen (Strg+C und Strg+Einfg), und `sequence` nimmt nur die erste.
         sequences: [ StandardKey.Copy ]
-        enabled: root.visible && root.paneActive && ctl.ready
+        enabled: root._tastenFrei
         onActivated: tabelle.kopiereZelle()
     }
     Shortcut {
         sequence: "Ctrl+Shift+C"
-        enabled: root.visible && root.paneActive && ctl.ready
+        enabled: root._tastenFrei
         onActivated: tabelle.kopiereZeile()
+    }
+    Shortcut {
+        sequence: "Ctrl+V"
+        enabled: root._tastenFrei && ctl.editable
+        onActivated: tabelle.einfuegen()
+    }
+    //  Ausgeschrieben: StandardKey.Redo liefert je nach Plattform-Thema andere Folgen.
+    Shortcut {
+        sequence: "Ctrl+Z"
+        enabled: root._tastenFrei && ctl.canUndo
+        onActivated: ctl.undo()
+    }
+    Shortcut {
+        sequences: [ "Ctrl+Shift+Z", "Ctrl+Y" ]
+        enabled: root._tastenFrei && ctl.canRedo
+        onActivated: ctl.redo()
+    }
+    //  Gespeichert wird ohnehin von selbst; Strg+S ist der sichtbare Check.
+    property bool _checkOffen: false
+    Shortcut {
+        sequence: "Ctrl+S"
+        enabled: root.visible && root.paneActive && ctl.editable
+        onActivated: {
+            tabelle.uebernehme()
+            if (ctl.modified || ctl.saving) {
+                root._checkOffen = true
+                ctl.save()
+            } else {
+                tabelle.melde(App.uiText(App.language, "TableSaved"))
+            }
+        }
+    }
+    Connections {
+        target: ctl
+        function onSaved(ok) {
+            if (root._checkOffen && ok) tabelle.melde(App.uiText(App.language, "TableSaved"))
+            root._checkOffen = false
+        }
     }
 
     //  Der Sprung zum Treffer gehoert der Flaeche, nicht dem Balken: nur sie
@@ -194,7 +245,52 @@ Item {
                 verticalAlignment: Text.AlignVCenter
             }
 
-            Feld { text: App.uiText(App.language, "TableRows") + ": " + ctl.rowCount }
+            Feld {
+                text: App.uiText(App.language, "TableRows") + ": "
+                      + (ctl.filterActive
+                         ? App.uiText(App.language, "TableFiltered").arg(ctl.rowCount).arg(ctl.totalRows)
+                         : ctl.rowCount)
+                color: ctl.filterActive ? App.themeAccent : Editor.gutterText
+            }
+            Feld {
+                visible: ctl.modified || ctl.saving
+                color: App.themeAccent
+                text: App.uiText(App.language, ctl.saving ? "TableSaving" : "TableModified")
+            }
+            Feld {
+                visible: ctl.ready && !ctl.editable
+                color: "#d2a04f"
+                text: App.uiText(App.language, "TableReadOnly")
+            }
+            Feld {
+                visible: ctl.savedCopy.length > 0
+                text: App.uiText(App.language, "TableSavedCopy").arg(ctl.savedCopy)
+            }
+            //  Nicht gespeichert: sagen warum, und die beiden Wege anbieten.
+            Feld { visible: ctl.saveError.length > 0; color: "#d24f4f"; text: ctl.saveError }
+            component Aktion: Feld {
+                id: ak
+                signal ausgeloest()
+                color: App.themeAccent
+                font.underline: akMaus.containsMouse
+                MouseArea {
+                    id: akMaus
+                    anchors.fill: parent
+                    hoverEnabled: true
+                    cursorShape: Qt.PointingHandCursor
+                    onClicked: ak.ausgeloest()
+                }
+            }
+            Aktion {
+                visible: ctl.saveError.length > 0
+                text: App.uiText(App.language, "TableSaveAsCopy")
+                onAusgeloest: ctl.saveCopy()
+            }
+            Aktion {
+                visible: ctl.saveError.length > 0
+                text: App.uiText(App.language, "TableReloadDiscard")
+                onAusgeloest: ctl.reload()
+            }
             Feld {
                 visible: ctl.blockCount > 1
                 //  Im Rueckfallweg steht kein Block zur Auswahl - „0/5" laese

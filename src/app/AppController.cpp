@@ -516,6 +516,14 @@ void AppController::setTableOpensTxt(bool v) {
     m_settings.setTableOpensTxt(v);
     emit tableOpensTxtChanged();
 }
+
+bool AppController::tableDateMonthFirst() const { return m_settings.tableDateMonthFirst(); }
+
+void AppController::setTableDateMonthFirst(bool v) {
+    if (m_settings.tableDateMonthFirst() == v) return;
+    m_settings.setTableDateMonthFirst(v);
+    emit tableDateMonthFirstChanged();
+}
 bool AppController::deleteTagsInSubfolders() const { return m_settings.deleteTagsInSubfolders(); }
 void AppController::setDeleteTagsInSubfolders(bool v) {
     if (m_settings.deleteTagsInSubfolders() == v) return;
@@ -1379,6 +1387,11 @@ QString AppController::localPath(const QString& urlOrPath) const {
 void AppController::copyTextToClipboard(const QString& text) const {
     if (text.isEmpty()) return;
     if (QClipboard* cb = QGuiApplication::clipboard()) cb->setText(text);
+}
+
+QString AppController::clipboardText() const {
+    const QClipboard* cb = QGuiApplication::clipboard();
+    return cb ? cb->text() : QString();
 }
 
 int AppController::copyFilesToClipboard(const QStringList& paths) const {

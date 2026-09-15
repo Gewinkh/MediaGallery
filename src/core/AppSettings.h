@@ -82,6 +82,8 @@ public:
     void setShowAllFiles(bool v) override;
     bool tableOpensTxt() const override;
     void setTableOpensTxt(bool v) override;
+    bool tableDateMonthFirst() const override;
+    void setTableDateMonthFirst(bool v) override;
     bool textPdfNative() const override;
     void setTextPdfNative(bool v) override;
     bool galleryListLayout() const override;

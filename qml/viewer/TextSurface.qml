@@ -136,6 +136,18 @@ Item {
         root._readOnly = false
     }
 
+    //  Nach dem Schreiben durch die Tabellenansicht derselben Datei. Die
+    //  Rueckgaengig-Historie endet damit - sie beschriebe einen anderen Text.
+    function reloadFromDisk() {
+        if (root.currentPath.length === 0 || root.dirty) return
+        const pos = editor.cursorPosition
+        root._loading = true
+        editor.text = root._ablageText()
+        editor.cursorPosition = Math.min(pos, editor.length)
+        root.dirty = false
+        root._loading = false
+    }
+
     //  Beide Sichten kommen frisch von der Platte, keine aus der anderen.
     function _ablageText() {
         if (root.source.length === 0) return ""

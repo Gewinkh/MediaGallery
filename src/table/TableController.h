@@ -1,8 +1,9 @@
 #pragma once
 //  TableController - der Zustand EINER geoeffneten Tabellendatei (CSV/TSV).
 //  Je Kachel eine Instanz, damit zwei Haelften verschiedene Dateien zeigen.
-//  Zeigt nur an; Bearbeiten und Zurueckschreiben sind noch nicht gebaut.
+//  Anzeigen, Suchen, Filtern, Sortieren, Bearbeiten und Zurueckschreiben.
 #include "table/DelimitedText.h"
+#include "table/TableFilter.h"
 #include "table/TableSearch.h"
 #include "table/TableSort.h"
 
@@ -13,6 +14,7 @@
 #include <QVariantList>
 #include <atomic>
 #include <memory>
+#include <vector>
 
 namespace mg::table {
 
@@ -34,10 +36,14 @@ class TableController : public QObject {
     //  {index, title, rows}; `currentBlock` waehlt einen aus, **-1 zeigt die
     //  ganze Datei flach** - der Rueckfallweg, wenn die Erkennung danebenliegt.
     Q_PROPERTY(int blockCount READ blockCount NOTIFY stateChanged)
-    Q_PROPERTY(QVariantList blocks READ blocks NOTIFY stateChanged)
+    Q_PROPERTY(QVariantList blocks READ blocks NOTIFY rowsChanged)
     Q_PROPERTY(int currentBlock READ currentBlock WRITE setCurrentBlock NOTIFY blockChanged)
 
-    Q_PROPERTY(int rowCount    READ rowCount    NOTIFY stateChanged)
+    //  `rowCount` zaehlt die GEZEIGTEN Zeilen (mit Filter weniger), `totalRows`
+    //  alle des Blocks. Eigenes Signal: ein Filter oder eine neue Zeile darf
+    //  nicht die Spaltenliste neu aufbauen lassen.
+    Q_PROPERTY(int rowCount    READ rowCount    NOTIFY rowsChanged)
+    Q_PROPERTY(int totalRows   READ totalRows   NOTIFY rowsChanged)
     //  `columnCount` zaehlt ALLE Spalten des Blocks, `columns` traegt nur die
     //  gezeigten. Die Fusszeile nennt beide - sonst waere nicht zu sehen, dass
     //  etwas fehlt.
@@ -45,18 +51,21 @@ class TableController : public QObject {
     Q_PROPERTY(QVariantList columns READ columns NOTIFY stateChanged)
     Q_PROPERTY(int hiddenColumnCount READ hiddenColumnCount NOTIFY stateChanged)
 
-    //  Sortieren aendert die DATEI NICHT (s. `TableSort.h`); `sortColumn` ist -1,
-    //  solange die Datei in ihrer eigenen Reihenfolge steht.
+    //  Sortieren und Filtern aendern die DATEI NICHT (s. `TableFilter.h`);
+    //  `sortColumn` ist -1, solange die Datei in ihrer eigenen Reihenfolge steht.
     Q_PROPERTY(int  sortColumn    READ sortColumn    NOTIFY sortChanged)
     Q_PROPERTY(bool sortAscending READ sortAscending NOTIFY sortChanged)
     Q_PROPERTY(bool sorting       READ sorting       NOTIFY sortChanged)
-    //  Steigt bei jeder Aenderung an Reihenfolge oder Spaltenauswahl. Die Zellen
-    //  haengen ihre Bindung daran - `cell()` ist eine Funktion, und ohne einen
-    //  gelesenen Wert wertet QML sie nie neu aus.
+    Q_PROPERTY(bool    filterActive READ filterActive NOTIFY sortChanged)
+    Q_PROPERTY(int     filterColumn READ filterColumn NOTIFY sortChanged)
+    Q_PROPERTY(QString filterText   READ filterText   NOTIFY sortChanged)
+    //  Steigt bei jeder Aenderung an Reihenfolge, Spaltenauswahl oder Inhalt.
+    //  Die Zellen haengen ihre Bindung daran - `cell()` ist eine Funktion, und
+    //  ohne einen gelesenen Wert wertet QML sie nie neu aus.
     Q_PROPERTY(int  contentRevision READ contentRevision NOTIFY sortChanged)
 
     //  Suche: die Trefferliste entsteht im Arbeitsfaden - gemessen kostet ein
-    //  Lauf ueber 100.000 Zeilen mal 20 Spalten 119 ms, im GUI-Faden waere das
+    //  Lauf ueber 100.000 Zeilen mal 20 Spalten 57 ms, im GUI-Faden waere das
     //  je Tastendruck ein Ruckler. `searchRevision` steigt bei jeder Aenderung;
     //  die Anzeige haengt ihre Zell-Bindungen daran.
     Q_PROPERTY(int  matchCount   READ matchCount   NOTIFY searchChanged)
@@ -70,6 +79,22 @@ class TableController : public QObject {
     Q_PROPERTY(int  otherBlockMatches READ otherBlockMatches NOTIFY searchChanged)
     Q_PROPERTY(bool searching     READ searching     NOTIFY searchChanged)
     Q_PROPERTY(int  searchRevision READ searchRevision NOTIFY searchChanged)
+    //  Schraegstrich-Daten als MM/TT/JJJJ statt TT/MM/JJJJ - beim Sortieren und Filtern.
+    Q_PROPERTY(bool slashDateMonthFirst READ slashDateMonthFirst WRITE setSlashDateMonthFirst
+                                        NOTIFY sortChanged)
+
+    //  Bearbeiten. Eine gekappte oder abgeschnittene Datei bleibt lesend -
+    //  zurueckgeschrieben fehlte ihr der Rest. Zeilen und Spalten lassen sich
+    //  nur in EINER Tabelle umbauen, nicht in der flachen Gesamtansicht.
+    Q_PROPERTY(bool editable          READ editable          NOTIFY stateChanged)
+    Q_PROPERTY(bool structureEditable READ structureEditable NOTIFY blockChanged)
+    Q_PROPERTY(bool    modified  READ modified  NOTIFY editChanged)
+    Q_PROPERTY(bool    saving    READ saving    NOTIFY editChanged)
+    Q_PROPERTY(QString saveError READ saveError NOTIFY editChanged)
+    //  Wurde die Datei zuletzt als Kopie gesichert, steht hier ihr Name.
+    Q_PROPERTY(QString savedCopy READ savedCopy NOTIFY editChanged)
+    Q_PROPERTY(bool    canUndo   READ canUndo   NOTIFY editChanged)
+    Q_PROPERTY(bool    canRedo   READ canRedo   NOTIFY editChanged)
 
     Q_PROPERTY(QStringList warnings READ warnings NOTIFY stateChanged)
     Q_PROPERTY(bool truncated READ truncated NOTIFY stateChanged)
@@ -95,6 +120,7 @@ public:
     void         setCurrentBlock(int i);
 
     int rowCount() const;
+    int totalRows() const;
     int columnCount() const { return m_spaltenZahl; }
     QVariantList columns() const { return m_spalten; }
     int hiddenColumnCount() const { return int(m_versteckt.size()); }
@@ -102,12 +128,22 @@ public:
     int  sortColumn() const    { return m_sortSpalte; }
     bool sortAscending() const { return m_sortRichtung == SortRichtung::Auf; }
     bool sorting() const       { return m_sortLaeuft; }
+    bool    filterActive() const { return m_filter.aktiv(); }
+    int     filterColumn() const { return m_filter.spalte; }
+    QString filterText() const   { return m_filter.text; }
     int  contentRevision() const { return m_inhaltRevision; }
 
     //  Aufsteigend -> absteigend -> Dateireihenfolge. Der dritte Klick ist der
     //  Weg heraus, ohne ein eigenes Bedienelement dafuer.
     Q_INVOKABLE void sortByColumn(int column);
     Q_INVOKABLE void clearSort();
+
+    //  Nur Zeilen zeigen, in denen `text` steht - in `column` oder, bei -1, in
+    //  irgendeiner gezeigten Spalte; Vergleiche und Spannen s. `FilterAusdruck`.
+    //  Leerer Text hebt den Filter auf.
+    Q_INVOKABLE void setFilter(int column, const QString& text, bool caseSensitive,
+                               bool wholeCell);
+    Q_INVOKABLE void clearFilter();
 
     //  Ausgeblendete Spalten werden auch nicht DURCHSUCHT - ein Treffer, den man
     //  nicht sehen kann, waere ein Sprung ins Nichts.
@@ -126,6 +162,9 @@ public:
     //  EIN Feld - der Weg der Anzeige. Eine ganze Zeile zurueckzugeben kopierte
     //  je sichtbarer Zeile alle Spalten statt der gezeigten.
     Q_INVOKABLE QString cell(int row, int column) const;
+    //  Die Nummer, die links neben der Zeile steht. Mit Filter die der Datei,
+    //  damit die Luecken sichtbar bleiben.
+    Q_INVOKABLE int rowNumber(int row) const;
 
     int  matchCount() const  { return m_suche.anzahl(); }
     int  matchIndex() const  { return m_suche.index(); }
@@ -139,6 +178,8 @@ public:
     Q_INVOKABLE void jumpToBlock(int index);
     bool searching() const   { return m_suchLaeuft; }
     int  searchRevision() const { return m_suche.revision(); }
+    bool slashDateMonthFirst() const { return m_monatZuerst; }
+    void setSlashDateMonthFirst(bool v);
 
     //  Neu suchen. `fromRow` ist die Zeile, ab der der erste Treffer gesucht
     //  wird - die Anzeige gibt ihre oberste sichtbare mit, damit der Sprung
@@ -160,29 +201,138 @@ public:
     //  ohne Streifen stehen, damit die Luecke als Luecke zu sehen ist.
     Q_INVOKABLE bool rowEmpty(int row) const;
 
+    bool    editable() const;
+    bool    structureEditable() const;
+    bool    modified() const  { return m_rev != m_gespeichertRev; }
+    bool    saving() const    { return m_speichert; }
+    QString saveError() const { return m_speicherFehler; }
+    QString savedCopy() const { return m_kopieName; }
+    bool    canUndo() const   { return !m_undo.empty(); }
+    bool    canRedo() const   { return !m_redo.empty(); }
+
+    //  Alle Aenderungen nehmen Anzeigezeilen und ABSOLUTE Spaltennummern
+    //  (`columns[i].index`) und landen je als EIN Rueckgaengig-Schritt.
+    Q_INVOKABLE bool setCell(int row, int column, const QString& text);
+    //  Vor der Anzeigezeile `row`; `row == rowCount` haengt an.
+    Q_INVOKABLE bool insertRows(int row, int count);
+    Q_INVOKABLE bool removeRows(int row, int count);
+    //  Vor der Spalte `column`; `column == columnCount` haengt an.
+    Q_INVOKABLE bool insertColumn(int column);
+    Q_INVOKABLE bool removeColumn(int column);
+    Q_INVOKABLE bool setColumnName(int column, const QString& name);
+    //  Ein Block aus der Zwischenablage (Zeilen am Umbruch, Zellen am Tabulator)
+    //  ab dieser Zelle; fehlende Zeilen kommen am Ende dazu. Liefert die Zahl
+    //  der gesetzten Zellen.
+    Q_INVOKABLE int pasteText(int row, int column, const QString& text);
+    Q_INVOKABLE void undo();
+    Q_INVOKABLE void redo();
+
+    //  Schreiben im Arbeitsfaden. Wurde die Datei inzwischen woanders geaendert,
+    //  wird sie NICHT ueberschrieben (s. `saveError`).
+    Q_INVOKABLE void save();
+    //  Wie `save`, aber wartet, bis geschrieben ist - vor dem Verlassen der
+    //  Datei. Laesst sich die Datei nicht schreiben, landen die Aenderungen in
+    //  einer Kopie daneben, statt verloren zu gehen.
+    Q_INVOKABLE void flush();
+    //  Die Aenderungen als `<name>_edited(.n).<endung>` neben der Datei.
+    Q_INVOKABLE void saveCopy();
+    //  Verwirft alle Aenderungen und liest neu.
+    Q_INVOKABLE void reload();
+    //  Neu lesen, falls die Datei auf der Platte eine andere ist.
+    Q_INVOKABLE bool reloadIfChangedOnDisk();
+
 signals:
     void sourceChanged();
     void stateChanged();
     void blockChanged();
     void searchChanged();
     void sortChanged();
+    void rowsChanged();
+    void editChanged();
+    void saved(bool ok);
 
 private:
+    //  Je Zeile der Tabelle: woher sie in der Datei stammt und wann sie sich
+    //  zuletzt geaendert hat. Erst angelegt, wenn etwas bearbeitet wird.
+    struct ZeilenInfo {
+        quint32 id = 0;
+        qint32  herkunft = -1;      // Datensatz der Grundlage, -1 = neu/umgebaut
+        quint32 rev = 0;
+    };
+    struct Zellwechsel {
+        int     zeile = 0;          // absolut
+        int     spalte = 0;
+        QString alt;
+        QString neu;
+        int     felderVorher = 0;
+    };
+    struct Weg {
+        int        zeile = 0;
+        int        anzeige = -1;
+        Zeile      inhalt;
+        ZeilenInfo info;
+    };
+    struct Schritt {
+        enum class Art { Zellen, ZeilenEin, ZeilenAus, SpalteEin, SpalteAus, Gruppe };
+        Art     art = Art::Zellen;
+        //  Die Grundlage, auf die sich gespeicherte `ZeilenInfo`s beziehen;
+        //  nach einem Speichern gilt ihre Herkunft nicht mehr.
+        quint32 basisGen = 0;
+        int     bereich = -1;
+        QList<Zellwechsel> zellen;
+        int pos = 0;                        // ZeilenEin: absolute Zeile
+        int anzeige = -1;                   // ZeilenEin: Anzeigeposition
+        QList<Zeile> neueZeilen;
+        QList<ZeilenInfo> neueInfos;
+        QList<Weg> weg;                     // ZeilenAus
+        int spalte = -1;                    // SpalteEin/SpalteAus
+        int von = 0;                        // betroffene Zeilen beim ersten Mal
+        int bis = 0;
+        QList<std::pair<int, ZeilenInfo>> betroffen;
+        QList<QString> werte;               // SpalteAus, parallel zu `betroffen`
+        std::vector<Schritt> teile;         // Gruppe
+        qsizetype zeichen = 0;
+    };
+    struct Grundlage {
+        quint64 hash = 0;
+        qint64  groesse = -1;
+        qint64  zeit = 0;
+    };
+    struct SpeicherErgebnis;
+
     void neuLesen();
-    void ergebnisUebernehmen(std::shared_ptr<Datei> d, const QString& fehler);
+    void ergebnisUebernehmen(std::shared_ptr<Datei> d, const QString& fehler, Grundlage g);
     void spaltenNeuRechnen();
     void bloeckeNeuBauen();
     void sucheStarten();
     void suchErgebnis(QList<Treffer> treffer, bool mehr, QList<int> proBlock);
     void ordnungNeuBauen();
-    void sortErgebnis(QList<int> ordnung);
-    //  Anzeigezeile -> absolute Zeile in der Datei. Der Weg zurueck wird nicht
-    //  gebraucht: der Suchlauf zaehlt selbst in Anzeigezeilen.
+    void ordnungErgebnis(QList<int> ordnung, bool aktiv);
+    //  Anzeigezeile -> absolute Zeile in der Datei.
     int  rohZeile(int anzeige) const;
-    //  Maske der gezeigten Spalten fuer den Suchlauf; leer = alle.
+    //  Maske der gezeigten Spalten; leer = alle.
     QList<bool> spaltenMaske() const;
     //  Der gerade gezeigte Bereich; bei -1 die ganze Datei als EIN Bereich.
     Bereich aktiv() const;
+    //  Der Index des Bereichs, in dem umgebaut wird (0 bei nur einem).
+    int  aktiverBereich() const;
+
+    //  Die Datei zum Aendern. Haelt ein Arbeitsfaden die alte noch, bekommt der
+    //  Controller eine eigene Kopie - der Faden liest sonst, waehrend hier
+    //  geschrieben wird.
+    Datei& schreibDatei();
+    void infoAnlegen();
+    void markiere(int zeile, bool umgebaut);
+    void schrittAusfuehren(Schritt& s, bool vorwaerts);
+    void schrittAblegen(Schritt s);
+    void nachAenderung(bool struktur, bool spalten);
+    void zeilenEinsetzen(int bereich, int pos, const QList<Zeile>& zeilen,
+                         const QList<ZeilenInfo>& infos, int anzeige);
+    void zeilenEntfernen(int bereich, int pos, int anzahl);
+    void spaltenIndexVerschieben(int spalte, int delta);
+    enum class Modus { Normal, Verlassen, Kopie };
+    void speichernStarten(Modus modus);
+    void speicherErgebnis(const std::shared_ptr<SpeicherErgebnis>& e);
 
     QString m_source;
     QString m_fehler;
@@ -199,19 +349,39 @@ private:
 
     int          m_sortSpalte = -1;
     SortRichtung m_sortRichtung = SortRichtung::Keine;
+    FilterRegel  m_filter;
     bool         m_sortLaeuft = false;
     int          m_inhaltRevision = 0;
-    //  Absolute Zeilennummern in Anzeigereihenfolge; leer = Dateireihenfolge.
+    //  Absolute Zeilennummern in Anzeigereihenfolge, gueltig bei `m_ordnungAktiv`.
     QList<int>   m_ordnung;
+    bool         m_ordnungAktiv = false;
     std::shared_ptr<std::atomic<bool>> m_sortAbbruch;
 
     Suchzustand  m_suche;
     QString      m_suchText;
     SuchOptionen m_suchOpt;
     int          m_suchAb = 0;
+    bool         m_monatZuerst = false;
     int          m_andereBloecke = 0;
     QList<int>   m_trefferProBlock;   // je Bereich, Reihenfolge wie m_bereiche
     bool         m_suchLaeuft = false;
+
+    QList<ZeilenInfo> m_info;       // leer = unberuehrt
+    quint32 m_naechsteId = 0;
+    quint32 m_rev = 0;
+    quint32 m_gespeichertRev = 0;
+    quint32 m_basisRev = 0;
+    quint32 m_basisGen = 0;
+    quint32 m_ladeGen = 0;
+    Grundlage   m_grundlage;
+    QList<int>  m_basisZeilenNr;
+    std::vector<Schritt> m_undo;
+    std::vector<Schritt> m_redo;
+    qsizetype m_undoZeichen = 0;
+    bool    m_speichert = false;
+    bool    m_nochmal = false;
+    QString m_speicherFehler;
+    QString m_kopieName;
 
     QThreadPool m_pool;
     std::shared_ptr<std::atomic<bool>> m_abbruch;

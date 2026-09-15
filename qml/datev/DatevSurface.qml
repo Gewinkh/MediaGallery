@@ -20,6 +20,8 @@ Item {
     property bool   paneActive: true
 
     readonly property string currentPath: root.source
+    //  Fuer die Kopfleiste des Viewers (Filter, Spaltensuche).
+    readonly property alias controller: ctl
 
     property bool _findOpen: false
     function oeffneSuche() {
@@ -35,6 +37,7 @@ Item {
     DatevController {
         id: ctl
         source: root.source
+        slashDateMonthFirst: App.tableDateMonthFirst
     }
 
     Rectangle { anchors.fill: parent; color: Editor.background }
@@ -213,7 +216,14 @@ Item {
             Row {
                 spacing: 16
                 height: 16
-                Feld { text: App.uiText(App.language, "DatevBookings") + ": " + ctl.rowCount }
+                //  Mit Filter gelten die Summen daneben nur fuer die gezeigten Buchungen.
+                Feld {
+                    text: App.uiText(App.language, "DatevBookings") + ": "
+                          + (ctl.filterActive
+                             ? App.uiText(App.language, "TableFiltered").arg(ctl.rowCount).arg(ctl.totalRows)
+                             : ctl.rowCount)
+                    color: ctl.filterActive ? App.themeAccent : Editor.gutterText
+                }
                 Feld { text: App.uiText(App.language, "DatevSumDebit") + ": " + root._geld(ctl.sumDebit) }
                 Feld { text: App.uiText(App.language, "DatevSumCredit") + ": " + root._geld(ctl.sumCredit) }
                 Feld {

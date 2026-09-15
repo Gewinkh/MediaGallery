@@ -2,6 +2,42 @@
 
 namespace mg::datev {
 
+namespace {
+
+void bucheEin(const Zeile& z, Summenspalten ss, double* soll, double* haben) {
+    if (ss.betrag < 0) return;
+    bool gut = false;
+    const double v = parseBetrag(z.wert(ss.betrag), &gut);
+    if (!gut) return;
+    if (ss.sollHaben >= 0 && z.wert(ss.sollHaben).trimmed().compare(QLatin1String("H"),
+                                                                   Qt::CaseInsensitive) == 0)
+        *haben += v;
+    else
+        *soll += v;
+}
+
+}  // namespace
+
+Summenspalten summenSpalten(const QStringList& spalten) {
+    auto spalteMit = [&spalten](QLatin1String praefix, int ersatz) {
+        for (int i = 0; i < spalten.size(); ++i)
+            if (spalten.at(i).startsWith(praefix, Qt::CaseInsensitive)) return i;
+        return (ersatz < spalten.size()) ? ersatz : -1;
+    };
+    return { spalteMit(QLatin1String("Umsatz"), 0), spalteMit(QLatin1String("Soll/Haben"), 1) };
+}
+
+void summiere(const QList<Zeile>& buchungen, Summenspalten s, const QList<int>* auswahl,
+              double* soll, double* haben) {
+    *soll = *haben = 0.0;
+    if (!auswahl) {
+        for (const Zeile& z : buchungen) bucheEin(z, s, soll, haben);
+        return;
+    }
+    for (int i : *auswahl)
+        if (i >= 0 && i < buchungen.size()) bucheEin(buchungen.at(i), s, soll, haben);
+}
+
 bool looksLikeDatev(const QByteArray& anfang) {
     //  Nur die erste Zeile ansehen, und die nur so weit, wie die Kennung reicht.
     const QByteArray kopf = anfang.left(64);
@@ -48,31 +84,14 @@ Datei parse(const QByteArray& raw) {
         d.buchungen.append(b);
     }
 
-    //  Die beiden Spalten der Summen werden am NAMEN aus Zeile 2 gesucht; die
-    //  Position ist nur der Notnagel, falls eine Version anders ueberschreibt.
-    auto spalteMit = [&d](QLatin1String praefix, int ersatz) {
-        for (int i = 0; i < d.spalten.size(); ++i)
-            if (d.spalten.at(i).startsWith(praefix, Qt::CaseInsensitive)) return i;
-        return (ersatz < d.spalten.size()) ? ersatz : -1;
-    };
-    const int cBetrag = spalteMit(QLatin1String("Umsatz"), 0);
-    const int cSH     = spalteMit(QLatin1String("Soll/Haben"), 1);
-
+    const Summenspalten ss = summenSpalten(d.spalten);
     d.spalteGefuellt = QList<bool>(erwartet, false);
     for (const Zeile& z : std::as_const(d.buchungen)) {
         for (const auto& [spalte, wert] : z.belegte())
             if (spalte < erwartet && !d.spalteGefuellt.at(spalte)
                 && !wert.trimmed().isEmpty())
                 d.spalteGefuellt[spalte] = true;
-        if (cBetrag < 0) continue;
-        bool gut = false;
-        const double v = parseBetrag(z.wert(cBetrag), &gut);
-        if (!gut) continue;
-        if (cSH >= 0 && z.wert(cSH).trimmed().compare(QLatin1String("H"),
-                                                      Qt::CaseInsensitive) == 0)
-            d.haben += v;
-        else
-            d.soll += v;
+        bucheEin(z, ss, &d.soll, &d.haben);
     }
 
     d.ok = true;
