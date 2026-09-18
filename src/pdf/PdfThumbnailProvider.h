@@ -3,6 +3,7 @@
 // einer Instanz über einen Mutex, geteilt mit der Hauptansicht ruckelte das Scrollen sichtbar.
 // Gerendert wird einmalig beim Öffnen, gehalten als JPEG im RAM-Store (LRU), Dokument danach zu.
 
+#include <QColor>
 #include <QObject>
 #include <QString>
 #include <QHash>
@@ -46,14 +47,18 @@ private:
     QByteArray                           m_previewJpeg;  // EIN Slot (s. o.)
 };
 
-// Rendert ALLE Seiten EINES PDFs in den Store: eigene QPdfDocument-Instanz (Mutex-Entkopplung), von `startPage`
-// nach außen, jede Seite als JPEG. Die Instanz wird am Ende von `run()` geschlossen - der RAM-Peak bleibt transient.
+// Rendert ALLE Seiten EINES PDFs in den Store: eigene QPdfDocument-Instanz (Mutex-Entkopplung), jede Seite als
+// JPEG. Die Instanz wird am Ende von `run()` geschlossen - der RAM-Peak bleibt transient.
+// Die Reihenfolge steht NICHT von vornherein fest: vor jeder Seite wird die noch offene genommen, die der gerade
+// betrachteten am naechsten liegt (`m_focus`). Eine feste Spirale ab der Startseite rechnete beim schnellen
+// Blaettern minutenlang an Seiten weiter, die laengst aus dem Bild sind.
 class PdfThumbRenderTask : public QObject, public QRunnable {
     Q_OBJECT
 public:
     using CancelFlag = std::shared_ptr<std::atomic<bool>>;
+    using FocusPage  = std::shared_ptr<std::atomic<int>>;
 
-    PdfThumbRenderTask(int docId, QString localPath, int startPage,
+    PdfThumbRenderTask(int docId, QString localPath, FocusPage focus,
                        int targetWidth, int jpegQuality,
                        std::shared_ptr<PdfThumbStore> store, CancelFlag cancel);
 
@@ -61,16 +66,20 @@ public:
 
 signals:
     void pageReady(int docId, int page);
+    //  Der Grundton der ERSTEN gerechneten Seite. Solange eine grosse Seite
+    //  noch rechnet, liegt er unter ihr - auf einem dunklen Dokument ist ein
+    //  weisses Blatt beim Rollen das Auffaelligste im Bild.
+    void tintReady(int docId, QColor farbe);
 
 private:
     bool cancelled() const {
         return m_cancel && m_cancel->load(std::memory_order_relaxed);
     }
 
-    int     m_docId;
-    QString m_path;
-    int     m_startPage;
-    int     m_targetWidth;
+    int       m_docId;
+    QString   m_path;
+    FocusPage m_focus;
+    int       m_targetWidth;
     int     m_quality;
     std::shared_ptr<PdfThumbStore> m_store;
     CancelFlag                     m_cancel;
@@ -127,6 +136,16 @@ public:
     // docId fuer den URL-Aufbau: "image://pdfthumb/<docId>/<page>".
     Q_INVOKABLE int ensureDocument(const QString& pathOrUrl, int startPage = 0);
 
+    // Welche Seite gerade betrachtet wird. Kostet einen atomaren Schreibzugriff -
+    // die Ansicht darf das bei jedem Rollschritt melden.
+    Q_INVOKABLE void setFocusPage(int docId, int page);
+    //  Nur zum Nachsehen (Pruefstand): welche Seite zuletzt gemeldet wurde.
+    Q_INVOKABLE int  focusPage(int docId) const;
+
+    //  Grundton des Dokuments (aus seiner ersten gerechneten Seite); ungueltig,
+    //  solange noch keine Seite da ist.
+    Q_INVOKABLE QColor documentTint(int docId) const;
+
     // Vorschauen verwerfen und neu erzeugen, wenn sich der Inhalt hinter demselben Pfad geändert hat. Liefert eine
     // NEUE docId, damit die QML-Quellen neu anfragen statt die alten Kacheln weiterzuzeigen.
     Q_INVOKABLE int refreshDocument(const QString& pathOrUrl, int startPage = 0);
@@ -143,6 +162,7 @@ public:
 signals:
     void pageReady(int docId, int page);
     void largePreviewReady(const QString& path, int page);
+    void documentTintChanged(int docId);
 
 private:
     using CancelFlag = std::shared_ptr<std::atomic<bool>>;
@@ -159,6 +179,8 @@ private:
     QHash<int, QString>     m_idToPath;    // docId -> lokaler Pfad
     QSet<int>               m_prepared;    // docIds, fuer die bereits ein Task lief
     QHash<int, CancelFlag>  m_flags;       // docId -> kooperatives Abbruch-Flag
+    QHash<int, std::shared_ptr<std::atomic<int>>> m_focus;   // docId -> betrachtete Seite
+    QHash<int, QColor>      m_tint;        // docId -> Grundton der ersten Seite
     QList<int>              m_lruOrder;    // LRU-Reihenfolge der docIds (alt -> neu)
     int                     m_nextId = 1;  // 0 bleibt frei (= "ungueltig" in QML)
 };

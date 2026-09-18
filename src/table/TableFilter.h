@@ -51,7 +51,8 @@ bool filterZahl(QStringView text, double* wert);
 //  Dateireihenfolge. `spalten` wie bei `suche`: ausgeblendete zaehlen nicht.
 QList<int> filtere(const QList<Zeile>& zeilen, int von, int bis, const FilterRegel& regel,
                    const QList<bool>* spalten = nullptr,
-                   const std::atomic<bool>* abbruch = nullptr);
+                   const std::atomic<bool>* abbruch = nullptr,
+                   const Werte* formeln = nullptr);
 
 struct Ordnungsauftrag {
     int          von = 0;
@@ -67,7 +68,8 @@ struct Ordnungsauftrag {
 //  andere greift - dann gilt die Dateireihenfolge, und die Liste ist leer. Eine
 //  leere Liste bei `aktiv` heisst dagegen: kein Treffer.
 QList<int> ordne(const QList<Zeile>& zeilen, const Ordnungsauftrag& auftrag,
-                 const std::atomic<bool>* abbruch, bool* aktiv);
+                 const std::atomic<bool>* abbruch, bool* aktiv,
+                 const Werte* formeln = nullptr);
 
 //  Der Lauf im Arbeitsfaden, Muster wie `SortTask`. `zusatz` rechnet im selben
 //  Faden etwas ueber die Auswahl (die DATEV-Summen) - im GUI-Faden waeren das
@@ -80,7 +82,7 @@ public:
     OrdnungTask(QObject* owner, std::shared_ptr<const void> anker,
                 const QList<Zeile>* zeilen, Ordnungsauftrag auftrag,
                 std::shared_ptr<std::atomic<bool>> abbruch, Zurueck zurueck,
-                Zusatz zusatz = {});
+                Zusatz zusatz = {}, std::shared_ptr<const Werte> formeln = {});
 
     void run() override;
 
@@ -92,6 +94,8 @@ private:
     std::shared_ptr<std::atomic<bool>> m_abbruch;
     Zurueck m_zurueck;
     Zusatz  m_zusatz;
+    //  Gefiltert und sortiert wird nach dem, was die Zelle ZEIGT.
+    std::shared_ptr<const Werte> m_formeln;
 };
 
 }  // namespace mg::table

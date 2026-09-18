@@ -103,7 +103,6 @@ public:
     // 150 dpi: A4 ~ 1240x1754 px, transient genau ein Bild.
     static constexpr qreal kExportRenderDpi = 150.0;
     static constexpr int   kUndoLimit       = 200;
-    static constexpr qint64 kMaxSidecarBytes = 8LL * 1024 * 1024;
     // Anzeige (QML) und Export (QPainter) zeichnen mit exakt diesen Werten.
     static constexpr qreal kNoteFoldPt     = 10.0;
     static constexpr qreal kNoteShadowDxPt = 2.0;

@@ -36,11 +36,12 @@ double alsZahl(const QString& text, bool* ok) {
     return gut ? w : 0.0;
 }
 
-bool spalteIstZahl(const QList<Zeile>& zeilen, int von, int bis, int spalte) {
+bool spalteIstZahl(const QList<Zeile>& zeilen, int von, int bis, int spalte,
+                   const Werte* formeln) {
     const int ende = qMin(bis, int(zeilen.size()));
     int gesehen = 0;
     for (int z = qMax(0, von); z < ende && gesehen < kProbeZeilen; ++z) {
-        const QString w = zeilen.at(z).wert(spalte);
+        const QString w = gezeigterWert(zeilen, z, spalte, formeln);
         if (w.trimmed().isEmpty()) continue;
         ++gesehen;
         bool ok = false;
@@ -112,11 +113,12 @@ bool alsDatum(const QString& text, int* schluessel, bool monatZuerst) {
     return datumsSpanne(text, monatZuerst, false, schluessel, nullptr);
 }
 
-bool spalteIstDatum(const QList<Zeile>& zeilen, int von, int bis, int spalte, bool monatZuerst) {
+bool spalteIstDatum(const QList<Zeile>& zeilen, int von, int bis, int spalte, bool monatZuerst,
+                    const Werte* formeln) {
     const int ende = qMin(bis, int(zeilen.size()));
     int gesehen = 0;
     for (int z = qMax(0, von); z < ende && gesehen < kProbeZeilen; ++z) {
-        const QString w = zeilen.at(z).wert(spalte);
+        const QString w = gezeigterWert(zeilen, z, spalte, formeln);
         if (w.trimmed().isEmpty()) continue;
         ++gesehen;
         if (!alsDatum(w, nullptr, monatZuerst)) return false;
@@ -126,7 +128,8 @@ bool spalteIstDatum(const QList<Zeile>& zeilen, int von, int bis, int spalte, bo
 
 QList<int> sortiere(const QList<Zeile>& zeilen, int von, int bis, int spalte,
                     SortRichtung richtung, const std::atomic<bool>* abbruch,
-                    const QList<int>* auswahl, bool monatZuerst) {
+                    const QList<int>* auswahl, bool monatZuerst,
+                    const Werte* formeln) {
     if (richtung == SortRichtung::Keine || spalte < 0) return {};
     const int start = qMax(0, von);
     const int ende  = qMin(bis, int(zeilen.size()));
@@ -143,10 +146,10 @@ QList<int> sortiere(const QList<Zeile>& zeilen, int von, int bis, int spalte,
     }
 
     const bool ab      = (richtung == SortRichtung::Ab);
-    const bool zahlen  = spalteIstZahl(zeilen, start, ende, spalte);
+    const bool zahlen  = spalteIstZahl(zeilen, start, ende, spalte, formeln);
     //  Ein Datum faellt durch die Zahlenpruefung (zwei Punkte); ohne eigene Art
     //  stuende der 02.01.2025 hinter dem 01.12.2025.
-    const bool daten   = !zahlen && spalteIstDatum(zeilen, start, ende, spalte, monatZuerst);
+    const bool daten   = !zahlen && spalteIstDatum(zeilen, start, ende, spalte, monatZuerst, formeln);
 
     //  Natuerliche Ordnung: "Datei 10" gehoert hinter "Datei 9", nicht davor.
     QCollator koll;
@@ -166,7 +169,7 @@ QList<int> sortiere(const QList<Zeile>& zeilen, int von, int bis, int spalte,
 
     //  Schluessel je POSITION in `ordnung` - mit Filter nur ein Teil des Bereichs.
     for (int i = 0; i < m; ++i) {
-        const QString w = zeilen.at(ordnung.at(i)).wert(spalte).trimmed();
+        const QString w = gezeigterWert(zeilen, ordnung.at(i), spalte, formeln).trimmed();
         leer[i] = w.isEmpty();
         if (zahlen) {
             bool ok = false;

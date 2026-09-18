@@ -128,61 +128,10 @@ Item {
                     font.pixelSize: 11
                     wrapMode: Text.WordWrap
                 }
-                //  `…` im Text wird eine Box; das Satzzeichen direkt dahinter haengt an ihr, damit der
-                //  Umbruch kein Komma allein an den Zeilenanfang stellt.
-                Flow {
-                    id: filterKurzschrift
+                SyntaxHint {
                     Layout.fillWidth: true
                     Layout.topMargin: 4
-                    spacing: 4
-                    readonly property var stuecke: {
-                        const aus = [];
-                        const teile = App.uiText(App.language, "SettingsTableFilterSyntax").split("`");
-                        for (let i = 0; i < teile.length; ++i) {
-                            if (i % 2 === 1) { aus.push({ box: teile[i], nach: "" }); continue; }
-                            let rest = teile[i];
-                            if (i > 0) {
-                                const haken = rest.match(/^\S*/)[0];
-                                aus[aus.length - 1].nach = haken;
-                                rest = rest.slice(haken.length);
-                            }
-                            for (const wort of rest.split(" "))
-                                if (wort.length > 0) aus.push({ box: "", nach: wort });
-                        }
-                        return aus;
-                    }
-                    Repeater {
-                        model: filterKurzschrift.stuecke
-                        delegate: Row {
-                            required property var modelData
-                            Rectangle {
-                                visible: modelData.box.length > 0
-                                anchors.verticalCenter: parent.verticalCenter
-                                width: boxText.implicitWidth + 8
-                                height: boxText.implicitHeight + 2
-                                radius: 4
-                                color: App.themeBackground
-                                border.color: App.themeBorder
-                                border.width: 1
-                                Text {
-                                    id: boxText
-                                    anchors.centerIn: parent
-                                    text: modelData.box
-                                    color: App.themeAccent
-                                    font.family: "monospace"
-                                    font.pixelSize: 11
-                                    font.bold: true
-                                }
-                            }
-                            Text {
-                                visible: modelData.nach.length > 0
-                                anchors.verticalCenter: parent.verticalCenter
-                                text: modelData.nach
-                                color: App.themeTextMuted
-                                font.pixelSize: 11
-                            }
-                        }
-                    }
+                    quelle: App.uiText(App.language, "SettingsTableFilterSyntax")
                 }
             }
 

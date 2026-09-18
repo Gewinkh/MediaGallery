@@ -29,6 +29,12 @@ public:
     Q_INVOKABLE bool    isStorageFile(const QString& filePathOrUrl) const;
     //  Dieselbe Datei als Hex-Auszug - fuer den, der die Bytes selbst sehen will.
     Q_INVOKABLE QString readStorageRaw(const QString& filePathOrUrl) const;
+    //  Vor dem ersten Video: FFmpeg auf „nur Fehler" stellen (s. MediaLogs.h).
+    //  Aus QML aufgerufen, weil dort entschieden wird, WANN ein Medium aufgeht.
+    Q_INVOKABLE void    quietMediaLogs() const;
+    //  Beidatei der Editoren statt Ordner-Ablage? Beide sind nur lesbar, aber
+    //  der Hinweis muss sagen, WO man sie aendert.
+    Q_INVOKABLE bool    isEditNotesFile(const QString& filePathOrUrl) const;
 
     //  Ist die Datei groesser als der Deckel, liegt also nur ihr Anfang vor?
     //  QML fragt das beim Oeffnen und sperrt dann das Schreiben. Kostet einen

@@ -7,6 +7,8 @@
 #include <QImage>
 #include <QPainter>
 #include <QBuffer>
+
+#include <limits>
 #include <QMutexLocker>
 #include <utility>
 
@@ -129,13 +131,13 @@ private:
 };
 } // namespace
 
-PdfThumbRenderTask::PdfThumbRenderTask(int docId, QString localPath, int startPage,
+PdfThumbRenderTask::PdfThumbRenderTask(int docId, QString localPath, FocusPage focus,
                                        int targetWidth, int jpegQuality,
                                        std::shared_ptr<PdfThumbStore> store,
                                        CancelFlag cancel)
     : m_docId(docId)
     , m_path(std::move(localPath))
-    , m_startPage(startPage)
+    , m_focus(std::move(focus))
     , m_targetWidth(targetWidth)
     , m_quality(jpegQuality)
     , m_store(std::move(store))
@@ -152,18 +154,26 @@ void PdfThumbRenderTask::run() {
     if (n <= 0)
         return;
 
-    QList<int> order;
-    order.reserve(n);
-    const int s = qBound(0, m_startPage, n - 1);
-    order.append(s);
-    for (int d = 1; d < n; ++d) {
-        if (s - d >= 0) order.append(s - d);
-        if (s + d <  n) order.append(s + d);
-    }
-
     const int maxH = m_targetWidth * 4;   // sehr lange Seiten deckeln (RAM-Schutz)
 
-    for (int page : std::as_const(order)) {
+    //  Offene Seiten; die naechste wird JE DURCHGANG neu gewaehlt - die am
+    //  naechsten an der gerade betrachteten. Der Scan ueber die offenen Seiten
+    //  kostet nichts gegen das Rendern einer einzigen (Mikrosekunden gegen
+    //  Millisekunden).
+    QList<int> offen;
+    offen.reserve(n);
+    for (int i = 0; i < n; ++i) offen.append(i);
+    bool tonGemeldet = false;
+
+    while (!offen.isEmpty()) {
+        const int mitte = m_focus ? qBound(0, m_focus->load(std::memory_order_relaxed), n - 1) : 0;
+        int besterIdx = 0;
+        int besterAbstand = std::numeric_limits<int>::max();
+        for (int i = 0; i < offen.size(); ++i) {
+            const int d = qAbs(offen.at(i) - mitte);
+            if (d < besterAbstand) { besterAbstand = d; besterIdx = i; }
+        }
+        const int page = offen.takeAt(besterIdx);
         // Bei Abbruch (z. B. LRU-Verdraengung dieses Dokuments) die bereits
         // geschriebenen Seiten wieder freigeben -> kein verwaister Store-Eintrag.
         if (cancelled()) { m_store->dropDocument(m_docId); return; }
@@ -198,6 +208,16 @@ void PdfThumbRenderTask::run() {
         if (cancelled()) { m_store->dropDocument(m_docId); return; }
 
         m_store->putPage(m_docId, page, jpeg);
+        if (!tonGemeldet) {
+            //  Auf EIN Pixel herunterrechnen ist der billigste Mittelwert, den
+            //  Qt hat; einmal je Dokument faellt er nicht ins Gewicht.
+            const QImage winzig = flat.scaled(1, 1, Qt::IgnoreAspectRatio,
+                                              Qt::SmoothTransformation);
+            if (!winzig.isNull()) {
+                emit tintReady(m_docId, QColor(winzig.pixel(0, 0)));
+                tonGemeldet = true;
+            }
+        }
         emit pageReady(m_docId, page);
     }
 
@@ -325,6 +345,8 @@ void PdfThumbnailProvider::enforceBudget() {
         if (!path.isEmpty()) m_pathToId.remove(path);
         m_prepared.remove(victim);
         m_flags.remove(victim);
+        m_focus.remove(victim);
+        m_tint.remove(victim);
         evicted = true;
     }
     // Nur bei TATSÄCHLICHER Verdrängung: dropDocument gibt ganze JPEG-Seiten-
@@ -346,11 +368,29 @@ int PdfThumbnailProvider::refreshDocument(const QString& pathOrUrl, int startPag
         m_store->dropDocument(old);
         m_prepared.remove(old);
         m_flags.remove(old);
+        m_focus.remove(old);
+        m_tint.remove(old);
         m_pathToId.remove(key);
         m_idToPath.remove(old);
         m_lruOrder.removeAll(old);
     }
     return ensureDocument(key, startPage);      // frische docId + neuer Lauf
+}
+
+//  Kostet einen atomaren Schreibzugriff - die Ansicht darf das bei jedem
+//  Rollschritt melden, auch mitten in einem schnellen Zug.
+void PdfThumbnailProvider::setFocusPage(int docId, int page) {
+    if (const auto f = m_focus.value(docId))
+        f->store(page, std::memory_order_relaxed);
+}
+
+QColor PdfThumbnailProvider::documentTint(int docId) const {
+    return m_tint.value(docId, QColor());
+}
+
+int PdfThumbnailProvider::focusPage(int docId) const {
+    const auto f = m_focus.value(docId);
+    return f ? f->load(std::memory_order_relaxed) : -1;
 }
 
 int PdfThumbnailProvider::ensureDocument(const QString& pathOrUrl, int startPage) {
@@ -364,6 +404,9 @@ int PdfThumbnailProvider::ensureDocument(const QString& pathOrUrl, int startPage
         m_idToPath.insert(docId, key);
     }
     touchLru(docId);
+    //  Auch beim Wiedersehen gilt die zuletzt genannte Seite.
+    if (const auto f = m_focus.value(docId))
+        f->store(startPage, std::memory_order_relaxed);
 
     // Nur beim ERSTEN Mal je Dokument einen Render-Task einreihen. Beim
     // Zurueckblaettern (LRU-Treffer) liegen die Seiten bereits im Store.
@@ -373,13 +416,21 @@ int PdfThumbnailProvider::ensureDocument(const QString& pathOrUrl, int startPage
         auto flag = std::make_shared<std::atomic<bool>>(false);
         m_flags.insert(docId, flag);
 
-        auto* task = new PdfThumbRenderTask(docId, key, startPage,
+        auto fokus = std::make_shared<std::atomic<int>>(startPage);
+        m_focus.insert(docId, fokus);
+
+        auto* task = new PdfThumbRenderTask(docId, key, fokus,
                                             kThumbWidthPx, kJpegQuality,
                                             m_store, flag);
         task->setAutoDelete(true);
 
         connect(task, &PdfThumbRenderTask::pageReady,
                 this, &PdfThumbnailProvider::pageReady, Qt::QueuedConnection);
+        connect(task, &PdfThumbRenderTask::tintReady, this,
+                [this](int id, const QColor& farbe) {
+                    m_tint.insert(id, farbe);
+                    emit documentTintChanged(id);
+                }, Qt::QueuedConnection);
 
         m_pool.start(task);
     }

@@ -220,6 +220,20 @@ Item {
         }
     }
 
+    //  Grundton des Dokuments (aus der ersten gerechneten Vorschauseite). Eine
+    //  noch nicht gerechnete Seite traegt ihn statt Weiss - auf einem dunklen
+    //  Dokument ist ein weisses Blatt beim Rollen das Auffaelligste im Bild.
+    property color _seitenTon: "white"
+    Connections {
+        target: PdfThumbs
+        function onDocumentTintChanged(docId) {
+            if (docId === root._thumbDocId) {
+                const t = PdfThumbs.documentTint(docId)
+                if (t.a > 0) root._seitenTon = t
+            }
+        }
+    }
+
     property var    doc: null                // aktuell aktives PdfDocument
     readonly property bool docReady: !!doc && doc.status === PdfDocument.Ready
     readonly property int  pageCount: docReady ? doc.pageCount : 0
@@ -1360,12 +1374,16 @@ Item {
             anchors.top: parent.top; anchors.bottom: parent.bottom
             width: Math.min(contentWidth, toolbar.width * 0.55)
             spacing: 6
-            // Nur im Editmodus sinnvoll; Zustand und Schema liegen global im Translit-Singleton.
+            //  NICHT nur im Editmodus: die Umsetzung gilt auch fuer die SUCHE,
+            //  und ohne den Knopf liesse sie sich hier gar nicht einschalten.
+            //  Ob er ueberhaupt erscheint, entscheidet die Einstellung.
             TranslitButton {
+                id: translitBtn
                 anchors.verticalCenter: parent.verticalCenter
-                visible: root.editCtl.editMode
             }
-            Item { width: root.editCtl.editMode ? 4 : 0; height: 1 }
+            //  Der Abstand haengt am KNOPF, nicht am Bearbeitungsmodus: ist der
+            //  Knopf abgeschaltet, bliebe sonst eine Luecke stehen.
+            Item { width: translitBtn.visible ? 4 : 0; height: 1 }
             // Nur sichtbar, wenn das PDF Audio enthaelt.
             PdfToolButton {
                 iconName: "audio"
@@ -1438,9 +1456,11 @@ Item {
                 placeholderText: App.uiText(App.language, "PdfSearchPlaceholder")
                 // Der Controller sucht stueckweise - das haelt die Oberflaeche fluessig.
                 onTextChanged: {
+                    translitHaken.pruefe()
                     root.searchIndex = -1
                     pdfTextCtl.search(text)
                 }
+                TranslitInput { id: translitHaken; feld: searchField }
                 Keys.onReturnPressed: root.goToHit(root.searchIndex + 1)
                 Keys.onEscapePressed: root.toggleSearch()
             }
@@ -1488,6 +1508,7 @@ Item {
 
         ListView {
             id: pages
+            objectName: "pdfPages"       // Griff fuer tests/bench
             anchors.fill: parent
             clip: true
             // Linksziehen markiert immer, deshalb ist das eigene Dragging der Liste aus.
@@ -1555,7 +1576,28 @@ Item {
                     // Zentriert; bei Zoom-Ueberlauf um panX verschiebbar.
                     x: Math.round((pages.width - width) / 2 + root.panX)
                     width: pageCell.pageW; height: pageCell.pageH
-                    color: "white"
+                    //  Fertig gerechnete Seiten deckt das Bild ohnehin ab; der Ton
+                    //  zaehlt nur fuer die, die noch rechnen.
+                    color: pageImg.status === Image.Ready ? "white" : root._seitenTon
+
+                    //  Solange die grosse Seite noch rechnet, steht die
+                    //  VORSCHAU aus dem RAM hier - sie ist schon da. Vorher war
+                    //  hier eine weisse Flaeche, und schnelles Rollen sah aus
+                    //  wie ein haengendes Fenster.
+                    Image {
+                        id: grobeSeite
+                        anchors.fill: parent
+                        readonly property bool gebraucht: pageImg.status !== Image.Ready
+                                                          && root._thumbDocId > 0
+                        visible: grobeSeite.gebraucht
+                        source: grobeSeite.gebraucht
+                                ? "image://pdfthumb/" + root._thumbDocId + "/" + pageCell.index
+                                : ""
+                        fillMode: Image.Stretch
+                        asynchronous: true
+                        cache: false
+                        smooth: true
+                    }
 
                     // Unterste Ebene: das PdfPageImage darueber faengt keine Maus. Ein Badge liegt
                     // hoeher und verbraucht den Press, damit Annotation-Klicks nicht markieren.
@@ -2158,6 +2200,20 @@ Item {
                 boundsBehavior: Flickable.StopAtBounds
                 ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
 
+                //  Dem Renderer sagen, wo man gerade HINSIEHT - sonst arbeitet er
+                //  die Reihenfolge vom Oeffnen stur ab und rechnet nach einem Zug
+                //  ans Ende an Seiten weiter, die niemand mehr sieht.
+                onContentYChanged: thumbs.meldeBlick()
+
+                //  `indexAt` liefert ZWISCHEN zwei Kacheln -1; ungeprueft
+                //  weitergereicht setzte das den Blick bei jedem Rollschritt auf
+                //  Seite 0 zurueck. `indexForContentY` entscheidet dann nach Naehe.
+                function meldeBlick() {
+                    if (root._thumbDocId <= 0 || thumbs.count <= 0) return
+                    const i = thumbs.indexForContentY(thumbs.contentY + thumbs.height / 2)
+                    if (i >= 0) PdfThumbs.setFocusPage(root._thumbDocId, i)
+                }
+
                 // Gezogen wird die Vorschau, umsortiert wird der Seiten-Plan im Controller
                 // (ein Undo-Schritt); die Notizen folgen ihrer Seite ueber den Seiten-Key.
                 property int dragIndex: -1
@@ -2230,7 +2286,9 @@ Item {
                         width: thumbCell.thumbW; height: thumbCell.thumbH
                         anchors.horizontalCenter: parent.horizontalCenter
                         anchors.top: parent.top
-                        color: "white"
+                        //  Wie bei der grossen Seite: solange die Vorschau noch
+                        //  rechnet, traegt das Blatt den Grundton des Dokuments.
+                        color: thumbImg.status === Image.Ready ? "white" : root._seitenTon
                         border.color: App.themeBorder
                         border.width: 1
                         // Rand fest: hing er an der aktuellen Seite, aenderte sich die `sourceSize`,

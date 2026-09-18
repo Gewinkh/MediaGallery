@@ -493,6 +493,7 @@ Rectangle {
 
         ScrollView {
             id: tagsArea
+            objectName: "panelTagsArea"     // Griff fuer tests/bench
             visible: panel.showTagsSection
             width: parent.width
             height: Math.min(tagsCol.implicitHeight,
@@ -519,116 +520,38 @@ Rectangle {
                     width: parent.width
                     spacing: 4
 
+                    //  Ein MODELL statt eines JS-Feldes: ein Repeater ueber ein
+                    //  Feld wirft bei jeder Aenderung alle Chips weg und baut sie
+                    //  neu - bei 400 Tags rund 600 ms je Vorgang. Das Modell
+                    //  meldet nur den Unterschied. `source` haengt am Schalter:
+                    //  `visible` allein verhindert das Erzeugen nicht.
+                    TagListModel {
+                        id: chipModel
+                        source: panel.showTagsSection ? panel.allTagsModel : []
+                        filter: tagSearch.text
+                    }
+
                     Repeater {
-                        model: panel.filterList(panel.allTagsModel, tagSearch.text)
-                        delegate: Rectangle {
-                            id: pChip
-                            required property var modelData
-
-                            readonly property color tc: panel.tagColorOf(pChip.modelData)
-                            readonly property bool active: panel.isTagActive(pChip.modelData)
-
-                            // Dieselben Nutzdaten wie die Chips unter einer Kategorie, damit die Ablegefläche des Kategorie-Kopfes beide
-                            // annimmt. `dragFromCat` bleibt leer: dieser Chip kommt aus der Liste, es wird nur HINZUGEFÜGT.
-                            property string dragTag: modelData
-                            property string dragFromCat: ""
-                            // Der Chip muss an seinen Platz zurück: ein `DragHandler` verschiebt sein Ziel, das `Flow` darüber setzt `x`/`y`
-                            // aber nur beim Auslegen neu. Ohne das Zurücksetzen blieb er liegen, wo man ihn fallen ließ.
-                            property real homeX: 0
-                            property real homeY: 0
-                            Drag.active: pDrag.active
-                            Drag.source: pChip
-                            Drag.hotSpot.x: width / 2
-                            Drag.hotSpot.y: height / 2
-                            z: pDrag.active ? 10 : 0
-                            DragHandler {
-                                id: pDrag
-                                onActiveChanged: {
-                                    if (active) {
-                                        pChip.homeX = pChip.x; pChip.homeY = pChip.y
-                                        return
-                                    }
-                                    pChip.Drag.drop()          // erst zustellen …
-                                    pChip.x = pChip.homeX      // … dann zurück
-                                    pChip.y = pChip.homeY
-                                }
-                            }
-
-                            height: 24; radius: 12
-                            width: pRow.implicitWidth + 16
-                            color: active ? Qt.rgba(tc.r, tc.g, tc.b, 0.42)
-                                          : Qt.rgba(tc.r, tc.g, tc.b, 0.10)
-                            border.color: active ? tc : App.themeBorder
-                            border.width: active ? 2 : 1
-
-                            Row {
-                                id: pRow
-                                anchors.centerIn: parent; spacing: 5
-                                Text {
-                                    visible: pChip.active
-                                    anchors.verticalCenter: parent.verticalCenter
-                                    text: "\u2713"; color: App.themeTextPrimary
-                                    font.pixelSize: 10; font.bold: true
-                                }
-                                Rectangle {
-                                    anchors.verticalCenter: parent.verticalCenter
-                                    width: 8; height: 8; radius: 4; color: pChip.tc
-                                }
-                                Text {
-                                    anchors.verticalCenter: parent.verticalCenter
-                                    text: pChip.modelData
-                                    color: pChip.active ? App.themeTextPrimary : App.themeTextMuted
-                                    font.pixelSize: 11
-                                }
-                            }
-
-                            // Die Kachel zieht als PLATTFORM-Zug hinaus; landet er wieder im eigenen Fenster, kommt er hier als
-                            // gewöhnlicher Datei-Drop an - dieselbe Fläche nimmt deshalb auch Dateien von außen. Immer `addTag`, nie Toggle.
-                            DropArea {
-                                id: chipDrop
-                                anchors.fill: parent
-                                keys: ["text/uri-list"]
-                                onDropped: function(drop) {
-                                    if (!drop.hasUrls) { drop.accepted = false; return }
-                                    panel.dropFilesOnTag(drop.urls, pChip.modelData)
-                                    drop.acceptProposedAction()
-                                }
-                            }
-                            Rectangle {
-                                anchors.fill: parent
-                                radius: parent.radius
-                                visible: chipDrop.containsDrag
-                                color: "transparent"
-                                border.color: App.themeAccent
-                                border.width: 2
-                            }
-
-                            TapHandler {
-                                acceptedButtons: Qt.LeftButton
-                                onTapped: panel.toggleTag(pChip.modelData)
-                            }
-                            TapHandler {
-                                acceptedButtons: Qt.RightButton
-                                onTapped: pChipMenu.open()
-                            }
-                            ThemedMenu {
-                                id: pChipMenu
-                                MenuItem { text: App.uiText(App.language, "ModeAddToTag"); onTriggered: panel.requestAddToTagMode(pChip.modelData) }
-                                MenuItem { text: App.uiText(App.language, "ModeGroup");    onTriggered: panel.requestGroupMode(pChip.modelData) }
-                                MenuSeparator {}
-                                MenuItem { text: "+  " + App.uiText(App.language, "CatPanelNewTag")
-                                           onTriggered: panel.promptNewTag() }
-                                MenuItem { text: App.uiText(App.language, "SettingsTagDelete")
-                                           onTriggered: panel.promptDeleteTag(pChip.modelData) }
-                            }
-                        }
+                        model: chipModel
+                    //  Jeder Chip in einem eigenen, ASYNCHRONEN Loader: 400 auf
+                    //  einen Schlag blockierten den Faden ueber eine halbe
+                    //  Sekunde. KEINE eigene Hoehe/Breite - ein Loader mit
+                    //  gesetzter Groesse zwingt sie seinem Kind auf.
+                    delegate: Loader {
+                        id: chipLader
+                        required property string name
+                        asynchronous: true
+                        Component.onCompleted: chipLader.setSource(
+                            "qrc:/qml/tags/TagChip.qml",
+                            { name: chipLader.name, panel: panel })
+                    }
                     }
                 }
 
                 Text {
                     visible: panel.allTagsModel.length === 0
                              || (tagSearch.text.length > 0
-                                 && panel.filterList(panel.allTagsModel, tagSearch.text).length === 0)
+                                 && chipModel.count === 0)
                     text: tagSearch.text.length > 0
                           ? App.uiText(App.language, "PanelSearchNoHit")
                           : App.uiText(App.language, "PanelNoTags")
@@ -666,6 +589,8 @@ Rectangle {
         }
 
         ScrollView {
+            id: catsArea
+            objectName: "panelCatsArea"     // Griff fuer tests/bench
             visible: panel.showCategoriesSection
             width: parent.width
             height: panel.height
@@ -691,7 +616,8 @@ Rectangle {
                 //  wer sucht, will den Treffer anklicken und nicht erst den Pfad
                 //  aufklappen. Ein Klick wählt die Kategorie wie im Baum.
                 Repeater {
-                    model: catSearch.text.length > 0 ? panel.filterCats(catSearch.text) : []
+                    model: (panel.showCategoriesSection && catSearch.text.length > 0)
+                           ? panel.filterCats(catSearch.text) : []
                     delegate: Rectangle {
                         id: hitRow
                         required property var modelData
@@ -727,14 +653,25 @@ Rectangle {
                     topPadding: 8
                 }
 
+                //  Jeder Knoten entsteht in einem eigenen, ASYNCHRONEN Loader.
+                //  Ein Knoten kostet rund 10 ms; 120 auf einen Schlag blockierten
+                //  den Faden ueber eine Sekunde. Die Incubation verteilt das auf
+                //  Bilder - der Baum fuellt sich sichtbar, statt zu stehen.
                 Repeater {
-                    model: catSearch.text.length > 0 ? [] : panel.tree
-                    delegate: CategoryNode {
+                    model: (!panel.showCategoriesSection || catSearch.text.length > 0)
+                           ? [] : panel.tree
+                    delegate: Loader {
+                        id: knotenLader
                         required property var modelData
+                        asynchronous: true
+                        //  KEINE eigene Hoehe: ein Loader mit gesetzter Hoehe zwingt
+                        //  sie seinem Kind auf, und `height: item.height` liefe im
+                        //  Kreis - der Knoten blieb dann unsichtbar. Die Hoehe kommt
+                        //  ueber `implicitHeight` aus dem Knoten selbst.
                         width: treeColumn.width
-                        node: modelData
-                        depth: 0
-                        panel: panel
+                        Component.onCompleted: knotenLader.setSource(
+                            "qrc:/qml/tags/CategoryNode.qml",
+                            { node: knotenLader.modelData, depth: 0, panel: panel })
                     }
                 }
 
@@ -966,4 +903,10 @@ Rectangle {
             }
         }
     }
+    //  Weiches, schnelles Mausrad wie im Rest der App - sonst gilt Qts fester
+    //  Schritt. Deklariert am WURZELELEMENT, nicht in der ScrollView: dort
+    //  landete die Flaeche im INHALT und rollte mit ihm mit.
+    SmoothWheelArea { flickable: tagsArea.contentItem }
+    SmoothWheelArea { flickable: catsArea.contentItem }
+
 }

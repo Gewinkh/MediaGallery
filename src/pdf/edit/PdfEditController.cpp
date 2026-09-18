@@ -1,5 +1,6 @@
 #include "pdf/edit/PdfEditController.h"
 
+#include "core/EditSidecar.h"
 #include "core/FolderImages.h"
 #include "pdf/edit/PdfVectorExport.h"
 #include "pdf/edit/PdfEditCommands.h"
@@ -3310,7 +3311,7 @@ void PdfEditController::redo() {
 }
 
 QString PdfEditController::sidecarPath(const QString& pdfPath) {
-    return pdfPath + QStringLiteral(".mgedit.json");
+    return mg::editsidecar::pfad(pdfPath);
 }
 
 bool PdfEditController::saveOverlay() {
@@ -3319,7 +3320,6 @@ bool PdfEditController::saveOverlay() {
     finishOpenSessions();
     finishDrawSession();
 
-    const QString sc = sidecarPath(m_docPath);
     bool ok = false;
 
     commitPendingTextOp();                  // schwebende Tipp-Session festschreiben
@@ -3331,7 +3331,7 @@ bool PdfEditController::saveOverlay() {
     // Der Seiten-Plan gehoert bewusst nicht ins Sidecar: Seitenoperationen wirken
     // sofort, ein gespeicherter Plan wuerde beim naechsten Oeffnen zweimal wirken.
     if (!hasBoxes && !hasOps && !hasVals) {
-        ok = !QFile::exists(sc) || QFile::remove(sc);
+        ok = mg::editsidecar::entferne(m_docPath);
         // Ohne Plan verweist nichts mehr auf die Begleitdatei - sie wird aufgeraeumt.
         QFile::remove(assetPath(m_docPath));
     } else {
@@ -3384,14 +3384,7 @@ bool PdfEditController::saveOverlay() {
             rootObj.insert(QStringLiteral("formvals"), vals);
         }
 
-        QSaveFile f(sc);
-        if (f.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
-            const QByteArray bytes = QJsonDocument(rootObj).toJson(QJsonDocument::Compact);
-            if (f.write(bytes) == bytes.size())
-                ok = f.commit();
-            else
-                f.cancelWriting();
-        }
+        ok = mg::editsidecar::schreibe(m_docPath, rootObj);
     }
 
     if (ok)
@@ -3401,17 +3394,9 @@ bool PdfEditController::saveOverlay() {
 }
 
 bool PdfEditController::loadOverlay(const QString& pdfPath) {
-    const QString sc = sidecarPath(pdfPath);
-    QFile f(sc);
-    if (!f.exists() || f.size() > kMaxSidecarBytes)
+    const QJsonObject o = mg::editsidecar::lies(pdfPath);
+    if (o.isEmpty())
         return false;
-    if (!f.open(QIODevice::ReadOnly))
-        return false;
-
-    const QJsonDocument jd = QJsonDocument::fromJson(f.readAll());
-    if (!jd.isObject())
-        return false;
-    const QJsonObject o = jd.object();
     if (o.value(QStringLiteral("format")).toString()
         != QLatin1String("mediagallery-pdf-overlay"))
         return false;

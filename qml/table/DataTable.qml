@@ -20,6 +20,21 @@ Item {
     //  Zeilen- und Spaltennummern wie in einer Tabellenkalkulation. Die
     //  Zeilenspalte ist FEST - sie rollt senkrecht mit, waagerecht nicht.
     property bool showNumbers: false
+    //  Spalten als A, B, C - so, wie eine Formel sie nennt. Der Buchungsstapel
+    //  bleibt bei den Nummern: dort IST die Feldnummer die Bezeichnung.
+    property bool columnLabelsAlpha: false
+
+    function _spaltenKopf(index) {
+        if (!root.columnLabelsAlpha) return index + 1
+        var n = index + 1
+        var s = ""
+        while (n > 0) {
+            const rest = (n - 1) % 26
+            s = String.fromCharCode(65 + rest) + s
+            n = Math.floor((n - 1) / 26)
+        }
+        return s
+    }
 
     //  Die Zell-Bindungen LESEN beide Revisionen - `cell()` ist eine Funktion, ohne
     //  gelesenen Wert wertet QML sie nie neu aus.
@@ -94,7 +109,10 @@ Item {
     function bearbeiteZelle() {
         if (!root._bearbeitbar || root.selRow < 0 || root.selColumn < 0) return
         root.zeigeZelle(root.selRow, root.selColumn)
-        zellEditor.text = root.provider.cell(root.selRow, root.selColumn)
+        //  Bearbeitet wird, was in der Datei STEHT - `=A1+B2`, nicht sein Ergebnis.
+        zellEditor.text = (root.provider.cellRaw !== undefined)
+                          ? root.provider.cellRaw(root.selRow, root.selColumn)
+                          : root.provider.cell(root.selRow, root.selColumn)
         root.bearbeitet = true
         zellEditor.forceActiveFocus()
         zellEditor.selectAll()
@@ -201,6 +219,9 @@ Item {
     }
 
     readonly property var _spalten: root.provider ? root.provider.columns : []
+    readonly property bool _hatFormeln:
+        root.provider !== null && root.provider.formulaCount !== undefined
+        && root.provider.formulaCount > 0
 
     //  Breite der Zeilenspalte: so viel, wie die groesste Nummer braucht.
     readonly property real _nummernBreite:
@@ -247,7 +268,7 @@ Item {
                         color: (root.provider && root.provider.sortColumn === modelData.index)
                                ? App.themeAccent : Editor.gutterText
                         font.pixelSize: 10
-                        text: modelData.index + 1
+                        text: root._spaltenKopf(modelData.index)
                     }
                     //  Ohne Spaltennamen der einzige Kopf - also dieselben Griffe.
                     MouseArea {
@@ -280,7 +301,7 @@ Item {
                 verticalAlignment: Text.AlignVCenter
                 color: root._kopfSortiert ? App.themeAccent : Editor.gutterText
                 font.pixelSize: 10
-                text: root._ersteSpalte ? (root._ersteSpalte.index + 1) : ""
+                text: root._ersteSpalte ? root._spaltenKopf(root._ersteSpalte.index) : ""
             }
             Rectangle { anchors.right: parent.right; width: 1; height: parent.height
                         color: Qt.rgba(Editor.gutterText.r, Editor.gutterText.g,
@@ -457,6 +478,7 @@ Item {
         }
 
 
+
         //  Nur die sichtbaren Zeilen entstehen als Elemente, auch bei 10.000
         //  Datenzeilen.
         ListView {
@@ -468,6 +490,20 @@ Item {
             clip: false
             cacheBuffer: 400
             boundsBehavior: Flickable.StopAtBounds
+
+            //  Linksklick unter die letzte Zeile beendet Auswahl und
+            //  Bearbeitung. Der Helfer gehoert AN DIE LISTE - an der Flaeche
+            //  darunter kaeme der linke Druck nie an, den nimmt die Liste fuer
+            //  ihr Rollen.
+            TapHandler {
+                acceptedButtons: Qt.LeftButton
+                gesturePolicy: TapHandler.DragThreshold
+                onTapped: function (punkt) {
+                    const p = zellSchicht.mapFromItem(null, punkt.scenePosition)
+                    if (root._zeileBeiY(p.y) >= 0 && root._spalteBeiX(p.x) >= 0) return
+                    root.entmarkiere()
+                }
+            }
 
             //  An der Liste haengen Groesse und Ziehen von selbst; seitlich rollt er aber
             //  mit und wird deshalb an den Rand des SICHTBAREN Ausschnitts gerechnet.
@@ -543,6 +579,21 @@ Item {
                                 font: root.cellFont
                                 text: (root.contentRevision >= 0 && root.provider)
                                       ? root.provider.cell(zeile.index, modelData.index) : ""
+                            }
+                            //  Die Ecke sagt, dass die Zahl gerechnet und nicht
+                            //  getippt ist. Ohne eine einzige Formel in der Datei
+                            //  faellt die Abfrage je Zelle weg.
+                            Rectangle {
+                                visible: root._hatFormeln && root.contentRevision >= 0
+                                         && root.provider.cellIsFormula(zeile.index,
+                                                                        modelData.index)
+                                anchors { right: parent.right; top: parent.top
+                                          rightMargin: 1; topMargin: 1 }
+                                width: 5
+                                height: 5
+                                radius: 1
+                                color: App.themeAccent
+                                opacity: 0.55
                             }
                         }
                     }

@@ -16,6 +16,10 @@ class TransliterationController : public QObject {
     Q_OBJECT
     Q_PROPERTY(bool enabled READ enabled WRITE setEnabled NOTIFY enabledChanged)
     Q_PROPERTY(QString scheme READ scheme WRITE setScheme NOTIFY schemeChanged)
+    //  Ob der Umschalter ueberhaupt in den Leisten auftaucht. Vorgabe AUS: wer
+    //  nicht arabisch oder japanisch tippt, hat dort nur einen Knopf im Weg.
+    Q_PROPERTY(bool buttonVisible READ buttonVisible WRITE setButtonVisible
+                   NOTIFY buttonVisibleChanged)
     // Zähler: bumpt bei jeder Listen-Änderung -> die Settings-Liste liest
     // mappings() rev-getrieben neu (Muster wie selectionRev im PDF-Editor).
     Q_PROPERTY(int mappingsRev READ mappingsRev NOTIFY mappingsRevChanged)
@@ -27,6 +31,8 @@ public:
     void setEnabled(bool on);
     QString scheme() const { return m_scheme; }
     void setScheme(const QString& s);
+    bool buttonVisible() const { return m_buttonVisible; }
+    void setButtonVisible(bool on);
     int mappingsRev() const { return m_mappingsRev; }
 
     // Wendet das aktive Schema auf den Lauf vor `cursorPos` an. QML ersetzt gezielt `text[start..end)` statt den
@@ -49,6 +55,7 @@ public:
 signals:
     void enabledChanged();
     void schemeChanged();
+    void buttonVisibleChanged();
     void mappingsRevChanged();
 
 private:
@@ -85,6 +92,7 @@ private:
     static QString configFilePath();
 
     bool    m_enabled = false;
+    bool    m_buttonVisible = false;
     QString m_scheme  = QStringLiteral("ar");
     int     m_mappingsRev = 0;
     QHash<QString, SchemeData> m_schemes;   // "ar" / "ja-hira" / "ja-kata"

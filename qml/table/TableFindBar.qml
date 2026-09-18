@@ -108,6 +108,8 @@ Rectangle {
             placeholderTextColor: App.themeTextMuted
             font.pixelSize: 12
             background: null
+            onTextChanged: translitHaken.pruefe()
+            TranslitInput { id: translitHaken; feld: innerField }
             Keys.onPressed: function (e) {
                 if (e.key === Qt.Key_Escape) {
                     ff.escaped(); e.accepted = true
@@ -206,16 +208,11 @@ Rectangle {
             tip: App.uiText(App.language, "TableFindGoOtherTip")
             onClicked: andereMenu.popup(andereBtn, 0, andereBtn.height + 2)
         }
-        Menu {
+        //  `ThemedMenu` rechnet seine Breite aus den EINTRAEGEN. Ueber
+        //  `contentItem.childrenRect` gerechnet haengt die Breite an dem, was
+        //  sie selbst bestimmt - Qt meldete dafuer eine Bindungsschleife.
+        ThemedMenu {
             id: andereMenu
-            //  Ohne Mindestbreite kollabiert ein Menue mit eigenem Hintergrund zum Strich.
-            implicitWidth: Math.max(200, andereMenu.contentItem ? andereMenu.contentItem.childrenRect.width + 24 : 200)
-            background: Rectangle {
-                implicitWidth: 200
-                color: App.themeMenuBarBg
-                border.color: App.themeBorder
-                radius: 6
-            }
             Repeater {
                 model: root._andere
                 delegate: MenuItem {

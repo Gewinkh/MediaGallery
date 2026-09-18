@@ -14,6 +14,7 @@
 #include "editor/TextMinimap.h"
 #include "image/edit/ImageEditController.h"
 #include "media/GalleryRowModel.h"
+#include "tags/TagListModel.h"
 #include "pdf/PdfAudioController.h"
 #include "pdf/PdfTextController.h"
 #include "pdf/edit/PdfEditController.h"
@@ -43,6 +44,9 @@ void registerQmlTypes() {
     //  Zeilenmodell der Galerie - je Ansicht eine Instanz, gespeist aus
     //  `galleryModel` (s. src/media/GalleryRowModel.h).
     qmlRegisterType<GalleryRowModel>   ("MediaGallery", 1, 0, "GalleryRowModel");
+    //  Die Tagliste des Panels als Modell - ein Repeater ueber ein JS-Feld baut
+    //  bei jeder Aenderung ALLE Chips neu.
+    qmlRegisterType<TagListModel>      ("MediaGallery", 1, 0, "TagListModel");
     //  Zwei-Fenster-Modus: `PaneController` je Hälfte, `PaneHost` erzeugt deren
     //  QML-Teilbaum mit eigenem Kontext (s. src/app/PaneHost.h).
     qmlRegisterType<PaneController>    ("MediaGallery", 1, 0, "PaneController");

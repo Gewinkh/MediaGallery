@@ -1,4 +1,5 @@
 #include "audio/AudioEngine.h"
+#include "core/MediaLogs.h"
 #include "audio/AudioSeekIndex.h"
 #include "audio/MkvAudioExtract.h"
 
@@ -225,6 +226,8 @@ void AudioEngine::startDecode(const QString& path, qint64 skipMs, qint64 byteOff
     m_framesIn = 0;
     m_decodeDone = false;
 
+    //  Erst hier, nicht beim Start: FFmpeg wird ohnehin gleich geladen.
+    mg::media::beQuiet();
     m_decoder = new QAudioDecoder(this);
     m_decoder->setAudioFormat(m_work);
 
@@ -282,6 +285,13 @@ void AudioEngine::startSinkIfReady() {
     if (!m_decodeDone && qint64(m_ring.available()) < needed) return;
 
     m_sink = new QAudioSink(QMediaDevices::defaultAudioOutput(), m_format, this);
+    //  Der Puffer ist die einzige Reserve, die der Ton gegen einen belegten
+    //  GUI-Faden hat: die Senke holt ihre Werte ueber ein QIODevice, und das
+    //  wird im Faden ihres Besitzers gefragt. Gemessen (`bench_audiogap`):
+    //  mit Qts Vorgabe von 250 ms haelt der Ton eine Blockade von 200 ms aus
+    //  und reisst bei 300; mit 600 ms haelt er bis 500 durch. Der Preis sind
+    //  rund 230 KB.
+    m_sink->setBufferSize(m_format.bytesForDuration(600 * 1000));
     m_sink->setVolume(float(m_volume));
     m_sink->start(m_pull);
 }

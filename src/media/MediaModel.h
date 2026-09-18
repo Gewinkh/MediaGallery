@@ -291,7 +291,7 @@ private:
         QString     path;                 // ursprünglicher Pfad im Ordner
         QString     movedTo;              // nur Kind::Move: neuer Pfad
         QString     trashPath;            // Ablage im Papierkorb
-        QString     sidecarPath;          // "<pfad>.mgedit.json" (falls vorhanden)
+        QString     sidecarPath;          // "<pfad>.mgedit" (falls vorhanden)
         QString     sidecarTrashPath;
         QString     bakPath;
         QString     bakTrashPath;
@@ -395,6 +395,9 @@ private:
     // lazy erzeugte Instanz auf sein eigenes Sidecar; beim Zuklappen wird sie
     // abgeraeumt - ein Sidecar kann gross sein.
     QHash<int, JsonStorage*> m_scopeStorage;   // nur Bereiche > 0
+    //  Laeuft gerade ein Sammel-Vorgang ueber viele Dateien? Dann schreiben
+    //  auch die Unterordner-Ablagen erst am Ende.
+    bool m_sammelSchreiben = false;
     JsonStorage* storageForScope(int scope);
     // nullptr, wenn der Ordner nicht offen ist - dann s. writeMetaToFolder.
     JsonStorage* storageForFolder(const QString& folder);

@@ -125,9 +125,6 @@ bool exportToPdf(const QString& text, const QString& targetPath,
             QFontMetricsF(font, &writer).horizontalAdvance(
                 QString(qBound(2, tabWidth, 8), u' ')));
         td.setDefaultTextOption(to);
-        //  Metriken am Writer messen (nicht am Bildschirm) - sonst hinge das
-        //  Ergebnis an der Bildschirm-DPI des Rechners.
-        td.documentLayout()->setPaintDevice(&writer);
 
         //  Zeilenenden vereinheitlichen: setPlainText trennt an '\n'; ein
         //  stehengebliebenes '\r' aus CRLF- oder alten Mac-Dateien würde als
@@ -146,6 +143,14 @@ bool exportToPdf(const QString& text, const QString& targetPath,
             faerber->setPalette(stil.palette);
             faerber->setLanguageId(stil.sprache);
         }
+
+        //  Metriken am Writer messen (nicht am Bildschirm) - sonst hinge das
+        //  Ergebnis an der Bildschirm-DPI des Rechners. ERST NACH dem Faerber:
+        //  solange der Schreiber das Geraet ist, legt jede Formatmarke ihren
+        //  Block mit dessen Metriken neu aus - 11,4 statt 0,02 s bei 8.200
+        //  Zeilen. Die Farben haengen nicht an den Metriken, die endgueltige
+        //  Auslegung unten schon.
+        td.documentLayout()->setPaintDevice(&writer);
 
         // Der Text fließt durch eine "unendlich" hohe Seite, umbrochen wird unten selbst. Ließe man QTextDocument
         // paginieren, legt es die Zeile 0,009 px über die Grenze und zeichnet sie auf BEIDEN Seiten - im Textlayer

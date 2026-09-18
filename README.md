@@ -19,8 +19,8 @@ stores its data are in **[FEATURES.md](FEATURES.md)**.
 - **PDF editor** - notes, drawings, highlights, redaction, signature stamps, form filling, page reordering, text editing and **tracked changes** for your own annotations; export keeps the original content byte-for-byte wherever possible.
 - **Image editor** - non-destructive crop, rotate, adjust and draw, with the same **tracked changes** as the PDF editor; the original file is never overwritten.
 - **DOCX editor** - a loss-preserving Word editor: only what you touch is rewritten. Tables, pictures, contents list, tracked changes (shown and resolvable), spell checking, find & replace, and PDF export.
-- **Text & source editor** - syntax colouring for 27 languages, folding, line numbers, indent guides, bracket matching, find & replace, an overview column and its own colour themes; plus a live HTML preview.
-- **Tables** - `.csv` and `.tsv` open as an editable table with detected separator and header row, filter and sorting; a DATEV booking batch (`EXTF`/`DTVF`) is recognised by its content, shows a file-header summary and debit/credit totals, and stays read-only.
+- **Text & source editor** - syntax colouring for 28 languages, folding, line numbers, indent guides, bracket matching, find & replace, an overview column and its own colour themes; plus a live HTML preview.
+- **Tables** - `.csv` and `.tsv` open as an editable table with detected separator and header row, formulas (`=A1+B2`), filter and sorting; a DATEV booking batch (`EXTF`/`DTVF`) is recognised by its content, shows a file-header summary and debit/credit totals, and stays read-only.
 - **Live transliteration** - type Latin, get Arabic, Hiragana or Katakana while you write.
 - **Appearance** - every colour of the interface is adjustable, the editor has its own separate palette, and both can be exported and shared.
 
@@ -111,10 +111,19 @@ The build skips it when the `tests/` folder is absent.
 ## Changelog
 
 ### Latest
-- **Feature**: **CSV/TSV table editing** with row and column operations, block pasting, undo, and safe file updates.
-- **Feature**: **Advanced table filtering** with comparisons and date ranges.
-- **Change**: **Improved date sorting** with configurable date formats.
-- **Fix**: **PDF page previews no longer flicker** while scrolling.
+- **Feature**: **Table formulas** can now calculate values from other cells and remain readable across spreadsheet applications.
+- **Change**: **Editor note files** next to PDFs and images are now smaller and can be opened in the app.
+- **Change**: **Search bars** now close when toggled a second time.
+- **Fix**: **Bulk tagging** no longer stalls when tagging many files in large folders.
+- **Fix**: **Audio and video playback** no longer floods the log with decoder messages.
+- **Feature**: **Assembly files** are now supported in the editor with dedicated syntax highlighting and are tested as part of the build.
+- **Fix**: **Case-insensitive table searches** are now faster.
+- **Feature**: **Transliteration in search fields** can be enabled in the settings and is off by default.
+- **Fix**: **Exporting long text to PDF** is no longer slow when syntax colours are enabled.
+- **Fix**: **PDF pages** keep the document's own background while being drawn, and previews now follow the scroll position.
+- **Fix**: **Audio stops when its pane is closed** and survives busy moments.
+- **Fix**: **The app's own data files** now appear and disappear immediately instead of only after reopening the folder.
+- **Change**: **Long menus** now scroll further per wheel notch.
 
 ---
 

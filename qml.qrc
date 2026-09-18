@@ -38,6 +38,7 @@
         <file>qml/docx/DocxRuler.qml</file>
         <file>qml/tags/TagBar.qml</file>
         <file>qml/tags/TagCategoryPanel.qml</file>
+        <file>qml/tags/TagChip.qml</file>
         <file>qml/tags/CategoryNode.qml</file>
         <file>qml/settings/SettingsDialog.qml</file>
         <file>qml/settings/SettingsGroup.qml</file>
@@ -55,10 +56,14 @@
         <file>qml/settings/BookmarkEditDialog.qml</file>
         <file>qml/common/ColorPicker.qml</file>
         <file>qml/common/DrawnIcon.qml</file>
+        <file>qml/common/FormulaHelp.qml</file>
+        <file>qml/common/PatternTable.qml</file>
+        <file>qml/common/SyntaxHint.qml</file>
         <file>qml/common/ThemedMenu.qml</file>
         <file>qml/common/FileChooser.qml</file>
         <file>qml/common/FolderImagePicker.qml</file>
         <file>qml/common/SmoothWheelArea.qml</file>
+        <file>qml/common/TranslitInput.qml</file>
         <file>qml/common/ScrollableBar.qml</file>
         <file>qml/common/TranslitButton.qml</file>
         <file>qml/style/qmldir</file>

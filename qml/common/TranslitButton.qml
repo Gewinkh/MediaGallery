@@ -7,6 +7,13 @@ import MediaGallery 1.0
 Rectangle {
     id: root
 
+    //  Zusaetzliche Bedingung des Aufrufers (etwa "nur im Bearbeitungsmodus").
+    //  Sie steht hier und nicht als `visible` am Aufrufer, damit der zentrale
+    //  Schalter nicht ueberschrieben wird.
+    property bool erlaubt: true
+
+    objectName: "translitBtn"    // Griff fuer tests/bench
+    visible: Translit.buttonVisible && root.erlaubt
     width: 30; height: 26; radius: 6
     color: Translit.enabled
            ? Qt.rgba(App.themeAccent.r, App.themeAccent.g, App.themeAccent.b, 0.30)

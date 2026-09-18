@@ -22,6 +22,8 @@ Item {
     property bool   _readOnly: false
     //  Der Umschalter dazu sitzt in der Kopfleiste des Viewers, nicht hier.
     property bool   isStorage: false
+    //  Beidatei der Editoren statt Ordner-Ablage - nur fuer den Hinweistext.
+    property bool   isEditNotes: false
     property bool   rawView: false
     property bool   _pdfBusy: false
 
@@ -59,7 +61,9 @@ Item {
     property bool   _findHighlight: true
     property string _findStatus: ""
 
+    //  Strg+F ist ein SCHALTER, wie in der PDF-Ansicht.
     function _openFind() {
+        if (root._findOpen) { root._closeFind(); return }
         if (editor.selectedText.length > 0 && editor.selectedText.indexOf("\n") < 0)
             findField.text = editor.selectedText
         root._findOpen = true
@@ -171,6 +175,7 @@ Item {
         //  Eine gekuerzte Datei duerfte man beim Speichern abschneiden; die
         //  eigene Ablage ist binaer und wird hier nur lesbar dargestellt.
         root.isStorage = source.length > 0 && Viewer.isStorageFile(source)
+        root.isEditNotes = root.isStorage && Viewer.isEditNotesFile(source)
         root.rawView = false
         root._readOnly = source.length > 0
                          && (Viewer.textFileTruncated(source) || root.isStorage)
@@ -585,6 +590,8 @@ Item {
                 placeholderTextColor: App.themeTextMuted
                 font.pixelSize: 12
                 background: null
+                onTextChanged: translitHaken.pruefe()
+                TranslitInput { id: translitHaken; feld: innerField }
                 Keys.onPressed: function (e) {
                     if (e.key === Qt.Key_Escape) {
                         ff.escaped(); e.accepted = true
@@ -759,8 +766,10 @@ Item {
                       verticalCenter: parent.verticalCenter }
             visible: root._readOnly
             //  Die Ablage ist nicht zu gross - sie wird nur angezeigt.
-            text: App.uiText(App.language, root.isStorage ? "StorageReadOnlyTip"
-                                                          : "TextReadOnlyTip")
+            text: App.uiText(App.language,
+                             root.isEditNotes ? "EditNotesReadOnlyTip"
+                                              : (root.isStorage ? "StorageReadOnlyTip"
+                                                                : "TextReadOnlyTip"))
             color: Qt.rgba(1, 0.72, 0.45, 1)
             font.pixelSize: 11
             elide: Text.ElideRight

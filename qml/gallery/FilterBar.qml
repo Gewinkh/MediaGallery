@@ -669,7 +669,8 @@ Rectangle {
                 placeholderText: App.uiText(App.language, "FilterSearchPlaceholder")
                 background: null
                 verticalAlignment: TextInput.AlignVCenter
-                onTextChanged: galleryModel.searchText = text
+                onTextChanged: { translitHaken.pruefe(); galleryModel.searchText = text }
+                TranslitInput { id: translitHaken; feld: searchInput }
                 Keys.onEscapePressed: function(event) {
                     searchInput.text = ""
                     searchInput.focus = false

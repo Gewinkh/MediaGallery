@@ -161,19 +161,29 @@ void TagManager::merkeDateiVorher(const QString& fileName) {
     if (!m_storage || fileName.isEmpty()) return;
     UndoStep* step = offenerSchritt();
     if (!step || !step->delta || step->tagsBefore.contains(fileName)) return;
-    step->tagsBefore.insert(fileName, m_storage->getTags(fileName));
-    const int vorher = step->bytes;
-    step->bytes = deltaGroesse(*step);
-    m_stack->bytes += step->bytes - vorher;
+    const QStringList tags = m_storage->getTags(fileName);
+    //  NUR den Zuwachs dieses einen Eintrags aufschlagen. Die Groesse jedes Mal
+    //  ueber den ganzen Schritt zu rechnen war quadratisch: ein Tag auf 12.000
+    //  gewaehlte Dateien kostete dadurch 671 ms statt 25.
+    const int zuwachs = eintragGroesse(fileName, tags);
+    step->tagsBefore.insert(fileName, tags);
+    step->bytes += zuwachs;
+    m_stack->bytes += zuwachs;
 }
 
-//  Grobe Groesse eines Delta-Schritts fuer den RAM-Deckel: Name plus Tags.
+//  Grobe Groesse EINES Eintrags fuer den RAM-Deckel: Name plus Tags.
+int TagManager::eintragGroesse(const QString& name, const QStringList& tags) {
+    int n = int(name.size()) * 2 + 16;
+    for (const QString& t : tags) n += int(t.size()) * 2 + 8;
+    return n;
+}
+
+//  Die Groesse eines ganzen Delta-Schritts - nur dort, wo er in EINEM Zug
+//  entsteht (das Gegenstueck beim Rueckgaengig).
 int TagManager::deltaGroesse(const UndoStep& step) {
     int n = 0;
-    for (auto it = step.tagsBefore.cbegin(); it != step.tagsBefore.cend(); ++it) {
-        n += int(it.key().size()) * 2 + 16;
-        for (const QString& t : it.value()) n += int(t.size()) * 2 + 8;
-    }
+    for (auto it = step.tagsBefore.cbegin(); it != step.tagsBefore.cend(); ++it)
+        n += eintragGroesse(it.key(), it.value());
     return n;
 }
 
@@ -400,8 +410,10 @@ QStringList TagManager::allTags() const { return m_storage->allTags(); }
 QColor      TagManager::tagColor(const QString& tag) const { return m_storage->tagColor(tag); }
 
 void TagManager::setTagColor(const QString& tag, const QColor& c) {
+    //  Auch das aendert nur die Farbtabelle - kein Schnappschuss noetig.
     beginUndoStep(mg::tagmark::mkRecolor(mg::tagmark::Thing::Tag, tag, {},
-                                       m_storage->tagColor(tag), c));
+                                       m_storage->tagColor(tag), c),
+                  /*deltaFaehig=*/true);
     m_storage->setTagColor(tag, c);
     m_storage->saveCurrentFolder();
     emit tagColorChanged(tag, c);
@@ -420,10 +432,15 @@ void TagManager::addTagToFile(const QString& fileName, const QString& tag) {
     }
 }
 
+//  Ein Tag anlegen aendert NUR die Farbtabelle - und die nimmt ein Delta-Schritt
+//  als Ganzes mit (implizit geteilt, kostet nichts). Der frueher genommene
+//  Schnappschuss kostete bei 12.000 Dateien 6,9 ms im GUI-Faden, davon 3,8 ms
+//  fuers Packen; der ganze Vorgang 8,6 -> 1,7 ms.
 void TagManager::createTag(const QString& name, const QColor& color) {
     if (name.trimmed().isEmpty()) return;
     beginUndoStep(mg::tagmark::mkSimple(mg::tagmark::Verb::Create,
-                                      mg::tagmark::Thing::Tag, name.trimmed(), {}));
+                                      mg::tagmark::Thing::Tag, name.trimmed(), {}),
+                  /*deltaFaehig=*/true);
     m_storage->ensureTagRegistered(name.trimmed());
     if (color.isValid())
         m_storage->setTagColor(name.trimmed(), color);

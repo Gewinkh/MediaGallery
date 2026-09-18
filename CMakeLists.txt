@@ -43,6 +43,12 @@ option(MG_CCACHE      "ccache benutzen, wenn vorhanden (AUS misst die rohe Bauze
 option(MG_WARNINGS    "Compiler-Warnungen -Wall -Wextra" ON)
 option(MG_SANITIZE    "Address-/UB-Sanitizer im ganzen Baum - nur in einem eigenen Ordner" OFF)
 option(MG_BUILD_TESTS "Regressionssuite tests/ einbinden, sofern vorhanden" ON)
+#  Handgeschriebene Assembly. Bewusst AUS: der Baum muss sich ohne sie bauen
+#  lassen, sonst waere die Plattformunabhaengigkeit weg und nicht nur gefaehrdet.
+#  Sie greift NUR dort, wo eine Fassung fuer genau diese Aufrufkonvention
+#  vorliegt (heute: System V auf x86-64); ueberall sonst bleibt es beim C++-Weg,
+#  ohne dass am Aufruf etwas anders aussieht.
+option(MG_ASM "Handgeschriebene Assembly mitbauen, wo es eine Fassung gibt" OFF)
 
 #  Optimiert wird einmal beim Linken statt je Datei: schneller gebaut (s. oben)
 #  und ohne Laufzeitverlust - Equalizer 81 ms mit und ohne, RSS der App gleich,
@@ -110,6 +116,26 @@ set_target_properties(mg_pch PROPERTIES AUTOMOC OFF AUTORCC OFF)
 target_link_libraries(mg_pch PRIVATE Qt6::Core Qt6::Gui)
 target_precompile_headers(mg_pch PRIVATE pch/Precompiled.h)
 
+#  Die Weiche steht VOR dem Ziel, damit die Quellenliste sie schon kennt.
+#  `CMAKE_SYSTEM_PROCESSOR` entscheidet ueber den Befehlssatz, das System ueber
+#  die Aufrufkonvention - beides muss passen, sonst wird gar nichts gebaut.
+set(MG_ASM_SOURCES "")
+set(MG_ASM_WHY "aus (MG_ASM=OFF)")
+if(MG_ASM)
+    if(CMAKE_SYSTEM_PROCESSOR MATCHES "^(x86_64|AMD64)$"
+       AND (CMAKE_SYSTEM_NAME STREQUAL "Linux" OR CMAKE_SYSTEM_NAME STREQUAL "Darwin")
+       AND NOT MSVC)
+        enable_language(ASM)
+        set(MG_ASM_SOURCES src/simd/asm/sysv_x86_64/findchar_avx2.S)
+        set(MG_ASM_WHY "an (System V, x86-64)")
+    else()
+        set(MG_ASM_WHY "aus (keine Fassung fuer ${CMAKE_SYSTEM_NAME}/${CMAKE_SYSTEM_PROCESSOR})")
+    endif()
+endif()
+message(STATUS "Assembly: ${MG_ASM_WHY}")
+#  `MG_ASM_ENABLED` schaltet die Deklaration in `FindChar.h` frei. Ohne das
+#  Merkzeichen gibt es das Symbol gar nicht, und die Weiche kennt den Weg nicht.
+
 add_library(mg_lib STATIC
     src/app/AppController.cpp
     src/app/AppController.h
@@ -155,6 +181,8 @@ add_library(mg_lib STATIC
 
     src/core/AppSettings.cpp
     src/core/AppSettings.h
+    src/core/EditSidecar.cpp
+    src/core/EditSidecar.h
     src/core/FileBrowseModel.cpp
     src/core/FileBrowseModel.h
     src/core/FolderImages.cpp
@@ -164,6 +192,8 @@ add_library(mg_lib STATIC
     src/core/JsonStorage.h
     src/core/MGStorage.cpp
     src/core/MGStorage.h
+    src/core/MediaLogs.cpp
+    src/core/MediaLogs.h
     src/core/MemoryUtils.h
     src/core/PathUtils.h
     src/core/PdfGlyphRuns.cpp
@@ -298,12 +328,23 @@ add_library(mg_lib STATIC
     src/pdf/extract/PdfPageCopier.cpp
     src/pdf/extract/PdfPageCopier.h
 
+    src/simd/Dispatch.cpp
+    src/simd/Dispatch.h
+    src/simd/FindChar.cpp
+    src/simd/FindChar.h
+    src/simd/FindChar_arm.cpp
+    src/simd/FindChar_plain.cpp
+    src/simd/FindChar_x86.cpp
+    ${MG_ASM_SOURCES}
+
     src/table/DelimitedText.cpp
     src/table/DelimitedText.h
     src/table/TableController.cpp
     src/table/TableController.h
     src/table/TableFilter.cpp
     src/table/TableFilter.h
+    src/table/TableFormula.cpp
+    src/table/TableFormula.h
     src/table/TableSearch.cpp
     src/table/TableSearch.h
     src/table/TableSort.cpp
@@ -314,6 +355,8 @@ add_library(mg_lib STATIC
     src/tags/TagCategory.h
     src/tags/TagController.cpp
     src/tags/TagController.h
+    src/tags/TagListModel.cpp
+    src/tags/TagListModel.h
     src/tags/TagManager.cpp
     src/tags/TagManager.h
     src/tags/TagUndoMark.cpp
@@ -322,6 +365,9 @@ add_library(mg_lib STATIC
     src/tags/TagUndoStack.h
 )
 target_include_directories(mg_lib PUBLIC src)
+if(MG_ASM_SOURCES)
+    target_compile_definitions(mg_lib PUBLIC MG_ASM_ENABLED=1)
+endif()
 target_link_libraries(mg_lib PUBLIC
     Qt6::Core Qt6::Gui Qt6::Qml Qt6::Quick Qt6::Multimedia Qt6::Pdf Qt6::WebEngineQuick)
 target_precompile_headers(mg_lib REUSE_FROM mg_pch)

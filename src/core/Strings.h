@@ -684,6 +684,8 @@ enum class StringKey {
     TranslitHiragana,          // Popup: Japanisch – Hiragana
     TranslitKatakana,          // Popup: Japanisch – Katakana
     SettingsTranslitGroup,     // Settings-Gruppentitel
+    SettingsTranslitButton,    // Schalter: Umschalter in den Leisten zeigen
+    SettingsTranslitButtonHint,
     TranslitSchemeLabel,       // Settings: Auswahl des zu bearbeitenden Schemas
     TranslitKeyPlaceholder,    // Settings: Platzhalter Eingabe (Latein)
     TranslitValuePlaceholder,  // Settings: Platzhalter Ausgabe (Zielschrift)
@@ -932,12 +934,18 @@ enum class StringKey {
     TableCopiedCell,
     TableCopiedRow,
     TableSorting,
+    TableFormulas,
+    TableFormulaHint,
+    SettingsGenFormulas,       // Gruppentitel „Formeln in Tabellen"
+    SettingsGenFormulaDemo,
+    SettingsGenFormulaSyntax,  // die Schreibweise zum Nachsehen
     SettingsTableTxt,
     SettingsTableTxtTip,
     StorageViewRaw,
     StorageViewReadable,
     StorageViewTip,
     StorageReadOnlyTip,
+    EditNotesReadOnlyTip,
     CtxFileInfo,
     InfoTitle,
     InfoName,

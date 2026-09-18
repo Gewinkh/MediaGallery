@@ -755,11 +755,26 @@ Item {
             // da, ohne je sichtbar zu sein (165 der 218 ms Aufbauzeit). Der ZUSTAND liegt deshalb hier in der Hälfte.
             Loader {
                 id: catPanelLoader
+                //  ASYNCHRON: das Panel baut bei 400 Tags und einem grossen
+                //  Ordner ueber eine Sekunde am Stueck. Incubation verteilt das
+                //  auf Bilder, statt den Faden zu blockieren.
+                asynchronous: true
                 active: pane.tagsSectionOn || pane.catsSectionOn
                 visible: active
                 width: Math.min(300, galleryPage.width * 0.45)
                 anchors { right: parent.right; top: filterBar.bottom; bottom: parent.bottom }
-                source: active ? "qrc:/qml/tags/TagCategoryPanel.qml" : ""
+                //  Die Abschnitte gleich BEIM Erzeugen richtig setzen. Ueber
+                //  `source` + `Binding` stuenden sie zuerst auf ihrer Vorgabe
+                //  (beide an) - dann baut das Panel kurz auch den Abschnitt, den
+                //  niemand wollte, und raeumt ihn gleich wieder weg.
+                onActiveChanged: {
+                    if (active)
+                        setSource("qrc:/qml/tags/TagCategoryPanel.qml",
+                                  { showTagsSection: pane.tagsSectionOn,
+                                    showCategoriesSection: pane.catsSectionOn })
+                    else
+                        setSource("")
+                }
                 onLoaded: {
                     item.tagsCtl = PaneCtl.tags
                     item.folderSource = PaneCtl

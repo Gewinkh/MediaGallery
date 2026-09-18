@@ -67,7 +67,7 @@ which. Files without an extension such as `LICENSE`, `README`, `Makefile` or
 
 ## Text Editor
 - **Saves by itself**: when you leave the file, switch to another, and at an adjustable interval. `Ctrl+S` works too; a dot in the status bar shows unsaved changes
-- **Syntax colouring for 27 languages**, including C/C++, Python, Java, JavaScript/TypeScript, C#, Go, Rust, PHP, Swift, Kotlin, shell, Ruby, Lua, CMake, YAML, SQL, HTML/XML, CSS, JSON, INI/TOML, QML and Markdown. HTML also colours the CSS and JavaScript inside it
+- **Syntax colouring for 28 languages**, including C/C++, Python, Java, JavaScript/TypeScript, C#, Go, Rust, PHP, Swift, Kotlin, shell, Ruby, Lua, CMake, YAML, SQL, HTML/XML, CSS, JSON, INI/TOML, QML, assembly (`.s`, `.asm`, `.inc`) and Markdown. HTML also colours the CSS and JavaScript inside it
 - **Folding**: collapse functions, blocks, sections or headings from a bar next to the line numbers. The file itself is not changed
 - **Find and replace** (`Ctrl+F`): hit counter, match case, whole words, all hits highlighted; *Replace all* is one undo step
 - **Line numbers, current-line highlight, indent guides, bracket matching** (an unmatched bracket turns red)
@@ -108,7 +108,7 @@ which. Files without an extension such as `LICENSE`, `README`, `Makefile` or
 - **Open `.txt` as a table too** (*Settings ▸ View ▸ Files*, off by default) - only if the file really has columns
 
 **Search, sort, filter**
-- **`Ctrl+F`** searches the table and shows the hit count. `Aa` matches case, *Cell* only finds exact cell contents. In a file with several tables, the bar names the other tables with hits
+- **`Ctrl+F`** searches the table and shows the hit count; pressing it again closes the bar and clears the hits. `Aa` matches case, *Cell* only finds exact cell contents. In a file with several tables, the bar names the other tables with hits
 - **Click a heading to sort**: ascending, descending, back to file order. Numbers sort as numbers, dates by calendar (`DD.MM.YYYY`, `YYYY-MM-DD` and `DD/MM/YYYY` or `MM/DD/YYYY` as set in the settings)
 - **Filter** (button right of *Document*): pick a column or all columns, then type text - or a comparison:
   - numbers: `>200`, `<200`, `>=200`, `<=200`, `100->200`
@@ -116,6 +116,14 @@ which. Files without an extension such as `LICENSE`, `README`, `Makefile` or
   - the row numbers stay those of the file; the drawn X clears the filter
 - **Hide columns** and **freeze the first column** from the heading's right-click menu
 - Sorting and filtering never change the file
+
+**Formulas**
+- **A cell that starts with `=` is calculated** and shows its result: `=A1+B2`, `=SUM(D1:D9)`, `=IF(B1>2;"expensive";"cheap")`. Columns are lettered A, B, C in the top bar, rows are numbered - the same grid a spreadsheet uses
+- **The file keeps the formula, not the number.** Open the same file in a spreadsheet and it calculates the same thing. Editing a cell (`F2`) shows the formula again; a small corner mark and a count in the footer show which cells are calculated
+- **Names work in English and German** (`SUM` or `SUMME`, `IF` or `WENN`) whatever language the app is set to, so a file reads the same everywhere. Available: sum, product, average, min, max, count, round, absolute, integer, square root, power, remainder, if, and, or, not, join, length, upper, lower, trim, left, right, mid, value
+- **Examples to look up** in *Settings ▸ General ▸ Formulas in tables*: a small sample table is shown, and next to each formula what it gives on exactly that table
+- **Search, sort and filter use the result**, not the formula text
+- Mistakes stay visible in the cell as `#REF!`, `#DIV/0!`, `#NAME?`, `#VALUE!`, `#CYCLE!` or `#SYNTAX!` - nothing is silently dropped
 
 **Editing**
 - **A click marks a cell** (for showing someone something); **double click or `F2` edits it**. `Enter` confirms and moves down, `Tab` moves right, `Esc` cancels
@@ -185,7 +193,7 @@ of times · `{4}` exactly four times · `^` line start · `$` line end · `a|b` 
 
 ## PDF Editor
 Notes, drawings, highlights, redactions and form values are stored in a small
-file next to the PDF (`<name>.mgedit.json`) and stay editable. **Export** writes a
+file next to the PDF (`<name>.mgedit`) and stay editable. **Export** writes a
 new copy; the original is not touched.
 
 **Page changes are the exception**: moving, rotating, removing and inserting
@@ -210,7 +218,7 @@ pages change the PDF directly. `Ctrl+Z` undoes them while the file is open.
 ## Image Editor
 - Opens from the **Edit** button in the image viewer; the original is never changed
 - **Text notes and drawings** with the same tools and formatting as the PDF editor, including tracked changes
-- Notes are saved next to the image (`<image>.mgedit.json`)
+- Notes are saved next to the image (`<image>.mgedit`)
 - **Export** writes a new image with the notes drawn in, in the same format (JPG stays JPG, PNG stays PNG)
 
 ## DOCX Editor
@@ -238,8 +246,9 @@ pages change the PDF directly. `Ctrl+Z` undoes them while the file is open.
 ---
 
 ## Live Transliteration
+- **Off until you switch it on**: tick *Show the switch in the toolbars* in *Settings ▸ Editor*. Without it no toolbar carries the button, and nothing is transliterated
 - Type Latin letters and get **Arabic (with vowel marks)** or **Japanese (Hiragana/Katakana)** as you type
-- Works in the text editor, the HTML source and PDF notes
+- Works in the text editor, the HTML source and PDF notes - and in the **search fields** of the gallery, tables, the text editor and PDFs
 - Handles the Arabic article, doubled consonants and word endings
 - The mapping tables can be edited in *Settings ▸ Editor*
 
@@ -289,10 +298,11 @@ pages change the PDF directly. `Ctrl+Z` undoes them while the file is open.
 ---
 
 ## Files Next to Your Media
-- **The app's own files are hidden by default**: the folder file with tags (`<Folder>.mgstore`), editor notes (`<file>.mgedit.json`) and DOCX backups (`.bak`)
+- **The app's own files are hidden by default**: the folder file with tags (`<Folder>.mgstore`), editor notes (`<file>.mgedit`) and DOCX backups (`.bak`)
 - **Show all files** (*Settings ▸ View ▸ Files*) shows them - and every other file type, with an extension badge
 - **Delete notes or backups** without the file itself: right-click a tile, or *Document* menu for PDFs and images. Goes to the trash; `Ctrl+Z` brings it back
 - **Look inside the folder file**: open the `.mgstore` to see all tags, categories and assignments in readable form; *Raw* shows the bytes
+- **Look inside the editor notes** the same way: open the `.mgedit` next to a PDF or image to read what is stored there. Both are shown for reading only
 
 ## Metadata & File Management
 - **Date**: set a file's date; it is written to the file itself. *Reset* returns to the creation date

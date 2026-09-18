@@ -1,4 +1,5 @@
 #include "media/ThumbnailLoader.h"
+#include "core/MediaLogs.h"
 
 #include "media/ContentSniff.h"
 #include "docx/DocxDocument.h"
@@ -385,6 +386,9 @@ QImage ThumbnailTask::generateVideoThumbnail(const QString& path, const QSize& s
     QMutex         mutex;
     QWaitCondition cond;
 
+    //  Die erste Vorschau eines Videos ist der frueheste Punkt, an dem
+    //  FFmpeg ueberhaupt laedt - hier faellt der Griff nicht auf.
+    mg::media::beQuiet();
     auto* player = new QMediaPlayer;
     auto* sink   = new QVideoSink;
     player->moveToThread(&thread);
@@ -1056,8 +1060,9 @@ QImage ThumbnailTask::generateTextThumbnail(const QString& path, const QSize& si
     //  Design-Karte.
     if (!stil.zeigeInhalt)
         return generateTypeCardThumbnail(path, size, stil);
-    //  Die eigene Ablage ist binaer - ihre Bytes als Text waeren Zeichensalat.
-    if (path.endsWith(QLatin1String(".mgstore"), Qt::CaseInsensitive))
+    //  Die eigenen Ablagen sind binaer - ihre Bytes als Text waeren Zeichensalat.
+    if (path.endsWith(QLatin1String(".mgstore"), Qt::CaseInsensitive)
+        || path.endsWith(QLatin1String(".mgedit"), Qt::CaseInsensitive))
         return generateTypeCardThumbnail(path, size, stil);
 
     // HTML/HTM -> gerenderte Design-Karte (Hero-Nachbildung) statt Quelltext.

@@ -41,7 +41,9 @@ Item {
         TapHandler { onTapped: parent.clicked() }
     }
 
+    //  Strg+F ist ein SCHALTER, wie in der PDF-Ansicht.
     function openFind() {
+        if (root.findVisible) { root.closeFind(); return }
         root.findVisible = true
         findField.field.forceActiveFocus()
         findField.field.selectAll()
@@ -2105,9 +2107,10 @@ Item {
             anchors.fill: parent
             acceptedButtons: Qt.NoButton
             // ZEILEN je Rastung wie in jedem Texteditor, nicht ein Anteil der Fensterhöhe (ein Viertel Viewport waren auf
-            // 900 px ~225 px). `Application.styleHints`, NICHT `Qt.styleHints` - das gibt es in QML nicht, still NaN.
-            readonly property int wheelLines:
-                Math.max(1, Application.styleHints.wheelScrollLines)
+            // 900 px ~225 px). FESTE Zahl und NICHT `Application.styleHints.wheelScrollLines`: der Wert steht global
+            // hoch, damit Qts eigene Listen (Menues mit hunderten Eintraegen) nicht zum Kurbeln werden - in einem
+            // Dokument waeren zwoelf Zeilen je Rastung zu viel.
+            readonly property int wheelLines: 6
             onWheel: (w) => {
                 //  Touchpad/hochauflösendes Rad liefern `pixelDelta` - das ist
                 //  bereits die gewünschte Strecke und wird PIXELGENAU

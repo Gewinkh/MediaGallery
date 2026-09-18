@@ -305,9 +305,12 @@ Item {
             TBtn { iconName: "plus"; tip: App.uiText(App.language, "ImageZoomIn"); onActivated: root.zoomIn() }
             Text { anchors.verticalCenter: parent.verticalCenter; width: 46; horizontalAlignment: Text.AlignHCenter
                    text: Math.round(root.dispScale * 100) + "%"; color: App.themeTextMuted; font.pixelSize: 11 }
-            Rectangle { visible: root.editCtl.editMode; width: 1; height: 18; color: App.themeBorder
+            //  Der Trennstrich gehoert zum Knopf - ohne ihn haenge er allein am
+            //  Ende der Leiste.
+            Rectangle { visible: translitBtn.visible; width: 1; height: 18; color: App.themeBorder
                         anchors.verticalCenter: parent.verticalCenter }
-            TranslitButton { visible: root.editCtl.editMode; anchors.verticalCenter: parent.verticalCenter }
+            TranslitButton { id: translitBtn; erlaubt: root.editCtl.editMode
+                             anchors.verticalCenter: parent.verticalCenter }
         }
     }
 

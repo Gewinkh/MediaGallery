@@ -202,6 +202,10 @@ FocusScope {
         //  wenn jemand hinschaut.
         root._rohtextGesehen = false
 
+        //  Vor dem Aufbau der Flaeche, nicht darin: die Meldungen entstehen
+        //  schon beim Einlesen der Quelle.
+        if (type === 1 || type === 2) Viewer.quietMediaLogs()
+
         if (type === 1 && App.videoPlayback === "external") {
             Viewer.openExternally(path)
         }
@@ -484,6 +488,7 @@ FocusScope {
 
                 ScrollableBar {
                     id: headRightBar
+                    objectName: "headRight"     // Griff fuer tests/bench
                     anchors.right: parent.right
                     anchors.verticalCenter: parent.verticalCenter
                     height: 30
@@ -499,24 +504,28 @@ FocusScope {
                     onActivated: root.addFileRequested()
                 }
 
-                ChromeBtn {
-                    id: mapBtn
-                    visible: root._textCtl !== null
-                    anchors.verticalCenter: parent.verticalCenter
-                    kind: "toc"
-                    active: Editor.minimap
-                    tip: App.uiText(App.language, "EditorMinimapTip")
-                    onActivated: Editor.minimap = !Editor.minimap
-                }
                 TranslitButton {
                     id: translitBtn
                     //  Nicht bei der eigenen Ablage: dort laesst sich nichts
                     //  schreiben, der Knopf staende nur herum.
-                    visible: root._textCtl !== null
+                    erlaubt: root._textCtl !== null
                              && root._textCtl.isStorage !== true
                     anchors.verticalCenter: parent.verticalCenter
                 }
 
+                //  Feste Reihenfolge, damit jeder Knopf in jedem Zustand an
+                //  derselben Stelle steht: erst die DATEI, dann der UMSCHALTER der
+                //  Ansicht, ganz rechts deren OPTION. Aus den beiden hinteren
+                //  Gruppen ist je Zustand hoechstens einer sichtbar.
+                ChromeBtn {
+                    id: diceBtn
+                    anchors.verticalCenter: parent.verticalCenter
+                    visible: root.type !== 4 && root.type !== 5
+                    kind: "dice"
+                    tip: App.uiText(App.language, "ViewerRandom")
+                    active: root.randomNext
+                    onActivated: root.randomNext = !root.randomNext
+                }
                 //  Nur bei der eigenen Ablage: lesbar oder die Bytes.
                 ChromeBtn {
                     id: rohBtn
@@ -543,29 +552,6 @@ FocusScope {
                     }
                 }
                 ChromeBtn {
-                    id: numbersBtn
-                    //  Nur, solange wirklich eine Tabelle dasteht - im Rohtext
-                    //  gaebe es nichts zu nummerieren.
-                    visible: root._showDatevTable || root._showTable
-                    anchors.verticalCenter: parent.verticalCenter
-                    kind: "gridhead"
-                    active: root._tableNumbers
-                    tip: App.uiText(App.language, "TableNumbersTip")
-                    onActivated: root._tableNumbers = !root._tableNumbers
-                }
-                ChromeBtn {
-                    id: diceBtn
-                    anchors.verticalCenter: parent.verticalCenter
-                    visible: root.type !== 4 && root.type !== 5
-                    kind: "dice"
-                    tip: App.uiText(App.language, "ViewerRandom")
-                    active: root.randomNext
-                    onActivated: root.randomNext = !root.randomNext
-                }
-                //  GANZ RECHTS und damit an derselben Stelle, egal welche
-                //  Knoepfe daneben gerade sichtbar sind: er ist der eine,
-                //  den man in JEDEM Zustand wiederfinden muss.
-                ChromeBtn {
                     id: datevBtn
                     visible: root._isDatev || root._isTable
                     anchors.verticalCenter: parent.verticalCenter
@@ -577,6 +563,26 @@ FocusScope {
                     //  Flaechen bleiben stehen. Ein Release loeschte den Text und
                     //  mit ihm die Undo-Historie.
                     onActivated: root._datevTable = !root._datevTable
+                }
+                ChromeBtn {
+                    id: mapBtn
+                    visible: root._textCtl !== null
+                    anchors.verticalCenter: parent.verticalCenter
+                    kind: "toc"
+                    active: Editor.minimap
+                    tip: App.uiText(App.language, "EditorMinimapTip")
+                    onActivated: Editor.minimap = !Editor.minimap
+                }
+                ChromeBtn {
+                    id: numbersBtn
+                    //  Nur, solange wirklich eine Tabelle dasteht - im Rohtext
+                    //  gaebe es nichts zu nummerieren.
+                    visible: root._showDatevTable || root._showTable
+                    anchors.verticalCenter: parent.verticalCenter
+                    kind: "gridhead"
+                    active: root._tableNumbers
+                    tip: App.uiText(App.language, "TableNumbersTip")
+                    onActivated: root._tableNumbers = !root._tableNumbers
                 }
                 }   // Ende headRightBar
 

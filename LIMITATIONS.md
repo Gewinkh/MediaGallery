@@ -37,10 +37,13 @@ Workaround: the app runs normally and says why the feature is off.
 
 ## Gallery and files
 
-**Scrolling is less smooth when hundreds of tiles are selected.**
-Why: each selected tile draws a tinted overlay. With 600 selected tiles a frame
-takes about 10 ms instead of 6 ms.
-Workaround: none planned - a cheaper way would change how a selection looks.
+**Scrolling is less smooth when every tile carries a tag or is selected.**
+Why: a selected tile draws a tinted overlay, and a tagged tile draws a coloured
+dot per tag. With 12,000 tiles a frame takes about 6 ms plain, 10 ms once every
+tile is tagged, and 14 ms with a full selection on top. Both cost about the same.
+Workaround: the compact tile (options mode off, `Alt+S`) does not show the dots
+and is back to about 8 ms. A cheaper way would change how a selection and a tag
+look; three attempts were measured and none of them helped.
 
 **"Show all files" really shows everything**, including archives and programs.
 Why: anything narrower would hide the `.bak` backups the switch exists for.
@@ -408,6 +411,34 @@ Workaround: use `Ctrl+F`, which always searches literally.
 Why: `1.234` could be one point two or twelve hundred. The German reading was
 chosen; `1.234,56` and `1,234.56` are always read correctly.
 
+**Formulas do not move when you insert or delete rows and columns.**
+Why: the formula is plain text in the file, and rewriting it behind your back
+could quietly change a result. `=A5` still means row 5 afterwards.
+Workaround: correct the formula, or insert rows below the ones you refer to.
+
+**A formula only reaches cells in its own table.**
+Why: in a file with several tables, `A1` is the first data row of the table the
+formula sits in - otherwise the same formula would show different numbers
+depending on which tab is open. Reaching past the table gives `#REF!`.
+
+**Inside a formula, `.` is the decimal point and `;` separates arguments.**
+Why: a comma has to be both in different places. A comma between digits counts as
+a decimal point (`=1,5*2` works); anywhere else it separates. The *result* is
+shown with the separator the file itself uses.
+
+**A formula containing `;` is put in quotes when the file uses `;` as its
+separator.**
+Why: without the quotes the next reader would see two columns instead of one
+formula. Spreadsheets do the same; the file stays correct.
+
+**Formulas are recalculated as a whole after every change.**
+Why: about 8 ms on a 15 MB table with 100,000 rows. Tables without any formula
+are not affected at all.
+
+**Tagging very many files at once takes a moment.**
+Why: about 60 ms for 12,000 files. Each file's previous state is kept so one
+`Ctrl+Z` takes the whole batch back.
+
 **A file changed by another program while you edit is not saved over.**
 Why: saving would destroy the other change.
 Workaround: *Save as copy* writes `<name>_edited.<ext>`; *Reload* takes the other
@@ -500,6 +531,20 @@ Workaround: the raw view shows the line exactly as written.
 
 ---
 
+**Opening the tag or category panel in a very large folder takes a moment.**
+Why: the panel builds a chip for every tag and a row for every category. With
+12,000 files and 400 tags the panel used to freeze the window for 1.7 seconds;
+it is now built piece by piece across frames, so the longest stall is about 80
+milliseconds. Closing it still costs about 160 milliseconds, because dropping
+the items cannot be spread out.
+
+**A page of a PDF stays blank for a moment while it is being drawn.**
+Why: pages are drawn one at a time in the background. Until one is ready, its
+place shows the small preview and the document's own background colour instead
+of white, so fast scrolling stays readable.
+
+---
+
 ## Not built yet
 
 Planned work, not limits. Once something is built, it moves to
@@ -508,9 +553,9 @@ Planned work, not limits. Once something is built, it moves to
 - **Spell checking for Japanese** - Japanese has no spaces between words, so it
   would need a different engine (such as MeCab) plus its own dictionary.
   Arabic only needs the `hunspell-ar` dictionary installed.
-- **More syntax languages** - 27 are covered; each new one is a table entry.
+- **More syntax languages** - 28 are covered; each new one is a table entry.
 - **Writing audio tags** (title, artist) - deliberately left out: one wrong byte
   damages the file.
-- **Formulas, formatting and range selection in tables** - a CSV cannot store
-  formulas or formatting. Range selection waits for a faster way of drawing the
-  table.
+- **Formatting and range selection in tables** - a CSV cannot store column
+  widths, colours or fonts; that would need a second file next to it. Range
+  selection waits for a faster way of drawing the table.

@@ -227,6 +227,7 @@ void TransliterationController::load() {
         return;
     const QJsonObject o = jd.object();
     m_enabled = o.value(QStringLiteral("enabled")).toBool(false);
+    m_buttonVisible = o.value(QStringLiteral("button")).toBool(false);
     const QString sc = o.value(QStringLiteral("scheme")).toString();
     if (schemes().contains(sc))
         m_scheme = sc;
@@ -278,6 +279,7 @@ void TransliterationController::save() const {
     }
     QJsonObject root;
     root.insert(QStringLiteral("enabled"),     m_enabled);
+    root.insert(QStringLiteral("button"),      m_buttonVisible);
     root.insert(QStringLiteral("scheme"),      m_scheme);
     root.insert(QStringLiteral("mapsVersion"), kMapsVersion);
     root.insert(QStringLiteral("maps"),        maps);
@@ -298,6 +300,16 @@ void TransliterationController::setEnabled(bool on) {
         return;
     m_enabled = on;
     emit enabledChanged();
+    save();
+}
+
+//  Verschwindet der Knopf, wird auch abgeschaltet - sonst bliebe die Umsetzung
+//  an, ohne dass es noch einen Weg gaebe, sie zu sehen oder zu beenden.
+void TransliterationController::setButtonVisible(bool on) {
+    if (m_buttonVisible == on) return;
+    m_buttonVisible = on;
+    if (!on && m_enabled) { m_enabled = false; emit enabledChanged(); }
+    emit buttonVisibleChanged();
     save();
 }
 

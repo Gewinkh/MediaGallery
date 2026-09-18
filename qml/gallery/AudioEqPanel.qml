@@ -456,6 +456,11 @@ Item {
                             height: 1
                             color: App.themeBorder
                         }
+                        Text {
+                            text: App.uiText(App.language, "AudioEqPresetOverwriteTitle")
+                            color: App.themeTextMuted
+                            font.pixelSize: 11
+                        }
                         Rectangle {
                             width: savePop.availableWidth
                             height: Math.min(120, Math.max(24, overList.contentHeight + 2))
@@ -487,6 +492,10 @@ Item {
                                         font.pixelSize: 12
                                     }
                                     HoverHandler { id: oHover }
+                                    ToolTip.visible: oHover.hovered
+                                    ToolTip.delay: 500
+                                    ToolTip.text: App.uiText(App.language,
+                                                             "AudioEqPresetOverwriteTip")
                                     TapHandler {
                                         //  Wie jeder andere Tipper hier: die Vorgabe
                                         //  `DragThreshold` TEILT den Druckpunkt, der

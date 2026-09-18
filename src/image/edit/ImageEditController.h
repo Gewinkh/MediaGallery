@@ -1,6 +1,6 @@
 #pragma once
 // Bild-Editor je ImageSurface-Kachel (dezentral wie der PDF-Editor): das Original wird nie verändert,
-// Bearbeitungen sind Annotationen im Sidecar `<bild>.mgedit.json`. Erst der Export rendert sie in eine Kopie
+// Bearbeitungen sind Annotationen in der Beidatei `<bild>.mgedit`. Erst der Export rendert sie in eine Kopie
 // im Quellformat; Koordinaten sind Bild-Pixel, der Export zeichnet 1:1 - daher WYSIWYG.
 
 #include <QObject>
@@ -60,7 +60,6 @@ public:
     static constexpr qreal kBoxPaddingPx   = 6.0;
     static constexpr qreal kMinAnnPx       = 8.0;
     static constexpr int   kUndoLimit      = 200;
-    static constexpr qint64 kMaxSidecarBytes = 8LL * 1024 * 1024;
     static constexpr qreal kNoteFoldPx     = 14.0;
     static constexpr qreal kNoteShadowDxPx = 3.0;
     static constexpr qreal kNoteShadowDyPx = 4.0;

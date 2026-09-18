@@ -129,9 +129,21 @@ void AudioController::playAt(int index) {
     m_engine.play(path);
 }
 
+//  Wem der Player gerade gehoert. Verschwindet dieser Besitzer, muss der Ton
+//  mit ihm gehen: eine geschlossene Haelfte raeumt der `AppController` weg, ohne
+//  je den Weg ueber die Oberflaeche zu nehmen - die Wiedergabe lief danach
+//  weiter, und keine neue Haelfte kam mehr an sie heran.
 void AudioController::setOwner(QObject* o) {
     if (m_owner == o) return;
+    if (m_owner) disconnect(m_owner, &QObject::destroyed, this, nullptr);
     m_owner = o;
+    if (o) {
+        connect(o, &QObject::destroyed, this, [this] {
+            stop();
+            m_owner = nullptr;
+            emit ownerChanged();
+        });
+    }
     emit ownerChanged();
 }
 

@@ -1,4 +1,6 @@
 #include "app/ViewerController.h"
+#include "core/EditSidecar.h"
+#include "core/MediaLogs.h"
 #include "core/MGStorage.h"
 #include "pdf/PdfMediaHandler.h"
 #include "core/AppSettings.h"
@@ -143,6 +145,11 @@ QString ViewerController::readTextFile(const QString& filePathOrUrl) const {
         return {};
     }
 
+    //  Die Beidatei der Editoren ist ebenfalls binaer; lesbar ist der
+    //  eingerueckte JSON-Baum darin.
+    if (mg::editsidecar::istBeidatei(raw))
+        return mg::editsidecar::lesbar(path);
+
     //  UTF-8 mit Fehlerpruefung, sonst CP1252 - nicht Latin-1: die beiden gehen
     //  bei 0x80-0x9F auseinander, und genau dort liegen Euro-Zeichen und
     //  typografische Anfuehrungszeichen.
@@ -157,8 +164,19 @@ bool ViewerController::isStorageFile(const QString& filePathOrUrl) const {
     const QString path = mg::toLocalPath(filePathOrUrl);
     QFile f(path);
     if (!f.open(QIODevice::ReadOnly)) return false;
-    const QByteArray kopf = f.read(8);
-    return mg::storage::istMGStorage(kopf.constData(), std::size_t(kopf.size()));
+    const QByteArray kopf = f.read(16);
+    //  Beide eigenen Formate: nur anzeigen, dazu die Rohform anbieten.
+    return mg::storage::istMGStorage(kopf.constData(), std::size_t(kopf.size()))
+        || mg::editsidecar::istBeidatei(kopf);
+}
+
+void ViewerController::quietMediaLogs() const { mg::media::beQuiet(); }
+
+bool ViewerController::isEditNotesFile(const QString& filePathOrUrl) const {
+    const QString path = mg::toLocalPath(filePathOrUrl);
+    QFile f(path);
+    if (!f.open(QIODevice::ReadOnly)) return false;
+    return mg::editsidecar::istBeidatei(f.read(16));
 }
 
 QString ViewerController::readStorageRaw(const QString& filePathOrUrl) const {

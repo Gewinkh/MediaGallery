@@ -299,79 +299,11 @@ Item {
                 title: App.uiText(App.language, "SettingsSearchGroup")
                 Layout.fillWidth: true
 
-                // Zwei Spalten statt einer Textwand: das Muster links in fester Schrift, die Erklärung rechts. Als Raster
-                // beginnen alle Erklärungen an derselben Stelle, egal wie lang das Muster daneben ist.
-                component MusterTabelle: Rectangle {
-                    id: tab
-                    //  Zeilen der Form „Muster<Tab>Erklärung".
-                    property string quelle: ""
-                    property color textFarbe: App.themeTextPrimary
-                    readonly property var zeilen:
-                        tab.quelle.length > 0 ? tab.quelle.split("\n").map(z => z.split("\t"))
-                                              : []
-
-                    Layout.fillWidth: true
-                    color: App.themeBackground
-                    border.color: App.themeBorder
-                    border.width: 1
-                    radius: 6
-                    implicitHeight: raster.implicitHeight + 20
-
-                    GridLayout {
-                        id: raster
-                        anchors { left: parent.left; right: parent.right
-                                  top: parent.top; margins: 10 }
-                        columns: 3
-                        columnSpacing: 10
-                        rowSpacing: 4
-
-                        Repeater {
-                            model: tab.zeilen.length * 3
-                            delegate: Item {
-                                id: zelle
-                                required property int index
-                                readonly property int _zeile: Math.floor(zelle.index / 3)
-                                readonly property int _spalte: zelle.index % 3
-
-                                implicitWidth: zelle._spalte === 1 ? 1 : inhalt.implicitWidth
-                                implicitHeight: Math.max(18, inhalt.implicitHeight)
-                                Layout.fillWidth: zelle._spalte === 2
-                                Layout.fillHeight: zelle._spalte === 1
-                                Layout.alignment: Qt.AlignTop
-
-                                //  Mittlere Spalte: der Trennstrich zwischen
-                                //  dem Befehl und seiner Erklärung.
-                                Rectangle {
-                                    visible: zelle._spalte === 1
-                                    anchors.horizontalCenter: parent.horizontalCenter
-                                    y: 2
-                                    width: 1
-                                    height: Math.max(14, zelle.height - 4)
-                                    color: App.themeBorder
-                                }
-                                Text {
-                                    id: inhalt
-                                    visible: zelle._spalte !== 1
-                                    width: zelle._spalte === 2 ? zelle.width : implicitWidth
-                                    text: zelle._spalte === 0
-                                          ? tab.zeilen[zelle._zeile][0]
-                                          : (tab.zeilen[zelle._zeile][1] || "")
-                                    color: zelle._spalte === 0 ? App.themeAccent : tab.textFarbe
-                                    font.family: zelle._spalte === 0 ? "monospace" : ""
-                                    font.pixelSize: 12
-                                    font.bold: zelle._spalte === 0
-                                    wrapMode: Text.WordWrap
-                                }
-                            }
-                        }
-                    }
-                }
-
-                MusterTabelle {
+                PatternTable {
                     Layout.topMargin: 4
                     quelle: App.uiText(App.language, "SettingsSearchTable")
                 }
-                MusterTabelle {
+                PatternTable {
                     Layout.topMargin: 6
                     quelle: App.uiText(App.language, "SettingsSearchExamples")
                     textFarbe: App.themeTextMuted
@@ -393,11 +325,11 @@ Item {
                     color: App.themeTextMuted
                     wrapMode: Text.WordWrap
                 }
-                MusterTabelle {
+                PatternTable {
                     Layout.topMargin: 4
                     quelle: App.uiText(App.language, "SettingsStorageTable")
                 }
-                MusterTabelle {
+                PatternTable {
                     Layout.topMargin: 6
                     quelle: App.uiText(App.language, "SettingsStorageEffect")
                     textFarbe: App.themeTextMuted
@@ -467,6 +399,21 @@ Item {
                         wrapMode: Text.WordWrap
                         Layout.fillWidth: true
                     }
+                }
+            }
+
+            //  Die Schreibweise zum Nachsehen - eine Formel tippt man selten
+            //  genug, um sie nicht auswendig zu koennen.
+            SettingsGroup {
+                key: "general.formulas"
+                title: App.uiText(App.language, "SettingsGenFormulas")
+                Layout.fillWidth: true
+
+                //  Beispiele statt einer Beschreibung: die kleine Tabelle, und
+                //  darunter je Formel ihr Ergebnis AUF DIESER Tabelle.
+                FormulaHelp {
+                    demo:   App.uiText(App.language, "SettingsGenFormulaDemo")
+                    zeilen: App.uiText(App.language, "SettingsGenFormulaSyntax")
                 }
             }
 

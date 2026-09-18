@@ -151,6 +151,7 @@ private:
     void applyStep(QList<UndoStep>& from, QList<UndoStep>& to, bool redo);
     void merkeDateiVorher(const QString& fileName);
     void aufSchnappschussHeben(UndoStep& step);
+    static int eintragGroesse(const QString& name, const QStringList& tags);
     static int deltaGroesse(const UndoStep& step);
     void beginCountedStep(bool added, mg::tagmark::Thing t, const QString& name,
                           const QStringList& path, bool deltaFaehig = false);

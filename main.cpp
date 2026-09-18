@@ -5,6 +5,7 @@
 #include <QAbstractItemModel>
 #include <QQmlComponent>
 #include <QQmlApplicationEngine>
+#include <QLoggingCategory>
 #include <QStyleHints>
 #include <QQmlContext>
 #include <QQmlEngine>
@@ -123,6 +124,13 @@ int main(int argc, char* argv[]) {
     QGuiApplication::setHighDpiScaleFactorRoundingPolicy(
         Qt::HighDpiScaleFactorRoundingPolicy::PassThrough);
 
+    //  Qts eigene Zeile zum Medien-Backend. Eine gesetzte QT_LOGGING_RULES
+    //  gewinnt: `setFilterRules` steht ueber der Umgebung, und wer sie setzt,
+    //  will mitlesen.
+    if (qEnvironmentVariableIsEmpty("QT_LOGGING_RULES"))
+        QLoggingCategory::setFilterRules(
+            QStringLiteral("qt.multimedia.ffmpeg.info=false"));
+
     QQuickStyle::setStyle(QStringLiteral("style"));
     QQuickStyle::setFallbackStyle(QStringLiteral("Fusion"));
 
@@ -145,8 +153,12 @@ int main(int argc, char* argv[]) {
     app.setOrganizationName("MediaGallery");
     app.setApplicationVersion("1.0.0");
 
-    // Erst nach der QGuiApplication - vorher gibt es keine styleHints.
-    app.styleHints()->setWheelScrollLines(6);
+    // Erst nach der QGuiApplication - vorher gibt es keine styleHints. Der Wert
+    // gilt nur dort, wo Qt selbst rollt: Menues und Auswahllisten; jede eigene
+    // Flaeche nimmt `SmoothWheelArea`. Gemessen an einem Menue mit 400 Eintraegen
+    // (11.600 px Inhalt, 688 px sichtbar): 6 Zeilen = 144 px je Rastung und 76
+    // Rastungen bis ans Ende, 12 Zeilen = 288 px und 38.
+    app.styleHints()->setWheelScrollLines(12);
 
     {
         QFont appFont = app.font();

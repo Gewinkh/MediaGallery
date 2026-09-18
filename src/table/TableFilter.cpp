@@ -89,12 +89,14 @@ bool trifftAusdruck(const FilterAusdruck& a, const QString& zelle, bool monatZue
 }
 
 QList<int> filtere(const QList<Zeile>& zeilen, int von, int bis, const FilterRegel& regel,
-                   const QList<bool>* spalten, const std::atomic<bool>* abbruch) {
+                   const QList<bool>* spalten, const std::atomic<bool>* abbruch,
+                   const Werte* formeln) {
     QList<int> aus;
     const int start = qMax(0, von);
     const int ende  = qMin(bis, int(zeilen.size()));
     if (!regel.aktiv() || ende <= start) return aus;
 
+    const Werte* erg = (formeln && !formeln->leer()) ? formeln : nullptr;
     const FilterAusdruck ausdruck = deuteFilter(regel.text, regel.monatZuerst);
     const bool text = ausdruck.art == FilterAusdruck::Art::Text;
     const ZellVergleich vergleich(regel.text, regel.opt);
@@ -104,21 +106,24 @@ QList<int> filtere(const QList<Zeile>& zeilen, int von, int bis, const FilterReg
     for (int z = start; z < ende; ++z) {
         if (abbruch && abbruch->load()) return {};
         const Zeile& zeile = zeilen.at(z);
+        const Werte* zerg = (erg && erg->hatZeile(z)) ? erg : nullptr;
         if (regel.spalte >= 0) {
-            if (trifft(zeile.wert(regel.spalte))) aus.append(z);
+            if (trifft(gezeigterWert(zeilen, z, regel.spalte, zerg))) aus.append(z);
             continue;
         }
         for (const auto& feld : zeile.belegte()) {
             const int s = int(feld.first);
             if (spalten && (s >= spalten->size() || !spalten->at(s))) continue;
-            if (trifft(feld.second)) { aus.append(z); break; }
+            const QString* gezeigt = zerg ? zerg->wert(z, s) : nullptr;
+            if (trifft(gezeigt ? *gezeigt : feld.second)) { aus.append(z); break; }
         }
     }
     return aus;
 }
 
 QList<int> ordne(const QList<Zeile>& zeilen, const Ordnungsauftrag& a,
-                 const std::atomic<bool>* abbruch, bool* aktiv) {
+                 const std::atomic<bool>* abbruch, bool* aktiv,
+                 const Werte* formeln) {
     const bool gefiltert = a.filter.aktiv();
     const bool sortiert  = a.richtung != SortRichtung::Keine && a.sortSpalte >= 0;
     if (aktiv) *aktiv = gefiltert || sortiert;
@@ -126,29 +131,30 @@ QList<int> ordne(const QList<Zeile>& zeilen, const Ordnungsauftrag& a,
 
     const QList<bool>* maske = a.spalten.isEmpty() ? nullptr : &a.spalten;
     QList<int> auswahl;
-    if (gefiltert) auswahl = filtere(zeilen, a.von, a.bis, a.filter, maske, abbruch);
+    if (gefiltert) auswahl = filtere(zeilen, a.von, a.bis, a.filter, maske, abbruch, formeln);
     if (abbruch && abbruch->load()) return {};
     if (!sortiert) return auswahl;
     //  Ein Filter ohne Treffer bleibt ohne Treffer - `sortiere` laese eine leere
     //  Auswahl sonst als „alles".
     if (gefiltert && auswahl.isEmpty()) return auswahl;
     return sortiere(zeilen, a.von, a.bis, a.sortSpalte, a.richtung, abbruch,
-                    gefiltert ? &auswahl : nullptr, a.monatZuerst);
+                    gefiltert ? &auswahl : nullptr, a.monatZuerst, formeln);
 }
 
 OrdnungTask::OrdnungTask(QObject* owner, std::shared_ptr<const void> anker,
                          const QList<Zeile>* zeilen, Ordnungsauftrag auftrag,
                          std::shared_ptr<std::atomic<bool>> abbruch, Zurueck zurueck,
-                         Zusatz zusatz)
+                         Zusatz zusatz, std::shared_ptr<const Werte> formeln)
     : m_owner(owner), m_anker(std::move(anker)), m_zeilen(zeilen),
       m_auftrag(std::move(auftrag)), m_abbruch(std::move(abbruch)),
-      m_zurueck(std::move(zurueck)), m_zusatz(std::move(zusatz)) {
+      m_zurueck(std::move(zurueck)), m_zusatz(std::move(zusatz)),
+      m_formeln(std::move(formeln)) {
     setAutoDelete(true);
 }
 
 void OrdnungTask::run() {
     bool aktiv = false;
-    QList<int> ordnung = ordne(*m_zeilen, m_auftrag, m_abbruch.get(), &aktiv);
+    QList<int> ordnung = ordne(*m_zeilen, m_auftrag, m_abbruch.get(), &aktiv, m_formeln.get());
     if (m_abbruch->load()) return;
     QVariant extra;
     //  Die Summen gelten fuer die GEZEIGTEN Zeilen; ohne Filter fuer alle.

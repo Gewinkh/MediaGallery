@@ -1,6 +1,6 @@
 #pragma once
 // Datentypen des Editor-Overlays: das Original-PDF bleibt UNVERÄNDERT, jede Bearbeitung ist eine
-// PdfEditBox in einer Ebene darüber und liegt als JSON-Sidecar (<pfad>.mgedit.json) daneben - erst
+// PdfEditBox in einer Ebene darüber und liegt in der Beidatei <pfad>.mgedit daneben - erst
 // der Export backt beides zusammen. `rect` in PDF-Punkten, Ursprung oben-links.
 
 #include <QString>

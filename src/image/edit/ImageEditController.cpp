@@ -1,5 +1,6 @@
 #include "image/edit/ImageEditController.h"
 #include "image/edit/ImageEditCommands.h"
+#include "core/EditSidecar.h"
 #include "core/PathUtils.h"
 
 #include <QImage>
@@ -881,7 +882,7 @@ void ImageEditController::redo() {
 }
 
 QString ImageEditController::sidecarPath(const QString& imgPath) {
-    return imgPath + QStringLiteral(".mgedit.json");
+    return mg::editsidecar::pfad(imgPath);
 }
 
 bool ImageEditController::saveOverlay() {
@@ -890,11 +891,10 @@ bool ImageEditController::saveOverlay() {
     finishOpenSessions();
     finishDrawSession();
 
-    const QString sc = sidecarPath(m_docPath);
     bool ok = false;
 
     if (m_model.count() == 0) {
-        ok = !QFile::exists(sc) || QFile::remove(sc);
+        ok = mg::editsidecar::entferne(m_docPath);
     } else {
         QJsonArray arr;
         const QVector<ImageAnnotation> anns = m_model.annotations();
@@ -907,14 +907,7 @@ bool ImageEditController::saveOverlay() {
         if (m_recording)
             rootObj.insert(QStringLiteral("recording"), true);
 
-        QSaveFile f(sc);
-        if (f.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
-            const QByteArray bytes = QJsonDocument(rootObj).toJson(QJsonDocument::Compact);
-            if (f.write(bytes) == bytes.size())
-                ok = f.commit();
-            else
-                f.cancelWriting();
-        }
+        ok = mg::editsidecar::schreibe(m_docPath, rootObj);
     }
 
     if (ok)
@@ -924,17 +917,9 @@ bool ImageEditController::saveOverlay() {
 }
 
 bool ImageEditController::loadOverlay(const QString& imgPath) {
-    const QString sc = sidecarPath(imgPath);
-    QFile f(sc);
-    if (!f.exists() || f.size() > kMaxSidecarBytes)
+    const QJsonObject o = mg::editsidecar::lies(imgPath);
+    if (o.isEmpty())
         return false;
-    if (!f.open(QIODevice::ReadOnly))
-        return false;
-
-    const QJsonDocument jd = QJsonDocument::fromJson(f.readAll());
-    if (!jd.isObject())
-        return false;
-    const QJsonObject o = jd.object();
     if (o.value(QStringLiteral("format")).toString()
         != QLatin1String("mediagallery-image-overlay"))
         return false;

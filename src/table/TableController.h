@@ -4,6 +4,7 @@
 //  Anzeigen, Suchen, Filtern, Sortieren, Bearbeiten und Zurueckschreiben.
 #include "table/DelimitedText.h"
 #include "table/TableFilter.h"
+#include "table/TableFormula.h"
 #include "table/TableSearch.h"
 #include "table/TableSort.h"
 
@@ -96,6 +97,11 @@ class TableController : public QObject {
     Q_PROPERTY(bool    canUndo   READ canUndo   NOTIFY editChanged)
     Q_PROPERTY(bool    canRedo   READ canRedo   NOTIFY editChanged)
 
+    //  Wie viele Zellen der Datei eine Formel tragen. Die Fusszeile nennt die
+    //  Zahl - ohne sie waere nicht zu sehen, dass eine gezeigte Zahl gerechnet
+    //  und nicht getippt ist.
+    Q_PROPERTY(int formulaCount READ formulaCount NOTIFY rowsChanged)
+
     Q_PROPERTY(QStringList warnings READ warnings NOTIFY stateChanged)
     Q_PROPERTY(bool truncated READ truncated NOTIFY stateChanged)
     Q_PROPERTY(bool cp1252    READ cp1252    NOTIFY stateChanged)
@@ -160,8 +166,15 @@ public:
     bool cp1252() const    { return m_datei && m_datei->cp1252; }
 
     //  EIN Feld - der Weg der Anzeige. Eine ganze Zeile zurueckzugeben kopierte
-    //  je sichtbarer Zeile alle Spalten statt der gezeigten.
+    //  je sichtbarer Zeile alle Spalten statt der gezeigten. Eine Formelzelle
+    //  liefert ihr ERGEBNIS.
     Q_INVOKABLE QString cell(int row, int column) const;
+    //  Der Text, wie er in der Datei steht - bei einer Formel also `=A1+B2`.
+    //  Das Eingabefeld bearbeitet ihn, nie das Ergebnis.
+    Q_INVOKABLE QString cellRaw(int row, int column) const;
+    //  Traegt die Zelle eine Formel? Die Anzeige zeichnet sie dann ab.
+    Q_INVOKABLE bool cellIsFormula(int row, int column) const;
+    int formulaCount() const { return m_formelZahl; }
     //  Die Nummer, die links neben der Zeile steht. Mit Filter die der Datei,
     //  damit die Luecken sichtbar bleiben.
     Q_INVOKABLE int rowNumber(int row) const;
@@ -303,6 +316,10 @@ private:
     void neuLesen();
     void ergebnisUebernehmen(std::shared_ptr<Datei> d, const QString& fehler, Grundlage g);
     void spaltenNeuRechnen();
+    //  Formelzellen suchen und auswerten - je Block mit seinem eigenen Bezug.
+    //  Laeuft nach dem Lesen und nach jeder Aenderung, VOR den Spaltenbreiten
+    //  und vor Suche und Ordnung: die rechnen alle mit dem gezeigten Wert.
+    void formelnNeuRechnen();
     void bloeckeNeuBauen();
     void sucheStarten();
     void suchErgebnis(QList<Treffer> treffer, bool mehr, QList<int> proBlock);
@@ -325,7 +342,14 @@ private:
     void markiere(int zeile, bool umgebaut);
     void schrittAusfuehren(Schritt& s, bool vorwaerts);
     void schrittAblegen(Schritt s);
-    void nachAenderung(bool struktur, bool spalten);
+    //  `formeln` steuert den Durchlauf durch die Formelzellen. Er kostet an
+    //  100.000 Zeilen mal 20 Spalten 8,2 ms - den zahlte sonst jede Zelle
+    //  einer Tabelle, die gar keine Formel kennt.
+    void nachAenderung(bool struktur, bool spalten, bool formeln = true);
+    //  Ist an dieser Aenderung ueberhaupt eine Formel beteiligt?
+    bool formelBetroffen(const QString& a, const QString& b) const {
+        return m_formelZahl > 0 || istFormel(a) || istFormel(b);
+    }
     void zeilenEinsetzen(int bereich, int pos, const QList<Zeile>& zeilen,
                          const QList<ZeilenInfo>& infos, int anzeige);
     void zeilenEntfernen(int bereich, int pos, int anzahl);
@@ -346,6 +370,11 @@ private:
     QStringList  m_warnungen;
     int m_spaltenZahl = 0;
     QSet<int> m_versteckt;          // absolute Spaltennummern
+
+    //  Unveraenderlich, sobald gebaut - deshalb darf sie ein Arbeitsfaden halten.
+    std::shared_ptr<const Werte> m_werte;
+    int  m_formelZahl = 0;
+    bool m_dezimalKomma = false;
 
     int          m_sortSpalte = -1;
     SortRichtung m_sortRichtung = SortRichtung::Keine;

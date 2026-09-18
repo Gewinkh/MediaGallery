@@ -4,6 +4,7 @@
 //  eine Reihenfolge, durch die die Anzeige liest. Nur so bleibt die Zusage
 //  bestehen, dass eine Tabelle gezeigt und nie umgeschrieben wird.
 #include "table/DelimitedText.h"
+#include "table/TableFormula.h"
 
 #include <QList>
 #include <QObject>
@@ -25,7 +26,8 @@ double alsZahl(const QString& text, bool* ok);
 
 //  Traegt die Spalte durchweg Zahlen? Ueber eine Probe der ersten Zeilen, nicht
 //  ueber die ganze Datei. Leere Zellen zaehlen nicht.
-bool spalteIstZahl(const QList<Zeile>& zeilen, int von, int bis, int spalte);
+bool spalteIstZahl(const QList<Zeile>& zeilen, int von, int bis, int spalte,
+                   const Werte* formeln = nullptr);
 
 //  Ein Datum als Spanne [von, bis] in JJJJMMTT. Erkannt werden JJJJ-MM-TT,
 //  TT.MM.JJJJ und die Schraegstrich-Form, deren Reihenfolge `monatZuerst`
@@ -35,7 +37,7 @@ bool spalteIstZahl(const QList<Zeile>& zeilen, int von, int bis, int spalte);
 bool datumsSpanne(QStringView text, bool monatZuerst, bool teil, int* von, int* bis);
 bool alsDatum(const QString& text, int* schluessel, bool monatZuerst = false);
 bool spalteIstDatum(const QList<Zeile>& zeilen, int von, int bis, int spalte,
-                    bool monatZuerst = false);
+                    bool monatZuerst = false, const Werte* formeln = nullptr);
 
 //  Die Anzeigereihenfolge fuer [von, bis) als ABSOLUTE Zeilennummern; leer =
 //  Dateireihenfolge. Stabil, und leere Zellen stehen in BEIDEN Richtungen am
@@ -45,7 +47,8 @@ QList<int> sortiere(const QList<Zeile>& zeilen, int von, int bis, int spalte,
                     SortRichtung richtung,
                     const std::atomic<bool>* abbruch = nullptr,
                     const QList<int>* auswahl = nullptr,
-                    bool monatZuerst = false);
+                    bool monatZuerst = false,
+                    const Werte* formeln = nullptr);
 
 //  Der Sortierlauf im Arbeitsfaden, Muster wie `SuchTask`. Gemessen an 100.000
 //  Zeilen: 55 ms als Text, 26 ms als Zahl - im GUI-Faden waere jeder Klick auf

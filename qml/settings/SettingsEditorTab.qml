@@ -423,6 +423,24 @@ Item {
                     Layout.fillWidth: true
                 }
 
+                CheckBox {
+                    text: App.uiText(App.language, "SettingsTranslitButton")
+                    checked: Translit.buttonVisible
+                    onToggled: Translit.buttonVisible = checked
+                    contentItem: Text {
+                        text: parent.text; color: App.themeTextPrimary
+                        leftPadding: parent.indicator.width + 6
+                        verticalAlignment: Text.AlignVCenter
+                    }
+                }
+                Label {
+                    text: App.uiText(App.language, "SettingsTranslitButtonHint")
+                    color: App.themeTextMuted
+                    font.pixelSize: 11
+                    wrapMode: Text.WordWrap
+                    Layout.fillWidth: true
+                }
+
                 RowLayout {
                     Layout.fillWidth: true
                     spacing: 10

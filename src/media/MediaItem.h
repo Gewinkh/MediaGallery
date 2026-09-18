@@ -76,11 +76,13 @@ struct MediaItem {
             "cs","go","rs","rb","php","swift","kt","lua","r","m","f90","cmake","mk",
             "log","csv","tsv","gitignore","gitattributes","env","dockerfile","makefile",
             "qml","qrc","pro","pri","supp",
-            //  Die eigene Ablage: binaer, wird beim Oeffnen lesbar aufbereitet.
-            "mgstore",
+            //  Die eigenen Formate: binaer, werden beim Oeffnen lesbar aufbereitet.
+            "mgstore","mgedit",
             // Diese Liste MUSS jede Endung enthalten, die `LanguageTable.cpp` kennt - sonst färbt der Editor eine Sprache,
             // die sich gar nicht öffnen lässt (so passiert mit `.dart` und `.pl`). `tst_mediaitem` vergleicht beide Listen.
-            "dart","pl","pm"
+            "dart","pl","pm",
+            //  Assembly: `.s` und `.S` (die Endung wird kleingeschrieben verglichen), dazu `.asm` und `.inc`.
+            "s","asm","inc"
         };
         const QString ext = mg::suffixView(path).toString().toLower();
         if (imgExts.contains(ext)) return MediaType::Image;

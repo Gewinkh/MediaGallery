@@ -151,6 +151,8 @@ void TableController::neuLesen() {
     ++m_inhaltRevision;
     m_versteckt.clear();
     m_datei.reset();
+    m_werte.reset();
+    m_formelZahl = 0;
     m_fehler.clear();
     m_spalten.clear();
     m_warnungen.clear();
@@ -205,9 +207,36 @@ void TableController::ergebnisUebernehmen(std::shared_ptr<Datei> d, const QStrin
         for (const Warnung& w : std::as_const(m_datei->warnungen))
             m_warnungen.append(QStringLiteral("%1: %2").arg(w.zeile).arg(w.text));
     }
+    formelnNeuRechnen();
     spaltenNeuRechnen();
     emit stateChanged();
     emit blockChanged();
+}
+
+//  Je Block ein eigener Bezugspunkt: A1 ist SEINE erste Datenzeile, auch wenn
+//  gerade die flache Gesamtansicht gezeigt wird. Eine Formel darf ihren Wert
+//  nicht mit der Ansicht wechseln.
+void TableController::formelnNeuRechnen() {
+    m_werte.reset();
+    m_formelZahl = 0;
+    if (!m_datei) return;
+
+    QList<Bereich> bereiche = m_bereiche;
+    if (bereiche.isEmpty()) bereiche.append(aktiv());
+
+    QList<FormelBereich> auftrag;
+    for (const Bereich& b : std::as_const(bereiche)) {
+        FormelBereich f;
+        f.daten = b.daten;
+        f.bis = b.bis;
+        f.zellen = sammleFormeln(m_datei->zeilen, b.daten, b.bis);
+        m_formelZahl += int(f.zellen.size());
+        if (!f.zellen.isEmpty()) auftrag.append(std::move(f));
+    }
+    if (auftrag.isEmpty()) return;
+    m_dezimalKomma = dezimalKomma(m_datei->zeilen, 0, int(m_datei->zeilen.size()),
+                                  m_datei->trenner);
+    m_werte = rechne(m_datei->zeilen, auftrag, m_dezimalKomma);
 }
 
 Bereich TableController::aktiv() const {
@@ -307,7 +336,7 @@ void TableController::sucheStarten() {
                               [self](QList<Treffer> t, bool mehr, QList<int> proBlock) {
                                   self->suchErgebnis(std::move(t), mehr, std::move(proBlock));
                               },
-                              m_ordnungAktiv ? m_ordnung : QList<int>()));
+                              m_ordnungAktiv ? m_ordnung : QList<int>(), m_werte));
 }
 
 void TableController::suchErgebnis(QList<Treffer> treffer, bool mehr,
@@ -387,7 +416,8 @@ void TableController::spaltenNeuRechnen() {
 
         int zeichen = int(titel.size());
         for (int z = b.daten; z < bis; ++z)
-            zeichen = qMax(zeichen, int(m_datei->zeilen.at(z).wert(i).size()));
+            zeichen = qMax(zeichen, int(gezeigterWert(m_datei->zeilen, z, i,
+                                                      m_werte.get()).size()));
 
         QVariantMap m;
         m.insert(QStringLiteral("index"), i);
@@ -434,7 +464,20 @@ QString TableController::cell(int row, int column) const {
     if (!m_datei) return {};
     const int z = rohZeile(row);
     if (z < 0 || z >= m_datei->zeilen.size()) return {};
+    return gezeigterWert(m_datei->zeilen, z, column, m_werte.get());
+}
+
+QString TableController::cellRaw(int row, int column) const {
+    if (!m_datei) return {};
+    const int z = rohZeile(row);
+    if (z < 0 || z >= m_datei->zeilen.size()) return {};
     return m_datei->zeilen.at(z).wert(column);
+}
+
+bool TableController::cellIsFormula(int row, int column) const {
+    if (!m_werte || m_werte->leer()) return false;
+    const int z = rohZeile(row);
+    return z >= 0 && m_werte->hatZeile(z) && m_werte->wert(z, column) != nullptr;
 }
 
 int TableController::rowNumber(int row) const {
@@ -540,7 +583,8 @@ void TableController::ordnungNeuBauen() {
     m_pool.start(new OrdnungTask(this, m_datei, &m_datei->zeilen, a, m_sortAbbruch,
                                  [self](QList<int> ordnung, bool aktiv, QVariant) {
                                      self->ordnungErgebnis(std::move(ordnung), aktiv);
-                                 }));
+                                 },
+                                 {}, m_werte));
 }
 
 void TableController::ordnungErgebnis(QList<int> ordnung, bool aktiv) {
@@ -832,8 +876,9 @@ void TableController::schrittAblegen(Schritt s) {
     }
 }
 
-void TableController::nachAenderung(bool struktur, bool spalten) {
+void TableController::nachAenderung(bool struktur, bool spalten, bool formeln) {
     ++m_inhaltRevision;
+    if (formeln) formelnNeuRechnen();
     if (spalten) spaltenNeuRechnen();
     if (struktur || m_bereiche.size() > 1) bloeckeNeuBauen();
     if (spalten)       emit stateChanged();
@@ -864,14 +909,16 @@ bool TableController::setCell(int row, int column, const QString& text) {
     schrittAusfuehren(s, true);
     schrittAblegen(std::move(s));
 
-    //  Waechst der Text ueber die gemessene Spaltenbreite, rechnet die Anzeige neu.
-    bool breiter = column >= m_spaltenZahl;
+    //  Waechst der Text ueber die gemessene Spaltenbreite, rechnet die Anzeige
+    //  neu. Sobald irgendwo eine Formel steht, immer: ihr ERGEBNIS bestimmt die
+    //  Breite, und es kann in einer ganz anderen Zelle stehen.
+    bool breiter = column >= m_spaltenZahl || m_formelZahl > 0;
     for (const QVariant& v : std::as_const(m_spalten)) {
         const QVariantMap m = v.toMap();
         if (m.value(QStringLiteral("index")).toInt() == column)
             breiter = breiter || text.size() > m.value(QStringLiteral("chars")).toInt();
     }
-    nachAenderung(false, breiter);
+    nachAenderung(false, breiter, formelBetroffen(alt, text));
     return true;
 }
 
@@ -889,7 +936,7 @@ bool TableController::setColumnName(int column, const QString& name) {
     ++m_rev;
     schrittAusfuehren(s, true);
     schrittAblegen(std::move(s));
-    nachAenderung(false, true);
+    nachAenderung(false, true, formelBetroffen(alt, name));
     return true;
 }
 
@@ -914,7 +961,7 @@ bool TableController::insertRows(int row, int count) {
     ++m_rev;
     schrittAusfuehren(s, true);
     schrittAblegen(std::move(s));
-    nachAenderung(true, false);
+    nachAenderung(true, false, m_formelZahl > 0);
     return true;
 }
 
@@ -949,7 +996,7 @@ bool TableController::removeRows(int row, int count) {
     ++m_rev;
     schrittAusfuehren(s, true);
     schrittAblegen(std::move(s));
-    nachAenderung(true, false);
+    nachAenderung(true, false, m_formelZahl > 0);
     return true;
 }
 
@@ -968,7 +1015,7 @@ bool TableController::insertColumn(int column) {
     ++m_rev;
     schrittAusfuehren(s, true);
     schrittAblegen(std::move(s));
-    nachAenderung(false, true);
+    nachAenderung(false, true, m_formelZahl > 0);
     return true;
 }
 
@@ -986,7 +1033,7 @@ bool TableController::removeColumn(int column) {
     ++m_rev;
     schrittAusfuehren(s, true);
     schrittAblegen(std::move(s));
-    nachAenderung(false, true);
+    nachAenderung(false, true, m_formelZahl > 0);
     return true;
 }
 
@@ -1056,7 +1103,8 @@ int TableController::pasteText(int row, int column, const QString& text) {
         return 0;
     }
     schrittAblegen(std::move(gruppe));
-    nachAenderung(struktur, true);
+    //  Grob, aber billig: ohne ein '=' im Eingefuegten kann keine Formel entstehen.
+    nachAenderung(struktur, true, m_formelZahl > 0 || text.contains(QLatin1Char('=')));
     return gesetzt;
 }
 

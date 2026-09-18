@@ -23,7 +23,10 @@ Item {
     readonly property alias controller: ctl
 
     property bool _findOpen: false
+    //  Strg+F ist ein SCHALTER, wie in der PDF-Ansicht: der zweite Druck raeumt
+    //  die Leiste samt Treffern wieder weg.
     function oeffneSuche() {
+        if (root._findOpen) { suchBalken.schliessen(); return }
         root._findOpen = true
         suchBalken.oeffnen()
     }
@@ -201,6 +204,8 @@ Item {
                   top: reiter.bottom; bottom: fuss.top }
         provider: ctl
         showNumbers: root.showNumbers
+        //  Die Spalten heissen A, B, C - so, wie eine Formel sie nennt.
+        columnLabelsAlpha: true
         searchRevision: ctl.searchRevision
         contentRevision: ctl.contentRevision
         currentRow: ctl.matchRow
@@ -230,6 +235,15 @@ Item {
         Rectangle { anchors.top: parent.top; width: parent.width; height: 1
                     color: Qt.rgba(Editor.gutterText.r, Editor.gutterText.g,
                                    Editor.gutterText.b, 0.25) }
+
+        //  Fuellen die Zeilen das Bild, ist die Fussleiste die einzige freie
+        //  Flaeche, die noch bleibt - ein Klick hierher beendet deshalb Auswahl
+        //  und Bearbeitung. Die Knoepfe darueber behalten ihren Klick.
+        TapHandler {
+            acceptedButtons: Qt.LeftButton
+            gesturePolicy: TapHandler.DragThreshold
+            onTapped: tabelle.entmarkiere()
+        }
 
         Row {
             id: fussZeile
@@ -320,6 +334,19 @@ Item {
             Feld {
                 visible: ctl.sorting
                 text: App.uiText(App.language, "TableSorting")
+            }
+            //  Ohne die Zahl waere nicht zu sehen, dass eine gezeigte Zahl
+            //  gerechnet und nicht getippt ist.
+            Feld {
+                visible: ctl.formulaCount > 0
+                color: App.themeAccent
+                text: App.uiText(App.language, "TableFormulas").arg(ctl.formulaCount)
+                MouseArea {
+                    anchors.fill: parent
+                    hoverEnabled: true
+                    ToolTip.visible: containsMouse
+                    ToolTip.text: App.uiText(App.language, "TableFormulaHint")
+                }
             }
 
             //  Was beim Lesen ERKANNT wurde - als Angabe, nicht als Schalter:

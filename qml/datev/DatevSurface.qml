@@ -24,7 +24,10 @@ Item {
     readonly property alias controller: ctl
 
     property bool _findOpen: false
+    //  Strg+F ist ein SCHALTER, wie in der PDF-Ansicht: der zweite Druck raeumt
+    //  die Leiste samt Treffern wieder weg.
     function oeffneSuche() {
+        if (root._findOpen) { suchBalken.schliessen(); return }
         root._findOpen = true
         suchBalken.oeffnen()
     }

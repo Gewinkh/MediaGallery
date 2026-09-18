@@ -2,6 +2,7 @@
 
 #include "media/ContentSniff.h"
 
+#include "core/EditSidecar.h"
 #include "core/AppSettings.h"
 #include "core/JsonStorage.h"
 #include "core/Strings.h"
@@ -604,9 +605,16 @@ void MediaModel::feedChunk(bool firstChunk) {
         }
         dateiName = mg::baseNameView(pfad);
 
-        //  Nur der offene Ordner: der Watcher vergleicht auch nur ihn.
-        if (scope == 0 && m_fingerValid && imFingerabdruck(istOrdner, dateiName, sidecar))
-            m_fingerAccu += eintragsFinger(dateiName, groesse, msecs);
+        //  Nur der offene Ordner: der Watcher vergleicht auch nur ihn. Beide
+        //  Wege muessen DIESELBEN Eintraege sehen (s. `ordnerFingerabdruck`) -
+        //  sonst meldet der Ordner entweder gar nichts oder bei jedem Ereignis
+        //  alles.
+        if (scope == 0 && m_fingerValid) {
+            if (imFingerabdruck(istOrdner, dateiName, sidecar))
+                m_fingerAccu += eintragsFinger(dateiName, groesse, msecs);
+            else if (m_showAllFiles)
+                m_fingerAccu += eintragsFinger(dateiName, 0, 0);
+        }
 
         if (istOrdner) {
             MediaItem item;
@@ -1312,6 +1320,7 @@ JsonStorage* MediaModel::storageForScope(int scope) {
     // Lazy, erst beim ersten Zugriff; this als Elternteil raeumt sie mit ab.
     auto* st = new JsonStorage(this);
     st->loadFolder(m_scopes.at(scope).path);
+    if (m_sammelSchreiben) st->setDeferredSaves(true);
     m_scopeStorage.insert(scope, st);
     return st;
 }
@@ -1484,8 +1493,10 @@ bool MediaModel::trashFile(const QString& filePath, FileOp* op) {
     else
         ok = QFile::remove(filePath);
     if (ok) {
-        // PDF-Editor-Sidecar mit entsorgen.
-        const QString sidecar = filePath + QStringLiteral(".mgedit.json");
+        // Editor-Beidatei mit entsorgen; ein alter Name kommt nur noch vor,
+        // solange die Datei seit der Umstellung nicht gespeichert wurde.
+        QString sidecar = mg::editsidecar::pfad(filePath);
+        if (!QFile::exists(sidecar)) sidecar = mg::editsidecar::altPfad(filePath);
         if (QFile::exists(sidecar)) {
             op->sidecarPath = sidecar;
             QString sidecarTrash;
@@ -2151,12 +2162,26 @@ void MediaModel::setTagOnSelection(const QString& tag, bool on) {
     // Ueber die Pfade statt die Zeilen - setTagOnRow schreibt in das Sidecar des
     // Ordners, dem die Zeile gehoert.
     const QStringList paths = selectedPaths(/*filesOnly=*/true);
+
+    //  Die Ablage eines UNTERordners schriebe sonst je Datei ganz neu: bei 2000
+    //  Dateien gemessene 402 statt 16 ms, und zwar quadratisch. Das Merkzeichen
+    //  gilt auch fuer Ablagen, die erst waehrend des Laufs entstehen.
+    m_sammelSchreiben = true;
+    for (auto it = m_scopeStorage.cbegin(); it != m_scopeStorage.cend(); ++it)
+        it.value()->setDeferredSaves(true);
+
     for (const QString& path : paths) {
         const int row = rowForPath(path);
         if (row < 0) continue;
         const bool has = m_items.at(row).tags.contains(tag);
         if (has == on) continue;
         setTagOnRow(row, tag, on);
+    }
+
+    m_sammelSchreiben = false;
+    for (auto it = m_scopeStorage.cbegin(); it != m_scopeStorage.cend(); ++it) {
+        it.value()->flushPendingSave();
+        it.value()->setDeferredSaves(false);
     }
 }
 
@@ -2274,7 +2299,10 @@ bool MediaModel::undoMove(const FileOp& op) {
 
 namespace {
 QString companionPathOf(const QString& filePath, int kind) {
-    if (kind == 1) return filePath + QStringLiteral(".mgedit.json");
+    if (kind == 1) {
+        const QString neu = mg::editsidecar::pfad(filePath);
+        return QFileInfo::exists(neu) ? neu : mg::editsidecar::altPfad(filePath);
+    }
     if (kind == 2) return filePath + QStringLiteral(".bak");
     return QString();
 }
@@ -2701,7 +2729,12 @@ quint64 MediaModel::ordnerFingerabdruck() const {
     while (it.hasNext()) {
         it.next();
         const QFileInfo fi = it.fileInfo();
-        if (imFingerabdruck(fi.isDir(), fi.fileName(), sidecar)) mischeFinger(h, fi);
+        if (imFingerabdruck(fi.isDir(), fi.fileName(), sidecar)) { mischeFinger(h, fi); continue; }
+        //  Begleitdateien zaehlen mit, sobald sie GEZEIGT werden - sonst stuende
+        //  eine neu entstandene `.mgstore` erst nach dem naechsten Ordnerwechsel
+        //  als Kachel da. Nur ihr NAME geht ein, nicht Groesse und Datum: sonst
+        //  loeste jede Tag-Aenderung einen Neubau der ganzen Galerie aus.
+        if (m_showAllFiles) h += eintragsFinger(fi.fileName(), 0, 0);
     }
     return h;
 }

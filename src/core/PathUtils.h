@@ -23,6 +23,7 @@ inline bool isCompanionFile(const QString& fileName,
     //  Ordnernamen: nach einem Umbenennen heisst sie noch wie der alte Ordner
     //  und stuende sonst als Kachel da.
     return fileName.endsWith(QLatin1String(".mgstore"), Qt::CaseInsensitive)
+        || fileName.endsWith(QLatin1String(".mgedit"), Qt::CaseInsensitive)
         || fileName.endsWith(QLatin1String(".mgedit.json"), Qt::CaseInsensitive)
         || fileName.endsWith(QLatin1String(".bak"), Qt::CaseInsensitive);
 }

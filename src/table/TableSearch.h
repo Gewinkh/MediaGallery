@@ -2,7 +2,9 @@
 //  TableSearch - Suche ueber die Zeilen einer getrennten Textdatei. Kennt weder
 //  Anzeige noch DATEV: beide Tabellen-Controller benutzen dieselbe Maschine,
 //  damit eine CSV und ein Buchungsstapel auf dieselbe Frage gleich antworten.
+#include "simd/FindChar.h"
 #include "table/DelimitedText.h"
+#include "table/TableFormula.h"
 
 #include <QList>
 #include <QObject>
@@ -30,6 +32,13 @@ struct SuchOptionen {
     bool ganzeZelle = false;    // die Zelle muss dem Text ENTSPRECHEN, nicht ihn enthalten
 };
 
+//  Welche Schreibweisen muss ein Vorfilter suchen, damit er nichts uebersieht,
+//  das Qt als gleich ansaehe? Bis zu drei nach `aus`, Rueckgabe ihre Zahl;
+//  0 heisst: kein Vorfilter. Die Klassen stammen aus Qts eigenen Tabellen
+//  (`QChar::toCaseFolded`) - eine Liste im Quelltext altert gegen die naechste
+//  Unicode-Fassung.
+int vorfilterAnker(QChar c, char16_t* aus);
+
 //  Trifft eine Zelle? Suche und Filter stellen dieselbe Frage und sollen sie
 //  gleich beantworten.
 class ZellVergleich {
@@ -45,6 +54,19 @@ public:
         //  Bei EINEM Zeichen ist Qts eigener Weg schneller als eine Sprungtabelle,
         //  die nie springt (gemessen 5 gegen 13 ms ueber 100.000 Zeilen).
         if (m_laenge == 1) return zelle.contains(m_text, m_gross);
+        //  Vorfilter: erst die Stelle suchen, an der der Begriff ueberhaupt
+        //  anfangen kann, dann Qt ab dort fragen - ohne Gross-/Kleinschreibung
+        //  kostet dessen Vergleich je Zelle 31,9 statt 10,4 ns. Geurteilt wird
+        //  weiter von Qt: gefunden wird eine Stelle, entschieden mit `indexIn`.
+        if (m_vorfilter) {
+            const qsizetype rest = zelle.size() - m_laenge + 1;
+            const auto* p = reinterpret_cast<const char16_t*>(zelle.constData());
+            const qsizetype k = (m_anker == 3)
+                ? mg::simd::findeErstesDrei(p, rest, m_ersteKl, m_ersteGr, m_ersteDr)
+                : mg::simd::findeErstes(p, rest, m_ersteKl, m_ersteGr);
+            if (k >= rest) return false;
+            return m_sucher.indexIn(zelle, k) >= 0;
+        }
         return m_sucher.indexIn(zelle) >= 0;
     }
 
@@ -57,6 +79,13 @@ private:
     //  Aufruf neu.
     QStringMatcher      m_sucher;
     bool                m_ganzeZelle;
+    //  Die Schreibweisen des ERSTEN Zeichens - zwei, manchmal drei, 0 = kein
+    //  Vorfilter (s. `vorfilterAnker`).
+    char16_t            m_ersteKl = 0;
+    char16_t            m_ersteGr = 0;
+    char16_t            m_ersteDr = 0;
+    int                 m_anker = 0;
+    bool                m_vorfilter = false;
 };
 
 //  Alle Treffer in [von, bis), aufsteigend nach Zeile und Spalte; `zeile` zaehlt
@@ -71,7 +100,8 @@ QList<Treffer> suche(const QList<Zeile>& zeilen, int von, int bis,
                      const QList<bool>* spalten = nullptr,
                      const std::atomic<bool>* abbruch = nullptr,
                      bool* mehr = nullptr,
-                     const QList<int>* ordnung = nullptr);
+                     const QList<int>* ordnung = nullptr,
+                     const Werte* formeln = nullptr);
 
 //  Der Zustand einer stehenden Suche: die Trefferliste, der laufende Treffer und
 //  die Frage, die die Anzeige je sichtbarer Zelle stellt.
@@ -122,7 +152,7 @@ public:
              QString text, SuchOptionen opt, QList<bool> spalten,
              QList<BlockBereich> bloecke, std::shared_ptr<std::atomic<bool>> abbruch,
              std::function<void(QList<Treffer>, bool, QList<int>)> zurueck,
-             QList<int> ordnung = {});
+             QList<int> ordnung = {}, std::shared_ptr<const Werte> formeln = {});
 
     void run() override;
 
@@ -144,6 +174,8 @@ private:
     //  Leer = Dateireihenfolge. Die Zaehlung je Block laeuft immer in
     //  Dateireihenfolge - dort zaehlt nur, WIE VIELE es sind.
     QList<int> m_ordnung;
+    //  Gesucht wird, was die Zelle ZEIGT - eine Formel ueber ihr Ergebnis.
+    std::shared_ptr<const Werte> m_formeln;
 };
 
 }  // namespace mg::table
