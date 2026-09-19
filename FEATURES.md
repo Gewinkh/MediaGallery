@@ -115,6 +115,7 @@ which. Files without an extension such as `LICENSE`, `README`, `Makefile` or
   - dates: `2025-01-01+` (from that day), `2025-01-01-` (up to that day), `2025-01->2025-04` (January to end of April); a year or month alone counts as a whole
   - the row numbers stay those of the file; the drawn X clears the filter
 - **Hide columns** and **freeze the first column** from the heading's right-click menu
+- **Drag the right edge of a heading** to set a column's width: a line shows where the edge will land, and the table re-arranges once you let go. A double click on that edge gives the column back its automatic width. Widths are kept next to the file and are there again next time
 - Sorting and filtering never change the file
 
 **Formulas**
@@ -128,6 +129,7 @@ which. Files without an extension such as `LICENSE`, `README`, `Makefile` or
 **Editing**
 - **A click marks a cell** (for showing someone something); **double click or `F2` edits it**. `Enter` confirms and moves down, `Tab` moves right, `Esc` cancels
 - **Insert and delete rows and columns**, rename columns - from the right-click menu
+- **Select a block**: hold `Shift` and click another cell, or hold `Shift` and use the arrow keys, `Page up/down`, `Home` or `End`. `Ctrl+C` then copies the whole block, ready to paste into a spreadsheet; `Esc` clears it
 - **Paste a block** from a spreadsheet with `Ctrl+V`; copy a cell with `Ctrl+C`, a row with `Ctrl+Shift+C`
 - **Undo and redo** with `Ctrl+Z` / `Ctrl+Y`, also after saving
 - **Saves like the text editor**; `Ctrl+S` confirms with a short *Saved*
@@ -141,9 +143,9 @@ which. Files without an extension such as `LICENSE`, `README`, `Makefile` or
 - **Header summary** on top (format, version, creation time); all header fields fold out below
 - **Bookings as a table**, showing only the columns that contain data; one click shows all 125
 - **Totals in the footer**: number of bookings, debit, credit and difference - red when they do not balance. With a filter on, the totals cover only the filtered bookings
-- **Search, sort, filter, hide columns and copy** work as in the CSV view
+- **Search, sort, filter, hide columns, set column widths and copy a block** work as in the CSV view
 - Works with reduced exports too, as columns are found by their names
-- **Read-only**: the app never writes into a bookkeeping file
+- **Read-only**: the app never writes into a bookkeeping file. Column widths you set are kept in a small separate file next to it (`<name>.mgedit`)
 
 ---
 
@@ -298,11 +300,11 @@ pages change the PDF directly. `Ctrl+Z` undoes them while the file is open.
 ---
 
 ## Files Next to Your Media
-- **The app's own files are hidden by default**: the folder file with tags (`<Folder>.mgstore`), editor notes (`<file>.mgedit`) and DOCX backups (`.bak`)
+- **The app's own files are hidden by default**: the folder file with tags (`<Folder>.mgstore`), editor notes and table column widths (`<file>.mgedit`) and DOCX backups (`.bak`)
 - **Show all files** (*Settings ▸ View ▸ Files*) shows them - and every other file type, with an extension badge
 - **Delete notes or backups** without the file itself: right-click a tile, or *Document* menu for PDFs and images. Goes to the trash; `Ctrl+Z` brings it back
 - **Look inside the folder file**: open the `.mgstore` to see all tags, categories and assignments in readable form; *Raw* shows the bytes
-- **Look inside the editor notes** the same way: open the `.mgedit` next to a PDF or image to read what is stored there. Both are shown for reading only
+- **Look inside the editor notes** the same way: open the `.mgedit` next to a PDF, image or table to read what is stored there. Both are shown for reading only
 
 ## Metadata & File Management
 - **Date**: set a file's date; it is written to the file itself. *Reset* returns to the creation date

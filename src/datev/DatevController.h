@@ -9,6 +9,7 @@
 #include "table/TableSort.h"
 
 #include <QObject>
+#include <QHash>
 #include <QSet>
 #include <QStringList>
 #include <QThreadPool>
@@ -130,6 +131,15 @@ public:
 
     //  Eine ganze Zeile als Text, die GEZEIGTEN Spalten mit Tabulator getrennt.
     Q_INVOKABLE QString rowText(int row) const;
+    //  Ein Bereich als Tabulatortext. Die Spalten sind STELLEN in der gezeigten
+    //  Liste, nicht Feldnummern - ein Bereich spannt ueber das, was man sieht.
+    //  Ueber dem Deckel kommt eine leere Zeichenkette zurueck: der Aufbau
+    //  laeuft im GUI-Faden, und was niemand mehr einfuegt, wird nicht gebaut.
+    Q_INVOKABLE QString rangeText(int row1, int col1, int row2, int col2) const;
+
+    //  Von Hand gesetzte Spaltenbreite in Pixeln; 0 stellt sie wieder auf
+    //  automatisch. Gehalten wird sie in der Beidatei neben der Datei.
+    Q_INVOKABLE void setColumnWidth(int column, int px);
 
     double sumDebit() const  { return m_soll; }
     double sumCredit() const { return m_haben; }
@@ -207,6 +217,7 @@ private:
     QVariantList m_spalten;
     QStringList  m_warnungen;
     QSet<int>    m_versteckt;
+    QHash<int, int> m_breiten;      // Spalte -> Breite in Pixeln, von Hand gesetzt
 
     int  m_sortSpalte = -1;
     mg::table::SortRichtung m_sortRichtung = mg::table::SortRichtung::Keine;

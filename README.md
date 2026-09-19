@@ -111,19 +111,9 @@ The build skips it when the `tests/` folder is absent.
 ## Changelog
 
 ### Latest
-- **Feature**: **Table formulas** can now calculate values from other cells and remain readable across spreadsheet applications.
-- **Change**: **Editor note files** next to PDFs and images are now smaller and can be opened in the app.
-- **Change**: **Search bars** now close when toggled a second time.
-- **Fix**: **Bulk tagging** no longer stalls when tagging many files in large folders.
-- **Fix**: **Audio and video playback** no longer floods the log with decoder messages.
-- **Feature**: **Assembly files** are now supported in the editor with dedicated syntax highlighting and are tested as part of the build.
-- **Fix**: **Case-insensitive table searches** are now faster.
-- **Feature**: **Transliteration in search fields** can be enabled in the settings and is off by default.
-- **Fix**: **Exporting long text to PDF** is no longer slow when syntax colours are enabled.
-- **Fix**: **PDF pages** keep the document's own background while being drawn, and previews now follow the scroll position.
-- **Fix**: **Audio stops when its pane is closed** and survives busy moments.
-- **Fix**: **The app's own data files** now appear and disappear immediately instead of only after reopening the folder.
-- **Change**: **Long menus** now scroll further per wheel notch.
+- **Feature**: **Block selection in tables** with the Shift key and copying a whole block.
+- **Feature**: **Adjustable column widths** that are still there the next time.
+- **Change**: **Wide tables open and scroll faster** with many columns shown.
 
 ---
 

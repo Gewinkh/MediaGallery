@@ -46,9 +46,32 @@ Item {
     //  laegen Kopf, Suchmarken und Trefferansteuerung in zwei Koordinatensystemen.
     property bool frozenColumn: false
 
-    //  Die gewaehlte Zelle - Grundlage fuer Kopieren, Bearbeiten und Tastatur.
+    //  Die gewaehlte Zelle - Grundlage fuer Kopieren, Bearbeiten und Tastatur,
+    //  zugleich der ANKER eines Bereichs; -1 heisst „keine zweite Ecke".
     property int selRow: -1
     property int selColumn: -1
+    property int bisRow: -1
+    property int bisColumn: -1
+
+    readonly property bool hatBereich:
+        root.bisRow >= 0 && root.bisColumn >= 0
+        && (root.bisRow !== root.selRow || root.bisColumn !== root.selColumn)
+    readonly property int _zeileVon:
+        Math.min(root.selRow, root.bisRow >= 0 ? root.bisRow : root.selRow)
+    readonly property int _zeileBis:
+        Math.max(root.selRow, root.bisRow >= 0 ? root.bisRow : root.selRow)
+    //  Ueber STELLEN in der gezeigten Liste: dazwischen koennen ausgeblendete
+    //  Spalten liegen.
+    readonly property int _stelleVon: {
+        const a = root._geometrie.stelle[root.selColumn]
+        const b = root.bisColumn >= 0 ? root._geometrie.stelle[root.bisColumn] : a
+        return (a === undefined || b === undefined) ? -1 : Math.min(a, b)
+    }
+    readonly property int _stelleBis: {
+        const a = root._geometrie.stelle[root.selColumn]
+        const b = root.bisColumn >= 0 ? root._geometrie.stelle[root.bisColumn] : a
+        return (a === undefined || b === undefined) ? -1 : Math.max(a, b)
+    }
     //  Offen, solange das Eingabefeld ueber der Zelle steht.
     property bool bearbeitet: false
 
@@ -61,20 +84,16 @@ Item {
         root.provider !== null && root._ersteSpalte !== null
         && root.provider.sortColumn === root._ersteSpalte.index
     readonly property real _frostBreite:
-        (root.frozenColumn && root._ersteSpalte) ? root._breite(root._ersteSpalte.chars) : 0
+        (root.frozenColumn && root._ersteSpalte) ? root._breite(root._ersteSpalte) : 0
 
-    //  Welche Spalte liegt an dieser Stelle? Ueber die Breiten, nicht ueber die
-    //  Position in der Liste - die Spaltenliste kennt Luecken.
+    //  Welche Spalte liegt an dieser Stelle? `px` misst im Sichtfenster, die
+    //  Kanten messen im Inhalt - der Versatz kommt also dazu.
     function _spalteBeiX(px) {
         if (root.frozenColumn && px < root._frostBreite && root._ersteSpalte)
             return root._ersteSpalte.index
-        var x = -root.xOffset
-        for (var i = 0; i < root._spalten.length; ++i) {
-            const w = root._breite(root._spalten[i].chars)
-            if (px >= x && px < x + w) return root._spalten[i].index
-            x += w
-        }
-        return -1
+        const ziel = px + root.xOffset
+        if (ziel < 0 || ziel >= root.gesamtBreite) return -1
+        return root._spalten[root._stelleBeiX(ziel)].index
     }
 
     function _zeileBeiY(py) {
@@ -86,24 +105,41 @@ Item {
         if (root.bearbeitet) root.uebernehme()
         root.selRow = -1
         root.selColumn = -1
+        root.bisRow = -1
+        root.bisColumn = -1
     }
 
     function waehle(zeile, spalte) {
         if (!root.provider || zeile < 0 || spalte < 0) return
+        root.bisRow = -1
+        root.bisColumn = -1
         root.selRow = Math.max(0, Math.min(zeile, root.provider.rowCount - 1))
         root.selColumn = spalte
         root.zeigeZelle(root.selRow, root.selColumn)
         root.forceActiveFocus()
     }
 
-    //  Um `dz` Zeilen und `ds` gezeigte Spalten weiter, am Rand angehalten.
-    function _bewege(dz, ds) {
+    function erweitere(zeile, spalte) {
+        if (!root.provider || root.selRow < 0 || root.selColumn < 0) return
+        if (zeile < 0 || spalte < 0) return
+        root.bisRow = Math.max(0, Math.min(zeile, root.provider.rowCount - 1))
+        root.bisColumn = spalte
+        root.zeigeZelle(root.bisRow, root.bisColumn)
+        root.forceActiveFocus()
+    }
+
+    //  Um `dz` Zeilen und `ds` gezeigte Spalten weiter, am Rand angehalten;
+    //  mit `erweitern` wandert die zweite Ecke statt des Ankers.
+    function _bewege(dz, ds, erweitern) {
         if (!root.provider || root._spalten.length === 0) return
-        var pos = 0
-        for (var i = 0; i < root._spalten.length; ++i)
-            if (root._spalten[i].index === root.selColumn) pos = i
+        const zAlt = (erweitern && root.bisRow >= 0) ? root.bisRow : root.selRow
+        const sAlt = (erweitern && root.bisColumn >= 0) ? root.bisColumn : root.selColumn
+        var pos = root._geometrie.stelle[sAlt]
+        if (pos === undefined) pos = 0
         pos = Math.max(0, Math.min(pos + ds, root._spalten.length - 1))
-        root.waehle(Math.max(0, root.selRow + dz), root._spalten[pos].index)
+        const spalte = root._spalten[pos].index
+        if (erweitern) root.erweitere(Math.max(0, zAlt + dz), spalte)
+        else root.waehle(Math.max(0, zAlt + dz), spalte)
     }
 
     function bearbeiteZelle() {
@@ -136,6 +172,16 @@ Item {
         root.waehle(z, sp)
         if (doppelt) root.bearbeiteZelle()
     }
+    //  Ohne Anker waehlt Umschalt+Klick schlicht - sonst waere der erste wirkungslos.
+    function _umschaltGetippt(szene) {
+        const p = zellSchicht.mapFromItem(null, szene)
+        const z  = root._zeileBeiY(p.y)
+        const sp = root._spalteBeiX(p.x)
+        if (z < 0 || sp < 0) return
+        if (root.bearbeitet) root.uebernehme()
+        if (root.selRow < 0 || root.selColumn < 0) root.waehle(z, sp)
+        else root.erweitere(z, sp)
+    }
     function einfuegen() {
         if (!root._bearbeitbar || root.selRow < 0 || root.selColumn < 0) return
         const text = App.clipboardText()
@@ -152,24 +198,33 @@ Item {
 
     function kopiereZelle() {
         if (!root.provider || root.selRow < 0 || root.selColumn < 0) return
-        App.copyTextToClipboard(root.provider.cell(root.selRow, root.selColumn))
-        root._melde(App.uiText(App.language, "TableCopiedCell"))
+        if (!root.hatBereich) {
+            App.copyTextToClipboard(root.provider.cell(root.selRow, root.selColumn))
+            root._melde(App.uiText(App.language, "TableCopiedCell"))
+            return
+        }
+        //  Aus dem Anbieter: er kennt Ordnung und Filter und hat einen Deckel.
+        const text = (root.provider.rangeText !== undefined)
+                     ? root.provider.rangeText(root._zeileVon, root._stelleVon,
+                                               root._zeileBis, root._stelleBis) : ""
+        if (text.length === 0) {
+            root._melde(App.uiText(App.language, "TableRangeTooBig"))
+            return
+        }
+        App.copyTextToClipboard(text)
+        const zellen = (root._zeileBis - root._zeileVon + 1)
+                       * (root._stelleBis - root._stelleVon + 1)
+        root._melde(App.uiText(App.language, "TableCopiedRange").arg(zellen))
     }
     function kopiereZeile() {
         if (!root.provider || root.selRow < 0) return
         App.copyTextToClipboard(root.provider.rowText(root.selRow))
         root._melde(App.uiText(App.language, "TableCopiedRow"))
     }
-    //  Linke Kante und Breite einer Spalte. Die Spaltenliste kennt Luecken
-    //  (DATEV blendet leere Spalten aus), deshalb ueber `index`, nicht ueber
-    //  die Position in der Liste.
+    //  Linke Kante und Breite einer Spalte, beides aus `_geometrie`.
     function _spalteX(spalte) {
-        var x = 0
-        for (var i = 0; i < root._spalten.length; ++i) {
-            if (root._spalten[i].index === spalte) return x
-            x += root._breite(root._spalten[i].chars)
-        }
-        return -1
+        const i = root._geometrie.stelle[spalte]
+        return i === undefined ? -1 : root._geometrie.kanten[i]
     }
     //  Linke Kante im Sichtfenster; die festgestellte erste Spalte rollt nicht mit.
     function _zelleX(spalte) {
@@ -178,9 +233,9 @@ Item {
         return root._spalteX(spalte) - root.xOffset
     }
     function _spalteBreite(spalte) {
-        for (var i = 0; i < root._spalten.length; ++i)
-            if (root._spalten[i].index === spalte) return root._breite(root._spalten[i].chars)
-        return 0
+        const i = root._geometrie.stelle[spalte]
+        if (i === undefined) return 0
+        return root._geometrie.kanten[i + 1] - root._geometrie.kanten[i]
     }
 
     //  Eine Zelle ins Bild holen (Sprung zum Treffer). Eine bereits sichtbare
@@ -211,14 +266,80 @@ Item {
     property font cellFont: App.fallbackFont("monospace", 12)
     FontMetrics { id: fm; font: root.cellFont }
 
-    //  Die Zeichenzahl je Spalte steht im Modell; hier wird nur gerechnet. Sie
-    //  je Zelle zu erfragen kostete beim Rollen je neuer Zeile einen Lauf ueber
-    //  500 Datenzeilen mal Spalte.
-    function _breite(zeichen) {
-        return Math.max(70, Math.min(320, zeichen * fm.averageCharacterWidth + 16))
+    //  Gilt waehrend des Zugs; der Anbieter erfaehrt die Breite erst beim
+    //  Loslassen - jede Meldung von dort baut die Zellen neu.
+    //  Waehrend des Zugs aendert sich an der Tabelle NICHTS - gezeigt wird nur
+    //  eine Hilfslinie, geordnet wird beim Loslassen (1,6 -> 0,11 ms je Schritt).
+    property int _ziehSpalte: -1
+    property real _ziehBreite: 0
+    property real _ziehLinie: -1
+    property real _ziehAb: 0
+    //  Solange gezogen wird, schrumpft das Spaltenfenster nicht - sonst naehme
+    //  der Repeater Kacheln weg, waehrend an ihnen haengt, was gerade laeuft.
+    property int _ziehAnz: 0
+
+    //  Uebernommen wird ERST nach der Ereignisbehandlung des Helfers - sonst
+    //  zerstoert der Repeater seine Kachel unter ihm (Absturz, reproduziert).
+    function _ziehUebernehmen() {
+        const sp = root._ziehSpalte
+        const px = Math.round(root._ziehBreite)
+        root._ziehSpalte = -1
+        if (sp >= 0 && root.provider) root.provider.setColumnWidth(sp, px)
+    }
+
+    //  Die Zeichenzahl steht im Modell; je Zelle erfragt kostete sie beim Rollen
+    //  500 Datenzeilen mal Spalte. `px` von Hand sticht die gerechnete Breite.
+    function _breite(sp) {
+        if (!sp) return 70
+        if (sp.px > 0) return sp.px
+        return Math.max(70, Math.min(320, sp.chars * fm.averageCharacterWidth + 16))
     }
 
     readonly property var _spalten: root.provider ? root.provider.columns : []
+
+    //  Linke Kanten und Stelle je Spaltennummer in EINEM Durchlauf; die Liste
+    //  kennt Luecken, deshalb ueber `index`.
+    readonly property var _geometrie: {
+        var kanten = [0]
+        var stelle = ({})
+        var x = 0
+        for (var i = 0; i < root._spalten.length; ++i) {
+            stelle[root._spalten[i].index] = i
+            x += root._breite(root._spalten[i])
+            kanten.push(x)
+        }
+        return { kanten: kanten, stelle: stelle }
+    }
+
+    //  Haelt die Bindungen einer Zelle gueltig, die beim Umbau kurz hinter dem
+    //  Listenende steht; `index` trifft keine Spalte.
+    readonly property var _keineSpalte: ({ index: -2, title: "", chars: 0 })
+
+    //  Welche Stelle liegt an der Inhalts-X? Binaer, weil die Kanten steigen.
+    function _stelleBeiX(x) {
+        const n = root._spalten.length
+        if (n === 0) return 0
+        const k = root._geometrie.kanten
+        var lo = 0, hi = n - 1
+        while (lo < hi) {
+            const m = (lo + hi + 1) >> 1
+            if (k[m] <= x) lo = m
+            else hi = m - 1
+        }
+        return lo
+    }
+
+    //  Nur die Spalten im Bild bauen, je eine mehr links und rechts; alle 125
+    //  je Zeile kosteten beim Umschalten 237 ms im GUI-Faden.
+    readonly property int _vonSpalte:
+        Math.max(0, root._stelleBeiX(root.xOffset) - 1)
+    readonly property int _spaltenAnz: {
+        const n = root._spalten.length
+        if (n === 0) return 0
+        const bis = Math.min(n, root._stelleBeiX(root.xOffset + flick.width) + 2)
+        const anz = Math.max(0, bis - root._vonSpalte)
+        return root._ziehSpalte >= 0 ? Math.max(anz, Math.min(n, root._ziehAnz)) : anz
+    }
     readonly property bool _hatFormeln:
         root.provider !== null && root.provider.formulaCount !== undefined
         && root.provider.formulaCount > 0
@@ -230,11 +351,8 @@ Item {
                               ? root.provider.totalRows : liste.count).length
                        * fm.averageCharacterWidth + 16)
         : 0
-    readonly property real gesamtBreite: {
-        var b = 0
-        for (var i = 0; i < root._spalten.length; ++i) b += root._breite(root._spalten[i].chars)
-        return b
-    }
+    readonly property real gesamtBreite:
+        root._geometrie.kanten[root._spalten.length]
 
     //  Waagerecht wird EINMAL gerollt: Ueberschriftzeile und Zeilenliste haengen
     //  beide an `xOffset`. Zwei getrennte Flickables liefen sonst auseinander.
@@ -252,15 +370,18 @@ Item {
         clip: true
         z: 1
 
-        Row {
+        Item {
             x: -root.xOffset
             height: parent.height
             Repeater {
-                model: root._spalten
+                model: root._spaltenAnz
                 delegate: Item {
                     id: nrZelle
-                    required property var modelData
-                    width: root._breite(modelData.chars)
+                    required property int index
+                    readonly property var modelData:
+                        root._spalten[root._vonSpalte + index] || root._keineSpalte
+                    x: root._geometrie.kanten[root._vonSpalte + index]
+                    width: root._breite(modelData)
                     height: nummernLeiste.height
                     Text {
                         anchors { fill: parent; leftMargin: 8; rightMargin: 8 }
@@ -323,15 +444,18 @@ Item {
         clip: true
         z: 1
 
-        Row {
+        Item {
             x: -root.xOffset
             height: parent.height
             Repeater {
-                model: root._spalten
+                model: root._spaltenAnz
                 delegate: Item {
                     id: kopfZelle
-                    required property var modelData
-                    width: root._breite(modelData.chars)
+                    required property int index
+                    readonly property var modelData:
+                        root._spalten[root._vonSpalte + index] || root._keineSpalte
+                    x: root._geometrie.kanten[root._vonSpalte + index]
+                    width: root._breite(modelData)
                     height: spaltenKopf.height
                     readonly property bool sortiert:
                         root.provider && root.provider.sortColumn === modelData.index
@@ -379,8 +503,7 @@ Item {
                 }
             }
         }
-        //  Muss MITfeststehen - sonst steht ueber den Werten der Name einer
-        //  weggerollten Spalte.
+        //  Muss MITfeststehen - sonst steht ueber den Werten ein weggerollter Name.
         Rectangle {
             visible: root.frozenColumn && root._frostBreite > 0
             width: root._frostBreite
@@ -429,8 +552,93 @@ Item {
                                    Editor.gutterText.b, 0.35) }
     }
 
-    //  Die Ecke links oben - sie fuellt die Flaeche, die Zeilenspalte und
-    //  Kopfleisten gemeinsam frei lassen.
+    //  EIN Ziehgriff fuer alle Spalten, ueber beiden Kopfleisten. In der
+    //  Kopfkachel darf er NICHT sitzen: wird die Spalte breiter, nimmt der
+    //  Repeater die Kachel weg und der Helfer stuerzt mit ihr ab (reproduziert).
+    Item {
+        id: kopfZug
+        objectName: "spaltenZiehgriff"      // Griff fuer tests/bench
+        anchors { left: parent.left; right: parent.right; top: parent.top
+                  leftMargin: root._nummernBreite }
+        height: nummernLeiste.height + spaltenKopf.height
+        z: 3
+        visible: height > 0 && root.provider
+                 && root.provider.setColumnWidth !== undefined
+
+        //  Die Spalte, deren RECHTE Kante gerade unter dem Zeiger liegt.
+        property int spalte: -1
+        property real kante: -1
+
+        function suche(px) {
+            if (root._ziehSpalte >= 0) return        // waehrend des Zugs steht sie
+            const n = root._spalten.length
+            if (n === 0) { kopfZug.spalte = -1; return }
+            const ziel = px + root.xOffset
+            const k = root._geometrie.kanten
+            const i = root._stelleBeiX(ziel)
+            for (var j = i; j >= i - 1; --j) {
+                if (j < 0 || j >= n) continue
+                if (Math.abs(k[j + 1] - ziel) <= 4) {
+                    kopfZug.spalte = root._spalten[j].index
+                    kopfZug.kante = k[j + 1] - root.xOffset
+                    return
+                }
+            }
+            kopfZug.spalte = -1
+        }
+
+        HoverHandler {
+            id: kantenFuehler
+            onPointChanged: kopfZug.suche(point.position.x)
+            onHoveredChanged: if (!hovered && root._ziehSpalte < 0) kopfZug.spalte = -1
+        }
+
+        Item {
+            id: griff
+            x: kopfZug.kante - 4
+            width: 8
+            height: parent.height
+            visible: kopfZug.spalte >= 0
+            HoverHandler { cursorShape: Qt.SizeHorCursor }
+            DragHandler {
+                target: null
+                yAxis.enabled: false
+                acceptedButtons: Qt.LeftButton
+                cursorShape: Qt.SizeHorCursor
+                //  Die Systemschwelle (10 px) liess den Anfang tot und die Kante
+                //  dann springen; zwei Pixel lassen dem Doppelklick Raum.
+                dragThreshold: 2
+                onActiveChanged: {
+                    if (active) {
+                        root._ziehBreite = root._spalteBreite(kopfZug.spalte)
+                        root._ziehLinie = kopfZug.kante + root._nummernBreite
+                        root._ziehAb = root._ziehLinie
+                        root._ziehAnz = root._spaltenAnz
+                        root._ziehSpalte = kopfZug.spalte
+                        return
+                    }
+                    root._ziehLinie = -1
+                    Qt.callLater(root._ziehUebernehmen)
+                }
+                //  Erst die Breite klemmen, dann die Linie daraus - sonst zeigte sie
+                //  am Anschlag etwas anderes an, als gesetzt wird.
+                onTranslationChanged: {
+                    if (!active) return
+                    const basis = root._spalteBreite(root._ziehSpalte)
+                    root._ziehBreite = Math.max(40, Math.round(basis + translation.x))
+                    root._ziehLinie = root._ziehAb + (root._ziehBreite - basis)
+                }
+            }
+            TapHandler {
+                acceptedButtons: Qt.LeftButton
+                gesturePolicy: TapHandler.DragThreshold
+                onDoubleTapped: if (root.provider && kopfZug.spalte >= 0)
+                    root.provider.setColumnWidth(kopfZug.spalte, 0)
+            }
+        }
+    }
+
+    //  Die Ecke links oben, die Zeilenspalte und Kopfleisten gemeinsam frei lassen.
     Rectangle {
         visible: root.showNumbers
         anchors { left: parent.left; top: parent.top }
@@ -455,12 +663,12 @@ Item {
         boundsBehavior: Flickable.StopAtBounds
         onContentXChanged: root.xOffset = contentX
 
-        //  Leisten ausdruecklich nach oben: als Geschwister des Inhalts hinge ihre
-        //  Reihenfolge sonst am Quelltext (daran scheiterte das seitliche Rollen).
+        //  Leisten nach oben: als Geschwister des Inhalts hinge ihre Reihenfolge
+        //  sonst am Quelltext (daran scheiterte das seitliche Rollen).
         ScrollBar.horizontal: ScrollBar { policy: ScrollBar.AsNeeded; z: 10 }
 
-        //  Rechts an der Flaeche, nicht an einer Schicht darueber: die Leisten bekommen
-        //  den Druck so zuerst, und `DragThreshold` gibt ihn beim Ziehen wieder her.
+        //  Rechts an der Flaeche: die Leisten bekommen den Druck so zuerst, und
+        //  `DragThreshold` gibt ihn beim Ziehen wieder her.
         TapHandler {
             acceptedButtons: Qt.RightButton
             gesturePolicy: TapHandler.DragThreshold
@@ -479,8 +687,7 @@ Item {
 
 
 
-        //  Nur die sichtbaren Zeilen entstehen als Elemente, auch bei 10.000
-        //  Datenzeilen.
+        //  Nur die sichtbaren Zeilen entstehen als Elemente, auch bei 10.000.
         ListView {
             id: liste
             objectName: "datevRows"
@@ -491,10 +698,9 @@ Item {
             cacheBuffer: 400
             boundsBehavior: Flickable.StopAtBounds
 
-            //  Linksklick unter die letzte Zeile beendet Auswahl und
-            //  Bearbeitung. Der Helfer gehoert AN DIE LISTE - an der Flaeche
-            //  darunter kaeme der linke Druck nie an, den nimmt die Liste fuer
-            //  ihr Rollen.
+            //  Linksklick unter die letzte Zeile beendet Auswahl und Bearbeitung.
+            //  Der Helfer gehoert AN DIE LISTE - an der Flaeche darunter kaeme der
+            //  linke Druck nie an, den nimmt die Liste fuer ihr Rollen.
             TapHandler {
                 acceptedButtons: Qt.LeftButton
                 gesturePolicy: TapHandler.DragThreshold
@@ -505,8 +711,8 @@ Item {
                 }
             }
 
-            //  An der Liste haengen Groesse und Ziehen von selbst; seitlich rollt er aber
-            //  mit und wird deshalb an den Rand des SICHTBAREN Ausschnitts gerechnet.
+            //  Seitlich rollt er mit und wird deshalb an den Rand des SICHTBAREN
+            //  Ausschnitts gerechnet.
             ScrollBar.vertical: ScrollBar {
                 policy: ScrollBar.AsNeeded
                 z: 10
@@ -519,20 +725,36 @@ Item {
                 width: liste.width
                 height: root.rowHeight
 
-                //  Eine leere Zeile (Leerzeile in der Datei) bekommt keinen
-                //  Streifen - die Luecke soll als Luecke zu sehen sein.
+                //  Eine Leerzeile bekommt keinen Streifen - die Luecke soll zu sehen sein.
                 readonly property bool leer:
                     (root.contentRevision >= 0 && root.provider)
                     ? root.provider.rowEmpty(zeile.index) : false
 
-                //  Links waehlt, doppelt bearbeitet. Der Helfer sitzt IN der Zeile:
+                //  Links waehlt, doppelt bearbeitet. Die Helfer sitzen IN der Zeile:
                 //  die Liste nimmt den linken Druck fuer ihr Rollen an, ein Helfer
                 //  an der Flaeche darueber bekaeme ihn nie (gemessen).
+                //  DREI statt einem: ein Tipp-Helfer meldet die gedrueckten Tasten
+                //  nicht, und ohne die Trennung setzte der schlichte bei
+                //  Umschalt+Klick den Anker zuletzt wieder um.
                 TapHandler {
                     acceptedButtons: Qt.LeftButton
+                    acceptedModifiers: Qt.NoModifier
                     gesturePolicy: TapHandler.DragThreshold
                     onTapped: function (punkt) { root._linksGetippt(punkt.scenePosition, false) }
                     onDoubleTapped: function (punkt) { root._linksGetippt(punkt.scenePosition, true) }
+                }
+                TapHandler {
+                    acceptedButtons: Qt.LeftButton
+                    acceptedModifiers: Qt.ControlModifier
+                    gesturePolicy: TapHandler.DragThreshold
+                    onTapped: function (punkt) { root._linksGetippt(punkt.scenePosition, false) }
+                    onDoubleTapped: function (punkt) { root._linksGetippt(punkt.scenePosition, true) }
+                }
+                TapHandler {
+                    acceptedButtons: Qt.LeftButton
+                    acceptedModifiers: Qt.ShiftModifier
+                    gesturePolicy: TapHandler.DragThreshold
+                    onTapped: function (punkt) { root._umschaltGetippt(punkt.scenePosition) }
                 }
                 Rectangle {
                     anchors.fill: parent
@@ -563,12 +785,16 @@ Item {
                     }
                 }
 
-                Row {
+                Item {
+                    anchors.fill: parent
                     Repeater {
-                        model: root._spalten
+                        model: root._spaltenAnz
                         delegate: Item {
-                            required property var modelData
-                            width: root._breite(modelData.chars)
+                            required property int index
+                            readonly property var modelData:
+                                root._spalten[root._vonSpalte + index] || root._keineSpalte
+                            x: root._geometrie.kanten[root._vonSpalte + index]
+                            width: root._breite(modelData)
                             height: zeile.height
 
                             Text {
@@ -580,9 +806,8 @@ Item {
                                 text: (root.contentRevision >= 0 && root.provider)
                                       ? root.provider.cell(zeile.index, modelData.index) : ""
                             }
-                            //  Die Ecke sagt, dass die Zahl gerechnet und nicht
-                            //  getippt ist. Ohne eine einzige Formel in der Datei
-                            //  faellt die Abfrage je Zelle weg.
+                            //  Die Ecke sagt, dass die Zahl gerechnet ist; ohne
+                            //  Formel faellt die Abfrage je Zelle weg.
                             Rectangle {
                                 visible: root._hatFormeln && root.contentRevision >= 0
                                          && root.provider.cellIsFormula(zeile.index,
@@ -602,8 +827,8 @@ Item {
         }
     }
 
-    //  NEBEN der rollenden Flaeche, sonst wanderten die Nummern seitlich aus dem
-    //  Bild. Nur die sichtbaren; bei fester Zeilenhoehe genuegt Rechnen.
+    //  NEBEN der rollenden Flaeche, sonst wanderten die Nummern aus dem Bild.
+    //  Nur die sichtbaren; bei fester Zeilenhoehe genuegt Rechnen.
     Rectangle {
         id: nummernSpalte
         visible: root.showNumbers
@@ -640,9 +865,9 @@ Item {
                                    Editor.gutterText.b, 0.25) }
     }
 
-    //  Rad wie im Rest der App: halbe Sichthoehe je Rastung, weich ueber 180 ms (Qt gibt
-    //  60 px vor, gemessen 72 statt 276). Eigene Flaeche, weil ZWEI Ziele rollen; eine
-    //  MouseArea ist zwingend - ein Flickable nimmt Radereignisse vor jedem WheelHandler.
+    //  Rad wie im Rest der App: halbe Sichthoehe je Rastung, weich ueber 180 ms
+    //  (Qt gibt 60 px vor). Eine MouseArea ist zwingend - ein Flickable nimmt
+    //  Radereignisse vor jedem WheelHandler.
     NumberAnimation {
         id: rollAnim
         target: liste; property: "contentY"
@@ -654,13 +879,28 @@ Item {
         duration: 180; easing.type: Easing.OutCubic
     }
     //  Auswahlrahmen und Eingabefeld: Geschwister der Flaeche (als Kind waeren die
-    //  Koordinaten doppelt versetzt), ohne Zeigerhelfer - einer setzte am Element alle
-    //  Tasten an und verdeckte die waagerechte Bildlaufleiste.
+    //  Koordinaten doppelt versetzt), ohne Zeigerhelfer - einer verdeckte die
+    //  waagerechte Bildlaufleiste.
     Item {
         id: zellSchicht
         anchors.fill: flick
         clip: true
         z: 3
+
+        //  UNTER dem Rahmen der Ankerzelle: so bleibt sichtbar, von wo aus gezogen wurde.
+        Rectangle {
+            visible: root.hatBereich && root._stelleVon >= 0
+            x: root._geometrie.kanten[root._stelleVon] - root.xOffset
+            y: root._zeileVon * root.rowHeight - liste.contentY
+            width: root._geometrie.kanten[root._stelleBis + 1]
+                   - root._geometrie.kanten[root._stelleVon]
+            height: (root._zeileBis - root._zeileVon + 1) * root.rowHeight
+            color: Qt.rgba(App.themeAccent.r, App.themeAccent.g, App.themeAccent.b, 0.16)
+            border.width: 1
+            border.color: Qt.rgba(App.themeAccent.r, App.themeAccent.g,
+                                  App.themeAccent.b, 0.55)
+            radius: 2
+        }
 
         //  Eigene Flaeche statt im Delegaten: steht auch ausserhalb des Delegat-Vorrats.
         Rectangle {
@@ -676,8 +916,7 @@ Item {
             radius: 2
         }
 
-        //  Nur waehrend des Bearbeitens sichtbar - unsichtbar nimmt es keine
-        //  Taste und keinen Klick an, die Schicht bleibt sonst rein sichtbar.
+        //  Nur beim Bearbeiten sichtbar - unsichtbar nimmt es weder Taste noch Klick.
         TextField {
             id: zellEditor
             objectName: "zellEditor"     // Griff fuer tests/bench
@@ -715,29 +954,30 @@ Item {
         }
     }
 
-    //  Tastatur, sobald eine Zelle gewaehlt ist. Ohne Auswahl bleiben die Pfeile
-    //  beim Viewer (vorherige/naechste Datei).
+    //  Tastatur nur mit gewaehlter Zelle - sonst gehoeren die Pfeile dem Viewer.
     Keys.onPressed: function (e) {
         if (root.bearbeitet || root.selRow < 0 || root.selColumn < 0 || !root.provider) return
         const strg = (e.modifiers & Qt.ControlModifier) !== 0
+        const um = (e.modifiers & Qt.ShiftModifier) !== 0
         const seite = Math.max(1, Math.floor(liste.height / root.rowHeight) - 1)
         switch (e.key) {
-        case Qt.Key_Up:       root._bewege(-1, 0); e.accepted = true; return
-        case Qt.Key_Down:     root._bewege(1, 0);  e.accepted = true; return
-        case Qt.Key_Left:     root._bewege(0, -1); e.accepted = true; return
-        case Qt.Key_Right:    root._bewege(0, 1);  e.accepted = true; return
-        case Qt.Key_Tab:      root._bewege(0, 1);  e.accepted = true; return
-        case Qt.Key_Backtab:  root._bewege(0, -1); e.accepted = true; return
-        case Qt.Key_PageUp:   root._bewege(-seite, 0); e.accepted = true; return
-        case Qt.Key_PageDown: root._bewege(seite, 0);  e.accepted = true; return
+        case Qt.Key_Up:       root._bewege(-1, 0, um); e.accepted = true; return
+        case Qt.Key_Down:     root._bewege(1, 0, um);  e.accepted = true; return
+        case Qt.Key_Left:     root._bewege(0, -1, um); e.accepted = true; return
+        case Qt.Key_Right:    root._bewege(0, 1, um);  e.accepted = true; return
+        case Qt.Key_Tab:      root._bewege(0, 1, false);  e.accepted = true; return
+        case Qt.Key_Backtab:  root._bewege(0, -1, false); e.accepted = true; return
+        case Qt.Key_PageUp:   root._bewege(-seite, 0, um); e.accepted = true; return
+        case Qt.Key_PageDown: root._bewege(seite, 0, um);  e.accepted = true; return
         case Qt.Key_Home:
-            root._bewege(strg ? -root.selRow : 0, -root._spalten.length); e.accepted = true; return
+            root._bewege(strg ? -root.provider.rowCount : 0,
+                         -root._spalten.length, um); e.accepted = true; return
         case Qt.Key_End:
-            root._bewege(strg ? root.provider.rowCount : 0, root._spalten.length); e.accepted = true; return
+            root._bewege(strg ? root.provider.rowCount : 0,
+                         root._spalten.length, um); e.accepted = true; return
         case Qt.Key_Escape:   root.entmarkiere(); e.accepted = true; return
         }
-        //  Eine Markierung zeigt nur - Tippen oder Entf aendern nichts. Bearbeitet wird
-        //  per Doppelklick, F2 oder aus dem Menue.
+        //  Eine Markierung zeigt nur; bearbeitet wird per Doppelklick, F2 oder Menue.
         if (e.key === Qt.Key_F2 && root._bearbeitbar) { root.bearbeiteZelle(); e.accepted = true }
     }
 
@@ -837,7 +1077,8 @@ Item {
         }
         MenuSeparator { visible: root._bearbeitbar; height: visible ? implicitHeight : 0 }
         MenuItem {
-            text: App.uiText(App.language, "TableCopyCell")
+            text: App.uiText(App.language,
+                             root.hatBereich ? "TableCopyRange" : "TableCopyCell")
             enabled: root.selRow >= 0 && root.selColumn >= 0
             onTriggered: root.kopiereZelle()
         }
@@ -973,6 +1214,18 @@ Item {
         Rectangle { anchors.right: parent.right; width: 1; height: parent.height
                     color: Qt.rgba(Editor.gutterText.r, Editor.gutterText.g,
                                    Editor.gutterText.b, 0.45) }
+    }
+
+    //  Zeigt beim Ziehen, wo die Kante landet.
+    Rectangle {
+        objectName: "spaltenZiehlinie"      // Griff fuer tests/bench
+        visible: root._ziehLinie >= 0
+        x: root._ziehLinie - 1
+        width: 2
+        y: 0
+        height: root.height
+        color: App.themeAccent
+        z: 5
     }
 
     Rectangle {

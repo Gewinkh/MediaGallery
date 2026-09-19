@@ -1016,17 +1016,31 @@ FocusScope {
         }
         property bool gross: false
         property bool ganz: false
+        //  „Alle" plus je eine gezeigte Spalte; ohne Namen ihre Nummer.
+        function _spaltenListe() {
+            const liste = [App.uiText(App.language, "TableFilterAll")]
+            const spalten = root._tabCtl ? root._tabCtl.columns : []
+            for (var i = 0; i < spalten.length; ++i)
+                liste.push(spalten[i].title.length > 0
+                           ? spalten[i].title
+                           : App.uiText(App.language, "TableColumnN").arg(spalten[i].index + 1))
+            return liste
+        }
         function oeffne(knopf) {
             const p = knopf.mapToItem(root, 0, knopf.height + 4)
             filterPopup.x = p.x
             filterPopup.y = p.y
             const c = root._tabCtl
-            filterSpalte.currentIndex = 0
-            if (c && c.filterColumn >= 0)
-                for (var i = 0; i < c.columns.length; ++i)
-                    if (c.columns[i].index === c.filterColumn) filterSpalte.currentIndex = i + 1
-            filterText.text = c ? c.filterText : ""
+            //  Erst oeffnen: vorher hat das Auswahlfeld noch keine Eintraege,
+            //  und eine Spalte liesse sich nicht vorwaehlen.
             filterPopup.open()
+            filterSpalte.currentIndex = 0
+            if (c && c.filterColumn >= 0) {
+                const spalten = c.columns
+                for (var i = 0; i < spalten.length; ++i)
+                    if (spalten[i].index === c.filterColumn) filterSpalte.currentIndex = i + 1
+            }
+            filterText.text = c ? c.filterText : ""
             filterText.forceActiveFocus()
         }
         function anwenden() {
@@ -1045,13 +1059,11 @@ FocusScope {
                 id: filterSpalte
                 objectName: "tableFilterColumn"
                 width: 170
-                model: {
-                    const liste = [App.uiText(App.language, "TableFilterAll")]
-                    if (root._tabCtl)
-                        for (var i = 0; i < root._tabCtl.columns.length; ++i)
-                            liste.push(root._spaltenName(root._tabCtl.columns[i].index))
-                    return liste
-                }
+                //  Die Liste entsteht ERST mit dem Oeffnen. Ein Auswahlfeld
+                //  baut fuer seine Hoehe jeden Eintrag als Element - an 125
+                //  Spalten waren das 37 ms im GUI-Faden, und zwar bei JEDER
+                //  Aenderung der Spalten, nicht erst beim Filtern.
+                model: filterPopup.visible ? filterPopup._spaltenListe() : []
                 onActivated: filterPopup.anwenden()
             }
             TextField {

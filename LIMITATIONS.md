@@ -407,6 +407,18 @@ If a single cell in a column is not a date, the whole column is sorted as text.
 not found this way.
 Workaround: use `Ctrl+F`, which always searches literally.
 
+**Dragging with the mouse does not select a block.**
+Why: a drag over the table scrolls it, and the table cannot have both on the
+same button.
+Workaround: hold `Shift` and click the far corner, or hold `Shift` and use the
+arrow keys.
+
+**A block of more than 500,000 cells is not copied.**
+Why: the text is put together while the window waits, and half a million cells
+already fill the clipboard with tens of megabytes. The table says so instead of
+freezing.
+Workaround: copy it in parts, or filter first.
+
 **A single `,` or `.` in a number is read as a decimal separator.**
 Why: `1.234` could be one point two or twelve hundred. The German reading was
 chosen; `1.234,56` and `1,234.56` are always read correctly.
@@ -556,6 +568,10 @@ Planned work, not limits. Once something is built, it moves to
 - **More syntax languages** - 28 are covered; each new one is a table entry.
 - **Writing audio tags** (title, artist) - deliberately left out: one wrong byte
   damages the file.
-- **Formatting and range selection in tables** - a CSV cannot store column
-  widths, colours or fonts; that would need a second file next to it. Range
-  selection waits for a faster way of drawing the table.
+- **Column formatting in tables** - bold, text colour and background colour per
+  column, set from the heading's right-click menu, kept next to the file the way
+  column widths already are. Per cell is deliberately left out.
+- **Thousands separator** - a setting for whether numbers are shown as `2,000.00`
+  or `2000.00`. It would change the display only; the file stays as it is.
+- **Charts from table data** - bars, lines, pies and graphs. Nothing of it is
+  designed yet.

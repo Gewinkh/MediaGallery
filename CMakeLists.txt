@@ -349,6 +349,8 @@ add_library(mg_lib STATIC
     src/table/TableSearch.h
     src/table/TableSort.cpp
     src/table/TableSort.h
+    src/table/TableWidths.cpp
+    src/table/TableWidths.h
     src/table/TableWriter.cpp
     src/table/TableWriter.h
 

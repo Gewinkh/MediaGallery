@@ -2,6 +2,7 @@
 
 #include "core/PathUtils.h"
 #include "core/Strings.h"
+#include "table/TableWidths.h"
 #include "table/TableWriter.h"
 
 #include <QCoreApplication>
@@ -24,6 +25,10 @@ constexpr qint64 kMaxBytes = 32LL * 1024 * 1024;
 
 //  So viele Zeilen sieht die Breitenmessung an.
 constexpr int kProbeZeilen = 500;
+
+//  Obergrenze fuer „Bereich kopieren": darueber dauert der Aufbau im GUI-Faden
+//  laenger, als das Ergebnis jemandem nuetzt.
+constexpr qint64 kMaxBereichZellen = 500000;
 
 //  Rueckgaengig: so viele Schritte und so viele Zeichen darin. Eine geloeschte
 //  Spalte einer grossen Tabelle traegt jeden ihrer Werte.
@@ -208,9 +213,25 @@ void TableController::ergebnisUebernehmen(std::shared_ptr<Datei> d, const QStrin
             m_warnungen.append(QStringLiteral("%1: %2").arg(w.zeile).arg(w.text));
     }
     formelnNeuRechnen();
+    //  Die Breiten gehoeren zur DATEI, nicht zur Flaeche - sie kommen mit ihr.
+    m_breiten = m_datei ? mg::table::liesBreiten(m_source) : QHash<int, int>();
     spaltenNeuRechnen();
     emit stateChanged();
     emit blockChanged();
+}
+
+void TableController::setColumnWidth(int column, int px) {
+    if (column < 0) return;
+    if (px <= 0) {
+        if (m_breiten.remove(column) == 0) return;
+    } else {
+        const int neu = qBound(kMinBreite, px, kMaxBreite);
+        if (m_breiten.value(column, 0) == neu) return;
+        m_breiten.insert(column, neu);
+    }
+    schreibeBreiten(m_source, m_breiten);
+    spaltenNeuRechnen();
+    emit stateChanged();
 }
 
 //  Je Block ein eigener Bezugspunkt: A1 ist SEINE erste Datenzeile, auch wenn
@@ -425,6 +446,7 @@ void TableController::spaltenNeuRechnen() {
         //  Die Breite steht HIER, nicht in der Zelle: je Zelle gerechnet kostete
         //  das beim Rollen je neuer Zeile einen Lauf ueber die Probe mal Spalte.
         m.insert(QStringLiteral("chars"), zeichen);
+        m.insert(QStringLiteral("px"), m_breiten.value(i, 0));
         m_spalten.append(m);
     }
 }
@@ -493,6 +515,29 @@ QString TableController::rowText(int row) const {
     for (const QVariant& v : m_spalten)
         felder.append(cell(row, v.toMap().value(QStringLiteral("index")).toInt()));
     return felder.join(QLatin1Char('\t'));
+}
+
+QString TableController::rangeText(int row1, int col1, int row2, int col2) const {
+    if (!m_datei) return {};
+    const int za = qMax(0, qMin(row1, row2));
+    const int ze = qMin(rowCount() - 1, qMax(row1, row2));
+    const int sa = qMax(0, qMin(col1, col2));
+    const int se = qMin(int(m_spalten.size()) - 1, qMax(col1, col2));
+    if (za > ze || sa > se) return {};
+    if (qint64(ze - za + 1) * qint64(se - sa + 1) > kMaxBereichZellen) return {};
+
+    QStringList zeilen;
+    zeilen.reserve(ze - za + 1);
+    QStringList felder;
+    felder.reserve(se - sa + 1);
+    for (int z = za; z <= ze; ++z) {
+        felder.clear();
+        for (int i = sa; i <= se; ++i)
+            felder.append(cell(z, m_spalten.at(i).toMap()
+                                     .value(QStringLiteral("index")).toInt()));
+        zeilen.append(felder.join(QLatin1Char('\t')));
+    }
+    return zeilen.join(QLatin1Char('\n'));
 }
 
 int TableController::rohZeile(int anzeige) const {
