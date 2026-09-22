@@ -190,6 +190,8 @@ add_library(mg_lib STATIC
     src/core/ISettings.h
     src/core/JsonStorage.cpp
     src/core/JsonStorage.h
+    src/core/MGEditBin.cpp
+    src/core/MGEditBin.h
     src/core/MGStorage.cpp
     src/core/MGStorage.h
     src/core/MediaLogs.cpp

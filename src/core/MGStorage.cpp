@@ -100,11 +100,20 @@ public:
     }
 
     std::string text() {
+        const char* p = nullptr;
+        std::uint32_t n = 0;
+        if (!textRoh(p, n)) return {};
+        return std::string(p, n);
+    }
+
+    //  Derselbe Text als AUSSCHNITT der Eingabe - gueltig, solange die Bytes leben.
+    bool textRoh(const char*& aus, std::uint32_t& laenge) {
         const std::uint32_t n = varint();
-        if (m_kaputt || n > kMaxTextLaenge || rest() < n) { m_kaputt = true; return {}; }
-        std::string s(m_p, m_p + n);
+        if (m_kaputt || n > kMaxTextLaenge || rest() < n) { m_kaputt = true; return false; }
+        aus = m_p;
+        laenge = n;
         m_p += n;
-        return s;
+        return true;
     }
 
     std::uint32_t farbe() {
@@ -130,20 +139,26 @@ public:
     }
 
     //  Anzahl + Abstaende. `grenze` ist die groesste zulaessige Nummer + 1 -
-    //  eine Nummer, die ins Leere zeigt, macht die Datei ungueltig.
-    std::vector<std::uint32_t> liste(std::uint32_t grenze) {
-        std::vector<std::uint32_t> out;
+    //  eine Nummer, die ins Leere zeigt, macht die Datei ungueltig. In den
+    //  Vektor des Aufrufers geschrieben: eine leere Liste kostet damit nichts.
+    void listeIn(std::vector<std::uint32_t>& out, std::uint32_t grenze) {
         const std::uint32_t n = varint();
-        if (m_kaputt || n > kMaxEintraege || n > rest() + 1) { m_kaputt = true; return out; }
+        if (m_kaputt || n > kMaxEintraege || n > rest() + 1) { m_kaputt = true; return; }
+        if (!n) return;
         out.reserve(n);
         std::uint32_t letzt = 0;
         for (std::uint32_t i = 0; i < n; ++i) {
             const std::uint32_t d = varint();
-            if (m_kaputt) return out;
+            if (m_kaputt) return;
             letzt += d;
-            if (letzt >= grenze) { m_kaputt = true; return out; }
+            if (letzt >= grenze) { m_kaputt = true; return; }
             out.push_back(letzt);
         }
+    }
+
+    std::vector<std::uint32_t> liste(std::uint32_t grenze) {
+        std::vector<std::uint32_t> out;
+        listeIn(out, grenze);
         return out;
     }
 
@@ -219,16 +234,19 @@ bool lesNamen(const char* d, std::size_t n, Ablage& a) {
     const std::uint32_t anzahl = l.varint();
     if (l.kaputt() || anzahl > kMaxEintraege) return false;
     a.dateien.reserve(anzahl);
+    //  `vorher` wird nur gekuerzt und verlaengert und fordert nach den ersten
+    //  Dateien nichts mehr an; ueber `substr` und `+` waeren es drei Ketten je Datei.
     std::string vorher;
     for (std::uint32_t i = 0; i < anzahl; ++i) {
         const std::uint32_t gemeinsam = l.varint();
         if (l.kaputt() || gemeinsam > vorher.size()) return false;
-        const std::string rest = l.text();
-        if (l.kaputt()) return false;
-        Datei f;
-        f.name = vorher.substr(0, gemeinsam) + rest;
-        vorher = f.name;
-        a.dateien.push_back(std::move(f));
+        const char* rest = nullptr;
+        std::uint32_t restLaenge = 0;
+        if (!l.textRoh(rest, restLaenge)) return false;
+        vorher.resize(gemeinsam);
+        vorher.append(rest, restLaenge);
+        a.dateien.emplace_back();
+        a.dateien.back().name = vorher;
     }
     return true;
 }
@@ -243,7 +261,7 @@ bool lesZuordnungen(const char* d, std::size_t n, Ablage& a) {
         const std::uint32_t satz = l.varint();
         if (l.kaputt() || satz > a.saetze.size()) return false;
         f.satz = satz ? satz - 1 : kOhneSatz;
-        f.kategorien = l.liste(katGrenze);
+        l.listeIn(f.kategorien, katGrenze);
         if (l.kaputt()) return false;
     }
     return !l.kaputt();
@@ -258,8 +276,11 @@ std::string schreibe(const Ablage& ablage) {
     std::vector<const Datei*> reihe;
     reihe.reserve(ablage.dateien.size());
     for (const Datei& d : ablage.dateien) reihe.push_back(&d);
-    std::sort(reihe.begin(), reihe.end(),
-              [](const Datei* a, const Datei* b) { return a->name < b->name; });
+    const auto nachNamen = [](const Datei* a, const Datei* b) { return a->name < b->name; };
+    //  Nach einem Laden steht die Reihe schon sortiert da, und gespeichert wird
+    //  meist genau danach. Die Probe kostet n Vergleiche, das Sortieren n log n.
+    if (!std::is_sorted(reihe.begin(), reihe.end(), nachNamen))
+        std::sort(reihe.begin(), reihe.end(), nachNamen);
 
     std::string t;
     schreibVarint(t, static_cast<std::uint32_t>(ablage.tags.size()));

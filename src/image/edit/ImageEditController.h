@@ -196,6 +196,8 @@ private:
     ImageAnnotation seededText() const;   // Text-Vorlage anwenden (ohne Text)
     ImageAnnotation seededDraw(ImageAnnKind kind) const;
     bool loadOverlay(const QString& imgPath);
+    //  Aus dem Binaerkoerper ODER aus einer alten JSON-Beidatei.
+    template <class Obj> bool ladeAus(const Obj& o);
     static QString sidecarPath(const QString& imgPath);
     static QString uniqueCopyPath(const QString& imgPath, const QString& ext);
 

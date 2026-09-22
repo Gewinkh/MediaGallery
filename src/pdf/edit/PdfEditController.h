@@ -441,6 +441,8 @@ private:
     // Text -> m_textTpl, Replace -> m_replaceTpl (ohne Highlight), sonst Zeichen-Defaults.
     void mirrorToTemplate(PdfEditField f, const QVariant& v, PdfAnnKind kind);
     bool loadOverlay(const QString& pdfPath);
+    //  Aus dem Binaerkoerper ODER aus einer alten JSON-Beidatei.
+    template <class Obj> bool ladeAus(const Obj& o);
     static QString sidecarPath(const QString& pdfPath);
     static QString uniqueCopyPath(const QString& pdfPath);
     static QString uniqueSuffixPath(const QString& pdfPath, const QString& suffix);
@@ -593,7 +595,9 @@ private:
 
     // page ist der QUELLseitenindex; formFields() bildet ueber den Seiten-Key auf
     // die Ansichts-Seite ab, damit umsortierte Seiten stimmen.
-    QHash<int, QJsonObject> m_importBaseline;
+    //  Der Stand einer uebernommenen Annotation als BYTES - verglichen wird
+    //  die geschriebene Form, nicht Feld fuer Feld.
+    QHash<int, QByteArray> m_importBaseline;
     int  m_annotReadGen = 0;            // verwirft veraltete Leseläufe
 
     QVector<mg::PdfFormField> m_formFields;

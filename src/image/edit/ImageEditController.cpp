@@ -896,18 +896,25 @@ bool ImageEditController::saveOverlay() {
     if (m_model.count() == 0) {
         ok = mg::editsidecar::entferne(m_docPath);
     } else {
-        QJsonArray arr;
+        //  Die Beidatei gehoert allen drei Editoren: erst die fremden Abschnitte
+        //  uebernehmen, dann den eigenen schreiben.
+        const mg::editsidecar::Inhalt vorher = mg::editsidecar::liesInhalt(m_docPath, false);
+        mg::mgeb::Schreiber s;
+        s.beginneObjekt();
+        mg::editsidecar::uebernimmFremde(s, vorher, QStringLiteral("anns"));
+        s.feld(mg::mgeb::k_format, QStringLiteral("mediagallery-image-overlay"));
+        s.feld(mg::mgeb::k_version, 1);
+        if (m_recording)
+            s.feld(mg::mgeb::k_recording, true);
+        s.schluessel(mg::mgeb::k_anns);
+        s.beginneListe();
         const QVector<ImageAnnotation> anns = m_model.annotations();
         for (const ImageAnnotation& a : anns)
-            arr.append(a.toJson());
-        QJsonObject rootObj;
-        rootObj.insert(QStringLiteral("format"),  QStringLiteral("mediagallery-image-overlay"));
-        rootObj.insert(QStringLiteral("version"), 1);
-        rootObj.insert(QStringLiteral("anns"),    arr);
-        if (m_recording)
-            rootObj.insert(QStringLiteral("recording"), true);
+            a.schreibe(s);
+        s.beendeListe();
+        s.beendeObjekt();
 
-        ok = mg::editsidecar::schreibe(m_docPath, rootObj);
+        ok = mg::editsidecar::schreibeBin(m_docPath, s.fertig());
     }
 
     if (ok)
@@ -916,31 +923,37 @@ bool ImageEditController::saveOverlay() {
     return ok;
 }
 
-bool ImageEditController::loadOverlay(const QString& imgPath) {
-    const QJsonObject o = mg::editsidecar::lies(imgPath);
-    if (o.isEmpty())
-        return false;
-    if (o.value(QStringLiteral("format")).toString()
+//  Beide Quellen laufen durch dieselbe Schablone; nur woher die Felder kommen,
+//  unterscheidet sich.
+template <class Obj>
+bool ImageEditController::ladeAus(const Obj& o) {
+    if (o.value(mg::mgeb::k_format).toString()
         != QLatin1String("mediagallery-image-overlay"))
         return false;
 
-    if (m_recording != o.value(QStringLiteral("recording")).toBool(false)) {
-        m_recording = o.value(QStringLiteral("recording")).toBool(false);
+    if (m_recording != o.value(mg::mgeb::k_recording).toBool(false)) {
+        m_recording = o.value(mg::mgeb::k_recording).toBool(false);
         emit recordingChanged();
     }
 
     QVector<ImageAnnotation> anns;
-    const QJsonArray arr = o.value(QStringLiteral("anns")).toArray();
+    const auto arr = o.value(mg::mgeb::k_anns).toArray();
     anns.reserve(arr.size());
-    for (const QJsonValue& v : arr) {
-        if (!v.isObject())
-            continue;
-        ImageAnnotation a = ImageAnnotation::fromJson(v.toObject());
+    for (int i = 0; i < arr.size(); ++i) {
+        ImageAnnotation a = ImageAnnotation::lade(mg::mgeb::alsObjekt(arr.at(i)));
         a.id = m_nextId++;                          // IDs sind sitzungslokal
         anns.append(a);
     }
     m_model.resetAnns(anns);
     return true;
+}
+
+bool ImageEditController::loadOverlay(const QString& imgPath) {
+    const mg::editsidecar::Inhalt in = mg::editsidecar::liesInhalt(imgPath);
+    if (in.leer())
+        return false;
+    return in.istBin ? ladeAus(in.bin.wurzel())
+                     : ladeAus(mg::mgeb::JsonObjekt(in.json));
 }
 
 QString ImageEditController::uniqueCopyPath(const QString& imgPath, const QString& ext) {

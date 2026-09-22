@@ -307,6 +307,14 @@ Workaround: press `F` or `Esc` first.
 
 ## Editors
 
+**Notes cannot be read by an older version of the app any more.**
+Why: the side file next to a document (`<name>.mgedit`) now holds the app's own
+compact format instead of text, which makes saving three to four times faster.
+Older files still open, and are quietly rewritten in the new form the first time
+you open them - so going back to an older version stops working even for
+documents you never edited.
+Workaround: keep a copy of your side files before going back to an older version.
+
 **A text file over 8 MB opens read-only.**
 Why: only the first 8 MB are loaded, so a large log does not freeze the window.
 Saving would cut off the rest of the file, so it is blocked; the status bar says

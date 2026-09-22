@@ -175,6 +175,10 @@ void JsonStorage::loadFolder(const QString& folderPath) {
     }
 
     leseAlteJson(altePath(folderPath));
+    //  Still umziehen: eine Ablage, die nur gelesen und nie gespeichert wird,
+    //  bliebe sonst fuer immer alt. Ein leerer Ordner bekommt keine Datei.
+    if (!m_fileMeta.isEmpty() || !m_tagColors.isEmpty() || !m_categories.isEmpty())
+        saveFolder(folderPath);
 }
 
 //  Der Leser fuer das ALTE Format. Er bleibt, damit vorhandene Ablagen

@@ -111,9 +111,7 @@ The build skips it when the `tests/` folder is absent.
 ## Changelog
 
 ### Latest
-- **Feature**: **Block selection in tables** with the Shift key and copying a whole block.
-- **Feature**: **Adjustable column widths** that are still there the next time.
-- **Change**: **Wide tables open and scroll faster** with many columns shown.
+- **Change**: **Notes and drawings** now save and open much faster and take less space on documents with many marks.
 
 ---
 

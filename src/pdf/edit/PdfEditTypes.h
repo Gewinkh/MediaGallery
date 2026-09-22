@@ -8,6 +8,9 @@
 #include <QPointF>
 #include <QVector>
 #include <QColor>
+#include "core/MGEditBin.h"
+
+#include <QVarLengthArray>
 #include <QJsonObject>
 #include <QJsonArray>
 
@@ -106,6 +109,8 @@ struct PdfEditBox {
     bool isRedact() const { return kind == PdfAnnKind::Redact; }
     bool isStamp()  const { return kind == PdfAnnKind::Stamp; }
     bool hasText()  const { return kind == PdfAnnKind::Text || kind == PdfAnnKind::Replace; }
+    //  Wessen Rechteck sich aus den Punkten ergibt, braucht es nicht gespeichert.
+    bool istAusPunkten() const { return isStroke() && !points.isEmpty(); }
 
     // Bounding-Box aus den Punkten neu berechnen (Freihand/Pfeil). Ein
     // Linienbreiten-Rand hält Auswahlrahmen/Handles außerhalb des Strichs.
@@ -124,95 +129,109 @@ struct PdfEditBox {
 
     // Zeichen-Felder werden immer geschrieben (kind/stroke/lw/fill), die Text-Felder nur für Text-Boxen - alte
     // Sidecars ohne "kind" laden als Text (0), das Format bleibt vollständig rückwärtskompatibel.
-    QJsonObject toJson() const {
-        QJsonObject o;
-        o.insert(QStringLiteral("page"),   page);
+    //  In den Binaerkoerper - geschrieben wird nur noch diese Form.
+    void schreibe(mg::mgeb::Schreiber& s) const {
+        using namespace mg::mgeb;
+        s.beginneObjekt();
+        s.feld(k_page, page);
         if (track != PdfTrackState::None)
-            o.insert(QStringLiteral("tr"), static_cast<int>(track));
-        o.insert(QStringLiteral("kind"),   static_cast<int>(kind));
-        o.insert(QStringLiteral("x"),      rect.x());
-        o.insert(QStringLiteral("y"),      rect.y());
-        o.insert(QStringLiteral("w"),      rect.width());
-        o.insert(QStringLiteral("h"),      rect.height());
-        //  Punkte trägt nicht nur der Strich: eine Markierung hält darin ihre
+            s.feld(k_tr, static_cast<int>(track));
+        s.feld(k_kind, static_cast<int>(kind));
+        //  Bei einem Strich ist das Rechteck die HUELLE der Punkte und wird
+        //  beim Lesen ohnehin neu berechnet - es waere vier Doubles umsonst.
+        if (!istAusPunkten()) {
+            s.feld(k_x, rect.x());
+            s.feld(k_y, rect.y());
+            s.feld(k_w, rect.width());
+            s.feld(k_h, rect.height());
+        }
+        //  Punkte traegt nicht nur der Strich: eine Markierung haelt darin ihre
         //  Bereiche (je zwei Ecken). Deshalb am INHALT entscheiden, nicht an
-        //  der Art - sonst verlöre ein neuer Typ seine Geometrie im Sidecar.
+        //  der Art - sonst verloere ein neuer Typ seine Geometrie im Sidecar.
         if (!points.isEmpty()) {
-            QJsonArray pts;
-            for (const QPointF& p : points) {
-                pts.append(p.x());
-                pts.append(p.y());
+            QVarLengthArray<double, 256> flach(points.size() * 2);
+            for (int i = 0; i < points.size(); ++i) {
+                flach[2 * i]     = points.at(i).x();
+                flach[2 * i + 1] = points.at(i).y();
             }
-            o.insert(QStringLiteral("pts"), pts);
+            s.schluessel(k_pts);
+            s.gibDoubles(flach.data(), int(flach.size()));
         }
-        if (srcObjNum > 0) o.insert(QStringLiteral("srcobj"), srcObjNum);
-        if (isMarkup())    o.insert(QStringLiteral("mstyle"), markupStyle);
+        if (srcObjNum > 0) s.feld(k_srcobj, srcObjNum);
+        if (isMarkup())    s.feld(k_mstyle, markupStyle);
         if (isStamp() && !imagePath.isEmpty())
-            o.insert(QStringLiteral("img"), imagePath);
+            s.feld(k_img, imagePath);
         if (isRedact()) {
-            //  Die Schwärzung braucht ihre Fläche UND den Text, der beim
+            //  Die Schwaerzung braucht ihre Flaeche UND den Text, der beim
             //  Export aus dem Strom verschwinden soll.
-            o.insert(QStringLiteral("hilite"), highlight.name(QColor::HexArgb));
-            if (!origText.isEmpty()) o.insert(QStringLiteral("orig"), origText);
+            s.feld(k_hilite, highlight.name(QColor::HexArgb));
+            if (!origText.isEmpty()) s.feld(k_orig, origText);
         }
-        o.insert(QStringLiteral("stroke"), stroke.name(QColor::HexArgb));
-        o.insert(QStringLiteral("lw"),     lineWidth);
-        o.insert(QStringLiteral("fill"),   fill.name(QColor::HexArgb));
+        s.feld(k_stroke, stroke.name(QColor::HexArgb));
+        s.feld(k_lw,     lineWidth);
+        s.feld(k_fill,   fill.name(QColor::HexArgb));
         if (hasText()) {
-            o.insert(QStringLiteral("text"),   text);
+            s.feld(k_text, text);
             if (kind == PdfAnnKind::Replace && !origText.isEmpty())
-                o.insert(QStringLiteral("orig"), origText);
-            o.insert(QStringLiteral("font"),   fontFamily);
-            o.insert(QStringLiteral("size"),   fontSizePt);
-            o.insert(QStringLiteral("bold"),   bold);
-            o.insert(QStringLiteral("italic"), italic);
-            o.insert(QStringLiteral("under"),  underline);
-            o.insert(QStringLiteral("color"),  color.name(QColor::HexRgb));
-            o.insert(QStringLiteral("hilite"), highlight.name(QColor::HexArgb));
-            o.insert(QStringLiteral("align"),  alignment);
-            o.insert(QStringLiteral("valign"), vAlign);
-            o.insert(QStringLiteral("anchor"), anchored);
+                s.feld(k_orig, origText);
+            s.feld(k_font,   fontFamily);
+            s.feld(k_size,   fontSizePt);
+            s.feld(k_bold,   bold);
+            s.feld(k_italic, italic);
+            s.feld(k_under,  underline);
+            s.feld(k_color,  color.name(QColor::HexRgb));
+            s.feld(k_hilite, highlight.name(QColor::HexArgb));
+            s.feld(k_align,  alignment);
+            s.feld(k_valign, vAlign);
+            s.feld(k_anchor, anchored);
         }
-        return o;
+        s.beendeObjekt();
     }
 
-    static PdfEditBox fromJson(const QJsonObject& o) {
+    //  EIN Codec fuer beide Quellen: `Obj` ist der Binaerleser oder, bei einer
+    //  alten Beidatei, `JsonObjekt` ueber dem Qt-Baum.
+    template <class Obj>
+    static PdfEditBox lade(const Obj& o) {
         PdfEditBox b;
-        b.page       = o.value(QStringLiteral("page")).toInt(0);
-        const int k  = o.value(QStringLiteral("kind")).toInt(0);   // fehlt in Alt-Sidecars -> Text
+        b.page       = o.value(mg::mgeb::k_page).toInt(0);
+        const int k  = o.value(mg::mgeb::k_kind).toInt(0);   // fehlt in Alt-Sidecars -> Text
         b.kind       = (k >= 0 && k <= 8) ? static_cast<PdfAnnKind>(k) : PdfAnnKind::Text;
         //  Unbekannter Wert ⇒ None: eine verfälschte Datei darf keine Box in
         //  einen Zustand bringen, den die Oberfläche nicht auflösen kann.
-        const int tr = o.value(QStringLiteral("tr")).toInt(0);
+        const int tr = o.value(mg::mgeb::k_tr).toInt(0);
         b.track      = (tr == 1 || tr == 2) ? static_cast<PdfTrackState>(tr)
                                             : PdfTrackState::None;
-        b.rect       = QRectF(o.value(QStringLiteral("x")).toDouble(0.0),
-                              o.value(QStringLiteral("y")).toDouble(0.0),
-                              o.value(QStringLiteral("w")).toDouble(120.0),
-                              o.value(QStringLiteral("h")).toDouble(28.0));
-        if (o.contains(QStringLiteral("pts"))) {
-            const QJsonArray pts = o.value(QStringLiteral("pts")).toArray();
-            for (int i = 0; i + 1 < pts.size(); i += 2)
-                b.points.append(QPointF(pts.at(i).toDouble(), pts.at(i + 1).toDouble()));
+        b.rect       = QRectF(o.value(mg::mgeb::k_x).toDouble(0.0),
+                              o.value(mg::mgeb::k_y).toDouble(0.0),
+                              o.value(mg::mgeb::k_w).toDouble(120.0),
+                              o.value(mg::mgeb::k_h).toDouble(28.0));
+        if (o.contains(mg::mgeb::k_pts)) {
+            const auto pts = o.value(mg::mgeb::k_pts).toArray();
+            //  Ein QPointF ist genau zwei Doubles in dieser Reihenfolge - aus
+            //  dem Binaerfeld wird der ganze Block in einem Zug uebernommen.
+            b.points.resize(pts.size() / 2);
+            const int geholt = mg::mgeb::holePunkte(pts, b.points);
+            for (int i = geholt; i + 1 < pts.size(); i += 2)
+                b.points[i / 2] = QPointF(pts.at(i).toDouble(), pts.at(i + 1).toDouble());
         }
-        b.srcObjNum = qMax(0, o.value(QStringLiteral("srcobj")).toInt(0));
-        b.markupStyle = qBound(0, o.value(QStringLiteral("mstyle")).toInt(0), 2);
-        b.imagePath   = o.value(QStringLiteral("img")).toString();
-        b.stroke    = QColor(o.value(QStringLiteral("stroke")).toString(QStringLiteral("#ffe62c2c")));
-        b.lineWidth = o.value(QStringLiteral("lw")).toDouble(2.0);
-        b.fill      = QColor(o.value(QStringLiteral("fill")).toString(QStringLiteral("#00000000")));
-        b.text       = o.value(QStringLiteral("text")).toString();
-        b.origText   = o.value(QStringLiteral("orig")).toString();
-        b.fontFamily = o.value(QStringLiteral("font")).toString(QStringLiteral("Helvetica"));
-        b.fontSizePt = o.value(QStringLiteral("size")).toDouble(12.0);
-        b.bold       = o.value(QStringLiteral("bold")).toBool(false);
-        b.italic     = o.value(QStringLiteral("italic")).toBool(false);
-        b.underline  = o.value(QStringLiteral("under")).toBool(false);
-        b.color      = QColor(o.value(QStringLiteral("color")).toString(QStringLiteral("#000000")));
-        b.highlight  = QColor(o.value(QStringLiteral("hilite")).toString(QStringLiteral("#00000000")));
-        b.alignment  = o.value(QStringLiteral("align")).toInt(0);
-        b.vAlign     = o.value(QStringLiteral("valign")).toInt(0);
-        b.anchored   = o.value(QStringLiteral("anchor")).toBool(false);
+        b.srcObjNum = qMax(0, o.value(mg::mgeb::k_srcobj).toInt(0));
+        b.markupStyle = qBound(0, o.value(mg::mgeb::k_mstyle).toInt(0), 2);
+        b.imagePath   = o.value(mg::mgeb::k_img).toString();
+        b.stroke    = QColor(o.value(mg::mgeb::k_stroke).toString(QStringLiteral("#ffe62c2c")));
+        b.lineWidth = o.value(mg::mgeb::k_lw).toDouble(2.0);
+        b.fill      = QColor(o.value(mg::mgeb::k_fill).toString(QStringLiteral("#00000000")));
+        b.text       = o.value(mg::mgeb::k_text).toString();
+        b.origText   = o.value(mg::mgeb::k_orig).toString();
+        b.fontFamily = o.value(mg::mgeb::k_font).toString(QStringLiteral("Helvetica"));
+        b.fontSizePt = o.value(mg::mgeb::k_size).toDouble(12.0);
+        b.bold       = o.value(mg::mgeb::k_bold).toBool(false);
+        b.italic     = o.value(mg::mgeb::k_italic).toBool(false);
+        b.underline  = o.value(mg::mgeb::k_under).toBool(false);
+        b.color      = QColor(o.value(mg::mgeb::k_color).toString(QStringLiteral("#000000")));
+        b.highlight  = QColor(o.value(mg::mgeb::k_hilite).toString(QStringLiteral("#00000000")));
+        b.alignment  = o.value(mg::mgeb::k_align).toInt(0);
+        b.vAlign     = o.value(mg::mgeb::k_valign).toInt(0);
+        b.anchored   = o.value(mg::mgeb::k_anchor).toBool(false);
         if (!b.stroke.isValid())    b.stroke = QColor(230, 44, 44);
         if (!b.fill.isValid())      b.fill = QColor(0, 0, 0, 0);
         if (b.lineWidth < 0.2)  b.lineWidth = 0.2;
@@ -236,6 +255,11 @@ struct PdfEditBox {
             b.recomputeBounds();
         return b;
     }
+
+    //  Der Weg fuer eine alte Beidatei.
+    static PdfEditBox fromJson(const QJsonObject& o) {
+        return lade(mg::mgeb::JsonObjekt(o));
+    }
 };
 
 // Ein Eintrag des Seiten-Plans - die einzige Quelle dafür, welche Seite wo und wie steht.
@@ -251,21 +275,23 @@ struct PdfPlanPage {
     bool isImported() const { return doc == 1 && src >= 0; }
     bool isPristine() const { return doc == 0 && src >= 0; }
 
-    QJsonObject toJson() const {
-        QJsonObject o;
-        o.insert(QStringLiteral("src"), src);
-        o.insert(QStringLiteral("key"), key);
-        if (doc != 0) o.insert(QStringLiteral("doc"), doc);
-        if (rot != 0) o.insert(QStringLiteral("rot"), rot);
-        return o;
+    void schreibe(mg::mgeb::Schreiber& s) const {
+        using namespace mg::mgeb;
+        s.beginneObjekt();
+        s.feld(k_src, src);
+        s.feld(k_key, key);
+        if (doc != 0) s.feld(k_doc, doc);
+        if (rot != 0) s.feld(k_rot, rot);
+        s.beendeObjekt();
     }
 
-    static PdfPlanPage fromJson(const QJsonObject& o) {
+    template <class Obj>
+    static PdfPlanPage lade(const Obj& o) {
         PdfPlanPage p;
-        p.src = o.value(QStringLiteral("src")).toInt(-1);
-        p.key = o.value(QStringLiteral("key")).toInt(-1);
-        p.doc = o.value(QStringLiteral("doc")).toInt(0);
-        p.rot = o.value(QStringLiteral("rot")).toInt(0);
+        p.src = o.value(mg::mgeb::k_src).toInt(-1);
+        p.key = o.value(mg::mgeb::k_key).toInt(-1);
+        p.doc = o.value(mg::mgeb::k_doc).toInt(0);
+        p.rot = o.value(mg::mgeb::k_rot).toInt(0);
         // Defensive Klemmen gegen defekte/fremde Sidecars: unbekannte Quelle
         // -> Leerseite; Drehung auf ein Vielfaches von 90° normalisieren.
         if (p.src < 0)              p.src = -1;
@@ -275,6 +301,11 @@ struct PdfPlanPage {
         p.rot = (p.rot / 90) * 90;
         if (p.src < 0) p.doc = 0;             // Leerseite hat keine Quelldatei
         return p;
+    }
+
+    //  Der Weg fuer eine alte Beidatei.
+    static PdfPlanPage fromJson(const QJsonObject& o) {
+        return lade(mg::mgeb::JsonObjekt(o));
     }
 };
 
@@ -294,22 +325,23 @@ struct PdfTextOp {
 
     bool isInsert() const { return removed <= 0; }
 
-    QJsonObject toJson() const {
-        QJsonObject o;
-        o.insert(QStringLiteral("page"), page);
-        o.insert(QStringLiteral("at"),   index);
-        o.insert(QStringLiteral("text"), text);
-        if (removed > 0)
-            o.insert(QStringLiteral("del"), removed);
-        return o;
+    void schreibe(mg::mgeb::Schreiber& s) const {
+        using namespace mg::mgeb;
+        s.beginneObjekt();
+        s.feld(k_page, page);
+        s.feld(k_at,   index);
+        s.feld(k_text, text);
+        if (removed > 0) s.feld(k_del, removed);
+        s.beendeObjekt();
     }
 
-    static PdfTextOp fromJson(const QJsonObject& o) {
+    template <class Obj>
+    static PdfTextOp lade(const Obj& o) {
         PdfTextOp t;
-        t.page    = o.value(QStringLiteral("page")).toInt(0);
-        t.index   = o.value(QStringLiteral("at")).toInt(0);
-        t.text    = o.value(QStringLiteral("text")).toString();
-        t.removed = o.value(QStringLiteral("del")).toInt(0);
+        t.page    = o.value(mg::mgeb::k_page).toInt(0);
+        t.index   = o.value(mg::mgeb::k_at).toInt(0);
+        t.text    = o.value(mg::mgeb::k_text).toString();
+        t.removed = o.value(mg::mgeb::k_del).toInt(0);
         // Defensive Klemmen gegen defekte/fremde Sidecar-Dateien: negative
         // Indizes/Seiten würden im Editor auf ungültige Glyphen zeigen.
         if (t.page  < 0) t.page  = 0;
@@ -318,6 +350,11 @@ struct PdfTextOp {
         if (t.removed > 0 && t.text.size() != t.removed)
             t.removed = t.text.isEmpty() ? t.removed : t.text.size();
         return t;
+    }
+
+    //  Der Weg fuer eine alte Beidatei.
+    static PdfTextOp fromJson(const QJsonObject& o) {
+        return lade(mg::mgeb::JsonObjekt(o));
     }
 };
 

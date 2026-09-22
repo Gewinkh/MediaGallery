@@ -305,6 +305,7 @@ pages change the PDF directly. `Ctrl+Z` undoes them while the file is open.
 - **Delete notes or backups** without the file itself: right-click a tile, or *Document* menu for PDFs and images. Goes to the trash; `Ctrl+Z` brings it back
 - **Look inside the folder file**: open the `.mgstore` to see all tags, categories and assignments in readable form; *Raw* shows the bytes
 - **Look inside the editor notes** the same way: open the `.mgedit` next to a PDF, image or table to read what is stored there. Both are shown for reading only
+- Both of these files use the app's own compact format. Files written by older versions still open and are quietly moved to the new form the first time you open them - nothing to do by hand
 
 ## Metadata & File Management
 - **Date**: set a file's date; it is written to the file itself. *Reset* returns to the creation date

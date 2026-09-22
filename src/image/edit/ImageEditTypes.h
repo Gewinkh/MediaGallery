@@ -6,8 +6,11 @@
 #include <QString>
 #include <QRectF>
 #include <QPointF>
+#include <QVarLengthArray>
 #include <QVector>
 #include <QColor>
+#include "core/MGEditBin.h"
+
 #include <QJsonObject>
 #include <QJsonArray>
 
@@ -84,72 +87,86 @@ struct ImageAnnotation {
     // Nachverfolgte Änderung (s. ImageTrackState); im Sidecar als "tr".
     ImageTrackState track = ImageTrackState::None;
 
-    QJsonObject toJson() const {
-        QJsonObject o;
-        o.insert(QStringLiteral("kind"),   static_cast<int>(kind));
+    //  In den Binaerkoerper - geschrieben wird nur noch diese Form.
+    void schreibe(mg::mgeb::Schreiber& s) const {
+        using namespace mg::mgeb;
+        s.beginneObjekt();
+        s.feld(k_kind, static_cast<int>(kind));
         if (track != ImageTrackState::None)
-            o.insert(QStringLiteral("tr"), static_cast<int>(track));
-        o.insert(QStringLiteral("x"),      rect.x());
-        o.insert(QStringLiteral("y"),      rect.y());
-        o.insert(QStringLiteral("w"),      rect.width());
-        o.insert(QStringLiteral("h"),      rect.height());
+            s.feld(k_tr, static_cast<int>(track));
+        //  Bei einem Strich ergibt sich das Rechteck aus den Punkten und wird
+        //  beim Lesen neu berechnet - es waere vier Doubles umsonst.
+        if (!(isStroke() && !points.isEmpty())) {
+            s.feld(k_x, rect.x());
+            s.feld(k_y, rect.y());
+            s.feld(k_w, rect.width());
+            s.feld(k_h, rect.height());
+        }
         if (isStroke()) {
-            QJsonArray pts;
-            for (const QPointF& p : points) {
-                pts.append(p.x());
-                pts.append(p.y());
+            QVarLengthArray<double, 256> flach(points.size() * 2);
+            for (int i = 0; i < points.size(); ++i) {
+                flach[2 * i]     = points.at(i).x();
+                flach[2 * i + 1] = points.at(i).y();
             }
-            o.insert(QStringLiteral("pts"), pts);
+            s.schluessel(k_pts);
+            s.gibDoubles(flach.data(), int(flach.size()));
         }
-        o.insert(QStringLiteral("stroke"), stroke.name(QColor::HexArgb));
-        o.insert(QStringLiteral("lw"),     lineWidth);
-        o.insert(QStringLiteral("fill"),   fill.name(QColor::HexArgb));
+        s.feld(k_stroke, stroke.name(QColor::HexArgb));
+        s.feld(k_lw,     lineWidth);
+        s.feld(k_fill,   fill.name(QColor::HexArgb));
         if (kind == ImageAnnKind::Text) {
-            o.insert(QStringLiteral("text"),   text);
-            o.insert(QStringLiteral("font"),   fontFamily);
-            o.insert(QStringLiteral("size"),   fontSizePx);
-            o.insert(QStringLiteral("bold"),   bold);
-            o.insert(QStringLiteral("italic"), italic);
-            o.insert(QStringLiteral("under"),  underline);
-            o.insert(QStringLiteral("color"),  color.name(QColor::HexRgb));
-            o.insert(QStringLiteral("hilite"), highlight.name(QColor::HexArgb));
-            o.insert(QStringLiteral("align"),  alignment);
-            o.insert(QStringLiteral("valign"), vAlign);
+            s.feld(k_text,   text);
+            s.feld(k_font,   fontFamily);
+            s.feld(k_size,   fontSizePx);
+            s.feld(k_bold,   bold);
+            s.feld(k_italic, italic);
+            s.feld(k_under,  underline);
+            s.feld(k_color,  color.name(QColor::HexRgb));
+            s.feld(k_hilite, highlight.name(QColor::HexArgb));
+            s.feld(k_align,  alignment);
+            s.feld(k_valign, vAlign);
         }
-        return o;
+        s.beendeObjekt();
     }
 
-    static ImageAnnotation fromJson(const QJsonObject& o) {
+    //  EIN Codec fuer beide Quellen: `Obj` ist der Binaerleser oder, bei einer
+    //  alten Beidatei, `JsonObjekt` ueber dem Qt-Baum.
+    template <class Obj>
+    static ImageAnnotation lade(const Obj& o) {
         ImageAnnotation a;
-        const int k = o.value(QStringLiteral("kind")).toInt(0);
+        const int k = o.value(mg::mgeb::k_kind).toInt(0);
         a.kind = (k >= 0 && k <= 4) ? static_cast<ImageAnnKind>(k) : ImageAnnKind::Text;
         //  Unbekannter Wert ⇒ None (wie im PDF-Editor): eine verfälschte
         //  Datei darf keine Annotation unauflösbar machen.
-        const int tr = o.value(QStringLiteral("tr")).toInt(0);
+        const int tr = o.value(mg::mgeb::k_tr).toInt(0);
         a.track = (tr == 1 || tr == 2) ? static_cast<ImageTrackState>(tr)
                                        : ImageTrackState::None;
-        a.rect = QRectF(o.value(QStringLiteral("x")).toDouble(0.0),
-                        o.value(QStringLiteral("y")).toDouble(0.0),
-                        o.value(QStringLiteral("w")).toDouble(120.0),
-                        o.value(QStringLiteral("h")).toDouble(48.0));
-        if (o.contains(QStringLiteral("pts"))) {
-            const QJsonArray pts = o.value(QStringLiteral("pts")).toArray();
-            for (int i = 0; i + 1 < pts.size(); i += 2)
-                a.points.append(QPointF(pts.at(i).toDouble(), pts.at(i + 1).toDouble()));
+        a.rect = QRectF(o.value(mg::mgeb::k_x).toDouble(0.0),
+                        o.value(mg::mgeb::k_y).toDouble(0.0),
+                        o.value(mg::mgeb::k_w).toDouble(120.0),
+                        o.value(mg::mgeb::k_h).toDouble(48.0));
+        if (o.contains(mg::mgeb::k_pts)) {
+            const auto pts = o.value(mg::mgeb::k_pts).toArray();
+            //  Ein QPointF ist genau zwei Doubles in dieser Reihenfolge - aus
+            //  dem Binaerfeld wird der ganze Block in einem Zug uebernommen.
+            a.points.resize(pts.size() / 2);
+            const int geholt = mg::mgeb::holePunkte(pts, a.points);
+            for (int i = geholt; i + 1 < pts.size(); i += 2)
+                a.points[i / 2] = QPointF(pts.at(i).toDouble(), pts.at(i + 1).toDouble());
         }
-        a.stroke    = QColor(o.value(QStringLiteral("stroke")).toString(QStringLiteral("#ffe62c2c")));
-        a.lineWidth = o.value(QStringLiteral("lw")).toDouble(4.0);
-        a.fill      = QColor(o.value(QStringLiteral("fill")).toString(QStringLiteral("#00000000")));
-        a.text       = o.value(QStringLiteral("text")).toString();
-        a.fontFamily = o.value(QStringLiteral("font")).toString(QStringLiteral("Helvetica"));
-        a.fontSizePx = o.value(QStringLiteral("size")).toDouble(28.0);
-        a.bold       = o.value(QStringLiteral("bold")).toBool(false);
-        a.italic     = o.value(QStringLiteral("italic")).toBool(false);
-        a.underline  = o.value(QStringLiteral("under")).toBool(false);
-        a.color      = QColor(o.value(QStringLiteral("color")).toString(QStringLiteral("#000000")));
-        a.highlight  = QColor(o.value(QStringLiteral("hilite")).toString(QStringLiteral("#fefb9b")));
-        a.alignment  = o.value(QStringLiteral("align")).toInt(0);
-        a.vAlign     = o.value(QStringLiteral("valign")).toInt(0);
+        a.stroke    = QColor(o.value(mg::mgeb::k_stroke).toString(QStringLiteral("#ffe62c2c")));
+        a.lineWidth = o.value(mg::mgeb::k_lw).toDouble(4.0);
+        a.fill      = QColor(o.value(mg::mgeb::k_fill).toString(QStringLiteral("#00000000")));
+        a.text       = o.value(mg::mgeb::k_text).toString();
+        a.fontFamily = o.value(mg::mgeb::k_font).toString(QStringLiteral("Helvetica"));
+        a.fontSizePx = o.value(mg::mgeb::k_size).toDouble(28.0);
+        a.bold       = o.value(mg::mgeb::k_bold).toBool(false);
+        a.italic     = o.value(mg::mgeb::k_italic).toBool(false);
+        a.underline  = o.value(mg::mgeb::k_under).toBool(false);
+        a.color      = QColor(o.value(mg::mgeb::k_color).toString(QStringLiteral("#000000")));
+        a.highlight  = QColor(o.value(mg::mgeb::k_hilite).toString(QStringLiteral("#fefb9b")));
+        a.alignment  = o.value(mg::mgeb::k_align).toInt(0);
+        a.vAlign     = o.value(mg::mgeb::k_valign).toInt(0);
 
         if (!a.stroke.isValid())    a.stroke    = QColor(230, 44, 44);
         if (!a.fill.isValid())      a.fill      = QColor(0, 0, 0, 0);
@@ -166,5 +183,10 @@ struct ImageAnnotation {
         if (a.isStroke() && !a.points.isEmpty())
             a.recomputeBounds();
         return a;
+    }
+
+    //  Der Weg fuer eine alte Beidatei.
+    static ImageAnnotation fromJson(const QJsonObject& o) {
+        return lade(mg::mgeb::JsonObjekt(o));
     }
 };

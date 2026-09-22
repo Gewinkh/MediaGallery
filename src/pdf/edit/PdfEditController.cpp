@@ -3335,56 +3335,77 @@ bool PdfEditController::saveOverlay() {
         // Ohne Plan verweist nichts mehr auf die Begleitdatei - sie wird aufgeraeumt.
         QFile::remove(assetPath(m_docPath));
     } else {
-        QJsonObject rootObj;
-        rootObj.insert(QStringLiteral("format"),  QStringLiteral("mediagallery-pdf-overlay"));
-        rootObj.insert(QStringLiteral("version"), 1);
+        using namespace mg::mgeb;
+        //  Die Beidatei gehoert allen drei Editoren: erst die fremden
+        //  Abschnitte uebernehmen, dann die eigenen schreiben.
+        const mg::editsidecar::Inhalt vorher = mg::editsidecar::liesInhalt(m_docPath, false);
+        Schreiber s;
+        s.beginneObjekt();
+        for (const QString& fremd : { QStringLiteral("spaltenbreiten"), QStringLiteral("anns") }) {
+            const Wert w = vorher.istBin ? vorher.bin.wurzel().value(fremd) : Wert();
+            if (!w.istLeer()) { s.schluessel(fremd); s.uebernimm(w); }
+            else if (!vorher.istBin && vorher.json.contains(fremd)) {
+                s.schluessel(fremd);
+                s.uebernimm(vorher.json.value(fremd));
+            }
+        }
+        s.feld(k_format, QStringLiteral("mediagallery-pdf-overlay"));
+        s.feld(k_version, 1);
         if (m_recording)
-            rootObj.insert(QStringLiteral("recording"), true);
+            s.feld(k_recording, true);
         if (hasBoxes) {
-            QJsonArray arr;
             const QVector<PdfEditBox> boxes = m_model.boxes();
-            for (const PdfEditBox& b : boxes)
-                arr.append(b.toJson());
-            rootObj.insert(QStringLiteral("boxes"), arr);
+            s.schluessel(k_boxes);
+            s.beginneListe();
+            for (const PdfEditBox& b : boxes) b.schreibe(s);
+            s.beendeListe();
             // IDs sind sitzungslokal, deshalb als Index-Array: chains[i] = Folgebox von i.
             bool anyChain = false;
             QHash<int, int> idToIndex;
             for (int i = 0; i < boxes.size(); ++i) idToIndex.insert(boxes[i].id, i);
-            QJsonArray chains;
-            for (const PdfEditBox& b : boxes) {
-                const int idx = (b.chainNext != 0) ? idToIndex.value(b.chainNext, -1) : -1;
-                chains.append(idx);
-                if (idx >= 0) anyChain = true;
+            QVarLengthArray<int, 64> chains(boxes.size());
+            for (int i = 0; i < boxes.size(); ++i) {
+                const PdfEditBox& b = boxes.at(i);
+                chains[i] = (b.chainNext != 0) ? idToIndex.value(b.chainNext, -1) : -1;
+                if (chains[i] >= 0) anyChain = true;
             }
-            if (anyChain)
-                rootObj.insert(QStringLiteral("chains"), chains);
+            if (anyChain) {
+                s.schluessel(k_chains);
+                s.beginneListe();
+                for (const int idx : chains) s.gib(idx);
+                s.beendeListe();
+            }
             // Nur schreiben, wenn eine Box gewachsen ist - aeltere Sidecars laden unveraendert.
             bool anyGrow = false;
-            QJsonArray growArr;
-            for (const PdfEditBox& b : boxes) {
-                growArr.append(b.growBaseH);
-                if (b.growBaseH > 0.0) anyGrow = true;
+            QVarLengthArray<double, 64> grow(boxes.size());
+            for (int i = 0; i < boxes.size(); ++i) {
+                grow[i] = boxes.at(i).growBaseH;
+                if (grow[i] > 0.0) anyGrow = true;
             }
-            if (anyGrow)
-                rootObj.insert(QStringLiteral("growBase"), growArr);
+            if (anyGrow) {
+                s.schluessel(k_growBase);
+                s.gibDoubles(grow.data(), int(grow.size()));
+            }
         }
         if (hasOps) {
             // Textebenen-Aenderungen sind ein Delta auf die pristine Datei.
-            QJsonArray oarr;
-            for (const PdfTextOp& op : std::as_const(m_textOps))
-                oarr.append(op.toJson());
-            rootObj.insert(QStringLiteral("textops"), oarr);
+            s.schluessel(k_textops);
+            s.beginneListe();
+            for (const PdfTextOp& op : std::as_const(m_textOps)) op.schreibe(s);
+            s.beendeListe();
         }
         if (hasVals) {
             // Gepufferte Formularwerte ueberleben hier das Schliessen; geschrieben wird
             // erst ueber saveFormValues in eine Kopie.
-            QJsonObject vals;
+            s.schluessel(k_formvals);
+            s.beginneObjekt();
             for (auto it = m_formEdits.cbegin(); it != m_formEdits.cend(); ++it)
-                vals.insert(it.key(), it.value());
-            rootObj.insert(QStringLiteral("formvals"), vals);
+                s.feld(it.key(), it.value());
+            s.beendeObjekt();
         }
+        s.beendeObjekt();
 
-        ok = mg::editsidecar::schreibe(m_docPath, rootObj);
+        ok = mg::editsidecar::schreibeBin(m_docPath, s.fertig());
     }
 
     if (ok)
@@ -3393,36 +3414,37 @@ bool PdfEditController::saveOverlay() {
     return ok;
 }
 
-bool PdfEditController::loadOverlay(const QString& pdfPath) {
-    const QJsonObject o = mg::editsidecar::lies(pdfPath);
-    if (o.isEmpty())
-        return false;
-    if (o.value(QStringLiteral("format")).toString()
-        != QLatin1String("mediagallery-pdf-overlay"))
+//  Beide Quellen laufen durch dieselbe Schablone; nur woher die Felder kommen,
+//  unterscheidet sich. `Obj` ist der Binaerleser oder `JsonObjekt` ueber einer
+//  alten Beidatei.
+template <class Obj>
+bool PdfEditController::ladeAus(const Obj& o) {
+    using namespace mg::mgeb;
+    if (o.value(k_format).toString() != QLatin1String("mediagallery-pdf-overlay"))
         return false;
 
-    if (m_recording != o.value(QStringLiteral("recording")).toBool(false)) {
-        m_recording = o.value(QStringLiteral("recording")).toBool(false);
+    if (m_recording != o.value(k_recording).toBool(false)) {
+        m_recording = o.value(k_recording).toBool(false);
         emit recordingChanged();
     }
 
     QVector<PdfEditBox> boxes;
-    const QJsonArray arr = o.value(QStringLiteral("boxes")).toArray();
+    const auto arr = o.value(k_boxes).toArray();
     boxes.reserve(arr.size());
-    for (const QJsonValue& v : arr) {
-        if (!v.isObject())
+    for (int i = 0; i < arr.size(); ++i) {
+        if (!arr.at(i).isObject())
             continue;
-        PdfEditBox b = PdfEditBox::fromJson(v.toObject());
+        PdfEditBox b = PdfEditBox::lade(alsObjekt(arr.at(i)));
         b.id = m_nextId++;                          // IDs sind sitzungslokal
         boxes.append(b);
     }
-    const QJsonArray chains = o.value(QStringLiteral("chains")).toArray();
+    const auto chains = o.value(k_chains).toArray();
     for (int i = 0; i < chains.size() && i < boxes.size(); ++i) {
         const int idx = chains.at(i).toInt(-1);
         if (idx >= 0 && idx < boxes.size() && idx != i)
             boxes[i].chainNext = boxes[idx].id;
     }
-    const QJsonArray growArr = o.value(QStringLiteral("growBase")).toArray();
+    const auto growArr = o.value(k_growBase).toArray();
     for (int i = 0; i < growArr.size() && i < boxes.size(); ++i)
         boxes[i].growBaseH = growArr.at(i).toDouble(0.0);
     m_model.resetBoxes(boxes);
@@ -3430,21 +3452,21 @@ bool PdfEditController::loadOverlay(const QString& pdfPath) {
     // Die Validierung gegen die echte Seitenzahl macht setSourcePageCount, sobald
     // QML sie meldet. Altformat-Sidecars tragen keinen Plan.
     m_plan.clear();
-    const QJsonArray parr = o.value(QStringLiteral("pageplan")).toArray();
-    for (const QJsonValue& v : parr) {
-        if (v.isObject())
-            m_plan.append(PdfPlanPage::fromJson(v.toObject()));
+    const auto parr = o.value(k_pageplan).toArray();
+    for (int i = 0; i < parr.size(); ++i) {
+        if (parr.at(i).isObject())
+            m_plan.append(PdfPlanPage::lade(alsObjekt(parr.at(i))));
         else
-            m_plan.append(PdfPlanPage{ v.toInt(-1), 0, 0, -1 });
+            m_plan.append(PdfPlanPage{ parr.at(i).toInt(-1), 0, 0, -1 });
     }
 
     // setDocument legt sie danach als Kommandos auf den wieder sauberen Stack.
     m_textOps.clear();
-    const QJsonArray oarr = o.value(QStringLiteral("textops")).toArray();
-    for (const QJsonValue& v : oarr) {
-        if (!v.isObject())
+    const auto oarr = o.value(k_textops).toArray();
+    for (int i = 0; i < oarr.size(); ++i) {
+        if (!oarr.at(i).isObject())
             continue;
-        const PdfTextOp op = PdfTextOp::fromJson(v.toObject());
+        const PdfTextOp op = PdfTextOp::lade(alsObjekt(oarr.at(i)));
         if (op.isInsert() ? !op.text.isEmpty() : op.removed > 0)
             m_textOps.append(op);
     }
@@ -3453,13 +3475,25 @@ bool PdfEditController::loadOverlay(const QString& pdfPath) {
     // Wird gegen die wirklich vorhandenen Felder abgeglichen, sobald der Lesevorgang
     // zurueckkommt - ein fremdes Sidecar kann nichts erzwingen.
     m_formEdits.clear();
-    const QJsonObject vals = o.value(QStringLiteral("formvals")).toObject();
-    for (auto it = vals.constBegin(); it != vals.constEnd(); ++it)
-        if (!it.key().isEmpty() && it.value().isString())
-            m_formEdits.insert(it.key(), it.value().toString());
+    const auto vals = alsObjekt(o.value(k_formvals));
+    for (int i = 0; i < vals.count(); ++i) {
+        const QString name = vals.schluesselBei(i);
+        if (!name.isEmpty() && vals.wertBei(i).isString())
+            m_formEdits.insert(name, vals.wertBei(i).toString());
+    }
     setFormDirty(!m_formEdits.isEmpty());
 
     return true;
+}
+
+namespace { QByteArray alsBytes(const PdfEditBox& b); }
+
+bool PdfEditController::loadOverlay(const QString& pdfPath) {
+    const mg::editsidecar::Inhalt in = mg::editsidecar::liesInhalt(pdfPath);
+    if (in.leer())
+        return false;
+    return in.istBin ? ladeAus(in.bin.wurzel())
+                     : ladeAus(mg::mgeb::JsonObjekt(in.json));
 }
 
 QString PdfEditController::uniqueSuffixPath(const QString& pdfPath,
@@ -3874,7 +3908,7 @@ void PdfEditController::annotReadFinished(const QVector<mg::PdfAnnotation>& anno
         b.page = key;
         // Der Zustand aus der Datei ist die Vergleichsgrundlage - auch fuer Boxen aus
         // dem Sidecar, die laengst veraendert sein koennen.
-        m_importBaseline.insert(a.objNum, b.toJson());
+        m_importBaseline.insert(a.objNum, alsBytes(b));
         if (!known.contains(a.objNum))
             fresh.push_back(b);
     }
@@ -3889,13 +3923,25 @@ void PdfEditController::annotReadFinished(const QVector<mg::PdfAnnotation>& anno
     }
 }
 
+namespace {
+
+//  Eine Box in ihrer geschriebenen Form - dient nur dem Vergleich, ob sich
+//  gegenueber dem Stand aus der Datei etwas geaendert hat.
+QByteArray alsBytes(const PdfEditBox& b) {
+    mg::mgeb::Schreiber s;
+    b.schreibe(s);
+    return s.fertig();
+}
+
+}  // namespace
+
 bool PdfEditController::importChanged(const PdfEditBox& b) const {
     if (b.srcObjNum <= 0)
         return false;
     const auto it = m_importBaseline.constFind(b.srcObjNum);
     if (it == m_importBaseline.constEnd())
         return true;                                // Herkunft unbekannt -> sicherheitshalber
-    return b.toJson() != it.value();
+    return alsBytes(b) != it.value();
 }
 
 // Nur wenn die Einstellung es verlangt UND sich jede Notiz abbilden laesst -
