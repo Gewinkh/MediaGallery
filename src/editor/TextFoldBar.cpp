@@ -251,6 +251,11 @@ void TextFoldBar::bereichAnwenden(const FoldRegion& r, bool verbergen) {
     if (von.isValid() && bis.isValid())
         d->markContentsDirty(von.position(),
                              qMax(1, bis.position() + bis.length() - von.position()));
+    //  Die `TextArea` baut ihre Textstuecke nur auf `updateBlock` neu -
+    //  `markContentsDirty` allein faltete sonst nur die Nummernleiste.
+    if (QAbstractTextDocumentLayout* lay = d->documentLayout())
+        for (QTextBlock b = von; b.isValid() && b.blockNumber() <= r.end + 1; b = b.next())
+            emit lay->updateBlock(b);
 }
 
 void TextFoldBar::sichtbarkeitNeuSetzen() {
@@ -268,6 +273,9 @@ void TextFoldBar::sichtbarkeitNeuSetzen() {
             b.setVisible(false);
     }
     d->markContentsDirty(0, d->characterCount());
+    if (QAbstractTextDocumentLayout* lay = d->documentLayout())
+        for (QTextBlock b = d->begin(); b.isValid(); b = b.next())
+            emit lay->updateBlock(b);
 }
 
 void TextFoldBar::nachDemFalten(int startBlock, qreal hoeheVorher,

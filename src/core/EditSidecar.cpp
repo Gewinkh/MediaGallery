@@ -178,12 +178,16 @@ bool schreibe(const QString& dokument, const QJsonObject& wurzel) {
 }
 
 int uebernimmFremde(mg::mgeb::Schreiber& s, const Inhalt& in, const QString& eigener) {
+    return uebernimmFremde(s, in, QStringList{ eigener });
+}
+
+int uebernimmFremde(mg::mgeb::Schreiber& s, const Inhalt& in, const QStringList& eigene) {
     int n = 0;
     if (in.istBin) {
         const mg::mgeb::Objekt w = in.bin.wurzel();
         for (int i = 0; i < w.count(); ++i) {
             const QString name = w.schluesselBei(i);
-            if (name == eigener) continue;
+            if (eigene.contains(name)) continue;
             s.schluessel(name);
             s.uebernimm(w.wertBei(i));
             ++n;
@@ -191,7 +195,7 @@ int uebernimmFremde(mg::mgeb::Schreiber& s, const Inhalt& in, const QString& eig
         return n;
     }
     for (auto it = in.json.constBegin(); it != in.json.constEnd(); ++it) {
-        if (it.key() == eigener) continue;
+        if (eigene.contains(it.key())) continue;
         s.schluessel(it.key());
         s.uebernimm(it.value());
         ++n;

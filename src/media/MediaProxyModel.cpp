@@ -1,4 +1,6 @@
 #include "media/MediaProxyModel.h"
+
+#include <limits>
 #include "media/MediaModel.h"
 #include "media/MediaItem.h"
 #include "tags/TagManager.h"
@@ -361,8 +363,33 @@ bool MediaProxyModel::filterAcceptsRow(int sourceRow, const QModelIndex& sourceP
 
 // Vergleich nach dem gewählten Sortierfeld, immer aufsteigend. Gleichstand bricht über Datum und Anzeigename -
 // deterministisch, damit dieselbe Liste nicht bei jedem Lauf anders steht.
+//  Alles, was nicht in der Abspielfolge steht, landet DAHINTER - ein Video bei
+//  ausgeschaltetem „Videos mitzeigen" etwa, oder eine gerade dazugekommene Datei.
+constexpr int kNichtInListe = std::numeric_limits<int>::max();
+
+int MediaProxyModel::playlistPos(const MediaItem* i) const {
+    const auto it = m_playlistPos.constFind(i->filePath);
+    return it == m_playlistPos.cend() ? kNichtInListe : *it;
+}
+
+void MediaProxyModel::setPlaylistOrder(const QStringList& pfade) {
+    if (pfade == m_playlistOrder) return;
+    m_playlistOrder = pfade;
+    m_playlistPos.clear();
+    m_playlistPos.reserve(pfade.size());
+    for (int i = 0; i < pfade.size(); ++i) m_playlistPos.insert(pfade.at(i), i);
+    if (m_field == Field::Playlist) { invalidate(); reapplySort(); }
+    emit sortChanged();
+}
+
 bool MediaProxyModel::fieldLess(const MediaItem* a, const MediaItem* b) const {
     switch (m_field) {
+    case Field::Playlist: {
+        const int pa = playlistPos(a);
+        const int pb = playlistPos(b);
+        if (pa != pb) return pa < pb;
+        break;
+    }
     case Field::Name: {
         const int cmp = a->displayName.compare(b->displayName, Qt::CaseInsensitive);
         if (cmp != 0) return cmp < 0;

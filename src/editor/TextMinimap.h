@@ -1,4 +1,6 @@
 #pragma once
+#include "editor/TextProblems.h"
+
 #include <QColor>
 #include <QQuickPaintedItem>
 #include <QQuickTextDocument>
@@ -22,6 +24,11 @@ class TextMinimap : public QQuickPaintedItem {
     Q_PROPERTY(QColor textColor READ textColor WRITE setTextColor NOTIFY styleChanged)
     Q_PROPERTY(QColor viewportColor READ viewportColor WRITE setViewportColor NOTIFY styleChanged)
     Q_PROPERTY(QColor borderColor READ borderColor WRITE setBorderColor NOTIFY styleChanged)
+    //  Die Fundstellen der Struktur-Pruefung; je betroffener Zeile steht ein
+    //  Punkt am rechten Rand der Spalte. Dieselbe Liste wie die Unterstreichung.
+    Q_PROPERTY(mg::editor::TextProblems* problems READ problems WRITE setProblems
+                                                  NOTIFY problemsItemChanged)
+    Q_PROPERTY(QColor problemColor READ problemColor WRITE setProblemColor NOTIFY styleChanged)
 
 public:
     explicit TextMinimap(QQuickItem* parent = nullptr);
@@ -46,11 +53,16 @@ public:
     void   setViewportColor(const QColor& c);
     QColor borderColor() const { return m_borderColor; }
     void   setBorderColor(const QColor& c);
+    TextProblems* problems() const { return m_problems; }
+    void          setProblems(TextProblems* p);
+    QColor problemColor() const { return m_problemColor; }
+    void   setProblemColor(const QColor& c);
 
 signals:
     void documentChanged();
     void viewChanged();
     void styleChanged();
+    void problemsItemChanged();
     //  Der Nutzer hat in der Spalte geklickt oder gezogen. Die Oberflaeche
     //  setzt daraufhin `contentY` der `Flickable` - die Spalte scrollt NICHT
     //  selbst, sie bittet nur darum. So bleibt EINE Stelle fuer den Scrollstand.
@@ -76,6 +88,8 @@ private:
     QColor m_textColor     = QColor(216, 222, 233);
     QColor m_viewportColor = QColor(255, 255, 255, 28);
     QColor m_borderColor   = QColor(0, 0, 0, 0);
+    TextProblems* m_problems = nullptr;
+    QColor m_problemColor  = QColor(228, 96, 96);
     //  Anzahl der SICHTBAREN Bloecke (zugeklappte zaehlen nicht mit). Wird nur
     //  neu gezaehlt, wenn sich am Dokument etwas geaendert hat - beim blossen
     //  Scrollen waere ein Durchgang ueber 200 000 Bloecke je Bild zu teuer.

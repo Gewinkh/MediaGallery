@@ -111,7 +111,15 @@ The build skips it when the `tests/` folder is absent.
 ## Changelog
 
 ### Latest
-- **Change**: **Notes and drawings** now save and open much faster and take less space on documents with many marks.
+- **Fix**: **Shuffle in player mode** no longer crashes the app or keeps re-sorting the gallery.
+- **Fix**: **Track order** no longer resets after switching folders or restarting.
+- **Feature**: **Preprocessor branch folding** is now supported in C-style code, with correct ranges for functions inside.
+- **Fix**: **Lua block comments** are no longer flagged as structural errors.
+- **Fix**: **Text editor folding** no longer hides only the line numbers while leaving the text visible.
+- **Feature**: **Structural errors** in the text editor are now underlined and marked in the overview column.
+- **Feature**: **Column formatting** in tables with bold, text colour, and background colour per column.
+- **Feature**: **Custom track order** in player mode, with drag-and-drop and persistence across restarts.
+- **Change**: **Thousands separators in tables** are now available as an optional display setting.
 
 ---
 

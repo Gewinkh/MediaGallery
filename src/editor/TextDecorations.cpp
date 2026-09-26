@@ -4,6 +4,7 @@
 
 #include <QAbstractTextDocumentLayout>
 #include <QPainter>
+#include <QPainterPath>
 #include <QTextBlock>
 #include <QTextDocument>
 #include <QTextLayout>
@@ -60,6 +61,16 @@ void TextDecorations::setPath(const QString& p) {
     m_path = p;
     emit pathChanged();
     klammernSuchen();
+    update();
+}
+
+void TextDecorations::setProblems(TextProblems* pr) {
+    if (pr == m_problems) return;
+    if (m_problems) disconnect(m_problems, nullptr, this, nullptr);
+    m_problems = pr;
+    if (m_problems)
+        connect(m_problems, &TextProblems::problemsChanged, this, [this] { update(); });
+    emit problemsItemChanged();
     update();
 }
 
@@ -402,6 +413,52 @@ void TextDecorations::zeichneKlammern(QPainter* p) {
     }
 }
 
+//  Wellenlinie unter jeder Fundstelle. Gelaufen wird ueber die SICHTBAREN
+//  Bloecke, nicht ueber die Liste: eine Datei darf zweihundert Fundstellen
+//  haben, im Bild stehen hoechstens ein paar Dutzend Zeilen.
+void TextDecorations::zeichneProbleme(QPainter* p) {
+    QTextDocument* d = doc();
+    if (!d || !m_problems || m_problems->count() == 0) return;
+    QAbstractTextDocumentLayout* lay = d->documentLayout();
+    if (!lay) return;
+
+    QPen stift(m_errorColor.lighter(130));
+    stift.setWidthF(1.4);
+    p->setPen(stift);
+    p->setBrush(Qt::NoBrush);
+
+    QTextBlock b = d->findBlock(qMax(0, lay->hitTest(QPointF(0, m_contentY),
+                                                     Qt::FuzzyHit)));
+    while (b.isValid()) {
+        const QRectF bb = lay->blockBoundingRect(b);
+        if (bb.top() - m_contentY > m_viewportH) break;
+        const QList<Problem>* liste = b.isVisible() ? m_problems->inBlock(b.blockNumber())
+                                                    : nullptr;
+        if (liste) {
+            for (const Problem& pr : *liste) {
+                const int pos = b.position() + qBound(0, pr.start, qMax(0, b.length() - 1));
+                QRectF r = zeichenRect(pos);
+                if (r.isNull()) continue;
+                if (pr.length > 1) {
+                    const QRectF ende = zeichenRect(pos + pr.length - 1);
+                    if (!ende.isNull()) r.setRight(ende.right());
+                }
+                const qreal y = r.bottom() - 1.5;
+                const qreal breite = qMax(r.width(), 6.0);
+                QPainterPath welle;
+                welle.moveTo(r.left(), y);
+                //  Vier Pixel je Welle: feiner wird sie zum geraden Strich.
+                for (qreal x = r.left(); x < r.left() + breite; x += 4.0) {
+                    welle.quadTo(x + 1.0, y - 2.0, x + 2.0, y);
+                    welle.quadTo(x + 3.0, y + 2.0, x + 4.0, y);
+                }
+                p->drawPath(welle);
+            }
+        }
+        b = b.next();
+    }
+}
+
 //  Die Treffer der Suchleiste als Flaeche hinter dem Text - nur fuer die
 //  SICHTBAREN Zeilen. Frueher setzte der Faerber dafuer ein Zeichenformat je
 //  Block; das erklaert den Block fuer geaendert, und Qt vermisst das Dokument
@@ -460,6 +517,7 @@ void TextDecorations::paint(QPainter* p) {
     if (m_guides) zeichneHilfen(p);
     zeichneFaltmarken(p);
     zeichneKlammern(p);
+    zeichneProbleme(p);
 }
 
 }  // namespace mg::editor

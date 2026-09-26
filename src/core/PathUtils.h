@@ -23,6 +23,7 @@ inline bool isCompanionFile(const QString& fileName,
     //  Ordnernamen: nach einem Umbenennen heisst sie noch wie der alte Ordner
     //  und stuende sonst als Kachel da.
     return fileName.endsWith(QLatin1String(".mgstore"), Qt::CaseInsensitive)
+        || fileName.endsWith(QLatin1String(".mgal"), Qt::CaseInsensitive)
         || fileName.endsWith(QLatin1String(".mgedit"), Qt::CaseInsensitive)
         || fileName.endsWith(QLatin1String(".mgedit.json"), Qt::CaseInsensitive)
         || fileName.endsWith(QLatin1String(".bak"), Qt::CaseInsensitive);
@@ -37,13 +38,28 @@ inline QString normalizedFolder(const QString& folderPath) {
     return n;
 }
 
-inline QString folderSidecarName(const QString& folderPath) {
+// Der Name der Ordner-Beidatei OHNE Endung: "/pfad/MeineBilder" -> "MeineBilder".
+// Leer, wenn sich daraus kein Name ergibt.
+inline QString folderSidecarBase(const QString& folderPath) {
     QString n = folderPath;
     while (n.endsWith(QLatin1Char('/')) || n.endsWith(QLatin1Char('\\')))
         n.chop(1);
     const int cut = qMax(n.lastIndexOf(QLatin1Char('/')), n.lastIndexOf(QLatin1Char('\\')));
-    const QString base = (cut >= 0) ? n.mid(cut + 1) : n;
+    return (cut >= 0) ? n.mid(cut + 1) : n;
+}
+
+inline QString folderSidecarName(const QString& folderPath) {
+    const QString base = folderSidecarBase(folderPath);
     return base.isEmpty() ? QString() : base + QStringLiteral(".mgstore");
+}
+
+// Die Wiedergabe-Reihenfolge eines Ordners: "<Ordner>/<Ordner>.mgal", derselbe
+// Bau wie die Tag-Ablage daneben. Leer, wenn kein Ordner genannt ist.
+inline QString folderPlaylistPath(const QString& folderPath) {
+    const QString ordner = normalizedFolder(folderPath);
+    const QString base = folderSidecarBase(ordner);
+    if (ordner.isEmpty() || base.isEmpty()) return QString();
+    return ordner + QLatin1Char('/') + base + QStringLiteral(".mgal");
 }
 
 // Wandelt eine "file:"-URL in einen lokalen Dateipfad um; ein bereits lokaler

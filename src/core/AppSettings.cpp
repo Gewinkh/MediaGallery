@@ -430,6 +430,13 @@ void AppSettings::setEditorIndentGuides(bool v) {
     m_settings.setValue("editor/indentGuides", v);
 }
 
+bool AppSettings::editorShowProblems() const {
+    return m_settings.value("editor/showProblems", true).toBool();
+}
+void AppSettings::setEditorShowProblems(bool v) {
+    m_settings.setValue("editor/showProblems", v);
+}
+
 bool AppSettings::editorMatchBrackets() const {
     return m_settings.value("editor/matchBrackets", true).toBool();
 }
@@ -510,6 +517,12 @@ bool AppSettings::tableDateMonthFirst() const {
 }
 void AppSettings::setTableDateMonthFirst(bool v) {
     m_settings.setValue("ui/tableDateMonthFirst", v);
+}
+bool AppSettings::tableGroupDigits() const {
+    return m_settings.value("ui/tableGroupDigits", false).toBool();
+}
+void AppSettings::setTableGroupDigits(bool v) {
+    m_settings.setValue("ui/tableGroupDigits", v);
 }
 
 bool AppSettings::showAllFiles() const {
@@ -880,6 +893,9 @@ void AppSettings::setAudioShowVideos(bool on) { m_settings.setValue("audio/showV
 
 bool AppSettings::audioRememberLast() const { return m_settings.value("audio/rememberLast", true).toBool(); }
 void AppSettings::setAudioRememberLast(bool on) { m_settings.setValue("audio/rememberLast", on); }
+
+bool AppSettings::audioRememberOrder() const { return m_settings.value("audio/rememberOrder", true).toBool(); }
+void AppSettings::setAudioRememberOrder(bool on) { m_settings.setValue("audio/rememberOrder", on); }
 
 QString AppSettings::audioLastFile() const { return m_settings.value("audio/lastFile").toString(); }
 void AppSettings::setAudioLastFile(const QString& path) { m_settings.setValue("audio/lastFile", path); }

@@ -265,6 +265,21 @@ Item {
 
     property font cellFont: App.fallbackFont("monospace", 12)
     FontMetrics { id: fm; font: root.cellFont }
+    //  EINMAL gebaut, nicht je Zelle: ein `Qt.font({...})` in der Bindung legt
+    //  je sichtbarer Zelle ein neues Schriftobjekt an.
+    readonly property font cellFontFett: Qt.font({
+        family: root.cellFont.family, pixelSize: root.cellFont.pixelSize, bold: true })
+
+    //  Die Spalten MIT Hintergrund, vorab gesammelt: je Zeile entsteht dann nur
+    //  fuer sie eine Flaeche. Eine (durchsichtige) Flaeche je Zelle kostete an
+    //  derselben Stelle schon einmal 3,78 -> 4,32 ms je Bild.
+    readonly property var _bgSpalten: {
+        var aus = []
+        for (var i = 0; i < root._spalten.length; ++i)
+            if (root._spalten[i].bg !== undefined)
+                aus.push({ index: root._spalten[i].index, farbe: root._spalten[i].bg })
+        return aus
+    }
 
     //  Gilt waehrend des Zugs; der Anbieter erfaehrt die Breite erst beim
     //  Loslassen - jede Meldung von dort baut die Zellen neu.
@@ -762,6 +777,19 @@ Item {
                            ? Qt.rgba(Editor.text.r, Editor.text.g, Editor.text.b, 0.05)
                            : "transparent"
                 }
+                //  Spaltenhintergruende - unter den Suchmarken, damit ein
+                //  Treffer sichtbar bleibt.
+                Repeater {
+                    model: zeile.leer ? [] : root._bgSpalten
+                    delegate: Rectangle {
+                        required property var modelData
+                        x: root._spalteX(modelData.index)
+                        width: root._spalteBreite(modelData.index)
+                        height: zeile.height
+                        color: modelData.farbe
+                    }
+                }
+
                 //  Suchtreffer: je Zeile entstehen nur so viele Marken, wie
                 //  die Zeile Treffer hat - ohne laufende Suche also keine. Je
                 //  Zelle eine (unsichtbare) Marke kostete gemessen 3,78 -> 4,32 ms
@@ -801,8 +829,8 @@ Item {
                                 anchors { fill: parent; leftMargin: 8; rightMargin: 8 }
                                 verticalAlignment: Text.AlignVCenter
                                 elide: Text.ElideRight
-                                color: Editor.text
-                                font: root.cellFont
+                                color: modelData.fg !== undefined ? modelData.fg : Editor.text
+                                font: modelData.fett === true ? root.cellFontFett : root.cellFont
                                 text: (root.contentRevision >= 0 && root.provider)
                                       ? root.provider.cell(zeile.index, modelData.index) : ""
                             }
@@ -1054,6 +1082,45 @@ Item {
         }
         MenuSeparator {}
         MenuItem {
+            text: App.uiText(App.language, "TableColBold")
+            checkable: true
+            checked: root._spalteFett(spaltenMenue.spalte)
+            onTriggered: root.provider.setColumnBold(spaltenMenue.spalte,
+                                                     !root._spalteFett(spaltenMenue.spalte))
+        }
+        //  Der Tupfer rechts zeigt die gesetzte Farbe; ohne ihn muesste man
+        //  jede Zeile aufklappen, um zu sehen, wo ueberhaupt etwas steht.
+        component FarbZeile: MenuItem {
+            property bool flaeche: false
+            readonly property string farbe:
+                root._spalteFarbe(spaltenMenue.spalte, flaeche)
+            onTriggered: farbWahl.oeffne(spaltenMenue.spalte, flaeche)
+            Rectangle {
+                anchors { right: parent.right; rightMargin: 10
+                          verticalCenter: parent.verticalCenter }
+                width: 12; height: 12; radius: 3
+                visible: parent.farbe !== ""
+                color: parent.farbe === "" ? "transparent" : parent.farbe
+                border.color: App.themeBorder
+                border.width: 1
+            }
+        }
+        FarbZeile {
+            text: App.uiText(App.language, "TableColTextColor")
+            flaeche: false
+        }
+        FarbZeile {
+            text: App.uiText(App.language, "TableColFillColor")
+            flaeche: true
+        }
+        MenuItem {
+            text: App.uiText(App.language, "TableColClearFormat")
+            enabled: root.provider && root.provider.columnHasFormat !== undefined
+                     && root.provider.columnHasFormat(spaltenMenue.spalte)
+            onTriggered: root.provider.clearColumnFormat(spaltenMenue.spalte)
+        }
+        MenuSeparator {}
+        MenuItem {
             text: App.uiText(App.language, "TableFreezeColumn")
             checkable: true
             checked: root.frozenColumn
@@ -1119,6 +1186,106 @@ Item {
             enabled: root.provider && root.provider.columnCount > 1
             text: App.uiText(App.language, "TableRemoveCol")
             onTriggered: root.provider.removeColumn(root.selColumn)
+        }
+    }
+
+    //  Nicht jede Spalte ist im Bild - gesucht wird ueber `index`.
+    function _spalteKarte(sp) {
+        for (var i = 0; i < root._spalten.length; ++i)
+            if (root._spalten[i].index === sp) return root._spalten[i]
+        return null
+    }
+    function _spalteFett(sp) {
+        const k = root._spalteKarte(sp)
+        return k !== null && k.fett === true
+    }
+    //  Gesetzte Farbe der Spalte, sonst leer - die Menuezeile zeigt sie als
+    //  Tupfer, damit man OHNE Aufklappen sieht, wo etwas gesetzt ist.
+    function _spalteFarbe(sp, flaeche) {
+        const k = root._spalteKarte(sp)
+        if (k === null) return ""
+        const w = flaeche ? k.bg : k.fg
+        return w === undefined ? "" : w
+    }
+
+    //  Farbwahl je Spalte: eine kleine Palette und ein Weg zum vollen Waehler.
+    //  Zwei Paletten, weil eine Textfarbe kraeftig und eine Flaeche blass sein
+    //  muss; eine gemeinsame taugte fuer keines von beiden.
+    readonly property var _textFarben: [
+        "#d13438", "#ca5010", "#986f0b", "#0f7b0f", "#038387",
+        "#0078d4", "#8764b8", "#c239b3", "#4f5b62", "#1a1a1a"]
+    readonly property var _flaechenFarben: [
+        "#fde7e9", "#fdf0e3", "#fdf6e3", "#e7f6e7", "#e3f6f6",
+        "#e5f1fb", "#f0eaf8", "#fbe9f7", "#e8eaed", "#c9ccd1"]
+
+    Popup {
+        id: farbWahl
+        property int  spalte: -1
+        property bool flaeche: false
+        function oeffne(sp, fuerFlaeche) {
+            farbWahl.spalte = sp
+            farbWahl.flaeche = fuerFlaeche
+            farbWahl.x = Math.max(0, Math.min(root._zelleX(sp) + root._nummernBreite,
+                                              root.width - farbWahl.implicitWidth))
+            farbWahl.y = nummernLeiste.height + spaltenKopf.height
+            farbWahl.open()
+        }
+        function setze(farbe) {
+            if (!root.provider) return
+            if (farbWahl.flaeche) root.provider.setColumnBackground(farbWahl.spalte, farbe)
+            else                  root.provider.setColumnColor(farbWahl.spalte, farbe)
+            farbWahl.close()
+        }
+        modal: false
+        dim: false
+        closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
+        padding: 8
+        background: Rectangle {
+            color: App.themeMenuBarBg
+            border.color: App.themeBorder
+            radius: 6
+        }
+        contentItem: Column {
+            spacing: 8
+            Grid {
+                columns: 5
+                spacing: 4
+                Repeater {
+                    model: farbWahl.flaeche ? root._flaechenFarben : root._textFarben
+                    delegate: Rectangle {
+                        required property string modelData
+                        width: 24; height: 20; radius: 3
+                        color: modelData
+                        border.width: feldHover.hovered ? 2 : 1
+                        border.color: feldHover.hovered ? App.themeAccent : App.themeBorder
+                        HoverHandler { id: feldHover }
+                        TapHandler { onTapped: farbWahl.setze(modelData) }
+                    }
+                }
+            }
+            Row {
+                spacing: 8
+                //  Leere Farbe = nicht gesetzt: Thema bzw. kein Hintergrund.
+                Rectangle {
+                    width: 90; height: 24; radius: 4
+                    color: ohneHover.hovered ? App.themeCard : "transparent"
+                    border.color: App.themeBorder
+                    Text {
+                        anchors.centerIn: parent
+                        text: App.uiText(App.language, "TableColNoColor")
+                        color: App.themeTextPrimary
+                        font.pixelSize: 11
+                    }
+                    HoverHandler { id: ohneHover }
+                    TapHandler { onTapped: farbWahl.setze("") }
+                }
+                ColorPicker {
+                    width: 40; height: 24
+                    showAlpha: false
+                    title: App.uiText(App.language, "TableColOwnColor")
+                    onColorPicked: function (c) { farbWahl.setze(c.toString()) }
+                }
+            }
         }
     }
 

@@ -130,6 +130,10 @@ public:
     virtual void setEditorFolding(bool v) = 0;
     virtual bool editorIndentGuides() const = 0;
     virtual void setEditorIndentGuides(bool v) = 0;
+    //  Struktur-Pruefung des Editors: Wellenlinie und Punkt im Uebersichtsstreifen.
+    //  AN als Vorgabe - gemeldet wird nur, was aus der Datei allein falsch ist.
+    virtual bool editorShowProblems() const = 0;
+    virtual void setEditorShowProblems(bool v) = 0;
     virtual bool editorMatchBrackets() const = 0;
     virtual void setEditorMatchBrackets(bool v) = 0;
     virtual int  editorTabWidth() const = 0;
@@ -167,6 +171,12 @@ public:
     //  Ein Datum mit Schraegstrichen in Tabellen als MM/TT/JJJJ statt TT/MM/JJJJ.
     virtual bool tableDateMonthFirst() const = 0;
     virtual void setTableDateMonthFirst(bool v) = 0;
+
+    //  Zahlen in Tabellen mit Tausenderzeichen ANZEIGEN (2.000,00 statt
+    //  2000,00). AUS als Vorgabe: so steht die Zahl da, wie sie in der Datei
+    //  steht, und jede Textzelle faellt ohne Arbeit durch.
+    virtual bool tableGroupDigits() const = 0;
+    virtual void setTableGroupDigits(bool v) = 0;
 
     //  Text -> PDF in den Farben des Editor-Profils statt in EINER Farbe.
     //  AUS als Vorgabe: der haeufigste Grund fuer ein PDF ist ein Ausdruck.
@@ -304,6 +314,10 @@ public:
     virtual void        setAudioShowVideos(bool on) = 0;
     virtual bool        audioRememberLast() const = 0;
     virtual void        setAudioRememberLast(bool on) = 0;
+    //  Ueberlebt die selbst gezogene Reihenfolge den Programmstart? AN als
+    //  Vorgabe: wer sie einmal sortiert hat, will sie beim naechsten Mal wieder.
+    virtual bool        audioRememberOrder() const = 0;
+    virtual void        setAudioRememberOrder(bool on) = 0;
     virtual bool        audioExtractInheritTags() const = 0;
     virtual void        setAudioExtractInheritTags(bool on) = 0;
     virtual bool        audioExtractToQueue() const = 0;

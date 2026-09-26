@@ -1062,6 +1062,7 @@ QImage ThumbnailTask::generateTextThumbnail(const QString& path, const QSize& si
         return generateTypeCardThumbnail(path, size, stil);
     //  Die eigenen Ablagen sind binaer - ihre Bytes als Text waeren Zeichensalat.
     if (path.endsWith(QLatin1String(".mgstore"), Qt::CaseInsensitive)
+        || path.endsWith(QLatin1String(".mgal"), Qt::CaseInsensitive)
         || path.endsWith(QLatin1String(".mgedit"), Qt::CaseInsensitive))
         return generateTypeCardThumbnail(path, size, stil);
 

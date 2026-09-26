@@ -140,8 +140,10 @@ void DatevController::ergebnisUebernehmen(std::shared_ptr<Datei> d, const QStrin
         for (const Warnung& w : std::as_const(m_datei->warnungen))
             m_warnungen.append(QStringLiteral("%1: %2").arg(w.zeile).arg(w.text));
     }
-    //  Die Breiten gehoeren zur DATEI, nicht zur Flaeche - sie kommen mit ihr.
-    m_breiten = m_datei ? mg::table::liesBreiten(m_source) : QHash<int, int>();
+    //  Breiten und Formate gehoeren zur DATEI, nicht zur Flaeche - sie kommen
+    //  mit ihr.
+    if (m_datei) mg::table::liesSpalten(m_source, m_breiten, m_formate);
+    else { m_breiten.clear(); m_formate.clear(); }
     spaltenNeuRechnen();
     emit stateChanged();
 }
@@ -155,8 +157,41 @@ void DatevController::setColumnWidth(int column, int px) {
         if (m_breiten.value(column, 0) == neu) return;
         m_breiten.insert(column, neu);
     }
-    mg::table::schreibeBreiten(m_source, m_breiten);
+    spaltenAblegen();
     spaltenNeuRechnen();
+}
+
+void DatevController::spaltenAblegen() {
+    mg::table::schreibeSpalten(m_source, m_breiten, m_formate);
+}
+
+void DatevController::formatAendern(
+    int column, const std::function<void(mg::table::SpaltenFormat&)>& aendere) {
+    if (column < 0) return;
+    mg::table::SpaltenFormat f = m_formate.value(column);
+    const mg::table::SpaltenFormat vorher = f;
+    aendere(f);
+    if (f == vorher) return;
+    if (f.leer()) m_formate.remove(column);
+    else          m_formate.insert(column, f);
+    spaltenAblegen();
+    spaltenNeuRechnen();
+}
+
+void DatevController::setColumnBold(int column, bool bold) {
+    formatAendern(column, [bold](mg::table::SpaltenFormat& f) { f.fett = bold; });
+}
+
+void DatevController::setColumnColor(int column, const QString& color) {
+    formatAendern(column, [&color](mg::table::SpaltenFormat& f) { f.farbe = color; });
+}
+
+void DatevController::setColumnBackground(int column, const QString& color) {
+    formatAendern(column, [&color](mg::table::SpaltenFormat& f) { f.hintergrund = color; });
+}
+
+void DatevController::clearColumnFormat(int column) {
+    formatAendern(column, [](mg::table::SpaltenFormat& f) { f = mg::table::SpaltenFormat(); });
 }
 
 void DatevController::spaltenNeuRechnen() {
@@ -178,6 +213,20 @@ void DatevController::spaltenNeuRechnen() {
         //  Zeile 20 x 500 Suchlaeufe.
         m.insert(QStringLiteral("chars"), columnChars(i));
         m.insert(QStringLiteral("px"), m_breiten.value(i, 0));
+        //  Nur gesetzte Felder - eine Zelle fragt sonst je Bild nach drei
+        //  Werten, die nie belegt sind.
+        const auto fm = m_formate.constFind(i);
+        if (fm != m_formate.cend()) {
+            if (fm->fett) m.insert(QStringLiteral("fett"), true);
+            if (!fm->farbe.isEmpty()) m.insert(QStringLiteral("fg"), fm->farbe);
+            if (!fm->hintergrund.isEmpty()) {
+                m.insert(QStringLiteral("bg"), fm->hintergrund);
+                //  Ohne eigene Textfarbe entscheidet der Hintergrund, nicht das
+                //  Thema - sonst steht heller Text auf heller Flaeche.
+                if (fm->farbe.isEmpty())
+                    m.insert(QStringLiteral("fg"), mg::table::lesbarAuf(fm->hintergrund));
+            }
+        }
         m_spalten.append(m);
     }
     emit columnsChanged();
@@ -206,6 +255,14 @@ void DatevController::search(const QString& text, bool caseSensitive,
     m_suchOpt.ganzeZelle = wholeCell;
     m_suchAb = qMax(0, fromRow);
     sucheStarten();
+}
+
+void DatevController::setGroupDigits(bool v) {
+    if (v == m_gruppiert) return;
+    m_gruppiert = v;
+    //  Die Zellen haengen ihre Bindung an `contentRevision`.
+    ++m_inhaltRevision;
+    emit sortChanged();
 }
 
 void DatevController::setSlashDateMonthFirst(bool v) {
@@ -330,7 +387,9 @@ QString DatevController::cell(int row, int column) const {
     if (!m_datei) return {};
     const int z = rohZeile(row);
     if (z < 0 || z >= m_datei->buchungen.size()) return {};
-    return m_datei->buchungen.at(z).wert(column);
+    //  Nur die ANZEIGE; die Zwischenablage geht weiter ueber den Rohwert.
+    //  Ein Buchungsstapel schreibt seine Betraege immer mit Komma.
+    return mg::table::zahlAnzeigen(m_datei->buchungen.at(z).wert(column), m_gruppiert, true);
 }
 
 QString DatevController::rowText(int row) const {

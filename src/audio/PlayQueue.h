@@ -9,6 +9,9 @@
 // Haelt nur die Reihenfolge und die Stelle darin - die Wiedergabe macht AudioEngine.
 // Zufall = gemischte Liste ohne Wiederholung (Fisher-Yates, 4 Byte je Titel).
 // "Eine wiederholen" gilt nur beim natuerlichen Ende, nicht beim Weiterschalten.
+// DREI Ordnungen, unabhaengig voneinander: die Liste, wie die Galerie sie zeigt;
+// die EIGENE, vom Nutzer gezogene; und die Mischung. Der Zufall ersetzt die
+// eigene Ordnung, solange er an ist - er mischt nicht ueber sie hinweg.
 class PlayQueue : public QObject {
     Q_OBJECT
     Q_PROPERTY(bool shuffle READ shuffle WRITE setShuffle NOTIFY shuffleChanged)
@@ -28,6 +31,21 @@ public:
     //  Die sichtbare Liste der Galerie. Ein bereits laufender Titel bleibt
     //  laufend, sofern er noch dabei ist - sonst beginnt die Liste von vorn.
     void setItems(const QStringList& paths);
+
+    //  Die EIGENE Reihenfolge (Pfade). Sie pflegt sich an `m_items`: was nicht
+    //  mehr da ist, faellt raus, was neu ist, haengt ans Ende. Leer heisst
+    //  „keine eigene Ordnung" - dann gilt die Liste der Galerie.
+    void        setCustomOrder(const QStringList& paths);
+    QStringList customOrder() const { return m_eigene; }
+    bool        hasCustomOrder() const { return !m_eigene.isEmpty(); }
+    //  Einen Eintrag der ABSPIELfolge an eine andere Stelle ziehen. Bei Zufall
+    //  wird nur die MISCHUNG umgestellt - fluechtig, nur fuer diese Sitzung;
+    //  ohne Zufall wird die eigene Ordnung mitgeschrieben. Liefert false, wenn
+    //  nichts zu tun war.
+    bool        moveOrder(int von, int nach);
+    //  Wird beim Ziehen etwas festgehalten? Bei Zufall nicht.
+    bool        moveIsPersistent() const { return !m_shuffle; }
+    void        clearCustomOrder();
     QStringList items() const { return m_items; }
     int count() const { return int(m_items.size()); }
 
@@ -68,6 +86,7 @@ public:
     QString back();
 
 signals:
+    void customOrderChanged();
     void shuffleChanged();
     void repeatChanged();
     void itemsChanged();
@@ -76,8 +95,17 @@ signals:
 private:
     void rebuildOrder(int keepItemIndex);
     void noteHistory();
+    //  Die eigene Ordnung an die heutige Liste anpassen; liefert true, wenn
+    //  sich dabei etwas geaendert hat (dann ist sie neu abzulegen).
+    bool pflegeEigene();
+    //  Die Grundfolge OHNE Mischung: die eigene, wenn es sie gibt, sonst die
+    //  Liste der Galerie.
+    QVector<int> grundfolge() const;
 
     QStringList     m_items;
+    //  Pfade, nicht Nummern: die Liste der Galerie wechselt mit jedem Filter,
+    //  eine Nummer zeigte danach woanders hin.
+    QStringList     m_eigene;
     QVector<int>    m_order;     // Reihenfolge als Indizes in m_items
     int             m_pos = -1;  // Stelle in m_order
     bool            m_shuffle = false;

@@ -7,6 +7,7 @@
 #include "table/TableFormula.h"
 #include "table/TableSearch.h"
 #include "table/TableSort.h"
+#include "table/TableWidths.h"
 
 #include <QObject>
 #include <QHash>
@@ -15,6 +16,7 @@
 #include <QThreadPool>
 #include <QVariantList>
 #include <atomic>
+#include <functional>
 #include <memory>
 #include <vector>
 
@@ -84,6 +86,9 @@ class TableController : public QObject {
     //  Schraegstrich-Daten als MM/TT/JJJJ statt TT/MM/JJJJ - beim Sortieren und Filtern.
     Q_PROPERTY(bool slashDateMonthFirst READ slashDateMonthFirst WRITE setSlashDateMonthFirst
                                         NOTIFY sortChanged)
+    //  Zahlen mit Tausenderzeichen ANZEIGEN. Reine Darstellung - die Datei
+    //  bleibt Byte fuer Byte, und das Eingabefeld zeigt weiter den Rohwert.
+    Q_PROPERTY(bool groupDigits READ groupDigits WRITE setGroupDigits NOTIFY sortChanged)
 
     //  Bearbeiten. Eine gekappte oder abgeschnittene Datei bleibt lesend -
     //  zurueckgeschrieben fehlte ihr der Rest. Zeilen und Spalten lassen sich
@@ -171,6 +176,16 @@ public:
     //  automatisch. Gehalten wird sie in der Beidatei neben der Datei.
     Q_INVOKABLE void setColumnWidth(int column, int px);
 
+    //  Formatierung je SPALTE - ebenfalls in der Beidatei. Eine leere Farbe
+    //  heisst „nicht gesetzt"; `clearColumnFormat` raeumt alle drei weg.
+    Q_INVOKABLE void setColumnBold(int column, bool bold);
+    Q_INVOKABLE void setColumnColor(int column, const QString& color);
+    Q_INVOKABLE void setColumnBackground(int column, const QString& color);
+    Q_INVOKABLE void clearColumnFormat(int column);
+    Q_INVOKABLE bool columnHasFormat(int column) const {
+        return m_formate.contains(column);
+    }
+
     QStringList warnings() const { return m_warnungen; }
     bool truncated() const { return m_datei && m_datei->abgeschnitten; }
     bool cp1252() const    { return m_datei && m_datei->cp1252; }
@@ -203,6 +218,8 @@ public:
     int  searchRevision() const { return m_suche.revision(); }
     bool slashDateMonthFirst() const { return m_monatZuerst; }
     void setSlashDateMonthFirst(bool v);
+    bool groupDigits() const { return m_gruppiert; }
+    void setGroupDigits(bool v);
 
     //  Neu suchen. `fromRow` ist die Zeile, ab der der erste Treffer gesucht
     //  wird - die Anzeige gibt ihre oberste sichtbare mit, damit der Sprung
@@ -309,6 +326,11 @@ private:
         QList<ZeilenInfo> neueInfos;
         QList<Weg> weg;                     // ZeilenAus
         int spalte = -1;                    // SpalteEin/SpalteAus
+        //  Breite und Format der entfernten Spalte, damit Rueckgaengig sie
+        //  wiederherstellen kann - sie haengen an der Nummer und waeren sonst
+        //  mit dem Aufruecken verloren.
+        int           wegBreite = 0;
+        SpaltenFormat wegFormat;
         int von = 0;                        // betroffene Zeilen beim ersten Mal
         int bis = 0;
         QList<std::pair<int, ZeilenInfo>> betroffen;
@@ -363,7 +385,16 @@ private:
     void zeilenEinsetzen(int bereich, int pos, const QList<Zeile>& zeilen,
                          const QList<ZeilenInfo>& infos, int anzeige);
     void zeilenEntfernen(int bereich, int pos, int anzahl);
-    void spaltenIndexVerschieben(int spalte, int delta);
+    //  Alles, was an der SPALTENNUMMER haengt, ruecken lassen: ausgeblendete
+    //  Spalten, Sortier- und Filterspalte, Breiten und Formate. Beim Entfernen
+    //  kommen Breite und Format der weggefallenen Spalte heraus, damit
+    //  Rueckgaengig sie wiederherstellen kann.
+    bool spaltenIndexVerschieben(int spalte, int delta, int* wegBreite = nullptr,
+                                 SpaltenFormat* wegFormat = nullptr);
+    //  Breiten und Formate in die Beidatei.
+    void spaltenAblegen();
+    //  Alle drei Formatgriffe laufen hier zusammen.
+    void formatAendern(int column, const std::function<void(SpaltenFormat&)>& aendere);
     enum class Modus { Normal, Verlassen, Kopie };
     void speichernStarten(Modus modus);
     void speicherErgebnis(const std::shared_ptr<SpeicherErgebnis>& e);
@@ -381,6 +412,7 @@ private:
     int m_spaltenZahl = 0;
     QSet<int> m_versteckt;          // absolute Spaltennummern
     QHash<int, int> m_breiten;      // Spalte -> Breite in Pixeln, von Hand gesetzt
+    QHash<int, SpaltenFormat> m_formate;
 
     //  Unveraenderlich, sobald gebaut - deshalb darf sie ein Arbeitsfaden halten.
     std::shared_ptr<const Werte> m_werte;
@@ -402,6 +434,7 @@ private:
     SuchOptionen m_suchOpt;
     int          m_suchAb = 0;
     bool         m_monatZuerst = false;
+    bool         m_gruppiert = false;
     int          m_andereBloecke = 0;
     QList<int>   m_trefferProBlock;   // je Bereich, Reihenfolge wie m_bereiche
     bool         m_suchLaeuft = false;

@@ -59,6 +59,8 @@ public:
     void setEditorFolding(bool v) override;
     bool editorIndentGuides() const override;
     void setEditorIndentGuides(bool v) override;
+    bool editorShowProblems() const override;
+    void setEditorShowProblems(bool v) override;
     bool editorMatchBrackets() const override;
     void setEditorMatchBrackets(bool v) override;
     int  editorTabWidth() const override;
@@ -84,6 +86,8 @@ public:
     void setTableOpensTxt(bool v) override;
     bool tableDateMonthFirst() const override;
     void setTableDateMonthFirst(bool v) override;
+    bool tableGroupDigits() const override;
+    void setTableGroupDigits(bool v) override;
     bool textPdfNative() const override;
     void setTextPdfNative(bool v) override;
     bool galleryListLayout() const override;
@@ -177,6 +181,8 @@ public:
     bool        audioShowVideos() const override;
     void        setAudioShowVideos(bool on) override;
     bool        audioRememberLast() const override;
+    bool        audioRememberOrder() const override;
+    void        setAudioRememberOrder(bool on) override;
     int         docxPdfPageNumberPos() const override;
     void        setDocxPdfPageNumberPos(int pos) override;
     int         docxPdfPageNumberStyle() const override;

@@ -164,6 +164,21 @@ void TextGutter::zeichneAst(QPainter* p, const QTextLayout& tl,
     p->restore();
 }
 
+void TextGutter::setProblems(TextProblems* pr) {
+    if (pr == m_problems) return;
+    if (m_problems) disconnect(m_problems, nullptr, this, nullptr);
+    m_problems = pr;
+    if (m_problems)
+        connect(m_problems, &TextProblems::problemsChanged, this, [this] { update(); });
+    emit problemsItemChanged();
+    update();
+}
+
+void TextGutter::setProblemColor(const QColor& c) {
+    if (c == m_problemColor) return;
+    m_problemColor = c; emit styleChanged(); update();
+}
+
 void TextGutter::paint(QPainter* p) {
     p->fillRect(QRectF(0, 0, width(), height()), m_background);
     if (m_borderColor.alpha() > 0)
@@ -204,7 +219,11 @@ void TextGutter::paint(QPainter* p) {
             const qreal zeilenhoehe = (tl && tl->lineCount() > 0) ? tl->lineAt(0).height()
                                                                   : fm.height();
             const bool aktiv = (block.blockNumber() == aktiveZeile);
-            const QColor farbe = aktiv ? m_activeColor : m_textColor;
+            //  Eine Fundstelle sticht die aktive Zeile: sie ist die seltenere
+            //  und die wichtigere Auskunft.
+            const bool kaputt = m_problems && m_problems->inBlock(block.blockNumber());
+            const QColor farbe = kaputt ? m_problemColor
+                               : aktiv  ? m_activeColor : m_textColor;
             p->setPen(farbe);
             p->drawText(QRectF(0, y, width() - 10, zeilenhoehe),
                         Qt::AlignRight | Qt::AlignVCenter,

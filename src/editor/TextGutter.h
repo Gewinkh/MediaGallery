@@ -1,4 +1,6 @@
 #pragma once
+#include "editor/TextProblems.h"
+
 #include <QColor>
 #include <QFont>
 #include <QQuickPaintedItem>
@@ -30,6 +32,11 @@ class TextGutter : public QQuickPaintedItem {
     Q_PROPERTY(QColor textColor READ textColor WRITE setTextColor NOTIFY styleChanged)
     Q_PROPERTY(QColor activeColor READ activeColor WRITE setActiveColor NOTIFY styleChanged)
     Q_PROPERTY(QColor borderColor READ borderColor WRITE setBorderColor NOTIFY styleChanged)
+    //  Traegt die Zeile eine Fundstelle, wird ihre NUMMER eingefaerbt - die
+    //  Wellenlinie steht im Text, die Nummer sagt es schon am Rand.
+    Q_PROPERTY(mg::editor::TextProblems* problems READ problems WRITE setProblems
+                                                  NOTIFY problemsItemChanged)
+    Q_PROPERTY(QColor problemColor READ problemColor WRITE setProblemColor NOTIFY styleChanged)
 
     //  Breite, die die Spalte braucht - richtet sich nach der hoechsten Nummer.
     //  QML bindet die Breite darauf; die Spalte bestimmt sie selbst, weil nur
@@ -66,6 +73,10 @@ public:
     void   setTextColor(const QColor& c);
     QColor activeColor() const { return m_activeColor; }
     void   setActiveColor(const QColor& c);
+    TextProblems* problems() const { return m_problems; }
+    void          setProblems(TextProblems* p);
+    QColor problemColor() const { return m_problemColor; }
+    void   setProblemColor(const QColor& c);
     QColor borderColor() const { return m_borderColor; }
     void   setBorderColor(const QColor& c);
 
@@ -80,6 +91,7 @@ signals:
     void topPaddingChanged();
     void cursorPositionChanged();
     void styleChanged();
+    void problemsItemChanged();
     void requiredWidthChanged();
 
 private:
@@ -98,6 +110,8 @@ private:
     QColor m_textColor   = QColor(94, 104, 120);
     QColor m_activeColor = QColor(200, 210, 226);
     QColor m_borderColor = QColor(0, 0, 0, 0);
+    TextProblems* m_problems = nullptr;
+    QColor m_problemColor = QColor(228, 96, 96);
     qreal  m_requiredWidth = 40;
     int    m_letzteZeilenzahl = -1;
 };

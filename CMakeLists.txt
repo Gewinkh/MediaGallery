@@ -190,6 +190,8 @@ add_library(mg_lib STATIC
     src/core/ISettings.h
     src/core/JsonStorage.cpp
     src/core/JsonStorage.h
+    src/core/MGAudioList.cpp
+    src/core/MGAudioList.h
     src/core/MGEditBin.cpp
     src/core/MGEditBin.h
     src/core/MGStorage.cpp
@@ -244,6 +246,8 @@ add_library(mg_lib STATIC
     src/editor/LanguageTable.h
     src/editor/SyntaxPalette.cpp
     src/editor/SyntaxPalette.h
+    src/editor/SyntaxProblems.cpp
+    src/editor/SyntaxProblems.h
     src/editor/SyntaxScanner.cpp
     src/editor/SyntaxScanner.h
     src/editor/SyntaxTypes.h
@@ -257,6 +261,8 @@ add_library(mg_lib STATIC
     src/editor/TextMinimap.h
     src/editor/TextPdfExporter.cpp
     src/editor/TextPdfExporter.h
+    src/editor/TextProblems.cpp
+    src/editor/TextProblems.h
 
     src/image/edit/ImageEditCommands.cpp
     src/image/edit/ImageEditCommands.h

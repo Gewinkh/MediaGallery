@@ -24,6 +24,13 @@ enum class SortRichtung { Keine, Auf, Ab };
 //  faellt durch und wird als Text sortiert.
 double alsZahl(const QString& text, bool* ok);
 
+//  Denselben Zahlenbegriff fuer die ANZEIGE: Tausenderzeichen setzen oder
+//  entfernen. Gearbeitet wird am TEXT, nicht am Wert - ueber einen `double`
+//  verloere "0012,50" seine fuehrende Null und "1,5000" seine Nachkommastellen.
+//  Was keine reine Zahl ist, kommt unveraendert zurueck; `kommaIstDezimal` gilt
+//  nur fuer Zahlen ohne eigenes Trennzeichen ("2000").
+QString zahlAnzeigen(const QString& text, bool mitTausendern, bool kommaIstDezimal);
+
 //  Traegt die Spalte durchweg Zahlen? Ueber eine Probe der ersten Zeilen, nicht
 //  ueber die ganze Datei. Leere Zellen zaehlen nicht.
 bool spalteIstZahl(const QList<Zeile>& zeilen, int von, int bis, int spalte,

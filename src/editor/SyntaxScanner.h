@@ -29,4 +29,10 @@ inline bool inStringOrComment(const SpanList& spans, int pos) {
     return false;
 }
 
+//  Praeprozessor-Zeile beim Klammernzaehlen (Faltung und Struktur-Pruefung).
+//  `Andere` (`#define`, `#include`) zaehlt gar nicht, sonst oeffnete `#define B {` einen Block.
+enum class Praep { Keine, Wenn, Sonst, Ende, Andere };
+Praep praepVon(QStringView zeile, const SpanList& spans);
+inline constexpr int kMaxPraepTiefe = 32;
+
 }  // namespace mg::editor

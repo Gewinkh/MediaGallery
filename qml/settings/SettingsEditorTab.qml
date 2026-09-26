@@ -99,6 +99,21 @@ Item {
                 }
 
                 EdCheck {
+                    objectName: "editorShowProblems"
+                    text: App.uiText(App.language, "EditorShowProblems")
+                    checked: Editor.showProblems
+                    onToggled: Editor.showProblems = checked
+                }
+                Label {
+                    Layout.fillWidth: true
+                    Layout.leftMargin: 24
+                    text: App.uiText(App.language, "EditorShowProblemsHint")
+                    color: App.themeTextMuted
+                    font.pixelSize: 11
+                    wrapMode: Text.WordWrap
+                }
+
+                EdCheck {
                     id: wrapChk
                     text: App.uiText(App.language, "SettingsEditorSoftWrap")
                     checked: Editor.softWrap

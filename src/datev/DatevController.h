@@ -7,6 +7,7 @@
 #include "table/TableFilter.h"
 #include "table/TableSearch.h"
 #include "table/TableSort.h"
+#include "table/TableWidths.h"
 
 #include <QObject>
 #include <QHash>
@@ -15,6 +16,7 @@
 #include <QThreadPool>
 #include <QVariantList>
 #include <atomic>
+#include <functional>
 #include <memory>
 
 namespace mg::datev {
@@ -75,6 +77,9 @@ class DatevController : public QObject {
     Q_PROPERTY(bool matchOverflow READ matchOverflow NOTIFY searchChanged)
     Q_PROPERTY(bool searching     READ searching     NOTIFY searchChanged)
     Q_PROPERTY(int  searchRevision READ searchRevision NOTIFY searchChanged)
+    //  Zahlen mit Tausenderzeichen ANZEIGEN. Reine Darstellung - gelesen wird
+    //  der Stapel ohnehin nur.
+    Q_PROPERTY(bool groupDigits READ groupDigits WRITE setGroupDigits NOTIFY sortChanged)
     Q_PROPERTY(bool slashDateMonthFirst READ slashDateMonthFirst WRITE setSlashDateMonthFirst
                                         NOTIFY sortChanged)
 
@@ -141,6 +146,16 @@ public:
     //  automatisch. Gehalten wird sie in der Beidatei neben der Datei.
     Q_INVOKABLE void setColumnWidth(int column, int px);
 
+    //  Formatierung je SPALTE - wie die Breite in der Beidatei. Die Datei
+    //  selbst bleibt unberuehrt; ein Buchungsstapel wird nie geschrieben.
+    Q_INVOKABLE void setColumnBold(int column, bool bold);
+    Q_INVOKABLE void setColumnColor(int column, const QString& color);
+    Q_INVOKABLE void setColumnBackground(int column, const QString& color);
+    Q_INVOKABLE void clearColumnFormat(int column);
+    Q_INVOKABLE bool columnHasFormat(int column) const {
+        return m_formate.contains(column);
+    }
+
     double sumDebit() const  { return m_soll; }
     double sumCredit() const { return m_haben; }
     double sumDiff() const   { return m_soll - m_haben; }
@@ -162,6 +177,8 @@ public:
     bool matchOverflow() const { return m_suche.mehr(); }
     bool searching() const   { return m_suchLaeuft; }
     int  searchRevision() const { return m_suche.revision(); }
+    bool groupDigits() const { return m_gruppiert; }
+    void setGroupDigits(bool v);
     bool slashDateMonthFirst() const { return m_monatZuerst; }
     void setSlashDateMonthFirst(bool v);
 
@@ -198,6 +215,10 @@ signals:
 private:
     void ergebnisUebernehmen(std::shared_ptr<Datei> d, const QString& fehler);
     void spaltenNeuRechnen();
+    //  Breiten und Formate in die Beidatei.
+    void spaltenAblegen();
+    void formatAendern(int column,
+                       const std::function<void(mg::table::SpaltenFormat&)>& aendere);
     void sucheStarten();
     void suchErgebnis(QList<mg::table::Treffer> treffer, bool mehr);
     void ordnungNeuBauen();
@@ -218,11 +239,13 @@ private:
     QStringList  m_warnungen;
     QSet<int>    m_versteckt;
     QHash<int, int> m_breiten;      // Spalte -> Breite in Pixeln, von Hand gesetzt
+    QHash<int, mg::table::SpaltenFormat> m_formate;
 
     int  m_sortSpalte = -1;
     mg::table::SortRichtung m_sortRichtung = mg::table::SortRichtung::Keine;
     bool m_sortLaeuft = false;
     int  m_inhaltRevision = 0;
+    bool m_gruppiert = false;
     //  Buchungsnummern in Anzeigereihenfolge, gueltig bei `m_ordnungAktiv`.
     QList<int> m_ordnung;
     bool m_ordnungAktiv = false;

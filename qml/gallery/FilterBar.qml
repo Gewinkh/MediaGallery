@@ -703,11 +703,19 @@ Rectangle {
             font.pixelSize: 12
         }
 
-        ToolSeparator { anchors.verticalCenter: parent.verticalCenter }
+        //  Im Player-Modus faellt beides weg: eine neue Datei anzulegen und
+        //  PDF-Seiten zu extrahieren hat dort keinen Sinn.
+        ToolSeparator {
+            anchors.verticalCenter: parent.verticalCenter
+            visible: !bar.audioOnly
+            width: visible ? implicitWidth : 0
+        }
 
         Button {
             id: plusBtn
             anchors.verticalCenter: parent.verticalCenter
+            visible: !bar.audioOnly
+            width: visible ? implicitWidth : 0
             height: 30
             padding: 0
             enabled: App.currentFolder.length > 0
@@ -919,6 +927,8 @@ Rectangle {
         Button {
             id: extractBtn
             anchors.verticalCenter: parent.verticalCenter
+            visible: !bar.audioOnly
+            width: visible ? implicitWidth : 0
             height: 30
             font.pixelSize: 13
             enabled: App.currentFolder.length > 0
@@ -926,7 +936,11 @@ Rectangle {
             onClicked: bar.extractPagesRequested("")   // der offene Ordner
         }
 
-        ToolSeparator { anchors.verticalCenter: parent.verticalCenter }
+        ToolSeparator {
+            anchors.verticalCenter: parent.verticalCenter
+            visible: !bar.audioOnly
+            width: visible ? implicitWidth : 0
+        }
 
         Row {
             anchors.verticalCenter: parent.verticalCenter

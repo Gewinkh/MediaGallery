@@ -36,6 +36,89 @@ double alsZahl(const QString& text, bool* ok) {
     return gut ? w : 0.0;
 }
 
+namespace {
+
+//  Laenger als das ist keine Zahl mehr, die jemand gruppiert lesen will - und
+//  der Deckel haelt den Lauf von langen Zellen fern.
+constexpr int kMaxZahlZeichen = 40;
+
+}  // namespace
+
+QString zahlAnzeigen(const QString& text, bool mitTausendern, bool kommaIstDezimal) {
+    const int n = int(text.size());
+    if (n == 0 || n > kMaxZahlZeichen) return text;
+    const char16_t erst = text.at(0).unicode();
+    //  Die billige Abfuhr: jede Textzelle faellt hier in konstanter Zeit heraus,
+    //  bevor irgendetwas gezaehlt oder gebaut wird.
+    if (!((erst >= u'0' && erst <= u'9') || erst == u'-' || erst == u'+')) return text;
+
+    const int komma = int(text.lastIndexOf(QLatin1Char(',')));
+    const int punkt = int(text.lastIndexOf(QLatin1Char('.')));
+    //  Ohne Trenner gibt es nichts zu entfernen; mit nur einem ist er das
+    //  Dezimalzeichen - dieselbe Lesart wie in `alsZahl`.
+    if (!mitTausendern && (komma < 0 || punkt < 0)) return text;
+
+    char16_t dez = 0, grp = 0;
+    if (komma >= 0 && punkt >= 0) {
+        dez = komma > punkt ? u',' : u'.';
+        grp = komma > punkt ? u'.' : u',';
+    } else if (komma >= 0) {
+        dez = u',';
+    } else if (punkt >= 0) {
+        dez = u'.';
+    }
+
+    //  Aufbau pruefen: Vorzeichen, Ziffern, Gruppenzeichen, GENAU ein
+    //  Dezimalzeichen. Ein Datum (1.2.2025) faellt hier heraus.
+    const int start = (erst == u'-' || erst == u'+') ? 1 : 0;
+    int dezAt = -1, ziffern = 0;
+    for (int i = start; i < n; ++i) {
+        const char16_t c = text.at(i).unicode();
+        if (c >= u'0' && c <= u'9') { ++ziffern; continue; }
+        if (dez && c == dez) {
+            if (dezAt >= 0) return text;          // zweimal = keine Zahl
+            dezAt = i;
+            continue;
+        }
+        if (grp && c == grp) continue;
+        return text;
+    }
+    if (ziffern == 0) return text;
+
+    const int ganzBis = dezAt >= 0 ? dezAt : n;
+    QString ganz;
+    ganz.reserve(ganzBis - start);
+    for (int i = start; i < ganzBis; ++i) {
+        const char16_t c = text.at(i).unicode();
+        if (c >= u'0' && c <= u'9') ganz.append(QChar(c));
+    }
+    if (ganz.isEmpty()) return text;
+    //  Nur Zahlen MIT Nachkommastellen bekommen Tausenderzeichen. Eine ganze
+    //  Zahl ohne Komma ist in einer Tabelle meist eine Kennnummer - Konto,
+    //  Beleg, Postleitzahl -, und aus 8400 wurde 8.400. Dasselbe gilt fuer eine
+    //  fuehrende Null.
+    if (mitTausendern && dezAt < 0) return text;
+    if (ganz.size() > 1 && ganz.at(0) == QLatin1Char('0')) return text;
+
+    QString aus;
+    aus.reserve(n + 4);
+    if (start == 1) aus.append(text.at(0));
+    if (!mitTausendern) {
+        aus.append(ganz);
+    } else {
+        const QChar trenner(dez ? (dez == u',' ? u'.' : u',')
+                                : (kommaIstDezimal ? u'.' : u','));
+        const int erstesBuendel = ((ganz.size() - 1) % 3) + 1;
+        aus.append(QStringView(ganz).left(erstesBuendel));
+        for (int i = erstesBuendel; i < ganz.size(); i += 3) {
+            aus.append(trenner);
+            aus.append(QStringView(ganz).mid(i, 3));
+        }
+    }
+    if (dezAt >= 0) aus.append(QStringView(text).mid(dezAt));
+    return aus == text ? text : aus;
+}
+
 bool spalteIstZahl(const QList<Zeile>& zeilen, int von, int bis, int spalte,
                    const Werte* formeln) {
     const int ende = qMin(bis, int(zeilen.size()));

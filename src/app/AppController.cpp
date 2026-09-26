@@ -517,6 +517,14 @@ void AppController::setTableOpensTxt(bool v) {
     emit tableOpensTxtChanged();
 }
 
+bool AppController::tableGroupDigits() const { return m_settings.tableGroupDigits(); }
+
+void AppController::setTableGroupDigits(bool v) {
+    if (m_settings.tableGroupDigits() == v) return;
+    m_settings.setTableGroupDigits(v);
+    emit tableGroupDigitsChanged();
+}
+
 bool AppController::tableDateMonthFirst() const { return m_settings.tableDateMonthFirst(); }
 
 void AppController::setTableDateMonthFirst(bool v) {

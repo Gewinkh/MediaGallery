@@ -77,7 +77,7 @@ struct MediaItem {
             "log","csv","tsv","gitignore","gitattributes","env","dockerfile","makefile",
             "qml","qrc","pro","pri","supp",
             //  Die eigenen Formate: binaer, werden beim Oeffnen lesbar aufbereitet.
-            "mgstore","mgedit",
+            "mgstore","mgal","mgedit",
             // Diese Liste MUSS jede Endung enthalten, die `LanguageTable.cpp` kennt - sonst färbt der Editor eine Sprache,
             // die sich gar nicht öffnen lässt (so passiert mit `.dart` und `.pl`). `tst_mediaitem` vergleicht beide Listen.
             "dart","pl","pm",

@@ -213,8 +213,10 @@ void TableController::ergebnisUebernehmen(std::shared_ptr<Datei> d, const QStrin
             m_warnungen.append(QStringLiteral("%1: %2").arg(w.zeile).arg(w.text));
     }
     formelnNeuRechnen();
-    //  Die Breiten gehoeren zur DATEI, nicht zur Flaeche - sie kommen mit ihr.
-    m_breiten = m_datei ? mg::table::liesBreiten(m_source) : QHash<int, int>();
+    //  Breiten und Formate gehoeren zur DATEI, nicht zur Flaeche - sie kommen
+    //  mit ihr.
+    if (m_datei) mg::table::liesSpalten(m_source, m_breiten, m_formate);
+    else { m_breiten.clear(); m_formate.clear(); }
     spaltenNeuRechnen();
     emit stateChanged();
     emit blockChanged();
@@ -229,9 +231,45 @@ void TableController::setColumnWidth(int column, int px) {
         if (m_breiten.value(column, 0) == neu) return;
         m_breiten.insert(column, neu);
     }
-    schreibeBreiten(m_source, m_breiten);
+    spaltenAblegen();
     spaltenNeuRechnen();
     emit stateChanged();
+}
+
+void TableController::spaltenAblegen() {
+    schreibeSpalten(m_source, m_breiten, m_formate);
+}
+
+//  Alle drei Formatgriffe laufen hier zusammen: aendern, ein leer gewordenes
+//  Format wegwerfen, ablegen, Spalten neu bauen.
+void TableController::formatAendern(int column,
+                                    const std::function<void(SpaltenFormat&)>& aendere) {
+    if (column < 0) return;
+    SpaltenFormat f = m_formate.value(column);
+    const SpaltenFormat vorher = f;
+    aendere(f);
+    if (f == vorher) return;
+    if (f.leer()) m_formate.remove(column);
+    else          m_formate.insert(column, f);
+    spaltenAblegen();
+    spaltenNeuRechnen();
+    emit stateChanged();
+}
+
+void TableController::setColumnBold(int column, bool bold) {
+    formatAendern(column, [bold](SpaltenFormat& f) { f.fett = bold; });
+}
+
+void TableController::setColumnColor(int column, const QString& color) {
+    formatAendern(column, [&color](SpaltenFormat& f) { f.farbe = color; });
+}
+
+void TableController::setColumnBackground(int column, const QString& color) {
+    formatAendern(column, [&color](SpaltenFormat& f) { f.hintergrund = color; });
+}
+
+void TableController::clearColumnFormat(int column) {
+    formatAendern(column, [](SpaltenFormat& f) { f = SpaltenFormat(); });
 }
 
 //  Je Block ein eigener Bezugspunkt: A1 ist SEINE erste Datenzeile, auch wenn
@@ -447,6 +485,20 @@ void TableController::spaltenNeuRechnen() {
         //  das beim Rollen je neuer Zeile einen Lauf ueber die Probe mal Spalte.
         m.insert(QStringLiteral("chars"), zeichen);
         m.insert(QStringLiteral("px"), m_breiten.value(i, 0));
+        //  Die drei Formatfelder stehen nur da, wo etwas gesetzt ist - eine
+        //  Zelle fragt sonst je Bild nach drei Werten, die nie belegt sind.
+        const auto fm = m_formate.constFind(i);
+        if (fm != m_formate.cend()) {
+            if (fm->fett) m.insert(QStringLiteral("fett"), true);
+            if (!fm->farbe.isEmpty()) m.insert(QStringLiteral("fg"), fm->farbe);
+            if (!fm->hintergrund.isEmpty()) {
+                m.insert(QStringLiteral("bg"), fm->hintergrund);
+                //  Ohne eigene Textfarbe entscheidet der Hintergrund, nicht das
+                //  Thema - sonst steht heller Text auf heller Flaeche.
+                if (fm->farbe.isEmpty())
+                    m.insert(QStringLiteral("fg"), lesbarAuf(fm->hintergrund));
+            }
+        }
         m_spalten.append(m);
     }
 }
@@ -486,7 +538,10 @@ QString TableController::cell(int row, int column) const {
     if (!m_datei) return {};
     const int z = rohZeile(row);
     if (z < 0 || z >= m_datei->zeilen.size()) return {};
-    return gezeigterWert(m_datei->zeilen, z, column, m_werte.get());
+    const QString w = gezeigterWert(m_datei->zeilen, z, column, m_werte.get());
+    //  Nur die ANZEIGE. Zwischenablage und Eingabefeld gehen andere Wege und
+    //  bekommen weiter, was in der Datei steht.
+    return zahlAnzeigen(w, m_gruppiert, m_dezimalKomma);
 }
 
 QString TableController::cellRaw(int row, int column) const {
@@ -552,6 +607,15 @@ QList<bool> TableController::spaltenMaske() const {
     for (int s : m_versteckt)
         if (s >= 0 && s < maske.size()) maske[s] = false;
     return maske;
+}
+
+void TableController::setGroupDigits(bool v) {
+    if (v == m_gruppiert) return;
+    m_gruppiert = v;
+    //  Die Zellen haengen ihre Bindung an `contentRevision` - ohne sie stuenden
+    //  die sichtbaren Zeilen weiter in der alten Form da.
+    ++m_inhaltRevision;
+    emit sortChanged();
 }
 
 void TableController::setSlashDateMonthFirst(bool v) {
@@ -762,13 +826,33 @@ void TableController::zeilenEntfernen(int bereich, int pos, int anzahl) {
     m_ordnung = std::move(neu);
 }
 
-void TableController::spaltenIndexVerschieben(int spalte, int delta) {
+//  Liefert, ob an Breiten oder Formaten etwas zu ruecken war - nur dann muss
+//  die Beidatei angefasst werden.
+bool TableController::spaltenIndexVerschieben(int spalte, int delta, int* wegBreite,
+                                              SpaltenFormat* wegFormat) {
     QSet<int> versteckt;
     for (int h : std::as_const(m_versteckt)) {
         if (delta > 0) versteckt.insert(h >= spalte ? h + 1 : h);
         else if (h != spalte) versteckt.insert(h > spalte ? h - 1 : h);
     }
     m_versteckt = std::move(versteckt);
+
+    //  Breite und Format haengen an der SPALTENNUMMER. Wandern sie nicht mit,
+    //  traegt nach dem Einfuegen einer Spalte die falsche die Farbe.
+    auto rueckeAuf = [&](auto& bestand, auto* weg) {
+        std::decay_t<decltype(bestand)> neu;
+        neu.reserve(bestand.size());
+        for (auto it = bestand.constBegin(); it != bestand.constEnd(); ++it) {
+            const int s = it.key();
+            if (delta > 0) { neu.insert(s >= spalte ? s + 1 : s, it.value()); continue; }
+            if (s == spalte) { if (weg) *weg = it.value(); continue; }
+            neu.insert(s > spalte ? s - 1 : s, it.value());
+        }
+        bestand = std::move(neu);
+    };
+    const bool etwasZuRuecken = !m_breiten.isEmpty() || !m_formate.isEmpty();
+    rueckeAuf(m_breiten, wegBreite);
+    rueckeAuf(m_formate, wegFormat);
 
     bool neuOrdnen = false;
     auto verschiebe = [&](int& wert, bool* weg) {
@@ -784,6 +868,7 @@ void TableController::spaltenIndexVerschieben(int spalte, int delta) {
     //  Die gefilterte Spalte ist weg - „irgendeine Spalte" waere ein anderer Filter.
     if (filterWeg) { m_filter = {}; neuOrdnen = true; }
     if (neuOrdnen) ordnungNeuBauen();
+    return etwasZuRuecken;
 }
 
 void TableController::schrittAusfuehren(Schritt& s, bool vorwaerts) {
@@ -876,7 +961,19 @@ void TableController::schrittAusfuehren(Schritt& s, bool vorwaerts) {
                 m_info[r] = alt;
             }
         }
-        spaltenIndexVerschieben(s.spalte, einfuegen ? 1 : -1);
+        if (einfuegen) {
+            const bool zurueck = spaltenIndexVerschieben(s.spalte, 1);
+            //  Rueckgaengig einer geloeschten Spalte: ihre Breite und ihr
+            //  Format kommen mit zurueck.
+            if (s.wegBreite > 0) m_breiten.insert(s.spalte, s.wegBreite);
+            if (!s.wegFormat.leer()) m_formate.insert(s.spalte, s.wegFormat);
+            if (zurueck || s.wegBreite > 0 || !s.wegFormat.leer()) spaltenAblegen();
+        } else {
+            s.wegBreite = 0;
+            s.wegFormat = SpaltenFormat();
+            if (spaltenIndexVerschieben(s.spalte, -1, &s.wegBreite, &s.wegFormat))
+                spaltenAblegen();
+        }
         break;
     }
     case Art::Gruppe:

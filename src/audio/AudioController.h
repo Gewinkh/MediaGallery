@@ -30,8 +30,7 @@ class AudioController : public QObject {
     Q_PROPERTY(qreal   volume      READ volume      WRITE setVolume NOTIFY volumeChanged)
     Q_PROPERTY(bool    active      READ active      NOTIFY stateChanged)
     Q_PROPERTY(bool    hasTrack    READ hasTrack    NOTIFY currentChanged)
-    // Diese sechs waren nie nach QML freigegeben - `Audio.trackTitle` war `undefined` und die Kopfzeile zeigte
-    // dauerhaft "Kein Titel gewählt". NOTIFY `tagsChanged`: die Angaben werden beim Titelwechsel neu gelesen.
+    // NOTIFY `tagsChanged`: die Angaben werden beim Titelwechsel neu gelesen.
     Q_PROPERTY(QString trackTitle    READ trackTitle    NOTIFY tagsChanged)
     Q_PROPERTY(QString trackArtist   READ trackArtist   NOTIFY tagsChanged)
     Q_PROPERTY(QString trackAlbum    READ trackAlbum    NOTIFY tagsChanged)
@@ -48,8 +47,7 @@ class AudioController : public QObject {
     Q_PROPERTY(bool eqAutoPreamp READ eqAutoPreamp WRITE setEqAutoPreamp
                NOTIFY optionsChanged)
     Q_PROPERTY(qreal clipLevel READ clipLevel WRITE setClipLevel NOTIFY optionsChanged)
-    // Wie viel die Gegenrechnung gerade abzieht (dB, nie positiv). Sie steht
-    // NEBEN dem Regler statt darin - siehe `eqPreamp`.
+    // Was die Gegenrechnung gerade abzieht (dB, nie positiv); steht neben dem Regler, s. `eqPreamp`.
     Q_PROPERTY(qreal clipReduction READ clipReduction NOTIFY eqChanged)
     Q_PROPERTY(QVariantList eqFrequencies READ eqFrequencies CONSTANT)
     Q_PROPERTY(bool  denoiseEnabled READ denoiseEnabled WRITE setDenoiseEnabled
@@ -62,8 +60,7 @@ class AudioController : public QObject {
 
     Q_PROPERTY(QStringList queue      READ queue      NOTIFY queueChanged)
     Q_PROPERTY(int         queueIndex READ queueIndex NOTIFY currentChanged)
-    //  WER spielt gerade: die Hälfte, die den Player gestartet hat. Nur dort
-    //  gehört die Leiste hin - sonst stünde sie in beiden Galerien.
+    //  Die Hälfte, die den Player gestartet hat - nur dort steht die Leiste.
     Q_PROPERTY(QObject*    owner      READ owner      WRITE setOwner NOTIFY ownerChanged)
 
     Q_PROPERTY(bool showVideos   READ showVideos   WRITE setShowVideos   NOTIFY optionsChanged)
@@ -71,6 +68,11 @@ class AudioController : public QObject {
                WRITE setPlayerModeRemembered NOTIFY optionsChanged)
     Q_PROPERTY(bool listLayout   READ listLayout   WRITE setListLayout   NOTIFY optionsChanged)
     Q_PROPERTY(bool rememberLast READ rememberLast WRITE setRememberLast NOTIFY optionsChanged)
+    //  Aus: die eigene Reihenfolge gilt nur fuer die Sitzung.
+    Q_PROPERTY(bool rememberOrder READ rememberOrder WRITE setRememberOrder NOTIFY optionsChanged)
+    //  Immer; bei Zufall stellt ein Zug nur die Mischung um.
+    Q_PROPERTY(bool orderSortable READ orderSortable NOTIFY queueChanged)
+    Q_PROPERTY(bool hasCustomOrder READ hasCustomOrder NOTIFY queueChanged)
 
     Q_PROPERTY(bool extractBusy READ extractBusy NOTIFY extractBusyChanged)
     Q_PROPERTY(bool extractInheritTags READ extractInheritTags
@@ -80,9 +82,8 @@ class AudioController : public QObject {
 
 public:
     explicit AudioController(ISettings& settings, QObject* parent = nullptr);
-    //  Beim Abräumen wird ein laufendes Sichern abgebrochen und abgewartet:
-    //  der Arbeiter hält einen rohen Zeiger auf DIESES Objekt (Rückweg per
-    //  `invokeMethod`) - liefe er weiter, zeigte der ins Leere.
+    //  Beim Abräumen wird ein laufendes Sichern abgebrochen und abgewartet -
+    //  der Arbeiter hält einen rohen Zeiger auf dieses Objekt.
     ~AudioController() override;
 
     int     state() const { return m_engine.stateInt(); }
@@ -105,10 +106,8 @@ public:
     bool eqEnabled() const { return m_eq.enabled(); }
     void setEqEnabled(bool on);
     QVariantList eqGains() const;
-    // Der Regler zeigt, was der NUTZER eingestellt hat - nicht die Summe aus
-    // seinem Wert und der Gegenrechnung. Stuende die Summe darin, spraenge er
-    // bei jeder Bewegung des Staerkereglers, und der eigene Wert liesse sich
-    // aus dem Angezeigten nicht mehr herauslesen.
+    // Der Regler zeigt den Wert des NUTZERS, nicht die Summe mit der Gegenrechnung -
+    // sonst spraenge er bei jeder Bewegung des Staerkereglers.
     qreal eqPreamp() const { return m_userPreamp; }
     bool  eqAutoPreamp() const;
     void  setEqAutoPreamp(bool on);
@@ -138,6 +137,11 @@ public:
     void setListLayout(bool on);
     bool rememberLast() const;
     void setRememberLast(bool on);
+    bool rememberOrder() const;
+    void setRememberOrder(bool on);
+    //  Gezogen wird immer; bei Zufall ist das Ergebnis nur fluechtig.
+    bool orderSortable() const { return true; }
+    bool hasCustomOrder() const { return m_queue.hasCustomOrder(); }
     QString trackTitle() const;
     QString trackArtist() const;
     QString trackAlbum() const;
@@ -152,8 +156,14 @@ public:
     bool extractToQueue() const;
     void setExtractToQueue(bool on);
 
-    Q_INVOKABLE void playFile(const QString& path, const QStringList& queue);
-    Q_INVOKABLE void setQueue(const QStringList& queue);
+    //  `folder`: wohin die eigene Reihenfolge gehoert (`<Ordner>.mgal`); leer = keine Ablage.
+    Q_INVOKABLE void playFile(const QString& path, const QStringList& queue,
+                              const QString& folder = QString());
+    Q_INVOKABLE void setQueue(const QStringList& queue,
+                              const QString& folder = QString());
+    Q_INVOKABLE bool moveTrack(int from, int to);
+    //  Zurueck zur Reihenfolge der Galerie; die Ablage faellt mit weg.
+    Q_INVOKABLE void clearCustomOrder();
     Q_INVOKABLE void togglePlay();
     Q_INVOKABLE void next();
     Q_INVOKABLE void previous();
@@ -229,12 +239,22 @@ private:
     AudioLimiter    m_limiter;
     AudioEngine     m_engine;
     PlayQueue       m_queue;
+    //  Ordner der laufenden Warteschlange; leer = keine Ablage.
+    QString         m_queueFolder;
+    //  Die volle eigene Reihenfolge, auch mit gerade ausgeblendeten Titeln.
+    QStringList     m_ordnung;
+    void            listeUebernehmen(const QStringList& items);
+    //  `<Ordner>.mgal` lesen und ablegen; `setzeOrdner` liefert true beim Wechsel.
+    bool            setzeOrdner(const QString& folder);
+    QString         ordnungsDatei() const;
+    void            ordnungLaden();
+    void            ordnungAblegen();
+    //  Deckel gegen eine praeparierte Datei - eine Reihenfolge ist klein.
+    static constexpr qint64 kMaxOrdnungsDatei = 16LL << 20;
     qint64          m_pendingSeek = 0;
-    //  Nur beobachtet, nie besessen: verschwindet die Hälfte, zeigt der Zeiger
-    //  ins Leere - deshalb `QPointer`.
+    //  Nur beobachtet: verschwindet die Hälfte, wird der `QPointer` leer.
     QPointer<QObject> m_owner;
-    // Die Vorverstaerkung entsteht aus ZWEI Anteilen: dem Wert, den der Nutzer
-    // selbst gesetzt hat, und der Gegenrechnung gegen das Uebersteuern. Getrennt
+    // Vorverstaerkung = eigener Wert + Gegenrechnung gegen Uebersteuern, getrennt
     // gehalten, damit das Auf und Ab des Pegels den eigenen Wert nie verbraucht.
     void   applyAutoPreamp();
     double korrektur() const;

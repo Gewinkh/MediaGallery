@@ -9,6 +9,7 @@
 
 #include <QJsonObject>
 #include <QString>
+#include <QStringList>
 
 namespace mg::editsidecar {
 
@@ -37,6 +38,9 @@ bool schreibeBin(const QString& dokument, const QByteArray& koerper);
 //  Drei Teile der App teilen sich eine Beidatei; wer schreibt, darf die Notizen
 //  der anderen nicht verlieren. Gibt die Zahl der uebernommenen Abschnitte.
 int uebernimmFremde(mg::mgeb::Schreiber& s, const Inhalt& in, const QString& eigener);
+//  Wer MEHRERE eigene Abschnitte schreibt, muss sie alle nennen: ein hier
+//  vergessener kaeme als fremder mit und staende danach doppelt in der Datei.
+int uebernimmFremde(mg::mgeb::Schreiber& s, const Inhalt& in, const QStringList& eigene);
 
 //  Die heutige Beidatei und die JSON-Fassung davor. Gelesen werden beide,
 //  geschrieben nur die erste; die alte faellt beim ersten Speichern weg.

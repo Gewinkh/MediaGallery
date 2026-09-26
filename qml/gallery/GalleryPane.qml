@@ -49,6 +49,7 @@ Item {
     property bool tagsSectionOn: false
     property bool catsSectionOn: false
     property var  _savedFilter: null
+    property var  _savedSort: null
 
     //  Besitzt DIESE Hälfte die laufende Wiedergabe? Nur dann gehören ihr die
     //  Leiste und die große Ansicht - sonst stünde der Player in beiden Galerien.
@@ -78,6 +79,13 @@ Item {
             galleryModel.showTexts  = false
             galleryModel.showAudio  = true
             galleryModel.showVideos = Audio.showVideos
+            //  Die Kacheln stehen in der Folge der Playlist, nicht in der
+            //  Sortierung der Galerie - beides nebeneinander in verschiedener
+            //  Reihenfolge zu sehen war der eigentliche Stolperstein.
+            pane._savedSort = { feld: galleryModel.sortRole,
+                                ab: galleryModel.sortDescending }
+            galleryModel.sortRole = 4            // Field::Playlist
+            galleryModel.sortDescending = false
             pane.playerMode = true
             PaneCtl.playerMode = true            // überlebt das Neubauen der Hälfte
             Audio.rememberPlayerMode(true, pane._myIndex())
@@ -102,6 +110,11 @@ Item {
         galleryModel.showAudio  = meaningful ? f.audio  : true
         galleryModel.showPdfs   = meaningful ? f.pdfs   : true
         galleryModel.showTexts  = meaningful ? f.texts  : true
+        if (pane._savedSort) {
+            galleryModel.sortRole = pane._savedSort.feld
+            galleryModel.sortDescending = pane._savedSort.ab
+            pane._savedSort = null
+        }
         pane._savedFilter = null
         pane.playerMode = false
         PaneCtl.playerMode = false
@@ -146,7 +159,7 @@ Item {
     function playHere(filePath) {
         Audio.owner = PaneCtl
         if (Audio.currentPath !== filePath)
-            Audio.playFile(filePath, pane._visibleAudioPaths())
+            Audio.playFile(filePath, pane._visibleAudioPaths(), PaneCtl.currentFolder)
     }
 
     property var _playerPage: null
@@ -174,7 +187,22 @@ Item {
         if (!pane.playerMode || !(pane.playerMine || !Audio.active)) return
         const list = pane._visibleAudioPaths()
         if (list.length === 0 && Audio.queue.length > 0) return
-        Audio.setQueue(list)
+        Audio.setQueue(list, PaneCtl.currentFolder)
+    }
+
+    //  Die Kachelfolge folgt der Playlist. Kein Kreis: `setQueue` uebernimmt
+    //  zwar die Liste der Galerie, aber die ABSPIELfolge entsteht aus der
+    //  eigenen Ordnung - sie aendert sich dadurch nicht.
+    //  ERST nach der Ereignisbehandlung umsortieren: `queueChanged` faellt
+    //  mitten im Umschalten des Zufalls, und ein Neusortieren des Modells
+    //  raeumt genau dort die Kacheln weg, ueber denen der Aufruf noch laeuft.
+    function _playlistFolgeNachziehen() {
+        if (pane.playerMode) galleryModel.playlistOrder = Audio.queue
+    }
+    Connections {
+        target: Audio
+        enabled: pane.playerMode
+        function onQueueChanged() { Qt.callLater(pane._playlistFolgeNachziehen) }
     }
 
     Connections {

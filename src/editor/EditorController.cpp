@@ -36,6 +36,7 @@ EditorController::EditorController(ISettings& settings, QObject* parent)
     m_folding              = m_settings.editorFolding();
     m_indentGuides         = m_settings.editorIndentGuides();
     m_matchBrackets        = m_settings.editorMatchBrackets();
+    m_showProblems         = m_settings.editorShowProblems();
     m_tabWidth            = m_settings.editorTabWidth();
     m_tabSpaces           = m_settings.editorTabSpaces();
     ladePalette();
@@ -243,6 +244,13 @@ void EditorController::setMatchBrackets(bool v) {
     if (v == m_matchBrackets) return;
     m_matchBrackets = v;
     m_settings.setEditorMatchBrackets(v);
+    emit behaviourChanged();
+}
+
+void EditorController::setShowProblems(bool v) {
+    if (v == m_showProblems) return;
+    m_showProblems = v;
+    m_settings.setEditorShowProblems(v);
     emit behaviourChanged();
 }
 

@@ -4,11 +4,14 @@
 #include "audio/Mp4AudioExtract.h"
 #include "audio/MkvAudioExtract.h"
 #include "core/ISettings.h"
+#include "core/MGAudioList.h"
 #include "core/PathUtils.h"
 #include "core/Strings.h"
 
 #include <QDebug>
+#include <QFile>
 #include <QFileInfo>
+#include <QSaveFile>
 #include <QPointer>
 #include <QRunnable>
 
@@ -48,6 +51,7 @@ AudioController::AudioController(ISettings& settings, QObject* parent)
     connect(&m_eq,    &AudioEqualizer::changed, this, &AudioController::eqChanged);
     connect(&m_queue, &PlayQueue::currentChanged, this, &AudioController::currentChanged);
     connect(&m_queue, &PlayQueue::itemsChanged,   this, &AudioController::queueChanged);
+    connect(&m_queue, &PlayQueue::customOrderChanged, this, &AudioController::queueChanged);
 
     connect(&m_engine, &AudioEngine::finished, this, [this] {
         //  Kein lückenloser Übergang möglich gewesen (nichts angemeldet, oder
@@ -102,9 +106,11 @@ void AudioController::applyGainsToSettings() {
     m_settings.setAudioEqEnabled(m_eq.enabled());
 }
 
-void AudioController::playFile(const QString& path, const QStringList& queue) {
+void AudioController::playFile(const QString& path, const QStringList& queue,
+                               const QString& folder) {
     if (path.isEmpty()) return;
-    m_queue.setItems(queue.isEmpty() ? QStringList { path } : queue);
+    if (setzeOrdner(folder)) ordnungLaden();
+    listeUebernehmen(queue.isEmpty() ? QStringList { path } : queue);
     if (!m_queue.startAt(path)) m_queue.setItems(QStringList { path });
     m_pendingSeek = 0;
     m_engine.play(m_queue.currentPath().isEmpty() ? path : m_queue.currentPath());
@@ -115,11 +121,110 @@ void AudioController::armNextTrack() {
     m_engine.setNextTrack(m_queue.peekNext(/*natural=*/true));
 }
 
-void AudioController::setQueue(const QStringList& queue) {
+void AudioController::setQueue(const QStringList& queue, const QString& folder) {
     if (kLogC) qDebug("audio: setQueue(%lld) - vorher %lld, aktuell %s",
                       qint64(queue.size()), qint64(m_queue.items().size()),
                       qPrintable(currentPath()));
-    m_queue.setItems(queue);
+    if (setzeOrdner(folder)) ordnungLaden();
+    listeUebernehmen(queue);
+}
+
+//  Die volle Reihenfolge wird nach JEDER neuen Liste wieder angelegt: die
+//  Galerie meldet den Ordner, bevor sie ihn gelesen hat, und ein Filter blendet
+//  Titel nur zeitweise aus - einmal abgeglichen, bliebe davon nichts uebrig.
+void AudioController::listeUebernehmen(const QStringList& items) {
+    m_queue.setItems(items);
+    if (!m_ordnung.isEmpty()) m_queue.setCustomOrder(m_ordnung);
+}
+
+//  Der Ordner bestimmt, wo die eigene Reihenfolge liegt; ohne Ordner
+//  (Unterordner-Ansicht) gibt es keine Ablage, und eine gezogene Reihenfolge
+//  gilt nur fuer die Sitzung.
+bool AudioController::setzeOrdner(const QString& folder) {
+    const QString neu = mg::normalizedFolder(folder);
+    if (neu == m_queueFolder) return false;
+    m_queueFolder = neu;
+    m_ordnung.clear();
+    m_queue.setCustomOrder(QStringList {});
+    return true;
+}
+
+QString AudioController::ordnungsDatei() const {
+    return rememberOrder() ? mg::folderPlaylistPath(m_queueFolder) : QString();
+}
+
+void AudioController::ordnungLaden() {
+    const QString datei = ordnungsDatei();
+    if (datei.isEmpty()) return;
+    QFile f(datei);
+    if (!f.exists() || f.size() > kMaxOrdnungsDatei || !f.open(QIODevice::ReadOnly)) return;
+    const QByteArray roh = f.readAll();
+    std::vector<std::string> namen;
+    std::string fehler;
+    if (!mg::audiolist::lies(roh.constData(), std::size_t(roh.size()), namen, &fehler)) {
+        qWarning("audio: %s ist unbrauchbar (%s)", qPrintable(datei), fehler.c_str());
+        return;
+    }
+    //  Abgelegt sind NAMEN, keine Pfade - so ueberlebt die Reihenfolge das
+    //  Verschieben des ganzen Ordners.
+    QStringList pfade;
+    pfade.reserve(int(namen.size()));
+    for (const std::string& n : namen)
+        pfade.append(m_queueFolder + QLatin1Char('/') + QString::fromStdString(n));
+    m_ordnung = std::move(pfade);
+}
+
+void AudioController::ordnungAblegen() {
+    const QString datei = ordnungsDatei();
+    if (datei.isEmpty()) return;
+    const QStringList pfade = m_queue.customOrder();
+    if (pfade.isEmpty()) { QFile::remove(datei); return; }
+
+    //  Abgelegt werden NAMEN. Sobald ein Titel aus einem Unterordner kommt,
+    //  ergaebe der Name im Ordner darueber eine andere Datei - dann wird gar
+    //  nicht abgelegt, und die Reihenfolge gilt nur fuer die Sitzung.
+    const QString praefix = m_queueFolder + QLatin1Char('/');
+    std::vector<std::string> namen;
+    namen.reserve(std::size_t(pfade.size()));
+    for (const QString& p : pfade) {
+        if (!p.startsWith(praefix)) return;
+        const QStringView rest = QStringView(p).mid(praefix.size());
+        if (rest.isEmpty() || rest.contains(QLatin1Char('/'))) return;
+        namen.push_back(rest.toString().toStdString());
+    }
+    const std::string bytes = mg::audiolist::schreibe(namen);
+
+    //  Erst daneben, dann umbenennen - ein Absturz mitten im Schreiben darf die
+    //  vorhandene Reihenfolge nicht leeren.
+    QSaveFile f(datei);
+    if (!f.open(QIODevice::WriteOnly | QIODevice::Truncate)) return;
+    if (f.write(bytes.data(), qint64(bytes.size())) != qint64(bytes.size())) {
+        f.cancelWriting();
+        return;
+    }
+    f.commit();
+}
+
+bool AudioController::moveTrack(int from, int to) {
+    const bool haltbar = m_queue.moveIsPersistent();
+    if (!m_queue.moveOrder(from, to)) return false;
+    //  Eine gezogene MISCHUNG wird nicht abgelegt - sie gilt nur fuer diese
+    //  Sitzung, und die naechste Runde mischt ohnehin neu.
+    if (haltbar) {
+        m_ordnung = m_queue.customOrder();
+        ordnungAblegen();
+    }
+    armNextTrack();
+    return true;
+}
+
+void AudioController::clearCustomOrder() {
+    if (!m_queue.hasCustomOrder()) return;
+    const QString datei = ordnungsDatei();
+    m_ordnung.clear();
+    m_queue.clearCustomOrder();
+    if (!datei.isEmpty()) QFile::remove(datei);
+    armNextTrack();
 }
 
 void AudioController::playAt(int index) {
@@ -532,6 +637,21 @@ void AudioController::setListLayout(bool on) {
     m_settings.setAudioListLayout(on);
     emit optionsChanged();
 }
+bool AudioController::rememberOrder() const { return m_settings.audioRememberOrder(); }
+void AudioController::setRememberOrder(bool on) {
+    if (m_settings.audioRememberOrder() == on) return;
+    m_settings.setAudioRememberOrder(on);
+    //  Angeschaltet: was gerade gezogen dasteht, wird festgehalten.
+    //  Ausgeschaltet: die Ablage faellt weg, die Ordnung der Sitzung bleibt.
+    if (on) {
+        ordnungAblegen();
+    } else {
+        const QString datei = mg::folderPlaylistPath(m_queueFolder);
+        if (!datei.isEmpty()) QFile::remove(datei);
+    }
+    emit optionsChanged();
+}
+
 bool AudioController::rememberLast() const { return m_settings.audioRememberLast(); }
 void AudioController::setRememberLast(bool on) {
     if (m_settings.audioRememberLast() == on) return;

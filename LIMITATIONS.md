@@ -209,6 +209,16 @@ Why: the next track is prepared while the current one plays. At the end of the
 queue, and when *shuffle + repeat all* starts a new round, there is a short pause
 (about 0.8 s).
 
+**Your own track order cannot be changed while shuffle is on.**
+Why: shuffle replaces your order for as long as it runs. Dragging would write
+the current shuffle down as your order, so the grips are hidden instead.
+Workaround: switch shuffle off, sort, switch it on again.
+
+**A folder shown with its subfolders keeps no track order.**
+Why: the order lives next to the media as `<Folder>.mgal`, and a list made of
+several folders has no single place to put it. The order you drag there applies
+to the current session only.
+
 **Title and artist are read, never written.**
 Why: one wrong byte would damage the file.
 Workaround: use a tag editor; the app picks up the change.
@@ -315,6 +325,28 @@ you open them - so going back to an older version stops working even for
 documents you never edited.
 Workaround: keep a copy of your side files before going back to an older version.
 
+**The editor cannot tell you whether a function, a class or an include exists.**
+Why: that needs a compiler front end - a preprocessor, resolved include paths
+and the project's build flags. The editor reads the open file and nothing else,
+so it reports only what can be proven wrong from that file alone. A tool that
+guessed would put red marks under correct code.
+
+**Structural checking stops at 4 MB.**
+Why: the pass runs in the window's own thread, and checking a very large file on
+every pause in typing would stutter. Above that size nothing is underlined.
+
+**Code inside `#if 0` can produce one wrong report.**
+Why: brackets in alternative preprocessor branches are followed (`#ifdef` /
+`#else` / `#endif` are handled), but a block switched off with `#if 0` that
+leaves a bracket open is still counted.
+Workaround: switch the check off in *Settings ▸ Editor*.
+
+**A raw string whose content contains `)` plus the same number of characters
+plus a quote ends too early.**
+Why: the colouring keeps one number per line, and the delimiter of `R"CPP( … )CPP"`
+does not fit in it - only its length does. The `LR"` and `u8R"` forms are not
+recognised at all.
+
 **A text file over 8 MB opens read-only.**
 Why: only the first 8 MB are loaded, so a large log does not freeze the window.
 Saving would cut off the rest of the file, so it is blocked; the status bar says
@@ -354,6 +386,11 @@ Why: only the DOCX export offers a choice.
 Why: its colours only work on that background. A dark theme therefore costs a lot
 of toner.
 Workaround: use *One colour* (the default) for printing.
+
+**An `#if` branch that cuts through a function cannot be folded.**
+Why: a branch that opens a function's brace ends before that function does, and
+folding one would hide half of the other. The function itself still folds.
+Workaround: fold the function, or the whole block around both.
 
 **The text-to-PDF export has no line numbers and ignores folding.**
 Why: a folded block in the PDF would mean text missing without notice. The full
@@ -410,6 +447,22 @@ Why: `01.01.2025`, `2025-01-01` and `01/02/2025` work. `1.1.25` or `Jan 3, 2025`
 would need a guessed century or language. Whether `03/04/2025` is March or April
 is one setting for all tables (*Settings ▸ View ▸ Files*).
 If a single cell in a column is not a date, the whole column is sorted as text.
+
+**Formatting belongs to a column, not to a single cell.**
+Why: per cell there would be one entry per cell instead of 125 per file, and
+every one of them would have to travel along when you sort, filter or insert a
+row. Per column nothing has to move.
+
+**Thousands separators are only added to numbers that have decimals.**
+Why: a whole number in a table is usually an identifier. Without the rule an
+account number `8400` became `8.400` and a document number `201802010` became
+`201.802.010`. The price is that a round amount written as `64083` keeps its
+plain shape.
+Workaround: write the amount with its decimals (`64083,00`).
+
+**Column formatting and widths are lost if you delete the column and save.**
+Why: they live next to the file and follow the column number. Undo brings them
+back, but only while the file is open.
 
 **`>200` in the filter compares values**, so a cell that literally says `>200` is
 not found this way.
@@ -576,10 +629,11 @@ Planned work, not limits. Once something is built, it moves to
 - **More syntax languages** - 28 are covered; each new one is a table entry.
 - **Writing audio tags** (title, artist) - deliberately left out: one wrong byte
   damages the file.
-- **Column formatting in tables** - bold, text colour and background colour per
-  column, set from the heading's right-click menu, kept next to the file the way
-  column widths already are. Per cell is deliberately left out.
-- **Thousands separator** - a setting for whether numbers are shown as `2,000.00`
-  or `2000.00`. It would change the display only; the file stays as it is.
+- **Naming what does not exist** - "this function is unknown", "this include is
+  not found". Every editor that does this runs a separate language server
+  (clangd, pyright and the like) that has to be installed, needs the project's
+  build flags, and uses several hundred megabytes. MediaGallery opens files, not
+  projects, so on a single file such a tool would mostly report errors that are
+  not there.
 - **Charts from table data** - bars, lines, pies and graphs. Nothing of it is
   designed yet.

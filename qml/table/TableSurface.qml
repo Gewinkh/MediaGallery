@@ -35,6 +35,7 @@ Item {
         id: ctl
         source: root.source
         slashDateMonthFirst: App.tableDateMonthFirst
+        groupDigits: App.tableGroupDigits
     }
 
     //  Ein offenes Eingabefeld zaehlt mit - sonst ginge der letzte Wert verloren.

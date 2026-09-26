@@ -1,6 +1,10 @@
 #include "audio/PlayQueue.h"
 
+#include <QHash>
 #include <QRandomGenerator>
+#include <QSet>
+
+#include <utility>
 
 PlayQueue::PlayQueue(QObject* parent)
     : QObject(parent)
@@ -29,8 +33,7 @@ QString PlayQueue::pathAtOrder(int orderPos) const {
 bool PlayQueue::startAtOrder(int orderPos) {
     if (orderPos < 0 || orderPos >= m_order.size()) return false;
     if (m_started && m_pos != orderPos) noteHistory();
-    //  Kein Neumischen: wer in der ANGEZEIGTEN Folge etwas anklickt, erwartet,
-    //  dass der Rest so bleibt, wie er dasteht.
+    //  Kein Neumischen: der Rest bleibt, wie er angezeigt wird.
     m_pos = orderPos;
     m_started = true;
     emit currentChanged();
@@ -42,12 +45,89 @@ QString PlayQueue::currentPath() const {
     return (i >= 0 && i < m_items.size()) ? m_items.at(i) : QString();
 }
 
+QVector<int> PlayQueue::grundfolge() const {
+    const int n = int(m_items.size());
+    QVector<int> aus;
+    aus.reserve(n);
+    if (m_eigene.isEmpty()) {
+        for (int i = 0; i < n; ++i) aus.append(i);
+        return aus;
+    }
+    //  Zuordnung statt `indexOf` je Eintrag - bei 5000 Titeln sonst 25 Mio. Vergleiche.
+    QHash<QString, int> nummer;
+    nummer.reserve(n);
+    for (int i = 0; i < n; ++i) nummer.insert(m_items.at(i), i);
+    for (const QString& p : m_eigene) {
+        const auto it = nummer.constFind(p);
+        if (it != nummer.cend()) aus.append(*it);
+    }
+    return aus;
+}
+
+bool PlayQueue::pflegeEigene() {
+    if (m_eigene.isEmpty()) return false;
+    //  Mengen statt `contains` je Eintrag - sonst waere jeder Ordnerwechsel quadratisch.
+    const QSet<QString> da(m_items.cbegin(), m_items.cend());
+    QSet<QString> drin;
+    drin.reserve(m_eigene.size());
+    QStringList neu;
+    neu.reserve(m_items.size());
+    for (const QString& p : std::as_const(m_eigene))
+        if (da.contains(p) && !drin.contains(p)) { neu.append(p); drin.insert(p); }
+    for (const QString& p : std::as_const(m_items))
+        if (!drin.contains(p)) { neu.append(p); drin.insert(p); }
+    if (neu == m_eigene) return false;
+    m_eigene = std::move(neu);
+    return true;
+}
+
+//  Aendert der Abgleich nichts, bleibt alles stehen - bei Zufall mischte jedes Neuordnen neu.
+void PlayQueue::setCustomOrder(const QStringList& paths) {
+    if (paths == m_eigene) return;
+    const QStringList vorher = std::exchange(m_eigene, paths);
+    pflegeEigene();
+    if (m_eigene == vorher) return;
+    rebuildOrder(m_started ? currentItemIndex() : -1);
+    emit customOrderChanged();
+    emit currentChanged();
+}
+
+void PlayQueue::clearCustomOrder() {
+    if (m_eigene.isEmpty()) return;
+    m_eigene.clear();
+    rebuildOrder(m_started ? currentItemIndex() : -1);
+    emit customOrderChanged();
+    emit currentChanged();
+}
+
+bool PlayQueue::moveOrder(int von, int nach) {
+    const int n = int(m_order.size());
+    if (von < 0 || von >= n || nach < 0 || nach >= n || von == nach) return false;
+
+    const int laufend = m_started ? currentItemIndex() : -1;
+    m_order.move(von, nach);
+
+    if (!m_shuffle) {
+        QStringList neu;
+        neu.reserve(n);
+        for (const int i : std::as_const(m_order))
+            if (i >= 0 && i < m_items.size()) neu.append(m_items.at(i));
+        m_eigene = std::move(neu);
+    }
+
+    //  Die Stelle folgt dem TITEL, nicht der Nummer: wer den laufenden Titel
+    //  verschiebt, will ihn weiterhoeren, nicht den, der nachgerueckt ist.
+    if (laufend >= 0) m_pos = int(m_order.indexOf(laufend));
+    emit customOrderChanged();
+    emit currentChanged();
+    return true;
+}
+
 // `keepItemIndex` ist der laufende Titel: er bleibt vorn und an seiner Stelle, alles danach wird bei Zufall neu
 // gemischt. Ohne das risse jede Filteränderung den laufenden Titel weg.
 void PlayQueue::rebuildOrder(int keepItemIndex) {
-    const int n = int(m_items.size());
-    m_order.resize(n);
-    for (int i = 0; i < n; ++i) m_order[i] = i;
+    m_order = grundfolge();
+    const int n = int(m_order.size());
 
     if (m_shuffle && n > 1) {
         //  Fisher-Yates von hinten - jede Anordnung ist gleich wahrscheinlich.
@@ -57,17 +137,16 @@ void PlayQueue::rebuildOrder(int keepItemIndex) {
         }
     }
 
-    if (keepItemIndex >= 0 && keepItemIndex < n) {
+    if (keepItemIndex >= 0 && m_order.contains(keepItemIndex)) {
         if (m_shuffle) {
-            //  Gemischt: die Runde BEGINNT beim laufenden Titel, der Rest
-            //  folgt in zufälliger Reihenfolge.
+            //  Gemischt: die Runde beginnt beim laufenden Titel.
             const int at = m_order.indexOf(keepItemIndex);
             if (at > 0) m_order.swapItemsAt(0, at);
             m_pos = 0;
         } else {
-            //  Ungemischt: die Liste bleibt, wie sie ist - „weiter" heißt hier
-            //  der NÄCHSTE der Liste, nicht der zweite einer neuen Ordnung.
-            m_pos = keepItemIndex;
+            //  Ungemischt: gesucht wird die STELLE des Titels - bei eigener
+            //  Ordnung ist sie nicht seine Nummer in der Liste.
+            m_pos = int(m_order.indexOf(keepItemIndex));
         }
     } else {
         m_pos = n > 0 ? 0 : -1;
@@ -76,9 +155,40 @@ void PlayQueue::rebuildOrder(int keepItemIndex) {
 
 void PlayQueue::setItems(const QStringList& paths) {
     const QString playing = m_started ? currentPath() : QString();
+    QHash<QString, int> neuNr;
+    neuNr.reserve(paths.size());
+    for (int i = 0; i < paths.size(); ++i) neuNr.insert(paths.at(i), i);
+    auto neueNummer = [&](int alt) {
+        return alt >= 0 && alt < m_items.size() ? neuNr.value(m_items.at(alt), -1) : -1;
+    };
+    //  Die Historie haelt Nummern der alten Liste - sonst fuehrte „zurueck" auf einen fremden Titel.
+    QList<int> historie;
+    for (const int h : std::as_const(m_history))
+        if (const int n = neueNummer(h); n >= 0) historie.append(n);
+    m_history = std::move(historie);
+
+    //  Dieselben Titel in anderer Folge: die Mischung bleibt. Die Galerie des
+    //  Player-Modus reicht die Playlist-Folge zurueck, ein Neumischen liefe endlos.
+    if (m_shuffle && paths.size() == m_items.size() && neuNr.size() == paths.size()) {
+        QVector<int> order;
+        order.reserve(m_order.size());
+        for (const int i : std::as_const(m_order)) {
+            const int n = neueNummer(i);
+            if (n < 0) break;
+            order.append(n);
+        }
+        if (order.size() == m_order.size()) {
+            m_order = std::move(order);
+            m_items = paths;
+            emit itemsChanged();
+            return;
+        }
+    }
+
     m_items = paths;
     const int keep = playing.isEmpty() ? -1 : int(m_items.indexOf(playing));
     if (keep < 0) m_started = false;          // der laufende Titel ist heraus
+    if (pflegeEigene()) emit customOrderChanged();
     rebuildOrder(keep);
     //  Stand der laufende Titel nicht mehr in der Liste, beginnt sie von vorn -
     //  aber sie SPIELT nicht von selbst weiter; das entscheidet die Engine.
@@ -89,7 +199,6 @@ void PlayQueue::setItems(const QStringList& paths) {
 void PlayQueue::setShuffle(bool on) {
     if (m_shuffle == on) return;
     m_shuffle = on;
-    //  Ein-/Ausschalten ordnet neu, ohne den laufenden Titel zu unterbrechen.
     //  Läuft noch nichts, darf die frische Mischung irgendwo beginnen.
     rebuildOrder(m_started ? currentItemIndex() : -1);
     emit shuffleChanged();
@@ -112,7 +221,6 @@ bool PlayQueue::startAt(const QString& path) {
     return true;
 }
 
-//  Den bisherigen Titel in die Historie legen (vor jedem Wechsel).
 void PlayQueue::noteHistory() {
     const int cur = currentItemIndex();
     if (cur < 0) return;
@@ -136,7 +244,6 @@ QString PlayQueue::advance(bool natural) {
         return currentPath();
     }
 
-    //  Am Ende der Liste.
     if (m_repeat != Repeat::All) return {};        // hier ist Schluss
     noteHistory();
     if (m_shuffle) rebuildOrder(-1);               // neue Runde, neu gemischt
@@ -157,9 +264,8 @@ QString PlayQueue::peekNext(bool natural) const {
 QString PlayQueue::back() {
     if (m_order.isEmpty() || m_pos < 0) return {};
 
-    //  Erst die Historie: sie weiß, was wirklich lief - auch wenn der Zufall
-    //  zwischendurch an- oder ausgeschaltet wurde und die Ordnung eine andere
-    //  ist als beim Hören.
+    //  Erst die Historie: sie weiß, was wirklich lief, auch wenn der Zufall
+    //  zwischendurch umgeschaltet wurde.
     while (!m_history.isEmpty()) {
         const int item = m_history.takeLast();
         const int at = int(m_order.indexOf(item));

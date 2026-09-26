@@ -12,6 +12,7 @@
 #include "editor/TextFoldBar.h"
 #include "editor/TextGutter.h"
 #include "editor/TextMinimap.h"
+#include "editor/TextProblems.h"
 #include "image/edit/ImageEditController.h"
 #include "media/GalleryRowModel.h"
 #include "tags/TagListModel.h"
@@ -56,11 +57,12 @@ void registerQmlTypes() {
     qmlRegisterType<mg::editor::CodeHighlighter>("MediaGallery", 1, 0, "CodeHighlighter");
     //  Zeilennummern-Spalte: malt nur die sichtbaren Bloecke (kein Item je Zeile).
     qmlRegisterType<mg::editor::TextGutter>("MediaGallery", 1, 0, "TextGutter");
-    // ACHTUNG: `tests/bench/bench_shell.cpp` registriert dieselben Typen noch einmal selbst. Ein neuer Typ gehört
-    // an BEIDE Stellen, sonst bricht der Prüfstand mit "X is not a type" (dreimal passiert).
     qmlRegisterType<mg::editor::TextMinimap>("MediaGallery", 1, 0, "TextMinimap");
     qmlRegisterType<mg::editor::TextFoldBar>("MediaGallery", 1, 0, "TextFoldBar");
     qmlRegisterType<mg::editor::TextDecorations>("MediaGallery", 1, 0, "TextDecorations");
+    //  Fundstellen der Struktur-Pruefung; Unterstreichung und Minimap-Punkt
+    //  lesen dieselbe Liste.
+    qmlRegisterType<mg::editor::TextProblems>("MediaGallery", 1, 0, "TextProblems");
     //  DATEV-Buchungsstapel: EINE Instanz je Kachel, damit zwei Haelften
     //  verschiedene Dateien zeigen koennen.
     qmlRegisterType<mg::datev::DatevController>("MediaGallery", 1, 0, "DatevController");

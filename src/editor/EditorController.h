@@ -37,6 +37,8 @@ class EditorController : public QObject {
     Q_PROPERTY(bool folding READ folding WRITE setFolding NOTIFY behaviourChanged)
     Q_PROPERTY(bool indentGuides READ indentGuides WRITE setIndentGuides NOTIFY behaviourChanged)
     Q_PROPERTY(bool matchBrackets READ matchBrackets WRITE setMatchBrackets NOTIFY behaviourChanged)
+    //  Struktur-Pruefung: Wellenlinie unter der Stelle, Punkt im Streifen.
+    Q_PROPERTY(bool showProblems READ showProblems WRITE setShowProblems NOTIFY behaviourChanged)
     Q_PROPERTY(int  tabWidth READ tabWidth WRITE setTabWidth NOTIFY behaviourChanged)
     Q_PROPERTY(bool tabSpaces READ tabSpaces WRITE setTabSpaces NOTIFY behaviourChanged)
 
@@ -96,6 +98,8 @@ public:
     bool indentGuides() const { return m_indentGuides; }
     void setIndentGuides(bool v);
     bool matchBrackets() const { return m_matchBrackets; }
+    bool showProblems() const { return m_showProblems; }
+    void setShowProblems(bool v);
     void setMatchBrackets(bool v);
     int  tabWidth() const { return m_tabWidth; }
     void setTabWidth(int zeichen);
@@ -119,6 +123,7 @@ private:
     bool m_folding = true;
     bool m_indentGuides = true;
     bool m_matchBrackets = true;
+    bool m_showProblems = true;
     int  m_tabWidth = 4;
     bool m_tabSpaces = true;
 };

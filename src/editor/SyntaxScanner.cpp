@@ -7,6 +7,31 @@
 namespace mg::editor {
 namespace {
 
+//  Laenge der Kennung einer rohen Zeichenkette. Der Standard erlaubt 16.
+constexpr int kMaxRohKennung = 16;
+
+//  Was in der Kennung stehen darf - alles ausser Klammer, Gegenklammer,
+//  Anfuehrungszeichen, umgekehrtem Schraegstrich und Leerraum.
+bool istKennungszeichen(QChar c) {
+    return c != u'(' && c != u')' && c != u'"' && c != u'\\'
+        && !c.isSpace() && c.unicode() > 32;
+}
+
+//  Stelle des schliessenden `)` einer rohen Zeichenkette mit `n` Zeichen
+//  Kennung, ab `von` gesucht.
+//  **Die Kennung SELBST steht nicht im Zustand** - dort ist nur Platz fuer ihre
+//  Laenge. Ein Inhalt, der `)` plus n beliebige Zeichen plus `"` enthaelt,
+//  schliesst deshalb zu frueh; der Zustand je Block ist EIN int, und eine
+//  Zeichenkette passt dort nicht hinein.
+qsizetype rohEndeMit(QStringView zeile, qsizetype von, int n) {
+    for (qsizetype p = zeile.indexOf(u')', von); p >= 0;
+         p = zeile.indexOf(u')', p + 1)) {
+        if (p + n + 1 < zeile.size() && zeile[p + n + 1] == u'"') return p;
+        if (p + n + 1 >= zeile.size()) break;
+    }
+    return -1;
+}
+
 inline bool istWortAnfang(QChar c) { return c.isLetter() || c == u'_'; }
 inline bool istWortZeichen(QChar c) { return c.isLetterOrNumber() || c == u'_'; }
 inline bool istHexZiffer(QChar c) {
@@ -127,18 +152,29 @@ int scanCode(QStringView zeile, const LanguageDef& def, int stateIn, SpanList& o
         break;
     }
     case BlockState::MultiString: {
-        // Nutzlast: 0 = R"( ... )", sonst der Code des Begrenzerzeichens einer dreifachen Anführung. Die 1 steht für die
-        // Vorlagenzeichenkette mit Gravis - als Zeichencode nie gültig, also passt der dritte Fall in dieselbe Nutzlast.
+        // Nutzlast: 0 = R"( ... )", 1 = Vorlagenzeichenkette mit Gravis, 2+n = rohe
+        // Zeichenkette mit einer Kennung von n Zeichen (R"CPP( ... )CPP"), sonst der
+        // Code des Begrenzerzeichens einer dreifachen Anführung. Die Bereiche
+        // ueberschneiden sich nicht: ein Zeichencode ist hier 34 oder 39, und eine
+        // Kennung ist hoechstens 16 Zeichen lang.
         const int nutz = statePayload(stateIn);
-        const QString schluss = nutz == 0 ? QStringLiteral(")\"")
-                              : nutz == 1 ? QStringLiteral("`")
-                                          : QString(3, QChar(char16_t(nutz)));
-        const qsizetype ende = zeile.indexOf(schluss);
+        qsizetype ende = -1;
+        qsizetype laenge = 0;
+        if (nutz >= 2 && nutz <= 2 + kMaxRohKennung) {
+            ende = rohEndeMit(zeile, 0, nutz - 2);
+            laenge = nutz - 2 + 2;
+        } else {
+            const QString schluss = nutz == 0 ? QStringLiteral(")\"")
+                                  : nutz == 1 ? QStringLiteral("`")
+                                              : QString(3, QChar(char16_t(nutz)));
+            ende = zeile.indexOf(schluss);
+            laenge = schluss.size();
+        }
         if (ende < 0) {
             schiebe(out, 0, zeile.size(), Tok::String);
             return stateIn;
         }
-        const qsizetype nach = ende + schluss.size();
+        const qsizetype nach = ende + laenge;
         schiebe(out, 0, nach, Tok::String);
         i = nach;
         break;
@@ -173,11 +209,7 @@ int scanCode(QStringView zeile, const LanguageDef& def, int stateIn, SpanList& o
 
         if (c.isSpace()) { ++i; continue; }
 
-        if (passt(zeile, i, def.lineComment) || passt(zeile, i, def.lineComment2)) {
-            schiebe(out, i, zeile.size() - i, Tok::Comment);
-            return makeState(BlockState::None);
-        }
-
+        //  Block vor Zeile: in Lua beginnt `--[[` mit dem Zeilenkommentar `--`.
         if (passt(zeile, i, def.blockOpen)) {
             const qsizetype ende = zeile.indexOf(def.blockClose, i + def.blockOpen.size());
             if (ende < 0) {
@@ -190,16 +222,32 @@ int scanCode(QStringView zeile, const LanguageDef& def, int stateIn, SpanList& o
             continue;
         }
 
-        if (def.rawStrings && c == u'R' && i + 2 < zeile.size()
-            && zeile[i + 1] == u'"' && zeile[i + 2] == u'(') {
-            const qsizetype ende = zeile.indexOf(QStringLiteral(")\""), i + 3);
-            if (ende < 0) {
-                schiebe(out, i, zeile.size() - i, Tok::String);
-                return makeState(BlockState::MultiString, 0);
+        if (passt(zeile, i, def.lineComment) || passt(zeile, i, def.lineComment2)) {
+            schiebe(out, i, zeile.size() - i, Tok::Comment);
+            return makeState(BlockState::None);
+        }
+
+        //  Rohe Zeichenkette, mit und OHNE Kennung: `R"( … )"` und `R"CPP( … )CPP"`.
+        //  Die zweite Form steht in Testdaten und ueberall dort, wo eingebetteter
+        //  Code ein `)"` enthalten darf; ohne sie las der Zerleger ihren INHALT
+        //  als Code weiter.
+        if (def.rawStrings && c == u'R' && i + 2 < zeile.size() && zeile[i + 1] == u'"') {
+            qsizetype k = i + 2;
+            while (k < zeile.size() && k - (i + 2) < kMaxRohKennung
+                   && istKennungszeichen(zeile[k])) ++k;
+            if (k < zeile.size() && zeile[k] == u'(') {
+                const int kennung = int(k - (i + 2));
+                const qsizetype ende = rohEndeMit(zeile, k + 1, kennung);
+                if (ende < 0) {
+                    schiebe(out, i, zeile.size() - i, Tok::String);
+                    return makeState(BlockState::MultiString,
+                                     kennung == 0 ? 0 : 2 + kennung);
+                }
+                const qsizetype nach = ende + kennung + 2;
+                schiebe(out, i, nach - i, Tok::String);
+                i = nach;
+                continue;
             }
-            schiebe(out, i, ende + 2 - i, Tok::String);
-            i = ende + 2;
-            continue;
         }
 
         if (def.templateStrings && c == u'`') {
@@ -645,6 +693,20 @@ int scanLine(QStringView zeile, const LanguageDef& def, int stateIn, SpanList& o
     case ScannerKind::Markdown:  return scanMarkdown(zeile, def, stateIn, out);
     }
     return makeState(BlockState::None);
+}
+
+Praep praepVon(QStringView z, const SpanList& spans) {
+    int i = 0;
+    while (i < z.size() && (z.at(i) == u' ' || z.at(i) == u'\t')) ++i;
+    if (i >= z.size() || z.at(i) != u'#' || inStringOrComment(spans, i)) return Praep::Keine;
+    ++i;
+    while (i < z.size() && (z.at(i) == u' ' || z.at(i) == u'\t')) ++i;
+    const QStringView rest = z.mid(i);
+    if (rest.startsWith(QLatin1String("endif"))) return Praep::Ende;
+    if (rest.startsWith(QLatin1String("else")) || rest.startsWith(QLatin1String("elif")))
+        return Praep::Sonst;
+    if (rest.startsWith(QLatin1String("if")))   return Praep::Wenn;
+    return Praep::Andere;
 }
 
 }  // namespace mg::editor

@@ -47,6 +47,7 @@ class AppController : public QObject {
     Q_PROPERTY(bool    showAllFiles    READ showAllFiles    WRITE setShowAllFiles NOTIFY showAllFilesChanged)
     Q_PROPERTY(bool    tableOpensTxt   READ tableOpensTxt   WRITE setTableOpensTxt NOTIFY tableOpensTxtChanged)
     Q_PROPERTY(bool    tableDateMonthFirst READ tableDateMonthFirst WRITE setTableDateMonthFirst NOTIFY tableDateMonthFirstChanged)
+    Q_PROPERTY(bool    tableGroupDigits READ tableGroupDigits WRITE setTableGroupDigits NOTIFY tableGroupDigitsChanged)
     Q_PROPERTY(bool    textPdfNative   READ textPdfNative   WRITE setTextPdfNative NOTIFY textPdfNativeChanged)
     Q_PROPERTY(bool    galleryListLayout READ galleryListLayout WRITE setGalleryListLayout NOTIFY galleryListLayoutChanged)
     Q_PROPERTY(bool    textPreviewContent READ textPreviewContent WRITE setTextPreviewContent NOTIFY textPreviewContentChanged)
@@ -312,6 +313,8 @@ public:
     bool tableOpensTxt() const;
     void setTableOpensTxt(bool v);
     bool tableDateMonthFirst() const;
+    bool tableGroupDigits() const;
+    void setTableGroupDigits(bool v);
     void setTableDateMonthFirst(bool v);
     bool textPdfNative() const;
     void setTextPdfNative(bool v);
@@ -381,6 +384,7 @@ signals:
     void showAllFilesChanged();
     void tableOpensTxtChanged();
     void tableDateMonthFirstChanged();
+    void tableGroupDigitsChanged();
     void textPdfNativeChanged();
     void galleryListLayoutChanged();
     //  Die Kacheln muessen danach NEU erzeugt werden - main.cpp haengt daran.

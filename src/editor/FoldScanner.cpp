@@ -125,11 +125,32 @@ QList<FoldRegion> scanFolds(const QTextDocument* doc, const LanguageDef& def,
 
     case FoldKind::Braces: {
         QList<int> stapel;
+        //  Je offener `#if`-Ebene: der Klammerstapel vor dem Zweig und die Zeile,
+        //  in der der laufende Zweig beginnt. Ein `#else` setzt den Stapel
+        //  zurueck, sonst paarte die in Zweig 1 offene Klammer mit einer aeusseren.
+        struct Ebene { QList<int> stapel; int zweig; };
+        QList<Ebene> ebenen;
+        QList<FoldRegion> zweige;
         SpanList spans;
         int zustand = 0;
         for (int i = 0; i < n; ++i) {
             zustand = scanLine(zeilen.at(i), def, zustand, spans);
             const QStringView z = zeilen.at(i);
+            if (def.preprocHash) {
+                const Praep art = praepVon(z, spans);
+                if (art == Praep::Wenn) {
+                    if (ebenen.size() < kMaxPraepTiefe) ebenen.append({ stapel, i });
+                } else if (art == Praep::Sonst && !ebenen.isEmpty()) {
+                    Ebene& e = ebenen.last();
+                    if (i - 1 > e.zweig) zweige.append({ e.zweig, i - 1 });
+                    stapel = e.stapel;
+                    e.zweig = i;
+                } else if (art == Praep::Ende && !ebenen.isEmpty()) {
+                    const Ebene e = ebenen.takeLast();
+                    if (i > e.zweig) zweige.append({ e.zweig, i });
+                }
+                if (art != Praep::Keine) continue;
+            }
             for (int k = 0; k < z.size(); ++k) {
                 const QChar c = z.at(k);
                 if (c != u'{' && c != u'}') continue;
@@ -142,6 +163,24 @@ QList<FoldRegion> scanFolds(const QTextDocument* doc, const LanguageDef& def,
                     if (raus.size() >= kMaxBereiche) return raus;
                 }
             }
+        }
+        if (zweige.isEmpty()) break;
+        //  Ein Zweig, der einen Klammerbereich schneidet, faltet nicht: die
+        //  Leiste setzt ineinanderliegende Bereiche voraus. Je Zeile der
+        //  kleinste Start der hier endenden und das groesste Ende der hier
+        //  beginnenden Klammerbereiche - ein Lauf je Zweig statt je Paar.
+        QList<int> kleinsterStart(n, n);
+        QList<int> groesstesEnde(n, -1);
+        for (const FoldRegion& r : std::as_const(raus)) {
+            kleinsterStart[r.end]   = qMin(kleinsterStart.at(r.end), r.start);
+            groesstesEnde[r.start] = qMax(groesstesEnde.at(r.start), r.end);
+        }
+        for (const FoldRegion& zw : std::as_const(zweige)) {
+            bool schneidet = false;
+            for (int k = zw.start; k <= zw.end && !schneidet; ++k)
+                schneidet = kleinsterStart.at(k) < zw.start || groesstesEnde.at(k) > zw.end;
+            if (!schneidet) raus.append(zw);
+            if (raus.size() >= kMaxBereiche) break;
         }
         break;
     }

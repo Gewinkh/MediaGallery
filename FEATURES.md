@@ -68,9 +68,12 @@ which. Files without an extension such as `LICENSE`, `README`, `Makefile` or
 ## Text Editor
 - **Saves by itself**: when you leave the file, switch to another, and at an adjustable interval. `Ctrl+S` works too; a dot in the status bar shows unsaved changes
 - **Syntax colouring for 28 languages**, including C/C++, Python, Java, JavaScript/TypeScript, C#, Go, Rust, PHP, Swift, Kotlin, shell, Ruby, Lua, CMake, YAML, SQL, HTML/XML, CSS, JSON, INI/TOML, QML, assembly (`.s`, `.asm`, `.inc`) and Markdown. HTML also colours the CSS and JavaScript inside it
-- **Folding**: collapse functions, blocks, sections or headings from a bar next to the line numbers. The file itself is not changed
+- **Folding**: collapse functions, blocks, sections or headings from a bar next to the line numbers; in C-style code also each branch of an `#if`. The file itself is not changed
 - **Find and replace** (`Ctrl+F`): hit counter, match case, whole words, all hits highlighted; *Replace all* is one undo step
 - **Line numbers, current-line highlight, indent guides, bracket matching** (an unmatched bracket turns red)
+- **Structural errors are underlined** (*Settings ▸ Editor*, on by default): a bracket that never closes, a comment or text that runs to the end of the file, broken JSON or XML, a section heading without its closing bracket, a tab after spaces in Python or YAML indentation. Each finding also gets a red dot in the overview column, and the status bar names it
+  - Only things that can be proven wrong **from the file alone** are reported - never a guess. Whether a function or an include exists is something the editor cannot tell you; that would need a compiler (see [LIMITATIONS.md](LIMITATIONS.md))
+  - Plain text and Markdown are not checked, and HTML is not checked for structure - `<br>` and `<li>` are allowed to stay open there
 - **Overview column** on the right: the whole file in miniature, click or drag to scroll
 - **Line wrap** on screen only (*Settings ▸ Editor*); a wrapped line keeps one line number
 - **Tab width 2 to 8**; the Tab key inserts spaces by default
@@ -115,6 +118,8 @@ which. Files without an extension such as `LICENSE`, `README`, `Makefile` or
   - dates: `2025-01-01+` (from that day), `2025-01-01-` (up to that day), `2025-01->2025-04` (January to end of April); a year or month alone counts as a whole
   - the row numbers stay those of the file; the drawn X clears the filter
 - **Hide columns** and **freeze the first column** from the heading's right-click menu
+- **Format a column** from the same menu: bold, text colour, background colour. Pick from a small palette or choose your own colour; *Clear formatting* takes it back. The formatting belongs to the column, not to single cells, so it stays put when you sort, filter or insert a row. It is kept next to the file and is there again next time
+- **Thousands separators** (*Settings ▸ View*, off by default) show `2.000,00` instead of `2000,00`. Display only - the file is untouched, and editing a cell shows the plain value. Numbers without decimals are left alone, so account and document numbers keep their shape
 - **Drag the right edge of a heading** to set a column's width: a line shows where the edge will land, and the table re-arranges once you let go. A double click on that edge gives the column back its automatic width. Widths are kept next to the file and are there again next time
 - Sorting and filtering never change the file
 
@@ -145,7 +150,8 @@ which. Files without an extension such as `LICENSE`, `README`, `Makefile` or
 - **Totals in the footer**: number of bookings, debit, credit and difference - red when they do not balance. With a filter on, the totals cover only the filtered bookings
 - **Search, sort, filter, hide columns, set column widths and copy a block** work as in the CSV view
 - Works with reduced exports too, as columns are found by their names
-- **Read-only**: the app never writes into a bookkeeping file. Column widths you set are kept in a small separate file next to it (`<name>.mgedit`)
+- **Column formatting and thousands separators** work here too
+- **Read-only**: the app never writes into a bookkeeping file. Column widths and formatting you set are kept in a small separate file next to it (`<name>.mgedit`)
 
 ---
 
@@ -259,8 +265,11 @@ pages change the PDF directly. `Ctrl+Z` undoes them while the file is open.
 ## Audio Player Mode (`Alt+A`)
 - **Turns a gallery half into a music player**: only playable files are shown (videos too, if switched on in *Settings ▸ Audio*). Leaving the mode restores your filter
 - **Player bar** with previous, play/pause, next, progress, shuffle, repeat, equalizer and volume
-- **Full player view** (double click): large controls and the queue on the right
-- **The visible list is the queue** - filtered, searched and sorted as the gallery shows it
+- **Full player view** (double click): large controls and the **playlist** on the right
+- **The visible list is the playlist** - filtered and searched as the gallery shows it, and the tiles stand in playlist order while the mode is on
+- **Put the tracks in your own order**: each row has a grip on the left; drag it to move the track. A line shows where it will land, and the list re-arranges once you let go. *Reset order* in the playlist header goes back to the gallery's order
+- **Your order survives a restart** (*Settings ▸ Audio*, on by default). It is kept in a small file next to the media (`<Folder>.mgal`) and looks after itself: a new track joins the end, a deleted one drops out. Switch it off and the order only applies to the current session
+- **Shuffle and your own order are separate**: while shuffle is on it replaces your order instead of changing it. Dragging then only rearranges the current shuffle, for this session
 - `Space` plays and pauses, `<-` / `->` change tracks; *previous* returns to what you actually heard
 - **Shuffle** without repeats; **repeat** off, one or all
 - **Gapless**: the next track starts without a pause
@@ -300,11 +309,11 @@ pages change the PDF directly. `Ctrl+Z` undoes them while the file is open.
 ---
 
 ## Files Next to Your Media
-- **The app's own files are hidden by default**: the folder file with tags (`<Folder>.mgstore`), editor notes and table column widths (`<file>.mgedit`) and DOCX backups (`.bak`)
+- **The app's own files are hidden by default**: the folder file with tags (`<Folder>.mgstore`), the playlist order of a folder (`<Folder>.mgal`), editor notes and table column widths and formatting (`<file>.mgedit`) and DOCX backups (`.bak`)
 - **Show all files** (*Settings ▸ View ▸ Files*) shows them - and every other file type, with an extension badge
 - **Delete notes or backups** without the file itself: right-click a tile, or *Document* menu for PDFs and images. Goes to the trash; `Ctrl+Z` brings it back
 - **Look inside the folder file**: open the `.mgstore` to see all tags, categories and assignments in readable form; *Raw* shows the bytes
-- **Look inside the editor notes** the same way: open the `.mgedit` next to a PDF, image or table to read what is stored there. Both are shown for reading only
+- **Look inside the editor notes** the same way: open the `.mgedit` next to a PDF, image or table to read what is stored there, or the `.mgal` for the playlist order. All of them are shown for reading only
 - Both of these files use the app's own compact format. Files written by older versions still open and are quietly moved to the new form the first time you open them - nothing to do by hand
 
 ## Metadata & File Management
@@ -397,6 +406,10 @@ MyPhotos/
 ├── photo2.png
 └── MyPhotos.mgstore
 ```
+
+The order you drag in the playlist lives next to the media as well, as
+`<Folder>.mgal`. It stores file names, not paths, so moving the whole folder
+keeps the order intact.
 
 **MGStorage** is the app's own compact binary format. Every tag and file name is
 stored once and then referred to by number, identical tag combinations are stored

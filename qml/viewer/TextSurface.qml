@@ -234,6 +234,8 @@ Item {
         z: 2
 
         document: editor.textDocument
+        problems: probleme
+        problemColor: Qt.rgba(0.89, 0.38, 0.38, 1.0)
         contentY: flick.contentY
         topPadding: editor.topPadding
         cursorPosition: editor.cursorPosition
@@ -276,6 +278,29 @@ Item {
             flick.contentY = Math.min(max, Math.max(0, r.y))
         else if (r.y + r.height > flick.contentY + flick.height)
             flick.contentY = Math.min(max, r.y + r.height - flick.height)
+    }
+
+    //  Reihenfolge wie `mg::editor::ProblemKind`. `Format` traegt die Meldung
+    //  des jeweiligen Lesers selbst - JSON und XML sagen genauer, was fehlt,
+    //  als ein eigener Satz es koennte.
+    readonly property var _problemKeys: [
+        "ProblemUnmatchedOpen", "ProblemUnmatchedClose", "ProblemMismatchedClose",
+        "ProblemUnterminatedComment", "ProblemUnterminatedString", "", "ProblemMixedIndent"]
+    function _problemText(p) {
+        if (!p) return ""
+        const key = root._problemKeys[p.kind]
+        return key === "" ? p.detail : App.uiText(App.language, key)
+    }
+
+    //  Die Struktur-Pruefung. EIN Halter je Flaeche: Unterstreichung und
+    //  Uebersichtsstreifen lesen dieselbe Liste, ein Lauf je Zeichner waere ein
+    //  zweiter voller Durchgang ueber das Dokument.
+    TextProblems {
+        id: probleme
+        objectName: "textProblems"
+        document: editor.textDocument
+        path: root.currentPath
+        enabled: Editor.showProblems
     }
 
     // Faltungsleiste rechts von den Nummern; sie erscheint nur, wenn die Datei überhaupt faltbare Blöcke hat
@@ -345,10 +370,12 @@ Item {
         z: 2
 
         document: editor.textDocument
+        problems: probleme
         contentY: flick.contentY
         viewportHeight: flick.height
         contentHeight: flick.contentHeight
         backgroundColor: Editor.gutterBackground
+        problemColor: Qt.rgba(0.89, 0.38, 0.38, 1.0)
         textColor: Editor.text
         viewportColor: Qt.rgba(Editor.text.r, Editor.text.g, Editor.text.b, 0.13)
         borderColor: Qt.rgba(Editor.gutterText.r, Editor.gutterText.g,
@@ -408,6 +435,7 @@ Item {
             document: editor.textDocument
             path: root.currentPath
             foldBar: foldBar
+            problems: probleme
             contentY: flick.contentY
             viewportHeight: flick.height
             cursorPosition: editor.cursorPosition
@@ -740,6 +768,20 @@ Item {
             Feld {
                 text: App.uiText(App.language, "EditorStatusWrapOn")
                 visible: root._wrap
+            }
+            //  Die Unterstreichung sagt WO, dieser Satz sagt WAS. Bei mehreren
+            //  Fundstellen steht die Zahl DAVOR - der Satz der ersten bleibt
+            //  trotzdem stehen, sonst weiss man nur, DASS etwas ist.
+            Feld {
+                visible: probleme.count > 0
+                color: Qt.rgba(0.89, 0.38, 0.38, 1.0)
+                text: {
+                    const satz = root._problemText(probleme.list()[0])
+                    return probleme.count === 1
+                        ? satz
+                        : App.uiText(App.language, "ProblemCount").arg(probleme.count)
+                          + ": " + satz
+                }
             }
         }
 

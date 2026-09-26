@@ -1,6 +1,7 @@
 #pragma once
 #include "core/SearchPattern.h"
 #include "editor/TextFoldBar.h"
+#include "editor/TextProblems.h"
 
 #include <QColor>
 #include <QFont>
@@ -18,6 +19,10 @@ class TextDecorations : public QQuickPaintedItem {
     Q_PROPERTY(QQuickTextDocument* document READ document WRITE setDocument NOTIFY documentChanged)
     Q_PROPERTY(QString path READ path WRITE setPath NOTIFY pathChanged)
     Q_PROPERTY(mg::editor::TextFoldBar* foldBar READ foldBar WRITE setFoldBar NOTIFY foldBarChanged)
+    //  Die Fundstellen der Struktur-Pruefung. Gezeichnet wird eine Wellenlinie
+    //  unter der Stelle; die Liste gehoert `TextProblems`, nicht diesem Element.
+    Q_PROPERTY(mg::editor::TextProblems* problems READ problems WRITE setProblems
+                                                  NOTIFY problemsItemChanged)
 
     Q_PROPERTY(qreal contentY READ contentY WRITE setContentY NOTIFY viewChanged)
     Q_PROPERTY(qreal viewportHeight READ viewportHeight WRITE setViewportHeight NOTIFY viewChanged)
@@ -56,6 +61,8 @@ public:
     void    setPath(const QString& p);
     TextFoldBar* foldBar() const { return m_foldBar; }
     void         setFoldBar(TextFoldBar* b);
+    TextProblems* problems() const { return m_problems; }
+    void          setProblems(TextProblems* p);
 
     qreal contentY() const { return m_contentY; }
     void  setContentY(qreal v);
@@ -108,6 +115,7 @@ signals:
     void documentChanged();
     void pathChanged();
     void foldBarChanged();
+    void problemsItemChanged();
     void viewChanged();
     void styleChanged();
 
@@ -119,6 +127,8 @@ private:
     void zeichneHilfen(QPainter* p);
     void zeichneFaltmarken(QPainter* p);
     void zeichneKlammern(QPainter* p);
+    //  Wellenlinie unter jeder Fundstelle - nur fuer die SICHTBAREN Zeilen.
+    void zeichneProbleme(QPainter* p);
     //  Rechteck eines einzelnen Zeichens in Sicht-Koordinaten; ungueltig, wenn
     //  es nicht sichtbar ist.
     QRectF zeichenRect(int position) const;
@@ -128,6 +138,7 @@ private:
 
     QQuickTextDocument* m_quickDoc = nullptr;
     TextFoldBar*        m_foldBar = nullptr;
+    TextProblems*       m_problems = nullptr;
     QString m_path;
     qreal   m_contentY = 0;
     qreal   m_viewportH = 0;

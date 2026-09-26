@@ -105,6 +105,21 @@ qreal TextMinimap::spaltenVersatz() const {
     return anteil * (gesamt - height());
 }
 
+void TextMinimap::setProblems(TextProblems* pr) {
+    if (pr == m_problems) return;
+    if (m_problems) disconnect(m_problems, nullptr, this, nullptr);
+    m_problems = pr;
+    if (m_problems)
+        connect(m_problems, &TextProblems::problemsChanged, this, [this] { update(); });
+    emit problemsItemChanged();
+    update();
+}
+
+void TextMinimap::setProblemColor(const QColor& c) {
+    if (c == m_problemColor) return;
+    m_problemColor = c; emit styleChanged(); update();
+}
+
 void TextMinimap::paint(QPainter* p) {
     p->fillRect(QRectF(0, 0, width(), height()), m_background);
     if (m_borderColor.alpha() > 0)
@@ -175,6 +190,18 @@ void TextMinimap::paint(QPainter* p) {
                                     b.color());
                     }
                 }
+            }
+
+            //  Ein Punkt am rechten Rand, wenn diese Zeile eine Fundstelle
+            //  traegt. Er entsteht HIER, weil `lfd` die Zeile in der Spalte
+            //  schon kennt - eine eigene Umrechnung liefe je Punkt ueber das
+            //  ganze Dokument, und zugeklappte Zeilen zaehlen nicht mit.
+            if (m_problems && m_problems->inBlock(block.blockNumber())) {
+                const qreal r = qMin(2.0, width() * 0.12);
+                p->setRenderHint(QPainter::Antialiasing, true);
+                p->setPen(Qt::NoPen);
+                p->setBrush(m_problemColor);
+                p->drawEllipse(QPointF(width() - r - 1.0, y + kZeilenhoehe * 0.5), r, r);
             }
         }
         block = block.next();

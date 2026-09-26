@@ -128,6 +128,21 @@ Item {
                     font.pixelSize: 11
                     wrapMode: Text.WordWrap
                 }
+
+                CheckBox {
+                    objectName: "tableGroupDigits"
+                    text: App.uiText(App.language, "SettingsTableGroupDigits")
+                    checked: App.tableGroupDigits
+                    onToggled: App.tableGroupDigits = checked
+                }
+                Text {
+                    Layout.fillWidth: true
+                    Layout.leftMargin: 24
+                    text: App.uiText(App.language, "SettingsTableGroupDigitsTip")
+                    color: App.themeTextMuted
+                    font.pixelSize: 11
+                    wrapMode: Text.WordWrap
+                }
                 SyntaxHint {
                     Layout.fillWidth: true
                     Layout.topMargin: 4

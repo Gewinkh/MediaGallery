@@ -41,6 +41,7 @@ Item {
         id: ctl
         source: root.source
         slashDateMonthFirst: App.tableDateMonthFirst
+        groupDigits: App.tableGroupDigits
     }
 
     Rectangle { anchors.fill: parent; color: Editor.background }

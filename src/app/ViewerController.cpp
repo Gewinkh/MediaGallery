@@ -1,6 +1,7 @@
 #include "app/ViewerController.h"
 #include "core/EditSidecar.h"
 #include "core/MediaLogs.h"
+#include "core/MGAudioList.h"
 #include "core/MGStorage.h"
 #include "pdf/PdfMediaHandler.h"
 #include "core/AppSettings.h"
@@ -145,6 +146,15 @@ QString ViewerController::readTextFile(const QString& filePathOrUrl) const {
         return {};
     }
 
+    //  Die Wiedergabe-Reihenfolge ebenso - lesbar ist die nummerierte Liste.
+    if (mg::audiolist::istMGAudioList(raw.constData(), std::size_t(raw.size()))) {
+        std::vector<std::string> namen;
+        if (mg::audiolist::lies(raw.constData(), std::size_t(raw.size()), namen, nullptr))
+            return QString::fromStdString(
+                mg::audiolist::alsText(namen, QFileInfo(path).fileName().toStdString()));
+        return {};
+    }
+
     //  Die Beidatei der Editoren ist ebenfalls binaer; lesbar ist der
     //  eingerueckte JSON-Baum darin.
     if (mg::editsidecar::istBeidatei(raw))
@@ -167,6 +177,7 @@ bool ViewerController::isStorageFile(const QString& filePathOrUrl) const {
     const QByteArray kopf = f.read(16);
     //  Beide eigenen Formate: nur anzeigen, dazu die Rohform anbieten.
     return mg::storage::istMGStorage(kopf.constData(), std::size_t(kopf.size()))
+        || mg::audiolist::istMGAudioList(kopf.constData(), std::size_t(kopf.size()))
         || mg::editsidecar::istBeidatei(kopf);
 }
 

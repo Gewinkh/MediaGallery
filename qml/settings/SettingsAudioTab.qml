@@ -144,6 +144,26 @@ Item {
                     wrapMode: Text.WordWrap
                 }
 
+                CheckBox {
+                    objectName: "audioRememberOrder"
+                    text: App.uiText(App.language, "AudioRememberOrder")
+                    checked: Audio.rememberOrder
+                    onToggled: Audio.rememberOrder = checked
+                    contentItem: Text {
+                        text: parent.text; color: App.themeTextPrimary
+                        leftPadding: parent.indicator.width + 6
+                        verticalAlignment: Text.AlignVCenter
+                    }
+                }
+                Text {
+                    Layout.fillWidth: true
+                    Layout.leftMargin: 24
+                    text: App.uiText(App.language, "AudioRememberOrderTip")
+                    color: App.themeTextMuted
+                    font.pixelSize: 11
+                    wrapMode: Text.WordWrap
+                }
+
                 RowLayout {
                     Layout.fillWidth: true
                     spacing: 8

@@ -21,6 +21,9 @@ class MediaProxyModel : public QSortFilterProxyModel {
     Q_OBJECT
     Q_PROPERTY(int  count          READ count          NOTIFY countChanged)
     Q_PROPERTY(int  sortRole       READ sortFieldInt   WRITE setSortFieldInt   NOTIFY sortChanged)
+    //  Pfade in Abspielreihenfolge; nur fuer `Field::Playlist`. Leer = die
+    //  Sortierung faellt auf den Namen zurueck.
+    Q_PROPERTY(QStringList playlistOrder READ playlistOrder WRITE setPlaylistOrder NOTIFY sortChanged)
     Q_PROPERTY(bool sortDescending READ sortDescending WRITE setSortDescending NOTIFY sortChanged)
     Q_PROPERTY(bool showImages     READ showImages     WRITE setShowImages     NOTIFY filterChanged)
     Q_PROPERTY(bool showVideos     READ showVideos     WRITE setShowVideos     NOTIFY filterChanged)
@@ -79,7 +82,9 @@ public:
     FilterCriteria criteria() const;
     QStringList activeCategoryNames() const;
 
-    enum class Field { Date = 0, Name = 1, Tags = 2, FileSize = 3 };
+    //  `Playlist` sortiert nach der Stelle in `playlistOrder` - die Galerie des
+    //  Player-Modus zeigt damit dieselbe Folge wie die Playlist daneben.
+    enum class Field { Date = 0, Name = 1, Tags = 2, FileSize = 3, Playlist = 4 };
     enum class TagMode { Or = 0, And = 1, Nur = 2, Inklusiv = 3 };
 
     explicit MediaProxyModel(QObject* parent = nullptr);
@@ -94,6 +99,8 @@ public:
 
     int  sortFieldInt() const { return static_cast<int>(m_field); }
     void setSortFieldInt(int f);
+    QStringList playlistOrder() const { return m_playlistOrder; }
+    void        setPlaylistOrder(const QStringList& pfade);
     bool sortDescending() const { return m_descending; }
     void setSortDescending(bool d);
 
@@ -175,6 +182,8 @@ private:
     void reapplySort();
     bool sameScopeLess(const MediaItem* a, const MediaItem* b) const;
     bool fieldLess(const MediaItem* a, const MediaItem* b) const;
+    //  Stelle in der Abspielfolge; `kNichtInListe` fuer alles, was nicht darin steht.
+    int  playlistPos(const MediaItem* i) const;
     bool flatLessThan(const QModelIndex& left, const QModelIndex& right) const;
     int  scopeOfProxyRow(int proxyRow) const;
     bool isStepTarget(int proxyRow, int scope) const;
@@ -186,6 +195,8 @@ private:
     QPointer<MediaModel>  m_src;   // typisiertes Quellmodell (s. setSourceModel)
 
     Field   m_field      = Field::Date;
+    QStringList         m_playlistOrder;
+    QHash<QString, int> m_playlistPos;    // Pfad -> Stelle, einmal gebaut
     bool    m_descending = true;
     TagMode m_mode       = TagMode::Or;
 

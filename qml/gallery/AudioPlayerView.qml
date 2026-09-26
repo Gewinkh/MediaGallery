@@ -363,20 +363,52 @@ Item {
         width: view.narrow ? view.width : Math.max(240, Math.min(360, view.width * 0.34))
         color: Qt.rgba(1, 1, 1, 0.03)
 
+        readonly property int _zeilenHoehe: 40
+        readonly property int _griffBreite: 22
+        //  Gilt waehrend des Zugs; die Liste erfaehrt die neue Stelle erst beim
+        //  Loslassen.
+        property int _zugVon: -1
+        property int _zugNach: -1
+
+        function zugUebernehmen() {
+            const von = queuePane._zugVon
+            const nach = queuePane._zugNach
+            queuePane._zugVon = -1
+            queuePane._zugNach = -1
+            if (von >= 0 && nach >= 0 && von !== nach) Audio.moveTrack(von, nach)
+        }
+
         Rectangle {
             visible: !view.narrow
             anchors { left: parent.left; top: parent.top; bottom: parent.bottom }
             width: 1; color: App.themeBorder
         }
 
-        Text {
+        Item {
             id: queueHead
             anchors { left: parent.left; right: parent.right; top: parent.top; margins: 14 }
-            text: App.uiText(App.language, "AudioQueueHeader")
-                  + "  (" + Audio.queue.length + ")"
-            color: App.themeTextMuted
-            font.pixelSize: 11
-            font.bold: true
+            height: kopfText.implicitHeight
+
+            Text {
+                id: kopfText
+                anchors { left: parent.left; verticalCenter: parent.verticalCenter }
+                text: App.uiText(App.language, "AudioQueueHeader")
+                      + "  (" + Audio.queue.length + ")"
+                color: App.themeTextMuted
+                font.pixelSize: 11
+                font.bold: true
+            }
+            //  Nur da, wo es etwas zurueckzunehmen gibt.
+            Text {
+                anchors { right: parent.right; verticalCenter: parent.verticalCenter }
+                visible: Audio.hasCustomOrder
+                text: App.uiText(App.language, "AudioResetOrder")
+                color: zurueckHover.hovered ? App.themeAccent : App.themeTextMuted
+                font.pixelSize: 11
+                font.underline: zurueckHover.hovered
+                HoverHandler { id: zurueckHover; cursorShape: Qt.PointingHandCursor }
+                TapHandler { onTapped: Audio.clearCustomOrder() }
+            }
         }
 
         ListView {
@@ -396,7 +428,7 @@ Item {
                 required property int index
                 required property string modelData
                 width: queueList.width
-                height: 40
+                height: queuePane._zeilenHoehe
                 color: row.index === Audio.queueIndex
                        ? Qt.rgba(App.themeAccent.r, App.themeAccent.g, App.themeAccent.b, 0.16)
                        : (rowHover.hovered ? App.themeCard : "transparent")
@@ -408,7 +440,7 @@ Item {
                     color: App.themeAccent
                 }
                 Text {
-                    anchors { left: parent.left; leftMargin: 14
+                    anchors { left: parent.left; leftMargin: queuePane._griffBreite + 6
                               verticalCenter: parent.verticalCenter }
                     width: 22
                     text: row.index + 1
@@ -416,8 +448,8 @@ Item {
                     font.pixelSize: 11
                 }
                 Text {
-                    anchors { left: parent.left; leftMargin: 40
-                              right: saveSound.visible ? saveSound.left : parent.right
+                    anchors { left: parent.left; leftMargin: queuePane._griffBreite + 32
+                              right: parent.right
                               rightMargin: 12; verticalCenter: parent.verticalCenter }
                     elide: Text.ElideMiddle
                     text: Audio.titleOf(row.modelData)
@@ -427,34 +459,96 @@ Item {
                     font.bold: row.index === Audio.queueIndex
                 }
 
-                // Bei einem Video lässt sich die Tonspur hier als Datei sichern. BLEIBEND sichtbar, nicht erst bei
-                // Zeigerkontakt: die Zeile zeigt den Namen ohne Endung, man sähe ihr sonst nicht an, dass sie ein Video ist.
-                Rectangle {
-                    id: saveSound
-                    objectName: "queueSaveSound"
-                    anchors { right: parent.right; rightMargin: 8
-                              verticalCenter: parent.verticalCenter }
-                    width: 28; height: 28; radius: 14
-                    visible: Audio.canExtractAudio(row.modelData)
-                    opacity: Audio.extractBusy ? 0.4 : 1.0
-                    color: saveHover.hovered ? App.themeCard : "transparent"
-                    DrawnIcon {
-                        anchors.centerIn: parent
-                        name: "save"; size: 15
-                        color: saveHover.hovered ? App.themeAccent : App.themeTextMuted
-                    }
-                    ToolTip.visible: saveHover.hovered
-                    ToolTip.text: App.uiText(App.language, "AudioExtractMenu")
-                    HoverHandler { id: saveHover }
-                    TapHandler {
-                        gesturePolicy: TapHandler.ReleaseWithinBounds
-                        onTapped: if (!Audio.extractBusy) Audio.extractAudio(row.modelData)
-                    }
-                }
-
                 HoverHandler { id: rowHover }
                 TapHandler { onTapped: Audio.playAt(row.index) }
             }
+        }
+
+        //  EIN Ziehgriff fuer alle Zeilen, ueber der Liste - nicht einer je
+        //  Zeile im Delegaten: das Umsortieren baut die Liste neu, und ein
+        //  Helfer stirbt mit der Kachel, die seine eigene Aktion wegraeumt.
+        //  Waehrend des Zugs aendert sich an der Liste NICHTS; gezeigt wird
+        //  eine Linie, umsortiert wird beim Loslassen.
+        Item {
+            id: zugGriff
+            objectName: "queueZiehgriff"
+            anchors { left: queueList.left; top: queueList.top; bottom: queueList.bottom }
+            width: queuePane._griffBreite
+            z: 3
+            //  Bei Zufall gibt es nichts zu sortieren - er ERSETZT die eigene
+            //  Ordnung, solange er an ist.
+            visible: Audio.orderSortable && queueList.count > 1
+
+            property int zeile: -1
+
+            function zeileBei(py) {
+                const z = Math.floor((py + queueList.contentY) / queuePane._zeilenHoehe)
+                return (z >= 0 && z < queueList.count) ? z : -1
+            }
+
+            HoverHandler {
+                onPointChanged: if (queuePane._zugVon < 0)
+                                    zugGriff.zeile = zugGriff.zeileBei(point.position.y)
+                onHoveredChanged: if (!hovered && queuePane._zugVon < 0) zugGriff.zeile = -1
+            }
+
+            Rectangle {
+                id: griffFeld
+                y: zugGriff.zeile * queuePane._zeilenHoehe - queueList.contentY
+                width: parent.width
+                height: queuePane._zeilenHoehe
+                visible: zugGriff.zeile >= 0
+                color: griffHover.hovered || queuePane._zugVon >= 0
+                       ? App.themeCard : "transparent"
+
+                DrawnIcon {
+                    anchors.centerIn: parent
+                    name: "drag"
+                    size: 14
+                    color: griffHover.hovered || queuePane._zugVon >= 0
+                           ? App.themeAccent : App.themeTextMuted
+                }
+                HoverHandler { id: griffHover; cursorShape: Qt.SizeVerCursor }
+                DragHandler {
+                    target: null
+                    xAxis.enabled: false
+                    acceptedButtons: Qt.LeftButton
+                    cursorShape: Qt.SizeVerCursor
+                    //  Wie am Spaltengriff: die Systemschwelle von 10 px liess
+                    //  den Anfang tot wirken und die Linie dann springen.
+                    dragThreshold: 2
+                    onActiveChanged: {
+                        if (active) {
+                            queuePane._zugVon = zugGriff.zeile
+                            queuePane._zugNach = zugGriff.zeile
+                        } else if (queuePane._zugVon >= 0) {
+                            //  ERST nach der Ereignisbehandlung - `moveTrack`
+                            //  baut die Liste unter dem Helfer neu.
+                            Qt.callLater(queuePane.zugUebernehmen)
+                        }
+                    }
+                    onCentroidChanged: {
+                        if (!active || queuePane._zugVon < 0) return
+                        const y = centroid.position.y + griffFeld.y
+                        queuePane._zugNach = Math.max(
+                            0, Math.min(queueList.count - 1, zugGriff.zeileBei(y)))
+                    }
+                }
+            }
+        }
+
+        //  Wo der Titel landet.
+        Rectangle {
+            objectName: "queueZiehlinie"
+            visible: queuePane._zugNach >= 0 && queuePane._zugVon >= 0
+            x: queueList.x
+            width: queueList.width
+            y: queueList.y + queuePane._zugNach * queuePane._zeilenHoehe
+               - queueList.contentY
+               + (queuePane._zugNach > queuePane._zugVon ? queuePane._zeilenHoehe : 0)
+            height: 2
+            color: App.themeAccent
+            z: 4
         }
     }
 }
