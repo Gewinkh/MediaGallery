@@ -565,7 +565,7 @@ const ExtEntry s_byExtension[] = {
     { "cxx"_L1, "cpp"_L1 },    { "h"_L1, "cpp"_L1 },     { "hpp"_L1, "cpp"_L1 },
     { "hxx"_L1, "cpp"_L1 },
     { "py"_L1, "python"_L1 },
-    { "md"_L1, "markdown"_L1 },
+    { "md"_L1, "markdown"_L1 },   { "markdown"_L1, "markdown"_L1 },
     { "java"_L1, "java"_L1 },
     { "js"_L1, "js"_L1 },      { "jsx"_L1, "js"_L1 },    { "ts"_L1, "js"_L1 },
     { "tsx"_L1, "js"_L1 },

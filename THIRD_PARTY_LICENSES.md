@@ -656,9 +656,26 @@ reference source file that MediaGallery's code follows:
 | `src/audio/AudioEqualizer.cpp` | **RBJ peaking biquad** ("Audio EQ Cookbook" formulas), the ten-band equalizer | Robert Bristow-Johnson, W3C Working Group Note, https://www.w3.org/TR/audio-eq-cookbook/ |
 | `src/core/ZCodec.cpp` | **CRC-32**, polynomial `0xEDB88320`, for ZIP/DOCX entries | polynomial defined by the ZIP and PNG formats |
 | `src/audio/MkvAudioExtract.cpp` | **Ogg CRC**, polynomial `0x04C11DB7` unreflected, for Ogg pages | polynomial defined by the Ogg format |
+| `src/editor/MarkdownParser.cpp` | **Markdown block and inline structure**: containers, lists, code spans, links, and the delimiter algorithm for emphasis ("process emphasis") | CommonMark Spec, John MacFarlane and contributors, https://spec.commonmark.org/ |
+| `src/editor/MarkdownParser.cpp` | **Tables, task list items, strikethrough and extended autolinks** | GitHub Flavored Markdown Spec, GitHub, https://github.github.com/gfm/ |
 
 Both CRC lookup tables are computed from the polynomial rather than stored, so no
 table was taken from any implementation.
+
+The Markdown reader is written from the two specifications' prose. No code from a
+Markdown implementation (cmark, cmark-gfm, md4c or others) is contained. Qt GUI
+bundles md4c for `QTextDocument::setMarkdown`; MediaGallery does not call it.
+Both specifications state that they are licensed under the **Creative Commons
+Attribution-ShareAlike 4.0 International License** (checked 2026-09-27: CommonMark
+Spec 0.31.2 by John MacFarlane, https://spec.commonmark.org/0.31.2/; GitHub
+Flavored Markdown Spec 0.29-gfm, https://github.github.com/gfm/). That license
+covers the specification text; MediaGallery contains no text from either.
+
+Named HTML entities in Markdown text (`&amp;`, `&copy;` …) are decoded through Qt
+GUI's own HTML reader (`QTextDocumentFragment`); MediaGallery carries no entity
+table of its own. Qt's list of third-party components for Qt GUI 6.11
+(https://doc.qt.io/qt-6/licenses-used-in-qt.html, checked 2026-09-27) names no
+component for this; it is part of Qt GUI itself (see [Qt](#qt)).
 
 ### MediaGallery's Qt Quick Controls style (`qml/style/*.qml`)
 

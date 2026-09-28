@@ -70,7 +70,7 @@ struct MediaItem {
             "xm","mod","s3m","it"
         };
         static const QSet<QString> txtExts = {
-            "txt","md","sql","cpp","c","h","hpp","hxx","cxx","cc","py","js","ts",
+            "txt","md","markdown","sql","cpp","c","h","hpp","hxx","cxx","cc","py","js","ts",
             "jsx","tsx","json","xml","html","htm","css","scss","less","yaml","yml",
             "toml","ini","cfg","conf","sh","bash","zsh","bat","cmd","ps1","java",
             "cs","go","rs","rb","php","swift","kt","lua","r","m","f90","cmake","mk",

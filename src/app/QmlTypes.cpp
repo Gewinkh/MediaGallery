@@ -8,6 +8,7 @@
 #include "table/TableController.h"
 #include "docx/edit/DocxTextArea.h"
 #include "editor/CodeHighlighter.h"
+#include "editor/MarkdownView.h"
 #include "editor/TextDecorations.h"
 #include "editor/TextFoldBar.h"
 #include "editor/TextGutter.h"
@@ -63,6 +64,8 @@ void registerQmlTypes() {
     //  Fundstellen der Struktur-Pruefung; Unterstreichung und Minimap-Punkt
     //  lesen dieselbe Liste.
     qmlRegisterType<mg::editor::TextProblems>("MediaGallery", 1, 0, "TextProblems");
+    //  Gerenderte Markdown-Ansicht: je Kachel eine Instanz, sie tauscht das Dokument ihrer TextEdit aus.
+    qmlRegisterType<mg::editor::MarkdownView>("MediaGallery", 1, 0, "MarkdownView");
     //  DATEV-Buchungsstapel: EINE Instanz je Kachel, damit zwei Haelften
     //  verschiedene Dateien zeigen koennen.
     qmlRegisterType<mg::datev::DatevController>("MediaGallery", 1, 0, "DatevController");

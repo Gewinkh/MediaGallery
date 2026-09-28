@@ -16,7 +16,8 @@ feature is off.
 - **Videos**: MP4, MKV, AVI, MOV, WMV, WebM, M4V, MPEG, 3GP, OGV, TS, M2TS, VOB, RMVB, ASF, DIVX
 - **Audio**: MP3, FLAC, WAV, OGG, AAC, M4A/M4B, WMA, Opus, AIFF, APE, ALAC, MP2, AC-3, E-AC-3, DTS, MIDI and more
 - **PDF**: pages with a thumbnail sidebar, including embedded audio and video
-- **Text files**: plain text, Markdown, source code, configuration files, logs - all editable in the app
+- **Text files**: plain text, source code, configuration files, logs - all editable in the app
+- **Markdown**: `.md` and `.markdown`, shown formatted, one click away from the editable text
 - **Tables**: CSV and TSV, plus DATEV booking batches
 - **Word documents**: DOCX, in a built-in editor
 - **HTML**: live preview next to the editable source
@@ -88,6 +89,15 @@ which. Files without an extension such as `LICENSE`, `README`, `Makefile` or
 - Files over 8 MB open read-only (see [LIMITATIONS.md](LIMITATIONS.md))
 
 ---
+
+## Markdown Viewer
+- `.md` / `.markdown` open **formatted**: headings, lists (also nested and numbered), task lists, tables with column alignment, quotes, links, images, footnotes and horizontal lines
+- **Code blocks** look like a terminal window, with rounded corners, the language in the title bar and a **copy button** at the top right; the code is coloured like in the text editor, e.g. C, assembly, shell or Python
+- Hidden **hints** (`<details>`) stay folded until you click them
+- A metadata block at the top of the file (front matter between `---` lines) appears as a card; lists and single words in it are shown as labels
+- The button at the top right, or the **Document** menu, switches to the **editable text** and back; changes appear as soon as you switch back, and undo keeps working in the text
+- Links jump to headings in the same file, open other files, or open web addresses in the browser
+- Text can be selected and copied; colours follow the text editor's colour profile
 
 ## HTML Viewer
 - `.html` / `.htm` open as a **rendered preview**, one click away from the editable source

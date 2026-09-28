@@ -244,6 +244,12 @@ add_library(mg_lib STATIC
     src/editor/FoldScanner.h
     src/editor/LanguageTable.cpp
     src/editor/LanguageTable.h
+    src/editor/MarkdownParser.cpp
+    src/editor/MarkdownParser.h
+    src/editor/MarkdownRender.cpp
+    src/editor/MarkdownRender.h
+    src/editor/MarkdownView.cpp
+    src/editor/MarkdownView.h
     src/editor/SyntaxPalette.cpp
     src/editor/SyntaxPalette.h
     src/editor/SyntaxProblems.cpp

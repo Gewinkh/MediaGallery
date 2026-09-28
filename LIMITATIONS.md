@@ -434,6 +434,44 @@ limit.
 
 ---
 
+## Markdown files
+
+**Very large Markdown files pause the window briefly when they open.**
+Why: the text view lays out the whole document at once before it shows it. A
+typical file (under 20 KB) takes about 25 ms, a 750 KB file about half a second.
+
+**Quotes appear as a shaded box, not with a bar on the left.**
+Why: the text view the app uses cannot draw a single edge of a box, and a box
+with a border makes it crash. For the same reason table headers are bold but
+not shaded, and rows have no alternating colour.
+
+**Formulas and diagrams are not drawn.**
+Why: `$…$` maths and Mermaid diagrams need their own renderers. Formulas stay
+as written, diagrams appear as a code block.
+
+**HTML inside Markdown is only partly understood.**
+Why: formatting tags work (bold, italic, code, keys, sub- and superscript, line
+breaks, links, images and folded `<details>` hints); other tags appear as they
+are written, and HTML tables are not drawn as tables.
+
+**Images from the internet are not shown.**
+Why: the app does not go online. The image's description appears instead, as a
+link. Local images wider than 1600 pixels are scaled down, and beyond 64 MB of
+images per file only the descriptions appear.
+
+**`&thinsp;`, `&ensp;` and `&emsp;` appear as a normal space.**
+Why: named characters such as `&copy;` are read by the HTML reader built into
+Qt, and it treats these three as ordinary spaces.
+
+**Task list boxes cannot be ticked in the formatted view.**
+Workaround: change `[ ]` to `[x]` in the editable text.
+
+**Copied text contains a blank line around code blocks, quotes and tables.**
+Why: the spacing around these boxes is an invisible line in the document, and it
+is copied with the text.
+
+---
+
 ## CSV and TSV files
 
 **A `.txt` only opens as a table if you allow it and it looks like one.**
@@ -637,3 +675,9 @@ Planned work, not limits. Once something is built, it moves to
   not there.
 - **Charts from table data** - bars, lines, pies and graphs. Nothing of it is
   designed yet.
+- **Search in the formatted Markdown view** - the editable text has it (`Ctrl+F`).
+- **Printing or a PDF of the formatted Markdown view** - the editable text can be
+  saved as PDF, but only as plain text.
+- **Own drawing for the formatted Markdown view** - would bring quote bars, shaded
+  table headers and no pause on very large files. Planned, not decided: typical
+  files would barely get faster.

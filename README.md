@@ -19,7 +19,7 @@ stores its data are in **[FEATURES.md](FEATURES.md)**.
 - **PDF editor** - notes, drawings, highlights, redaction, signature stamps, form filling, page reordering, text editing and **tracked changes** for your own annotations; export keeps the original content byte-for-byte wherever possible.
 - **Image editor** - non-destructive crop, rotate, adjust and draw, with the same **tracked changes** as the PDF editor; the original file is never overwritten.
 - **DOCX editor** - a loss-preserving Word editor: only what you touch is rewritten. Tables, pictures, contents list, tracked changes (shown and resolvable), spell checking, find & replace, and PDF export.
-- **Text & source editor** - syntax colouring for 28 languages, folding, line numbers, indent guides, bracket matching, find & replace, an overview column and its own colour themes; plus a live HTML preview.
+- **Text & source editor** - syntax colouring for 28 languages, folding, line numbers, indent guides, bracket matching, find & replace, an overview column and its own colour themes; plus a live HTML preview and a formatted Markdown view.
 - **Tables** - `.csv` and `.tsv` open as an editable table with detected separator and header row, formulas (`=A1+B2`), filter and sorting; a DATEV booking batch (`EXTF`/`DTVF`) is recognised by its content, shows a file-header summary and debit/credit totals, and stays read-only.
 - **Live transliteration** - type Latin, get Arabic, Hiragana or Katakana while you write.
 - **Appearance** - every colour of the interface is adjustable, the editor has its own separate palette, and both can be exported and shared.
@@ -111,15 +111,7 @@ The build skips it when the `tests/` folder is absent.
 ## Changelog
 
 ### Latest
-- **Fix**: **Shuffle in player mode** no longer crashes the app or keeps re-sorting the gallery.
-- **Fix**: **Track order** no longer resets after switching folders or restarting.
-- **Feature**: **Preprocessor branch folding** is now supported in C-style code, with correct ranges for functions inside.
-- **Fix**: **Lua block comments** are no longer flagged as structural errors.
-- **Fix**: **Text editor folding** no longer hides only the line numbers while leaving the text visible.
-- **Feature**: **Structural errors** in the text editor are now underlined and marked in the overview column.
-- **Feature**: **Column formatting** in tables with bold, text colour, and background colour per column.
-- **Feature**: **Custom track order** in player mode, with drag-and-drop and persistence across restarts.
-- **Change**: **Thousands separators in tables** are now available as an optional display setting.
+- **Feature**: **Formatted Markdown view** with tables, terminal-style code blocks with a copy button, foldable hints, and a switch to the editable text.
 
 ---
 

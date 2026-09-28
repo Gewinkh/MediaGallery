@@ -15,6 +15,7 @@
         <file>qml/viewer/FullscreenViewer.qml</file>
         <file>qml/viewer/VideoSurface.qml</file>
         <file>qml/viewer/TextSurface.qml</file>
+        <file>qml/viewer/MarkdownSurface.qml</file>
         <file>qml/datev/DatevSurface.qml</file>
         <file>qml/table/DataTable.qml</file>
         <file>qml/table/TableFindBar.qml</file>

@@ -76,6 +76,16 @@ FocusScope {
     }
     readonly property bool _isWebRenderable: root.type === 4 && root._isHtmlPath(root.path)
 
+    //  Markdown: gerendert zuerst, der Rohtext ueber denselben Schalter wie bei Tabellen (`_datevTable`).
+    property bool _isMarkdown: false
+    function _isMarkdownPath(p) {
+        var dot = p.lastIndexOf(".")
+        if (dot < 0) return false
+        var ext = p.substring(dot + 1).toLowerCase()
+        return ext === "md" || ext === "markdown"
+    }
+    readonly property bool _hatRohtext: root._isDatev || root._isTable || root._isMarkdown
+
     //  DATEV-Buchungsstapel: erkannt am INHALT, nicht an der Endung - dieselbe
     //  Datei kommt als .csv UND als .txt. Einmal je Pfad gelesen, nicht je Bild.
     property bool _isDatev: false
@@ -97,6 +107,9 @@ FocusScope {
     //  waere mit ihm die Undo-Historie weg (Strg+Z nach einem Blick in die
     //  Tabelle tat nichts mehr).
     property bool _rohtextGesehen: false
+    //  Hat der Rohtext seit dem letzten Umschalten geschrieben? `dirty` allein reicht nicht: das Auto-Speichern
+    //  setzt es zurueck, und die andere Flaeche zeigte dann den alten Stand.
+    property bool _rohtextGeaendert: false
     //  An der Eigenschaft selbst, nicht in den Knopf-Handlern: `_datevTable`
     //  wird auch aus dem Menue und aus Pruefstaenden gesetzt.
     //  Tabelle und Rohtext bearbeiten dieselbe Datei. Beim Umschalten schreibt
@@ -112,13 +125,14 @@ FocusScope {
             if (geschrieben && rohtext.item) rohtext.item.reloadFromDisk()
             root._rohtextGesehen = true
         } else if (rohtext.item) {
-            const geaendert = rohtext.item.dirty === true
+            const geaendert = rohtext.item.dirty === true || root._rohtextGeaendert
             rohtext.item.save()
+            root._rohtextGeaendert = false
             if (geaendert && tabelle) tabelle.reload()
+            if (geaendert && root._isMarkdown && surface.item && surface.item.reload) surface.item.reload()
         }
     }
-    readonly property bool _rohtextAktiv: (root._isDatev || root._isTable)
-                                          && !root._datevTable
+    readonly property bool _rohtextAktiv: root._hatRohtext && !root._datevTable
     readonly property bool _showTable: root._isTable && !root._isDatev && root._datevTable
     // WebEngine ist LAZY (WebEngineController): die Vorschau existiert nur,
     // wenn WebEngine.ready - vorher fällt HTML IMMER auf TextSurface zurück
@@ -198,9 +212,11 @@ FocusScope {
         //  gesetzt, dort staende noch der Typ der vorigen Datei.
         root._isDatev = (type === 4) && Viewer.isDatevFile(path)
         root._isTable = (type === 4) && !root._isDatev && Viewer.isTableFile(path)
+        root._isMarkdown = (type === 4) && !root._isDatev && !root._isTable && root._isMarkdownPath(path)
         //  Neue Datei, neue Historie: der Rohtext wird erst wieder erzeugt,
         //  wenn jemand hinschaut.
         root._rohtextGesehen = false
+        root._rohtextGeaendert = false
 
         //  Vor dem Aufbau der Flaeche, nicht darin: die Meldungen entstehen
         //  schon beim Einlesen der Quelle.
@@ -368,6 +384,7 @@ FocusScope {
             case 3:  return "qrc:/qml/pdf/PdfSurface.qml"
             case 4:  return root._isDatev          ? "qrc:/qml/datev/DatevSurface.qml"
                      : root._isTable         ? "qrc:/qml/table/TableSurface.qml"
+                     : root._isMarkdown      ? "qrc:/qml/viewer/MarkdownSurface.qml"
                      : root._showWebPreview  ? "qrc:/qml/viewer/HtmlHost.qml"
                                              : "qrc:/qml/viewer/TextSurface.qml"
             case 5:  return "qrc:/qml/docx/DocxSurface.qml"      // Word-Dokumente (DOCX-Editor)
@@ -388,10 +405,25 @@ FocusScope {
     Loader {
         id: rohtext
         anchors.fill: parent
-        active: (root._isDatev || root._isTable) && root._rohtextGesehen
+        active: root._hatRohtext && root._rohtextGesehen
         visible: root._rohtextAktiv
         source: "qrc:/qml/viewer/TextSurface.qml"
         onItemChanged: { if (item) item.source = root.path }
+    }
+    Connections {
+        target: rohtext.item
+        ignoreUnknownSignals: true
+        function onDirtyChanged() { if (rohtext.item.dirty) root._rohtextGeaendert = true }
+    }
+    //  Verweis aus einer Markdown-Datei auf eine andere Datei: liegt sie in der Galerie, blaettert der Viewer hin,
+    //  sonst oeffnet sie das System.
+    Connections {
+        target: surface.item
+        ignoreUnknownSignals: true
+        function onOpenFileRequested(p) {
+            if (galleryModel.rowForPath(p) >= 0) root.loadPath(p)
+            else Viewer.openExternally(p)
+        }
     }
 
     // Reserviert die Höhe der oberen Leiste in der Surface, damit deren eigene Toolbar nicht mit der globalen
@@ -552,6 +584,16 @@ FocusScope {
                     }
                 }
                 ChromeBtn {
+                    id: markdownBtn
+                    visible: root._isMarkdown
+                    anchors.verticalCenter: parent.verticalCenter
+                    kind: "html"
+                    active: root._datevTable
+                    tip: root._datevTable ? App.uiText(App.language, "ViewerShowSource")
+                                          : App.uiText(App.language, "ViewerShowPreview")
+                    onActivated: root._datevTable = !root._datevTable
+                }
+                ChromeBtn {
                     id: datevBtn
                     visible: root._isDatev || root._isTable
                     anchors.verticalCenter: parent.verticalCenter
@@ -661,6 +703,14 @@ FocusScope {
                                 root.releaseCurrent()
                                 root._htmlPreview = !root._htmlPreview
                             }
+                        }
+                        MenuItem {
+                            visible: root._isMarkdown
+                            height: visible ? implicitHeight : 0
+                            text: root._datevTable
+                                  ? App.uiText(App.language, "ViewerShowSource")
+                                  : App.uiText(App.language, "ViewerShowPreview")
+                            onTriggered: root._datevTable = !root._datevTable
                         }
                         MenuItem {
                             visible: root._isDatev || root._isTable

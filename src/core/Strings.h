@@ -457,6 +457,12 @@ enum class StringKey {
     ViewerShowPreview,
     ViewerShowSource,
     ViewerPreviewCrashed,
+    MarkdownDetailsShow,        // Zusatz hinter einer zugeklappten <details>-Summary
+    MarkdownDetailsHide,
+    MarkdownReadError,
+    MarkdownTruncated,
+    MarkdownCopyCode,
+    MarkdownCopied,
 
     // Batch 3: Filter-Tag-Hinzufügen, Kachel-Kontextmenü, Optionen-Buttons
     FilterAddTagBtn,           // "Hinzufügen" (Tag zur Filterliste)
