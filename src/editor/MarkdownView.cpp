@@ -5,7 +5,9 @@
 #include "core/Strings.h"
 #include "core/TextEncoding.h"
 #include "editor/EditorController.h"
+#include "editor/MarkdownPdf.h"
 #include "editor/MarkdownRender.h"
+#include "editor/TextPdfExporter.h"
 
 #include <QAbstractTextDocumentLayout>
 #include <QClipboard>
@@ -94,6 +96,7 @@ private:
 
 MarkdownView::MarkdownView(QObject* parent) : QObject(parent) {
     m_pool.setMaxThreadCount(1);
+    m_pdfPool.setMaxThreadCount(1);
     connect(&AppSettings::instance(), &AppSettings::languageChanged, this, [this] { start(false); });
     if (EditorController* c = activeController())
         connect(c, &EditorController::paletteChanged, this, [this] { start(false); });
@@ -101,7 +104,9 @@ MarkdownView::MarkdownView(QObject* parent) : QObject(parent) {
 
 MarkdownView::~MarkdownView() {
     if (m_abort) m_abort->store(true);
+    m_pdfAbort->store(true);
     m_pool.waitForDone();
+    m_pdfPool.waitForDone();
 }
 
 void MarkdownView::setSource(const QString& pathOrUrl) {
@@ -150,20 +155,7 @@ void MarkdownView::start(bool readFile) {
     }
     if (!m_textValid) readFile = true;
 
-    md::RenderStyle st;
-    st.body = QGuiApplication::font();
-    st.body.setPixelSize(kFontPx);
-    //  Latein aus der Festbreitenschrift, alles andere faellt je Zeichen auf die Familien der App zurueck.
-    st.mono = QFontDatabase::systemFont(QFontDatabase::FixedFont);
-    QStringList familien{st.mono.family()};
-    familien += st.body.families().isEmpty() ? QStringList{st.body.family()} : st.body.families();
-    st.mono.setFamilies(familien);
-    st.mono.setPixelSize(kFontPx);
-    st.palette = activeController() ? activeController()->palette() : paletteForProfile(EditorProfile::Nightfall);
-    st.baseDir = QFileInfo(m_source).absolutePath();
-    st.flipped = m_flipped;
-    st.showLabel = Strings::get(StringKey::MarkdownDetailsShow);
-    st.hideLabel = Strings::get(StringKey::MarkdownDetailsHide);
+    md::RenderStyle st = renderStyle();
 
     if (kLog) qInfo("[md] start lesen=%d gen=%d %s", int(readFile), m_generation, qPrintable(m_source));
     m_abort = std::make_shared<std::atomic<bool>>(false);
@@ -176,6 +168,80 @@ void MarkdownView::start(bool readFile) {
                                     self->adopt(std::exchange(r->doc, nullptr), gen, r->text, readFile, r->ok,
                                                 r->truncated);
                                 }));
+}
+
+md::RenderStyle MarkdownView::renderStyle() const { return styleFor(m_source, m_flipped); }
+
+md::RenderStyle MarkdownView::styleFor(const QString& source, const QSet<int>& flipped) {
+    md::RenderStyle st;
+    st.body = QGuiApplication::font();
+    st.body.setPixelSize(kFontPx);
+    //  Latein aus der Festbreitenschrift, alles andere faellt je Zeichen auf die Familien der App zurueck.
+    st.mono = QFontDatabase::systemFont(QFontDatabase::FixedFont);
+    QStringList familien{st.mono.family()};
+    familien += st.body.families().isEmpty() ? QStringList{st.body.family()} : st.body.families();
+    st.mono.setFamilies(familien);
+    st.mono.setPixelSize(kFontPx);
+    st.palette = activeController() ? activeController()->palette() : paletteForProfile(EditorProfile::Nightfall);
+    st.baseDir = QFileInfo(source).absolutePath();
+    st.flipped = flipped;
+    st.showLabel = Strings::get(StringKey::MarkdownDetailsShow);
+    st.hideLabel = Strings::get(StringKey::MarkdownDetailsHide);
+    return st;
+}
+
+QString MarkdownView::pdfTarget() const { return TextPdf::targetPathFor(m_source); }
+
+void MarkdownView::countPdfPages(bool print, bool landscape) {
+    runPdf(QString(), print, landscape, 1, 0, ++m_countGeneration);
+}
+
+void MarkdownView::exportPdf(const QString& target, bool print, bool landscape, int firstPage, int lastPage) {
+    if (m_exporting || target.isEmpty() || !m_textValid) {
+        QMetaObject::invokeMethod(this, [this, target] {
+            emit pdfExportFinished(false, target, Strings::get(StringKey::MarkdownPdfNotReady));
+        }, Qt::QueuedConnection);
+        return;
+    }
+    m_exporting = true;
+    emit exportingChanged();
+    runPdf(mg::toLocalPath(target), print, landscape, firstPage, lastPage, 0);
+}
+
+// Zaehlen und Schreiben teilen sich den Faden: beide legen das Dokument aus, und zwei auf einmal kosteten nur RAM.
+void MarkdownView::runPdf(const QString& target, bool print, bool landscape, int first, int last,
+                          int countGeneration) {
+    class PdfTask : public QRunnable {
+    public:
+        std::function<void()> work;
+        void run() override { work(); }
+    };
+    md::PdfOptions opt;
+    opt.print = print;
+    opt.landscape = landscape;
+    opt.firstPage = first;
+    opt.lastPage = last;
+    auto* t = new PdfTask;
+    t->setAutoDelete(true);
+    QPointer<MarkdownView> self(this);
+    t->work = [self, text = m_text, st = renderStyle(), opt, target, countGeneration, abort = m_pdfAbort] {
+        QString err;
+        const int seiten = md::writePdf(md::parse(text), st, opt, target, &err, abort.get());
+        if (abort->load()) return;
+        QMetaObject::invokeMethod(self, [self, seiten, err, target, countGeneration] {
+            if (!self) return;
+            if (target.isEmpty()) {
+                //  Nur die juengste Zaehlung zaehlt - der Dialog fragt bei jedem Umschalten neu.
+                if (countGeneration == self->m_countGeneration)
+                    emit self->pdfPagesCounted(seiten);
+                return;
+            }
+            self->m_exporting = false;
+            emit self->exportingChanged();
+            emit self->pdfExportFinished(seiten > 0, target, err);
+        }, Qt::QueuedConnection);
+    };
+    m_pdfPool.start(t);
 }
 
 void MarkdownView::adopt(QTextDocument* doc, int generation, const QString& text, bool readFile, bool ok,

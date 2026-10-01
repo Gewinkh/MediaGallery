@@ -91,6 +91,11 @@ character.
 the row.**
 Why: dropping on the row itself puts the group *inside* the other one.
 
+**Saving several files as PDF ignores a text file's own PDF colour.**
+Why: that colour belongs to the open text file; the gallery uses black for the
+printer-friendly style and the editor theme for "as shown".
+Workaround: open the file and save it from the *Document* menu.
+
 **A folder with tens of thousands of files pauses briefly before the first tile.**
 Why: the folder is read and sorted once up front, which makes the rest much
 faster (12,000 files: 18 ms pause, whole read 161 ms instead of 628 ms).
@@ -379,13 +384,14 @@ Why: Chrome and this app then read "Hallo" as "H allo". Files written by this ap
 are repaired; foreign files are left untouched.
 Workaround: Okular or Evince read such files correctly.
 
-**The page number in the text-to-PDF export is fixed** (centred, "1/3").
+**The page number in the text, Markdown and table PDF export is fixed** (centred,
+"1/3").
 Why: only the DOCX export offers a choice.
 
-**The *Like the editor* PDF export always prints the editor's background.**
+**The *As shown* PDF export always prints the background of the view.**
 Why: its colours only work on that background. A dark theme therefore costs a lot
 of toner.
-Workaround: use *One colour* (the default) for printing.
+Workaround: use *Printer-friendly* (the default) for printing.
 
 **An `#if` branch that cuts through a function cannot be folded.**
 Why: a branch that opens a function's brace ends before that function does, and
@@ -606,6 +612,15 @@ Why: that is how such exports are laid out, and text-only tables can be
 recognised no other way.
 Workaround: the *All* tab shows every row as data.
 
+**In a table PDF, very long cells are cut off with `…`.**
+Why: a column is at most about 320 pixels wide unless you set its width, so that
+one long entry does not push every other column onto the next page.
+Workaround: drag the column's edge in the table; the PDF uses that width.
+
+**A table PDF uses black text for all columns in the printer-friendly style.**
+Why: coloured text costs ink and is hard to read in grey. Column backgrounds stay
+as light greys, bold stays bold.
+
 ---
 
 ## DATEV files
@@ -676,8 +691,10 @@ Planned work, not limits. Once something is built, it moves to
 - **Charts from table data** - bars, lines, pies and graphs. Nothing of it is
   designed yet.
 - **Search in the formatted Markdown view** - the editable text has it (`Ctrl+F`).
-- **Printing or a PDF of the formatted Markdown view** - the editable text can be
-  saved as PDF, but only as plain text.
+- **PDF of DATEV booking batches** - normal CSV and TSV tables can be saved as PDF,
+  the booking view not yet.
+- **Picking single pages for a PDF** (for example pages 2 and 4) from small page
+  previews - today the PDF window offers all pages or one range from - to.
 - **Own drawing for the formatted Markdown view** - would bring quote bars, shaded
   table headers and no pause on very large files. Planned, not decided: typical
   files would barely get faster.

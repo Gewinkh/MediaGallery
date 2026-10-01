@@ -66,6 +66,8 @@ FocusScope {
     property var    tags: []
     property var    dateTime
     property bool   randomNext: false
+    // Weiterspielen: Wiederholung je Kachel (0 aus, 1 eine, 2 alle), umgeschaltet in der Steuerleiste.
+    property int    autoRepeat: 0
 
     property bool _htmlPreview: true
     function _isHtmlPath(p) {
@@ -201,6 +203,8 @@ FocusScope {
 
     function loadRow(r) {
         if (r < 0 || r >= galleryModel.count) { root.backRequested(); return }
+        //  Dieselbe Datei nicht freigeben: `source` aendert sich nicht, die Flaeche bliebe leer stehen.
+        if (surface.item && galleryModel.filePathAt(r) === root.path) { currentRow = r; return }
         releaseCurrent()
         currentRow  = r
         path        = galleryModel.filePathAt(r)
@@ -262,6 +266,24 @@ FocusScope {
         var n = galleryModel.stepRow(currentRow, 1)
         if (n >= 0) loadRow(n)
     }
+    //  Am Ende einer Video-/Audiodatei: die naechste gleicher Art im selben Ordner. `startAt` nur bei einem
+    //  Sprung von Hand - es mischt neu, und dann kaeme eine Datei vor Rundenende ein zweites Mal.
+    PlayQueue {
+        id: autoQueue
+        shuffle: root.randomNext
+        repeat: root.autoRepeat
+    }
+    function _playNext() {
+        if (!App.autoPlay || (root.type !== 1 && root.type !== 2) || !surface.item) return
+        autoQueue.setItems(galleryModel.sameKindPaths(root.currentRow))
+        if (autoQueue.currentPath !== root.path && !autoQueue.startAt(root.path)) return
+        const next = autoQueue.advance(true)
+        if (next.length === 0) return
+        //  Dieselbe Datei aendert `source` nicht - sie muss von vorn gestartet werden.
+        if (next === root.path) surface.item.restart()
+        else root.loadPath(next)
+    }
+
     function prevRow() {
         if (galleryModel.count === 0) return
         var p = galleryModel.stepRow(currentRow, -1)
@@ -424,6 +446,16 @@ FocusScope {
             if (galleryModel.rowForPath(p) >= 0) root.loadPath(p)
             else Viewer.openExternally(p)
         }
+        function onPlaybackFinished() { root._playNext() }
+        function onRepeatClicked() { root.autoRepeat = (root.autoRepeat + 1) % 3 }
+    }
+
+    Binding {
+        target: surface.item
+        property: "repeatMode"
+        value: App.autoPlay ? root.autoRepeat : -1
+        when: surface.item !== null && surface.item.repeatMode !== undefined
+        restoreMode: Binding.RestoreNone
     }
 
     // Reserviert die Höhe der oberen Leiste in der Surface, damit deren eigene Toolbar nicht mit der globalen
@@ -741,7 +773,7 @@ FocusScope {
                         }
 
                         DocMenuRow {
-                            visible: root._textCtl !== null
+                            visible: root._pdfQuelle !== null
                             label: App.uiText(App.language, "TextPdfMenu")
                             onActivated: root._openDocPopup(textPdfPopup, this)
                         }
@@ -1168,6 +1200,34 @@ FocusScope {
         pop.open()
     }
 
+    //  Wer gerade ein PDF schreiben kann: die Rohtext-Flaeche, wenn sie sichtbar ist, sonst die Flaeche selbst.
+    //  Den Vertrag (`pdfKind`, `pdfCount`, `pdfExport`, `pdfPages`, `pdfBusy`, `pdfFinished`) erfuellen
+    //  TextSurface, MarkdownSurface und TableSurface; DATEV hat ihn nicht.
+    readonly property var _pdfQuelle: {
+        const k = (rohtext.item && rohtext.visible) ? rohtext.item : surface.item
+        return (k && k.pdfKind !== undefined) ? k : null
+    }
+    property bool _pdfAlle: false
+    property bool _pdfBereich: false
+    function _pdfZaehle() {
+        if (root._pdfQuelle && textPdfPopup.opened)
+            root._pdfQuelle.pdfCount(App.textPdfNative, App.pdfLandscape, root._pdfAlle)
+    }
+    on_PdfAlleChanged: root._pdfZaehle()
+    Connections {
+        target: App
+        function onTextPdfNativeChanged() { root._pdfZaehle() }
+        function onPdfLandscapeChanged() { root._pdfZaehle() }
+    }
+    Connections {
+        target: root._pdfQuelle
+        ignoreUnknownSignals: true
+        function onPdfFinished(ok, target, error) {
+            pdfToast.zeige(ok ? App.uiText(App.language, "TextExportPdfOk").arg(target.split("/").pop())
+                              : App.uiText(App.language, "TextExportPdfFail").arg(error.length > 0 ? error : "?"))
+        }
+    }
+
     Popup {
         id: textPdfPopup
         objectName: "textPdfPopup"
@@ -1175,66 +1235,37 @@ FocusScope {
         dim: false
         closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
         padding: 10
+        onOpened: root._pdfZaehle()
         background: Rectangle {
             color: App.themeMenuBarBg
             border.color: App.themeBorder
             radius: 8
         }
 
+        readonly property int _seiten: root._pdfQuelle ? root._pdfQuelle.pdfPages : -1
+
         contentItem: Column {
             spacing: 10
 
             Text {
-                text: App.uiText(App.language, "TextPdfColorTitle")
+                text: App.uiText(App.language, "PdfTitle")
                 color: App.themeTextPrimary
                 font.pixelSize: 12
+                font.bold: true
             }
 
-            //  Zwei Betriebsarten nebeneinander. Sie schliessen einander aus:
-            //  im nativen Weg gilt die Farbe daneben nicht mehr, also wird sie
-            //  ausgegraut statt stillschweigend uebergangen.
-            Row {
-                spacing: 6
-                Repeater {
-                    model: [
-                        { label: App.uiText(App.language, "TextPdfModeOne"),    nativ: false },
-                        { label: App.uiText(App.language, "TextPdfModeNative"), nativ: true  }
-                    ]
-                    delegate: Rectangle {
-                        required property var modelData
-                        readonly property bool gewaehlt: App.textPdfNative === modelData.nativ
-                        height: 24
-                        width: modeText.implicitWidth + 18
-                        radius: 5
-                        color: gewaehlt ? Qt.rgba(App.themeAccent.r, App.themeAccent.g,
-                                                  App.themeAccent.b, 0.22)
-                                        : (modeHover.hovered ? App.themeCard : "transparent")
-                        border.width: 1
-                        border.color: gewaehlt ? App.themeAccent : App.themeBorder
-                        Text {
-                            id: modeText
-                            anchors.centerIn: parent
-                            text: parent.modelData.label
-                            color: parent.gewaehlt ? App.themeAccent : App.themeTextPrimary
-                            font.pixelSize: 11
-                        }
-                        HoverHandler { id: modeHover }
-                        TapHandler { onTapped: App.textPdfNative = parent.modelData.nativ }
-                    }
-                }
-            }
-            Text {
-                width: 260
-                wrapMode: Text.WordWrap
-                text: App.uiText(App.language, "TextPdfModeTip")
-                color: App.themeTextMuted
-                font.pixelSize: 10
-            }
+            PdfExportOptions { tipWidth: 270 }
 
+            //  Nur Text im Druckstil hat EINE Schriftfarbe; die Originalfarben bringt das Profil mit.
             Row {
                 spacing: 8
-                opacity: App.textPdfNative ? 0.4 : 1.0
-                enabled: !App.textPdfNative
+                visible: root._pdfQuelle !== null && root._pdfQuelle.pdfKind === "text" && !App.textPdfNative
+                Text {
+                    anchors.verticalCenter: parent.verticalCenter
+                    text: App.uiText(App.language, "TextPdfColorTitle")
+                    color: App.themeTextMuted
+                    font.pixelSize: 11
+                }
                 ColorPicker {
                     anchors.verticalCenter: parent.verticalCenter
                     width: 34; height: 20
@@ -1264,9 +1295,57 @@ FocusScope {
                 }
             }
 
+            ChoiceChips {
+                visible: root._pdfQuelle !== null && root._pdfQuelle.pdfKind === "table"
+                         && root._pdfQuelle.pdfBlocks > 1
+                labels: [App.uiText(App.language, "PdfTableThis"), App.uiText(App.language, "PdfTableAll")]
+                current: root._pdfAlle ? 1 : 0
+                onPicked: function (i) { root._pdfAlle = i === 1 }
+            }
+
+            Row {
+                spacing: 8
+                ChoiceChips {
+                    anchors.verticalCenter: parent.verticalCenter
+                    labels: [App.uiText(App.language, "PdfPagesAll"), App.uiText(App.language, "PdfPagesRange")]
+                    current: root._pdfBereich ? 1 : 0
+                    onPicked: function (i) { root._pdfBereich = i === 1 }
+                }
+                SpinBox {
+                    id: seiteVon
+                    objectName: "pdfPageFrom"
+                    visible: root._pdfBereich
+                    anchors.verticalCenter: parent.verticalCenter
+                    width: 84
+                    from: 1; to: Math.max(1, textPdfPopup._seiten)
+                    editable: true
+                    onValueModified: if (seiteBis.value < value) seiteBis.value = value
+                }
+                SpinBox {
+                    id: seiteBis
+                    objectName: "pdfPageTo"
+                    visible: root._pdfBereich
+                    anchors.verticalCenter: parent.verticalCenter
+                    width: 84
+                    from: 1; to: Math.max(1, textPdfPopup._seiten)
+                    value: Math.max(1, textPdfPopup._seiten)
+                    editable: true
+                    onValueModified: if (seiteVon.value > value) seiteVon.value = value
+                }
+                Text {
+                    anchors.verticalCenter: parent.verticalCenter
+                    text: textPdfPopup._seiten < 0 ? App.uiText(App.language, "PdfPagesCounting")
+                                                   : App.uiText(App.language, "PdfPagesOf").arg(textPdfPopup._seiten)
+                    color: App.themeTextMuted
+                    font.pixelSize: 11
+                }
+            }
+
             Rectangle {
+                id: konvKnopf
+                readonly property bool bereit: root._pdfQuelle !== null && !root._pdfQuelle.pdfBusy
                 width: Math.max(140, konvRow.implicitWidth + 24); height: 28; radius: 6
-                opacity: (root._textCtl && !root._textCtl.pdfBusy) ? 1.0 : 0.45
+                opacity: konvKnopf.bereit ? 1.0 : 0.45
                 color: konvHover.hovered ? Qt.rgba(App.themeAccent.r, App.themeAccent.g,
                                                    App.themeAccent.b, 0.30)
                                          : Qt.rgba(App.themeAccent.r, App.themeAccent.g,
@@ -1288,15 +1367,45 @@ FocusScope {
                 }
                 HoverHandler { id: konvHover }
                 TapHandler {
-                    enabled: root._textCtl !== null && !root._textCtl.pdfBusy
+                    enabled: konvKnopf.bereit
                     onTapped: {
-                        root._textCtl.exportPdf()
+                        root._pdfQuelle.pdfExport(App.textPdfNative, App.pdfLandscape, root._pdfAlle,
+                                                  root._pdfBereich ? seiteVon.value : 1,
+                                                  root._pdfBereich ? seiteBis.value : 0)
                         textPdfPopup.close()
                         viewMenu.close()
                     }
                 }
             }
         }
+    }
+
+    //  Ergebnis eines PDF-Exports, fuer alle Flaechen an derselben Stelle.
+    Rectangle {
+        id: pdfToast
+        objectName: "pdfToast"
+        function zeige(t) {
+            pdfToastText.text = t
+            pdfToast.visible = true
+            pdfToastTimer.restart()
+        }
+        visible: false
+        z: 60
+        //  Oben: unten steht schon die Ordner-Meldung der Galerie.
+        anchors { horizontalCenter: parent.horizontalCenter; top: parent.top
+                  topMargin: (topBar.visible ? topBar.height : 0) + 12 }
+        width: pdfToastText.implicitWidth + 28
+        height: 32
+        radius: 8
+        color: App.themeMenuBarBg
+        border.color: App.themeBorder
+        Text {
+            id: pdfToastText
+            anchors.centerIn: parent
+            color: App.themeTextPrimary
+            font.pixelSize: 12
+        }
+        Timer { id: pdfToastTimer; interval: 3500; onTriggered: pdfToast.visible = false }
     }
 
     ChoicePopup {

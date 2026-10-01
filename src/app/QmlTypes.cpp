@@ -2,6 +2,7 @@
 
 #include "app/PaneController.h"
 #include "app/PaneHost.h"
+#include "audio/PlayQueue.h"
 #include "core/FileBrowseModel.h"
 #include "datev/DatevController.h"
 #include "docx/edit/DocxEditController.h"
@@ -71,6 +72,8 @@ void registerQmlTypes() {
     qmlRegisterType<mg::datev::DatevController>("MediaGallery", 1, 0, "DatevController");
     //  Gewoehnliche Tabellendateien (CSV/TSV) - ebenfalls je Kachel.
     qmlRegisterType<mg::table::TableController>("MediaGallery", 1, 0, "TableController");
+    //  Weiterspielen im Vollbild: je Kachel eine eigene Folge samt Mischung.
+    qmlRegisterType<PlayQueue>("MediaGallery", 1, 0, "PlayQueue");
 }
 
 }  // namespace mg

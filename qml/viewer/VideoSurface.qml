@@ -13,6 +13,10 @@ Item {
     property string source: ""
     property bool   active: true
     property real   bottomInset: 0
+    // Wiederholung des Weiterspielens (0 aus, 1 eine, 2 alle); -1 = kein Knopf. Den Zustand haelt der Viewer.
+    property int    repeatMode: -1
+    signal repeatClicked()
+    signal playbackFinished()
     Behavior on bottomInset { NumberAnimation { duration: 180 } }
 
     // Mono-Play: eindeutiges Token je Wiedergabestelle. Startet eine andere Stelle, PAUSIERT diese hier - kein
@@ -31,6 +35,13 @@ Item {
     function release() {
         player.stop()
         player.source = ""
+    }
+
+    function _meldeEnde() { root.playbackFinished() }
+
+    function restart() {
+        player.position = 0
+        player.play()
     }
 
     function seekBy(deltaMs) {
@@ -70,6 +81,8 @@ Item {
             if (playbackState === MediaPlayer.PlayingState)
                 App.announcePlayback(root._playToken)
         }
+        // Verzoegert: der Empfaenger tauscht die Quelle, und das nicht im Statuswechsel desselben Players.
+        onMediaStatusChanged: if (mediaStatus === MediaPlayer.EndOfMedia) Qt.callLater(root._meldeEnde)
     }
 
     VideoOutput {
@@ -141,10 +154,14 @@ Item {
             ToolButton {
                 Layout.preferredWidth: 36; Layout.preferredHeight: 36
                 onClicked: player.playbackState === MediaPlayer.PlayingState ? player.pause() : player.play()
-                contentItem: DrawnIcon {
-                    name: player.playbackState === MediaPlayer.PlayingState ? "pause" : "play"
-                    size: 18
-                    color: "white"
+                // Im Item verankert: als contentItem zieht der Knopf das Symbol auf und es sass oben links.
+                contentItem: Item {
+                    DrawnIcon {
+                        anchors.centerIn: parent
+                        name: player.playbackState === MediaPlayer.PlayingState ? "pause" : "play"
+                        size: 18
+                        color: "white"
+                    }
                 }
             }
 
@@ -187,6 +204,26 @@ Item {
                 text: root.formatTime(player.duration)
                 color: "white"
                 font.pixelSize: 11
+            }
+
+            ToolButton {
+                visible: root.repeatMode >= 0
+                Layout.preferredWidth: 32; Layout.preferredHeight: 36
+                onClicked: root.repeatClicked()
+                contentItem: Item {
+                    DrawnIcon {
+                        anchors.centerIn: parent
+                        name: root.repeatMode === 1 ? "loop-one" : "loop"
+                        size: 17
+                        color: root.repeatMode > 0 ? App.themeAccent : "white"
+                        opacity: root.repeatMode > 0 ? 1.0 : 0.6
+                    }
+                }
+                ToolTip.visible: hovered
+                ToolTip.delay: 500
+                ToolTip.text: App.uiText(App.language,
+                                         root.repeatMode === 1 ? "AudioRepeatOne"
+                                       : root.repeatMode === 2 ? "AudioRepeatAll" : "AudioRepeatOff")
             }
 
             ToolButton {

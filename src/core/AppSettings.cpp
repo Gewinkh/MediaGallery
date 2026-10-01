@@ -488,6 +488,12 @@ bool AppSettings::monoPlay() const {
 void AppSettings::setMonoPlay(bool v) {
     m_settings.setValue("ui/monoPlay", v);
 }
+bool AppSettings::autoPlay() const {
+    return m_settings.value("ui/autoPlay", true).toBool();
+}
+void AppSettings::setAutoPlay(bool v) {
+    m_settings.setValue("ui/autoPlay", v);
+}
 bool AppSettings::showHiddenFiles() const {
     return m_settings.value("gallery/showHidden", false).toBool();
 }
@@ -504,6 +510,18 @@ bool AppSettings::textPdfNative() const {
 }
 void AppSettings::setTextPdfNative(bool v) {
     m_settings.setValue("ui/textPdfNative", v);
+}
+bool AppSettings::pdfLandscape() const {
+    return m_settings.value("ui/pdfLandscape", false).toBool();
+}
+void AppSettings::setPdfLandscape(bool v) {
+    m_settings.setValue("ui/pdfLandscape", v);
+}
+bool AppSettings::tableGridLines() const {
+    return m_settings.value("table/gridLines", false).toBool();
+}
+void AppSettings::setTableGridLines(bool v) {
+    m_settings.setValue("table/gridLines", v);
 }
 
 bool AppSettings::tableOpensTxt() const {

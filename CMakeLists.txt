@@ -245,6 +245,8 @@ add_library(mg_lib STATIC
     src/editor/LanguageTable.cpp
     src/editor/LanguageTable.h
     src/editor/MarkdownParser.cpp
+    src/editor/MarkdownPdf.cpp
+    src/editor/MarkdownPdf.h
     src/editor/MarkdownParser.h
     src/editor/MarkdownRender.cpp
     src/editor/MarkdownRender.h
@@ -359,6 +361,8 @@ add_library(mg_lib STATIC
     src/table/TableFilter.h
     src/table/TableFormula.cpp
     src/table/TableFormula.h
+    src/table/TablePdf.cpp
+    src/table/TablePdf.h
     src/table/TableSearch.cpp
     src/table/TableSearch.h
     src/table/TableSort.cpp

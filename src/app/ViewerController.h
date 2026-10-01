@@ -1,5 +1,10 @@
 #pragma once
 #include <QColor>
+#include <QFont>
+#include <QThreadPool>
+#include <atomic>
+#include <functional>
+#include <memory>
 #include <QObject>
 #include <QString>
 #include <QStringList>
@@ -67,7 +72,19 @@ public:
     Q_INVOKABLE void exportTextToPdf(const QString& filePathOrUrl, const QString& content,
                                      const QColor& textColor = QColor(Qt::black),
                                      int tabWidth = 4,
-                                     bool native = false);
+                                     bool native = false,
+                                     bool landscape = false, int firstPage = 1, int lastPage = 0);
+    //  Nur zaehlen, fuer den Seitenbereich im Export-Fenster -> `textPdfPagesCounted`.
+    Q_INVOKABLE void countTextPdfPages(const QString& filePathOrUrl, const QString& content,
+                                       int tabWidth, bool native, bool landscape);
+
+    //  Aus der Galerie: je Datei ein PDF daneben (Text, Markdown, Tabelle; DATEV und Ablage nicht).
+    //  `tableFont` ist die Zellschrift der Tabellenansicht.
+    Q_INVOKABLE bool canExportPdf(const QString& filePathOrUrl) const;
+    //  Nur nach dem Dateityp, ohne eine Datei zu oeffnen - fuer die Zahl im Dialog einer grossen Auswahl.
+    Q_INVOKABLE QStringList pdfCandidates(const QStringList& paths) const;
+    Q_INVOKABLE void exportFilesToPdf(const QStringList& paths, bool native, bool landscape,
+                                      const QFont& tableFont);
 
 
     // Intern (vom Worker-Thread per QueuedConnection aufgerufen)
@@ -80,6 +97,8 @@ signals:
     void pdfAnnotationsReady(const QString& path, const QVariantList& annotations);
 
     void textPdfExportFinished(bool ok, const QString& target, const QString& error);
+    void textPdfPagesCounted(int pages);
+    void filesPdfExportFinished(int written, int failed, const QString& lastTarget);
 
 private:
     void touchCache(const QString& path);
@@ -91,4 +110,10 @@ private:
     QStringList                  m_cacheOrder;      // LRU-Reihenfolge (alt -> neu)
     QSet<QString>                m_inFlight;        // laufende Scans (Dedup)
     QStringList                  m_sessionTempFiles;// extrahierte Medien (Cleanup bei Exit)
+
+    //  Export und Zaehlen in EINEM Faden: beide legen ganze Dokumente aus.
+    QThreadPool                  m_pdfPool;
+    std::shared_ptr<std::atomic<bool>> m_pdfAbbruch = std::make_shared<std::atomic<bool>>(false);
+    int                          m_textZaehlGen = 0;
+    void startPdf(std::function<void()> arbeit);
 };

@@ -111,6 +111,7 @@ class TableController : public QObject {
     Q_PROPERTY(QStringList warnings READ warnings NOTIFY stateChanged)
     Q_PROPERTY(bool truncated READ truncated NOTIFY stateChanged)
     Q_PROPERTY(bool cp1252    READ cp1252    NOTIFY stateChanged)
+    Q_PROPERTY(bool pdfBusy   READ pdfBusy   NOTIFY pdfBusyChanged)
 
 public:
     explicit TableController(QObject* parent = nullptr);
@@ -281,6 +282,13 @@ public:
     //  Neu lesen, falls die Datei auf der Platte eine andere ist.
     Q_INVOKABLE bool reloadIfChangedOnDisk();
 
+    //  PDF so, wie die Tabelle gezeigt wird, oder alle Tabellen der Datei vollstaendig. `opt`:
+    //  print, landscape, all, grid, first, last, font, background, text, headerBackground, headerText.
+    bool pdfBusy() const { return m_pdfBusy; }
+    Q_INVOKABLE QString pdfTarget() const;
+    Q_INVOKABLE void countPdfPages(const QVariantMap& opt);
+    Q_INVOKABLE void exportPdf(const QString& target, const QVariantMap& opt);
+
 signals:
     void sourceChanged();
     void stateChanged();
@@ -290,6 +298,9 @@ signals:
     void rowsChanged();
     void editChanged();
     void saved(bool ok);
+    void pdfBusyChanged();
+    void pdfPagesCounted(int pages);
+    void pdfExportFinished(bool ok, const QString& target, const QString& error);
 
 private:
     //  Je Zeile der Tabelle: woher sie in der Datei stammt und wann sie sich
@@ -459,6 +470,13 @@ private:
     QThreadPool m_pool;
     std::shared_ptr<std::atomic<bool>> m_abbruch;
     std::shared_ptr<std::atomic<bool>> m_suchAbbruch;
+
+    //  Eigener Faden: ein langer Export soll Suche und Sortierung nicht aufhalten.
+    QThreadPool m_pdfPool;
+    std::shared_ptr<std::atomic<bool>> m_pdfAbbruch = std::make_shared<std::atomic<bool>>(false);
+    bool m_pdfBusy = false;
+    int  m_pdfZaehlGen = 0;
+    void pdfStarten(const QString& ziel, const QVariantMap& opt, int zaehlGen);
 };
 
 }  // namespace mg::table

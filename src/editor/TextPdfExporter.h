@@ -23,12 +23,22 @@ struct Stil {
     mg::editor::SyntaxPalette palette;
 };
 
+//  Blatt und Auswahl; `bis` 0 = bis zum Ende. Die Fusszeile zaehlt immer das ganze Dokument.
+struct Seiten {
+    bool quer = false;
+    int  von = 1;
+    int  bis = 0;
+};
+
 // Liefert false + `*err` bei Fehler; die Zieldatei wird dann nicht angelegt (QSaveFile-Rollback). `tabWidth` in
 // ZEICHEN aus der Editor-Einstellung - eine feste 8 verdoppelte die Einrückung einer mit vier eingerückten Datei.
+// Leerer `targetPath` mit `seitenZahl` zaehlt nur.
 bool exportToPdf(const QString& text, const QString& targetPath,
                  const Stil& stil = Stil(),
                  int tabWidth = 4,
-                 QString* err = nullptr);
+                 QString* err = nullptr,
+                 const Seiten& seiten = Seiten(),
+                 int* seitenZahl = nullptr);
 
 //  Freier Zielpfad NEBEN der Quelle: <Name>.pdf, bei Kollision <Name> (2).pdf …
 //  (gleiche Namensregel wie DocxEditController::pdfExportTargetPath).

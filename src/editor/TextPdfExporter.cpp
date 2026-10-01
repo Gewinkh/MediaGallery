@@ -64,20 +64,21 @@ QString targetPathFor(const QString& sourcePath) {
 
 bool exportToPdf(const QString& text, const QString& targetPath,
                  const Stil& stil, int tabWidth,
-                 QString* err) {
+                 QString* err, const Seiten& seiten, int* seitenZahl) {
     const QColor ink = stil.tinte.isValid() ? stil.tinte : QColor(Qt::black);
     //  Gefaerbt wird nur, wenn der Zerleger die Sprache auch kennt - sonst
     //  haenge ein leeres Blatt am Wunsch statt am Koennen.
     const bool faerben =
         stil.syntax
         && mg::editor::languageForId(stil.sprache).kind != mg::editor::ScannerKind::PlainText;
-    if (targetPath.isEmpty()) {
+    const bool nurZaehlen = targetPath.isEmpty() && seitenZahl;
+    if (targetPath.isEmpty() && !nurZaehlen) {
         if (err) *err = QStringLiteral("Kein Zielpfad.");
         return false;
     }
 
     QSaveFile out(targetPath);
-    if (!out.open(QIODevice::WriteOnly)) {
+    if (!nurZaehlen && !out.open(QIODevice::WriteOnly)) {
         if (err) *err = QStringLiteral("Ziel nicht beschreibbar.");
         return false;
     }
@@ -91,6 +92,7 @@ bool exportToPdf(const QString& text, const QString& targetPath,
         sink.open(QIODevice::WriteOnly);
         QPdfWriter writer(&sink);
         writer.setPageSize(QPageSize(QPageSize::A4));
+        writer.setPageOrientation(seiten.quer ? QPageLayout::Landscape : QPageLayout::Portrait);
         //  Der Schreiber bekommt KEINE Raender - den Abstand setzt der Maler
         //  selbst. Mit Raendern begrenzt Qt die Malflaeche auf das Innere, und
         //  die Papierfarbe endete an der Randkante statt am Blattrand.
@@ -189,10 +191,14 @@ bool exportToPdf(const QString& text, const QString& targetPath,
         }
 
         const int pages = pageSpans.size();
+        if (seitenZahl) *seitenZahl = pages;
+        if (nurZaehlen) return true;
+        const int erste = qBound(1, seiten.von, pages) - 1;
+        const int letzte = seiten.bis <= 0 ? pages - 1 : qBound(erste + 1, seiten.bis, pages) - 1;
 
         QPainter p(&writer);
-        for (int pg = 0; pg < pages; ++pg) {
-            if (pg > 0) writer.newPage();
+        for (int pg = erste; pg <= letzte; ++pg) {
+            if (pg > erste) writer.newPage();
 
             //  Die Flaeche zuerst und ueber das GANZE Blatt, Rand eingeschlossen.
             //  Die zwei Pixel darueber hinaus fangen die Rundung von

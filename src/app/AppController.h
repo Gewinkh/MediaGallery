@@ -40,6 +40,7 @@ class AppController : public QObject {
     Q_PROPERTY(QString extractLayout   READ extractLayout   NOTIFY extractLayoutChanged)
     Q_PROPERTY(bool    audioAccentApple READ audioAccentApple NOTIFY audioAccentChanged)
     Q_PROPERTY(bool    monoPlay        READ monoPlay        NOTIFY monoPlayChanged)
+    Q_PROPERTY(bool    autoPlay        READ autoPlay        NOTIFY autoPlayChanged)
     Q_PROPERTY(bool    tileDragActive  READ tileDragActive  NOTIFY tileDragActiveChanged)
     Q_PROPERTY(bool    dragLogging     READ dragLogging     CONSTANT)
     Q_PROPERTY(bool    fileDropMove    READ fileDropMove    WRITE setFileDropMove NOTIFY fileDropMoveChanged)
@@ -49,6 +50,8 @@ class AppController : public QObject {
     Q_PROPERTY(bool    tableDateMonthFirst READ tableDateMonthFirst WRITE setTableDateMonthFirst NOTIFY tableDateMonthFirstChanged)
     Q_PROPERTY(bool    tableGroupDigits READ tableGroupDigits WRITE setTableGroupDigits NOTIFY tableGroupDigitsChanged)
     Q_PROPERTY(bool    textPdfNative   READ textPdfNative   WRITE setTextPdfNative NOTIFY textPdfNativeChanged)
+    Q_PROPERTY(bool    pdfLandscape    READ pdfLandscape    WRITE setPdfLandscape  NOTIFY pdfLandscapeChanged)
+    Q_PROPERTY(bool    tableGridLines  READ tableGridLines  WRITE setTableGridLines NOTIFY tableGridLinesChanged)
     Q_PROPERTY(bool    galleryListLayout READ galleryListLayout WRITE setGalleryListLayout NOTIFY galleryListLayoutChanged)
     Q_PROPERTY(bool    textPreviewContent READ textPreviewContent WRITE setTextPreviewContent NOTIFY textPreviewContentChanged)
     Q_PROPERTY(bool    pdfPreviewContent  READ pdfPreviewContent  WRITE setPdfPreviewContent  NOTIFY pdfPreviewContentChanged)
@@ -240,6 +243,7 @@ public:
     QString extractLayout() const;        // "workbench" | "compact"
     bool    audioAccentApple() const;  // true = Apple-Blau, false = Theme-Akzent
     bool    monoPlay()        const;   // true = nur EINE Wiedergabe gleichzeitig
+    bool    autoPlay()        const;
     int     videoSeekStep()   const;   // Spulschritt der Pfeiltasten (Sekunden)
     bool    spellCheck()      const;
     QString spellLanguage()   const;
@@ -256,6 +260,7 @@ public:
     Q_INVOKABLE void setExtractLayout(const QString& layout);     // "workbench" | "compact"
     Q_INVOKABLE void setAudioAccentApple(bool apple);
     Q_INVOKABLE void setMonoPlay(bool on);
+    Q_INVOKABLE void setAutoPlay(bool on);
     Q_INVOKABLE void setVideoSeekStep(int seconds);
 
     Q_INVOKABLE void announcePlayback(const QString& token);
@@ -318,6 +323,10 @@ public:
     void setTableDateMonthFirst(bool v);
     bool textPdfNative() const;
     void setTextPdfNative(bool v);
+    bool pdfLandscape() const;
+    void setPdfLandscape(bool v);
+    bool tableGridLines() const;
+    void setTableGridLines(bool v);
     bool galleryListLayout() const;
     bool textPreviewContent() const;
     bool pdfPreviewContent() const;
@@ -366,6 +375,7 @@ signals:
     void extractLayoutChanged();
     void audioAccentChanged();
     void monoPlayChanged();
+    void autoPlayChanged();
     void videoSeekStepChanged();
     void spellCheckChanged();
     // Mono-Play: eine Wiedergabestelle hat gestartet (nur bei aktiver Option).
@@ -386,6 +396,8 @@ signals:
     void tableDateMonthFirstChanged();
     void tableGroupDigitsChanged();
     void textPdfNativeChanged();
+    void pdfLandscapeChanged();
+    void tableGridLinesChanged();
     void galleryListLayoutChanged();
     //  Die Kacheln muessen danach NEU erzeugt werden - main.cpp haengt daran.
     void textPreviewContentChanged();

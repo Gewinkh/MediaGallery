@@ -35,7 +35,7 @@ which. Files without an extension such as `LICENSE`, `README`, `Makefile` or
 - **Size**: `Ctrl` with `+`/`-` or the mouse wheel changes the tile size (1 to 25 columns) or, in the list, the row height. Changes in the settings apply immediately
 - **Previews**: images, PDFs and text files show their content on the tile; text files in the editor's syntax colours. Each kind can be switched off in *Settings ▸ View* to save memory - the tile then shows the file type
 - **Scrolling**: smooth mouse wheel, scrollbar, or keys (`Up`/`Down`, `Page Up`/`Page Down`, `Home`/`End`)
-- **Compact mode** (`Alt+S`) and **cover mode** (`B`)
+- **Compact mode** (`Alt+S`) and **cover mode** (`B`). The compact mode applies to one half of the window; the last choice is kept for the next start and for a newly opened half
 
 **Folders**
 - **Subfolders appear as tiles**, always first. A click opens a folder in place, right below its tile, as deep as you like; a double click makes it the main level, and `Alt+<-` takes you back
@@ -54,6 +54,10 @@ which. Files without an extension such as `LICENSE`, `README`, `Makefile` or
 - **Drag files out** into other programs - always as a copy
 - **Drop files from outside** into the folder under the pointer
 - **Delete** with the `Delete` key or the right-click menu. Files go to the trash; `Ctrl+Z` brings them back together with their tags, category and date. `Enter` confirms, `Esc` cancels
+
+**Save as PDF from the gallery**
+- Right-click a text, Markdown or table file - or a selection - and choose *Save as PDF*: each file gets its own PDF next to it, never overwriting an existing one
+- The same choices as in the viewer: printer-friendly or as shown, portrait or landscape. Images and other files in the selection are skipped
 
 **Viewing files**
 - **Fullscreen view** by double click; `->` / `<-` move to the next or previous file, random mode picks one at random
@@ -83,8 +87,9 @@ which. Files without an extension such as `LICENSE`, `README`, `Makefile` or
 - **Arabic and Japanese text** display correctly thanks to font fallback
 - **Export as PDF** (*Document ▸ Save as PDF*): written next to the file, never overwriting an existing PDF
   - A4, 10 pt monospace, 20 mm margins, page count at the bottom; long lines wrap, indentation stays
-  - *One colour* (default): your chosen text colour on white. The colour can be set per file
-  - *Like the editor*: background and syntax colours of the editor theme
+  - *Printer-friendly* (default): your chosen text colour on white. The colour can be set per file
+  - *As shown*: background and syntax colours of the editor theme
+  - Portrait or landscape, all pages or a page range; the window shows how many pages there are
   - The text in the PDF can be selected and searched
 - Files over 8 MB open read-only (see [LIMITATIONS.md](LIMITATIONS.md))
 
@@ -98,6 +103,10 @@ which. Files without an extension such as `LICENSE`, `README`, `Makefile` or
 - The button at the top right, or the **Document** menu, switches to the **editable text** and back; changes appear as soon as you switch back, and undo keeps working in the text
 - Links jump to headings in the same file, open other files, or open web addresses in the browser
 - Text can be selected and copied; colours follow the text editor's colour profile
+- **Save as PDF** (*Document ▸ Save as PDF*), the same window as for text:
+  - *As shown*: exactly like the view, including the terminal-style code blocks and the colours
+  - *Printer-friendly*: white paper, black and grey only; code blocks get a thin frame instead of a dark area, which saves ink
+  - Portrait or landscape, all pages or a page range; open hints are printed open
 
 ## HTML Viewer
 - `.html` / `.htm` open as a **rendered preview**, one click away from the editable source
@@ -132,6 +141,15 @@ which. Files without an extension such as `LICENSE`, `README`, `Makefile` or
 - **Thousands separators** (*Settings ▸ View*, off by default) show `2.000,00` instead of `2000,00`. Display only - the file is untouched, and editing a cell shows the plain value. Numbers without decimals are left alone, so account and document numbers keep their shape
 - **Drag the right edge of a heading** to set a column's width: a line shows where the edge will land, and the table re-arranges once you let go. A double click on that edge gives the column back its automatic width. Widths are kept next to the file and are there again next time
 - Sorting and filtering never change the file
+- **Columns are as wide as their longest entry**, measured in the actual font, so less space is wasted
+- **Grid lines like a spreadsheet** (*Settings ▸ View*, off by default): thin lines between all cells instead of alternating darker rows
+
+**Save as PDF** (*Document ▸ Save as PDF*)
+- **This table** as shown (sorting, filter, hidden columns, column formatting) or **all tables** of the file, each complete with its title
+- *Printer-friendly*: black on white with thin grey lines, a light grey header row and right-aligned numbers, like a spreadsheet print; column colours become light greys
+- *As shown*: the colours of the view
+- The header row repeats on every page. A table that is too wide is first shrunk (down to about 6 pt) and otherwise continues on further pages
+- Portrait or landscape, all pages or a page range
 
 **Formulas**
 - **A cell that starts with `=` is calculated** and shows its result: `=A1+B2`, `=SUM(D1:D9)`, `=IF(B1>2;"expensive";"cheap")`. Columns are lettered A, B, C in the top bar, rows are numbered - the same grid a spreadsheet uses
@@ -301,6 +319,9 @@ pages change the PDF directly. `Ctrl+Z` undoes them while the file is open.
 ## Playback & Interface
 - **Video**: built-in player or an external one. A video jumps when you let go of the progress bar
 - **Mono play** (on by default): starting playback in one half pauses the other
+- **Continuous play** in fullscreen (on by default, *Settings ▸ General*): when a video ends, the next video from the same folder starts; audio follows audio. Subfolders are not included
+  - Gallery order by default; with the dice on, files are shuffled and each plays once per round
+  - **Repeat** button in the control bar: off, this file, or the whole folder. Each open file keeps its own and starts with repeat off
 - **Seek step** for `->` / `<-` in fullscreen video: 1 to 600 seconds (*Settings ▸ General*)
 - **Language**: English or German, switchable at runtime
 - **Graphics**: Vulkan, OpenGL or software. If a mode fails to start, the app falls back to a safer one automatically

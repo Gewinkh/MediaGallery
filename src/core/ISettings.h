@@ -151,6 +151,9 @@ public:
 
     virtual bool monoPlay() const = 0;
     virtual void setMonoPlay(bool v) = 0;
+    //  Weiterspielen im Vollbild; die Wiederholung schaltet jede Kachel selbst.
+    virtual bool autoPlay() const = 0;
+    virtual void setAutoPlay(bool v) = 0;
     // Versteckte Dateien per Vorgabe AUS: in einem Medienordner sind das fast immer Beiwerk (`.DS_Store`). Wer in
     // einem Projektordner arbeitet, will `.gitignore` aber sehen - deshalb schaltbar statt fest zu.
     virtual bool showHiddenFiles() const = 0;
@@ -178,10 +181,15 @@ public:
     virtual bool tableGroupDigits() const = 0;
     virtual void setTableGroupDigits(bool v) = 0;
 
-    //  Text -> PDF in den Farben des Editor-Profils statt in EINER Farbe.
+    //  PDF-Export (Text, Markdown, Tabelle) originalgetreu statt druckfreundlich.
     //  AUS als Vorgabe: der haeufigste Grund fuer ein PDF ist ein Ausdruck.
     virtual bool textPdfNative() const = 0;
     virtual void setTextPdfNative(bool v) = 0;
+    virtual bool pdfLandscape() const = 0;
+    virtual void setPdfLandscape(bool v) = 0;
+    //  Tabellen mit duennen Gitterlinien statt Zeilenstreifen.
+    virtual bool tableGridLines() const = 0;
+    virtual void setTableGridLines(bool v) = 0;
 
     virtual bool galleryListLayout() const = 0;
     virtual void setGalleryListLayout(bool v) = 0;

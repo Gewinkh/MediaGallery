@@ -50,11 +50,8 @@ public:
     bool    canNavigateBack() const { return !m_backStack.isEmpty(); }
 
     bool optionsVisible() const { return m_optionsVisible; }
-    void setOptionsVisible(bool on) {
-        if (m_optionsVisible == on) return;
-        m_optionsVisible = on;
-        emit optionsVisibleChanged();
-    }
+    //  Gilt je Haelfte, gemerkt wird der letzte Stand: neue Haelfte und naechster Start nehmen ihn.
+    void setOptionsVisible(bool on);
 
     bool playerViewOpen() const { return m_playerViewOpen; }
     void setPlayerViewOpen(bool on) {

@@ -111,7 +111,13 @@ The build skips it when the `tests/` folder is absent.
 ## Changelog
 
 ### Latest
-- **Feature**: **Formatted Markdown view** with tables, terminal-style code blocks with a copy button, foldable hints, and a switch to the editable text.
+- **Feature**: **PDF export for Markdown and tables** in printer-friendly or as-shown styles, with landscape orientation and page ranges.
+- **Feature**: **Batch PDF export** from the gallery's right-click menu, creating one PDF per file.
+- **Change**: **Tighter table columns** with optional spreadsheet-style grid lines.
+- **Fix**: **Alt+S mode** no longer returns after a restart or in a new split pane.
+- **Fix**: **Play and repeat buttons** are now centred in the video controls.
+- **Fix**: **Single-file folders** no longer show an empty view when moving to the same file.
+- **Feature**: **Continuous fullscreen playback** with shuffle and repeat for videos and audio files.
 
 ---
 

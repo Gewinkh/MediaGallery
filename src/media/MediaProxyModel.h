@@ -137,6 +137,8 @@ public:
     // Nachbar-Zeile im Vollbild: bleibt IM ORDNER der Ausgangszeile und überspringt Ordnerkacheln - die sind keine
     // Datei. Läuft innerhalb dieses Ordners um; -1 = nichts anzusteuern.
     Q_INVOKABLE int       stepRow(int proxyRow, int delta) const;
+    // Die Folge fuers Weiterspielen: Pfade gleichen Medientyps im Ordner der Zeile, in sichtbarer Reihenfolge.
+    Q_INVOKABLE QStringList sameKindPaths(int proxyRow) const;
     Q_INVOKABLE int       scopeAt(int proxyRow) const { return scopeOfProxyRow(proxyRow); }
     Q_INVOKABLE int       depthAt(int proxyRow) const;
 

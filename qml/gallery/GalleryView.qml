@@ -2,6 +2,7 @@ import QtQuick
 import QtQuick.Controls
 import QtQuick.Window
 import MediaGallery 1.0
+import "../common"
 
 // Model/View-Galerie: statt eines Widgets je Datei recycelt ein GridView seine Delegates und hält nur
 // sichtbare Kacheln - flacher RAM auch bei 10-50k Medien. Jede Kachel fordert ihr Thumbnail einmal an und
@@ -656,6 +657,7 @@ Rectangle {
                         onAudioExtractRequested: function(p) {
                             root.audioExtractRequested(p)
                         }
+                        onPdfExportRequested: function(p) { pdfDialog.oeffne(p) }
                         onCompanionRemoveRequested: function(p, kind) {
                             companionDialog.targetPath = p
                             companionDialog.kind = kind
@@ -995,6 +997,86 @@ Rectangle {
                     onClicked: folderDeleteDialog.accept()
                 }
             }
+        }
+    }
+
+    //  Je Datei ein PDF daneben; Stil und Ausrichtung wie im Vollbild.
+    Dialog {
+        id: pdfDialog
+        objectName: "galleryPdfDialog"
+        property var pfade: []
+        property bool laeuft: false
+        function oeffne(pfad) {
+            const viele = mediaModel.selectionCount > 1 && mediaModel.isSelected(pfad)
+            pdfDialog.pfade = Viewer.pdfCandidates(viele ? galleryModel.selectedPaths(true) : [pfad])
+            pdfDialog.open()
+        }
+        anchors.centerIn: parent
+        modal: true
+        focus: true
+        onAccepted: {
+            pdfDialog.laeuft = true
+            Viewer.exportFilesToPdf(pdfDialog.pfade, App.textPdfNative, App.pdfLandscape,
+                                    App.fallbackFont("monospace", 12))
+        }
+        padding: 18
+        background: Rectangle {
+            color: App.themeCard; radius: 10
+            border.color: App.themeBorder; border.width: 1
+        }
+        contentItem: Column {
+            focus: true
+            Keys.onReturnPressed: function(e) { pdfDialog.accept(); e.accepted = true }
+            Keys.onEnterPressed:  function(e) { pdfDialog.accept(); e.accepted = true }
+            spacing: 10
+            Text {
+                text: pdfDialog.pfade.length > 1
+                      ? App.uiText(App.language, "PdfFilesTitle").arg(pdfDialog.pfade.length)
+                      : App.uiText(App.language, "PdfTitle")
+                color: App.themeTextPrimary
+                font.pixelSize: 14; font.bold: true
+            }
+            PdfExportOptions { tipWidth: 320 }
+            Text {
+                width: 320
+                text: App.uiText(App.language, "PdfFilesTip")
+                color: App.themeTextMuted
+                font.pixelSize: 12
+                wrapMode: Text.WordWrap
+            }
+            Row {
+                anchors.right: parent.right
+                spacing: 8
+                Rectangle {
+                    width: pdfCancel.implicitWidth + 24; height: 30; radius: 6
+                    color: "transparent"; border.color: App.themeBorder; border.width: 1
+                    Text { id: pdfCancel; anchors.centerIn: parent
+                           text: App.uiText(App.language, "SettingsCancel")
+                           color: App.themeTextPrimary; font.pixelSize: 12 }
+                    TapHandler { onTapped: pdfDialog.close() }
+                }
+                Rectangle {
+                    width: pdfOk.implicitWidth + 24; height: 30; radius: 6
+                    color: Qt.rgba(App.themeAccent.r, App.themeAccent.g,
+                                   App.themeAccent.b, 0.28)
+                    border.color: App.themeAccent; border.width: 1
+                    Text { id: pdfOk; anchors.centerIn: parent
+                           text: App.uiText(App.language, "TextPdfConvert")
+                           color: App.themeTextPrimary; font.pixelSize: 12 }
+                    TapHandler { onTapped: pdfDialog.accept() }
+                }
+            }
+        }
+    }
+    Connections {
+        target: Viewer
+        //  Beide Haelften hoeren mit; melden darf nur die, die den Auftrag gab.
+        function onFilesPdfExportFinished(gut, schlecht, letztes) {
+            if (!pdfDialog.laeuft) return
+            pdfDialog.laeuft = false
+            root.statusRequested(schlecht > 0
+                ? App.uiText(App.language, "PdfFilesFailed").arg(gut).arg(schlecht)
+                : App.uiText(App.language, "PdfFilesDone").arg(gut))
         }
     }
 

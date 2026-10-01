@@ -509,6 +509,22 @@ void AppController::setTextPdfNative(bool v) {
     emit textPdfNativeChanged();
 }
 
+bool AppController::pdfLandscape() const { return m_settings.pdfLandscape(); }
+
+void AppController::setPdfLandscape(bool v) {
+    if (m_settings.pdfLandscape() == v) return;
+    m_settings.setPdfLandscape(v);
+    emit pdfLandscapeChanged();
+}
+
+bool AppController::tableGridLines() const { return m_settings.tableGridLines(); }
+
+void AppController::setTableGridLines(bool v) {
+    if (m_settings.tableGridLines() == v) return;
+    m_settings.setTableGridLines(v);
+    emit tableGridLinesChanged();
+}
+
 bool AppController::tableOpensTxt() const { return m_settings.tableOpensTxt(); }
 
 void AppController::setTableOpensTxt(bool v) {
@@ -1192,6 +1208,7 @@ QString AppController::extractLayout() const {
 bool AppController::audioAccentApple() const { return m_settings.audioAccentApple(); }
 
 bool AppController::monoPlay() const { return m_settings.monoPlay(); }
+bool AppController::autoPlay() const { return m_settings.autoPlay(); }
 
 int AppController::videoSeekStep() const { return m_settings.videoSeekStep(); }
 
@@ -1291,6 +1308,13 @@ void AppController::setMonoPlay(bool on) {
     emit monoPlayChanged();
 }
 
+void AppController::setAutoPlay(bool on) {
+    if (m_settings.autoPlay() == on) return;
+    m_settings.setAutoPlay(on);
+    m_settings.sync();
+    emit autoPlayChanged();
+}
+
 // Vergleich gegen den bereits GEKLEMMTEN gespeicherten Wert: mit dem rohen Argument würde ein Wert außerhalb
 // des Bereichs jedes Mal neu geschrieben und löste ein Signal aus.
 void AppController::setVideoSeekStep(int seconds) {
@@ -1321,11 +1345,12 @@ bool AppController::trySetRhiBackend(const QString& backend) {
 }
 
 void AppController::toggleOptions() {
-    //  Der Modus gehört der HÄLFTE (s. PaneController::optionsVisible): das
-    //  Menü schaltet die fokussierte um. Gemerkt wird der Stand trotzdem
-    //  appweit - beim nächsten Start soll er wieder so sein.
+    //  Der Modus gehört der HÄLFTE; gemerkt wird er dort (PaneController::setOptionsVisible).
     const bool v = !optionsVisible();
-    if (m_pane) m_pane->setOptionsVisible(v);
+    if (m_pane) {
+        m_pane->setOptionsVisible(v);
+        return;
+    }
     m_settings.setOptionsVisible(v);
     m_settings.sync();
     emit optionsVisibleChanged();       // AppSettings sendet hierfür kein Signal

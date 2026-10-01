@@ -143,6 +143,21 @@ Item {
                     font.pixelSize: 11
                     wrapMode: Text.WordWrap
                 }
+
+                CheckBox {
+                    objectName: "tableGridLines"
+                    text: App.uiText(App.language, "SettingsTableGridLines")
+                    checked: App.tableGridLines
+                    onToggled: App.tableGridLines = checked
+                }
+                Text {
+                    Layout.fillWidth: true
+                    Layout.leftMargin: 24
+                    text: App.uiText(App.language, "SettingsTableGridLinesTip")
+                    color: App.themeTextMuted
+                    font.pixelSize: 11
+                    wrapMode: Text.WordWrap
+                }
                 SyntaxHint {
                     Layout.fillWidth: true
                     Layout.topMargin: 4

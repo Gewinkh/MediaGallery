@@ -76,6 +76,8 @@ public:
 
     bool monoPlay() const override;
     void setMonoPlay(bool v) override;
+    bool autoPlay() const override;
+    void setAutoPlay(bool v) override;
     bool showHiddenFiles() const override;
     void setShowHiddenFiles(bool v) override;
     bool fileDropMove() const override;
@@ -90,6 +92,10 @@ public:
     void setTableGroupDigits(bool v) override;
     bool textPdfNative() const override;
     void setTextPdfNative(bool v) override;
+    bool pdfLandscape() const override;
+    void setPdfLandscape(bool v) override;
+    bool tableGridLines() const override;
+    void setTableGridLines(bool v) override;
     bool galleryListLayout() const override;
     void setGalleryListLayout(bool v) override;
     QStringList collapsedSettingsGroups() const override;

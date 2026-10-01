@@ -55,7 +55,9 @@
         <file>qml/settings/SettingsBookmarksTab.qml</file>
         <file>qml/settings/SettingsShortcutsView.qml</file>
         <file>qml/settings/BookmarkEditDialog.qml</file>
+        <file>qml/common/ChoiceChips.qml</file>
         <file>qml/common/ColorPicker.qml</file>
+        <file>qml/common/PdfExportOptions.qml</file>
         <file>qml/common/DrawnIcon.qml</file>
         <file>qml/common/FormulaHelp.qml</file>
         <file>qml/common/PatternTable.qml</file>

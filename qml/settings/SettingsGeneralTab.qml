@@ -213,6 +213,26 @@ Item {
                     wrapMode: Text.WordWrap
                     Layout.fillWidth: true
                 }
+
+                GenSubHead { text: App.uiText(App.language, "SettingsGenAutoPlay") }
+
+                CheckBox {
+                    checked: App.autoPlay
+                    onToggled: App.setAutoPlay(checked)
+                    text: App.uiText(App.language, "SettingsGenAutoPlayLabel")
+                    contentItem: Text {
+                        text: parent.text; color: App.themeTextPrimary
+                        leftPadding: parent.indicator.width + 6
+                        verticalAlignment: Text.AlignVCenter
+                    }
+                }
+                Label {
+                    text: App.uiText(App.language, "SettingsGenAutoPlayHint")
+                    color: App.themeTextMuted
+                    font.pixelSize: 11
+                    wrapMode: Text.WordWrap
+                    Layout.fillWidth: true
+                }
             }
 
             // Ziehen auf einen Ordner: verschieben oder kopieren

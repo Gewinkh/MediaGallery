@@ -46,6 +46,7 @@ Rectangle {
     signal newCategoryRequested(string filePath)
     signal companionRemoveRequested(string filePath, int kind)
     signal audioExtractRequested(string filePath)
+    signal pdfExportRequested(string filePath)
     signal infoRequested(string filePath)
     signal folderOpenRequested(string folderPath)
     signal folderRenameRequested(string folderPath, string currentName)
@@ -502,7 +503,9 @@ Rectangle {
             property var fileCatIds: []    // Kategorie-IDs der Datei
             property int companions: 0
             property bool canExtractAudio: false
+            property bool canPdf: false
             onAboutToShow: {
+                ctxMenu.canPdf = tile.mediaType === 4 && Viewer.canExportPdf(tile.filePath)
                 ctxMenu.companions = mediaModel.companionKinds(tile.filePath)
                 ctxMenu.canExtractAudio = tile.mediaType === 1
                                           && Audio.canExtractAudio(tile.filePath)
@@ -603,6 +606,12 @@ Rectangle {
                 enabled: !Audio.extractBusy
                 text: App.uiText(App.language, "AudioExtractMenu")
                 onTriggered: tile.audioExtractRequested(tile.filePath)
+            }
+            MenuItem {
+                visible: ctxMenu.canPdf
+                height: visible ? implicitHeight : 0
+                text: App.uiText(App.language, "TextPdfMenu")
+                onTriggered: tile.pdfExportRequested(tile.filePath)
             }
 
             MenuItem {

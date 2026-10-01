@@ -30,7 +30,7 @@ public:
 
     //  Die sichtbare Liste der Galerie. Ein bereits laufender Titel bleibt
     //  laufend, sofern er noch dabei ist - sonst beginnt die Liste von vorn.
-    void setItems(const QStringList& paths);
+    Q_INVOKABLE void setItems(const QStringList& paths);
 
     //  Die EIGENE Reihenfolge (Pfade). Sie pflegt sich an `m_items`: was nicht
     //  mehr da ist, faellt raus, was neu ist, haengt ans Ende. Leer heisst
@@ -75,12 +75,12 @@ public:
 
     //  Bei diesem Titel anfangen (Doppelklick in der Galerie). Liefert false,
     //  wenn er nicht in der Liste steht.
-    bool startAt(const QString& path);
+    Q_INVOKABLE bool startAt(const QString& path);
 
     //  Der nächste Titel. `natural` = der laufende ist zu Ende (dann greift
     //  „eine wiederholen"); false = der Nutzer hat weitergeschaltet.
     //  Leerer Rückgabewert heißt: hier ist Schluss.
-    QString advance(bool natural);
+    Q_INVOKABLE QString advance(bool natural);
     // ZURÜCK heißt: der Titel, den man WIRKLICH vorher gehört hat - dafür gibt es eine Historie. Ohne sie lief
     // "zurück" die aktuelle Ordnung rückwärts, und die ändert sich beim Umschalten des Zufalls.
     QString back();

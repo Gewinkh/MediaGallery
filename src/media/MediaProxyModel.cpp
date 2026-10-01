@@ -682,6 +682,20 @@ int MediaProxyModel::stepRow(int proxyRow, int delta) const {
     return -1;
 }
 
+QStringList MediaProxyModel::sameKindPaths(int proxyRow) const {
+    QStringList out;
+    const int n = rowCount();
+    if (!m_src || proxyRow < 0 || proxyRow >= n) return out;
+    const MediaItem* self = m_src->itemAt(mapToSource(index(proxyRow, 0)).row());
+    if (!self) return out;
+    for (int r = 0; r < n; ++r) {
+        const MediaItem* it = m_src->itemAt(mapToSource(index(r, 0)).row());
+        if (it && !it->isFolder() && it->scope == self->scope && it->type == self->type)
+            out.append(it->filePath);
+    }
+    return out;
+}
+
 int MediaProxyModel::randomRow(int exceptRow) const {
     const int n = rowCount();
     if (n <= 0) return -1;

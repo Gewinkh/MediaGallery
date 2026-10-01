@@ -2,14 +2,19 @@
 
 #include "core/PathUtils.h"
 #include "core/Strings.h"
+#include "editor/TextPdfExporter.h"
+#include "table/TablePdf.h"
 #include "table/TableWidths.h"
 #include "table/TableWriter.h"
 
+#include <QColor>
 #include <QCoreApplication>
 #include <QDateTime>
 #include <QFile>
 #include <QFileInfo>
+#include <QFont>
 #include <QHashFunctions>
+#include <QPointer>
 #include <QRunnable>
 #include <QSaveFile>
 #include <QVariantMap>
@@ -119,6 +124,7 @@ struct TableController::SpeicherErgebnis {
 
 TableController::TableController(QObject* parent) : QObject(parent) {
     m_pool.setMaxThreadCount(1);
+    m_pdfPool.setMaxThreadCount(1);
     connect(this, &TableController::stateChanged, this, &TableController::rowsChanged);
 }
 
@@ -129,7 +135,98 @@ TableController::~TableController() {
     if (m_abbruch) m_abbruch->store(true);
     if (m_suchAbbruch) m_suchAbbruch->store(true);
     if (m_sortAbbruch) m_sortAbbruch->store(true);
+    m_pdfAbbruch->store(true);
     m_pool.waitForDone();
+    m_pdfPool.waitForDone();
+}
+
+QString TableController::pdfTarget() const { return TextPdf::targetPathFor(m_source); }
+
+void TableController::countPdfPages(const QVariantMap& opt) { pdfStarten(QString(), opt, ++m_pdfZaehlGen); }
+
+void TableController::exportPdf(const QString& target, const QVariantMap& opt) {
+    if (m_pdfBusy || !m_datei || target.isEmpty()) {
+        QMetaObject::invokeMethod(this, [this, target] {
+            emit pdfExportFinished(false, target, Strings::get(StringKey::MarkdownPdfNotReady));
+        }, Qt::QueuedConnection);
+        return;
+    }
+    m_pdfBusy = true;
+    emit pdfBusyChanged();
+    pdfStarten(mg::toLocalPath(target), opt, 0);
+}
+
+// Die Teile entstehen HIER im GUI-Faden und halten die Datei ueber den Anker: bearbeitet jemand waehrenddessen,
+// schreibt der Controller in eine eigene Kopie (`schreibDatei`), der Export liest den Stand vom Start.
+void TableController::pdfStarten(const QString& ziel, const QVariantMap& opt, int zaehlGen) {
+    QList<PdfTeil> teile;
+    if (m_datei && opt.value(QStringLiteral("all")).toBool() && m_bereiche.size() > 1) {
+        teile = teileAusDatei(m_datei, m_bereiche, m_werte, m_breiten, m_formate, m_gruppiert, m_dezimalKomma);
+    } else if (m_datei) {
+        const Bereich b = aktiv();
+        PdfTeil t;
+        if (m_bereiche.size() > 1 && m_block >= 0)
+            t.titel = m_bloecke.value(m_block).toMap().value(QStringLiteral("title")).toString();
+        QList<int> spalten;
+        for (const QVariant& v : std::as_const(m_spalten)) {
+            const QVariantMap m = v.toMap();
+            const int i = m.value(QStringLiteral("index")).toInt();
+            spalten.append(i);
+            PdfSpalte sp;
+            sp.titel = m.value(QStringLiteral("title")).toString();
+            sp.px = m_breiten.value(i, 0);
+            sp.zahl = spalteIstZahl(m_datei->zeilen, b.daten, b.bis, i, m_werte.get());
+            sp.format = m_formate.value(i);
+            t.spalten.append(sp);
+        }
+        t.zeilen = rowCount();
+        t.zelle = [datei = std::shared_ptr<const Datei>(m_datei), werte = m_werte, spalten,
+                   ordnung = m_ordnungAktiv ? m_ordnung : QList<int>(), sortiert = m_ordnungAktiv,
+                   daten = b.daten, gruppiert = m_gruppiert, komma = m_dezimalKomma](int z, int s) {
+            const int roh = sortiert ? ordnung.at(z) : daten + z;
+            return zahlAnzeigen(gezeigterWert(datei->zeilen, roh, spalten.at(s), werte.get()), gruppiert, komma);
+        };
+        teile.append(std::move(t));
+    }
+
+    PdfOptionen o;
+    o.druck = opt.value(QStringLiteral("print")).toBool();
+    o.quer = opt.value(QStringLiteral("landscape")).toBool();
+    o.gitter = opt.value(QStringLiteral("grid")).toBool();
+    o.von = opt.value(QStringLiteral("first"), 1).toInt();
+    o.bis = opt.value(QStringLiteral("last"), 0).toInt();
+    o.schrift = opt.value(QStringLiteral("font")).value<QFont>();
+    o.grund = opt.value(QStringLiteral("background")).value<QColor>();
+    o.text = opt.value(QStringLiteral("text")).value<QColor>();
+    o.kopfGrund = opt.value(QStringLiteral("headerBackground")).value<QColor>();
+    o.kopfText = opt.value(QStringLiteral("headerText")).value<QColor>();
+    if (!o.text.isValid()) o.text = Qt::black;
+
+    class PdfTask : public QRunnable {
+    public:
+        std::function<void()> arbeit;
+        void run() override { arbeit(); }
+    };
+    auto* task = new PdfTask;
+    task->setAutoDelete(true);
+    QPointer<TableController> self(this);
+    task->arbeit = [self, teile = std::move(teile), o, ziel, zaehlGen, abbruch = m_pdfAbbruch] {
+        QString err;
+        const int seiten = schreibePdf(teile, o, ziel, &err, abbruch.get());
+        if (abbruch->load()) return;
+        QMetaObject::invokeMethod(self, [self, seiten, err, ziel, zaehlGen] {
+            if (!self) return;
+            if (ziel.isEmpty()) {
+                //  Nur die juengste Zaehlung - der Dialog fragt bei jedem Umschalten neu.
+                if (zaehlGen == self->m_pdfZaehlGen) emit self->pdfPagesCounted(seiten);
+                return;
+            }
+            self->m_pdfBusy = false;
+            emit self->pdfBusyChanged();
+            emit self->pdfExportFinished(seiten > 0, ziel, err);
+        }, Qt::QueuedConnection);
+    };
+    m_pdfPool.start(task);
 }
 
 void TableController::setSource(const QString& pathOrUrl) {
@@ -474,9 +571,21 @@ void TableController::spaltenNeuRechnen() {
         const QString titel = namen.value(i);
 
         int zeichen = int(titel.size());
-        for (int z = b.daten; z < bis; ++z)
-            zeichen = qMax(zeichen, int(gezeigterWert(m_datei->zeilen, z, i,
-                                                      m_werte.get()).size()));
+        //  Die acht laengsten Zellen selbst: die Ansicht misst sie mit ihrer Schrift. Die laengste allein reicht
+        //  nicht ("Zimmermann" ist breiter als "Christiansen"); geschaetzt ueber die mittlere Zeichenbreite war
+        //  "Studiengang" doppelt so breit wie sein breitester Eintrag.
+        QStringList laengste;
+        for (int z = b.daten; z < bis; ++z) {
+            const QString w = gezeigterWert(m_datei->zeilen, z, i, m_werte.get());
+            if (laengste.size() == 8 && w.size() <= laengste.last().size()) continue;
+            if (laengste.contains(w)) continue;
+            auto pos = std::upper_bound(laengste.begin(), laengste.end(), w,
+                                        [](const QString& a, const QString& b) { return a.size() > b.size(); });
+            laengste.insert(pos, w);
+            if (laengste.size() > 8) laengste.removeLast();
+        }
+        if (!laengste.isEmpty()) zeichen = qMax(zeichen, int(laengste.first().size()));
+        for (QString& w : laengste) w = zahlAnzeigen(w, m_gruppiert, m_dezimalKomma);
 
         QVariantMap m;
         m.insert(QStringLiteral("index"), i);
@@ -484,6 +593,7 @@ void TableController::spaltenNeuRechnen() {
         //  Die Breite steht HIER, nicht in der Zelle: je Zelle gerechnet kostete
         //  das beim Rollen je neuer Zeile einen Lauf ueber die Probe mal Spalte.
         m.insert(QStringLiteral("chars"), zeichen);
+        m.insert(QStringLiteral("widest"), laengste);
         m.insert(QStringLiteral("px"), m_breiten.value(i, 0));
         //  Die drei Formatfelder stehen nur da, wo etwas gesetzt ist - eine
         //  Zelle fragt sonst je Bild nach drei Werten, die nie belegt sind.

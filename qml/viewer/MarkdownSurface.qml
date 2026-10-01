@@ -27,6 +27,22 @@ Item {
     property string _shownSource: ""
 
     function release() { view.source = "" }
+
+    //  PDF-Vertrag des Viewers (s. TextSurface).
+    readonly property string pdfKind: "markdown"
+    readonly property bool pdfBusy: view.exporting
+    property int pdfPages: -1
+    signal pdfFinished(bool ok, string target, string error)
+    function pdfCount(nativ, quer, alle) {
+        root.pdfPages = -1
+        view.countPdfPages(!nativ, quer)
+    }
+    function pdfExport(nativ, quer, alle, von, bis) { view.exportPdf(view.pdfTarget(), !nativ, quer, von, bis) }
+    Connections {
+        target: view
+        function onPdfPagesCounted(n) { root.pdfPages = n }
+        function onPdfExportFinished(ok, target, error) { root.pdfFinished(ok, target, error) }
+    }
     function reload() {
         root._keepY = flick.contentY
         view.reload()

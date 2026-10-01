@@ -23,6 +23,9 @@ Item {
     //  Spalten als A, B, C - so, wie eine Formel sie nennt. Der Buchungsstapel
     //  bleibt bei den Nummern: dort IST die Feldnummer die Bezeichnung.
     property bool columnLabelsAlpha: false
+    //  Duenne Linien zwischen allen Zellen statt Zeilenstreifen, wie in einer Tabellenkalkulation.
+    property bool gridLines: App.tableGridLines
+    readonly property int _pad: 6
 
     function _spaltenKopf(index) {
         if (!root.columnLabelsAlpha) return index + 1
@@ -265,6 +268,7 @@ Item {
 
     property font cellFont: App.fallbackFont("monospace", 12)
     FontMetrics { id: fm; font: root.cellFont }
+    FontMetrics { id: fmFett; font: root.cellFontFett }
     //  EINMAL gebaut, nicht je Zelle: ein `Qt.font({...})` in der Bindung legt
     //  je sichtbarer Zelle ein neues Schriftobjekt an.
     readonly property font cellFontFett: Qt.font({
@@ -304,13 +308,33 @@ Item {
 
     //  Die Zeichenzahl steht im Modell; je Zelle erfragt kostete sie beim Rollen
     //  500 Datenzeilen mal Spalte. `px` von Hand sticht die gerechnete Breite.
+    //  Gemessen an den laengsten Eintraegen (`widest`), einmal je Spaltenliste; der Kopf haelt Platz fuer den
+    //  Sortierpfeil. Ohne `widest` (DATEV) bleibt die Schaetzung ueber die mittlere Zeichenbreite.
+    FontMetrics { id: fmKopf; font.pixelSize: 11; font.bold: true }
+    readonly property var _gemessen: {
+        var m = ({})
+        for (var i = 0; i < root._spalten.length; ++i) {
+            const sp = root._spalten[i]
+            if (sp.widest === undefined) continue
+            const mass = sp.fett === true ? fmFett : fm
+            var zelle = 0
+            for (var k = 0; k < sp.widest.length; ++k) zelle = Math.max(zelle, mass.advanceWidth(sp.widest[k]))
+            zelle += 2 * root._pad
+            const kopf = sp.title ? fmKopf.advanceWidth(sp.title) + root._pad + 20 : 0
+            m[sp.index] = Math.max(36, Math.min(320, Math.ceil(Math.max(zelle, kopf)) + 1))
+        }
+        return m
+    }
     function _breite(sp) {
         if (!sp) return 70
         if (sp.px > 0) return sp.px
+        const g = root._gemessen[sp.index]
+        if (g !== undefined) return g
         return Math.max(70, Math.min(320, sp.chars * fm.averageCharacterWidth + 16))
     }
 
     readonly property var _spalten: root.provider ? root.provider.columns : []
+    readonly property color _gitterFarbe: Qt.rgba(Editor.gutterText.r, Editor.gutterText.g, Editor.gutterText.b, 0.30)
 
     //  Linke Kanten und Stelle je Spaltennummer in EINEM Durchlauf; die Liste
     //  kennt Luecken, deshalb ueber `index`.
@@ -476,8 +500,8 @@ Item {
                         root.provider && root.provider.sortColumn === modelData.index
 
                     Text {
-                        anchors { fill: parent; leftMargin: 8
-                                  rightMargin: kopfZelle.sortiert ? 20 : 8 }
+                        anchors { fill: parent; leftMargin: root._pad
+                                  rightMargin: kopfZelle.sortiert ? 20 : root._pad }
                         verticalAlignment: Text.AlignVCenter
                         elide: Text.ElideRight
                         color: kopfZelle.sortiert ? App.themeAccent : Editor.gutterTextActive
@@ -702,6 +726,19 @@ Item {
 
 
 
+        //  Senkrechte Gitterlinien EINMAL ueber die sichtbaren Spalten, nicht je Zelle; sie enden an der letzten Zeile.
+        Repeater {
+            model: root.gridLines ? root._spaltenAnz : 0
+            delegate: Rectangle {
+                required property int index
+                z: 1
+                x: root._geometrie.kanten[root._vonSpalte + index + 1] - 1
+                width: 1
+                height: Math.max(0, Math.min(liste.height, liste.contentHeight - liste.contentY))
+                color: root._gitterFarbe
+            }
+        }
+
         //  Nur die sichtbaren Zeilen entstehen als Elemente, auch bei 10.000.
         ListView {
             id: liste
@@ -773,9 +810,16 @@ Item {
                 }
                 Rectangle {
                     anchors.fill: parent
-                    color: (!zeile.leer && zeile.index % 2 === 1)
+                    color: (!root.gridLines && !zeile.leer && zeile.index % 2 === 1)
                            ? Qt.rgba(Editor.text.r, Editor.text.g, Editor.text.b, 0.05)
                            : "transparent"
+                }
+                Rectangle {
+                    visible: root.gridLines
+                    anchors.bottom: parent.bottom
+                    width: root._geometrie.kanten[root._spalten.length]
+                    height: 1
+                    color: root._gitterFarbe
                 }
                 //  Spaltenhintergruende - unter den Suchmarken, damit ein
                 //  Treffer sichtbar bleibt.
@@ -826,7 +870,7 @@ Item {
                             height: zeile.height
 
                             Text {
-                                anchors { fill: parent; leftMargin: 8; rightMargin: 8 }
+                                anchors { fill: parent; leftMargin: root._pad; rightMargin: root._pad }
                                 verticalAlignment: Text.AlignVCenter
                                 elide: Text.ElideRight
                                 color: modelData.fg !== undefined ? modelData.fg : Editor.text

@@ -42,6 +42,31 @@ Item {
     function uebernehme() { tabelle.uebernehme() }
     function release() { tabelle.uebernehme(); ctl.flush() }
 
+    //  PDF-Vertrag des Viewers (s. TextSurface). Die Farben der Ansicht reisen mit, der Controller kennt sie nicht.
+    readonly property string pdfKind: "table"
+    readonly property bool pdfBusy: ctl.pdfBusy
+    readonly property int pdfBlocks: ctl.blockCount
+    property int pdfPages: -1
+    signal pdfFinished(bool ok, string target, string error)
+    function _pdfOpt(nativ, quer, alle, von, bis) {
+        return { print: !nativ, landscape: quer, all: alle, grid: App.tableGridLines, first: von, last: bis,
+                 font: tabelle.cellFont, background: Editor.background, text: Editor.text,
+                 headerBackground: Editor.gutterBackground, headerText: Editor.gutterTextActive }
+    }
+    function pdfCount(nativ, quer, alle) {
+        root.pdfPages = -1
+        ctl.countPdfPages(root._pdfOpt(nativ, quer, alle, 1, 0))
+    }
+    function pdfExport(nativ, quer, alle, von, bis) {
+        tabelle.uebernehme()
+        ctl.exportPdf(ctl.pdfTarget(), root._pdfOpt(nativ, quer, alle, von, bis))
+    }
+    Connections {
+        target: ctl
+        function onPdfPagesCounted(n) { root.pdfPages = n }
+        function onPdfExportFinished(ok, target, error) { root.pdfFinished(ok, target, error) }
+    }
+
     Timer {
         interval: Math.max(5, App.autoSaveInterval) * 1000
         repeat: true

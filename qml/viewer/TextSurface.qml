@@ -210,12 +210,24 @@ Item {
         mediaModel.clearFileTextPdfColor(root.currentPath)
         root._inkRev++
     }
-    function exportPdf() {
+    //  PDF-Vertrag des Viewers, gleich fuer Text, Markdown und Tabelle: zaehlen, schreiben, Ergebnis melden.
+    readonly property string pdfKind: "text"
+    property int  pdfPages: -1
+    property bool _pdfZaehlt: false
+    signal pdfFinished(bool ok, string target, string error)
+    function pdfCount(nativ, quer, alle) {
+        if (root.currentPath.length === 0) return
+        root.pdfPages = -1
+        root._pdfZaehlt = true
+        Viewer.countTextPdfPages(root.currentPath, editor.text, Editor.tabWidth, nativ, quer)
+    }
+    function pdfExport(nativ, quer, alle, von, bis) {
         if (root.currentPath.length === 0 || root._pdfBusy) return
         root._pdfBusy = true
-        Viewer.exportTextToPdf(root.currentPath, editor.text,
-                               root._pdfInk, Editor.tabWidth, App.textPdfNative)
+        Viewer.exportTextToPdf(root.currentPath, editor.text, root._pdfInk, Editor.tabWidth,
+                               nativ, quer, von, bis)
     }
+    function exportPdf() { root.pdfExport(App.textPdfNative, App.pdfLandscape, false, 1, 0) }
 
     Timer {
         interval: Math.max(5, App.autoSaveInterval) * 1000
@@ -821,14 +833,16 @@ Item {
 
     Connections {
         target: Viewer
+        //  Das Signal geht an ALLE Textflaechen - geantwortet wird nur dort, wo der Auftrag herkam.
         function onTextPdfExportFinished(ok, target, error) {
+            if (!root._pdfBusy) return
             root._pdfBusy = false
-            if (ok)
-                root._toast(App.uiText(App.language, "TextExportPdfOk")
-                                .arg(target.split("/").pop()))
-            else
-                root._toast(App.uiText(App.language, "TextExportPdfFail")
-                                .arg(error.length > 0 ? error : "?"))
+            root.pdfFinished(ok, target, error)
+        }
+        function onTextPdfPagesCounted(n) {
+            if (!root._pdfZaehlt) return
+            root._pdfZaehlt = false
+            root.pdfPages = n
         }
     }
 

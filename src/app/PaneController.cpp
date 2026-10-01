@@ -104,6 +104,14 @@ PaneController::PaneController(ISettings& settings, ThumbnailLoader& loader,
     m_media.setShowAllFiles(m_settings.showAllFiles());
 }
 
+void PaneController::setOptionsVisible(bool on) {
+    if (m_optionsVisible == on) return;
+    m_optionsVisible = on;
+    m_settings.setOptionsVisible(on);
+    m_settings.sync();
+    emit optionsVisibleChanged();
+}
+
 PaneController::~PaneController() = default;
 
 QString PaneController::currentFolder() const { return m_folders.currentFolder(); }

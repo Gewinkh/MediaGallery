@@ -12,7 +12,11 @@
 #include "editor/LanguageTable.h"
 #include "editor/TextPdfExporter.h"
 #include "datev/DatevCsv.h"
+#include "editor/MarkdownPdf.h"
+#include "editor/MarkdownView.h"
+#include "media/MediaItem.h"
 #include "table/DelimitedText.h"
+#include "table/TablePdf.h"
 
 #include <QPdfDocument>
 #include <QFile>
@@ -123,6 +127,8 @@ private:
 ViewerController::ViewerController(QObject* parent) : QObject(parent) {}
 
 ViewerController::~ViewerController() {
+    m_pdfAbbruch->store(true);
+    m_pdfPool.waitForDone();
     // Extrahierte Temp-Medien dieser Sitzung entfernen.
     for (const QString& p : std::as_const(m_sessionTempFiles))
         QFile::remove(p);
@@ -326,27 +332,8 @@ void ViewerController::requestPdfAnnotations(const QString& filePathOrUrl) {
     QThreadPool::globalInstance()->start(new PdfScanTask(this, path));
 }
 
-// Der Text kommt aus dem EDITOR mit; die Quelldatei wird nur für den Zielnamen gebraucht und nicht angefasst.
-// Paginieren und Zeichnen laufen im Worker, sonst hielte eine große Datei den UI-Thread an.
-void ViewerController::exportTextToPdf(const QString& filePathOrUrl,
-                                       const QString& content,
-                                       const QColor& textColor,
-                                       int tabWidth,
-                                       bool native) {
-    const QString src    = mg::toLocalPath(filePathOrUrl);
-    const QString target = TextPdf::targetPathFor(src);
-    if (target.isEmpty()) {
-        // Defensiv: ohne Quelle gibt es keinen Zielnamen - Fehler queued melden,
-        // damit QML immer denselben (asynchronen) Weg sieht.
-        QMetaObject::invokeMethod(this, [this]() {
-            emit textPdfExportFinished(false, QString(),
-                                       QStringLiteral("Keine Datei geöffnet."));
-        }, Qt::QueuedConnection);
-        return;
-    }
-
-    //  Palette und Sprache werden HIER geholt, nicht im Faden: der
-    //  `EditorController` gehoert dem GUI-Faden.
+//  Palette und Sprache werden im GUI-Faden geholt, nicht im Arbeitsfaden: der `EditorController` gehoert ihm.
+static TextPdf::Stil textStil(const QString& src, const QColor& textColor, bool native) {
     TextPdf::Stil stil;
     stil.tinte = textColor.isValid() ? textColor : QColor(Qt::black);
     if (native) {
@@ -360,38 +347,157 @@ void ViewerController::exportTextToPdf(const QString& filePathOrUrl,
         stil.syntax  = true;
         stil.sprache = mg::editor::languageForPath(src).id;
     }
+    return stil;
+}
 
-    class TextPdfTask : public QRunnable {
+void ViewerController::startPdf(std::function<void()> arbeit) {
+    class Task : public QRunnable {
     public:
-        TextPdfTask(ViewerController* owner, QString text, QString target,
-                    TextPdf::Stil stil, int tabWidth)
-            : m_owner(owner), m_text(std::move(text)), m_target(std::move(target)),
-              m_stil(std::move(stil)), m_tabWidth(tabWidth)
-        { setAutoDelete(true); }
-
-        void run() override {
-            QString err;
-            const bool ok = TextPdf::exportToPdf(m_text, m_target, m_stil, m_tabWidth, &err);
-            // Owner als QPointer: er kann waehrend des Exports (App-Ende)
-            // verschwinden - wie bei PdfScanTask.
-            QPointer<ViewerController> owner = m_owner;
-            if (!owner) return;
-            const QString tgt = m_target;
-            QMetaObject::invokeMethod(owner, [owner, ok, tgt, err]() {
-                if (owner)
-                    emit owner->textPdfExportFinished(ok, tgt, err);
-            }, Qt::QueuedConnection);
-        }
+        explicit Task(std::function<void()> a) : m_a(std::move(a)) { setAutoDelete(true); }
+        void run() override { m_a(); }
     private:
-        QPointer<ViewerController> m_owner;
-        QString                    m_text;
-        QString                    m_target;
-        TextPdf::Stil              m_stil;
-        int                        m_tabWidth = 4;
+        std::function<void()> m_a;
     };
+    m_pdfPool.setMaxThreadCount(1);
+    m_pdfPool.start(new Task(std::move(arbeit)));
+}
 
-    QThreadPool::globalInstance()->start(
-        new TextPdfTask(this, content, target, stil, tabWidth));
+// Der Text kommt aus dem EDITOR mit; die Quelldatei wird nur für den Zielnamen gebraucht und nicht angefasst.
+// Paginieren und Zeichnen laufen im Worker, sonst hielte eine große Datei den UI-Thread an.
+void ViewerController::exportTextToPdf(const QString& filePathOrUrl,
+                                       const QString& content,
+                                       const QColor& textColor,
+                                       int tabWidth,
+                                       bool native,
+                                       bool landscape, int firstPage, int lastPage) {
+    const QString src    = mg::toLocalPath(filePathOrUrl);
+    const QString target = TextPdf::targetPathFor(src);
+    if (target.isEmpty()) {
+        // Defensiv: ohne Quelle gibt es keinen Zielnamen - Fehler queued melden,
+        // damit QML immer denselben (asynchronen) Weg sieht.
+        QMetaObject::invokeMethod(this, [this]() {
+            emit textPdfExportFinished(false, QString(),
+                                       QStringLiteral("Keine Datei geöffnet."));
+        }, Qt::QueuedConnection);
+        return;
+    }
+    const TextPdf::Stil stil = textStil(src, textColor, native);
+    const TextPdf::Seiten seiten{landscape, firstPage, lastPage};
+    QPointer<ViewerController> owner(this);
+    startPdf([owner, content, target, stil, tabWidth, seiten, abbruch = m_pdfAbbruch] {
+        QString err;
+        const bool ok = TextPdf::exportToPdf(content, target, stil, tabWidth, &err, seiten);
+        if (abbruch->load()) return;
+        QMetaObject::invokeMethod(owner, [owner, ok, target, err] {
+            if (owner) emit owner->textPdfExportFinished(ok, target, err);
+        }, Qt::QueuedConnection);
+    });
+}
+
+void ViewerController::countTextPdfPages(const QString& filePathOrUrl, const QString& content,
+                                         int tabWidth, bool native, bool landscape) {
+    const TextPdf::Stil stil = textStil(mg::toLocalPath(filePathOrUrl), QColor(Qt::black), native);
+    const TextPdf::Seiten seiten{landscape, 1, 0};
+    const int gen = ++m_textZaehlGen;
+    QPointer<ViewerController> owner(this);
+    startPdf([owner, content, stil, tabWidth, seiten, gen, abbruch = m_pdfAbbruch] {
+        int n = 0;
+        TextPdf::exportToPdf(content, QString(), stil, tabWidth, nullptr, seiten, &n);
+        if (abbruch->load()) return;
+        QMetaObject::invokeMethod(owner, [owner, n, gen] {
+            if (owner && gen == owner->m_textZaehlGen) emit owner->textPdfPagesCounted(n);
+        }, Qt::QueuedConnection);
+    });
+}
+
+bool ViewerController::canExportPdf(const QString& filePathOrUrl) const {
+    const QString path = mg::toLocalPath(filePathOrUrl);
+    if (MediaItem::detectType(path) != MediaType::Text) return false;
+    return !isStorageFile(path) && !isDatevFile(path);
+}
+
+QStringList ViewerController::pdfCandidates(const QStringList& paths) const {
+    QStringList out;
+    for (const QString& p : paths)
+        if (MediaItem::detectType(mg::toLocalPath(p)) == MediaType::Text) out.append(p);
+    return out;
+}
+
+// Je Datei ein PDF daneben. Art und Stil werden HIER bestimmt: Palette, Tabulatorweite und die Tabellen-
+// Einstellungen gehoeren dem GUI-Faden.
+void ViewerController::exportFilesToPdf(const QStringList& paths, bool native, bool landscape,
+                                        const QFont& tableFont) {
+    enum class Art { Text, Markdown, Tabelle };
+    struct Auftrag { QString quelle, ziel; Art art; TextPdf::Stil textStil; };
+    QList<Auftrag> auftraege;
+    QSet<QString> vergeben;
+    for (const QString& p : paths) {
+        const QString src = mg::toLocalPath(p);
+        if (!canExportPdf(src)) continue;
+        //  Zwei Dateien gleichen Namens mit anderer Endung bekaemen sonst dasselbe Ziel.
+        QString ziel = TextPdf::targetPathFor(src);
+        for (int n = 2; vergeben.contains(ziel); ++n)
+            ziel = QFileInfo(src).absolutePath() + QLatin1Char('/') + QFileInfo(src).completeBaseName()
+                   + QStringLiteral(" (%1).pdf").arg(n);
+        vergeben.insert(ziel);
+        const QString e = QFileInfo(src).suffix().toLower();
+        const Art art = (e == u"md" || e == u"markdown") ? Art::Markdown
+                      : isTableFile(src)                 ? Art::Tabelle : Art::Text;
+        auftraege.append({src, ziel, art, textStil(src, QColor(Qt::black), native)});
+    }
+    const mg::editor::SyntaxPalette pal = mg::editor::activeController()
+        ? mg::editor::activeController()->palette()
+        : mg::editor::paletteForProfile(mg::editor::EditorProfile::Nightfall);
+    mg::table::PdfOptionen tab;
+    tab.druck = !native;
+    tab.quer = landscape;
+    tab.gitter = AppSettings::instance().tableGridLines();
+    tab.schrift = tableFont;
+    tab.grund = pal.background;
+    tab.text = pal.text;
+    tab.kopfGrund = pal.gutterBackground;
+    tab.kopfText = pal.gutterText;
+    const bool gruppiert = AppSettings::instance().tableGroupDigits();
+    const int tabBreite = mg::editor::activeController() ? mg::editor::activeController()->tabWidth() : 4;
+    QList<mg::editor::md::RenderStyle> mdStile;
+    for (const Auftrag& a : std::as_const(auftraege))
+        mdStile.append(a.art == Art::Markdown ? mg::editor::MarkdownView::styleFor(a.quelle, {})
+                                              : mg::editor::md::RenderStyle());
+
+    QPointer<ViewerController> owner(this);
+    startPdf([owner, auftraege, mdStile, tab, gruppiert, tabBreite, native, landscape,
+              abbruch = m_pdfAbbruch] {
+        int gut = 0, schlecht = 0;
+        QString letztes;
+        for (int i = 0; i < auftraege.size(); ++i) {
+            if (abbruch->load()) return;
+            const Auftrag& a = auftraege[i];
+            bool ok = false;
+            if (a.art == Art::Tabelle) {
+                ok = mg::table::dateiAlsPdf(a.quelle, tab, gruppiert, a.ziel, nullptr, abbruch.get());
+            } else {
+                QFile f(a.quelle);
+                const QString text = f.open(QIODevice::ReadOnly)
+                    ? mg::decodeUnknownText(f.read(kMaxTextBytes)) : QString();
+                if (f.isOpen()) {
+                    if (a.art == Art::Markdown) {
+                        mg::editor::md::PdfOptions o;
+                        o.print = !native;
+                        o.landscape = landscape;
+                        ok = mg::editor::md::writePdf(mg::editor::md::parse(text), mdStile[i], o, a.ziel,
+                                                      nullptr, abbruch.get()) > 0;
+                    } else {
+                        ok = TextPdf::exportToPdf(text, a.ziel, a.textStil, tabBreite, nullptr,
+                                                  TextPdf::Seiten{landscape, 1, 0});
+                    }
+                }
+            }
+            if (ok) { ++gut; letztes = a.ziel; } else { ++schlecht; }
+        }
+        QMetaObject::invokeMethod(owner, [owner, gut, schlecht, letztes] {
+            if (owner) emit owner->filesPdfExportFinished(gut, schlecht, letztes);
+        }, Qt::QueuedConnection);
+    });
 }
 
 //  Ergebnis-Uebernahme auf dem GUI-Thread (vom Worker via QueuedConnection).
