@@ -155,6 +155,19 @@ void drawAnnotation(QPainter& p, const ImageAnnotation& a) {
     p.restore();
 }
 
+//  Zur Loeschung vorgemerkt (Aufzeichnung): der Export zeigt, WAS geloescht wuerde - Rahmen und Strich wie in der
+//  Anzeige, in halbdurchsichtigem Rot statt der Themenfarbe, weil eine Datei kein Thema hat.
+void markiereGeloescht(QPainter& p, const QRectF& r, qreal breite) {
+    p.save();
+    p.setRenderHint(QPainter::Antialiasing, true);
+    p.setPen(QPen(QColor(220, 38, 38, 150), breite));
+    p.setBrush(Qt::NoBrush);
+    const QRectF rahmen = r.adjusted(-breite, -breite, breite, breite);
+    p.drawRect(rahmen);
+    p.drawLine(QPointF(rahmen.left(), rahmen.center().y()), QPointF(rahmen.right(), rahmen.center().y()));
+    p.restore();
+}
+
 //  ImageExportTask - rendert Original + Overlay in eine NEUE Bildkopie.
 //  Lädt eine EIGENE QImage (kein geteiltes Handle), zeichnet die Annotationen
 //  1:1 in Bild-Pixeln darüber und schreibt atomar via QSaveFile im Quellformat.
@@ -218,6 +231,8 @@ private:
             for (const ImageAnnotation& a : std::as_const(m_anns)) {
                 if (cancelled()) { p.end(); *err = QStringLiteral("cancel"); return false; }
                 drawAnnotation(p, a);
+                if (a.track == ImageTrackState::Deleted)
+                    markiereGeloescht(p, a.rect, qMax(1.5, qMin(img.width(), img.height()) / 600.0));
             }
         }
 

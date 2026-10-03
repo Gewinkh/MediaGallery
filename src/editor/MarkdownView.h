@@ -10,9 +10,11 @@
 // Vollstaendig einbinden: ein Zeiger in einem Q_PROPERTY verlangt den fertigen Typ.
 #include <QQuickTextDocument>
 
+#include "core/PdfVorschau.h"
+#include "editor/MarkdownPdf.h"
+
 class QTextDocument;
 class QTextFrame;
-namespace mg::editor::md { struct RenderStyle; }
 
 // MarkdownView - gerenderte Markdown-Ansicht je Kachel: baut das Dokument im Arbeitsfaden, schreibt nie.
 namespace mg::editor {
@@ -60,7 +62,10 @@ public:
     bool exporting() const { return m_exporting; }
     Q_INVOKABLE QString pdfTarget() const;
     Q_INVOKABLE void countPdfPages(bool print, bool landscape);
-    Q_INVOKABLE void exportPdf(const QString& target, bool print, bool landscape, int firstPage, int lastPage);
+    Q_INVOKABLE void exportPdf(const QString& target, bool print, bool landscape, int firstPage, int lastPage,
+                               const QList<int>& pages = {});
+    //  Das ganze PDF in eine Vorschau-Datei, an deren Seiten man auswaehlt -> `pdfPreviewReady`.
+    Q_INVOKABLE void previewPdf(bool print, bool landscape);
     //  Schriften, Palette und Beschriftungen fuer eine Datei - Ansicht, PDF und der Export aus der Galerie.
     static md::RenderStyle styleFor(const QString& source, const QSet<int>& flipped);
 
@@ -72,6 +77,7 @@ signals:
     void exportingChanged();
     //  Ohne weitere Parameter: einer namens `print` verdeckt in QML die gleichnamige Funktion, der Empfaenger lief nie.
     void pdfPagesCounted(int pages);
+    void pdfPreviewReady(const QString& path, int pages);
     void pdfExportFinished(bool ok, const QString& target, const QString& error);
 
 private:
@@ -100,7 +106,10 @@ private:
 
     void start(bool readFile);
     md::RenderStyle renderStyle() const;
-    void runPdf(const QString& target, bool print, bool landscape, int first, int last, int countGeneration);
+    enum class PdfArt { Schreiben, Zaehlen, Vorschau };
+    void runPdf(PdfArt art, const QString& target, const md::PdfOptions& opt, int generation);
+    mg::PdfVorschau m_vorschau;
+    int m_vorschauGen = 0;
     void adopt(QTextDocument* doc, int generation, const QString& text, bool readFile, bool ok,
                bool truncated);
     int anchorPosition(const QString& name) const;

@@ -134,6 +134,8 @@ Item {
 
     function release() {
         root.save()                       // beim Verlassen sichern (kein Datenverlust)
+        Viewer.dropTextPdfPreview(root._pdfToken)
+        root.pdfPreviewPath = ""
         editor.text = ""
         root.currentPath = ""
         root.dirty = false
@@ -213,19 +215,28 @@ Item {
     //  PDF-Vertrag des Viewers, gleich fuer Text, Markdown und Tabelle: zaehlen, schreiben, Ergebnis melden.
     readonly property string pdfKind: "text"
     property int  pdfPages: -1
+    property string pdfPreviewPath: ""
     property bool _pdfZaehlt: false
+    readonly property string _pdfToken: "text-" + root
+    Component.onDestruction: Viewer.dropTextPdfPreview(root._pdfToken)
     signal pdfFinished(bool ok, string target, string error)
+    function pdfPreview(nativ, quer, alle) {
+        if (root.currentPath.length === 0) return
+        root.pdfPreviewPath = ""
+        root.pdfPages = -1
+        Viewer.previewTextPdf(root._pdfToken, root.currentPath, editor.text, Editor.tabWidth, nativ, quer)
+    }
     function pdfCount(nativ, quer, alle) {
         if (root.currentPath.length === 0) return
         root.pdfPages = -1
         root._pdfZaehlt = true
         Viewer.countTextPdfPages(root.currentPath, editor.text, Editor.tabWidth, nativ, quer)
     }
-    function pdfExport(nativ, quer, alle, von, bis) {
+    function pdfExport(nativ, quer, alle, von, bis, seiten) {
         if (root.currentPath.length === 0 || root._pdfBusy) return
         root._pdfBusy = true
         Viewer.exportTextToPdf(root.currentPath, editor.text, root._pdfInk, Editor.tabWidth,
-                               nativ, quer, von, bis)
+                               nativ, quer, von, bis, seiten || [])
     }
     function exportPdf() { root.pdfExport(App.textPdfNative, App.pdfLandscape, false, 1, 0) }
 
@@ -838,6 +849,11 @@ Item {
             if (!root._pdfBusy) return
             root._pdfBusy = false
             root.pdfFinished(ok, target, error)
+        }
+        function onTextPdfPreviewReady(token, pfad, n) {
+            if (token !== root._pdfToken) return
+            root.pdfPreviewPath = pfad
+            root.pdfPages = n
         }
         function onTextPdfPagesCounted(n) {
             if (!root._pdfZaehlt) return

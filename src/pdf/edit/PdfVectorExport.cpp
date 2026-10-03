@@ -550,6 +550,15 @@ bool appendAnnotations(const QString& inputPath, const QString& outputPath,
             break;
         }
         o += "Q\n";                                    // Zustand zurück
+        //  Zur Loeschung vorgemerkt: Rahmen und Strich in halbdurchsichtigem Rot, wie der Raster-Weg (`markiereGeloescht`).
+        if (b.track == PdfTrackState::Deleted) {
+            const QRectF r = b.rect.adjusted(-1.5, -1.5, 1.5, 1.5);
+            const qreal ym = Y(r.center().y());
+            job.needsAlpha = true;
+            o += "q\n" + job.cm + "/GS255_150 gs\n0.863 0.149 0.149 RG\n1 w\n";
+            o += num(r.x()) + " " + num(Y(r.bottom())) + " " + num(r.width()) + " " + num(r.height()) + " re\nS\n";
+            o += num(r.left()) + " " + num(ym) + " m\n" + num(r.right()) + " " + num(ym) + " l\nS\nQ\n";
+        }
     }
 
     if (jobs.isEmpty()) return fail("nichts zu zeichnen");

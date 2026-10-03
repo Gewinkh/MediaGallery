@@ -2,6 +2,7 @@ pragma ComponentBehavior: Bound
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
+import QtQuick.Shapes
 import MediaGallery 1.0
 import "../common"
 
@@ -215,11 +216,12 @@ Item {
                                 id: card
                                 required property var modelData
                                 Layout.fillWidth: true
-                                Layout.preferredHeight: 78
+                                Layout.preferredHeight: 52
                                 radius: 8
                                 readonly property bool sel: App.designProfile === card.modelData.index
-                                color: sel ? Qt.rgba(App.themeAccent.r, App.themeAccent.g, App.themeAccent.b, 0.12)
-                                           : Qt.rgba(1, 1, 1, 0.03)
+                                //  Heller als die Gruppe: die dunklen Profilfarben (bis Schwarz) muessen sich abheben.
+                                color: sel ? Qt.rgba(App.themeAccent.r, App.themeAccent.g, App.themeAccent.b, 0.22)
+                                           : Qt.rgba(1, 1, 1, 0.12)
                                 border.color: sel ? App.themeAccent : App.themeBorder
                                 border.width: sel ? 2 : 1
 
@@ -232,42 +234,42 @@ Item {
                                     }
                                 }
 
-                                ColumnLayout {
-                                    anchors.fill: parent
-                                    anchors.margins: 8
-                                    spacing: 4
-
-                                    RowLayout {
-                                        spacing: 6
-                                        Text { text: card.modelData.icon; font.pixelSize: 16 }
-                                        Text {
-                                            text: card.modelData.name
-                                            color: App.themeTextPrimary
-                                            font.pixelSize: 13; font.bold: true
-                                            elide: Text.ElideRight
-                                            Layout.fillWidth: true
-                                        }
-                                        Row {
-                                            spacing: 3
-                                            Repeater {
-                                                model: [card.modelData.background, card.modelData.card, card.modelData.accent]
-                                                delegate: Rectangle {
-                                                    required property var modelData
-                                                    width: 12; height: 12; radius: 3
-                                                    color: modelData
-                                                    border.color: Qt.rgba(1, 1, 1, 0.25)
-                                                }
+                                //  Hintergrund, Karte, Akzent als drei schraege Striche; schraeg heisst `Shape` - ein gedrehtes
+                                //  Rechteck rastert seine Kanten nicht spiegelbildlich.
+                                Row {
+                                    id: slashes
+                                    //  Von Rahmen zu Rahmen: oben und unten nur die Rahmenbreite frei.
+                                    anchors { left: parent.left; leftMargin: 14; top: parent.top; bottom: parent.bottom
+                                              topMargin: card.border.width; bottomMargin: card.border.width }
+                                    spacing: 2
+                                    Repeater {
+                                        model: [card.modelData.background, card.modelData.card, card.modelData.accent]
+                                        delegate: Shape {
+                                            id: slash
+                                            required property var modelData
+                                            readonly property real neig: height * 0.3
+                                            height: slashes.height
+                                            width: 9 + neig
+                                            preferredRendererType: Shape.CurveRenderer
+                                            ShapePath {
+                                                fillColor: slash.modelData
+                                                strokeColor: "transparent"
+                                                startX: slash.neig; startY: 0
+                                                PathLine { x: slash.width;     y: 0 }
+                                                PathLine { x: 9;               y: slash.height }
+                                                PathLine { x: 0;               y: slash.height }
+                                                PathLine { x: slash.neig;      y: 0 }
                                             }
                                         }
                                     }
-                                    Text {
-                                        text: card.modelData.description
-                                        color: App.themeTextMuted
-                                        font.pixelSize: 10
-                                        wrapMode: Text.WordWrap
-                                        Layout.fillWidth: true
-                                        Layout.fillHeight: true
-                                    }
+                                }
+                                Text {
+                                    anchors { left: slashes.right; leftMargin: 14; right: parent.right; rightMargin: 10
+                                              verticalCenter: parent.verticalCenter }
+                                    text: card.modelData.name
+                                    color: App.themeTextPrimary
+                                    font.pixelSize: 13; font.bold: true
+                                    elide: Text.ElideRight
                                 }
                             }
                         }
@@ -475,6 +477,16 @@ Item {
                                 text: App.uiText(App.language, "SettingsDesignImportBtn")
                                 onClicked: importDialog.open()
                             }
+                        }
+                        Text {
+                            id: themeImportHint
+                            Layout.fillWidth: true
+                            visible: text.length > 0
+                            text: ""
+                            color: App.themeTextMuted
+                            font.pixelSize: 12
+                            wrapMode: Text.WordWrap
+                            Timer { id: themeImportHintTimer; interval: 6000; onTriggered: themeImportHint.text = "" }
                         }
                     }
                 }
@@ -760,7 +772,15 @@ Item {
         title: App.uiText(App.language, "SettingsDesignImportTitle")
         fileMode: FileChooser.OpenFile
         nameFilters: [App.uiText(App.language, "SettingsDesignThemeFileFilter"), App.uiText(App.language, "SettingsDesignAllFilesFilter")]
-        onAccepted: { if (App.importCustomTheme(selectedFile)) root.loadTheme() }
+        onAccepted: {
+            if (App.importCustomTheme(selectedFile)) {
+                themeImportHint.text = ""
+                root.loadTheme()
+            } else {
+                themeImportHint.text = App.uiText(App.language, "SettingsDesignImportInvalid")
+                themeImportHintTimer.restart()
+            }
+        }
     }
 
     SmoothWheelArea { flickable: designScroll.contentItem }

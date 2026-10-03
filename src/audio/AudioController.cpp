@@ -51,6 +51,8 @@ AudioController::AudioController(ISettings& settings, QObject* parent)
     connect(&m_eq,    &AudioEqualizer::changed, this, &AudioController::eqChanged);
     connect(&m_queue, &PlayQueue::currentChanged, this, &AudioController::currentChanged);
     connect(&m_queue, &PlayQueue::itemsChanged,   this, &AudioController::queueChanged);
+    connect(&m_queue, &PlayQueue::itemsChanged,   this, &AudioController::startTitleScan);
+    m_titlePool.setMaxThreadCount(1);
     connect(&m_queue, &PlayQueue::customOrderChanged, this, &AudioController::queueChanged);
 
     connect(&m_engine, &AudioEngine::finished, this, [this] {
@@ -79,6 +81,9 @@ AudioController::AudioController(ISettings& settings, QObject* parent)
 }
 
 AudioController::~AudioController() {
+    if (m_titleCancel) m_titleCancel->store(true, std::memory_order_relaxed);
+    m_titlePool.clear();
+    m_titlePool.waitForDone(3000);
     if (m_extractCancel) m_extractCancel->store(true, std::memory_order_relaxed);
     m_extractPool.clear();               // noch nicht begonnene Aufträge weg
     m_extractPool.waitForDone(3000);     // der laufende bricht selbst ab
@@ -697,12 +702,73 @@ QString AudioController::titleOf(const QString& pathOrUrl) const {
     if (path == m_tagsPath) return trackTitle();     // der laufende: schon gelesen
     const auto hit = m_titleCache.constFind(path);
     if (hit != m_titleCache.constEnd()) return *hit;
+    //  Gemessen bis 8,7 ms fuer das erste Lesen einer Datei - je neuer Zeile beim Rollen stockte die Liste.
+    if (m_titlePending.contains(path)) return QFileInfo(path).completeBaseName();
 
     const AudioTags::Tags t = AudioTags::read(path, /*withCover=*/false);
     const QString title = t.displayTitle(path);
-    if (m_titleCache.size() > 512) m_titleCache.clear();
     m_titleCache.insert(path, title);
     return title;
+}
+
+//  Liest die Titel der Liste im eigenen Faden, in Haeppchen, damit die ersten Zeilen schnell stimmen.
+class AudioTitleTask : public QRunnable {
+public:
+    AudioTitleTask(AudioController* owner, QStringList paths, int generation,
+                   std::shared_ptr<std::atomic<bool>> cancel)
+        : m_owner(owner), m_paths(std::move(paths)), m_gen(generation), m_cancel(std::move(cancel)) {
+        setAutoDelete(true);
+    }
+    void run() override {
+        constexpr int kHappen = 32;
+        QHash<QString, QString> stueck;
+        for (int i = 0; i < m_paths.size(); ++i) {
+            if (m_cancel->load(std::memory_order_relaxed)) return;
+            const QString& p = m_paths.at(i);
+            stueck.insert(p, AudioTags::read(p, /*withCover=*/false).displayTitle(p));
+            if (stueck.size() == kHappen || i + 1 == m_paths.size()) {
+                AudioController* owner = m_owner;
+                const int gen = m_gen;
+                QMetaObject::invokeMethod(owner, [owner, stueck, gen] { owner->titlesRead(stueck, gen); },
+                                          Qt::QueuedConnection);
+                stueck.clear();
+            }
+        }
+    }
+private:
+    AudioController* m_owner;
+    QStringList m_paths;
+    int m_gen;
+    std::shared_ptr<std::atomic<bool>> m_cancel;
+};
+
+void AudioController::startTitleScan() {
+    if (m_titleCancel) m_titleCancel->store(true, std::memory_order_relaxed);
+    const QStringList items = m_queue.orderedItems();
+    QSet<QString> inListe;
+    QStringList offen;
+    for (const QString& it : items) {
+        const QString p = mg::toLocalPath(it);
+        inListe.insert(p);
+        if (!m_titleCache.contains(p) && p != m_tagsPath) offen.append(p);
+    }
+    //  Der Speicher folgt der Liste: Titel, die nicht mehr in ihr stehen, fallen heraus.
+    for (auto it = m_titleCache.begin(); it != m_titleCache.end();)
+        it = inListe.contains(it.key()) ? std::next(it) : m_titleCache.erase(it);
+    m_titlePending = QSet<QString>(offen.cbegin(), offen.cend());
+    if (offen.isEmpty()) return;
+    m_titleCancel = std::make_shared<std::atomic<bool>>(false);
+    m_titlePool.start(new AudioTitleTask(this, offen, ++m_titleGen, m_titleCancel));
+}
+
+void AudioController::titlesRead(const QHash<QString, QString>& titles, int generation) {
+    if (generation != m_titleGen) return;
+    for (auto it = titles.cbegin(); it != titles.cend(); ++it) {
+        m_titleCache.insert(it.key(), it.value());
+        m_titlePending.remove(it.key());
+    }
+    ++m_titleRev;
+    emit titlesChanged();
 }
 
 bool AudioController::extractInheritTags() const { return m_settings.audioExtractInheritTags(); }
@@ -939,7 +1005,7 @@ void AudioController::extractTaskDone(bool ok, int messageKey, const QString& so
     const QString targetName = QFileInfo(target).fileName();
     emit message(audioTracks > 1
                      ? Strings::get(StringKey::AudioExtractManyTracks)
-                           .arg(targetName).arg(audioTracks).arg(trackIndex + 1)
+                           .arg(targetName, QString::number(audioTracks), QString::number(trackIndex + 1))
                      : Strings::get(StringKey::AudioExtractOk).arg(targetName));
     emit extractFinished(true, source, target);
 }

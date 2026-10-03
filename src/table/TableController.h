@@ -2,6 +2,7 @@
 //  TableController - der Zustand EINER geoeffneten Tabellendatei (CSV/TSV).
 //  Je Kachel eine Instanz, damit zwei Haelften verschiedene Dateien zeigen.
 //  Anzeigen, Suchen, Filtern, Sortieren, Bearbeiten und Zurueckschreiben.
+#include "core/PdfVorschau.h"
 #include "table/DelimitedText.h"
 #include "table/TableFilter.h"
 #include "table/TableFormula.h"
@@ -288,6 +289,9 @@ public:
     Q_INVOKABLE QString pdfTarget() const;
     Q_INVOKABLE void countPdfPages(const QVariantMap& opt);
     Q_INVOKABLE void exportPdf(const QString& target, const QVariantMap& opt);
+    //  Das ganze PDF in eine Vorschau-Datei, an deren Seiten man auswaehlt -> `pdfPreviewReady`; `pages` in `opt`
+    //  (1-basiert) waehlt beim Schreiben einzelne Seiten.
+    Q_INVOKABLE void previewPdf(const QVariantMap& opt);
 
 signals:
     void sourceChanged();
@@ -300,6 +304,7 @@ signals:
     void saved(bool ok);
     void pdfBusyChanged();
     void pdfPagesCounted(int pages);
+    void pdfPreviewReady(const QString& path, int pages);
     void pdfExportFinished(bool ok, const QString& target, const QString& error);
 
 private:
@@ -476,7 +481,10 @@ private:
     std::shared_ptr<std::atomic<bool>> m_pdfAbbruch = std::make_shared<std::atomic<bool>>(false);
     bool m_pdfBusy = false;
     int  m_pdfZaehlGen = 0;
-    void pdfStarten(const QString& ziel, const QVariantMap& opt, int zaehlGen);
+    int  m_vorschauGen = 0;
+    mg::PdfVorschau m_vorschau;
+    enum class PdfArt { Schreiben, Zaehlen, Vorschau };
+    void pdfStarten(PdfArt art, const QString& ziel, const QVariantMap& opt, int gen);
 };
 
 }  // namespace mg::table

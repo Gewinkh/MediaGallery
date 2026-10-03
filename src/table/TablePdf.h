@@ -37,6 +37,7 @@ struct PdfOptionen {
     bool gitter = false;         // auch im Original Linien statt Streifen
     int  von = 1;
     int  bis = 0;                // 0 = bis zum Ende
+    QList<int> seiten;           // einzelne Seiten, 1-basiert; sticht von/bis
     QFont schrift;               // die Zellschrift der Ansicht
     //  Farben der Ansicht (nur ohne `druck`).
     QColor grund, text, kopfGrund, kopfText;

@@ -122,6 +122,7 @@ Item {
     }
 
     Component.onCompleted: {
+        pane._startDateiZeigen()
         if (PaneCtl.playerMode) {
             pane.playerMode = true
             if (!Audio.owner) Audio.owner = PaneCtl
@@ -386,8 +387,23 @@ Item {
         Component {
             id: bookmarkItemComponent
             MenuItem {
+                id: lzEintrag
                 property string bookmarkPath: ""
+                property bool   missing: false
+                //  Ausserhalb der App verschwunden: ausgegraut, nicht waehlbar, mit gezeichnetem Warndreieck.
+                enabled: !lzEintrag.missing
                 onTriggered: PaneCtl.openFolder(bookmarkPath)
+                DrawnIcon {
+                    visible: lzEintrag.missing
+                    anchors { right: parent.right; rightMargin: 10; verticalCenter: parent.verticalCenter }
+                    name: "warn"; size: 14; color: "#f0a020"
+                }
+                //  Nur der Text wird blass - die gedaempfte Farbe des Stils allein ist im dunklen Thema kaum zu sehen.
+                Binding {
+                    target: lzEintrag.contentItem
+                    property: "opacity"
+                    value: lzEintrag.missing ? 0.45 : 1.0
+                }
             }
         }
 
@@ -402,9 +418,12 @@ Item {
                 property bool   collapsed: false
                 property int    itemCount: 0
                 property int    depth: 0
+                //  Gebunden: ein Klick auf den Namen oeffnet den Ordner, die Pfeilspitze klappt weiter.
+                property string folder: ""
+                property bool   missing: false
 
-                implicitWidth: Math.max(200, groupLabel.implicitWidth + 64
-                                             + groupRow.depth * 14)
+                implicitWidth: Math.max(200, groupLabel.implicitWidth + 64 + (groupRow.folder.length > 0 ? 19 : 0)
+                                             + (groupRow.missing ? 20 : 0) + groupRow.depth * 14)
                 implicitHeight: 28
                 width: parent ? parent.width : implicitWidth
 
@@ -422,18 +441,40 @@ Item {
                     anchors.leftMargin: 10 + groupRow.depth * 14
                     anchors.rightMargin: 12
                     spacing: 6
-                    DrawnIcon {
+                    Item {
                         anchors.verticalCenter: parent.verticalCenter
-                        name: groupRow.collapsed ? "chevron-right" : "chevron-down"
-                        size: 12
+                        width: 16; height: 20
+                        DrawnIcon {
+                            anchors.centerIn: parent
+                            name: groupRow.collapsed ? "chevron-right" : "chevron-down"
+                            size: 12
+                            color: App.themeTextMuted
+                        }
+                        //  Exklusiv: sonst meldete auch der Griff der Zeile den Tipp und oeffnete den Ordner mit.
+                        TapHandler {
+                            gesturePolicy: TapHandler.ReleaseWithinBounds
+                            onTapped: App.setBookmarkGroupCollapsed(groupRow.groupPath, !groupRow.collapsed)
+                        }
+                    }
+                    DrawnIcon {
+                        visible: groupRow.folder.length > 0
+                        anchors.verticalCenter: parent.verticalCenter
+                        name: "folder"; size: 13
                         color: App.themeTextMuted
+                        opacity: groupRow.missing ? 0.5 : 1.0
                     }
                     Text {
                         id: groupLabel
                         anchors.verticalCenter: parent.verticalCenter
                         text: groupRow.groupName
                         color: App.themeTextPrimary
+                        opacity: groupRow.missing ? 0.5 : 1.0
                         font.pixelSize: 13; font.bold: true
+                    }
+                    DrawnIcon {
+                        visible: groupRow.missing
+                        anchors.verticalCenter: parent.verticalCenter
+                        name: "warn"; size: 14; color: "#f0a020"
                     }
                     Text {
                         anchors.verticalCenter: parent.verticalCenter
@@ -444,8 +485,14 @@ Item {
                 }
                 HoverHandler { id: groupHover }
                 TapHandler {
-                    onTapped: App.setBookmarkGroupCollapsed(groupRow.groupPath,
-                                                            !groupRow.collapsed)
+                    onTapped: {
+                        if (groupRow.folder.length > 0 && !groupRow.missing) {
+                            PaneCtl.openFolder(groupRow.folder)
+                            bookmarksMenu.close()
+                        } else if (groupRow.folder.length === 0) {
+                            App.setBookmarkGroupCollapsed(groupRow.groupPath, !groupRow.collapsed)
+                        }
+                    }
                 }
             }
         }
@@ -459,24 +506,29 @@ Item {
                 bookmarksMenu.removeItem(dynamicBookmarkItems[i])
             dynamicBookmarkItems = []
 
+            //  Eltern ist die Liste im Menue, nicht das Menue: das ist kein sichtbares Element, und Qt meldete je
+            //  Eintrag "not placed in the graphics scene". `addItem` haengt ihn danach ohnehin dorthin.
             var rows = App.bookmarkTree
             for (var r = 0; r < rows.length; r++) {
                 var row = rows[r]
                 if (row.hidden) continue
                 if (row.kind === "group") {
-                    var head = bookmarkGroupComponent.createObject(bookmarksMenu, {
+                    var head = bookmarkGroupComponent.createObject(bookmarksMenu.contentItem, {
                         groupPath: row.group,
                         groupName: row.name,
                         collapsed: row.collapsed,
                         itemCount: row.count,
-                        depth:     row.depth
+                        depth:     row.depth,
+                        folder:    row.folder || "",
+                        missing:   row.missing === true
                     })
                     bookmarksMenu.addItem(head)
                     dynamicBookmarkItems.push(head)
                 } else {
-                    var item = bookmarkItemComponent.createObject(bookmarksMenu, {
+                    var item = bookmarkItemComponent.createObject(bookmarksMenu.contentItem, {
                         text:         row.name,
                         bookmarkPath: row.path,
+                        missing:      row.missing === true,
                         leftPadding:  10 + row.depth * 14
                     })
                     bookmarksMenu.addItem(item)
@@ -494,7 +546,11 @@ Item {
             rebuildBookmarks()
             bookmarksDirty = false
         }
-        onAboutToShow: ensureBookmarks()
+        //  Beim Oeffnen nachsehen, was ausserhalb der App verschwunden ist; das Ergebnis baut das Menue neu.
+        onAboutToShow: {
+            App.refreshBookmarkState()
+            ensureBookmarks()
+        }
 
         Connections {
             target: App
@@ -1449,6 +1505,32 @@ Item {
         }
     }
 
+    //  "Oeffnen mit" einer Datei: erst ins Vollbild, wenn die Galerie sie kennt - der Viewer fiele sonst auf die
+    //  erste Zeile. Wird sie nach dem Laden nicht gezeigt (Filter), bleibt es bei der Galerie.
+    function _startDateiZeigen() {
+        const p = PaneCtl.pendingFullscreen
+        if (p.length === 0 || galleryModel.rowForPath(p) < 0) return
+        PaneCtl.pendingFullscreen = ""
+        startDateiFrist.stop()
+        pane.pushFullscreen(p)
+    }
+    Connections {
+        target: PaneCtl
+        function onPendingFullscreenChanged() {
+            if (PaneCtl.pendingFullscreen.length > 0) startDateiFrist.restart()
+            pane._startDateiZeigen()
+        }
+    }
+    Connections {
+        target: galleryModel
+        enabled: PaneCtl.pendingFullscreen.length > 0
+        function onCountChanged() { pane._startDateiZeigen() }
+    }
+    Timer {
+        id: startDateiFrist
+        interval: 15000
+        onTriggered: PaneCtl.pendingFullscreen = ""
+    }
     function pushFullscreen(filePath) {
         var p = filePath !== undefined ? filePath : ""
         if (p.length === 0) return

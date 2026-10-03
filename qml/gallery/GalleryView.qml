@@ -978,9 +978,10 @@ Rectangle {
             }
             Text {
                 width: 340
+                //  Zahl zuerst, Name zuletzt: ein `%2` im Ordnernamen wuerde sonst ersetzt.
                 text: App.uiText(App.language, "DeleteFolderText")
-                          .arg(folderDeleteDialog.targetName)
-                          .arg(Math.max(0, folderDeleteDialog.targetCount))
+                          .replace("%2", Math.max(0, folderDeleteDialog.targetCount))
+                          .replace("%1", function() { return folderDeleteDialog.targetName })
                 color: App.themeTextMuted
                 font.pixelSize: 12
                 wrapMode: Text.WordWrap

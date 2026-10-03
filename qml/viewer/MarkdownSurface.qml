@@ -32,15 +32,24 @@ Item {
     readonly property string pdfKind: "markdown"
     readonly property bool pdfBusy: view.exporting
     property int pdfPages: -1
+    property string pdfPreviewPath: ""
     signal pdfFinished(bool ok, string target, string error)
     function pdfCount(nativ, quer, alle) {
         root.pdfPages = -1
         view.countPdfPages(!nativ, quer)
     }
-    function pdfExport(nativ, quer, alle, von, bis) { view.exportPdf(view.pdfTarget(), !nativ, quer, von, bis) }
+    function pdfPreview(nativ, quer, alle) {
+        root.pdfPreviewPath = ""
+        root.pdfPages = -1
+        view.previewPdf(!nativ, quer)
+    }
+    function pdfExport(nativ, quer, alle, von, bis, seiten) {
+        view.exportPdf(view.pdfTarget(), !nativ, quer, von, bis, seiten || [])
+    }
     Connections {
         target: view
         function onPdfPagesCounted(n) { root.pdfPages = n }
+        function onPdfPreviewReady(pfad, n) { root.pdfPreviewPath = pfad; root.pdfPages = n }
         function onPdfExportFinished(ok, target, error) { root.pdfFinished(ok, target, error) }
     }
     function reload() {

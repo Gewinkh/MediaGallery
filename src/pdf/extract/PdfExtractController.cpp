@@ -1,6 +1,7 @@
 #include "pdf/extract/PdfExtractController.h"
 #include "pdf/extract/PdfPageCopier.h"
 #include "core/PathUtils.h"
+#include "core/Strings.h"
 
 #include <QRunnable>
 #include <QSaveFile>
@@ -228,11 +229,13 @@ PdfExtractController::PdfExtractController(QObject* parent) : QObject(parent) {
 
 PdfExtractController::~PdfExtractController() {
     if (m_cancel) m_cancel->store(true, std::memory_order_relaxed);
+    if (m_scanCancel) m_scanCancel->store(true, std::memory_order_relaxed);
     m_pool.clear();
     m_pool.waitForDone(3000);
 }
 
-void PdfExtractController::setBusy(bool b) {
+void PdfExtractController::updateBusy() {
+    const bool b = m_extracting || m_scanning;
     if (m_busy == b) return;
     m_busy = b;
     emit busyChanged();
@@ -241,13 +244,13 @@ void PdfExtractController::setBusy(bool b) {
 QString PdfExtractController::defaultSingleName(const QString& pathOrUrl,
                                                 int pageIndex) const {
     const QFileInfo fi(mg::toLocalPath(pathOrUrl));
-    return QStringLiteral("%1 - Page %2").arg(fi.completeBaseName())
-                                         .arg(pageIndex + 1);
+    //  Mehrfach-arg: ein `%1` im Dateinamen wuerde von einem zweiten `.arg()` ersetzt.
+    return Strings::get(StringKey::ExtractDefaultPage).arg(fi.completeBaseName(), QString::number(pageIndex + 1));
 }
 
 QString PdfExtractController::defaultMultiName(const QString& pathOrUrl) const {
     const QFileInfo fi(mg::toLocalPath(pathOrUrl));
-    return QStringLiteral("%1-Selected").arg(fi.completeBaseName());
+    return Strings::get(StringKey::ExtractDefaultSelected, fi.completeBaseName());
 }
 
 QString PdfExtractController::makeTargetPath(const QString& folder, QString base,
@@ -298,7 +301,8 @@ void PdfExtractController::startExtract(QVector<Job> jobs,
     for (Job& j : jobs)
         taskJobs.append({std::move(j.path), std::move(j.pages)});
 
-    setBusy(true);
+    m_extracting = true;
+    updateBusy();
     m_pool.start(new PdfExtractTask(this, std::move(taskJobs), targetPath,
                                     gen, m_cancel));
 }
@@ -344,7 +348,7 @@ void PdfExtractController::extractGlobal(const QVariantList& jobs,
         return;
     }
     const QString target = makeTargetPath(folder, baseName,
-                                          QStringLiteral("Selected"));
+                                          Strings::get(StringKey::ExtractDefaultPlain));
     startExtract(std::move(parsed), target);
 }
 
@@ -385,24 +389,27 @@ void PdfExtractController::extractOrdered(const QVariantList& items,
         return;
     }
     const QString fallback = firstPath.isEmpty()
-        ? QStringLiteral("Selected")
-        : QFileInfo(firstPath).completeBaseName() + QStringLiteral("-Selected");
+        ? Strings::get(StringKey::ExtractDefaultPlain)
+        : defaultMultiName(firstPath);
     const QString target = makeTargetPath(folder, baseName, fallback);
     startExtract(std::move(jobs), target);
 }
 
 void PdfExtractController::scanFolder(const QString& folderOrUrl) {
     const QString folder = mg::toLocalPath(folderOrUrl);
-    if (m_cancel) m_cancel->store(true, std::memory_order_relaxed);
-    m_cancel = std::make_shared<std::atomic<bool>>(false);
-    const int gen = ++m_generation;
+    if (m_scanCancel) m_scanCancel->store(true, std::memory_order_relaxed);
+    m_scanCancel = std::make_shared<std::atomic<bool>>(false);
+    const int gen = ++m_scanGeneration;
 
     if (folder.isEmpty() || !QFileInfo(folder).isDir()) {
+        m_scanning = false;
+        updateBusy();
         emit folderPdfsReady({});
         return;
     }
-    setBusy(true);
-    m_pool.start(new PdfScanTask(this, folder, gen, m_cancel));
+    m_scanning = true;
+    updateBusy();
+    m_pool.start(new PdfScanTask(this, folder, gen, m_scanCancel));
 }
 
 // Task-Rückwege (GUI-Thread, queued)
@@ -410,7 +417,8 @@ void PdfExtractController::extractTaskFinished(bool ok, const QString& target,
                                                const QString& error,
                                                int generation) {
     if (generation != m_generation) return;   // veraltet (neuer Auftrag läuft)
-    setBusy(false);
+    m_extracting = false;
+    updateBusy();
     emit extractFinished(ok, ok ? target : QString(), ok ? QString() : error);
 }
 
@@ -422,7 +430,8 @@ void PdfExtractController::extractTaskProgress(int done, int total,
 
 void PdfExtractController::scanTaskFinished(const QVariantList& files,
                                             int generation) {
-    if (generation != m_generation) return;
-    setBusy(false);
+    if (generation != m_scanGeneration) return;
+    m_scanning = false;
+    updateBusy();
     emit folderPdfsReady(files);
 }

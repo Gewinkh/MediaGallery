@@ -1,6 +1,7 @@
 #include "editor/TextPdfExporter.h"
 
 #include "core/PdfGlyphRuns.h"
+#include "core/PdfVorschau.h"
 #include "editor/CodeHighlighter.h"
 #include "editor/LanguageTable.h"
 
@@ -193,12 +194,12 @@ bool exportToPdf(const QString& text, const QString& targetPath,
         const int pages = pageSpans.size();
         if (seitenZahl) *seitenZahl = pages;
         if (nurZaehlen) return true;
-        const int erste = qBound(1, seiten.von, pages) - 1;
-        const int letzte = seiten.bis <= 0 ? pages - 1 : qBound(erste + 1, seiten.bis, pages) - 1;
+        const QList<int> folge = mg::seitenFolge(pages, seiten.von, seiten.bis, seiten.liste);
 
         QPainter p(&writer);
-        for (int pg = erste; pg <= letzte; ++pg) {
-            if (pg > erste) writer.newPage();
+        for (int i = 0; i < folge.size(); ++i) {
+            const int pg = folge[i] - 1;
+            if (i > 0) writer.newPage();
 
             //  Die Flaeche zuerst und ueber das GANZE Blatt, Rand eingeschlossen.
             //  Die zwei Pixel darueber hinaus fangen die Rundung von

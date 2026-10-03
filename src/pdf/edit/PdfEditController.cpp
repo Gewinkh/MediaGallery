@@ -739,8 +739,10 @@ private:
                 p.fillRect(QRectF(QPointF(0, 0), pts), Qt::white);
 
             for (const PdfEditBox& b : std::as_const(m_boxes))
-                if (b.page == vi)
+                if (b.page == vi) {
                     drawBox(p, b);
+                    if (b.track == PdfTrackState::Deleted) markiereGeloescht(p, b.rect);
+                }
 
             reportProgress(vi + 1, viewCount);
         }
@@ -766,6 +768,19 @@ private:
                         to.y() - len * std::sin(ang + spread));
         p.drawLine(to, a);
         p.drawLine(to, b);
+    }
+
+    //  Zur Loeschung vorgemerkt: Rahmen und Strich wie in der Anzeige, in halbdurchsichtigem Rot - eine Datei hat
+    //  kein Thema, und die Markierung soll den Inhalt darunter nicht ueberdecken. Dieselbe Form schreibt PdfVectorExport.
+    static void markiereGeloescht(QPainter& p, const QRectF& r) {
+        p.save();
+        p.setRenderHint(QPainter::Antialiasing, true);
+        p.setPen(QPen(QColor(220, 38, 38, 150), 1.0));
+        p.setBrush(Qt::NoBrush);
+        const QRectF rahmen = r.adjusted(-1.5, -1.5, 1.5, 1.5);
+        p.drawRect(rahmen);
+        p.drawLine(QPointF(rahmen.left(), rahmen.center().y()), QPointF(rahmen.right(), rahmen.center().y()));
+        p.restore();
     }
 
     // Zeichnet eine Annotation exakt wie die QML-Anzeige - Post-it-Optik und
@@ -3568,7 +3583,8 @@ void PdfEditController::exportContentEdited() {
             // ist der Ersatz leer.
             const bool streamable = (b.kind == PdfAnnKind::Replace
                                      || b.kind == PdfAnnKind::Redact);
-            if (!streamable || b.origText.isEmpty()) { eligible = false; break; }
+            //  Eine vorgemerkte Loeschung muss im Export sichtbar sein - das kann nur der gemalte Weg.
+            if (!streamable || b.origText.isEmpty() || b.track == PdfTrackState::Deleted) { eligible = false; break; }
             if (b.text != b.origText)
                 edits.push_back({ b.page, b.origText, b.text });
         }
@@ -3956,7 +3972,8 @@ QVector<mg::PdfAnnotation> PdfEditController::exportAnnotations() const {
     out.reserve(boxes.size());
     for (const PdfEditBox& b : boxes) {
         mg::PdfAnnotation a;
-        if (!annotationFromBox(b, &a))
+        //  Eine vorgemerkte Loeschung hat als Annotation keine Form - gemalt zeigt sie Rahmen und Strich.
+        if (b.track == PdfTrackState::Deleted || !annotationFromBox(b, &a))
             return {};                      // eine reicht -> alles malen
         out.push_back(a);
     }

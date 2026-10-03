@@ -11,6 +11,20 @@ What is simply *not built yet* is listed separately at the end, under
 
 ## Platform
 
+**Each *Open with* starts a new window of the app.**
+Why: the app does not hand files to an already running window. If both windows
+change tags in the same folder, the one that saves last wins; a setting changed in
+both keeps the last value.
+Workaround: open further files from the running window instead.
+
+**With several files selected, *Open with* shows only the first.**
+Why: the file manager hands all of them to one start, and one start shows one file.
+
+**Some file types are missing from *Open with*.**
+Why: the system's type list has no entry for them (for example `.ini`, `.conf` and
+the app's own `.mgstore`). Files the desktop recognises as plain text still list
+the app.
+
 **Only Linux is built and tested.**
 Why: development happens on Arch Linux with Qt 6.11. The code avoids
 platform-specific paths, but Windows and macOS have never been compiled.
@@ -91,6 +105,18 @@ character.
 the row.**
 Why: dropping on the row itself puts the group *inside* the other one.
 
+**A bookmark does not follow a folder that was renamed outside the app.**
+Why: the app only sees what happens outside it when it looks; it then shows the
+bookmark greyed out with a warning triangle rather than guess where the folder went.
+Workaround: edit the bookmark's path, or tick the folder again in its group.
+
+**A deleted folder's bookmark only comes back with undo in the same session.**
+Why: the removed bookmarks are kept in memory until the folder is restored.
+
+**Single pages for a PDF can be picked in the viewer, not when saving several files
+from the gallery.**
+Why: each file has different pages; the gallery saves every file completely.
+
 **Saving several files as PDF ignores a text file's own PDF colour.**
 Why: that colour belongs to the open text file; the gallery uses black for the
 printer-friendly style and the editor theme for "as shown".
@@ -106,6 +132,12 @@ Why: a PNG has to be decoded at full size before it can be shrunk. The app limit
 how many of those run at once, so memory stays low (200 large PNGs: 323 MB
 instead of 421 MB).
 Workaround: none needed; the second visit comes from the thumbnail cache.
+
+**Most small windows close on a click beside them, and a double click there also
+hits what lies behind.**
+Why: the first click closes the window, the second lands on the gallery and can
+open a file. The settings window is already safe; the others follow area by area.
+Workaround: close small windows with their buttons or `Esc`.
 
 ---
 
@@ -199,6 +231,11 @@ Why: that is true of every OCR PDF. A misread word is what the search finds.
 
 **On a scanned page, blacking out cannot remove words** - there are only pixels.
 Workaround: export as an image, so the covered pixels are gone.
+
+**Embedded audio, video and web links are not found in some PDFs.**
+Why: the app reads them straight from the file. Files that store their parts
+compressed (common since PDF 1.5) or encrypted hide them; page display, text and
+search are not affected.
 
 **Selecting text on a page rotated by 90 or 180 degrees loses the last
 character.**
@@ -303,8 +340,9 @@ Workaround: turn up the volume, or switch *Prevent clipping* off in
 *Settings ▸ Audio* and accept the distortion.
 
 **Older equalizer presets sound slightly tamer.**
-Why: neighbouring bands no longer amplify each other (three bands at +12 dB now
-peak at 12.7 dB instead of 17). That is what removes most distortion.
+Why: neighbouring bands do not amplify each other (three bands at +12 dB peak at
+12.7 dB, not 17). That is what removes most distortion, and presets made by older
+versions were tuned against the stronger sum.
 Workaround: adjust the bands and save the preset again.
 
 ---
@@ -323,11 +361,10 @@ Workaround: press `F` or `Esc` first.
 ## Editors
 
 **Notes cannot be read by an older version of the app any more.**
-Why: the side file next to a document (`<name>.mgedit`) now holds the app's own
-compact format instead of text, which makes saving three to four times faster.
-Older files still open, and are quietly rewritten in the new form the first time
-you open them - so going back to an older version stops working even for
-documents you never edited.
+Why: the side file next to a document (`<name>.mgedit`) holds the app's own
+compact format, which saves three to four times faster than text. Older files
+still open and are rewritten in the compact form the first time they are opened -
+after that an older version cannot read them, even for documents you never edited.
 Workaround: keep a copy of your side files before going back to an older version.
 
 **The editor cannot tell you whether a function, a class or an include exists.**
@@ -599,8 +636,8 @@ Why: that is about 100,000 rows and 82 MB of memory. Larger files show only thei
 beginning, and the footer says so.
 
 **The separator and header row are detected automatically and cannot be changed.**
-Why: manual switches were built and removed again - they took up space for a
-rare case. The footer shows what was detected.
+Why: manual switches would take up space for a rare case. The footer shows what
+was detected.
 Workaround: the raw view shows the file as it is.
 
 **Several tables in one file are only split at blank lines.**
@@ -658,11 +695,10 @@ Workaround: the raw view shows the line exactly as written.
 ---
 
 **Opening the tag or category panel in a very large folder takes a moment.**
-Why: the panel builds a chip for every tag and a row for every category. With
-12,000 files and 400 tags the panel used to freeze the window for 1.7 seconds;
-it is now built piece by piece across frames, so the longest stall is about 80
-milliseconds. Closing it still costs about 160 milliseconds, because dropping
-the items cannot be spread out.
+Why: the panel builds a chip for every tag and a row for every category, piece by
+piece across frames - with 12,000 files and 400 tags the longest stall is about
+80 milliseconds. Closing it costs about 160 milliseconds, because dropping the
+items cannot be spread out.
 
 **A page of a PDF stays blank for a moment while it is being drawn.**
 Why: pages are drawn one at a time in the background. Until one is ready, its
@@ -680,8 +716,9 @@ Planned work, not limits. Once something is built, it moves to
   would need a different engine (such as MeCab) plus its own dictionary.
   Arabic only needs the `hunspell-ar` dictionary installed.
 - **More syntax languages** - 28 are covered; each new one is a table entry.
-- **Writing audio tags** (title, artist) - deliberately left out: one wrong byte
-  damages the file.
+- **Writing title, artist, album and cover** into audio and video files - planned.
+  It will only be offered for formats where it can be done safely, because one
+  wrong byte damages a file.
 - **Naming what does not exist** - "this function is unknown", "this include is
   not found". Every editor that does this runs a separate language server
   (clangd, pyright and the like) that has to be installed, needs the project's
@@ -691,10 +728,12 @@ Planned work, not limits. Once something is built, it moves to
 - **Charts from table data** - bars, lines, pies and graphs. Nothing of it is
   designed yet.
 - **Search in the formatted Markdown view** - the editable text has it (`Ctrl+F`).
+- **Desktop integration for Windows and macOS** - an installer that brings the
+  needed Qt files along, the app icon, a Start menu or Launchpad entry and *Open with*.
+  On Linux this exists (see the README); on Windows and macOS `cmake --install`
+  copies only the program, which does not run there on its own.
 - **PDF of DATEV booking batches** - normal CSV and TSV tables can be saved as PDF,
   the booking view not yet.
-- **Picking single pages for a PDF** (for example pages 2 and 4) from small page
-  previews - today the PDF window offers all pages or one range from - to.
 - **Own drawing for the formatted Markdown view** - would bring quote bars, shaded
   table headers and no pause on very large files. Planned, not decided: typical
   files would barely get faster.

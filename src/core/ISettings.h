@@ -220,9 +220,7 @@ public:
     virtual void setVideoSeekStep(int seconds) = 0;
 
     virtual QColor backgroundColor() const = 0;
-    virtual void   setBackgroundColor(const QColor& c) = 0;
     virtual QColor accentColor() const = 0;
-    virtual void   setAccentColor(const QColor& c) = 0;
 
     virtual int  tileWidth()  const = 0;
     virtual int  tileHeight() const = 0;
@@ -275,6 +273,9 @@ public:
 
     virtual QStringList bookmarkGroups() const = 0;
     virtual void        setBookmarkGroups(const QStringList& groups) = 0;
+    //  An einen Ordner gebundene Gruppen: "Gruppenpfad\tOrdner". Eigene Liste, damit alte Konfigurationen gelten.
+    virtual QStringList bookmarkGroupFolders() const = 0;
+    virtual void        setBookmarkGroupFolders(const QStringList& entries) = 0;
 
     virtual qreal   paneSplit() const = 0;
     virtual void    setPaneSplit(qreal v) = 0;

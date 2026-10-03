@@ -545,6 +545,14 @@ appears in neither the index nor any commit, and `.gitignore` lists it so it sta
 that way. Its drivers are `EXCLUDE_FROM_ALL` targets, so an ordinary `cmake --build` does
 not build them and `install(TARGETS MediaGallery ...)` does not install them.
 
+The coverage tool `tests/coverage/mg_coverage.py` is a Python 3 script from the
+development environment that drives `gcov`, part of the GCC toolchain. It builds
+in a separate directory (`build-cov/`) with `--coverage`, which links GCC's
+`libgcov` runtime into the instrumented library and test drivers only; `libgcov`
+is part of GCC's runtime libraries and falls under the GCC Runtime Library
+Exception. Nothing from this build is part of the application, and it is never
+installed or distributed.
+
 Local media files used for manual testing live under `tests/testfiles/`. They are
 third-party works of external origin, are likewise untracked, and are neither
 redistributed nor covered by this document. Should `tests/` ever be added to the

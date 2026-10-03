@@ -1946,6 +1946,7 @@ int MediaModel::renameFolder(const QString& folderPath, const QString& newName) 
     // Der Aufklapp-Zustand haengt an Pfaden - mitsamt Enkeln umhaengen.
     remapExpanded(folderPath, target);
     reload();
+    emit folderRenamed(folderPath, target);
     return 0;
 }
 
@@ -1973,6 +1974,7 @@ bool MediaModel::trashFolderAt(const QString& folderPath, bool reloadNow) {
     // naechsten unauffindbar gemacht.
     if (reloadNow) reload();
     pushUndo(op);
+    emit folderTrashed(folderPath);
     return true;
 }
 
@@ -2362,6 +2364,7 @@ bool MediaModel::restoreFolder(const FileOp& op, bool reloadNow) {
     // reloadNow == false kommt aus dem Gruppen-Rueckweg: erst alle Dateien, dann
     // einmal neu einlesen.
     if (ok && reloadNow) reload();
+    if (ok) emit folderRestored(op.path);
     return ok;
 }
 

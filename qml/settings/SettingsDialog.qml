@@ -9,17 +9,16 @@ import "../common"
 // Im Shell Loader-gated gehalten (RAM): erst beim Öffnen instanziiert, beim Schließen wieder freigegeben.
 Dialog {
     id: dlg
-    //  Griff fuer die Pruefstaende (Muster wie `documentMenu`) - QML-`id`s sind
-    //  von aussen nicht auffindbar, `objectName` schon.
+    //  Griff fuer die Pruefstaende - eine QML-`id` ist von aussen nicht auffindbar.
     objectName: "settingsDialog"
     title: App.uiText(App.language, "SettingsTitle")
-    //  Beim Öffnen gilt die Hälfte, in der gerade gearbeitet wird; beim
-    //  Schließen folgt die Fassade wieder dem Fokus (−1).
+    //  Beim Öffnen gilt die Hälfte, in der gerade gearbeitet wird; beim Schließen wieder der Fokus (−1).
     onOpened: App.setSettingsPaneIndex(App.paneCount > 1 ? App.focusedPaneIndex : -1)
     onClosed: App.setSettingsPaneIndex(-1)
     modal: true
-    //  Nie breiter/höher als das Fenster: sonst stehen Reiter und Inhalt über
-    //  den Rand hinaus und sind nicht mehr erreichbar (Nutzerbild `settings.png`).
+    //  Kein Schließen per Klick daneben: der zweite Klick eines Doppelklicks traf sonst die Kachel dahinter und öffnete sie.
+    closePolicy: Popup.CloseOnEscape
+    //  Nie breiter/höher als das Fenster: sonst stehen Reiter und Inhalt unerreichbar über den Rand hinaus.
     width: Math.min(940, (Overlay.overlay ? Overlay.overlay.width : 940) - 24)
     height: Math.min(580, (Overlay.overlay ? Overlay.overlay.height : 580) - 24)
     anchors.centerIn: Overlay.overlay
@@ -39,9 +38,7 @@ Dialog {
         // man sagen können, welcher gemeint ist. Ohne Teilung bleibt die Zeile weg.
         RowLayout {
             id: paneChooser
-            //  Nur dort, wo es wirklich um EINEN Ordner geht: Tags (3),
-            //  Kategorien (4), Konverter (5). Alles andere ist appweit - dort
-            //  wäre die Zeile eine falsche Zusage.
+            //  Nur Tags (3), Kategorien (4), Konverter (5) gelten je Ordner; alles andere ist appweit.
             readonly property bool folderScoped: tabBar.currentIndex >= 3
                                                  && tabBar.currentIndex <= 5
             visible: App.paneCount > 1 && folderScoped

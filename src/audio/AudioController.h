@@ -2,6 +2,7 @@
 #include <QObject>
 #include <QPointer>
 #include <QHash>
+#include <QSet>
 #include <QStringList>
 #include <QThreadPool>
 #include <QVariantList>
@@ -59,6 +60,8 @@ class AudioController : public QObject {
     Q_PROPERTY(bool presetsModified READ presetsModified NOTIFY presetsChanged)
 
     Q_PROPERTY(QStringList queue      READ queue      NOTIFY queueChanged)
+    //  Zaehlt hoch, sobald Titel der Liste im Hintergrund gelesen sind - die Zeilen binden daran und fragen neu.
+    Q_PROPERTY(int titleRev READ titleRev NOTIFY titlesChanged)
     Q_PROPERTY(int         queueIndex READ queueIndex NOTIFY currentChanged)
     //  Die Hälfte, die den Player gestartet hat - nur dort steht die Leiste.
     Q_PROPERTY(QObject*    owner      READ owner      WRITE setOwner NOTIFY ownerChanged)
@@ -148,7 +151,9 @@ public:
     QString trackSubtitle() const;
     bool    trackHasCover() const;
     QString coverSource() const;
+    //  Fertig gelesener Titel; steht er fuer einen Listeneintrag noch aus, der Dateiname (kein Lesen im GUI-Faden).
     Q_INVOKABLE QString titleOf(const QString& pathOrUrl) const;
+    int titleRev() const { return m_titleRev; }
 
     bool extractBusy() const { return m_extractBusy; }
     bool extractInheritTags() const;
@@ -209,6 +214,7 @@ signals:
     void presetsChanged();
     void optionsChanged();
     void queueChanged();
+    void titlesChanged();
     void ownerChanged();
     void tagsChanged();
     void extractBusyChanged();
@@ -221,6 +227,9 @@ private:
     void refreshTags();
     friend class AudioExtractTask;
     friend class AudioProbeTask;
+    friend class AudioTitleTask;
+    void startTitleScan();
+    void titlesRead(const QHash<QString, QString>& titles, int generation);
     void probeTaskDone(const QString& source, const QVariantList& tracks);
     void extractTaskDone(bool ok, int messageKey, const QString& source,
                          const QString& target, int audioTracks, int generation,
@@ -266,6 +275,11 @@ private:
     QString         m_tagsPath;
     int             m_coverRev = 0;
     mutable QHash<QString, QString> m_titleCache;
+    QSet<QString>                        m_titlePending;   // noch im Hintergrund zu lesen
+    QThreadPool                          m_titlePool;
+    std::shared_ptr<std::atomic<bool>>   m_titleCancel;
+    int                                  m_titleGen = 0;
+    int                                  m_titleRev = 0;
 
     QThreadPool                          m_extractPool;
     std::shared_ptr<std::atomic<bool>>   m_extractCancel;

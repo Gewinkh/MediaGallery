@@ -422,6 +422,8 @@ Item {
             highlightFollowsCurrentItem: true
             boundsBehavior: Flickable.StopAtBounds
             ScrollBar.vertical: ScrollBar {}
+            //  Wie die Galerie: 45 % der Sichthoehe je Rastung statt Qts fester 60 px (anderthalb Zeilen).
+            SmoothWheelArea { flickable: queueList }
 
             delegate: Rectangle {
                 id: row
@@ -452,7 +454,8 @@ Item {
                               right: parent.right
                               rightMargin: 12; verticalCenter: parent.verticalCenter }
                     elide: Text.ElideMiddle
-                    text: Audio.titleOf(row.modelData)
+                    //  `titleRev` zuerst: die Titel kommen im Hintergrund, bis dahin steht der Dateiname da.
+                    text: { Audio.titleRev; return Audio.titleOf(row.modelData) }
                     color: row.index === Audio.queueIndex ? App.themeAccent
                                                           : App.themeTextPrimary
                     font.pixelSize: 12

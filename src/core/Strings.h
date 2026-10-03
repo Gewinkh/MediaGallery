@@ -191,6 +191,13 @@ enum class StringKey {
     BookmarkAdd,
     BookmarkEdit,
     BookmarkDelete,
+    BookmarkGroupBind,
+    BookmarkGroupUnbind,
+    BookmarkGroupPick,
+    BookmarkPickTitle,
+    BookmarkPickHint,
+    BookmarkPickEmpty,
+    BookmarkMissing,
     BookmarkPathLabel,
     BookmarkBrowse,
     //  Gruppen im Menü „Ordner" und in Einstellungen ▸ Lesezeichen
@@ -321,6 +328,7 @@ enum class StringKey {
     SettingsDesignThemeNameExport,
     SettingsDesignExportBtn,
     SettingsDesignImportBtn,
+    SettingsDesignImportInvalid,   // Thema-Import abgelehnt: „Keine gueltige Theme-Datei …"
     SettingsDesignApplyBtn,
     SettingsDesignThemeFileFilter,
     SettingsDesignAllFilesFilter,
@@ -473,6 +481,12 @@ enum class StringKey {
     PdfPagesRange,
     PdfPagesOf,
     PdfPagesCounting,
+    PdfPagesPick,
+    PdfPagesPicked,
+    PdfPagesPreparing,
+    PdfPagesBig,
+    PdfPagesTitle,
+    PdfPagesTake,
     PdfTableThis,
     PdfTableAll,
     PdfFilesTitle,
@@ -761,6 +775,10 @@ enum class StringKey {
     ExtractNoPdfs,             // Global: keine PDFs im Ordner
     FilterExtractBtn,          // FilterBar-Button: „Extrahieren"
     ExtractOkToast,            // Erfolgsmeldung: „PDF erstellt: %1"
+    ExtractDefaultPage,        // Namensvorschlag eine Seite: „%1 - Seite %2"
+    ExtractDefaultSelected,    // Namensvorschlag mehrere Seiten: „%1-Auswahl"
+    ExtractDefaultPlain,       // Namensvorschlag ohne Quelle: „Auswahl"
+    PdfLinkToPage,             // Hinweis an einem Sprung innerhalb der PDF: „Zu Seite %1"
     ExtractFailToast,          // Fehlermeldung
     ExtractProgressToast,      // Fortschritt: „Extrahiere Seite %1/%2"
     ExtractPageShort,          // Kachel-Beschriftung: „S. %1"

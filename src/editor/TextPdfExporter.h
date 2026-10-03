@@ -6,6 +6,7 @@
 #include "editor/SyntaxPalette.h"
 
 #include <QColor>
+#include <QList>
 #include <QString>
 
 namespace TextPdf {
@@ -28,6 +29,7 @@ struct Seiten {
     bool quer = false;
     int  von = 1;
     int  bis = 0;
+    QList<int> liste;      // einzelne Seiten, 1-basiert; sticht von/bis
 };
 
 // Liefert false + `*err` bei Fehler; die Zieldatei wird dann nicht angelegt (QSaveFile-Rollback). `tabWidth` in

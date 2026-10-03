@@ -78,6 +78,7 @@ static QVariantList annotationsToVariant(const QVector<MediaAnnotation>& anns) {
         m.insert("type",  static_cast<int>(a.type));
         m.insert("uri",   a.resolvedUri());
         m.insert("label", a.label);
+        m.insert("targetPage", a.targetPage);
         out.append(m);
     }
     return out;
@@ -278,8 +279,12 @@ bool ViewerController::writeTextFile(const QString& filePathOrUrl, const QString
 }
 
 bool ViewerController::openExternally(const QString& filePathOrUrl) const {
-    const QString path = mg::toLocalPath(filePathOrUrl);
-    return QDesktopServices::openUrl(QUrl::fromLocalFile(path));
+    //  Webadressen unveraendert weiter - als Dateipfad gelesen wurde aus `https://…` ein Ordner, den es nicht gibt.
+    const QUrl url(filePathOrUrl);
+    const QString schema = url.scheme().toLower();
+    if (schema == u"http" || schema == u"https" || schema == u"mailto" || schema == u"ftp")
+        return QDesktopServices::openUrl(url);
+    return QDesktopServices::openUrl(QUrl::fromLocalFile(mg::toLocalPath(filePathOrUrl)));
 }
 
 //  LRU-Pflege (nur GUI-Thread -> keine Synchronisation noetig).
@@ -369,7 +374,8 @@ void ViewerController::exportTextToPdf(const QString& filePathOrUrl,
                                        const QColor& textColor,
                                        int tabWidth,
                                        bool native,
-                                       bool landscape, int firstPage, int lastPage) {
+                                       bool landscape, int firstPage, int lastPage,
+                                       const QList<int>& pages) {
     const QString src    = mg::toLocalPath(filePathOrUrl);
     const QString target = TextPdf::targetPathFor(src);
     if (target.isEmpty()) {
@@ -382,7 +388,7 @@ void ViewerController::exportTextToPdf(const QString& filePathOrUrl,
         return;
     }
     const TextPdf::Stil stil = textStil(src, textColor, native);
-    const TextPdf::Seiten seiten{landscape, firstPage, lastPage};
+    const TextPdf::Seiten seiten{landscape, firstPage, lastPage, pages};
     QPointer<ViewerController> owner(this);
     startPdf([owner, content, target, stil, tabWidth, seiten, abbruch = m_pdfAbbruch] {
         QString err;
@@ -409,6 +415,34 @@ void ViewerController::countTextPdfPages(const QString& filePathOrUrl, const QSt
         }, Qt::QueuedConnection);
     });
 }
+
+void ViewerController::previewTextPdf(const QString& token, const QString& filePathOrUrl, const QString& content,
+                                      int tabWidth, bool native, bool landscape) {
+    auto& v = m_textVorschau[token];
+    if (!v) v = std::make_shared<TextVorschau>();
+    const QString ziel = v->datei.neu();
+    if (ziel.isEmpty()) return;
+    const int gen = ++v->gen;
+    const TextPdf::Stil stil = textStil(mg::toLocalPath(filePathOrUrl), QColor(Qt::black), native);
+    QPointer<ViewerController> owner(this);
+    startPdf([owner, token, ziel, gen, content, stil, tabWidth, landscape, abbruch = m_pdfAbbruch] {
+        int n = 0;
+        const bool ok = TextPdf::exportToPdf(content, ziel, stil, tabWidth, nullptr,
+                                             TextPdf::Seiten{landscape, 1, 0, {}}, &n);
+        if (abbruch->load()) return;
+        QMetaObject::invokeMethod(owner, [owner, token, ziel, gen, ok, n] {
+            if (!owner) return;
+            const auto it = owner->m_textVorschau.constFind(token);
+            if (it == owner->m_textVorschau.cend()) { QFile::remove(ziel); return; }
+            if (!ok || gen != (*it)->gen) { (*it)->datei.verwerfe(ziel); return; }
+            (*it)->datei.uebernehme(ziel);
+            emit owner->textPdfPreviewReady(token, ziel, n);
+        }, Qt::QueuedConnection);
+    });
+}
+
+//  Was noch schreibt, liefert danach an einen fehlenden Eintrag und wird dort geloescht.
+void ViewerController::dropTextPdfPreview(const QString& token) { m_textVorschau.remove(token); }
 
 bool ViewerController::canExportPdf(const QString& filePathOrUrl) const {
     const QString path = mg::toLocalPath(filePathOrUrl);

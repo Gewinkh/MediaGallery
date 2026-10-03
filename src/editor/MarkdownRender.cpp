@@ -288,6 +288,18 @@ void Builder::paragraph(const QString& text, const Ctx& c, QTextBlockFormat bf) 
     inlines(parseInlines(text, m_md.refs, m_md.footnotes), cf);
 }
 
+//  Sprungziel fuer `[text](#ziel)`: die Ansicht liest `kAnchorProperty`, der PDF-Schreiber nur `anchorNames` -
+//  ohne sie zeigte ein Verweis im PDF auf ein Ziel, das es nicht gibt. Nur das erste Zeichen, ein Ziel je Name.
+void sprungziel(const QTextBlock& block, const QString& name) {
+    if (block.length() < 2) return;
+    QTextCursor k(block);
+    k.movePosition(QTextCursor::NextCharacter, QTextCursor::KeepAnchor);
+    QTextCharFormat f;
+    f.setAnchor(true);
+    f.setAnchorNames({name});
+    k.mergeCharFormat(f);
+}
+
 void Builder::heading(const Block& b, const Ctx& c) {
     static constexpr qreal kScale[] = {2.0, 1.55, 1.28, 1.1, 1.0, 0.9};
     const int lvl = qBound(1, b.level, 6);
@@ -312,6 +324,7 @@ void Builder::heading(const Block& b, const Ctx& c) {
     if (!c.muted) cf.setForeground(lvl == 6 ? m_muted : m_heading);
     beginBlock(bf, cf);
     inlines(runs, cf);
+    sprungziel(m_cur.block(), slug);
     if (lvl <= 2) {
         QTextBlockFormat knapp = m_cur.blockFormat();
         knapp.setBottomMargin(m_px * 0.25);
@@ -608,6 +621,7 @@ void Builder::footnotes() {
         QTextBlockFormat bf;
         bf.setProperty(kAnchorProperty, QStringLiteral("fn-") + fn.label);
         paragraph(fn.text, c, bf);
+        sprungziel(m_cur.block(), QStringLiteral("fn-") + fn.label);
         QTextBlockFormat eigen = m_cur.blockFormat();
         eigen.setIndent(0);
         m_cur.setBlockFormat(eigen);

@@ -1,4 +1,6 @@
 #pragma once
+#include "core/PdfVorschau.h"
+
 #include <QColor>
 #include <QFont>
 #include <QThreadPool>
@@ -73,10 +75,16 @@ public:
                                      const QColor& textColor = QColor(Qt::black),
                                      int tabWidth = 4,
                                      bool native = false,
-                                     bool landscape = false, int firstPage = 1, int lastPage = 0);
+                                     bool landscape = false, int firstPage = 1, int lastPage = 0,
+                                     const QList<int>& pages = {});
     //  Nur zaehlen, fuer den Seitenbereich im Export-Fenster -> `textPdfPagesCounted`.
     Q_INVOKABLE void countTextPdfPages(const QString& filePathOrUrl, const QString& content,
                                        int tabWidth, bool native, bool landscape);
+    //  Das ganze PDF als Vorschau-Datei -> `textPdfPreviewReady`. `token` ist die anfragende Flaeche: es gibt
+    //  EINEN Viewer fuer alle Textflaechen, und jede haelt ihre eigene Vorschau.
+    Q_INVOKABLE void previewTextPdf(const QString& token, const QString& filePathOrUrl, const QString& content,
+                                    int tabWidth, bool native, bool landscape);
+    Q_INVOKABLE void dropTextPdfPreview(const QString& token);
 
     //  Aus der Galerie: je Datei ein PDF daneben (Text, Markdown, Tabelle; DATEV und Ablage nicht).
     //  `tableFont` ist die Zellschrift der Tabellenansicht.
@@ -98,6 +106,7 @@ signals:
 
     void textPdfExportFinished(bool ok, const QString& target, const QString& error);
     void textPdfPagesCounted(int pages);
+    void textPdfPreviewReady(const QString& token, const QString& path, int pages);
     void filesPdfExportFinished(int written, int failed, const QString& lastTarget);
 
 private:
@@ -115,5 +124,7 @@ private:
     QThreadPool                  m_pdfPool;
     std::shared_ptr<std::atomic<bool>> m_pdfAbbruch = std::make_shared<std::atomic<bool>>(false);
     int                          m_textZaehlGen = 0;
+    struct TextVorschau { mg::PdfVorschau datei; int gen = 0; };
+    QHash<QString, std::shared_ptr<TextVorschau>> m_textVorschau;
     void startPdf(std::function<void()> arbeit);
 };

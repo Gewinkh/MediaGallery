@@ -12,11 +12,15 @@
 #include "tags/TagManager.h"
 #include "core/AppSettings.h"   // konkrete Settings-Signale für NOTIFY-Weiterleitung
 #include "core/Strings.h"
-#include "media/MediaItem.h"     // MediaItem::detectType für Drop-Behandlung
+#include "media/MediaItem.h"
+#include "media/MediaModel.h"     // MediaItem::detectType für Drop-Behandlung
 #include "core/RhiProber.h"
 #include "core/ZCodec.h"        // docxAvailable: DOCX hängt an ZLIB
 
 #include <QFileInfo>
+#include <functional>
+#include <QPointer>
+#include <QRunnable>
 #include <QDir>
 #include <QFile>
 #include <QSaveFile>
@@ -125,6 +129,9 @@ QObject* AppController::addPane() {
     m_panesModel->endInsert();
     pane->mediaModel().setPreviewKinds(m_settings.pdfPreviewContent(),
                                        m_settings.imagePreviewContent());
+    connect(&pane->mediaModel(), &MediaModel::folderRenamed, this, &AppController::bookmarksFolderRenamed);
+    connect(&pane->mediaModel(), &MediaModel::folderTrashed, this, &AppController::bookmarksFolderTrashed);
+    connect(&pane->mediaModel(), &MediaModel::folderRestored, this, &AppController::bookmarksFolderRestored);
     //  Beide Haelften koennen denselben Ordner offen haben. Wer schreibt, sagt es;
     //  die andere liest nach, sonst stuende dort der Stand von vorher.
     connect(&pane->storage(), &JsonStorage::folderWritten, this,
@@ -767,6 +774,70 @@ QStringList packGroups(const QList<BmGroup>& groups) {
     return out;
 }
 
+QString saubererPfad(const QString& p) {
+    const QString t = p.trimmed();
+    return t.isEmpty() ? QString() : QDir::cleanPath(QDir::fromNativeSeparators(t));
+}
+
+Qt::CaseSensitivity pfadFall() {
+#ifdef Q_OS_WIN
+    return Qt::CaseInsensitive;
+#else
+    return Qt::CaseSensitive;
+#endif
+}
+
+// Beide Pfade bereinigt; "/a/bc" liegt NICHT unter "/a/b".
+bool pfadGleichOderUnter(const QString& pfad, const QString& basis) {
+    if (basis.isEmpty() || pfad.isEmpty()) return false;
+    if (pfad.compare(basis, pfadFall()) == 0) return true;
+    const QString vorn = basis.endsWith(QLatin1Char('/')) ? basis : basis + QLatin1Char('/');
+    return pfad.startsWith(vorn, pfadFall());
+}
+
+QString umgehaengt(const QString& pfad, const QString& alt, const QString& neu) {
+    return neu + pfad.mid(alt.size());
+}
+
+struct BmBindung {
+    QString group;     // voller Gruppenpfad
+    QString folder;    // bereinigt
+};
+
+QList<BmBindung> parseBindungen(const QStringList& raw) {
+    QList<BmBindung> out;
+    for (const QString& r : raw) {
+        const QStringList teile = r.split(QLatin1Char('\t'));
+        BmBindung b{ normalizeGroupPath(teile.value(0)), saubererPfad(teile.value(1)) };
+        if (b.group.isEmpty() || b.folder.isEmpty()) continue;
+        bool doppelt = false;
+        for (const BmBindung& x : std::as_const(out))
+            doppelt = doppelt || x.group.compare(b.group, Qt::CaseInsensitive) == 0;
+        if (!doppelt) out.append(b);
+    }
+    return out;
+}
+
+QStringList packBindungen(const QList<BmBindung>& liste) {
+    QStringList out;
+    for (const BmBindung& b : liste) out.append(b.group + QLatin1Char('\t') + b.folder);
+    return out;
+}
+
+QString ordnerDerGruppe(const QList<BmBindung>& liste, const QString& group) {
+    for (const BmBindung& b : liste)
+        if (b.group.compare(group, Qt::CaseInsensitive) == 0) return b.folder;
+    return {};
+}
+
+void reparentBindungen(ISettings& s, const QString& from, const QString& to) {
+    QList<BmBindung> b = parseBindungen(s.bookmarkGroupFolders());
+    bool geaendert = false;
+    for (BmBindung& x : b)
+        if (isSelfOrBelow(x.group, from)) { x.group = reparent(x.group, from, to); geaendert = true; }
+    if (geaendert) s.setBookmarkGroupFolders(packBindungen(b));
+}
+
 } // namespace
 
 bool AppController::isUsableGroupName(const QString& name) const {
@@ -814,6 +885,7 @@ QString AppController::ensureBookmarkGroup(const QString& fullPath) {
 QVariantList AppController::bookmarkTree() const {
     const QStringList raw = m_settings.savedFolders();
     const QList<BmGroup> groups = parseGroups(m_settings.bookmarkGroups());
+    const QList<BmBindung> bindungen = parseBindungen(m_settings.bookmarkGroupFolders());
 
     struct Row { QString name, path, section; int index; };
     QList<Row> rows;
@@ -829,22 +901,56 @@ QVariantList AppController::bookmarkTree() const {
     QVariantList out;
     out.reserve(groups.size() + rows.size());
 
+    //  In einer gebundenen Gruppe steht ein Haken unter seinem naechsten ebenfalls angehakten Vorfahren, eine
+    //  Ebene tiefer und mit dem Namen relativ zu ihm - unabhaengig davon, wer zuerst gespeichert wurde.
     auto emitBookmarks = [&](const QString& parent, int depth, bool hidden) {
+        QList<int> glieder;                // Stellen in `rows`, Reihenfolge der Speicherung
+        for (int k = 0; k < rows.size(); ++k)
+            if (rows.at(k).section.compare(parent, Qt::CaseInsensitive) == 0) glieder.append(k);
+        const QString gOrdner = ordnerDerGruppe(bindungen, parent);
+        QHash<int, int> vorfahr;           // Stelle in `rows` -> Stelle des naechsten angehakten Vorfahren
+        if (!gOrdner.isEmpty()) {
+            for (int a : std::as_const(glieder)) {
+                const QString pa = saubererPfad(rows.at(a).path);
+                int best = -1;
+                for (int b : std::as_const(glieder)) {
+                    if (a == b) continue;
+                    const QString pb = saubererPfad(rows.at(b).path);
+                    if (pb.compare(gOrdner, pfadFall()) == 0 || !pfadGleichOderUnter(pb, gOrdner)) continue;
+                    if (pa.compare(pb, pfadFall()) == 0 || !pfadGleichOderUnter(pa, pb)) continue;
+                    if (best < 0 || saubererPfad(rows.at(best).path).size() < pb.size()) best = b;
+                }
+                if (best >= 0) vorfahr.insert(a, best);
+            }
+        }
         int pos = 0;                       // Platz unter den GESCHWISTERN
-        for (const Row& r : std::as_const(rows)) {
-            if (r.section.compare(parent, Qt::CaseInsensitive) != 0) continue;
+        std::function<void(int, int)> zeige = [&](int k, int tiefe) {
+            const Row& r = rows.at(k);
+            QString name = r.name;
+            const auto v = vorfahr.constFind(k);
+            if (v != vorfahr.cend() && name == QDir(gOrdner).relativeFilePath(saubererPfad(r.path)))
+                name = QDir(saubererPfad(rows.at(*v).path)).relativeFilePath(saubererPfad(r.path));
             QVariantMap m;
             m.insert(QStringLiteral("kind"),   QStringLiteral("bookmark"));
-            m.insert(QStringLiteral("name"),   r.name);
+            m.insert(QStringLiteral("name"),   name);
             m.insert(QStringLiteral("path"),   r.path);
             m.insert(QStringLiteral("group"),  parent);
             m.insert(QStringLiteral("parent"), parent);
-            m.insert(QStringLiteral("depth"),  depth);
+            m.insert(QStringLiteral("depth"),  tiefe);
             m.insert(QStringLiteral("hidden"), hidden);
             m.insert(QStringLiteral("index"),  r.index);
             m.insert(QStringLiteral("pos"),    pos++);
+            const QString sauber = saubererPfad(r.path);
+            m.insert(QStringLiteral("missing"), m_bmFehlt.contains(sauber));
+            //  Ein Haken: liegt UNTER dem Ordner seiner Gruppe. Alles andere ist ein freies Lesezeichen.
+            m.insert(QStringLiteral("sub"), !gOrdner.isEmpty() && sauber.compare(gOrdner, pfadFall()) != 0
+                                                && pfadGleichOderUnter(sauber, gOrdner));
             out.append(m);
-        }
+            for (int kind : std::as_const(glieder))
+                if (vorfahr.value(kind, -1) == k) zeige(kind, tiefe + 1);
+        };
+        for (int k : std::as_const(glieder))
+            if (!vorfahr.contains(k)) zeige(k, depth);
     };
 
     auto childGroups = [&](const QString& parent) {
@@ -887,6 +993,9 @@ QVariantList AppController::bookmarkTree() const {
         m.insert(QStringLiteral("collapsed"), g.collapsed);
         m.insert(QStringLiteral("count"),     directCount(g.path));
         m.insert(QStringLiteral("pos"),       f.pos);
+        const QString gOrdner = ordnerDerGruppe(bindungen, g.path);
+        m.insert(QStringLiteral("folder"),    gOrdner);
+        m.insert(QStringLiteral("missing"),   !gOrdner.isEmpty() && m_bmFehlt.contains(gOrdner));
         out.append(m);
 
         const bool inner = f.hidden || g.collapsed;
@@ -908,6 +1017,15 @@ QVariantList AppController::savedFolders() const {
             out.append(m);
     }
     return out;
+}
+
+bool AppController::openStartTarget() {
+    if (m_startFolder.isEmpty() || !m_pane) return false;
+    m_pane->openFolder(m_startFolder);
+    m_pane->setPendingFullscreen(m_startFile);
+    m_startFolder.clear();
+    m_startFile.clear();
+    return true;
 }
 
 void AppController::openBookmark(const QString& path) {
@@ -981,6 +1099,7 @@ void AppController::renameBookmarkGroup(const QString& path, const QString& newN
         if (isSelfOrBelow(g.path, from))
             g.path = reparent(g.path, from, to);
     m_settings.setBookmarkGroups(packGroups(groups));
+    reparentBindungen(m_settings, from, to);
 
     QStringList entries = m_settings.savedFolders();
     for (QString& raw : entries) {
@@ -1006,6 +1125,12 @@ void AppController::removeBookmarkGroup(const QString& path) {
         if (isSelfOrBelow(groups.at(i).path, n))
             groups.removeAt(i);
     m_settings.setBookmarkGroups(packGroups(groups));
+    {
+        QList<BmBindung> b = parseBindungen(m_settings.bookmarkGroupFolders());
+        for (int i = int(b.size()) - 1; i >= 0; --i)
+            if (isSelfOrBelow(b.at(i).group, n)) b.removeAt(i);
+        m_settings.setBookmarkGroupFolders(packBindungen(b));
+    }
 
     QStringList entries = m_settings.savedFolders();
     for (QString& raw : entries) {
@@ -1060,6 +1185,7 @@ void AppController::moveBookmarkGroup(const QString& path, const QString& newPar
         for (BmGroup& g : groups)
             if (isSelfOrBelow(g.path, from))
                 g.path = reparent(g.path, from, to);
+        reparentBindungen(m_settings, from, to);
 
         QStringList entries = m_settings.savedFolders();
         for (QString& raw : entries) {
@@ -1119,6 +1245,159 @@ void AppController::moveBookmark(int index, const QString& targetGroup, int pos)
     entries.insert(at, packBookmark(e));
 
     m_settings.setSavedFolders(entries);
+    m_settings.sync();
+    emit savedFoldersChanged();
+}
+
+void AppController::setBookmarkGroupFolder(const QString& groupPath, const QString& folder) {
+    const QString g = bookmarkSection(groupPath);
+    if (g.isEmpty()) return;
+    QList<BmBindung> b = parseBindungen(m_settings.bookmarkGroupFolders());
+    for (int i = int(b.size()) - 1; i >= 0; --i)
+        if (b.at(i).group.compare(g, Qt::CaseInsensitive) == 0) b.removeAt(i);
+    const QString ordner = saubererPfad(mg::toLocalPath(folder));
+    if (!ordner.isEmpty()) b.append(BmBindung{ g, ordner });
+    m_settings.setBookmarkGroupFolders(packBindungen(b));
+    m_settings.sync();
+    emit savedFoldersChanged();
+}
+
+QStringList AppController::bookmarkedSubfolders(const QString& groupPath) const {
+    QStringList out;
+    const QString g = bookmarkSection(groupPath);
+    const QString ordner = ordnerDerGruppe(parseBindungen(m_settings.bookmarkGroupFolders()), g);
+    if (ordner.isEmpty()) return out;
+    for (const QString& raw : m_settings.savedFolders()) {
+        const BmEntry e = parseBookmark(raw);
+        const QString p = saubererPfad(e.path);
+        if (bookmarkSection(e.group).compare(g, Qt::CaseInsensitive) != 0) continue;
+        if (p.compare(ordner, pfadFall()) != 0 && pfadGleichOderUnter(p, ordner)) out.append(p);
+    }
+    return out;
+}
+
+// Ein Haken legt ein Lesezeichen an, das den Pfad relativ zum Gruppenordner als Namen traegt ("A/B" fuer eine
+// tiefere Ebene); ein entfernter Haken nimmt jedes Lesezeichen der Gruppe mit diesem Pfad heraus.
+void AppController::setBookmarkSubfolder(const QString& groupPath, const QString& folder, bool checked) {
+    const QString g = bookmarkSection(groupPath);
+    const QString ordner = ordnerDerGruppe(parseBindungen(m_settings.bookmarkGroupFolders()), g);
+    const QString p = saubererPfad(mg::toLocalPath(folder));
+    if (ordner.isEmpty() || p.isEmpty() || !pfadGleichOderUnter(p, ordner) || p.compare(ordner, pfadFall()) == 0)
+        return;
+    QStringList entries = m_settings.savedFolders();
+    int gefunden = -1;
+    for (int i = int(entries.size()) - 1; i >= 0; --i) {
+        const BmEntry e = parseBookmark(entries.at(i));
+        if (bookmarkSection(e.group).compare(g, Qt::CaseInsensitive) != 0) continue;
+        if (saubererPfad(e.path).compare(p, pfadFall()) != 0) continue;
+        if (checked) { gefunden = i; break; }
+        entries.removeAt(i);
+    }
+    if (checked && gefunden >= 0) return;
+    if (checked) entries.append(packBookmark(BmEntry{ QDir(ordner).relativeFilePath(p), p, g }));
+    m_settings.setSavedFolders(entries);
+    m_settings.sync();
+    emit savedFoldersChanged();
+}
+
+// Im Arbeitsfaden: ein nicht erreichbares Netzlaufwerk haelt `exists()` sekundenlang an.
+void AppController::refreshBookmarkState() {
+    QStringList pfade;
+    for (const QString& raw : m_settings.savedFolders()) {
+        const QString p = saubererPfad(parseBookmark(raw).path);
+        if (!p.isEmpty()) pfade.append(p);
+    }
+    for (const BmBindung& b : parseBindungen(m_settings.bookmarkGroupFolders())) pfade.append(b.folder);
+
+    class Pruefung : public QRunnable {
+    public:
+        std::function<void()> arbeit;
+        void run() override { arbeit(); }
+    };
+    auto* t = new Pruefung;
+    t->setAutoDelete(true);
+    QPointer<AppController> self(this);
+    t->arbeit = [self, pfade] {
+        QSet<QString> fehlt;
+        for (const QString& p : pfade)
+            if (!QFileInfo(p).isDir()) fehlt.insert(p);
+        QMetaObject::invokeMethod(self, [self, fehlt] {
+            if (!self || fehlt == self->m_bmFehlt) return;
+            self->m_bmFehlt = fehlt;
+            emit self->savedFoldersChanged();
+        }, Qt::QueuedConnection);
+    };
+    m_bmPool.setMaxThreadCount(1);
+    m_bmPool.start(t);
+}
+
+// Pfad mitziehen; der Name nur, wenn er der alte Ordnername bzw. der alte Pfad relativ zum Gruppenordner war -
+// ein selbst vergebener Name bleibt stehen.
+void AppController::bookmarksFolderRenamed(const QString& oldPath, const QString& newPath) {
+    const QString alt = saubererPfad(oldPath), neu = saubererPfad(newPath);
+    if (alt.isEmpty() || neu.isEmpty() || alt == neu) return;
+    const QList<BmBindung> vorher = parseBindungen(m_settings.bookmarkGroupFolders());
+    QList<BmBindung> nachher = vorher;
+    bool geaendert = false;
+    for (BmBindung& b : nachher)
+        if (pfadGleichOderUnter(b.folder, alt)) { b.folder = umgehaengt(b.folder, alt, neu); geaendert = true; }
+
+    QStringList entries = m_settings.savedFolders();
+    for (QString& raw : entries) {
+        BmEntry e = parseBookmark(raw);
+        const QString p = saubererPfad(e.path);
+        if (!pfadGleichOderUnter(p, alt)) continue;
+        const QString np = umgehaengt(p, alt, neu);
+        const QString gAlt = ordnerDerGruppe(vorher, bookmarkSection(e.group));
+        const QString gNeu = ordnerDerGruppe(nachher, bookmarkSection(e.group));
+        if (e.name == QFileInfo(p).fileName()) e.name = QFileInfo(np).fileName();
+        else if (!gAlt.isEmpty() && e.name == QDir(gAlt).relativeFilePath(p)) e.name = QDir(gNeu).relativeFilePath(np);
+        e.path = np;
+        raw = packBookmark(e);
+        geaendert = true;
+    }
+    if (!geaendert) return;
+    m_settings.setSavedFolders(entries);
+    m_settings.setBookmarkGroupFolders(packBindungen(nachher));
+    m_settings.sync();
+    emit savedFoldersChanged();
+}
+
+void AppController::bookmarksFolderTrashed(const QString& path) {
+    const QString weg = saubererPfad(path);
+    if (weg.isEmpty()) return;
+    BmPapierkorb korb;
+    QStringList entries = m_settings.savedFolders();
+    for (int i = int(entries.size()) - 1; i >= 0; --i)
+        if (pfadGleichOderUnter(saubererPfad(parseBookmark(entries.at(i)).path), weg))
+            korb.eintraege.prepend(entries.takeAt(i));
+    QList<BmBindung> b = parseBindungen(m_settings.bookmarkGroupFolders());
+    for (int i = int(b.size()) - 1; i >= 0; --i)
+        if (pfadGleichOderUnter(b.at(i).folder, weg)) {
+            korb.bindungen.prepend(b.at(i).group + QLatin1Char('\t') + b.at(i).folder);
+            b.removeAt(i);
+        }
+    if (korb.eintraege.isEmpty() && korb.bindungen.isEmpty()) return;
+    m_bmPapierkorb.insert(weg, korb);
+    m_settings.setSavedFolders(entries);
+    m_settings.setBookmarkGroupFolders(packBindungen(b));
+    m_settings.sync();
+    emit savedFoldersChanged();
+}
+
+void AppController::bookmarksFolderRestored(const QString& path) {
+    const auto it = m_bmPapierkorb.find(saubererPfad(path));
+    if (it == m_bmPapierkorb.end()) return;
+    QStringList entries = m_settings.savedFolders();
+    for (const QString& raw : std::as_const(it->eintraege))
+        if (!entries.contains(raw)) entries.append(raw);
+    QStringList bindungen = m_settings.bookmarkGroupFolders();
+    for (const QString& raw : std::as_const(it->bindungen))
+        if (ordnerDerGruppe(parseBindungen(bindungen), parseBindungen({raw}).value(0).group).isEmpty())
+            bindungen.append(raw);
+    m_bmPapierkorb.erase(it);
+    m_settings.setSavedFolders(entries);
+    m_settings.setBookmarkGroupFolders(bindungen);
     m_settings.sync();
     emit savedFoldersChanged();
 }
@@ -1232,16 +1511,6 @@ QStringList AppController::spellLanguages() const {
 //  Der Wert der FOKUSSIERTEN Hälfte; ohne Hälfte der gemerkte Stand.
 bool AppController::optionsVisible() const {
     return m_pane ? m_pane->optionsVisible() : m_settings.optionsVisible();
-}
-
-void AppController::setBackgroundColor(const QColor& c) {
-    if (m_settings.backgroundColor() == c) return;
-    m_settings.setBackgroundColor(c);   // emittiert colorSchemeChanged -> weitergeleitet
-}
-
-void AppController::setAccentColor(const QColor& c) {
-    if (m_settings.accentColor() == c) return;
-    m_settings.setAccentColor(c);
 }
 
 void AppController::setLanguage(const QString& code) {
@@ -1563,28 +1832,19 @@ void AppController::setDesignProfile(int profile) {
 }
 
 QVariantList AppController::designProfiles() const {
-    struct Entry { DesignProfile p; const char* icon; const char* desc; };
-    static const Entry entries[] = {
-        { DesignProfile::Dark,         "\xF0\x9F\x8C\x99", "Klassisch dunkel, ruhiges Teal-Akzent" },
-        { DesignProfile::DarkOLED,     "\xE2\x9A\xAB",     "Reines Schwarz mit Glow - ideal für OLED" },
-        { DesignProfile::OceanDepth,   "\xF0\x9F\x8C\x8A", "Tiefes Blau mit Verlauf" },
-        { DesignProfile::InfernoBlaze, "\xF0\x9F\x94\xA5", "Warmes Orange-Rot" },
-        { DesignProfile::MidnightRose, "\xF0\x9F\x8C\xB9", "Dunkles Rosé" },
-        { DesignProfile::Elegant,      "\xE2\x9C\xA8",     "Sanftes Lavendel, elegant" },
-        { DesignProfile::Simple,       "\xE2\x98\x80",     "Neutrales Graustufen-Theme" },
-        { DesignProfile::Custom,       "\xF0\x9F\x8E\xA8", "Eigene Farben (unten anpassbar)" },
+    static const DesignProfile order[] = {
+        DesignProfile::Dark, DesignProfile::DarkOLED, DesignProfile::OceanDepth, DesignProfile::InfernoBlaze,
+        DesignProfile::MidnightRose, DesignProfile::Elegant, DesignProfile::Simple, DesignProfile::Custom,
     };
 
     QVariantList out;
-    for (const Entry& e : entries) {
-        const ThemeColors th = (e.p == DesignProfile::Custom)
+    for (const DesignProfile p : order) {
+        const ThemeColors th = (p == DesignProfile::Custom)
                                    ? m_settings.customTheme()
-                                   : AppSettings::themeForProfile(e.p);
+                                   : AppSettings::themeForProfile(p);
         QVariantMap m;
-        m.insert("index",       static_cast<int>(e.p));
+        m.insert("index",       static_cast<int>(p));
         m.insert("name",        th.name);
-        m.insert("icon",        QString::fromUtf8(e.icon));
-        m.insert("description", QString::fromUtf8(e.desc));
         m.insert("accent",      th.accent);
         m.insert("card",        th.card);
         m.insert("background",  th.background);

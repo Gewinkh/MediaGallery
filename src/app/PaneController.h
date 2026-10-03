@@ -34,6 +34,9 @@ class PaneController : public QObject {
     Q_PROPERTY(bool playerViewOpen READ playerViewOpen WRITE setPlayerViewOpen
                NOTIFY playerViewOpenChanged)
     Q_PROPERTY(bool canNavigateBack READ canNavigateBack NOTIFY folderHistoryChanged)
+    //  "Oeffnen mit" einer Datei: sie geht ins Vollbild, sobald die Galerie sie kennt; danach wieder leer.
+    Q_PROPERTY(QString pendingFullscreen READ pendingFullscreen WRITE setPendingFullscreen
+               NOTIFY pendingFullscreenChanged)
 
     //  Die Modelle dieser Hälfte. Als `QObject*`, weil QML sie nur weiterreicht
     //  (die Galerie bindet daran); CONSTANT - sie leben so lange wie die Hälfte.
@@ -52,6 +55,13 @@ public:
     bool optionsVisible() const { return m_optionsVisible; }
     //  Gilt je Haelfte, gemerkt wird der letzte Stand: neue Haelfte und naechster Start nehmen ihn.
     void setOptionsVisible(bool on);
+
+    QString pendingFullscreen() const { return m_pendingFullscreen; }
+    void setPendingFullscreen(const QString& p) {
+        if (m_pendingFullscreen == p) return;
+        m_pendingFullscreen = p;
+        emit pendingFullscreenChanged();
+    }
 
     bool playerViewOpen() const { return m_playerViewOpen; }
     void setPlayerViewOpen(bool on) {
@@ -102,6 +112,7 @@ public:
 signals:
     void playerModeChanged();
     void playerViewOpenChanged();
+    void pendingFullscreenChanged();
     void optionsVisibleChanged();
     void folderChanged();
     void folderOpened(const QString& path);
@@ -117,6 +128,7 @@ signals:
 private:
     bool m_playerMode = false;
     bool m_playerViewOpen = false;
+    QString m_pendingFullscreen;
     bool m_optionsVisible = false;      // Startwert setzt der Konstruktor
 
 

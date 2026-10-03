@@ -47,9 +47,11 @@ Item {
     readonly property bool pdfBusy: ctl.pdfBusy
     readonly property int pdfBlocks: ctl.blockCount
     property int pdfPages: -1
+    property string pdfPreviewPath: ""
     signal pdfFinished(bool ok, string target, string error)
-    function _pdfOpt(nativ, quer, alle, von, bis) {
+    function _pdfOpt(nativ, quer, alle, von, bis, seiten) {
         return { print: !nativ, landscape: quer, all: alle, grid: App.tableGridLines, first: von, last: bis,
+                 pages: seiten || [],
                  font: tabelle.cellFont, background: Editor.background, text: Editor.text,
                  headerBackground: Editor.gutterBackground, headerText: Editor.gutterTextActive }
     }
@@ -57,13 +59,20 @@ Item {
         root.pdfPages = -1
         ctl.countPdfPages(root._pdfOpt(nativ, quer, alle, 1, 0))
     }
-    function pdfExport(nativ, quer, alle, von, bis) {
+    function pdfPreview(nativ, quer, alle) {
+        root.pdfPreviewPath = ""
+        root.pdfPages = -1
         tabelle.uebernehme()
-        ctl.exportPdf(ctl.pdfTarget(), root._pdfOpt(nativ, quer, alle, von, bis))
+        ctl.previewPdf(root._pdfOpt(nativ, quer, alle, 1, 0))
+    }
+    function pdfExport(nativ, quer, alle, von, bis, seiten) {
+        tabelle.uebernehme()
+        ctl.exportPdf(ctl.pdfTarget(), root._pdfOpt(nativ, quer, alle, von, bis, seiten))
     }
     Connections {
         target: ctl
         function onPdfPagesCounted(n) { root.pdfPages = n }
+        function onPdfPreviewReady(pfad, n) { root.pdfPreviewPath = pfad; root.pdfPages = n }
         function onPdfExportFinished(ok, target, error) { root.pdfFinished(ok, target, error) }
     }
 

@@ -13,6 +13,7 @@ struct PdfOptions {
     bool landscape = false;
     int  firstPage = 1;        // 1-basiert
     int  lastPage = 0;         // 0 = bis zum Ende
+    QList<int> pages;          // einzelne Seiten, 1-basiert; sticht first/last
 };
 
 // Graustufen fuer den Druck: Schrift schwarz, Kommentare und Nebensachen grau, keine Farbflaechen.

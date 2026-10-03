@@ -15,8 +15,9 @@ Item {
 
     property string source: ""
     property var    annotations: []
-    // Nur die aktive Split-Kachel darf fensterweite Kuerzel feuern - sonst sind sie bei
-    // mehreren offenen PDFs mehrdeutig und Qt feuert keines.
+    //  Ein Link auf eine Datei; der Viewer blaettert hin, wenn sie in der Galerie liegt, sonst oeffnet sie das System.
+    signal openFileRequested(string path)
+    // Nur die aktive Split-Kachel feuert fensterweite Kuerzel - bei zwei PDFs waeren sie mehrdeutig, Qt feuerte keines.
     property bool   paneActive: true
 
     property real   zoom: 1.0
@@ -24,8 +25,7 @@ Item {
     property int    currentPage: 0
     property real   panX: 0                   // horizontaler Schwenk-Offset (Zoom-Pan)
     property int    _savePage: 0             // Resize: die stabile Seite sichern …
-    // Solange gesetzt, darf der Ready-Melder die Ansicht nicht an den Anfang setzen -
-    // die Wiederherstellung bringt sie an die richtige Stelle.
+    // Solange gesetzt, setzt der Ready-Melder die Ansicht nicht an den Anfang - das macht die Wiederherstellung.
     property bool   _reloading: false
     property int    _fileRev: 0
     property int    _stablePage: 0           // zuletzt SICHER erkannte Seite (Quelle für _savePage)
@@ -36,8 +36,7 @@ Item {
 
     property real   topInset: 0
     property real   bottomInset: 0
-    // Kopfraum in Hoehe der Ribbon-Leiste: sie liegt als Overlay ueber den Seiten und
-    // verdeckte deren Oberkante, weil contentY nicht ueber den Listenanfang hinausgeht.
+    // Kopfraum in Hoehe der Ribbon-Leiste, die als Overlay die Oberkante der ersten Seite verdeckte.
     // Der Seiten-Fit bleibt unangetastet - sonst skalierte jedes Ein-/Ausblenden neu.
     readonly property real ribbonInset:
         (root.editCtl.editMode && root.editPanelVisible && PdfEdit.panelOnTop) ? 62 : 0
@@ -74,9 +73,7 @@ Item {
     }
     function _audioLabel(clip, idxOnPage) { return App.uiText(App.language, "PdfAudioItemLabel").arg(idxOnPage + 1) }
 
-    // Eigene Controller je Kachel statt globaler Singletons: sonst teilten sich mehrere
-    // PDF-Kacheln in der geteilten Ansicht Editmodus, Boxen, Auswahl und Audio.
-    // editCtl ist exponiert, damit Kinder ueber surface.editCtl zugreifen.
+    // Controller je Kachel statt Singleton: sonst teilten sich zwei PDF-Kacheln Editmodus, Boxen, Auswahl und Audio.
     property PdfEditController editCtl: PdfEditController {}
     PdfTextController  { id: pdfTextCtl }
     PdfAudioController { id: pdfAudioCtl }
@@ -157,8 +154,7 @@ Item {
         return l
     }
 
-    // Ziel ist immer eine neue Kopie neben dem Original; die Notizen bleiben ueber das
-    // Sidecar reversibel.
+    // Ziel ist immer eine neue Kopie neben dem Original; die Notizen bleiben ueber das Sidecar reversibel.
     function startPdfExport() {
         if (root.editCtl.busy || !root.docReady)
             return
@@ -173,23 +169,18 @@ Item {
         root.editCtl.exportContentEdited()
     }
 
-    // Ein Export-Weg fuer die Oberflaeche; welcher laeuft, entscheidet
-    // PdfEdit.exportLossless. Zwei Knoepfe erzwangen die Wahl bei jedem Export,
-    // obwohl sie eine Grundsatzentscheidung ist.
+    // Ein Export-Weg; verlustfrei oder Raster entscheidet PdfEdit.exportLossless.
     function startExport() {
         if (PdfEdit.exportLossless) root.startContentExport()
         else                        root.startPdfExport()
     }
 
-    // Scroll-Vorhalt in Viewporthoehen je Richtung. Hoeher = mehr RAM UND mehr
-    // konkurrierende Renderings: PDFium serialisiert alle render()-Aufrufe einer
-    // Dokument-Instanz ueber einen Mutex. RAM ~ (1 + 2*pageCacheScreens) Seitenbitmaps.
+    // Scroll-Vorhalt in Viewporthoehen je Richtung; RAM ~ (1 + 2*pageCacheScreens) Seitenbitmaps,
+    // und PDFium serialisiert alle render()-Aufrufe einer Dokument-Instanz.
     property real   pageCacheScreens: 1.5
     property int    pdfPoolSize: 3
 
-    // Gestaffeltes Laden: zuerst nur die sichtbare Seite rendern, Vorhalte-Puffer und
-    // Thumbnail-Leiste erst nach kurzer Verzoegerung freischalten. Sonst konkurrieren
-    // ~8 Thumbnails und mehrere Vorabseiten um denselben PDFium-Render-Mutex.
+    // Erst die sichtbare Seite, Vorhalt und Leiste verzoegert - sonst stehen ~8 Vorschauen vor ihr am PDFium-Mutex.
     property bool   _warm: false                 // false -> nur sichtbare Seite rendern
     property int    warmupDelayMs: 160           // Verzoegerung bis Puffer+Thumbnails
 
@@ -210,9 +201,7 @@ Item {
         interval: root.warmupDelayMs
         repeat: false
         onTriggered: {
-            // Vorrendern anstossen, BEVOR die Delegates ueber _warm entstehen - sie binden dann
-            // sofort die richtige docId. Quelle ist die gebackene Arbeitsdatei, sonst zeigte die
-            // Leiste die Originalreihenfolge.
+            // Vor den Delegates (_warm) anstossen; Quelle ist die gebackene Arbeitsdatei, sonst stuende die alte Reihenfolge da.
             if (root.source.length > 0)
                 root._thumbDocId = PdfThumbs.ensureDocument(root._thumbSource(),
                                                             root.currentPage)
@@ -220,9 +209,7 @@ Item {
         }
     }
 
-    //  Grundton des Dokuments (aus der ersten gerechneten Vorschauseite). Eine
-    //  noch nicht gerechnete Seite traegt ihn statt Weiss - auf einem dunklen
-    //  Dokument ist ein weisses Blatt beim Rollen das Auffaelligste im Bild.
+    //  Grundton des Dokuments: eine noch nicht gerechnete Seite traegt ihn statt Weiss (dunkle PDFs).
     property color _seitenTon: "white"
     Connections {
         target: PdfThumbs
@@ -246,9 +233,7 @@ Item {
     function _activateDoc(localPath) {
         var key = root._localPath(localPath)
         var url = localPath.indexOf("file:") === 0 ? localPath : "file://" + localPath
-        // Nach einer Seitenoperation liegt die neue Datei am selben Pfad; Qt erkennt am
-        // gleichen URL nichts Neues. Der Zaehler macht die URL eindeutig, toLocalFile()
-        // verwirft ihn wieder.
+        // Nach einer Seitenoperation gleicher Pfad: der Zaehler macht die URL fuer Qt neu, toLocalFile() verwirft ihn.
         if (root._fileRev > 0) url += "?mgrev=" + root._fileRev
         var d = root._pool[key]
         if (!d) {
@@ -289,8 +274,7 @@ Item {
         // Nur Overlays stoppen - das Render-Dokument bleibt im Pool warm.
         mediaLoader.active = false
         _saveActivePos()
-        // Player-Instanz restlos zerstoeren: eine lebende Instanz behielte Handle und
-        // Alt-Zustand, obwohl releaseDocument() die Temp-WAVs loescht.
+        // Player-Instanz restlos zerstoeren: sie behielte sonst Handle und Zustand, obwohl releaseDocument() die WAVs loescht.
         audioPlayer.reset()
         root.activeClipId = -1
         root._activeTitle = ""
@@ -392,8 +376,7 @@ Item {
             var i = root._poolOrder.indexOf(key)
             if (i >= 0) root._poolOrder.splice(i, 1)
         }
-        // Delegates jetzt wegwerfen: die Bild-URL aendert sich nicht, ein bestehendes
-        // PdfPageImage laese die Datei sonst nicht neu.
+        // Delegates wegwerfen: die Bild-URL bleibt gleich, ein bestehendes PdfPageImage laese die Datei sonst nicht neu.
         root._fileRev++                     // neue URL -> Qt liest die Datei neu
         _activateDoc(p)                     // frisch laden (Pool-Eintrag entfernt)
         if (old && old !== root.doc) { old.source = ""; old.destroy() }
@@ -532,9 +515,7 @@ Item {
             root._toast(App.uiText(App.language,
                                    ok ? "PdfEditSavedToast" : "PdfEditSaveFailedToast"))
         }
-        // Die Aenderung liess sich nicht in den Content-Stream schreiben oder der
-        // Absatz-Umbruch konnte den Rest nicht unterbringen - beides wird gesagt,
-        // statt es still zu verwerfen.
+        // Content-Stream nicht schreibbar oder Umbruch zu lang - beides wird gemeldet statt still verworfen.
         function onReflowOverflow() {
             root._toast(App.uiText(App.language, "PdfReflowOverflow"))
         }
@@ -639,18 +620,15 @@ Item {
         }
     }
 
-    // Audio-Fassade: stabiler Zugriffspunkt fuer die UI, waehrend die MediaPlayer-
-    // Instanz je Wiedergabe neu erzeugt wird. Das FFmpeg-Backend behaelt nach einem
-    // Quellenwechsel auf derselben Instanz Pipeline-Zustand und startet keinen Ton.
+    // Audio-Fassade fuer die UI; der MediaPlayer entsteht je Wiedergabe neu - das FFmpeg-Backend
+    // startete nach einem Quellenwechsel auf derselben Instanz keinen Ton.
     Item {
         id: audioPlayer
         visible: false
 
         property var _inst: null
 
-        // Persistenter Sink, einmal geoeffnet und wiederverwendet. Ein eigener AudioOutput
-        // je Player liess das Audiogeraet durch das schnelle Oeffnen/Schliessen bei jeder
-        // zweiten Wiedergabe stumm bleiben.
+        // Ein gemeinsamer Sink: ein AudioOutput je Player liess jede zweite Wiedergabe stumm.
         AudioOutput { id: sharedAudioOut }
 
         readonly property int  playbackState: _inst ? _inst.playbackState : MediaPlayer.StoppedState
@@ -676,9 +654,7 @@ Item {
             var old = _inst
             _inst = null
             if (old) {
-                // Zuerst abkoppeln: stop() einer spielenden Instanz laeuft ueber LoadedMedia, deren
-                // Handler _pendingPlay konsumierte und die alte Quelle erneut startete - der neue
-                // Clip wurde dann nie gestartet.
+                // Zuerst abkoppeln: sonst startet stop() ueber LoadedMedia/_pendingPlay die alte Quelle neu statt des neuen Clips.
                 old.detached = true
                 old.stop()
                 old.audioOutput = null
@@ -692,9 +668,8 @@ Item {
             MediaPlayer {
                 // Schaltet alle Handler der alten Instanz ab, bevor sie gestoppt und zerstoert wird.
                 property bool detached: false
-                // Erstversuch als schneller Pfad, die Absicherung uebernimmt playRetry. Nie auf 0
-                // suchen - ein redundanter Seek liess die erste Wiedergabe haengen; ein echter
-                // Resume-Sprung erfolgt erst, nachdem die Wiedergabe laeuft.
+                // Schneller Erstversuch, abgesichert durch playRetry. Nie auf 0 suchen - ein redundanter Seek liess die
+                // erste Wiedergabe haengen; der Resume-Sprung folgt, wenn sie laeuft.
                 onMediaStatusChanged: {
                     if (detached) return
                     if ((mediaStatus === MediaPlayer.LoadedMedia || mediaStatus === MediaPlayer.BufferedMedia)
@@ -830,9 +805,7 @@ Item {
         onActivated: root.zoomOut()
     }
 
-    // Ein Shortcut kann das nicht leisten: hier wird beliebiger Text getippt, nicht
-    // eine feste Folge abgefangen. Der Empfaenger nimmt keine Flaeche ein und faengt
-    // daher keine Mausereignisse ab.
+    // Kein Shortcut, weil beliebiger Text getippt wird; ohne Flaeche, faengt also keine Maus.
     Item {
         id: caretInput
         width: 0; height: 0
@@ -1135,9 +1108,8 @@ Item {
         return false
     }
 
-    // Union der Auswahl-Rechtecke in PDF-Punkten. Die Zugkoordinaten beschreiben eine
-    // Bewegung entlang einer Zeile und haben Hoehe 0; die Sonde fand damit nichts und
-    // der Text blieb beim Export unter dem Balken stehen.
+    // Union der Auswahl-Rechtecke in PDF-Punkten - die Zugkoordinaten haben Hoehe 0, die Sonde fand damit nichts
+    // und der Text blieb beim Export unter dem Balken.
     function _selectionUnionPt(page) {
         const pts = root.doc.pagePointSize(page)
         if (!pts || pts.width <= 0 || pts.height <= 0) return null
@@ -1153,9 +1125,7 @@ Item {
                  w: (x1 - x0) * pts.width,   h: (y1 - y0) * pts.height }
     }
 
-    // Wie beim Ersetzen, endet aber in endRedactDraw: die Flaeche schnappt auf die
-    // erkannten Zeilen ein, deren Text als origText mitwandert - Gedecktes und
-    // Entferntes bleiben deckungsgleich.
+    // Wie Ersetzen, aber ueber endRedactDraw: die Flaeche schnappt auf die Zeilen, ihr Text wandert nach origText.
     function redactSelectionNow() {
         if (!root.docReady || !root.editCtl.editMode) return false
         const page = root.selPage
@@ -1374,9 +1344,7 @@ Item {
             anchors.top: parent.top; anchors.bottom: parent.bottom
             width: Math.min(contentWidth, toolbar.width * 0.55)
             spacing: 6
-            //  NICHT nur im Editmodus: die Umsetzung gilt auch fuer die SUCHE,
-            //  und ohne den Knopf liesse sie sich hier gar nicht einschalten.
-            //  Ob er ueberhaupt erscheint, entscheidet die Einstellung.
+            //  Auch ausserhalb des Editmodus: die Umsetzung gilt fuer die Suche; ob er erscheint, entscheidet die Einstellung.
             TranslitButton {
                 id: translitBtn
                 anchors.verticalCenter: parent.verticalCenter
@@ -1500,9 +1468,8 @@ Item {
             left: parent.left; right: parent.right
             top: toolbar.visible ? toolbar.bottom : parent.top
             bottom: parent.bottom
-            // Im Seiten-Fit haengt die Skalierung von der Viewport-Hoehe ab, deshalb wird das
-            // Inset dort ignoriert: sonst skalierte jedes Ein-/Ausblenden der Navigation die
-            // Seite neu. Im Breite-Modus bleibt es erhalten - dort aendert es nichts.
+            // Im Seiten-Fit wird das Inset ignoriert, sonst skalierte jedes Ein-/Ausblenden der Navigation die Seite neu;
+            // im Breite-Modus aendert es nichts.
             bottomMargin: root.fitMode === "page" ? 0 : root.bottomInset
         }
 
@@ -1557,11 +1524,8 @@ Item {
                 readonly property real hFit: pts.height > 0 ? (pages.height - 24) / pts.height : 1.0
                 readonly property real fitScale: root.fitMode === "page"
                                                  ? Math.min(wFit, hFit) : wFit
-                //  Auf GERAETEpixel eingerastet: die Flaeche darunter ist weiss,
-                //  und eine Bruchteilbreite liess davon eine Spalte am rechten
-                //  Rand stehen - bei einem dunklen PDF ein heller Strich, der je
-                //  nach Zoomstufe auftauchte und wieder verschwand (gemessen: ein
-                //  Pixel, x 862 bei 117 %, x 914 bei 140 %).
+                //  Auf Geraetepixel eingerastet: eine Bruchteilbreite liess je nach Zoom eine weisse Spalte am rechten Rand
+                //  stehen (gemessen: x 862 bei 117 %, x 914 bei 140 %).
                 readonly property real _dpr: Screen.devicePixelRatio > 0
                                              ? Screen.devicePixelRatio : 1
                 readonly property real pageW:
@@ -1580,10 +1544,7 @@ Item {
                     //  zaehlt nur fuer die, die noch rechnen.
                     color: pageImg.status === Image.Ready ? "white" : root._seitenTon
 
-                    //  Solange die grosse Seite noch rechnet, steht die
-                    //  VORSCHAU aus dem RAM hier - sie ist schon da. Vorher war
-                    //  hier eine weisse Flaeche, und schnelles Rollen sah aus
-                    //  wie ein haengendes Fenster.
+                    //  Solange die grosse Seite rechnet, steht hier die Vorschau aus dem RAM statt einer weissen Flaeche.
                     Image {
                         id: grobeSeite
                         anchors.fill: parent
@@ -1655,12 +1616,8 @@ Item {
                         currentFrame: pageCell.index
                         asynchronous: true
                         cache: false
-                        //  `Stretch`, nicht `PreserveAspectFit`: `sourceSize`
-                        //  wird auf ganze Pixel gerundet, das Seitenverhaeltnis
-                        //  weicht danach um Bruchteile ab, und der Letterbox-Rand
-                        //  liess die WEISSE Flaeche darunter als Saum
-                        //  durchscheinen - je nach Zoomstufe mal da, mal nicht.
-                        //  Die Verzerrung ist kleiner als ein Pixel.
+                        //  `Stretch` statt `PreserveAspectFit`: `sourceSize` wird gerundet, der Letterbox-Rand liess sonst je nach Zoom
+                        //  einen weissen Saum durchscheinen. Die Verzerrung bleibt unter einem Pixel.
                         fillMode: Image.Stretch
                         sourceSize.width: Math.round(pageCell.pageW * Screen.devicePixelRatio)
                         sourceSize.height: Math.round(pageCell.pageH * Screen.devicePixelRatio)
@@ -1730,26 +1687,42 @@ Item {
                                 required property var modelData
                                 // Audio (type 0) uebernimmt PdfAudio mit eigenen Hotspots; hier nur Video/Link.
                                 visible: modelData.page === pageCell.index && modelData.type !== 0
+                                // Ein Link zeigt sich erst beim Darueberfahren - Farbe und Unterstrich traegt das PDF.
+                                readonly property bool isLink: modelData.type !== 1
+                                readonly property bool over: badgeHover.hovered || badgeArea.containsMouse
                                 x: modelData.x * pageImg.width
                                 y: modelData.y * pageImg.height
-                                width:  Math.max(18, modelData.w * pageImg.width)
-                                height: Math.max(18, modelData.h * pageImg.height)
-                                radius: 4
-                                color: badgeHover.hovered ? Qt.rgba(0.0, 0.78, 0.70, 0.35)
-                                                          : Qt.rgba(0.0, 0.78, 0.70, 0.18)
-                                border.color: "#00c8b4"; border.width: 1
+                                width:  badge.isLink ? modelData.w * pageImg.width  : Math.max(18, modelData.w * pageImg.width)
+                                height: badge.isLink ? modelData.h * pageImg.height : Math.max(18, modelData.h * pageImg.height)
+                                radius: badge.isLink ? 2 : 4
+                                color: badge.isLink
+                                       ? (badge.over ? Qt.rgba(App.themeAccent.r, App.themeAccent.g, App.themeAccent.b, 0.16)
+                                                     : "transparent")
+                                       : (badge.over ? Qt.rgba(0.0, 0.78, 0.70, 0.35)
+                                                     : Qt.rgba(0.0, 0.78, 0.70, 0.18))
+                                border.color: "#00c8b4"; border.width: badge.isLink ? 0 : 1
                                 DrawnIcon {
+                                    visible: !badge.isLink
                                     anchors.centerIn: parent
                                     name: badge.modelData.type === 1 ? "play" : "arrow"
                                     size: 13
                                     color: "#e0fffb"
                                 }
                                 HoverHandler { id: badgeHover }
-                                ToolTip.visible: badgeHover.hovered && badge.modelData.label.length > 0
-                                ToolTip.text: badge.modelData.label
+                                ToolTip.visible: badge.over && (badge.modelData.label.length > 0
+                                                                        || badge.modelData.targetPage >= 0)
+                                ToolTip.text: badge.modelData.targetPage >= 0
+                                              ? App.uiText(App.language, "PdfLinkToPage").arg(badge.modelData.targetPage + 1)
+                                              : badge.modelData.label
                                 // MouseArea statt TapHandler: verbraucht den Press, sonst markierte der Faenger.
+                                // Mindestens 14 px greifbar, auch wenn der Link nur eine hochgestellte Ziffer ist.
                                 MouseArea {
-                                    anchors.fill: parent
+                                    id: badgeArea
+                                    anchors.centerIn: parent
+                                    width: Math.max(14, parent.width)
+                                    height: Math.max(14, parent.height)
+                                    hoverEnabled: true
+                                    cursorShape: Qt.PointingHandCursor
                                     onClicked: root.activateAnnotation(badge.modelData)
                                 }
                             }
@@ -1805,9 +1778,7 @@ Item {
                                             || root.editCtl.tool === 8) ? Qt.IBeamCursor
                                                                    : Qt.CrossCursor
                             property int _drawId: -1
-                            // Zustand der beiden nicht-zeichnenden Gesten. Die Bezeichner muessen deklariert
-                            // sein: QML wirft sonst ReferenceError bzw. Invalid write to global property und
-                            // bricht den Handler sofort ab - updateDraw/endDraw wurden nie erreicht.
+                            // Muss deklariert sein: sonst bricht der Handler mit ReferenceError ab, bevor updateDraw/endDraw laufen.
                             property bool _textSel: false
                             property bool _textSelDrag: false
                             property real _selSx: 0
@@ -1832,9 +1803,7 @@ Item {
                                          y: Math.max(0, Math.min((my / pageImg.height) * pts.height, pts.height)) }
                             }
                             onPressed: (m) => {
-                                // Bewusst ohne ready-Wache: beginSelection() laedt die Textebene lazy und der
-                                // onReadyChanged-Catch-up zieht die Auswahl nach. Mit Wache blieb der erste
-                                // Markierversuch im Editmodus wirkungslos.
+                                // Ohne ready-Wache: beginSelection() laedt die Textebene lazy; mit Wache blieb der erste Markierversuch wirkungslos.
                                 if (root.editCtl.tool === 0
                                         && pageImg.width > 0 && pageImg.height > 0) {
                                     _textSel = true
@@ -1978,9 +1947,8 @@ Item {
                                 root.editCtl.endDraw(_drawId)
                                 _drawId = -1
                             }
-                            // replaceProbe liefert Zeilen-Bounds, mittlere Zeilenhoehe und den eingebetteten
-                            // Text; der Controller schnappt die Box darauf ein. Ohne Treffer bleibt sie still
-                            // unbefuellt. Beim Schwaerzen wandert der Text nach origText statt in die Box.
+                            // replaceProbe liefert Zeilen-Bounds, Zeilenhoehe und Text, der Controller schnappt die Box ein (ohne Treffer leer).
+                            // Beim Schwaerzen wandert der Text nach origText statt in die Box.
                             function _finishRedact() {
                                 const info = root.editCtl.boxInfo(_drawId)
                                 const pts = pageCell.pts
@@ -2090,9 +2058,8 @@ Item {
                             }
                         }
 
-                        // Qt PDF zeichnet Widget-Annotationen nicht - dieses Overlay ist die einzige
-                        // Darstellung der Felder und deshalb in beiden Modi aktiv. Das Tippen laeuft
-                        // rev-getrieben, damit die Delegates nicht je Zeichen neu entstehen.
+                        // Qt PDF zeichnet Widget-Annotationen nicht - dieses Overlay ist die einzige Darstellung der Felder, in beiden Modi.
+                        // Tippen laeuft rev-getrieben, damit die Delegates nicht je Zeichen neu entstehen.
                         Repeater {
                             model: root.editCtl.formFields
                             delegate: PdfFormField {
@@ -2200,14 +2167,11 @@ Item {
                 boundsBehavior: Flickable.StopAtBounds
                 ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
 
-                //  Dem Renderer sagen, wo man gerade HINSIEHT - sonst arbeitet er
-                //  die Reihenfolge vom Oeffnen stur ab und rechnet nach einem Zug
-                //  ans Ende an Seiten weiter, die niemand mehr sieht.
+                //  Dem Renderer melden, wo man hinsieht - sonst rechnet er nach einem Zug ans Ende unsichtbare Seiten weiter.
                 onContentYChanged: thumbs.meldeBlick()
 
-                //  `indexAt` liefert ZWISCHEN zwei Kacheln -1; ungeprueft
-                //  weitergereicht setzte das den Blick bei jedem Rollschritt auf
-                //  Seite 0 zurueck. `indexForContentY` entscheidet dann nach Naehe.
+                //  `indexAt` liefert zwischen zwei Kacheln -1 und setzte den Blick sonst auf Seite 0 zurueck;
+                //  `indexForContentY` entscheidet dann nach Naehe.
                 function meldeBlick() {
                     if (root._thumbDocId <= 0 || thumbs.count <= 0) return
                     const i = thumbs.indexForContentY(thumbs.contentY + thumbs.height / 2)
@@ -2264,9 +2228,7 @@ Item {
                     property int rev: 0
                     readonly property size pts: root.doc.pagePointSize(index)
                     readonly property real _dpr: Screen.devicePixelRatio > 0 ? Screen.devicePixelRatio : 1
-                    // Auf GANZE Geraetepixel gerastet: eine krumme Hoehe laesst
-                    // zwischen Bild und Rahmen eine halbe Zeile des weissen
-                    // Grundes stehen - auf einer dunklen Seite ein heller Strich.
+                    // Auf ganze Geraetepixel gerastet, sonst bleibt zwischen Bild und Rahmen ein heller Strich des weissen Grundes.
                     readonly property real thumbW: Math.round((thumbs.width - 8) * _dpr) / _dpr
                     readonly property real thumbH: Math.round(
                         (pts.width > 0 ? thumbW * (pts.height / pts.width) : thumbW * 1.414) * _dpr) / _dpr
@@ -2427,9 +2389,8 @@ Item {
             }
         }
 
-        // Audio-Panel rechts, symmetrisch zur Thumbnail-Leiste; zeigt nur die Audios der
-        // aktuellen Seite, der Mini-Player laeuft unabhaengig weiter. Das Editor-Panel
-        // teilt sich dieselbe Datei - je nach PdfEdit.panelOnTop ist genau eines sichtbar.
+        // Audio-Panel rechts, nur mit den Audios der aktuellen Seite; der Mini-Player laeuft weiter.
+        // Teilt sich die Stelle mit dem Editor-Panel - PdfEdit.panelOnTop entscheidet, welches sichtbar ist.
         PdfEditPanel {
             anchors { right: parent.right; rightMargin: 14; top: parent.top; bottom: parent.bottom }
             width: 320
@@ -2647,7 +2608,11 @@ Item {
     }
 
     function activateAnnotation(a) {
-        if (a.type === 2 || a.uri.indexOf("http") === 0) {       // Link
+        if (a.targetPage >= 0) {                                  // Sprung innerhalb der Datei
+            goToPage(a.targetPage)
+        } else if (a.type === 2 && !/^(https?|mailto|ftp):/i.test(a.uri)) {   // Datei neben der PDF: wie aus Markdown
+            root.openFileRequested(a.uri)
+        } else if (a.type === 2 || a.uri.indexOf("http") === 0) { // Link
             Viewer.openExternally(a.uri)
         } else if (a.type === 1) {                                // Video
             mediaLoader.uri = a.uri

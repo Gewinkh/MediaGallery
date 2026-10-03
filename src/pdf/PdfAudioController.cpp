@@ -14,11 +14,13 @@
 #include <utility>
 #include <cstring>
 #include "core/ZCodec.h"
+#include "pdf/PdfRawScan.h"
 
 // Bewusst KEIN QPdfDocument: Seitengrößen kommen aus /MediaBox, alles andere aus dem rohen Bytestrom.
 // Voraussetzung (von den Ziel-PDFs erfüllt): klassische Objekte, also per "N G obj" scanbar.
 namespace {
 
+using namespace mg::pdfraw;
 using CancelFlag = std::shared_ptr<std::atomic<bool>>;
 inline bool aborted(const CancelFlag& c) {
     return c && c->load(std::memory_order_relaxed);
@@ -41,194 +43,6 @@ QByteArray readAllCancellable(QFile& f, const CancelFlag& cancel) {
     return out;
 }
 
-inline bool isWs(char c)    { return c==' '||c=='\t'||c=='\r'||c=='\n'||c=='\f'||c=='\0'; }
-inline bool isDelim(char c) { return isWs(c)||c=='('||c==')'||c=='<'||c=='>'||c=='['||c==']'||c=='{'||c=='}'||c=='/'||c=='%'; }
-inline void skipWs(const QByteArray& d, qsizetype& i) { while (i < d.size() && isWs(d[i])) ++i; }
-
-long readUInt(const QByteArray& d, qsizetype& i) {
-    const qsizetype s = i;
-    while (i < d.size() && d[i] >= '0' && d[i] <= '9') ++i;
-    if (i == s) return -1;
-    bool ok = false; const long v = d.mid(s, i - s).toLong(&ok);
-    return ok ? v : -1;
-}
-
-qsizetype keyPos(const QByteArray& d, const char* key, qsizetype from = 0) {
-    const QByteArray k(key);
-    qsizetype p = from;
-    while ((p = d.indexOf(k, p)) >= 0) {
-        const qsizetype a = p + k.size();
-        const char c = a < d.size() ? d[a] : ' ';
-        if (isDelim(c)) return p;
-        p = a;
-    }
-    return -1;
-}
-
-QByteArray readDictAt(const QByteArray& d, qsizetype from) {
-    const qsizetype lt = d.indexOf("<<", from);
-    if (lt < 0) return {};
-    int depth = 0;
-    for (qsizetype i = lt; i + 1 < d.size(); ++i) {
-        if (d[i] == '<' && d[i+1] == '<')      { ++depth; ++i; }
-        else if (d[i] == '>' && d[i+1] == '>') { --depth; ++i; if (depth == 0) return d.mid(lt, i - lt + 1); }
-    }
-    return {};
-}
-
-long intDirect(const QByteArray& dict, const char* key, long def) {
-    const qsizetype kp = keyPos(dict, key); if (kp < 0) return def;
-    qsizetype v = kp + qstrlen(key); skipWs(dict, v);
-    const long a = readUInt(dict, v); return a < 0 ? def : a;
-}
-
-int firstRefForKey(const QByteArray& dict, const char* key) {
-    const qsizetype klen = qstrlen(key);
-    qsizetype from = 0;
-    for (;;) {
-        const qsizetype kp = keyPos(dict, key, from); if (kp < 0) return -1;
-        qsizetype v = kp + klen; skipWs(dict, v);
-        const long a = readUInt(dict, v);
-        if (a >= 0) {
-            qsizetype v2 = v; skipWs(dict, v2);
-            const long b = readUInt(dict, v2); skipWs(dict, v2);
-            if (b >= 0 && v2 < dict.size() && dict[v2] == 'R') return (int)a;
-        }
-        from = kp + klen;
-    }
-}
-
-int firstAnyRef(const QByteArray& d) {
-    qsizetype i = 0;
-    while (i < d.size()) {
-        if (d[i] >= '0' && d[i] <= '9') {
-            qsizetype j = i; const long a = readUInt(d, j); skipWs(d, j);
-            const long b = readUInt(d, j); skipWs(d, j);
-            if (b >= 0 && j < d.size() && d[j] == 'R') return (int)a;
-            i = (j > i) ? j : i + 1;
-        } else ++i;
-    }
-    return -1;
-}
-
-QByteArray nestedDictForKey(const QByteArray& dict, const char* key) {
-    const qsizetype kp = keyPos(dict, key); if (kp < 0) return {};
-    qsizetype v = kp + qstrlen(key); skipWs(dict, v);
-    if (v + 1 < dict.size() && dict[v] == '<' && dict[v+1] == '<') return readDictAt(dict, v);
-    return {};
-}
-
-QByteArray bracketValue(const QByteArray& dict, const char* key) {
-    const qsizetype kp = keyPos(dict, key); if (kp < 0) return {};
-    qsizetype v = kp + qstrlen(key); skipWs(dict, v);
-    if (v < dict.size() && dict[v] == '[') {
-        const qsizetype e = dict.indexOf(']', v);
-        if (e >= 0) return dict.mid(v, e - v + 1);
-    }
-    return {};
-}
-
-QString stringValue(const QByteArray& dict, const char* key) {
-    const qsizetype kp = keyPos(dict, key); if (kp < 0) return {};
-    qsizetype v = kp + qstrlen(key); skipWs(dict, v);
-    if (v < dict.size() && dict[v] == '(') {
-        int depth = 0; QByteArray out;
-        for (qsizetype i = v; i < dict.size(); ++i) {
-            const char c = dict[i];
-            if (c == '(') { if (depth > 0) out += c; ++depth; }
-            else if (c == ')') { --depth; if (depth == 0) return QString::fromLatin1(out); out += c; }
-            else out += c;
-        }
-    }
-    return {};
-}
-
-long lengthValue(const QByteArray& d, const QHash<int,qsizetype>& off, const QByteArray& dict) {
-    const qsizetype kp = keyPos(dict, "/Length"); if (kp < 0) return -1;
-    qsizetype v = kp + 7; skipWs(dict, v);
-    const long a = readUInt(dict, v); if (a < 0) return -1;
-    qsizetype v2 = v; skipWs(dict, v2);
-    const long b = readUInt(dict, v2); skipWs(dict, v2);
-    if (b >= 0 && v2 < dict.size() && dict[v2] == 'R') {           // „N G R" -> Objekt lesen
-        if (off.contains((int)a)) { qsizetype o = off.value((int)a); skipWs(d, o); const long val = readUInt(d, o); if (val >= 0) return val; }
-        return -1;
-    }
-    return a;                                                       // direkter Wert
-}
-
-bool isPageObject(const QByteArray& dict) {
-    qsizetype t = keyPos(dict, "/Type");
-    while (t >= 0) {
-        qsizetype v = t + 5; skipWs(dict, v);
-        if (v < dict.size() && dict[v] == '/') {
-            qsizetype e = v + 1; while (e < dict.size() && !isDelim(dict[e])) ++e;
-            if (dict.mid(v, e - v) == "/Page") return true;        // NICHT /Pages
-        }
-        t = keyPos(dict, "/Type", t + 5);
-    }
-    return false;
-}
-
-QSizeF mediaBoxSize(const QByteArray& pageDict) {
-    QByteArray mb = bracketValue(pageDict, "/MediaBox");
-    if (mb.size() < 2) mb = bracketValue(pageDict, "/CropBox");   // viele Seiten erben /MediaBox
-    if (mb.size() < 2) return QSizeF(595, 842);
-    const QByteArray inner = mb.mid(1, mb.size() - 2).trimmed();
-    const QList<QByteArray> parts = inner.split(' ');
-    QList<double> v; for (const auto& p : parts) { bool ok = false; const double d = p.trimmed().toDouble(&ok); if (ok) v << d; }
-    if (v.size() < 4) return QSizeF(595, 842);
-    return QSizeF(qAbs(v[2] - v[0]), qAbs(v[3] - v[1]));
-}
-
-QRectF parseNormalisedRect(const QByteArray& rectBytes, const QSizeF& ps) {
-    if (rectBytes.size() < 2) return {};
-    const QByteArray inner = rectBytes.mid(1, rectBytes.size() - 2).trimmed();
-    const QList<QByteArray> parts = inner.split(' ');
-    QList<double> v; for (const auto& p : parts) { bool ok = false; const double d = p.trimmed().toDouble(&ok); if (ok) v << d; }
-    if (v.size() < 4) return {};
-    double x1 = v[0], y1 = v[1], x2 = v[2], y2 = v[3];
-    if (x2 < x1) std::swap(x1, x2);
-    if (y2 < y1) std::swap(y1, y2);
-    const double pw = ps.width()  > 0 ? ps.width()  : 595;
-    const double ph = ps.height() > 0 ? ps.height() : 842;
-    return QRectF(x1 / pw, 1.0 - y2 / ph, (x2 - x1) / pw, (y2 - y1) / ph);
-}
-
-QVector<qsizetype> findAll(const QByteArray& d, const char* pat) {
-    QVector<qsizetype> r; const QByteArray p(pat); qsizetype i = 0;
-    while ((i = d.indexOf(p, i)) >= 0) { r.append(i); i += p.size(); }
-    return r;
-}
-
-QHash<int,qsizetype> buildObjectOffsets(const QByteArray& d, const CancelFlag& cancel) {
-    QHash<int,qsizetype> map; qsizetype p = 0;
-    int tick = 0;
-    while ((p = d.indexOf("obj", p)) >= 0) {
-        //  Nicht bei jedem Treffer prüfen (atomarer Load in der heißen Schleife) -
-        //  alle 4096 Objekte genügt für eine Reaktionszeit im Millisekundenbereich.
-        if (((++tick) & 0xFFF) == 0 && aborted(cancel)) return {};
-        const qsizetype after = p + 3;
-        const char nc = after < d.size() ? d[after] : ' ';
-        const char pc = p > 0 ? d[p-1] : ' ';
-        if (isWs(pc) && (isWs(nc) || nc == '<' || nc == '[')) {
-            qsizetype i = p - 1; while (i >= 0 && isWs(d[i])) --i;
-            const qsizetype ge = i; while (i >= 0 && d[i] >= '0' && d[i] <= '9') --i;   // Generationsnummer
-            if (i < ge) {
-                while (i >= 0 && isWs(d[i])) --i;
-                const qsizetype ne = i; while (i >= 0 && d[i] >= '0' && d[i] <= '9') --i; // Objektnummer
-                if (i < ne) { bool ok = false; const long num = d.mid(i + 1, ne - i).toLong(&ok); if (ok && num > 0) map.insert((int)num, p + 3); }
-            }
-        }
-        p = after;
-    }
-    return map;
-}
-
-QByteArray enclosingObjDict(const QByteArray& d, qsizetype pos) {
-    const qsizetype k = d.lastIndexOf("obj", pos); if (k < 0) return {};
-    const qsizetype lt = d.indexOf("<<", k); if (lt < 0 || lt > pos) return {};
-    return readDictAt(d, lt);
-}
 
 int resolveSoundObj(const QByteArray& d, const QHash<int,qsizetype>& off, const QByteArray& annotDict) {
     const int direct = firstRefForKey(annotDict, "/Sound");
@@ -273,47 +87,10 @@ bool soundStreamInfo(const QByteArray& d, const QHash<int,qsizetype>& off, int s
     return streamLen > 0;
 }
 
-QVector<int> kidsRefs(const QByteArray& dict) {
-    QVector<int> r;
-    const QByteArray arr = bracketValue(dict, "/Kids");
-    qsizetype i = 0;
-    while (i < arr.size()) {
-        if (arr[i] >= '0' && arr[i] <= '9') {
-            const long a = readUInt(arr, i); skipWs(arr, i);
-            const long b = readUInt(arr, i); skipWs(arr, i);
-            if (b >= 0 && i < arr.size() && arr[i] == 'R') { r.append((int)a); ++i; }
-        } else ++i;
-    }
-    return r;
-}
-
-int findRootPagesObj(const QByteArray& d, const QHash<int,qsizetype>& off) {
-    int catalog = -1;
-    const qsizetype tr = d.lastIndexOf("trailer");
-    if (tr >= 0) { const QByteArray td = readDictAt(d, tr); if (!td.isEmpty()) catalog = firstRefForKey(td, "/Root"); }
-    QByteArray catDict;
-    if (catalog > 0 && off.contains(catalog)) catDict = readDictAt(d, off.value(catalog));
-    if (catDict.isEmpty()) {
-        qsizetype c = d.lastIndexOf("/Type/Catalog"); if (c < 0) c = d.lastIndexOf("/Type /Catalog");
-        if (c >= 0) catDict = enclosingObjDict(d, c);
-    }
-    if (catDict.isEmpty()) return -1;
-    return firstRefForKey(catDict, "/Pages");
-}
-
-void flattenPages(const QByteArray& d, const QHash<int,qsizetype>& off, int num,
-                  QVector<int>& out, QSet<int>& visited, int depth) {
-    if (num <= 0 || depth > 50 || visited.contains(num) || !off.contains(num)) return;
-    visited.insert(num);
-    const qsizetype lt = d.indexOf("<<", off.value(num)); if (lt < 0) return;
-    const QByteArray dict = readDictAt(d, lt); if (dict.isEmpty()) return;
-    if (isPageObject(dict)) { out.append(num); return; }           // Blatt = Seite
-    for (int k : kidsRefs(dict)) flattenPages(d, off, k, out, visited, depth + 1);
-}
 
 QVector<PdfAudioClip> scanClips(const QByteArray& d, const CancelFlag& cancel) {
     QVector<PdfAudioClip> out;
-    const QHash<int,qsizetype> off = buildObjectOffsets(d, cancel);
+    const QHash<int,qsizetype> off = buildObjectOffsets(d, cancel.get());
     if (aborted(cancel)) return {};
 
     // Seitenobjekte in AUTORITATIVER Lesereihenfolge über den Seitenbaum: reines Byte-Offset-Scannen wäre falsch -
@@ -417,7 +194,7 @@ QString writeTempWav(const QString& pdfPath, int id, int gen, const QByteArray& 
     // Generationszahl im Namen: JEDE Dokument-Session schreibt in frische Dateien. Sonst kollidierte die Extraktion
     // beim erneuten Öffnen mit einer noch gesperrten WAV der vorigen Session - leere URL, jede zweite Datei stumm.
     const QString path = dir + QString("/mgaudio_%1_%2_g%3_%4.wav")
-                                   .arg(base, tag).arg(gen).arg(id);
+                                   .arg(base, tag, QString::number(gen), QString::number(id));
     QFile f(path); if (!f.open(QIODevice::WriteOnly)) return {};
     f.write(bytes); f.close(); return path;
 }

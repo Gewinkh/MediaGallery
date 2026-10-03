@@ -112,7 +112,8 @@ ApplicationWindow {
         App.setScreenWidth(shell._screenW)
         if (App.startMaximized)
             shell.visibility = Window.Maximized
-        App.restoreLastFolder()
+        //  "Oeffnen mit" sticht den zuletzt geoeffneten Ordner.
+        if (!App.openStartTarget()) App.restoreLastFolder()
         // Die zweite Hälfte entsteht auch ohne Ordner, wenn sie im Player-Modus stand: dort zeigt sie die
         // Warteschlange, `secondFolder` bleibt leer, und sie wäre ersatzlos verschwunden.
         var second = App.secondFolder()

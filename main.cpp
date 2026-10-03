@@ -18,6 +18,8 @@
 #include <QDebug>
 #include <QKeyEvent>
 #include <QShortcutEvent>
+#include <QDir>
+#include <QIcon>
 
 #include "core/RhiProber.h"
 #include "core/FileBrowseModel.h"
@@ -32,6 +34,8 @@
 #include "core/JsonStorage.h"
 #include "tags/TagManager.h"
 #include "app/AppController.h"
+#include "app/DesktopEntry.h"
+#include "app/StartTarget.h"
 #include "tags/TagController.h"
 #include "app/ViewerController.h"
 #include "media/ThumbnailLoader.h"
@@ -152,6 +156,11 @@ int main(int argc, char* argv[]) {
     app.setApplicationName("MediaGallery");
     app.setOrganizationName("MediaGallery");
     app.setApplicationVersion("1.0.0");
+    //  Unter Wayland ordnet der Desktop Fenster und Icon ueber diesen Namen der `.desktop`-Datei zu.
+    QGuiApplication::setDesktopFileName(QString::fromLatin1(mg::kAppId));
+#ifdef MG_HAVE_LOGO
+    app.setWindowIcon(QIcon::fromTheme(QString::fromLatin1(mg::kAppId), QIcon(QStringLiteral(":/logo/logo.png"))));
+#endif
 
     // Erst nach der QGuiApplication - vorher gibt es keine styleHints. Der Wert
     // gilt nur dort, wo Qt selbst rollt: Menues und Auswahllisten; jede eigene
@@ -189,6 +198,10 @@ int main(int argc, char* argv[]) {
     ThumbnailLoader thumbLoader;
 
     AppController       appController(settings);
+    {
+        const mg::StartTarget ziel = mg::parseStartTarget(app.arguments(), QDir::currentPath());
+        appController.setStartTarget(ziel.folder, ziel.file);
+    }
     appController.setThumbnailLoader(&thumbLoader);
     auto* pane0 = qobject_cast<PaneController*>(appController.addPane());
     ViewerController    viewerController;

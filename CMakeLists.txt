@@ -139,6 +139,8 @@ message(STATUS "Assembly: ${MG_ASM_WHY}")
 add_library(mg_lib STATIC
     src/app/AppController.cpp
     src/app/AppController.h
+    src/app/DesktopEntry.cpp
+    src/app/DesktopEntry.h
     src/app/PaneController.cpp
     src/app/PaneController.h
     src/app/PaneHost.cpp
@@ -147,6 +149,8 @@ add_library(mg_lib STATIC
     src/app/PaneListModel.h
     src/app/QmlTypes.cpp
     src/app/QmlTypes.h
+    src/app/StartTarget.cpp
+    src/app/StartTarget.h
     src/app/TransliterationController.cpp
     src/app/TransliterationController.h
     src/app/ViewerController.cpp
@@ -202,6 +206,8 @@ add_library(mg_lib STATIC
     src/core/PathUtils.h
     src/core/PdfGlyphRuns.cpp
     src/core/PdfGlyphRuns.h
+    src/core/PdfVorschau.cpp
+    src/core/PdfVorschau.h
     src/core/RhiProber.cpp
     src/core/RhiProber.h
     src/core/SearchPattern.cpp
@@ -300,6 +306,8 @@ add_library(mg_lib STATIC
     src/pdf/PdfAudioController.h
     src/pdf/PdfMediaHandler.cpp
     src/pdf/PdfMediaHandler.h
+    src/pdf/PdfRawScan.cpp
+    src/pdf/PdfRawScan.h
     src/pdf/PdfTextController.cpp
     src/pdf/PdfTextController.h
     src/pdf/PdfThumbnailProvider.cpp
@@ -434,3 +442,38 @@ include(GNUInstallDirs)
 install(TARGETS MediaGallery
     BUNDLE  DESTINATION .
     RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
+
+#  Linux-Desktop: `.desktop`-Datei ("Oeffnen mit") und Icons fuer `cmake --install`. Beides entsteht beim Bau aus
+#  der App selbst - die Dateitypen aus ihren Endungslisten, die Icons aus dem gezeichneten Logo (AppLogo.qml);
+#  eingecheckt ist davon nichts. Kostet zwei kleine Werkzeuge und einen Offscreen-Lauf.
+if(UNIX AND NOT APPLE)
+    option(MG_DESKTOP_INTEGRATION "Linux: .desktop-Datei und Icons erzeugen und installieren" ON)
+endif()
+if(MG_DESKTOP_INTEGRATION)
+    set(MG_APP_ID io.github.gewinkh.MediaGallery)
+    set(MG_DESKTOP_DIR ${CMAKE_BINARY_DIR}/desktop)
+    add_executable(mg_desktopgen tools/mg_desktopgen.cpp)
+    target_link_libraries(mg_desktopgen PRIVATE mg_lib)
+    add_executable(mg_logogen tools/mg_logogen.cpp)
+    target_link_libraries(mg_logogen PRIVATE mg_lib mg_qml Qt6::Quick)
+    add_custom_command(
+        OUTPUT ${MG_DESKTOP_DIR}/${MG_APP_ID}.desktop
+        COMMAND mg_desktopgen ${MG_DESKTOP_DIR}/${MG_APP_ID}.desktop
+                ${CMAKE_INSTALL_FULL_BINDIR}/MediaGallery ${MG_APP_ID}
+        DEPENDS mg_desktopgen
+        COMMENT "Desktop-Datei")
+    add_custom_command(
+        OUTPUT ${MG_DESKTOP_DIR}/logo.png
+        COMMAND mg_logogen ${MG_DESKTOP_DIR} ${MG_APP_ID}
+        DEPENDS mg_logogen ${CMAKE_CURRENT_SOURCE_DIR}/qml/common/AppLogo.qml
+        COMMENT "Logo-Icons")
+    add_custom_target(mg_desktop ALL
+        DEPENDS ${MG_DESKTOP_DIR}/${MG_APP_ID}.desktop ${MG_DESKTOP_DIR}/logo.png)
+    #  Fenstersymbol auch ohne Installation (X11); unter Wayland gilt das Icon der `.desktop`-Datei.
+    qt_add_resources(MediaGallery mg_logo PREFIX "/logo" BASE ${MG_DESKTOP_DIR}
+                     FILES ${MG_DESKTOP_DIR}/logo.png)
+    target_compile_definitions(MediaGallery PRIVATE MG_HAVE_LOGO)
+    install(FILES ${MG_DESKTOP_DIR}/${MG_APP_ID}.desktop
+            DESTINATION ${CMAKE_INSTALL_DATADIR}/applications)
+    install(DIRECTORY ${MG_DESKTOP_DIR}/hicolor DESTINATION ${CMAKE_INSTALL_DATADIR}/icons)
+endif()

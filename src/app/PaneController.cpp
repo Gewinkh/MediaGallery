@@ -78,7 +78,7 @@ PaneController::PaneController(ISettings& settings, ThumbnailLoader& loader,
         if (count <= 0) return;                 // nirgends vorgekommen - nichts zu melden
         m_media.dropScopeSidecars();
         emit statusMessage(Strings::get(StringKey::TagDeletedInSubfolders)
-                               .arg(tag).arg(count));
+                               .arg(tag, QString::number(count)));
     });
 
     //  Der Rueckgaengig-Stapel gehoert dem ORDNER: beim Wechsel legt diese
@@ -95,7 +95,7 @@ PaneController::PaneController(ISettings& settings, ThumbnailLoader& loader,
             emit statusMessage(Strings::get(StringKey::TagUndoPartial, label));
         else if (subfolders > 0)
             emit statusMessage(Strings::get(StringKey::TagUndoDoneSub)
-                                   .arg(label).arg(subfolders));
+                                   .arg(label, QString::number(subfolders)));
         else
             emit statusMessage(Strings::get(redo ? StringKey::TagRedoDone
                                                  : StringKey::TagUndoDone, label));

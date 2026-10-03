@@ -1,6 +1,6 @@
 #pragma once
 // QPdfDocument bietet keine API fuer Annotationen oder eingebettete Dateien; hier wird
-// der Rohstrom nach /Sound, /Screen, /Movie und /EmbeddedFile durchsucht. Extrahierte
+// der Rohstrom nach /Sound, /Screen, /Movie und /Link durchsucht. Extrahierte
 // Stroeme landen im Temp-Verzeichnis, je Treffer Seite, normiertes Rechteck und Pfad.
 
 #include <QString>
@@ -19,6 +19,7 @@ struct MediaAnnotation {
     QString sourceUrl;              // URL from /A dict (for linked media)
     QString label;                  // /Contents or /NM
     Type    type      = Type::Unknown;
+    int     targetPage = -1;        // Verweis innerhalb der Datei: Zielseite (0-basiert), sonst -1
 
     QString resolvedUri() const {
         if (!sourcePath.isEmpty()) return sourcePath;
@@ -41,28 +42,18 @@ public:
     // Erlaubt dem Aufrufer das Aufraeumen, OHNE den Handler am Leben zu halten.
     const QStringList& tempFiles() const { return m_tempFiles; }
 
+    // Endung zu den ersten Bytes eines Stroms; leer, wenn unbekannt oder gepackt.
+    static QString guessMimeExt(const QByteArray& header);
+
 private:
+    struct Scan;
+    void parseLink(const Scan& s, int num, const QByteArray& dict);
+    void parseMedia(const Scan& s, int num, const QByteArray& dict, bool isVideo);
+    bool extractStream(const QByteArray& bytes, MediaAnnotation& ann);
+    QSizeF pageSize(const Scan& s, int page) const;
+
     QPdfDocument*            m_doc = nullptr;
     QVector<MediaAnnotation> m_annotations;
     QStringList              m_tempFiles;   // for cleanup
     QString                  m_pdfPath;
-
-    void parseAnnotations(const QByteArray& data);
-    void parseOneAnnotation(const QByteArray& data, qsizetype hitPos,
-                            const QByteArray& subtypeTag);
-    void parseLinkAnnotations(const QByteArray& data);
-    bool extractEmbeddedStream(const QByteArray& data, qsizetype searchFrom,
-                               MediaAnnotation& ann);
-    void resolveRichMediaUrl(const QByteArray& data, qsizetype searchFrom,
-                             MediaAnnotation& ann);
-
-    static QRectF     parseNormalisedRect(const QByteArray& rectBytes,
-                                          const QSizeF& pagePointSize);
-    static QByteArray dictValue(const QByteArray& dict, const QByteArray& key);
-    static QVector<qsizetype> findAll(const QByteArray& data,
-                                      const QByteArray& pattern);
-    static QString    guessMimeExt(const QByteArray& header);
-    static MediaAnnotation::Type detectType(const QByteArray& subtype,
-                                            const QString& ext);
-    int resolvePageIndex(const QByteArray& data, const QByteArray& pageRef) const;
 };

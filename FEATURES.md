@@ -44,6 +44,9 @@ which. Files without an extension such as `LICENSE`, `README`, `Makefile` or
 - **Search and filters include subfolders** below the open folder; folders with hits open by themselves and close again when you clear the search
 - **Live folder watch**: new or deleted files appear automatically
 - **Bookmarks** (*Folder* menu, *Settings ▸ Bookmarks*): save folders under a name, sorted into groups and subgroups. Groups fold open and closed in the menu, and can be rearranged by drag and drop in the settings
+  - **A group can be bound to a folder**: clicking the group in the menu opens that folder, and you tick which of its subfolders - at any depth - appear in the menu. A ticked folder inside another ticked folder is listed one level below it. The others stay reachable through the folder itself. A bound group can still hold other bookmarks and subgroups
+  - Renaming or deleting a folder in the app updates its bookmark; undoing the deletion brings the bookmark back
+  - A folder that was renamed, moved or deleted **outside the app** is shown greyed out with an orange warning triangle, in the menu and in the settings, so you can fix or remove it
 
 **Selecting and moving files**
 - **Select like in a file manager**: `Ctrl`+click, `Shift`+click, drag a rectangle over empty space, `Ctrl+A` for everything the filter shows, `Esc` to clear
@@ -89,7 +92,7 @@ which. Files without an extension such as `LICENSE`, `README`, `Makefile` or
   - A4, 10 pt monospace, 20 mm margins, page count at the bottom; long lines wrap, indentation stays
   - *Printer-friendly* (default): your chosen text colour on white. The colour can be set per file
   - *As shown*: background and syntax colours of the editor theme
-  - Portrait or landscape, all pages or a page range; the window shows how many pages there are
+  - Portrait or landscape; all pages, a range, or **single pages picked from small page previews** - the corner button opens a large view to choose in. The order you pick is the order in the PDF
   - The text in the PDF can be selected and searched
 - Files over 8 MB open read-only (see [LIMITATIONS.md](LIMITATIONS.md))
 
@@ -106,7 +109,8 @@ which. Files without an extension such as `LICENSE`, `README`, `Makefile` or
 - **Save as PDF** (*Document ▸ Save as PDF*), the same window as for text:
   - *As shown*: exactly like the view, including the terminal-style code blocks and the colours
   - *Printer-friendly*: white paper, black and grey only; code blocks get a thin frame instead of a dark area, which saves ink
-  - Portrait or landscape, all pages or a page range; open hints are printed open
+  - Portrait or landscape; all pages, a range or single pages picked from previews; open hints are printed open
+  - Links stay clickable in the PDF: web addresses open in the browser, links to headings and footnotes jump to their page
 
 ## HTML Viewer
 - `.html` / `.htm` open as a **rendered preview**, one click away from the editable source
@@ -149,7 +153,7 @@ which. Files without an extension such as `LICENSE`, `README`, `Makefile` or
 - *Printer-friendly*: black on white with thin grey lines, a light grey header row and right-aligned numbers, like a spreadsheet print; column colours become light greys
 - *As shown*: the colours of the view
 - The header row repeats on every page. A table that is too wide is first shrunk (down to about 6 pt) and otherwise continues on further pages
-- Portrait or landscape, all pages or a page range
+- Portrait or landscape; all pages, a range or single pages picked from previews
 
 **Formulas**
 - **A cell that starts with `=` is calculated** and shows its result: `=A1+B2`, `=SUM(D1:D9)`, `=IF(B1>2;"expensive";"cheap")`. Columns are lettered A, B, C in the top bar, rows are numbered - the same grid a spreadsheet uses
@@ -219,13 +223,14 @@ of times · `{4}` exactly four times · `^` line start · `$` line end · `a|b` 
 - **Select and copy text** like in a browser
 - **Search** (`Ctrl+F`) with hits highlighted on the page
 - **Embedded audio and video** play in place; a panel lists the page's audio clips
+- **Links** stay as the document shows them and get a light tint and a hand cursor only when you point at them. Web links open in the browser, links inside the document jump to their page, and links to a file next to the PDF open that file
 
 ## PDF Page Extraction
 - **From an open PDF**: right-click a page ▸ *Extract page* or *Extract multiple pages…*
 - **From the whole folder**: the *Extract* button collects all PDFs, and you pick pages from several files into one new PDF
 - **Workbench**: PDF list on the left, pages on the right, and a bar at the bottom whose order is the order of the new file - drag to reorder, drag out to remove. `Ctrl` + hover shows a large preview
 - **Lossless**: pages are copied as they are - text, fonts and vector graphics stay intact. Only files that cannot be copied (for example encrypted ones) become image pages
-- Existing files are never overwritten
+- The suggested file name is in the app's language (*Report - Page 2*, *Bericht - Seite 2*); existing files are never overwritten
 
 ## PDF Editor
 Notes, drawings, highlights, redactions and form values are stored in a small
@@ -248,12 +253,12 @@ pages change the PDF directly. `Ctrl+Z` undoes them while the file is open.
 - **Signatures and stamps**: place a PNG or JPEG; it always keeps its proportions
 - **Pages**: insert blank pages, insert pages from another PDF, rotate, remove, reorder by dragging thumbnails
 - **Export**: lossless where possible (the original page content stays unchanged), otherwise as images - a setting. You are told when the image route is taken
-- **Tracked changes**: with *Record* on, new and deleted annotations count as changes you can accept or reject, one by one or all at once
+- **Tracked changes**: with *Record* on, new and deleted annotations count as changes you can accept or reject, one by one or all at once. An export shows a note waiting to be deleted with a thin, see-through red frame and a line through it, so what lies underneath stays readable
 - The formatting panel sits on the right or as a ribbon at the top
 
 ## Image Editor
 - Opens from the **Edit** button in the image viewer; the original is never changed
-- **Text notes and drawings** with the same tools and formatting as the PDF editor, including tracked changes
+- **Text notes and drawings** with the same tools and formatting as the PDF editor, including tracked changes (the export marks pending deletions in see-through red)
 - Notes are saved next to the image (`<image>.mgedit`)
 - **Export** writes a new image with the notes drawn in, in the same format (JPG stays JPG, PNG stays PNG)
 
@@ -328,13 +333,16 @@ pages change the PDF directly. `Ctrl+Z` undoes them while the file is open.
 - **Keyboard shortcut overview** in *Settings ▸ General*
 - Shortcuts only act where they belong - in a split window only in the active half
 - **The app's own file chooser**, in the app's colours, with places, path, filter and hidden files
+- **Linux desktop integration** (after `sudo cmake --install build`): MediaGallery appears in the application menu with its own icon - a large G with a small M - and under *Open with* for every file type it opens and for folders
+  - Opening a file shows its folder in the gallery with the file in fullscreen; opening a folder shows that folder
+  - Also works from the command line: `MediaGallery <file or folder>`
 - Bars that do not fit a narrow window **scroll sideways** with the mouse wheel
 - **Settings groups fold away**, and stay folded after a restart
 
 ## Colours & Themes (*Settings ▸ Design*)
-- **8 interface themes** (Dark, Dark OLED, Ocean Depth, Inferno Blaze, Midnight Rose, Elegant, Simple, Custom) and **4 editor themes** - independent of each other
+- **8 interface themes** (Dark, Dark OLED, Ocean Depth, Inferno Blaze, Midnight Rose, Elegant, Simple, Custom) and **4 editor themes** - independent of each other. Each interface theme card shows its name next to three slanted stripes in the theme's main colours, on a lighter card so even black stays visible
 - **Custom theme editor** with live preview: backgrounds (solid or gradient), text, borders, accent and glow, tiles, PDF viewer, editor and syntax colours
-- **Export and import** themes as JSON
+- **Export and import** themes as JSON; a file that is not a theme is refused and your current theme stays
 - All icons and controls are drawn by the app itself, so they follow the theme and stay sharp at any display scaling
 
 ---

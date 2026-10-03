@@ -52,45 +52,66 @@ struct MediaItem {
     QString extension() const { return mg::suffixView(filePath).toString().toLower(); }
     QString audioFormatLabel() const { return mg::suffixView(filePath).toString().toUpper(); }
 
+    //  Die Endungen je Typ - EINE Quelle fuer die Erkennung und fuer die `.desktop`-Datei der Installation.
+    struct Endungen { QSet<QString> img, vid, aud, txt; };
+    static const Endungen& endungen() {
+        static const Endungen e = [] {
+            const QSet<QString> imgExts = {
+                "jpg","jpeg","png","gif","bmp","webp","tiff","tif",
+                "heic","heif","avif","ico","svg","raw","cr2","nef","arw","dng"
+            };
+            const QSet<QString> vidExts = {
+                "mp4","mkv","avi","mov","wmv","flv","webm","m4v","mpg","mpeg",
+                "3gp","ogv","ts","m2ts","vob","rmvb","asf","divx","xvid"
+            };
+            // `eac3`/`ec3`/`mp2`/`aac` stehen hier, weil die App sie SELBST erzeugt ("Audio extrahieren"). Fehlten sie,
+            // landete das eigene Ergebnis als unbekannter Typ in der Galerie - nicht abspielbar, ohne Kachelbild.
+            const QSet<QString> audExts = {
+                "mp3","flac","wav","ogg","oga","aac","m4a","m4b","wma","opus",
+                "aiff","aif","ape","mka","alac","dsf","dff","wv","tta","spx","amr",
+                "ac3","eac3","ec3","mp2","dts","mpc","ra","rm","mid","midi",
+                "xm","mod","s3m","it"
+            };
+            const QSet<QString> txtExts = {
+                "txt","md","markdown","sql","cpp","c","h","hpp","hxx","cxx","cc","py","js","ts",
+                "jsx","tsx","json","xml","html","htm","css","scss","less","yaml","yml",
+                "toml","ini","cfg","conf","sh","bash","zsh","bat","cmd","ps1","java",
+                "cs","go","rs","rb","php","swift","kt","lua","r","m","f90","cmake","mk",
+                "log","csv","tsv","gitignore","gitattributes","env","dockerfile","makefile",
+                "qml","qrc","pro","pri","supp",
+                //  Die eigenen Formate: binaer, werden beim Oeffnen lesbar aufbereitet.
+                "mgstore","mgal","mgedit",
+                // Diese Liste MUSS jede Endung enthalten, die `LanguageTable.cpp` kennt - sonst färbt der Editor eine Sprache,
+                // die sich gar nicht öffnen lässt (so passiert mit `.dart` und `.pl`). `tst_mediaitem` vergleicht beide Listen.
+                "dart","pl","pm",
+                //  Assembly: `.s` und `.S` (die Endung wird kleingeschrieben verglichen), dazu `.asm` und `.inc`.
+                "s","asm","inc"
+            };
+            return Endungen{ imgExts, vidExts, audExts, txtExts };
+        }();
+        return e;
+    }
+    //  Alle Endungen, die die App oeffnet, klein und sortiert (ohne die endungslosen Textnamen).
+    static QStringList supportedExtensions() {
+        const Endungen& e = endungen();
+        QStringList out;
+        for (const QSet<QString>* s : { &e.img, &e.vid, &e.aud, &e.txt })
+            for (const QString& x : *s) out.append(x);
+        out << QStringLiteral("pdf") << QStringLiteral("docx");   // in `detectType` einzeln geprueft
+        out.sort();
+        out.removeDuplicates();
+        return out;
+    }
+
     static MediaType detectType(const QString& path) {
-        static const QSet<QString> imgExts = {
-            "jpg","jpeg","png","gif","bmp","webp","tiff","tif",
-            "heic","heif","avif","ico","svg","raw","cr2","nef","arw","dng"
-        };
-        static const QSet<QString> vidExts = {
-            "mp4","mkv","avi","mov","wmv","flv","webm","m4v","mpg","mpeg",
-            "3gp","ogv","ts","m2ts","vob","rmvb","asf","divx","xvid"
-        };
-        // `eac3`/`ec3`/`mp2`/`aac` stehen hier, weil die App sie SELBST erzeugt ("Audio extrahieren"). Fehlten sie,
-        // landete das eigene Ergebnis als unbekannter Typ in der Galerie - nicht abspielbar, ohne Kachelbild.
-        static const QSet<QString> audExts = {
-            "mp3","flac","wav","ogg","oga","aac","m4a","m4b","wma","opus",
-            "aiff","aif","ape","mka","alac","dsf","dff","wv","tta","spx","amr",
-            "ac3","eac3","ec3","mp2","dts","mpc","ra","rm","mid","midi",
-            "xm","mod","s3m","it"
-        };
-        static const QSet<QString> txtExts = {
-            "txt","md","markdown","sql","cpp","c","h","hpp","hxx","cxx","cc","py","js","ts",
-            "jsx","tsx","json","xml","html","htm","css","scss","less","yaml","yml",
-            "toml","ini","cfg","conf","sh","bash","zsh","bat","cmd","ps1","java",
-            "cs","go","rs","rb","php","swift","kt","lua","r","m","f90","cmake","mk",
-            "log","csv","tsv","gitignore","gitattributes","env","dockerfile","makefile",
-            "qml","qrc","pro","pri","supp",
-            //  Die eigenen Formate: binaer, werden beim Oeffnen lesbar aufbereitet.
-            "mgstore","mgal","mgedit",
-            // Diese Liste MUSS jede Endung enthalten, die `LanguageTable.cpp` kennt - sonst färbt der Editor eine Sprache,
-            // die sich gar nicht öffnen lässt (so passiert mit `.dart` und `.pl`). `tst_mediaitem` vergleicht beide Listen.
-            "dart","pl","pm",
-            //  Assembly: `.s` und `.S` (die Endung wird kleingeschrieben verglichen), dazu `.asm` und `.inc`.
-            "s","asm","inc"
-        };
+        const Endungen& e = endungen();
         const QString ext = mg::suffixView(path).toString().toLower();
-        if (imgExts.contains(ext)) return MediaType::Image;
-        if (vidExts.contains(ext)) return MediaType::Video;
-        if (audExts.contains(ext)) return MediaType::Audio;
+        if (e.img.contains(ext)) return MediaType::Image;
+        if (e.vid.contains(ext)) return MediaType::Video;
+        if (e.aud.contains(ext)) return MediaType::Audio;
         if (ext == "pdf") return MediaType::Pdf;
         if (ext == "docx") return MediaType::Docx;   // Word-Dokumente (DOCX-Editor)
-        if (txtExts.contains(ext)) return MediaType::Text;
+        if (e.txt.contains(ext)) return MediaType::Text;
         const QString name = mg::baseNameView(path).toString().toLower();
         // Endungslose Textdateien, die in jedem Projekt vorkommen: ohne sie meldet der Viewer "Kein
         // Vorschau-Renderer für diesen Typen" - eine LICENSE ließ sich dadurch gar nicht ansehen.

@@ -11,9 +11,9 @@ AudioCoverProvider::AudioCoverProvider()
 
 QString AudioCoverProvider::sourceFor(const QString& path, int rev) {
     if (path.isEmpty()) return {};
+    //  Mehrfach-arg: der kodierte Pfad traegt `%2F` fuer jeden Schraegstrich, ein zweites `.arg()` ersetzte sie.
     return QStringLiteral("image://audiocover/%1?rev=%2")
-        .arg(QString::fromUtf8(QUrl::toPercentEncoding(path)))
-        .arg(rev);
+        .arg(QString::fromUtf8(QUrl::toPercentEncoding(path)), QString::number(rev));
 }
 
 QImage AudioCoverProvider::requestImage(const QString& id, QSize* size,

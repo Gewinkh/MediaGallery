@@ -19,6 +19,7 @@ Item {
     property string confirmText: ""        // leer = Standardtext „Erstellen"
 
     signal extractRequested(var orderedItems, string baseName)
+    signal dismissed()
 
     readonly property bool _workbench: App.extractLayout !== "compact"
 
@@ -37,7 +38,8 @@ Item {
     property bool   _previewOk: false
     property int    _prevRev: 0
 
-    function openWith(fileList, activeIdx) {
+    //  `vorauswahl` (optional): Seiten (0-basiert) der aktiven Datei, die beim Oeffnen schon gewaehlt sind.
+    function openWith(fileList, activeIdx, vorauswahl) {
         files = fileList || []
         barModel.clear()
         _inSel = ({})
@@ -45,6 +47,11 @@ Item {
         _selBatch = 0
         _selRev++
         _activeFileIdx = (activeIdx > 0 && activeIdx < files.length) ? activeIdx : 0
+        if (vorauswahl && files.length > 0) {
+            _beginBatch()
+            for (var i = 0; i < vorauswahl.length; i++) _addSel(_activeFileIdx, vorauswahl[i])
+            _endBatch()
+        }
         _clearHover()
         dlg.open()
     }
@@ -188,7 +195,7 @@ Item {
         height: Math.min(root.height - 40, Math.max(460, root.height * 0.94))
         padding: 14
         closePolicy: Popup.CloseOnEscape
-        onClosed: { root._ctrlDown = false; root._clearHover() }
+        onClosed: { root._ctrlDown = false; root._clearHover(); root.dismissed() }
 
         background: Rectangle {
             color: App.themeMenuBarBg

@@ -5,7 +5,6 @@
 #include "core/Strings.h"
 #include "core/TextEncoding.h"
 #include "editor/EditorController.h"
-#include "editor/MarkdownPdf.h"
 #include "editor/MarkdownRender.h"
 #include "editor/TextPdfExporter.h"
 
@@ -123,6 +122,8 @@ void MarkdownView::setSource(const QString& pathOrUrl) {
         //  Die Kachel wird freigegeben: der Inhalt geht sofort, nicht erst mit der naechsten Datei.
         if (m_ownDoc) m_ownDoc->clear();
         m_ready = false;
+        ++m_vorschauGen;
+        m_vorschau.leere();
         emit decorationsChanged();
     }
     start(true);
@@ -193,10 +194,23 @@ md::RenderStyle MarkdownView::styleFor(const QString& source, const QSet<int>& f
 QString MarkdownView::pdfTarget() const { return TextPdf::targetPathFor(m_source); }
 
 void MarkdownView::countPdfPages(bool print, bool landscape) {
-    runPdf(QString(), print, landscape, 1, 0, ++m_countGeneration);
+    md::PdfOptions o;
+    o.print = print;
+    o.landscape = landscape;
+    runPdf(PdfArt::Zaehlen, QString(), o, ++m_countGeneration);
 }
 
-void MarkdownView::exportPdf(const QString& target, bool print, bool landscape, int firstPage, int lastPage) {
+void MarkdownView::previewPdf(bool print, bool landscape) {
+    const QString ziel = m_vorschau.neu();
+    if (ziel.isEmpty()) return;
+    md::PdfOptions o;
+    o.print = print;
+    o.landscape = landscape;
+    runPdf(PdfArt::Vorschau, ziel, o, ++m_vorschauGen);
+}
+
+void MarkdownView::exportPdf(const QString& target, bool print, bool landscape, int firstPage, int lastPage,
+                             const QList<int>& pages) {
     if (m_exporting || target.isEmpty() || !m_textValid) {
         QMetaObject::invokeMethod(this, [this, target] {
             emit pdfExportFinished(false, target, Strings::get(StringKey::MarkdownPdfNotReady));
@@ -205,40 +219,51 @@ void MarkdownView::exportPdf(const QString& target, bool print, bool landscape, 
     }
     m_exporting = true;
     emit exportingChanged();
-    runPdf(mg::toLocalPath(target), print, landscape, firstPage, lastPage, 0);
+    md::PdfOptions o;
+    o.print = print;
+    o.landscape = landscape;
+    o.firstPage = firstPage;
+    o.lastPage = lastPage;
+    o.pages = pages;
+    runPdf(PdfArt::Schreiben, mg::toLocalPath(target), o, 0);
 }
 
-// Zaehlen und Schreiben teilen sich den Faden: beide legen das Dokument aus, und zwei auf einmal kosteten nur RAM.
-void MarkdownView::runPdf(const QString& target, bool print, bool landscape, int first, int last,
-                          int countGeneration) {
+// Zaehlen, Vorschau und Schreiben teilen sich den Faden: alle legen das Dokument aus, und zwei auf einmal
+// kosteten nur RAM.
+void MarkdownView::runPdf(PdfArt art, const QString& target, const md::PdfOptions& opt, int generation) {
     class PdfTask : public QRunnable {
     public:
         std::function<void()> work;
         void run() override { work(); }
     };
-    md::PdfOptions opt;
-    opt.print = print;
-    opt.landscape = landscape;
-    opt.firstPage = first;
-    opt.lastPage = last;
     auto* t = new PdfTask;
     t->setAutoDelete(true);
     QPointer<MarkdownView> self(this);
-    t->work = [self, text = m_text, st = renderStyle(), opt, target, countGeneration, abort = m_pdfAbort] {
+    t->work = [self, art, text = m_text, st = renderStyle(), opt, target, generation, abort = m_pdfAbort] {
         QString err;
         const int seiten = md::writePdf(md::parse(text), st, opt, target, &err, abort.get());
         if (abort->load()) return;
-        QMetaObject::invokeMethod(self, [self, seiten, err, target, countGeneration] {
+        QMetaObject::invokeMethod(self, [self, art, seiten, err, target, generation] {
             if (!self) return;
-            if (target.isEmpty()) {
+            switch (art) {
+            case PdfArt::Zaehlen:
                 //  Nur die juengste Zaehlung zaehlt - der Dialog fragt bei jedem Umschalten neu.
-                if (countGeneration == self->m_countGeneration)
-                    emit self->pdfPagesCounted(seiten);
+                if (generation == self->m_countGeneration) emit self->pdfPagesCounted(seiten);
+                return;
+            case PdfArt::Vorschau:
+                if (generation != self->m_vorschauGen || seiten <= 0) {
+                    self->m_vorschau.verwerfe(target);
+                    return;
+                }
+                self->m_vorschau.uebernehme(target);
+                emit self->pdfPreviewReady(target, seiten);
+                return;
+            case PdfArt::Schreiben:
+                self->m_exporting = false;
+                emit self->exportingChanged();
+                emit self->pdfExportFinished(seiten > 0, target, err);
                 return;
             }
-            self->m_exporting = false;
-            emit self->exportingChanged();
-            emit self->pdfExportFinished(seiten > 0, target, err);
         }, Qt::QueuedConnection);
     };
     m_pdfPool.start(t);

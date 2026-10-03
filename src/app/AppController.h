@@ -11,6 +11,8 @@
 #include <QVariantList>
 #include <QVariantMap>
 #include <QHash>
+#include <QSet>
+#include <QThreadPool>
 #include <vector>
 
 #include "core/ISettings.h"
@@ -183,6 +185,10 @@ protected:
 public:
 
     Q_INVOKABLE void openBookmark(const QString& path);
+    //  "Oeffnen mit": true, wenn ein Ziel da war - dann oeffnet die fokussierte Haelfte dessen Ordner (statt des
+    //  zuletzt geoeffneten), eine Datei geht danach ins Vollbild.
+    Q_INVOKABLE bool openStartTarget();
+    void setStartTarget(const QString& folder, const QString& file) { m_startFolder = folder; m_startFile = file; }
     Q_INVOKABLE void addBookmark(const QString& name, const QString& path,
                                  const QString& group = QString());
     Q_INVOKABLE void updateBookmark(int index, const QString& name, const QString& path,
@@ -201,6 +207,18 @@ public:
                                        int pos);
     Q_INVOKABLE void moveBookmark(int index, const QString& targetGroup, int pos);
     Q_INVOKABLE bool isUsableGroupName(const QString& name) const;
+    //  Gruppe an einen Ordner binden (leer = loesen). Ein angehakter Unterordner ist ein gewoehnliches
+    //  Lesezeichen der Gruppe, dessen Pfad unter ihrem Ordner liegt.
+    Q_INVOKABLE void setBookmarkGroupFolder(const QString& groupPath, const QString& folder);
+    Q_INVOKABLE QStringList bookmarkedSubfolders(const QString& groupPath) const;
+    Q_INVOKABLE void setBookmarkSubfolder(const QString& groupPath, const QString& folder, bool checked);
+    //  Prueft im Arbeitsfaden, welche Ordner fehlen (ausserhalb der App geaendert) -> `missing` in `bookmarkTree`.
+    Q_INVOKABLE void refreshBookmarkState();
+
+    //  Die App selbst hat einen Ordner umbenannt, weggelegt oder zurueckgeholt - die Lesezeichen ziehen mit.
+    void bookmarksFolderRenamed(const QString& oldPath, const QString& newPath);
+    void bookmarksFolderTrashed(const QString& path);
+    void bookmarksFolderRestored(const QString& path);
 
     bool autoSaveEnabled()  const;
     int  autoSaveInterval() const;
@@ -251,8 +269,6 @@ public:
     Q_INVOKABLE void setSpellLanguage(const QString& lang);
     Q_INVOKABLE QStringList spellLanguages() const;
     bool    optionsVisible()  const;
-    Q_INVOKABLE void setBackgroundColor(const QColor& c);
-    Q_INVOKABLE void setAccentColor(const QColor& c);
     Q_INVOKABLE void setLanguage(const QString& code);       // "de" | "en"
     Q_INVOKABLE void setVideoPlayback(const QString& mode);  // "native" | "external"
     Q_INVOKABLE void setPageTransition(const QString& mode); // "slide" | "fade"
@@ -459,6 +475,14 @@ private:
     PaneListModel* m_panesModel = nullptr;
     ThumbnailLoader* m_loader = nullptr;
     TagController*   m_tagsFacade = nullptr;
+    //  Bereinigte Pfade, die beim letzten Pruefen fehlten.
+    QSet<QString>    m_bmFehlt;
+    QString          m_startFolder;
+    QString          m_startFile;
+    //  Lesezeichen und Bindungen eines in den Papierkorb gelegten Ordners, bis er zurueckkommt (nur diese Sitzung).
+    struct BmPapierkorb { QStringList eintraege; QStringList bindungen; };
+    QHash<QString, BmPapierkorb> m_bmPapierkorb;
+    QThreadPool      m_bmPool;
     int              m_settingsPane = -1;
 
 public:

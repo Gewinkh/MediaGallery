@@ -23,6 +23,7 @@ stores its data are in **[FEATURES.md](FEATURES.md)**.
 - **Tables** - `.csv` and `.tsv` open as an editable table with detected separator and header row, formulas (`=A1+B2`), filter and sorting; a DATEV booking batch (`EXTF`/`DTVF`) is recognised by its content, shows a file-header summary and debit/credit totals, and stays read-only.
 - **Live transliteration** - type Latin, get Arabic, Hiragana or Katakana while you write.
 - **Appearance** - every colour of the interface is adjustable, the editor has its own separate palette, and both can be exported and shared.
+- **Desktop integration (Linux)** - an application menu entry with its own icon, and *Open with* for supported files and folders.
 
 ---
 
@@ -82,6 +83,32 @@ cmake --build build --parallel 2
 ./build/MediaGallery
 ```
 
+#### Install
+
+```bash
+sudo cmake --install build
+```
+
+Installs the program, a desktop entry and the app icon under `/usr/local` (set
+`-DCMAKE_INSTALL_PREFIX` when configuring to choose another place). MediaGallery
+then appears in the application menu and under *Open with* for its file types and
+for folders. Some desktops pick up the new entry only after
+`sudo update-desktop-database /usr/local/share/applications`. If the icon does not
+show up, log out and in again; refreshing the icon cache is optional and needs `-t`
+there: `sudo gtk-update-icon-cache -f -t /usr/local/share/icons/hicolor`.
+
+To update, build again and install again - the new files replace the old ones.
+Use the same build folder you installed from, and restart the app afterwards:
+
+```bash
+git pull
+cmake --build build --parallel 2
+sudo cmake --install build
+```
+
+Settings and the files next to your media are not touched. To remove the
+installed files again: `sudo xargs rm < build/install_manifest.txt`.
+
 ---
 
 ### macOS
@@ -111,13 +138,19 @@ The build skips it when the `tests/` folder is absent.
 ## Changelog
 
 ### Latest
-- **Feature**: **PDF export for Markdown and tables** in printer-friendly or as-shown styles, with landscape orientation and page ranges.
-- **Feature**: **Batch PDF export** from the gallery's right-click menu, creating one PDF per file.
-- **Change**: **Tighter table columns** with optional spreadsheet-style grid lines.
-- **Fix**: **Alt+S mode** no longer returns after a restart or in a new split pane.
-- **Fix**: **Play and repeat buttons** are now centred in the video controls.
-- **Fix**: **Single-file folders** no longer show an empty view when moving to the same file.
-- **Feature**: **Continuous fullscreen playback** with shuffle and repeat for videos and audio files.
+- **Fix**: **The settings window** no longer closes when clicking beside it, preventing accidental file openings behind it.
+- **Change**: **Cleaner theme cards** with each theme's colours shown as slanted stripes beside its name.
+- **Feature**: **Working PDF links** that appear on hover and can jump to pages, open web addresses, or open neighbouring files.
+- **Fix**: **Embedded PDF media** now appears on the correct page, including embedded videos.
+- **Fix**: **Markdown links exported to PDF** are now clickable, including heading and footnote links.
+- **Change**: **Softer deletion marks in exports** with a thin, transparent red frame and strike line.
+- **Fix**: **Player covers** now all appear correctly and the playlist scrolls smoothly while titles load.
+- **Change**: **Safer theme import** rejects invalid theme files and preserves the current theme.
+- **Fix**: **Names containing percent signs** now appear correctly in messages and the folder deletion dialog.
+- **Fix**: **PDF page extraction** no longer stops when the other pane opens a folder.
+- **Feature**: **Linux desktop integration** with an app icon and *Open with* support for supported files and folders.
+- **Feature**: **Single-page PDF selection** from page previews with a larger view for easier selection.
+- **Feature**: **Folder-bound bookmark groups** with selectable subfolders and a warning when folders are changed outside the app.
 
 ---
 

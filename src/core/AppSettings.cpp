@@ -2,6 +2,7 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QFile>
+#include <QSaveFile>
 #include <algorithm>
 
 QJsonObject ThemeColors::toJson() const {
@@ -660,15 +661,7 @@ void AppSettings::setPdfExportAsAnnotations(bool v) {
 }
 
 QColor AppSettings::backgroundColor() const { return currentTheme().background; }
-void AppSettings::setBackgroundColor(const QColor& c) {
-    m_settings.setValue("colors/background", c);
-    emit colorSchemeChanged();
-}
 QColor AppSettings::accentColor() const { return currentTheme().accent; }
-void AppSettings::setAccentColor(const QColor& c) {
-    m_settings.setValue("colors/accent", c);
-    emit colorSchemeChanged();
-}
 
 int  AppSettings::tileWidth()  const { return m_settings.value("grid/tileWidth",  160).toInt(); }
 int  AppSettings::tileHeight() const { return m_settings.value("grid/tileHeight", 200).toInt(); }
@@ -763,12 +756,9 @@ ThemeColors AppSettings::currentTheme() const {
 }
 
 bool AppSettings::exportCustomTheme(const QString& filePath) const {
-    ThemeColors t = customTheme();
-    QJsonDocument doc(t.toJson());
-    QFile f(filePath);
-    if (!f.open(QIODevice::WriteOnly)) return false;
-    f.write(doc.toJson(QJsonDocument::Indented));
-    return true;
+    const QByteArray bytes = QJsonDocument(customTheme().toJson()).toJson(QJsonDocument::Indented);
+    QSaveFile f(filePath);
+    return f.open(QIODevice::WriteOnly) && f.write(bytes) == bytes.size() && f.commit();
 }
 
 bool AppSettings::importCustomTheme(const QString& filePath) {
@@ -776,6 +766,12 @@ bool AppSettings::importCustomTheme(const QString& filePath) {
     if (!f.open(QIODevice::ReadOnly)) return false;
     QJsonDocument doc = QJsonDocument::fromJson(f.readAll());
     if (!doc.isObject()) return false;
+    //  Nur ein Thema ersetzt das Thema: eine fremde JSON-Datei (etwa eine Editor-Palette) setzte sonst still alles
+    //  auf die Vorgaben. Die Kernfarben muss jeder Export tragen; neuere Felder duerfen in alten Dateien fehlen.
+    for (const char* k : {"background", "card", "textPrimary", "textMuted", "border", "accent"}) {
+        const QJsonValue v = doc.object().value(QLatin1String(k));
+        if (!v.isString() || !QColor::isValidColorName(v.toString())) return false;
+    }
     ThemeColors t = ThemeColors::fromJson(doc.object());
     setCustomTheme(t);
     setDesignProfile(DesignProfile::Custom);
@@ -961,4 +957,12 @@ QStringList AppSettings::bookmarkGroups() const {
 
 void AppSettings::setBookmarkGroups(const QStringList& groups) {
     m_settings.setValue("bookmarks/groups", groups);
+}
+
+QStringList AppSettings::bookmarkGroupFolders() const {
+    return m_settings.value("bookmarks/groupFolders").toStringList();
+}
+
+void AppSettings::setBookmarkGroupFolders(const QStringList& entries) {
+    m_settings.setValue("bookmarks/groupFolders", entries);
 }

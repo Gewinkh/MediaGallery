@@ -1,6 +1,7 @@
 #include "editor/MarkdownPdf.h"
 
 #include "core/PdfGlyphRuns.h"
+#include "core/PdfVorschau.h"
 
 #include <QAbstractTextDocumentLayout>
 #include <QBuffer>
@@ -165,16 +166,16 @@ int writePdf(const Document& doc, RenderStyle style, const PdfOptions& opt, cons
     const int seiten = qMax(1, td->pageCount());
     if (target.isEmpty()) return seiten;
 
-    const int von = qBound(1, opt.firstPage, seiten);
-    const int bis = opt.lastPage <= 0 ? seiten : qBound(von, opt.lastPage, seiten);
+    const QList<int> folge = mg::seitenFolge(seiten, opt.firstPage, opt.lastPage, opt.pages);
     const QList<Deko> deko = dekorationen(*td);
     const QColor tinte = style.palette.text;
 
     QPainter p;
     if (!p.begin(&writer)) return fehler(QStringLiteral("PDF nicht anlegbar."));
-    for (int s = von; s <= bis; ++s) {
+    for (int i = 0; i < folge.size(); ++i) {
+        const int s = folge[i];
         if (abgebrochen()) return fehler(QStringLiteral("Abgebrochen."));
-        if (s > von) writer.newPage();
+        if (i > 0) writer.newPage();
         //  Zwei Pixel ueber das Blatt hinaus: `paintRectPixels` rundet.
         if (!opt.print) p.fillRect(blatt.adjusted(-2, -2, 2, 2), style.palette.background);
 

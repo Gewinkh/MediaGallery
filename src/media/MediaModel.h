@@ -267,6 +267,11 @@ signals:
     void countChanged();
     void selectionChanged();
     void folderChanged();
+    //  Ein Ordner, den die App selbst umbenannt, in den Papierkorb gelegt oder zurueckgeholt hat - die
+    //  Lesezeichen ziehen mit (`AppController`).
+    void folderRenamed(const QString& oldPath, const QString& newPath);
+    void folderTrashed(const QString& path);
+    void folderRestored(const QString& path);
     void folderContentsChanged();   // externe Änderung (für Statusmeldung)
     void thumbnailsInvalidated();   // Zielgröße gewechselt -> Delegates fordern neu an
     void fileHistoryChanged();      // Undo-/Redo-Stapel der Datei-Vorgänge

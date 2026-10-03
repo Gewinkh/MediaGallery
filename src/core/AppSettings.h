@@ -116,9 +116,7 @@ public:
     void setVideoSeekStep(int seconds) override;
 
     QColor backgroundColor() const override;
-    void   setBackgroundColor(const QColor& c) override;
     QColor accentColor() const override;
-    void   setAccentColor(const QColor& c) override;
 
     TileArrangement tileArrangement() const override;
     void            setTileArrangement(TileArrangement a) override;
@@ -216,6 +214,8 @@ public:
 
     QStringList bookmarkGroups() const override;
     void        setBookmarkGroups(const QStringList& groups) override;
+    QStringList bookmarkGroupFolders() const override;
+    void        setBookmarkGroupFolders(const QStringList& entries) override;
 
     static ThemeColors themeForProfile(DesignProfile p);
 

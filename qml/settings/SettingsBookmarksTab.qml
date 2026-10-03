@@ -19,6 +19,24 @@ Item {
         return out
     }
     readonly property bool hasRows: rows.length > 0
+    //  Beim Zeigen des Reiters nachsehen, was ausserhalb der App verschwunden ist.
+    onVisibleChanged: if (visible) App.refreshBookmarkState()
+    Component.onCompleted: App.refreshBookmarkState()
+
+    BookmarkSubfolderDialog {
+        id: subfolderDialog
+        anchors.fill: parent
+    }
+    FileChooser {
+        id: bindChooser
+        title: App.uiText(App.language, "BookmarkGroupBind")
+        fileMode: FileChooser.Directory
+        onAccepted: {
+            var p = selectedFolder.toString()
+            if (p.startsWith("file://")) p = decodeURIComponent(p.substring(7))
+            App.setBookmarkGroupFolder(root.groupTarget, p)
+        }
+    }
 
     property int deleteIndex: -1
     property string groupTarget: ""
@@ -140,6 +158,9 @@ Item {
                         readonly property bool   isGroup: line.modelData.kind === "group"
                         readonly property string groupPath: line.modelData.group
                         readonly property int    depth: line.modelData.depth
+                        readonly property bool   gebunden: line.isGroup && (line.modelData.folder || "").length > 0
+                        //  Ausserhalb der App umbenannt, verschoben oder geloescht (`App.refreshBookmarkState`).
+                        readonly property bool   fehlt: line.modelData.missing === true
 
                         Layout.fillWidth: true
                         spacing: 0
@@ -185,7 +206,7 @@ Item {
                             id: rowBox
                             Layout.fillWidth: true
                             Layout.leftMargin: line.depth * 18
-                            implicitHeight: line.isGroup ? 34 : 52
+                            implicitHeight: (line.isGroup && !line.gebunden) ? 34 : 52
                             radius: 6
                             color: rowDrop.containsDrag
                                    ? Qt.rgba(App.themeAccent.r, App.themeAccent.g, App.themeAccent.b, 0.22)
@@ -269,13 +290,26 @@ Item {
                                     }
                                 }
 
-                                Text {
+                                ColumnLayout {
                                     visible: line.isGroup
                                     Layout.fillWidth: line.isGroup
-                                    elide: Text.ElideRight
-                                    text: line.modelData.name
-                                    color: App.themeTextPrimary
-                                    font.pixelSize: 13; font.bold: true
+                                    spacing: 1
+                                    opacity: line.fehlt ? 0.5 : 1.0
+                                    Text {
+                                        Layout.fillWidth: true
+                                        elide: Text.ElideRight
+                                        text: line.modelData.name
+                                        color: App.themeTextPrimary
+                                        font.pixelSize: 13; font.bold: true
+                                    }
+                                    Text {
+                                        visible: line.gebunden
+                                        Layout.fillWidth: true
+                                        elide: Text.ElideMiddle
+                                        text: line.gebunden ? line.modelData.folder : ""
+                                        color: App.themeTextMuted
+                                        font.pixelSize: 11
+                                    }
                                 }
                                 Text {
                                     visible: line.isGroup
@@ -290,6 +324,7 @@ Item {
                                     visible: !line.isGroup
                                     Layout.fillWidth: !line.isGroup
                                     spacing: 1
+                                    opacity: line.fehlt ? 0.5 : 1.0
                                     Text {
                                         text: line.modelData.name
                                         color: App.themeTextPrimary
@@ -306,6 +341,38 @@ Item {
                                     }
                                 }
 
+                                //  Orange und gezeichnet: der Ordner fehlt, der Eintrag bleibt zum Korrigieren stehen.
+                                Item {
+                                    visible: line.fehlt
+                                    implicitWidth: 18; implicitHeight: 18
+                                    DrawnIcon { anchors.centerIn: parent; name: "warn"; size: 16; color: "#f0a020" }
+                                    HoverHandler { id: fehltHover }
+                                    ToolTip.visible: fehltHover.hovered
+                                    ToolTip.delay: 300
+                                    ToolTip.text: App.uiText(App.language, "BookmarkMissing")
+                                }
+                                IconBtn {
+                                    visible: line.gebunden && !line.fehlt
+                                    iconName: "check"
+                                    tip: App.uiText(App.language, "BookmarkGroupPick")
+                                    onActivated: subfolderDialog.openFor(line.groupPath, line.modelData.name,
+                                                                         line.modelData.folder)
+                                }
+                                IconBtn {
+                                    visible: line.isGroup
+                                    iconName: "folder"
+                                    tip: App.uiText(App.language, "BookmarkGroupBind")
+                                    onActivated: {
+                                        root.groupTarget = line.groupPath
+                                        bindChooser.open()
+                                    }
+                                }
+                                IconBtn {
+                                    visible: line.gebunden
+                                    iconName: "close"
+                                    tip: App.uiText(App.language, "BookmarkGroupUnbind")
+                                    onActivated: App.setBookmarkGroupFolder(line.groupPath, "")
+                                }
                                 IconBtn {
                                     visible: line.isGroup
                                     iconName: "plus"

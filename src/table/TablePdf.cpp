@@ -1,6 +1,7 @@
 #include "table/TablePdf.h"
 
 #include "core/PdfGlyphRuns.h"
+#include "core/PdfVorschau.h"
 #include "table/TableSort.h"
 
 #include <QBuffer>
@@ -145,8 +146,7 @@ int schreibePdf(const QList<PdfTeil>& teile, const PdfOptionen& opt, const QStri
     const int gesamtSeiten = int(seiten.size());
     if (ziel.isEmpty()) return gesamtSeiten;
 
-    const int von = qBound(1, opt.von, gesamtSeiten);
-    const int bis = opt.bis <= 0 ? gesamtSeiten : qBound(von, opt.bis, gesamtSeiten);
+    const QList<int> folge = mg::seitenFolge(gesamtSeiten, opt.von, opt.bis, opt.seiten);
 
     const QColor papier = opt.druck ? QColor(Qt::white) : opt.grund;
     const QColor tinte = opt.druck ? QColor(Qt::black) : opt.text;
@@ -159,9 +159,10 @@ int schreibePdf(const QList<PdfTeil>& teile, const PdfOptionen& opt, const QStri
 
     QPainter p;
     if (!p.begin(&writer)) return fehler(QStringLiteral("PDF nicht anlegbar."));
-    for (int nr = von; nr <= bis; ++nr) {
+    for (int i = 0; i < folge.size(); ++i) {
+        const int nr = folge[i];
         if (abgebrochen()) return fehler(QStringLiteral("Abgebrochen."));
-        if (nr > von) writer.newPage();
+        if (i > 0) writer.newPage();
         if (!opt.druck && papier.isValid()) p.fillRect(blatt.adjusted(-2, -2, 2, 2), papier);
 
         const Seite& se = seiten[nr - 1];

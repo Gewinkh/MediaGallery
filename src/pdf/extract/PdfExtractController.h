@@ -70,7 +70,7 @@ private:
     };
 
     void    startExtract(QVector<Job> jobs, const QString& targetPath);
-    void    setBusy(bool b);
+    void    updateBusy();
     static QString makeTargetPath(const QString& folder, QString base,
                                   const QString& fallbackBase);
     static QVector<int> normalizePages(const QVariantList& pages);
@@ -78,5 +78,11 @@ private:
     QThreadPool m_pool;                                   // 1 Worker (RAM-Deckel)
     std::shared_ptr<std::atomic<bool>> m_cancel;          // kooperativer Abbruch
     int  m_generation = 0;                                // veraltete Tasks filtern
+    //  Der Ordner-Scan hat EIGENES Abbruch-Flag und eigene Generation: ein Scan aus der anderen Haelfte
+    //  darf eine laufende Extraktion nicht verwerfen. Im Pool (1 Faden) wartet er dahinter.
+    std::shared_ptr<std::atomic<bool>> m_scanCancel;
+    int  m_scanGeneration = 0;
+    bool m_extracting = false;
+    bool m_scanning   = false;
     bool m_busy       = false;
 };

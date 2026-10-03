@@ -1208,12 +1208,38 @@ FocusScope {
         return (k && k.pdfKind !== undefined) ? k : null
     }
     property bool _pdfAlle: false
-    property bool _pdfBereich: false
+    //  Seiten: 0 alle, 1 Bereich von-bis, 2 einzeln gewaehlt an der Vorschau.
+    property int  _pdfModus: 0
+    //  Gewaehlte Seiten (1-basiert) in Ausgabereihenfolge - wie in der Seitenauswahl der Extraktion.
+    //  Jede neue Vorschau leert sie: Stil und Blatt verschieben die Seiten.
+    property var  _pdfAuswahl: []
+    property bool _seitenGrossOffen: false
     function _pdfZaehle() {
-        if (root._pdfQuelle && textPdfPopup.opened)
+        if (!root._pdfQuelle || !textPdfPopup.opened) return
+        if (root._pdfModus === 2) {
+            root._pdfAuswahl = []
+            root._pdfQuelle.pdfPreview(App.textPdfNative, App.pdfLandscape, root._pdfAlle)
+        } else {
             root._pdfQuelle.pdfCount(App.textPdfNative, App.pdfLandscape, root._pdfAlle)
+        }
     }
     on_PdfAlleChanged: root._pdfZaehle()
+    on_PdfModusChanged: root._pdfZaehle()
+    function _pdfUmschalten(seite) {
+        const a = root._pdfAuswahl.slice()
+        const i = a.indexOf(seite)
+        if (i >= 0) a.splice(i, 1)
+        else        a.push(seite)
+        root._pdfAuswahl = a
+    }
+    function _seitenGrossOeffnen() {
+        const q = root._pdfQuelle
+        if (!q || q.pdfPreviewPath.length === 0 || q.pdfPages <= 0) return
+        root._seitenGrossOffen = true
+        seitenGrossLader.active = true
+        seitenGrossLader.item.openWith([{ path: q.pdfPreviewPath, pageCount: q.pdfPages, name: root.displayName }], 0,
+                             root._pdfAuswahl.map(function (s) { return s - 1 }))
+    }
     Connections {
         target: App
         function onTextPdfNativeChanged() { root._pdfZaehle() }
@@ -1233,7 +1259,9 @@ FocusScope {
         objectName: "textPdfPopup"
         modal: false
         dim: false
-        closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
+        //  Solange das grosse Auswahlfenster offen ist, gilt ein Klick dort nicht als Klick daneben.
+        closePolicy: root._seitenGrossOffen ? Popup.NoAutoClose
+                                            : (Popup.CloseOnEscape | Popup.CloseOnPressOutside)
         padding: 10
         onOpened: root._pdfZaehle()
         background: Rectangle {
@@ -1307,14 +1335,15 @@ FocusScope {
                 spacing: 8
                 ChoiceChips {
                     anchors.verticalCenter: parent.verticalCenter
-                    labels: [App.uiText(App.language, "PdfPagesAll"), App.uiText(App.language, "PdfPagesRange")]
-                    current: root._pdfBereich ? 1 : 0
-                    onPicked: function (i) { root._pdfBereich = i === 1 }
+                    labels: [App.uiText(App.language, "PdfPagesAll"), App.uiText(App.language, "PdfPagesRange"),
+                             App.uiText(App.language, "PdfPagesPick")]
+                    current: root._pdfModus
+                    onPicked: function (i) { root._pdfModus = i }
                 }
                 SpinBox {
                     id: seiteVon
                     objectName: "pdfPageFrom"
-                    visible: root._pdfBereich
+                    visible: root._pdfModus === 1
                     anchors.verticalCenter: parent.verticalCenter
                     width: 84
                     from: 1; to: Math.max(1, textPdfPopup._seiten)
@@ -1324,7 +1353,7 @@ FocusScope {
                 SpinBox {
                     id: seiteBis
                     objectName: "pdfPageTo"
-                    visible: root._pdfBereich
+                    visible: root._pdfModus === 1
                     anchors.verticalCenter: parent.verticalCenter
                     width: 84
                     from: 1; to: Math.max(1, textPdfPopup._seiten)
@@ -1333,6 +1362,7 @@ FocusScope {
                     onValueModified: if (seiteVon.value > value) seiteVon.value = value
                 }
                 Text {
+                    visible: root._pdfModus !== 2
                     anchors.verticalCenter: parent.verticalCenter
                     text: textPdfPopup._seiten < 0 ? App.uiText(App.language, "PdfPagesCounting")
                                                    : App.uiText(App.language, "PdfPagesOf").arg(textPdfPopup._seiten)
@@ -1341,9 +1371,118 @@ FocusScope {
                 }
             }
 
+            //  Einzelne Seiten: kleine Leiste aus der Vorschau-Datei; der Knopf oben rechts zeigt sie gross.
+            Rectangle {
+                id: seitenLeiste
+                objectName: "pdfPageStrip"
+                visible: root._pdfModus === 2
+                readonly property string pfad: root._pdfQuelle ? root._pdfQuelle.pdfPreviewPath : ""
+                readonly property int doc: seitenLeiste.pfad.length > 0
+                                           ? PdfThumbs.ensureDocument(seitenLeiste.pfad, 0) : 0
+                //  Vier ganze Vorschauen (je 64 + 6 Abstand) neben dem Knopf.
+                width: 312
+                height: 128
+                radius: 6
+                color: Qt.rgba(App.themeTextPrimary.r, App.themeTextPrimary.g, App.themeTextPrimary.b, 0.04)
+                border.color: App.themeBorder
+                clip: true
+
+                Text {
+                    anchors.centerIn: parent
+                    visible: seitenLeiste.doc === 0
+                    text: App.uiText(App.language, "PdfPagesPreparing")
+                    color: App.themeTextMuted
+                    font.pixelSize: 11
+                }
+                ListView {
+                    id: seitenListe
+                    anchors { fill: parent; margins: 6; rightMargin: 32 }
+                    clip: true
+                    orientation: ListView.Horizontal
+                    spacing: 6
+                    model: seitenLeiste.doc > 0 ? Math.max(0, textPdfPopup._seiten) : 0
+                    delegate: Item {
+                        id: miniSeite
+                        required property int index
+                        readonly property int stelle: root._pdfAuswahl.indexOf(miniSeite.index + 1)
+                        readonly property bool gewaehlt: miniSeite.stelle >= 0
+                        property int rev: 0
+                        width: 64
+                        height: seitenListe.height
+                        Connections {
+                            target: PdfThumbs
+                            function onPageReady(d, p) {
+                                if (d === seitenLeiste.doc && p === miniSeite.index) miniSeite.rev++
+                            }
+                        }
+                        Rectangle {
+                            id: miniBlatt
+                            width: parent.width
+                            height: parent.height - 16
+                            color: "white"
+                            border.width: miniSeite.gewaehlt ? 2 : 1
+                            border.color: miniSeite.gewaehlt ? App.themeAccent : App.themeBorder
+                            Image {
+                                anchors { fill: parent; margins: 2 }
+                                asynchronous: true; cache: false
+                                fillMode: Image.PreserveAspectFit
+                                source: "image://pdfthumb/" + seitenLeiste.doc + "/" + miniSeite.index
+                                        + "?r=" + miniSeite.rev
+                            }
+                            //  Die Stelle im PDF, nicht nur ein Haken: die Reihenfolge der Auswahl ist die Ausgabe.
+                            Rectangle {
+                                visible: miniSeite.gewaehlt
+                                anchors { right: parent.right; top: parent.top; margins: 3 }
+                                width: Math.max(16, stelleText.implicitWidth + 8); height: 16; radius: 8
+                                color: App.themeAccent
+                                Text {
+                                    id: stelleText
+                                    anchors.centerIn: parent
+                                    text: miniSeite.stelle + 1
+                                    color: "white"
+                                    font.pixelSize: 10
+                                    font.bold: true
+                                }
+                            }
+                        }
+                        Text {
+                            anchors { horizontalCenter: parent.horizontalCenter; bottom: parent.bottom }
+                            text: miniSeite.index + 1
+                            color: miniSeite.gewaehlt ? App.themeAccent : App.themeTextMuted
+                            font.pixelSize: 10
+                        }
+                        TapHandler { onTapped: root._pdfUmschalten(miniSeite.index + 1) }
+                    }
+                }
+                //  Gross zeigen: je ein Pfeil in die obere rechte und die untere linke Ecke.
+                Rectangle {
+                    id: grossKnopf
+                    objectName: "pdfPagesExpand"
+                    anchors { right: parent.right; top: parent.top; margins: 4 }
+                    width: 24; height: 24; radius: 5
+                    enabled: seitenLeiste.doc > 0
+                    opacity: enabled ? 1.0 : 0.4
+                    color: grossHover.hovered ? App.themeCard : "transparent"
+                    border.color: App.themeBorder
+                    DrawnIcon { anchors.centerIn: parent; name: "expand"; size: 16; color: App.themeTextPrimary }
+                    HoverHandler { id: grossHover }
+                    TapHandler { onTapped: root._seitenGrossOeffnen() }
+                    ToolTip.visible: grossHover.hovered
+                    ToolTip.delay: 500
+                    ToolTip.text: App.uiText(App.language, "PdfPagesBig")
+                }
+            }
+            Text {
+                visible: root._pdfModus === 2 && textPdfPopup._seiten > 0
+                text: App.uiText(App.language, "PdfPagesPicked").arg(root._pdfAuswahl.length).arg(textPdfPopup._seiten)
+                color: App.themeTextMuted
+                font.pixelSize: 11
+            }
+
             Rectangle {
                 id: konvKnopf
                 readonly property bool bereit: root._pdfQuelle !== null && !root._pdfQuelle.pdfBusy
+                                               && (root._pdfModus !== 2 || root._pdfAuswahl.length > 0)
                 width: Math.max(140, konvRow.implicitWidth + 24); height: 28; radius: 6
                 opacity: konvKnopf.bereit ? 1.0 : 0.45
                 color: konvHover.hovered ? Qt.rgba(App.themeAccent.r, App.themeAccent.g,
@@ -1370,13 +1509,39 @@ FocusScope {
                     enabled: konvKnopf.bereit
                     onTapped: {
                         root._pdfQuelle.pdfExport(App.textPdfNative, App.pdfLandscape, root._pdfAlle,
-                                                  root._pdfBereich ? seiteVon.value : 1,
-                                                  root._pdfBereich ? seiteBis.value : 0)
+                                                  root._pdfModus === 1 ? seiteVon.value : 1,
+                                                  root._pdfModus === 1 ? seiteBis.value : 0,
+                                                  root._pdfModus === 2 ? root._pdfAuswahl : [])
                         textPdfPopup.close()
                         viewMenu.close()
                     }
                 }
             }
+        }
+    }
+
+    //  Das grosse Auswahlfenster ist die Seitenauswahl der PDF-Extraktion, hier auf die Vorschau-Datei gerichtet.
+    //  Erst beim ersten Gebrauch geladen - sonst baute jede geoeffnete Datei sie mit auf.
+    Loader {
+        id: seitenGrossLader
+        anchors.fill: parent
+        active: false
+        sourceComponent: seitenGrossVorlage
+    }
+    Component {
+        id: seitenGrossVorlage
+        PdfPageSelectDialog {
+            objectName: "pdfPagesLarge"
+            askName: false
+            titleText: App.uiText(App.language, "PdfPagesTitle")
+            confirmText: App.uiText(App.language, "PdfPagesTake")
+            onExtractRequested: (items, name) => {
+                const a = []
+                for (var i = 0; i < items.length; i++)
+                    if (a.indexOf(items[i].page + 1) < 0) a.push(items[i].page + 1)
+                root._pdfAuswahl = a
+            }
+            onDismissed: root._seitenGrossOffen = false
         }
     }
 

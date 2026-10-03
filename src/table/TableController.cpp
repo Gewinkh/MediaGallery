@@ -142,7 +142,14 @@ TableController::~TableController() {
 
 QString TableController::pdfTarget() const { return TextPdf::targetPathFor(m_source); }
 
-void TableController::countPdfPages(const QVariantMap& opt) { pdfStarten(QString(), opt, ++m_pdfZaehlGen); }
+void TableController::countPdfPages(const QVariantMap& opt) {
+    pdfStarten(PdfArt::Zaehlen, QString(), opt, ++m_pdfZaehlGen);
+}
+
+void TableController::previewPdf(const QVariantMap& opt) {
+    const QString ziel = m_vorschau.neu();
+    if (!ziel.isEmpty()) pdfStarten(PdfArt::Vorschau, ziel, opt, ++m_vorschauGen);
+}
 
 void TableController::exportPdf(const QString& target, const QVariantMap& opt) {
     if (m_pdfBusy || !m_datei || target.isEmpty()) {
@@ -153,12 +160,12 @@ void TableController::exportPdf(const QString& target, const QVariantMap& opt) {
     }
     m_pdfBusy = true;
     emit pdfBusyChanged();
-    pdfStarten(mg::toLocalPath(target), opt, 0);
+    pdfStarten(PdfArt::Schreiben, mg::toLocalPath(target), opt, 0);
 }
 
 // Die Teile entstehen HIER im GUI-Faden und halten die Datei ueber den Anker: bearbeitet jemand waehrenddessen,
 // schreibt der Controller in eine eigene Kopie (`schreibDatei`), der Export liest den Stand vom Start.
-void TableController::pdfStarten(const QString& ziel, const QVariantMap& opt, int zaehlGen) {
+void TableController::pdfStarten(PdfArt art, const QString& ziel, const QVariantMap& opt, int gen) {
     QList<PdfTeil> teile;
     if (m_datei && opt.value(QStringLiteral("all")).toBool() && m_bereiche.size() > 1) {
         teile = teileAusDatei(m_datei, m_bereiche, m_werte, m_breiten, m_formate, m_gruppiert, m_dezimalKomma);
@@ -195,6 +202,7 @@ void TableController::pdfStarten(const QString& ziel, const QVariantMap& opt, in
     o.gitter = opt.value(QStringLiteral("grid")).toBool();
     o.von = opt.value(QStringLiteral("first"), 1).toInt();
     o.bis = opt.value(QStringLiteral("last"), 0).toInt();
+    for (const QVariant& v : opt.value(QStringLiteral("pages")).toList()) o.seiten.append(v.toInt());
     o.schrift = opt.value(QStringLiteral("font")).value<QFont>();
     o.grund = opt.value(QStringLiteral("background")).value<QColor>();
     o.text = opt.value(QStringLiteral("text")).value<QColor>();
@@ -210,20 +218,31 @@ void TableController::pdfStarten(const QString& ziel, const QVariantMap& opt, in
     auto* task = new PdfTask;
     task->setAutoDelete(true);
     QPointer<TableController> self(this);
-    task->arbeit = [self, teile = std::move(teile), o, ziel, zaehlGen, abbruch = m_pdfAbbruch] {
+    task->arbeit = [self, art, teile = std::move(teile), o, ziel, gen, abbruch = m_pdfAbbruch] {
         QString err;
         const int seiten = schreibePdf(teile, o, ziel, &err, abbruch.get());
         if (abbruch->load()) return;
-        QMetaObject::invokeMethod(self, [self, seiten, err, ziel, zaehlGen] {
+        QMetaObject::invokeMethod(self, [self, art, seiten, err, ziel, gen] {
             if (!self) return;
-            if (ziel.isEmpty()) {
+            switch (art) {
+            case PdfArt::Zaehlen:
                 //  Nur die juengste Zaehlung - der Dialog fragt bei jedem Umschalten neu.
-                if (zaehlGen == self->m_pdfZaehlGen) emit self->pdfPagesCounted(seiten);
+                if (gen == self->m_pdfZaehlGen) emit self->pdfPagesCounted(seiten);
+                return;
+            case PdfArt::Vorschau:
+                if (gen != self->m_vorschauGen || seiten <= 0) {
+                    self->m_vorschau.verwerfe(ziel);
+                    return;
+                }
+                self->m_vorschau.uebernehme(ziel);
+                emit self->pdfPreviewReady(ziel, seiten);
+                return;
+            case PdfArt::Schreiben:
+                self->m_pdfBusy = false;
+                emit self->pdfBusyChanged();
+                emit self->pdfExportFinished(seiten > 0, ziel, err);
                 return;
             }
-            self->m_pdfBusy = false;
-            emit self->pdfBusyChanged();
-            emit self->pdfExportFinished(seiten > 0, ziel, err);
         }, Qt::QueuedConnection);
     };
     m_pdfPool.start(task);
@@ -234,6 +253,8 @@ void TableController::setSource(const QString& pathOrUrl) {
     if (pfad == m_source) return;
     //  Vor dem Wechsel sichern - danach kennt der Controller die alte Datei nicht mehr.
     flush();
+    ++m_vorschauGen;
+    m_vorschau.leere();
     m_source = pfad;
     emit sourceChanged();
     neuLesen();
