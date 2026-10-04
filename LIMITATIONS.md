@@ -458,7 +458,7 @@ it (one open photo: 157 MB instead of 250 MB). At 100 % zoom the full image is
 loaded. PNGs open about 30 % slower this way; JPEGs faster.
 
 **Files written by the app have not been checked in Word itself.**
-Why: tests read them back with the app's own reader only.
+Why: so far they have only been read back with the app's own reader.
 
 **A search pattern never reaches across a line break.**
 Why: search runs line by line (paragraph by paragraph in DOCX), as in most

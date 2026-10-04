@@ -154,11 +154,6 @@ application:
 **Qt Widgets is NOT used.** MediaGallery uses `QGuiApplication`; there is no
 dependency on Qt Widgets anywhere in the tree.
 
-`Qt6::GuiPrivate` is used **only** by the internal regression test drivers under
-`tests/`, never by the application, and only when that component is present. The
-test drivers are `EXCLUDE_FROM_ALL` targets built through the `mg_tests`
-collector, so an ordinary `cmake --build` never links them.
-
 For each of Qt Core, Gui, Qml, Quick, Quick Controls, Multimedia, PDF and SVG,
 the Qt 6.11 documentation states that the module is available under commercial
 licenses from The Qt Company and, in addition, under free software licenses: the
@@ -513,8 +508,9 @@ MediaGallery reads DATEV booking batches (`EXTF`/`DTVF`, format version 700). Th
 reader, the tokenizer and the table view are written for this project; **no DATEV
 code, library, API or documentation file is contained or shipped**.
 
-- The test files provide concrete examples of the DATEV format, including the identifier, separator,
- quoting and column names. The reader itself is MediaGallery's own implementation.
+- The format details the reader relies on - identifier, separator, quoting and
+  column names - were taken from sample DATEV booking batches, which are not part
+  of this repository. The reader itself is MediaGallery's own implementation.
 - No column table, no specification text and no other DATEV material has been
   copied into this repository.
 
@@ -537,26 +533,6 @@ client, and the build downloads nothing (no `FetchContent`, no `ExternalProject`
 Qt WebEngine is initialized only for local HTML preview. This is a statement about
 this project's code and build, not a guarantee about what the Qt libraries
 themselves may do internally.
-
-### Regression suite and test material
-
-The regression suite under `tests/` is not tracked in this Git repository: it
-appears in neither the index nor any commit, and `.gitignore` lists it so it stays
-that way. Its drivers are `EXCLUDE_FROM_ALL` targets, so an ordinary `cmake --build` does
-not build them and `install(TARGETS MediaGallery ...)` does not install them.
-
-The coverage tool `tests/coverage/mg_coverage.py` is a Python 3 script from the
-development environment that drives `gcov`, part of the GCC toolchain. It builds
-in a separate directory (`build-cov/`) with `--coverage`, which links GCC's
-`libgcov` runtime into the instrumented library and test drivers only; `libgcov`
-is part of GCC's runtime libraries and falls under the GCC Runtime Library
-Exception. Nothing from this build is part of the application, and it is never
-installed or distributed.
-
-Local media files used for manual testing live under `tests/testfiles/`. They are
-third-party works of external origin, are likewise untracked, and are neither
-redistributed nor covered by this document. Should `tests/` ever be added to the
-repository, those files must be reviewed before that happens.
 
 ---
 
@@ -753,7 +729,7 @@ answered, because answering them requires information outside this repository:
    derivative work of a Qt-supplied style is a question about their history, and
    is left open rather than answered by their imports.
 7. **The DATEV field catalogue and its terms.** The header field names in
-   `src/datev/DatevFormat.cpp` cover only what the sample files themselves state.
+   `src/datev/DatevFormat.cpp` cover only what sample DATEV booking batches state.
    Whether DATEV's published format description may be used as the source for the
    remaining field names, and under what conditions, has not been established -
    the official page could not be read (it renders its content in the browser, so

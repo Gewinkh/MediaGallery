@@ -9,8 +9,6 @@ import "../common"
 Item {
     id: root
 
-    //  DesignProfile::Custom - der LETZTE Eintrag; von 8 auf 7 gerueckt, seit
-    //  „Neon Purple" entfallen ist (s. `ISettings.h`).
     readonly property int customIndex: 7
     readonly property bool customActive: App.designProfile === root.customIndex
 
@@ -98,7 +96,7 @@ Item {
         function onThemeChanged() { root.refreshProfiles() }
     }
 
-    // Der große Block muss ANDERS aussehen als die `SettingsGroup`s darin, sonst liest sich die Verschachtelung als
+    // Der große Block muss ANDERS aussehen als die 'SettingsGroup's darin, sonst liest sich die Verschachtelung als
     // "Fenster im Fenster" - dieselbe Lehre, an der die zweite Reiterleiste gescheitert ist.
     component BigGroup: Rectangle {
         id: big
@@ -196,7 +194,6 @@ Item {
         ColumnLayout {
             width: root.width
             spacing: 14
-
             BigGroup {
                 title: App.uiText(App.language, "SettingsDesignBlockUi")
                 groupKey: "design.block.ui"
@@ -204,7 +201,6 @@ Item {
                     key: "design.profile"
                     title: App.uiText(App.language, "SettingsDesignProfileLabel")
                     Layout.fillWidth: true
-
                     GridLayout {
                         Layout.fillWidth: true
                         columns: 4
@@ -223,7 +219,7 @@ Item {
                                 color: sel ? Qt.rgba(App.themeAccent.r, App.themeAccent.g, App.themeAccent.b, 0.22)
                                            : Qt.rgba(1, 1, 1, 0.12)
                                 border.color: sel ? App.themeAccent : App.themeBorder
-                                border.width: sel ? 2 : 1
+                                border.width: 1
 
                                 MouseArea {
                                     anchors.fill: parent
@@ -234,8 +230,6 @@ Item {
                                     }
                                 }
 
-                                //  Hintergrund, Karte, Akzent als drei schraege Striche; schraeg heisst `Shape` - ein gedrehtes
-                                //  Rechteck rastert seine Kanten nicht spiegelbildlich.
                                 Row {
                                     id: slashes
                                     //  Von Rahmen zu Rahmen: oben und unten nur die Rahmenbreite frei.
@@ -277,17 +271,11 @@ Item {
                 }
 
                 ColumnLayout {
+                    Layout.bottomMargin: 8
                     Layout.fillWidth: true
                     spacing: 14
                     enabled: root.customActive
                     opacity: root.customActive ? 1.0 : 0.45
-
-                    Text {
-                        visible: !root.customActive
-                        Layout.fillWidth: true
-                        text: App.uiText(App.language, "SettingsDesignCustomHint")
-                        color: App.themeTextMuted; font.pixelSize: 11
-                    }
 
                     SettingsGroup {
                         key: "design.base-colors"
@@ -490,11 +478,8 @@ Item {
                         }
                     }
                 }
-
             }
 
-            // Der Texteditor teilt sich mit der Oberfläche KEINE Farbe: eigene Profile, eigene Palette, eigener
-            // Konfigurator - ein Wechsel des App-Themes lässt ihn unberührt und umgekehrt.
             BigGroup {
                 title: App.uiText(App.language, "SettingsDesignBlockEditor")
                 groupKey: "design.block.editor"
@@ -513,16 +498,15 @@ Item {
                             model: 4
                             delegate: Rectangle {
                                 id: eCard
-                                required property int index
+                                required property var index
                                 Layout.fillWidth: true
-                                Layout.preferredHeight: 62
+                                Layout.preferredHeight: 52
                                 radius: 8
                                 readonly property bool sel: Editor.profile === eCard.index
-                                color: sel ? Qt.rgba(App.themeAccent.r, App.themeAccent.g,
-                                                     App.themeAccent.b, 0.12)
-                                           : Qt.rgba(1, 1, 1, 0.03)
+                                color: sel ? Qt.rgba(App.themeAccent.r, App.themeAccent.g, App.themeAccent.b, 0.22)
+                                           : Qt.rgba(1, 1, 1, 0.12)
                                 border.color: sel ? App.themeAccent : App.themeBorder
-                                border.width: sel ? 2 : 1
+                                border.width: 1
 
                                 MouseArea {
                                     anchors.fill: parent
@@ -530,63 +514,42 @@ Item {
                                     onClicked: Editor.profile = eCard.index
                                 }
 
-                                ColumnLayout {
-                                    anchors.fill: parent
-                                    anchors.margins: 8
-                                    spacing: 6
-                                    Text {
-                                        text: Editor.profileLabel(eCard.index)
-                                        color: App.themeTextPrimary
-                                        font.pixelSize: 13; font.bold: true
-                                        elide: Text.ElideRight
-                                        Layout.fillWidth: true
-                                    }
-                                    Row {
-                                        spacing: 4
-                                        Repeater {
-                                            model: Editor.profileSwatches(eCard.index)
-                                            delegate: Rectangle {
-                                                required property var modelData
-                                                width: 22; height: 14; radius: 3
-                                                color: modelData
-                                                border.color: Qt.rgba(1, 1, 1, 0.25)
+                                Row {
+                                    id: eslashes
+                                    anchors { left: parent.left; leftMargin: 14; top: parent.top; bottom: parent.bottom
+                                              topMargin: ecard.border.width; bottomMargin: ecard.border.width }
+                                    spacing: 2
+                                    Repeater {
+                                        model: Editor.profileSwatches(eCard.index)
+                                        delegate: Shape {
+                                            id: eslash
+                                            required property var modelData
+                                            readonly property real neig: height * 0.3
+                                            height: eslashes.height
+                                            width: 9 + neig
+                                            preferredRendererType: Shape.CurveRenderer
+                                            ShapePath {
+                                                fillColor: eslash.modelData
+                                                strokeColor: "transparent"
+                                                startX: eslash.neig; startY: 0
+                                                PathLine { x: eslash.width;     y: 0 }
+                                                PathLine { x: 9;               y: eslash.height }
+                                                PathLine { x: 0;               y: eslash.height }
+                                                PathLine { x: eslash.neig;      y: 0 }
                                             }
                                         }
                                     }
                                 }
-                            }
-                        }
-                    }
 
-                    RowLayout {
-                        Layout.fillWidth: true
-                        spacing: 8
-                        Label {
-                            Layout.fillWidth: true
-                            visible: !Editor.customActive
-                            text: App.uiText(App.language, "SettingsEditorCustomHint")
-                            color: App.themeTextMuted
-                            font.pixelSize: 11
-                            wrapMode: Text.WordWrap
-                        }
-                        Item { Layout.fillWidth: true; visible: Editor.customActive }
-                        Button {
-                            text: App.uiText(App.language, "SettingsEditorSeedCustom")
-                            visible: !Editor.customActive
-                            onClicked: Editor.seedCustomFrom(Editor.profile)
-                        }
-                        Button {
-                            text: App.uiText(App.language, "SettingsEditorResetColors")
-                            visible: Editor.customActive
-                            onClicked: Editor.resetCustom()
-                        }
-                        Button {
-                            text: App.uiText(App.language, "SettingsDesignExportBtn")
-                            onClicked: edExportDialog.open()
-                        }
-                        Button {
-                            text: App.uiText(App.language, "SettingsDesignImportBtn")
-                            onClicked: edImportDialog.open()
+                                Text {
+                                    anchors { left: eslashes.right; leftMargin: 14; right: parent.right; rightMargin: 10
+                                              verticalCenter: parent.verticalCenter }
+                                    text: Editor.profileLabel(eCard.index)
+                                    color: App.themeTextPrimary
+                                    font.pixelSize: 13; font.bold: true
+                                    elide: Text.ElideRight
+                                }
+                            }
                         }
                     }
                 }
@@ -651,12 +614,45 @@ Item {
                     EdColorRow { colorKey: "emphasis" }
                     EdColorRow { colorKey: "link" }
                     EdColorRow { colorKey: "code" }
+
+                    RowLayout {
+                        Layout.fillWidth: true
+                        spacing: 8
+                        Label {
+                            Layout.fillWidth: true
+                            visible: !Editor.customActive
+                            text: App.uiText(App.language, "SettingsEditorCustomHint")
+                            color: App.themeTextMuted
+                            font.pixelSize: 11
+                            wrapMode: Text.WordWrap
+                        }
+                        Item { Layout.fillWidth: true; visible: Editor.customActive }
+                        Button {
+                            text: App.uiText(App.language, "SettingsEditorSeedCustom")
+                            visible: !Editor.customActive
+                            onClicked: Editor.seedCustomFrom(Editor.profile)
+                        }
+                        Button {
+                            text: App.uiText(App.language, "SettingsEditorResetColors")
+                            visible: Editor.customActive
+                            onClicked: Editor.resetCustom()
+                        }
+                        Button {
+                            text: App.uiText(App.language, "SettingsDesignExportBtn")
+                            onClicked: edExportDialog.open()
+                        }
+                        Button {
+                            text: App.uiText(App.language, "SettingsDesignImportBtn")
+                            onClicked: edImportDialog.open()
+                        }
+                    }
                 }
 
                 SettingsGroup {
                     key: "design.editor.preview"
                     title: App.uiText(App.language, "SettingsEditorPreviewGroup")
                     Layout.fillWidth: true
+                    Layout.bottomMargin: 8
 
                     Rectangle {
                         Layout.fillWidth: true

@@ -403,7 +403,7 @@ void ViewerController::exportTextToPdf(const QString& filePathOrUrl,
 void ViewerController::countTextPdfPages(const QString& filePathOrUrl, const QString& content,
                                          int tabWidth, bool native, bool landscape) {
     const TextPdf::Stil stil = textStil(mg::toLocalPath(filePathOrUrl), QColor(Qt::black), native);
-    const TextPdf::Seiten seiten{landscape, 1, 0};
+    const TextPdf::Seiten seiten{landscape, 1, 0, {}};
     const int gen = ++m_textZaehlGen;
     QPointer<ViewerController> owner(this);
     startPdf([owner, content, stil, tabWidth, seiten, gen, abbruch = m_pdfAbbruch] {
@@ -522,7 +522,7 @@ void ViewerController::exportFilesToPdf(const QStringList& paths, bool native, b
                                                       nullptr, abbruch.get()) > 0;
                     } else {
                         ok = TextPdf::exportToPdf(text, a.ziel, a.textStil, tabBreite, nullptr,
-                                                  TextPdf::Seiten{landscape, 1, 0});
+                                                  TextPdf::Seiten{landscape, 1, 0, {}});
                     }
                 }
             }

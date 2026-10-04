@@ -128,29 +128,11 @@ open build/MediaGallery.app
 
 ---
 
-### Tests (Developer Only)
-
-The regression suite is development material and not part of this repository.
-The build skips it when the `tests/` folder is absent.
-
----
-
 ## Changelog
 
 ### Latest
-- **Fix**: **The settings window** no longer closes when clicking beside it, preventing accidental file openings behind it.
-- **Change**: **Cleaner theme cards** with each theme's colours shown as slanted stripes beside its name.
-- **Feature**: **Working PDF links** that appear on hover and can jump to pages, open web addresses, or open neighbouring files.
-- **Fix**: **Embedded PDF media** now appears on the correct page, including embedded videos.
-- **Fix**: **Markdown links exported to PDF** are now clickable, including heading and footnote links.
-- **Change**: **Softer deletion marks in exports** with a thin, transparent red frame and strike line.
-- **Fix**: **Player covers** now all appear correctly and the playlist scrolls smoothly while titles load.
-- **Change**: **Safer theme import** rejects invalid theme files and preserves the current theme.
-- **Fix**: **Names containing percent signs** now appear correctly in messages and the folder deletion dialog.
-- **Fix**: **PDF page extraction** no longer stops when the other pane opens a folder.
-- **Feature**: **Linux desktop integration** with an app icon and *Open with* support for supported files and folders.
-- **Feature**: **Single-page PDF selection** from page previews with a larger view for easier selection.
-- **Feature**: **Folder-bound bookmark groups** with selectable subfolders and a warning when folders are changed outside the app.
+- **Fix**: **Design tab** no longer has visual inconsistencies in the settings window.
+- **Change**: **Text editor profile** now uses an updated button design.
 
 ---
 
