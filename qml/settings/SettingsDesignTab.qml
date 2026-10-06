@@ -498,7 +498,7 @@ Item {
                             model: 4
                             delegate: Rectangle {
                                 id: eCard
-                                required property var index
+                                required property int index
                                 Layout.fillWidth: true
                                 Layout.preferredHeight: 52
                                 radius: 8
@@ -517,7 +517,7 @@ Item {
                                 Row {
                                     id: eslashes
                                     anchors { left: parent.left; leftMargin: 14; top: parent.top; bottom: parent.bottom
-                                              topMargin: ecard.border.width; bottomMargin: ecard.border.width }
+                                              topMargin: eCard.border.width; bottomMargin: eCard.border.width }
                                     spacing: 2
                                     Repeater {
                                         model: Editor.profileSwatches(eCard.index)
