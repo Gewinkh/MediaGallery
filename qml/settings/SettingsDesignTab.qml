@@ -15,6 +15,9 @@ Item {
     property var profiles: []
     function refreshProfiles() { profiles = App.designProfiles() }
 
+    //  `colorFor` ist ein Aufruf und bindet nicht; erst das Lesen von `profile` (NOTIFY paletteChanged) tut es.
+    function edColor(key) { void Editor.profile; return Editor.colorFor(key) }
+
     property string twName: "Custom"
     property color twBackground: "#0a1216"
     property color twCard: "#121c22"
@@ -569,10 +572,11 @@ Item {
                         implicitWidth: 44; implicitHeight: 24
                         showAlpha: false
                         title: Editor.colorLabel(ecr.colorKey)
-                        selectedColor: Editor.colorFor(ecr.colorKey)
+                        selectedColor: { void Editor.profile; return Editor.colorFor(ecr.colorKey) }
                         onColorPicked: function (c) {
                             Editor.setColorFor(ecr.colorKey, c)
                             selectedColor = Qt.binding(function () {
+                                void Editor.profile
                                 return Editor.colorFor(ecr.colorKey)
                             })
                         }
@@ -692,38 +696,38 @@ Item {
                                 Text {
                                     font: App.fallbackFont("monospace", 12)
                                     textFormat: Text.StyledText
-                                    text: "<font color='" + Editor.colorFor("preproc") + "'>#include</font>"
-                                        + " <font color='" + Editor.colorFor("string") + "'>&lt;QString&gt;</font>"
+                                    text: "<font color='" + root.edColor("preproc") + "'>#include</font>"
+                                        + " <font color='" + root.edColor("string") + "'>&lt;QString&gt;</font>"
                                 }
                                 Text {
                                     font: App.fallbackFont("monospace", 12)
                                     textFormat: Text.StyledText
-                                    text: "<font color='" + Editor.colorFor("type") + "'>int</font>"
-                                        + " <font color='" + Editor.colorFor("function") + "'>berechne</font>"
-                                        + "<font color='" + Editor.colorFor("operator") + "'>(</font>"
-                                        + "<font color='" + Editor.colorFor("type") + "'>int</font> wert"
-                                        + "<font color='" + Editor.colorFor("operator") + "'>) {</font>"
+                                    text: "<font color='" + root.edColor("type") + "'>int</font>"
+                                        + " <font color='" + root.edColor("function") + "'>berechne</font>"
+                                        + "<font color='" + root.edColor("operator") + "'>(</font>"
+                                        + "<font color='" + root.edColor("type") + "'>int</font> wert"
+                                        + "<font color='" + root.edColor("operator") + "'>) {</font>"
                                 }
                                 Text {
                                     font: App.fallbackFont("monospace", 12)
                                     textFormat: Text.StyledText
-                                    text: "&nbsp;&nbsp;<font color='" + Editor.colorFor("keyword") + "'>return</font>"
-                                        + " wert <font color='" + Editor.colorFor("operator") + "'>*</font> "
-                                        + "<font color='" + Editor.colorFor("number") + "'>42</font>"
-                                        + "<font color='" + Editor.colorFor("operator") + "'>;</font>"
-                                        + "  <font color='" + Editor.colorFor("comment") + "'>// Kommentar</font>"
+                                    text: "&nbsp;&nbsp;<font color='" + root.edColor("keyword") + "'>return</font>"
+                                        + " wert <font color='" + root.edColor("operator") + "'>*</font> "
+                                        + "<font color='" + root.edColor("number") + "'>42</font>"
+                                        + "<font color='" + root.edColor("operator") + "'>;</font>"
+                                        + "  <font color='" + root.edColor("comment") + "'>// Kommentar</font>"
                                 }
                                 Text {
                                     font: App.fallbackFont("monospace", 12)
                                     textFormat: Text.StyledText
-                                    text: "<font color='" + Editor.colorFor("heading") + "'><b>## Ueberschrift</b></font>"
-                                        + "  <font color='" + Editor.colorFor("emphasis") + "'><i>*kursiv*</i></font>"
+                                    text: "<font color='" + root.edColor("heading") + "'><b>## Ueberschrift</b></font>"
+                                        + "  <font color='" + root.edColor("emphasis") + "'><i>*kursiv*</i></font>"
                                 }
                                 Text {
                                     font: App.fallbackFont("monospace", 12)
                                     textFormat: Text.StyledText
-                                    text: "<font color='" + Editor.colorFor("link") + "'>[Verweis](ziel)</font>"
-                                        + "  <font color='" + Editor.colorFor("code") + "'>`code`</font>"
+                                    text: "<font color='" + root.edColor("link") + "'>[Verweis](ziel)</font>"
+                                        + "  <font color='" + root.edColor("code") + "'>`code`</font>"
                                 }
                             }
                         }

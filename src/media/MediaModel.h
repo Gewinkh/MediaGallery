@@ -123,7 +123,7 @@ public:
     bool showAllFiles() const { return m_showAllFiles; }
 
     //  Aus heisst: gar keine Miniatur anfordern - das spart Rendern, Cache und
-    //  den Speicher, den ein Bild sonst haelt.
+    //  den Speicher, den ein Bild sonst haelt. Bricht den Lader NICHT ab.
     void setPreviewKinds(bool pdf, bool image);
 
     // Aufgeklappter Inhalt kommt als weitere Zeilen desselben Modells (eigener Bereich).
@@ -176,9 +176,10 @@ public:
     Q_INVOKABLE QStringList expandedFolders() const;
     Q_INVOKABLE void        setExpandedFolders(const QStringList& folderPaths);
 
-    // Alle Thumbnails auf ausstehend zuruecksetzen; sichtbare Delegates fordern
-    // ueber thumbnailsInvalidated neu an, der Rest bleibt lazy.
+    // Alle Miniaturen auf ausstehend; sichtbare Kacheln fordern ueber thumbnailsInvalidated neu an.
     void refreshThumbnails();
+    // Ohne cancelAll: der Lader ist geteilt, ein Abbruch je Haelfte verwuerfe die Anforderungen der anderen.
+    void invalidateThumbnails();
 
     // Abbestellen ist verzögert und läuft nur, wenn den Pfad im selben Ereignisdurchlauf niemand angefordert hat.
     // Sonst ginge die Miniatur verloren, wenn eine Datei beim Neuaufbau von Kachel A zu Kachel B wandert.

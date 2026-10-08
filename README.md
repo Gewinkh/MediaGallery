@@ -113,6 +113,12 @@ installed files again: `sudo xargs rm < build/install_manifest.txt`.
 
 ### macOS
 
+#### Prerequisites
+
+```bash
+brew install cmake ninja qt
+```
+
 #### Build
 
 ```bash
@@ -131,8 +137,9 @@ open build/MediaGallery.app
 ## Changelog
 
 ### Latest
-- **Fix**: **Design tab** no longer has visual inconsistencies in the settings window.
-- **Change**: **Text editor profile** now uses an updated button design.
+- **Feature**: **macOS build** with its own app icon in the Dock and Finder.
+- **Fix**: **Both gallery halves** now immediately follow changes to editor colours, tile size, and file visibility.
+- **Fix**: **Editor colour settings** now immediately show the colours of the selected profile.
 
 ---
 

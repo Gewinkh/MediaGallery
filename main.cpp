@@ -222,31 +222,27 @@ int main(int argc, char* argv[]) {
     MediaModel&      mediaModel   = pane0->mediaModel();
     MediaProxyModel& galleryModel = pane0->galleryModel();
 
-    QObject::connect(&appController, &AppController::showAllFilesChanged,
-                     &mediaModel, [&settings, &mediaModel]() {
-        mediaModel.setShowAllFiles(settings.showAllFiles());
-    });
-
     // Kacheln ueber 512 px wuerden sonst aus der 512er-Cachedatei hochskaliert.
+    // Ziel ist der AppController, nicht pane0: die erste Haelfte kann geschlossen werden.
     thumbLoader.setTargetDim(qMax(settings.tileWidth(), settings.tileHeight()));
     QObject::connect(&appController, &AppController::tileSizeChanged,
-                     &mediaModel, [&settings, &thumbLoader, &mediaModel]() {
+                     &appController, [&settings, &thumbLoader, &appController]() {
         if (thumbLoader.setTargetDim(qMax(settings.tileWidth(),
                                           settings.tileHeight())))
-            mediaModel.refreshThumbnails();
+            appController.refreshThumbnails();
     });
 
     // Der Stil steckt in der Cache-Datei - eine Aenderung erzwingt Neuerzeugung.
-    const auto textStilSetzen = [&settings, &editor, &thumbLoader, &mediaModel]() {
+    const auto textStilSetzen = [&settings, &editor, &thumbLoader, &appController]() {
         if (thumbLoader.setTextPreviewStyle(settings.textPreviewContent(),
                                             editor.palette()))
-            mediaModel.refreshThumbnails();
+            appController.refreshThumbnails();
     };
     textStilSetzen();                       // Startwert, vor der ersten Kachel
     QObject::connect(&appController, &AppController::textPreviewContentChanged,
-                     &mediaModel, textStilSetzen);
+                     &appController, textStilSetzen);
     QObject::connect(&editor, &mg::editor::EditorController::paletteChanged,
-                     &mediaModel, textStilSetzen);
+                     &appController, textStilSetzen);
 
     // Standard-Controls zeichnen aus der QPalette, nicht aus dem QML-Theme.
     auto applyThemePalette = [&settings]() {

@@ -142,6 +142,8 @@ public:
     PaneController* focusedPane() const { return m_pane; }
 
     void setThumbnailLoader(ThumbnailLoader* loader) { m_loader = loader; }
+    //  Lader einmal abbrechen, dann jede Haelfte neu anfordern lassen.
+    void refreshThumbnails();
     void setTagsFacade(TagController* facade);
     Q_INVOKABLE QObject* addPane();
     Q_INVOKABLE bool closePane(int index);

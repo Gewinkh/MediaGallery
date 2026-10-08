@@ -6,6 +6,7 @@
 #include <QList>
 #include <QSet>
 
+#include <QByteArrayView>
 #include <charconv>
 #include <cstring>
 
@@ -355,8 +356,11 @@ inline void skipWsP(const char*& p, const char* e) { while (p < e && isWs(*p)) +
 //  Zahl in der Form, die Qt schreibt: [-+]?Ziffern[.Ziffern] - kein Exponent.
 bool readNum(const char*& p, const char* e, double* out) {
     skipWsP(p, e);
+    //  Das Plus steht vor `s`: PDF erlaubt es, from_chars nicht.
+    const bool plus = p < e && *p == '+';
+    if (plus) ++p;
     const char* s = p;
-    if (p < e && (*p == '-' || *p == '+')) ++p;
+    if (!plus && p < e && *p == '-') ++p;
     bool digits = false;
     while (p < e && *p >= '0' && *p <= '9') { ++p; digits = true; }
     if (p < e && *p == '.') {
@@ -364,7 +368,14 @@ bool readNum(const char*& p, const char* e, double* out) {
         while (p < e && *p >= '0' && *p <= '9') { ++p; digits = true; }
     }
     if (!digits) return false;
+#if defined(__cpp_lib_to_chars)
     return std::from_chars(s, p, *out).ec == std::errc();
+#else
+    //  Apples libc++ hat kein from_chars fuer double. Qt rundet ebenso exakt, braucht aber 38 statt 11 ns je Zahl.
+    bool ok = false;
+    *out = QByteArrayView(s, p - s).toDouble(&ok);
+    return ok;
+#endif
 }
 
 //  Genau dieses Wort erwarten (danach Leerraum oder Zeilenende).

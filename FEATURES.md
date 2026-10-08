@@ -336,6 +336,7 @@ pages change the PDF directly. `Ctrl+Z` undoes them while the file is open.
 - **Linux desktop integration** (after `sudo cmake --install build`): MediaGallery appears in the application menu with its own icon - a large G with a small M - and under *Open with* for every file type it opens and for folders
   - Opening a file shows its folder in the gallery with the file in fullscreen; opening a folder shows that folder
   - Also works from the command line: `MediaGallery <file or folder>`
+- **macOS app icon**: the same drawn logo appears in the Dock, in Finder and on the window
 - Bars that do not fit a narrow window **scroll sideways** with the mouse wheel
 - **Settings groups fold away**, and stay folded after a restart
 

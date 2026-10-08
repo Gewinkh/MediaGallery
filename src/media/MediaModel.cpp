@@ -1114,7 +1114,7 @@ void MediaModel::setPreviewKinds(bool pdf, bool image) {
     m_imagePreview = image;
     //  Wie beim Wechsel der Zielgroesse: alles auf ausstehend, die Kacheln
     //  fordern neu an.
-    refreshThumbnails();
+    invalidateThumbnails();
 }
 
 bool MediaModel::vorschauAus(int row) const {
@@ -1231,6 +1231,11 @@ void MediaModel::refreshThumbnails() {
     if (m_items.isEmpty()) return;
     // In-flight-Ergebnisse der alten Zielgroesse verwerfen.
     m_loader.cancelAll();
+    invalidateThumbnails();
+}
+
+void MediaModel::invalidateThumbnails() {
+    if (m_items.isEmpty()) return;
     m_thumbUrls.fill(QString());
     m_thumbState.fill(0);
     emit dataChanged(index(0), index(m_items.size() - 1),

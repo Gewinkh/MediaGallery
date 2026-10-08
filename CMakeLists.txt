@@ -38,6 +38,25 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_AUTOMOC ON)
 set(CMAKE_AUTORCC ON)
 
+#  Manche macOS-Command-Line-Tools finden die libc++-Header des SDK nicht; dann scheitert schon das PCH an <utility>.
+#  Nur in diesem Fall wird der SDK-Pfad nachgereicht - ein heiles Werkzeug bleibt unberuehrt.
+if(APPLE)
+    include(CheckIncludeFileCXX)
+    check_include_file_cxx(utility MG_HAVE_CXX_UTILITY)
+    if(NOT MG_HAVE_CXX_UTILITY)
+        execute_process(
+            COMMAND xcrun --sdk macosx --show-sdk-path
+            OUTPUT_VARIABLE MG_MACOS_SDK_PATH
+            OUTPUT_STRIP_TRAILING_WHITESPACE
+            ERROR_QUIET)
+        set(MG_MACOS_LIBCXX_INCLUDE "${MG_MACOS_SDK_PATH}/usr/include/c++/v1")
+        if(EXISTS "${MG_MACOS_LIBCXX_INCLUDE}/utility")
+            include_directories(SYSTEM BEFORE "${MG_MACOS_LIBCXX_INCLUDE}")
+            message(STATUS "macOS libc++ headers: ${MG_MACOS_LIBCXX_INCLUDE}")
+        endif()
+    endif()
+endif()
+
 option(MG_LTO         "Ueber Dateigrenzen hinweg optimieren (nur optimierte Bauarten)" ON)
 option(MG_CCACHE      "ccache benutzen, wenn vorhanden (AUS misst die rohe Bauzeit)" ON)
 option(MG_WARNINGS    "Compiler-Warnungen -Wall -Wextra" ON)
@@ -426,11 +445,17 @@ add_library(mg_qml OBJECT qml.qrc)
 set_target_properties(mg_qml PROPERTIES AUTOMOC OFF)
 target_link_libraries(mg_qml PRIVATE Qt6::Core)
 
+set(MG_APP_ID io.github.gewinkh.MediaGallery)
 qt_add_executable(MediaGallery main.cpp)
 target_link_libraries(MediaGallery PRIVATE mg_lib mg_qml Qt6::QuickControls2 Qt6::Svg)
 target_precompile_headers(MediaGallery REUSE_FROM mg_pch)
 set_target_properties(MediaGallery PROPERTIES
     AUTOMOC OFF WIN32_EXECUTABLE ON MACOSX_BUNDLE ON)
+if(APPLE)
+    set_target_properties(MediaGallery PROPERTIES
+        MACOSX_BUNDLE_GUI_IDENTIFIER "${MG_APP_ID}"
+        MACOSX_BUNDLE_ICON_FILE MediaGallery.icns)
+endif()
 
 #  tests/ steht in der .gitignore - ein frischer Klon hat es nicht.
 if(MG_BUILD_TESTS AND EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/tests/CMakeLists.txt)
@@ -449,13 +474,15 @@ install(TARGETS MediaGallery
 if(UNIX AND NOT APPLE)
     option(MG_DESKTOP_INTEGRATION "Linux: .desktop-Datei und Icons erzeugen und installieren" ON)
 endif()
+#  Erst nach der Option: davor ist MG_DESKTOP_INTEGRATION bei einem frischen Ordner noch leer.
+if(APPLE OR MG_DESKTOP_INTEGRATION)
+    add_executable(mg_logogen tools/mg_logogen.cpp)
+    target_link_libraries(mg_logogen PRIVATE mg_lib mg_qml Qt6::Quick)
+endif()
 if(MG_DESKTOP_INTEGRATION)
-    set(MG_APP_ID io.github.gewinkh.MediaGallery)
     set(MG_DESKTOP_DIR ${CMAKE_BINARY_DIR}/desktop)
     add_executable(mg_desktopgen tools/mg_desktopgen.cpp)
     target_link_libraries(mg_desktopgen PRIVATE mg_lib)
-    add_executable(mg_logogen tools/mg_logogen.cpp)
-    target_link_libraries(mg_logogen PRIVATE mg_lib mg_qml Qt6::Quick)
     add_custom_command(
         OUTPUT ${MG_DESKTOP_DIR}/${MG_APP_ID}.desktop
         COMMAND mg_desktopgen ${MG_DESKTOP_DIR}/${MG_APP_ID}.desktop
@@ -476,4 +503,25 @@ if(MG_DESKTOP_INTEGRATION)
     install(FILES ${MG_DESKTOP_DIR}/${MG_APP_ID}.desktop
             DESTINATION ${CMAKE_INSTALL_DATADIR}/applications)
     install(DIRECTORY ${MG_DESKTOP_DIR}/hicolor DESTINATION ${CMAKE_INSTALL_DATADIR}/icons)
+endif()
+
+#  macOS: dasselbe Logo als .icns im Bundle und als Fenstersymbol.
+if(APPLE)
+    find_program(MG_ICONUTIL NAMES iconutil REQUIRED)
+    set(MG_MACOS_ICON_DIR ${CMAKE_BINARY_DIR}/macos-icon)
+    set(MG_MACOS_ICON_PNG ${MG_MACOS_ICON_DIR}/logo.png)
+    set(MG_MACOS_ICNS ${MG_MACOS_ICON_DIR}/MediaGallery.icns)
+    add_custom_command(
+        OUTPUT ${MG_MACOS_ICNS} ${MG_MACOS_ICON_PNG}
+        COMMAND mg_logogen ${MG_MACOS_ICON_DIR} MediaGallery
+        COMMAND ${MG_ICONUTIL} -c icns ${MG_MACOS_ICON_DIR}/MediaGallery.iconset
+                -o ${MG_MACOS_ICNS}
+        DEPENDS mg_logogen ${CMAKE_CURRENT_SOURCE_DIR}/qml/common/AppLogo.qml
+        COMMENT "macOS-App-Icon")
+    set_source_files_properties(${MG_MACOS_ICNS} PROPERTIES
+        MACOSX_PACKAGE_LOCATION Resources)
+    target_sources(MediaGallery PRIVATE ${MG_MACOS_ICNS})
+    qt_add_resources(MediaGallery mg_logo PREFIX "/logo" BASE ${MG_MACOS_ICON_DIR}
+                     FILES ${MG_MACOS_ICON_PNG})
+    target_compile_definitions(MediaGallery PRIVATE MG_HAVE_LOGO)
 endif()

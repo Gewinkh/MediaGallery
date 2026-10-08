@@ -26,6 +26,8 @@ Item {
     readonly property color _termLine: Qt.rgba(Editor.text.r, Editor.text.g, Editor.text.b, 0.13)
     property string _shownSource: ""
 
+    //  `colorFor` ist ein Aufruf und bindet nicht; erst das Lesen von `profile` (NOTIFY paletteChanged) tut es.
+    function _edColor(key) { void Editor.profile; return Editor.colorFor(key) }
     function release() { view.source = "" }
 
     //  PDF-Vertrag des Viewers (s. TextSurface).
@@ -128,7 +130,7 @@ Item {
                 width: 3
                 height: karte.height - 24
                 radius: 1.5
-                color: Editor.colorFor("link")
+                color: root._edColor("link")
             }
         }
 
@@ -239,7 +241,7 @@ Item {
                     anchors.centerIn: parent
                     size: 15
                     name: knopf.kopiert ? "check" : "copy"
-                    color: knopf.kopiert ? Editor.colorFor("string") : Editor.gutterText
+                    color: knopf.kopiert ? root._edColor("string") : Editor.gutterText
                 }
                 MouseArea {
                     id: knopfMaus

@@ -14,6 +14,7 @@
 #include "core/Strings.h"
 #include "media/MediaItem.h"
 #include "media/MediaModel.h"     // MediaItem::detectType für Drop-Behandlung
+#include "media/ThumbnailLoader.h"
 #include "core/RhiProber.h"
 #include "core/ZCodec.h"        // docxAvailable: DOCX hängt an ZLIB
 
@@ -170,9 +171,16 @@ void AppController::teileUndoStapel(PaneController* pane) {
 }
 
 void AppController::verteileVorschauSchalter() {
+    if (m_loader) m_loader->cancelAll();
     for (PaneController* pane : m_panes)
         pane->mediaModel().setPreviewKinds(m_settings.pdfPreviewContent(),
                                            m_settings.imagePreviewContent());
+}
+
+void AppController::refreshThumbnails() {
+    if (m_loader) m_loader->cancelAll();
+    for (PaneController* pane : m_panes)
+        pane->mediaModel().invalidateThumbnails();
 }
 
 bool AppController::closePane(int index) {
@@ -565,6 +573,8 @@ void AppController::setDeleteTagsInSubfolders(bool v) {
 void AppController::setShowAllFiles(bool v) {
     if (m_settings.showAllFiles() == v) return;
     m_settings.setShowAllFiles(v);
+    for (PaneController* pane : m_panes)
+        pane->mediaModel().setShowAllFiles(v);
     emit showAllFilesChanged();
 }
 

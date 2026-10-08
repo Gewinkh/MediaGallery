@@ -25,9 +25,15 @@ Why: the system's type list has no entry for them (for example `.ini`, `.conf` a
 the app's own `.mgstore`). Files the desktop recognises as plain text still list
 the app.
 
-**Only Linux is built and tested.**
-Why: development happens on Arch Linux with Qt 6.11. The code avoids
-platform-specific paths, but Windows and macOS have never been compiled.
+**Only Linux is fully tested; macOS has been built once, Windows never.**
+Why: development happens on Arch Linux. On a Mac (Apple Silicon, Qt from
+Homebrew) the app builds, shows its icon and starts, but its features have not
+been checked one by one there.
+
+**The macOS app only runs on a Mac that has Qt installed, and it is not signed.**
+Why: the app bundle uses the Qt libraries of the Mac it was built on instead of
+carrying its own copy, and macOS may refuse an unsigned app from elsewhere.
+Workaround: build it on the Mac that will run it.
 
 **True fullscreen (`F`) has only been tested under KDE/Wayland.**
 Workaround: if your window manager behaves differently, `Esc` also leaves it.
@@ -729,9 +735,9 @@ Planned work, not limits. Once something is built, it moves to
   designed yet.
 - **Search in the formatted Markdown view** - the editable text has it (`Ctrl+F`).
 - **Desktop integration for Windows and macOS** - an installer that brings the
-  needed Qt files along, the app icon, a Start menu or Launchpad entry and *Open with*.
-  On Linux this exists (see the README); on Windows and macOS `cmake --install`
-  copies only the program, which does not run there on its own.
+  needed Qt files along, a Start menu entry and *Open with*. On Linux this exists
+  (see the README); on macOS the app has its icon but nothing else; on Windows
+  `cmake --install` copies only the program, which does not run there on its own.
 - **PDF of DATEV booking batches** - normal CSV and TSV tables can be saved as PDF,
   the booking view not yet.
 - **Own drawing for the formatted Markdown view** - would bring quote bars, shaded

@@ -525,6 +525,12 @@ supplied by the build and run environment and are not listed individually here.
 One platform-specific call is used directly: `malloc_trim` from glibc on Linux
 (`src/core/MemoryUtils.h`), guarded by `Q_OS_LINUX`.
 
+On macOS the build calls two tools from Apple's Command Line Tools: `xcrun` (only
+to locate the SDK when the compiler cannot find its C++ headers) and `iconutil`
+(turns the rendered logo into `MediaGallery.icns`). They run at build time only;
+nothing from them is copied into the app. The icon file contains only MediaGallery's
+own logo, drawn by `tools/mg_logogen.cpp` from `qml/common/AppLogo.qml`.
+
 ### No network access from MediaGallery's own code
 
 MediaGallery's own code performs no network access: `src/` and `main.cpp` contain
@@ -721,7 +727,9 @@ answered, because answering them requires information outside this repository:
    rather than this summary.
 5. **Versions in other build environments.** The versions given are those of the
    reference environment. A Windows (vcpkg) or macOS build resolves different
-   versions, whose licenses should be confirmed for that build.
+   versions, whose licenses should be confirmed for that build. The one macOS test
+   build so far (Apple Silicon) linked Qt 6.11.2 from Homebrew; that build was not
+   distributed, and its licenses were not checked separately.
 6. **Authorship history of `qml/style/*.qml`.** The measurements in
    [Acknowledgements](#acknowledgements) show no copied file, no Qt copyright
    header and only short coincident passages of unavoidable template plumbing.
