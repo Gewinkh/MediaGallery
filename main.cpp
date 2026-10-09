@@ -50,6 +50,7 @@
 #include "docx/edit/DocxTextArea.h"
 #include "app/TransliterationController.h"
 #include "app/WebEngineController.h"
+#include "core/MediaLogs.h"
 #include "editor/EditorController.h"
 #include "editor/CodeHighlighter.h"
 #include "editor/TextGutter.h"
@@ -124,6 +125,7 @@ int main(int argc, char* argv[]) {
 
     // Vor der QGuiApplication - danach ignoriert Qt die Backend-Wahl.
     RhiProber::applyStoredBackend();
+    mg::media::limitHwProbe();
 
     QGuiApplication::setHighDpiScaleFactorRoundingPolicy(
         Qt::HighDpiScaleFactorRoundingPolicy::PassThrough);

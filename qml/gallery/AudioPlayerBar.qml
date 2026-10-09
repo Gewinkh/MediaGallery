@@ -245,7 +245,7 @@ Rectangle {
                 id: posLbl
                 visible: !bar.narrow
                 anchors { left: parent.left; verticalCenter: parent.verticalCenter }
-                text: Audio.formatTime(Audio.position)
+                text: Audio.formatTime(seekDrag.active ? trackArea.anteil * Audio.duration : Audio.position)
                 color: App.themeTextMuted
                 font.pixelSize: 11
             }
@@ -269,6 +269,9 @@ Rectangle {
                           rightMargin: 8 + (bar.narrow ? 0 : durLbl.width)
                           verticalCenter: parent.verticalCenter }
                 height: 16                      // Trefferfläche, sichtbar sind 5 px
+                readonly property real anteil: seekDrag.active      // folgt beim Ziehen dem Zeiger, gesprungen wird beim Loslassen
+                    ? Math.max(0, Math.min(1, seekDrag.centroid.position.x / Math.max(1, trackArea.width)))
+                    : (Audio.duration > 0 ? Math.min(1, Audio.position / Audio.duration) : 0)
 
                 Rectangle {
                     id: track
@@ -278,8 +281,7 @@ Rectangle {
                     color: App.themeCard
                     Rectangle {
                         id: played
-                        width: Audio.duration > 0
-                               ? parent.width * Math.min(1, Audio.position / Audio.duration) : 0
+                        width: parent.width * trackArea.anteil
                         height: parent.height; radius: parent.radius
                         color: App.themeAccent
                     }

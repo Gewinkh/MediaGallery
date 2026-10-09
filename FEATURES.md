@@ -297,7 +297,7 @@ pages change the PDF directly. `Ctrl+Z` undoes them while the file is open.
 
 ## Audio Player Mode (`Alt+A`)
 - **Turns a gallery half into a music player**: only playable files are shown (videos too, if switched on in *Settings ▸ Audio*). Leaving the mode restores your filter
-- **Player bar** with previous, play/pause, next, progress, shuffle, repeat, equalizer and volume
+- **Player bar** with previous, play/pause, next, progress, shuffle, repeat, equalizer and volume. While you drag the progress bar it shows the target time; the music jumps there when you let go
 - **Full player view** (double click): large controls and the **playlist** on the right
 - **The visible list is the playlist** - filtered and searched as the gallery shows it, and the tiles stand in playlist order while the mode is on
 - **Put the tracks in your own order**: each row has a grip on the left; drag it to move the track. A line shows where it will land, and the list re-arranges once you let go. *Reset order* in the playlist header goes back to the gallery's order

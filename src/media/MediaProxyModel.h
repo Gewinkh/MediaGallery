@@ -78,6 +78,7 @@ public:
     // Die weiße Liste des Player-Modus: HIER erweitern, wenn ein neuer Typ abspielbar wird - an genau EINER
     // Stelle, nicht verstreut über Filter und QML. `withVideo` kommt aus "Videos mitzeigen".
     static bool isPlayableType(MediaType t, bool withVideo);
+    static int compareTagLists(const QStringList& a, const QStringList& b);   // wie join(',').compare(CaseInsensitive), ohne Kopien
 
     FilterCriteria criteria() const;
     QStringList activeCategoryNames() const;

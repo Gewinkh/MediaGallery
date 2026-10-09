@@ -246,8 +246,13 @@ Item {
             }
 
             Item {
+                id: bigSeek
                 width: parent.width
                 height: 26
+                //  Beim Ziehen folgt die Anzeige dem Zeiger; gesprungen wird erst beim Loslassen.
+                readonly property real anteil: bigDrag.active
+                    ? Math.max(0, Math.min(1, bigDrag.centroid.position.x / Math.max(1, seekArea.width)))
+                    : (Audio.duration > 0 ? Math.min(1, Audio.position / Audio.duration) : 0)
 
                 Rectangle {
                     id: bigTrack
@@ -256,8 +261,7 @@ Item {
                     color: App.themeCard
                     Rectangle {
                         id: bigPlayed
-                        width: Audio.duration > 0
-                               ? parent.width * Math.min(1, Audio.position / Audio.duration) : 0
+                        width: parent.width * bigSeek.anteil
                         height: parent.height; radius: parent.radius
                         color: App.themeAccent
                     }
@@ -284,13 +288,14 @@ Item {
                         onTapped: function(point) { seekArea._seekTo(point.position.x) }
                     }
                     DragHandler {
+                        id: bigDrag
                         target: null; yAxis.enabled: false
                         onActiveChanged: if (!active) seekArea._seekTo(centroid.position.x)
                     }
                 }
                 Text {
                     anchors { left: parent.left; bottom: parent.bottom }
-                    text: Audio.formatTime(Audio.position)
+                    text: Audio.formatTime(bigDrag.active ? bigSeek.anteil * Audio.duration : Audio.position)
                     color: App.themeTextMuted; font.pixelSize: 11
                 }
                 Text {

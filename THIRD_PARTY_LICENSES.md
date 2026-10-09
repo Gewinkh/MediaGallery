@@ -109,8 +109,8 @@ see [Third-party components inside Qt](#third-party-components-inside-qt).
 
 | Component | Kind | Version | License | Role | Optional |
 |---|---|---|---|---|---|
-| Qt Core, Gui, Qml, Quick, Quick Controls, Svg | direct | 6.11.2 | LGPL-3.0 or GPL-2.0 | build + run | no |
-| Qt Multimedia | direct | 6.11.2 | LGPL-3.0 or GPL-2.0 | build + run | no |
+| Qt Core, Gui, Qml, Quick, Quick Controls, Svg | direct | 6.12.0 | LGPL-3.0 or GPL-2.0 | build + run | no |
+| Qt Multimedia | direct | 6.12.0 | LGPL-3.0 or GPL-2.0 | build + run | no |
 | Qt PDF | direct | 6.11.2 | LGPL-3.0 or GPL-2.0 | build + run | no |
 | Qt WebEngine / WebEngineQuick | direct | 6.11.2 | LGPL-3.0, GPL-3.0 or GPL-2.0 (Qt-specific parts) | build + run | no |
 | PDFium (inside Qt PDF) | embedded in Qt PDF | see Qt PDF | BSD (see below) | run | no |
@@ -130,12 +130,15 @@ see [Third-party components inside Qt](#third-party-components-inside-qt).
 ## Qt
 
 Qt is an external dependency of MediaGallery. MediaGallery contains no Qt source
-code. It is built against **Qt 6.4 or newer** (`find_package(Qt6 6.4 REQUIRED ...)`)
-and developed against **Qt 6.11.2**.
+code. It is built against **Qt 6.8 or newer** (`find_package(Qt6 6.8 REQUIRED ...)`)
+and developed against **Qt 6.12.0** (Core, Gui, Qml, Quick, Quick Controls, Svg,
+Multimedia) and **Qt 6.11.2** (Qt PDF, Qt WebEngine), the versions the reference
+environment's distribution packages provide; earlier development used Qt 6.11.2
+throughout.
 
 ### Qt components MediaGallery actually uses
 
-Declared in `CMakeLists.txt` (`find_package(Qt6 6.4 REQUIRED COMPONENTS Core Gui
+Declared in `CMakeLists.txt` (`find_package(Qt6 6.8 REQUIRED COMPONENTS Core Gui
 Qml Quick QuickControls2 Multimedia Pdf Svg WebEngineQuick)`) and linked into the
 application:
 
@@ -747,6 +750,13 @@ answered, because answering them requires information outside this repository:
    `*.traineddata` files and `.aff`/`.dic` dictionaries are separate works under
    their own terms, and none is shipped or contained today. Anything added later
    has to be checked against the source it came from.
+9. **Qt 6.12 attributions.** The reference environment moved Core, Gui, Qml,
+   Quick, Svg and Multimedia from Qt 6.11.2 to 6.12.0. Its distribution packages
+   ship the same set of license texts as before (among them LGPL-3.0-only,
+   GPL-2.0-only, GPL-3.0-only and the Qt GPL exception), so the license of the
+   Qt-specific code is taken to be unchanged. The third-party attributions quoted
+   in this document come from the Qt 6.11 documentation; Qt's attribution pages
+   and SBOM for 6.12 have not been checked against them.
 
 ---
 

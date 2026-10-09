@@ -116,7 +116,7 @@ if(MG_SANITIZE)
     endif()
 endif()
 
-find_package(Qt6 6.4 REQUIRED COMPONENTS
+find_package(Qt6 6.8 REQUIRED COMPONENTS
     Core Gui Qml Quick QuickControls2 Multimedia Pdf Svg WebEngineQuick)
 
 #  Optional - fehlt eine, entfaellt nur ihr Feature: ZLIB -> DOCX (ZIP-Eintraege

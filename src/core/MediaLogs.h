@@ -11,4 +11,7 @@ namespace mg::media {
 //  nicht zahlen.
 void beQuiet();
 
+//  Linux: Hardware-Dekoder vorgeben statt Qts Vorab-Probe (573 ms im GUI-Faden); gesetzte Umgebung bleibt.
+void limitHwProbe();
+
 }  // namespace mg::media

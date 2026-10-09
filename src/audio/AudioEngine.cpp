@@ -96,6 +96,8 @@ AudioEngine::AudioEngine(AudioEqualizer& eq, AudioDenoise& denoise,
 
 AudioEngine::~AudioEngine() { teardown(); }
 
+qint64 AudioEngine::sinkProcessedUSecs() const { return m_sink ? m_sink->processedUSecs() : -1; }
+
 void AudioEngine::setState(State s) {
     if (m_state == s) return;
     m_state = s;
@@ -119,6 +121,7 @@ void AudioEngine::teardown() {
     m_tick.stop();
     m_feed.stop();
     if (m_sink) {
+        m_sink->reset();    // stop() allein spielt den 600-ms-Puffer aus: der alte Ton lief ueber dem neuen
         m_sink->stop();
         m_sink->deleteLater();
         m_sink = nullptr;

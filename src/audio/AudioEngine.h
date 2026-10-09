@@ -44,6 +44,8 @@ public:
     qint64  duration() const { return m_durationMs; }
     int     underruns() const { return m_underruns.load(std::memory_order_relaxed); }
     qreal   volume() const { return m_volume; }
+    qint64  framesIn() const { return m_framesIn; }    // Latenzmessung: in den Ring geschrieben
+    qint64  sinkProcessedUSecs() const;                  // -1 = keine Senke
 
     Q_INVOKABLE void play(const QString& path);
     Q_INVOKABLE void pause();

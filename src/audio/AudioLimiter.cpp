@@ -120,14 +120,14 @@ void AudioLimiter::process(float* samples, int frames) {
         else if (--m_holdLeft <= 0) { m_held = peak; m_holdLeft = m_look; }
 
         if (m_held > m_ceiling && total > 1e-12) {
-            const double r = m_ceiling / m_held;
+            const double lnR = std::log(m_ceiling / m_held) * double(kBands) / total;   // pow(r,x) = exp(x ln r), log je Frame
             for (int k = 0; k < kBands; ++k) {
                 double contrib = 0.0;
                 for (int c = 0; c < ch; ++c) contrib += std::abs(m_gain[size_t(k)] * band[k][c]);
                 //  Gewichtet nach Beitrag: das lauteste Band gibt am meisten
                 //  nach. Der Exponent liegt im Mittel bei 1, die Summe der
                 //  Anteile also bei der nötigen Gesamtabsenkung.
-                const double want = std::pow(r, double(kBands) * (contrib / total));
+                const double want = std::exp(lnR * contrib);
                 double& g = m_gain[size_t(k)];
                 g += (want < g ? m_atk : m_rel) * (want - g);
                 if (g < m_minGain) m_minGain = g;

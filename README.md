@@ -1,7 +1,7 @@
 # MediaGallery
 
 A high-performance, cross-platform media gallery app for **Windows**, **Linux**, and **macOS**.
-Built with **C++20** and **Qt 6.4+**.
+Built with **C++20** and **Qt 6.8+**.
 
 ---
 
@@ -30,7 +30,7 @@ stores its data are in **[FEATURES.md](FEATURES.md)**.
 ## Build Instructions
 
 ### Requirements
-- Qt 6.4+ (developed against Qt 6.11) with modules:
+- Qt 6.8 or newer (developed with Qt 6.11 and 6.12) with modules:
   `Core`, `Gui`, `Qml`, `Quick`, `QuickControls2`, `Multimedia`, `Pdf`, `Svg`, `WebEngineQuick`
 - **Optional**: ZLIB, to enable the **DOCX editor**. If absent, the app builds and runs normally, falls back to Qt's own `qCompress`/`qUncompress`, and only DOCX is disabled - every PDF feature (viewing, editing, page extraction, embedded media) stays fully available. DOCX files still appear in the gallery, but their tiles are greyed out and explain on hover why they cannot be opened
 - **Optional**: Tesseract + Leptonica (via pkg-config) to enable **OCR for scanned PDFs**. If absent, the app builds and runs normally with OCR disabled
@@ -137,9 +137,10 @@ open build/MediaGallery.app
 ## Changelog
 
 ### Latest
-- **Feature**: **macOS build** with its own app icon in the Dock and Finder.
-- **Fix**: **Both gallery halves** now immediately follow changes to editor colours, tile size, and file visibility.
-- **Fix**: **Editor colour settings** now immediately show the colours of the selected profile.
+- **Fix**: **Audio track switching and seeking** no longer cause old and new audio to overlap.
+- **Fix**: **Initial playback** no longer freezes the window, and switching videos is smoother.
+- **Change**: **Music progress bar** now follows the pointer while dragging.
+- **Change**: **Tag sorting** is faster, and volume limiting during playback is more lightweight.
 
 ---
 

@@ -399,8 +399,7 @@ bool MediaProxyModel::fieldLess(const MediaItem* a, const MediaItem* b) const {
         if (a->fileSize != b->fileSize) return a->fileSize < b->fileSize;
         break;
     case Field::Tags: {
-        const int cmp = a->tags.join(QChar(',')).compare(
-                            b->tags.join(QChar(',')), Qt::CaseInsensitive);
+        const int cmp = compareTagLists(a->tags, b->tags);
         if (cmp != 0) return cmp < 0;
         break;
     }
@@ -410,6 +409,33 @@ bool MediaProxyModel::fieldLess(const MediaItem* a, const MediaItem* b) const {
     }
     if (a->dateTime != b->dateTime) return a->dateTime < b->dateTime;
     return a->displayName.compare(b->displayName, Qt::CaseInsensitive) < 0;
+}
+
+int MediaProxyModel::compareTagLists(const QStringList& a, const QStringList& b) {
+    //  Tag fuer Tag statt Zeichen der verbundenen Kette: 155.000 Vergleiche bei 12.000 Dateien kosteten mit den
+    //  join-Kopien 20,9 ms, so 12,8 ms (Pruefstand im Runden-Log). Unsichere Grenzfaelle gehen den alten Weg.
+    const auto alt = [&] { return a.join(QChar(',')).compare(b.join(QChar(',')), Qt::CaseInsensitive); };
+    //  Keine Liste und ein einzelner leerer Tag ergeben beide "" - die Kette kennt den Unterschied nicht.
+    const auto leer = [](const QStringList& l) { return l.isEmpty() || (l.size() == 1 && l[0].isEmpty()); };
+    if (a.isEmpty() || b.isEmpty()) return leer(a) == leer(b) ? 0 : (leer(a) ? -1 : 1);
+    for (qsizetype i = 0;; ++i) {
+        const bool endeA = i >= a.size(), endeB = i >= b.size();
+        if (endeA || endeB) return endeA == endeB ? 0 : (endeA ? -1 : 1);
+        const QStringView x(a[i]), y(b[i]);
+        const qsizetype n = std::min(x.size(), y.size());
+        if (n > 0 && x[n - 1].isHighSurrogate()) return alt();      // Paar an der Schnittstelle
+        if (const int c = x.first(n).compare(y.first(n), Qt::CaseInsensitive)) return c;
+        if (x.size() == y.size()) continue;
+        //  Einer ist kuerzer: dort folgt in der Kette ein Komma, oder sie endet mit diesem Tag.
+        const bool aKuerzer = x.size() < y.size();
+        const QStringList& kurz = aKuerzer ? a : b;
+        const QStringView lang = aKuerzer ? y : x;
+        if (i + 1 >= kurz.size()) return aKuerzer ? -1 : 1;
+        const QChar komma(u',');
+        const int c = QStringView(&komma, 1).compare(lang.sliced(n, 1), Qt::CaseInsensitive);
+        if (c == 0) return alt();
+        return aKuerzer ? c : -c;
+    }
 }
 
 bool MediaProxyModel::eintragsOrdnung(int* feld, bool* absteigend) const {
@@ -441,9 +467,8 @@ bool MediaProxyModel::flatLessThan(const QModelIndex& left, const QModelIndex& r
         break;
     }
     case Field::Tags: {
-        const QString a = left.data(MediaModel::TagsRole).toStringList().join(QChar(','));
-        const QString b = right.data(MediaModel::TagsRole).toStringList().join(QChar(','));
-        const int cmp = a.compare(b, Qt::CaseInsensitive);
+        const int cmp = compareTagLists(left.data(MediaModel::TagsRole).toStringList(),
+                                        right.data(MediaModel::TagsRole).toStringList());
         if (cmp != 0) return cmp < 0;
         break;
     }
