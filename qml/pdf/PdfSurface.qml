@@ -254,14 +254,15 @@ Item {
             var victim = root._poolOrder.shift()
             var vd = root._pool[victim]
             delete root._pool[victim]
-            if (vd && vd !== root.doc) { vd.source = ""; vd.destroy() }
+            // Nur destroy() schliesst das Dokument; source leeren laesst Handle und Speicher stehen und warnt nur.
+            if (vd && vd !== root.doc) vd.destroy()
         }
     }
 
     function _clearPool() {
         for (var k in root._pool) {
             var d = root._pool[k]
-            if (d) { d.source = ""; d.destroy() }
+            if (d) d.destroy()
         }
         root._pool = ({})
         root._poolOrder = []
@@ -379,11 +380,10 @@ Item {
         // Delegates wegwerfen: die Bild-URL bleibt gleich, ein bestehendes PdfPageImage laese die Datei sonst nicht neu.
         root._fileRev++                     // neue URL -> Qt liest die Datei neu
         _activateDoc(p)                     // frisch laden (Pool-Eintrag entfernt)
-        if (old && old !== root.doc) { old.source = ""; old.destroy() }
+        if (old && old !== root.doc) old.destroy()
         restorePageTimer.restart()
     }
 
-    // Nur uebernehmen, wenn das Ergebnis zum aktuell angezeigten PDF gehoert.
     Connections {
         target: Viewer
         function onPdfAnnotationsReady(path, anns) {

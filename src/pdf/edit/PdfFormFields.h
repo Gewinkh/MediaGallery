@@ -11,6 +11,8 @@
 
 namespace mg {
 
+namespace pdfobj { struct PdfDoc; }
+
 //  Feldart. `Push` (Druckknopf) ist nur der Vollständigkeit halber dabei -
 //  er trägt keinen Wert und wird beim Schreiben übersprungen.
 enum class PdfFieldType { Unknown = 0, Text, Checkbox, Radio, Choice, Push };
@@ -49,6 +51,8 @@ public:
     //  Fehler: Rückgabe true mit leerer Liste (`err` bleibt leer).
     static bool read(const QString& path, QVector<PdfFormField>* out,
                      QString* err = nullptr);
+    // Auf einem schon geladenen Dokument - beim Oeffnen teilen sich Felder und Annotationen ein Einlesen.
+    static void read(const pdfobj::PdfDoc& doc, QVector<PdfFormField>* out);
 
     // `values`: Text/Auswahl -> der EXPORTWERT, Ankreuzfeld -> der `onState` bzw. "Off".
     // Unbekannte Namen und `readOnly`-Felder bleiben unberührt; false lässt `outputPath` ungeschrieben.

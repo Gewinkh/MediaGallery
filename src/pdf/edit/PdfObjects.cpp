@@ -5,6 +5,7 @@
 #include <QFile>
 #include <QSaveFile>
 #include <algorithm>
+#include <climits>
 #include <functional>
 #include <cstring>
 
@@ -30,15 +31,56 @@ QByteArray zDeflate(const QByteArray& src) {
 }
 
 
+namespace {
+
+// Leerraum des frueheren Regex `\s`: 0x0B zaehlt mit, 0x00 nicht - anders als isWs, aber so liegen die Offsets.
+inline bool isScanWs(char c) { return (c >= '\t' && c <= '\r') || c == ' '; }
+inline bool isDigit(char c)  { return c >= '0' && c <= '9'; }
+
+// Wert der Ziffern [s, e) wie QString::toInt: ueber INT_MAX gilt 0.
+int digitsValue(const char* p, qint64 s, qint64 e) {
+    qint64 v = 0;
+    for (qint64 i = s; i < e && v <= INT_MAX; ++i) v = v * 10 + (p[i] - '0');
+    return v > INT_MAX ? 0 : int(v);
+}
+
+// "N G" + Leerraum ab i; liefert das Ende hinter dem Leerraum oder -1.
+qint64 numPairAt(const char* p, qint64 i, qint64 n, int* num, int* gen) {
+    const qint64 ns = i;
+    while (i < n && isDigit(p[i])) ++i;
+    const qint64 ne = i;
+    if (ne == ns) return -1;
+    while (i < n && isScanWs(p[i])) ++i;
+    if (i == ne) return -1;
+    const qint64 gs = i;
+    while (i < n && isDigit(p[i])) ++i;
+    const qint64 ge = i;
+    if (ge == gs) return -1;
+    while (i < n && isScanWs(p[i])) ++i;
+    if (i == ge) return -1;
+    *num = digitsValue(p, ns, ne);
+    *gen = digitsValue(p, gs, ge);
+    return i;
+}
+
+} // namespace
+
+// Rueckwaerts ab jedem "obj": derselbe Treffer wie vorwaerts, denn vor "obj" stehen nur Ziffern und Leerraum.
 QHash<int, ObjLoc> scanObjects(const QByteArray& b) {
     QHash<int, ObjLoc> map;
-    static const QRegularExpression re(QStringLiteral("(\\d+)\\s+(\\d+)\\s+obj"));
-    auto it = re.globalMatch(QString::fromLatin1(b));
-    while (it.hasNext()) {
-        const auto m = it.next();
-        const int num = m.captured(1).toInt();
-        const int gen = m.captured(2).toInt();
-        map.insert(num, { m.capturedStart(0), gen });        // letztes gewinnt
+    const char* p = b.constData();
+    for (qint64 o = b.indexOf("obj"); o >= 0; o = b.indexOf("obj", o + 3)) {
+        qint64 q = o;
+        while (q > 0 && isScanWs(p[q - 1])) --q;
+        if (q == o || q == 0 || !isDigit(p[q - 1])) continue;
+        while (q > 0 && isDigit(p[q - 1])) --q;
+        const qint64 w = q;
+        while (q > 0 && isScanWs(p[q - 1])) --q;
+        if (q == w || q == 0 || !isDigit(p[q - 1])) continue;
+        while (q > 0 && isDigit(p[q - 1])) --q;
+        int num = 0, gen = 0;
+        numPairAt(p, q, o, &num, &gen);
+        map.insert(num, { q, gen });                         // letztes gewinnt
     }
     return map;
 }
@@ -412,34 +454,45 @@ int PdfDoc::maxObjNum() const {
 bool PdfDoc::load(const QString& path, QString* err) {
     auto fail = [&](const char* m) { if (err) *err = QString::fromLatin1(m); return false; };
 
-    QFile in(path);
-    if (!in.open(QIODevice::ReadOnly)) return fail("Quelle nicht lesbar");
-    this->buf = in.readAll();
-    in.close();
-    if (this->buf.size() < 32 || !this->buf.startsWith("%PDF-")) return fail("kein PDF");
-    if (this->buf.contains("/Encrypt")) return fail("verschlüsselt");
+    auto in = std::make_shared<QFile>(path);
+    if (!in->open(QIODevice::ReadOnly)) return fail("Quelle nicht lesbar");
+    // Abbilden statt kopieren: die Seiten kommen aus dem Seitencache, der Heap bleibt frei.
+    const qint64 size = in->size();
+    if (uchar* p = size > 0 ? in->map(0, size) : nullptr) {
+        this->buf = QByteArray::fromRawData(reinterpret_cast<const char*>(p), size);
+        this->map = std::move(in);
+    } else {
+        this->buf = in->readAll();                 // Dateisystem ohne mmap
+    }
+    const QByteArray& b = this->buf;
+    if (b.size() < 32 || !b.startsWith("%PDF-")) return fail("kein PDF");
+    if (b.contains("/Encrypt")) return fail("verschlüsselt");
 
-    const int sxi = this->buf.lastIndexOf("startxref");
+    const qint64 sxi = b.lastIndexOf("startxref");
     if (sxi < 0) return fail("kein startxref");
     {
-        qint64 p = sxi + 9; while (p < this->buf.size() && isWs(this->buf[p])) ++p;
+        qint64 p = sxi + 9; while (p < b.size() && isWs(b[p])) ++p;
         const qint64 s = p;
-        while (p < this->buf.size() && this->buf[p] >= '0' && this->buf[p] <= '9') ++p;
+        while (p < b.size() && b[p] >= '0' && b[p] <= '9') ++p;
         bool ok = false;
-        this->prevXref = this->buf.mid(s, p - s).toLongLong(&ok);
-        if (!ok || this->prevXref < 0 || this->prevXref >= this->buf.size())
+        this->prevXref = b.mid(s, p - s).toLongLong(&ok);
+        if (!ok || this->prevXref < 0 || this->prevXref >= b.size())
             return fail("startxref ungültig");
-        qint64 q = this->prevXref; while (q < this->buf.size() && isWs(this->buf[q])) ++q;
-        if (this->buf.mid(q, 4) != "xref") return fail("kein klassisches xref (XRef-Stream)");
+        qint64 q = this->prevXref; while (q < b.size() && isWs(b[q])) ++q;
+        if (b.mid(q, 4) != "xref") return fail("kein klassisches xref (XRef-Stream)");
     }
 
-    this->objs = scanObjects(this->buf);
+    this->objs = scanObjects(b);
     if (this->objs.isEmpty()) return fail("keine Objekte");
 
-    {
-        static const QRegularExpression re(QStringLiteral("/Root\\s+(\\d+)\\s+(\\d+)\\s+R"));
-        auto it = re.globalMatch(QString::fromLatin1(this->buf));
-        while (it.hasNext()) this->rootNum = it.next().captured(1).toInt();
+    for (qint64 r = b.indexOf("/Root"); r >= 0; r = b.indexOf("/Root", r + 5)) {
+        qint64 i = r + 5;
+        const qint64 w = i;
+        while (i < b.size() && isScanWs(b[i])) ++i;
+        int num = 0, gen = 0;
+        if (i > w && (i = numPairAt(b.constData(), i, b.size(), &num, &gen)) >= 0
+            && i < b.size() && b[i] == 'R')
+            this->rootNum = num;                             // letztes gewinnt
     }
     if (this->rootNum < 0 || !this->objs.contains(this->rootNum)) return fail("kein /Root");
 
@@ -477,7 +530,7 @@ bool PdfDoc::load(const QString& path, QString* err) {
 }
 
 IncrementalUpdate::IncrementalUpdate(const PdfDoc& doc)
-    : m_out(doc.buf), m_rootNum(doc.rootNum), m_prevXref(doc.prevXref) {
+    : m_out(doc.buf.constData(), doc.buf.size()), m_rootNum(doc.rootNum), m_prevXref(doc.prevXref) {
     if (!m_out.endsWith('\n')) m_out += '\n';
     m_nextObj = doc.maxObjNum() + 1;
     for (auto it = doc.objs.constBegin(); it != doc.objs.constEnd(); ++it)

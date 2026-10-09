@@ -14,6 +14,7 @@
 #include "pdf/edit/PdfTextEditor.h"   // zeichenweises Bearbeiten (Caret-Werkzeug)
 #include "pdf/edit/PdfTextReflow.h"   // Absatz-Umbruch nach dem Tippen
 #include "pdf/edit/PdfAnnotations.h"   // übernommene Annotationen streichen
+#include "pdf/edit/PdfObjects.h"
 
 #include <QPdfDocument>
 #include <QPdfDocumentRenderOptions>
@@ -189,48 +190,35 @@ private:
     bool               m_overflow  = false;
 };
 
-// Datei-I/O und Objektbaum-Parsen im Pool; ein grosses Formular kostet spuerbar Zeit.
-class PdfFormReadTask : public QRunnable {
+// Felder und Annotationen aus EINEM Einlesen: je Lauf kostet die Datei einmal Lesen und Objekt-Scan.
+class PdfOpenReadTask : public QRunnable {
 public:
-    PdfFormReadTask(PdfEditController* owner, QString path, int generation)
-        : m_owner(owner), m_path(std::move(path)), m_gen(generation) { setAutoDelete(true); }
-
-    void run() override {
-        QVector<mg::PdfFormField> fields;
-        // Ein verschluesseltes PDF ist kein Fehlerfall - dann gibt es eben keine Felder.
-        if (!mg::PdfFormFields::read(m_path, &fields, nullptr))
-            fields.clear();
-        PdfEditController* owner = m_owner;
-        const int gen = m_gen;
-        QMetaObject::invokeMethod(owner, [owner, fields, gen]() {
-            owner->formReadFinished(fields, gen);
-        }, Qt::QueuedConnection);
+    PdfOpenReadTask(PdfEditController* owner, QString path, int formGen, int annotGen)
+        : m_owner(owner), m_path(std::move(path)), m_formGen(formGen), m_annotGen(annotGen) {
+        setAutoDelete(true);
     }
-private:
-    PdfEditController* m_owner;
-    QString            m_path;
-    int                m_gen;
-};
-
-class PdfAnnotReadTask : public QRunnable {
-public:
-    PdfAnnotReadTask(PdfEditController* owner, QString path, int generation)
-        : m_owner(owner), m_path(std::move(path)), m_gen(generation) { setAutoDelete(true); }
 
     void run() override {
+        QVector<mg::PdfFormField>  fields;
         QVector<mg::PdfAnnotation> annots;
-        if (!mg::PdfAnnotations::read(m_path, &annots, nullptr))
-            annots.clear();            // nicht lesbar ⇒ es gibt eben keine
+        // Ein verschluesseltes oder unlesbares PDF ist kein Fehlerfall - dann gibt es eben keine.
+        mg::pdfobj::PdfDoc doc;
+        if (doc.load(m_path)) {
+            mg::PdfFormFields::read(doc, &fields);
+            mg::PdfAnnotations::read(doc, &annots);
+        }
         PdfEditController* owner = m_owner;
-        const int gen = m_gen;
-        QMetaObject::invokeMethod(owner, [owner, annots, gen]() {
-            owner->annotReadFinished(annots, gen);
+        const int formGen = m_formGen, annotGen = m_annotGen;
+        QMetaObject::invokeMethod(owner, [owner, fields, annots, formGen, annotGen]() {
+            owner->formReadFinished(fields, formGen);
+            owner->annotReadFinished(annots, annotGen);
         }, Qt::QueuedConnection);
     }
 private:
     PdfEditController* m_owner;
     QString            m_path;
-    int                m_gen;
+    int                m_formGen;
+    int                m_annotGen;
 };
 
 // Inkrementelles Update: die Quelle bleibt byteweise unangetastet.
@@ -2127,8 +2115,7 @@ void PdfEditController::setDocument(const QString& pathOrUrl) {
 
     if (!m_docPath.isEmpty()) {
         loadOverlay(m_docPath);                     // lädt auch gepufferte Feldwerte
-        startFormRead();                            // Felder der pristinen Datei
-        startAnnotRead();                           // vorhandene Annotationen übernehmen
+        startOpenRead();                            // Felder und Annotationen der pristinen Datei
         // Geladene Textebenen-Ops kommen als Kommandos auf den Stack: anders als Notizen
         // liesse sich eine Textebenen-Aenderung sonst nicht mehr entfernen.
         if (!m_textOps.isEmpty()) {
@@ -3891,13 +3878,6 @@ bool PdfEditController::annotationFromBox(const PdfEditBox& b, mg::PdfAnnotation
     return true;
 }
 
-void PdfEditController::startAnnotRead() {
-    const int gen = ++m_annotReadGen;
-    if (m_docPath.isEmpty())
-        return;
-    m_pool.start(new PdfAnnotReadTask(this, pristinePath(), gen));
-}
-
 void PdfEditController::annotReadFinished(const QVector<mg::PdfAnnotation>& annots,
                                           int generation) {
     if (generation != m_annotReadGen)
@@ -4023,11 +4003,12 @@ QVector<int> PdfEditController::importRemovals() const {
 
 // Gelesen wird immer die pristine Datei; ihr page ist ein Quellseiten-Index,
 // die Anzeige spricht dagegen Ansichts-Seiten.
-void PdfEditController::startFormRead() {
-    const int gen = ++m_formReadGen;
+void PdfEditController::startOpenRead() {
+    const int formGen = ++m_formReadGen;
+    const int annotGen = ++m_annotReadGen;
     if (m_docPath.isEmpty())
         return;
-    m_pool.start(new PdfFormReadTask(this, pristinePath(), gen));
+    m_pool.start(new PdfOpenReadTask(this, pristinePath(), formGen, annotGen));
 }
 
 void PdfEditController::formReadFinished(const QVector<mg::PdfFormField>& fields,

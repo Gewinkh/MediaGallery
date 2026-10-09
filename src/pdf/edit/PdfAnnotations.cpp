@@ -348,7 +348,12 @@ bool PdfAnnotations::read(const QString& path, QVector<PdfAnnotation>* out,
     pdfobj::PdfDoc doc;
     if (!doc.load(path, err))
         return false;
+    read(doc, out);
+    return true;
+}
 
+void PdfAnnotations::read(const pdfobj::PdfDoc& doc, QVector<PdfAnnotation>* out) {
+    out->clear();
     static const QRegularExpression refRe(QStringLiteral("(\\d+)\\s+(\\d+)\\s+R"));
 
     for (int pi = 0; pi < doc.pageObjs.size(); ++pi) {
@@ -454,7 +459,6 @@ bool PdfAnnotations::read(const QString& path, QVector<PdfAnnotation>* out,
             out->push_back(a);
         }
     }
-    return true;
 }
 
 bool PdfAnnotations::write(const QString& inputPath, const QString& outputPath,

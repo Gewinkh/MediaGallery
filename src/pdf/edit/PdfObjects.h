@@ -11,6 +11,10 @@
 #include <QString>
 #include <QVector>
 
+#include <memory>
+
+class QFile;
+
 namespace mg::pdfobj {
 
 // zlib
@@ -83,7 +87,10 @@ QByteArray toPdfName(const QString& s);
 // Eine GEÖFFNETE Datei mit Objekt- und Seitentabelle, Grundlage aller byte-nahen Einheiten. `load()` prüft
 // EINMAL die Vorbedingungen: lesbar, `%PDF-`, unverschlüsselt, klassische xref-Tabelle, Seitenbaum lesbar.
 struct PdfDoc {
-    QByteArray         buf;                   // die vollständige Datei
+    // Die vollständige Datei, meist als Abbildung von `map`: eine Kopie von `buf` darf das Dokument nicht
+    // überleben, und nur konstante Zugriffe - ein nicht-konstantes operator[] kopiert die ganze Datei.
+    QByteArray             buf;
+    std::shared_ptr<QFile> map;
     QHash<int, ObjLoc> objs;
     int                rootNum  = -1;
     qint64             prevXref = -1;         // Offset der bisherigen xref (für /Prev)

@@ -137,10 +137,7 @@ open build/MediaGallery.app
 ## Changelog
 
 ### Latest
-- **Fix**: **Audio track switching and seeking** no longer cause old and new audio to overlap.
-- **Fix**: **Initial playback** no longer freezes the window, and switching videos is smoother.
-- **Change**: **Music progress bar** now follows the pointer while dragging.
-- **Change**: **Tag sorting** is faster, and volume limiting during playback is more lightweight.
+- **Change**: **Large PDFs** now use about 30% less memory when opened
 
 ---
 

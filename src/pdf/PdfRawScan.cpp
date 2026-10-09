@@ -1,5 +1,6 @@
 #include "pdf/PdfRawScan.h"
 
+#include <QFile>
 #include <QList>
 #include <QPair>
 #include <QStringDecoder>
@@ -7,6 +8,12 @@
 #include <cstring>
 
 namespace mg::pdfraw {
+
+QByteArray mapWhole(QFile& f) {
+    const qint64 n = f.size();
+    uchar* p = n > 0 ? f.map(0, n) : nullptr;
+    return p ? QByteArray::fromRawData(reinterpret_cast<const char*>(p), n) : QByteArray();
+}
 
 bool isWs(char c)    { return c==' '||c=='\t'||c=='\r'||c=='\n'||c=='\f'||c=='\0'; }
 bool isDelim(char c) { return isWs(c)||c=='('||c==')'||c=='<'||c=='>'||c=='['||c==']'||c=='{'||c=='}'||c=='/'||c=='%'; }

@@ -11,6 +11,8 @@
 
 namespace mg {
 
+namespace pdfobj { struct PdfDoc; }
+
 //  Art der Annotation. Die Reihenfolge ist Teil der QML-Schnittstelle (als int
 //  weitergereicht) - neue Arten hinten anhängen.
 enum class PdfAnnotKind {
@@ -59,6 +61,7 @@ public:
     // Dokument OHNE Annotationen ist KEIN Fehler - true mit leerer Liste.
     static bool read(const QString& path, QVector<PdfAnnotation>* out,
                      QString* err = nullptr);
+    static void read(const pdfobj::PdfDoc& doc, QVector<PdfAnnotation>* out);
 
     // Hängt `annots` per inkrementellem Update an; `removeObjNums` streicht Vorgänger aus den /Annots,
     // sonst stünde die alte Fassung weiter unter der neuen. /AP /N wird IMMER selbst erzeugt - für

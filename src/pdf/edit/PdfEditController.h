@@ -447,8 +447,7 @@ private:
     static QString uniqueCopyPath(const QString& pdfPath);
     static QString uniqueSuffixPath(const QString& pdfPath, const QString& suffix);
 
-    void startFormRead();
-    void startAnnotRead();
+    void startOpenRead();
     // Liefert false, wenn die Art im Editor keine Entsprechung hat.
     static bool boxFromAnnotation(const mg::PdfAnnotation& a, PdfEditBox* out);
     // false fuer Arten, die sich nicht verlustfrei abbilden lassen - dann wird gemalt.

@@ -207,9 +207,10 @@ public:
         QVector<PdfAudioClip> clips;
         QFile f(m_path);
         if (f.open(QIODevice::ReadOnly)) {
-            const QByteArray d = readAllCancellable(f, m_cancel);
-            f.close();
+            QByteArray d = mapWhole(f);
+            if (d.isEmpty()) d = readAllCancellable(f, m_cancel);
             if (!d.isEmpty()) clips = scanClips(d, m_cancel);
+            f.close();                                  // erst nach dem Scan: beendet die Abbildung
         }
         //  Abgebrochen ⇒ Ergebnis verwerfen UND den Owner nicht mehr anfassen:
         //  Er wird gerade zerstört (Kachel geschlossen) oder hat auf ein anderes

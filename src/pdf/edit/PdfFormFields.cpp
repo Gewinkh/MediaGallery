@@ -313,12 +313,16 @@ bool PdfFormFields::read(const QString& path, QVector<PdfFormField>* out, QStrin
     out->clear();
     PdfDoc doc;
     if (!doc.load(path, err)) return false;
+    read(doc, out);
+    return true;
+}
 
+void PdfFormFields::read(const PdfDoc& doc, QVector<PdfFormField>* out) {
+    out->clear();
     int formObj = -1;
     const QByteArray form = acroFormDict(doc, &formObj);
-    if (form.isEmpty()) return true;                   // Dokument ohne Formular
-    collectFields(doc, form, out);
-    return true;
+    if (!form.isEmpty())                               // sonst Dokument ohne Formular
+        collectFields(doc, form, out);
 }
 
 bool PdfFormFields::fillAndSave(const QString& inputPath, const QString& outputPath,

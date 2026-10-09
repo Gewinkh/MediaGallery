@@ -107,8 +107,8 @@ void PdfMediaHandler::scanDocument(const QString& pdfPath) {
         qWarning() << "PdfMediaHandler: cannot open" << pdfPath;
         return;
     }
-    const QByteArray data = f.readAll();
-    f.close();
+    // Die Abbildung lebt bis zum Ende der Funktion; nach aussen gehen nur Texte und Pfade.
+    const QByteArray data = [&] { QByteArray m = mapWhole(f); return m.isEmpty() ? f.readAll() : m; }();
 
     Scan s{data, buildObjectOffsets(data), {}, {}, {}};
     s.pages = pageObjects(data, s.off);

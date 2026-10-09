@@ -1,4 +1,5 @@
 #include "pdf/edit/PdfOcrLayer.h"
+#include "pdf/PdfRawScan.h"
 #include "pdf/edit/PdfObjects.h"
 #include "pdf/edit/PdfBaseFontWidths.h"
 
@@ -97,7 +98,8 @@ bool PdfOcrLayer::hasLayer(const QString& path) {
         return false;
     //  Die Kennung steht in einem UNKOMPRIMIERTEN Strom, den wir selbst
     //  geschrieben haben - ein Byte-Scan genügt und kostet kein Parsen.
-    return f.readAll().contains(kMarker);
+    const QByteArray m = mg::pdfraw::mapWhole(f);
+    return (m.isEmpty() ? f.readAll() : m).contains(kMarker);
 }
 
 bool PdfOcrLayer::write(const QString& inputPath, const QString& outputPath,

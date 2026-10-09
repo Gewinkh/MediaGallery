@@ -21,7 +21,7 @@ _deps/
 *.app/
 *.zip
 CLAUDE.md
-NEXT.md
+docs/
 logs/
 tests/
 Structure.md

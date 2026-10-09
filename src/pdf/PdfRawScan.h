@@ -11,7 +11,12 @@
 #include <QVector>
 #include <atomic>
 
+class QFile;
+
 namespace mg::pdfraw {
+
+// Ganze Datei als Abbildung statt Heap-Kopie; `f` muss offen bleiben, solange das Ergebnis lebt. Leer = nicht abbildbar.
+QByteArray mapWhole(QFile& f);
 
 bool isWs(char c);
 bool isDelim(char c);
