@@ -4,6 +4,7 @@
 // Lazy: das Auswahl-Dokument entsteht erst beim ersten Markieren, höchstens eines.
 
 #include "core/SearchPattern.h"
+#include "pdf/PdfDocShare.h"
 
 #include <QObject>
 #include <QString>
@@ -78,9 +79,9 @@ public:
     Q_INVOKABLE QVariantMap searchHit(int index) const;
 
     // Intern (vom Worker-Thread per QueuedConnection aufgerufen)
-    //  Nimmt ein fertig geladenes (oder fehlgeschlagenes = nullptr) Dokument auf
+    //  Nimmt ein fertig geladenes (oder bei Fehler leeres) Dokument auf
     //  dem GUI-Thread entgegen. NICHT direkt aus QML aufrufen.
-    void adoptDocument(QPdfDocument* doc, const QString& localPath, int generation);
+    void adoptDocument(PdfDocShare::Lease doc, const QString& localPath, int generation);
 
 signals:
     void readyChanged();
@@ -96,6 +97,7 @@ private:
     // nach vertikaler Mitte gruppiert und je Zeile vereinigt.
     QList<QRectF> lineRectsPts(int page) const;
 
+    PdfDocShare::Lease m_lease;      // haelt m_doc: geliehen von der Ansicht oder eigenes
     QPdfDocument* m_doc = nullptr;   // aktives Auswahl-Dokument (GUI-Thread-Affinitaet)
     QString       m_activePath;      // lokaler Pfad des aktiven Dokuments
     QString       m_pendingPath;     // lokaler Pfad eines gerade ladenden Dokuments

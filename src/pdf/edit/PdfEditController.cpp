@@ -193,8 +193,9 @@ private:
 // Felder und Annotationen aus EINEM Einlesen: je Lauf kostet die Datei einmal Lesen und Objekt-Scan.
 class PdfOpenReadTask : public QRunnable {
 public:
-    PdfOpenReadTask(PdfEditController* owner, QString path, int formGen, int annotGen)
-        : m_owner(owner), m_path(std::move(path)), m_formGen(formGen), m_annotGen(annotGen) {
+    PdfOpenReadTask(PdfEditController* owner, QString path, int formGen, int annotGen, int layerGen)
+        : m_owner(owner), m_path(std::move(path))
+        , m_formGen(formGen), m_annotGen(annotGen), m_layerGen(layerGen) {
         setAutoDelete(true);
     }
 
@@ -203,15 +204,20 @@ public:
         QVector<mg::PdfAnnotation> annots;
         // Ein verschluesseltes oder unlesbares PDF ist kein Fehlerfall - dann gibt es eben keine.
         mg::pdfobj::PdfDoc doc;
-        if (doc.load(m_path)) {
+        const bool loaded = doc.load(m_path);
+        if (loaded) {
             mg::PdfFormFields::read(doc, &fields);
             mg::PdfAnnotations::read(doc, &annots);
         }
+        // Hier statt im Getter: der Scan ueber die ganze Datei kostete im GUI-Faden 10-12 ms je Auswertung.
+        const bool layer = loaded ? mg::PdfOcrLayer::hasLayer(doc.buf)
+                                  : mg::PdfOcrLayer::hasLayer(m_path);
         PdfEditController* owner = m_owner;
-        const int formGen = m_formGen, annotGen = m_annotGen;
-        QMetaObject::invokeMethod(owner, [owner, fields, annots, formGen, annotGen]() {
+        const int formGen = m_formGen, annotGen = m_annotGen, layerGen = m_layerGen;
+        QMetaObject::invokeMethod(owner, [owner, fields, annots, layer, formGen, annotGen, layerGen]() {
             owner->formReadFinished(fields, formGen);
             owner->annotReadFinished(annots, annotGen);
+            owner->layerReadFinished(layer, layerGen);
         }, Qt::QueuedConnection);
     }
 private:
@@ -219,6 +225,7 @@ private:
     QString            m_path;
     int                m_formGen;
     int                m_annotGen;
+    int                m_layerGen;
 };
 
 // Inkrementelles Update: die Quelle bleibt byteweise unangetastet.
@@ -2105,6 +2112,8 @@ void PdfEditController::setDocument(const QString& pathOrUrl) {
     // Laufendes Lesen wird ueber die Generationszahl verworfen.
     ++m_formReadGen;
     ++m_annotReadGen;                               // laufenden Annotations-Lauf verwerfen
+    ++m_layerReadGen;
+    setAlreadySearchable(false);
     m_importBaseline.clear();
     m_formFields.clear();
     m_formEdits.clear();
@@ -2218,6 +2227,8 @@ void PdfEditController::releaseDocument() {
     m_srcPageCount = 0;
     ++m_formReadGen;                            // laufendes Lesen verwerfen
     ++m_annotReadGen;
+    ++m_layerReadGen;
+    setAlreadySearchable(false);
     m_importBaseline.clear();
     m_formFields.clear();
     m_formEdits.clear();
@@ -3633,8 +3644,16 @@ void PdfEditController::exportTaskFinished(bool ok, const QString& target,
 // dauerhaft in der Datei.
 bool PdfEditController::ocrAvailable() const { return mg::ocr::available(); }
 
-bool PdfEditController::alreadySearchable() const {
-    return !m_docPath.isEmpty() && mg::PdfOcrLayer::hasLayer(m_docPath);
+void PdfEditController::setAlreadySearchable(bool on) {
+    if (m_alreadySearchable == on)
+        return;
+    m_alreadySearchable = on;
+    emit alreadySearchableChanged();
+}
+
+void PdfEditController::layerReadFinished(bool hasLayer, int generation) {
+    if (generation == m_layerReadGen)
+        setAlreadySearchable(hasLayer);
 }
 
 void PdfEditController::makeSearchable() {
@@ -3692,6 +3711,8 @@ void PdfEditController::searchableTaskFinished(bool ok, int pages, int words,
         return;
     }
     m_textWorkValid = false;
+    ++m_layerReadGen;                               // ein noch laufendes Lesen kennt die neue Ebene nicht
+    setAlreadySearchable(true);
     emit documentRewritten();
     emit searchableFinished(true, pages, words, skipped, QString());
 }
@@ -4006,9 +4027,10 @@ QVector<int> PdfEditController::importRemovals() const {
 void PdfEditController::startOpenRead() {
     const int formGen = ++m_formReadGen;
     const int annotGen = ++m_annotReadGen;
+    const int layerGen = ++m_layerReadGen;
     if (m_docPath.isEmpty())
         return;
-    m_pool.start(new PdfOpenReadTask(this, pristinePath(), formGen, annotGen));
+    m_pool.start(new PdfOpenReadTask(this, pristinePath(), formGen, annotGen, layerGen));
 }
 
 void PdfEditController::formReadFinished(const QVector<mg::PdfFormField>& fields,

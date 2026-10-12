@@ -25,6 +25,13 @@ Why: the system's type list has no entry for them (for example `.ini`, `.conf` a
 the app's own `.mgstore`). Files the desktop recognises as plain text still list
 the app.
 
+**On Linux, videos are decoded by the processor, not the graphics card.**
+Why: on laptops with two graphics chips the graphics card's decoder could hang
+and freeze the app. It uses about as much battery; a 4K video takes most of one
+processor core, a Full HD video about a tenth.
+Workaround: set `QT_FFMPEG_DECODING_HW_DEVICE_TYPES=vaapi` (or `vdpau`, `cuda`)
+before starting the app to use the graphics card again.
+
 **Only Linux is fully tested; macOS has been built once, Windows never.**
 Why: development happens on Arch Linux. On a Mac (Apple Silicon, Qt from
 Homebrew) the app builds, shows its icon and starts, but its features have not
@@ -483,11 +490,24 @@ limit.
 
 ---
 
+## HTML files
+
+**After the first HTML file, about 90 MB stay in memory until the app is closed.**
+Why: the web engine that draws HTML cannot be shut down while the app runs. It is
+loaded only when the first HTML file opens, so it costs nothing before that.
+
+---
+
 ## Markdown files
 
 **Very large Markdown files pause the window briefly when they open.**
 Why: the text view lays out the whole document at once before it shows it. A
 typical file (under 20 KB) takes about 25 ms, a 750 KB file about half a second.
+
+**Very large Markdown files use a lot of memory.**
+Why: the text view lays out and draws the whole document, not only the visible
+part. A 750 KB file needs about 250 MB while it is open; after closing, most of it
+is given back within a few seconds, about 100 MB stay until the app is closed.
 
 **Quotes appear as a shaded box, not with a bar on the left.**
 Why: the text view the app uses cannot draw a single edge of a box, and a box

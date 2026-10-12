@@ -36,9 +36,9 @@ void beQuiet() {
 
 void limitHwProbe() {
 #if defined(Q_OS_LINUX)
-    //  VDPAU vor CUDA: CUDA legt je Video einen Kontext im GUI-Faden an (Dateiwechsel 61-82 statt 38-48 ms).
+    //  Leer = Software: VDPAU (hier nur NVIDIA) hing nach einem Dekoderfehler (Xid 68), `setSource` wartete ewig.
     if (!qEnvironmentVariableIsSet("QT_FFMPEG_DECODING_HW_DEVICE_TYPES"))
-        qputenv("QT_FFMPEG_DECODING_HW_DEVICE_TYPES", "vdpau,vaapi,cuda,vulkan");
+        qputenv("QT_FFMPEG_DECODING_HW_DEVICE_TYPES", "");
     if (!qEnvironmentVariableIsSet("QT_FFMPEG_ENCODING_HW_DEVICE_TYPES"))
         qputenv("QT_FFMPEG_ENCODING_HW_DEVICE_TYPES", "");   // die App kodiert kein Video
 #endif

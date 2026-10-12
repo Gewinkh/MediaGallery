@@ -168,16 +168,84 @@ QRectF parseNormalisedRect(const QByteArray& rectBytes, const QSizeF& ps) {
     return QRectF(x1 / pw, 1.0 - y2 / ph, (x2 - x1) / pw, (y2 - y1) / ph);
 }
 
+qsizetype find(const QByteArray& d, const char* pat, qsizetype from) {
+    const qsizetype m = qsizetype(std::strlen(pat));
+    const qsizetype n = d.size();
+    from = qMax<qsizetype>(from, 0);
+    if (m == 0) return from <= n ? from : -1;
+    const char* b = d.constData();
+    const char last = pat[m - 1];
+    for (qsizetype i = from + m - 1; i < n;) {
+        const void* h = std::memchr(b + i, last, size_t(n - i));
+        if (!h) break;
+        const qsizetype k = static_cast<const char*>(h) - b;
+        const qsizetype s = k - (m - 1);
+        if (std::memcmp(b + s, pat, size_t(m - 1)) == 0) return s;
+        i = k + 1;
+    }
+    return -1;
+}
+
+namespace {
+
+// Laenge eines Verweises `N G R` ab `i` (Leerraum davor erlaubt), Anfang in `*start`; 0, wenn dort keiner steht.
+qsizetype refAt(const QByteArray& d, qsizetype i, qsizetype* start) {
+    const qsizetype n = d.size();
+    auto ziffern = [&] {
+        const qsizetype a = i;
+        while (i < n && i - a < 10 && d[i] >= '0' && d[i] <= '9') ++i;
+        return i > a && (i >= n || !(d[i] >= '0' && d[i] <= '9'));
+    };
+    skipWs(d, i);
+    const qsizetype s = i;
+    if (!ziffern() || i >= n || !isWs(d[i])) return 0;
+    skipWs(d, i);
+    if (!ziffern() || i >= n || !isWs(d[i])) return 0;
+    skipWs(d, i);
+    if (i >= n || d[i] != 'R') return 0;
+    ++i;
+    if (i < n && !isDelim(d[i])) return 0;
+    *start = s;
+    return i - s;
+}
+
+}  // namespace
+
+QVector<QPair<qsizetype,qsizetype>> mediaRefMasks(const QByteArray& d) {
+    // Ein /EF-Woerterbuch hat hoechstens eine Handvoll Eintraege; der Deckel schuetzt vor einem fehlenden `>>`.
+    constexpr qsizetype kMaxEf = 1024;
+    QVector<QPair<qsizetype,qsizetype>> out;
+    qsizetype s = 0;
+    for (qsizetype p = find(d, "/Sound"); p >= 0; p = find(d, "/Sound", p + 6))
+        if (p + 6 < d.size() && isDelim(d[p + 6]))
+            if (const qsizetype n = refAt(d, p + 6, &s)) out.append({s, n});
+    for (qsizetype p = find(d, "/EF"); p >= 0; p = find(d, "/EF", p + 3)) {
+        qsizetype i = p + 3;
+        if (i >= d.size() || !isDelim(d[i])) continue;
+        skipWs(d, i);
+        if (i + 1 >= d.size() || d[i] != '<' || d[i + 1] != '<') continue;
+        i += 2;
+        const qsizetype ende = qMin(d.size(), i + kMaxEf);
+        while (i < ende && d[i] != '>') {
+            if (d[i] >= '0' && d[i] <= '9' && isDelim(d[i - 1]))
+                if (const qsizetype n = refAt(d, i, &s)) { out.append({s, n}); i = s + n; continue; }
+            ++i;
+        }
+    }
+    std::sort(out.begin(), out.end());
+    return out;
+}
+
 QVector<qsizetype> findAll(const QByteArray& d, const char* pat) {
-    QVector<qsizetype> r; const QByteArray p(pat); qsizetype i = 0;
-    while ((i = d.indexOf(p, i)) >= 0) { r.append(i); i += p.size(); }
+    QVector<qsizetype> r; const qsizetype m = qsizetype(std::strlen(pat)); qsizetype i = 0;
+    while ((i = find(d, pat, i)) >= 0) { r.append(i); i += qMax<qsizetype>(m, 1); }
     return r;
 }
 
 QHash<int,qsizetype> buildObjectOffsets(const QByteArray& d, const std::atomic<bool>* cancel) {
     QHash<int,qsizetype> map; qsizetype p = 0;
     int tick = 0;
-    while ((p = d.indexOf("obj", p)) >= 0) {
+    while ((p = find(d, "obj", p)) >= 0) {
         //  Nicht bei jedem Treffer prüfen (atomarer Load in der heißen Schleife) -
         //  alle 4096 Objekte genügt für eine Reaktionszeit im Millisekundenbereich.
         if (((++tick) & 0xFFF) == 0 && cancel && cancel->load(std::memory_order_relaxed)) return {};

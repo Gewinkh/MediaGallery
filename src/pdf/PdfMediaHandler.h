@@ -32,11 +32,14 @@ class PdfMediaHandler : public QObject {
 public:
     explicit PdfMediaHandler(QPdfDocument* doc, QObject* parent = nullptr);
 
-    // Main entry: scan all pages, populate internal annotation list.
-    // Call once after the document is Ready.
+    // Rohscan der ganzen Datei: Ton, Video, Webadressen und Dateien; interne Spruenge liefert `internalLinks`.
     void scanDocument(const QString& pdfPath);
 
     const QVector<MediaAnnotation>& allAnnotations() const { return m_annotations; }
+
+    // Spruenge innerhalb der Datei (`/Dest`, `/GoTo`, auch benannte Ziele) auf EINER Seite, von PDFium aufgeloest; der
+    // Rohstrom muesste dafuer den Namensbaum lesen. Je Seite, weil QtPdf dabei die Textebene laedt: 5,5 ms je Seite.
+    static QVector<MediaAnnotation> internalLinks(QPdfDocument* doc, int page);
 
     // In scanDocument() angelegte Temp-Dateien (extrahierte Medienstreams).
     // Erlaubt dem Aufrufer das Aufraeumen, OHNE den Handler am Leben zu halten.

@@ -252,6 +252,7 @@ FocusScope {
             surface.item.release()
         if (rohtext.item && rohtext.item.release)
             rohtext.item.release()
+        Viewer.releaseLater()
     }
 
     // Geblättert wird INNERHALB des Ordners, aus dem die offene Datei stammt: seit aufgeklappte Unterordner in

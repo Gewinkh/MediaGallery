@@ -239,15 +239,15 @@ public:
     // wieder -1. Ohne das sprang die Ansicht an den Dokumentanfang.
     Q_INVOKABLE int  takeStructureFocus();
 
-    // Schreibt die erkannten Woerter als unsichtbare Textebene dauerhaft in die
-    // Datei. Ohne Tesseract ein No-op.
+    // Erkannte Woerter dauerhaft als unsichtbare Textebene, ohne Tesseract ein No-op. Eigenes NOTIFY fuer
+    // alreadySearchable: documentRewritten kommt beim Dateiwechsel nicht, das Menue behielt sonst den alten Wert.
     Q_PROPERTY(bool ocrAvailable READ ocrAvailable CONSTANT)
     Q_PROPERTY(bool searchableBusy READ searchableBusy NOTIFY searchableBusyChanged)
-    Q_PROPERTY(bool alreadySearchable READ alreadySearchable NOTIFY documentRewritten)
+    Q_PROPERTY(bool alreadySearchable READ alreadySearchable NOTIFY alreadySearchableChanged)
 
     bool ocrAvailable() const;
     bool searchableBusy() const { return m_searchableBusy; }
-    bool alreadySearchable() const;
+    bool alreadySearchable() const { return m_alreadySearchable; }
     // Ein zweiter Aufruf waehrend des Laufs tut nichts.
     Q_INVOKABLE void makeSearchable();
     Q_INVOKABLE void cancelSearchable();
@@ -359,6 +359,7 @@ public:
                              bool overflow = false);
     void annotReadFinished(const QVector<mg::PdfAnnotation>& annots, int generation);
     void formReadFinished(const QVector<mg::PdfFormField>& fields, int generation);
+    void layerReadFinished(bool hasLayer, int generation);
     void formSaveFinished(bool ok, const QString& target, const QString& error,
                           int generation, bool applyPlan = false);
     void applyTextOp(const PdfTextOp& op);
@@ -389,6 +390,7 @@ signals:
     // Getrennt von documentRewritten: ein Neubau der Textebene aendert die Struktur
     // nicht und darf die Vorschauen nicht bei jedem Tippen verwerfen.
     void pageStructureChanged();
+    void alreadySearchableChanged();
     void boxCountChanged();
     void caretChanged();
     void caretReadyChanged();
@@ -414,6 +416,7 @@ signals:
                    bool flattened = false);
 
 private:
+    void setAlreadySearchable(bool on);
     void pushCommand(QUndoCommand* cmd);
     void bumpSelectionRev();
     void finishGeometrySession();
@@ -525,6 +528,7 @@ private:
     void assignPlanKeys();
 
     bool m_searchableBusy = false;
+    bool m_alreadySearchable = false;
     int  m_searchableGen  = 0;
     std::shared_ptr<std::atomic<bool>> m_searchableCancel;
 
@@ -598,6 +602,7 @@ private:
     //  die geschriebene Form, nicht Feld fuer Feld.
     QHash<int, QByteArray> m_importBaseline;
     int  m_annotReadGen = 0;            // verwirft veraltete Leseläufe
+    int  m_layerReadGen = 0;
 
     QVector<mg::PdfFormField> m_formFields;
     // Nur Abweichungen vom Original; ein zurueckgesetztes Feld verschwindet wieder.

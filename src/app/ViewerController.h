@@ -4,6 +4,7 @@
 #include <QColor>
 #include <QFont>
 #include <QThreadPool>
+#include <QTimer>
 #include <atomic>
 #include <functional>
 #include <memory>
@@ -39,6 +40,8 @@ public:
     //  Vor dem ersten Video: FFmpeg auf „nur Fehler" stellen (s. MediaLogs.h).
     //  Aus QML aufgerufen, weil dort entschieden wird, WANN ein Medium aufgeht.
     Q_INVOKABLE void    quietMediaLogs() const;
+    //  Datei zu oder gewechselt: 2 s spaeter Heap zurueck (grosses Markdown liess sonst ~170 MB freigegeben stehen).
+    Q_INVOKABLE void    releaseLater();
     //  Beidatei der Editoren statt Ordner-Ablage? Beide sind nur lesbar, aber
     //  der Hinweis muss sagen, WO man sie aendert.
     Q_INVOKABLE bool    isEditNotesFile(const QString& filePathOrUrl) const;
@@ -64,6 +67,8 @@ public:
     Q_INVOKABLE bool openExternally(const QString& filePathOrUrl) const;
 
     Q_INVOKABLE void requestPdfAnnotations(const QString& filePathOrUrl);
+    Q_INVOKABLE bool loadPdfDocument(QObject* pdfDocument, const QString& filePathOrUrl);
+    Q_INVOKABLE void requestPdfPageLinks(const QString& filePathOrUrl, int page);
 
     // Schreibt content als PDF neben die Quelle; die Quelldatei bleibt unangetastet.
     // content kommt AUS DEM EDITOR, nicht von Platte - erneutes Einlesen verloere
@@ -100,9 +105,11 @@ public:
     //  Temp-Dateien vormerken, Signal feuern. NICHT direkt aus QML aufrufen.
     void applyScanResult(const QString& path, const QVariantList& anns,
                          const QStringList& tempFiles);
+    void applyPageLinks(const QString& path, const QHash<int, QVariantList>& links);
 
 signals:
     void pdfAnnotationsReady(const QString& path, const QVariantList& annotations);
+    void pdfPageLinksReady(const QString& path, int page, const QVariantList& links);
 
     void textPdfExportFinished(bool ok, const QString& target, const QString& error);
     void textPdfPagesCounted(int pages);
@@ -112,12 +119,19 @@ signals:
 private:
     void touchCache(const QString& path);
     void insertIntoCache(const QString& path, const QVariantList& anns);
+    QVariantList withPageLinks(const QString& path, QVariantList anns) const;
 
     static constexpr int kMaxCachedPdfs = 16;
 
     QHash<QString, QVariantList> m_annCache;        // Pfad -> fertige Annotation-Liste
     QStringList                  m_cacheOrder;      // LRU-Reihenfolge (alt -> neu)
     QSet<QString>                m_inFlight;        // laufende Scans (Dedup)
+    QHash<QString, QHash<int, QVariantList>> m_pageLinks;   // Pfad -> Seite -> interne Spruenge
+    QHash<QString, QSet<int>>    m_linksRequested;
+    QHash<QString, QList<int>>   m_linkQueue;       // noch nicht gestartet, wartet auf m_linkTimer
+    QTimer                       m_linkTimer;
+    QTimer                       m_trimTimer;
+    QThreadPool                  m_linkPool;
     QStringList                  m_sessionTempFiles;// extrahierte Medien (Cleanup bei Exit)
 
     //  Export und Zaehlen in EINEM Faden: beide legen ganze Dokumente aus.

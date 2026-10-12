@@ -1,5 +1,6 @@
 #include "core/RhiProber.h"
 
+#include <QFileInfo>
 #include <QLibrary>
 #include <QQuickWindow>
 #include <QSGRendererInterface>
@@ -80,8 +81,20 @@ QString RhiProber::applyStoredBackend()
 {
     QSettings s(QStringLiteral("MediaGallery"), QStringLiteral("MediaGallery"));
 
-    const QString guardRaw = s.value(
+    QString guardRaw = s.value(
         QString::fromUtf8(kKeyCrashGuard)).toString().trimmed().toLower();
+
+#if defined(Q_OS_LINUX)
+    // Stand beim abgestuerzten Start die Mesa-Weiche, faellt zuerst nur sie weg - das Backend bleibt.
+    if (s.value(QString::fromUtf8(kKeyEglPinned)).toBool()) {
+        s.remove(QString::fromUtf8(kKeyEglPinned));
+        if (!guardRaw.isEmpty()) {
+            s.remove(QString::fromUtf8(kKeyLastMesa));
+            s.remove(QString::fromUtf8(kKeyCrashGuard));
+            guardRaw.clear();
+        }
+    }
+#endif
 
     if (!guardRaw.isEmpty() && guardRaw != u"software") {
         static const QStringList knownNames = {
@@ -119,12 +132,52 @@ QString RhiProber::applyStoredBackend()
     if (backend != s.value(QString::fromUtf8(kKeyBackend)).toString())
         s.setValue(QString::fromUtf8(kKeyBackend), backend);
 
+#if defined(Q_OS_LINUX)
+    // GLVND fragt sonst jeden Anbieter ab und laedt NVIDIA mit, obwohl auf Mesa gezeichnet wird (70 MB RSS).
+    if (backend == u"opengl") {
+        const QString datei = mesaPinFile(s.value(QString::fromUtf8(kKeyLastMesa)).toBool(),
+                                          { QStringLiteral("/usr/share/glvnd/egl_vendor.d/50_mesa.json"),
+                                            QStringLiteral("/etc/glvnd/egl_vendor.d/50_mesa.json") });
+        if (!datei.isEmpty()) {
+            qputenv("__EGL_VENDOR_LIBRARY_FILENAMES", QFile::encodeName(datei));
+            s.setValue(QString::fromUtf8(kKeyEglPinned), true);
+        }
+    }
+#endif
+
     s.setValue(QString::fromUtf8(kKeyCrashGuard), backend);
     s.remove(QString::fromUtf8(kKeyFallback));
     s.sync();
 
     applyApi(backend);
     return backend;
+}
+
+QString RhiProber::mesaPinFile(bool lastMesa, const QStringList& candidates)
+{
+    if (!lastMesa)
+        return {};
+    // Wer selbst einen Anbieter oder die zweite Karte waehlt, behaelt seine Wahl.
+    for (const char* v : { "__EGL_VENDOR_LIBRARY_FILENAMES", "__EGL_VENDOR_LIBRARY_DIRS",
+                           "__NV_PRIME_RENDER_OFFLOAD", "DRI_PRIME" })
+        if (qEnvironmentVariableIsSet(v))
+            return {};
+    for (const QString& c : candidates)
+        if (QFileInfo::exists(c))
+            return c;
+    return {};
+}
+
+void RhiProber::noteRenderer(const QString& glVersion, const QString& glRenderer)
+{
+    // llvmpipe/softpipe melden auch Mesa, sind aber Software - darauf darf die Weiche nicht festhalten.
+    const bool mesa = glVersion.contains(u"Mesa") && !glRenderer.contains(u"llvmpipe")
+                      && !glRenderer.contains(u"softpipe");
+    QSettings s(QStringLiteral("MediaGallery"), QStringLiteral("MediaGallery"));
+    if (s.value(QString::fromUtf8(kKeyLastMesa)).toBool() == mesa && s.contains(QString::fromUtf8(kKeyLastMesa)))
+        return;
+    s.setValue(QString::fromUtf8(kKeyLastMesa), mesa);
+    s.sync();
 }
 
 void RhiProber::markCleanShutdown()

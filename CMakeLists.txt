@@ -323,6 +323,8 @@ add_library(mg_lib STATIC
     src/pdf/OcrEngine.h
     src/pdf/PdfAudioController.cpp
     src/pdf/PdfAudioController.h
+    src/pdf/PdfDocShare.cpp
+    src/pdf/PdfDocShare.h
     src/pdf/PdfMediaHandler.cpp
     src/pdf/PdfMediaHandler.h
     src/pdf/PdfRawScan.cpp
@@ -416,7 +418,7 @@ if(MG_ASM_SOURCES)
     target_compile_definitions(mg_lib PUBLIC MG_ASM_ENABLED=1)
 endif()
 target_link_libraries(mg_lib PUBLIC
-    Qt6::Core Qt6::Gui Qt6::Qml Qt6::Quick Qt6::Multimedia Qt6::Pdf Qt6::WebEngineQuick)
+    Qt6::Core Qt6::Gui Qt6::Qml Qt6::Quick Qt6::Multimedia Qt6::Pdf)
 target_precompile_headers(mg_lib REUSE_FROM mg_pch)
 
 if(ZLIB_FOUND)
@@ -441,6 +443,15 @@ else()
     message(STATUS "Tesseract fehlt - OCR deaktiviert")
 endif()
 
+#  Qt WebEngine nur in dieser nachladbaren Bibliothek: das Hauptprogramm laedt Chromium erst beim ersten HTML
+#  (6,7 MB RSS beim Start). Im Bau liegt sie neben dem Programm, installiert unter lib/mediagallery bzw. im Bundle.
+add_library(mg_webengine MODULE src/app/WebEngineInit.cpp)
+target_link_libraries(mg_webengine PRIVATE Qt6::WebEngineQuick)
+set_target_properties(mg_webengine PROPERTIES AUTOMOC OFF LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR})
+include(GNUInstallDirs)
+file(RELATIVE_PATH MG_WEBENGINE_REL /${CMAKE_INSTALL_BINDIR} /${CMAKE_INSTALL_LIBDIR}/mediagallery)
+target_compile_definitions(mg_lib PRIVATE MG_WEBENGINE_REL="${MG_WEBENGINE_REL}")
+
 add_library(mg_qml OBJECT qml.qrc)
 set_target_properties(mg_qml PROPERTIES AUTOMOC OFF)
 target_link_libraries(mg_qml PRIVATE Qt6::Core)
@@ -448,6 +459,7 @@ target_link_libraries(mg_qml PRIVATE Qt6::Core)
 set(MG_APP_ID io.github.gewinkh.MediaGallery)
 qt_add_executable(MediaGallery main.cpp)
 target_link_libraries(MediaGallery PRIVATE mg_lib mg_qml Qt6::QuickControls2 Qt6::Svg)
+add_dependencies(MediaGallery mg_webengine)
 target_precompile_headers(MediaGallery REUSE_FROM mg_pch)
 set_target_properties(MediaGallery PROPERTIES
     AUTOMOC OFF WIN32_EXECUTABLE ON MACOSX_BUNDLE ON)
@@ -463,10 +475,16 @@ if(MG_BUILD_TESTS AND EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/tests/CMakeLists.txt)
     add_subdirectory(tests)
 endif()
 
-include(GNUInstallDirs)
 install(TARGETS MediaGallery
     BUNDLE  DESTINATION .
     RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
+if(WIN32)
+    install(TARGETS mg_webengine LIBRARY DESTINATION ${CMAKE_INSTALL_BINDIR})
+elseif(APPLE)
+    install(TARGETS mg_webengine LIBRARY DESTINATION MediaGallery.app/Contents/PlugIns)
+else()
+    install(TARGETS mg_webengine LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}/mediagallery)
+endif()
 
 #  Linux-Desktop: `.desktop`-Datei ("Oeffnen mit") und Icons fuer `cmake --install`. Beides entsteht beim Bau aus
 #  der App selbst - die Dateitypen aus ihren Endungslisten, die Icons aus dem gezeichneten Logo (AppLogo.qml);

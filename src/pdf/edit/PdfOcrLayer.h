@@ -25,6 +25,7 @@ public:
                       QString* err, int* skipped = nullptr);
 
     static bool hasLayer(const QString& path);
+    static bool hasLayer(const QByteArray& pdfBytes);
 };
 
 }  // namespace mg

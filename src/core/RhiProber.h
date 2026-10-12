@@ -1,5 +1,6 @@
 #pragma once
 #include <QString>
+#include <QStringList>
 
 // Crash-Guard statt Kindprozess: ein Flag beim Start, gelöscht beim sauberen Ende. Steht es noch, ist die App
 // abgestürzt und fällt EINE Stufe der Kette zurück (vulkan/d3d11/metal -> opengl -> software), nicht direkt
@@ -21,6 +22,12 @@ public:
     // Backend persistieren. Ändert die laufende Sitzung nicht.
     static void noteRuntimeFailure();
 
+    // Linux: merkt sich aus GL_VERSION/GL_RENDERER, ob auf einer Mesa-Hardware gezeichnet wurde (Grundlage der Weiche).
+    static void noteRenderer(const QString& glVersion, const QString& glRenderer);
+
+    // Linux: Mesa-Anbieterdatei fuer `__EGL_VENDOR_LIBRARY_FILENAMES`, oder leer, wenn die Weiche nicht greifen darf.
+    static QString mesaPinFile(bool lastMesa, const QStringList& candidates);
+
 private:
     static void    applyApi(const QString& backend);
     static QString sanitizeBackend(QString backend);    // Name + Plattform prüfen
@@ -30,4 +37,6 @@ private:
     static constexpr const char* kKeyBackend      = "rhi/backend";
     static constexpr const char* kKeyCrashGuard   = "rhi/lastStartedWith";
     static constexpr const char* kKeyFallback      = "rhi/softwareFallback";
+    static constexpr const char* kKeyLastMesa     = "rhi/lastRendererMesa";
+    static constexpr const char* kKeyEglPinned    = "rhi/eglPinnedMesa";
 };

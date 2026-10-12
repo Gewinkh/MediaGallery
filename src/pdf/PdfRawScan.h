@@ -4,6 +4,7 @@
 
 #include <QByteArray>
 #include <QHash>
+#include <QPair>
 #include <QRectF>
 #include <QSet>
 #include <QSizeF>
@@ -36,7 +37,13 @@ long lengthValue(const QByteArray& d, const QHash<int,qsizetype>& off, const QBy
 bool isPageObject(const QByteArray& dict);
 QSizeF mediaBoxSize(const QByteArray& pageDict);
 QRectF parseNormalisedRect(const QByteArray& rectBytes, const QSizeF& ps);
+// Wie QByteArray::indexOf, aber memchr auf das letzte Zeichen: bei kurzen Mustern ("obj") 3,3x schneller, bei langen
+// gleich schnell - beides dann an der Speicherbandbreite.
+qsizetype find(const QByteArray& d, const char* pat, qsizetype from = 0);
 QVector<qsizetype> findAll(const QByteArray& d, const char* pat);
+// Bereiche (Anfang, Laenge) aller Verweise `N G R` hinter `/Sound` und in `/EF << … >>` - nach der Norm immer Ton- bzw.
+// eingebettete Dateistroeme. Aufsteigend, ohne Ueberlappung; Verweise in Objektstroemen sieht es nicht.
+QVector<QPair<qsizetype,qsizetype>> mediaRefMasks(const QByteArray& d);
 // Objektnummer -> Versatz hinter `obj`. `cancel` darf null sein.
 QHash<int,qsizetype> buildObjectOffsets(const QByteArray& d, const std::atomic<bool>* cancel = nullptr);
 QByteArray enclosingObjDict(const QByteArray& d, qsizetype pos);

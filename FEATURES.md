@@ -116,7 +116,7 @@ which. Files without an extension such as `LICENSE`, `README`, `Makefile` or
 - `.html` / `.htm` open as a **rendered preview**, one click away from the editable source
 - Runs **offline**: JavaScript works, but nothing is loaded from the internet
 - Tiles show a **design card** built from the page's title and colours
-- The web engine starts only when you first open an HTML file, which keeps start-up fast and memory low
+- The web engine starts only when you first open an HTML file, which keeps start-up fast and memory low; shortly after you close the file, unused memory is given back
 - Renders without the graphics card, which avoids driver problems; `QTWEBENGINE_CHROMIUM_FLAGS` overrides this
 - A page that fails to load shows a readable message
 
@@ -219,7 +219,7 @@ of times · `{4}` exactly four times · `^` line start · `$` line end · `a|b` 
 ---
 
 ## PDF Viewer
-- Pages with a thumbnail sidebar; zoom, fit page, fit width
+- Pages with a thumbnail sidebar that stays light on memory even for books with a thousand pages; zoom, fit page, fit width
 - **Select and copy text** like in a browser
 - **Search** (`Ctrl+F`) with hits highlighted on the page
 - **Embedded audio and video** play in place; a panel lists the page's audio clips
@@ -247,7 +247,7 @@ pages change the PDF directly. `Ctrl+Z` undoes them while the file is open.
 - **Edit text**: type directly into the page's own text - it stays sharp and searchable
 - **Highlight, underline, strike through**: drag across the text; the mark follows the lines
 - **Black out text**: the covered text is really removed from the exported file, not just hidden. The app checks the result; where removal is impossible (for example over images), the page is exported as an image
-- **Make a scanned PDF searchable** (*Document* menu, needs Tesseract): recognised words are written into the file as invisible text, so it can be searched and copied in any PDF reader
+- **Make a scanned PDF searchable** (*Document* menu, needs Tesseract): recognised words are written into the file as invisible text, so it can be searched and copied in any PDF reader; once a document has this text, the entry is greyed out
 - **Fill in forms**: text fields, check boxes, radio buttons and lists; values are saved into a new copy
 - **Annotations from other programs** become editable notes
 - **Signatures and stamps**: place a PNG or JPEG; it always keeps its proportions
@@ -322,14 +322,14 @@ pages change the PDF directly. `Ctrl+Z` undoes them while the file is open.
 ---
 
 ## Playback & Interface
-- **Video**: built-in player or an external one. A video jumps when you let go of the progress bar
+- **Video**: built-in player or an external one. A video jumps when you let go of the progress bar. On Linux the processor decodes videos, so a faulty graphics driver cannot freeze the app
 - **Mono play** (on by default): starting playback in one half pauses the other
 - **Continuous play** in fullscreen (on by default, *Settings ▸ General*): when a video ends, the next video from the same folder starts; audio follows audio. Subfolders are not included
   - Gallery order by default; with the dice on, files are shuffled and each plays once per round
   - **Repeat** button in the control bar: off, this file, or the whole folder. Each open file keeps its own and starts with repeat off
 - **Seek step** for `->` / `<-` in fullscreen video: 1 to 600 seconds (*Settings ▸ General*)
 - **Language**: English or German, switchable at runtime
-- **Graphics**: Vulkan, OpenGL or software. If a mode fails to start, the app falls back to a safer one automatically
+- **Graphics**: Vulkan, OpenGL or software. If a mode fails to start, the app falls back to a safer one automatically. On Linux laptops with two graphics chips it loads only the driver it actually draws with (about 70 MB less memory)
 - **Keyboard shortcut overview** in *Settings ▸ General*
 - Shortcuts only act where they belong - in a split window only in the active half
 - **The app's own file chooser**, in the app's colours, with places, path, filter and hidden files

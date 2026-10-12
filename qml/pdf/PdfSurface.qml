@@ -15,6 +15,17 @@ Item {
 
     property string source: ""
     property var    annotations: []
+    //  Je Seite eine eigene Liste: ein Repeater ueber ALLE Annotationen baute in jeder Seitenkachel jede auf.
+    property var    _annByPage: ({})
+    onAnnotationsChanged: {
+        var m = {}
+        for (var i = 0; i < annotations.length; ++i) {
+            var a = annotations[i]
+            if (!m[a.page]) m[a.page] = []
+            m[a.page].push(a)
+        }
+        _annByPage = m
+    }
     //  Ein Link auf eine Datei; der Viewer blaettert hin, wenn sie in der Galerie liegt, sonst oeffnet sie das System.
     signal openFileRequested(string path)
     // Nur die aktive Split-Kachel feuert fensterweite Kuerzel - bei zwei PDFs waeren sie mehrdeutig, Qt feuerte keines.
@@ -226,6 +237,7 @@ Item {
     readonly property int  pageCount: docReady ? doc.pageCount : 0
 
     property var    _pool: ({})              // localPath -> PdfDocument
+    property int    _docSerial: 0
     property var    _poolOrder: []           // LRU-Reihenfolge (alt -> neu)
 
     Component { id: _pdfDocFactory; PdfDocument {} }
@@ -239,7 +251,9 @@ Item {
         if (!d) {
             d = _pdfDocFactory.createObject(root)
             if (!d) return
-            d.source = url
+            //  Gelesen wird in C++ (ohne Ton- und Dateistroeme); PdfPageImage braucht nur irgendeine Quelle, je Dokument eine neue.
+            d.source = "qrc:/qml/pdf/leer.pdf?mgdoc=" + (++root._docSerial)
+            Viewer.loadPdfDocument(d, url)
             root._pool[key] = d
         }
         var i = root._poolOrder.indexOf(key)
@@ -389,6 +403,10 @@ Item {
         function onPdfAnnotationsReady(path, anns) {
             if (root._localPath(path) === root._localPath(root.source))
                 root.annotations = anns
+        }
+        function onPdfPageLinksReady(path, page, links) {
+            if (root._localPath(path) === root._localPath(root.source))
+                root.annotations = root.annotations.concat(links)
         }
     }
 
@@ -1514,6 +1532,11 @@ Item {
             delegate: Item {
                 id: pageCell
                 required property int index
+                //  Interne Spruenge erst fuer eine Seite, die ins Bild kommt: alle auf einmal kosteten bei 800 Seiten 4,4 s.
+                readonly property string _linkKey: root.docReady ? root.source + "#" + index : ""
+                function _requestLinks() { if (_linkKey.length > 0) Viewer.requestPdfPageLinks(root.source, index) }
+                on_LinkKeyChanged: _requestLinks()
+                Component.onCompleted: _requestLinks()
                 width: pages.width
                 // Waehrend eines Notiz-Drags ueber die Geschwister-Delegates heben.
                 z: index === root.editDragPage ? 1 : 0
@@ -1681,7 +1704,7 @@ Item {
                         }
 
                         Repeater {
-                            model: root.annotations
+                            model: root._annByPage[pageCell.index] || []
                             delegate: Rectangle {
                                 id: badge
                                 required property var modelData

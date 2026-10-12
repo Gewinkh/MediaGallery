@@ -1,4 +1,5 @@
 #include "pdf/PdfThumbnailProvider.h"
+#include "pdf/PdfDocShare.h"
 #include "core/PathUtils.h"
 #include "core/MemoryUtils.h"   // mg::trimHeap - RSS-Rückgabe nach LRU-Verdrängung
 
@@ -7,13 +8,98 @@
 #include <QImage>
 #include <QPainter>
 #include <QBuffer>
+#include <QCryptographicHash>
+#include <QDateTime>
+#include <QDir>
+#include <QFileInfo>
+#include <QSaveFile>
+#include <QStandardPaths>
 
+#include <algorithm>
 #include <limits>
 #include <QMutexLocker>
 #include <utility>
 
-void PdfThumbStore::putPage(int docId, int page, const QByteArray& jpeg) {
+namespace {
+
+// Hochzaehlen, sobald sich das Aussehen der Vorschauen aendert - sonst bleiben alte Bilder stehen.
+constexpr int kDiskCacheVersion = 1;
+constexpr qint64 kMaxJpegBytes = 4LL * 1024 * 1024;
+
+const QString& diskCacheRoot() {
+    static const QString root =
+        QStandardPaths::writableLocation(QStandardPaths::CacheLocation) + QStringLiteral("/pdfthumbs");
+    return root;
+}
+
+QString pageFile(const QString& ablage, int page) {
+    return ablage + QLatin1Char('/') + QString::number(page) + QStringLiteral(".jpg");
+}
+
+bool writeAtomic(const QString& path, const QByteArray& bytes) {
+    QSaveFile f(path);
+    return f.open(QIODevice::WriteOnly) && f.write(bytes) == bytes.size() && f.commit();
+}
+
+// Leer bei allem, was kein JPEG sein kann; ein kaputter Eintrag wird dann neu gerechnet.
+QByteArray readJpeg(const QString& path) {
+    QFile f(path);
+    if (!f.open(QIODevice::ReadOnly) || f.size() < 4 || f.size() > kMaxJpegBytes) return {};
+    const QByteArray b = f.readAll();
+    return b.startsWith("\xFF\xD8") ? b : QByteArray();
+}
+
+int readPageCount(const QString& ablage) {
+    QFile f(ablage + QStringLiteral("/pages"));
+    if (!f.open(QIODevice::ReadWrite)) return 0;
+    bool ok = false;
+    const int n = f.read(16).trimmed().toInt(&ok);
+    if (!ok || n <= 0 || n > 1000000) return 0;
+    // Die Aenderungszeit dieser Datei ist die LRU-Marke beim Aufraeumen.
+    f.setFileTime(QDateTime::currentDateTime(), QFileDevice::FileModificationTime);
+    return n;
+}
+
+void pruneDiskCache(const QString& behalten) {
+    QDir root(diskCacheRoot());
+    QFileInfoList ordner = root.entryInfoList(QDir::Dirs | QDir::NoDotAndDotDot);
+    if (ordner.size() <= PdfThumbnailProvider::kMaxCachedDocs) return;
+    auto marke = [](const QFileInfo& fi) {
+        const QFileInfo pages(fi.filePath() + QStringLiteral("/pages"));
+        return pages.exists() ? pages.lastModified() : fi.lastModified();
+    };
+    std::sort(ordner.begin(), ordner.end(),
+              [&](const QFileInfo& a, const QFileInfo& b) { return marke(a) < marke(b); });
+    for (qsizetype i = 0; i < ordner.size() - PdfThumbnailProvider::kMaxCachedDocs; ++i)
+        if (ordner[i].filePath() != behalten)
+            QDir(ordner[i].filePath()).removeRecursively();
+}
+
+} // namespace
+
+QString PdfThumbnailProvider::diskCacheDir(const QString& localPath) {
+    const QFileInfo fi(localPath);
+    if (localPath.isEmpty() || !fi.isFile()) return {};
+    const QByteArray raw = (fi.absoluteFilePath() + QLatin1Char('|') + QString::number(fi.size())
+        + QLatin1Char('|') + QString::number(fi.lastModified().toMSecsSinceEpoch())
+        + QLatin1Char('|') + QString::number(kThumbWidthPx) + QLatin1Char('|') + QString::number(kJpegQuality)
+        + QLatin1Char('|') + QString::number(kDiskCacheVersion)).toUtf8();
+    return diskCacheRoot() + QLatin1Char('/')
+           + QString::fromLatin1(QCryptographicHash::hash(raw, QCryptographicHash::Md5).toHex());
+}
+
+void PdfThumbStore::setDiskDir(int docId, const QString& ablage, int pageCount) {
     QMutexLocker lk(&m_mutex);
+    m_disk.insert(docId, DiskPages{ablage, std::vector<bool>(static_cast<size_t>(qMax(0, pageCount)), false)});
+}
+
+void PdfThumbStore::putPage(int docId, int page, const QByteArray& jpeg, bool onDisk) {
+    QMutexLocker lk(&m_mutex);
+    if (onDisk) {
+        const auto d = m_disk.find(docId);
+        if (d != m_disk.end() && page >= 0 && static_cast<size_t>(page) < d->pages.size())
+            d->pages[static_cast<size_t>(page)] = true;
+    }
     QHash<int, QByteArray>& pages = m_pages[docId];
     const auto old = pages.constFind(page);
     if (old != pages.constEnd()) {
@@ -28,16 +114,49 @@ void PdfThumbStore::putPage(int docId, int page, const QByteArray& jpeg) {
 }
 
 QByteArray PdfThumbStore::getPage(int docId, int page) const {
-    QMutexLocker lk(&m_mutex);
-    const auto it = m_pages.constFind(docId);
-    if (it == m_pages.constEnd()) return {};
-    return it.value().value(page);   // leerer QByteArray, wenn Seite fehlt
+    QString datei;
+    {
+        QMutexLocker lk(&m_mutex);
+        const auto it = m_pages.constFind(docId);
+        if (it != m_pages.constEnd()) {
+            const auto j = it.value().constFind(page);
+            if (j != it.value().constEnd()) return j.value();
+        }
+        const auto d = m_disk.constFind(docId);
+        if (d == m_disk.constEnd() || page < 0 || static_cast<size_t>(page) >= d->pages.size()
+            || !d->pages[static_cast<size_t>(page)])
+            return {};
+        datei = pageFile(d->ablage, page);
+    }
+    // Ausserhalb der Sperre: der Render-Task soll nicht auf einen Plattenzugriff des Bild-Fadens warten.
+    return readJpeg(datei);
 }
 
 bool PdfThumbStore::containsPage(int docId, int page) const {
     QMutexLocker lk(&m_mutex);
     const auto it = m_pages.constFind(docId);
     return it != m_pages.constEnd() && it.value().contains(page);
+}
+
+bool PdfThumbStore::keepWindow(int docId, int center, int radius) {
+    QMutexLocker lk(&m_mutex);
+    const auto d = m_disk.constFind(docId);
+    const auto it = m_pages.find(docId);
+    if (d == m_disk.constEnd() || it == m_pages.end()) return false;
+    qint64 frei = 0;
+    for (auto j = it->begin(); j != it->end();) {
+        const int page = j.key();
+        if (qAbs(page - center) > radius && static_cast<size_t>(page) < d->pages.size()
+            && d->pages[static_cast<size_t>(page)]) {
+            frei += j.value().size();
+            j = it->erase(j);
+        } else {
+            ++j;
+        }
+    }
+    m_docBytes[docId] -= frei;
+    m_total -= frei;
+    return frei > 0;
 }
 
 void PdfThumbStore::dropDocument(int docId) {
@@ -47,6 +166,7 @@ void PdfThumbStore::dropDocument(int docId) {
     if (m_total < 0) m_total = 0;
     m_docBytes.remove(docId);
     m_pages.remove(docId);
+    m_disk.remove(docId);
 }
 
 qint64 PdfThumbStore::totalBytes() const {
@@ -134,25 +254,43 @@ private:
 PdfThumbRenderTask::PdfThumbRenderTask(int docId, QString localPath, FocusPage focus,
                                        int targetWidth, int jpegQuality,
                                        std::shared_ptr<PdfThumbStore> store,
-                                       CancelFlag cancel)
+                                       CancelFlag cancel, bool readCache)
     : m_docId(docId)
     , m_path(std::move(localPath))
     , m_focus(std::move(focus))
     , m_targetWidth(targetWidth)
     , m_quality(jpegQuality)
     , m_store(std::move(store))
-    , m_cancel(std::move(cancel)) {}
+    , m_cancel(std::move(cancel))
+    , m_readCache(readCache) {}
 
 void PdfThumbRenderTask::run() {
     if (cancelled()) return;
 
-    // EIGENE Instanz -> eigener PDFium-Render-Mutex (entkoppelt von der Hauptansicht).
-    QPdfDocument doc;
-    if (doc.load(m_path) != QPdfDocument::Error::None)
-        return;
-    const int n = doc.pageCount();
-    if (n <= 0)
-        return;
+    // Nur mit der Breite der Leiste: der Schluessel des Ordners kennt keine andere.
+    const QString ablage = (m_targetWidth == PdfThumbnailProvider::kThumbWidthPx
+                            && m_quality == PdfThumbnailProvider::kJpegQuality)
+                               ? PdfThumbnailProvider::diskCacheDir(m_path) : QString();
+    PdfDocShare::Lease lease;
+    QPdfDocument* doc = nullptr;
+    auto oeffne = [&] {
+        if (!doc) {
+            lease = PdfDocShare::open(m_path);
+            doc = lease.doc();
+        }
+        return doc != nullptr;
+    };
+
+    int n = (m_readCache && !ablage.isEmpty()) ? readPageCount(ablage) : 0;
+    if (n <= 0) {
+        if (!oeffne()) return;
+        n = doc->pageCount();
+        if (n <= 0) return;
+        if (!ablage.isEmpty() && QDir().mkpath(ablage)
+            && writeAtomic(ablage + QStringLiteral("/pages"), QByteArray::number(n)))
+            pruneDiskCache(ablage);
+    }
+    if (!ablage.isEmpty()) m_store->setDiskDir(m_docId, ablage, n);
 
     const int maxH = m_targetWidth * 4;   // sehr lange Seiten deckeln (RAM-Schutz)
 
@@ -164,6 +302,7 @@ void PdfThumbRenderTask::run() {
     offen.reserve(n);
     for (int i = 0; i < n; ++i) offen.append(i);
     bool tonGemeldet = false;
+    bool verworfen = false;
 
     while (!offen.isEmpty()) {
         const int mitte = m_focus ? qBound(0, m_focus->load(std::memory_order_relaxed), n - 1) : 0;
@@ -178,37 +317,47 @@ void PdfThumbRenderTask::run() {
         // geschriebenen Seiten wieder freigeben -> kein verwaister Store-Eintrag.
         if (cancelled()) { m_store->dropDocument(m_docId); return; }
 
-        const QSizeF pts = doc.pagePointSize(page);
-        if (pts.isEmpty() || pts.width() <= 0.0) continue;
+        QImage flat;
+        QByteArray jpeg = (m_readCache && !ablage.isEmpty()) ? readJpeg(pageFile(ablage, page)) : QByteArray();
+        bool aufPlatte = !jpeg.isEmpty();
+        if (jpeg.isEmpty()) {
+            if (!oeffne()) { m_store->dropDocument(m_docId); return; }
+            if (page >= doc->pageCount()) continue;
+            const QSizeF pts = doc->pagePointSize(page);
+            if (pts.isEmpty() || pts.width() <= 0.0) continue;
 
-        const double scale = static_cast<double>(m_targetWidth) / pts.width();
-        const int w = m_targetWidth;
-        const int h = qBound(1, static_cast<int>(pts.height() * scale), maxH);
+            const double scale = static_cast<double>(m_targetWidth) / pts.width();
+            const int w = m_targetWidth;
+            const int h = qBound(1, static_cast<int>(pts.height() * scale), maxH);
 
-        QImage rendered = doc.render(page, QSize(w, h));
-        if (rendered.isNull()) continue;
+            QImage rendered = doc->render(page, QSize(w, h));
+            if (rendered.isNull()) continue;
+            if (cancelled()) { m_store->dropDocument(m_docId); return; }
+
+            // Auf weissen Hintergrund komponieren -> JPEG hat kein Alpha, keine
+            // schwarzen Raender bei transparenten Seitenbereichen.
+            flat = QImage(rendered.size(), QImage::Format_RGB32);
+            flat.fill(Qt::white);
+            {
+                QPainter p(&flat);
+                p.drawImage(0, 0, rendered);
+            }
+
+            {
+                QBuffer buf(&jpeg);
+                buf.open(QIODevice::WriteOnly);
+                flat.save(&buf, "JPG", m_quality);
+            }
+            if (jpeg.isEmpty()) continue;
+            aufPlatte = !ablage.isEmpty() && QDir().mkpath(ablage) && writeAtomic(pageFile(ablage, page), jpeg);
+        }
         if (cancelled()) { m_store->dropDocument(m_docId); return; }
 
-        // Auf weissen Hintergrund komponieren -> JPEG hat kein Alpha, keine
-        // schwarzen Raender bei transparenten Seitenbereichen.
-        QImage flat(rendered.size(), QImage::Format_RGB32);
-        flat.fill(Qt::white);
-        {
-            QPainter p(&flat);
-            p.drawImage(0, 0, rendered);
-        }
-
-        QByteArray jpeg;
-        {
-            QBuffer buf(&jpeg);
-            buf.open(QIODevice::WriteOnly);
-            flat.save(&buf, "JPG", m_quality);
-        }
-        if (jpeg.isEmpty()) continue;
-        if (cancelled()) { m_store->dropDocument(m_docId); return; }
-
-        m_store->putPage(m_docId, page, jpeg);
+        m_store->putPage(m_docId, page, jpeg, aufPlatte);
+        if (aufPlatte && m_store->keepWindow(m_docId, mitte, PdfThumbnailProvider::kRamWindow))
+            verworfen = true;
         if (!tonGemeldet) {
+            if (flat.isNull()) flat = QImage::fromData(jpeg, "JPG");
             //  Auf EIN Pixel herunterrechnen ist der billigste Mittelwert, den
             //  Qt hat; einmal je Dokument faellt er nicht ins Gewicht.
             const QImage winzig = flat.scaled(1, 1, Qt::IgnoreAspectRatio,
@@ -224,6 +373,8 @@ void PdfThumbRenderTask::run() {
     // Abschliessender Abbruch-Check: wurde das Dokument waehrend der letzten Seite
     // verdraengt, dessen Seiten ebenfalls freigeben.
     if (cancelled()) { m_store->dropDocument(m_docId); return; }
+    // Die verworfenen Seiten sind kleine Bloecke mitten im Heap; glibc gibt sie sonst nicht zurueck.
+    if (verworfen) mg::trimHeap();
 }
 
 PdfPreviewRenderTask::PdfPreviewRenderTask(QString key, QString localPath,
@@ -241,12 +392,11 @@ PdfPreviewRenderTask::PdfPreviewRenderTask(QString key, QString localPath,
 void PdfPreviewRenderTask::run() {
     if (cancelled()) return;
 
-    QPdfDocument doc;
-    if (doc.load(m_path) != QPdfDocument::Error::None)
-        return;
-    if (m_page < 0 || m_page >= doc.pageCount()) return;
+    const PdfDocShare::Lease lease = PdfDocShare::open(m_path);
+    QPdfDocument* const doc = lease.doc();
+    if (!doc || m_page < 0 || m_page >= doc->pageCount()) return;
 
-    const QSizeF pts = doc.pagePointSize(m_page);
+    const QSizeF pts = doc->pagePointSize(m_page);
     if (pts.isEmpty() || pts.width() <= 0.0 || pts.height() <= 0.0) return;
 
     const double scale = m_maxPx / qMax(pts.width(), pts.height());
@@ -254,7 +404,7 @@ void PdfPreviewRenderTask::run() {
     const int h = qBound(1, static_cast<int>(pts.height() * scale), m_maxPx);
     if (cancelled()) return;
 
-    QImage rendered = doc.render(m_page, QSize(w, h));
+    QImage rendered = doc->render(m_page, QSize(w, h));
     if (rendered.isNull() || cancelled()) return;
 
     QImage flat(rendered.size(), QImage::Format_RGB32);
@@ -374,7 +524,7 @@ int PdfThumbnailProvider::refreshDocument(const QString& pathOrUrl, int startPag
         m_idToPath.remove(old);
         m_lruOrder.removeAll(old);
     }
-    return ensureDocument(key, startPage);      // frische docId + neuer Lauf
+    return startDocument(key, startPage, false);   // frische docId + neuer Lauf, Plattencache nur schreiben
 }
 
 //  Kostet einen atomaren Schreibzugriff - die Ansicht darf das bei jedem
@@ -394,6 +544,10 @@ int PdfThumbnailProvider::focusPage(int docId) const {
 }
 
 int PdfThumbnailProvider::ensureDocument(const QString& pathOrUrl, int startPage) {
+    return startDocument(pathOrUrl, startPage, true);
+}
+
+int PdfThumbnailProvider::startDocument(const QString& pathOrUrl, int startPage, bool readCache) {
     const QString key = mg::toLocalPath(pathOrUrl);
     if (key.isEmpty()) return 0;
 
@@ -421,7 +575,7 @@ int PdfThumbnailProvider::ensureDocument(const QString& pathOrUrl, int startPage
 
         auto* task = new PdfThumbRenderTask(docId, key, fokus,
                                             kThumbWidthPx, kJpegQuality,
-                                            m_store, flag);
+                                            m_store, flag, readCache);
         task->setAutoDelete(true);
 
         connect(task, &PdfThumbRenderTask::pageReady,

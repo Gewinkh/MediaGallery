@@ -144,31 +144,6 @@ void PdfMediaHandler::scanDocument(const QString& pdfPath) {
         else if (sub == "Screen" || sub == "Movie") parseMedia(s, num, dict, true);
     }
 
-    //  Spruenge innerhalb der Datei (`/Dest`, `/GoTo`, auch benannte Ziele) loest PDFium schon auf; der Rohstrom
-    //  muesste dafuer den Namensbaum lesen. Webadressen kommen oben aus dem Rohstrom.
-    if (m_doc && m_doc->status() == QPdfDocument::Status::Ready) {
-        QPdfLinkModel links;
-        links.setDocument(m_doc);
-        for (int seite = 0; seite < m_doc->pageCount(); ++seite) {
-            links.setPage(seite);
-            const QSizeF ps = m_doc->pagePointSize(seite);
-            if (ps.isEmpty()) continue;
-            for (int i = 0; i < links.rowCount({}); ++i) {
-                const QModelIndex ix = links.index(i);
-                const int ziel = links.data(ix, int(QPdfLinkModel::Role::Page)).toInt();
-                if (!links.data(ix, int(QPdfLinkModel::Role::Url)).toUrl().isEmpty() || ziel < 0) continue;
-                const QRectF r = links.data(ix, int(QPdfLinkModel::Role::Rectangle)).toRectF();
-                MediaAnnotation ann;
-                ann.page = seite;
-                ann.rect = QRectF(r.x() / ps.width(), r.y() / ps.height(), r.width() / ps.width(),
-                                  r.height() / ps.height());
-                ann.type = MediaAnnotation::Type::Link;
-                ann.targetPage = ziel;
-                m_annotations.append(ann);
-            }
-        }
-    }
-
     qDebug() << "PdfMediaHandler: found" << m_annotations.size()
              << "media annotation(s) in" << QFileInfo(pdfPath).fileName();
 }
@@ -217,6 +192,29 @@ void PdfMediaHandler::parseLink(const Scan& s, int num, const QByteArray& dict) 
     ann.type      = MediaAnnotation::Type::Link;
     ann.label     = label;
     m_annotations.append(ann);
+}
+
+QVector<MediaAnnotation> PdfMediaHandler::internalLinks(QPdfDocument* doc, int page) {
+    QVector<MediaAnnotation> out;
+    if (!doc || doc->status() != QPdfDocument::Status::Ready || page < 0 || page >= doc->pageCount()) return out;
+    const QSizeF ps = doc->pagePointSize(page);
+    if (ps.isEmpty()) return out;
+    QPdfLinkModel links;
+    links.setDocument(doc);
+    links.setPage(page);
+    for (int i = 0; i < links.rowCount({}); ++i) {
+        const QModelIndex ix = links.index(i);
+        const int ziel = links.data(ix, int(QPdfLinkModel::Role::Page)).toInt();
+        if (!links.data(ix, int(QPdfLinkModel::Role::Url)).toUrl().isEmpty() || ziel < 0) continue;
+        const QRectF r = links.data(ix, int(QPdfLinkModel::Role::Rectangle)).toRectF();
+        MediaAnnotation ann;
+        ann.page = page;
+        ann.rect = QRectF(r.x() / ps.width(), r.y() / ps.height(), r.width() / ps.width(), r.height() / ps.height());
+        ann.type = MediaAnnotation::Type::Link;
+        ann.targetPage = ziel;
+        out.append(ann);
+    }
+    return out;
 }
 
 void PdfMediaHandler::parseMedia(const Scan& s, int num, const QByteArray& dict, bool isVideo) {

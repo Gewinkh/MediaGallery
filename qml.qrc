@@ -25,6 +25,7 @@
         <file>qml/viewer/ViewerNote.qml</file>
         <file>qml/viewer/MetadataDateEditor.qml</file>
         <file>qml/pdf/PdfSurface.qml</file>
+        <file>qml/pdf/leer.pdf</file>
         <file>qml/pdf/PdfEditBox.qml</file>
         <file>qml/pdf/PdfEditToolbar.qml</file>
         <file>qml/pdf/PdfFormField.qml</file>

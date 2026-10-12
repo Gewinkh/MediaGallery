@@ -1,4 +1,5 @@
 #include "pdf/edit/PdfObjects.h"
+#include "pdf/PdfRawScan.h"
 
 #include <QRegularExpression>
 #include <QString>
@@ -69,7 +70,7 @@ qint64 numPairAt(const char* p, qint64 i, qint64 n, int* num, int* gen) {
 QHash<int, ObjLoc> scanObjects(const QByteArray& b) {
     QHash<int, ObjLoc> map;
     const char* p = b.constData();
-    for (qint64 o = b.indexOf("obj"); o >= 0; o = b.indexOf("obj", o + 3)) {
+    for (qint64 o = pdfraw::find(b, "obj"); o >= 0; o = pdfraw::find(b, "obj", o + 3)) {
         qint64 q = o;
         while (q > 0 && isScanWs(p[q - 1])) --q;
         if (q == o || q == 0 || !isDigit(p[q - 1])) continue;
@@ -485,7 +486,7 @@ bool PdfDoc::load(const QString& path, QString* err) {
     this->objs = scanObjects(b);
     if (this->objs.isEmpty()) return fail("keine Objekte");
 
-    for (qint64 r = b.indexOf("/Root"); r >= 0; r = b.indexOf("/Root", r + 5)) {
+    for (qint64 r = pdfraw::find(b, "/Root"); r >= 0; r = pdfraw::find(b, "/Root", r + 5)) {
         qint64 i = r + 5;
         const qint64 w = i;
         while (i < b.size() && isScanWs(b[i])) ++i;

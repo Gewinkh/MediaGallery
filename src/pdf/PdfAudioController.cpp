@@ -140,13 +140,24 @@ QVector<PdfAudioClip> scanClips(const QByteArray& d, const CancelFlag& cancel) {
     };
 
     if (aborted(cancel)) return {};
-    { QVector<qsizetype> hits = findAll(d, "/Subtype/Widget"); hits += findAll(d, "/Subtype /Widget");
-      for (qsizetype p : hits) { if (aborted(cancel)) return {};
-                                 const QByteArray ad = enclosingObjDict(d, p); if (!ad.isEmpty()) addAnnot(ad); } }
-    if (aborted(cancel)) return {};
-    { QVector<qsizetype> hits = findAll(d, "/Subtype/Sound"); hits += findAll(d, "/Subtype /Sound");
-      for (qsizetype p : hits) { if (aborted(cancel)) return {};
-                                 const QByteArray ad = enclosingObjDict(d, p); if (!ad.isEmpty()) addAnnot(ad); } }
+    // Ein Durchlauf ueber die Datei statt vier; verarbeitet wird wie zuvor (erst Widget, dann Sound, je ohne und mit
+    // Leerzeichen), denn bei doppeltem Ton-Objekt gewinnt die erste Annotation.
+    QVector<qsizetype> treffer[4];
+    const char* const folgen[4] = {"/Widget", " /Widget", "/Sound", " /Sound"};
+    for (qsizetype p = find(d, "/Subtype"); p >= 0; p = find(d, "/Subtype", p + 8)) {
+        for (int k = 0; k < 4; ++k) {
+            const qsizetype m = qsizetype(std::strlen(folgen[k]));
+            if (p + 8 + m <= d.size() && std::memcmp(d.constData() + p + 8, folgen[k], size_t(m)) == 0) {
+                treffer[k].append(p);
+                break;
+            }
+        }
+    }
+    for (const QVector<qsizetype>& hits : {treffer[0] + treffer[1], treffer[2] + treffer[3]}) {
+        if (aborted(cancel)) return {};
+        for (qsizetype p : hits) { if (aborted(cancel)) return {};
+                                   const QByteArray ad = enclosingObjDict(d, p); if (!ad.isEmpty()) addAnnot(ad); }
+    }
 
     std::sort(out.begin(), out.end(), [](const PdfAudioClip& a, const PdfAudioClip& b) {
         if (a.page != b.page) return a.page < b.page;

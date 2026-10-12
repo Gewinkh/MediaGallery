@@ -13,6 +13,9 @@
 #include <QPalette>
 #include <QQuickImageProvider>
 #include <QQuickWindow>
+#include <QOpenGLContext>
+#include <QOpenGLFunctions>
+#include <QSGRendererInterface>
 #include <QUrl>
 #include <QTimer>
 #include <QDebug>
@@ -22,6 +25,7 @@
 #include <QIcon>
 
 #include "core/RhiProber.h"
+#include "core/MemoryUtils.h"
 #include "core/FileBrowseModel.h"
 #include "core/AppSettings.h"
 #include "audio/AudioController.h"
@@ -331,6 +335,30 @@ int main(int argc, char* argv[]) {
     startMark("QML geladen (Shell steht)");
     if (engine.rootObjects().isEmpty())
         return -1;
+
+    if (auto* w = qobject_cast<QQuickWindow*>(engine.rootObjects().first())) {
+#if defined(Q_OS_LINUX)
+        // Render-Faden mit aktuellem Kontext: welcher Treiber zeichnet wirklich? Grundlage der Mesa-Weiche beim naechsten Start.
+        QObject::connect(w, &QQuickWindow::sceneGraphInitialized, w, [w] {
+            QOpenGLContext* k = QOpenGLContext::currentContext();
+            if (!k || w->rendererInterface()->graphicsApi() != QSGRendererInterface::OpenGL)
+                return;
+            const auto text = [k](GLenum name) {
+                return QString::fromLatin1(reinterpret_cast<const char*>(k->functions()->glGetString(name)));
+            };
+            QMetaObject::invokeMethod(qApp, [version = text(GL_VERSION), renderer = text(GL_RENDERER)] {
+                RhiProber::noteRenderer(version, renderer);
+            }, Qt::QueuedConnection);
+        }, Qt::DirectConnection);
+#endif
+        // Nach dem ersten Bild liegt der Abfall des Starts frei (~2,5 MB anon).
+        auto* t = new QMetaObject::Connection;
+        *t = QObject::connect(w, &QQuickWindow::frameSwapped, &app, [t] {
+            QObject::disconnect(*t);
+            delete t;
+            mg::trimHeap();
+        });
+    }
 
     if (g_startLog) {
         if (auto* w = qobject_cast<QQuickWindow*>(engine.rootObjects().first())) {

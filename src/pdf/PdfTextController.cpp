@@ -1,5 +1,6 @@
 #include "pdf/PdfTextController.h"
 #include "core/PathUtils.h"
+#include "pdf/PdfDocShare.h"
 
 #include <QPdfDocument>
 #include <QPdfSearchModel>
@@ -22,8 +23,8 @@
 #include <utility>
 #include <algorithm>
 
-// Lädt das Auswahl-Dokument ohne GUI-Thread: eigene QPdfDocument-Instanz, nach Erfolg auf den GUI-Thread
-// verschoben und per QueuedConnection übergeben. Die Generationszahl verwirft veraltete Ergebnisse.
+// Holt das Auswahl-Dokument ohne GUI-Thread: geliehen von der Ansicht, sonst selbst geladen und auf den GUI-Thread
+// verschoben; Übergabe per QueuedConnection. Die Generationszahl verwirft veraltete Ergebnisse.
 namespace {
 class PdfLoadTask : public QRunnable {
 public:
@@ -33,24 +34,17 @@ public:
     }
 
     void run() override {
-        auto* doc = new QPdfDocument;   // Affinitaet: dieser Pool-Thread
-        const bool ok = (doc->load(m_path) == QPdfDocument::Error::None
-                         && doc->status() == QPdfDocument::Status::Ready);
-        if (ok) {
-            doc->moveToThread(QCoreApplication::instance()->thread());
-        } else {
-            delete doc;                 // Loeschen auf eigenem Thread -> ok
-            doc = nullptr;
-        }
+        PdfDocShare::Lease doc = PdfDocShare::open(m_path);
+        if (doc && !doc.borrowed())
+            doc.doc()->moveToThread(QCoreApplication::instance()->thread());
 
         PdfTextController* owner = m_owner;
         const QString path = m_path;
         const int     gen  = m_gen;
         // Das Dokument gehört dem Lambda: wird das gepostete Ereignis nie ausgeführt (Controller wird gerade zerstört),
-        // gibt der `unique_ptr` es frei. Mit dem rohen Zeiger blieb ein geparstes QPdfDocument verwaist im Speicher.
-        std::unique_ptr<QPdfDocument> owned(doc);
-        QMetaObject::invokeMethod(owner, [owner, d = std::move(owned), path, gen]() mutable {
-            owner->adoptDocument(d.release(), path, gen);
+        // gibt die Ausleihe es frei. Mit dem rohen Zeiger blieb ein geparstes QPdfDocument verwaist im Speicher.
+        QMetaObject::invokeMethod(owner, [owner, d = std::move(doc), path, gen]() mutable {
+            owner->adoptDocument(std::move(d), path, gen);
         }, Qt::QueuedConnection);
     }
 
@@ -98,24 +92,16 @@ void PdfTextController::reload() {
     prepare(path);
 }
 
-void PdfTextController::adoptDocument(QPdfDocument* doc, const QString& localPath,
+void PdfTextController::adoptDocument(PdfDocShare::Lease doc, const QString& localPath,
                                       int generation) {
-    if (generation != m_generation) {
-        if (doc)
-            delete doc;     // doc lebt auf dem GUI-Thread -> direktes delete ok
+    if (generation != m_generation)
         return;
-    }
 
     m_pendingPath.clear();
 
+    m_lease = std::move(doc);
+    m_doc = m_lease.doc();
     if (m_doc) {
-        delete m_doc;
-        m_doc = nullptr;
-    }
-
-    m_doc = doc;
-    if (m_doc) {
-        m_doc->setParent(this);     // Lebensdauer an den Controller binden
         m_activePath = localPath;
     } else {
         m_activePath.clear();
@@ -151,7 +137,7 @@ void PdfTextController::releaseDocument() {
     m_activePath.clear();
 
     if (m_doc) {
-        delete m_doc;
+        m_lease.reset();
         m_doc = nullptr;
         emit readyChanged();
     }

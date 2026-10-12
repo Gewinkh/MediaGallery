@@ -99,7 +99,11 @@ bool PdfOcrLayer::hasLayer(const QString& path) {
     //  Die Kennung steht in einem UNKOMPRIMIERTEN Strom, den wir selbst
     //  geschrieben haben - ein Byte-Scan genügt und kostet kein Parsen.
     const QByteArray m = mg::pdfraw::mapWhole(f);
-    return (m.isEmpty() ? f.readAll() : m).contains(kMarker);
+    return hasLayer(m.isEmpty() ? f.readAll() : m);
+}
+
+bool PdfOcrLayer::hasLayer(const QByteArray& pdfBytes) {
+    return pdfBytes.contains(kMarker);
 }
 
 bool PdfOcrLayer::write(const QString& inputPath, const QString& outputPath,

@@ -3,10 +3,11 @@
 #include "core/MediaLogs.h"
 #include "core/MGAudioList.h"
 #include "core/MGStorage.h"
+#include "pdf/PdfDocShare.h"
 #include "pdf/PdfMediaHandler.h"
 #include "core/AppSettings.h"
 #include "core/PathUtils.h"
-#include "core/MemoryUtils.h"   // mg::trimHeap - RSS-Rückgabe nach Annotations-LRU-Eviction
+#include "core/MemoryUtils.h"   // mg::trimHeap - RSS-Rückgabe nach Eviction und nach geschlossenen Dateien
 #include "core/TextEncoding.h"
 #include "editor/EditorController.h"
 #include "editor/LanguageTable.h"
@@ -18,7 +19,6 @@
 #include "table/DelimitedText.h"
 #include "table/TablePdf.h"
 
-#include <QPdfDocument>
 #include <QFile>
 #include <QSaveFile>
 #include <QFileInfo>
@@ -84,9 +84,8 @@ static QVariantList annotationsToVariant(const QVector<MediaAnnotation>& anns) {
     return out;
 }
 
-//  Roh-Scan eines PDFs ohne GUI-Thread. Laedt das Dokument LOKAL (lebt nur fuer
-//  die Dauer des Scans -> kein RAM-Wachstum), scannt die Annotationen und reicht
-//  das Ergebnis per QueuedConnection an den ViewerController zurueck.
+//  Roh-Scan eines PDFs ohne GUI-Thread, auf dem Dokument der Ansicht (sonst einem eigenen nur fuer den Scan);
+//  das Ergebnis geht per QueuedConnection an den ViewerController zurueck.
 namespace {
 class PdfScanTask : public QRunnable {
 public:
@@ -97,10 +96,9 @@ public:
         QVariantList list;
         QStringList  temps;
 
-        QPdfDocument doc;
-        if (doc.load(m_path) == QPdfDocument::Error::None
-            && doc.status() == QPdfDocument::Status::Ready) {
-            PdfMediaHandler handler(&doc);
+        const PdfDocShare::Lease doc = PdfDocShare::open(m_path);
+        if (doc) {
+            PdfMediaHandler handler(doc.doc());
             handler.scanDocument(m_path);
             list  = annotationsToVariant(handler.allAnnotations());
             temps = handler.tempFiles();
@@ -123,13 +121,58 @@ private:
     QPointer<ViewerController> m_owner;
     QString                    m_path;
 };
+
+//  Interne Spruenge der angefragten Seiten; ein Dokument fuer alle, meist das geliehene der Ansicht.
+class PdfLinkTask : public QRunnable {
+public:
+    PdfLinkTask(ViewerController* owner, QString path, QList<int> pages)
+        : m_owner(owner), m_path(std::move(path)), m_pages(std::move(pages)) { setAutoDelete(true); }
+
+    void run() override {
+        QHash<int, QVariantList> links;
+        {
+            const PdfDocShare::Lease doc = PdfDocShare::open(m_path);
+            for (int page : std::as_const(m_pages))
+                links.insert(page, doc ? annotationsToVariant(PdfMediaHandler::internalLinks(doc.doc(), page))
+                                       : QVariantList());
+        }
+        QPointer<ViewerController> owner = m_owner;
+        if (!owner) return;
+        const QString path = m_path;
+        QMetaObject::invokeMethod(owner, [owner, path, links]() {
+            if (owner)
+                owner->applyPageLinks(path, links);
+        }, Qt::QueuedConnection);
+    }
+
+private:
+    QPointer<ViewerController> m_owner;
+    QString                    m_path;
+    QList<int>                 m_pages;
+};
 } // namespace
 
-ViewerController::ViewerController(QObject* parent) : QObject(parent) {}
+ViewerController::ViewerController(QObject* parent) : QObject(parent) {
+    m_linkPool.setMaxThreadCount(1);
+    m_linkTimer.setSingleShot(true);
+    m_linkTimer.setInterval(0);
+    connect(&m_linkTimer, &QTimer::timeout, this, [this] {
+        for (auto it = m_linkQueue.constBegin(); it != m_linkQueue.constEnd(); ++it)
+            m_linkPool.start(new PdfLinkTask(this, it.key(), it.value()));
+        m_linkQueue.clear();
+    });
+    m_trimTimer.setSingleShot(true);
+    m_trimTimer.setInterval(2000);
+    connect(&m_trimTimer, &QTimer::timeout, this, [] { mg::trimHeap(); });
+}
+
+void ViewerController::releaseLater() { m_trimTimer.start(); }
 
 ViewerController::~ViewerController() {
     m_pdfAbbruch->store(true);
     m_pdfPool.waitForDone();
+    m_linkPool.clear();
+    m_linkPool.waitForDone();
     // Extrahierte Temp-Medien dieser Sitzung entfernen.
     for (const QString& p : std::as_const(m_sessionTempFiles))
         QFile::remove(p);
@@ -300,12 +343,18 @@ void ViewerController::insertIntoCache(const QString& path, const QVariantList& 
     while (m_cacheOrder.size() > kMaxCachedPdfs) {
         const QString victim = m_cacheOrder.takeFirst();
         m_annCache.remove(victim);
+        m_pageLinks.remove(victim);
+        m_linksRequested.remove(victim);
         evicted = true;
     }
     // Nur bei TATSÄCHLICHER Eviction: Annotationslisten enthalten eingebettete
     // Medien-Payloads (QByteArray, potenziell MB) - Heap ans OS zurückgeben.
     if (evicted)
         mg::trimHeap();
+}
+
+bool ViewerController::loadPdfDocument(QObject* pdfDocument, const QString& filePathOrUrl) {
+    return PdfDocShare::load(pdfDocument, mg::toLocalPath(filePathOrUrl));
 }
 
 //  Asynchrone Anforderung (aus QML). Blockiert nie den GUI-Thread.
@@ -322,7 +371,7 @@ void ViewerController::requestPdfAnnotations(const QString& filePathOrUrl) {
     // Cache-Treffer -> sofort (queued, damit der Aufrufer immer asynchron reagiert).
     if (m_annCache.contains(path)) {
         touchCache(path);
-        const QVariantList cached = m_annCache.value(path);
+        const QVariantList cached = withPageLinks(path, m_annCache.value(path));
         QMetaObject::invokeMethod(this, [this, path, cached]() {
             emit pdfAnnotationsReady(path, cached);
         }, Qt::QueuedConnection);
@@ -542,7 +591,31 @@ void ViewerController::applyScanResult(const QString& path, const QVariantList& 
         if (!t.isEmpty())
             m_sessionTempFiles.append(t);
     insertIntoCache(path, anns);
-    emit pdfAnnotationsReady(path, anns);
+    emit pdfAnnotationsReady(path, withPageLinks(path, anns));
 }
 
-//  Synchrone Variante (Kompatibilitaet). Nutzt denselben Resultcache.
+void ViewerController::requestPdfPageLinks(const QString& filePathOrUrl, int page) {
+    const QString path = mg::toLocalPath(filePathOrUrl);
+    if (path.isEmpty() || page < 0) return;
+    QSet<int>& angefragt = m_linksRequested[path];
+    if (angefragt.contains(page)) return;
+    angefragt.insert(page);
+    m_linkQueue[path].append(page);
+    m_linkTimer.start();
+}
+
+void ViewerController::applyPageLinks(const QString& path, const QHash<int, QVariantList>& links) {
+    QHash<int, QVariantList>& ziel = m_pageLinks[path];
+    for (auto it = links.constBegin(); it != links.constEnd(); ++it) {
+        ziel.insert(it.key(), it.value());
+        if (!it.value().isEmpty())
+            emit pdfPageLinksReady(path, it.key(), it.value());
+    }
+}
+
+QVariantList ViewerController::withPageLinks(const QString& path, QVariantList anns) const {
+    const auto it = m_pageLinks.constFind(path);
+    if (it != m_pageLinks.constEnd())
+        for (const QVariantList& l : it.value()) anns += l;
+    return anns;
+}

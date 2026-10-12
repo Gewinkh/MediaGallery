@@ -137,7 +137,11 @@ open build/MediaGallery.app
 ## Changelog
 
 ### Latest
-- **Change**: **Large PDFs** now use about 30% less memory when opened
+- **Change**: **Lower memory usage and faster startup** by loading the web engine only when needed, avoiding unused graphics drivers, and releasing memory after file operations.
+- **Fix**: **Video playback on dual-GPU laptops** no longer freezes the app.
+- **Fix**: **Make document searchable** is correctly disabled for searchable PDFs, including after switching or reopening files.
+- **Change**: **Large PDFs** now open faster and use significantly less memory, including documents with embedded audio.
+- **Change**: **Long PDFs** reopen much faster and use less memory through cached thumbnails and on-demand loading of page links.
 
 ---
 
