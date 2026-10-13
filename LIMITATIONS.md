@@ -504,10 +504,11 @@ loaded only when the first HTML file opens, so it costs nothing before that.
 Why: the text view lays out the whole document at once before it shows it. A
 typical file (under 20 KB) takes about 25 ms, a 750 KB file about half a second.
 
-**Very large Markdown files use a lot of memory.**
-Why: the text view lays out and draws the whole document, not only the visible
-part. A 750 KB file needs about 250 MB while it is open; after closing, most of it
-is given back within a few seconds, about 100 MB stay until the app is closed.
+**Very large Markdown files keep some memory after closing.**
+Why: the text view lays out the whole document, and the graphics layer keeps its
+buffers for reuse. A 750 KB file needs about 60 MB while it is open; after
+closing, about 50 MB stay until the app is closed. Opening it again does not add
+more.
 
 **Quotes appear as a shaded box, not with a bar on the left.**
 Why: the text view the app uses cannot draw a single edge of a box, and a box

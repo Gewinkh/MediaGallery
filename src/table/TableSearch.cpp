@@ -18,14 +18,9 @@ bool vorher(const Treffer& a, const Treffer& b) {
 
 namespace {
 
-//  Nur die Zeichen, deren Faltungsklasse Gross- und Kleinform NICHT abdecken;
-//  fuer alle uebrigen genuegen `toLower`/`toUpper`. Ueber die BMP sind es 118,
-//  darunter `s`/`S`/langes s und `k`/`K`/Kelvin - kaselose Schriften wie
-//  Arabisch, Kana und CJK gar keines. Nicht nur grosse Klassen sind betroffen:
-//  bei griechischen Formen mit untergesetztem Iota hat die Klasse zwei
-//  Mitglieder, und `toUpper` fuehrt trotzdem nicht auf das andere.
-//  Abgeleitet aus Qts eigenem `toCaseFolded`, einmal beim ersten Bedarf - eine
-//  Liste im Quelltext altert gegen die naechste Unicode-Fassung.
+//  Nur die Zeichen, deren Faltungsklasse Gross- und Kleinform NICHT abdecken (BMP: 118, etwa `s`/langes s,
+//  `K`/Kelvin, griechisch mit Iota subscriptum). Aus Qts `toCaseFolded` beim ersten Bedarf - eine Liste im
+//  Quelltext alterte gegen die naechste Unicode-Fassung.
 const QHash<char16_t, QList<char16_t>>& sonderKlassen() {
     static const QHash<char16_t, QList<char16_t>> tafel = [] {
         constexpr int kBmp = 0x10000;
@@ -74,9 +69,7 @@ int vorfilterAnker(QChar c, char16_t* aus) {
 ZellVergleich::ZellVergleich(const QString& text, SuchOptionen o)
     : m_text(text), m_laenge(text.size()), m_gross(o.gross ? Qt::CaseSensitive : Qt::CaseInsensitive),
       m_sucher(text, m_gross), m_ganzeZelle(o.ganzeZelle) {
-    //  Der Vorfilter braucht einen Anker, an dem der Begriff anfangen MUSS.
-    //  Bei „ganze Zelle" gibt es keinen Suchlauf, bei einem Zeichen ist Qts
-    //  eigener Weg schon schneller.
+    //  Kein Vorfilter bei „ganze Zelle" (kein Suchlauf) und bei einem Zeichen (Qts Weg ist schneller).
     if (m_ganzeZelle || m_laenge < 2 || text.isEmpty()) return;
     const QChar e = text.at(0);
     if (o.gross) {
@@ -112,8 +105,7 @@ QList<Treffer> suche(const QList<Zeile>& zeilen, int von, int bis,
 
     const ZellVergleich vergleich(text, o);
     const int ende = qMin(bis, int(zeilen.size()));
-    //  Mit Reihenfolge laeuft die Schleife ueber die ANZEIGE, ohne ueber die
-    //  Datei. `anzeige` ist in beiden Faellen die Zeile, die gemeldet wird.
+    //  Mit Reihenfolge laeuft die Schleife ueber die ANZEIGE; gemeldet wird immer `anzeige`.
     const int anzahl = ordnung ? int(ordnung->size()) : qMax(0, ende - qMax(0, von));
     for (int anzeige = 0; anzeige < anzahl; ++anzeige) {
         const int z = ordnung ? ordnung->at(anzeige) : (qMax(0, von) + anzeige);
@@ -124,11 +116,11 @@ QList<Treffer> suche(const QList<Zeile>& zeilen, int von, int bis,
         //  Ueber die BELEGTEN Felder, nicht ueber `wert()` je Spalte - bei 125
         //  Spalten waere das je Zeile ein Vielfaches an binaeren Suchen.
         const Werte* zerg = (erg && erg->hatZeile(z)) ? erg : nullptr;
-        for (const std::pair<quint16, QString>& feld : zeilen.at(z).belegte()) {
+        for (const Zeile::Feld feld : zeilen.at(z).belegte()) {
             const int spalte = int(feld.first);
             if (spalten && (spalte >= spalten->size() || !spalten->at(spalte))) continue;
             const QString* gezeigt = zerg ? zerg->wert(z, spalte) : nullptr;
-            if (!vergleich.trifft(gezeigt ? *gezeigt : feld.second)) continue;
+            if (!vergleich.trifft(gezeigt ? QStringView(*gezeigt) : feld.second)) continue;
             out.append(Treffer{ anzeige, spalte });
             if (out.size() >= kMaxTreffer) {
                 if (mehr) *mehr = true;
@@ -159,16 +151,14 @@ void SuchTask::run() {
     const QList<int>* ordnung = m_ordnung.isEmpty() ? nullptr : &m_ordnung;
     QList<Treffer> treffer = suche(*m_zeilen, m_von, m_bis, m_text, m_opt,
                                    maske, m_abbruch.get(), &mehr, ordnung, m_formeln.get());
-    //  Der gezeigte Block wird mitgezaehlt - eine Zeilenspanne mehr, dafuer
-    //  ist die Liste vollstaendig.
+    //  Der gezeigte Block zaehlt mit - eine Spanne mehr, dafuer ist die Liste vollstaendig.
     QList<int> proBlock;
     if (!m_bloecke.isEmpty() && !m_abbruch->load()) {
         proBlock.reserve(m_bloecke.size());
         for (const BlockBereich& b : m_bloecke) {
             if (m_abbruch->load()) return;
             bool egal = false;
-            //  Ohne Reihenfolge: hier zaehlt nur, WIE VIELE Treffer der Block
-            //  hat - die Reihenfolge einer fremden Tabelle sieht niemand.
+            //  Ohne Reihenfolge: nur die ZAHL der Treffer zaehlt, fremde Reihenfolge sieht niemand.
             proBlock.append(int(suche(*m_zeilen, b.von, b.bis, m_text, m_opt,
                                       maske, m_abbruch.get(), &egal, nullptr,
                                       m_formeln.get()).size()));
@@ -178,8 +168,7 @@ void SuchTask::run() {
     auto zurueck = m_zurueck;
     auto flag = m_abbruch;
     QMetaObject::invokeMethod(m_owner, [zurueck, treffer, mehr, proBlock, flag] {
-        //  Eine neuere Suche hat diese ueberholt, waehrend das Ergebnis in der
-        //  Warteschlange lag.
+        //  Eine neuere Suche hat diese ueberholt, waehrend das Ergebnis wartete.
         if (flag->load()) return;
         zurueck(treffer, mehr, proBlock);
     }, Qt::QueuedConnection);

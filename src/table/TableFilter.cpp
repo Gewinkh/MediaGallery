@@ -100,8 +100,8 @@ QList<int> filtere(const QList<Zeile>& zeilen, int von, int bis, const FilterReg
     const FilterAusdruck ausdruck = deuteFilter(regel.text, regel.monatZuerst);
     const bool text = ausdruck.art == FilterAusdruck::Art::Text;
     const ZellVergleich vergleich(regel.text, regel.opt);
-    auto trifft = [&](const QString& zelle) {
-        return text ? vergleich.trifft(zelle) : trifftAusdruck(ausdruck, zelle, regel.monatZuerst);
+    auto trifft = [&](QStringView zelle) {
+        return text ? vergleich.trifft(zelle) : trifftAusdruck(ausdruck, zelle.toString(), regel.monatZuerst);
     };
     for (int z = start; z < ende; ++z) {
         if (abbruch && abbruch->load()) return {};
@@ -115,7 +115,7 @@ QList<int> filtere(const QList<Zeile>& zeilen, int von, int bis, const FilterReg
             const int s = int(feld.first);
             if (spalten && (s >= spalten->size() || !spalten->at(s))) continue;
             const QString* gezeigt = zerg ? zerg->wert(z, s) : nullptr;
-            if (trifft(gezeigt ? *gezeigt : feld.second)) { aus.append(z); break; }
+            if (trifft(gezeigt ? QStringView(*gezeigt) : feld.second)) { aus.append(z); break; }
         }
     }
     return aus;

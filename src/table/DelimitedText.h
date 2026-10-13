@@ -25,22 +25,48 @@ struct Warnung {
     QString text;
 };
 
-//  Eine Zeile haelt nur die BELEGTEN Felder (Spaltennummer + Wert, aufsteigend;
-//  `wert()` sucht binaer). Dicht gespeichert kosten die leeren Plaetze einer
-//  breiten Datei ein Vielfaches - gemessen an 50.000 DATEV-Buchungen mit
-//  125 Spalten: 4178 gegen 835 Byte je Zeile.
+//  Eine Zeile haelt nur die BELEGTEN Felder, alle in EINEM Puffer: vorn je Feld
+//  Spalte und Ende (drei Einheiten), dahinter die Werte am Stueck. Ein QString
+//  je Feld kostete samt Liste ~1080 Byte je Zeile (100.000 x 12 Felder: 108 MB
+//  fuer 11,5 MB Datei); dicht gespeichert bei 125 DATEV-Spalten sogar 4178.
 class Zeile {
 public:
+    struct Feld {
+        quint16     first;      // Spalte
+        QStringView second;     // Wert - gilt, solange die Zeile unveraendert lebt
+    };
+    class Belegte {
+    public:
+        class const_iterator {
+        public:
+            const_iterator(const Zeile* z, int i) : m_z(z), m_i(i) {}
+            Feld operator*() const { return m_z->feld(m_i); }
+            const_iterator& operator++() { ++m_i; return *this; }
+            bool operator==(const const_iterator& o) const { return m_i == o.m_i; }
+            bool operator!=(const const_iterator& o) const { return m_i != o.m_i; }
+        private:
+            const Zeile* m_z;
+            int          m_i;
+        };
+        explicit Belegte(const Zeile* z) : m_z(z) {}
+        const_iterator begin() const { return {m_z, 0}; }
+        const_iterator end() const { return {m_z, m_z->m_belegt}; }
+        qsizetype size() const { return m_z->m_belegt; }
+    private:
+        const Zeile* m_z;
+    };
+
     Zeile() = default;
     explicit Zeile(const QStringList& felder);
 
-    QString wert(int spalte) const;
-    int     felder() const { return m_felder; }
-    bool    isEmpty() const { return m_felder == 0; }
+    QString     wert(int spalte) const { return ansicht(spalte).toString(); }
+    QStringView ansicht(int spalte) const;
+    int  felder() const { return m_felder; }
+    bool isEmpty() const { return m_felder == 0; }
 
     //  Nur die belegten Felder, aufsteigend. Wer ueber alle Zeilen laeuft,
     //  nimmt das hier - `wert()` je Spalte waere bei 125 Spalten ein Vielfaches.
-    const QList<std::pair<quint16, QString>>& belegte() const { return m_gefuellt; }
+    Belegte belegte() const { return Belegte(this); }
 
     //  Alle Felder als Liste, leere eingeschlossen. Fuer die wenigen Zeilen
     //  gedacht, die als Ganzes gebraucht werden (etwa eine Kopfzeile).
@@ -62,8 +88,13 @@ public:
     void setzeFelderzahl(int n);
 
 private:
-    QList<std::pair<quint16, QString>> m_gefuellt;
-    int m_felder = 0;
+    Feld feld(int i) const;
+    int  suche(int spalte) const;   // Index des Felds oder -1
+    void baue(const QList<Feld>& felder);
+
+    QString m_daten;
+    quint16 m_belegt = 0;
+    int     m_felder = 0;
 };
 
 struct Datei {

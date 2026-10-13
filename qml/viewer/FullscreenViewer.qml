@@ -191,8 +191,9 @@ FocusScope {
         var r = galleryModel.rowForPath(startPath)
         root._startType = (r >= 0) ? galleryModel.mediaTypeAt(r) : -1
         root.forceActiveFocus(); _maybeLoad()
+        Viewer.viewOpened()
     }
-    Component.onDestruction: releaseCurrent()
+    Component.onDestruction: { releaseCurrent(); Viewer.viewClosed() }
     StackView.onStatusChanged: _maybeLoad()
 
     function loadPath(p) {

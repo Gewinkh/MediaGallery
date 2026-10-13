@@ -126,6 +126,7 @@ int main(int argc, char* argv[]) {
     g_startClock.start();
     g_startLog = qEnvironmentVariableIsSet("MG_STARTLOG");
     startMark("main betreten");
+    mg::festeHeapSchwellen();
 
     // Vor der QGuiApplication - danach ignoriert Qt die Backend-Wahl.
     RhiProber::applyStoredBackend();

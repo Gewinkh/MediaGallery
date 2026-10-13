@@ -18,6 +18,10 @@
 #include "media/MediaItem.h"
 #include "table/DelimitedText.h"
 #include "table/TablePdf.h"
+#include <QCoreApplication>
+#include <QGuiApplication>
+#include <QQmlEngine>
+#include <QQuickWindow>
 
 #include <QFile>
 #include <QSaveFile>
@@ -163,10 +167,43 @@ ViewerController::ViewerController(QObject* parent) : QObject(parent) {
     });
     m_trimTimer.setSingleShot(true);
     m_trimTimer.setInterval(2000);
-    connect(&m_trimTimer, &QTimer::timeout, this, [] { mg::trimHeap(); });
+    //  Nach dem Schliessen allokiert niemand, also bereinigt auch keiner den JS-Heap (PDF: Rest anon +70 -> +35 MB);
+    //  dessen QObjects sterben per deleteLater und muessen vor malloc_trim zugestellt sein.
+    connect(&m_trimTimer, &QTimer::timeout, this, [this] {
+        if (QQmlEngine* e = qmlEngine(this)) e->collectGarbage();
+        QCoreApplication::sendPostedEvents(nullptr, QEvent::DeferredDelete);
+        mg::trimHeap();
+    });
+    m_expireTimer.setSingleShot(true);
+    m_expireTimer.setInterval(60000);
+    connect(&m_expireTimer, &QTimer::timeout, this, &ViewerController::expireCaches);
 }
 
 void ViewerController::releaseLater() { m_trimTimer.start(); }
+
+void ViewerController::viewOpened() {
+    ++m_openViews;
+    m_expireTimer.stop();
+}
+
+void ViewerController::viewClosed() {
+    if (m_openViews > 0 && --m_openViews == 0) m_expireTimer.start();
+}
+
+void ViewerController::expireCaches() {
+    //  Das erste Bild danach baut Pipelines und Glyphen neu (16 statt 0,4 ms) - gleich jetzt, solange niemand bedient.
+    for (QWindow* w : QGuiApplication::topLevelWindows())
+        if (auto* q = qobject_cast<QQuickWindow*>(w)) {
+            q->releaseResources();
+            q->update();
+        }
+    if (QQmlEngine* e = qmlEngine(this)) {
+        e->trimComponentCache();
+        e->collectGarbage();
+    }
+    QCoreApplication::sendPostedEvents(nullptr, QEvent::DeferredDelete);
+    mg::trimHeap();
+}
 
 ViewerController::~ViewerController() {
     m_pdfAbbruch->store(true);

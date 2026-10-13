@@ -286,6 +286,10 @@ void MarkdownView::adopt(QTextDocument* doc, int generation, const QString& text
         //  Kind der TextEdit: sie raeumt es mit sich ab. Das eigene Dokument der TextEdit loescht Qt beim ersten
         //  Tausch selbst - geloescht wird hier nur ein zuvor uebergebenes.
         doc->setParent(m_quickDoc->parent());
+        //  Nur Bloecke im Sichtfenster zeichnen: Qt schaltet das fuer grosse Texte nur in setText ein, nicht beim
+        //  Tausch des Dokuments - sonst Knoten fuer das ganze Dokument (762 KB Markdown: Heap +190 MB).
+        if (auto* edit = qobject_cast<QQuickItem*>(m_quickDoc->parent()))
+            edit->setFlag(QQuickItem::ItemObservesViewport);
         QTextDocument* alt = m_ownDoc;
         m_quickDoc->setTextDocument(doc);
         m_ownDoc = doc;

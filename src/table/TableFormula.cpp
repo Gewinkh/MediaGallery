@@ -655,7 +655,7 @@ Wert Rechner::primaer(Lauf& l) {
 
 }  // namespace
 
-bool istFormel(const QString& text) {
+bool istFormel(QStringView text) {
     return text.size() > 1 && text.at(0) == u'=';
 }
 
@@ -702,12 +702,12 @@ bool dezimalKomma(const QList<Zeile>& zeilen, int von, int bis, QChar trenner) {
     int komma = 0, punkt = 0, gesehen = 0;
     for (int z = qMax(0, von); z < ende && gesehen < kMaxProbe; ++z) {
         for (const auto& f : zeilen.at(z).belegte()) {
-            const QString& t = f.second;
+            const QStringView t = f.second;
             const qsizetype k = t.lastIndexOf(QLatin1Char(','));
             const qsizetype p = t.lastIndexOf(QLatin1Char('.'));
             if (k < 0 || p < 0) continue;
             bool ok = false;
-            alsZahl(t, &ok);
+            alsZahl(t.toString(), &ok);
             if (!ok) continue;
             ++gesehen;
             if (k > p) ++komma; else ++punkt;

@@ -47,7 +47,7 @@ public:
     //  Im Kopf, damit der Laengen-Ausschluss vor jedem Aufruf steht: ausgelagert
     //  kostete die Suche nach einem seltenen Begriff 25 % mehr (8,9 -> 11,2 ms),
     //  die Laenge ueber den Textzeiger je Zelle noch einmal 7 %.
-    bool trifft(const QString& zelle) const {
+    bool trifft(QStringView zelle) const {
         //  Kuerzer als der Begriff kann nie treffen.
         if (zelle.size() < m_laenge) return false;
         if (m_ganzeZelle) return zelle.compare(m_text, m_gross) == 0;
@@ -60,7 +60,7 @@ public:
         //  weiter von Qt: gefunden wird eine Stelle, entschieden mit `indexIn`.
         if (m_vorfilter) {
             const qsizetype rest = zelle.size() - m_laenge + 1;
-            const auto* p = reinterpret_cast<const char16_t*>(zelle.constData());
+            const char16_t* p = zelle.utf16();
             const qsizetype k = (m_anker == 3)
                 ? mg::simd::findeErstesDrei(p, rest, m_ersteKl, m_ersteGr, m_ersteDr)
                 : mg::simd::findeErstes(p, rest, m_ersteKl, m_ersteGr);

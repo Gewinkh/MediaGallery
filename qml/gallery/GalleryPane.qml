@@ -38,6 +38,8 @@ Item {
     signal immersiveToggleRequested()
     signal barDragMoved(real x)
     signal barDragReleased(real x)
+    //  Eine geschlossene Haelfte hinterlaesst JS-Abfall, den sonst niemand bereinigt (danach noch 4-6 MB frei).
+    Component.onDestruction: Viewer.releaseLater()
 
     // Der Player-Modus filtert die Galerie auf Audio (und optional Video) und schaltet das Öffnen um: ein
     // Doppelklick SPIELT. Die Leiste erscheint erst, wenn wirklich etwas läuft.

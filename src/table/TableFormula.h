@@ -12,7 +12,7 @@
 namespace mg::table {
 
 //  Ein einzelnes '=' ist keine Formel - eine Zelle darf es tragen.
-bool istFormel(const QString& text);
+bool istFormel(QStringView text);
 
 //  0 = A, 25 = Z, 26 = AA.
 QString spaltenName(int spalte);

@@ -1,5 +1,6 @@
 build*/
 out/
+qml/pdf/leer.pdf
 cmake*/
 *.pro.user
 *.qbs.user

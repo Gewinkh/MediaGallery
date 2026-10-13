@@ -27,21 +27,56 @@ QList<QStringView> inZeilen(const QString& text) {
 }  // namespace
 
 Zeile::Zeile(const QStringList& felder) : m_felder(int(felder.size())) {
-    int belegt = 0;
-    for (const QString& f : felder) if (!f.isEmpty()) ++belegt;
-    m_gefuellt.reserve(belegt);
+    QList<Feld> f;
+    f.reserve(felder.size());
     for (int i = 0; i < felder.size(); ++i)
-        if (!felder.at(i).isEmpty())
-            m_gefuellt.append({quint16(qMin(i, 0xFFFF)), felder.at(i)});
+        if (!felder.at(i).isEmpty()) f.append({quint16(qMin(i, 0xFFFF)), felder.at(i)});
+    baue(f);
 }
 
-QString Zeile::wert(int spalte) const {
+//  Kopf: je Feld Spalte, Ende unten, Ende oben; das Ende zaehlt ab dem ersten Wert.
+Zeile::Feld Zeile::feld(int i) const {
+    const char16_t* k = reinterpret_cast<const char16_t*>(m_daten.constData());
+    const qsizetype werte = qsizetype(m_belegt) * 3;
+    const auto ende = [&](int j) { return qsizetype(k[j * 3 + 1]) | (qsizetype(k[j * 3 + 2]) << 16); };
+    const qsizetype von = i > 0 ? ende(i - 1) : 0;
+    return {quint16(k[i * 3]), QStringView(k + werte + von, ende(i) - von)};
+}
+
+int Zeile::suche(int spalte) const {
+    const char16_t* k = reinterpret_cast<const char16_t*>(m_daten.constData());
+    int lo = 0, hi = m_belegt;
+    while (lo < hi) {
+        const int mitte = (lo + hi) / 2;
+        if (k[mitte * 3] < spalte) lo = mitte + 1;
+        else hi = mitte;
+    }
+    return (lo < m_belegt && k[lo * 3] == spalte) ? lo : -1;
+}
+
+QStringView Zeile::ansicht(int spalte) const {
     if (spalte < 0 || spalte >= m_felder) return {};
-    auto it = std::lower_bound(m_gefuellt.cbegin(), m_gefuellt.cend(), quint16(spalte),
-                               [](const std::pair<quint16, QString>& e, quint16 s) {
-                                   return e.first < s;
-                               });
-    return (it != m_gefuellt.cend() && it->first == spalte) ? it->second : QString();
+    const int i = suche(spalte);
+    return i >= 0 ? feld(i).second : QStringView();
+}
+
+//  Die Sichten in `felder` duerfen in den alten Puffer zeigen: er lebt bis zum Tausch.
+void Zeile::baue(const QList<Feld>& felder) {
+    qsizetype zeichen = 0;
+    for (const Feld& f : felder) zeichen += f.second.size();
+    QString neu(qsizetype(felder.size()) * 3 + zeichen, Qt::Uninitialized);
+    char16_t* k = reinterpret_cast<char16_t*>(neu.data());
+    char16_t* w = k + felder.size() * 3;
+    qsizetype ende = 0;
+    for (const Feld& f : felder) {
+        std::copy(f.second.utf16(), f.second.utf16() + f.second.size(), w + ende);
+        ende += f.second.size();
+        *k++ = f.first;
+        *k++ = char16_t(ende & 0xFFFF);
+        *k++ = char16_t(ende >> 16);
+    }
+    m_daten.swap(neu);
+    m_belegt = quint16(felder.size());
 }
 
 namespace {
@@ -54,7 +89,7 @@ int zahlenFelder(const Zeile& z) {
     for (const auto& [spalte, wert] : z.belegte()) {
         Q_UNUSED(spalte);
         bool ok = false;
-        QString rein = wert;
+        QString rein = wert.toString();
         rein.replace(QLatin1Char(','), QLatin1Char('.'));
         rein.toDouble(&ok);
         if (ok) ++n;
@@ -85,10 +120,8 @@ QList<Bereich> findBlocks(const Datei& d) {
             s = i + 1;
         }
         if (b.titel >= 0) {
-            //  Nach einem Blocknamen traegt die naechste Zeile die Spaltennamen.
-            //  Das ist der verlaessliche Fall: eine reine Text-Tabelle (Namen,
-            //  Raeume, Sprechstunden) hat gar keine Zahl, an der sich eine
-            //  Kopfzeile sonst erkennen liesse.
+            //  Nach einem Blocknamen traegt die naechste Zeile die Spaltennamen - verlaesslich,
+            //  denn eine reine Text-Tabelle hat keine Zahl, an der sich ein Kopf erkennen liesse.
             if (j - s >= 2) { b.kopf = s; b.daten = s + 1; }
             else            { b.daten = s; }
         } else if (j - s >= 2 && zahlenFelder(d.zeilen.at(s)) == 0
@@ -106,42 +139,51 @@ QList<Bereich> findBlocks(const Datei& d) {
 
 void Zeile::setzeWert(int spalte, const QString& wert) {
     if (spalte < 0 || spalte >= kMaxFelderZeile) return;
-    auto it = std::lower_bound(m_gefuellt.begin(), m_gefuellt.end(), quint16(spalte),
-                               [](const std::pair<quint16, QString>& e, quint16 s) {
-                                   return e.first < s;
-                               });
-    const bool da = it != m_gefuellt.end() && it->first == spalte;
-    if (wert.isEmpty()) {
-        if (da) m_gefuellt.erase(it);
-    } else if (da) {
-        it->second = wert;
-    } else {
-        m_gefuellt.insert(it, {quint16(spalte), wert});
+    QList<Feld> f;
+    f.reserve(m_belegt + 1);
+    bool gesetzt = false;
+    for (const Feld& e : belegte()) {
+        if (!gesetzt && e.first >= spalte) {
+            if (!wert.isEmpty()) f.append({quint16(spalte), wert});
+            gesetzt = true;
+            if (e.first == spalte) continue;
+        }
+        f.append(e);
     }
+    if (!gesetzt && !wert.isEmpty()) f.append({quint16(spalte), wert});
+    baue(f);
     if (spalte >= m_felder) m_felder = spalte + 1;
 }
 
 void Zeile::spalteEinfuegen(int spalte) {
     if (spalte < 0 || spalte > m_felder || m_felder >= kMaxFelderZeile) return;
-    for (auto& e : m_gefuellt)
-        if (e.first >= spalte) ++e.first;
+    if (m_belegt == 0) { ++m_felder; return; }
+    char16_t* k = reinterpret_cast<char16_t*>(m_daten.data());
+    for (int i = 0; i < m_belegt; ++i)
+        if (k[i * 3] >= spalte) ++k[i * 3];
     ++m_felder;
 }
 
 void Zeile::spalteEntfernen(int spalte) {
     if (spalte < 0 || spalte >= m_felder) return;
-    for (qsizetype i = 0; i < m_gefuellt.size();) {
-        auto& e = m_gefuellt[i];
-        if (e.first == spalte) { m_gefuellt.removeAt(i); continue; }
+    QList<Feld> f;
+    f.reserve(m_belegt);
+    for (Feld e : belegte()) {
+        if (e.first == spalte) continue;
         if (e.first > spalte) --e.first;
-        ++i;
+        f.append(e);
     }
+    baue(f);
     --m_felder;
 }
 
 void Zeile::setzeFelderzahl(int n) {
     if (n < 0) n = 0;
-    while (!m_gefuellt.isEmpty() && m_gefuellt.last().first >= n) m_gefuellt.removeLast();
+    QList<Feld> f;
+    f.reserve(m_belegt);
+    for (const Feld& e : belegte())
+        if (e.first < n) f.append(e);
+    if (f.size() != m_belegt) baue(f);
     m_felder = n;
 }
 
@@ -256,10 +298,8 @@ Datei parse(const QByteArray& raw, QChar trenner) {
     for (qsizetype z = 0; z < zeilen.size(); ++z) {
         if (d.zeilen.size() >= kMaxZeilen) { d.abgeschnitten = true; break; }
         const int nr = int(z) + 1;
-        //  Eine Leerzeile bleibt eine LEERE Zeile (`felder() == 0`), kein Feld.
-        //  Sie traegt keine Daten, trennt aber sichtbar - Ausgaben stapeln
-        //  mehrere Tabellen in eine Datei und setzen genau dorthin eine
-        //  Leerzeile. Wer sie nicht will, fragt `Zeile::isEmpty()`.
+        //  Eine Leerzeile bleibt eine LEERE Zeile (`felder() == 0`): Ausgaben stapeln mehrere
+        //  Tabellen in eine Datei und trennen sie genau so. Wer sie nicht will, fragt `isEmpty()`.
         if (zeilen.at(z).isEmpty()) {
             d.zeilen.append(Zeile());
             d.zeilenNr.append(nr);

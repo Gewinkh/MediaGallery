@@ -40,15 +40,17 @@ public:
     //  Vor dem ersten Video: FFmpeg auf „nur Fehler" stellen (s. MediaLogs.h).
     //  Aus QML aufgerufen, weil dort entschieden wird, WANN ein Medium aufgeht.
     Q_INVOKABLE void    quietMediaLogs() const;
-    //  Datei zu oder gewechselt: 2 s spaeter Heap zurueck (grosses Markdown liess sonst ~170 MB freigegeben stehen).
+    //  Datei zu oder gewechselt: 2 s spaeter JS-Bereinigung und Heap zurueck (grosses Markdown liess sonst ~170 MB stehen).
     Q_INVOKABLE void    releaseLater();
-    //  Beidatei der Editoren statt Ordner-Ablage? Beide sind nur lesbar, aber
-    //  der Hinweis muss sagen, WO man sie aendert.
+    //  Ansichten zaehlen: 60 s nach dem Schliessen der letzten laufen die Caches ab (Szenengraph, unbenutzte QML-Typen).
+    Q_INVOKABLE void    viewOpened();
+    Q_INVOKABLE void    viewClosed();
+    void expireCaches();
+    bool expiryPending() const { return m_expireTimer.isActive(); }
+    //  Beidatei statt Ordner-Ablage: beide nur lesbar, aber der Hinweis muss sagen, WO man sie aendert.
     Q_INVOKABLE bool    isEditNotesFile(const QString& filePathOrUrl) const;
 
-    //  Ist die Datei groesser als der Deckel, liegt also nur ihr Anfang vor?
-    //  QML fragt das beim Oeffnen und sperrt dann das Schreiben. Kostet einen
-    //  stat-Aufruf und haelt keinen Zustand - der Editor kann jederzeit fragen.
+    //  Groesser als der Deckel, liegt also nur der Anfang vor? QML sperrt dann das Schreiben.
     Q_INVOKABLE bool textFileTruncated(const QString& filePathOrUrl) const;
 
     // VERWEIGERT die Arbeit, wenn die Zieldatei größer als `kMaxTextBytes` ist: von so einer Datei liegt uns nur der
@@ -57,9 +59,7 @@ public:
     //  INHALT: dieselbe Datei wird als .csv UND als .txt ausgeliefert.
     Q_INVOKABLE bool isDatevFile(const QString& filePathOrUrl) const;
 
-    //  Gewoehnliche Tabellendatei? Entschieden wird an der ENDUNG (.csv/.tsv):
-    //  eine `.txt` bleibt Text, sonst wuerde ein Logfile mit Semikolons
-    //  ploetzlich als Tabelle aufgehen.
+    //  Entschieden an der Endung: eine `.txt` bleibt Text, sonst ginge ein Logfile mit Semikolons als Tabelle auf.
     Q_INVOKABLE bool isTableFile(const QString& filePathOrUrl) const;
 
     Q_INVOKABLE bool writeTextFile(const QString& filePathOrUrl, const QString& content) const;
@@ -131,6 +131,8 @@ private:
     QHash<QString, QList<int>>   m_linkQueue;       // noch nicht gestartet, wartet auf m_linkTimer
     QTimer                       m_linkTimer;
     QTimer                       m_trimTimer;
+    QTimer                       m_expireTimer;
+    int                          m_openViews = 0;
     QThreadPool                  m_linkPool;
     QStringList                  m_sessionTempFiles;// extrahierte Medien (Cleanup bei Exit)
 

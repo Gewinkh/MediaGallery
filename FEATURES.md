@@ -63,7 +63,7 @@ which. Files without an extension such as `LICENSE`, `README`, `Makefile` or
 - The same choices as in the viewer: printer-friendly or as shown, portrait or landscape. Images and other files in the selection are skipped
 
 **Viewing files**
-- **Fullscreen view** by double click; `->` / `<-` move to the next or previous file, random mode picks one at random
+- **Fullscreen view** by double click; `->` / `<-` move to the next or previous file, random mode picks one at random. Two seconds after you close or leave a file, the memory it used is given back; a minute after the last file is closed, cached drawing data and unused parts of the interface go back as well (about 12 MB)
 - **True fullscreen** (`F`): hides the window frame and all bars. Moving the mouse to the top edge brings the header back
 - **Document menu** in the header of an open file: date and metadata, source/preview or table/raw file, and the actions of that file type
 - The window title shows folder and file
@@ -99,7 +99,7 @@ which. Files without an extension such as `LICENSE`, `README`, `Makefile` or
 ---
 
 ## Markdown Viewer
-- `.md` / `.markdown` open **formatted**: headings, lists (also nested and numbered), task lists, tables with column alignment, quotes, links, images, footnotes and horizontal lines
+- `.md` / `.markdown` open **formatted**: headings, lists (also nested and numbered), task lists, tables with column alignment, quotes, links, images, footnotes and horizontal lines; only the visible part is drawn, so even a 750 KB file needs about 60 MB of memory
 - **Code blocks** look like a terminal window, with rounded corners, the language in the title bar and a **copy button** at the top right; the code is coloured like in the text editor, e.g. C, assembly, shell or Python
 - Hidden **hints** (`<details>`) stay folded until you click them
 - A metadata block at the top of the file (front matter between `---` lines) appears as a card; lists and single words in it are shown as labels
@@ -125,7 +125,7 @@ which. Files without an extension such as `LICENSE`, `README`, `Makefile` or
 ## CSV and TSV Files
 
 **Reading**
-- **Opens as a table**; the raw file is one click away (table button or *Document* menu)
+- **Opens as a table**; the raw file is one click away (table button or *Document* menu). Light on memory: a file with 100,000 rows needs about 70 MB while open
 - **Separator and header row are detected** (`;` `,` tab `|`); the footer says what was found
 - **Several tables in one file** (separated by blank lines) get one tab each, with an *All* tab showing the whole file
 - **Row and column numbers** can be switched on in the top bar
