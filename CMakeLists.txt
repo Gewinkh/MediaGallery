@@ -296,6 +296,28 @@ add_library(mg_lib STATIC
     src/editor/TextPdfExporter.h
     src/editor/TextProblems.cpp
     src/editor/TextProblems.h
+    src/html/HtmlAuswahl.cpp
+    src/html/HtmlAuswahl.h
+    src/html/HtmlBild.cpp
+    src/html/HtmlBild.h
+    src/html/HtmlBox.cpp
+    src/html/HtmlBox.h
+    src/html/HtmlCss.cpp
+    src/html/HtmlCss.h
+    src/html/HtmlDom.cpp
+    src/html/HtmlDom.h
+    src/html/HtmlLayout.cpp
+    src/html/HtmlLayout.h
+    src/html/HtmlPaint.cpp
+    src/html/HtmlPaint.h
+    src/html/HtmlParser.cpp
+    src/html/HtmlParser.h
+    src/html/HtmlPdf.cpp
+    src/html/HtmlPdf.h
+    src/html/HtmlStyle.cpp
+    src/html/HtmlStyle.h
+    src/html/HtmlView.cpp
+    src/html/HtmlView.h
 
     src/image/edit/ImageEditCommands.cpp
     src/image/edit/ImageEditCommands.h
@@ -418,7 +440,7 @@ if(MG_ASM_SOURCES)
     target_compile_definitions(mg_lib PUBLIC MG_ASM_ENABLED=1)
 endif()
 target_link_libraries(mg_lib PUBLIC
-    Qt6::Core Qt6::Gui Qt6::Qml Qt6::Quick Qt6::Multimedia Qt6::Pdf)
+    Qt6::Core Qt6::Gui Qt6::Qml Qt6::Quick Qt6::Multimedia Qt6::Pdf Qt6::Svg)
 target_precompile_headers(mg_lib REUSE_FROM mg_pch)
 
 if(ZLIB_FOUND)

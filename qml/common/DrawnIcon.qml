@@ -138,16 +138,19 @@ Item {
 
         // Buchstabe als Symbolkern, wo der Sinn am Buchstaben hängt. `letterY` verschiebt die Grundlinie, weil eine
         // zentrierte Textzeile die ZEILENBOX zentriert, nicht die Glyphe.
-        Text {
-            visible: root._def.letter !== undefined
-            text: root._def.letter !== undefined ? root._def.letter : ""
-            color: root.color
-            font.pixelSize: Math.max(6, Math.round(root.size *
-                (root._def.letterSize !== undefined ? root._def.letterSize : 0.8)))
-            font.bold: true
-            x: (root.width - width) / 2
-            y: (root.height - height) / 2
-                + (root._def.letterY !== undefined ? root._def.letterY : 0) * root._u
+        // Nur bei Bedarf gebaut: ein leeres Text beobachtet in Qt den Viewport, jeder Teiler-Schritt lief dann den Baum ab.
+        Loader {
+            active: root._def.letter !== undefined
+            sourceComponent: Text {
+                text: root._def.letter
+                color: root.color
+                font.pixelSize: Math.max(6, Math.round(root.size *
+                    (root._def.letterSize !== undefined ? root._def.letterSize : 0.8)))
+                font.bold: true
+                x: (root.width - width) / 2
+                y: (root.height - height) / 2
+                    + (root._def.letterY !== undefined ? root._def.letterY : 0) * root._u
+            }
         }
 
         Item {

@@ -484,6 +484,10 @@ static const QMap<StringKey, QString> s_de = {
     { StringKey::PdfAudioActiveTitle,  "Audio %1 · S. %2" },
     { StringKey::ViewerShowPreview,  "Vorschau anzeigen" },
     { StringKey::ViewerShowSource,   "Quelltext anzeigen" },
+    { StringKey::ViewerHtmlScripts,  "Diese Seite enthält Skripte - hier laufen sie nicht." },
+    { StringKey::ViewerOpenInBrowser, "Im Browser öffnen" },
+    { StringKey::ViewerHtmlCopy,     "Kopieren" },
+    { StringKey::ViewerHtmlSelectAll, "Alles markieren" },
     { StringKey::ViewerPreviewCrashed, "Vorschau abgestürzt - über den Button oben zur Quelltext-Ansicht wechseln oder die Datei neu öffnen." },
     { StringKey::MarkdownDetailsShow, "einblenden" },
     { StringKey::MarkdownDetailsHide, "ausblenden" },
@@ -545,6 +549,8 @@ static const QMap<StringKey, QString> s_de = {
     { StringKey::PdfEditVAlignLabel,       "Vertikal" },
     { StringKey::PdfEditToolReplace,       "Text ersetzen" },
     { StringKey::PdfEditToolCaret,         "Text bearbeiten" },
+    { StringKey::PdfEditTextStickyOn,      "Schalter unten an: jeder Klick setzt eine neue Box" },
+    { StringKey::PdfEditTextStickyOff,     "Schalter unten aus: nach der neuen Box zurück zur Auswahl" },
     { StringKey::PdfEditCaretLoading,      "Textebene wird gelesen …" },
     { StringKey::PdfEditCaretUnavailable,  "Diese Seite lässt sich nicht zeichenweise bearbeiten (%1)." },
     { StringKey::PdfEditTextOpFailed,      "Änderung nicht möglich: %1" },
@@ -1081,6 +1087,7 @@ static const QMap<StringKey, QString> s_de = {
     { StringKey::SettingsTableGridLinesTip, "Dünne Linien zwischen allen Zellen statt abwechselnd dunklerer Zeilen. Gilt auch für den PDF-Export im Stil „Originalgetreu“." },
     { StringKey::TableColumnN,                             "Spalte %1" },
     { StringKey::ShortcutCtxTable,                         "Tabelle (CSV/TSV)" },
+    { StringKey::ShortcutCtxHtml,                          "HTML-Vorschau" },
 
 };
 
@@ -1565,6 +1572,10 @@ static const QMap<StringKey, QString> s_en = {
     { StringKey::PdfAudioActiveTitle,  "Audio %1 · p. %2" },
     { StringKey::ViewerShowPreview,  "Show preview" },
     { StringKey::ViewerShowSource,   "Show source" },
+    { StringKey::ViewerHtmlScripts,  "This page contains scripts - they do not run here." },
+    { StringKey::ViewerOpenInBrowser, "Open in browser" },
+    { StringKey::ViewerHtmlCopy,     "Copy" },
+    { StringKey::ViewerHtmlSelectAll, "Select all" },
     { StringKey::ViewerPreviewCrashed, "Preview crashed - switch to source with the button above, or reopen the file." },
     { StringKey::MarkdownDetailsShow, "show" },
     { StringKey::MarkdownDetailsHide, "hide" },
@@ -1626,6 +1637,8 @@ static const QMap<StringKey, QString> s_en = {
     { StringKey::PdfEditVAlignLabel,       "Vertical" },
     { StringKey::PdfEditToolReplace,       "Replace text" },
     { StringKey::PdfEditToolCaret,         "Edit text" },
+    { StringKey::PdfEditTextStickyOn,      "Switch below on: every click adds a new box" },
+    { StringKey::PdfEditTextStickyOff,     "Switch below off: back to Select after the new box" },
     { StringKey::PdfEditCaretLoading,      "Reading text layer …" },
     { StringKey::PdfEditCaretUnavailable,  "This page cannot be edited character by character (%1)." },
     { StringKey::PdfEditTextOpFailed,      "Change not possible: %1" },
@@ -2160,6 +2173,7 @@ static const QMap<StringKey, QString> s_en = {
     { StringKey::SettingsTableGridLinesTip, "Thin lines between all cells instead of alternating darker rows. Also applies to PDF export in the \"As shown\" style." },
     { StringKey::TableColumnN,                             "Column %1" },
     { StringKey::ShortcutCtxTable,                         "Table (CSV/TSV)" },
+    { StringKey::ShortcutCtxHtml,                          "HTML preview" },
 
 };
 

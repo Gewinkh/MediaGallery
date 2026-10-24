@@ -15,6 +15,7 @@
 #include "editor/TextGutter.h"
 #include "editor/TextMinimap.h"
 #include "editor/TextProblems.h"
+#include "html/HtmlView.h"
 #include "image/edit/ImageEditController.h"
 #include "media/GalleryRowModel.h"
 #include "tags/TagListModel.h"
@@ -67,6 +68,7 @@ void registerQmlTypes() {
     qmlRegisterType<mg::editor::TextProblems>("MediaGallery", 1, 0, "TextProblems");
     //  Gerenderte Markdown-Ansicht: je Kachel eine Instanz, sie tauscht das Dokument ihrer TextEdit aus.
     qmlRegisterType<mg::editor::MarkdownView>("MediaGallery", 1, 0, "MarkdownView");
+    qmlRegisterType<mg::html::HtmlView>("MediaGallery", 1, 0, "HtmlView");
     //  DATEV-Buchungsstapel: EINE Instanz je Kachel, damit zwei Haelften
     //  verschiedene Dateien zeigen koennen.
     qmlRegisterType<mg::datev::DatevController>("MediaGallery", 1, 0, "DatevController");

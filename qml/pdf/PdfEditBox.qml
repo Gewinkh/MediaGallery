@@ -103,14 +103,16 @@ Item {
     onEditModeChanged: if (!editMode) finishEditing()
     onSelectedChanged: if (!selected) finishEditing()
 
-    Component.onCompleted: {
-        if (surface && surface._autoEditId === boxId) {
-            surface._autoEditId = -1
-            Qt.callLater(startEditing)
-        }
-    }
+    // Das Modell fuegt die Zeile schon IN addTextBox() ein, _autoEditId kommt danach - daher auch der Wechsel-Melder.
+    // Jede Seite haelt eine Kopie jeder Box; nur die auf ihrer Seite darf die Bearbeitung nehmen, sonst tippte man unsichtbar.
+    // Zurueckgesetzt wird erst in startEditing: im Melder selbst waere es eine Bindungsschleife.
+    readonly property bool _autoEdit: surface !== null && surface._autoEditId === boxId && onThisPage
+    on_AutoEditChanged: if (_autoEdit) Qt.callLater(startEditing)
+    Component.onCompleted: if (_autoEdit) Qt.callLater(startEditing)
 
     function startEditing() {
+        if (box._autoEdit)
+            surface._autoEditId = -1
         if (!box.isTextual || !box.editMode || box.editing)
             return
         box.ctl.selectedId = box.boxId
@@ -466,6 +468,18 @@ Item {
             box.ctl.endGeometryEdit(box.boxId)     // EIN Undo-Kommando
         }
         onDoubleClicked: box.startEditing()
+    }
+
+    // Mit dem Text-Werkzeug oeffnet ein Klick die bestehende Box zum Tippen, statt eine zweite darueberzulegen.
+    MouseArea {
+        anchors.fill: parent
+        enabled: box.editMode && box.ctl.tool === 1 && box.isTextual && !box.editing
+        visible: enabled
+        cursorShape: Qt.IBeamCursor
+        onClicked: {
+            if (box.surface) box.surface.commitEditing()
+            box.startEditing()
+        }
     }
 
     Repeater {

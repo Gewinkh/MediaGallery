@@ -622,6 +622,13 @@ void AppSettings::setPdfEditPanelTop(bool v) {
     m_settings.setValue("pdfedit/panelTop", v);
 }
 
+bool AppSettings::pdfEditTextSticky() const {
+    return m_settings.value("pdfedit/textSticky", false).toBool();
+}
+void AppSettings::setPdfEditTextSticky(bool v) {
+    m_settings.setValue("pdfedit/textSticky", v);
+}
+
 bool AppSettings::docxSaveDirect() const {
     return m_settings.value("docx/saveDirect", true).toBool();
 }

@@ -140,7 +140,7 @@ FocusScope {
     // wenn WebEngine.ready - vorher fällt HTML IMMER auf TextSurface zurück
     // und es wird garantiert keine WebEngineView instanziiert.
     readonly property bool _showWebPreview:  root._isWebRenderable && root._htmlPreview
-                                             && WebEngine.ready
+                                             && (App.ownHtml || WebEngine.ready)
 
     // Lade-Gating: Die schwere Medien-/PDF-Last erst NACH dem StackView-Übergang
     // anstoßen (Status Active) -> die Öffnen-Animation läuft flüssig über einen
@@ -207,6 +207,7 @@ FocusScope {
         //  Dieselbe Datei nicht freigeben: `source` aendert sich nicht, die Flaeche bliebe leer stehen.
         if (surface.item && galleryModel.filePathAt(r) === root.path) { currentRow = r; return }
         releaseCurrent()
+        root._wechselt = true
         currentRow  = r
         path        = galleryModel.filePathAt(r)
         type        = galleryModel.mediaTypeAt(r)
@@ -233,8 +234,9 @@ FocusScope {
 
         // Trigger der lazy WebEngine-Initialisierung; der Aufruf ist synchron und idempotent - danach ist
         // `WebEngine.ready` und der Loader wählt die gerenderte Vorschau statt des Quelltexts.
-        if (root._isWebRenderable)
+        if (root._isWebRenderable && !App.ownHtml)
             WebEngine.ensureInitializedForHtml()
+        root._wechselt = false
 
         // Inhalt explizit nachziehen: bei Navigation zwischen Medien GLEICHEN Typs bleibt das Loader-Item dasselbe
         // (`onItemChanged` feuert nicht), der alte Inhalt bliebe sonst stehen.
@@ -294,9 +296,18 @@ FocusScope {
 
     Rectangle { anchors.fill: parent; color: "#0a0a0a" }
 
-    TapHandler {
-        acceptedButtons: Qt.LeftButton | Qt.RightButton | Qt.MiddleButton
-        onPressedChanged: if (pressed) root.paneActivated()
+    //  Ueber allem und laesst jedes Druecken durch. Ein TapHandler sah keines, das der Inhalt annahm (Text, Seite):
+    //  ein Klick in den Text liess die Kachel inaktiv, Strg+A traf die andere. Den Fokus holt der Druck nur von
+    //  aussen: eine Seite nimmt ihn nicht selbst, und die TextArea der anderen Kachel schluckte sonst Strg+C.
+    MouseArea {
+        anchors.fill: parent
+        z: 1000
+        acceptedButtons: Qt.AllButtons
+        onPressed: (mouse) => {
+            root.paneActivated()
+            if (!root.activeFocus) root.forceActiveFocus()
+            mouse.accepted = false
+        }
     }
 
     BusyIndicator {
@@ -392,13 +403,29 @@ FocusScope {
         }
     }
 
+    //  Waehrend loadRow Pfad, Typ und Art setzt: jeder Zwischenstand baute sonst eine Flaeche (von HTML zu PDF las
+    //  ein TextSurface die PDF eine Sekunde lang als Text).
+    property bool _wechselt: false
     Loader {
         id: surface
         anchors.fill: parent
         active: root._loaded
+        visible: !root._rohtextAktiv
+        onItemChanged: {
+            if (!item) return
+            if (item.hasOwnProperty("kind"))
+                item.kind = (root.type === 1) ? "external" : "unsupported"
+            if (item.hasOwnProperty("source")) item.source = root.path
+        }
+    }
+    Binding {
+        target: surface
+        property: "source"
+        when: !root._wechselt
+        restoreMode: Binding.RestoreNone
         // URL statt Typname - der entscheidende Unterschied für den Start: ein Typname (`PdfSurface {}`) zwingt QML,
         // alle Flächen samt Kindern schon beim Übersetzen zu laden (gemessen rund 100 ms je Start).
-        source: {
+        value: {
             switch (root.type) {
             case 0:  return "qrc:/qml/image/ImageSurface.qml"
             case 1:  return (App.videoPlayback === "external")
@@ -409,18 +436,12 @@ FocusScope {
             case 4:  return root._isDatev          ? "qrc:/qml/datev/DatevSurface.qml"
                      : root._isTable         ? "qrc:/qml/table/TableSurface.qml"
                      : root._isMarkdown      ? "qrc:/qml/viewer/MarkdownSurface.qml"
-                     : root._showWebPreview  ? "qrc:/qml/viewer/HtmlHost.qml"
+                     : root._showWebPreview  ? (App.ownHtml ? "qrc:/qml/viewer/HtmlOwnSurface.qml"
+                                                            : "qrc:/qml/viewer/HtmlHost.qml")
                                              : "qrc:/qml/viewer/TextSurface.qml"
             case 5:  return "qrc:/qml/docx/DocxSurface.qml"      // Word-Dokumente (DOCX-Editor)
             default: return "qrc:/qml/viewer/ViewerNote.qml"
             }
-        }
-        visible: !root._rohtextAktiv
-        onItemChanged: {
-            if (!item) return
-            if (item.hasOwnProperty("kind"))
-                item.kind = (root.type === 1) ? "external" : "unsupported"
-            if (item.hasOwnProperty("source")) item.source = root.path
         }
     }
 
@@ -478,21 +499,24 @@ FocusScope {
         restoreMode: Binding.RestoreNone
     }
 
-    //  Nur die beiden Tabellen-Flaechen kennen `showNumbers` - `when` haelt die
-    //  Bindung von allen anderen fern.
+    //  Nur die beiden Tabellen-Flaechen kennen `showNumbers`; waehrend `_wechselt` traegt der Loader noch die alte
+    //  Flaeche, die Art schon die neue - daher auch die Frage nach der Eigenschaft.
     Binding {
         target: surface.item
         property: "showNumbers"
         value: root._tableNumbers
-        when: surface.item !== null && (root._showDatevTable || root._showTable)
+        when: surface.item !== null && surface.item.showNumbers !== undefined
+              && (root._showDatevTable || root._showTable)
         restoreMode: Binding.RestoreNone
     }
     Binding {
         target: surface.item
         property: "paneActive"
         value: root.paneActive
-        when: surface.item !== null && (root.type === 0 || root.type === 3 || root.type === 5
-                                        || root._showDatevTable || root._showTable)
+        when: surface.item !== null && surface.item.paneActive !== undefined
+              && (root.type === 0 || root.type === 3 || root.type === 5
+                                        || root._showDatevTable || root._showTable
+                                        || (root._showWebPreview && App.ownHtml))
         restoreMode: Binding.RestoreNone
     }
 
@@ -606,7 +630,7 @@ FocusScope {
 
                 ChromeBtn {
                     id: previewBtn
-                    visible: root._isWebRenderable && WebEngine.ready
+                    visible: root._isWebRenderable && (App.ownHtml || WebEngine.ready)
                     anchors.verticalCenter: parent.verticalCenter
                     kind: "html"
                     active: root._htmlPreview
@@ -728,7 +752,7 @@ FocusScope {
                             onTriggered: dateEditor.openWith(root.dateTime)
                         }
                         MenuItem {
-                            visible: root._isWebRenderable && WebEngine.ready
+                            visible: root._isWebRenderable && (App.ownHtml || WebEngine.ready)
                             height: visible ? implicitHeight : 0
                             text: root._htmlPreview
                                   ? App.uiText(App.language, "ViewerShowSource")
@@ -1204,7 +1228,7 @@ FocusScope {
 
     //  Wer gerade ein PDF schreiben kann: die Rohtext-Flaeche, wenn sie sichtbar ist, sonst die Flaeche selbst.
     //  Den Vertrag (`pdfKind`, `pdfCount`, `pdfExport`, `pdfPages`, `pdfBusy`, `pdfFinished`) erfuellen
-    //  TextSurface, MarkdownSurface und TableSurface; DATEV hat ihn nicht.
+    //  TextSurface, MarkdownSurface, TableSurface und HtmlOwnSurface; DATEV hat ihn nicht.
     readonly property var _pdfQuelle: {
         const k = (rohtext.item && rohtext.visible) ? rohtext.item : surface.item
         return (k && k.pdfKind !== undefined) ? k : null

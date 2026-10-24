@@ -35,6 +35,7 @@ Item {
     property string fitMode: "page"          // "page" = ganze Seite, "width" = Breite
     property int    currentPage: 0
     property real   panX: 0                   // horizontaler Schwenk-Offset (Zoom-Pan)
+    readonly property real _thumbInset: thumbsVisible && pageCount > 0 ? thumbPanel.width : 0
     property int    _savePage: 0             // Resize: die stabile Seite sichern …
     // Solange gesetzt, setzt der Ready-Melder die Ansicht nicht an den Anfang - das macht die Wiederherstellung.
     property bool   _reloading: false
@@ -44,6 +45,8 @@ Item {
     property real   _stableFrac: 0           // zuletzt sicher erkannter Innerseiten-Anteil
     property bool   _resizing: false         // Resize-Phase aktiv -> updateCurrentPage gesperrt
     property bool   _restoring: false        // … und danach deterministisch wiederherstellen
+    //  Teiler-Zug und Strg+Rad: bis zur Ruhe bleibt das alte Bild gestreckt, statt je Schritt jede Seite neu zu rechnen.
+    property bool   _groesseLaeuft: false
 
     property real   topInset: 0
     property real   bottomInset: 0
@@ -116,18 +119,18 @@ Item {
         if (!root.docReady || scale <= 0)
             return { page: p, y: Math.max(0, y) }
         var gapPt = (pages.spacing + 4) / scale
-        var ph = root.doc.pagePointSize(p).height
+        var ph = root._pt(p).height
         while (p < root.pageCount - 1 && ph > 0 && y + hPt / 2 > ph) {
             y -= ph + gapPt
             p++
-            ph = root.doc.pagePointSize(p).height
+            ph = root._pt(p).height
         }
         while (p > 0 && y + hPt / 2 < 0) {
             p--
-            ph = root.doc.pagePointSize(p).height
+            ph = root._pt(p).height
             y += ph + gapPt
         }
-        ph = root.doc.pagePointSize(p).height
+        ph = root._pt(p).height
         if (ph > 0)
             y = Math.max(0, Math.min(y, Math.max(0, ph - hPt)))
         else
@@ -139,7 +142,7 @@ Item {
     function snapYPt(page, yPt, hPt) {
         if (!snapEnabled || !pdfTextCtl.ready || !root.docReady)
             return yPt
-        var pts = root.doc.pagePointSize(page)
+        var pts = root._pt(page)
         if (!pts || pts.height <= 0)
             return yPt
         var lines = _snapLines(page)
@@ -235,6 +238,18 @@ Item {
     property var    doc: null                // aktuell aktives PdfDocument
     readonly property bool docReady: !!doc && doc.status === PdfDocument.Ready
     readonly property int  pageCount: docReady ? doc.pageCount : 0
+    //  Seitenmasse einmal je Laden, bevor eine Seite rechnet: jeder Aufruf am Dokument wartet auf PDFiums globale
+    //  Sperre und damit auf das gerade rechnende Seitenbild (beim schnellen Rollen bis 74 ms je Aufruf).
+    readonly property var  _seitenPt: docReady ? _leseSeitenPt(doc) : []
+    function _leseSeitenPt(d) {
+        var a = new Array(d.pageCount)
+        for (var i = 0; i < a.length; i++) a[i] = d.pagePointSize(i)
+        return a
+    }
+    function _pt(i) {
+        var s = root._seitenPt[i]
+        return s !== undefined ? s : Qt.size(0, 0)
+    }
 
     property var    _pool: ({})              // localPath -> PdfDocument
     property int    _docSerial: 0
@@ -268,15 +283,15 @@ Item {
             var victim = root._poolOrder.shift()
             var vd = root._pool[victim]
             delete root._pool[victim]
-            // Nur destroy() schliesst das Dokument; source leeren laesst Handle und Speicher stehen und warnt nur.
-            if (vd && vd !== root.doc) vd.destroy()
+            // Nur Schliessen gibt das Dokument frei; source leeren laesst Handle und Speicher stehen und warnt nur.
+            if (vd && vd !== root.doc) Viewer.retirePdfDocument(vd)
         }
     }
 
     function _clearPool() {
         for (var k in root._pool) {
             var d = root._pool[k]
-            if (d) d.destroy()
+            if (d) Viewer.retirePdfDocument(d)
         }
         root._pool = ({})
         root._poolOrder = []
@@ -304,6 +319,7 @@ Item {
 
     onSourceChanged: {
         if (source.length > 0) {
+            zoomGleiten.stop()
             zoom = 1.0
             fitMode = "page"
             currentPage = 0
@@ -394,7 +410,7 @@ Item {
         // Delegates wegwerfen: die Bild-URL bleibt gleich, ein bestehendes PdfPageImage laese die Datei sonst nicht neu.
         root._fileRev++                     // neue URL -> Qt liest die Datei neu
         _activateDoc(p)                     // frisch laden (Pool-Eintrag entfernt)
-        if (old && old !== root.doc) old.destroy()
+        if (old && old !== root.doc) Viewer.retirePdfDocument(old)
         restorePageTimer.restart()
     }
 
@@ -868,6 +884,7 @@ Item {
     function setZoom(z) {
         var nz = Math.max(0.25, Math.min(4.0, z))
         if (Math.abs(nz - root.zoom) < 0.0001) return
+        root._groesseBewegt()
         var midY = pages.contentY + pages.height / 2
         var page = pages.indexAt(pages.width / 2, midY)
         if (page < 0) page = root._stablePage
@@ -887,17 +904,34 @@ Item {
         root._restoring = false
         root.updateCurrentPage()                // _stableFrac auf den neuen Stand
     }
-    function zoomIn()  { setZoom(root.zoom + 0.15) }
-    function zoomOut() { setZoom(root.zoom - 0.15) }
+    //  Rad, +/- und Knoepfe gleiten in wenigen Bildern zum Ziel: ein Sprung um 15 % je Rastung wirkte ruckartig.
+    property real _zoomGleit: 1.0
+    NumberAnimation {
+        id: zoomGleiten
+        target: root; property: "_zoomGleit"
+        duration: 140; easing.type: Easing.OutCubic
+        onFinished: root.setZoom(to)
+    }
+    on_ZoomGleitChanged: if (zoomGleiten.running) setZoom(_zoomGleit)
+    function _zoomUm(d) {
+        var ziel = Math.max(0.25, Math.min(4.0, (zoomGleiten.running ? zoomGleiten.to : root.zoom) + d))
+        zoomGleiten.stop()
+        zoomGleiten.from = root.zoom
+        zoomGleiten.to = ziel
+        zoomGleiten.start()
+    }
+    function zoomIn()  { _zoomUm(0.15) }
+    function zoomOut() { _zoomUm(-0.15) }
 
     // Anzeigebreite der aktuellen Seite - spiegelt die Delegate-Formel.
     function _curPageW() {
         if (!root.docReady) return 0
-        var pts = root.doc.pagePointSize(root.currentPage)
+        var pts = root._pt(root.currentPage)
         if (!pts || pts.width <= 0) return 0
         var wFit = (pages.width  - 24) / pts.width
         var hFit = (pages.height - 24) / pts.height
-        var fit  = root.fitMode === "page" ? Math.min(wFit, hFit) : wFit
+        var fit  = root.fitMode === "page"
+                   ? Math.min((pages.width - root._thumbInset - 24) / pts.width, hFit) : wFit
         return pts.width * fit * root.zoom
     }
     function clampPanX() {
@@ -946,17 +980,33 @@ Item {
         if (pages.count <= 0) { root.currentPage = 0; return }
         var idx = pages.indexAt(pages.width / 2, pages.contentY + pages.height / 2)
         if (idx >= 0) root.currentPage = idx
-        // Innerseiten-Anteil fortschreiben; das Seitenlayout skaliert proportional, der
-        // Anteil bleibt also ueber einen Resize gueltig.
+        // Der Innerseiten-Anteil bleibt ueber einen Resize gueltig: das Seitenlayout skaliert proportional.
         var it = pages.itemAtIndex(root._stablePage)
         if (it && it.height > 0)
             root._stableFrac = Math.max(0, Math.min(1,
                 (pages.contentY - it.y) / it.height))
     }
+    // MG_LOG_PDFJUMP: wer setzt die Ansicht an den Anfang? Ein Stapel nur mit diesem Handler heisst: die ListView selbst.
+    property real _lastY: 0
+    function _traceJump() {
+        if (root._lastY > pages.height && pages.contentY < pages.height * 0.5) {
+            console.warn("[MG_LOG_PDFJUMP]", Math.round(root._lastY), "->", Math.round(pages.contentY),
+                         "Werkzeug", root.editCtl.tool, "Box", root.editCtl.selectedId,
+                         "Fokus", root.Window.activeFocusItem)
+            console.trace()
+        }
+        root._lastY = pages.contentY
+    }
     // Stabile Seite samt Innerseiten-Anteil ueber einen Resize retten. _resizing sperrt
     // updateCurrentPage fuer die ganze Phase; der Timer feuert erst am Ende.
+    function _groesseBewegt() {
+        root._groesseLaeuft = true
+        groesseRuhe.restart()
+    }
+    Timer { id: groesseRuhe; interval: 150; onTriggered: root._groesseLaeuft = false }
     function _preservePageAcrossResize() {
         if (!root.docReady) return
+        root._groesseBewegt()
         if (!root._resizing) {
             root._resizing = true
             root._savePage = root._stablePage     // garantiert unverfälschte Seite
@@ -990,9 +1040,10 @@ Item {
         }
     }
 
-    // Laedt das Auswahl-Dokument lazy. Bei grossen PDFs ist es womoeglich erst waehrend
-    // des Ziehens fertig - onReadyChanged holt die Auswahl dann nach.
+    // Laedt das Auswahl-Dokument lazy; wird es erst beim Ziehen fertig, holt onReadyChanged die Auswahl nach.
     function beginSelection(page) {
+        // Eine Seite nimmt keinen Fokus; das Suchfeld behielt ihn und schluckte Strg+C per ShortcutOverride.
+        if (searchField.activeFocus) root.forceActiveFocus()
         root._selecting = true
         root.selPage = page
         root.selRects = []
@@ -1022,7 +1073,7 @@ Item {
     function insertStampImage(fileUrl) {
         if (!root.docReady || !root.editCtl.editMode) return
         const page = root.currentPage
-        const pts = root.doc.pagePointSize(page)
+        const pts = root._pt(page)
         if (pts.width <= 0) { root._toast(App.uiText(App.language, "PdfStampFailedToast")); return }
         const w = pts.width / 3
         const id = root.editCtl.addStamp(fileUrl, page,
@@ -1067,7 +1118,7 @@ Item {
         if (!root.docReady || !root.editCtl.editMode) return false
         const page = root.selPage >= 0 ? root.selPage : (fallback ? fallback.page : -1)
         if (page < 0) return false
-        const pts = root.doc.pagePointSize(page)
+        const pts = root._pt(page)
         if (pts.width <= 0 || pts.height <= 0) return false
         let quads = []
         for (var i = 0; i < root.selRects.length; i++) {
@@ -1090,7 +1141,7 @@ Item {
         if (!root.docReady || !root.editCtl.editMode) return false
         const page = root.selPage
         if (page < 0 || root.selRects.length === 0) return false
-        const pts = root.doc.pagePointSize(page)
+        const pts = root._pt(page)
         if (!pts || pts.width <= 0 || pts.height <= 0) return false
         // Zeilen-Rechtecke aufziehen, nicht die Zugkoordinaten - s. _selectionUnionPt.
         const u = root._selectionUnionPt(page)
@@ -1129,7 +1180,7 @@ Item {
     // Union der Auswahl-Rechtecke in PDF-Punkten - die Zugkoordinaten haben Hoehe 0, die Sonde fand damit nichts
     // und der Text blieb beim Export unter dem Balken.
     function _selectionUnionPt(page) {
-        const pts = root.doc.pagePointSize(page)
+        const pts = root._pt(page)
         if (!pts || pts.width <= 0 || pts.height <= 0) return null
         if (root.selRects.length === 0) return null
         let x0 = 1e9, y0 = 1e9, x1 = -1e9, y1 = -1e9
@@ -1148,7 +1199,7 @@ Item {
         if (!root.docReady || !root.editCtl.editMode) return false
         const page = root.selPage
         if (page < 0 || root.selRects.length === 0) return false
-        const pts = root.doc.pagePointSize(page)
+        const pts = root._pt(page)
         if (!pts || pts.width <= 0 || pts.height <= 0) return false
         // Ueber die Auswahl-Rechtecke mit echter Zeilenhoehe - s. _selectionUnionPt.
         const u = root._selectionUnionPt(page)
@@ -1395,6 +1446,7 @@ Item {
                 HoverHandler { id: fitHover }
                 TapHandler {
                     onTapped: {
+                        zoomGleiten.stop()
                         root.fitMode = (root.fitMode === "page") ? "width" : "page"
                         root.zoom = 1.0
                         root.updateCurrentPage()
@@ -1499,7 +1551,7 @@ Item {
             // Linksziehen markiert immer, deshalb ist das eigene Dragging der Liste aus.
             // Mausrad und ScrollBar setzen contentY direkt und funktionieren unveraendert.
             interactive: false
-            model: root.docReady ? root.doc.pageCount : 0
+            model: root._seitenPt.length
             spacing: 10
             // Kopfraum als header statt topMargin: so bleibt der gueltige contentY-Bereich
             // [0 .. contentHeight-height] und die vorhandene Scroll-Logik gilt unveraendert.
@@ -1509,7 +1561,10 @@ Item {
             cacheBuffer: Math.max(0, Math.round(pages.height *
                                     (root._warm ? root.pageCacheScreens : 0.1)))
             boundsBehavior: Flickable.StopAtBounds
-            onContentYChanged: root.updateCurrentPage()
+            onContentYChanged: {
+                root.updateCurrentPage()
+                if (App.pdfJumpLogging) root._traceJump()
+            }
             onCountChanged: root.updateCurrentPage()
             // Aendert sich beim Fenster-Resize und beim Aufteilen der Split-Ansicht.
             onWidthChanged:  root._preservePageAcrossResize()
@@ -1541,12 +1596,12 @@ Item {
                 // Waehrend eines Notiz-Drags ueber die Geschwister-Delegates heben.
                 z: index === root.editDragPage ? 1 : 0
 
-                readonly property size pts: root.doc.pagePointSize(index)
-                // Skalierung unabhaengig vom Overlay-Panel - Umschalten loest kein Neu-Rendern aus.
+                readonly property size pts: root._pt(index)
+                // Ganze Seite passt neben die Leiste; deren Umschalten rendert nur neu, wo die Breite statt der Hoehe begrenzt.
                 readonly property real wFit: pts.width  > 0 ? (pages.width  - 24) / pts.width  : 1.0
                 readonly property real hFit: pts.height > 0 ? (pages.height - 24) / pts.height : 1.0
                 readonly property real fitScale: root.fitMode === "page"
-                                                 ? Math.min(wFit, hFit) : wFit
+                    ? Math.min(pts.width > 0 ? (pages.width - root._thumbInset - 24) / pts.width : 1.0, hFit) : wFit
                 //  Auf Geraetepixel eingerastet: eine Bruchteilbreite liess je nach Zoom eine weisse Spalte am rechten Rand
                 //  stehen (gemessen: x 862 bei 117 %, x 914 bei 140 %).
                 readonly property real _dpr: Screen.devicePixelRatio > 0
@@ -1560,8 +1615,9 @@ Item {
 
                 Rectangle {
                     id: pageBg
-                    // Zentriert; bei Zoom-Ueberlauf um panX verschiebbar.
-                    x: Math.round((pages.width - width) / 2 + root.panX)
+                    // Mittig; reichte sie unter die Leiste, nur so weit nach rechts wie noetig. Ueberlauf mittig, um panX verschiebbar.
+                    x: Math.round(Math.max((pages.width - width) / 2,
+                                           Math.min(root._thumbInset + 12, pages.width - 12 - width)) + root.panX)
                     width: pageCell.pageW; height: pageCell.pageH
                     //  Fertig gerechnete Seiten deckt das Bild ohnehin ab; der Ton
                     //  zaehlt nur fuer die, die noch rechnen.
@@ -1571,7 +1627,7 @@ Item {
                     Image {
                         id: grobeSeite
                         anchors.fill: parent
-                        readonly property bool gebraucht: pageImg.status !== Image.Ready
+                        readonly property bool gebraucht: pageImg.status !== Image.Ready && !pageImg.gerechnet
                                                           && root._thumbDocId > 0
                         visible: grobeSeite.gebraucht
                         source: grobeSeite.gebraucht
@@ -1639,11 +1695,20 @@ Item {
                         currentFrame: pageCell.index
                         asynchronous: true
                         cache: false
+                        //  Beim Neurechnen nach einer Groessenaenderung stand die Seite sonst kurz weiss da.
+                        retainWhileLoading: true
+                        property bool gerechnet: false
+                        onStatusChanged: if (status === Image.Ready) gerechnet = true
                         //  `Stretch` statt `PreserveAspectFit`: `sourceSize` wird gerundet, der Letterbox-Rand liess sonst je nach Zoom
                         //  einen weissen Saum durchscheinen. Die Verzerrung bleibt unter einem Pixel.
                         fillMode: Image.Stretch
-                        sourceSize.width: Math.round(pageCell.pageW * Screen.devicePixelRatio)
-                        sourceSize.height: Math.round(pageCell.pageH * Screen.devicePixelRatio)
+                        //  Eine noch nie gerechnete Seite bekommt ihre Groesse sofort, sonst rechnete sie in Punktgroesse vor.
+                        Binding on sourceSize {
+                            when: !root._groesseLaeuft || !pageImg.gerechnet
+                            value: Qt.size(Math.round(pageCell.pageW * Screen.devicePixelRatio),
+                                           Math.round(pageCell.pageH * Screen.devicePixelRatio))
+                            restoreMode: Binding.RestoreNone
+                        }
 
                         // Nur auf der Seite mit aktiver Auswahl; Rechtecke normalisiert.
                         Repeater {
@@ -2060,6 +2125,9 @@ Item {
                                 // Neue Box direkt in die Textbearbeitung; ausgeblendete Notizen wieder zeigen.
                                 root.notesVisible = true
                                 root._autoEditId = id
+                                // Ohne den Schalter im Text-Knopf zurueck zur Auswahl - getippt wird trotzdem sofort.
+                                if (id >= 0 && !PdfEdit.textToolSticky)
+                                    root.editCtl.tool = 0
                             }
                         }
 
@@ -2084,7 +2152,7 @@ Item {
                         // Qt PDF zeichnet Widget-Annotationen nicht - dieses Overlay ist die einzige Darstellung der Felder, in beiden Modi.
                         // Tippen laeuft rev-getrieben, damit die Delegates nicht je Zeichen neu entstehen.
                         Repeater {
-                            model: root.editCtl.formFields
+                            model: root.editCtl.hasForm ? root.editCtl.formFieldsOnPage(pageCell.index) : []
                             delegate: PdfFormField {
                                 required property var modelData
                                 field: modelData
@@ -2098,14 +2166,19 @@ Item {
                             }
                         }
 
-                        PdfEditToolbar {
-                            pageIndex: (root.editCtl.viewPageCount,
-                                        root.editCtl.viewPageKey(pageCell.index))
-                            pageScale: pageCell.pts.width > 0
-                                       ? pageImg.width / pageCell.pts.width : 1
-                            pageW: pageImg.width
-                            pageH: pageImg.height
-                            surface: root
+                        //  Erst im Editmodus gebaut: je neu ins Bild rollender Seite kostete die Leiste sonst ihre ~26 Knoepfe.
+                        Loader {
+                            z: 5
+                            active: root.editCtl.editMode
+                            sourceComponent: PdfEditToolbar {
+                                pageIndex: (root.editCtl.viewPageCount,
+                                            root.editCtl.viewPageKey(pageCell.index))
+                                pageScale: pageCell.pts.width > 0
+                                           ? pageImg.width / pageCell.pts.width : 1
+                                pageW: pageImg.width
+                                pageH: pageImg.height
+                                surface: root
+                            }
                         }
 
                         // Eigene Ebene nur fuer die rechte Maustaste; die Linksklick-Logik bleibt unberuehrt.
@@ -2249,7 +2322,7 @@ Item {
                     required property int index
                     // Cache-Buster: hochzaehlen, sobald die Vorschau im RAM-Store liegt.
                     property int rev: 0
-                    readonly property size pts: root.doc.pagePointSize(index)
+                    readonly property size pts: root._pt(index)
                     readonly property real _dpr: Screen.devicePixelRatio > 0 ? Screen.devicePixelRatio : 1
                     // Auf ganze Geraetepixel gerastet, sonst bleibt zwischen Bild und Rahmen ein heller Strich des weissen Grundes.
                     readonly property real thumbW: Math.round((thumbs.width - 8) * _dpr) / _dpr
@@ -2833,7 +2906,7 @@ Item {
         if (!root.docReady || viewIndex < 0)
             return
         root.commitEditing()
-        var pts = root.doc.pagePointSize(viewIndex)
+        var pts = root._pt(viewIndex)
         root.editCtl.rotatePage(viewIndex, delta,
                                 pts && pts.width  > 0 ? pts.width  : 595.276,
                                 pts && pts.height > 0 ? pts.height : 841.890)
@@ -2924,8 +2997,15 @@ Item {
                 ? Qt.rgba(App.themeTextPrimary.r, App.themeTextPrimary.g, App.themeTextPrimary.b, 0.16)
                 : Qt.rgba(App.themeTextPrimary.r, App.themeTextPrimary.g, App.themeTextPrimary.b, 0.07))
         border.color: active ? App.themeAccent : App.themeBorder; border.width: 1
-        Text { anchors.centerIn: parent; text: tb.glyph; color: App.themeTextPrimary; font.pixelSize: 13
-               visible: tb.iconName.length === 0 }
+        Loader {
+            anchors.centerIn: parent
+            active: tb.iconName.length === 0 && tb.glyph.length > 0
+            sourceComponent: Text {
+                text: tb.glyph
+                color: App.themeTextPrimary
+                font.pixelSize: 13
+            }
+        }
         DrawnIcon { anchors.centerIn: parent; name: tb.iconName; size: 16
                      visible: tb.iconName.length > 0 }
         HoverHandler { id: tbHover; enabled: tb.enabled }

@@ -55,6 +55,7 @@ private:
     Q_PROPERTY(bool textEditing READ textEditing NOTIFY textEditingChanged)
     Q_PROPERTY(bool hasClipboard READ hasClipboard NOTIFY clipboardChanged)
     Q_PROPERTY(bool panelOnTop READ panelOnTop WRITE setPanelOnTop NOTIFY panelOnTopChanged)
+    Q_PROPERTY(bool textToolSticky READ textToolSticky WRITE setTextToolSticky NOTIFY textToolStickyChanged)
 
     // Destruktiv = Original sofort neu schreiben, sonst Plan im Sidecar.
 
@@ -148,6 +149,8 @@ public:
     bool hasClipboard() const { return m_hasClip; }
     bool panelOnTop() const;
     void setPanelOnTop(bool v);
+    bool textToolSticky() const;
+    void setTextToolSticky(bool v);
 
     bool exportLossless() const;
     void setExportLossless(bool v);
@@ -162,6 +165,7 @@ public:
     int  textOpCount() const { return m_textOps.size() + (m_pendingValid ? 1 : 0); }
     int  viewPageCount() const { return m_plan.size(); }
     QVariantList formFields() const;
+    Q_INVOKABLE QVariantList formFieldsOnPage(int view) const;
     bool hasForm() const { return !m_formFields.isEmpty(); }
     bool formDirty() const { return m_formDirty; }
     int  formValueRev() const { return m_formValueRev; }
@@ -380,6 +384,7 @@ signals:
     void textEditingChanged();
     void clipboardChanged();
     void panelOnTopChanged();
+    void textToolStickyChanged();
     void exportLosslessChanged();
     void exportAsAnnotationsChanged();
     void planChanged();
@@ -605,6 +610,7 @@ private:
     int  m_layerReadGen = 0;
 
     QVector<mg::PdfFormField> m_formFields;
+    QVariantList formFieldList(int nurSeite) const;
     // Nur Abweichungen vom Original; ein zurueckgesetztes Feld verschwindet wieder.
     QHash<QString, QString>   m_formEdits;
     bool m_formDirty    = false;

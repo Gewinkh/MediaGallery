@@ -244,13 +244,21 @@ Rectangle {
         if (width > 0 && height > 0)
             App.setTileSizeLimit(width - 2 * margin - spacing, height - spacing)
     }
-    onWidthChanged: _reportTileLimit()
+    //  Ein Spaltensprung baut jede sichtbare Kachel neu (die Zeilen-Repeater zaehlen um): beim Ziehen am Teiler folgt
+    //  die Spaltenzahl dem ersten Schritt sofort, danach erst nach 150 ms Ruhe.
+    property real _spaltenBreite: width
+    Timer { id: breiteRuhe; interval: 150; onTriggered: root._spaltenBreite = root.width }
+    onWidthChanged: {
+        if (!breiteRuhe.running) root._spaltenBreite = width
+        breiteRuhe.restart()
+        _reportTileLimit()
+    }
     onHeightChanged: _reportTileLimit()
     Component.onCompleted: _reportTileLimit()
 
     readonly property int areaW: App.tileArrangement === 3   // Manual
-                                 ? Math.min(App.manualAreaWidth, root.width - 2 * margin)
-                                 : root.width - 2 * margin
+                                 ? Math.min(App.manualAreaWidth, root._spaltenBreite - 2 * margin)
+                                 : root._spaltenBreite - 2 * margin
     readonly property int columns: Math.max(1, Math.floor(areaW / cellW))
     readonly property int gridW: columns * cellW
     readonly property int gridX: {

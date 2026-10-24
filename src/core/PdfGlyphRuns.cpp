@@ -7,7 +7,9 @@
 #include <QSet>
 
 #include <QByteArrayView>
+#include <algorithm>
 #include <charconv>
+#include <cmath>
 #include <cstring>
 
 // Alles hier arbeitet auf ROHEN Fremddaten: vor jedem Zugriff wird die Grenze geprüft, und jede Unstimmigkeit
@@ -598,6 +600,110 @@ QByteArray fixToUnicode(const QByteArray& in, bool* changed) {
     return out;
 }
 
+//  Hinter `(` bis nach der schliessenden Klammer - geschachtelt, `\` maskiert.
+qsizetype skipString(const QByteArray& d, qsizetype i) {
+    int par = 1;
+    while (i < d.size() && par > 0) {
+        if (d.at(i) == '\\')     i += 2;
+        else if (d.at(i) == '(') { ++par; ++i; }
+        else if (d.at(i) == ')') { --par; ++i; }
+        else                      ++i;
+    }
+    return std::min(i, d.size());
+}
+
+//  Jeden Verweis `N G R` in b[von, bis) durch `neu(N)` ersetzen; Zeichenketten bleiben unberührt.
+template <class F>
+QByteArray renumber(const QByteArray& b, qsizetype von, qsizetype bis, F&& neu) {
+    struct Zahl { qsizetype an = -1, ende = -1; int wert = 0; };     // an < 0: das Wort war keine Zahl
+    Zahl z[2];
+    QByteArray out;
+    qsizetype kopiert = 0, i = von;
+    for (;;) {
+        const qsizetype a = skipWs(b, i);
+        if (a >= bis) break;
+        qsizetype e = a;
+        const QByteArray t = token(b, &e);
+        if (e > bis || t.isEmpty()) break;
+        int v = 0;
+        if (t == "(") {
+            e = skipString(b, e);
+            z[0] = z[1] = {};
+        } else if (t == "R" && z[0].an >= 0 && z[1].an >= 0) {
+            if (const int n = neu(z[0].wert); n != z[0].wert) {
+                out += b.mid(kopiert, z[0].an - kopiert);
+                out += QByteArray::number(n);
+                kopiert = z[0].ende;
+            }
+            z[0] = z[1] = {};
+        } else {
+            z[0] = z[1];
+            z[1] = toInt(t, &v) ? Zahl{ a, e, v } : Zahl{};
+        }
+        i = e;
+    }
+    if (kopiert == 0) return b;
+    out += b.mid(kopiert);
+    return out;
+}
+
+//  Bereich, in dem ein Objekt verweisen kann: sein Wörterbuch, ohne eines alles hinter `N 0 obj` (nie Stromdaten).
+bool refRange(const QByteArray& b, qsizetype* von, qsizetype* bis) {
+    qsizetype i = 0;
+    token(b, &i); token(b, &i); token(b, &i);
+    if (dictRange(b, i, von, bis)) return true;
+    if (b.indexOf("stream", i) >= 0) return false;
+    *von = i;
+    *bis = b.size();
+    return true;
+}
+
+//  Kopf, Objekte in DATEI-Reihenfolge (ersetzt bzw. ohne `weg`), frisches xref. Leer, wenn die Tabelle nicht
+//  zum unverändert übernommenen Trailer passen würde.
+QByteArray rewrite(const Objects& o, const QHash<int, QByteArray>& newBody, const QSet<int>& weg, qsizetype groesse,
+                   const QList<QByteArray>& anhang = {}) {
+    QByteArray out;
+    out.reserve(groesse + newBody.size() * 64);
+    out += o.header;
+    QHash<int, qsizetype> pos;
+    int maxNum = 0;
+    for (const int num : std::as_const(o.byOffset)) {
+        maxNum = qMax(maxNum, num);
+        if (weg.contains(num)) continue;
+        pos.insert(num, out.size());
+        const auto it = newBody.constFind(num);
+        out += (it != newBody.constEnd()) ? it.value() : o.body.value(num);
+    }
+    //  `/Size` muss zur Tabelle passen; Objektnummern bleiben, das ist der Normalfall - sonst lieber nichts ändern.
+    if (maxNum + 1 != o.size) return {};
+    const int size = o.size + int(anhang.size());
+    for (int k = 0; k < anhang.size(); ++k) {
+        pos.insert(o.size + k, out.size());
+        out += anhang.at(k);
+    }
+    QByteArray trailer = o.trailer;
+    if (!anhang.isEmpty()) {
+        qsizetype i = afterKey(trailer, "Size");
+        if (i < 0) return {};
+        const qsizetype von = skipWs(trailer, i);
+        token(trailer, &i);
+        trailer.replace(von, i - von, QByteArray::number(size));
+    }
+    const qsizetype xrefAt = out.size();
+    out += "xref\n0 " + QByteArray::number(size) + "\n";
+    out += "0000000000 65535 f \n";
+    for (int n = 1; n < size; ++n) {
+        const auto it = pos.constFind(n);
+        if (it == pos.constEnd()) { out += "0000000000 65535 f \n"; continue; }
+        out += QByteArray::number(it.value()).rightJustified(10, '0');
+        out += " 00000 n \n";
+    }
+    out += "trailer\n";
+    out += trailer;
+    out += "\nstartxref\n" + QByteArray::number(xrefAt) + "\n%%EOF\n";
+    return out;
+}
+
 }  // namespace
 
 namespace mg::pdfglyphs {
@@ -715,38 +821,153 @@ QByteArray mergeGlyphRuns(const QByteArray& pdf) {
 
     if (newBody.isEmpty()) return pdf;
 
-    //  Datei neu schreiben: Kopf, Objekte in DATEI-Reihenfolge, frisches
-    //     xref. Objektnummern bleiben, also bleiben alle Verweise gültig; ein
-    //     nicht mehr benutztes Längen-Objekt bleibt einfach stehen.
-    QByteArray out;
-    out.reserve(pdf.size() + newBody.size() * 64);
-    out += o.header;
-    QHash<int, qsizetype> pos;
+    //  Objektnummern bleiben, also bleiben alle Verweise gültig; ein nicht mehr benutztes Längen-Objekt bleibt stehen.
+    const QByteArray out = rewrite(o, newBody, {}, pdf.size());
+    return out.isEmpty() ? pdf : out;
+}
+
+QByteArray dropDuplicates(const QByteArray& pdf) {
+    if (pdf.size() < 32 || !pdf.startsWith("%PDF-")) return pdf;
+    const qsizetype xrefPos = startXrefOf(pdf);
+    if (xrefPos < 0) return pdf;
+    Objects o;
+    if (!readXref(pdf, xrefPos, &o))  return pdf;
+    if (!cutBodies(pdf, xrefPos, &o)) return pdf;
+
+    //  Nur Malmittel: zwei gleiche sind austauschbar. Seiten, Schriften und Ressourcen bleiben, wie sie sind.
+    struct Kandidat { int num; qsizetype von, bis; int laenge; };
+    QList<Kandidat> kandidaten;
     for (const int num : std::as_const(o.byOffset)) {
-        pos.insert(num, out.size());
-        const auto it = newBody.constFind(num);
-        out += (it != newBody.constEnd()) ? it.value() : o.body.value(num);
+        const QByteArray& b = o.body[num];
+        qsizetype von = 0, bis = 0;
+        if (!refRange(b, &von, &bis) || von >= b.size() || b.at(von) != '<') continue;
+        const QByteArray dict = b.mid(von, bis - von);
+        qsizetype sub = afterKey(dict, "Subtype");
+        const bool bild = sub >= 0 && token(dict, &sub) == "/Image";
+        if (bild || afterKey(dict, "FunctionType") >= 0 || afterKey(dict, "ShadingType") >= 0
+            || afterKey(dict, "PatternType") >= 0)
+            kandidaten.append({ num, von, bis, refValue(dict, "Length") });
     }
-    const qsizetype xrefAt = out.size();
-    int maxNum = 0;
-    for (const int num : std::as_const(o.byOffset)) maxNum = qMax(maxNum, num);
-    //  Der Trailer wird UNVERÄNDERT übernommen - seine `/Size` muss also zu der
-    //  Tabelle passen, die hier entsteht. Objektnummern bleiben, das ist der
-    //  Normalfall; weichen sie doch ab, wird lieber nichts geändert.
-    const int size = maxNum + 1;
-    if (size != o.size) return pdf;
-    out += "xref\n0 " + QByteArray::number(size) + "\n";
-    out += "0000000000 65535 f \n";
-    for (int n = 1; n < size; ++n) {
-        const auto it = pos.constFind(n);
-        if (it == pos.constEnd()) { out += "0000000000 65535 f \n"; continue; }
-        out += QByteArray::number(it.value()).rightJustified(10, '0');
-        out += " 00000 n \n";
+
+    //  Bis nichts mehr dazukommt: erst nach dem Zusammenlegen der Funktionen gleichen sich ihre Verläufe usw.
+    QHash<int, int> ziel;
+    const auto kanon = [&](int n) { return ziel.value(n, n); };
+    for (bool weiter = true; weiter;) {
+        weiter = false;
+        QHash<QByteArray, int> gesehen;
+        for (const Kandidat& k : std::as_const(kandidaten)) {
+            if (ziel.contains(k.num)) continue;
+            const QByteArray& b = o.body[k.num];
+            //  Das eigene Längen-Objekt zählt nicht: die Länge steckt in den Daten dahinter.
+            QByteArray schluessel = renumber(b.left(k.bis), k.von, k.bis,
+                                             [&](int n) { return n == k.laenge ? 0 : kanon(n); }).mid(k.von);
+            schluessel += b.mid(k.bis);
+            const auto it = gesehen.constFind(schluessel);
+            if (it == gesehen.constEnd()) { gesehen.insert(schluessel, k.num); continue; }
+            ziel.insert(k.num, it.value());
+            weiter = true;
+        }
     }
-    out += "trailer\n";
-    out += o.trailer;
-    out += "\nstartxref\n" + QByteArray::number(xrefAt) + "\n%%EOF\n";
-    return out;
+    if (ziel.isEmpty()) return pdf;
+
+    QSet<int> weg;
+    for (auto it = ziel.cbegin(); it != ziel.cend(); ++it) weg.insert(it.key());
+    QHash<int, QByteArray> newBody;
+    QHash<int, int> verweise;
+    for (const int num : std::as_const(o.byOffset)) {
+        if (weg.contains(num)) continue;
+        const QByteArray& b = o.body[num];
+        qsizetype von = 0, bis = 0;
+        if (!refRange(b, &von, &bis)) continue;
+        const QByteArray neu = renumber(b, von, bis, [&](int n) { ++verweise[kanon(n)]; return kanon(n); });
+        if (neu.size() != b.size() || neu != b) newBody.insert(num, neu);
+    }
+    //  Längen-Objekte der entfallenen Ströme gehen mit, wenn sonst niemand auf sie zeigt.
+    for (const Kandidat& k : std::as_const(kandidaten))
+        if (weg.contains(k.num) && k.laenge > 0 && !verweise.contains(k.laenge)) weg.insert(k.laenge);
+    //  Ein Verweis auf ein entfallenes Objekt ohne Ersatz hiesse eine kaputte Datei.
+    for (auto it = verweise.cbegin(); it != verweise.cend(); ++it)
+        if (weg.contains(it.key())) return pdf;
+    const QByteArray out = rewrite(o, newBody, weg, pdf.size());
+    return out.isEmpty() ? pdf : out;
+}
+
+QByteArray addLinks(const QByteArray& pdf, const QList<Link>& links) {
+    if (links.isEmpty() || pdf.size() < 32 || !pdf.startsWith("%PDF-")) return pdf;
+    const qsizetype xrefPos = startXrefOf(pdf);
+    if (xrefPos < 0) return pdf;
+    Objects o;
+    if (!readXref(pdf, xrefPos, &o))  return pdf;
+    if (!cutBodies(pdf, xrefPos, &o)) return pdf;
+
+    //  Qt schreibt einen flachen Seitenbaum, jede Seite mit eigenem, leerem `/Annots`-Feld.
+    struct Seite { int num, felder; double links, oben; };
+    QList<Seite> seiten;
+    QSet<int> felderGesehen;
+    const QByteArray baum = dictOf(o, refValue(dictOf(o, refValue(o.trailer, "Root")), "Pages"));
+    qsizetype i = afterKey(baum, "Kids");
+    if (i < 0 || token(baum, &i) != "[") return pdf;
+    for (QByteArray t; (t = token(baum, &i)) != "]";) {
+        int num = 0, gen = 0;
+        if (!toInt(t, &num) || !toInt(token(baum, &i), &gen) || token(baum, &i) != "R") return pdf;
+        const QByteArray s = dictOf(o, num);
+        qsizetype k = afterKey(s, "Type");
+        if (k < 0 || token(s, &k) != "/Page") return pdf;
+        double box[4] = {};
+        k = afterKey(s, "MediaBox");
+        if (k < 0 || token(s, &k) != "[") return pdf;
+        for (double& v : box) {
+            bool ok = false;
+            v = token(s, &k).toDouble(&ok);
+            if (!ok || !std::isfinite(v)) return pdf;
+        }
+        //  Ein geteiltes Feld truege die Verweise einer Seite auf die andere.
+        int felder = refValue(s, "Annots");
+        if (felder >= 0 && felderGesehen.contains(felder)) return pdf;
+        felderGesehen.insert(felder);
+        qsizetype f = 0;
+        const QByteArray fb = o.body.value(felder);
+        for (int w = 0; w < 3; ++w) token(fb, &f);
+        if (token(fb, &f) != "[" || token(fb, &f) != "]") felder = -1;
+        seiten.append({ num, felder, box[0], box[3] });
+    }
+
+    const auto zahl = [](qreal v) { return QByteArray::number(v, 'f', 2); };
+    QList<QByteArray> anhang;
+    QHash<int, QByteArray> eintraege;
+    for (const Link& l : links) {
+        if (l.page < 0 || l.page >= seiten.size() || l.rect.isEmpty() || seiten.at(l.page).felder < 0) continue;
+        const Seite& s = seiten.at(l.page);
+        QByteArray ziel;
+        if (!l.uri.isEmpty()) {
+            //  Literal-Zeichenkette: Klammern und Rueckstrich maskiert, Steuerzeichen haben in einer Adresse nichts verloren.
+            ziel = "/A << /S /URI /URI (";
+            for (const char c : l.uri) {
+                if (uchar(c) < 0x20 || c == 0x7f) continue;
+                if (c == '(' || c == ')' || c == '\\') ziel += '\\';
+                ziel += c;
+            }
+            ziel += ") >>";
+        } else if (l.targetPage >= 0 && l.targetPage < seiten.size()) {
+            const Seite& z = seiten.at(l.targetPage);
+            //  Links als Zahl statt null: PDFium meldet die Hoehe sonst nicht.
+            ziel = "/Dest [" + QByteArray::number(z.num) + " 0 R /XYZ " + zahl(z.links) + ' ' + zahl(z.oben - l.targetY)
+                 + " null]";
+        } else {
+            continue;
+        }
+        const int num = o.size + int(anhang.size());
+        anhang.append(QByteArray::number(num) + " 0 obj\n<<\n/Type /Annot\n/Subtype /Link\n/Rect [" + zahl(s.links + l.rect.left())
+                      + ' ' + zahl(s.oben - l.rect.bottom()) + ' ' + zahl(s.links + l.rect.right()) + ' '
+                      + zahl(s.oben - l.rect.top()) + "]\n/Border [0 0 0]\n" + ziel + "\n>>\nendobj\n");
+        eintraege[s.felder] += ' ' + QByteArray::number(num) + " 0 R";
+    }
+    if (anhang.isEmpty()) return pdf;
+    QHash<int, QByteArray> newBody;
+    for (auto it = eintraege.cbegin(); it != eintraege.cend(); ++it)
+        newBody.insert(it.key(), QByteArray::number(it.key()) + " 0 obj\n[" + it.value() + " ]\nendobj\n");
+    const QByteArray out = rewrite(o, newBody, {}, pdf.size(), anhang);
+    return out.isEmpty() ? pdf : out;
 }
 
 }  // namespace mg::pdfglyphs

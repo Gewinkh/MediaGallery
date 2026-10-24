@@ -1092,6 +1092,17 @@ void PdfEditController::setPanelOnTop(bool v) {
     emit panelOnTopChanged();
 }
 
+bool PdfEditController::textToolSticky() const {
+    return m_settings.pdfEditTextSticky();
+}
+
+void PdfEditController::setTextToolSticky(bool v) {
+    if (m_settings.pdfEditTextSticky() == v)
+        return;
+    m_settings.setPdfEditTextSticky(v);
+    emit textToolStickyChanged();
+}
+
 QVariantList PdfEditController::folderImages() const {
     return mg::folderImages(m_docPath, 300, false);
 }
@@ -4058,17 +4069,22 @@ void PdfEditController::formReadFinished(const QVector<mg::PdfFormField>& fields
     emit formFieldsChanged();
 }
 
-QVariantList PdfEditController::formFields() const {
+QVariantList PdfEditController::formFields() const { return formFieldList(-1); }
+
+//  Je Seitenkachel nur die eigenen: sonst baute jede ins Bild rollende Seite alle Felder des Dokuments (Scan: 177).
+QVariantList PdfEditController::formFieldsOnPage(int view) const { return view < 0 ? QVariantList() : formFieldList(view); }
+
+QVariantList PdfEditController::formFieldList(int nurSeite) const {
     QVariantList out;
     if (m_formFields.isEmpty())
         return out;
-    out.reserve(m_formFields.size());
+    if (nurSeite < 0) out.reserve(m_formFields.size());
     for (const mg::PdfFormField& f : m_formFields) {
         if (f.page < 0)
             continue;                               // nicht platziertes Widget
         // Pristine Seiten tragen key == src; eine entfernte Seite liefert -1.
         const int view = m_plan.isEmpty() ? f.page : viewOfKey(f.page);
-        if (view < 0)
+        if (view < 0 || (nurSeite >= 0 && view != nurSeite))
             continue;
         QVariantMap m;
         m.insert(QStringLiteral("name"),      f.name);

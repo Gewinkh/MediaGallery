@@ -44,8 +44,16 @@ Item {
              : (tbtHover.hovered ? Qt.rgba(App.themeTextPrimary.r, App.themeTextPrimary.g, App.themeTextPrimary.b, 0.14) : "transparent")
         border.color: checked ? App.themeAccent : App.themeBorder
         border.width: 1
-        Text { anchors.centerIn: parent; text: tbt.glyph; color: App.themeTextPrimary; font.pixelSize: 15
-               visible: tbt.iconName.length === 0 }
+        // Nur mit Zeichen gebaut: ein leeres Text beobachtet in Qt den Viewport (Kosten bei jeder Verschiebung).
+        Loader {
+            anchors.centerIn: parent
+            active: tbt.iconName.length === 0 && tbt.glyph.length > 0
+            sourceComponent: Text {
+                text: tbt.glyph
+                color: App.themeTextPrimary
+                font.pixelSize: 15
+            }
+        }
         DrawnIcon { anchors.centerIn: parent; name: tbt.iconName; size: 16
                      visible: tbt.iconName.length > 0 }
         HoverHandler { id: tbtHover }
@@ -65,9 +73,18 @@ Item {
         color: checked ? Qt.rgba(App.themeAccent.r, App.themeAccent.g, App.themeAccent.b, 0.30)
              : (sbtHover.hovered ? Qt.rgba(App.themeTextPrimary.r, App.themeTextPrimary.g, App.themeTextPrimary.b, 0.14) : "transparent")
         border.color: checked ? App.themeAccent : App.themeBorder; border.width: 1
-        Text { anchors.centerIn: parent; text: sbt.glyph; color: App.themeTextPrimary; font.pixelSize: 13
-               font.bold: sbt.boldGlyph; font.italic: sbt.italicGlyph; font.underline: sbt.underlineGlyph
-               visible: sbt.iconName.length === 0 }
+        Loader {
+            anchors.centerIn: parent
+            active: sbt.iconName.length === 0 && sbt.glyph.length > 0
+            sourceComponent: Text {
+                text: sbt.glyph
+                color: App.themeTextPrimary
+                font.pixelSize: 13
+                font.bold: sbt.boldGlyph
+                font.italic: sbt.italicGlyph
+                font.underline: sbt.underlineGlyph
+            }
+        }
         DrawnIcon { anchors.centerIn: parent; name: sbt.iconName; size: 16
                      visible: sbt.iconName.length > 0 }
         HoverHandler { id: sbtHover }
@@ -83,8 +100,15 @@ Item {
         color: checked ? Qt.rgba(App.themeAccent.r, App.themeAccent.g, App.themeAccent.b, 0.30)
              : (abtHover.hovered ? Qt.rgba(App.themeTextPrimary.r, App.themeTextPrimary.g, App.themeTextPrimary.b, 0.14) : "transparent")
         border.color: checked ? App.themeAccent : App.themeBorder; border.width: 1
-        Text { anchors.centerIn: parent; text: abt.glyph; color: App.themeTextPrimary; font.pixelSize: 13
-               visible: abt.iconName.length === 0 }
+        Loader {
+            anchors.centerIn: parent
+            active: abt.iconName.length === 0 && abt.glyph.length > 0
+            sourceComponent: Text {
+                text: abt.glyph
+                color: App.themeTextPrimary
+                font.pixelSize: 13
+            }
+        }
         DrawnIcon { anchors.centerIn: parent; name: abt.iconName; size: 16
                      visible: abt.iconName.length > 0 }
         HoverHandler { id: abtHover }
@@ -100,8 +124,15 @@ Item {
         color: checked ? Qt.rgba(App.themeAccent.r, App.themeAccent.g, App.themeAccent.b, 0.30)
              : (vbtHover.hovered ? Qt.rgba(App.themeTextPrimary.r, App.themeTextPrimary.g, App.themeTextPrimary.b, 0.14) : "transparent")
         border.color: checked ? App.themeAccent : App.themeBorder; border.width: 1
-        Text { anchors.centerIn: parent; text: vbt.glyph; color: App.themeTextPrimary; font.pixelSize: 13
-               visible: vbt.iconName.length === 0 }
+        Loader {
+            anchors.centerIn: parent
+            active: vbt.iconName.length === 0 && vbt.glyph.length > 0
+            sourceComponent: Text {
+                text: vbt.glyph
+                color: App.themeTextPrimary
+                font.pixelSize: 13
+            }
+        }
         DrawnIcon { anchors.centerIn: parent; name: vbt.iconName; size: 16
                      visible: vbt.iconName.length > 0 }
         HoverHandler { id: vbtHover }

@@ -22,6 +22,7 @@
         <file>qml/table/TableSurface.qml</file>
         <file>qml/viewer/HtmlSurface.qml</file>
         <file>qml/viewer/HtmlHost.qml</file>
+        <file>qml/viewer/HtmlOwnSurface.qml</file>
         <file>qml/viewer/ViewerNote.qml</file>
         <file>qml/viewer/MetadataDateEditor.qml</file>
         <file>qml/pdf/PdfSurface.qml</file>

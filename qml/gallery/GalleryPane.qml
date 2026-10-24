@@ -1309,7 +1309,9 @@ Item {
                         startPath: paneLoader.path
                         splitActive: splitPage.paneCount > 1
                         canAddMore:  splitPage.paneCount < pane.maxOpenFiles
-                        paneActive:  paneLoader.index === splitPage.activePaneIndex
+                        //  Auch die Fensterhaelfte zaehlt: sonst blieben die Kuerzel der Datei rechts an, waehrend links gearbeitet
+                        //  wird (Strg+A traf die andere Haelfte, zwei Strg+C zugleich loeste Qt gar nicht aus).
+                        paneActive:  pane.paneFocused && paneLoader.index === splitPage.activePaneIndex
                         onPaneActivated: splitPage.activePaneIndex = paneLoader.index
                         immersive: pane.immersive
                         optionsVisible: PaneCtl.optionsVisible
@@ -1331,14 +1333,14 @@ Item {
                             target: pane
                             property: "activeFilePath"
                             value: paneViewer.path
-                            when: paneViewer.paneActive
+                            when: paneLoader.index === splitPage.activePaneIndex
                             restoreMode: Binding.RestoreNone
                         }
                         Binding {
                             target: pane
                             property: "activeViewer"
                             value: paneViewer
-                            when: paneViewer.paneActive
+                            when: paneLoader.index === splitPage.activePaneIndex
                             restoreMode: Binding.RestoreNone
                         }
                     }

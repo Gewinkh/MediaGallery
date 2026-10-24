@@ -197,17 +197,21 @@ Item {
         visible: ff.isChoice
 
         readonly property int valueIndex: ff.field.optionValues.indexOf(ff.currentValue)
-        Text {
+        // Nur an Auswahlfeldern: das leere Text jedes anderen Felds beobachtete in Qt den Viewport (Teiler-Zug).
+        Loader {
             anchors.fill: parent
             anchors.leftMargin: ff.padPx
             anchors.rightMargin: ff.padPx + choiceBox.height * 0.6
-            verticalAlignment: Text.AlignVCenter
-            elide: Text.ElideRight
-            clip: true
-            color: "#111111"
-            font.pixelSize: Math.max(4, ff.fontPt * ff.pageScale)
-            text: choiceBox.valueIndex >= 0 ? ff.field.options[choiceBox.valueIndex]
-                                            : ff.currentValue
+            active: ff.isChoice
+            sourceComponent: Text {
+                verticalAlignment: Text.AlignVCenter
+                elide: Text.ElideRight
+                clip: true
+                color: "#111111"
+                font.pixelSize: Math.max(4, ff.fontPt * ff.pageScale)
+                text: choiceBox.valueIndex >= 0 ? ff.field.options[choiceBox.valueIndex]
+                                                : ff.currentValue
+            }
         }
         Canvas {                                      // Aufklapp-Dreieck
             anchors.right: parent.right

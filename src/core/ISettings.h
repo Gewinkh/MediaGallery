@@ -236,9 +236,11 @@ public:
 
     virtual bool pdfEditPanelTop() const = 0;
     virtual void setPdfEditPanelTop(bool v) = 0;
+    // false = nach einer neuen Textbox zurueck zur Auswahl; true = das Text-Werkzeug bleibt fuer weitere Boxen.
+    virtual bool pdfEditTextSticky() const = 0;
+    virtual void setPdfEditTextSticky(bool v) = 0;
 
-    // true (Standard) = verlustfrei bevorzugen: "Text ersetzen" geht direkt in die eingebettete Textebene, die
-    // Seite bleibt vektoriell; wo das nicht sicher geht, fällt der Controller auf den Raster-Export zurück.
+    // true (Standard): "Text ersetzen" schreibt vektoriell in die Textebene; wo das nicht sicher geht, Raster-Export.
     virtual bool pdfExportLossless() const = 0;
     virtual void setPdfExportLossless(bool v) = 0;
 

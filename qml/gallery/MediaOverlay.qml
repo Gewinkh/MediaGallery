@@ -64,8 +64,10 @@ Item {
             Loader {
                 id: nameLoader
                 anchors.fill: parent
-                active: true
+                // Erst beim ersten Umbenennen: ein Feld je Kachel hielt mit seinem leeren Platzhalter jeden Teiler-Schritt auf.
+                active: false
                 function beginEdit() {
+                    active = true
                     if (item) { item.visible = true; item.text = overlay.displayName; item.selectAll(); item.forceActiveFocus() }
                 }
                 sourceComponent: TextField {

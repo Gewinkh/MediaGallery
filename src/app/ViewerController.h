@@ -68,6 +68,7 @@ public:
 
     Q_INVOKABLE void requestPdfAnnotations(const QString& filePathOrUrl);
     Q_INVOKABLE bool loadPdfDocument(QObject* pdfDocument, const QString& filePathOrUrl);
+    Q_INVOKABLE void retirePdfDocument(QObject* pdfDocument);
     Q_INVOKABLE void requestPdfPageLinks(const QString& filePathOrUrl, int page);
 
     // Schreibt content als PDF neben die Quelle; die Quelldatei bleibt unangetastet.

@@ -28,7 +28,8 @@ Item {
 
     //  `colorFor` ist ein Aufruf und bindet nicht; erst das Lesen von `profile` (NOTIFY paletteChanged) tut es.
     function _edColor(key) { void Editor.profile; return Editor.colorFor(key) }
-    function release() { view.source = "" }
+    //  Ueber root, nicht view.source: die Zuweisung loeste die Bindung, die naechste Datei kam nie an.
+    function release() { root.source = "" }
 
     //  PDF-Vertrag des Viewers (s. TextSurface).
     readonly property string pdfKind: "markdown"

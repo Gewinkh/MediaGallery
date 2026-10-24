@@ -132,6 +132,8 @@ public:
 
     bool pdfEditPanelTop() const override;
     void setPdfEditPanelTop(bool v) override;
+    bool pdfEditTextSticky() const override;
+    void setPdfEditTextSticky(bool v) override;
     bool pdfExportLossless() const override;
     void setPdfExportLossless(bool v) override;
     bool pdfExportAsAnnotations() const override;

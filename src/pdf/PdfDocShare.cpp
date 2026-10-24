@@ -5,7 +5,12 @@
 #include <QFileInfo>
 #include <QMultiHash>
 #include <QPdfDocument>
+#include <QPointer>
+#include <QQmlComponent>
+#include <QQmlEngine>
+#include <QQuickImageProvider>
 #include <QThread>
+#include <QTimer>
 #include <QUrl>
 #include <QVariant>
 #include <algorithm>
@@ -23,6 +28,7 @@ struct Entry {
     QDateTime     modified;
     quint64       serial = 0;
     bool          detached = false;   // aus dem QML-Dokument geloest: der letzte Halter loescht es
+    QMetaObject::Connection gone;
 
     ~Entry() {
         if (!detached || !doc) return;
@@ -59,6 +65,11 @@ public:
             m_masks = mg::pdfraw::mediaRefMasks(d.isEmpty() ? f.readAll() : d);
         }
         return open(QIODevice::ReadOnly | QIODevice::Unbuffered);
+    }
+
+    void ablegen() {
+        close();
+        m_masks = {};
     }
 
 protected:
@@ -147,10 +158,119 @@ void offer(QObject* quickDoc, QPdfDocument* doc, const QString& path) {
         e->serial = ++r.serial;
         r.byPath.insert(path, e);
     }
-    QObject::connect(quickDoc, &QObject::destroyed, [w = std::weak_ptr<Entry>(e)] { withdraw(w); });
+    e->gone = QObject::connect(quickDoc, &QObject::destroyed, [w = std::weak_ptr<Entry>(e)] { withdraw(w); });
+}
+
+// Qt laesst beim Zerstoeren eines PdfPageImage manchmal dessen Auftrag im Bildfaden stehen, ~QQuickPdfDocument und setSource
+// loeschen aber den Traeger: die Huelle bleibt (rund 5 KB je Datei), nur das innere Dokument wird geschlossen - hinter einer
+// Probe durch denselben Faden, damit close() nicht auf ein laufendes Rendern wartet.
+class Grave : public QObject {
+public:
+    explicit Grave(QQmlEngine* eng) : QObject(eng) {
+        eng->addImageProvider(QStringLiteral("mgpdfgrab"), new Probe(this));
+        QQmlComponent c(eng);
+        c.setData("import QtQuick\nImage { asynchronous: true; cache: false }", QUrl());
+        m_probe = c.create();
+        if (m_probe) {
+            m_probe->setParent(this);
+            QQmlEngine::setObjectOwnership(m_probe, QQmlEngine::CppOwnership);
+        }
+        // Delegaten einer ListView sterben per deleteLater; erst dann verwirft Qt ihre wartenden Auftraege.
+        m_timer.setSingleShot(true);
+        m_timer.setInterval(200);
+        QObject::connect(&m_timer, &QTimer::timeout, this, [this] { probeStarten(); });
+    }
+
+    void add(QObject* doc, std::shared_ptr<Entry> entry) {
+        doc->setParent(this);
+        QQmlEngine::setObjectOwnership(doc, QQmlEngine::CppOwnership);
+        m_waiting.append({doc, std::move(entry)});
+        if (m_probing.isEmpty() && !m_timer.isActive()) m_timer.start();
+    }
+
+private:
+    struct Grab {
+        QPointer<QObject>      doc;
+        std::shared_ptr<Entry> entry;   // haelt ihn, solange eine Leihe laeuft
+    };
+
+    class Probe : public QQuickImageProvider {
+    public:
+        explicit Probe(Grave* g) : QQuickImageProvider(QQuickImageProvider::Image), m_grave(g) {}
+        QImage requestImage(const QString& id, QSize* size, const QSize&) override {
+            const int n = id.toInt();
+            QMetaObject::invokeMethod(m_grave, [g = m_grave, n] { g->probeDurch(n); }, Qt::QueuedConnection);
+            QImage img(1, 1, QImage::Format_ARGB32_Premultiplied);
+            img.fill(Qt::transparent);
+            if (size) *size = img.size();
+            return img;
+        }
+    private:
+        Grave* m_grave;
+    };
+
+    void probeStarten() {
+        m_probing = std::move(m_waiting);
+        m_waiting.clear();
+        if (!m_probe) {
+            probeDurch(m_serial);
+            return;
+        }
+        m_probe->setProperty("source", QUrl(QStringLiteral("image://mgpdfgrab/%1").arg(++m_serial)));
+    }
+
+    void probeDurch(int n) {
+        if (n != m_serial) return;
+        for (Grab& g : m_probing) {
+            if (!g.doc) continue;
+            if (g.entry && g.entry.use_count() > 1) {
+                m_waiting.append(std::move(g));
+                continue;
+            }
+            if (auto* doc = g.doc->findChild<QPdfDocument*>(QString(), Qt::FindDirectChildrenOnly)) {
+                doc->close();
+                for (QObject* k : doc->children())
+                    if (auto* v = dynamic_cast<LoadView*>(k)) v->ablegen();
+            }
+            if (g.entry) QObject::disconnect(g.entry->gone);
+        }
+        m_probing.clear();
+        if (!m_waiting.isEmpty()) m_timer.start();
+    }
+
+    QList<Grab> m_waiting, m_probing;
+    QObject*    m_probe = nullptr;
+    QTimer      m_timer;
+    int         m_serial = 0;
+};
+
+std::shared_ptr<Entry> takeEntry(QObject* quickDoc) {
+    Registry& r = registry();
+    std::lock_guard lock(r.m);
+    for (auto it = r.byPath.begin(); it != r.byPath.end(); ++it)
+        if ((*it)->quick == quickDoc) {
+            std::shared_ptr<Entry> e = *it;
+            r.byPath.erase(it);
+            return e;
+        }
+    return {};
 }
 
 }  // namespace
+
+void retire(QObject* quickDoc) {
+    if (!quickDoc) return;
+    QQmlEngine* eng = qmlEngine(quickDoc);
+    if (!eng) {
+        quickDoc->deleteLater();
+        return;
+    }
+    Grave* g = nullptr;
+    for (QObject* k : eng->children())
+        if ((g = dynamic_cast<Grave*>(k))) break;
+    if (!g) g = new Grave(eng);
+    g->add(quickDoc, takeEntry(quickDoc));
+}
 
 bool load(QObject* quickDoc, const QString& localPath) {
     auto* doc = quickDoc ? quickDoc->findChild<QPdfDocument*>(QString(), Qt::FindDirectChildrenOnly) : nullptr;

@@ -72,11 +72,19 @@ Rectangle {
                 : Qt.rgba(App.themeTextPrimary.r, App.themeTextPrimary.g, App.themeTextPrimary.b, 0.07))
         border.color: checked ? App.themeAccent : App.themeBorder
         border.width: 1
-        Text { anchors.centerIn: parent; text: sb.glyph
-               color: App.themeTextPrimary; font.pixelSize: 12
-               font.bold: sb.boldGlyph; font.italic: sb.italicGlyph
-               font.underline: sb.underlineGlyph
-               visible: sb.iconName.length === 0 }
+        // Nur mit Zeichen gebaut: ein leeres Text beobachtet in Qt den Viewport (Kosten bei jeder Verschiebung).
+        Loader {
+            anchors.centerIn: parent
+            active: sb.iconName.length === 0 && sb.glyph.length > 0
+            sourceComponent: Text {
+                text: sb.glyph
+                color: App.themeTextPrimary
+                font.pixelSize: 12
+                font.bold: sb.boldGlyph
+                font.italic: sb.italicGlyph
+                font.underline: sb.underlineGlyph
+            }
+        }
         DrawnIcon { anchors.centerIn: parent; name: sb.iconName; size: 16
                      visible: sb.iconName.length > 0 }
         HoverHandler { id: sbHover }
@@ -95,9 +103,15 @@ Rectangle {
                 : Qt.rgba(App.themeTextPrimary.r, App.themeTextPrimary.g, App.themeTextPrimary.b, 0.07))
         border.color: checked ? App.themeAccent : App.themeBorder
         border.width: 1
-        Text { anchors.centerIn: parent; text: ab.glyph
-               color: App.themeTextPrimary; font.pixelSize: 12
-               visible: ab.iconName.length === 0 }
+        Loader {
+            anchors.centerIn: parent
+            active: ab.iconName.length === 0 && ab.glyph.length > 0
+            sourceComponent: Text {
+                text: ab.glyph
+                color: App.themeTextPrimary
+                font.pixelSize: 12
+            }
+        }
         DrawnIcon { anchors.centerIn: parent; name: ab.iconName; size: 16
                      visible: ab.iconName.length > 0 }
         HoverHandler { id: abHover }
@@ -116,9 +130,15 @@ Rectangle {
                 : Qt.rgba(App.themeTextPrimary.r, App.themeTextPrimary.g, App.themeTextPrimary.b, 0.07))
         border.color: checked ? App.themeAccent : App.themeBorder
         border.width: 1
-        Text { anchors.centerIn: parent; text: vb.glyph
-               color: App.themeTextPrimary; font.pixelSize: 12
-               visible: vb.iconName.length === 0 }
+        Loader {
+            anchors.centerIn: parent
+            active: vb.iconName.length === 0 && vb.glyph.length > 0
+            sourceComponent: Text {
+                text: vb.glyph
+                color: App.themeTextPrimary
+                font.pixelSize: 12
+            }
+        }
         DrawnIcon { anchors.centerIn: parent; name: vb.iconName; size: 16
                      visible: vb.iconName.length > 0 }
         HoverHandler { id: vbHover }
@@ -131,6 +151,8 @@ Rectangle {
         property int toolValue: 0
         property int styleValue: -1
         property string tip: ""
+        // Unterer Streifen als Schalter „Text bleibt aktiv" - nur am Text-Knopf.
+        property bool hasSwitch: false
         //  Knöpfe, die KEIN Werkzeug setzen (toolValue < 0), sondern nur etwas
         //  auslösen - z. B. der Bild-Einfügen-Knopf.
         signal clicked()
@@ -144,14 +166,38 @@ Rectangle {
                 : Qt.rgba(App.themeTextPrimary.r, App.themeTextPrimary.g, App.themeTextPrimary.b, 0.07))
         border.color: checked ? App.themeAccent : App.themeBorder
         border.width: 1
-        Text { anchors.centerIn: parent; text: tb.glyph
-               visible: tb.iconName.length === 0
-               color: App.themeTextPrimary; font.pixelSize: 13 }
+        Loader {
+            anchors.centerIn: parent
+            anchors.verticalCenterOffset: tb.hasSwitch ? -4 : 0
+            active: tb.iconName.length === 0 && tb.glyph.length > 0
+            sourceComponent: Text {
+                text: tb.glyph
+                color: App.themeTextPrimary
+                font.pixelSize: 13
+            }
+        }
         DrawnIcon { anchors.centerIn: parent; name: tb.iconName; size: 16
                      visible: tb.iconName.length > 0 }
+        Rectangle {
+            visible: tb.hasSwitch
+            anchors { bottom: parent.bottom; bottomMargin: 3; horizontalCenter: parent.horizontalCenter }
+            width: 18; height: 7; radius: 3.5
+            color: PdfEdit.textToolSticky
+                   ? App.themeAccent
+                   : Qt.rgba(App.themeTextPrimary.r, App.themeTextPrimary.g, App.themeTextPrimary.b, 0.25)
+            Rectangle {
+                y: 1; width: 5; height: 5; radius: 2.5
+                x: PdfEdit.textToolSticky ? parent.width - width - 1 : 1
+                color: App.themeTextPrimary
+            }
+        }
         HoverHandler { id: tbHover }
         TapHandler {
-            onTapped: {
+            onTapped: (point) => {
+                if (tb.hasSwitch && point.position.y >= tb.height - 11) {
+                    PdfEdit.textToolSticky = !PdfEdit.textToolSticky
+                    return
+                }
                 if (panel.surface) panel.surface.commitEditing()
                 if (tb.styleValue >= 0)
                     panel.ctl.setMarkupStyle(tb.styleValue)
@@ -252,7 +298,10 @@ Rectangle {
                     columns: 3
                     spacing: 4
                     ToolBtn { iconName: "select"; toolValue: 0; tip: App.uiText(App.language, "ImageEditToolSelect") }
-                    ToolBtn { glyph: "T";      toolValue: 1; tip: App.uiText(App.language, "ImageEditToolText") }
+                    ToolBtn { glyph: "T";      toolValue: 1; hasSwitch: true
+                              tip: App.uiText(App.language, "ImageEditToolText") + "\n"
+                                   + App.uiText(App.language, PdfEdit.textToolSticky ? "PdfEditTextStickyOn"
+                                                                                     : "PdfEditTextStickyOff") }
                     ToolBtn { iconName: "pen"; toolValue: 2; tip: App.uiText(App.language, "ImageEditToolPen") }
                     ToolBtn { iconName: "arrow"; toolValue: 3; tip: App.uiText(App.language, "ImageEditToolArrow") }
                     ToolBtn { iconName: "rect"; toolValue: 4; tip: App.uiText(App.language, "ImageEditToolRect") }
@@ -720,7 +769,10 @@ Rectangle {
                     Row {
                         spacing: 4
                         ToolBtn { iconName: "select"; toolValue: 0; tip: App.uiText(App.language, "ImageEditToolSelect") }
-                        ToolBtn { glyph: "T";      toolValue: 1; tip: App.uiText(App.language, "ImageEditToolText") }
+                        ToolBtn { glyph: "T";      toolValue: 1; hasSwitch: true
+                                  tip: App.uiText(App.language, "ImageEditToolText") + "\n"
+                                       + App.uiText(App.language, PdfEdit.textToolSticky ? "PdfEditTextStickyOn"
+                                                                                         : "PdfEditTextStickyOff") }
                         ToolBtn { iconName: "pen"; toolValue: 2; tip: App.uiText(App.language, "ImageEditToolPen") }
                         ToolBtn { iconName: "arrow"; toolValue: 3; tip: App.uiText(App.language, "ImageEditToolArrow") }
                         ToolBtn { iconName: "rect"; toolValue: 4; tip: App.uiText(App.language, "ImageEditToolRect") }

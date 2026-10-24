@@ -5,7 +5,7 @@ import QtQuick.Layouts
 import MediaGallery 1.0
 import "../common"
 
-//  Suchbalken der Tabellen-Flaechen (CSV/TSV und DATEV). Dieselbe Form wie im
+//  Suchbalken der Tabellen-Flaechen (CSV/TSV und DATEV) und der eigenen HTML-Ansicht. Dieselbe Form wie im
 //  Texteditor und im DOCX-Editor, damit die App einheitlich bleibt; ersetzen
 //  kann er nichts.
 //  Der Balken haelt die Eingabe, der Controller die Treffer.
@@ -24,6 +24,8 @@ Rectangle {
 
     property bool grossKlein: false
     property bool ganzeZelle: false
+    //  Im HTML gibt es keine Zellen: der dritte Schalter heisst dort „ganze Woerter".
+    property bool woerter: false
 
     signal geschlossen()
 
@@ -187,9 +189,9 @@ Rectangle {
         FBtn { label: "Aa"; tip: App.uiText(App.language, "EditorFindCase")
                an: root.grossKlein
                onClicked: { root.grossKlein = !root.grossKlein; root._suchen() } }
-        FBtn { wide: true
-               label: App.uiText(App.language, "TableFindCellLabel")
-               tip: App.uiText(App.language, "TableFindWholeCell")
+        FBtn { wide: !root.woerter
+               label: root.woerter ? "W" : App.uiText(App.language, "TableFindCellLabel")
+               tip: App.uiText(App.language, root.woerter ? "EditorFindWords" : "TableFindWholeCell")
                an: root.ganzeZelle
                onClicked: { root.ganzeZelle = !root.ganzeZelle; root._suchen() } }
         Text {

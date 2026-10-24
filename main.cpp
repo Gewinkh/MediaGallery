@@ -113,9 +113,13 @@ protected:
             }
         } else if (t == QEvent::Shortcut) {
             const auto* sc = static_cast<QShortcutEvent*>(ev);
-            qInfo("[KEY] Shortcut         \"%s\" ausgeloest -> %s",
+            //  Das Elternteil nennt die Flaeche, die den Shortcut deklariert; mehrdeutig heisst: zwei waren scharf.
+            const QObject* von = watched->parent();
+            qInfo("[KEY] Shortcut         \"%s\" ausgeloest -> %s (in %s)%s",
                   qPrintable(sc->key().toString()),
-                  watched->metaObject()->className());
+                  watched->metaObject()->className(),
+                  von ? von->metaObject()->className() : "-",
+                  sc->isAmbiguous() ? "  MEHRDEUTIG" : "");
         }
         return false;                       // NIE verbrauchen - nur zusehen
     }

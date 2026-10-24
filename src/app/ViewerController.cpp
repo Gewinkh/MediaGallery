@@ -394,6 +394,10 @@ bool ViewerController::loadPdfDocument(QObject* pdfDocument, const QString& file
     return PdfDocShare::load(pdfDocument, mg::toLocalPath(filePathOrUrl));
 }
 
+void ViewerController::retirePdfDocument(QObject* pdfDocument) {
+    PdfDocShare::retire(pdfDocument);
+}
+
 //  Asynchrone Anforderung (aus QML). Blockiert nie den GUI-Thread.
 void ViewerController::requestPdfAnnotations(const QString& filePathOrUrl) {
     const QString path = mg::toLocalPath(filePathOrUrl);

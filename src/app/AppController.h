@@ -45,6 +45,8 @@ class AppController : public QObject {
     Q_PROPERTY(bool    autoPlay        READ autoPlay        NOTIFY autoPlayChanged)
     Q_PROPERTY(bool    tileDragActive  READ tileDragActive  NOTIFY tileDragActiveChanged)
     Q_PROPERTY(bool    dragLogging     READ dragLogging     CONSTANT)
+    Q_PROPERTY(bool    pdfJumpLogging  READ pdfJumpLogging  CONSTANT)
+    Q_PROPERTY(bool    ownHtml         READ ownHtml         CONSTANT)     // eigener HTML-Renderer statt Chromium
     Q_PROPERTY(bool    fileDropMove    READ fileDropMove    WRITE setFileDropMove NOTIFY fileDropMoveChanged)
     Q_PROPERTY(bool    showHiddenFiles READ showHiddenFiles WRITE setShowHiddenFiles NOTIFY showHiddenFilesChanged)
     Q_PROPERTY(bool    showAllFiles    READ showAllFiles    WRITE setShowAllFiles NOTIFY showAllFilesChanged)
@@ -329,6 +331,8 @@ public:
     QString menuVideoExternalText()  const;
     bool tileDragActive() const { return m_tileDragActive; }
     bool dragLogging() const { return qEnvironmentVariableIsSet("MG_DRAGLOG"); }
+    bool pdfJumpLogging() const { return qEnvironmentVariableIsSet("MG_LOG_PDFJUMP"); }
+    bool ownHtml() const { return qEnvironmentVariableIsSet("MG_HTML_EIGEN"); }
     bool fileDropMove() const;
     bool showHiddenFiles() const;
     void setShowHiddenFiles(bool v);

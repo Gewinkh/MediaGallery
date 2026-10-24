@@ -89,6 +89,14 @@ Item {
             { de: "Speichern (mit Rückmeldung)",   en: "Save (with a check)",         keys: ["Ctrl+S"] },
             { de: "Suchen",                        en: "Find",                        keys: ["Ctrl+F"] },
             { de: "Markierung aufheben",           en: "Remove the mark",             keys: ["Esc"] }
+        ] },
+        //  nurEigen: nur mit dem eigenen HTML-Renderer; die Chromium-Vorschau hat keine Suche.
+        { headerKey: "ShortcutCtxHtml", nurEigen: true, rows: [
+            { de: "Im Dokument suchen",            en: "Search the document",         keys: ["Ctrl+F"] },
+            { de: "Suche schließen",               en: "Close search",                keys: ["Esc"] },
+            { de: "Wort / Absatz markieren",       en: "Select word / paragraph",     keys: ["Doppelklick", "Dreifachklick"] },
+            { de: "Markierten Text kopieren",      en: "Copy selected text",          keys: ["Ctrl+C"] },
+            { de: "Ganzen Text markieren",        en: "Select all text",             keys: ["Ctrl+A"] }
         ] }
     ]
 
@@ -137,7 +145,7 @@ Item {
         spacing: 14
 
         Repeater {
-            model: rootCol.sections
+            model: rootCol.sections.filter(s => !s.nurEigen || App.ownHtml)
             delegate: Column {
                 required property var modelData
                 width: col.width

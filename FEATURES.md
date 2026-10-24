@@ -68,7 +68,7 @@ which. Files without an extension such as `LICENSE`, `README`, `Makefile` or
 - **Document menu** in the header of an open file: date and metadata, source/preview or table/raw file, and the actions of that file type
 - The window title shows folder and file
 - **Split view**: up to four files side by side in one window. Drag the dividers to resize, drag a header to rearrange the layout, `Esc` closes one file
-- **Two galleries side by side** (*View ▸ Split window*): each half has its own folder and filters, with a draggable divider. The same folder may be open in both. Each half opens up to two files. *View ▸ Swap panes* or dragging a half's bar swaps them; both halves come back on the next start
+- **Two galleries side by side** (*View ▸ Split window*): each half has its own folder and filters, with a draggable divider. The same folder may be open in both. Each half opens up to two files. Keyboard shortcuts act on the half under the mouse pointer, for the gallery and for open files alike. *View ▸ Swap panes* or dragging a half's bar swaps them; both halves come back on the next start
 - **Page animation**: slide or fade (*Settings ▸ General*)
 
 ---
@@ -219,7 +219,7 @@ of times · `{4}` exactly four times · `^` line start · `$` line end · `a|b` 
 ---
 
 ## PDF Viewer
-- Pages with a thumbnail sidebar that stays light on memory even for books with a thousand pages; zoom, fit page, fit width
+- Pages with a thumbnail sidebar that stays light on memory even for books with a thousand pages; smooth zoom (Ctrl + mouse wheel, + / -), fit page, fit width
 - **Select and copy text** like in a browser
 - **Search** (`Ctrl+F`) with hits highlighted on the page
 - **Embedded audio and video** play in place; a panel lists the page's audio clips
@@ -241,6 +241,7 @@ new copy; the original is not touched.
 pages change the PDF directly. `Ctrl+Z` undoes them while the file is open.
 
 - **Notes and drawings**: text boxes with full formatting, pen, arrow, rectangle, ellipse. Move, resize, copy, delete, undo. `Alt+Q` hides them all
+- **Text tool**: a click places a box and you type right away; clicking an existing box with the text tool opens it for typing. The small switch in the lower part of the *T* button decides what comes next: off (default) returns to the select tool after the box, on keeps the text tool for more boxes
 - New notes take over the last style; notes can be dragged across pages and snap to text lines
 - **Linked text boxes**: text flows from one box into the next
 - **Replace text**: a box snaps onto a line and comes pre-filled with the existing text
@@ -331,7 +332,7 @@ pages change the PDF directly. `Ctrl+Z` undoes them while the file is open.
 - **Language**: English or German, switchable at runtime
 - **Graphics**: Vulkan, OpenGL or software. If a mode fails to start, the app falls back to a safer one automatically. On Linux laptops with two graphics chips it loads only the driver it actually draws with (about 70 MB less memory)
 - **Keyboard shortcut overview** in *Settings ▸ General*
-- Shortcuts only act where they belong - in a split window only in the active half
+- Shortcuts only act where they belong - in a split window only in the active half, and with several files open only in the one clicked last, also when the click lands in its text or page; the keyboard follows that click, so a text editor in the other half no longer keeps `Ctrl+C`
 - **The app's own file chooser**, in the app's colours, with places, path, filter and hidden files
 - **Linux desktop integration** (after `sudo cmake --install build`): MediaGallery appears in the application menu with its own icon - a large G with a small M - and under *Open with* for every file type it opens and for folders
   - Opening a file shows its folder in the gallery with the file in fullscreen; opening a folder shows that folder

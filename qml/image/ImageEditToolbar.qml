@@ -55,11 +55,19 @@ Item {
                 : "transparent")
         border.color: checked ? App.themeAccent : "transparent"
         border.width: 1
-        Text {
+        // Nur mit Zeichen gebaut: ein leeres Text beobachtet in Qt den Viewport (Kosten bei jeder Verschiebung).
+        Loader {
             anchors.centerIn: parent
-            text: tb.glyph; color: tb.glyphColor; font.pixelSize: 12
-            font.bold: tb.boldGlyph; font.italic: tb.italicGlyph; font.underline: tb.underlineGlyph
-               visible: tb.iconName.length === 0 }
+            active: tb.iconName.length === 0 && tb.glyph.length > 0
+            sourceComponent: Text {
+                text: tb.glyph
+                color: tb.glyphColor
+                font.pixelSize: 12
+                font.bold: tb.boldGlyph
+                font.italic: tb.italicGlyph
+                font.underline: tb.underlineGlyph
+            }
+        }
         DrawnIcon { anchors.centerIn: parent; name: tb.iconName; size: 16
                      color: tb.glyphColor
                      visible: tb.iconName.length > 0 }

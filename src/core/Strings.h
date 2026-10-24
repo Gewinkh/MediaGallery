@@ -467,6 +467,10 @@ enum class StringKey {
     // HTML-Vorschau (FullscreenViewer-Umschalter Quelltext ⇄ gerenderte Seite)
     ViewerShowPreview,
     ViewerShowSource,
+    ViewerHtmlScripts,
+    ViewerOpenInBrowser,
+    ViewerHtmlCopy,
+    ViewerHtmlSelectAll,
     ViewerPreviewCrashed,
     MarkdownDetailsShow,        // Zusatz hinter einer zugeklappten <details>-Summary
     MarkdownDetailsHide,
@@ -532,6 +536,8 @@ enum class StringKey {
     PdfEditVAlignLabel,        // Panel: vertikale Ausrichtung (oben/mittig)
     PdfEditToolReplace,        // Werkzeug-Tooltip: Text ersetzen (weiße Deckfläche + Textbox)
     PdfEditToolCaret,          // Werkzeug-Tooltip: Text bearbeiten (Caret in der Textebene)
+    PdfEditTextStickyOn,       // Tooltip-Zeile des Schalters im Text-Knopf: bleibt aktiv
+    PdfEditTextStickyOff,      // … springt nach der neuen Box zur Auswahl
     PdfEditCaretLoading,       // Hinweis: Zeichen-Layout der Seite wird geladen
     PdfEditCaretUnavailable,   // Hinweis: Seite nicht zeichenweise bearbeitbar
     PdfEditTextOpFailed,       // Toast: Änderung an der Textebene nicht möglich
@@ -1058,6 +1064,7 @@ enum class StringKey {
     SettingsTableGridLinesTip,
     TableColumnN,
     ShortcutCtxTable,           // Abschnitt: Tabelle (CSV/TSV)
+    ShortcutCtxHtml,            // Abschnitt: HTML-Vorschau (eigener Renderer)
 };
 Q_ENUM_NS(StringKey)
 }  // namespace SK

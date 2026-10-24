@@ -38,6 +38,11 @@ private:
 // PdfPageImage braucht. false, wenn die Datei nicht ladbar ist (Status dann Error).
 bool load(QObject* quickDoc, const QString& localPath);
 
+// GUI-Faden, statt destroy(): PdfPageImage liest im Bildfaden von Qt Quick ueber einen Traeger des QML-Dokuments, den
+// Qt dort nicht festhaelt. Die Huelle bleibt bis zum Ende der Engine, das innere Dokument wird geschlossen (nach einer
+// Probe durch denselben Faden, sobald keine Leihe mehr laeuft) und nicht mehr verliehen.
+void retire(QObject* quickDoc);
+
 // Leer, wenn keins angeboten ist oder die Datei sich seit dem Anbieten geaendert hat.
 Lease borrow(const QString& localPath);
 
