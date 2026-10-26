@@ -134,11 +134,13 @@ private:
     void schichtFertig(int gen, int index, QImage bild);
     uint32_t elementUnter(QPointF p) const;
     void legeNach();
+    bool hoeheVeraltet() const;
     void zeigeKacheln();
     std::pair<int, int> sicht() const;
     bool sichtOffen() const;
     bool imFenster(int index, const Kachel& k) const;
     Stelle stelleBei(QPointF p, bool glyphe = false) const;
+    std::vector<float> schichtVersatz() const;
     uint32_t verweisBei(QPointF p) const;
     void folge(uint32_t verweis);
     void springe(uint32_t ziel);
@@ -164,7 +166,7 @@ private:
     int m_richtung = 0;                 // letzte Rollrichtung, +1 abwaerts
     std::shared_ptr<Gewollt> m_gewollt = std::make_shared<Gewollt>();
     float m_hoehe = 0;
-    float m_gelegtBreite = -1;
+    float m_gelegtBreite = -1, m_gelegtHoehe = -1;
     //  Im Viewer kommt die Hoehe nach der Breite: gelegt wird erst mit ihr (vh, fixed unten).
     bool m_ohneHoehe = false;
     qreal m_gelegtFaktor = 0;

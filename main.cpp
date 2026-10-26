@@ -19,8 +19,6 @@
 #include <QUrl>
 #include <QTimer>
 #include <QDebug>
-#include <QKeyEvent>
-#include <QShortcutEvent>
 #include <QDir>
 #include <QIcon>
 
@@ -64,6 +62,9 @@
 #include "media/MediaModel.h"
 #include "media/MediaProxyModel.h"
 #include "media/GalleryRowModel.h"
+#ifdef MG_DEV_KEYLOG
+#include "KeyLogger.h"
+#endif
 
 namespace {
 QElapsedTimer  g_startClock;
@@ -85,45 +86,6 @@ void startMark(const char* what) {
           static_cast<long long>(g_startClock.elapsed()), startRssKb());
 }
 
-class KeyLogger : public QObject {
-public:
-    using QObject::QObject;
-
-protected:
-    bool eventFilter(QObject* watched, QEvent* ev) override {
-        const QEvent::Type t = ev->type();
-        if (t == QEvent::KeyPress || t == QEvent::ShortcutOverride) {
-            const auto* k = static_cast<QKeyEvent*>(ev);
-            qInfo("[KEY] %-16s key=0x%08X mods=0x%08X text=\"%s\" -> %s%s",
-                  t == QEvent::KeyPress ? "KeyPress" : "ShortcutOverride",
-                  k->key(), unsigned(k->modifiers().toInt()),
-                  qPrintable(k->text()),
-                  watched->metaObject()->className(),
-                  ev->isAccepted() ? "  [bereits angenommen]" : "");
-            // Tastaturfokus - greift nur, solange die Ansicht ihn hat
-            if (t == QEvent::KeyPress) {
-                if (auto* w = qobject_cast<QQuickWindow*>(watched)) {
-                    QQuickItem* f = w->activeFocusItem();
-                    QObject*    o = f ? f->parent() : nullptr;
-                    qInfo("[KEY]     Fokus: %s   (gehoert zu: %s)   Fenster aktiv: %s",
-                          f ? f->metaObject()->className() : "(keins)",
-                          o ? o->metaObject()->className() : "-",
-                          w->isActive() ? "ja" : "nein");
-                }
-            }
-        } else if (t == QEvent::Shortcut) {
-            const auto* sc = static_cast<QShortcutEvent*>(ev);
-            //  Das Elternteil nennt die Flaeche, die den Shortcut deklariert; mehrdeutig heisst: zwei waren scharf.
-            const QObject* von = watched->parent();
-            qInfo("[KEY] Shortcut         \"%s\" ausgeloest -> %s (in %s)%s",
-                  qPrintable(sc->key().toString()),
-                  watched->metaObject()->className(),
-                  von ? von->metaObject()->className() : "-",
-                  sc->isAmbiguous() ? "  MEHRDEUTIG" : "");
-        }
-        return false;                       // NIE verbrauchen - nur zusehen
-    }
-};
 }  // namespace
 
 int main(int argc, char* argv[]) {
@@ -160,10 +122,12 @@ int main(int argc, char* argv[]) {
     QGuiApplication app(argc, argv);
     startMark("QGuiApplication steht");
 
+#ifdef MG_DEV_KEYLOG
     if (qEnvironmentVariableIsSet("MG_KEYLOG")) {
         app.installEventFilter(new KeyLogger(&app));
         qInfo("[KEY] Mitschnitt an - jeder Tastendruck wird protokolliert.");
     }
+#endif
     app.setApplicationName("MediaGallery");
     app.setOrganizationName("MediaGallery");
     app.setApplicationVersion("1.0.0");

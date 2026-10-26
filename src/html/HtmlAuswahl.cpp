@@ -241,11 +241,11 @@ Bereich bereich(const Ordnung& o, const Stelle& a, const Stelle& b) {
     return vor(o, b, a) ? Bereich{ b, a } : Bereich{ a, b };
 }
 
-Stelle treffe(const Layout& l, const Ordnung& o, float x, float y, bool glyphe) {
+Stelle treffe(const Layout& l, const Ordnung& o, float x, float y, bool glyphe, const Verschub& v) {
     uint32_t beste = kKein;
     qreal abstand = INFINITY;
     for (uint32_t i = 0; i < l.zeilen.size(); ++i) {
-        const QRectF z = zeileGemalt(l, o, i);
+        const QRectF z = zeileGemalt(l, o, i).translated(0, v.von(l.zeilen[i].absatz));
         if (z.isEmpty()) continue;
         const qreal dy = y < z.top() ? z.top() - y : y >= z.bottom() ? y - z.bottom() : 0;
         const qreal dx = x < z.left() ? z.left() - x : x > z.right() ? x - z.right() : 0;
@@ -253,7 +253,7 @@ Stelle treffe(const Layout& l, const Ordnung& o, float x, float y, bool glyphe) 
     }
     if (beste == kKein || l.zeilen[beste].absatz >= l.absaetze.size()) return {};
     const Zeile& z = l.zeilen[beste];
-    x = float(o.abbildungen[o.zeile[beste]].t.inverted().map(QPointF(x, y)).x());
+    x = float(o.abbildungen[o.zeile[beste]].t.inverted().map(QPointF(x, y - v.von(z.absatz))).x());
     std::vector<Glyphe> g;
     zeilenGlyphen(l, o, beste, g);
     if (g.empty()) return { z.absatz, z.anfang };
@@ -301,16 +301,18 @@ Bereich alles(const Layout&, const Ordnung& o) {
     return { { o.folge.front().absatz, o.folge.front().von }, { o.folge.back().absatz, o.folge.back().bis } };
 }
 
-void flaechen(const Layout& l, const Ordnung& o, const Bereich& b, float y0, float y1, std::vector<Rechteck>& aus) {
+void flaechen(const Layout& l, const Ordnung& o, const Bereich& b, float y0, float y1, std::vector<Rechteck>& aus,
+              const Verschub& v) {
     std::vector<Glyphe> g;
     jeAbschnitt(o, b, [&](const Abschnitt& teil, int32_t von, int32_t bis) {
         if (von >= bis) return;
         const Absatz& a = l.absaetze[teil.absatz];
+        const float d = v.von(teil.absatz);
         for (uint32_t zi = a.zeilenAnfang; zi < a.zeilenAnfang + a.zeilenAnzahl && zi < l.zeilen.size(); ++zi) {
             const Zeile& z = l.zeilen[zi];
             if (z.anfang + z.laenge <= von || z.anfang >= bis) continue;
             const QRectF gemalt = zeileGemalt(l, o, zi);
-            if (gemalt.isEmpty() || gemalt.bottom() <= y0 || gemalt.top() >= y1) continue;
+            if (gemalt.isEmpty() || gemalt.bottom() + d <= y0 || gemalt.top() + d >= y1) continue;
             const Abbildung& ab = o.abbildungen[o.zeile[zi]];
             zeilenGlyphen(l, o, zi, g);
             for (size_t j = 0; j < g.size();) {
@@ -318,7 +320,7 @@ void flaechen(const Layout& l, const Ordnung& o, const Bereich& b, float y0, flo
                 const float x1 = g[j].x1;
                 while (j < g.size() && g[j].zeichen >= von && g[j].zeichen < bis) ++j;
                 const QRectF r = ab.t.mapRect(QRectF(x1, z.y, g[j - 1].x2 - x1, z.h)) & ab.clip;
-                if (!r.isEmpty()) aus.push_back({ float(r.x()), float(r.y()), float(r.width()), float(r.height()) });
+                if (!r.isEmpty()) aus.push_back({ float(r.x()), float(r.y()) + d, float(r.width()), float(r.height()) });
             }
         }
     });

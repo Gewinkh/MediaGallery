@@ -491,6 +491,12 @@ if(APPLE)
         MACOSX_BUNDLE_ICON_FILE MediaGallery.icns)
 endif()
 
+#  Der Tastenmitschnitt schreibt jeden Tastentext mit: nur im Entwicklerbaum, ein Klon kann ihn nicht einschalten.
+if(MG_BUILD_TESTS AND EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/tests/werkzeuge/KeyLogger.h)
+    target_compile_definitions(MediaGallery PRIVATE MG_DEV_KEYLOG)
+    target_include_directories(MediaGallery PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/tests/werkzeuge)
+endif()
+
 #  tests/ steht in der .gitignore - ein frischer Klon hat es nicht.
 if(MG_BUILD_TESTS AND EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/tests/CMakeLists.txt)
     enable_testing()

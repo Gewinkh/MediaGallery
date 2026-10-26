@@ -102,6 +102,7 @@ struct Basis {
     const Stil* schrift = nullptr;      // ch/ex messen an deren Schrift, erst wenn ein Wert sie braucht
     const RohPool* pool = nullptr;
     SchriftMesser* messer = nullptr;
+    const Medium* medium = nullptr;
 };
 
 double jeEm(const Basis& b, bool ch) {
@@ -123,9 +124,10 @@ bool einheit(double v, std::string_view e, const Basis& b, Lin& aus) {
     else if (gleich(e, "em")) f = b.em;
     else if (gleich(e, "rem")) f = b.rem;
     else if (gleich(e, "vw")) f = b.vw;
-    else if (gleich(e, "vh")) f = b.vh;
-    else if (gleich(e, "vmin")) f = std::min(b.vw, b.vh);
-    else if (gleich(e, "vmax")) f = std::max(b.vw, b.vh);
+    else if (gleich(e, "vh") || gleich(e, "vmin") || gleich(e, "vmax")) {
+        if (b.medium) b.medium->nutztHoehe();
+        f = gleich(e, "vh") ? b.vh : gleich(e, "vmin") ? std::min(b.vw, b.vh) : std::max(b.vw, b.vh);
+    }
     else if (gleich(e, "ch") || gleich(e, "ex")) f = b.em * jeEm(b, gleich(e, "ch"));
     else if (gleich(e, "pt")) f = 96.0 / 72;
     else if (gleich(e, "pc")) f = 16;
@@ -719,7 +721,7 @@ bool setze(uint16_t e, std::string_view wert, Stil& s, const Umfeld& u, RohPool*
     const Medium standard;
     const Medium& m = u.medium ? *u.medium : standard;
     const Basis b{ s.schriftGroesse / double(kQ), u.wurzelSchrift / double(kQ), m.breite / 100.0, m.hoehe / 100.0, &s, pool,
-                   m.messer };
+                   m.messer, &m };
     const std::string_view t = ohneRand(wert);
     std::string_view w[16];
     Laenge l;
@@ -920,6 +922,7 @@ bool setze(uint16_t e, std::string_view wert, Stil& s, const Umfeld& u, RohPool*
             if (e == std::string_view::npos) e = t.size();
             const std::string_view x = ohneRand(t.substr(a, e - a));
             if (!gleich(x, "scroll") && !gleich(x, "fixed") && !gleich(x, "local")) return false;
+            if (gleich(x, "fixed")) m.nutztHoehe();
             a = e + 1;
         }
         return roh(t, s.hintergrundFest, pool, "scroll");

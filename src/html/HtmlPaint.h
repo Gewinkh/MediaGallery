@@ -13,7 +13,8 @@ class QSvgRenderer;
 namespace mg::html {
 
 enum class BArt : uint8_t { Flaeche, Rahmen, Text, Linie, Verlauf, Bild, ClipAn, ClipText, ClipAus, TransformAn, TransformAus,
-                            Verweis };  // Verweis: Klickflaeche eines Links (daten = Kasten), malt nichts, nur fuers PDF
+                            Verweis, Schatten, GruppeAn, GruppeAus };  // Verweis: Klickflaeche eines Links, nur fuers PDF
+inline constexpr uint32_t kGruppeEinfach = 0x100;   // GruppeAn: r = Umriss, farbe = Deckkraft | dies, wenn nichts ueberlappt
 
 struct Befehl {
     Rechteck r;
@@ -31,13 +32,13 @@ struct Rahmen {
     float rx[4] = {}, ry[4] = {};
 };
 
-//  Schicht von background-image; linear (x1,y1) -> (x2,y2), radial um (x1,y1) mit Halbachsen x2, y2, relativ zur Kachel.
+//  background-image-Schicht zur Kachel: linear (x1,y1) -> (x2,y2), radial um (x1,y1) Halbachsen x2/y2, konisch ab x2 Grad.
 struct Verlauf {
     Rechteck kachel;
     float x1 = 0, y1 = 0, x2 = 0, y2 = 0;
     uint32_t haltAnfang = 0, haltAnzahl = 0;
     uint32_t rahmen = kKein;            // Radien der Flaeche
-    bool radial = false, wiederholenX = true, wiederholenY = true;
+    bool radial = false, konisch = false, wiederholenX = true, wiederholenY = true;
     bool fest = false;                  // background-attachment fixed: das PDF setzt die Kachel je Seite neu an
 };
 
@@ -50,6 +51,24 @@ struct Bild {
     uint8_t deckkraft = 255;
     bool wiederholenX = false, wiederholenY = false;
     bool fest = false;
+};
+
+//  box-shadow, Form schon versetzt und gespreizt; `kasten` ist der Clip: Randkasten aussen, Innenabstandskasten bei inset.
+struct Schatten {
+    Rechteck form, kasten;
+    uint32_t formRahmen = kKein, kastenRahmen = kKein;
+    uint32_t farbe = 0;
+    uint32_t bild = kKein;              // Index in schattenBilder; kKein: ohne Unschaerfe nur die Form
+    float rand = 0;                     // so weit reicht die Unschaerfe ueber die Form hinaus
+    bool innen = false;
+    bool ausschneiden = false;          // aussen: der Hintergrund deckt den Kasten nicht, der Schatten darf nicht darunter
+};
+
+//  Verwischte Form, gefaerbt; je lange Achse Anfang, gestreckter Streifen, Ende. Die Mitte fehlt (aussen eine Flaeche).
+struct SchattenBild {
+    QImage teile[9];
+    uint8_t spalten = 1, zeilen = 1;
+    float schritt = 1;                  // Dokumentpixel je Maskenpixel
 };
 
 struct Halt {
@@ -66,6 +85,7 @@ struct Schicht {
     Rechteck kasten;
     float oben = NAN, unten = NAN;      // sticky: Versaetze; beide NAN bei fixed
     float grenzeOben = 0, grenzeUnten = 0;
+    uint8_t deckkraft = 255;
     bool fest = false;
 
     float versatz(float y0, float h) const;
@@ -82,6 +102,8 @@ struct Anzeigeliste {
     std::vector<uint32_t> fest;
     std::vector<Schicht> schichten;
     std::vector<uint32_t> textMasken;   // background-clip: text, je Maske die Anzahl, dann die Laeufe
+    std::vector<Schatten> schatten;
+    std::vector<SchattenBild> schattenBilder;   // gleiche Form, Unschaerfe und Farbe teilen eines
     uint32_t leinwand = 0xFFFFFFFFu;    // Hintergrund von html bzw. body, deckt das ganze Dokument
     float breite = 0, hoehe = 0;
     size_t bytes() const;

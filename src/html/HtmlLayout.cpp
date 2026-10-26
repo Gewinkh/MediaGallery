@@ -77,6 +77,7 @@ struct Schrift {
     QFont font;                         // ohne Groesse
     float groesse = 16, abstand = 0, eigeneSkala = 1;
     float oben = 0, unten = 0, luecke = 0, xHoehe = 0, mittel = 0, breitest = 0, leer = 0;
+    QString familie;                    // tatsaechlich geladene erste Schrift: alles andere in einer Zeile ist Ersatz
     mutable float skala = 0;
     mutable QFont skaliert;
     mutable QTextCharFormat format;
@@ -109,6 +110,7 @@ enum class Modus : uint8_t { Legen, Min, Max };
 struct Beitrag {
     int32_t anfang = 0, ende = 0;
     float oben = 0, unten = 0;
+    Vertikal v = Vertikal::Baseline;    // Top/Bottom: nur die Hoehe unten - oben zaehlt, gelegt an der fertigen Zeile
 };
 
 struct Rand {
@@ -121,8 +123,9 @@ struct Rand {
 struct AtomLage {
     uint32_t kasten;
     int32_t pos;
-    float links, oben;                  // Aussenabstand links, Randkasten-Oberkante ab der Grundlinie
+    float links, oben;                  // Aussenabstand links, Randkasten-Oberkante ab der Grundlinie (Top/Bottom: ab Zeilenkante)
     uint32_t absatzVon, absatzBis;
+    Vertikal v = Vertikal::Baseline;
 };
 
 struct Sammlung {
@@ -169,6 +172,8 @@ public:
         m_aus.breite = m_breite;
         m_aus.hoehe = m_aus.fensterHoehe = float(m_m.hoehe);
         if (m_k.kaesten.empty()) return;
+        const Stil& w = stil(0);
+        if (prozentual(w.hoehe) || prozentual(w.minHoehe) || prozentual(w.maxHoehe)) m_m.nutztHoehe();
         const Erg r = block(0, m_breite, float(m_m.hoehe), -1, -1);
         m_aus.lage[0].x = r.links;
         m_aus.lage[0].y = r.oben.wert() + r.versatz;
@@ -176,7 +181,11 @@ public:
         absolutieren();
         marken();
         klebe();
+        //  Eine kurze Seite ist so hoch wie das Fenster.
+        if (m_aus.hoehe <= m_aus.fensterHoehe) m_m.nutztHoehe();
     }
+
+    static bool prozentual(const Laenge& l) { return l.art == LArt::Wert && (l.mitProzent || l.prozent != 0); }
 
 private:
     struct Erg {
@@ -263,6 +272,7 @@ private:
         f.breitest = float(fm.maxWidth()) / k;
         //  Chromium: OS/2 xAvgCharWidth und die Breite des head-Rahmens, beide gerundet; Qt nimmt den groessten Vorschub.
         const QRawFont roh = QRawFont::fromFont(skaliert(f, k));
+        f.familie = roh.familyName();
         const QByteArray os2 = roh.fontTable("OS/2"), head = roh.fontTable("head");
         const auto be16 = [](const QByteArray& b, int i) { return int16_t(uint8_t(b[i]) << 8 | uint8_t(b[i + 1])); };
         if (head.size() >= 44) {
@@ -1133,7 +1143,10 @@ private:
         if (e == "rem") return v * px(m_s.stile[m_s.jeKnoten[m_d.html]].schriftGroesse);
         if (e == "%") return bezug >= 0 ? v * bezug / 100.f : NAN;
         if (e == "vw") return v * float(m_m.breite) / 100.f;
-        if (e == "vh") return v * float(m_m.hoehe) / 100.f;
+        if (e == "vh") {
+            m_m.nutztHoehe();
+            return v * float(m_m.hoehe) / 100.f;
+        }
         if (e == "pt") return v * 4.f / 3.f;
         return NAN;
     }
@@ -2561,7 +2574,8 @@ private:
 
     void legeAbsolut(const Absolut& a) {
         float cx = 0, cy = 0, cB = m_breite, cH = float(m_m.hoehe);
-        if (a.bezug != kKein) {
+        if (a.bezug == kKein) m_m.nutztHoehe();
+        else {
             const Stil& bs = stil(a.bezug);
             cx = px(bs.rahmenBreite[3]);
             cy = px(bs.rahmenBreite[0]);
@@ -2744,6 +2758,9 @@ private:
         case Vertikal::Super: return -std::floor(g / 3 + 1);
         case Vertikal::Middle: return -ef.xHoehe / 2 + (f.oben - f.unten) / 2;
         case Vertikal::Wert: return -aufloesen(s.vertikalWert, zeilenHoehe(s, f));
+        //  Kante des Zeilenhoehen-Kastens (samt halbem Durchschuss) an Ober- bzw. Unterlaenge der Elternschrift
+        case Vertikal::TextTop: return f.oben - ef.oben + (zeilenHoehe(s, f) - f.oben - f.unten) / 2;
+        case Vertikal::TextBottom: return ef.unten - f.unten - (zeilenHoehe(s, f) - f.oben - f.unten) / 2;
         default: return 0;
         }
     }
@@ -2867,11 +2884,18 @@ private:
         sm.stuecke.push_back({ c, pos, 1, shift });
         if (modus != Modus::Legen) return;
         float oben = shift - grund;
-        if (s.vertikal == Vertikal::Middle) oben = shift - f.xHoehe / 2 - hoehe / 2;
-        else if (s.vertikal == Vertikal::Sub || s.vertikal == Vertikal::Super || s.vertikal == Vertikal::Wert)
-            oben += verschiebung(s, stil(C.eltern), f, f);
-        sm.beitraege.push_back({ pos, pos + 1, oben, oben + hoehe });
-        sm.atome.push_back({ c, pos, ml, oben + e.a[0] + versatz, absatzVon, uint32_t(m_aus.absaetze.size()) });
+        Vertikal zv = Vertikal::Baseline;
+        switch (s.vertikal) {
+        case Vertikal::Middle: oben = shift - f.xHoehe / 2 - hoehe / 2; break;
+        case Vertikal::Sub: case Vertikal::Super: case Vertikal::Wert: oben += verschiebung(s, stil(C.eltern), f, f); break;
+        case Vertikal::TextTop: oben = shift - f.oben; break;
+        case Vertikal::TextBottom: oben = shift + f.unten - hoehe; break;
+        case Vertikal::Top: oben = 0; zv = Vertikal::Top; break;
+        case Vertikal::Bottom: oben = -hoehe; zv = Vertikal::Bottom; break;
+        default: break;
+        }
+        sm.beitraege.push_back({ pos, pos + 1, oben, oben + hoehe, zv });
+        sm.atome.push_back({ c, pos, ml, oben + e.a[0] + versatz, absatzVon, uint32_t(m_aus.absaetze.size()), zv });
     }
 
     QTextOption textOption(const Stil& s, const Schrift& f, bool umbricht, float skala) const {
@@ -2954,19 +2978,55 @@ private:
             //  Ein Umbruch am Absatzende eroeffnet keine leere Zeile.
             if (a == e && a == n && a > 0 && sm.text[a - 1] == QChar(QChar::LineSeparator)) break;
             float oben = strutOben, unten = strutUnten;
+            bool zeilenBezug = false;
             for (const Beitrag& b : sm.beitraege) {
                 if (b.anfang >= e && !(b.anfang == e && e == n)) break;
                 if (b.ende <= a && !(b.anfang == b.ende && b.anfang == a)) continue;
+                if (b.v != Vertikal::Baseline) { zeilenBezug = true; continue; }
                 oben = std::min(oben, b.oben);
                 unten = std::max(unten, b.unten);
             }
-            const float zh = unten - oben, gl = -oben;
-            m_aus.zeilen.push_back(Zeile{ x0, y, cw, zh, gl, a, e - a, absatz });
-            glyphen(z, sm, texte, x0, y + gl, uint32_t(m_aus.zeilen.size() - 1));
+            const size_t laufVon = m_aus.laeufe.size();
+            m_aus.zeilen.push_back(Zeile{ x0, y, cw, unten - oben, -oben, a, e - a, absatz });
+            glyphen(z, sm, texte, x0, y - oben, uint32_t(m_aus.zeilen.size() - 1));
+            //  line-height normal: wie Chromium zaehlt jede Ersatzschrift der Zeile mit Ober-/Unterlaenge und halber Luecke
+            //  (CJK, Devanagari, Thai sonst 2 px zu flach). Erst die Laeufe kennen die Schrift, also danach nachschieben.
+            float ob = oben, un = unten;
+            for (size_t i = laufVon; i < m_aus.laeufe.size(); ++i) {
+                const Lauf& lf = m_aus.laeufe[i];
+                const LArt art = stil(lf.kasten).zeilenHoehe.art;
+                const RohMass& m = m_rohMasse[lf.schrift];
+                if (art == LArt::Zahl || art == LArt::Wert || m.familie == schrift(kasten(lf.kasten).stil).familie) continue;
+                const float v = lf.grundlinie - (y - oben);
+                ob = std::min(ob, v - m.oben - m.luecke / 2);
+                un = std::max(un, v + m.unten + m.luecke / 2);
+            }
+            //  top/bottom haengen an der Zeile ohne sie: nur ein hoeherer Kasten streckt sie, nach unten bzw. oben (wie Chromium der Reihe nach).
+            for (size_t i = 0; zeilenBezug && i < sm.beitraege.size(); ++i) {
+                const Beitrag& b = sm.beitraege[i];
+                if (b.anfang >= e && !(b.anfang == e && e == n)) break;
+                if (b.v == Vertikal::Baseline || (b.ende <= a && !(b.anfang == b.ende && b.anfang == a))) continue;
+                const float h = b.unten - b.oben;
+                if (un - ob >= h) continue;
+                if (b.v == Vertikal::Top) un = ob + h;
+                else ob = un - h;
+            }
+            if (ob < oben) {
+                const float d = oben - ob;
+                for (size_t i = laufVon; i < m_aus.laeufe.size(); ++i) {
+                    Lauf& lf = m_aus.laeufe[i];
+                    lf.grundlinie += d;
+                    for (uint32_t g = lf.anfang; g < lf.anfang + lf.anzahl; ++g) m_aus.glyphLagen[2 * size_t(g) + 1] += d;
+                }
+            }
+            const float zh = un - ob, gl = -ob;
+            m_aus.zeilen.back().h = zh;
+            m_aus.zeilen.back().grundlinie = gl;
             for (; atom < sm.atome.size() && sm.atome[atom].pos < e; ++atom) {
                 const AtomLage& at = sm.atome[atom];
                 const float xa = xVon(z, at.pos), xb = xVon(z, at.pos, QTextLine::Trailing);
-                setze(at.kasten, k, x0 + std::min(xa, xb) + at.links, y + gl + at.oben);
+                const float bezug = at.v == Vertikal::Top ? y : at.v == Vertikal::Bottom ? y + zh : y + gl;
+                setze(at.kasten, k, x0 + std::min(xa, xb) + at.links, bezug + at.oben);
                 versetze(at.kasten, cw, -1);
             }
             for (; umbruch < sm.umbrueche.size() && sm.umbrueche[umbruch].second < e; ++umbruch) {
@@ -3063,6 +3123,8 @@ private:
         }
         if (ms.durchDicke <= 0) { ms.durchDicke = ms.unterDicke; ms.durchLage = -float(f.xHeight()) / 2; }
         m_rohSchriften.emplace_back(roh, sk);
+        m_rohMasse.push_back({ std::round(float(roh.ascent()) / sk), std::round(float(roh.descent()) / sk),
+                               std::round(float(roh.leading()) / sk), roh.familyName() });
         m_aus.schriften.push_back(std::move(f));
         m_aus.masse.push_back(ms);
         return uint32_t(m_aus.schriften.size() - 1);
@@ -3275,6 +3337,8 @@ private:
     std::vector<float> m_caret;
     std::vector<int32_t> m_fugen;       // Fugen des laufenden Textstuecks mit Buchstabenabstand
     std::vector<std::pair<QRawFont, float>> m_rohSchriften;     // je Layout::schriften die Schrift des Legens
+    struct RohMass { float oben, unten, luecke; QString familie; };
+    std::vector<RohMass> m_rohMasse;    // parallel dazu, gerundet wie Schrift
     uint32_t m_attrBreite, m_attrHoehe, m_attrViewBox, m_attrTyp, m_attrWert, m_attrSize, m_attrCols, m_attrRows, m_attrSrc;
     uint32_t m_attrColspan, m_attrRowspan;
 };

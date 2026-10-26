@@ -6,6 +6,7 @@
 #include <QTransform>
 
 #include <atomic>
+#include <span>
 
 namespace mg::html {
 
@@ -45,16 +46,27 @@ struct Ordnung {
 };
 Ordnung ordne(const Layout& l, const Anzeigeliste* a = nullptr, const Kastenbaum* k = nullptr);
 
+//  Gerollte Schichten (sticky, fixed): ihre Zeilen stehen um den Versatz ihrer Schicht verschoben; leer: alles im Fluss.
+struct Verschub {
+    std::span<const uint32_t> schichtVon;   // je Absatz seine Schicht, kKein im Fluss
+    std::span<const float> versatz;         // je Schicht
+    float von(uint32_t absatz) const {
+        const uint32_t s = absatz < schichtVon.size() ? schichtVon[absatz] : kKein;
+        return s < versatz.size() ? versatz[s] : 0.f;
+    }
+};
+
 bool vor(const Ordnung& o, const Stelle& a, const Stelle& b);
 Bereich bereich(const Ordnung& o, const Stelle& a, const Stelle& b);
 
 //  Naechste gemalte Zeile; `glyphe`: die Stelle der Glyphe statt der Einfuegemarke an ihrer naeheren Kante.
-Stelle treffe(const Layout& l, const Ordnung& o, float x, float y, bool glyphe = false);
+Stelle treffe(const Layout& l, const Ordnung& o, float x, float y, bool glyphe = false, const Verschub& v = {});
 Bereich wortUm(const Layout& l, const Stelle& s);
 Bereich absatzUm(const Layout& l, const Stelle& s);
 Bereich alles(const Layout& l, const Ordnung& o);
 
-void flaechen(const Layout& l, const Ordnung& o, const Bereich& b, float y0, float y1, std::vector<Rechteck>& aus);
+void flaechen(const Layout& l, const Ordnung& o, const Bereich& b, float y0, float y1, std::vector<Rechteck>& aus,
+              const Verschub& v = {});
 
 QString klartext(const Layout& l, const Ordnung& o, const Bereich& b);
 

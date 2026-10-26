@@ -129,9 +129,17 @@ void lagePaar(const std::vector<std::string_view>& w, float b, float h, float em
     lageWert(w[tauschen ? 0 : 1], h, em, false, y);
 }
 
-//  Farbhalte: fehlende Lagen gleichmaessig verteilt, keine Lage vor der vorigen; Laengen gegen `laengeLinie`.
+//  Farbhalte: fehlende Lagen gleichmaessig verteilt, keine Lage vor der vorigen; Laengen gegen `laengeLinie`,
+//  bei `winkelLagen` (konisch) Winkel oder Prozent einer vollen Drehung.
 bool halte(const std::vector<std::string_view>& args, size_t ab, float laengeLinie, float em, uint32_t aktuell,
-           std::vector<Halt>& aus) {
+           std::vector<Halt>& aus, bool winkelLagen = false) {
+    const auto lageWert = [&](std::string_view t, float& l) {
+        if (!winkelLagen) return laenge(t, laengeLinie, em, l);
+        float z;
+        std::string_view e;
+        if (zahl(t, z, e) && e == "%") { l = z * laengeLinie / 100; return true; }
+        return winkel(t, l);
+    };
     const size_t anfang = aus.size();
     std::vector<uint8_t> fest;
     for (size_t i = ab; i < args.size(); ++i) {
@@ -139,12 +147,12 @@ bool halte(const std::vector<std::string_view>& args, size_t ab, float laengeLin
         uint32_t f;
         if (w.empty() || !stil::farbe(w[0], aktuell, f)) {
             float l;
-            if (w.size() == 1 && laenge(w[0], laengeLinie, em, l)) continue;    // Mittelpunkt-Hinweis
+            if (w.size() == 1 && lageWert(w[0], l)) continue;    // Mittelpunkt-Hinweis
             return false;
         }
         for (size_t k = 1; k <= std::max<size_t>(1, w.size() - 1); ++k) {
             float l = 0;
-            const bool da = k < w.size() && laenge(w[k], laengeLinie, em, l);
+            const bool da = k < w.size() && lageWert(w[k], l);
             aus.push_back(Halt{ laengeLinie > 0 ? l / laengeLinie : 0, f });
             fest.push_back(da);
         }
@@ -234,6 +242,22 @@ bool verlauf(std::string_view name, std::string_view arg, float b, float h, floa
         v.x2 = std::max(rx, 0.01f);
         v.y2 = std::max(ry, 0.01f);
         if (!halte(args, ab, v.x2, em, aktuell, alle)) return false;
+    } else if (gleich(art, "conic-gradient")) {
+        v.konisch = true;
+        size_t ab = 0;
+        float cx = b / 2, cy = h / 2, von = 0;
+        const std::vector<std::string_view> w = teile(args[0], ' ');
+        uint32_t probe;
+        if (!w.empty() && !stil::farbe(w[0], aktuell, probe)) {
+            ab = 1;
+            const auto bei = std::find_if(w.begin(), w.end(), [](std::string_view x) { return gleich(x, "at"); });
+            if (bei != w.end()) lagePaar(std::vector<std::string_view>(bei + 1, w.end()), b, h, em, cx, cy);
+            if (bei != w.begin() && (bei - w.begin() != 2 || !gleich(w[0], "from") || !winkel(w[1], von))) return false;
+        }
+        v.x1 = cx;
+        v.y1 = cy;
+        v.x2 = std::isfinite(von) ? std::fmod(von, 360.f) : 0;
+        if (!halte(args, ab, 360, em, aktuell, alle, true)) return false;
     } else {
         return false;
     }
@@ -278,6 +302,170 @@ bool transformation(std::string_view wert, const Rechteck& r, float em, QTransfo
     const float ox = r.x + r.b / 2, oy = r.y + r.h / 2;
     aus = QTransform::fromTranslate(-ox, -oy) * m * QTransform::fromTranslate(ox, oy);
     return true;
+}
+
+struct SchattenWert {
+    float l[4] = {};                    // x, y, Unschaerfe, Spreizung
+    int n = 0;
+    uint32_t farbe = 0;
+    bool innen = false;
+};
+
+bool schattenWert(std::string_view v, float em, uint32_t aktuell, SchattenWert& w) {
+    w.farbe = aktuell;
+    bool farbeDa = false;
+    for (std::string_view t : teile(v, ' ')) {
+        uint32_t f;
+        if (gleich(t, "inset") && !w.innen) w.innen = true;
+        else if (w.n < 4 && laenge(t, 0, em, w.l[w.n])) w.l[w.n] = std::clamp(w.l[w.n], -1e4f, 1e4f), ++w.n;
+        else if (!farbeDa && stil::farbe(t, aktuell, f)) { w.farbe = f; farbeDa = true; }
+        else return false;
+    }
+    return w.n >= 2 && w.l[2] >= 0;
+}
+
+//  Ecke unter Spreizung; waechst sie ueber den Radius hinaus, laeuft die Rundung nach CSS gedaempft mit.
+float spreize(float r, float s) {
+    if (r <= 0) return 0;
+    if (s > 0 && r < s) {
+        const float q = r / s - 1;
+        return r + s * (1 + q * q * q);
+    }
+    return std::max(0.f, r + s);
+}
+
+//  Mittel ueber [i - lo, i + hi], ausserhalb 0: einer der drei Kastenfilter, die zusammen einem Gauss nahekommen.
+//  Senkrecht zeilenweise, damit der Compiler ueber x vektorisiert.
+void kastenWaag(float* z, int n, int lo, int hi, std::vector<float>& tmp) {
+    tmp.assign(z, z + n);
+    const float teiler = 1.f / float(lo + hi + 1);
+    float summe = 0;
+    for (int i = 0; i < std::min(hi, n); ++i) summe += tmp[size_t(i)];
+    for (int i = 0; i < n; ++i) {
+        if (i + hi < n) summe += tmp[size_t(i + hi)];
+        if (i - lo - 1 >= 0) summe -= tmp[size_t(i - lo - 1)];
+        z[i] = summe * teiler;
+    }
+}
+
+void kastenSenk(std::vector<float>& m, int bw, int bh, int lo, int hi, std::vector<float>& tmp, std::vector<float>& summe) {
+    tmp = m;
+    summe.assign(size_t(bw), 0.f);
+    const float teiler = 1.f / float(lo + hi + 1);
+    const auto zeile = [&](int y, float f) {
+        const float* q = tmp.data() + size_t(y) * size_t(bw);
+        for (int x = 0; x < bw; ++x) summe[size_t(x)] += f * q[x];
+    };
+    for (int y = 0; y < std::min(hi, bh); ++y) zeile(y, 1);
+    for (int y = 0; y < bh; ++y) {
+        if (y + hi < bh) zeile(y + hi, 1);
+        if (y - lo - 1 >= 0) zeile(y - lo - 1, -1);
+        float* z = m.data() + size_t(y) * size_t(bw);
+        for (int x = 0; x < bw; ++x) z[x] = summe[size_t(x)] * teiler;
+    }
+}
+
+inline constexpr qint64 kSchattenPunkte = 256 * 1024;  // je Maske; darueber wird sie groeber statt groesser
+inline constexpr size_t kSchattenBytes = size_t(32) << 20;  // alle Masken einer Seite; danach entfallen neue Schatten
+
+//  Groesse der Maske in Maskenpunkten; sw, sh: die Form darin, geteilt eine ganze Zahl unabhaengig vom Kasten.
+struct SchattenMass {
+    float s = 1, sw = 0, sh = 0;
+    int em = 0, bw = 0, bh = 0;
+    bool teilX = false, teilY = false;
+};
+
+SchattenMass schattenMass(float w, float h, const float rx[4], const float ry[4], float sigma) {
+    SchattenMass m;
+    m.s = std::max(1.f, sigma / 4);
+    const float rl = std::max(rx[0], rx[3]), rr = std::max(rx[1], rx[2]), ro = std::max(ry[0], ry[1]), ru = std::max(ry[3], ry[2]);
+    for (;;) {
+        m.em = int(std::ceil(3 * sigma / m.s));
+        const int ws = int(std::ceil(rl / m.s + m.em) + std::ceil(rr / m.s + m.em)) + 1;
+        const int hs = int(std::ceil(ro / m.s + m.em) + std::ceil(ru / m.s + m.em)) + 1;
+        m.teilX = w / m.s >= ws;
+        m.teilY = h / m.s >= hs;
+        m.sw = m.teilX ? float(ws) : w / m.s;
+        m.sh = m.teilY ? float(hs) : h / m.s;
+        m.bw = int(std::ceil(m.sw)) + 2 * m.em;
+        m.bh = int(std::ceil(m.sh)) + 2 * m.em;
+        if (qint64(m.bw) * m.bh <= kSchattenPunkte) return m;
+        m.s *= 1.5f;
+    }
+}
+
+//  Form mit Radien, verwischt mit sigma (Dokumentpixel); `innen`: der Schatten liegt um das Loch.
+SchattenBild schattenBild(const SchattenMass& ms, const float rx[4], const float ry[4], float sigma, bool innen, uint32_t farbe) {
+    SchattenBild aus;
+    const float s = ms.s, sw = ms.sw, sh = ms.sh;
+    const int em = ms.em, bw = ms.bw, bh = ms.bh;
+    const bool teilX = ms.teilX, teilY = ms.teilY;
+    const float rl = std::max(rx[0], rx[3]), ro = std::max(ry[0], ry[1]);
+    aus.schritt = s;
+    //  Deckung je Maskenpunkt: Rechteck exakt, in den Eckfeldern 4 x 4 Stichproben gegen die Ellipse.
+    std::vector<float> m(size_t(bw) * size_t(bh));
+    const float x0 = float(em), y0 = float(em), x1 = x0 + sw, y1 = y0 + sh;
+    float ex[4], ey[4];
+    for (int i = 0; i < 4; ++i) { ex[i] = rx[i] / s; ey[i] = ry[i] / s; }
+    const auto drin = [&](float x, float y) {
+        if (x < x0 || x >= x1 || y < y0 || y >= y1) return false;
+        int e = -1;
+        float cx = 0, cy = 0;
+        if (x < x0 + ex[0] && y < y0 + ey[0]) { e = 0; cx = x0 + ex[0]; cy = y0 + ey[0]; }
+        else if (x >= x1 - ex[1] && y < y0 + ey[1]) { e = 1; cx = x1 - ex[1]; cy = y0 + ey[1]; }
+        else if (x >= x1 - ex[2] && y >= y1 - ey[2]) { e = 2; cx = x1 - ex[2]; cy = y1 - ey[2]; }
+        else if (x < x0 + ex[3] && y >= y1 - ey[3]) { e = 3; cx = x0 + ex[3]; cy = y1 - ey[3]; }
+        if (e < 0 || ex[e] <= 0 || ey[e] <= 0) return true;
+        const float dx = (x - cx) / ex[e], dy = (y - cy) / ey[e];
+        return dx * dx + dy * dy <= 1;
+    };
+    const auto deckung = [](float a, float b, int i) { return std::clamp(std::min(b, float(i + 1)) - std::max(a, float(i)), 0.f, 1.f); };
+    for (int y = 0; y < bh; ++y)
+        for (int x = 0; x < bw; ++x) {
+            const bool ecke = (x < x0 + std::max(ex[0], ex[3]) || x + 1 > x1 - std::max(ex[1], ex[2]))
+                && (y < y0 + std::max(ey[0], ey[1]) || y + 1 > y1 - std::max(ey[2], ey[3]));
+            float v = deckung(x0, x1, x) * deckung(y0, y1, y);
+            if (ecke && v > 0) {
+                int treffer = 0;
+                for (int j = 0; j < 16; ++j) treffer += drin(float(x) + (float(j % 4) + 0.5f) / 4, float(y) + (float(j / 4) + 0.5f) / 4);
+                v = treffer / 16.f;
+            }
+            m[size_t(y) * size_t(bw) + size_t(x)] = v;
+        }
+    //  Drei Kastenfilter statt Gauss wie bei SVG feGaussianBlur: d = sigma * 3 * sqrt(2 pi) / 4, gerade d versetzt.
+    const int d = int(std::floor(sigma / s * 3 * std::sqrt(2 * std::numbers::pi_v<float>) / 4 + 0.5f));
+    if (d > 1) {
+        const int lo[3] = { d / 2, d % 2 ? d / 2 : d / 2 - 1, d / 2 };
+        const int hi[3] = { d % 2 ? d / 2 : d / 2 - 1, d / 2, d / 2 };
+        std::vector<float> tmp, summe;
+        for (int i = 0; i < 3; ++i) {
+            for (int y = 0; y < bh; ++y) kastenWaag(m.data() + size_t(y) * size_t(bw), bw, lo[i], hi[i], tmp);
+            kastenSenk(m, bw, bh, lo[i], hi[i], tmp, summe);
+        }
+    }
+    QImage bild(bw, bh, QImage::Format_ARGB32_Premultiplied);
+    const float a = float(farbe >> 24);
+    const uint32_t r = farbe >> 16 & 255, g = farbe >> 8 & 255, bl = farbe & 255;
+    for (int y = 0; y < bh; ++y) {
+        QRgb* zeile = reinterpret_cast<QRgb*>(bild.scanLine(y));
+        for (int x = 0; x < bw; ++x) {
+            const float v = std::clamp(m[size_t(y) * size_t(bw) + size_t(x)], 0.f, 1.f);
+            const uint32_t k = uint32_t(a * (innen ? 1 - v : v) + 0.5f);
+            zeile[x] = k << 24 | (r * k + 127) / 255 << 16 | (g * k + 127) / 255 << 8 | (bl * k + 127) / 255;
+        }
+    }
+    //  Der Streifen liegt mindestens Ecke plus Unschaerfe von beiden Kanten: dort ist das Profil das einer unendlichen Kante.
+    const int sx = em + int(std::ceil(rl / s + em)), sy = em + int(std::ceil(ro / s + em));
+    const int gx[4] = { 0, teilX ? sx : bw, teilX ? sx + 1 : bw, bw }, gy[4] = { 0, teilY ? sy : bh, teilY ? sy + 1 : bh, bh };
+    //  Getrennte Bilder: das PDF legt jedes ganze Bild einmal ab, ein Ausschnitt waere je Aufruf eine neue Kopie.
+    aus.spalten = teilX ? 3 : 1;
+    aus.zeilen = teilY ? 3 : 1;
+    for (int zi = 0; zi < aus.zeilen; ++zi)
+        for (int si = 0; si < aus.spalten; ++si)
+            if (!(teilX && teilY && zi == 1 && si == 1)) {
+                aus.teile[zi * aus.spalten + si] = bild.copy(gx[si], gy[zi], gx[si + 1] - gx[si], gy[zi + 1] - gy[zi]);
+            }
+    return aus;
 }
 
 // ---- Bilder und Inline-SVG ----
@@ -473,7 +661,8 @@ public:
                                                         || C.art == KArt::Atom);
             const uint32_t e = C.eltern;
             uint32_t alpha = e != kKein ? m_alpha[e] : 255;
-            if (eigen) alpha = alpha * stil(c).deckkraft / 255;
+            //  Eine Gruppe malt ihren Inhalt deckend in eine Ebene; ihre Deckkraft traegt GruppeAn.
+            if (eigen) alpha = gruppe(c) ? 255 : alpha * stil(c).deckkraft / 255;
             m_alpha[c] = uint8_t(alpha);
             uint32_t deko = (e == kKein || C.art == KArt::Atom || (C.flags & KAusserFluss)) ? 0 : m_deko[e];
             if (eigen && stil(c).dekoration) {
@@ -505,6 +694,14 @@ private:
         if (anonym(k)) return false;
         const Stil& s = stil(k);
         return s.position != Lage::Static || s.transformation != 0 || s.deckkraft < 255;
+    }
+
+    //  opacity an einem Inline-Kasten gilt je Lauf: seine Zeilen malt der Absatz des Blocks, nicht seine Schicht.
+    bool gruppe(uint32_t k) const {
+        if (anonym(k)) return false;
+        const KArt a = kasten(k).art;
+        const uint8_t d = stil(k).deckkraft;
+        return (a == KArt::Block || a == KArt::Atom) && d > 0 && d < 255;
     }
 
     bool clippt(uint32_t k) const {
@@ -588,6 +785,9 @@ private:
         }
         //  Mit background-clip: text sind die Hintergruende Schrift: der Druckstil behaelt sie.
         const bool maske = s.hintergrundText != 0;
+        const bool deckt = !lr && !maske && k != m_leinwandKasten && (s.hintergrund >> 24) == 255 && alpha == 255;
+        const size_t schattenVorher = m_a.schatten.size();
+        schatten(k, r, ra, links, rechts, false, deckt);
         const bool malen = !maske || textMaske(k, r);
         if (malen && k != m_leinwandKasten && (s.hintergrund >> 24) != 0) {
             uint32_t idx = kKein;
@@ -599,15 +799,100 @@ private:
             m_a.befehle.back().hinten = !maske;
         }
         if (malen && s.hintergrundBild != 0 && s.hintergrundBild < m_s.roh.size()) {
-            const size_t vorher = m_a.befehle.size();
+            const size_t vorher = m_a.befehle.size(), verlaeufe = m_a.verlaeufe.size();
             bilder(k, r, ra, rund, alpha);
             for (size_t i = vorher; i < m_a.befehle.size(); ++i) m_a.befehle[i].hinten = !maske;
+            //  Ein deckender Verlauf ueber den ganzen Kasten spart den Clip der Schatten darunter.
+            for (size_t i = verlaeufe; i < m_a.verlaeufe.size() && !deckt && !lr && !maske; ++i) {
+                const Verlauf& v = m_a.verlaeufe[i];
+                bool voll = (v.wiederholenX || (v.kachel.x <= r.x && v.kachel.x + v.kachel.b >= r.x + r.b))
+                    && (v.wiederholenY || (v.kachel.y <= r.y && v.kachel.y + v.kachel.h >= r.y + r.h));
+                for (uint32_t h = v.haltAnfang; h < v.haltAnfang + v.haltAnzahl; ++h) voll &= (m_a.halte[h].farbe >> 24) == 255;
+                if (voll)
+                    for (size_t j = schattenVorher; j < m_a.schatten.size(); ++j) m_a.schatten[j].ausschneiden = false;
+            }
         }
         if (maske && malen) befehl(BArt::ClipAus, {});
+        schatten(k, r, ra, links, rechts, true, deckt);
         if (rahmen) {
             m_a.rahmen.push_back(ra);
             befehl(BArt::Rahmen, rr, 0, uint32_t(m_a.rahmen.size() - 1));
         }
+    }
+
+    //  box-shadow aussen vor dem Hintergrund, inset danach; der erste der Liste liegt oben. Der Druckstil laesst sie weg.
+    void schatten(uint32_t k, const Rechteck& r, const Rahmen& ra, bool links, bool rechts, bool innen, bool deckt) {
+        const Stil& s = stil(k);
+        if (s.schatten == 0 || s.schatten >= m_s.roh.size()) return;
+        //  Je Stil einmal zerlegt; leer heisst ungueltig.
+        const auto [it, neu] = m_schattenWerte.try_emplace(kasten(k).stil);
+        std::vector<SchattenWert>& werte = it->second;
+        if (neu)
+            for (std::string_view t : teile(m_s.roh[s.schatten], ','))
+                if (!schattenWert(t, px(s.schriftGroesse), s.farbe, werte.emplace_back())) { werte.clear(); break; }
+        float rb[4];
+        for (int i = 0; i < 4; ++i) rb[i] = (i == 3 && !links) || (i == 1 && !rechts) ? 0.f : innenRand(k, i);
+        //  inset: Innenabstandskasten mit den inneren Radien.
+        const Rechteck p = innen ? Rechteck{ r.x + rb[3], r.y + rb[0], r.b - rb[1] - rb[3], r.h - rb[0] - rb[2] } : r;
+        if (p.b <= 0 || p.h <= 0) return;
+        Rahmen pr = ra;
+        if (innen)
+            for (int i = 0; i < 4; ++i) {
+                pr.rx[i] = std::max(0.f, ra.rx[i] - rb[i == 1 || i == 2 ? 1 : 3]);
+                pr.ry[i] = std::max(0.f, ra.ry[i] - rb[i < 2 ? 0 : 2]);
+            }
+        const auto radienIndex = [&](const Rahmen& x) {
+            bool rund = false;
+            for (int i = 0; i < 4; ++i) rund |= x.rx[i] > 0 && x.ry[i] > 0;
+            if (!rund) return kKein;
+            m_a.rahmen.push_back(x);
+            return uint32_t(m_a.rahmen.size() - 1);
+        };
+        for (size_t i = werte.size(); i-- > 0;) {
+            const SchattenWert& w = werte[i];
+            const uint32_t farbe = mitDeckkraft(w.farbe, m_alpha[k]);
+            if (w.innen != innen || (farbe >> 24) == 0) continue;
+            const float sp = innen ? -w.l[3] : w.l[3];
+            Schatten sch;
+            sch.form = Rechteck{ p.x + w.l[0] - sp, p.y + w.l[1] - sp, p.b + 2 * sp, p.h + 2 * sp };
+            Rahmen fr;
+            for (int j = 0; j < 4; ++j) { fr.rx[j] = spreize(pr.rx[j], sp); fr.ry[j] = spreize(pr.ry[j], sp); }
+            const bool leer = sch.form.b <= 0 || sch.form.h <= 0;
+            if (leer && !innen) continue;
+            sch.kasten = p;
+            sch.farbe = farbe;
+            sch.innen = innen;
+            sch.ausschneiden = !innen && !deckt;
+            const float sigma = w.l[2] / 2;
+            if (!leer && sigma > 0) {
+                sch.bild = schattenBildFuer(sch.form, fr, sigma, innen, farbe, sch.rand);
+                if (sch.bild == kKein) continue;
+            }
+            if (leer) sch.form = Rechteck{};
+            sch.formRahmen = leer ? kKein : radienIndex(fr);
+            sch.kastenRahmen = radienIndex(pr);
+            m_a.schatten.push_back(sch);
+            const Rechteck aussen{ sch.form.x - sch.rand, sch.form.y - sch.rand, sch.form.b + 2 * sch.rand, sch.form.h + 2 * sch.rand };
+            befehl(BArt::Schatten, innen ? p : aussen, 0, uint32_t(m_a.schatten.size() - 1));
+            m_a.befehle.back().hinten = true;
+        }
+    }
+
+    //  Gleiche Karten teilen ihre Maske; bei langen Kanten haengt sie nicht von der Groesse ab.
+    uint32_t schattenBildFuer(const Rechteck& f, const Rahmen& fr, float sigma, bool innen, uint32_t farbe, float& rand) {
+        const SchattenMass m = schattenMass(f.b, f.h, fr.rx, fr.ry, sigma);
+        rand = float(m.em) * m.s;
+        const float schluessel[15] = { m.sw, m.sh, m.s, sigma, float(innen), float(farbe >> 16), float(farbe & 0xFFFF),
+                                       fr.rx[0], fr.rx[1], fr.rx[2], fr.rx[3], fr.ry[0], fr.ry[1], fr.ry[2], fr.ry[3] };
+        const std::string s(reinterpret_cast<const char*>(schluessel), sizeof(schluessel));
+        if (const auto it = m_schattenBilder.find(s); it != m_schattenBilder.end()) return it->second;
+        if (m_schattenBytes > kSchattenBytes) return kKein;
+        SchattenBild b = schattenBild(m, fr.rx, fr.ry, sigma, innen, farbe);
+        for (const QImage& t : b.teile) m_schattenBytes += size_t(t.sizeInBytes());
+        m_a.schattenBilder.push_back(std::move(b));
+        const uint32_t i = uint32_t(m_a.schattenBilder.size() - 1);
+        m_schattenBilder.emplace(s, i);
+        return i;
     }
 
     //  Die Laeufe des Kastens samt Nachfahren; ohne sie bleibt der Hintergrund ganz weg wie im Browser.
@@ -950,7 +1235,10 @@ private:
         if (fest || eigen) {
             if (fest) m_a.fest.push_back(uint32_t(m_a.transformationen.size()));
             m_a.transformationen.emplace_back();
-            if (eigen) m_a.schichten.emplace_back().anfang = uint32_t(m_a.befehle.size());
+            if (eigen) {
+                m_a.schichten.emplace_back().anfang = uint32_t(m_a.befehle.size());
+                m_a.schichten.back().deckkraft = uint8_t(m_gruppe);
+            }
             befehl(BArt::TransformAn, {}, 0, uint32_t(m_a.transformationen.size() - 1));
         }
         QTransform tr;
@@ -962,6 +1250,15 @@ private:
             befehl(BArt::TransformAn, {}, 0, uint32_t(m_a.transformationen.size() - 1));
         }
         m_festTiefe += fest || eigen || transformiert;
+        const bool gr = gruppe(k);
+        const size_t gruppenAnfang = m_a.befehle.size();
+        const uint32_t gruppeVorher = m_gruppe;
+        if (gr) {
+            const uint32_t e = kasten(k).eltern;
+            const uint32_t alpha = (e != kKein ? m_alpha[e] : 255u) * stil(k).deckkraft / 255;
+            befehl(BArt::GruppeAn, {}, alpha);
+            m_gruppe = m_gruppe * alpha / 255;
+        }
         std::vector<uint32_t> pos;
         sammlePositionierte(k, pos);
         const auto z = [&](uint32_t c) { const int32_t v = stil(c).zIndex; return v == kZAuto ? 0 : v; };
@@ -975,10 +1272,67 @@ private:
         inhalt(k);
         if (clip) befehl(BArt::ClipAus, {});
         for (; i < pos.size(); ++i) schicht(pos[i]);
+        if (gr) {
+            schliesseGruppe(gruppenAnfang);
+            m_gruppe = gruppeVorher;
+        }
         m_festTiefe -= fest || eigen || transformiert;
         if (transformiert) befehl(BArt::TransformAus, {});
         if (fest || eigen) befehl(BArt::TransformAus, {});
         if (eigen) schliesse(m_a.schichten[schichtIndex], k, kl);
+    }
+
+    //  Umriss in den Koordinaten von GruppeAn, eine innere Gruppe als ein Teil. Einfach, wenn sich keine zwei Teile
+    //  ueberlappen: dann gleicht Deckkraft je Befehl der Ebene. Ab 32 Teilen ohne Pruefung die Ebene.
+    void schliesseGruppe(size_t anfang) {
+        std::vector<QTransform> tr{ QTransform() };
+        std::vector<QRectF> teile;
+        bool einfach = true;
+        int innen = 0;
+        QRectF umriss;
+        for (size_t n = anfang + 1; n < m_a.befehle.size(); ++n) {
+            const Befehl& b = m_a.befehle[n];
+            if (innen > 0) {
+                innen += b.art == BArt::GruppeAn ? 1 : b.art == BArt::GruppeAus ? -1 : 0;
+                continue;
+            }
+            switch (b.art) {
+            case BArt::TransformAn:
+                tr.push_back(m_a.transformationen[b.daten] * tr.back());
+                einfach = false;
+                continue;
+            case BArt::TransformAus:
+                if (tr.size() > 1) tr.pop_back();
+                continue;
+            case BArt::ClipText:
+                einfach = false;
+                continue;
+            case BArt::ClipAn: case BArt::ClipAus: case BArt::Verweis:
+                continue;
+            case BArt::GruppeAn:
+                innen = 1;
+                break;
+            default:
+                break;
+            }
+            if (b.r.b <= 0 || b.r.h <= 0) continue;
+            const QRectF q = tr.back().mapRect(QRectF(b.r.x, b.r.y, b.r.b, b.r.h));
+            umriss |= q;
+            if (einfach && teile.size() < 32) {
+                for (const QRectF& t : teile)
+                    if (t.intersects(q)) { einfach = false; break; }
+                teile.push_back(q);
+            } else {
+                einfach = false;
+            }
+        }
+        //  Etwas Rand fuer Tinte ueber dem Laufkasten (Kursive, Unterlaengen) und Kantenglaettung.
+        if (!umriss.isNull()) umriss.adjust(-2, -2, 2, 2);
+        Befehl& an = m_a.befehle[anfang];
+        an.r = umriss.isNull() ? Rechteck{} : Rechteck{ float(umriss.x()), float(umriss.y()), float(umriss.width()),
+                                                         float(umriss.height()) };
+        if (einfach) an.farbe |= kGruppeEinfach;
+        befehl(BArt::GruppeAus, {});
     }
 
     //  Sticky klebt nur am Fenster: unter einem clippenden Vorfahren rollte es im Browser mit dessen Inhalt.
@@ -1004,7 +1358,8 @@ private:
             const Befehl& b = m_a.befehle[n];
             if (b.art == BArt::TransformAn) { tr.push_back(m_a.transformationen[b.daten] * tr.back()); continue; }
             if (b.art == BArt::TransformAus) { if (tr.size() > 1) tr.pop_back(); continue; }
-            if (b.art == BArt::ClipAn || b.art == BArt::ClipAus || b.art == BArt::Verweis || b.r.b <= 0 || b.r.h <= 0) continue;
+            if (b.art == BArt::ClipAn || b.art == BArt::ClipAus || b.art == BArt::Verweis || b.art == BArt::GruppeAn
+                || b.art == BArt::GruppeAus || b.r.b <= 0 || b.r.h <= 0) continue;
             malt = true;
             const QRectF q = tr.back().mapRect(QRectF(b.r.x, b.r.y, b.r.b, b.r.h));
             x0 = std::min(x0, float(q.left()));
@@ -1047,8 +1402,12 @@ private:
     std::vector<Deko> m_dekos;
     uint32_t m_html = kKein, m_body = kKein, m_leinwandKasten = kKein;
     int m_festTiefe = 0;
+    uint32_t m_gruppe = 255;            // Deckkraft aller offenen Gruppen zusammen
     bool m_druck = false;
     std::unordered_map<std::string_view, Geladen> m_geladen;
+    std::unordered_map<std::string, uint32_t> m_schattenBilder;
+    std::unordered_map<uint32_t, std::vector<SchattenWert>> m_schattenWerte;
+    size_t m_schattenBytes = 0;
 };
 
 QColor farbe(uint32_t argb) { return QColor::fromRgba(argb); }
@@ -1173,6 +1532,11 @@ void maleVerlauf(QPainter& p, const QRectF& r, const Anzeigeliste& a, const Verl
         halte.append({ l, farbe(a.halte[i].farbe) });
     }
     if (halte.isEmpty()) return;
+    //  Qt dreht konisch gegen den Uhrzeigersinn, CSS mit ihm: die Halte laufen gespiegelt und rueckwaerts.
+    if (v.konisch) {
+        std::reverse(halte.begin(), halte.end());
+        for (QGradientStop& h : halte) h.first = 1 - h.first;
+    }
     //  Die Kachel rastet mit ein: ein Bruchteil-Rest der naechsten Kachel deckte sonst halb und liess eine helle Fuge.
     const QRectF k = einrasten(p.worldTransform(), QRectF(v.kachel.x, v.kachel.y, v.kachel.b, v.kachel.h));
     QBrush pinsel;
@@ -1182,6 +1546,11 @@ void maleVerlauf(QPainter& p, const QRectF& r, const Anzeigeliste& a, const Verl
         pinsel = QBrush(g);
         pinsel.setTransform(QTransform::fromTranslate(-v.x1, -v.y1) * QTransform::fromScale(1, v.y2 / v.x2)
                             * QTransform::fromTranslate(v.x1 + k.x(), v.y1 + k.y()));
+    } else if (v.konisch) {
+        QConicalGradient g(QPointF(v.x1, v.y1), 90 - v.x2);
+        g.setStops(halte);
+        pinsel = QBrush(g);
+        pinsel.setTransform(QTransform::fromTranslate(k.x(), k.y()));
     } else {
         QLinearGradient g(QPointF(v.x1, v.y1), QPointF(v.x2, v.y2));
         g.setStops(halte);
@@ -1203,14 +1572,18 @@ void maleVerlauf(QPainter& p, const QRectF& r, const Anzeigeliste& a, const Verl
     if (qint64(ex - ax) * (ey - ay) > 4096) { ex = ax + 1; ey = ay + 1; }
     //  PDFium zeigt die Deckkraft-Maske, die Qts PDF-Schreiber neben einen Verlauf legt, deckend (Alpha 4 wird weiss):
     //  durchscheinend geht er dort als Bild mit Alphakanal hinaus.
+    //  Qts PDF-Schreiber gibt konische Verlaeufe leer aus: auch deckend als Bild.
     const bool alsBild = ganzeKachel
-        && std::any_of(halte.cbegin(), halte.cend(), [](const QGradientStop& h) { return h.second.alpha() < 255; });
+        && (v.konisch
+            || std::any_of(halte.cbegin(), halte.cend(), [](const QGradientStop& h) { return h.second.alpha() < 255; }));
     if (alsBild) p.setClipRect(ziel, Qt::IntersectClip);
     //  Weiche Verlaeufe brauchen kaum Bildpunkte: nur so fein, dass Nachbarn hoechstens eine Stufe trennt (vormultipliziert,
     //  samt Deckkraft) - ein Seitenhintergrund wog doppelt aufgeloest 400 KB. Harte Uebergaenge bleiben bei 2.
     qreal fein = 0.25;
     if (alsBild) {
-        const qreal laenge = v.radial ? std::min(v.x2, v.y2) : std::hypot(v.x2 - v.x1, v.y2 - v.y1);
+        const qreal laenge = v.radial ? std::min(v.x2, v.y2)
+                           : v.konisch ? std::numbers::pi * std::hypot(k.width(), k.height())
+                                       : std::hypot(v.x2 - v.x1, v.y2 - v.y1);
         for (qsizetype i = 1; i < halte.size(); ++i) {
             const QColor &c0 = halte[i - 1].second, &c1 = halte[i].second;
             const auto vm = [](const QColor& c, int k) {
@@ -1305,6 +1678,89 @@ void maleBild(QPainter& p, const QRectF& r, const Anzeigeliste& a, const Bild& b
     p.restore();
 }
 
+QPainterPath formPfad(const Anzeigeliste& a, const QRectF& r, uint32_t rahmen) {
+    if (rahmen != kKein) return rundesRechteck(r, a.rahmen[rahmen].rx, a.rahmen[rahmen].ry);
+    QPainterPath p;
+    p.addRect(r);
+    return p;
+}
+
+void maleSchatten(QPainter& p, const Anzeigeliste& a, const Schatten& s, bool pdf) {
+    const QTransform& t = p.worldTransform();
+    const QRectF form(s.form.x, s.form.y, s.form.b, s.form.h), kasten(s.kasten.x, s.kasten.y, s.kasten.b, s.kasten.h);
+    const QColor f = farbe(s.farbe);
+    if (s.bild == kKein) {
+        //  Scharf als Pfad, damit Kanten geglaettet bleiben: ein Pfad-Clip glaettet im Raster nicht.
+        const QRectF fe = einrasten(t, form), ke = einrasten(t, kasten);
+        if (s.innen && form.isEmpty()) {
+            p.fillPath(formPfad(a, ke, s.kastenRahmen), f);
+        } else if (s.innen && ke.contains(fe)) {
+            QPainterPath z = formPfad(a, ke, s.kastenRahmen);
+            z.addPath(formPfad(a, fe, s.formRahmen));
+            z.setFillRule(Qt::OddEvenFill);
+            p.fillPath(z, f);
+        } else if (s.innen) {
+            p.fillPath(formPfad(a, ke, s.kastenRahmen).subtracted(formPfad(a, fe, s.formRahmen)), f);
+        } else {
+            p.fillPath(s.ausschneiden ? formPfad(a, fe, s.formRahmen).subtracted(formPfad(a, ke, s.kastenRahmen))
+                                      : formPfad(a, fe, s.formRahmen), f);
+        }
+        return;
+    }
+    const SchattenBild& m = a.schattenBilder[s.bild];
+    const QRectF feld = form.adjusted(-s.rand, -s.rand, s.rand, s.rand);
+    p.save();
+    if (s.innen) {
+        if (s.kastenRahmen == kKein) p.setClipRect(kasten, Qt::IntersectClip);
+        else p.setClipPath(formPfad(a, kasten, s.kastenRahmen), Qt::IntersectClip);
+        QPainterPath z;
+        z.setFillRule(Qt::OddEvenFill);
+        z.addRect(kasten);
+        z.addRect(feld);
+        p.fillPath(z, f);
+    } else if (s.ausschneiden) {
+        QPainterPath z = formPfad(a, kasten, s.kastenRahmen);
+        z.addRect(feld.united(kasten));
+        z.setFillRule(Qt::OddEvenFill);
+        p.setClipPath(z, Qt::IntersectClip);
+    }
+    //  Teilgrenzen auf Geraetepixel: nebeneinander geglaettete Kanten liessen helle Fugen.
+    qreal xs[4], ys[4];
+    const auto grenzen = [&](qreal* g, int n, qreal von, qreal bis, int anfang, int ende) {
+        g[0] = von;
+        g[n] = n == 1 ? von + anfang * m.schritt : bis;
+        if (n == 3) { g[1] = von + anfang * m.schritt; g[2] = bis - ende * m.schritt; }
+    };
+    grenzen(xs, m.spalten, feld.left(), feld.right(), m.teile[0].width(), m.teile[m.spalten - 1].width());
+    grenzen(ys, m.zeilen, feld.top(), feld.bottom(), m.teile[0].height(), m.teile[(m.zeilen - 1) * m.spalten].height());
+    p.setRenderHint(QPainter::SmoothPixmapTransform);
+    QGradientStops halte;
+    for (int zi = 0; zi < m.zeilen; ++zi)
+        for (int si = 0; si < m.spalten; ++si) {
+            const QRectF ziel = einrasten(t, QRectF(QPointF(xs[si], ys[zi]), QPointF(xs[si + 1], ys[zi + 1])));
+            const QImage& teil = m.teile[zi * m.spalten + si];
+            const bool waag = m.spalten == 3 && si == 1, senk = m.zeilen == 3 && zi == 1;
+            if (teil.isNull()) {
+                if (!s.innen) p.fillRect(ziel, f);
+            } else if ((waag || senk) && !pdf) {
+                //  Gestreckter Streifen als Verlauf: ein auf 1000 px gezogenes 1-px-Bild kostete im Raster 0,7 ms je Karte.
+                //  Im PDF bleibt es das Bild: ein Verlauf mit vielen Halten waere dort je Karte ein eigenes Objekt.
+                const int n = waag ? teil.height() : teil.width();
+                halte.resize(n);
+                for (int i = 0; i < n; ++i) {
+                    const QRgb px = reinterpret_cast<const QRgb*>(teil.constScanLine(waag ? i : 0))[waag ? 0 : i];
+                    halte[i] = { (i + 0.5) / n, QColor::fromRgba(qUnpremultiply(px)) };
+                }
+                QLinearGradient v(ziel.topLeft(), waag ? ziel.bottomLeft() : ziel.topRight());
+                v.setStops(halte);
+                p.fillRect(ziel, v);
+            } else {
+                p.drawImage(ziel, teil);
+            }
+        }
+    p.restore();
+}
+
 void maleBefehl(QPainter& p, const Befehl& b, const Anzeigeliste& a, const Layout& l, const Rechteck& w, PdfMalen* pdf,
                 std::vector<QImage>* kacheln, QList<QPointF>& lagen, QGlyphRun& g) {
     const QRectF r(b.r.x, b.r.y, b.r.b, b.r.h);
@@ -1355,6 +1811,9 @@ void maleBefehl(QPainter& p, const Befehl& b, const Anzeigeliste& a, const Layou
         p.drawGlyphRun(QPointF(0, 0), g);
         break;
     }
+    case BArt::Schatten:
+        maleSchatten(p, a, a.schatten[b.daten], pdf);
+        break;
     case BArt::Verweis:
         if (pdf) {
             const QRectF q = r.intersected(QRectF(w.x, w.y, w.b, w.h));
@@ -1412,11 +1871,14 @@ void maleMaske(QPainter& p, const Anzeigeliste& a, const Layout& l, const Befehl
 }   // namespace
 
 size_t Anzeigeliste::bytes() const {
-    return befehle.capacity() * sizeof(Befehl) + rahmen.capacity() * sizeof(Rahmen)
+    size_t n = befehle.capacity() * sizeof(Befehl) + rahmen.capacity() * sizeof(Rahmen)
          + verlaeufe.capacity() * sizeof(Verlauf) + halte.capacity() * sizeof(Halt)
          + bilder.capacity() * sizeof(Bild) + transformationen.capacity() * sizeof(QTransform)
          + fest.capacity() * sizeof(uint32_t) + textMasken.capacity() * sizeof(uint32_t)
-         + schichten.capacity() * sizeof(Schicht);
+         + schichten.capacity() * sizeof(Schicht) + schatten.capacity() * sizeof(Schatten);
+    for (const SchattenBild& b : schattenBilder)
+        for (const QImage& t : b.teile) n += size_t(t.sizeInBytes());
+    return n;
 }
 
 //  Wie im Browser: oben gewinnt vor unten, und der Kasten verlaesst den Inhaltskasten seines Bezugs nie.
@@ -1469,6 +1931,31 @@ void male(QPainter& p, const Anzeigeliste& a, const Layout& l, const Rechteck& f
     if (kacheln) kacheln->resize(a.bilder.size());
     QList<QPointF> lagen;
     QGlyphRun g;
+    //  Offene Gruppen: eigene Ebene mit eigenem Maler, ohne Bild nur die Deckkraft am bisherigen Maler.
+    struct Ebene {
+        std::unique_ptr<QImage> bild;
+        std::unique_ptr<QPainter> maler;
+        QPoint ziel;
+        qreal deckkraft = 1;
+    };
+    std::vector<Ebene> ebenen;
+    int offen = 0;      // Ebenen mit Bild; tief verschachtelte Gruppen hielten sonst je eine fenstergrosse
+    QPainter* q = &p;
+    const auto schliesseEbene = [&] {
+        Ebene e = std::move(ebenen.back());
+        ebenen.pop_back();
+        if (!e.maler) { q->restore(); return; }
+        e.maler->end();
+        --offen;
+        q = &p;
+        for (auto it = ebenen.rbegin(); it != ebenen.rend(); ++it)
+            if (it->maler) { q = it->maler.get(); break; }
+        q->save();
+        q->resetTransform();
+        q->setOpacity(q->opacity() * e.deckkraft);
+        q->drawImage(e.ziel, *e.bild);
+        q->restore();
+    };
     int ueber = 0;      // Tiefe in einem Clip ausserhalb des Fensters
     size_t naechste = 0;    // naechste Schicht, die die Kacheln auslassen
     const size_t von = einzeln ? a.schichten[size_t(schicht)].anfang : 0;
@@ -1483,26 +1970,55 @@ void male(QPainter& p, const Anzeigeliste& a, const Layout& l, const Rechteck& f
         }
         const Befehl& b = a.befehle[n];
         if (ueber > 0) {
-            if (b.art == BArt::ClipAn || b.art == BArt::ClipText || b.art == BArt::TransformAn) ++ueber;
-            else if (b.art == BArt::ClipAus || b.art == BArt::TransformAus) --ueber;
+            if (b.art == BArt::ClipAn || b.art == BArt::ClipText || b.art == BArt::TransformAn || b.art == BArt::GruppeAn) ++ueber;
+            else if (b.art == BArt::ClipAus || b.art == BArt::TransformAus || b.art == BArt::GruppeAus) --ueber;
+            continue;
+        }
+        if (b.art == BArt::GruppeAn) {
+            const qreal deckkraft = (b.farbe & 255) / 255.0;
+            if (!pdf && !schneidet(b.r)) { ueber = 1; continue; }
+            //  Qts PDF-Schreiber kennt keine Transparenzgruppe; als Ebene waere der Text dort nur noch Bild.
+            if (pdf || (b.farbe & kGruppeEinfach) || offen >= 8) {
+                q->save();
+                q->setOpacity(q->opacity() * deckkraft);
+                ebenen.emplace_back();
+                continue;
+            }
+            const Rechteck& w = fenster.back();
+            const QRectF sicht = QRectF(b.r.x, b.r.y, b.r.b, b.r.h) & QRectF(w.x, w.y, w.b, w.h);
+            const QRect ziel = q->worldTransform().mapRect(sicht).toAlignedRect();
+            if (sicht.isEmpty() || ziel.isEmpty()) { ueber = 1; continue; }
+            Ebene e{ std::make_unique<QImage>(ziel.size(), QImage::Format_ARGB32_Premultiplied), nullptr, ziel.topLeft(),
+                     deckkraft };
+            e.bild->fill(Qt::transparent);
+            e.maler = std::make_unique<QPainter>(e.bild.get());
+            e.maler->setRenderHint(QPainter::Antialiasing);
+            e.maler->setTransform(q->worldTransform() * QTransform::fromTranslate(-ziel.x(), -ziel.y()));
+            ebenen.push_back(std::move(e));
+            ++offen;
+            q = ebenen.back().maler.get();
+            continue;
+        }
+        if (b.art == BArt::GruppeAus) {
+            if (!ebenen.empty()) schliesseEbene();
             continue;
         }
         if (b.art == BArt::ClipText && !pdf) {
             //  Darin stehen nur Hintergruende, ohne eigene Clips.
             size_t ende = n + 1;
             while (ende < a.befehle.size() && a.befehle[ende].art != BArt::ClipAus) ++ende;
-            if (schneidet(b.r)) maleMaske(p, a, l, b, n + 1, ende, fenster.back(), lagen, g);
+            if (schneidet(b.r)) maleMaske(*q, a, l, b, n + 1, ende, fenster.back(), lagen, g);
             n = ende;
             continue;
         }
         if (b.art == BArt::ClipAn || b.art == BArt::ClipText) {
             //  Nichts darin kann sichtbar werden; das PDF schrieb sonst je Seite die Clips des ganzen Dokuments.
             if (!schneidet(b.r)) { ueber = 1; continue; }
-            p.save();
+            q->save();
             const QRectF c(b.r.x, b.r.y, b.r.b, b.r.h);
-            if (b.art == BArt::ClipText) p.setClipPath(textPfad(a, l, b.daten), Qt::IntersectClip);
-            else if (b.daten == kKein) p.setClipRect(c, Qt::IntersectClip);
-            else p.setClipPath(rundesRechteck(c, a.rahmen[b.daten].rx, a.rahmen[b.daten].ry), Qt::IntersectClip);
+            if (b.art == BArt::ClipText) q->setClipPath(textPfad(a, l, b.daten), Qt::IntersectClip);
+            else if (b.daten == kKein) q->setClipRect(c, Qt::IntersectClip);
+            else q->setClipPath(rundesRechteck(c, a.rahmen[b.daten].rx, a.rahmen[b.daten].ry), Qt::IntersectClip);
             const Rechteck& w = fenster.back();
             const float x = std::max(w.x, b.r.x), y = std::max(w.y, b.r.y);
             fenster.push_back(Rechteck{ x, y, std::min(w.x + w.b, b.r.x + b.r.b) - x, std::min(w.y + w.h, b.r.y + b.r.h) - y });
@@ -1510,26 +2026,36 @@ void male(QPainter& p, const Anzeigeliste& a, const Layout& l, const Rechteck& f
         }
         if (b.art == BArt::TransformAn) {
             const QTransform& t = a.transformationen[b.daten];
-            p.save();
+            q->save();
             //  Auf Papier steht fixed auf jeder ganzen Seite: der Schnitt der Seite, oft ueber dem Blattende, beschnitt sonst
             //  eine Fussleiste. Fixed entkommt auch im Browser jedem Clip seiner Vorfahren.
             const bool blatt = pdf && pdf->blatt.b > 0 && std::find(a.fest.begin(), a.fest.end(), b.daten) != a.fest.end();
-            if (blatt) p.setClipRect(QRectF(pdf->blatt.x, pdf->blatt.y, pdf->blatt.b, pdf->blatt.h), Qt::ReplaceClip);
-            p.setTransform(t, true);
+            if (blatt) q->setClipRect(QRectF(pdf->blatt.x, pdf->blatt.y, pdf->blatt.b, pdf->blatt.h), Qt::ReplaceClip);
+            q->setTransform(t, true);
             bool umkehrbar = false;
             const QTransform inv = t.inverted(&umkehrbar);
             const Rechteck& w = blatt ? pdf->blatt : fenster.back();
-            const QRectF q = umkehrbar ? inv.mapRect(QRectF(w.x, w.y, w.b, w.h)) : QRectF();
-            fenster.push_back(umkehrbar ? Rechteck{ float(q.x()), float(q.y()), float(q.width()), float(q.height()) }
+            const QRectF r = umkehrbar ? inv.mapRect(QRectF(w.x, w.y, w.b, w.h)) : QRectF();
+            fenster.push_back(umkehrbar ? Rechteck{ float(r.x()), float(r.y()), float(r.width()), float(r.height()) }
                                         : Rechteck{ 0, 0, -1, -1 });
             continue;
         }
         if (b.art == BArt::ClipAus || b.art == BArt::TransformAus) {
-            p.restore();
+            q->restore();
             if (fenster.size() > 1) fenster.pop_back();
             continue;
         }
-        if (schneidet(b.r)) maleBefehl(p, b, a, l, fenster.back(), pdf, kacheln, lagen, g);
+        if (schneidet(b.r)) maleBefehl(*q, b, a, l, fenster.back(), pdf, kacheln, lagen, g);
+    }
+    while (!ebenen.empty()) schliesseEbene();
+    //  Die Textur einer Schicht in einer Gruppe: als Ganzes durchscheinend wie die Ebene, in der sie im Fluss laege.
+    if (einzeln && a.schichten[size_t(schicht)].deckkraft < 255) {
+        p.save();
+        p.resetTransform();
+        p.setClipping(false);
+        p.setCompositionMode(QPainter::CompositionMode_DestinationIn);
+        p.fillRect(QRect(0, 0, p.device()->width(), p.device()->height()), QColor(0, 0, 0, a.schichten[size_t(schicht)].deckkraft));
+        p.restore();
     }
 }
 

@@ -917,6 +917,7 @@ bool Stilblatt::gilt(uint32_t index, const Medium& m) const {
             for (uint32_t k = a.anfang; k < a.anfang + a.anzahl && ja; ++k) {
                 const MedienMerkmal& f = merkmale[k];
                 const int64_t ist = f.art == MBreite ? int64_t(m.breite) * kQ : int64_t(m.hoehe) * kQ;
+                if (f.art == MHoehe || f.art == MQuer) m.nutztHoehe();
                 switch (f.art) {
                 case MBreite: case MHoehe:
                     ja = f.vergleich == MMin ? ist >= f.wert : f.vergleich == MMax ? ist <= f.wert : ist == f.wert;

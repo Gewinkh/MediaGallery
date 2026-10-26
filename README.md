@@ -137,7 +137,7 @@ open build/MediaGallery.app
 ### Own HTML renderer (preview)
 
 HTML files open in the built-in web engine by default. To try the app's own
-renderer instead (faster, no JavaScript), start it with `MG_HTML_EIGEN=1`:
+renderer instead (faster), start it with `MG_HTML_EIGEN=1`:
 
 ```bash
 # Linux
@@ -158,15 +158,10 @@ $env:MG_HTML_EIGEN=1; .\build\Release\MediaGallery.exe
 ## Changelog
 
 ### Latest
-- **Feature**: **Experimental native HTML renderer** added as an alternative to Qt's Chromium-based renderer, with support for CSS layouts, tables, images, sticky headers, and browser-like text layout.
-- **Feature**: **HTML navigation and interaction** in the new renderer, including in-page links, external links, fold-out sections, text selection, context menus, and table copying.
-- **Improvement**: **HTML PDF export** in the new renderer supports clickable links, repeating table headers, fixed footers, page-specific print settings, and smaller output files.
-- **Improvement**: **HTML rendering performance** with smoother fast scrolling, fewer blank areas, and memory-efficient image decoding.
-- **Fix**: **HTML rendering accuracy** improved for SVG colours, transparency, gradient text, font-relative units, punctuation, and inline elements.
-- **Fix**: **PDF performance and stability** improved when zooming, resizing split panes, scrolling quickly, and handling forms with many fields.
-- **Fix**: **PDF interaction** now preserves copying after searching, prevents crashes while closing pages that are still loading, and correctly follows keyboard focus across split panes.
-- **Fix**: **File switching** between HTML, Markdown, CSV, and PDF is faster and no longer leaves the viewer blank.
-- **Feature**: **PDF text editing** now has a dedicated tool switch, and new text boxes accept typing immediately.
+- **Improvement**: **Experimental custom HTML renderer** now handles vertical alignment, mixed-language text, transparency, conic gradients, and box shadows more accurately.
+- **Improvement**: **HTML layout and interaction** now respond correctly to window resizing, with working text selection and search in sticky headers.
+- **Security**: **HTML preview** no longer executes JavaScript or allows pages to redirect away from local files.
+- **Security**: **Key logging (`MG_KEYLOG`)** removed from public builds and retained only in the developer tree.
 
 ---
 

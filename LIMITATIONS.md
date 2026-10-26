@@ -496,6 +496,17 @@ limit.
 Why: the web engine that draws HTML cannot be shut down while the app runs. It is
 loaded only when the first HTML file opens, so it costs nothing before that.
 
+**PDF export of the own renderer: see-through boxes are faded piece by piece.**
+Why: Qt's PDF writer has no transparency groups. Drawing the box as an image would
+turn its text into a picture that can no longer be selected or searched, so where
+parts of a faded box overlap (text on its background), the lower part shows through.
+On screen the box is faded as a whole. A faded inline piece of text (`<span>`) is faded run by run on screen too,
+so where its own background and text overlap, the background shows through.
+
+**Own renderer: a piece of inline text (`<span>`) set to `vertical-align: top` or `bottom` stays on the baseline.**
+Why: such a span would have to be placed after its line is finished, together with everything inside it. Images and
+inline-blocks with top or bottom are placed like in a browser; tables align their cells on their own.
+
 ---
 
 ## Markdown files

@@ -30,7 +30,9 @@ struct Seite {
     Ordnung o;
     std::vector<uint32_t> kastenVon;    // je Dokumentknoten sein Kasten (Verankerung ueber neues Legen)
     std::vector<std::pair<uint32_t, float>> rollRand;    // Elemente mit scroll-margin-top, aufsteigend
+    std::vector<uint32_t> schichtVon;   // je Absatz seine Schicht in a.schichten, kKein im Fluss; leer ohne Schichten
     float breite = 0;
+    bool hoeheWirkt = false;            // vh, fixed, Prozent am Wurzelelement, kurze Seite: eine neue Fensterhoehe legt neu
     mutable std::vector<QImage> kacheln;    // gerasterte Musterkacheln; nur der Malfaden (m_pool hat einen Faden)
 };
 
@@ -92,6 +94,20 @@ uint32_t elementBei(const Seite& s, const Dokument& d, float x, float y, uint32_
         if (std::any_of(ohne.begin(), ohne.end(), [&](uint32_t w) { return liegtIn(n, w); })) continue;
         aus = n;
     }
+    return aus;
+}
+
+//  Schichten liegen nie ineinander (nur in der Tiefe 0 des Malens): der erste Vorfahr mit Schicht entscheidet.
+std::vector<uint32_t> schichtenJeAbsatz(const Layout& l, const Anzeigeliste& a, const Kastenbaum& k) {
+    if (a.schichten.empty()) return {};
+    std::vector<uint32_t> jeKasten(k.kaesten.size(), kKein);
+    for (uint32_t i = 0; i < a.schichten.size(); ++i)
+        if (const uint32_t n = a.schichten[i].knoten; n < k.kastenVon.size() && k.kastenVon[n] < jeKasten.size())
+            jeKasten[k.kastenVon[n]] = i;
+    std::vector<uint32_t> aus(l.absaetze.size(), kKein);
+    for (size_t i = 0; i < aus.size(); ++i)
+        for (uint32_t b = l.absaetze[i].kasten; b < jeKasten.size() && aus[i] == kKein; b = k.kaesten[b].eltern)
+            aus[i] = jeKasten[b];
     return aus;
 }
 
@@ -174,7 +190,7 @@ public:
         if (m_abbruch->load()) return;
         auto seite = std::make_shared<Seite>();
         SchriftWahl wahl;
-        const Medium m{ int(std::lround(m_breite)), int(std::lround(m_hoehe)), false, m_faktor, &wahl };
+        const Medium m{ int(std::lround(m_breite)), int(std::lround(m_hoehe)), false, m_faktor, &wahl, &seite->hoeheWirkt };
         const Stilblatt b = stilblattVon(*m_dok);
         const Stile s = berechne(*m_dok, b, m, m_zustand);
         if (m_abbruch->load()) return;
@@ -187,6 +203,7 @@ public:
         if (m_abbruch->load()) return;
         seite->a = baueAnzeige(*m_dok, s, k, seite->l);
         seite->o = ordne(seite->l, &seite->a, &k);
+        seite->schichtVon = schichtenJeAbsatz(seite->l, seite->a, k);
         seite->kastenVon = std::move(k.kastenVon);
         auto zurueck = m_zurueck;
         std::shared_ptr<const Dokument> dok = m_dok;
@@ -478,6 +495,7 @@ void HtmlView::starte(bool lesen) {
     }
     m_ohneHoehe = false;
     m_gelegtBreite = float(width() / m_zoom);
+    m_gelegtHoehe = float(height() / m_zoom);
     m_gelegtFaktor = faktor() * m_zoom;
     if (!m_busy) {
         m_busy = true;
@@ -650,7 +668,7 @@ void HtmlView::zeigeKacheln() {
 void HtmlView::legeNach() {
     if (!m_nachlegen || sichtOffen()) return;
     m_nachlegen = false;
-    if (width() > 0 && float(width() / m_zoom) != m_gelegtBreite) { starte(false); return; }
+    if (width() > 0 && (float(width() / m_zoom) != m_gelegtBreite || hoeheVeraltet())) { starte(false); return; }
     m_busy = false;
     emit stateChanged();
 }
@@ -663,7 +681,17 @@ void HtmlView::geometryChange(const QRectF& neu, const QRectF& alt) {
         if (m_busy && neu.width() > 0) m_nachlegen = true;
         else starte(false);
     }
-    else if (neu.height() != alt.height()) { polish(); update(); }
+    else if (neu.height() != alt.height()) {
+        //  Waehrend des Legens immer nachlegen: ob die Seite die Hoehe liest, weiss erst das Ergebnis.
+        if (m_busy) m_nachlegen = true;
+        else if (hoeheVeraltet()) starte(false);
+        polish();
+        update();
+    }
+}
+
+bool HtmlView::hoeheVeraltet() const {
+    return m_seite && m_seite->hoeheWirkt && height() > 0 && float(height() / m_zoom) != m_gelegtHoehe;
 }
 
 void HtmlView::itemChange(ItemChange c, const ItemChangeData& d) {
@@ -688,6 +716,8 @@ void HtmlView::rechneFlaechen() {
     const Layout& l = m_seite->l;
     const Ordnung& o = m_seite->o;
     const float y0 = float(m_contentY / m_zoom), y1 = float((m_contentY + height()) / m_zoom);
+    const std::vector<float> versatz = schichtVersatz();
+    const Verschub v{ m_seite->schichtVon, versatz };
     std::vector<Rechteck> r;
     const auto uebertrage = [&](int ebene) {
         for (const Rechteck& x : r)
@@ -695,19 +725,30 @@ void HtmlView::rechneFlaechen() {
         r.clear();
     };
     for (size_t i = 0; i < m_treffer.size(); ++i) {
-        if (m_trefferY[i] > y1 || m_trefferY[i] < y0 - kTrefferSpanne) continue;
-        flaechen(l, o, m_treffer[i], y0, y1, r);
+        const float y = m_trefferY[i] + v.von(m_treffer[i].von.absatz);
+        if (y > y1 || y < y0 - kTrefferSpanne) continue;
+        flaechen(l, o, m_treffer[i], y0, y1, r, v);
         uebertrage(int(i) == m_trefferIndex ? 1 : 0);
     }
     if (hasSelection()) {
-        flaechen(l, o, bereich(o, m_anker, m_fokus), y0, y1, r);
+        flaechen(l, o, bereich(o, m_anker, m_fokus), y0, y1, r, v);
         uebertrage(2);
     }
 }
 
 Stelle HtmlView::stelleBei(QPointF p, bool glyphe) const {
     if (!m_seite) return {};
-    return treffe(m_seite->l, m_seite->o, float(p.x() / m_zoom), float((p.y() + m_contentY) / m_zoom), glyphe);
+    const std::vector<float> versatz = schichtVersatz();
+    return treffe(m_seite->l, m_seite->o, float(p.x() / m_zoom), float((p.y() + m_contentY) / m_zoom), glyphe,
+                  Verschub{ m_seite->schichtVon, versatz });
+}
+
+std::vector<float> HtmlView::schichtVersatz() const {
+    std::vector<float> aus;
+    if (!m_seite) return aus;
+    const float y0 = float(m_contentY / m_zoom), h = float(height() / m_zoom);
+    for (const Schicht& s : m_seite->a.schichten) aus.push_back(s.versatz(y0, h));
+    return aus;
 }
 
 void HtmlView::setzeFokus(const Stelle& s) {
@@ -929,7 +970,10 @@ void HtmlView::clearSearch() { search(QString(), m_suchGross, m_suchWoerter, 0);
 
 //  Nur rollen, wenn der Treffer nicht schon gut sichtbar ist; dann ins obere Drittel.
 void HtmlView::zeigeTreffer() {
-    if (m_trefferIndex < 0 || size_t(m_trefferIndex) >= m_trefferY.size()) return;
+    if (m_trefferIndex < 0 || size_t(m_trefferIndex) >= m_trefferY.size() || !m_seite) return;
+    //  Ein Treffer in einer verschobenen Schicht steht schon im Fenster; sein Platz im Fluss liegt woanders.
+    const std::vector<float> versatz = schichtVersatz();
+    if (Verschub{ m_seite->schichtVon, versatz }.von(m_treffer[size_t(m_trefferIndex)].von.absatz) != 0) return;
     const qreal y = m_trefferY[size_t(m_trefferIndex)] * m_zoom;
     if (y < m_contentY + height() * 0.1 || y > m_contentY + height() * 0.8)
         emit scrollRequested(std::max(0.0, y - height() / 3));

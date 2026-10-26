@@ -114,11 +114,21 @@ which. Files without an extension such as `LICENSE`, `README`, `Makefile` or
 
 ## HTML Viewer
 - `.html` / `.htm` open as a **rendered preview**, one click away from the editable source
-- Runs **offline**: JavaScript works, but nothing is loaded from the internet
+- Runs **offline and without scripts**: JavaScript never runs, nothing is loaded from the internet, and a page cannot navigate away from local files
 - Tiles show a **design card** built from the page's title and colours
 - The web engine starts only when you first open an HTML file, which keeps start-up fast and memory low; shortly after you close the file, unused memory is given back
 - Renders without the graphics card, which avoids driver problems; `QTWEBENGINE_CHROMIUM_FLAGS` overrides this
 - A page that fails to load shows a readable message
+
+### Own renderer (preview)
+Started with `MG_HTML_EIGEN=1`, HTML files open in the app's own renderer instead of the web engine. It is built to replace the web engine; until then both are available.
+- **Fast and light**: a page opens about five times faster than in the web engine, with no helper processes, and follows window resizing live
+- **Real page layout**: style sheets with variables and `@media` rules, flexbox, grid, tables, sticky and fixed headers, positioned boxes, transforms, rounded corners, gradients, soft and inset **shadows**, see-through boxes faded as a whole (opacity), background images, inline SVG and pictures
+- **Every script**: Arabic and other right-to-left text, Japanese and Chinese, with fallback fonts; web fonts are replaced by installed fonts, nothing is downloaded
+- **Works without JavaScript**: links inside the page jump to their target, web links open in the browser, fold-out sections open and close
+- **Select, copy and search** like in a browser: mark text with the mouse, copy it or a whole table from the context menu, find words with highlighted hits
+- Pages that contain scripts show a note with a button to **open them in the browser**
+- **Export as PDF**: as shown or printer-friendly (white paper, no backgrounds or shadows); links stay clickable, table headers repeat on every page, fixed footers appear on every page, and page size and margins set by the page are honoured
 
 ---
 

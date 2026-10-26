@@ -110,6 +110,9 @@ struct Medium {
     bool druck = false;
     float pixelFaktor = 1;              // Geraetepixel je CSS-Pixel: Rahmenbreiten rasten darauf ein
     SchriftMesser* messer = nullptr;    // ohne: ch und ex je 0,5 em
+    //  Gesetzt, sobald ein Wert die Fensterhoehe liest: nur dann muss eine neue Hoehe neu legen.
+    bool* hoeheGenutzt = nullptr;
+    void nutztHoehe() const { if (hoeheGenutzt) *hoeheGenutzt = true; }
 };
 
 class Stilblatt {
