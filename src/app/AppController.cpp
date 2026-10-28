@@ -1843,8 +1843,8 @@ void AppController::setDesignProfile(int profile) {
 
 QVariantList AppController::designProfiles() const {
     static const DesignProfile order[] = {
-        DesignProfile::Dark, DesignProfile::DarkOLED, DesignProfile::OceanDepth, DesignProfile::InfernoBlaze,
-        DesignProfile::MidnightRose, DesignProfile::Elegant, DesignProfile::Simple, DesignProfile::Custom,
+        DesignProfile::NordicGreen, DesignProfile::NordicDarkGreen, DesignProfile::DarkOLED, DesignProfile::Simple,
+        DesignProfile::OceanDepth, DesignProfile::MidnightRose, DesignProfile::Elegant, DesignProfile::Custom,
     };
 
     QVariantList out;

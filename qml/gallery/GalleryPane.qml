@@ -504,6 +504,9 @@ Item {
         // `App.bookmarkTree` ist eine FLACHE Zeilenliste in Anzeigereihenfolge mit `depth` als Einrücktiefe; Zeilen
         // unter einer zugeklappten Gruppe tragen `hidden`. C++ hat die Ebenen schon abgelaufen.
         function rebuildBookmarks() {
+            //  Neu gebaut wird bei jedem Auf- und Zuklappen; ohne gemerkte Lage stuende die Liste danach wieder oben.
+            var liste = bookmarksMenu.contentItem
+            var lage = liste ? liste.contentY : 0
             for (var i = 0; i < dynamicBookmarkItems.length; i++)
                 bookmarksMenu.removeItem(dynamicBookmarkItems[i])
             dynamicBookmarkItems = []
@@ -536,6 +539,10 @@ Item {
                     bookmarksMenu.addItem(item)
                     dynamicBookmarkItems.push(item)
                 }
+            }
+            if (liste && lage > 0) {
+                liste.forceLayout()
+                liste.contentY = Math.min(lage, Math.max(0, liste.contentHeight - liste.height))
             }
         }
 

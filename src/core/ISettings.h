@@ -22,7 +22,7 @@ enum class TileArrangement {
 // ACHTUNG: der Wert wird als INT gespeichert. Fällt ein Eintrag heraus, rutschen alle dahinter um eins - wer
 // "Simple" eingestellt hatte, sähe danach "Custom". Deshalb die SCHEMA-Nummer, die einen alten Wert umrechnet.
 enum class DesignProfile {
-    Dark, DarkOLED, OceanDepth, InfernoBlaze,
+    NordicDarkGreen, DarkOLED, OceanDepth, NordicGreen,
     MidnightRose, Elegant, Simple, Custom
 };
 

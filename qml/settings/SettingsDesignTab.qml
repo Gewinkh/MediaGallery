@@ -266,6 +266,7 @@ Item {
                                     text: card.modelData.name
                                     color: App.themeTextPrimary
                                     font.pixelSize: 13; font.bold: true
+                                    wrapMode: Text.WordWrap; maximumLineCount: 2
                                     elide: Text.ElideRight
                                 }
                             }

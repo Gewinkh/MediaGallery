@@ -14,7 +14,7 @@ namespace mg::editor {
 class EditorController : public QObject {
     Q_OBJECT
 
-    //  0…3 = Nightfall / Paper / Ember / Custom.
+    //  0…3 = Nightfall / Paper / Nordic Green / Custom.
     Q_PROPERTY(int  profile READ profile WRITE setProfile NOTIFY paletteChanged)
     Q_PROPERTY(bool customActive READ customActive NOTIFY paletteChanged)
 

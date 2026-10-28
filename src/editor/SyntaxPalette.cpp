@@ -65,7 +65,7 @@ QString profileName(EditorProfile p) {
     switch (p) {
     case EditorProfile::Nightfall: return QStringLiteral("Nightfall");
     case EditorProfile::Paper:     return QStringLiteral("Paper");
-    case EditorProfile::Ember:     return QStringLiteral("Ember");
+    case EditorProfile::NordicGreen: return QStringLiteral("Nordic Green");
     case EditorProfile::Custom:    return QStringLiteral("Custom");
     }
     return QStringLiteral("Nightfall");
@@ -102,28 +102,28 @@ SyntaxPalette paletteForProfile(EditorProfile p) {
             /*code    */ QColor(160,  70,  40));
         break;
 
-    case EditorProfile::Ember:
-        //  Warmes dunkles Profil - gedaempfter als Nightfall, ohne Blaustich.
-        t.background       = QColor(31, 27, 24);
-        t.text             = QColor(230, 220, 206);
-        t.currentLine      = QColor(45, 39, 34);
-        t.selection        = QColor(104, 74, 44);
-        t.gutterBackground = QColor(26, 23, 20);
-        t.gutterText       = QColor(120, 106,  92);
-        t.gutterTextActive = QColor(226, 202, 168);
+    case EditorProfile::NordicGreen:
+        //  Kuehles dunkles Profil mit Gruenstich - gedaempfter als Nightfall, Salbei statt Blau als Leitfarbe.
+        t.background       = QColor( 30,  38,  36);
+        t.text             = QColor(220, 230, 224);
+        t.currentLine      = QColor( 40,  50,  47);
+        t.selection        = QColor( 62,  92,  80);
+        t.gutterBackground = QColor( 26,  33,  31);
+        t.gutterText       = QColor(104, 124, 116);
+        t.gutterTextActive = QColor(200, 222, 210);
         setzeTokens(t,
-            /*keyword */ QColor(226, 132,  76),
-            /*type    */ QColor(230, 186,  92),
-            /*string  */ QColor(164, 190, 108),
-            /*number  */ QColor(214, 150, 140),
-            /*comment */ QColor(122, 110,  96),
-            /*preproc */ QColor(196, 124, 160),
-            /*function*/ QColor(238, 206, 128),
-            /*operator*/ QColor(186, 174, 158),
-            /*heading */ QColor(240, 168,  90),
-            /*emphasis*/ QColor(212, 156, 196),
-            /*link    */ QColor(140, 186, 190),
-            /*code    */ QColor(180, 200, 140));
+            /*keyword */ QColor(129, 196, 160),
+            /*type    */ QColor(136, 192, 208),
+            /*string  */ QColor(180, 206, 140),
+            /*number  */ QColor(208, 170, 120),
+            /*comment */ QColor(110, 130, 122),
+            /*preproc */ QColor(176, 150, 200),
+            /*function*/ QColor(150, 210, 190),
+            /*operator*/ QColor(170, 186, 180),
+            /*heading */ QColor(140, 206, 166),
+            /*emphasis*/ QColor(196, 166, 206),
+            /*link    */ QColor(120, 180, 210),
+            /*code    */ QColor(170, 200, 150));
         break;
 
     case EditorProfile::Nightfall:

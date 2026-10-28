@@ -102,28 +102,28 @@ ThemeColors ThemeColors::fromJson(const QJsonObject& o) {
 ThemeColors AppSettings::themeForProfile(DesignProfile p) {
     ThemeColors t;
     switch (p) {
-    case DesignProfile::Dark:
-        t.name          = "Dark";
-        t.background    = QColor(10, 18, 22);
-        t.card          = QColor(18, 28, 34);
-        t.accent        = QColor(0, 180, 160);
+    case DesignProfile::NordicDarkGreen:
+        t.name          = "Nordic Dark Green";
+        t.background    = QColor(13, 21, 18);
+        t.card          = QColor(21, 32, 28);
+        t.accent        = QColor(88, 168, 124);
         t.accentType    = AccentType::Solid;
-        t.textPrimary   = QColor(220, 235, 230);
-        t.textMuted     = QColor(120, 150, 145);
-        t.border        = QColor(40, 60, 70);
+        t.textPrimary   = QColor(216, 230, 222);
+        t.textMuted     = QColor(118, 144, 132);
+        t.border        = QColor(36, 52, 46);
         t.bgIsGradient  = false;
         t.tileBgType    = TileBgType::Solid;
-        t.tileBgColor   = QColor(18, 28, 34);
-        t.menuBarBg     = QColor(12, 20, 26);
-        t.toolbarBg     = QColor(12, 20, 26);
-        t.filterBarBg   = QColor(12, 20, 26);
-        t.statusBarBg   = QColor(8, 14, 18);
-        t.sidebarBg     = QColor(18, 28, 34);
-        t.pdfViewerBg   = QColor(13, 21, 24);
+        t.tileBgColor   = QColor(21, 32, 28);
+        t.menuBarBg     = QColor(11, 18, 15);
+        t.toolbarBg     = QColor(11, 18, 15);
+        t.filterBarBg   = QColor(11, 18, 15);
+        t.statusBarBg   = QColor(8, 13, 11);
+        t.sidebarBg     = QColor(21, 32, 28);
+        t.pdfViewerBg   = QColor(11, 18, 15);
         t.pdfThumbBg    = QColor(255, 255, 255);
-        t.pdfSidebarBg  = QColor(10, 18, 22);
-        t.pdfToolbarBg  = QColor(18, 28, 34);
-        t.pdfScrollbarBg= QColor(18, 28, 34);
+        t.pdfSidebarBg  = QColor(13, 21, 18);
+        t.pdfToolbarBg  = QColor(21, 32, 28);
+        t.pdfScrollbarBg= QColor(21, 32, 28);
         break;
     case DesignProfile::DarkOLED:
         t.name             = "Dark OLED";
@@ -184,36 +184,31 @@ ThemeColors AppSettings::themeForProfile(DesignProfile p) {
         t.pdfToolbarBg     = QColor(5, 12, 28);
         t.pdfScrollbarBg   = QColor(5, 12, 28);
         break;
-    case DesignProfile::InfernoBlaze:
-        t.name             = "Inferno Blaze";
-        t.background       = QColor(0, 0, 0);
-        t.card             = QColor(20, 8, 0);
-        t.accent           = QColor(255, 120, 0);
-        t.accentType       = AccentType::Gradient;
-        t.accentGradEnd    = QColor(255, 50, 0);
-        t.textPrimary      = QColor(255, 235, 210);
-        t.textMuted        = QColor(160, 100, 60);
-        t.border           = QColor(60, 20, 0);
+    case DesignProfile::NordicGreen:
+        t.name             = "Nordic Green";
+        t.background       = QColor(40, 50, 48);
+        t.card             = QColor(50, 62, 59);
+        t.accent           = QColor(120, 180, 140);
+        t.accentType       = AccentType::Solid;
+        t.textPrimary      = QColor(229, 236, 232);
+        t.textMuted        = QColor(146, 164, 156);
+        t.border           = QColor(70, 86, 82);
         t.bgIsGradient     = true;
-        t.bgGradStart      = QColor(0, 0, 0);
-        t.bgGradEnd        = QColor(40, 10, 0);
-        t.bgGradAngle      = 150;
-        t.tileBgType       = TileBgType::Gradient;
-        t.tileBgColor      = QColor(20, 8, 0);
-        t.tileBgGradEnd    = QColor(8, 3, 0);
-        t.tileBgGradAngle  = 180;
-        t.tileGlowOnHover  = true;
-        t.tileGlowRadius   = 8.0f;
-        t.menuBarBg        = QColor(8, 3, 0);
-        t.toolbarBg        = QColor(8, 3, 0);
-        t.filterBarBg      = QColor(12, 4, 0);
-        t.statusBarBg      = QColor(4, 1, 0);
-        t.sidebarBg        = QColor(20, 8, 0);
-        t.pdfViewerBg      = QColor(4, 1, 0);
+        t.bgGradStart      = QColor(40, 50, 48);
+        t.bgGradEnd        = QColor(33, 45, 41);
+        t.bgGradAngle      = 160;
+        t.tileBgType       = TileBgType::Solid;
+        t.tileBgColor      = QColor(50, 62, 59);
+        t.menuBarBg        = QColor(33, 42, 40);
+        t.toolbarBg        = QColor(33, 42, 40);
+        t.filterBarBg      = QColor(36, 45, 43);
+        t.statusBarBg      = QColor(28, 36, 34);
+        t.sidebarBg        = QColor(50, 62, 59);
+        t.pdfViewerBg      = QColor(30, 38, 36);
         t.pdfThumbBg       = QColor(255, 255, 255);
-        t.pdfSidebarBg     = QColor(8, 3, 0);
-        t.pdfToolbarBg     = QColor(20, 8, 0);
-        t.pdfScrollbarBg   = QColor(20, 8, 0);
+        t.pdfSidebarBg     = QColor(40, 50, 48);
+        t.pdfToolbarBg     = QColor(50, 62, 59);
+        t.pdfScrollbarBg   = QColor(50, 62, 59);
         break;
     case DesignProfile::MidnightRose:
         t.name             = "Midnight Rose";

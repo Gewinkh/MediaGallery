@@ -158,10 +158,8 @@ $env:MG_HTML_EIGEN=1; .\build\Release\MediaGallery.exe
 ## Changelog
 
 ### Latest
-- **Improvement**: **Experimental custom HTML renderer** now handles vertical alignment, mixed-language text, transparency, conic gradients, and box shadows more accurately.
-- **Improvement**: **HTML layout and interaction** now respond correctly to window resizing, with working text selection and search in sticky headers.
-- **Security**: **HTML preview** no longer executes JavaScript or allows pages to redirect away from local files.
-- **Security**: **Key logging (`MG_KEYLOG`)** removed from public builds and retained only in the developer tree.
+- **Fix**: **Folders menu** no longer jumps back to the top while scrolling on small screens or after opening a group.
+- **Change**: **Themes**: Some older themes have been replaced with new ones.
 
 ---
 

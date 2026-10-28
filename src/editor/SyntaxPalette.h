@@ -9,7 +9,7 @@
 // Farbe. Deshalb eine eigene Struktur statt eines weiteren Feldes in `ThemeColors`.
 namespace mg::editor {
 
-enum class EditorProfile { Nightfall, Paper, Ember, Custom };
+enum class EditorProfile { Nightfall, Paper, NordicGreen, Custom };
 inline constexpr int kEditorProfileCount = 4;
 
 struct SyntaxPalette {

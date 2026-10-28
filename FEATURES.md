@@ -86,7 +86,7 @@ which. Files without an extension such as `LICENSE`, `README`, `Makefile` or
 - **Line wrap** on screen only (*Settings ▸ Editor*); a wrapped line keeps one line number
 - **Tab width 2 to 8**; the Tab key inserts spaces by default
 - **Status bar**: line, column, language, encoding
-- **Own colour themes**, separate from the app theme: Nightfall, Paper, Ember and Custom, saveable as JSON
+- **Own colour themes**, separate from the app theme: Nightfall, Paper, Nordic Green and Custom, saveable as JSON
 - **Arabic and Japanese text** display correctly thanks to font fallback
 - **Export as PDF** (*Document ▸ Save as PDF*): written next to the file, never overwriting an existing PDF
   - A4, 10 pt monospace, 20 mm margins, page count at the bottom; long lines wrap, indentation stays
@@ -352,7 +352,7 @@ pages change the PDF directly. `Ctrl+Z` undoes them while the file is open.
 - **Settings groups fold away**, and stay folded after a restart
 
 ## Colours & Themes (*Settings ▸ Design*)
-- **8 interface themes** (Dark, Dark OLED, Ocean Depth, Inferno Blaze, Midnight Rose, Elegant, Simple, Custom) and **4 editor themes** - independent of each other. Each interface theme card shows its name next to three slanted stripes in the theme's main colours, on a lighter card so even black stays visible
+- **8 interface themes** (Nordic Green, Nordic Dark Green, Dark OLED, Simple in the first row; Ocean Depth, Midnight Rose, Elegant, Custom below) and **4 editor themes** - independent of each other. Each interface theme card shows its name next to three slanted stripes in the theme's main colours, on a lighter card so even black stays visible
 - **Custom theme editor** with live preview: backgrounds (solid or gradient), text, borders, accent and glow, tiles, PDF viewer, editor and syntax colours
 - **Export and import** themes as JSON; a file that is not a theme is refused and your current theme stays
 - All icons and controls are drawn by the app itself, so they follow the theme and stay sharp at any display scaling

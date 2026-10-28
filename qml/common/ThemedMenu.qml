@@ -2,9 +2,8 @@ import QtQuick
 import QtQuick.Controls
 import MediaGallery 1.0
 
-// Menü-Popup im Thema der App - Fusions Hintergrund folgt weder der gewählten Farbe noch der Rundung.
-// Ein eigener Hintergrund ohne `implicitWidth` kollabiert zum 2-px-Strich (QQuickMenus contentWidth
-// liefert hier 0); `topPadding`/`bottomPadding` >= Radius halten die runden Ecken frei.
+// Eigener Hintergrund, weil Fusions weder Themenfarbe noch Rundung folgt; ohne `implicitWidth` kollabiert er zum
+// 2-px-Strich (contentWidth liefert hier 0). `topPadding`/`bottomPadding` >= Radius halten die runden Ecken frei.
 Menu {
     id: control
 
@@ -18,6 +17,15 @@ Menu {
             if (it && it.implicitWidth > w) w = it.implicitWidth
         }
         return Math.max(w, 200) + leftPadding + rightPadding
+    }
+    // Echte Zeilenhöhen statt der beim Rollen nachgeschätzten contentHeight - jede Änderung ließ die Liste nach oben springen.
+    implicitHeight: {
+        var h = 0
+        for (var i = 0; i < count; i++) {
+            var it = itemAt(i)
+            if (it) h += it.height
+        }
+        return h + topPadding + bottomPadding
     }
 
     background: Rectangle {
