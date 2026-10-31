@@ -312,6 +312,9 @@ bool Document::loadPart(const QString& path, const QString& partPath, QString* e
 
     m_tables.clear();
     m_rels.clear();
+    m_pendingMedia.clear();
+    m_nextMediaId = 1;
+    m_nextDocPrId = 0;
 
     DocxZip::Reader zip;
     if (!zip.open(path, err))
@@ -2116,6 +2119,31 @@ QString Document::buildImageRunXml(const QByteArray& bytes, const QString& extIn
     };
     if (!kKnown.contains(ext)) ext = QStringLiteral("png");
 
+    // Freie Nummer: eine schon so gespeicherte Datei traegt `rIdMGimg1`/`mgimg1` - dieselben Namen ueberschrieben
+    // beim Speichern das alte Bild mit dem neuen.
+    const auto belegt = [this](int n) {
+        if (m_rels.contains(QStringLiteral("rIdMGimg%1").arg(n))) return true;
+        const QString stamm = QStringLiteral("media/mgimg%1.").arg(n);
+        for (const QString& ziel : std::as_const(m_rels))
+            if (ziel.startsWith(stamm) || ziel.startsWith(QLatin1Char('/') + stamm)
+                || ziel.startsWith(QStringLiteral("/word/") + stamm))
+                return true;
+        return false;
+    };
+    while (belegt(m_nextMediaId)) ++m_nextMediaId;
+    // docPr-IDs muessen im Dokument eindeutig sein; Word meldet doppelte als unlesbaren Inhalt.
+    if (m_nextDocPrId <= 0) {
+        int hoechste = 0;
+        const QLatin1StringView nadel("docPr id=\"");
+        for (qsizetype i = m_docXml.indexOf(nadel); i >= 0; i = m_docXml.indexOf(nadel, i + 1)) {
+            const qsizetype a = i + nadel.size();
+            const qsizetype e = m_docXml.indexOf(QLatin1Char('"'), a);
+            if (e > a) hoechste = qMax(hoechste, QStringView(m_docXml).mid(a, e - a).toInt());
+        }
+        m_nextDocPrId = hoechste + 1;
+    }
+    const int docPrId = m_nextDocPrId++;
+
     PendingMedia pm;
     pm.ext     = ext;
     pm.relId   = QStringLiteral("rIdMGimg%1").arg(m_nextMediaId);
@@ -2159,7 +2187,7 @@ QString Document::buildImageRunXml(const QByteArray& bytes, const QString& extIn
         "<a:prstGeom prst=\"rect\"><a:avLst/></a:prstGeom></pic:spPr>"
         "</pic:pic></a:graphicData></a:graphic></wp:inline>"
         "</w:drawing></w:r>")
-        .arg(cx).arg(cy).arg(m_nextMediaId - 1).arg(pm.relId);
+        .arg(cx).arg(cy).arg(docPrId).arg(pm.relId);
     return runXml;
 }
 

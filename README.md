@@ -158,8 +158,14 @@ $env:MG_HTML_EIGEN=1; .\build\Release\MediaGallery.exe
 ## Changelog
 
 ### Latest
-- **Fix**: **Folders menu** no longer jumps back to the top while scrolling on small screens or after opening a group.
-- **Change**: **Themes**: Some older themes have been replaced with new ones.
+- **Fix**: **Gallery**: Renaming files now preserves their notes and Word backups; unsafe filenames can no longer move files outside their folder.
+- **Fix**: **Word editor**: Fixed issues with inserting images, pasting text into tables, selecting cells, and paragraph spacing.
+- **Fix**: **PDF text editing**: Typing after moving the cursor no longer loses previous changes.
+- **Fix**: **PDF and image notes**: Fixed issues with copying annotations and exporting them.
+- **Fix**: **Tables**: Fixed text functions and prevented edits from affecting neighbouring tables or headers.
+- **Fix**: **Editor themes**: Invalid theme imports no longer overwrite existing colours.
+- **Fix**: **MKV/WebM audio**: Seeking in files with damaged seek data no longer causes silent playback.
+- **Improvement**: **PDF extraction**: Better recovery of damaged PDF files.
 
 ---
 

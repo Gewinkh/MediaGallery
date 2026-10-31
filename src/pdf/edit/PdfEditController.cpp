@@ -1899,13 +1899,11 @@ void PdfEditController::insertAtCaret(const QString& text) {
         return;
     const int at = qBound(0, m_caretIndex, m_caretGlyphs.size());
     // Fortlaufendes Tippen sammelt sich in einer Op - ein Undo-Schritt.
-    if (m_pendingValid && m_pending.page == srcPage && m_pending.isInsert()
+    if (m_pendingValid && !m_pendingCommit && m_pending.page == srcPage && m_pending.isInsert()
         && m_pending.index + m_pending.text.size() == at) {
         m_pending.text += text;
     } else {
-        commitPendingTextOp();
-        m_pending = PdfTextOp{ srcPage, at, text, 0 };
-        setPendingValid(true);
+        beginTextOp(PdfTextOp{ srcPage, at, text, 0 });
     }
     spliceGlyphsInsert(at, text);
     m_caretIndex = at + text.size();
@@ -1925,10 +1923,10 @@ void PdfEditController::deleteAtCaret(int dir) {
         return;
     const QString removed(m_caretGlyphs.at(at).ch);
 
-    const bool contBack = m_pendingValid && !m_pending.isInsert()
+    const bool contBack = m_pendingValid && !m_pendingCommit && !m_pending.isInsert()
                           && m_pending.page == srcPage && dir < 0
                           && m_pending.index == at + 1;
-    const bool contFwd  = m_pendingValid && !m_pending.isInsert()
+    const bool contFwd  = m_pendingValid && !m_pendingCommit && !m_pending.isInsert()
                           && m_pending.page == srcPage && dir >= 0
                           && m_pending.index == at;
     if (contBack) {
@@ -1939,14 +1937,26 @@ void PdfEditController::deleteAtCaret(int dir) {
         m_pending.text.append(removed);
         m_pending.removed += 1;
     } else {
-        commitPendingTextOp();
-        m_pending = PdfTextOp{ srcPage, at, removed, 1 };
-        setPendingValid(true);
+        beginTextOp(PdfTextOp{ srcPage, at, removed, 1 });
     }
     spliceGlyphsRemove(at, 1);
     m_caretIndex = at;
     emit caretChanged();
     scheduleTextRebuild();
+}
+
+// Wartet die vorige Op noch auf ihren Neubau (Pfeiltaste, dann gleich weitergetippt), wird sie sofort zum
+// Kommando - die neue ueberschrieb sie sonst, und ihre Zeichen fehlten nach dem Neubau.
+void PdfEditController::beginTextOp(const PdfTextOp& op) {
+    commitPendingTextOp();
+    if (m_pendingValid) {
+        const PdfTextOp alt = m_pending;
+        setPendingValid(false);
+        m_pendingCommit = false;
+        pushCommand(new PdfEditTextOpCommand(this, alt));
+    }
+    m_pending = op;
+    setPendingValid(true);
 }
 
 // Die schwebende Op wird erst zum Kommando, wenn der Neubau sie akzeptiert hat.
@@ -2893,6 +2903,15 @@ void PdfEditController::paste() {
     finishDrawSession();
     PdfEditBox b = m_clip;                           // inkl. Text + allen Einstellungen
     b.id = m_nextId++;
+    // Die Kopie ist eine neue Notiz: Herkunftsmarke, Kette und Loeschmarke gehoeren dem Original -
+    // mit der Marke strich der Export die uebernommene Annotation, mit der Kette teilten sich zwei Kaesten den Nachfolger.
+    b.srcObjNum = 0;
+    b.chainNext = 0;
+    b.growBaseH = 0.0;
+    b.track     = PdfTrackState::None;
+    // Die Seite des Originals kann inzwischen entfernt sein (oder aus einem anderen Dokument stammen).
+    if (!m_plan.isEmpty() && viewOfKey(b.page) < 0)
+        b.page = m_plan.last().key;
     // Leicht versetzt, damit die Kopie sichtbar liegt; Strich-Punkte wandern mit.
     b.rect.translate(14.0, 14.0);
     for (QPointF& p : b.points)

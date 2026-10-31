@@ -468,6 +468,7 @@ private:
     };
     QList<PendingMedia> m_pendingMedia;
     int m_nextMediaId = 1;
+    int m_nextDocPrId = 0;               // 0 = beim ersten Bild aus dem Dokument bestimmen
     QHash<QString, QString> m_rels;      // rId -> Ziel (relativ zu word/)
     // Art -> rId (w:headerReference/w:footerReference des Hauptabschnitts).
     QHash<QString, QString> m_hdrRefs;   // "default"/"first"/"even"

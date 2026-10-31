@@ -1432,12 +1432,20 @@ void MediaModel::restoreMetaAt(const QString& folder, const QString& fileName,
     st->saveCurrentFolder();
 }
 
+// Ein Name, kein Pfad: `../x` legte Ordner anderswo an oder verschoebe die Datei aus dem Ordner.
+static bool usableName(const QString& name) {
+    const QString t = name.trimmed();
+    if (t.isEmpty() || t == QStringLiteral(".") || t == QStringLiteral(".."))
+        return false;
+    return !t.contains(QLatin1Char('/')) && !t.contains(QLatin1Char('\\'));
+}
+
 void MediaModel::renameItem(const QString& filePath, const QString& newBaseName) {
     const int row = rowForPath(filePath);
     if (row < 0 || !isFileRow(row)) return;
 
+    if (!usableName(newBaseName)) return;
     const QString trimmed = newBaseName.trimmed();
-    if (trimmed.isEmpty()) return;
 
     const QFileInfo fi(filePath);
     const QString ext     = fi.suffix();
@@ -1451,6 +1459,14 @@ void MediaModel::renameItem(const QString& filePath, const QString& newBaseName)
     ++m_suppressWatch;
     const bool ok = QFile::rename(filePath, newPath);
     if (!ok) { --m_suppressWatch; return; }
+    // Begleitdateien heissen mit, sonst verwaisten die Notizen.
+    const QString begleit[][2] = {
+        { mg::editsidecar::pfad(filePath),    mg::editsidecar::pfad(newPath) },
+        { mg::editsidecar::altPfad(filePath), mg::editsidecar::altPfad(newPath) },
+        { filePath + QStringLiteral(".bak"),  newPath + QStringLiteral(".bak") },
+    };
+    for (const auto& b : begleit)
+        if (QFileInfo::exists(b[0]) && !QFileInfo::exists(b[1])) QFile::rename(b[0], b[1]);
 
     // Im Sidecar des Ordners, dem die Datei gehoert.
     if (JsonStorage* st = storageForScope(m_items.at(row).scope)) {
@@ -1901,18 +1917,10 @@ void MediaModel::remapExpanded(const QString& oldPath, const QString& newPath) {
     m_expanded = next;
 }
 
-// Ein Name, kein Pfad: sonst legte ein Knopf Ordner an beliebiger Stelle an.
-static bool usableFolderName(const QString& name) {
-    const QString t = name.trimmed();
-    if (t.isEmpty() || t == QStringLiteral(".") || t == QStringLiteral(".."))
-        return false;
-    return !t.contains(QLatin1Char('/')) && !t.contains(QLatin1Char('\\'));
-}
-
 int MediaModel::createFolder(const QString& parentFolder, const QString& name) {
     const QString parent = parentFolder.isEmpty() ? m_folder : parentFolder;
     if (!isVisibleFolder(parent))    return 3;
-    if (!usableFolderName(name))     return 1;
+    if (!usableName(name))     return 1;
 
     const QString target = QDir(parent).filePath(name.trimmed());
     // Ein gleichnamiger Eintrag jeder Art zaehlt als gibt es schon.
@@ -1927,7 +1935,7 @@ int MediaModel::renameFolder(const QString& folderPath, const QString& newName) 
     const int row = rowForPath(folderPath);
     const MediaItem* it = itemAt(row);
     if (!it || !it->isFolder())      return 3;
-    if (!usableFolderName(newName))  return 1;
+    if (!usableName(newName))  return 1;
 
     const QFileInfo fi(folderPath);
     const QString trimmed = newName.trimmed();

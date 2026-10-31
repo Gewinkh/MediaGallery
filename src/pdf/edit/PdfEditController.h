@@ -476,6 +476,7 @@ private:
     void afterTextRebuild();
     void resetTextState();
     void commitPendingTextOp();
+    void beginTextOp(const PdfTextOp& op);
     // true = sofort loslegen, false = wird nach dem Neubau fortgesetzt.
     bool flushTextForExport(int kind);
     void resumePendingExport();

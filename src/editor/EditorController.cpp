@@ -161,6 +161,9 @@ bool EditorController::importPalette(const QUrl& fileUrl) {
     QJsonParseError fehler{};
     const QJsonDocument doc = QJsonDocument::fromJson(f.readAll(), &fehler);
     if (fehler.error != QJsonParseError::NoError || !doc.isObject()) return false;
+    //  Nur ein Thema ersetzt das Thema: fremdes JSON setzte sonst still die Vorgabe an die Stelle der eigenen Farben.
+    for (const QLatin1StringView k : { "background"_L1, "text"_L1 })
+        if (!QColor::isValidColorName(doc.object().value(k).toString())) return false;
 
     m_palette = SyntaxPalette::fromJson(doc.object());
     m_settings.setEditorCustomPalette(

@@ -54,7 +54,7 @@ public:
     Repeat repeat() const { return m_repeat; }
     void setRepeat(Repeat r);
     int  repeatInt() const { return int(m_repeat); }
-    void setRepeatInt(int r) { setRepeat(static_cast<Repeat>(r)); }
+    void setRepeatInt(int r) { setRepeat(static_cast<Repeat>(qBound(0, r, 2))); }   // kein Wert ausserhalb der Aufzaehlung
 
     //  Die Liste in ABSPIEL-Reihenfolge (bei Zufall also gemischt) samt Stelle
     //  darin - das ist, was eine Warteschlangen-Anzeige zeigen muss: „was kommt

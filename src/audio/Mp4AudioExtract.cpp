@@ -785,6 +785,8 @@ Mp4Audio::Result readSource(const QString& path, QFile* f, Track* t, Mp4Audio::I
     if (!haveTrack && info->audioTracks > 0 && trackIndex != 0) {
         info->tracks.clear();
         info->audioTracks = 0;
+        //  Offen nimmt QFile keinen neuen Namen an - der zweite Versuch schlug sonst als "nicht lesbar" fehl.
+        f->close();
         return readSource(path, f, t, info, 0);
     }
     if (!haveTrack) return Mp4Audio::Result::NoAudioTrack;

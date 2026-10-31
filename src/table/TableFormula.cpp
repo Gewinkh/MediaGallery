@@ -40,6 +40,12 @@ Wert zahlWert(double d) {
     return { Art::Zahl, d, {} };
 }
 Wert textWert(QString s) { return { Art::Text, 0.0, std::move(s) }; }
+//  Zahl -> Zeichenposition in [0, grenze]. Erst klemmen, dann wandeln: 10^20 als Ganzzahl ist undefiniert
+//  (auf x86 INT64_MIN), und LINKS(A1; 10^20) gab dann leeren Text statt des ganzen.
+qsizetype stelle(double d, qsizetype grenze) {
+    if (!(d > 0.0)) return 0;
+    return d >= double(grenze) ? grenze : qsizetype(d);
+}
 Wert fehlerWert(QLatin1String s) { return { Art::Fehler, 0.0, QString(s) }; }
 
 QString zahlText(double d, bool komma) {
@@ -558,12 +564,12 @@ Wert Rechner::aufruf(Lauf& l, Fn fn) {
             const double von = einzelZahl(1, &ok);
             const double len = einzelZahl(2, &okB);
             if (!ok || !okB) return fehlerWert(kWert);
-            const qsizetype a = qBound<qsizetype>(0, qsizetype(von) - 1, s.size());
-            return textWert(s.mid(a, qMax<qsizetype>(0, qsizetype(len))));
+            const qsizetype a = qBound<qsizetype>(0, stelle(von, s.size() + 1) - 1, s.size());
+            return textWert(s.mid(a, stelle(len, s.size())));
         }
         const double n = args.size() > 1 ? einzelZahl(1, &ok) : 1.0;
         if (!ok) return fehlerWert(kWert);
-        const qsizetype k = qBound<qsizetype>(0, qsizetype(n), s.size());
+        const qsizetype k = stelle(n, s.size());
         return textWert(fn == Fn::Links ? s.left(k) : s.right(k));
     }
     }

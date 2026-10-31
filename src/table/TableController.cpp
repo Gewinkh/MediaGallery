@@ -695,7 +695,7 @@ int TableController::rowNumber(int row) const {
 }
 
 QString TableController::rowText(int row) const {
-    if (!m_datei) return {};
+    if (!m_datei || rohZeile(row) < 0) return {};
     QStringList felder;
     felder.reserve(m_spalten.size());
     for (const QVariant& v : m_spalten)
@@ -727,7 +727,11 @@ QString TableController::rangeText(int row1, int col1, int row2, int col2) const
 }
 
 int TableController::rohZeile(int anzeige) const {
-    if (!m_ordnungAktiv) return aktiv().daten + anzeige;
+    if (!m_ordnungAktiv) {
+        // Ungebunden traf -1 die Kopfzeile und eine Zeile hinter dem Block den naechsten Block - auch beim Schreiben.
+        const Bereich b = aktiv();
+        return (anzeige < 0 || anzeige >= b.bis - b.daten) ? -1 : b.daten + anzeige;
+    }
     if (anzeige < 0 || anzeige >= m_ordnung.size()) return -1;
     return m_ordnung.at(anzeige);
 }

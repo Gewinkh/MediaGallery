@@ -239,7 +239,7 @@ of times · `{4}` exactly four times · `^` line start · `$` line end · `a|b` 
 - **From an open PDF**: right-click a page ▸ *Extract page* or *Extract multiple pages…*
 - **From the whole folder**: the *Extract* button collects all PDFs, and you pick pages from several files into one new PDF
 - **Workbench**: PDF list on the left, pages on the right, and a bar at the bottom whose order is the order of the new file - drag to reorder, drag out to remove. `Ctrl` + hover shows a large preview
-- **Lossless**: pages are copied as they are - text, fonts and vector graphics stay intact. Only files that cannot be copied (for example encrypted ones) become image pages
+- **Lossless**: pages are copied as they are - text, fonts and vector graphics stay intact, also from modern PDFs with a damaged cross-reference stream. Only files that cannot be copied (for example encrypted ones) become image pages
 - The suggested file name is in the app's language (*Report - Page 2*, *Bericht - Seite 2*); existing files are never overwritten
 
 ## PDF Editor

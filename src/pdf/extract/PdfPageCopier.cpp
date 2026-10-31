@@ -454,6 +454,8 @@ bool SourceDoc::parseXrefAt(qint64 offset, QSet<qint64>* visited, QString* err) 
     const qint64 w1 = w->arr[0].i, w2 = w->arr[1].i, w3 = w->arr[2].i;
     if (w1 < 0 || w2 <= 0 || w3 < 0 || w1 + w2 + w3 <= 0 || w1 + w2 + w3 > 32)
         return false;
+    //  Vor dem Dekodieren: ist der Strom kaputt, kennt die Wiederherstellung /Root nur von hier.
+    mergeTrailer(obj);
 
     QByteArray data;
     if (!decodeStream(obj, &data)) return false;
@@ -488,7 +490,6 @@ bool SourceDoc::parseXrefAt(qint64 offset, QSet<qint64>* visited, QString* err) 
             else if (type == 2) insertEntry(onum, {2, f2, static_cast<int>(f3)});
         }
     }
-    mergeTrailer(obj);
     if (const PObj* prev = obj.find("Prev"); prev && prev->t == PObj::Int)
         return parseXrefAt(prev->i, visited, err);
     return true;
@@ -710,6 +711,8 @@ bool SourceDoc::reconstructByScan(QString* err) {
         }
     }
     if (!m_trailer.find("Root")) {
+        //  Ab PDF 1.5 liegt der Katalog meist komprimiert im Objekt-Strom.
+        if (!m_scannedObjStms) indexObjStmsByScan();
         for (auto it = m_xref.constBegin(); it != m_xref.constEnd(); ++it) {
             bool legalNull = false;
             const PObj* o = getObject(it.key(), &legalNull);

@@ -24,6 +24,7 @@
 #include <QDir>
 #include <QMetaObject>
 #include <QRegularExpression>
+#include <QXmlStreamReader>
 #include <QPointer>
 
 using namespace Docx;
@@ -1046,6 +1047,48 @@ void DocxEditController::setFontSizePt(qreal pt) {
 }
 void DocxEditController::setTextColor(const QColor& c) { applyCharFormat(RunFmt::FColor, c); }
 
+// Nur DIREKT gesetzte Werte schreiben; was das Modell nicht kennt (genauer Zeilenabstand, Abstand in Zeilen),
+// bleibt stehen - ausser es würde den gesetzten Wert in Word überstimmen.
+static QString mergedSpacingXml(const QString& ppr, const ParFmt& pf) {
+    QList<QPair<QString, QString>> attrs;
+    QXmlStreamReader r(ppr);
+    r.setNamespaceProcessing(false);
+    int depth = 0;
+    while (!r.atEnd()) {
+        const auto t = r.readNext();
+        if (t == QXmlStreamReader::EndElement) { --depth; continue; }
+        if (t != QXmlStreamReader::StartElement) continue;
+        if (++depth == 2 && r.qualifiedName() == QLatin1String("w:spacing")) {
+            for (const QXmlStreamAttribute& a : r.attributes())
+                attrs.append({ a.qualifiedName().toString(), a.value().toString() });
+            break;
+        }
+    }
+    auto drop = [&attrs](std::initializer_list<const char*> names) {
+        for (const char* n : names)
+            attrs.removeIf([n](const auto& a) { return a.first == QLatin1String(n); });
+    };
+    if (pf.set & ParFmt::FBefore) {
+        drop({ "w:before", "w:beforeLines", "w:beforeAutospacing" });
+        attrs.append({ QStringLiteral("w:before"), QString::number(qRound(pf.beforePt * 20)) });
+    }
+    if (pf.set & ParFmt::FAfter) {
+        drop({ "w:after", "w:afterLines", "w:afterAutospacing" });
+        attrs.append({ QStringLiteral("w:after"), QString::number(qRound(pf.afterPt * 20)) });
+    }
+    if (pf.set & ParFmt::FLine) {
+        drop({ "w:line", "w:lineRule" });
+        attrs.append({ QStringLiteral("w:line"), QString::number(qRound(pf.lineSpacing * 240)) });
+        attrs.append({ QStringLiteral("w:lineRule"), QStringLiteral("auto") });
+    }
+    if (attrs.isEmpty()) return {};
+    QString xml = QStringLiteral("<w:spacing");
+    for (const auto& a : attrs)
+        xml += QLatin1Char(' ') + a.first + QStringLiteral("=\"") + Document::xmlEscape(a.second)
+               + QLatin1Char('"');
+    return xml + QStringLiteral("/>");
+}
+
 void DocxEditController::applyParProp(const QString& propName, const QString& newXml,
                                       const std::function<void(ParFmt&)>& mut) {
     if (!m_ready) return;
@@ -1056,25 +1099,11 @@ void DocxEditController::applyParProp(const QString& propName, const QString& ne
     for (int i = b1; i <= b2; ++i) {
         if (!isEditableParagraph(i)) continue;
         Block& blk = m_doc.blocks[i];
-        //  Für w:spacing hängt das fertige Element vom (mutierten) ParFmt des
-        //  Blocks ab -> mut() zuerst, dann Fragment bauen (s. Aufrufer).
-        mut(blk.pfmt);
-        QString xml = newXml;
-        if (propName == QLatin1String("w:spacing")) {
-            //  Nur DIREKT gesetzte Werte schreiben (Stil-Werte bleiben Stil).
-            QString attrs;
-            if (blk.pfmt.set & ParFmt::FBefore)
-                attrs += QStringLiteral(" w:before=\"%1\"").arg(qRound(blk.pfmt.beforePt * 20));
-            if (blk.pfmt.set & ParFmt::FAfter)
-                attrs += QStringLiteral(" w:after=\"%1\"").arg(qRound(blk.pfmt.afterPt * 20));
-            if (blk.pfmt.set & ParFmt::FLine)
-                attrs += QStringLiteral(" w:line=\"%1\" w:lineRule=\"auto\"")
-                             .arg(qRound(blk.pfmt.lineSpacing * 240));
-            xml = attrs.isEmpty() ? QString()
-                                  : QStringLiteral("<w:spacing%1/>").arg(attrs);
-        }
-        blk.pprXml = Document::upsertProp(blk.currentPpr(m_doc.docXml()),
-                                          QStringLiteral("w:pPr"), propName, xml, kPPrOrder);
+        mut(blk.pfmt);                 // w:spacing baut auf dem MUTIERTEN ParFmt auf
+        const QString ppr = blk.currentPpr(m_doc.docXml());
+        const QString xml = propName == QLatin1String("w:spacing")
+                                ? mergedSpacingXml(ppr, blk.pfmt) : newXml;
+        blk.pprXml = Document::upsertProp(ppr, QStringLiteral("w:pPr"), propName, xml, kPPrOrder);
         blk.pprMaterialized = true;
     }
     scope.commit(b2 - b1 + 1);
@@ -2141,8 +2170,8 @@ QString DocxEditController::selectionAsHtml() const {
             if (t.isEmpty()) continue;
             const RunFmt f = m_doc.resolveRun(blk, r);
             QString style = QStringLiteral("font-family:'%1';font-size:%2pt;")
-                                .arg(Document::xmlEscape(f.font))
-                                .arg(f.sizePt, 0, 'f', 1);
+                                .arg(Document::xmlEscape(f.font),
+                                     QString::number(f.sizePt, 'f', 1));
             if (f.bold)      style += QStringLiteral("font-weight:bold;");
             if (f.italic)    style += QStringLiteral("font-style:italic;");
             if (f.underline) style += QStringLiteral("text-decoration:underline;");
@@ -2497,11 +2526,16 @@ void DocxEditController::paste() {
 // Einfügen fertiger Runs: Ablauf wie `insertText`, nur bringen die Runs ihr Format MIT. Absatz-Eigenschaften
 // übernimmt der Zielabsatz - so lecken keine numId- oder pStyle-Verweise aus einem fremden Dokument herein.
 void DocxEditController::insertRunParagraphs(const QList<QList<Run>>& paras) {
-    if (!m_ready || paras.isEmpty()) return;
+    if (!m_ready || paras.isEmpty() || cursorInToc()) return;
     int b1, p1, b2, p2;
     orderedSelection(b1, p1, b2, p2);
     if (!isEditableParagraph(b1) || !isEditableParagraph(b2))
         return;
+    if (b2 != b1) {
+        const int wanted = b2;
+        clampRangeToCell(b1, b2);
+        if (b2 != wanted) p2 = blockLen(b2);
+    }
 
     EditScope scope(this, b1, b2 - b1 + 1);
 
@@ -2540,6 +2574,9 @@ void DocxEditController::insertRunParagraphs(const QList<QList<Run>>& paras) {
         const int k = ensureRunBoundary(blk, curPos);
         Block nb;
         nb.kind = Block::Paragraph;
+        nb.tableId = blk.tableId;
+        nb.row = blk.row;
+        nb.col = blk.col;
         const QString ppr = blk.currentPpr(m_doc.docXml());
         if (!ppr.isEmpty()) { nb.pprXml = ppr; nb.pprMaterialized = true; }
         nb.pfmt = blk.pfmt;
@@ -2620,9 +2657,7 @@ QVariantMap DocxEditController::findNext(const QString& needle, bool caseSensiti
     const int n = m_doc.blocks.size();
     if (!m_ready || needle.isEmpty() || n == 0)
         return r;
-    //  Woertlich UND - bei Sonderzeichen - als Muster, wie ueberall in der App
-    //  (s. `core/SearchPattern.h`). Die Trefferlaenge ist deshalb NICHT mehr
-    //  `needle.size()`, sondern das, was gefunden wurde.
+    //  Bei Sonderzeichen ein Muster: die Trefferlaenge ist nicht `needle.size()`.
     const mg::search::Pattern p(needle, caseSensitive, false);
 
     //  Startgrenze: vorwärts ab Selektionsende, rückwärts ab Selektionsanfang.
@@ -2630,7 +2665,9 @@ QVariantMap DocxEditController::findNext(const QString& needle, bool caseSensiti
     { int b1, p1, b2, p2; orderedSelection(b1, p1, b2, p2);
       if (backward) { sb = b1; sp = p1; } else { sb = b2; sp = p2; } }
 
+    //  Umlauf = Dokumentende ueberschritten, nicht erst zurueck im Startblock.
     auto liefern = [&](int bi, const mg::search::Range& tr, bool wrapped) {
+        wrapped = wrapped || (backward ? bi > sb : bi < sb);
         selectRange(bi, tr.start, tr.length);
         r.insert(QStringLiteral("found"), true);
         r.insert(QStringLiteral("wrapped"), wrapped);
@@ -2639,9 +2676,7 @@ QVariantMap DocxEditController::findNext(const QString& needle, bool caseSensiti
         return r;
     };
 
-    //  EINMAL umlaufend durch alle Blöcke; der Wrap-Durchgang (k==n) landet
-    //  wieder im Startblock und akzeptiert nur Treffer VOR der Startgrenze
-    //  (die dahinter wurden bei k==0 bereits abgedeckt).
+    //  k==n ist wieder der Startblock: nur Treffer VOR der Startgrenze, der Rest kam bei k==0.
     for (int k = 0; k <= n; ++k) {
         const int bi = backward ? ((sb - k) % n + n) % n
                                 : (sb + k) % n;
@@ -2673,12 +2708,10 @@ QVariantMap DocxEditController::findNext(const QString& needle, bool caseSensiti
 QVariantMap DocxEditController::replaceAndFind(const QString& needle,
                                                const QString& replacement,
                                                bool caseSensitive) {
-    //  Suchen&Ersetzen ist absatzintern -> Ersatztext ohne Umbrüche (sonst
-    //  spaltete insertText den Absatz und verschöbe die Trefferpositionen).
+    //  Absatzintern: ein Umbruch spaltete den Absatz und verschöbe die Treffer.
     QString rep = replacement; rep.remove(QLatin1Char('\n')).remove(QLatin1Char('\r'));
     if (m_ready && !needle.isEmpty() && m_cursor.hasSelection()) {
-        //  Bei einem Muster laesst sich der Wortlaut nicht mehr vergleichen -
-        //  gefragt ist, ob die Auswahl GENAU ein Treffer ist.
+        //  Bei einem Muster zählt, ob die Auswahl GENAU ein Treffer ist.
         const mg::search::Pattern p(needle, caseSensitive, false);
         if (p.matchesWhole(selectionPlainText())) {
             //  Aktuelle Selektion IST der Treffer -> ersetzen (undo-fähig).
@@ -2697,9 +2730,8 @@ int DocxEditController::replaceAll(const QString& needle, const QString& replace
     QString rep = replacement; rep.remove(QLatin1Char('\n')).remove(QLatin1Char('\r'));
     const mg::search::Pattern p(needle, caseSensitive, false);
     int count = 0;
-    m_stack.beginMacro(QStringLiteral("Alle ersetzen"));
-    // Deterministisch von vorne: je Block alle Vorkommen, danach der nächste. Beim Ersetzen ändert sich nur der
-    // eigene Block, deshalb geht die Suche darin ab dem Ende des Ersatzes weiter - keine Endlosschleife.
+    //  Makro erst beim ersten Treffer: ein leeres bliebe als toter Undo-Schritt.
+    // Je Block weiter ab dem Ende des Ersatzes - so endet auch ein Ersatz, der das Gesuchte enthält.
     const int hardCap = 5'000'000;
     for (int bi = 0; bi < m_doc.blocks.size(); ++bi) {
         if (!isEditableParagraph(bi))
@@ -2709,6 +2741,7 @@ int DocxEditController::replaceAll(const QString& needle, const QString& replace
             const QString t = blockText(bi);
             const mg::search::Range tr = p.firstFrom(t, from);
             if (tr.length <= 0) break;
+            if (count == 0) m_stack.beginMacro(QStringLiteral("Alle ersetzen"));
             selectRange(bi, tr.start, tr.length);
             if (rep.isEmpty()) deleteBackward();
             else               insertText(rep);
@@ -2717,9 +2750,10 @@ int DocxEditController::replaceAll(const QString& needle, const QString& replace
         }
         if (count >= hardCap) break;
     }
-    m_stack.endMacro();
-    if (count > 0)
+    if (count > 0) {
+        m_stack.endMacro();
         setModified(true);
+    }
     return count;
 }
 

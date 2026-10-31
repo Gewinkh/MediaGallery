@@ -928,7 +928,9 @@ StreamStart findStartViaCues(QFile& f, qint64 segDataStart, qint64 segEnd,
                 q = iAt + iSize;
             }
             const qint64 ms = qint64(double(cueTime) * double(timeScale) / 1000000.0);
-            if (cuePos > 0 && ms <= targetMs) {
+            //  Position ausserhalb des Segments: Eintrag ueberspringen, der vorige gilt weiter.
+            const bool inSeg = cuePos > 0 && cuePos < quint64(segEnd - segDataStart);
+            if (inSeg && ms <= targetMs) {
                 out.ok = true;
                 out.clusterPos = segDataStart + qint64(cuePos);
                 out.clusterMs  = ms;
@@ -937,6 +939,14 @@ StreamStart findStartViaCues(QFile& f, qint64 segDataStart, qint64 segEnd,
             }
         }
         p = pAt + pSize;
+    }
+    //  Zeigt der Eintrag nicht auf einen Cluster, liefe der Strom leer (Stille
+    //  nach dem Sprung) - dann lieber das Ablaufen.
+    if (out.ok) {
+        quint32 cid = 0;
+        qint64 cAt = 0, cSize = 0;
+        if (!readElemAt(f, out.clusterPos, &cid, &cAt, &cSize) || cid != kIdCluster)
+            out.ok = false;
     }
     return out;
 }

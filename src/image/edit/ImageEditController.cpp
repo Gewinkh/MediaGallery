@@ -661,6 +661,7 @@ void ImageEditController::paste() {
     finishOpenSessions();
     ImageAnnotation a = m_clip;
     a.id = m_nextId++;
+    a.track = ImageTrackState::None;                // die Loeschmarke gehoert dem Original
     const qreal imgW = m_imgW > 0 ? m_imgW : (a.rect.right() + 200.0);
     const qreal imgH = m_imgH > 0 ? m_imgH : (a.rect.bottom() + 200.0);
     qreal dx = qMax<qreal>(16.0, imgW * 0.03);
