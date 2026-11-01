@@ -22,6 +22,12 @@ inline bool isDelim(char c) {
 }
 inline bool isRegular(char c) { return !isWs(c) && !isDelim(c); }
 inline bool isDigit(char c)   { return c >= '0' && c <= '9'; }
+inline int hexNibble(char c) {
+    if (c >= '0' && c <= '9') return c - '0';
+    if (c >= 'A' && c <= 'F') return c - 'A' + 10;
+    if (c >= 'a' && c <= 'f') return c - 'a' + 10;
+    return -1;
+}
 
 // zlib-Inflate nur für XRef- und Objekt-Streams (normale Streams werden verbatim kopiert). Erst den
 // zlib-Header versuchen, bei kaputtem Header roh-Deflate - manche Erzeuger schreiben fehlerhafte Header.
@@ -147,12 +153,12 @@ struct Lexer {
 QByteArray decodeName(const QByteArray& rawWithSlash) {
     QByteArray out;
     out.reserve(rawWithSlash.size());
-    for (int i = 1; i < rawWithSlash.size(); ++i) {      // führenden '/' überspringen
+    for (qsizetype i = 1; i < rawWithSlash.size(); ++i) {      // führenden '/' überspringen
         const char c = rawWithSlash.at(i);
+        //  Genau zwei Hex-Ziffern: toInt nimmt auch "-1" und " 1" an und machte aus `#-1` das Byte 0xFF.
         if (c == '#' && i + 2 < rawWithSlash.size()) {
-            bool ok = false;
-            const int v = rawWithSlash.mid(i + 1, 2).toInt(&ok, 16);
-            if (ok) { out.append(static_cast<char>(v)); i += 2; continue; }
+            const int hi = hexNibble(rawWithSlash.at(i + 1)), lo = hexNibble(rawWithSlash.at(i + 2));
+            if (hi >= 0 && lo >= 0) { out.append(static_cast<char>(hi * 16 + lo)); i += 2; continue; }
         }
         out.append(c);
     }
@@ -227,7 +233,8 @@ bool parseValue(Lexer& lx, PObj* out, int depth) {
         ++lx.p;
         while (lx.p < lx.n && isRegular(lx.d[lx.p])) ++lx.p;
         out->t = PObj::Name;
-        out->raw = QByteArray(lx.d + s, static_cast<int>(lx.p - s));
+        //  Ohne int-Cast: ab 2^31 Bytes wuerde die Laenge negativ, und QByteArray liefe per strlen ueber das Mapping.
+        out->raw = QByteArray(lx.d + s, lx.p - s);
         return true;
     }
     if (isDigit(c) || c == '+' || c == '-' || c == '.') {        // Zahl (evtl. Ref)
@@ -895,6 +902,21 @@ int CopyPlan::mapNum(qint64 srcNum) {
     return nn;
 }
 
+// Schluessel liegen DEKODIERT vor (`/Foo#20Bar` -> "Foo Bar") und muessen beim Schreiben wieder maskiert werden.
+void appendName(QByteArray* out, const QByteArray& decoded) {
+    out->append('/');
+    for (const char c : decoded) {
+        if (isRegular(c) && c != '#' && static_cast<uchar>(c) > 0x20) {
+            out->append(c);
+        } else {
+            out->append('#');
+            const char hex[] = "0123456789ABCDEF";
+            out->append(hex[(static_cast<uchar>(c) >> 4) & 0xF]);
+            out->append(hex[static_cast<uchar>(c) & 0xF]);
+        }
+    }
+}
+
 bool CopyPlan::serializeValue(const PObj& v, QByteArray* out, int depth) {
     if (depth > kMaxParseDepth) return false;
     switch (v.t) {
@@ -933,17 +955,7 @@ bool CopyPlan::serializeValue(const PObj& v, QByteArray* out, int depth) {
         for (const auto& kv : v.dict) {
             if (v.t == PObj::Stream && kv.first == "Length")
                 continue;                        // wird als Literal neu geschrieben
-            out->append('/');
-            for (const char c : kv.first) {
-                if (isRegular(c) && c != '#' && static_cast<uchar>(c) > 0x20) {
-                    out->append(c);
-                } else {
-                    out->append('#');
-                    const char hex[] = "0123456789ABCDEF";
-                    out->append(hex[(static_cast<uchar>(c) >> 4) & 0xF]);
-                    out->append(hex[static_cast<uchar>(c) & 0xF]);
-                }
-            }
+            appendName(out, kv.first);
             out->append(' ');
             if (!serializeValue(kv.second, out, depth + 1)) return false;
             out->append(' ');
@@ -1016,8 +1028,7 @@ bool CopyPlan::planPage(const SourceDoc::PageInfo& pi, int newNum, int rotDelta)
         if (kv.first == "Parent" || kv.first == "B") continue;
         if (rotOut >= 0 && kv.first == "Rotate") continue;   // s. o.
         present.insert(kv.first);
-        head.append('/');
-        head.append(kv.first);
+        appendName(&head, kv.first);
         head.append(' ');
         if (!serializeValue(kv.second, &head, 0)) return false;
         head.append(' ');

@@ -6,6 +6,7 @@
 #include <QFile>
 #include <QSaveFile>
 #include <algorithm>
+#include <cctype>
 #include <climits>
 #include <functional>
 #include <cstring>
@@ -327,11 +328,10 @@ QByteArray toPdfTextString(const QString& s) {
 QString nameToString(const QByteArray& name) {
     QByteArray n = name.startsWith('/') ? name.mid(1) : name;
     QByteArray out;
-    for (int i = 0; i < n.size(); ++i) {
-        if (n[i] == '#' && i + 2 < n.size()) {
-            bool ok = false;
-            const int v = n.mid(i+1, 2).toInt(&ok, 16);
-            if (ok) { out += char(v); i += 2; continue; }
+    for (qsizetype i = 0; i < n.size(); ++i) {
+        //  Nur zwei Hex-Ziffern: toInt nimmt auch Vorzeichen an (`#-1` -> 0xFF).
+        if (n[i] == '#' && i + 2 < n.size() && std::isxdigit(uchar(n[i+1])) && std::isxdigit(uchar(n[i+2]))) {
+            out += char(n.mid(i+1, 2).toInt(nullptr, 16)); i += 2; continue;
         }
         out += n[i];
     }

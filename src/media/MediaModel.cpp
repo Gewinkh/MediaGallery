@@ -1339,6 +1339,15 @@ JsonStorage* MediaModel::storageForFolder(const QString& folder) {
     return nullptr;      // nicht offen -> kurzlebiger Weg (writeMetaToFolder)
 }
 
+static QString categoryIdByName(const QList<TagCategory>& list, const QString& name) {
+    for (const TagCategory& c : list) {
+        if (c.name == name) return c.id;
+        const QString sub = categoryIdByName(c.children, name);
+        if (!sub.isEmpty()) return sub;
+    }
+    return {};
+}
+
 // Ueber Namen, denn die IDs eines anderen Ordners sind andere. Fehlt drueben
 // eine Kategorie, entsteht sie auf der Hauptebene - den Pfad nachzubilden waere Raten.
 QStringList MediaModel::categoryNamesOf(JsonStorage& st, const QString& fileName) {
@@ -1402,9 +1411,8 @@ void MediaModel::collectMetaAt(const QString& folder, const QString& fileName,
     // Kein Datum: es haengt an der Datei und wandert mit ihr.
 }
 
-void MediaModel::dropMetaAt(const QString& folder, const QString& fileName,
-                            const FileOp& op) {
-    if (folder == m_folder) { dropMeta(fileName, op); return; }
+void MediaModel::dropMetaAt(const QString& folder, const QString& fileName) {
+    if (folder == m_folder) { dropMeta(fileName); return; }
     JsonStorage* st = storageForFolder(folder);
     if (!st) { removeMetaFromFolder(folder, fileName); return; }
     st->removeFile(fileName);
@@ -1421,10 +1429,11 @@ void MediaModel::restoreMetaAt(const QString& folder, const QString& fileName,
         QStringList tags = st->getTags(fileName);
         const QHash<QString, QColor> colors = m_storage.tagColors();
         for (const QString& t : op.tags) {
+            const bool knownThere = st->tagColors().contains(t);
             if (!tags.contains(t)) tags.append(t);
             st->ensureTagRegistered(t);
             const auto c = colors.constFind(t);
-            if (c != colors.constEnd()) st->setTagColor(t, c.value());
+            if (!knownThere && c != colors.constEnd()) st->setTagColor(t, c.value());
         }
         st->setTags(fileName, tags);
     }
@@ -1537,7 +1546,7 @@ bool MediaModel::trashFile(const QString& filePath, FileOp* op) {
             else
                 QFile::remove(bak);
         }
-        dropMetaAt(folder, name, *op);
+        dropMetaAt(folder, name);
     }
     --m_suppressWatch;
     return ok;
@@ -1660,11 +1669,11 @@ void MediaModel::collectMeta(const QString& fileName, FileOp* op) const {
     op->categoryIds   = m_tagManager.categoryIdsForFile(fileName);
 }
 
-void MediaModel::dropMeta(const QString& fileName, const FileOp& op) {
+void MediaModel::dropMeta(const QString& fileName) {
     m_storage.removeFile(fileName);
     // Kategorien liegen nicht in den Datei-Metadaten, sondern in den Kategorien
     // selbst - ohne diesen Schritt bliebe der Name dort als Waise.
-    for (const QString& id : op.categoryIds)
+    for (const QString& id : m_tagManager.categoryIdsForFile(fileName))
         m_tagManager.removeFileFromCategory(id, fileName);
     m_storage.saveCurrentFolder();
 }
@@ -1674,6 +1683,18 @@ void MediaModel::restoreMeta(const QString& fileName, const FileOp& op) {
         m_tagManager.addTagToFile(fileName, tag);
     for (const QString& id : op.categoryIds)
         m_tagManager.addFileToCategory(id, fileName);
+    if (op.categoryIds.isEmpty()) {
+        for (const QString& name : op.categoryNames) {
+            QString id = categoryIdByName(m_tagManager.categories(), name);
+            if (id.isEmpty()) {
+                TagCategory fresh = TagCategory::create(name);
+                fresh.color = QColor(0, 179, 161);
+                m_tagManager.addCategory(fresh);
+                id = fresh.id;
+            }
+            m_tagManager.addFileToCategory(id, fileName);
+        }
+    }
     m_storage.saveCurrentFolder();
 }
 
@@ -1682,7 +1703,7 @@ void MediaModel::restoreMeta(const QString& fileName, const FileOp& op) {
 void MediaModel::writeMetaToFolder(const QString& folder, const QString& fileName,
                                    const FileOp& op,
                                    const QHash<QString, QColor>& tagColors) {
-    if (op.tags.isEmpty() && op.categoryIds.isEmpty())
+    if (op.tags.isEmpty() && op.categoryNames.isEmpty())
         return;
     JsonStorage dest;
     dest.loadFolder(folder);
@@ -2065,9 +2086,9 @@ int MediaModel::transferToFolder(const QString& filePath, const QString& destFol
         ok = QFile::copy(filePath, target);
     }
     if (ok && move) {
-        dropMetaAt(srcFolder, name, op);
-        writeMetaToFolder(destFolder, QFileInfo(target).fileName(), op,
-                          m_storage.tagColors());
+        dropMetaAt(srcFolder, name);
+        //  Offenes Ziel: ins Gedaechtnis, sonst verwirft sein naechstes Speichern die Kategorien.
+        restoreMetaAt(QFileInfo(target).absolutePath(), QFileInfo(target).fileName(), op);
     }
     --m_suppressWatch;
     if (!ok) return 2;
@@ -2301,8 +2322,7 @@ bool MediaModel::undoMove(const FileOp& op) {
         if (ok && !QFile::remove(op.movedTo)) { QFile::remove(op.path); ok = false; }
     }
     if (ok) {
-        removeMetaFromFolder(QFileInfo(op.movedTo).absolutePath(),
-                             QFileInfo(op.movedTo).fileName());
+        dropMetaAt(QFileInfo(op.movedTo).absolutePath(), QFileInfo(op.movedTo).fileName());
         restoreMetaAt(QFileInfo(op.path).absolutePath(),
                       QFileInfo(op.path).fileName(), op);
         invalidateFolderCount(QFileInfo(op.movedTo).absolutePath());

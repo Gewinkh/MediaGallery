@@ -6,9 +6,9 @@
 
 namespace mg::simd {
 
-//  NEON kennt kein `movemask`. Der uebliche Weg: die Trefferspur auf 4 Bit je
-//  Zeichen schrumpfen (`vshrn`) und die 64 Bit am Stueck lesen - das niedrigste
-//  gesetzte Viererpaket ist der erste Treffer.
+//  NEON kennt kein `movemask`. Stattdessen schmaelert `vshrn` jede 16-Bit-Spur
+//  auf 8 Bit, und die 64 Bit werden am Stueck gelesen: das niedrigste gesetzte
+//  BYTE ist der erste Treffer, daher `>> 3`. Mit `>> 2` kam `i + 2k` heraus.
 qsizetype findeErstesNeon(const char16_t* p, qsizetype n, char16_t a, char16_t b) {
     //  Wie bei x86: erst die Laenge, dann die Register (s. `FindChar_x86.cpp`).
     if (n < 8) {
@@ -24,7 +24,7 @@ qsizetype findeErstesNeon(const char16_t* p, qsizetype n, char16_t a, char16_t b
         const uint16x8_t tr = vorrq_u16(vceqq_u16(v, va), vceqq_u16(v, vb));
         const uint64_t maske = vget_lane_u64(
             vreinterpret_u64_u8(vshrn_n_u16(tr, 4)), 0);
-        if (maske) return i + (__builtin_ctzll(maske) >> 2);
+        if (maske) return i + (__builtin_ctzll(maske) >> 3);
     }
     for (; i < n; ++i)
         if (p[i] == a || p[i] == b) return i;
@@ -49,7 +49,7 @@ qsizetype findeErstesDreiNeon(const char16_t* p, qsizetype n,
                                         vceqq_u16(v, vc));
         const uint64_t maske = vget_lane_u64(
             vreinterpret_u64_u8(vshrn_n_u16(tr, 4)), 0);
-        if (maske) return i + (__builtin_ctzll(maske) >> 2);
+        if (maske) return i + (__builtin_ctzll(maske) >> 3);
     }
     for (; i < n; ++i)
         if (p[i] == a || p[i] == b || p[i] == c) return i;

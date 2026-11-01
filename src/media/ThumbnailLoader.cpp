@@ -389,37 +389,41 @@ QImage ThumbnailTask::generateVideoThumbnail(const QString& path, const QSize& s
     //  Die erste Vorschau eines Videos ist der frueheste Punkt, an dem
     //  FFmpeg ueberhaupt laedt - hier faellt der Griff nicht auf.
     mg::media::beQuiet();
-    auto* player = new QMediaPlayer;
-    auto* sink   = new QVideoSink;
-    player->moveToThread(&thread);
-    sink->moveToThread(&thread);
-
-    QObject::connect(sink, &QVideoSink::videoFrameChanged,
-                     &context, [&](const QVideoFrame& frame) {
-        QMutexLocker lk(&mutex);
-        if (done || !frame.isValid()) return;
-        done = true;
-        QImage img = frame.toImage();
-        if (!img.isNull())
-            result = img.scaled(size, Qt::KeepAspectRatio, Qt::SmoothTransformation);
-        cond.wakeAll();
-    }, Qt::DirectConnection);
-
-    // Unlesbare/defekte Videodateien liefern NIE einen Frame. Ohne diesen
-    // Handler lief dafuer jedes Mal die volle Zeitschranke ab und blockierte
-    // einen Pool-Worker vier Sekunden lang.
-    QObject::connect(player, &QMediaPlayer::errorOccurred,
-                     &context, [&](QMediaPlayer::Error, const QString&) {
-        QMutexLocker lk(&mutex);
-        done = true;
-        cond.wakeAll();
-    }, Qt::DirectConnection);
-
-    QObject::connect(&thread, &QThread::started, player, [player, sink, path]() {
+    //  Beide entstehen IM Player-Faden: die Innereien des FFmpeg-Backends sind keine Kinder des Players und
+    //  wandern bei moveToThread nicht mit. Sie blieben in diesem Faden, der unten wartet - kein Bild, kein Fehler,
+    //  jede Vorschau lief in die Zeitschranke.
+    QMediaPlayer* player = nullptr;
+    QVideoSink*   sink   = nullptr;
+    QObject::connect(&thread, &QThread::started, &context, [&] {
+        player = new QMediaPlayer;
+        sink   = new QVideoSink;
+        QObject::connect(sink, &QVideoSink::videoFrameChanged, &context, [&](const QVideoFrame& frame) {
+            QMutexLocker lk(&mutex);
+            if (done || !frame.isValid()) return;
+            done = true;
+            QImage img = frame.toImage();
+            if (!img.isNull())
+                result = img.scaled(size, Qt::KeepAspectRatio, Qt::SmoothTransformation);
+            cond.wakeAll();
+        }, Qt::DirectConnection);
+        // Unlesbare/defekte Videodateien liefern NIE einen Frame. Ohne diesen
+        // Handler lief dafuer jedes Mal die volle Zeitschranke ab und blockierte
+        // einen Pool-Worker vier Sekunden lang.
+        QObject::connect(player, &QMediaPlayer::errorOccurred, &context,
+                         [&](QMediaPlayer::Error, const QString&) {
+            QMutexLocker lk(&mutex);
+            done = true;
+            cond.wakeAll();
+        }, Qt::DirectConnection);
         player->setVideoSink(sink);
         player->setSource(QUrl::fromLocalFile(path));
         player->play();
-    });
+    }, Qt::DirectConnection);
+    QObject::connect(&thread, &QThread::finished, &context, [&] {
+        if (player) player->stop();
+        delete player;
+        delete sink;
+    }, Qt::DirectConnection);
 
     // Die Sperre wird VOR `thread.start()` genommen: der Frame-Handler läuft im Player-Thread und kann sonst
     // zwischen start() und wait() feuern - sein `wakeAll()` ginge ins Leere (verlorenes Wakeup).
@@ -433,11 +437,6 @@ QImage ThumbnailTask::generateVideoThumbnail(const QString& path, const QSize& s
         }
     }
 
-    QMetaObject::invokeMethod(player, [player, sink]() {
-        player->stop();
-        delete player;
-        delete sink;
-    }, Qt::QueuedConnection);
     thread.quit();
 
     if (!thread.wait(5000)) {

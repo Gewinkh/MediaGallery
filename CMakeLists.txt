@@ -138,15 +138,16 @@ target_precompile_headers(mg_pch PRIVATE pch/Precompiled.h)
 #  Die Weiche steht VOR dem Ziel, damit die Quellenliste sie schon kennt.
 #  `CMAKE_SYSTEM_PROCESSOR` entscheidet ueber den Befehlssatz, das System ueber
 #  die Aufrufkonvention - beides muss passen, sonst wird gar nichts gebaut.
+#  Darwin bleibt draussen: die Quelle ist ELF (`.type`, `.size`, kein `_`-Praefix).
 set(MG_ASM_SOURCES "")
 set(MG_ASM_WHY "aus (MG_ASM=OFF)")
 if(MG_ASM)
     if(CMAKE_SYSTEM_PROCESSOR MATCHES "^(x86_64|AMD64)$"
-       AND (CMAKE_SYSTEM_NAME STREQUAL "Linux" OR CMAKE_SYSTEM_NAME STREQUAL "Darwin")
+       AND CMAKE_SYSTEM_NAME STREQUAL "Linux"
        AND NOT MSVC)
         enable_language(ASM)
         set(MG_ASM_SOURCES src/simd/asm/sysv_x86_64/findchar_avx2.S)
-        set(MG_ASM_WHY "an (System V, x86-64)")
+        set(MG_ASM_WHY "an (System V, x86-64, ELF)")
     else()
         set(MG_ASM_WHY "aus (keine Fassung fuer ${CMAKE_SYSTEM_NAME}/${CMAKE_SYSTEM_PROCESSOR})")
     endif()

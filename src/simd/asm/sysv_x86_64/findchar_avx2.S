@@ -1,10 +1,11 @@
 //  mg_finde_erstes_avx2_sysv - erste Stelle, an der eines von zwei Zeichen steht.
 //  Handgeschrieben fuer GENAU EINE Kombination: System-V-Aufrufkonvention auf
-//  x86-64, AVX2 vorausgesetzt. Windows uebergibt in anderen Registern und
-//  verlangt xmm6-xmm15 vom Gerufenen zurueck; dort und ueberall sonst greift
-//  die C++-Fassung. Die Weiche steht in `src/simd/FindChar.h`.
+//  x86-64 unter Linux (ELF), AVX2 vorausgesetzt. Windows uebergibt in anderen
+//  Registern und verlangt xmm6-xmm15 zurueck; Mach-O kennt `.type`/`.size`
+//  nicht und will `_` vor dem Symbol. Die Weiche steht in `src/simd/FindChar.h`.
 //
-//  System V: rdi = p, rsi = n, edx = a, ecx = b, Rueckgabe in rax.
+//  System V: rdi = p, rsi = n, dx = a, cx = b, Rueckgabe in rax. Ueber den
+//  16-Bit-Argumenten sind die Bits unbestimmt - GCC erweitert, Clang verlaesst sich.
 //  Alle benutzten Register (rax, rdx, rcx, r8-r11, ymm0-ymm4) sind fluechtig -
 //  nichts zu retten, kein Stapelrahmen.
 //
@@ -24,8 +25,8 @@
         .p2align 4
 
 mg_finde_erstes_avx2_sysv:
-        mov     r9d, edx                // a, fuer die ganze Laufzeit
-        mov     r10d, ecx               // b
+        movzx   r9d, dx                 // a, fuer die ganze Laufzeit
+        movzx   r10d, cx                // b
         xor     eax, eax                // i = 0
         cmp     rsi, 16
         jl      .Lrestschleife          // kuerzer als ein Block: gar nicht erst
@@ -69,7 +70,7 @@ mg_finde_erstes_avx2_sysv:
         vzeroupper
 .Lrestschleife:
         cmp     rax, rsi
-        jge     .Lfertig
+        jge     .Lkein
         movzx   edx, WORD PTR [rdi + rax*2]
         cmp     edx, r9d
         je      .Lfertig
@@ -78,6 +79,9 @@ mg_finde_erstes_avx2_sysv:
         inc     rax
         jmp     .Lrestschleife
 
+        //  Bei n < 0 steht rax noch auf 0; der Vertrag verlangt n wie in C++.
+.Lkein:
+        mov     rax, rsi
 .Lfertig:
         ret
 

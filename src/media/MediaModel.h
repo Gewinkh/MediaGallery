@@ -312,7 +312,7 @@ private:
     bool restoreFile(const FileOp& op);                   // Papierkorb -> Ordner
     bool restoreFolder(const FileOp& op, bool reloadNow = true);  // Papierkorb -> Ordner (Verzeichnis)
     void collectMeta(const QString& fileName, FileOp* op) const;
-    void dropMeta(const QString& fileName, const FileOp& op);
+    void dropMeta(const QString& fileName);
     void restoreMeta(const QString& fileName, const FileOp& op);
     // Eigene, kurzlebige JsonStorage-Instanz - die laufende gehoert dem offenen Ordner.
     static void writeMetaToFolder(const QString& folder, const QString& fileName,
@@ -410,7 +410,7 @@ private:
     JsonStorage* storageOfFile(const QString& filePath, int* row = nullptr);
     // Bereich 0 laeuft ueber m_tagManager, damit die Seitenleiste es mitbekommt.
     void collectMetaAt(const QString& folder, const QString& fileName, FileOp* op) const;
-    void dropMetaAt(const QString& folder, const QString& fileName, const FileOp& op);
+    void dropMetaAt(const QString& folder, const QString& fileName);
     void restoreMetaAt(const QString& folder, const QString& fileName, const FileOp& op);
     // Ueber Namen, nicht IDs: die eines fremden Ordners sind andere.
     static QStringList categoryNamesOf(JsonStorage& st, const QString& fileName);

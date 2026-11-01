@@ -17,11 +17,10 @@
 #  define MG_SIMD_ARM 0
 #endif
 
-//  Assembly nur fuer System V auf x86-64: Windows uebergibt in anderen
-//  Registern und verlangt xmm6-xmm15 zurueck, aarch64 ist ein anderer
-//  Befehlssatz. Dort bleibt es beim C++-Weg.
-#if defined(MG_ASM_ENABLED) && MG_SIMD_X86 && (defined(__linux__) || defined(__APPLE__)) \
-    && !defined(_WIN32)
+//  Assembly nur fuer System V auf x86-64 unter Linux: Windows uebergibt in
+//  anderen Registern, macOS teilt die Konvention, aber die Quelle ist ELF und
+//  laesst sich als Mach-O nicht assemblieren. Dort bleibt es beim C++-Weg.
+#if defined(MG_ASM_ENABLED) && MG_SIMD_X86 && defined(__linux__)
 #  define MG_SIMD_HAVE_ASM 1
 #else
 #  define MG_SIMD_HAVE_ASM 0
@@ -29,7 +28,7 @@
 
 namespace mg::simd {
 
-//  Erste Stelle in [0, n), an der `a` ODER `b` steht; sonst `n`.
+//  Erste Stelle in [0, n), an der `a` ODER `b` steht; sonst `n` (auch bei n < 0).
 //  Die Weiche waehlt beim ersten Aufruf und behaelt die Wahl.
 qsizetype findeErstes(const char16_t* p, qsizetype n, char16_t a, char16_t b);
 
