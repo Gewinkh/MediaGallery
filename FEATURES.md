@@ -100,7 +100,7 @@ which. Files without an extension such as `LICENSE`, `README`, `Makefile` or
 
 ## Markdown Viewer
 - `.md` / `.markdown` open **formatted**: headings, lists (also nested and numbered), task lists, tables with column alignment, quotes, links, images, footnotes and horizontal lines; only the visible part is drawn, so even a 750 KB file needs about 60 MB of memory
-- **Code blocks** look like a terminal window, with rounded corners, the language in the title bar and a **copy button** at the top right; the code is coloured like in the text editor, e.g. C, assembly, shell or Python
+- **Code blocks** look like a terminal window, with rounded corners, the language in the title bar and a **copy button** at the top right; the code is coloured like in the text editor, e.g. C, assembly, shell or Python; a selection can start inside a code block and continue past it
 - Hidden **hints** (`<details>`) stay folded until you click them
 - A metadata block at the top of the file (front matter between `---` lines) appears as a card; lists and single words in it are shown as labels
 - The button at the top right, or the **Document** menu, switches to the **editable text** and back; changes appear as soon as you switch back, and undo keeps working in the text

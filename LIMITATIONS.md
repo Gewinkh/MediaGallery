@@ -511,15 +511,11 @@ inline-blocks with top or bottom are placed like in a browser; tables align thei
 
 ## Markdown files
 
-**Very large Markdown files pause the window briefly when they open.**
-Why: the text view lays out the whole document at once before it shows it. A
-typical file (under 20 KB) takes about 25 ms, a 750 KB file about half a second.
+**Very large Markdown files take a moment to appear, and resizing them pauses the window.**
+Why: the whole document has to be laid out before the text view can show it. That now happens in the background, so the window stays responsive while a 750 KB file takes about a second to appear. Making the view narrower than the text lays the file out again in the foreground, about 0.4 s for that file at every step.
 
-**Very large Markdown files keep some memory after closing.**
-Why: the text view lays out the whole document, and the graphics layer keeps its
-buffers for reuse. A 750 KB file needs about 60 MB while it is open; after
-closing, about 50 MB stay until the app is closed. Opening it again does not add
-more.
+**Very large Markdown files use memory while open, and some stays after closing.**
+Why: Qt keeps shaping data for every laid-out paragraph while the file is open, and the graphics layer keeps its buffers for reuse. A 750 KB file needs about 50 MB while open and about 70 MB after scrolling through part of it; after closing, about 40 MB stay until the app is closed. Opening it again does not add more.
 
 **Quotes appear as a shaded box, not with a bar on the left.**
 Why: the text view the app uses cannot draw a single edge of a box, and a box
@@ -529,6 +525,9 @@ not shaded, and rows have no alternating colour.
 **Formulas and diagrams are not drawn.**
 Why: `$…$` maths and Mermaid diagrams need their own renderers. Formulas stay
 as written, diagrams appear as a code block.
+
+**A selection that crosses a quote, a folded hint or a table takes all of it.**
+Code blocks are not affected. Starting inside a quote and dragging out of it selects the whole quote, because the text engine treats these boxes as one unit.
 
 **HTML inside Markdown is only partly understood.**
 Why: formatting tags work (bold, italic, code, keys, sub- and superscript, line

@@ -1,16 +1,13 @@
 import QtQuick
 import QtQuick.Controls
 
-// Waagerechte Leiste, die bei schmalem Fenster BLÄTTERBAR wird statt ihre Knöpfe abzuschneiden -
-// zuvor lagen Menü- und Filterleiste übereinander und die rechten Knöpfe waren unerreichbar.
-// Jedes Mausrad schwenkt sie, mit und ohne Strg (derselbe Griff wie im DOCX-Editor).
+// Waagerechte Leiste, die bei schmalem Fenster BLÄTTERBAR wird statt Knöpfe abzuschneiden; jedes Mausrad schwenkt sie.
 Flickable {
     id: bar
 
     default property alias content: inner.data
     property alias spacing: inner.spacing
     property alias leftPadding: inner.x
-    //  Passt alles hinein? Dann verhält sich die Leiste wie ein gewöhnlicher Row.
     readonly property bool overflowing: contentWidth > width + 0.5
 
     contentWidth: inner.x + inner.implicitWidth
@@ -18,12 +15,10 @@ Flickable {
     clip: true
     boundsBehavior: Flickable.StopAtBounds
     flickableDirection: Flickable.HorizontalFlick
-    //  Nur greifen, wenn es etwas zu blättern gibt - sonst schluckte die Leiste
-    //  Züge, die der Fläche darunter gehören.
+    //  Nur greifen, wenn es etwas zu blättern gibt - sonst schluckte sie Züge der Fläche darunter.
     interactive: bar.overflowing
 
-    // `requiredModifier: Qt.NoModifier` heißt "jeder Modifikator ist recht" - durchgereicht wird nur, wenn einer
-    // VERLANGT und nicht gedrückt ist. Wer nur mit Strg schwenken will, setzt `wheelModifier`.
+    // `Qt.NoModifier` heißt: jeder Modifikator ist recht. Wer nur mit Strg schwenken will, setzt `wheelModifier`.
     property int wheelModifier: Qt.NoModifier
     SmoothWheelArea {
         flickable: bar

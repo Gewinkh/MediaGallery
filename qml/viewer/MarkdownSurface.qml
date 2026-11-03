@@ -25,6 +25,10 @@ Item {
     readonly property color _termHead: Qt.tint(root._termBg, Qt.rgba(Editor.text.r, Editor.text.g, Editor.text.b, 0.07))
     readonly property color _termLine: Qt.rgba(Editor.text.r, Editor.text.g, Editor.text.b, 0.13)
     property string _shownSource: ""
+    readonly property font _kopfSchrift: App.fallbackFont("monospace", 11)
+    //  Kasten, dessen Knopf gerade den Haken zeigt; ein Zeitgeber fuer alle statt einer je Kasten.
+    property int _kopiert: -1
+    Timer { id: zurueck; interval: 1400; onTriggered: root._kopiert = -1 }
 
     //  `colorFor` ist ein Aufruf und bindet nicht; erst das Lesen von `profile` (NOTIFY paletteChanged) tut es.
     function _edColor(key) { void Editor.profile; return Editor.colorFor(key) }
@@ -112,6 +116,8 @@ Item {
         boundsBehavior: Flickable.StopAtBounds
         interactive: false
         ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
+        onContentYChanged: view.setViewport(flick.contentY - doc.y, flick.height)
+        onHeightChanged: view.setViewport(flick.contentY - doc.y, flick.height)
 
         //  Hinter der Textflaeche: die Rahmen im Dokument sind durchsichtig und halten nur den Platz.
         Rectangle {
@@ -136,14 +142,19 @@ Item {
         }
 
         Repeater {
-            model: view.codeBlocks
+            model: view.codeBoxes
             delegate: Rectangle {
                 id: kasten
-                required property var modelData
-                x: doc.x + kasten.modelData.x
-                y: doc.y + kasten.modelData.y
-                width: kasten.modelData.width
-                height: kasten.modelData.height
+                required property real boxX
+                required property real boxY
+                required property real boxWidth
+                required property real boxHeight
+                required property real boxHeader
+                required property string boxLanguage
+                x: doc.x + kasten.boxX
+                y: doc.y + kasten.boxY
+                width: kasten.boxWidth
+                height: kasten.boxHeight
                 radius: 8
                 color: root._termBg
                 border.width: 1
@@ -154,32 +165,24 @@ Item {
                     id: kopf
                     x: 1; y: 1
                     width: kasten.width - 2
-                    height: kasten.modelData.header - 1
+                    height: kasten.boxHeader - 1
                     radius: 7
                     color: root._termHead
                 }
                 Rectangle { x: 1; y: kopf.height - 7; width: kopf.width; height: 8; color: root._termHead }
-                Rectangle { x: 1; y: kasten.modelData.header; width: kopf.width; height: 1; color: root._termLine }
+                Rectangle { x: 1; y: kasten.boxHeader; width: kopf.width; height: 1; color: root._termLine }
                 // Feste, auf ganze Pixel gerundete Lage: in einer `Row` liefen die Punkte oben buendig mit der
-                // hoeheren Beschriftung.
-                Repeater {
-                    model: ["#ff5f57", "#febc2e", "#28c840"]
-                    delegate: Rectangle {
-                        required property string modelData
-                        required property int index
-                        x: 12 + index * 16
-                        y: Math.round(kopf.y + (kopf.height - 10) / 2)
-                        width: 10; height: 10; radius: 5
-                        color: modelData
-                        opacity: 0.85
-                    }
-                }
-                Label {
+                // hoeheren Beschriftung. Einzeln statt per Repeater: beim Rollen entsteht das je Kasten neu.
+                readonly property real _punktY: Math.round(kopf.y + (kopf.height - 10) / 2)
+                Rectangle { x: 12; y: kasten._punktY; width: 10; height: 10; radius: 5; color: "#ff5f57"; opacity: 0.85 }
+                Rectangle { x: 28; y: kasten._punktY; width: 10; height: 10; radius: 5; color: "#febc2e"; opacity: 0.85 }
+                Rectangle { x: 44; y: kasten._punktY; width: 10; height: 10; radius: 5; color: "#28c840"; opacity: 0.85 }
+                Text {
                     x: 12 + 3 * 16 + 6
                     y: Math.round(kopf.y + (kopf.height - implicitHeight) / 2)
-                    text: kasten.modelData.language
+                    text: kasten.boxLanguage
                     color: Editor.gutterText
-                    font: App.fallbackFont("monospace", 11)
+                    font: root._kopfSchrift
                 }
             }
         }
@@ -226,15 +229,23 @@ Item {
         //  Ueber der Textflaeche. Eine `MouseArea`, kein `TapHandler`: der liesse den Druck an die TextEdit durch,
         //  und die verwuerfe ihre Markierung.
         Repeater {
-            model: view.codeBlocks
+            model: view.codeBoxes
             delegate: Rectangle {
                 id: knopf
-                required property var modelData
-                required property int index
-                property bool kopiert: false
+                required property int boxIndex
+                required property real boxX
+                required property real boxY
+                required property real boxWidth
+                required property real boxHeader
+                readonly property bool kopiert: root._kopiert === knopf.boxIndex
                 objectName: "markdownCopy"
-                x: doc.x + knopf.modelData.x + knopf.modelData.width - width - 6
-                y: doc.y + knopf.modelData.y + (knopf.modelData.header - height) / 2
+                //  Der Hinweis entsteht erst beim Zeigen: je Kasten kostete er beim Rollen, ohne dass ihn jemand sah.
+                onKopiertChanged: if (knopfMaus.containsMouse) knopf.ToolTip.text = knopf._hinweis()
+                function _hinweis() {
+                    return App.uiText(App.language, knopf.kopiert ? "MarkdownCopied" : "MarkdownCopyCode")
+                }
+                x: doc.x + knopf.boxX + knopf.boxWidth - width - 6
+                y: doc.y + knopf.boxY + (knopf.boxHeader - height) / 2
                 width: 26; height: 22; radius: 5
                 color: knopfMaus.containsMouse ? root._termLine : "transparent"
 
@@ -249,18 +260,18 @@ Item {
                     anchors.fill: parent
                     hoverEnabled: true
                     cursorShape: Qt.PointingHandCursor
+                    onContainsMouseChanged: {
+                        knopf.ToolTip.delay = 500
+                        knopf.ToolTip.text = knopf._hinweis()
+                        knopf.ToolTip.visible = knopfMaus.containsMouse
+                    }
                     onClicked: {
-                        if (view.copyCode(knopf.index)) {
-                            knopf.kopiert = true
+                        if (view.copyCode(knopf.boxIndex)) {
+                            root._kopiert = knopf.boxIndex
                             zurueck.restart()
                         }
                     }
                 }
-                Timer { id: zurueck; interval: 1400; onTriggered: knopf.kopiert = false }
-                ToolTip.visible: knopfMaus.containsMouse
-                ToolTip.delay: 500
-                ToolTip.text: knopf.kopiert ? App.uiText(App.language, "MarkdownCopied")
-                                            : App.uiText(App.language, "MarkdownCopyCode")
             }
         }
     }

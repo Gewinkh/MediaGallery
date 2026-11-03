@@ -1,28 +1,21 @@
 import QtQuick
 
-// Qt scrollt ein Flickable fest mit wheelScrollLines * 20 px (gemessen 60), unabhängig von der Sichthöhe - auf
-// den langen Einstellungsseiten über 20 Rastungen bis zum Ende. Ersetzt das durch ~45 % Sichthöhe je Rastung;
-// MouseArea, weil ein interaktives Flickable Radereignisse vor jedem WheelHandler selbst verarbeitet.
+// Ersetzt Qts feste 60 px je Rastung durch ~45 % Sichthöhe; bei ScrollView dessen `contentItem` angeben. MouseArea, weil
+// ein interaktives Flickable Radereignisse vor jedem WheelHandler selbst verarbeitet.
 MouseArea {
     id: wheelArea
 
-    //  Das zu scrollende Flickable (bei ScrollView: dessen `contentItem`).
     property Flickable flickable: null
 
-    //  Anteil der Sichthöhe je Rastung (Galerie-Muster).
     property real stepFactor: 0.45
 
-    //  Achse: false = vertikal (`contentY`), true = HORIZONTAL (`contentX`).
-    //  Horizontal gilt „Rad hoch = nach rechts" - dieselbe Richtung, die auch
-    //  Browser und Editoren für seitliches Scrollen benutzen.
+    //  Horizontal gilt „Rad hoch = nach rechts", wie in Browsern und Editoren.
     property bool horizontal: false
 
-    // Ist ein Modifikator gesetzt, laufen Radereignisse OHNE ihn unverändert nach unten durch - die bestehende
-    // Bedeutung des Rades an dieser Stelle bleibt also erhalten.
+    // Ist ein Modifikator gesetzt, laufen Radereignisse OHNE ihn unverändert nach unten durch.
     property int requiredModifier: Qt.NoModifier
 
-    //  Direktes Kind des Flickable (NICHT dessen `contentItem`) -> bleibt beim
-    //  Scrollen an Ort und Stelle und deckt genau die Sichtfläche ab.
+    //  Direktes Kind des Flickable, nicht von `contentItem`: bleibt beim Scrollen stehen.
     parent: flickable
     anchors.fill: parent
     acceptedButtons: Qt.NoButton
@@ -40,8 +33,6 @@ MouseArea {
         var fl = wheelArea.flickable
         if (!fl) { wheel.accepted = false; return }
 
-        //  Modifikator verlangt, aber nicht gedrückt -> Ereignis unangetastet
-        //  weiterreichen (accepted=false propagiert es an die Items darunter).
         if (wheelArea.requiredModifier !== Qt.NoModifier
             && !(wheel.modifiers & wheelArea.requiredModifier)) {
             wheel.accepted = false
@@ -56,13 +47,10 @@ MouseArea {
         var raw = (wheel.angleDelta.y !== 0)
                   ? (wheel.angleDelta.y / 120) * (viewport * wheelArea.stepFactor)
                   : wheel.pixelDelta.y * 1.6
-        //  Beim schnellen Weiterdrehen vom bereits laufenden Ziel aus rechnen,
-        //  damit sich die Rastungen addieren statt sich gegenseitig zu verwerfen.
+        //  Vom laufenden Ziel aus, damit sich schnelle Rastungen addieren statt sich zu verwerfen.
         var cur  = wheelArea.horizontal ? fl.contentX : fl.contentY
         var base = scrollAnim.running ? scrollAnim.to : cur
-        //  Vertikal: Rad hoch = Inhalt nach oben (contentY kleiner).
-        //  Horizontal: Rad hoch = nach RECHTS (contentX größer) - so werden die
-        //  rechts abgeschnittenen Bedienelemente hereingeholt.
+        //  Rad hoch = Inhalt nach oben; horizontal nach RECHTS, das holt abgeschnittene Bedienelemente herein.
         var tgt  = wheelArea.horizontal
                    ? Math.max(0, Math.min(base + raw, maxPos))
                    : Math.max(0, Math.min(base - raw, maxPos))

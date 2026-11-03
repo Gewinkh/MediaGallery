@@ -36,25 +36,10 @@ struct Deko {
     QString language;
 };
 
-QList<Deko> dekorationen(QTextDocument& doc) {
+QList<Deko> dekorationen(const RenderedDocument& doc) {
     QList<Deko> out;
-    QAbstractTextDocumentLayout* lay = doc.documentLayout();
-    QList<QTextFrame*> offen{doc.rootFrame()};
-    while (!offen.isEmpty()) {
-        QTextFrame* f = offen.takeFirst();
-        const QList<QTextFrame*> kinder = f->childFrames();
-        for (int i = int(kinder.size()) - 1; i >= 0; --i) offen.prepend(kinder[i]);
-        const QTextFrameFormat ff = f->frameFormat();
-        const QRectF r = lay->frameBoundingRect(f);
-        //  Dieselbe Geometrie wie `MarkdownView::codeBlocks`: oberer Aussenabstand = Kopfleiste, linker = Einzug.
-        if (ff.hasProperty(kCodeTextProperty))
-            out.append({Deko::Code,
-                        QRectF(r.x() + ff.leftMargin(), r.y(), r.width() - ff.leftMargin() - ff.rightMargin(),
-                               r.height() - ff.bottomMargin()),
-                        ff.topMargin(), ff.stringProperty(kCodeLangProperty)});
-        else if (ff.hasProperty(kMetaProperty))
-            out.append({Deko::Meta, r, 0, {}});
-    }
+    if (doc.metaFrame) out.append({Deko::Meta, doc.documentLayout()->frameBoundingRect(doc.metaFrame), 0, {}});
+    for (const CodeBox& k : doc.codeBoxes) out.append({Deko::Code, codeBoxRect(doc, k), kCodeHeader, k.language});
     return out;
 }
 
@@ -157,7 +142,7 @@ int writePdf(const Document& doc, RenderStyle style, const PdfOptions& opt, cons
     const qreal fussH = QFontMetricsF(fussSchrift, &writer).height() * 1.8;
     const qreal hoehe = qMax(1.0, blatt.height() - 2 * rand - fussH);
 
-    std::unique_ptr<QTextDocument> td(buildDocument(doc, style, abort));
+    std::unique_ptr<RenderedDocument> td(buildDocument(doc, style, abort));
     if (!td || abgebrochen()) return fehler(QStringLiteral("Abgebrochen."));
     td->setDocumentMargin(0);
     td->documentLayout()->setPaintDevice(&writer);

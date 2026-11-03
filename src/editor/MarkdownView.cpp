@@ -15,6 +15,7 @@
 #include <QFileInfo>
 #include <QFontDatabase>
 #include <QGuiApplication>
+#include <QInputMethod>
 #include <QRunnable>
 #include <QTextBlock>
 #include <QQuickItem>
@@ -22,7 +23,9 @@
 #include <QTextFrame>
 #include <QThread>
 #include <QUrl>
+#include <algorithm>
 #include <functional>
+#include <tuple>
 
 namespace mg::editor {
 namespace {
@@ -33,7 +36,7 @@ constexpr int kFontPx = 15;
 const bool kLog = qEnvironmentVariableIntValue("MG_LOG_MD") == 1;
 
 struct Result {
-    QTextDocument* doc = nullptr;
+    md::RenderedDocument* doc = nullptr;
     QString text;
     bool ok = true;
     bool truncated = false;
@@ -43,10 +46,11 @@ struct Result {
 
 class RenderTask : public QRunnable {
 public:
-    RenderTask(QObject* owner, QString path, QString text, bool readFile, md::RenderStyle style,
+    RenderTask(QObject* owner, QString path, QString text, bool readFile, md::RenderStyle style, md::LayoutVorgabe vorgabe,
                std::shared_ptr<std::atomic<bool>> abort, std::function<void(std::shared_ptr<Result>)> back)
         : m_owner(owner), m_target(owner->thread()), m_path(std::move(path)), m_text(std::move(text)),
-          m_readFile(readFile), m_style(std::move(style)), m_abort(std::move(abort)), m_back(std::move(back)) {
+          m_readFile(readFile), m_style(std::move(style)), m_vorgabe(vorgabe), m_abort(std::move(abort)),
+          m_back(std::move(back)) {
         setAutoDelete(true);
     }
 
@@ -68,7 +72,8 @@ public:
         if (r->ok) {
             const md::Document doc = md::parse(r->text);
             if (m_abort->load()) return;
-            QTextDocument* d = md::buildDocument(doc, m_style, m_abort.get());
+            md::RenderedDocument* d = md::buildDocument(doc, m_style, m_abort.get());
+            md::layoutDocument(*d, m_vorgabe, m_abort.get());
             if (m_abort->load()) {
                 delete d;
                 return;
@@ -87,15 +92,100 @@ private:
     QString m_text;
     bool m_readFile;
     md::RenderStyle m_style;
+    md::LayoutVorgabe m_vorgabe;
     std::shared_ptr<std::atomic<bool>> m_abort;
     std::function<void(std::shared_ptr<Result>)> m_back;
 };
 
 }  // namespace
 
+int MarkdownCodeBoxes::rowCount(const QModelIndex& parent) const { return parent.isValid() ? 0 : m_end - m_first; }
+
+QVariant MarkdownCodeBoxes::data(const QModelIndex& index, int role) const {
+    const int i = m_first + index.row();
+    if (!index.isValid() || i < m_first || i >= m_end) return {};
+    const Box& b = m_boxes[i];
+    switch (role) {
+    case IndexRole:    return i;
+    case XRole:        return b.rect.x();
+    case YRole:        return b.rect.y();
+    case WidthRole:    return b.rect.width();
+    case HeightRole:   return b.rect.height();
+    case HeaderRole:   return md::kCodeHeader;
+    case LanguageRole: return b.language;
+    default:           return {};
+    }
+}
+
+QHash<int, QByteArray> MarkdownCodeBoxes::roleNames() const {
+    return {{IndexRole, "boxIndex"}, {XRole, "boxX"}, {YRole, "boxY"}, {WidthRole, "boxWidth"},
+            {HeightRole, "boxHeight"}, {HeaderRole, "boxHeader"}, {LanguageRole, "boxLanguage"}};
+}
+
+//  Beide Kanten wachsen mit dem Index: die Kaesten stehen in Dokumentreihenfolge und ueberlappen nicht. Der Saum baut
+//  einen Kasten, bevor er ins Bild rollt.
+std::pair<int, int> MarkdownCodeBoxes::fenster() const {
+    constexpr qreal kSaum = 200;
+    const qreal oben = m_top - kSaum;
+    const qreal unten = m_top + m_height + kSaum;
+    const auto anfang = std::partition_point(m_boxes.cbegin(), m_boxes.cend(),
+                                             [&](const Box& b) { return b.rect.bottom() <= oben; });
+    const auto ende = std::partition_point(anfang, m_boxes.cend(), [&](const Box& b) { return b.rect.top() < unten; });
+    return {int(anfang - m_boxes.cbegin()), int(ende - m_boxes.cbegin())};
+}
+
+void MarkdownCodeBoxes::geheZu(int first, int end) {
+    const md::FensterWechsel w = md::fensterWechsel(m_first, m_end, first, end);
+    if (w.vorneWeg > 0) {
+        beginRemoveRows({}, 0, w.vorneWeg - 1);
+        m_first += w.vorneWeg;
+        endRemoveRows();
+    }
+    if (w.hintenWeg > 0) {
+        beginRemoveRows({}, rowCount() - w.hintenWeg, rowCount() - 1);
+        m_end -= w.hintenWeg;
+        endRemoveRows();
+    }
+    if (w.springe) m_first = m_end = first;
+    if (w.vorneNeu > 0) {
+        beginInsertRows({}, 0, w.vorneNeu - 1);
+        m_first -= w.vorneNeu;
+        endInsertRows();
+    }
+    if (w.hintenNeu > 0) {
+        beginInsertRows({}, rowCount(), rowCount() + w.hintenNeu - 1);
+        m_end += w.hintenNeu;
+        endInsertRows();
+    }
+}
+
+void MarkdownCodeBoxes::setBoxes(QList<Box> boxes, bool neu) {
+    if (neu) {
+        beginResetModel();
+        m_boxes = std::move(boxes);
+        std::tie(m_first, m_end) = fenster();
+        endResetModel();
+        return;
+    }
+    m_boxes = std::move(boxes);
+    const auto [first, end] = fenster();
+    geheZu(first, end);
+    if (rowCount() > 0) emit dataChanged(index(0), index(rowCount() - 1));
+}
+
+void MarkdownCodeBoxes::setViewport(qreal top, qreal height) {
+    m_top = top;
+    m_height = height;
+    const auto [first, end] = fenster();
+    geheZu(first, end);
+}
+
 MarkdownView::MarkdownView(QObject* parent) : QObject(parent) {
     m_pool.setMaxThreadCount(1);
+    //  Jeder Faden haelt eigene Schriften samt Formungstabellen: sie gehen mit ihm, nicht erst nach Qts 30 s.
+    m_pool.setExpiryTimeout(0);
     m_pdfPool.setMaxThreadCount(1);
+    m_pdfPool.setExpiryTimeout(0);
     connect(&AppSettings::instance(), &AppSettings::languageChanged, this, [this] { start(false); });
     if (EditorController* c = activeController())
         connect(c, &EditorController::paletteChanged, this, [this] { start(false); });
@@ -120,8 +210,14 @@ void MarkdownView::setSource(const QString& pathOrUrl) {
     emit sourceChanged();
     if (pfad.isEmpty()) {
         //  Die Kachel wird freigegeben: der Inhalt geht sofort, nicht erst mit der naechsten Datei.
-        if (m_ownDoc) m_ownDoc->clear();
+        //  Erst die Griffe in die Bloecke loslassen: `clear` meldet eine neue Groesse, und die fragt nach den Kaesten.
         m_ready = false;
+        updateBoxes(true);
+        if (m_ownDoc) {
+            m_ownDoc->codeBoxes.clear();
+            m_ownDoc->metaFrame = nullptr;
+            m_ownDoc->clear();
+        }
         ++m_vorschauGen;
         m_vorschau.leere();
         emit decorationsChanged();
@@ -133,6 +229,12 @@ void MarkdownView::setDocument(QQuickTextDocument* d) {
     if (d == m_quickDoc) return;
     m_quickDoc = d;
     m_ownDoc = nullptr;
+    //  Qt baut beim Auswahlwechsel Kind-Rahmen (Code, Tabellen) ab Position 0 neu und laesst die alten Knoten stehen: Text
+    //  liegt doppelt und wirkt fett. Privater Slot, daher die Textform; selectionStart/End schweigen beim Loslassen.
+    if (QObject* edit = d ? d->parent() : nullptr) {
+        connect(edit, SIGNAL(selectedTextChanged()), edit, SLOT(updateWholeDocument()), Qt::UniqueConnection);
+        connect(edit, SIGNAL(cursorPositionChanged()), edit, SLOT(updateWholeDocument()), Qt::UniqueConnection);
+    }
     emit documentChanged();
     start(!m_textValid);
 }
@@ -164,7 +266,12 @@ void MarkdownView::start(bool readFile) {
     emit stateChanged();
     const int gen = m_generation;
     auto* self = this;
-    m_pool.start(new RenderTask(this, m_source, readFile ? QString() : m_text, readFile, std::move(st), m_abort,
+    //  Stand von jetzt: stimmen Breite und Option beim Einhaengen noch, legt die TextEdit nichts mehr aus.
+    md::LayoutVorgabe vorgabe;
+    if (const auto* edit = qobject_cast<QQuickItem*>(m_quickDoc->parent())) vorgabe.width = edit->width();
+    vorgabe.option = m_quickDoc->textDocument()->defaultTextOption();
+    vorgabe.ohneRichtung = QGuiApplication::inputMethod()->inputDirection();
+    m_pool.start(new RenderTask(this, m_source, readFile ? QString() : m_text, readFile, std::move(st), vorgabe, m_abort,
                                 [self, gen, readFile](std::shared_ptr<Result> r) {
                                     self->adopt(std::exchange(r->doc, nullptr), gen, r->text, readFile, r->ok,
                                                 r->truncated);
@@ -269,7 +376,7 @@ void MarkdownView::runPdf(PdfArt art, const QString& target, const md::PdfOption
     m_pdfPool.start(t);
 }
 
-void MarkdownView::adopt(QTextDocument* doc, int generation, const QString& text, bool readFile, bool ok,
+void MarkdownView::adopt(md::RenderedDocument* doc, int generation, const QString& text, bool readFile, bool ok,
                          bool truncated) {
     if (generation != m_generation) {
         delete doc;
@@ -290,20 +397,23 @@ void MarkdownView::adopt(QTextDocument* doc, int generation, const QString& text
         //  Tausch des Dokuments - sonst Knoten fuer das ganze Dokument (762 KB Markdown: Heap +190 MB).
         if (auto* edit = qobject_cast<QQuickItem*>(m_quickDoc->parent()))
             edit->setFlag(QQuickItem::ItemObservesViewport);
-        QTextDocument* alt = m_ownDoc;
+        md::RenderedDocument* alt = m_ownDoc;
         m_quickDoc->setTextDocument(doc);
         m_ownDoc = doc;
         delete alt;
         m_ready = true;
         ++m_revision;
-        connect(doc->documentLayout(), &QAbstractTextDocumentLayout::documentSizeChanged, this,
-                &MarkdownView::decorationsChanged);
+        connect(doc->documentLayout(), &QAbstractTextDocumentLayout::documentSizeChanged, this, [this] {
+            updateBoxes(false);
+            emit decorationsChanged();
+        });
         if (kLog) {
             const auto* edit = qobject_cast<QQuickItem*>(doc->parent());
-            qInfo("[md] eingehaengt rev=%d zeichen=%d rahmen=%lld breite=%.1f x=%.2f", m_revision,
+            qInfo("[md] eingehaengt rev=%d zeichen=%d rahmen=%lld breite=%.1f textbreite=%.1f x=%.2f", m_revision,
                   doc->characterCount(), static_cast<long long>(doc->rootFrame()->childFrames().size()),
-                  edit ? edit->width() : -1.0, edit ? edit->x() : -1.0);
+                  edit ? edit->width() : -1.0, doc->textWidth(), edit ? edit->x() : -1.0);
         }
+        updateBoxes(true);
         emit decorationsChanged();
     } else {
         delete doc;
@@ -311,54 +421,42 @@ void MarkdownView::adopt(QTextDocument* doc, int generation, const QString& text
     emit stateChanged();
 }
 
-QList<QTextFrame*> MarkdownView::codeFrames() const {
-    QList<QTextFrame*> out;
-    if (!m_ownDoc) return out;
-    QList<QTextFrame*> offen{m_ownDoc->rootFrame()};
-    while (!offen.isEmpty()) {
-        QTextFrame* f = offen.takeFirst();
-        const QList<QTextFrame*> kinder = f->childFrames();
-        for (int i = int(kinder.size()) - 1; i >= 0; --i) offen.prepend(kinder[i]);
-        if (f->frameFormat().hasProperty(md::kCodeTextProperty)) out << f;
-    }
-    return out;
-}
-
 QVariantList MarkdownView::codeBlocks() const {
     QVariantList out;
     if (!m_ownDoc || !m_ready) return out;
-    QAbstractTextDocumentLayout* lay = m_ownDoc->documentLayout();
-    for (QTextFrame* f : codeFrames()) {
-        const QTextFrameFormat ff = f->frameFormat();
-        const QRectF r = lay->frameBoundingRect(f);
-        //  Der obere Aussenabstand ist die Kopfleiste und gehoert zum Kasten, der linke die Einrueckung.
+    for (const md::CodeBox& k : m_ownDoc->codeBoxes) {
+        const QRectF r = md::codeBoxRect(*m_ownDoc, k);
         QVariantMap m;
-        m.insert(QStringLiteral("x"), r.x() + ff.leftMargin());
+        m.insert(QStringLiteral("x"), r.x());
         m.insert(QStringLiteral("y"), r.y());
-        m.insert(QStringLiteral("width"), r.width() - ff.leftMargin() - ff.rightMargin());
-        m.insert(QStringLiteral("height"), r.height() - ff.bottomMargin());
-        m.insert(QStringLiteral("language"), ff.stringProperty(md::kCodeLangProperty));
-        m.insert(QStringLiteral("header"), ff.topMargin());
+        m.insert(QStringLiteral("width"), r.width());
+        m.insert(QStringLiteral("height"), r.height());
+        m.insert(QStringLiteral("language"), k.language);
+        m.insert(QStringLiteral("header"), md::kCodeHeader);
         out << m;
     }
     return out;
 }
 
-QVariantMap MarkdownView::frontMatterBox() const {
-    if (!m_ownDoc || !m_ready) return {};
-    for (QTextFrame* f : m_ownDoc->rootFrame()->childFrames()) {
-        if (!f->frameFormat().hasProperty(md::kMetaProperty)) continue;
-        const QRectF r = m_ownDoc->documentLayout()->frameBoundingRect(f);
-        return {{QStringLiteral("x"), r.x()}, {QStringLiteral("y"), r.y()},
-                {QStringLiteral("width"), r.width()}, {QStringLiteral("height"), r.height()}};
+void MarkdownView::updateBoxes(bool neu) {
+    QList<MarkdownCodeBoxes::Box> boxes;
+    if (m_ownDoc && m_ready) {
+        boxes.reserve(m_ownDoc->codeBoxes.size());
+        for (const md::CodeBox& k : m_ownDoc->codeBoxes) boxes.append({md::codeBoxRect(*m_ownDoc, k), k.language});
     }
-    return {};
+    m_boxes.setBoxes(std::move(boxes), neu);
+}
+
+QVariantMap MarkdownView::frontMatterBox() const {
+    if (!m_ownDoc || !m_ready || !m_ownDoc->metaFrame) return {};
+    const QRectF r = m_ownDoc->documentLayout()->frameBoundingRect(m_ownDoc->metaFrame);
+    return {{QStringLiteral("x"), r.x()}, {QStringLiteral("y"), r.y()},
+            {QStringLiteral("width"), r.width()}, {QStringLiteral("height"), r.height()}};
 }
 
 bool MarkdownView::copyCode(int index) const {
-    const QList<QTextFrame*> rahmen = codeFrames();
-    if (index < 0 || index >= rahmen.size()) return false;
-    QGuiApplication::clipboard()->setText(rahmen[index]->frameFormat().stringProperty(md::kCodeTextProperty));
+    if (!m_ownDoc || index < 0 || index >= m_ownDoc->codeBoxes.size()) return false;
+    QGuiApplication::clipboard()->setText(md::codeBoxText(m_ownDoc->codeBoxes[index]));
     return true;
 }
 

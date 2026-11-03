@@ -5,18 +5,14 @@
 namespace mg {
 namespace {
 
-//  Synchronbyte jedes TS-Pakets.
 constexpr char kSync = '\x47';
-//  Die drei ueblichen Paketlaengen: klassisch, M2TS (vier Byte Zeitstempel
-//  davor) und mit Fehlerkorrektur.
+//  Klassisch, M2TS (vier Byte Zeitstempel davor) und mit Fehlerkorrektur.
 constexpr int kPaketLaengen[] = { 188, 192, 204 };
-//  So viele Pakete muessen im Raster liegen. Vier hintereinander sind kein
-//  Zufall mehr; mehr zu verlangen hiesse, kurze Dateien zu verwerfen.
+//  Vier in Folge sind kein Zufall mehr; mehr zu verlangen hiesse, kurze Dateien zu verwerfen.
 constexpr int kPakete = 4;
 //  Mehr als das wird nie gelesen - der Anfang genuegt.
 constexpr qint64 kLeseGrenze = 1024;
 
-//  Liegt ab `start` in jedem `laenge`-Schritt ein Synchronbyte?
 bool rasterPasst(const QByteArray& kopf, int start, int laenge) {
     if (kopf.size() < start + laenge * (kPakete - 1) + 1) return false;
     for (int k = 0; k < kPakete; ++k)
@@ -34,8 +30,7 @@ bool looksLikeTransportStream(const QString& path) {
     if (kopf.isEmpty()) return false;          // eine leere Datei ist kein Video
 
     for (const int laenge : kPaketLaengen) {
-        //  Start 0 fuer 188/204, Start 4 fuer M2TS - dort stehen vier Byte
-        //  Zeitstempel vor dem Synchronbyte.
+        //  Start 4 fuer M2TS: dort stehen vier Byte Zeitstempel vor dem Synchronbyte.
         if (rasterPasst(kopf, 0, laenge)) return true;
         if (laenge == 192 && rasterPasst(kopf, 4, laenge)) return true;
     }

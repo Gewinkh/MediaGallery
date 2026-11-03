@@ -4,8 +4,7 @@
 #include <cmath>
 
 namespace {
-//  Güte der Bänder: bei Oktavabstand ergibt Q ≈ 1,41 einen glatten Verlauf -
-//  benachbarte Bänder überlappen sich, ohne einander auszulöschen.
+//  Bei Oktavabstand ergibt Q ≈ 1,41 einen glatten Verlauf, ohne dass Nachbarbänder einander auslöschen.
 constexpr double kQ = 1.41;
 }  // namespace
 
@@ -75,13 +74,10 @@ void AudioEqualizer::setEnabled(bool on) {
     emit changed();
 }
 
-//  Koeffizienten EINES Bandes als BANDPASS. `false` heisst: dieses Band traegt
-//  nichts bei (Regler auf null, oder seine Mitte liegt ueber der halben Rate).
-//  Grundlage ist die exakte Identitaet `H_peak(A,Q) = 1 + (A^2-1)*H_BP(A*Q)`:
-//  ein Peaking-Band IST ein Bandpass-Anteil auf dem Durchgriff, beide teilen
-//  dieselben Pole. Addiert statt kaskadiert verstaerken benachbarte Baender
-//  einander nicht mehr (drei auf +12 dB ergaben in Serie 17,0 dB Spitze).
-//  Das Q MUSS dem Gain folgen (`A*kQ`), sonst stimmt die Bandform nicht.
+//  Koeffizienten EINES Bandes als BANDPASS; `false` = traegt nichts bei (Regler auf null, Mitte ueber der halben Rate).
+//  Grundlage ist `H_peak(A,Q) = 1 + (A^2-1)*H_BP(A*Q)`: ein Peaking-Band IST ein Bandpass-Anteil auf dem Durchgriff,
+//  beide teilen dieselben Pole. Addiert statt kaskadiert verstaerken Nachbarbaender einander nicht mehr (drei auf +12 dB
+//  ergaben in Serie 17,0 dB Spitze). Das Q MUSS dem Gain folgen (`A*kQ`), sonst stimmt die Bandform nicht.
 bool AudioEqualizer::makeBiquad(int band, double gainDb, Biquad* out) const {
     if (!out || band < 0 || band >= kBands) return false;
     if (std::abs(gainDb) < 1e-9) return false;
@@ -93,8 +89,7 @@ bool AudioEqualizer::makeBiquad(int band, double gainDb, Biquad* out) const {
     const double cosw0 = std::cos(w0);
     const double a0    = 1.0 + alpha;
 
-    //  Der RBJ-Bandpass hat b1 = 0 und b2 = -b0 - das spart im Abspielweg zwei
-    //  Multiplikationen je Band (s. `process`).
+    //  Der RBJ-Bandpass hat b1 = 0 und b2 = -b0: zwei Multiplikationen je Band weniger (s. `process`).
     out->b0 =  alpha / a0;
     out->b1 =  0.0;
     out->b2 = -alpha / a0;
@@ -129,8 +124,7 @@ double AudioEqualizer::peakGainDb() const {
         const double w = 2.0 * M_PI * f / double(m_sampleRate);
         const double c1 = std::cos(w),  s1 = std::sin(w);
         const double c2 = std::cos(2*w), s2 = std::sin(2*w);
-        //  ADDITIV: Durchgriff 1 plus die gewichteten Bandanteile - komplex
-        //  summieren, erst am Ende den Betrag nehmen.
+        //  ADDITIV: Durchgriff 1 plus Bandanteile; komplex summieren, erst am Ende den Betrag nehmen.
         double sr = 1.0, si = 0.0;
         for (int b = 0; b < count; ++b) {
             const Biquad& q = bands[size_t(b)];
@@ -157,8 +151,7 @@ void AudioEqualizer::rebuild() {
     set->preamp = float(std::pow(10.0, m_preampDb / 20.0));
 
     for (int i = 0; i < kBands; ++i) {
-        //  Ein Band ohne Anhebung wird ÜBERSPRUNGEN, nicht als Durchlass
-        //  gerechnet (das erledigt `makeBiquad` mit `false`).
+        //  Ein Band ohne Anhebung wird ÜBERSPRUNGEN (`makeBiquad` liefert `false`).
         Biquad q;
         if (!makeBiquad(i, m_gainDb[size_t(i)], &q)) continue;
         set->band[size_t(set->count)] = q;

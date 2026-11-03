@@ -22,14 +22,11 @@
 #include <cstring>
 
 namespace {
-//  Vorrat im Ring: ~200 ms. Genug, um jede Nachschub-Verzögerung einer Platte
-//  zu überbrücken, und klein genug, dass der Speicher nicht auffällt
+//  Vorrat im Ring: ~200 ms. Überbrückt jede Nachschub-Verzögerung einer Platte, der Speicher fällt nicht auf
 //  (Stereo/48 kHz ≈ 38 kB).
 constexpr int kRingMs = 200;
 
-//  Diagnose-Schalter (Muster wie MG_LOG_THUMBS in MediaModel): meldet, was der
-//  Dekoder liefert und was die Ausgabe abholt. Der Audio-Pfad selbst zahlt dafür
-//  nur einen Vergleich gegen eine statische Konstante.
+//  Diagnose: meldet, was der Dekoder liefert und die Ausgabe abholt; der Audio-Pfad zahlt nur einen Vergleich.
 const bool kLog = qEnvironmentVariableIntValue("MG_LOG_AUDIO") == 1;
 }  // namespace
 
@@ -75,9 +72,8 @@ AudioEngine::AudioEngine(AudioEqualizer& eq, AudioDenoise& denoise,
         }
 
         if (!m_decodeDone || m_state != State::Playing || !m_sink) return;
-        //  Ein vorbereiteter Übergang heißt: es kommt noch etwas. Erst wenn auch
-        //  der zweite Dekoder durch ist UND die Naht hinter uns liegt, kann die
-        //  Kette zu Ende sein.
+        //  Ein vorbereiteter Übergang heißt: es kommt noch etwas. Zu Ende erst, wenn auch der zweite Dekoder durch ist
+        //  UND die Naht hinter uns liegt.
         if (m_boundaryFrames >= 0) return;
         if (m_ring.available() != 0) return;
         if (m_pendingAt < m_pending.size()) return;      // Rest wartet noch
@@ -106,9 +102,8 @@ void AudioEngine::setState(State s) {
 
 qint64 AudioEngine::position() const {
     if (!m_format.isValid()) return 0;
-    //  `m_frameOrigin` ist der Stand der Ausgabe, an dem der laufende Titel
-    //  begann - nach einem lückenlosen Übergang ist das nicht mehr 0, weil die
-    //  Senke seit dem VORIGEN Titel durchläuft.
+    //  `m_frameOrigin` ist der Stand der Ausgabe, an dem der laufende Titel begann: nach einem lückenlosen Übergang
+    //  nicht mehr 0, weil die Senke seit dem VORIGEN Titel durchläuft.
     const qint64 played = m_framesOut.load(std::memory_order_relaxed) - m_frameOrigin;
     const qint64 frames = m_baseFrames + std::max<qint64>(0, played);
     return m_format.durationForFrames(int(std::min<qint64>(frames, INT32_MAX))) / 1000;
@@ -198,10 +193,8 @@ void AudioEngine::startDecode(const QString& path, qint64 skipMs, qint64 byteOff
     m_eq.resetState();
     m_denoise.configure(m_format.sampleRate(), m_format.channelCount());
     m_denoise.resetState();
-    //  Der Begrenzer traegt eine Vorausschau von 1 ms mit sich. Hier laufen
-    //  ALLE Spruenge durch - neuer Titel, Weiter, Zurueck, Spulen -, und an
-    //  jedem muss der Vorlauf weg sein, sonst reicht der alte Abschnitt in den
-    //  neuen hinein.
+    //  Der Begrenzer traegt 1 ms Vorausschau. Hier laufen ALLE Spruenge durch, und an jedem muss der Vorlauf weg sein,
+    //  sonst reicht der alte Abschnitt in den neuen hinein.
     m_limiter.configure(m_format.sampleRate(), m_format.channelCount());
     m_limiter.resetState();
 
@@ -288,12 +281,9 @@ void AudioEngine::startSinkIfReady() {
     if (!m_decodeDone && qint64(m_ring.available()) < needed) return;
 
     m_sink = new QAudioSink(QMediaDevices::defaultAudioOutput(), m_format, this);
-    //  Der Puffer ist die einzige Reserve, die der Ton gegen einen belegten
-    //  GUI-Faden hat: die Senke holt ihre Werte ueber ein QIODevice, und das
-    //  wird im Faden ihres Besitzers gefragt. Gemessen (`bench_audiogap`):
-    //  mit Qts Vorgabe von 250 ms haelt der Ton eine Blockade von 200 ms aus
-    //  und reisst bei 300; mit 600 ms haelt er bis 500 durch. Der Preis sind
-    //  rund 230 KB.
+    //  Die einzige Reserve gegen einen belegten GUI-Faden: die Senke holt ueber ein QIODevice, und das wird im Faden ihres
+    //  Besitzers gefragt. Gemessen (`bench_audiogap`): mit Qts 250 ms haelt der Ton eine Blockade von 200 ms aus und reisst
+    //  bei 300; mit 600 ms haelt er bis 500 durch. Preis: rund 230 KB.
     m_sink->setBufferSize(m_format.bytesForDuration(600 * 1000));
     m_sink->setVolume(float(m_volume));
     m_sink->start(m_pull);
@@ -486,11 +476,8 @@ void AudioEngine::promoteNext() {
     m_queuedDurationMs = 0;
     m_boundaryFrames = -1;
 
-    //  Hier wird die Vorausschau bewusst NICHT geleert: der Uebergang ist
-    //  lueckenlos, beide Titel liegen hintereinander im selben Ring. Der Puffer
-    //  gibt der Reihe nach aus, die letzten Werte von A verlassen ihn also VOR
-    //  dem ersten von B - vermischt wird nichts. Ein Leeren an dieser Stelle
-    //  wuerde stattdessen 1 ms verwerfen und als Aussetzer zu hoeren sein.
+    //  Hier wird die Vorausschau bewusst NICHT geleert: beide Titel liegen hintereinander im selben Ring, die letzten
+    //  Werte von A gehen VOR dem ersten von B hinaus. Ein Leeren wuerde 1 ms verwerfen und als Aussetzer zu hoeren sein.
     if (kLog) qDebug("audio: Übergang vollzogen -> %s", qPrintable(m_path));
     emit currentPathChanged();
     emit durationChanged();

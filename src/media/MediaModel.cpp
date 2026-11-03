@@ -36,9 +36,7 @@
 
 // MG_LOG_THUMBS=1 protokolliert Anforderung, Abbestellung und Lieferung.
 static const bool kLogThumbs = qEnvironmentVariableIntValue("MG_LOG_THUMBS") == 1;
-//  MG_LOG_FILL=1: je Charge eine Zeile mit Dauer und Stand. Headless ist der
-//  Ordner nach 180 ms eingelesen, in der Shell erst nach 780 ms - die Zeit geht
-//  ZWISCHEN den Chargen verloren, und das sieht man nur hier.
+//  MG_LOG_FILL=1: je Charge Dauer und Stand; die Zeit geht ZWISCHEN den Chargen verloren.
 static const bool kLogFill = qEnvironmentVariableIntValue("MG_LOG_FILL") == 1;
 
 namespace {
@@ -261,10 +259,7 @@ private:
 } // namespace
 
 namespace {
-// Erste Charge fuellt typische Viewports; Folgechargen sind groesser, da sie
-// zwischen Event-Loop-Ticks laufen.
-//  Der Name, nach dem die Ansicht sortiert: bei einem Ordner der ganze Name, bei
-//  einer Datei der Teil vor der Endung - genau so setzt `feedChunk` ihn spaeter.
+//  Der Sortiername: beim Ordner der ganze Name, bei einer Datei der Teil vor der Endung, wie `feedChunk` ihn setzt.
 QString anzeigeName(const QFileInfo& fi, bool istOrdner) {
     return istOrdner ? fi.fileName() : fi.completeBaseName();
 }
@@ -272,15 +267,10 @@ QString anzeigeName(const QFileInfo& fi, bool istOrdner) {
 constexpr int kFirstChunk = 256;
 constexpr int kChunk      = 512;
 
-//  Fingerabdruck des offenen Ordners (FNV-1a). Er entsteht an ZWEI Stellen -
-//  beim Fuellen nebenher und beim Watcher-Ereignis. Beide muessen exakt
-//  dieselben Eintraege in derselben Reihenfolge sehen, sonst meldet der Watcher
-//  jeden Ordner als geaendert.
+//  Fingerabdruck (FNV-1a): Fuellen und Watcher brauchen dieselben Eintraege, sonst gilt jeder Ordner als geaendert.
 constexpr quint64 kFingerBasis = 1469598103934665603ULL;
 
-//  Ein Eintrag als Zahl. Die Summe entsteht durch ADDIEREN, nicht durch
-//  Verketten - so haengt der Abdruck nicht an der Reihenfolge, und die ist seit
-//  dem vorsortierten Einspeisen eine andere als die des Verzeichnisses.
+//  Summe statt Verkettung: das vorsortierte Einspeisen hat eine andere Reihenfolge als das Verzeichnis.
 inline quint64 eintragsFinger(QStringView name, qint64 groesse, qint64 msecs) {
     quint64 h = kFingerBasis;
     const auto misch = [&h](quint64 v) { h ^= v; h *= 1099511628211ULL; };
@@ -359,11 +349,8 @@ MediaModel::MediaModel(JsonStorage& storage,
         }
     });
 
-    // Nur Zeilen des geoeffneten Ordners: m_tagManager schluesselt nach Dateinamen,
-    // eine gleichnamige Datei im Unterordner bekaeme sonst fremde Tags.
-    // Gemeldet wird NUR, was sich wirklich geaendert hat: `tagsChanged` kommt auch
-    // beim blossen Anlegen eines Tags, und eine Meldung ueber alle Zeilen liess den
-    // Proxy neu filtern und sortieren - die Galerie baute sichtbar alle Kacheln neu.
+    // m_tagManager schluesselt nach Dateinamen: ein Unterordner bekaeme fremde Tags.
+    // Nur echte Aenderungen melden, sonst baut der Proxy alle Kacheln neu.
     connect(&m_tagManager, &TagManager::tagsChanged, this, [this]() {
         if (m_items.isEmpty()) return;
         int laufAnfang = -1;
@@ -415,8 +402,7 @@ void MediaModel::rebuild(const QString& folderPath) {
     m_selected.clear();
     recountSelection();
     m_pathToRow.clear();
-    // m_expanded bleibt stehen: daraus setzt sich der Unterbaum waehrend des
-    // Einlesens von selbst zusammen - ein Watcher-Reload klappt nicht alles zu.
+    // m_expanded bleibt: daraus setzt sich der Unterbaum beim Einlesen wieder zusammen, ein Reload klappt nichts zu.
     m_scopes.clear();
     m_scopeOfPath.clear();
     qDeleteAll(m_scopeStorage);
@@ -430,9 +416,7 @@ void MediaModel::rebuild(const QString& folderPath) {
     endResetModel();
     emit countChanged();
 
-    //  Beim Fuellen mitgerechnet - die Schleife hat jeden `QFileInfo` ohnehin
-    //  in der Hand. Ein eigener Durchgang danach kostete bei 12.000 Dateien
-    //  47 ms am Stueck, auch beim blossen Aufklappen eines Unterordners.
+    //  Beim Fuellen mitgerechnet: ein eigener Durchgang blockierte grosse Ordner am Stueck.
     m_fingerAccu  = kFingerBasis;
     m_fingerValid = true;
 
@@ -445,8 +429,7 @@ void MediaModel::rebuild(const QString& folderPath) {
     // seinen eigenen.
     FolderScope root;
     root.path      = folderPath;
-    // Ueber den Helfer, nicht QFileInfo::fileName: bei einem Pfad mit Trenner am
-    // Ende liefert der einen Leerstring, und die Ordner-JSON stand als Kachel da.
+    // Nicht QFileInfo::fileName: mit Trenner am Ende leer, und die Ordner-JSON stand als Kachel da.
     root.sidecar   = mg::folderSidecarName(folderPath);
     root.parent    = -1;
     root.depth     = 0;
@@ -487,11 +470,7 @@ void MediaModel::startScan(int scope) {
         QDirIterator::NoIteratorFlags);
     m_pendingScope = scope;
 
-    //  VORSORTIEREN - nur fuer den offenen Ordner; aufgeklappte Unterordner
-    //  kommen als eigene Bereiche nach. Die Ordnung ist dieselbe wie in
-    //  `MediaProxyModel::fieldLess` samt `sameScopeLess`: Ordner immer voran -
-    //  in BEIDEN Richtungen -, darunter das Feld, dann Zeit, dann Name. Weicht
-    //  sie ab, ist das kein Fehler, nur eine Einfuegung mehr in der Mitte.
+    //  Vorsortieren nur fuer den offenen Ordner, Unterordner kommen als eigene Bereiche nach.
     m_vorab.clear();
     m_vorabIndex = 0;
     if (m_fillOrder && scope == 0) {
@@ -510,11 +489,7 @@ void MediaModel::startScan(int scope) {
             e.groesse = fi.size();
             m_vorab.append(std::move(e));
         }
-        //  Dieselbe Ordnung wie `MediaProxyModel::fieldLess` samt
-        //  `sameScopeLess`: Ordner immer voran - in BEIDEN Richtungen -, darunter
-        //  das gewaehlte Feld, bei Gleichstand die Zeit und dann der Name.
-        //  Weicht sie irgendwo ab, ist das kein Fehler, nur eine Einfuegung mehr
-        //  in der Mitte.
+        //  Dieselbe Ordnung wie `MediaProxyModel::fieldLess`; weicht sie ab, kostet das nur eine Einfuegung in der Mitte.
         const int  feld = m_fillField;
         const bool ab   = m_fillDesc;
         const auto kleiner = [feld](const VorabEintrag& a, const VorabEintrag& b) {
@@ -565,9 +540,7 @@ void MediaModel::feedChunk(bool firstChunk) {
         if (firstChunk) m_fillClock.restart();
     }
 
-    // Immer nur ein Bereich je Charge: nur so laesst sich fuer die ganze Charge auf
-    // einen Schlag entscheiden, ob die Sidecar-Metadaten gelten.
-    //  Aus der Vorsortierung, solange sie reicht - sonst wie bisher vom Iterator.
+    // Ein Bereich je Charge: nur so gilt die Entscheidung ueber die Sidecar-Metadaten fuer die ganze Charge.
     if (m_vorabIndex >= m_vorab.size() && (!m_pendingIt || !m_pendingIt->hasNext())) {
         if (m_scanQueue.isEmpty()) return;
         startScan(m_scanQueue.takeFirst());
@@ -605,10 +578,7 @@ void MediaModel::feedChunk(bool firstChunk) {
         }
         dateiName = mg::baseNameView(pfad);
 
-        //  Nur der offene Ordner: der Watcher vergleicht auch nur ihn. Beide
-        //  Wege muessen DIESELBEN Eintraege sehen (s. `ordnerFingerabdruck`) -
-        //  sonst meldet der Ordner entweder gar nichts oder bei jedem Ereignis
-        //  alles.
+        //  Nur der offene Ordner: der Watcher vergleicht auch nur ihn, mit denselben Eintraegen wie `ordnerFingerabdruck`.
         if (scope == 0 && m_fingerValid) {
             if (imFingerabdruck(istOrdner, dateiName, sidecar))
                 m_fingerAccu += eintragsFinger(dateiName, groesse, msecs);
@@ -730,9 +700,7 @@ void MediaModel::finishFill() {
         m_deepFillTimer.invalidate();
     }
 
-    //  Ausgangsstand fuer den Watcher. Er steht schon: die Fuell-Schleife hat ihn
-    //  mitgerechnet. Ohne gueltigen Sammler (nur ein Unterordner kam dazu) bleibt
-    //  der alte stehen - am offenen Ordner hat sich nichts geaendert.
+    //  Ohne gueltigen Sammler kam nur ein Unterordner dazu: am offenen Ordner hat sich nichts geaendert.
     if (m_fingerValid) {
         m_dirFinger   = m_fingerAccu;
         m_fingerValid = false;
@@ -755,8 +723,7 @@ void MediaModel::finishFill() {
         }
     }
 
-    // Trim genau hier: der Trim in loadFolder laeuft schon nach der ersten Charge
-    // und kann den Speicher des vorherigen Ordners noch nicht vollstaendig fassen.
+    // Trim genau hier: der in loadFolder laeuft nach der ersten Charge, der alte Ordner ist dann noch nicht frei.
     mg::trimHeap();
 }
 
@@ -889,8 +856,7 @@ bool MediaModel::expandFolder(const QString& folderPath) {
     if (!it.isFolder()) return false;
     if (m_expanded.contains(folderPath)) return false;
 
-    // Schleifenschutz gegen Symlinks auf einen Vorfahren. Verglichen wird der
-    // kanonische Pfad, und nur hier - je Eintrag waere das ein realpath() zu viel.
+    // Schleifenschutz gegen Symlinks auf einen Vorfahren; nur hier, je Eintrag waere ein realpath() zu viel.
     const QString canon = QFileInfo(folderPath).canonicalFilePath();
     if (!canon.isEmpty()) {
         for (int s = it.scope; s >= 0; s = m_scopes.at(s).parent) {
@@ -1348,8 +1314,7 @@ static QString categoryIdByName(const QList<TagCategory>& list, const QString& n
     return {};
 }
 
-// Ueber Namen, denn die IDs eines anderen Ordners sind andere. Fehlt drueben
-// eine Kategorie, entsteht sie auf der Hauptebene - den Pfad nachzubilden waere Raten.
+// Ueber Namen: die IDs eines anderen Ordners sind andere. Fehlt eine Kategorie, entsteht sie auf der Hauptebene.
 QStringList MediaModel::categoryNamesOf(JsonStorage& st, const QString& fileName) {
     QStringList out;
     std::function<void(const QList<TagCategory>&)> walk =
@@ -2199,9 +2164,7 @@ void MediaModel::setTagOnSelection(const QString& tag, bool on) {
     // Ordners, dem die Zeile gehoert.
     const QStringList paths = selectedPaths(/*filesOnly=*/true);
 
-    //  Die Ablage eines UNTERordners schriebe sonst je Datei ganz neu: bei 2000
-    //  Dateien gemessene 402 statt 16 ms, und zwar quadratisch. Das Merkzeichen
-    //  gilt auch fuer Ablagen, die erst waehrend des Laufs entstehen.
+    //  Die Ablage eines Unterordners schriebe sonst je Datei ganz neu, also quadratisch; gilt auch fuer neu entstehende.
     m_sammelSchreiben = true;
     for (auto it = m_scopeStorage.cbegin(); it != m_scopeStorage.cend(); ++it)
         it.value()->setDeferredSaves(true);
@@ -2244,8 +2207,7 @@ void MediaModel::setSelectedRows(const QVector<int>& sortedRows) {
         if (lo < 0) lo = r;
         hi = r;
     }
-    // Eine Meldung ueber den ganzen beruehrten Bereich: der Rahmen aendert in
-    // Ansichts-Ordnung, und die faellt nicht mit der Modellordnung zusammen.
+    // Eine Meldung ueber den ganzen Bereich: der Rahmen aendert in Ansichts-Ordnung, nicht in Modellordnung.
     if (lo >= 0)
         emitRows(lo, hi, { SelectedRole });
     m_selCount = n;
@@ -2557,8 +2519,7 @@ void MediaModel::setTagOnRow(int row, const QString& tag, bool on) {
         it.tags = m_tagManager.tagsForFile(name);
     } else if (JsonStorage* st = storageForScope(it.scope)) {
         QStringList tags = st->getTags(name);
-        // Dieser Sidecar gehoert einem Unterordner und laeuft nicht ueber den TagManager -
-        // er muss ausdruecklich in den laufenden Undo-Schritt aufgenommen werden.
+        // Sidecar eines Unterordners, nicht ueber den TagManager: ausdruecklich in den Undo-Schritt aufnehmen.
         if (on != tags.contains(tag))
             m_tagManager.noteForeignFolder(st->folderPath(),
                 mg::tagmark::mkCounted(on ? 1 : 0, on ? 0 : 1,
@@ -2766,10 +2727,7 @@ quint64 MediaModel::ordnerFingerabdruck() const {
         it.next();
         const QFileInfo fi = it.fileInfo();
         if (imFingerabdruck(fi.isDir(), fi.fileName(), sidecar)) { mischeFinger(h, fi); continue; }
-        //  Begleitdateien zaehlen mit, sobald sie GEZEIGT werden - sonst stuende
-        //  eine neu entstandene `.mgstore` erst nach dem naechsten Ordnerwechsel
-        //  als Kachel da. Nur ihr NAME geht ein, nicht Groesse und Datum: sonst
-        //  loeste jede Tag-Aenderung einen Neubau der ganzen Galerie aus.
+        //  Gezeigte Begleitdateien zaehlen mit, aber nur der Name: mit Datum loeste jede Tag-Aenderung einen Neubau aus.
         if (m_showAllFiles) h += eintragsFinger(fi.fileName(), 0, 0);
     }
     return h;
@@ -2778,9 +2736,7 @@ quint64 MediaModel::ordnerFingerabdruck() const {
 void MediaModel::onDirectoryChanged() {
     if (m_suppressWatch > 0) return;     // interne Mutation, kein Reload
     if (m_folder.isEmpty()) return;
-    //  Hat sich an den ANGEZEIGTEN Dateien nichts geaendert, war es unser
-    //  eigener Sidecar - ein Neubau der Galerie waere sichtbares Flackern ohne
-    //  jeden Anlass. Das Auflisten kostet weniger als der Neubau, den es spart.
+    //  Nichts Angezeigtes geaendert: es war unser Sidecar, ein Neubau waere Flackern ohne Anlass.
     const quint64 jetzt = ordnerFingerabdruck();
     if (jetzt == m_dirFinger) return;
     m_dirFinger = jetzt;

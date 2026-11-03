@@ -158,10 +158,8 @@ $env:MG_HTML_EIGEN=1; .\build\Release\MediaGallery.exe
 ## Changelog
 
 ### Latest
-- **Fix**: **Table search (macOS)**: Searches now find matches in longer table cells.
-- **Fix**: **Gallery**: Video preview images are displayed again instead of showing an error.
-- **Fix**: **Gallery**: Moving files between folders now preserves their categories, including after later edits.
-- **Fix**: **PDF extraction**: Extracted pages with escaped dictionary names remain readable.
+- **Fix**: **Markdown**: Text selection no longer causes incorrect bold formatting or selects entire code blocks unintentionally.
+- **Improvement**: **Markdown**: Large files with many code blocks now open and scroll faster, use less memory, and no longer freeze the window.
 
 ---
 

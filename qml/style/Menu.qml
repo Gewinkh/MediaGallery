@@ -3,9 +3,8 @@ import QtQuick.Window
 import QtQuick.Templates as T
 import MediaGallery 1.0
 
-// Gethemtes Menü-Popup als STIL-Datei: `common/ThemedMenu.qml` greift nur bei Menüs, die die App selbst
-// instanziiert - die von QT geöffneten (Bearbeiten-Kontextmenü einer TextArea) blieben eckig in Fusions
-// Grundfarbe. `topPadding`/`bottomPadding` halten die Rundung frei, die Markierung füllte sie sonst aus.
+// Gethemtes Menü-Popup als STIL-Datei: `ThemedMenu.qml` greift nur bei Menüs der App, die von QT geöffneten blieben eckig.
+// `topPadding`/`bottomPadding` halten die Rundung frei, die Markierung füllte sie sonst aus.
 T.Menu {
     id: control
 
@@ -24,8 +23,7 @@ T.Menu {
     contentItem: ListView {
         implicitHeight: contentHeight
         model: control.contentModel
-        //  Nur scrollbar, wenn das Menü höher als der Bildschirm wäre (wie die
-        //  eingebauten Stile) - sonst schluckt das ListView Rad-Ereignisse.
+        //  Nur scrollbar, wenn das Menü höher als der Bildschirm wäre - sonst schluckt das ListView Rad-Ereignisse.
         interactive: Window.window ? contentHeight + control.topPadding
                                      + control.bottomPadding > Window.window.height
                                    : false
@@ -38,8 +36,7 @@ T.Menu {
     }
 
     background: Rectangle {
-        //  Mindestbreite wie bei `MenuItem`: ohne implizite Breite kollabiert
-        //  ein Popup mit eigenem Hintergrund zum senkrechten „Strich".
+        //  Ohne implizite Breite kollabiert ein Popup mit eigenem Hintergrund zum senkrechten „Strich".
         implicitWidth: 200
         color: App.themeMenuBarBg
         border.color: App.themeBorder

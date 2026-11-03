@@ -11,9 +11,8 @@ namespace {
 //  eingebunden wird der Kopf nicht, sonst waere FFmpeg eine Bauabhaengigkeit.
 constexpr int kNurFehler = 16;
 
-//  Die Fassungsnummer steht im Dateinamen, und welche danebenliegt, entscheidet
-//  die Distribution. Von neu nach alt, bis eine sich laden laesst; findet sich
-//  keine, bleibt alles wie es war.
+//  Die Fassungsnummer steht im Dateinamen, und welche danebenliegt, entscheidet die Distribution. Von neu nach alt, bis
+//  eine sich laden laesst; findet sich keine, bleibt alles wie es war.
 constexpr int kNeuste = 62;
 constexpr int kAelteste = 55;
 

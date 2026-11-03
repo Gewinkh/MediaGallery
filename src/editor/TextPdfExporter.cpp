@@ -67,8 +67,7 @@ bool exportToPdf(const QString& text, const QString& targetPath,
                  const Stil& stil, int tabWidth,
                  QString* err, const Seiten& seiten, int* seitenZahl) {
     const QColor ink = stil.tinte.isValid() ? stil.tinte : QColor(Qt::black);
-    //  Gefaerbt wird nur, wenn der Zerleger die Sprache auch kennt - sonst
-    //  haenge ein leeres Blatt am Wunsch statt am Koennen.
+    //  Gefaerbt wird nur, wenn der Zerleger die Sprache kennt.
     const bool faerben =
         stil.syntax
         && mg::editor::languageForId(stil.sprache).kind != mg::editor::ScannerKind::PlainText;
@@ -84,9 +83,8 @@ bool exportToPdf(const QString& text, const QString& targetPath,
         return false;
     }
 
-    //  Erst in den Speicher, dann durch `mergeGlyphRuns` - Qt schreibt sonst
-    //  ein Textobjekt je Glyphe, und PDFium liest daraus zerrissene Wörter
-    //  (s. core/PdfGlyphRuns.h).
+    //  Erst in den Speicher, dann durch `mergeGlyphRuns`: Qt schreibt sonst ein Textobjekt je Glyphe, und PDFium liest
+    //  daraus zerrissene Wörter.
     QByteArray pdfBytes;
     {
         QBuffer sink(&pdfBytes);
@@ -94,14 +92,12 @@ bool exportToPdf(const QString& text, const QString& targetPath,
         QPdfWriter writer(&sink);
         writer.setPageSize(QPageSize(QPageSize::A4));
         writer.setPageOrientation(seiten.quer ? QPageLayout::Landscape : QPageLayout::Portrait);
-        //  Der Schreiber bekommt KEINE Raender - den Abstand setzt der Maler
-        //  selbst. Mit Raendern begrenzt Qt die Malflaeche auf das Innere, und
-        //  die Papierfarbe endete an der Randkante statt am Blattrand.
+        //  KEINE Raender am Schreiber, den Abstand setzt der Maler: mit Raendern begrenzt Qt die Malflaeche auf das Innere,
+        //  und die Papierfarbe endete an der Randkante statt am Blattrand.
         writer.setPageMargins(QMarginsF(0, 0, 0, 0), QPageLayout::Millimeter);
         writer.setResolution(kResolution);
         writer.setTitle(QFileInfo(targetPath).completeBaseName());
 
-        //  Das GANZE Blatt, und darin der Satzspiegel.
         const QRectF blatt =
             writer.pageLayout().paintRectPixels(writer.resolution());
         const qreal  rand  = kMarginMm / 25.4 * kResolution;
@@ -120,26 +116,22 @@ bool exportToPdf(const QString& text, const QString& targetPath,
         td.setDocumentMargin(0);
         td.setDefaultFont(font);
         QTextOption to;
-        //  Weicher Umbruch OHNE Einzug: eine überlange Zeile geht weiter, statt
-        //  abgeschnitten zu werden. AnywhereIfNecessary greift bei Zeilen ohne
-        //  Leerzeichen (lange Pfade, base64).
+        //  Weicher Umbruch ohne Einzug; AnywhereIfNecessary greift bei Zeilen ohne Leerzeichen (lange Pfade, base64).
         to.setWrapMode(QTextOption::WrapAtWordBoundaryOrAnywhere);
         to.setTabStopDistance(
             QFontMetricsF(font, &writer).horizontalAdvance(
                 QString(qBound(2, tabWidth, 8), u' ')));
         td.setDefaultTextOption(to);
 
-        //  Zeilenenden vereinheitlichen: setPlainText trennt an '\n'; ein
-        //  stehengebliebenes '\r' aus CRLF- oder alten Mac-Dateien würde als
+        //  setPlainText trennt an '\n'; ein stehengebliebenes '\r' aus CRLF- oder alten Mac-Dateien würde als
         //  Ersatzkästchen mitgedruckt.
         QString body = text;
         body.replace(QLatin1String("\r\n"), QLatin1String("\n"));
         body.replace(QLatin1Char('\r'),     QLatin1Char('\n'));
         td.setPlainText(body);
 
-        //  Gefaerbt wird ueber DENSELBEN Faerber wie im Editor - eine zweite
-        //  Umsetzung liefe gegen die erste, sobald eine Sprache dazukommt.
-        //  Er haengt sich an das Dokument und faerbt beim ersten Auslegen.
+        //  DERSELBE Faerber wie im Editor: eine zweite Umsetzung liefe gegen die erste. Er haengt sich an das Dokument
+        //  und faerbt beim ersten Auslegen.
         std::unique_ptr<mg::editor::Highlighter> faerber;
         if (faerben) {
             faerber = std::make_unique<mg::editor::Highlighter>(&td);
@@ -147,24 +139,19 @@ bool exportToPdf(const QString& text, const QString& targetPath,
             faerber->setLanguageId(stil.sprache);
         }
 
-        //  Metriken am Writer messen (nicht am Bildschirm) - sonst hinge das
-        //  Ergebnis an der Bildschirm-DPI des Rechners. ERST NACH dem Faerber:
-        //  solange der Schreiber das Geraet ist, legt jede Formatmarke ihren
-        //  Block mit dessen Metriken neu aus - 11,4 statt 0,02 s bei 8.200
-        //  Zeilen. Die Farben haengen nicht an den Metriken, die endgueltige
-        //  Auslegung unten schon.
+        //  Metriken am Writer messen, sonst hinge das Ergebnis an der Bildschirm-DPI. ERST NACH dem Faerber: solange der
+        //  Schreiber das Geraet ist, legt jede Formatmarke ihren Block mit dessen Metriken neu aus - 11,4 statt 0,02 s bei
+        //  8.200 Zeilen. Die Farben haengen nicht an den Metriken, die endgueltige Auslegung unten schon.
         td.documentLayout()->setPaintDevice(&writer);
 
         // Der Text fließt durch eine "unendlich" hohe Seite, umbrochen wird unten selbst. Ließe man QTextDocument
         // paginieren, legt es die Zeile 0,009 px über die Grenze und zeichnet sie auf BEIDEN Seiten - im Textlayer
         // stünde sie doppelt, Suche und Kopieren fänden sie zweimal.
         td.setPageSize(QSizeF(paintRect.width(), 1e7));
-        //  Auslegen ERZWINGEN: QTextDocument legt faul aus, ohne diesen Aufruf
-        //  meldet jeder Block 0 Zeilen und die Seiteneinteilung unten liefe leer.
+        //  QTextDocument legt faul aus; ohne diesen Aufruf meldet jeder Block 0 Zeilen und die Seiteneinteilung liefe leer.
         (void)td.documentLayout()->documentSize();
 
-        //  Zeilenweise in Seiten schneiden: eine Zeile gehört GANZ auf eine
-        //  Seite. Ergebnis je Seite: [oben, unten) in Dokument-Koordinaten.
+        //  Zeilenweise in Seiten schneiden, eine Zeile gehört GANZ auf eine Seite. Je Seite [oben, unten) im Dokument.
         struct Span { qreal top; qreal bottom; };
         QList<Span> pageSpans;
         {
@@ -178,9 +165,7 @@ bool exportToPdf(const QString& text, const QString& targetPath,
                     const QTextLine ln = lay->lineAt(i);
                     const qreal lTop = blockY + ln.y();
                     const qreal lBot = lTop + ln.height();
-                    //  Passt die Zeile nicht mehr ganz? -> Seite hier schließen.
-                    //  Eine Zeile, die für sich schon höher ist als die Seite,
-                    //  bekommt trotzdem ihre eigene (sonst Endlosschleife).
+                    //  Eine Zeile, die allein höher ist als die Seite, bekommt trotzdem ihre eigene (sonst Endlosschleife).
                     if (lBot - top > bodyH && bottom > top) {
                         pageSpans.append({top, bottom});
                         top = lTop;
@@ -201,15 +186,13 @@ bool exportToPdf(const QString& text, const QString& targetPath,
             const int pg = folge[i] - 1;
             if (i > 0) writer.newPage();
 
-            //  Die Flaeche zuerst und ueber das GANZE Blatt, Rand eingeschlossen.
-            //  Die zwei Pixel darueber hinaus fangen die Rundung von
+            //  Die Flaeche zuerst und ueber das GANZE Blatt. Die zwei Pixel darueber hinaus fangen die Rundung von
             //  `paintRectPixels` ab (gemessen: 1588 weisse Pixel, eine Zeile).
             if (stil.papier.isValid())
                 p.fillRect(blatt.adjusted(-2, -2, 2, 2), stil.papier);
 
             const Span& sp = pageSpans.at(pg);
             p.save();
-            //  Der Rand steckt jetzt in der Verschiebung, nicht mehr im Schreiber.
             p.translate(rand, rand - sp.top);
 
             // Winziger Einzug an Ober- und Unterkante: die Blockauswahl arbeitet mit BERÜHRUNG, die Nachbarzeile der
@@ -232,9 +215,7 @@ bool exportToPdf(const QString& text, const QString& targetPath,
 
             p.save();
             p.setFont(footFont);
-            //  Die Fusszeile muss auf dem Papier lesbar bleiben - auf einem
-            //  dunklen Blatt waere ein festes Grau kaum zu sehen. Genommen wird
-            //  deshalb die Grundfarbe, halb durchscheinend.
+            //  Auf einem dunklen Blatt waere ein festes Grau kaum zu sehen: die Grundfarbe, halb durchscheinend.
             QColor fuss(120, 120, 120);
             if (stil.papier.isValid()) { fuss = ink; fuss.setAlphaF(0.55f); }
             p.setPen(fuss);

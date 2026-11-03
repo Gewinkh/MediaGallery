@@ -86,8 +86,7 @@ void AudioLimiter::process(float* samples, int frames) {
     if (int(m_state.size()) < ch * splits) return;          // configure() fehlt
     if (int(m_ring.size()) < m_look * kBands * ch) return;
 
-    //  Zehn Bandwerte je Kanal - sie leben nur hier, es gibt keinen
-    //  Zwischenpuffer über die Schleife hinaus.
+    //  Zehn Bandwerte je Kanal: kein Zwischenpuffer über die Schleife hinaus.
     double band[kBands][8];
 
     for (int f = 0; f < frames; ++f) {

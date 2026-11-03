@@ -3,6 +3,8 @@
 #include "editor/LanguageTable.h"
 #include "editor/SyntaxScanner.h"
 
+#include <QAbstractTextDocumentLayout>
+#include <QTextLayout>
 #include <QDir>
 #include <QFileInfo>
 #include <QImageReader>
@@ -23,6 +25,14 @@ QColor mix(const QColor& a, const QColor& b, qreal t) {
                             float(a.blueF() + (b.blueF() - a.blueF()) * t));
 }
 
+// Festbreite ohne Formung: der teuerste Teil des Auslegens faellt weg. Das Bild bleibt gleich, solange nichts da ist,
+// was Formung braucht; ab U+0300 beginnen kombinierende Zeichen, Arabisch und Emoji-Folgen.
+bool brauchtKeineFormung(QStringView text) {
+    for (const QChar c : text)
+        if (c.unicode() >= 0x0300) return false;
+    return true;
+}
+
 struct Ctx {
     int  indent = 0;        // Listentiefe im aktuellen Rahmen
     bool tight = false;
@@ -32,11 +42,11 @@ struct Ctx {
 
 class Builder {
 public:
-    Builder(QTextDocument* d, const Document& md, const RenderStyle& st, const std::atomic<bool>* abort);
+    Builder(RenderedDocument* d, const Document& md, const RenderStyle& st, const std::atomic<bool>* abort);
     void run();
 
 private:
-    QTextDocument* m_doc;
+    RenderedDocument* m_doc;
     const Document& m_md;
     const RenderStyle& m_st;
     const std::atomic<bool>* m_abort;
@@ -51,6 +61,7 @@ private:
     qreal m_px;
     qreal m_indentPx;
     QColor m_text, m_muted, m_border, m_codeBg, m_link, m_heading, m_codeFg, m_mark;
+    QTextCharFormat m_cfText, m_cfMuted;
     QHash<QString, int> m_slugs;
     qint64 m_imageBytes = 0;
     int m_imageNo = 0;
@@ -84,7 +95,7 @@ private:
     void closeBox(const Box& b, qreal gap);
 };
 
-Builder::Builder(QTextDocument* d, const Document& md, const RenderStyle& st, const std::atomic<bool>* abort)
+Builder::Builder(RenderedDocument* d, const Document& md, const RenderStyle& st, const std::atomic<bool>* abort)
     : m_doc(d), m_md(md), m_st(st), m_abort(abort), m_cur(d) {
     m_px = st.body.pixelSize() > 0 ? st.body.pixelSize() : 15;
     m_indentPx = qRound(m_px * 1.7);
@@ -98,14 +109,14 @@ Builder::Builder(QTextDocument* d, const Document& md, const RenderStyle& st, co
     m_codeFg = p.colorFor(Tok::CodeSpan);
     m_mark = p.colorFor(Tok::Number);
     m_mark.setAlphaF(0.3f);
+    //  Einmal gebaut: `setFont` setzt jede Schrifteigenschaft einzeln, und das je Absatz und Tabellenzelle.
+    m_cfText.setFont(m_st.body);
+    m_cfText.setForeground(m_text);
+    m_cfMuted = m_cfText;
+    m_cfMuted.setForeground(m_muted);
 }
 
-QTextCharFormat Builder::charFormat(const Ctx& c) const {
-    QTextCharFormat f;
-    f.setFont(m_st.body);
-    f.setForeground(c.muted ? m_muted : m_text);
-    return f;
-}
+QTextCharFormat Builder::charFormat(const Ctx& c) const { return c.muted ? m_cfMuted : m_cfText; }
 
 void Builder::spacer(qreal height) {
     QTextBlockFormat bf;
@@ -225,6 +236,7 @@ void Builder::inlines(const QList<Run>& runs, const QTextCharFormat& base) {
             f.setFontWeight(r.flags & Bold ? QFont::Bold : QFont::Normal);
             f.setBackground(m_codeBg);
             if (!(r.flags & Kbd)) f.setForeground(m_codeFg);
+            if (brauchtKeineFormung(r.text)) f.setFontStyleStrategy(QFont::PreferNoShaping);
         }
         if (r.flags & Sub) f.setVerticalAlignment(QTextCharFormat::AlignSubScript);
         if (r.flags & Sup) f.setVerticalAlignment(QTextCharFormat::AlignSuperScript);
@@ -357,21 +369,13 @@ void Builder::rule(const Ctx& c, qreal top, qreal bottom) {
     afterFrame(f, bottom);
 }
 
-// Der Rahmen ist durchsichtig und haelt nur den Platz: runde Ecken, Kopfleiste und Kopier-Knopf kann die
-// QML-Textflaeche nicht zeichnen, das tut die Oberflaeche dahinter (`MarkdownView::codeBlocks`).
+// Die Raender der Zeilen halten den Platz: runde Ecken, Kopfleiste und Kopier-Knopf kann die QML-Textflaeche nicht
+// zeichnen, das tut die Oberflaeche dahinter. Der Abstandshalter davor traegt den oberen Rand, sonst fiele er mit
+// dem unteren des Blocks davor zusammen.
 void Builder::code(const Block& b, const Ctx& c) {
     beforeFrame();
-    QTextFrameFormat ff;
-    ff.setBorder(0);
-    ff.setPadding(m_px * 0.75);
-    ff.setMargin(0);
-    ff.setTopMargin(kCodeHeader);
-    ff.setLeftMargin(c.indent * m_indentPx);
-    ff.setProperty(kCodeTextProperty, b.text);
-    ff.setProperty(kCodeLangProperty, b.info);
-    QTextFrame* f = m_cur.insertFrame(ff);
-    m_fresh = true;
-    m_afterFrame = false;
+    //  Ganze Pixel: ein Bruchteil setzte den Text zwischen die Pixelzeilen und schob die Folge je Kasten um 0,5 px.
+    const qreal pad = qRound(m_px * 0.75);
     const LanguageDef& def = languageForId(languageForFence(b.info));
     QTextCharFormat plain;
     QFont mono = m_st.mono;
@@ -379,29 +383,61 @@ void Builder::code(const Block& b, const Ctx& c) {
     plain.setFont(mono);
     plain.setForeground(m_text);
     QTextCharFormat tokFmt[int(Tok::Count)];
+    QTextCharFormat tokSchlicht[int(Tok::Count)];
     for (int t = 0; t < int(Tok::Count); ++t) {
         tokFmt[t] = plain;
         tokFmt[t].setForeground(m_st.palette.colorFor(Tok(t)));
         if (Tok(t) == Tok::Heading) tokFmt[t].setFontWeight(QFont::Bold);
+        tokSchlicht[t] = tokFmt[t];
+        tokSchlicht[t].setFontStyleStrategy(QFont::PreferNoShaping);
     }
-    const QTextBlockFormat bf;
+    QTextCharFormat plainSchlicht = plain;
+    plainSchlicht.setFontStyleStrategy(QFont::PreferNoShaping);
+    QTextBlockFormat bf;
+    bf.setLeftMargin(c.indent * m_indentPx + pad);
+    bf.setRightMargin(pad);
     int state = 0;
     SpanList spans;
     const QStringList lines = b.text.split(QLatin1Char('\n'));
-    for (const QString& line : lines) {
-        beginBlock(bf, plain);
+    CodeBox kasten;
+    kasten.padding = pad;
+    kasten.language = b.info;
+    //  Zeilen im selben Block: Qt laeuft bei jedem Neuzeichnen ueber alle Bloecke und haelt je Block ein Layout. Die
+    //  Grenze haelt das Neuzeichnen langer Kaesten klein, denn Qt zeichnet nur ganze Bloecke.
+    constexpr qsizetype kZeilenJeBlock = 64;
+    for (qsizetype i = 0; i < lines.size(); ++i) {
+        const QString& line = lines[i];
+        if (i % kZeilenJeBlock == 0) {
+            QTextBlockFormat teil = bf;
+            if (i == 0) teil.setTopMargin(kCodeHeader + pad);
+            if (i + kZeilenJeBlock >= lines.size()) teil.setBottomMargin(pad);
+            beginBlock(teil, plain);
+            if (i == 0) kasten.first = m_cur.block();
+        } else {
+            m_cur.insertText(QString(QChar::LineSeparator), plainSchlicht);
+        }
+        const bool schlicht = brauchtKeineFormung(line);
+        const QTextCharFormat& grund = schlicht ? plainSchlicht : plain;
+        const QTextCharFormat* tok = schlicht ? tokSchlicht : tokFmt;
         spans.clear();
         state = def.kind == ScannerKind::PlainText ? 0 : scanLine(line, def, state, spans);
         qsizetype pos = 0;
         for (const Span& s : spans) {
             if (s.start < pos || s.start + s.length > line.size()) continue;
-            if (s.start > pos) m_cur.insertText(line.mid(pos, s.start - pos), plain);
-            m_cur.insertText(line.mid(s.start, s.length), tokFmt[int(s.tok)]);
+            if (s.start > pos) m_cur.insertText(line.mid(pos, s.start - pos), grund);
+            m_cur.insertText(line.mid(s.start, s.length), tok[int(s.tok)]);
             pos = s.start + s.length;
         }
-        if (pos < line.size()) m_cur.insertText(line.mid(pos), plain);
+        if (pos < line.size()) m_cur.insertText(line.mid(pos), grund);
     }
-    afterFrame(f, m_px * 0.8);
+    kasten.last = m_cur.block();
+    m_doc->codeBoxes.append(std::move(kasten));
+    //  Derselbe Zustand wie hinter einem Rahmen: der naechste Block kommt mit Abstandshalter, sein oberer Rand wirkt
+    //  so nicht gegen den unteren der letzten Zeile.
+    m_cur.insertBlock(QTextBlockFormat(), QTextCharFormat());
+    m_fresh = true;
+    m_afterFrame = true;
+    m_gap = m_px * 0.8;
 }
 
 // Das Zitat ist ein getoenter Kasten. Ein Balken am linken Rand geht mit der QML-Textflaeche nicht: sie zeichnet
@@ -540,8 +576,8 @@ void Builder::frontMatter(const Block& b) {
     ff.setBorder(0);
     ff.setPadding(m_px * 0.7);
     ff.setMargin(0);
-    ff.setProperty(kMetaProperty, true);
     QTextFrame* f = m_cur.insertFrame(ff);
+    m_doc->metaFrame = f;
     m_fresh = true;
     m_afterFrame = false;
 
@@ -689,11 +725,68 @@ QString languageForFence(const QString& info) {
     return perEndung.kind != ScannerKind::PlainText ? QString(perEndung.id) : QString();
 }
 
-QTextDocument* buildDocument(const Document& doc, const RenderStyle& style, const std::atomic<bool>* abort) {
-    auto* d = new QTextDocument;
+RenderedDocument* buildDocument(const Document& doc, const RenderStyle& style, const std::atomic<bool>* abort) {
+    auto* d = new RenderedDocument;
     d->setUndoRedoEnabled(false);
     Builder(d, doc, style, abort).run();
     return d;
+}
+
+// Dieselbe Regel wie die TextEdit: das erste starke Zeichen des Dokuments, ohne eines die Eingaberichtung.
+Qt::LayoutDirection inhaltsRichtung(const QTextDocument& doc, Qt::LayoutDirection ohneRichtung) {
+    for (QTextBlock b = doc.begin(); b.isValid(); b = b.next()) {
+        for (const QChar c : b.text()) {
+            const QChar::Direction r = c.direction();
+            if (r == QChar::DirL) return Qt::LeftToRight;
+            if (r == QChar::DirR || r == QChar::DirAL || r == QChar::DirAN) return Qt::RightToLeft;
+        }
+    }
+    return ohneRichtung;
+}
+
+void layoutDocument(RenderedDocument& doc, const LayoutVorgabe& vorgabe, const std::atomic<bool>* abort) {
+    if (vorgabe.width <= 0) return;
+    QTextOption opt = vorgabe.option;
+    opt.setTextDirection(inhaltsRichtung(doc, vorgabe.ohneRichtung));
+    doc.setDefaultTextOption(opt);
+    doc.setTextWidth(vorgabe.width);
+    QAbstractTextDocumentLayout* lay = doc.documentLayout();
+    //  In Stuecken statt `documentSize` auf einmal: Qt legt nur bis zum gefragten Block aus, so bleibt ein Abbruch moeglich.
+    constexpr int kBloeckeJeSchritt = 256;
+    int n = 0;
+    for (QTextBlock b = doc.begin(); b.isValid(); b = b.next()) {
+        if (++n % kBloeckeJeSchritt != 0) continue;
+        if (abort && abort->load(std::memory_order_relaxed)) return;
+        lay->blockBoundingRect(b);
+    }
+    lay->documentSize();
+    //  Jede Zeile haelt die zuletzt benutzte Schrift. Die des Arbeitsfadens haengt an dessen FreeType-Bibliothek und stirbt
+    //  mit ihm: das naechste Formen im GUI-Faden stuerzte ab. `setFont` leert nur diesen Griff, das Layout bleibt.
+    for (QTextBlock b = doc.begin(); b.isValid(); b = b.next()) {
+        QTextLayout* tl = b.layout();
+        tl->setFont(tl->font());
+    }
+}
+
+QRectF codeBoxRect(const RenderedDocument& doc, const CodeBox& box) {
+    QAbstractTextDocumentLayout* lay = doc.documentLayout();
+    const QRectF oben = lay->blockBoundingRect(box.first);
+    const QRectF unten = lay->blockBoundingRect(box.last);
+    const qreal top = oben.top() - box.padding - kCodeHeader;
+    //  Die linke Kante des Blocks kennt den eigenen Rand nicht, seine Breite schon.
+    const qreal links = oben.left() + box.first.blockFormat().leftMargin() - box.padding;
+    return QRectF(links, top, oben.width() + 2 * box.padding, unten.bottom() + box.padding - top);
+}
+
+QString codeBoxText(const CodeBox& box) {
+    QString out;
+    for (QTextBlock b = box.first; b.isValid(); b = b.next()) {
+        out += b.text();
+        if (b == box.last) break;
+        out += QLatin1Char('\n');
+    }
+    out.replace(QChar::LineSeparator, QLatin1Char('\n'));
+    return out;
 }
 
 }  // namespace mg::editor::md

@@ -16,7 +16,6 @@ void WebEngineController::setState(State s) {
 }
 
 void WebEngineController::ensureInitializedForHtml() {
-    // Schneller Ausstieg ohne Lock - Ready ist ein Endzustand.
     if (m_state == State::Ready)
         return;
 
@@ -31,15 +30,13 @@ void WebEngineController::ensureInitializedForHtml() {
     std::call_once(m_once, [this]() {
         setState(State::Initializing);
 
-        // Chromium ohne GPU: mit Beschleunigung stuerzt es unter Wayland reproduzierbar mit
-        // SIGSEGV ab (GBM nicht unterstuetzt). Software rastert lokale Dokumente schnell genug.
-        // Eine vom Nutzer gesetzte Variable bleibt unangetastet.
+        // Chromium ohne GPU: mit Beschleunigung stuerzt es unter Wayland mit SIGSEGV ab (GBM nicht unterstuetzt). Software
+        // rastert lokale Dokumente schnell genug. Eine vom Nutzer gesetzte Variable bleibt unangetastet.
         if (!qEnvironmentVariableIsSet("QTWEBENGINE_CHROMIUM_FLAGS"))
             qputenv("QTWEBENGINE_CHROMIUM_FLAGS", "--disable-gpu --enable-smooth-scrolling");
 
-        // Nachträgliche Initialisierung ist erlaubt, weil main.cpp `Qt::AA_ShareOpenGLContexts` vor der QGuiApplication
-        // setzt. Erst ab hier fallen die Chromium-RAM-Kosten an - auch die Bibliotheken selbst, deshalb nachgeladen.
-        // Fehlt sie, bleibt der Zustand NotInitialized und HTML faellt wie ohne WebEngine auf den Quelltext zurueck.
+        // Nachträglich erlaubt, weil main.cpp `Qt::AA_ShareOpenGLContexts` vor der QGuiApplication setzt. Erst ab hier fallen
+        // die Chromium-RAM-Kosten an. Fehlt die Bibliothek, faellt HTML wie ohne WebEngine auf den Quelltext zurueck.
         const QDir bin(QCoreApplication::applicationDirPath());
         for (const QString& ort : { QStringLiteral("."), QStringLiteral(MG_WEBENGINE_REL), QStringLiteral("../PlugIns"),
                                     QStringLiteral(".."), QStringLiteral("../../..") }) {

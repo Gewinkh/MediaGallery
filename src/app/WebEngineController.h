@@ -2,9 +2,8 @@
 #include <QObject>
 #include <mutex>
 
-// WebEngine wird erst initialisiert, wenn wirklich eine HTML-Datei geoeffnet wird -
-// vorher zahlten auch Nutzer ohne HTML die Chromium-Grundkosten. Genau eine
-// Initialisierung (std::call_once), fremde Threads werden auf den GUI-Thread geleitet.
+// WebEngine wird erst mit der ersten HTML-Datei initialisiert: sonst zahlten alle die Chromium-Grundkosten.
+// Genau einmal (std::call_once), fremde Threads werden auf den GUI-Thread geleitet.
 class WebEngineController : public QObject {
     Q_OBJECT
     Q_PROPERTY(State state READ state NOTIFY stateChanged)
@@ -22,9 +21,8 @@ public:
 
     State state() const { return m_state; }
     bool  ready() const { return m_state == State::Ready; }
-    // Initialisiert WebEngine genau einmal (idempotent). Trigger: Öffnen einer
-    // .html/.htm-Datei bzw. Anforderung der HTML-Vorschau. Läuft synchron auf
-    // dem GUI-Thread - nach der Rückkehr ist ready() == true.
+    // Idempotent; ausgelöst vom Öffnen einer .html/.htm-Datei bzw. der HTML-Vorschau. Läuft synchron auf dem GUI-Thread:
+    // nach der Rückkehr ist ready() == true.
     Q_INVOKABLE void ensureInitializedForHtml();
 
 signals:

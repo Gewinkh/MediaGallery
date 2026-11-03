@@ -4,13 +4,11 @@
 #include <cmath>
 
 namespace {
-//  Die Absenkung wird alle 64 Frames neu bestimmt (1,3 ms bei 48 kHz) und
-//  dazwischen je Frame linear nachgezogen - eine sprungweise Verstaerkung
-//  knackt hoerbar.
+//  Die Absenkung wird alle 64 Frames neu bestimmt (1,3 ms bei 48 kHz) und je Frame linear nachgezogen:
+//  eine sprungweise Verstaerkung knackt hoerbar.
 constexpr int kControl = 64;
 
-//  Halbes Fenster des gleitenden Minimums: das Grundrauschen ist der leiseste
-//  Stand der letzten gut anderthalb Sekunden.
+//  Halbes Fenster des gleitenden Minimums: Grundrauschen = leisester Stand der letzten gut 1,5 s.
 constexpr int kWinBlocks = 512;
 
 //  Das Minimum einer schwankenden Groesse liegt systematisch UNTER ihrem
@@ -21,14 +19,12 @@ constexpr double kBias = 1.3;
 //  Ab wie weit UEBER dem Grundrauschen ein Band als Nutzsignal gilt (+9,5 dB).
 constexpr double kMargin = 3.0;
 
-//  Steigung der Abwaertsdehnung: 3 ergibt 4:1 - 6 dB unter der Schwelle
-//  werden zu 24 dB. Mit 2 (3:1) blieben von breitbandigem Rauschen 12,6 dB
-//  uebrig, und das war an Musik kaum herauszuhoeren.
+//  Steigung der Abwaertsdehnung: 3 ergibt 4:1, 6 dB unter der Schwelle werden zu 24 dB. Mit 2 (3:1) blieben von
+//  breitbandigem Rauschen 12,6 dB uebrig, an Musik kaum herauszuhoeren.
 constexpr double kSlope = 3.0;
 
-//  Rauschen ist LEISE. Ohne diesen Deckel zoege ein stehender Ton sein eigenes
-//  „Grundrauschen" hoch und schnitte sich danach selbst weg. -48 dBFS je Band
-//  liegt ueber jedem Zischen und unter allem, was noch als Musik durchgeht.
+//  Rauschen ist LEISE: ohne diesen Deckel zoege ein stehender Ton sein eigenes „Grundrauschen" hoch und schnitte sich
+//  selbst weg. -48 dBFS je Band liegt ueber jedem Zischen und unter allem, was als Musik durchgeht.
 constexpr double kFloorMax = 0.00398;
 constexpr double kFloorMin = 1e-6;      // nie durch null teilen
 constexpr double kHuge     = 1e30;
@@ -57,11 +53,9 @@ void AudioDenoise::configure(int sampleRate, int channels) {
     resetState();
 }
 
-//  Getrennt wird durch ABZIEHEN: was der Tiefpass durchlaesst, ist das Band,
-//  der Rest geht weiter. Die Summe ergibt damit wieder genau das Eingangssignal
-//  - stehen alle Regler gleich, faerbt die Stufe nichts ein. Eine Bank aus
-//  Bandpaessen tut das nicht: dort schwankte dieselbe Absenkung ueber die
-//  Frequenz um 17 dB (gemessen).
+//  Getrennt wird durch ABZIEHEN: was der Tiefpass durchlaesst, ist das Band, der Rest geht weiter. Die Summe ergibt
+//  wieder genau das Eingangssignal - stehen alle Regler gleich, faerbt die Stufe nichts ein. Eine Bank aus Bandpaessen
+//  schwankte bei derselben Absenkung ueber die Frequenz um 17 dB (gemessen).
 void AudioDenoise::buildFilters() {
     m_count = 0;
     const auto& freq = AudioEqualizer::frequencies();

@@ -1,6 +1,8 @@
 #pragma once
+#include <QAbstractListModel>
 #include <QObject>
 #include <QPointer>
+#include <QRectF>
 #include <QSet>
 #include <QString>
 #include <QThreadPool>
@@ -13,11 +15,38 @@
 #include "core/PdfVorschau.h"
 #include "editor/MarkdownPdf.h"
 
-class QTextDocument;
-class QTextFrame;
 
 // MarkdownView - gerenderte Markdown-Ansicht je Kachel: baut das Dokument im Arbeitsfaden, schreibt nie.
 namespace mg::editor {
+
+// Nur die Kaesten im Sichtfenster: ein Kasten sind rund 25 QML-Objekte.
+class MarkdownCodeBoxes : public QAbstractListModel {
+    Q_OBJECT
+public:
+    struct Box {
+        QRectF rect;
+        QString language;
+    };
+    enum Role { IndexRole = Qt::UserRole + 1, XRole, YRole, WidthRole, HeightRole, HeaderRole, LanguageRole };
+
+    using QAbstractListModel::QAbstractListModel;
+    int rowCount(const QModelIndex& parent = {}) const override;
+    QVariant data(const QModelIndex& index, int role) const override;
+    QHash<int, QByteArray> roleNames() const override;
+
+    void setBoxes(QList<Box> boxes, bool neu);
+    void setViewport(qreal top, qreal height);
+
+private:
+    QList<Box> m_boxes;
+    int m_first = 0;
+    int m_end = 0;
+    qreal m_top = 0;
+    qreal m_height = 0;
+
+    std::pair<int, int> fenster() const;
+    void geheZu(int first, int end);
+};
 
 class MarkdownView : public QObject {
     Q_OBJECT
@@ -32,6 +61,7 @@ class MarkdownView : public QObject {
     //  In Koordinaten der TextEdit, neu je Layout; `frontMatterBox` ist leer ohne Frontmatter.
     Q_PROPERTY(QVariantList codeBlocks READ codeBlocks NOTIFY decorationsChanged)
     Q_PROPERTY(QVariantMap frontMatterBox READ frontMatterBox NOTIFY decorationsChanged)
+    Q_PROPERTY(QAbstractItemModel* codeBoxes READ codeBoxes CONSTANT)
     Q_PROPERTY(bool exporting READ exporting NOTIFY exportingChanged)
 
 public:
@@ -51,7 +81,9 @@ public:
     int  revision() const { return m_revision; }
     QVariantList codeBlocks() const;
     QVariantMap frontMatterBox() const;
+    QAbstractItemModel* codeBoxes() { return &m_boxes; }
 
+    Q_INVOKABLE void setViewport(qreal top, qreal height) { m_boxes.setViewport(top, height); }
     Q_INVOKABLE void reload();
     Q_INVOKABLE void toggleDetails(int id);
     //  { kind: details|anchor|file|url|none, id, position, path, url }; relativ gilt ab dem Ordner der Datei.
@@ -66,7 +98,7 @@ public:
                                const QList<int>& pages = {});
     //  Das ganze PDF in eine Vorschau-Datei, an deren Seiten man auswaehlt -> `pdfPreviewReady`.
     Q_INVOKABLE void previewPdf(bool print, bool landscape);
-    //  Schriften, Palette und Beschriftungen fuer eine Datei - Ansicht, PDF und der Export aus der Galerie.
+    //  Fuer Ansicht, PDF und den Export aus der Galerie.
     static md::RenderStyle styleFor(const QString& source, const QSet<int>& flipped);
 
 signals:
@@ -75,7 +107,7 @@ signals:
     void stateChanged();
     void decorationsChanged();
     void exportingChanged();
-    //  Ohne weitere Parameter: einer namens `print` verdeckt in QML die gleichnamige Funktion, der Empfaenger lief nie.
+    //  Kein Parameter namens `print`: er verdeckt in QML die gleichnamige Funktion.
     void pdfPagesCounted(int pages);
     void pdfPreviewReady(const QString& path, int pages);
     void pdfExportFinished(bool ok, const QString& target, const QString& error);
@@ -84,7 +116,8 @@ private:
     QString m_source;
     QPointer<QQuickTextDocument> m_quickDoc;
     //  Das zuletzt uebergebene Dokument. Kind der TextEdit, damit es nie vor ihr stirbt.
-    QPointer<QTextDocument> m_ownDoc;
+    QPointer<md::RenderedDocument> m_ownDoc;
+    MarkdownCodeBoxes m_boxes;
     bool m_busy = false;
     bool m_ready = false;
     bool m_failed = false;
@@ -110,10 +143,10 @@ private:
     void runPdf(PdfArt art, const QString& target, const md::PdfOptions& opt, int generation);
     mg::PdfVorschau m_vorschau;
     int m_vorschauGen = 0;
-    void adopt(QTextDocument* doc, int generation, const QString& text, bool readFile, bool ok,
+    void adopt(md::RenderedDocument* doc, int generation, const QString& text, bool readFile, bool ok,
                bool truncated);
+    void updateBoxes(bool neu);
     int anchorPosition(const QString& name) const;
-    QList<QTextFrame*> codeFrames() const;
 };
 
 }  // namespace mg::editor
