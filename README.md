@@ -158,8 +158,7 @@ $env:MG_HTML_EIGEN=1; .\build\Release\MediaGallery.exe
 ## Changelog
 
 ### Latest
-- **Fix**: **Markdown**: Text selection no longer causes incorrect bold formatting or selects entire code blocks unintentionally.
-- **Improvement**: **Markdown**: Large files with many code blocks now open and scroll faster, use less memory, and no longer freeze the window.
+- **Improvement**: **Interface**: Icons are now drawn directly, reducing memory usage by about 7 MB in the gallery and 16 MB with a PDF open.
 
 ---
 

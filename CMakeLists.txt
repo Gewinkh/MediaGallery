@@ -163,6 +163,8 @@ add_library(mg_lib STATIC
     src/app/DesktopEntry.h
     src/app/PaneController.cpp
     src/app/PaneController.h
+    src/app/DrawnIconData.cpp
+    src/app/DrawnIconItem.cpp
     src/app/PaneHost.cpp
     src/app/PaneHost.h
     src/app/PaneListModel.cpp
@@ -475,9 +477,10 @@ include(GNUInstallDirs)
 file(RELATIVE_PATH MG_WEBENGINE_REL /${CMAKE_INSTALL_BINDIR} /${CMAKE_INSTALL_LIBDIR}/mediagallery)
 target_compile_definitions(mg_lib PRIVATE MG_WEBENGINE_REL="${MG_WEBENGINE_REL}")
 
-add_library(mg_qml OBJECT qml.qrc)
+add_library(mg_qml OBJECT qml.qrc src/app/DrawnIconRegister.cpp)
 set_target_properties(mg_qml PROPERTIES AUTOMOC OFF)
-target_link_libraries(mg_qml PRIVATE Qt6::Core)
+target_include_directories(mg_qml PRIVATE src)
+target_link_libraries(mg_qml PRIVATE Qt6::Core Qt6::Qml Qt6::Quick)
 
 set(MG_APP_ID io.github.gewinkh.MediaGallery)
 qt_add_executable(MediaGallery main.cpp)

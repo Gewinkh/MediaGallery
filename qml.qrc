@@ -63,7 +63,6 @@
         <file>qml/common/ColorPicker.qml</file>
         <file>qml/common/PdfExportOptions.qml</file>
         <file>qml/common/DrawnIcon.qml</file>
-        <file>qml/common/DrawnIconTable.js</file>
         <file>qml/common/FormulaHelp.qml</file>
         <file>qml/common/PatternTable.qml</file>
         <file>qml/common/SyntaxHint.qml</file>
