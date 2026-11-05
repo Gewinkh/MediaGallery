@@ -254,7 +254,7 @@ Item {
                      bar.info.kind === 6 ? "PdfEditDeleteMarkup" : "PdfEditDeleteBtn")
             onActivated: {
                 if (bar.surface) bar.surface.commitEditing()
-                bar.ctl.removeBox(bar.ctl.selectedId)
+                bar.ctl.removeSelected()
             }
         }
     }

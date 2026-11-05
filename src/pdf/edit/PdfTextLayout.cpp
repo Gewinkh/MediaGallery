@@ -88,10 +88,24 @@ bool PdfTextLayout::buildForPage(const QString& pdfPath, int pageIndex,
 
     const QHash<int, ObjLoc> objs = scanObjects(buf);
     if (objs.isEmpty()) return fail("keine Objekte");
+    {
+        const qint64 sx = buf.lastIndexOf("startxref");
+        qint64 p = sx + 9;
+        while (sx >= 0 && p < buf.size() && isWs(buf[p])) ++p;
+        qint64 q = p;
+        while (sx >= 0 && q < buf.size() && buf[q] >= '0' && buf[q] <= '9') ++q;
+        bool ok = false;
+        qint64 x = buf.mid(p, q - p).toLongLong(&ok);
+        while (ok && x >= 0 && x < buf.size() && isWs(buf[x])) ++x;
+        page->classicXref = sx >= 0 && ok && x >= 0 && x + 4 <= buf.size() && buf.mid(x, 4) == "xref";
+    }
 
+    // Objekte aus `/ObjStm` (PDF 1.5); ein direkt in der Datei stehendes gleicher Nummer ist neuer und gewinnt.
+    QHash<int, QByteArray> packed;
     auto bodyOf = [&](int n) -> QByteArray {
         const auto it = objs.constFind(n);
-        return (it == objs.constEnd()) ? QByteArray() : objectBody(buf, it->offset);
+        if (it != objs.constEnd()) return objectBody(buf, it->offset);
+        return packed.value(n);
     };
     auto dictOf = [&](int n) -> QByteArray { return dictOfObject(bodyOf(n)); };
     auto streamOf = [&](int n, bool* ok) -> QByteArray {
@@ -122,6 +136,28 @@ bool PdfTextLayout::buildForPage(const QString& pdfPath, int pageIndex,
         *ok = true;
         return inf;
     };
+
+    // Ohne das scheiterte jede Datei mit Objektströmen (pdfTeX, xdvipdfmx, Word) schon am Katalog.
+    if (buf.contains("/ObjStm")) {
+        for (auto it = objs.cbegin(); it != objs.cend(); ++it) {
+            const QByteArray d = dictOf(it.key());
+            if (nameValue(d, "Type") != "/ObjStm") continue;
+            const qint64 count = intValue(d, "N"), first = intValue(d, "First");
+            if (count <= 0 || count > 1000000 || first <= 0) continue;
+            bool ok = false;
+            const QByteArray data = streamOf(it.key(), &ok);
+            if (!ok || first > data.size()) continue;
+            const QVector<qreal> head = numbersIn(data.left(first));
+            const int pairs = int(qMin<qint64>(count, head.size() / 2));
+            for (int k = 0; k < pairs; ++k) {
+                const int num = int(head[2 * k]);
+                const qint64 from = first + qint64(head[2 * k + 1]);
+                const qint64 to = (k + 1 < pairs) ? first + qint64(head[2 * k + 3]) : data.size();
+                if (num <= 0 || from < first || to > data.size() || to <= from || objs.contains(num)) continue;
+                packed.insert(num, data.mid(from, to - from));
+            }
+        }
+    }
 
     int rootNum = -1;
     {
@@ -241,10 +277,18 @@ bool PdfTextLayout::buildForPage(const QString& pdfPath, int pageIndex,
                 const QByteArray dd = dictOf(desc);
                 const qint64 dw = intValue(dd, "DW");
                 fm.defWidth = (dw >= 0) ? qreal(dw) : 1000.0;   // Spezifikation: 1000
+                // /W darf indirekt stehen (xdvipdfmx) - sonst liefe jede Glyphe mit /DW und die Zeile schrumpfte.
                 const qint64 wp = findKey(dd, "W");
+                QByteArray wfull;
                 if (wp >= 0 && dd[wp] == '[') {
-                    const qint64 we = skipValue(dd, wp);
-                    const QByteArray warr = dd.mid(wp + 1, (we - 1) - (wp + 1));
+                    wfull = dd.mid(wp, skipValue(dd, wp) - wp);
+                } else if (wp >= 0) {
+                    const QByteArray wb = bodyOf(refValue(dd, "W"));
+                    const qint64 ws = wb.indexOf('[');
+                    if (ws >= 0) wfull = wb.mid(ws, skipValue(wb, ws) - ws);
+                }
+                if (wfull.size() >= 2) {
+                    const QByteArray warr = wfull.mid(1, wfull.size() - 2);
                     int k = 0;
                     while (k < warr.size()) {
                         while (k < warr.size() && isWs(warr[k])) ++k;
@@ -359,6 +403,8 @@ bool PdfTextLayout::buildForPage(const QString& pdfPath, int pageIndex,
 
     Mat ctm;                       // Grafikmatrix
     QVector<Mat> ctmStack;
+    qreal lineW = 1.0;             // PDF-Standard bis zum ersten `w`
+    QVector<qreal> lineWStack;
     Mat tm, tlm;                   // Text- und Textzeilen-Matrix
     const FontMetrics* fm = nullptr;
     QByteArray curFontRes;
@@ -442,9 +488,50 @@ bool PdfTextLayout::buildForPage(const QString& pdfPath, int pageIndex,
         page->paints.push_back(r);
         if (isImage) page->imagePaints.push_back(r);
     };
-    auto flushPath = [&](bool painted) {
+    // Segmente des laufenden Pfads in Seitenkoordinaten (unten-links); erst der Malbefehl entscheidet, ob sie zählen.
+    QVector<QLineF> pathSegs;
+    QVector<QRectF> pathRects;
+    QPointF pathCur, pathStart;
+    auto addSeg = [&](const QPointF& a, const QPointF& b) {
+        if (page) pathSegs.push_back(QLineF(a, b));
+    };
+    // Nur achsparallel und länger als 1 pt; schräge Linien begrenzen keine Zelle.
+    auto noteRule = [&](QPointF a, QPointF b, qreal thick) {
+        a.setY(pageH - a.y());
+        b.setY(pageH - b.y());
+        const qreal dx = std::abs(b.x() - a.x()), dy = std::abs(b.y() - a.y());
+        if (dx <= 0.5 && dy >= 1.0) {
+            const qreal x = (a.x() + b.x()) / 2.0;
+            page->rules.push_back(QLineF(x, qMin(a.y(), b.y()), x, qMax(a.y(), b.y())));
+            page->ruleWidths.push_back(thick);
+        } else if (dy <= 0.5 && dx >= 1.0) {
+            const qreal y = (a.y() + b.y()) / 2.0;
+            page->rules.push_back(QLineF(qMin(a.x(), b.x()), y, qMax(a.x(), b.x()), y));
+            page->ruleWidths.push_back(thick);
+        }
+    };
+    auto flushRules = [&](bool stroked, bool filled) {
+        if (!page) return;
+        if (stroked) {
+            const qreal thick = lineW * std::sqrt(std::abs(ctm.a * ctm.d - ctm.b * ctm.c));
+            for (const QLineF& s : std::as_const(pathSegs)) noteRule(s.p1(), s.p2(), thick);
+        }
+        // Eine dünne gefüllte Fläche ist eine Linie (LaTeX zeichnet \hline so).
+        if (filled && !stroked)
+            for (const QRectF& r : std::as_const(pathRects)) {
+                const QRectF n = r.normalized();
+                if (n.height() <= 2.0 && n.width() >= 4.0)
+                    noteRule(QPointF(n.left(), n.center().y()), QPointF(n.right(), n.center().y()), n.height());
+                else if (n.width() <= 2.0 && n.height() >= 4.0)
+                    noteRule(QPointF(n.center().x(), n.top()), QPointF(n.center().x(), n.bottom()), n.width());
+            }
+    };
+    auto flushPath = [&](bool painted, bool stroked = false, bool filled = false) {
         if (painted && pathValid) notePaint(pathBox.normalized());
+        if (painted) flushRules(stroked, filled);
         pathValid = false;
+        pathSegs.clear();
+        pathRects.clear();
     };
     auto noteUnitSquare = [&]() {
         const QPointF a = ctm.map(0, 0), b = ctm.map(1, 0);
@@ -486,8 +573,11 @@ bool PdfTextLayout::buildForPage(const QString& pdfPath, int pageIndex,
         while (i < n && !isWs(content[i]) && !isDelim(content[i])) ++i;
         const QByteArray op = content.mid(s, i - s);
 
-        if      (op == "q")  { ctmStack.push_back(ctm); }
-        else if (op == "Q")  { if (!ctmStack.isEmpty()) ctm = ctmStack.takeLast(); }
+        if      (op == "q")  { ctmStack.push_back(ctm); lineWStack.push_back(lineW); }
+        else if (op == "Q")  { if (!ctmStack.isEmpty()) ctm = ctmStack.takeLast();
+                               if (!lineWStack.isEmpty()) lineW = lineWStack.takeLast(); }
+        else if (op == "w")  { const qreal v = numAt(1);
+                               lineW = (std::isfinite(v) && v >= 0.0) ? qMin(v, 100.0) : 1.0; }
         else if (op == "cm") { ctm = Mat{ numAt(6), numAt(5), numAt(4),
                                           numAt(3), numAt(2), numAt(1) }.mul(ctm); }
         else if (op == "BT") { tm = Mat(); tlm = Mat(); ++objIndex;
@@ -529,17 +619,36 @@ bool PdfTextLayout::buildForPage(const QString& pdfPath, int pageIndex,
                                const qint64 ei = content.indexOf("EI", i);
                                i = (ei < 0) ? n : ei + 2; }
         else if (op == "Do") { noteUnitSquare(); }
-        else if (op == "m" || op == "l") { addPoint(numAt(2), numAt(1)); }
+        else if (op == "m" || op == "l") {
+            addPoint(numAt(2), numAt(1));
+            const QPointF p = ctm.map(numAt(2), numAt(1));
+            if (op == "l") addSeg(pathCur, p);
+            else           pathStart = p;
+            pathCur = p;
+        }
         else if (op == "c") { addPoint(numAt(6), numAt(5));
                               addPoint(numAt(4), numAt(3));
-                              addPoint(numAt(2), numAt(1)); }
+                              addPoint(numAt(2), numAt(1));
+                              pathCur = ctm.map(numAt(2), numAt(1)); }
         else if (op == "v" || op == "y") { addPoint(numAt(4), numAt(3));
-                                           addPoint(numAt(2), numAt(1)); }
+                                           addPoint(numAt(2), numAt(1));
+                                           pathCur = ctm.map(numAt(2), numAt(1)); }
+        else if (op == "h") { addSeg(pathCur, pathStart); pathCur = pathStart; }
         else if (op == "re") { const qreal x = numAt(4), y = numAt(3),
                                            w = numAt(2), h = numAt(1);
-                               addPoint(x, y); addPoint(x + w, y + h); }
-        else if (op == "S" || op == "s" || op == "f" || op == "F" || op == "f*"
-                 || op == "B" || op == "B*" || op == "b" || op == "b*") { flushPath(true); }
+                               addPoint(x, y); addPoint(x + w, y + h);
+                               const QPointF p0 = ctm.map(x, y),     p1 = ctm.map(x + w, y);
+                               const QPointF p2 = ctm.map(x + w, y + h), p3 = ctm.map(x, y + h);
+                               addSeg(p0, p1); addSeg(p1, p2); addSeg(p2, p3); addSeg(p3, p0);
+                               if (page) pathRects.push_back(QRectF(p0, p2));
+                               pathCur = pathStart = p0; }
+        else if (op == "S" || op == "s") { if (op == "s") addSeg(pathCur, pathStart);
+                                           flushPath(true, true, false); }
+        else if (op == "f" || op == "F" || op == "f*") { flushPath(true, false, true); }
+        else if (op == "B" || op == "B*" || op == "b" || op == "b*") {
+            if (op == "b" || op == "b*") addSeg(pathCur, pathStart);
+            flushPath(true, true, true);
+        }
         else if (op == "n") { flushPath(false); }
         else if (op == "sh") { noteUnitSquare(); }
         else if (op == "Tj" || op == "'" || op == "\"") {

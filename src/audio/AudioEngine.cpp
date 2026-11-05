@@ -268,6 +268,8 @@ void AudioEngine::startDecode(const QString& path, qint64 skipMs, qint64 byteOff
     m_pull = new AudioPull(this);
     m_pull->open(QIODevice::ReadOnly);
     m_decoder->start();
+    //  Eine unlesbare Datei meldet der Dekoder noch in start(): die Kette ist dann abgebaut und muss es bleiben.
+    if (!m_decoder) return;
     m_feed.start();
     m_tick.start();
     setState(State::Playing);
@@ -414,7 +416,10 @@ void AudioEngine::startNextDecoder() {
         // Hat er noch nichts beigetragen, wird der Übergang verworfen und der laufende Titel endet wie ohne Anmeldung.
         // Steckt schon etwas von ihm im Ring, bleibt die Naht bestehen; das Bruchstück läuft zu Ende.
         if (m_framesIn <= m_boundaryFrames) {
+            //  clearNext behaelt den Wunsch fuer den naechsten Anlauf; dieser Titel liefe im Nachschubtakt endlos in denselben Fehler.
+            const QString gescheitert = m_queuedPath;
             clearNext();
+            if (m_nextPath == gescheitert) m_nextPath.clear();
         } else {
             m_nextDecodeDone = true;
         }

@@ -230,7 +230,7 @@ of times · `{4}` exactly four times · `^` line start · `$` line end · `a|b` 
 
 ## PDF Viewer
 - Pages with a thumbnail sidebar that stays light on memory even for books with a thousand pages; smooth zoom (Ctrl + mouse wheel, + / -), fit page, fit width
-- **Select and copy text** like in a browser
+- **Select and copy text** like in a browser; `Ctrl+A` selects the text of every page
 - **Search** (`Ctrl+F`) with hits highlighted on the page
 - **Embedded audio and video** play in place; a panel lists the page's audio clips
 - **Links** stay as the document shows them and get a light tint and a hand cursor only when you point at them. Web links open in the browser, links inside the document jump to their page, and links to a file next to the PDF open that file
@@ -250,9 +250,13 @@ new copy; the original is not touched.
 **Page changes are the exception**: moving, rotating, removing and inserting
 pages change the PDF directly. `Ctrl+Z` undoes them while the file is open.
 
-- **Notes and drawings**: text boxes with full formatting, pen, arrow, rectangle, ellipse. Move, resize, copy, delete, undo. `Alt+Q` hides them all
+- **Notes and drawings**: text boxes with full formatting, pen, arrow, rectangle, ellipse. Move, resize, copy, cut, delete, undo. `Alt+Q` hides them all
+- **Notes are see-through by default**, so the page shows through. *Settings > Editor > PDF editing* switches to opaque white notes; the choice also applies to notes you already have (notes with a colour you picked yourself keep it)
+- **Select several notes**: drag a frame on an empty spot of the page (starting on text still selects text), or `Ctrl`+click notes one by one; `Ctrl`+drag adds to the selection. `Delete`, `Ctrl+C`, `Ctrl+X` act on all of them in one undo step
+- **Paste at the mouse pointer**: `Ctrl+V` puts the copied notes where the pointer is, keeping their size, text and spacing; with the pointer off the page they land slightly offset next to the original
 - **Text tool**: a click places a box and you type right away; clicking an existing box with the text tool opens it for typing. The small switch in the lower part of the *T* button decides what comes next: off (default) returns to the select tool after the box, on keeps the text tool for more boxes
-- New notes take over the last style; notes can be dragged across pages and snap to text lines
+- **The text tool fits the page**: a click on a blank (`______`) puts the note exactly on it; a click into a table cell or an answer frame covers exactly that cell, and the text starts where the column's printed text starts, in the same font size and on the same line; a click behind the end of a line continues it; a click into empty space lands on the next line of the page's line spacing. The typed text sits on the printed baseline, no adjusting needed
+- New notes take over the last style; notes snap to text lines and can be dragged across pages: hold the note and scroll with the wheel, it stays visible and under the pointer
 - **Linked text boxes**: text flows from one box into the next
 - **Replace text**: a box snaps onto a line and comes pre-filled with the existing text
 - **Edit text**: type directly into the page's own text - it stays sharp and searchable
@@ -429,10 +433,13 @@ The same list, with every shortcut, is in *Settings ▸ General*.
 | **PDF and image editor** | |
 | Zoom in / out (PDF) | `+` / `-` |
 | Search the document (PDF) | `Ctrl+F` |
-| Copy text / select page text (PDF) | `Ctrl+C` / `Ctrl+A` |
+| Copy text / select the text of all pages (PDF) | `Ctrl+C` / `Ctrl+A` |
 | Show / hide notes | `Alt+Q` |
-| Delete selected note | `Delete` |
+| Delete selected notes | `Delete` |
 | Copy / paste note | `Ctrl+C` / `Ctrl+V` |
+| Cut notes, paste at the pointer (PDF) | `Ctrl+X` / `Ctrl+V` |
+| Add or remove a note from the selection (PDF) | `Ctrl`+click |
+| Select notes with a frame (PDF) | drag on an empty spot, `Ctrl`+drag adds |
 | Undo / redo | `Ctrl+Z` / `Ctrl+Shift+Z` or `Ctrl+Y` |
 | **DOCX editor** | |
 | Save | `Ctrl+S` |

@@ -240,7 +240,7 @@ Rectangle {
         lwBoxH.value = lw
     }
     function applyOpacity(v) {
-        const base = panel.info.hasHighlight ? panel.info.highlightColor
+        const base = panel.info.paperSet === true ? panel.info.highlightColor
                                              : panel.defaultPaper
         panel.ctl.setBoxHighlight(panel.targetId,
                                 Qt.rgba(base.r, base.g, base.b, v))
@@ -453,11 +453,11 @@ Rectangle {
                             ColorPicker {
                                 showAlpha: true
                                 title: App.uiText(App.language, "PdfEditHighlightLabel")
-                                selectedColor: panel.info.hasHighlight === true
+                                selectedColor: panel.info.paperSet === true
                                                ? panel.info.highlightColor : panel.defaultPaper
                                 onColorPicked: (c) => {
                                     panel.ctl.setBoxHighlight(panel.targetId, c)
-                                    selectedColor = Qt.binding(() => panel.info.hasHighlight === true
+                                    selectedColor = Qt.binding(() => panel.info.paperSet === true
                                                                      ? panel.info.highlightColor : panel.defaultPaper)
                                 }
                             }
@@ -670,7 +670,7 @@ Rectangle {
                     TapHandler {
                         onTapped: {
                             if (panel.surface) panel.surface.commitEditing()
-                            panel.ctl.removeBox(panel.ctl.selectedId)
+                            panel.ctl.removeSelected()
                         }
                     }
                 }
@@ -890,11 +890,11 @@ Rectangle {
                         ColorPicker {
                             showAlpha: true
                             title: App.uiText(App.language, "PdfEditHighlightLabel")
-                            selectedColor: panel.info.hasHighlight === true
+                            selectedColor: panel.info.paperSet === true
                                            ? panel.info.highlightColor : panel.defaultPaper
                             onColorPicked: (c) => {
                                 panel.ctl.setBoxHighlight(panel.targetId, c)
-                                selectedColor = Qt.binding(() => panel.info.hasHighlight === true
+                                selectedColor = Qt.binding(() => panel.info.paperSet === true
                                                                  ? panel.info.highlightColor : panel.defaultPaper)
                             }
                         }
@@ -1072,7 +1072,7 @@ Rectangle {
                     TapHandler {
                         onTapped: {
                             if (panel.surface) panel.surface.commitEditing()
-                            panel.ctl.removeBox(panel.ctl.selectedId)
+                            panel.ctl.removeSelected()
                         }
                     }
                     ToolTip.text: App.uiText(App.language,

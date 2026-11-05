@@ -380,6 +380,8 @@ add_library(mg_lib STATIC
     src/pdf/edit/PdfFormFields.h
     src/pdf/edit/PdfImageEmbed.cpp
     src/pdf/edit/PdfImageEmbed.h
+    src/pdf/edit/PdfNoteSnap.cpp
+    src/pdf/edit/PdfNoteSnap.h
     src/pdf/edit/PdfObjects.cpp
     src/pdf/edit/PdfObjects.h
     src/pdf/edit/PdfOcrLayer.cpp

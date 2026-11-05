@@ -683,6 +683,7 @@ enum class StringKey {
     PdfEditPanelPosLabel,      // Settings: Position der Text-Eigenschaften
     PdfEditPanelPosRight,      // Settings-Option: rechte Seitenleiste
     PdfEditPanelPosTop,        // Settings-Option: obere Leiste (Word-Stil)
+    PdfNotesOpaqueOption,      // Settings-Schalter: Notizen deckend weiss statt ohne Papier
 
     CreateFileBtn,             // Button-Beschriftung
     CreateFileTitle,           // Popup-Titel

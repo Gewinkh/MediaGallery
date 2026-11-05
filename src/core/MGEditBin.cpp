@@ -37,7 +37,8 @@ const char* const kNamen[k_Anzahl] = {
     "text", "font", "size", "bold", "italic", "under", "color",
     "align", "valign", "anchor",
     "src", "key", "doc", "rot", "at", "del",
-    "spaltenbreiten", "spaltenformate"
+    "spaltenbreiten", "spaltenformate",
+    "padl", "padt", "cell"
 };
 
 std::uint32_t leseFest32(const char* p) {

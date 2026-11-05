@@ -29,6 +29,7 @@
 #include <QImage>
 #include <QFont>
 #include <QFontInfo>
+#include <QFontMetricsF>
 #include <QImageReader>
 #include <QSaveFile>
 #include <QFile>
@@ -68,12 +69,48 @@ public:
     void run() override {
         QVector<mg::PdfGlyph> glyphs;
         QString err;
-        if (!mg::PdfTextLayout::buildForPage(m_source, m_src, &glyphs, &err))
+        // Lesen klappt auch mit Objektstroemen, Schreiben nicht: ohne klassische xref bleibt die Seite gesperrt,
+        // statt erst beim ersten Tastendruck zu scheitern.
+        mg::PdfPageText text;
+        if (!mg::PdfTextLayout::buildForPage(m_source, m_src, &text, &err))
             glyphs.clear();
+        else if (!text.classicXref)
+            err = QStringLiteral("kein klassisches xref (XRef-Stream)");
+        else
+            glyphs = std::move(text.glyphs);
         PdfEditController* owner = m_owner;
         const int page = m_view, gen = m_gen;
         QMetaObject::invokeMethod(owner, [owner, page, glyphs, err, gen]() {
             owner->caretLayoutFinished(page, glyphs, err, gen);
+        }, Qt::QueuedConnection);
+    }
+private:
+    PdfEditController* m_owner;
+    QString            m_source;
+    int                m_src;
+    int                m_view;
+    int                m_gen;
+};
+
+// Glyphen und Linien einer Seite lesen und daraus die Fangziele bauen - wie das Caret-Layout nicht im GUI-Thread.
+class PdfNoteSnapTask : public QRunnable {
+public:
+    PdfNoteSnapTask(PdfEditController* owner, QString source, int srcPage, int viewPage, int generation)
+        : m_owner(owner), m_source(std::move(source))
+        , m_src(srcPage), m_view(viewPage), m_gen(generation) {
+        setAutoDelete(true);
+    }
+
+    void run() override {
+        auto snap = std::make_shared<mg::PdfNoteSnap>();
+        mg::PdfPageText text;
+        if (mg::PdfTextLayout::buildForPage(m_source, m_src, &text, nullptr))
+            snap->build(text);
+        std::shared_ptr<const mg::PdfNoteSnap> done = std::move(snap);
+        PdfEditController* owner = m_owner;
+        const int page = m_view, gen = m_gen;
+        QMetaObject::invokeMethod(owner, [owner, page, done, gen]() {
+            owner->noteSnapFinished(page, done, gen);
         }, Qt::QueuedConnection);
     }
 private:
@@ -893,9 +930,10 @@ private:
         // Post-it-Optik nur fuer klassische Notizen - die Replace-Deckflaeche ist flach.
         const bool paper = b.kind == PdfAnnKind::Text && b.highlight.alpha() > 0;
         if (paper) {
-            p.fillRect(b.rect.translated(PdfEditController::kNoteShadowDxPt,
-                                         PdfEditController::kNoteShadowDyPt),
-                       QColor(0, 0, 0, 52));
+            if (!b.inCell)
+                p.fillRect(b.rect.translated(PdfEditController::kNoteShadowDxPt,
+                                             PdfEditController::kNoteShadowDyPt),
+                           QColor(0, 0, 0, 52));
             p.fillRect(b.rect, b.highlight);
             // Eselsohr mit identischer Geometrie wie der QML-Canvas.
             const qreal fold = qMin(PdfEditController::kNoteFoldPt,
@@ -927,7 +965,7 @@ private:
         f.setUnderline(b.underline);
 
         const qreal pad    = PdfEditController::kBoxPaddingPt;
-        const qreal availW = qMax<qreal>(4.0, b.rect.width() - 2.0 * pad);
+        const qreal availW = qMax<qreal>(4.0, b.rect.width() - b.padLPt - pad);
 
         QTextOption opt;
         opt.setWrapMode(QTextOption::WrapAtWordBoundaryOrAnywhere);
@@ -951,11 +989,11 @@ private:
 
         // 0 = oben (Text startet an der Innenkante), 1 = zentriert; der Ueberlauf wird
         // bewusst nicht geklemmt, symmetrisch zur Anzeige.
-        const qreal availH = b.rect.height() - 2.0 * pad;
+        const qreal availH = b.rect.height() - b.padTPt - pad;
         const qreal yOff   = (b.vAlign == 1) ? (availH - totalH) / 2.0 : 0.0;
 
         p.setPen(b.color);
-        layout.draw(&p, QPointF(b.rect.left() + pad, b.rect.top() + pad + yOff));
+        layout.draw(&p, QPointF(b.rect.left() + b.padLPt, b.rect.top() + b.padTPt + yOff));
 
         p.restore();
     }
@@ -1018,14 +1056,23 @@ PdfEditController::PdfEditController(ISettings& settings, QObject* parent)
                     bumpSelectionRev();
             });
     auto dropVanishedSelection = [this] {
-        if (m_selectedId >= 0 && m_model.indexOfId(m_selectedId) < 0)
-            setSelectedId(-1);
-        else
-            bumpSelectionRev();
+        QVector<int> keep;
+        keep.reserve(m_selIds.size());
+        for (int id : std::as_const(m_selIds))
+            if (m_model.indexOfId(id) >= 0)
+                keep.push_back(id);
+        if (keep.size() != m_selIds.size())
+            setSelection(keep, keep.contains(m_selectedId) ? m_selectedId : (keep.isEmpty() ? -1 : keep.last()));
+        bumpSelectionRev();
     };
     connect(&m_model, &QAbstractItemModel::rowsRemoved,  this, dropVanishedSelection);
     connect(&m_model, &QAbstractItemModel::rowsInserted, this, dropVanishedSelection);
     connect(&m_model, &QAbstractItemModel::modelReset,   this, dropVanishedSelection);
+
+    m_textTpl.highlight = standardPaper();
+    // Jeder Neubau und jede Planaenderung verschiebt Glyphen - der Fang wird neu gelesen.
+    connect(this, &PdfEditController::documentRewritten, this, [this] { clearNoteSnap(); });
+    connect(this, &PdfEditController::planChanged,       this, [this] { clearNoteSnap(); });
 
     // Jeder Neubau schreibt die ganze Datei und laedt sie neu - erst die Tipp-Pause
     // materialisiert das Ergebnis.
@@ -1069,11 +1116,72 @@ void PdfEditController::setTool(int t) {
 }
 
 void PdfEditController::setSelectedId(int id) {
-    if (m_selectedId == id)
+    setSelection(id >= 0 ? QVector<int>{ id } : QVector<int>{}, id);
+}
+
+void PdfEditController::setSelection(const QVector<int>& ids, int primary) {
+    if (ids != m_selIds) {
+        m_selIds = ids;
+        ++m_selSetRev;
+        emit selectionSetChanged();
+    }
+    if (m_selectedId != primary) {
+        m_selectedId = primary;
+        emit selectedIdChanged();
+        bumpSelectionRev();
+    }
+}
+
+void PdfEditController::toggleSelected(int id) {
+    if (!m_model.boxById(id))
         return;
-    m_selectedId = id;
-    emit selectedIdChanged();
-    bumpSelectionRev();
+    QVector<int> ids = m_selIds;
+    if (ids.removeAll(id) > 0) {
+        const int primary = (m_selectedId != id) ? m_selectedId : (ids.isEmpty() ? -1 : ids.last());
+        setSelection(ids, primary);
+    } else {
+        ids.push_back(id);
+        setSelection(ids, id);
+    }
+}
+
+void PdfEditController::focusSelected(int id) {
+    if (m_selIds.contains(id))
+        setSelection(m_selIds, id);
+    else
+        setSelectedId(id);
+}
+
+void PdfEditController::beginBand(bool additive) {
+    finishOpenSessions();
+    m_bandBase = additive ? m_selIds : QVector<int>();
+    if (!additive)
+        setSelectedId(-1);
+}
+
+void PdfEditController::updateBand(int page, qreal xPt, qreal yPt, qreal wPt, qreal hPt) {
+    const int key = pageKeyForView(page);
+    if (key < 0)
+        return;
+    const QRectF band = QRectF(xPt, yPt, wPt, hPt).normalized();
+    QVector<int> ids = m_bandBase;
+    int lastHit = -1;
+    // Beruehren genuegt, wie in der Galerie - auch eine duenne Linie ist sonst kaum zu fassen.
+    for (const PdfEditBox& b : m_model.boxes()) {
+        if (b.page != key || !band.intersects(b.rect.normalized().adjusted(-0.5, -0.5, 0.5, 0.5)))
+            continue;
+        if (!ids.contains(b.id))
+            ids.push_back(b.id);
+        lastHit = b.id;
+    }
+    const int primary = ids.contains(m_selectedId) ? m_selectedId : (lastHit >= 0 ? lastHit
+                                                                      : (ids.isEmpty() ? -1 : ids.last()));
+    setSelection(ids, primary);
+}
+
+void PdfEditController::endBand() {
+    m_bandBase.clear();
+    m_bandBase.squeeze();
 }
 
 void PdfEditController::bumpSelectionRev() {
@@ -1090,6 +1198,48 @@ void PdfEditController::setPanelOnTop(bool v) {
         return;
     m_settings.setPdfEditPanelTop(v);
     emit panelOnTopChanged();
+}
+
+bool PdfEditController::notesOpaque() const {
+    return m_settings.pdfNotesOpaque();
+}
+
+void PdfEditController::setNotesOpaque(bool v) {
+    if (m_settings.pdfNotesOpaque() == v)
+        return;
+    m_settings.setPdfNotesOpaque(v);
+    emit notesOpaqueChanged();
+}
+
+QColor PdfEditController::standardPaper() const {
+    return notesOpaque() ? QColor(255, 255, 255, 255) : QColor(0, 0, 0, 0);
+}
+
+// Das fruehere Gelb zaehlt mit: Notizen aus aelteren Sitzungen sollen der Einstellung ebenso folgen.
+bool PdfEditController::isStandardPaper(const QColor& c) {
+    return c.rgba() == 0 || c.rgba() == qRgba(255, 255, 255, 255) || c.rgba() == qRgba(254, 243, 155, 232);
+}
+
+void PdfEditController::applyNotePaper() {
+    const QColor paper = standardPaper();
+    if (isStandardPaper(m_textTpl.highlight) && m_textTpl.highlight.rgba() != paper.rgba()) {
+        m_textTpl.highlight = paper;
+        ++m_defaultRev;
+        emit defaultRevChanged();
+    }
+    // Uebernommene Annotationen behalten ihre Farbe aus der Datei, sonst gaelten sie als geaendert.
+    QVector<QPair<int, QColor>> todo;
+    for (const PdfEditBox& b : m_model.boxes())
+        if (b.kind == PdfAnnKind::Text && b.srcObjNum == 0 && isStandardPaper(b.highlight)
+            && b.highlight.rgba() != paper.rgba())
+            todo.push_back({ b.id, b.highlight });
+    if (todo.isEmpty())
+        return;
+    finishOpenSessions();
+    m_stack.beginMacro(QStringLiteral("notePaper"));
+    for (const auto& [id, old] : std::as_const(todo))
+        pushCommand(new PdfEditFieldCommand(&m_model, id, PdfEditField::Highlight, old, paper));
+    m_stack.endMacro();
 }
 
 bool PdfEditController::textToolSticky() const {
@@ -2373,6 +2523,95 @@ int PdfEditController::addMarkup(int page, int style, const QVariantList& quads)
     return b.id;
 }
 
+int PdfEditController::addSnappedTextBox(int page, qreal xPt, qreal yPt, qreal pageWPt, qreal pageHPt) {
+    if (m_docPath.isEmpty() || page < 0)
+        return -1;
+    const auto it = m_snap.constFind(page);
+    if (it == m_snap.constEnd() || !it.value()) {
+        prepareNoteSnap(page);
+        return -1;
+    }
+    const mg::PdfNoteSnap& snap = *it.value();
+    // Andere Seitenhoehe = CropBox oder Drehung: die Glyphenlage passt nicht zur Anzeige.
+    if (pageHPt > 0.0 && std::abs(snap.pageHeightPt() - pageHPt) > 1.0)
+        return -1;
+    const mg::PdfNoteSlot slot = snap.slotAt(QPointF(xPt, yPt), pageWPt);
+    if (slot.kind == mg::PdfNoteSlot::None)
+        return -1;
+    const int key = pageKeyForView(page);
+    if (key < 0)
+        return -1;
+
+    PdfEditBox b = seededBox();
+    b.id         = m_nextId++;
+    b.page       = key;
+    b.anchored   = true;
+    b.vAlign     = 0;                               // nur oben buendig liegt die Grundlinie fest
+    b.fontSizePt = qBound(4.0, std::round(slot.fontSizePt * 10.0) / 10.0, 200.0);
+
+    // Erste Grundlinie der Notiz = Grundlinie im PDF: Innenabstand + Oberlaenge, gemessen wie requiredHeightPt.
+    const qreal k = 8.0;
+    QFont f(b.fontFamily);
+    f.setPixelSize(qMax(1, qRound(b.fontSizePt * k)));
+    f.setBold(b.bold);
+    f.setItalic(b.italic);
+    f.setHintingPreference(QFont::PreferNoHinting);
+    const QFontMetricsF fm(f);
+    const qreal ascent = fm.ascent() / k, lineH = (fm.ascent() + fm.descent()) / k;
+
+    qreal left = qMax(0.0, slot.textLeft - kBoxPaddingPt);
+    qreal top  = qMax(0.0, slot.baseline - kBoxPaddingPt - ascent);
+    qreal right = slot.right, floor = slot.bottom;
+    // Zelle: die Box deckt sie ganz, der Text bleibt ueber den eigenen Abstand auf Spalte und Grundlinie.
+    if (slot.kind == mg::PdfNoteSlot::Cell && !slot.frame.isEmpty()) {
+        left  = qMax(0.0, qMin(slot.frame.left(), slot.textLeft));
+        top   = qMax(0.0, qMin(slot.frame.top(), slot.baseline - ascent));
+        right = slot.frame.right();
+        floor = slot.frame.bottom();
+        b.padLPt = slot.textLeft - left;
+        b.padTPt = qMax(0.0, slot.baseline - ascent - top);
+        b.inCell = true;
+    }
+    const qreal bottom = qMax(top + b.padTPt + lineH + kBoxPaddingPt, floor);
+    qreal w = qMax(kMinBoxWPt, right - left);
+    if (pageWPt > 0.0)
+        w = qMax(kMinBoxWPt, qMin(w, pageWPt - left));
+    b.rect = QRectF(left, top, w, qMax(kMinBoxHPt, bottom - top));
+
+    pushAdd(b);
+    setSelectedId(b.id);
+    return b.id;
+}
+
+void PdfEditController::prepareNoteSnap(int page) {
+    if (m_docPath.isEmpty() || page < 0 || !pageTextEditable(page))
+        return;
+    if (m_snap.contains(page) || m_snapPending.contains(page))
+        return;
+    const int src = m_plan.isEmpty() ? page : srcOfView(page);
+    if (src < 0)
+        return;
+    // Deckel fuer lange Dokumente: wer weiterblaettert, liest neu.
+    if (m_snap.size() >= 12)
+        m_snap.clear();
+    m_snapPending.insert(page);
+    m_pool.start(new PdfNoteSnapTask(this, textSourcePath(), src, page, m_snapGen));
+}
+
+void PdfEditController::noteSnapFinished(int page, std::shared_ptr<const mg::PdfNoteSnap> snap,
+                                         int generation) {
+    if (generation != m_snapGen)
+        return;
+    m_snapPending.remove(page);
+    m_snap.insert(page, std::move(snap));
+}
+
+void PdfEditController::clearNoteSnap() {
+    m_snap.clear();
+    m_snapPending.clear();
+    ++m_snapGen;
+}
+
 int PdfEditController::addAnchoredTextBox(int page, qreal xPt, qreal yPt,
                                           qreal wPt, qreal hPt) {
     if (m_docPath.isEmpty() || page < 0)
@@ -2585,21 +2824,42 @@ void PdfEditController::finishDrawSession() {
 }
 
 void PdfEditController::removeBox(int id) {
-    const int row = m_model.indexOfId(id);
-    const PdfEditBox* b = m_model.boxById(id);
-    if (row < 0 || !b)
+    removeBoxes({ id });
+}
+
+void PdfEditController::removeSelected() {
+    removeBoxes(m_selIds);
+}
+
+void PdfEditController::removeBoxes(const QVector<int>& ids) {
+    QVector<PdfEditBox> copies;                     // vor der Mutation kopieren
+    for (int id : ids)
+        if (const PdfEditBox* b = m_model.boxById(id))
+            copies.push_back(*b);
+    if (copies.isEmpty())
         return;
-    const PdfEditBox copy = *b;                     // vor der Mutation kopieren
     finishOpenSessions();
-    if (m_selectedId == id)
-        setSelectedId(-1);
-    // Bei laufender Aufzeichnung wird markiert statt entfernt. Eine in derselben
-    // Sitzung entstandene Box verschwindet ganz - sie hebt sich selbst auf.
-    if (m_recording && copy.track != PdfTrackState::Added) {
-        setTrack(id, PdfTrackState::Deleted);
-        return;
+    QVector<int> keep = m_selIds;
+    for (const PdfEditBox& c : std::as_const(copies))
+        keep.removeAll(c.id);
+    setSelection(keep, keep.contains(m_selectedId) ? m_selectedId : (keep.isEmpty() ? -1 : keep.last()));
+
+    const bool macro = copies.size() > 1;
+    if (macro)
+        m_stack.beginMacro(QStringLiteral("removeBoxes"));
+    for (const PdfEditBox& copy : std::as_const(copies)) {
+        // Bei laufender Aufzeichnung wird markiert statt entfernt. Eine in derselben
+        // Sitzung entstandene Box verschwindet ganz - sie hebt sich selbst auf.
+        if (m_recording && copy.track != PdfTrackState::Added) {
+            setTrack(copy.id, PdfTrackState::Deleted);
+            continue;
+        }
+        const int row = m_model.indexOfId(copy.id);
+        if (row >= 0)
+            pushCommand(new PdfEditRemoveCommand(&m_model, copy, row));
     }
-    pushCommand(new PdfEditRemoveCommand(&m_model, copy, row));
+    if (macro)
+        m_stack.endMacro();
 }
 
 PdfEditBox PdfEditController::seededBox() const {
@@ -2658,7 +2918,7 @@ qreal PdfEditController::requiredHeightPt(const PdfEditBox& b) {
     f.setUnderline(b.underline);
     f.setHintingPreference(QFont::PreferNoHinting);
 
-    const qreal availW = qMax<qreal>(4.0, b.rect.width() - 2.0 * kBoxPaddingPt) * k;
+    const qreal availW = qMax<qreal>(4.0, b.rect.width() - b.padLPt - kBoxPaddingPt) * k;
 
     QTextOption opt;
     opt.setWrapMode(QTextOption::WrapAtWordBoundaryOrAnywhere);
@@ -2676,7 +2936,7 @@ qreal PdfEditController::requiredHeightPt(const PdfEditBox& b) {
         totalH += line.height();
     }
     layout.endLayout();
-    return totalH / k + 2.0 * kBoxPaddingPt;
+    return totalH / k + b.padTPt + kBoxPaddingPt;
 }
 
 int PdfEditController::fitCharCount(const PdfEditBox& box, const QString& text) {
@@ -2690,8 +2950,8 @@ int PdfEditController::fitCharCount(const PdfEditBox& box, const QString& text) 
     f.setUnderline(box.underline);
     f.setHintingPreference(QFont::PreferNoHinting);
 
-    const qreal availW = qMax<qreal>(4.0, box.rect.width()  - 2.0 * kBoxPaddingPt) * k;
-    const qreal availH = qMax<qreal>(1.0, box.rect.height() - 2.0 * kBoxPaddingPt) * k;
+    const qreal availW = qMax<qreal>(4.0, box.rect.width()  - box.padLPt - kBoxPaddingPt) * k;
+    const qreal availH = qMax<qreal>(1.0, box.rect.height() - box.padTPt - kBoxPaddingPt) * k;
 
     QTextOption opt;
     opt.setWrapMode(QTextOption::WrapAtWordBoundaryOrAnywhere);
@@ -2889,36 +3149,81 @@ void PdfEditController::mirrorToTemplate(PdfEditField f, const QVariant& v, PdfA
 }
 
 void PdfEditController::copySelected() {
-    const PdfEditBox* b = m_model.boxById(m_selectedId);
-    if (!b)
+    // In Modellreihenfolge, damit die Stapelung der Kopien der des Originals entspricht.
+    QVector<PdfEditBox> clip;
+    for (const PdfEditBox& b : m_model.boxes())
+        if (m_selIds.contains(b.id))
+            clip.push_back(b);
+    if (clip.isEmpty())
         return;
-    m_clip = *b;
+    m_clip = std::move(clip);
     if (!m_hasClip) { m_hasClip = true; emit clipboardChanged(); }
 }
 
+void PdfEditController::cutSelected() {
+    if (m_selIds.isEmpty())
+        return;
+    copySelected();
+    removeSelected();
+}
+
 void PdfEditController::paste() {
-    if (!m_hasClip || m_docPath.isEmpty())
+    pasteBoxes(-1, nullptr, 0.0, 0.0);
+}
+
+void PdfEditController::pasteAt(int page, qreal xPt, qreal yPt, qreal pageWPt, qreal pageHPt) {
+    const QPointF at(xPt, yPt);
+    pasteBoxes(page, &at, pageWPt, pageHPt);
+}
+
+void PdfEditController::pasteBoxes(int page, const QPointF* at, qreal pageWPt, qreal pageHPt) {
+    if (!m_hasClip || m_clip.isEmpty() || m_docPath.isEmpty())
         return;
     finishOpenSessions();
     finishDrawSession();
-    PdfEditBox b = m_clip;                           // inkl. Text + allen Einstellungen
-    b.id = m_nextId++;
-    // Die Kopie ist eine neue Notiz: Herkunftsmarke, Kette und Loeschmarke gehoeren dem Original -
-    // mit der Marke strich der Export die uebernommene Annotation, mit der Kette teilten sich zwei Kaesten den Nachfolger.
-    b.srcObjNum = 0;
-    b.chainNext = 0;
-    b.growBaseH = 0.0;
-    b.track     = PdfTrackState::None;
-    // Die Seite des Originals kann inzwischen entfernt sein (oder aus einem anderen Dokument stammen).
-    if (!m_plan.isEmpty() && viewOfKey(b.page) < 0)
-        b.page = m_plan.last().key;
-    // Leicht versetzt, damit die Kopie sichtbar liegt; Strich-Punkte wandern mit.
-    b.rect.translate(14.0, 14.0);
-    for (QPointF& p : b.points)
-        p += QPointF(14.0, 14.0);
+    const int key = at ? pageKeyForView(page) : -1;
+    if (key < 0)
+        at = nullptr;
+
+    QRectF group;
+    for (const PdfEditBox& b : std::as_const(m_clip))
+        group = group.isNull() ? b.rect.normalized() : group.united(b.rect.normalized());
+    // Ohne Zeiger leicht versetzt, damit die Kopie sichtbar liegt; mit Zeiger die Gruppe dorthin, in die Seite geklemmt.
+    QPointF delta(14.0, 14.0);
+    if (at) {
+        QPointF tl = *at;
+        if (pageWPt > 0.0) tl.setX(qBound(0.0, tl.x(), qMax(0.0, pageWPt - group.width())));
+        if (pageHPt > 0.0) tl.setY(qBound(0.0, tl.y(), qMax(0.0, pageHPt - group.height())));
+        delta = tl - group.topLeft();
+    }
+
     setTool(Select);
-    pushAdd(b);
-    setSelectedId(b.id);
+    QVector<int> ids;
+    const bool macro = m_clip.size() > 1;
+    if (macro)
+        m_stack.beginMacro(QStringLiteral("paste"));
+    for (PdfEditBox b : std::as_const(m_clip)) {      // inkl. Text + allen Einstellungen
+        b.id = m_nextId++;
+        // Die Kopie ist eine neue Notiz: Herkunftsmarke, Kette und Loeschmarke gehoeren dem Original -
+        // mit der Marke strich der Export die uebernommene Annotation, mit der Kette teilten sich zwei Kaesten den Nachfolger.
+        b.srcObjNum = 0;
+        b.chainNext = 0;
+        b.growBaseH = 0.0;
+        b.track     = PdfTrackState::None;
+        // Die Seite des Originals kann inzwischen entfernt sein (oder aus einem anderen Dokument stammen).
+        if (at)
+            b.page = key;
+        else if (!m_plan.isEmpty() && viewOfKey(b.page) < 0)
+            b.page = m_plan.last().key;
+        b.rect.translate(delta);
+        for (QPointF& p : b.points)
+            p += delta;
+        pushAdd(b);
+        ids.push_back(b.id);
+    }
+    if (macro)
+        m_stack.endMacro();
+    setSelection(ids, ids.last());
 }
 
 void PdfEditController::beginGeometryEdit(int id) {
@@ -3197,9 +3502,13 @@ QVariantMap PdfEditController::boxInfo(int id) const {
     m.insert(QStringLiteral("textColor"),      b->color);
     m.insert(QStringLiteral("highlightColor"), b->highlight);
     m.insert(QStringLiteral("hasHighlight"),   b->highlight.alpha() > 0);
+    // Nur #00000000 heisst "kein Papier"; ein gewaehltes #00ffffff behaelt seine Farbe im Waehler.
+    m.insert(QStringLiteral("paperSet"),       b->highlight.rgba() != 0);
     m.insert(QStringLiteral("alignment"),      b->alignment);
     m.insert(QStringLiteral("vAlign"),         b->vAlign);
     m.insert(QStringLiteral("anchored"),       b->anchored);
+    m.insert(QStringLiteral("padLPt"),         b->padLPt);
+    m.insert(QStringLiteral("padTPt"),         b->padTPt);
     return m;
 }
 
@@ -3219,6 +3528,7 @@ QVariantMap PdfEditController::defaultInfo() const {
     m.insert(QStringLiteral("textColor"),      tpl.color);
     m.insert(QStringLiteral("highlightColor"), tpl.highlight);
     m.insert(QStringLiteral("hasHighlight"),   tpl.highlight.alpha() > 0);
+    m.insert(QStringLiteral("paperSet"),       tpl.highlight.rgba() != 0);
     m.insert(QStringLiteral("alignment"),      tpl.alignment);
     m.insert(QStringLiteral("vAlign"),         tpl.vAlign);
     m.insert(QStringLiteral("isReplace"),      m_tool == ReplaceTool);
@@ -3479,6 +3789,8 @@ bool PdfEditController::ladeAus(const Obj& o) {
             continue;
         PdfEditBox b = PdfEditBox::lade(alsObjekt(arr.at(i)));
         b.id = m_nextId++;                          // IDs sind sitzungslokal
+        if (b.kind == PdfAnnKind::Text && b.srcObjNum == 0 && isStandardPaper(b.highlight))
+            b.highlight = standardPaper();
         boxes.append(b);
     }
     const auto chains = o.value(k_chains).toArray();
@@ -3914,6 +4226,8 @@ bool PdfEditController::annotationFromBox(const PdfEditBox& b, mg::PdfAnnotation
         a.contents   = b.text;
         a.fontSizePt = b.fontSizePt;
         a.textColor  = opaque(b.color);
+        a.padLeft    = b.padLPt;
+        a.padTop     = b.padTPt;
         if (b.highlight.alpha() > 0) {
             noteAlpha(b.highlight);
             a.interiorColor = opaque(b.highlight);

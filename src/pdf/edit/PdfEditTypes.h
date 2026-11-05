@@ -14,6 +14,8 @@
 #include <QJsonObject>
 #include <QJsonArray>
 
+#include <cmath>
+
 // Art der Annotation, im Sidecar als Ganzzahl. Alte Sidecars ohne "kind" laden als Text (0); die Werte 0-4 sind
 // identisch zum Bild-Editor, damit QML und Export dieselbe Semantik teilen. Replace (5) ist PDF-exklusiv.
 enum class PdfAnnKind {
@@ -60,6 +62,9 @@ enum class PdfEditField {
 
 // EINE Overlay-Annotation als vereinheitlichtes Struct mit kind-Enum, wie ImageAnnotation: Text, Rechteck und
 // Ellipse führen ihre Geometrie in `rect`, Freihand und Pfeil in `points` (`rect` ist dann die Hülle).
+// Innenabstand des Notiztexts, sofern die Notiz keinen eigenen traegt.
+inline constexpr qreal kPdfBoxPadPt = 3.0;
+
 struct PdfEditBox {
     int        id   = 0;                 // laufende Sitzungs-ID (nicht persistiert)
     int        page = 0;                 // 0-basierte Seite
@@ -81,12 +86,18 @@ struct PdfEditBox {
     bool    italic     = false;
     bool    underline  = false;
     QColor  color      = QColor(0, 0, 0);          // Textfarbe (deckend)
-    // Notiz-Hintergrund: füllt das ganze Box-Rechteck in Anzeige UND Export. Alpha 0 = kein Papier (reiner Text);
-    // Schatten und Eselsohr hängen an Alpha > 0.
-    QColor  highlight  = QColor(254, 243, 155, 232);
+    // Notiz-Hintergrund: füllt das ganze Box-Rechteck in Anzeige UND Export. Alpha 0 = kein Papier (reiner Text,
+    // Standard); Schatten und Eselsohr hängen an Alpha > 0. Deckend weiß kommt aus der Einstellung.
+    QColor  highlight  = QColor(0, 0, 0, 0);
     int     alignment  = 0;                        // 0=links, 1=zentriert, 2=rechts
     int     vAlign     = 0;
     bool    anchored   = false;                    // an erkannte PDF-Textzeile gefangen
+    // Linker und oberer Textabstand: eine in eine Zelle gefangene Notiz fuellt die Zelle, ihr Text steht trotzdem
+    // auf der gedruckten Spalte. Rechts und unten bleibt `kPdfBoxPadPt`.
+    qreal   padLPt     = kPdfBoxPadPt;
+    qreal   padTPt     = kPdfBoxPadPt;
+    // Fuellt eine Tabellenzelle: flach, ohne Schatten - der fiele auf die Nachbarzelle und deren Notiz.
+    bool    inCell     = false;
     // Verkettete Textboxen: `chainNext` ist die Sitzungs-ID der Folgebox (0 = keine) - überläuft eine Box, wandert
     // der Rest hinein. NICHT direkt in `toJson`, IDs sind sitzungslokal; persistiert wird ein Index-Array.
     int     chainNext  = 0;
@@ -184,6 +195,9 @@ struct PdfEditBox {
             s.feld(k_align,  alignment);
             s.feld(k_valign, vAlign);
             s.feld(k_anchor, anchored);
+            if (padLPt != kPdfBoxPadPt) s.feld(k_padl, padLPt);
+            if (padTPt != kPdfBoxPadPt) s.feld(k_padt, padTPt);
+            if (inCell) s.feld(k_cell, true);
         }
         s.beendeObjekt();
     }
@@ -232,6 +246,13 @@ struct PdfEditBox {
         b.alignment  = o.value(mg::mgeb::k_align).toInt(0);
         b.vAlign     = o.value(mg::mgeb::k_valign).toInt(0);
         b.anchored   = o.value(mg::mgeb::k_anchor).toBool(false);
+        const auto abstand = [&o](mg::mgeb::Key k) {
+            const double v = o.value(k).toDouble(kPdfBoxPadPt);
+            return std::isfinite(v) ? qBound(0.0, v, 72.0) : kPdfBoxPadPt;
+        };
+        b.padLPt     = abstand(mg::mgeb::k_padl);
+        b.padTPt     = abstand(mg::mgeb::k_padt);
+        b.inCell     = o.value(mg::mgeb::k_cell).toBool(false);
         if (!b.stroke.isValid())    b.stroke = QColor(230, 44, 44);
         if (!b.fill.isValid())      b.fill = QColor(0, 0, 0, 0);
         if (b.lineWidth < 0.2)  b.lineWidth = 0.2;

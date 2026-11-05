@@ -60,6 +60,8 @@ PdfTextController::PdfTextController(QObject* parent) : QObject(parent) {
     // Genau EIN Worker: nie sind zwei der teuren QPdfDocument-Instanzen
     // gleichzeitig am Laden -> RAM-Peak bleibt gedeckelt.
     m_pool.setMaxThreadCount(1);
+    m_allTimer.setInterval(0);
+    connect(&m_allTimer, &QTimer::timeout, this, &PdfTextController::stepGatherAll);
 }
 
 PdfTextController::~PdfTextController() {
@@ -180,30 +182,86 @@ QVariantList PdfTextController::selectAllOnPage(int page) {
     return {};
 }
 
-//  Aus der QPdfSelection die normalisierten Highlight-Rechtecke bauen und den
-//  Text merken. bounds() liefert Rechteck-Polygone in Punkten (Ursprung
-//  oben-links) -> boundingRect()/Seitengroesse ergibt normalisierte [0..1]-Rects.
+QVariantList PdfTextController::pageTextRects(int page) const {
+    if (!m_doc || page < 0 || page >= m_doc->pageCount())
+        return {};
+    const QSizeF ps = m_doc->pagePointSize(page);
+    if (ps.isEmpty())
+        return {};
+    return normRects(m_doc->getAllText(page), ps.width(), ps.height());
+}
+
+void PdfTextController::selectAllDocument() {
+    stopGatherAll();
+    if (!m_doc || m_doc->pageCount() <= 0)
+        return;
+    m_allDoc  = m_doc;
+    m_allPage = 0;
+    m_allTimer.start();
+}
+
+void PdfTextController::stopGatherAll() {
+    m_allTimer.stop();
+    m_allPage = -1;
+    m_allDoc  = nullptr;
+    m_allBuf  = QString();
+}
+
+void PdfTextController::stepGatherAll() {
+    if (!m_doc || m_doc != m_allDoc || m_allPage < 0) {
+        stopGatherAll();
+        return;
+    }
+    constexpr int kPagesPerStep = 8;
+    const int count = m_doc->pageCount();
+    const int end   = qMin(count, m_allPage + kPagesPerStep);
+    for (int p = m_allPage; p < end; ++p) {
+        const QString t = m_doc->getAllText(p).text();
+        if (t.isEmpty())
+            continue;
+        if (!m_allBuf.isEmpty())
+            m_allBuf += QLatin1Char('\n');
+        m_allBuf += t;
+    }
+    m_allPage = end;
+    if (end < count)
+        return;
+    const QString text = std::move(m_allBuf);
+    stopGatherAll();
+    if (text != m_selText) {
+        m_selText = text;
+        emit selectedTextChanged();
+    }
+}
+
+//  bounds() liefert Rechteck-Polygone in Punkten (Ursprung oben-links)
+//  -> boundingRect()/Seitengroesse ergibt normalisierte [0..1]-Rects.
+QVariantList PdfTextController::normRects(const QPdfSelection& sel, double pageWidthPts,
+                                          double pageHeightPts) {
+    QVariantList rects;
+    if (!sel.isValid() || pageWidthPts <= 0.0 || pageHeightPts <= 0.0)
+        return rects;
+    const QList<QPolygonF> bounds = sel.bounds();
+    rects.reserve(bounds.size());
+    for (const QPolygonF& poly : bounds) {
+        const QRectF r = poly.boundingRect();
+        QVariantMap m;
+        m.insert(QStringLiteral("x"), r.x()      / pageWidthPts);
+        m.insert(QStringLiteral("y"), r.y()      / pageHeightPts);
+        m.insert(QStringLiteral("w"), r.width()  / pageWidthPts);
+        m.insert(QStringLiteral("h"), r.height() / pageHeightPts);
+        rects.append(m);
+    }
+    return rects;
+}
+
 QVariantList PdfTextController::applySelection(const QPdfSelection& sel, int page,
                                                double pageWidthPts,
                                                double pageHeightPts) {
     Q_UNUSED(page)
-    QVariantList rects;
-    QString text;
-
-    if (sel.isValid() && pageWidthPts > 0.0 && pageHeightPts > 0.0) {
-        text = sel.text();
-        const QList<QPolygonF> bounds = sel.bounds();
-        rects.reserve(bounds.size());
-        for (const QPolygonF& poly : bounds) {
-            const QRectF r = poly.boundingRect();
-            QVariantMap m;
-            m.insert(QStringLiteral("x"), r.x()      / pageWidthPts);
-            m.insert(QStringLiteral("y"), r.y()      / pageHeightPts);
-            m.insert(QStringLiteral("w"), r.width()  / pageWidthPts);
-            m.insert(QStringLiteral("h"), r.height() / pageHeightPts);
-            rects.append(m);
-        }
-    }
+    stopGatherAll();
+    QVariantList rects = normRects(sel, pageWidthPts, pageHeightPts);
+    const QString text = (sel.isValid() && pageWidthPts > 0.0 && pageHeightPts > 0.0) ? sel.text() : QString();
 
     if (text != m_selText) {
         m_selText = text;
@@ -335,6 +393,7 @@ QVariantMap PdfTextController::replaceProbe(int page, double nx0, double ny0,
 }
 
 void PdfTextController::clearSelection() {
+    stopGatherAll();
     if (!m_selText.isEmpty()) {
         m_selText.clear();
         emit selectedTextChanged();

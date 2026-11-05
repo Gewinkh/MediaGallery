@@ -4,6 +4,7 @@
 // Dokument; fehlen sie, wird ABGELEHNT statt geschätzt: eine falsche Breite verschiebt jedes Folgezeichen.
 
 #include <QByteArray>
+#include <QLineF>
 #include <QPointF>
 #include <QRectF>
 #include <QString>
@@ -54,6 +55,13 @@ struct PdfPageText {
     // Nur die BILDartigen davon. Wer schwärzt, muss sie kennen: Text lässt sich aus dem Strom entfernen,
     // Bildpunkte NICHT - unter einem Balken über einem Bild bliebe das Original erhalten.
     QVector<QRectF>      imagePaints;
+    // Gerade, achsparallele Linien (gestrichene Segmente, Rechteckkanten, dünne gefüllte Balken) in denselben
+    // Koordinaten. Tabellengitter und Antwortrahmen stehen nur hier - das Hüllrechteck in `paints` verliert sie.
+    QVector<QLineF>      rules;
+    // Strichstaerke quer zur Linie, je Eintrag von `rules`: eine deckende Notiz endet an der Innenkante.
+    QVector<qreal>       ruleWidths;
+    // Lesen geht auch über Objektströme; SCHREIBEN (Caret, Ersetzen) hängt eine klassische xref-Tabelle an.
+    bool                 classicXref = false;
 };
 
 class PdfTextLayout {

@@ -33,6 +33,9 @@ Item {
     required property bool   anchored
     required property string imagePath
     required property int    markupStyle
+    required property real   padLPt           // linker/oberer Textabstand (Zellen-Notiz: Text auf der Spalte)
+    required property real   padTPt
+    required property bool   inCell
 
     // `pageIndex` ist der STABILE Seiten-Key: darüber findet die Notiz ihre Seite auch nach dem Umsortieren.
     // `viewIndex` ist die laufende Nummer - alles Geometrische rechnet damit, nur die Ansicht kennt Maße und Lücken.
@@ -61,7 +64,9 @@ Item {
     readonly property bool trackedNew: box.trackState === 1
     readonly property bool trackedDel: box.trackState === 2
     readonly property bool selectTool: box.ctl.tool === 0
-    readonly property bool selected: editMode && box.ctl.selectedId === boxId
+    // Teil der (Mehrfach-)Auswahl; Griffe und Toolbar gehoeren nur der fuehrenden Box.
+    readonly property bool selected: editMode && (box.ctl.selectionSetRev, box.ctl.isSelected(boxId))
+    readonly property bool primary: editMode && box.ctl.selectedId === boxId
     readonly property real minWPt: isTextual ? box.ctl.minBoxWPt : 4
     readonly property real minHPt: isTextual ? box.ctl.minBoxHPt : 4
     property bool editing: false         // Inline-Textbearbeitung aktiv
@@ -140,7 +145,7 @@ Item {
         width: parent.width
         height: parent.height
         color: Qt.rgba(0, 0, 0, 52 / 255)
-        visible: box.hasPaper
+        visible: box.hasPaper && !box.inCell
     }
     Rectangle {                                     // Papierfläche
         anchors.fill: parent
@@ -320,6 +325,8 @@ Item {
         visible: box.isTextual
         anchors.fill: parent
         padding: box.ctl.boxPaddingPt * box.pageScale   // gleiche Konstante wie Export
+        leftPadding: box.padLPt * box.pageScale
+        topPadding: box.padTPt * box.pageScale
         clip: false                        // Überlauf sichtbar - wie im Export
         textFormat: TextEdit.PlainText
         wrapMode: TextEdit.Wrap
@@ -403,6 +410,8 @@ Item {
     Text {
         anchors.fill: parent
         anchors.margins: box.ctl.boxPaddingPt * box.pageScale
+        anchors.leftMargin: box.padLPt * box.pageScale
+        anchors.topMargin: box.padTPt * box.pageScale
         visible: box.isTextual && box.editMode && !box.editing && box.boxText.length === 0
         text: App.uiText(App.language, "PdfEditEmptyHint")
         color: "#9aa0a6"
@@ -424,12 +433,20 @@ Item {
         property real grabDx: 0
         property real grabDy: 0
         property bool moved: false
+        property bool toggled: false       // Strg+Klick: nur Auswahl, kein Zug
+        property bool collapse: false      // Klick in eine Mehrfachauswahl: beim Loslassen nur noch diese Box
+        property point lastScene
         onPressed: (m) => {
-            if (box.surface) {
-                box.surface.commitEditing()                // fremde Bearbeitung schließen
-                box.surface.editDragPage = box.viewIndex   // Delegate über Nachbarn heben
+            if (box.surface) box.surface.commitEditing()   // fremde Bearbeitung schließen
+            toggled = (m.modifiers & Qt.ControlModifier) !== 0
+            if (toggled) {
+                box.ctl.toggleSelected(box.boxId)
+                return
             }
-            box.ctl.selectedId = box.boxId
+            if (box.surface) box.surface.editDragPage = box.viewIndex   // Delegate über Nachbarn heben
+            collapse = box.ctl.selectedCount > 1 && box.ctl.isSelected(box.boxId)
+            if (collapse) box.ctl.focusSelected(box.boxId)
+            else          box.ctl.selectedId = box.boxId
             const p = mapToItem(box.parent, m.x, m.y)
             grabDx = p.x - box.x
             grabDy = p.y - box.y
@@ -437,13 +454,25 @@ Item {
             box.ctl.beginGeometryEdit(box.boxId)
         }
         onPositionChanged: (m) => {
-            if (box.isMarkup)
+            if (box.isMarkup || toggled)
                 return                     // Markierungen bleiben an ihrem Text
-            const p = mapToItem(box.parent, m.x, m.y)
+            lastScene = mapToItem(null, m.x, m.y)
+            moveTo(mapToItem(box.parent, m.x, m.y))
+        }
+        // Das Rad rollt die Seite unter dem stillen Zeiger weg; die Notiz bleibt am Zeiger.
+        Connections {
+            target: box.surface
+            enabled: moveArea.moved && moveArea.pressed
+            function onDragScrolled() {
+                moveArea.moveTo(box.parent.mapFromItem(null, moveArea.lastScene.x, moveArea.lastScene.y))
+            }
+        }
+        function moveTo(p) {
             let nx = (p.x - grabDx) / box.pageScale
             let ny = (p.y - grabDy) / box.pageScale
             if (!moved && Math.abs(nx - box.xPt) + Math.abs(ny - box.yPt) < 1.5)
                 return
+            if (!moved && box.surface) box.surface._dragBox = box
             moved = true
             // Zeilenfang (falls aktiv): Oberkante an erkannte PDF-Textzeile -
             // nur für TEXT-Notizen sinnvoll (Zeichnungen bewegen sich frei).
@@ -456,16 +485,30 @@ Item {
             box.ctl.updatePlacement(box.boxId, box.viewIndex, nx, ny, box.wPt, box.hPt)
         }
         onReleased: {
-            // Über den Seitenrand gezogen: Zielseite und lokale y-Koordinate auflösen und die Session mit der finalen
-            // Platzierung abschließen - EIN Undo-Schritt inklusive Seitenwechsel.
+            if (toggled) {
+                toggled = false
+                return
+            }
+            if (!moved && collapse)
+                box.ctl.selectedId = box.boxId
+            finishDrag()
+        }
+        // Abgebrochen (Fokusverlust) wie losgelassen: sonst bliebe die Notiz zwischen zwei Seiten haengen.
+        onCanceled: {
+            toggled = false
+            finishDrag()
+        }
+        // Über den Seitenrand gezogen: Zielseite und lokale y-Koordinate auflösen und die Session mit der finalen
+        // Platzierung abschließen - EIN Undo-Schritt inklusive Seitenwechsel.
+        function finishDrag() {
             if (moved && box.surface) {
-                const t = box.surface.resolveCrossPage(box.viewIndex, box.yPt,
-                                                       box.hPt, box.pageScale)
-                box.ctl.updatePlacement(box.boxId, t.page, box.xPt, t.y,
+                const t = box.surface.resolveCrossPage(box)
+                box.ctl.updatePlacement(box.boxId, t.page, t.x, t.y,
                                         box.wPt, box.hPt)
             }
-            if (box.surface) box.surface.editDragPage = -1
+            moved = false
             box.ctl.endGeometryEdit(box.boxId)     // EIN Undo-Kommando
+            if (box.surface) box.surface.endNoteDrag()
         }
         onDoubleClicked: box.startEditing()
     }
@@ -483,7 +526,7 @@ Item {
     }
 
     Repeater {
-        model: box.selected && box.selectTool && !box.editing && !box.isMarkup
+        model: box.primary && box.selectTool && !box.editing && !box.isMarkup
                ? [ { hx: -1, hy: -1 }, { hx: 0, hy: -1 }, { hx: 1, hy: -1 },
                    { hx: -1, hy:  0 },                    { hx: 1, hy:  0 },
                    { hx: -1, hy:  1 }, { hx: 0, hy:  1 }, { hx: 1, hy:  1 } ]

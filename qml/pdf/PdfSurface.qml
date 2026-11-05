@@ -64,6 +64,7 @@ Item {
     property bool   _selecting: false        // gerade am Ziehen?
     property var    _lastSel: null           // letzte Drag-Brüche (für Re-Query bei Ready)
     property bool   _pendingSelectAll: false // Strg+A vor Abschluss des Lazy-Loads -> nachziehen
+    property bool   selAllPages: false       // Strg+A: alle Seiten markiert, selPage bleibt die Arbeitsseite
     property int    _linkFromId: 0           // Reflow-Verkettung: Ausgangsbox, wartet auf Zielbox-Klick
 
     // audioClips = alle Clips des Dokuments; die Leiste zeigt nur die der aktuellen Seite.
@@ -102,9 +103,21 @@ Item {
     property int  editCommitRev: 0
     property var  _snapCache: ({})
     property int  _autoEditId: -1
+    // Zeiger ueber einer Seite (normiert): Strg+V legt die Kopie dorthin.
+    property int  _hoverPage: -1
+    property real _hoverX: 0
+    property real _hoverY: 0
+    // Aufgezogener Auswahlrahmen in Pixeln der Seite `_bandPage`.
+    property int  _bandPage: -1
+    property rect _bandRect: Qt.rect(0, 0, 0, 0)
     // Hebt das Seiten-Delegate per z ueber seine Nachbarn, damit eine gezogene Notiz
     // sichtbar ueber die Luecke gleitet statt von der Nachbarseite zugemalt zu werden.
     property int  editDragPage: -1
+    // Gezogene Notiz: ihr Seiten-Delegate zeichnet Qt ausserhalb des Puffers nicht mehr, ein Abbild ueber der Liste
+    // haelt sie sichtbar. `dragScrolled` laesst sie beim Rollen unter dem Zeiger mitwandern.
+    property Item _dragBox: null
+    on_DragBoxChanged: _placeDragGhost()
+    signal dragScrolled()
     // Dann gehoeren Tasten - auch + und - - dem Text und nicht den Ansichts-Kuerzeln.
     readonly property bool caretActive: editCtl.editMode && editCtl.tool === 7
                                         && editCtl.caretPage >= 0
@@ -113,29 +126,47 @@ Item {
 
     // Uebersetzt eine ueber den Seitenrand gezogene Oberkante in Zielseite und lokales y.
     // Kriterium ist die Box-Mitte; laeuft iterativ, also auch ueber mehrere Seiten.
-    function resolveCrossPage(page, yPt, hPt, scale) {
-        var p = Math.max(0, Math.min(page, root.pageCount - 1))
-        var y = yPt
-        if (!root.docReady || scale <= 0)
-            return { page: p, y: Math.max(0, y) }
-        var gapPt = (pages.spacing + 4) / scale
-        var ph = root._pt(p).height
-        while (p < root.pageCount - 1 && ph > 0 && y + hPt / 2 > ph) {
-            y -= ph + gapPt
-            p++
-            ph = root._pt(p).height
+    // Zielseite = Seite unter der Boxmitte, aus der echten Lage der Delegates; eine feste Fuge stimmte mit der
+    // Leiste im Editmodus nicht und verschob die Notiz je uebersprungener Seite weiter.
+    function resolveCrossPage(box) {
+        var idx = -1
+        var c = box.mapToItem(pages.contentItem, box.width / 2, box.height / 2)
+        var mx = pages.width / 2
+        if (root.docReady) {
+            idx = pages.indexAt(mx, c.y)
+            if (idx < 0) idx = pages.indexAt(mx, c.y - pages.spacing - 1)
+            if (idx < 0)
+                idx = pages.indexAt(mx, c.y < pages.contentY + pages.height / 2
+                                        ? pages.contentY + 1 : pages.contentY + pages.height - 1)
         }
-        while (p > 0 && y + hPt / 2 < 0) {
-            p--
-            ph = root._pt(p).height
-            y += ph + gapPt
-        }
-        ph = root._pt(p).height
-        if (ph > 0)
-            y = Math.max(0, Math.min(y, Math.max(0, ph - hPt)))
-        else
-            y = Math.max(0, y)
-        return { page: p, y: y }
+        var it = idx >= 0 ? pages.itemAtIndex(idx) : null
+        if (!it && idx >= 0 && idx === pages.currentIndex) it = pages.currentItem
+        var p = it ? idx : Math.max(0, Math.min(box.viewIndex, root.pageCount - 1))
+        var pts = root._pt(p)
+        var y = box.yPt
+        if (it && it.pts.width > 0 && it.pageW > 0)
+            y = box.mapToItem(it.pageArea, 0, 0).y * it.pts.width / it.pageW
+        var x = box.xPt
+        if (pts.width > 0)  x = Math.max(0, Math.min(x, Math.max(0, pts.width - box.wPt)))
+        y = pts.height > 0 ? Math.max(0, Math.min(y, Math.max(0, pts.height - box.hPt))) : Math.max(0, y)
+        return { page: p, x: x, y: y }
+    }
+    // Erst nach dem Loslass-Handler: die Quellseite haengt am currentIndex und darf nicht in ihm verschwinden.
+    function endNoteDrag() {
+        root._dragBox = null
+        Qt.callLater(function() { root.editDragPage = -1 })
+    }
+    function _placeDragGhost() {
+        const b = root._dragBox
+        if (!b) return
+        const p = b.mapToItem(dragGhost.parent, -dragGhost.m, -dragGhost.m)
+        dragGhost.x = Math.round(p.x)
+        dragGhost.y = Math.round(p.y)
+    }
+    Connections {
+        target: root._dragBox
+        function onXChanged() { root._placeDragGhost() }
+        function onYChanged() { root._placeDragGhost() }
     }
 
     // Toleranz: max aus 7 pt und 75 % der Zeilenhoehe. Ohne Textebene unveraendert.
@@ -156,6 +187,18 @@ Item {
             if (d < tol && d < bestD) { bestD = d; best = ly }
         }
         return best
+    }
+
+    // Ohne Textebene (noch) lieber Text markieren - so verhielt sich die Auswahl bisher.
+    function _pointOnText(page, nx, ny) {
+        if (!pdfTextCtl.ready) return true
+        const lines = _snapLines(page)
+        for (let i = 0; i < lines.length; i++) {
+            const l = lines[i]
+            if (nx >= l.x - 0.004 && nx <= l.x + l.w + 0.004 && ny >= l.y - 0.002 && ny <= l.y + l.h + 0.002)
+                return true
+        }
+        return false
     }
 
     function _snapLines(page) {
@@ -438,9 +481,7 @@ Item {
                 var s = root._lastSel
                 root.selRects = pdfTextCtl.selectionBetween(s.page, s.a0, s.b0, s.a1, s.b1)
             } else if (root._pendingSelectAll) {
-                root._pendingSelectAll = false
-                root.selPage = root.currentPage
-                root.selRects = pdfTextCtl.selectAllOnPage(root.currentPage)
+                root.selectAllText()
             }
         }
         // Der Suchlauf laeuft stueckweise; beim ersten Treffer gleich dorthin springen.
@@ -767,6 +808,19 @@ Item {
         }
     }
 
+    Connections {
+        target: PdfEdit
+        function onNotesOpaqueChanged() { root.editCtl.applyNotePaper() }
+    }
+    // Der erste Klick soll schon einrasten: die sichtbare Seite liest ihren Fang, sobald das Text-Werkzeug kommt.
+    Connections {
+        target: root.editCtl
+        function onToolChanged() {
+            if (root.editCtl.tool === 1 && root.snapEnabled && root.docReady)
+                root.editCtl.prepareNoteSnap(root.currentPage)
+        }
+    }
+
     // WindowShortcut-Kontext. Copy ist nur scharf bei markiertem Text. Explizite
     // Sequenzen statt StandardKey, damit keine Zweitbindung sie mehrdeutig macht.
     Shortcut {
@@ -793,15 +847,29 @@ Item {
         onActivated: { root.commitEditing(); root.editCtl.copySelected() }
     }
     Shortcut {
+        sequence: "Ctrl+X"
+        enabled: root.paneActive && root.docReady && root.editCtl.editMode
+                 && root.editCtl.selectedId >= 0 && !root.editCtl.textEditing
+        onActivated: { root.commitEditing(); root.editCtl.cutSelected() }
+    }
+    // Am Mauszeiger, wenn er ueber einer Seite steht; sonst versetzt neben das Original.
+    Shortcut {
         sequence: "Ctrl+V"
         enabled: root.paneActive && root.docReady && root.editCtl.editMode
                  && root.editCtl.hasClipboard && !root.editCtl.textEditing
-        onActivated: root.editCtl.paste()
+        onActivated: {
+            const pts = root._hoverPage >= 0 ? root._pt(root._hoverPage) : null
+            if (pts && pts.width > 0 && pts.height > 0)
+                root.editCtl.pasteAt(root._hoverPage, root._hoverX * pts.width, root._hoverY * pts.height,
+                                     pts.width, pts.height)
+            else
+                root.editCtl.paste()
+        }
     }
     Shortcut {
         sequence: "Ctrl+A"
         enabled: root.paneActive && root.docReady
-        onActivated: root.selectAllCurrentPage()
+        onActivated: root.selectAllText()
     }
     // Gesperrt waehrend einer Inline-Textbearbeitung - dort gehoert Entf dem TextEdit.
     Shortcut {
@@ -810,7 +878,7 @@ Item {
                  && root.editCtl.selectedId >= 0 && !root.editCtl.textEditing
         onActivated: {
             root.commitEditing()
-            root.editCtl.removeBox(root.editCtl.selectedId)
+            root.editCtl.removeSelected()
         }
     }
     // Gesperrt waehrend einer Inline-Textbearbeitung - dort gehoert Strg+Z dem TextEdit.
@@ -1045,6 +1113,7 @@ Item {
         // Eine Seite nimmt keinen Fokus; das Suchfeld behielt ihn und schluckte Strg+C per ShortcutOverride.
         if (searchField.activeFocus) root.forceActiveFocus()
         root._selecting = true
+        root.selAllPages = false
         root.selPage = page
         root.selRects = []
         root._lastSel = null
@@ -1246,19 +1315,23 @@ Item {
     }
 
     function clearSelection() {
+        root.selAllPages = false
         root.selPage = -1
         root.selRects = []
         root._lastSel = null
         root._pendingSelectAll = false
         pdfTextCtl.clearSelection()
     }
-    function selectAllCurrentPage() {
+    // Markieren, Schwaerzen und Ersetzen bleiben auf der aktuellen Seite; kopiert wird der Text aller Seiten.
+    function selectAllText() {
         if (!root.docReady) return
         root._lastSel = null
         pdfTextCtl.prepare(root.source)
         if (pdfTextCtl.ready) {
             root.selPage = root.currentPage
             root.selRects = pdfTextCtl.selectAllOnPage(root.currentPage)
+            root.selAllPages = true
+            pdfTextCtl.selectAllDocument()
             root._pendingSelectAll = false
         } else {
             root._pendingSelectAll = true
@@ -1561,7 +1634,15 @@ Item {
             cacheBuffer: Math.max(0, Math.round(pages.height *
                                     (root._warm ? root.pageCacheScreens : 0.1)))
             boundsBehavior: Flickable.StopAtBounds
+            // Die Seite einer gezogenen Notiz bleibt als currentItem am Leben, auch weit ausserhalb des Puffers - sonst
+            // starb mit ihr der Griff der Notiz. `highlightFollows...` aus: sonst rollte das Setzen die Ansicht.
+            currentIndex: root.editDragPage
+            highlightFollowsCurrentItem: false
             onContentYChanged: {
+                if (root._dragBox) {
+                    root.dragScrolled()
+                    root._placeDragGhost()
+                }
                 root.updateCurrentPage()
                 if (App.pdfJumpLogging) root._traceJump()
             }
@@ -1597,6 +1678,7 @@ Item {
                 z: index === root.editDragPage ? 1 : 0
 
                 readonly property size pts: root._pt(index)
+                readonly property Item pageArea: pageBg
                 // Ganze Seite passt neben die Leiste; deren Umschalten rendert nur neu, wo die Breite statt der Hoehe begrenzt.
                 readonly property real wFit: pts.width  > 0 ? (pages.width  - 24) / pts.width  : 1.0
                 readonly property real hFit: pts.height > 0 ? (pages.height - 24) / pts.height : 1.0
@@ -1710,9 +1792,10 @@ Item {
                             restoreMode: Binding.RestoreNone
                         }
 
-                        // Nur auf der Seite mit aktiver Auswahl; Rechtecke normalisiert.
+                        // Auf der Seite mit aktiver Auswahl, nach Strg+A auf jeder; Rechtecke normalisiert.
                         Repeater {
-                            model: pageCell.index === root.selPage ? root.selRects : []
+                            model: pageCell.index === root.selPage ? root.selRects
+                                 : (root.selAllPages && pdfTextCtl.ready ? pdfTextCtl.pageTextRects(pageCell.index) : [])
                             delegate: Rectangle {
                                 required property var modelData
                                 x: modelData.x * pageImg.width
@@ -1851,6 +1934,34 @@ Item {
                             }
                         }
 
+                        // Passiv: sieht den Zeiger auch ueber Notizen. Mit dem Text-Werkzeug wird hier schon der Notizfang gelesen.
+                        HoverHandler {
+                            enabled: root.editCtl.editMode
+                            onHoveredChanged: if (!hovered && root._hoverPage === pageCell.index) root._hoverPage = -1
+                            onPointChanged: {
+                                if (!hovered || pageImg.width <= 0 || pageImg.height <= 0) return
+                                root._hoverPage = pageCell.index
+                                root._hoverX = point.position.x / pageImg.width
+                                root._hoverY = point.position.y / pageImg.height
+                                if (root.editCtl.tool === 1 && root.snapEnabled)
+                                    root.editCtl.prepareNoteSnap(pageCell.index)
+                            }
+                        }
+
+                        // Reine Anzeige wie der Galerie-Rahmen; faengt nichts, sonst naehme er dem Zug die Ereignisse.
+                        Rectangle {
+                            visible: root._bandPage === pageCell.index
+                            z: 10
+                            x: root._bandRect.x
+                            y: root._bandRect.y
+                            width: root._bandRect.width
+                            height: root._bandRect.height
+                            color: Qt.rgba(App.themeAccent.r, App.themeAccent.g, App.themeAccent.b, 0.16)
+                            border.color: App.themeAccent
+                            border.width: 1
+                            radius: 2
+                        }
+
                         // Werkzeug-Fänger der Seite, nur im Editmodus: liegt über Auswahl-Fänger, Badges und Hotspots, aber unter den
                         // Box-Delegates. Das Routing entscheidet nach aktivem Werkzeug.
                         MouseArea {
@@ -1869,6 +1980,11 @@ Item {
                             // Muss deklariert sein: sonst bricht der Handler mit ReferenceError ab, bevor updateDraw/endDraw laufen.
                             property bool _textSel: false
                             property bool _textSelDrag: false
+                            // Aufziehen auf freier Flaeche wie in der Galerie: 8 px Schwelle, Strg ergaenzt.
+                            property bool _band: false
+                            property bool _bandOn: false
+                            property bool _bandAdd: false
+                            property bool _bandClick: false   // clicked folgt dem Loslassen auch nach einem Zug
                             property real _selSx: 0
                             property real _selSy: 0
                             property var  _repStart: null
@@ -1892,6 +2008,17 @@ Item {
                             }
                             onPressed: (m) => {
                                 // Ohne ready-Wache: beginSelection() laedt die Textebene lazy; mit Wache blieb der erste Markierversuch wirkungslos.
+                                if (root.editCtl.tool === 0
+                                        && pageImg.width > 0 && pageImg.height > 0
+                                        && !root._pointOnText(pageCell.index, m.x / pageImg.width,
+                                                              m.y / pageImg.height)) {
+                                    root.commitEditing()
+                                    _band = true
+                                    _bandOn = false
+                                    _bandAdd = (m.modifiers & Qt.ControlModifier) !== 0
+                                    _selSx = m.x; _selSy = m.y
+                                    return
+                                }
                                 if (root.editCtl.tool === 0
                                         && pageImg.width > 0 && pageImg.height > 0) {
                                     _textSel = true
@@ -1949,6 +2076,24 @@ Item {
                                                                  pageCell.index, p.x, p.y)
                             }
                             onPositionChanged: (m) => {
+                                if (_band) {
+                                    if (!_bandOn) {
+                                        if (Math.abs(m.x - _selSx) < 8 && Math.abs(m.y - _selSy) < 8)
+                                            return                   // noch ein Klick, kein Zug
+                                        _bandOn = true
+                                        root._bandPage = pageCell.index
+                                        root.editCtl.beginBand(_bandAdd)
+                                    }
+                                    const cx = Math.max(0, Math.min(m.x, pageImg.width))
+                                    const cy = Math.max(0, Math.min(m.y, pageImg.height))
+                                    const r = Qt.rect(Math.min(_selSx, cx), Math.min(_selSy, cy),
+                                                      Math.abs(cx - _selSx), Math.abs(cy - _selSy))
+                                    root._bandRect = r
+                                    const pts = pageCell.pts
+                                    const k = pts.width / pageImg.width
+                                    root.editCtl.updateBand(pageCell.index, r.x * k, r.y * k, r.width * k, r.height * k)
+                                    return
+                                }
                                 if (_textSel) {
                                     if (!_textSelDrag) {
                                         if (Math.abs(m.x - _selSx) + Math.abs(m.y - _selSy) < 3)
@@ -1975,6 +2120,18 @@ Item {
                                 if (p) root.editCtl.updateDraw(_drawId, p.x, p.y)
                             }
                             onReleased: {
+                                if (_band) {
+                                    _bandClick = true
+                                    if (_bandOn) {
+                                        root.editCtl.endBand()
+                                        root._bandPage = -1
+                                    } else {                     // reiner Klick: Text- und Notizauswahl aufheben
+                                        root.clearSelection()
+                                        if (!_bandAdd) root.editCtl.selectedId = -1
+                                    }
+                                    _band = false
+                                    return
+                                }
                                 if (_textSel) {
                                     root.endSelection(_textSelDrag)
                                     if (!_textSelDrag) {         // reiner Klick: abwählen
@@ -2023,6 +2180,11 @@ Item {
                                 _drawId = -1
                             }
                             onCanceled: {
+                                if (_band) {
+                                    if (_bandOn) root.editCtl.endBand()
+                                    root._bandPage = -1
+                                    _band = false
+                                }
                                 if (_textSel) {
                                     root.endSelection(_textSelDrag)
                                     _textSel = false
@@ -2092,6 +2254,10 @@ Item {
                                 }
                             }
                             onClicked: (m) => {
+                                if (_bandClick) {
+                                    _bandClick = false
+                                    return
+                                }
                                 if (root.editCtl.tool >= 2)
                                     return                       // Zeichnen lief über pressed/released
                                 root.commitEditing()
@@ -2105,7 +2271,10 @@ Item {
                                 var xPt = (m.x / pageImg.width)  * pts.width
                                 var yPt = (m.y / pageImg.height) * pts.height
                                 var id = -1
-                                if (root.snapEnabled && pdfTextCtl.ready) {
+                                if (root.snapEnabled)
+                                    id = root.editCtl.addSnappedTextBox(pageCell.index, xPt, yPt,
+                                                                       pts.width, pts.height)
+                                if (id < 0 && root.snapEnabled && pdfTextCtl.ready) {
                                     var lines = root._snapLines(pageCell.index)
                                     for (var i = 0; i < lines.length; i++) {
                                         var ly = lines[i].y * pts.height
@@ -2141,7 +2310,9 @@ Item {
                                 pageIndex: (root.editCtl.viewPageCount,
                                             root.editCtl.viewPageKey(pageCell.index))
                                 viewIndex: pageCell.index
-                                pageScale: pageCell.pts.width > 0
+                                //  Jede Seite traegt ein Delegate je Notiz des Dokuments; fremde stehen still, sonst setzte
+                                //  jedes Zoom-Bild alle Notizen aller geladenen Seiten neu.
+                                pageScale: onThisPage && pageCell.pts.width > 0
                                            ? pageImg.width / pageCell.pts.width : 1
                                 pageWPt: Math.max(1, pageCell.pts.width)
                                 pageHPt: Math.max(1, pageCell.pts.height)
@@ -2235,6 +2406,26 @@ Item {
             acceptedButtons: Qt.NoButton
             z: 1
             onWheel: (wheel) => root.wheelPages(wheel)
+        }
+
+        // Die Ebene liest die Box auch aus einem nicht mehr gezeichneten Delegate; ohne sie verschwand die Notiz mitten im Zug.
+        Item {
+            anchors.fill: pages
+            clip: true
+            z: 2
+            visible: root._dragBox !== null
+            ShaderEffectSource {
+                id: dragGhost
+                // Rand fuer Griffe und Post-it-Schatten, die ueber die Box hinausragen.
+                readonly property real m: root._dragBox ? Math.ceil(Math.max(6, 4 * root._dragBox.pageScale)) : 0
+                sourceItem: root._dragBox
+                hideSource: root._dragBox !== null
+                sourceRect: root._dragBox ? Qt.rect(-m, -m, root._dragBox.width + 2 * m, root._dragBox.height + 2 * m)
+                                          : Qt.rect(0, 0, 0, 0)
+                width: sourceRect.width
+                height: sourceRect.height
+                opacity: root._dragBox ? root._dragBox.opacity : 1
+            }
         }
 
         // Thumbnail-Leiste als Overlay links - kein Seiten-Reflow.

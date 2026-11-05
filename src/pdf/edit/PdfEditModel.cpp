@@ -43,6 +43,9 @@ QVariant PdfEditModel::data(const QModelIndex& index, int role) const {
     case MarkupStyleRole: return b.markupStyle;
     case ImagePathRole:  return b.imagePath;
     case TrackRole:      return static_cast<int>(b.track);
+    case PadLRole:       return b.padLPt;
+    case PadTRole:       return b.padTPt;
+    case InCellRole:     return b.inCell;
     default:             return {};
     }
 }
@@ -76,6 +79,9 @@ QHash<int, QByteArray> PdfEditModel::roleNames() const {
         { MarkupStyleRole, "markupStyle"   },
         { ImagePathRole,  "imagePath"     },
         { TrackRole,      "trackState"    },
+        { PadLRole,       "padLPt"        },
+        { PadTRole,       "padTPt"        },
+        { InCellRole,     "inCell"        },
     };
     return names;
 }

@@ -46,6 +46,9 @@ struct PdfAnnotation {
 
     qreal  fontSizePt = 0.0;              // 0 = „automatisch" bzw. nicht angegeben
     QColor textColor;
+    // FreeText: linker und oberer Textabstand; negativ = der uebliche Rand aus der Linienbreite.
+    qreal  padLeft = -1.0;
+    qreal  padTop  = -1.0;
 
     QVector<QVector<QPointF>> inkPaths;
     QVector<QPointF> line;

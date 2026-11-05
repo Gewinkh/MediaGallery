@@ -857,6 +857,7 @@ QVariantMap ImageEditController::annInfo(int id) const {
     m.insert(QStringLiteral("textColor"),      a->color);
     m.insert(QStringLiteral("highlightColor"), a->highlight);
     m.insert(QStringLiteral("hasHighlight"),   a->highlight.alpha() > 0);
+    m.insert(QStringLiteral("paperSet"),       a->highlight.rgba() != 0);
     m.insert(QStringLiteral("alignment"),      a->alignment);
     m.insert(QStringLiteral("vAlign"),         a->vAlign);
     return m;
@@ -876,6 +877,7 @@ QVariantMap ImageEditController::defaultInfo() const {
     m.insert(QStringLiteral("textColor"),      m_textTpl.color);
     m.insert(QStringLiteral("highlightColor"), m_textTpl.highlight);
     m.insert(QStringLiteral("hasHighlight"),   m_textTpl.highlight.alpha() > 0);
+    m.insert(QStringLiteral("paperSet"),       m_textTpl.highlight.rgba() != 0);
     m.insert(QStringLiteral("alignment"),      m_textTpl.alignment);
     m.insert(QStringLiteral("vAlign"),         m_textTpl.vAlign);
     return m;

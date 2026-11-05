@@ -624,6 +624,13 @@ void AppSettings::setPdfEditTextSticky(bool v) {
     m_settings.setValue("pdfedit/textSticky", v);
 }
 
+bool AppSettings::pdfNotesOpaque() const {
+    return m_settings.value("pdfedit/notesOpaque", false).toBool();
+}
+void AppSettings::setPdfNotesOpaque(bool v) {
+    m_settings.setValue("pdfedit/notesOpaque", v);
+}
+
 bool AppSettings::docxSaveDirect() const {
     return m_settings.value("docx/saveDirect", true).toBool();
 }

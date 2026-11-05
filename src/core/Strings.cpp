@@ -692,6 +692,7 @@ static const QMap<StringKey, QString> s_de = {
     { StringKey::PdfEditPanelPosLabel,     "Position der Text-Eigenschaften" },
     { StringKey::PdfEditPanelPosRight,     "Rechts (Seitenleiste)" },
     { StringKey::PdfEditPanelPosTop,       "Oben (Leiste wie Word)" },
+    { StringKey::PdfNotesOpaqueOption,     "Notizen deckend weiß statt durchsichtig (gilt auch für bestehende)" },
 
     { StringKey::CreateFileBtn,            "Erstellen" },
     { StringKey::CreateFileTitle,          "Neue Datei erstellen" },
@@ -1780,6 +1781,7 @@ static const QMap<StringKey, QString> s_en = {
     { StringKey::PdfEditPanelPosLabel,     "Text properties position" },
     { StringKey::PdfEditPanelPosRight,     "Right (side panel)" },
     { StringKey::PdfEditPanelPosTop,       "Top (Word-style bar)" },
+    { StringKey::PdfNotesOpaqueOption,     "Opaque white notes instead of transparent (also existing ones)" },
 
     { StringKey::CreateFileBtn,            "Create" },
     { StringKey::CreateFileTitle,          "Create new file" },

@@ -156,7 +156,7 @@ Item {
         opSlider.value = a
     }
     function applyOpacity(v) {
-        const base = panel.info.hasHighlight ? panel.info.highlightColor : panel.defaultPaper
+        const base = panel.info.paperSet === true ? panel.info.highlightColor : panel.defaultPaper
         panel.ctl.setAnnHighlight(panel.targetId, Qt.rgba(base.r, base.g, base.b, v))
     }
     Connections {
@@ -296,10 +296,10 @@ Item {
                             ColorPicker {
                                 showAlpha: true
                                 title: App.uiText(App.language, "PdfEditHighlightLabel")
-                                selectedColor: panel.info.hasHighlight ? panel.info.highlightColor : panel.defaultPaper
+                                selectedColor: panel.info.paperSet === true ? panel.info.highlightColor : panel.defaultPaper
                                 onColorPicked: (c) => {
                                     panel.ctl.setAnnHighlight(panel.targetId, c)
-                                    selectedColor = Qt.binding(() => panel.info.hasHighlight ? panel.info.highlightColor : panel.defaultPaper)
+                                    selectedColor = Qt.binding(() => panel.info.paperSet === true ? panel.info.highlightColor : panel.defaultPaper)
                                 }
                             }
                             Rectangle {

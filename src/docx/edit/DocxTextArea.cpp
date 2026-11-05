@@ -72,7 +72,10 @@ void DocxTextArea::syncCaretBlink() {
     update();
 }
 
-DocxTextArea::~DocxTextArea() = default;
+// ~QQuickItem meldet den Fokusverlust noch; der Ruf erreichte sonst Mitglieder, die dann schon zerstoert sind.
+DocxTextArea::~DocxTextArea() {
+    disconnect(this, &QQuickItem::activeFocusChanged, this, &DocxTextArea::syncCaretBlink);
+}
 
 void DocxTextArea::setCtl(DocxEditController* c) {
     if (m_ctl == c) return;

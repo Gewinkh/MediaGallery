@@ -298,17 +298,20 @@ QByteArray appearanceOps(const mg::PdfAnnotation& a, qreal w, qreal h,
             o += num(lw/2) + " " + num(lw/2) + " " + num(qMax(0.0, w - lw))
                + " " + num(qMax(0.0, h - lw)) + " re\nS\n";
         }
-        const qreal pad = 2.0 + lw;
-        const QVector<QString> lines = wrapText(a.contents, qMax(1.0, w - 2*pad), size);
-        o += "q\n" + num(pad) + " " + num(pad) + " " + num(qMax(0.0, w - 2*pad))
-           + " " + num(qMax(0.0, h - 2*pad)) + " re\nW\nn\n";     // beschneiden
+        const qreal pad  = 2.0 + lw;
+        const qreal padL = a.padLeft >= 0.0 ? a.padLeft : pad;
+        const qreal padT = a.padTop  >= 0.0 ? a.padTop  : pad;
+        const QVector<QString> lines = wrapText(a.contents, qMax(1.0, w - padL - pad), size);
+        const qreal clipL = qMin(pad, padL), clipT = qMin(pad, padT);
+        o += "q\n" + num(clipL) + " " + num(pad) + " " + num(qMax(0.0, w - clipL - pad))
+           + " " + num(qMax(0.0, h - clipT - pad)) + " re\nW\nn\n";     // beschneiden
         o += "BT\n/MGF " + num(size) + " Tf\n";
         o += rgbOps(a.textColor.isValid() ? a.textColor : QColor(Qt::black)) + " rg\n";
         const qreal lead = size * 1.16;
-        qreal y = h - pad - size * 0.85;
+        qreal y = h - padT - size * 0.85;
         for (const QString& l : lines) {
             if (y < -lead) break;
-            o += "1 0 0 1 " + num(pad) + " " + num(y) + " Tm\n";
+            o += "1 0 0 1 " + num(padL) + " " + num(y) + " Tm\n";
             o += parenString(l.toLatin1()) + " Tj\n";
             y -= lead;
         }

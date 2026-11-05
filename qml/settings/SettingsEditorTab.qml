@@ -283,6 +283,21 @@ Item {
                     }
                 }
 
+                CheckBox {
+                    id: notesOpaque
+                    text: App.uiText(App.language, "PdfNotesOpaqueOption")
+                    checked: PdfEdit.notesOpaque
+                    onToggled: PdfEdit.notesOpaque = checked
+                    topPadding: 6
+                    contentItem: Text {
+                        text: notesOpaque.text
+                        color: App.themeTextPrimary
+                        leftPadding: notesOpaque.indicator.width + 6
+                        verticalAlignment: Text.AlignVCenter
+                        wrapMode: Text.WordWrap
+                    }
+                }
+
                 Label {
                     text: App.uiText(App.language, "SettingsPdfPageEditLabel")
                     color: App.themeTextPrimary

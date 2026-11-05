@@ -158,7 +158,14 @@ $env:MG_HTML_EIGEN=1; .\build\Release\MediaGallery.exe
 ## Changelog
 
 ### Latest
-- **Improvement**: **Interface**: Icons are now drawn directly, reducing memory usage by about 7 MB in the gallery and 16 MB with a PDF open.
+- **Fix**: **PDF and image editor**: Fully transparent note backgrounds now retain their assigned colour.
+- **Improvement**: **PDF**: Text notes are positioned more accurately on lines, in tables and in empty areas. Notes inside table cells fill the cell while keeping its lines visible.
+- **New**: **PDF**: Multiple notes can be selected, copied, cut and deleted together. Pasted notes appear at the mouse position.
+- **Change**: **PDF**: Notes are transparent by default, with an option for opaque white backgrounds.
+- **Fix**: **PDF**: Notes can now be dragged across multiple pages without disappearing, including while scrolling.
+- **Improvement**: **PDF**: `Ctrl+A` now selects and copies text from all pages.
+- **Fix**: **Audio**: Unreadable files no longer get stuck playing or trigger repeated error messages.
+- **Fix**: **Word editor**: Closing a document while typing no longer crashes the app.
 
 ---
 

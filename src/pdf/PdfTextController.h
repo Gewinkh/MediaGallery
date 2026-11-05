@@ -53,6 +53,12 @@ public:
 
     Q_INVOKABLE QVariantList selectAllOnPage(int page);
 
+    // Strg+A: der Text ALLER Seiten wird stueckweise gesammelt und gilt erst danach als Auswahl - 800 Seiten
+    // am Stueck hielten die Oberflaeche an. Bis dahin bleibt die bisherige Auswahl stehen.
+    Q_INVOKABLE void selectAllDocument();
+    // Rechtecke des ganzen Seitentexts, ohne die Auswahl anzufassen (Markierung der uebrigen Seiten).
+    Q_INVOKABLE QVariantList pageTextRects(int page) const;
+
     Q_INVOKABLE void clearSelection();
 
     // Zeilenfang: die erkannten Textzeilen einer Seite als normalisierte Rechtecke, aus `getAllText()` nach
@@ -91,6 +97,9 @@ signals:
 private:
     QVariantList applySelection(const QPdfSelection& sel, int page,
                                 double pageWidthPts, double pageHeightPts);
+    static QVariantList normRects(const QPdfSelection& sel, double pageWidthPts, double pageHeightPts);
+    void stepGatherAll();
+    void stopGatherAll();
 
     // Erkannte Textzeilen einer Seite in PDF-PUNKTEN (gemeinsamer Kern von
     // textLineRects und replaceProbe): Fragment-Rechtecke aus getAllText()
@@ -107,6 +116,10 @@ private:
     QThreadPool   m_pool;
 
     QString       m_selText;         // zuletzt markierter Text
+    QTimer        m_allTimer;
+    QString       m_allBuf;
+    int           m_allPage = -1;
+    QPdfDocument* m_allDoc  = nullptr;  // Dokument, zu dem die gesammelten Seiten gehoeren
 
     // EIN Treffer = EINE Fundstelle, auch wenn sie über mehrere Rechtecke gezeichnet wird: PDFium liefert je
     // Fundstelle so viele, wie sie Zeige-Operatoren berührt, und manche Erzeuger setzen JEDES Zeichen einzeln -

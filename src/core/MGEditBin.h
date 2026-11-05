@@ -36,6 +36,7 @@ enum Key : std::uint16_t {
     k_align, k_valign, k_anchor,
     k_src, k_key, k_doc, k_rot, k_at, k_del,
     k_spaltenbreiten, k_spaltenformate,
+    k_padl, k_padt, k_cell,
     k_Anzahl
 };
 

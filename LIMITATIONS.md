@@ -250,6 +250,22 @@ Why: the app reads them straight from the file. Files that store their parts
 compressed (common since PDF 1.5) or encrypted hide them; page display, text and
 search are not affected.
 
+**The text tool fits notes into the page only on unchanged, unrotated pages.**
+Why: it reads the page's own text and lines from the file. On inserted, imported
+or rotated pages, on encrypted files and on pages whose fonts lack width
+information, the note snaps to the nearest text line as before.
+
+**A frame drag selects notes on one page only.**
+Why: the frame stays inside the page where it started. Notes on the next page
+can be added with `Ctrl`+click or a second `Ctrl`+drag.
+
+**Dragging one of several selected notes moves only that note.**
+Why: moving a group is not built yet. Cut and paste at the pointer moves the
+whole group.
+
+**Undo brings deleted notes back, but not their selection.**
+Workaround: select them again with a frame.
+
 **Selecting text on a page rotated by 90 or 180 degrees loses the last
 character.**
 Why: a bug in Qt 6.11; the text itself is correct.

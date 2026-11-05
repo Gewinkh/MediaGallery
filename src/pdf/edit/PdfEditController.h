@@ -9,6 +9,7 @@
 #include <QVariantMap>
 #include <QVariantList>
 #include <QHash>
+#include <QSet>
 #include <QRectF>
 #include <QPointF>
 #include <QVector>
@@ -23,6 +24,7 @@
 #include "pdf/edit/PdfEditModel.h"
 #include "pdf/edit/PdfEditTypes.h"
 #include "pdf/edit/PdfTextLayout.h"     // mg::PdfGlyph (Caret-Layout der Seite)
+#include "pdf/edit/PdfNoteSnap.h"       // mg::PdfNoteSnap (Notizfang)
 #include "pdf/edit/PdfFormFields.h"     // mg::PdfFormField (AcroForm-Felder)
 #include "pdf/edit/PdfAnnotations.h"    // mg::PdfAnnotation (übernommene Notizen)
 #include "pdf/edit/PdfContentEditor.h"  // mg::PdfTextEdit (Schwärzungen)
@@ -54,6 +56,11 @@ private:
     // QML sperrt damit Entf - beim Tippen gehoert die Taste dem TextEdit.
     Q_PROPERTY(bool textEditing READ textEditing NOTIFY textEditingChanged)
     Q_PROPERTY(bool hasClipboard READ hasClipboard NOTIFY clipboardChanged)
+    // Mehrfachauswahl: selectedId bleibt die fuehrende Box (Toolbar, Griffe), die Menge steht in isSelected().
+    Q_PROPERTY(int selectedCount READ selectedCount NOTIFY selectionSetChanged)
+    Q_PROPERTY(int selectionSetRev READ selectionSetRev NOTIFY selectionSetChanged)
+    // false = Notizen ohne Papier (Standard), true = deckend weiss.
+    Q_PROPERTY(bool notesOpaque READ notesOpaque WRITE setNotesOpaque NOTIFY notesOpaqueChanged)
     Q_PROPERTY(bool panelOnTop READ panelOnTop WRITE setPanelOnTop NOTIFY panelOnTopChanged)
     Q_PROPERTY(bool textToolSticky READ textToolSticky WRITE setTextToolSticky NOTIFY textToolStickyChanged)
 
@@ -98,7 +105,7 @@ private:
     Q_PROPERTY(qreal noteShadowDyPt READ noteShadowDyPt CONSTANT)
 
 public:
-    static constexpr qreal kBoxPaddingPt   = 3.0;
+    static constexpr qreal kBoxPaddingPt   = kPdfBoxPadPt;
     static constexpr qreal kMinBoxWPt      = 24.0;
     static constexpr qreal kMinBoxHPt      = 14.0;
     // 150 dpi: A4 ~ 1240x1754 px, transient genau ein Bild.
@@ -147,6 +154,10 @@ public:
     bool busy() const { return m_busy; }
     bool textEditing() const { return m_textEditId >= 0; }
     bool hasClipboard() const { return m_hasClip; }
+    int  selectedCount() const { return int(m_selIds.size()); }
+    int  selectionSetRev() const { return m_selSetRev; }
+    bool notesOpaque() const;
+    void setNotesOpaque(bool v);
     bool panelOnTop() const;
     void setPanelOnTop(bool v);
     bool textToolSticky() const;
@@ -258,9 +269,31 @@ public:
     // Intern (Kommando redo/undo) - nicht aus QML rufen.
     void applyPlan(const QVector<PdfPlanPage>& plan);
 
-    // paste fuegt eine versetzte Kopie auf derselben Seite ein.
+    // Kopieren/Ausschneiden/Loeschen wirken auf die ganze Auswahl, jeweils EIN Undo-Schritt.
     Q_INVOKABLE void copySelected();
+    Q_INVOKABLE void cutSelected();
+    Q_INVOKABLE void removeSelected();
+    // paste: versetzt um 14 pt neben das Original. pasteAt: die linke obere Ecke der Gruppe an den Mauszeiger.
     Q_INVOKABLE void paste();
+    Q_INVOKABLE void pasteAt(int page, qreal xPt, qreal yPt, qreal pageWPt, qreal pageHPt);
+
+    Q_INVOKABLE bool isSelected(int id) const { return m_selIds.contains(id); }
+    // Strg+Klick: hinzu oder heraus. focusSelected: fuehrende Box wechseln, ohne die Menge aufzuloesen.
+    Q_INVOKABLE void toggleSelected(int id);
+    Q_INVOKABLE void focusSelected(int id);
+    // Aufziehen wie in der Galerie: additiv = die Auswahl beim Start bleibt und wird ergaenzt.
+    Q_INVOKABLE void beginBand(bool additive);
+    Q_INVOKABLE void updateBand(int page, qreal xPt, qreal yPt, qreal wPt, qreal hPt);
+    Q_INVOKABLE void endBand();
+
+    // Bestehende Notizen mit Standardpapier (ohne, weiss, das fruehere Gelb) folgen der Einstellung.
+    Q_INVOKABLE void applyNotePaper();
+
+    // Notizfang aus Glyphen und Linien der Seite. prepare liest asynchron; ohne fertiges Layout liefert
+    // addSnappedTextBox -1 und QML faellt auf den Zeilenfang zurueck.
+    Q_INVOKABLE void prepareNoteSnap(int page);
+    Q_INVOKABLE int  addSnappedTextBox(int page, qreal xPt, qreal yPt, qreal pageWPt, qreal pageHPt);
+    void noteSnapFinished(int page, std::shared_ptr<const mg::PdfNoteSnap> snap, int generation);
 
     Q_INVOKABLE void beginGeometryEdit(int id);
     Q_INVOKABLE void updateGeometry(int id, qreal xPt, qreal yPt, qreal wPt, qreal hPt);
@@ -383,6 +416,8 @@ signals:
     void busyChanged();
     void textEditingChanged();
     void clipboardChanged();
+    void selectionSetChanged();
+    void notesOpaqueChanged();
     void panelOnTopChanged();
     void textToolStickyChanged();
     void exportLosslessChanged();
@@ -565,8 +600,22 @@ private:
     int     m_drawPage   = 0;           // Seite der Zeichen-Session
     QPointF m_drawStart;                // Startpunkt (Rechteck/Ellipse/Pfeil)
 
-    PdfEditBox m_clip;
+    QVector<PdfEditBox> m_clip;
     bool       m_hasClip = false;
+    QVector<int> m_selIds;              // ganze Auswahl, fuehrende Box eingeschlossen
+    QVector<int> m_bandBase;            // Auswahl beim Start eines additiven Aufziehens
+    int        m_selSetRev = 0;
+    void setSelection(const QVector<int>& ids, int primary);
+    QColor standardPaper() const;
+    static bool isStandardPaper(const QColor& c);
+    void removeBoxes(const QVector<int>& ids);
+    void pasteBoxes(int page, const QPointF* at, qreal pageWPt, qreal pageHPt);
+
+    // Notizfang je Ansichts-Seite; klein (Laeufe, Luecken, Linien), wenige Seiten im Speicher.
+    QHash<int, std::shared_ptr<const mg::PdfNoteSnap>> m_snap;
+    QSet<int>  m_snapPending;
+    int        m_snapGen = 0;
+    void clearNoteSnap();
     PdfEditBox m_textTpl;
     // Getrennt von den Post-its, damit sich beide Werkzeuge ihre Stile nicht
     // gegenseitig ueberschreiben.

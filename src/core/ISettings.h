@@ -239,6 +239,9 @@ public:
     // false = nach einer neuen Textbox zurueck zur Auswahl; true = das Text-Werkzeug bleibt fuer weitere Boxen.
     virtual bool pdfEditTextSticky() const = 0;
     virtual void setPdfEditTextSticky(bool v) = 0;
+    // Neue und bestehende Standard-Notizen: false = ohne Papier, true = deckend weiss.
+    virtual bool pdfNotesOpaque() const = 0;
+    virtual void setPdfNotesOpaque(bool v) = 0;
 
     // true (Standard): "Text ersetzen" schreibt vektoriell in die Textebene; wo das nicht sicher geht, Raster-Export.
     virtual bool pdfExportLossless() const = 0;
