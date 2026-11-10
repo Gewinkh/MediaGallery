@@ -158,16 +158,9 @@ $env:MG_HTML_EIGEN=1; .\build\Release\MediaGallery.exe
 ## Changelog
 
 ### Latest
-- **Improvement**: **Images**: Panning and zooming large photos is smoother, faster and uses less memory.
-- **Fix**: **PDF**: Fixed drawing issues with the edit ribbon and page rendering during zooming and resizing.
-- **Fix**: **PDF**: The page sidebar now updates immediately after page changes, even in large documents.
-- **Improvement**: **PDF**: Slow-loading pages display a loading indicator instead of a blank sheet.
-- **Fix**: **App**: Open PDFs no longer cause unnecessary background redraws. Idle CPU usage is reduced.
-- **Fix**: **App**: Improved graphics backend recovery and selection. High-refresh monitors now run smoothly alongside 60 Hz displays.
-- **Improvement**: **App**: Gallery scrolling is smoother and uses less CPU in software mode.
-- **Improvement**: **Markdown**: Large tables now scroll more smoothly and use less memory.
-- **Change**: **PDF and image editor**: Notes are transparent by default. Paper colour and opacity can be configured per note and are preserved after reopening.
-- **Improvement**: **Image editor**: The toolbar now includes text, paper, outline and fill colours and matches the PDF editor layout.
+- **Improvement**: **Images**: Large photos open, pan and zoom faster, with sharper rendering and lower CPU and memory usage.
+- **Fix**: **Images**: Switching pictures and returning to fit view no longer causes blurry intermediate images or distortion.
+- **Improvement**: **Image editor**: The text tool can now automatically return to Select mode after placing a note or remain active for multiple notes.
 
 ---
 

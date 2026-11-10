@@ -35,21 +35,34 @@ Item {
     // sichtbar; ginge `docReady` auf false, verschwände die Leiste und der Inhalt spränge 40 px.
     readonly property bool docReady: img.status === TiledImage.Ready || _everReady
     property bool _everReady: false
-    readonly property int  natW: editCtl.imageWidth  > 0 ? editCtl.imageWidth  : img.implicitWidth
-    readonly property int  natH: editCtl.imageHeight > 0 ? editCtl.imageHeight : img.implicitHeight
+    // Beim Bildwechsel steht das alte Bild unbewegt, bis das neue gezeigt wird (`img.current`): Mass, Massstab und
+    // Leiste bleiben solange die des alten.
+    property bool holdingOld: false
+    property int  _heldW: 0
+    property int  _heldH: 0
+    readonly property int  srcW: editCtl.imageWidth  > 0 ? editCtl.imageWidth  : img.implicitWidth
+    readonly property int  srcH: editCtl.imageHeight > 0 ? editCtl.imageHeight : img.implicitHeight
+    readonly property int  natW: holdingOld ? _heldW : srcW
+    readonly property int  natH: holdingOld ? _heldH : srcH
     readonly property real dispW: Math.max(1, natW * dispScale)
     readonly property real dispH: Math.max(1, natH * dispScale)
     readonly property real fitScale: (natW > 0 && natH > 0 && view.width > 0 && view.height > 0)
                                      ? Math.min(view.width / natW, view.height / natH) : 1.0
     // Ein 27-MP-Foto sind 108 MB im Speicher, davon zeigt ein 1400 px breites Fenster nicht ein Zwanzigstel.
     // Dekodiert wird in STUFEN: Zoomen innerhalb einer Stufe dekodiert nicht neu, bei 100 % ist es das volle Bild.
-    readonly property int decodeWant: {
+    readonly property real decodeWant: {
         if (editCtl.imageWidth <= 0 || editCtl.imageHeight <= 0) return 0
-        if (natW <= 0 || natH <= 0) return 0
-        if (view.width <= 0 || view.height <= 0) return Math.min(1024, Math.max(natW, natH))
-        const nat  = Math.max(natW, natH)
-        const need = Math.max(dispW, dispH)
+        if (srcW <= 0 || srcH <= 0) return 0
+        if (view.width <= 0 || view.height <= 0) return Math.min(1024, Math.max(srcW, srcH))
+        const nat  = Math.max(srcW, srcH)
+        const fit  = Math.min(view.width / srcW, view.height / srcH)
+        //  Waehrend das alte Bild steht, wird das neue eingepasst geladen.
+        const s    = holdingOld ? fit : dispScale
+        const need = nat * s
         if (need >= nat) return nat
+        //  Liegt das ganze Bild in der Ansicht, genau in Anzeigegroesse (wie dispW gerechnet): es wird 1:1 gezeigt.
+        //  Eine Stufe knapp darueber wurde ein zweites Mal abgetastet und sichtbar weicher.
+        if (s <= fit) return need
         let stage = 1024
         while (stage < need) stage *= 2
         return Math.min(stage, nat)
@@ -58,7 +71,7 @@ Item {
     // Was WIRKLICH dekodiert wird - gegen "beim Ziehen am Fensterrand ist das Bild kurz weg" (gemessen: 2
     // Stufenwechsel und 24 % der Messpunkte ohne fertiges Bild in EINEM Zug). Wächst nur, folgt der Rechnung erst
     // nach Ruhe. ZUGEWIESEN statt gebunden, sonst meldet Qt den Ring decodeDim -> sourceSize -> natW als Schleife.
-    property int decodeDim: 0
+    property real decodeDim: 0
 
     onDecodeWantChanged: {
         if (root.decodeDim <= 0) { root.decodeDim = root.decodeWant; return }
@@ -85,13 +98,19 @@ Item {
     // Kerns je Bild); in Bewegung ungefiltert, in Ruhe wieder glatt.
     readonly property bool _rough: GraphicsInfo.api === GraphicsInfo.Software && moveQuiet.running
     Timer { id: moveQuiet; interval: 150 }
-    function _moved() { if (GraphicsInfo.api === GraphicsInfo.Software) moveQuiet.restart() }
-    onDispScaleChanged: root._moved()
+    // Zoomschritte zaehlen nicht: jeder zeigt ein stehendes Bild, ungefiltert sah es 150 ms lang "frittiert" aus.
+    property bool _zoomStep: false
+    function _moved() { if (GraphicsInfo.api === GraphicsInfo.Software && !_zoomStep) moveQuiet.restart() }
 
     function commitEditing() { root.editCommitRev++ }
     function startImageExport() { root.editCtl.exportImage() }
     function release() {
         root.commitEditing()
+        //  Beim Blaettern folgt gleich die naechste Quelle: das alte Bild haelt sein Mass. Sonst galt kurz die Stufe
+        //  als Bildgroesse, die Flaeche sprang hin und zurueck, und Software zeichnete es ungefiltert ("frittiert").
+        root._heldW = root.natW
+        root._heldH = root.natH
+        root.holdingOld = root.docReady && root.natW > 0 && root.natH > 0
         root.editCtl.releaseDocument()
         img.source = ""
     }
@@ -104,27 +123,53 @@ Item {
         const cx = view.contentX + view.width / 2
         const cy = view.contentY + view.height / 2
         root._fitMode = false
+        root._zoomStep = true
         root.dispScale = ns
         view.contentX = Math.max(0, Math.min(cx * ratio - view.width / 2,  Math.max(0, view.contentWidth  - view.width)))
         view.contentY = Math.max(0, Math.min(cy * ratio - view.height / 2, Math.max(0, view.contentHeight - view.height)))
+        root._zoomStep = false
     }
     function zoomIn()  { setDispScale(root.dispScale * 1.15) }
     function zoomOut() { setDispScale(root.dispScale / 1.15) }
-    function fitToWindow() { root._fitMode = true; root.dispScale = root.fitScale; view.contentX = 0; view.contentY = 0 }
+    function fitToWindow() {
+        root._fitMode = true
+        root._zoomStep = true
+        root.dispScale = root.fitScale
+        view.contentX = 0
+        view.contentY = 0
+        root._zoomStep = false
+    }
     function actualSize()  { setDispScale(1.0) }
 
-    onFitScaleChanged: if (root._fitMode) root.dispScale = root.fitScale
+    // Folgt dem Fenster beim Ziehen: das ist Bewegung, anders als ein Zoomschritt.
+    onFitScaleChanged: if (root._fitMode) { root.dispScale = root.fitScale; root._moved() }
 
     onSourceChanged: {
+        root._heldW = root.natW
+        root._heldH = root.natH
+        root.holdingOld = root.docReady && root.natW > 0 && root.natH > 0
         root.editCtl.setDocument(source)
         decodeGrow.stop()
         decodeShrink.stop()
-        root._everReady = false
+        if (!root.holdingOld) {
+            root._everReady = false
+            //  Erst einpassen, dann die Stufe waehlen: sonst rechnet sie mit dem Massstab des vorigen Bildes (bis
+            //  zum vollen Bild) und dekodiert nach dem Einpassen ein zweites Mal.
+            root._fitMode = true
+            root.dispScale = root.fitScale
+        }
         root.decodeDim = root.decodeWant
         img.source = source
-        root._fitMode = true
         root.editPanelVisible = false
-        Qt.callLater(root.fitToWindow)
+        if (!root.holdingOld) Qt.callLater(root.fitToWindow)
+    }
+    function _releaseOld() {
+        if (!root.holdingOld) return
+        root._zoomStep = true                       // der Tausch ist ein Sprung, keine Bewegung
+        root._fitMode = true
+        root.holdingOld = false
+        root._zoomStep = false
+        root.fitToWindow()
     }
 
     Rectangle { anchors.fill: parent; color: App.themeBackground }
@@ -165,7 +210,9 @@ Item {
                 viewRect: Qt.rect(view.contentX - imgWrap.x, view.contentY - imgWrap.y, view.width, view.height)
                 //  Beim Stufenwechsel bleibt das alte Bild stehen, bis das neue fertig ist - sonst ist die Flaeche
                 //  waehrenddessen leer ("Bild ist kurz weg").
+                onCurrentChanged: if (current) root._releaseOld()
                 onStatusChanged: {
+                    if (status === TiledImage.Error) { root._releaseOld(); root._everReady = false }
                     if (status !== TiledImage.Ready) return
                     root._everReady = true
                     if (root.editCtl.imageWidth <= 0)
@@ -197,6 +244,7 @@ Item {
                 preventStealing: true
                 cursorShape: Qt.CrossCursor
                 property int _drawId: -1
+                property bool _textAdded: false
                 onPressed: (m) => {
                     root.commitEditing()
                     root.notesVisible = true
@@ -204,6 +252,7 @@ Item {
                     const iy = m.y / root.dispScale
                     if (root.editCtl.tool === 1) {          // Text
                         root._autoEditId = root.editCtl.addText(ix, iy)
+                        _textAdded = root._autoEditId >= 0
                         _drawId = -1
                     } else {                                // Stift/Pfeil/Rechteck/Ellipse
                         _drawId = root.editCtl.beginDraw(root.editCtl.tool - 1, ix, iy)
@@ -213,9 +262,14 @@ Item {
                     if (_drawId >= 0)
                         root.editCtl.updateDraw(_drawId, m.x / root.dispScale, m.y / root.dispScale)
                 }
+                // Ohne den Schalter im Text-Knopf zurueck zur Auswahl; erst beim Loslassen, sonst endete der Druck
+                // in der dann abgeschalteten Flaeche.
                 onReleased: {
                     if (_drawId >= 0) { root.editCtl.endDraw(_drawId); _drawId = -1 }
+                    if (_textAdded && !PdfEdit.textToolSticky) root.editCtl.tool = 0
+                    _textAdded = false
                 }
+                onCanceled: _textAdded = false
             }
 
             ImageEditToolbar {

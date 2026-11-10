@@ -45,7 +45,7 @@ Item {
     readonly property bool interactive: selected && selectTool
     property bool editing: false               // Inline-Textbearbeitung aktiv
 
-    visible: surface ? surface.notesVisible : true
+    visible: surface ? surface.notesVisible && !surface.holdingOld : true
     x: xPx * imgScale
     y: yPx * imgScale
     width:  Math.max(1, wPx * imgScale)

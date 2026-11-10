@@ -402,6 +402,10 @@ add_library(mg_lib STATIC
     src/pdf/extract/PdfPageCopier.cpp
     src/pdf/extract/PdfPageCopier.h
 
+    src/simd/Bilinear.cpp
+    src/simd/Bilinear.h
+    src/simd/Bilinear_plain.cpp
+    src/simd/Bilinear_x86.cpp
     src/simd/Dispatch.cpp
     src/simd/Dispatch.h
     src/simd/FindChar.cpp

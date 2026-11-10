@@ -65,7 +65,7 @@ which. Files without an extension such as `LICENSE`, `README`, `Makefile` or
 **Viewing files**
 - **Fullscreen view** by double click; `->` / `<-` move to the next or previous file, random mode picks one at random. Two seconds after you close or leave a file, the memory it used is given back; a minute after the last file is closed, cached drawing data and unused parts of the interface go back as well (about 12 MB)
 - **True fullscreen** (`F`): hides the window frame and all bars. Moving the mouse to the top edge brings the header back
-- **Images** are decoded only as large as shown and drawn in tiles: with the graphics card they are uploaded piece by piece and no second copy stays in memory; in software mode each zoom level is drawn once, so panning stays smooth and sharp. After zooming back out, the extra memory of the sharper stage is freed within a second
+- **Images** are decoded only as large as shown. A picture that fits the window is decoded at exactly its size on screen and shown pixel for pixel, as sharp as a direct downscale of the full file, in one step on every graphics backend. Zoomed in, it is drawn in tiles: with the graphics card they are uploaded piece by piece and no second copy stays in memory; in software mode each zoom level is drawn once, so panning stays smooth and sharp. In software mode the zoomed picture is computed by the app's own vectorised filter, about a fifth of the CPU of the renderer's. A fast zoom skips the work of stages already overtaken. Zooming back to fit shows the sharp fitted picture at once and keeps using it, without reading the file again, and the extra memory of the zoomed stage is freed within a second. Switching to the next picture keeps the current one unchanged until the new one is ready, then shows it fitted
 - **Document menu** in the header of an open file: date and metadata, source/preview or table/raw file, and the actions of that file type
 - The window title shows folder and file
 - **Split view**: up to four files side by side in one window. Drag the dividers to resize, drag a header to rearrange the layout, `Esc` closes one file
@@ -275,7 +275,7 @@ pages change the PDF directly. `Ctrl+Z` undoes them while the file is open.
 ## Image Editor
 - Opens from the **Edit** button in the image viewer; the original is never changed
 - **Text notes and drawings** with the same tools and formatting as the PDF editor, including tracked changes (the export marks pending deletions in see-through red). The panel on top looks and works like the PDF editor's, with text, paper, outline and fill colours
-- Text notes work like PDF notes: see-through by default, paper colour and opacity are your choice and stay after reopening
+- Text notes work like PDF notes: see-through by default, paper colour and opacity are your choice and stay after reopening; the switch in the lower part of the *T* button is shared with the PDF editor: off (default) returns to the select tool after a new note, on keeps the text tool for the next click
 - Notes are saved next to the image (`<image>.mgedit`)
 - **Export** writes a new image with the notes drawn in, in the same format (JPG stays JPG, PNG stays PNG)
 

@@ -39,6 +39,8 @@ Item {
         property string iconName: ""
         property string tip: ""
         property int    toolValue: 0
+        // Unterer Streifen als Schalter "Text bleibt aktiv", geteilt mit dem PDF-Editor.
+        property bool   hasSwitch: false
         readonly property bool checked: panel.ctl.tool === toolValue
         width: 34; height: 30; radius: 6
         color: checked ? Qt.rgba(App.themeAccent.r, App.themeAccent.g, App.themeAccent.b, 0.30)
@@ -48,6 +50,7 @@ Item {
         // Nur mit Zeichen gebaut: ein leeres Text beobachtet in Qt den Viewport (Kosten bei jeder Verschiebung).
         Loader {
             anchors.centerIn: parent
+            anchors.verticalCenterOffset: tbt.hasSwitch ? -4 : 0
             active: tbt.iconName.length === 0 && tbt.glyph.length > 0
             sourceComponent: Text {
                 text: tbt.glyph
@@ -57,8 +60,29 @@ Item {
         }
         DrawnIcon { anchors.centerIn: parent; name: tbt.iconName; size: 16
                      visible: tbt.iconName.length > 0 }
+        Rectangle {
+            visible: tbt.hasSwitch
+            anchors { bottom: parent.bottom; bottomMargin: 3; horizontalCenter: parent.horizontalCenter }
+            width: 18; height: 7; radius: 3.5
+            color: PdfEdit.textToolSticky
+                   ? App.themeAccent
+                   : Qt.rgba(App.themeTextPrimary.r, App.themeTextPrimary.g, App.themeTextPrimary.b, 0.25)
+            Rectangle {
+                y: 1; width: 5; height: 5; radius: 2.5
+                x: PdfEdit.textToolSticky ? parent.width - width - 1 : 1
+                color: App.themeTextPrimary
+            }
+        }
         HoverHandler { id: tbtHover }
-        TapHandler { onTapped: panel.ctl.tool = tbt.toolValue }
+        TapHandler {
+            onTapped: (point) => {
+                if (tbt.hasSwitch && point.position.y >= tbt.height - 11) {
+                    PdfEdit.textToolSticky = !PdfEdit.textToolSticky
+                    return
+                }
+                panel.ctl.tool = tbt.toolValue
+            }
+        }
         ToolTip.text: tbt.tip; ToolTip.visible: tbtHover.hovered && tbt.tip.length > 0
     }
     component StyleBtn: Rectangle {
@@ -208,7 +232,10 @@ Item {
             Grid {
                 columns: 6; spacing: 6
                 ToolBtn { iconName: "select"; toolValue: 0; tip: App.uiText(App.language, "ImageEditToolSelect") }
-                ToolBtn { glyph: "T";       toolValue: 1; tip: App.uiText(App.language, "ImageEditToolText") }
+                ToolBtn { glyph: "T";       toolValue: 1; hasSwitch: true
+                          tip: App.uiText(App.language, "ImageEditToolText") + "\n"
+                               + App.uiText(App.language, PdfEdit.textToolSticky ? "PdfEditTextStickyOn"
+                                                                                 : "PdfEditTextStickyOff") }
                 ToolBtn { iconName: "pen"; toolValue: 2; tip: App.uiText(App.language, "ImageEditToolPen") }
                 ToolBtn { iconName: "arrow"; toolValue: 3; tip: App.uiText(App.language, "ImageEditToolArrow") }
                 ToolBtn { iconName: "rect"; toolValue: 4; tip: App.uiText(App.language, "ImageEditToolRect") }
@@ -491,7 +518,10 @@ Item {
 
                 Row { spacing: 4; anchors.verticalCenter: parent.verticalCenter
                     ToolBtn { iconName: "select"; toolValue: 0; tip: App.uiText(App.language, "ImageEditToolSelect") }
-                    ToolBtn { glyph: "T";       toolValue: 1; tip: App.uiText(App.language, "ImageEditToolText") }
+                    ToolBtn { glyph: "T";       toolValue: 1; hasSwitch: true
+                              tip: App.uiText(App.language, "ImageEditToolText") + "\n"
+                                   + App.uiText(App.language, PdfEdit.textToolSticky ? "PdfEditTextStickyOn"
+                                                                                     : "PdfEditTextStickyOff") }
                     ToolBtn { iconName: "pen"; toolValue: 2; tip: App.uiText(App.language, "ImageEditToolPen") }
                     ToolBtn { iconName: "arrow"; toolValue: 3; tip: App.uiText(App.language, "ImageEditToolArrow") }
                     ToolBtn { iconName: "rect"; toolValue: 4; tip: App.uiText(App.language, "ImageEditToolRect") }
