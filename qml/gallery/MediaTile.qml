@@ -24,6 +24,7 @@ Rectangle {
     property string modeTag: ""
 
     property bool   covered: false
+    property bool   roughThumb: false
 
     // Der ZUSTAND kommt aus dem Modell, die ABSICHT geht als Signal an die Galerie: nur die kennt die Ansichts-
     // Reihenfolge, und ein Umschalt-Bereich meint "von dort bis hier" in genau dieser Ordnung.
@@ -116,6 +117,7 @@ Rectangle {
         sourceSize.width: App.tileWidth
         sourceSize.height: App.tileHeight
         mipmap: true
+        smooth: !tile.roughThumb
     }
 
     Column {

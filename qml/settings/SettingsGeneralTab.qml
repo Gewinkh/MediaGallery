@@ -410,11 +410,15 @@ Item {
                         Layout.fillWidth: true
                     }
 
-                    // Hinweis wenn Software-Fallback automatisch aktiviert wurde
+                    // Ein Rückfall sagt, welches Backend ausfiel; eine eigene Wahl von Software nur, was sie kostet.
                     Label {
-                        visible: Settings.rhiBackend === "software"
-                        text: App.uiText(App.language, "SettingsGenSoftwareWarning")
-                        color: "#e8a000"
+                        visible: Settings.rhiFallbackFrom !== "" || Settings.rhiBackend === "software"
+                        text: Settings.rhiFallbackFrom !== ""
+                              ? App.uiText(App.language, "SettingsGenSoftwareWarning")
+                                    .arg(root.backendLabel(Settings.rhiFallbackFrom))
+                                    .arg(root.backendLabel(Settings.rhiBackend))
+                              : App.uiText(App.language, "SettingsGenSoftwareHint")
+                        color: Settings.rhiFallbackFrom !== "" ? "#e8a000" : App.themeTextMuted
                         font.pixelSize: 11
                         wrapMode: Text.WordWrap
                         Layout.fillWidth: true

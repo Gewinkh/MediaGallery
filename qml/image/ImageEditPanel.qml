@@ -27,7 +27,8 @@ Item {
     readonly property bool showStroke: hasSel ? (sel.isStroke === true || sel.isShape === true) : tool >= 2
     readonly property bool showFill:   hasSel ? sel.isShape : (tool === 4 || tool === 5)
     readonly property bool showAny:    showText || showStroke || showFill
-    readonly property color defaultPaper: "#FEF39B"
+    // Notiz ohne Papier: die Farbwahl zeigt durchsichtiges Weiss, der Deckkraft-Regler fuellt also weiss.
+    readonly property color defaultPaper: "#00ffffff"
 
     implicitWidth: horizontal ? 0 : 320
     implicitHeight: horizontal ? 62 : 0
@@ -149,11 +150,17 @@ Item {
         let idx = 0
         for (let i = 0; i < fontBox.count; i++)
             if (fontBox.textAt(i) === panel.info.fontFamily) { idx = i; break }
-        fontBox.currentIndex = idx
-        sizeBox.value  = Math.round(panel.info.fontSizePx)
-        lwBox.value    = Math.round(panel.info.lineWidth)
+        fontBox.currentIndex  = idx
+        fontBoxH.currentIndex = idx
+        const s = Math.round(panel.info.fontSizePx)
+        sizeBox.value  = s
+        sizeBoxH.value = s
+        const lw = Math.round(panel.info.lineWidth)
+        lwBox.value  = lw
+        lwBoxH.value = lw
         const a = panel.info.hasHighlight ? panel.info.highlightColor.a : 0
-        opSlider.value = a
+        opSlider.value  = a
+        opSliderH.value = a
     }
     function applyOpacity(v) {
         const base = panel.info.paperSet === true ? panel.info.highlightColor : panel.defaultPaper
@@ -449,86 +456,240 @@ Item {
         }
     }
 
-    //  VARIANTE B - obere Leiste („wie Word"; horizontal:true)
+    //  VARIANTE B - obere Leiste, gleich gebaut wie die des PDF-Editors: ohne Beschriftungen, alles mittig in einer Reihe.
     Rectangle {
         anchors.fill: parent
         visible: panel.horizontal
-        color: App.themeToolbarBg
+        color: App.themeSidebarBg
         Rectangle { anchors { left: parent.left; right: parent.right; bottom: parent.bottom }
                     height: 1; color: App.themeBorder }
         MouseArea { anchors.fill: parent; onWheel: (w) => { w.accepted = true } }
 
         Flickable {
-            anchors.fill: parent
-            anchors.leftMargin: 10; anchors.rightMargin: 40
+            id: ribbonFlick
+            anchors { left: parent.left; right: closeBtnH.left; top: parent.top; bottom: parent.bottom }
+            anchors.leftMargin: 12; anchors.rightMargin: 8
             contentWidth: ribbon.implicitWidth; contentHeight: height
             clip: true
+            boundsBehavior: Flickable.StopAtBounds
+            flickableDirection: Flickable.HorizontalFlick
+
+            SmoothWheelArea {
+                flickable: ribbonFlick
+                horizontal: true
+                requiredModifier: Qt.ControlModifier
+            }
+            ScrollBar.horizontal: ScrollBar {
+                policy: ribbonFlick.contentWidth > ribbonFlick.width ? ScrollBar.AlwaysOn : ScrollBar.AlwaysOff
+                height: 4; opacity: 0.6
+            }
+
             Row {
                 id: ribbon
-                height: parent.height; spacing: 12
-                Column { anchors.verticalCenter: parent.verticalCenter; spacing: 2
-                    Row { spacing: 4
-                        ToolBtn { iconName: "select"; toolValue: 0 }
-                        ToolBtn { glyph: "T";       toolValue: 1 }
-                        ToolBtn { iconName: "pen"; toolValue: 2 }
-                        ToolBtn { iconName: "arrow"; toolValue: 3 }
-                        ToolBtn { iconName: "rect"; toolValue: 4 }
-                        ToolBtn { iconName: "ellipse"; toolValue: 5 }
+                anchors.verticalCenter: parent.verticalCenter
+                spacing: 14
+
+                Row { spacing: 4; anchors.verticalCenter: parent.verticalCenter
+                    ToolBtn { iconName: "select"; toolValue: 0; tip: App.uiText(App.language, "ImageEditToolSelect") }
+                    ToolBtn { glyph: "T";       toolValue: 1; tip: App.uiText(App.language, "ImageEditToolText") }
+                    ToolBtn { iconName: "pen"; toolValue: 2; tip: App.uiText(App.language, "ImageEditToolPen") }
+                    ToolBtn { iconName: "arrow"; toolValue: 3; tip: App.uiText(App.language, "ImageEditToolArrow") }
+                    ToolBtn { iconName: "rect"; toolValue: 4; tip: App.uiText(App.language, "ImageEditToolRect") }
+                    ToolBtn { iconName: "ellipse"; toolValue: 5; tip: App.uiText(App.language, "ImageEditToolEllipse") }
+                }
+                Rectangle { width: 1; height: 34; color: App.themeBorder; anchors.verticalCenter: parent.verticalCenter }
+
+                Text {
+                    visible: !panel.showAny
+                    anchors.verticalCenter: parent.verticalCenter
+                    text: App.uiText(App.language, "ImageEditPickHint")
+                    color: App.themeTextMuted; font.pixelSize: 11
+                }
+
+                ComboBox {
+                    id: fontBoxH
+                    visible: panel.showText
+                    anchors.verticalCenter: parent.verticalCenter
+                    width: 150; font.pixelSize: 11
+                    model: panel.ctl.standardFonts()
+                    onActivated: (idx) => panel.ctl.setAnnFont(panel.targetId, fontBoxH.textAt(idx))
+                }
+                SpinBox {
+                    id: sizeBoxH
+                    visible: panel.showText
+                    anchors.verticalCenter: parent.verticalCenter
+                    from: 4; to: 800; stepSize: 2; value: 28
+                    editable: true; font.pixelSize: 11
+                    onValueModified: panel.ctl.setAnnFontSize(panel.targetId, value)
+                }
+                Row { visible: panel.showText; spacing: 4; anchors.verticalCenter: parent.verticalCenter
+                    StyleBtn { glyph: "B"; boldGlyph: true;      checked: panel.info.bold === true
+                               onActivated: panel.ctl.setAnnBold(panel.targetId, !panel.info.bold) }
+                    StyleBtn { glyph: "I"; italicGlyph: true;    checked: panel.info.italic === true
+                               onActivated: panel.ctl.setAnnItalic(panel.targetId, !panel.info.italic) }
+                    StyleBtn { glyph: "U"; underlineGlyph: true; checked: panel.info.underline === true
+                               onActivated: panel.ctl.setAnnUnderline(panel.targetId, !panel.info.underline) }
+                }
+                Row { visible: panel.showText; spacing: 4; anchors.verticalCenter: parent.verticalCenter
+                    AlignBtn { iconName: "align-left"; alignValue: 0 }
+                    AlignBtn { iconName: "align-center"; alignValue: 1 }
+                    AlignBtn { iconName: "align-right"; alignValue: 2 }
+                }
+                Row { visible: panel.showText; spacing: 4; anchors.verticalCenter: parent.verticalCenter
+                    VAlignBtn { iconName: "valign-top"; vAlignValue: 0 }
+                    VAlignBtn { iconName: "valign-middle"; vAlignValue: 1 }
+                }
+                ColorPicker {
+                    visible: panel.showText
+                    anchors.verticalCenter: parent.verticalCenter
+                    showAlpha: false
+                    title: App.uiText(App.language, "PdfEditColorLabel")
+                    selectedColor: panel.info.textColor
+                    onColorPicked: (c) => {
+                        panel.ctl.setAnnColor(panel.targetId, c)
+                        selectedColor = Qt.binding(() => panel.info.textColor)
                     }
                 }
-                Rectangle { width: 1; height: 40; color: App.themeBorder; anchors.verticalCenter: parent.verticalCenter }
-                // Text-Größe / Stil (nur bei Text)
-                Column { visible: panel.showText; anchors.verticalCenter: parent.verticalCenter; spacing: 2
-                    RibbonLabel { text: App.uiText(App.language, "PdfEditSizeLabel"); width: parent.width }
-                    SpinBox { id: sizeBoxH; from: 4; to: 800; stepSize: 2; value: 28; width: 110
-                              onValueModified: panel.ctl.setAnnFontSize(panel.targetId, value) }
-                }
-                Column { visible: panel.showText; anchors.verticalCenter: parent.verticalCenter; spacing: 2
-                    RibbonLabel { text: App.uiText(App.language, "PdfEditStyleLabel"); width: parent.width }
-                    Row { spacing: 4
-                        StyleBtn { glyph: "B"; boldGlyph: true;      checked: panel.info.bold === true
-                                   onActivated: panel.ctl.setAnnBold(panel.targetId, !panel.info.bold) }
-                        StyleBtn { glyph: "I"; italicGlyph: true;    checked: panel.info.italic === true
-                                   onActivated: panel.ctl.setAnnItalic(panel.targetId, !panel.info.italic) }
-                        StyleBtn { glyph: "U"; underlineGlyph: true; checked: panel.info.underline === true
-                                   onActivated: panel.ctl.setAnnUnderline(panel.targetId, !panel.info.underline) }
-                    }
-                }
-                Column { visible: panel.showStroke || panel.showFill; anchors.verticalCenter: parent.verticalCenter; spacing: 2
-                    RibbonLabel { text: App.uiText(App.language, "ImageEditWidthLabel"); width: parent.width }
-                    SpinBox { id: lwBoxH; from: 1; to: 200; stepSize: 1; value: 4; width: 100
-                              onValueModified: panel.ctl.setAnnLineWidth(panel.targetId, value) }
-                }
-                // KEIN zweiter Trenner vor dem Dokument-Teil: die Eigenschaften dazwischen sind ohne Auswahl unsichtbar, dann
-                // rückten die beiden Striche aneinander.
-                Column { anchors.verticalCenter: parent.verticalCenter; spacing: 2
-                    Row { spacing: 6
-                        Rectangle {
-                            width: 30; height: 28; radius: 5; opacity: panel.ctl.dirty ? 1.0 : 0.4
-                            color: "transparent"; border.color: App.themeAccent; border.width: 1
-                            Text { anchors.centerIn: parent; text: "\u2B07"; color: App.themeTextPrimary; font.pixelSize: 13 }
-                            ToolTip.text: App.uiText(App.language, "PdfEditSaveBtn"); ToolTip.visible: shHover.hovered
-                            HoverHandler { id: shHover; enabled: panel.ctl.dirty }
-                            TapHandler { enabled: panel.ctl.dirty; onTapped: panel.ctl.saveOverlay() }
+                Row { visible: panel.showText; spacing: 6; anchors.verticalCenter: parent.verticalCenter
+                    ColorPicker {
+                        anchors.verticalCenter: parent.verticalCenter
+                        showAlpha: true
+                        title: App.uiText(App.language, "PdfEditHighlightLabel")
+                        selectedColor: panel.info.paperSet === true ? panel.info.highlightColor : panel.defaultPaper
+                        onColorPicked: (c) => {
+                            panel.ctl.setAnnHighlight(panel.targetId, c)
+                            selectedColor = Qt.binding(() => panel.info.paperSet === true ? panel.info.highlightColor : panel.defaultPaper)
                         }
-                        Rectangle {
-                            readonly property bool usable: !panel.ctl.busy && panel.ctl.annCount > 0
-                            width: ehLbl.implicitWidth + 16; height: 28; radius: 5; opacity: usable ? 1.0 : 0.4
-                            color: "transparent"; border.color: App.themeAccent; border.width: 1
-                            Text { id: ehLbl; anchors.centerIn: parent; text: App.uiText(App.language, "PdfEditExportBtn")
-                                   color: App.themeTextPrimary; font.pixelSize: 12 }
-                            HoverHandler { id: ehHover; enabled: parent.usable }
-                            TapHandler { enabled: parent.usable; onTapped: if (panel.surface) panel.surface.startImageExport() }
+                    }
+                    Slider {
+                        id: opSliderH
+                        width: 110
+                        anchors.verticalCenter: parent.verticalCenter
+                        from: 0; to: 1; stepSize: 0.05
+                        onMoved: panel.applyOpacity(value)
+                    }
+                }
+
+                ColorPicker {
+                    visible: panel.showStroke || panel.showFill
+                    anchors.verticalCenter: parent.verticalCenter
+                    showAlpha: false
+                    title: App.uiText(App.language, "ImageEditStrokeLabel")
+                    selectedColor: panel.info.strokeColor
+                    onColorPicked: (c) => {
+                        panel.ctl.setAnnStroke(panel.targetId, c)
+                        selectedColor = Qt.binding(() => panel.info.strokeColor)
+                    }
+                }
+                SpinBox {
+                    id: lwBoxH
+                    visible: panel.showStroke || panel.showFill
+                    anchors.verticalCenter: parent.verticalCenter
+                    from: 1; to: 200; stepSize: 1; value: 4
+                    editable: true; font.pixelSize: 11
+                    onValueModified: panel.ctl.setAnnLineWidth(panel.targetId, value)
+                }
+                Row { visible: panel.showFill; spacing: 4; anchors.verticalCenter: parent.verticalCenter
+                    ColorPicker {
+                        anchors.verticalCenter: parent.verticalCenter
+                        showAlpha: true
+                        title: App.uiText(App.language, "ImageEditFillLabel")
+                        selectedColor: panel.info.hasFill ? panel.info.fillColor : "#3300b4a0"
+                        onColorPicked: (c) => {
+                            panel.ctl.setAnnFill(panel.targetId, c)
+                            selectedColor = Qt.binding(() => panel.info.hasFill ? panel.info.fillColor : "#3300b4a0")
                         }
                     }
+                    Rectangle {
+                        width: noFillLblH.implicitWidth + 16; height: 26; radius: 6
+                        anchors.verticalCenter: parent.verticalCenter
+                        color: noFillHoverH.hovered ? Qt.rgba(App.themeTextPrimary.r, App.themeTextPrimary.g, App.themeTextPrimary.b, 0.16)
+                                                    : Qt.rgba(App.themeTextPrimary.r, App.themeTextPrimary.g, App.themeTextPrimary.b, 0.07)
+                        border.color: App.themeBorder; border.width: 1
+                        opacity: panel.info.hasFill === true ? 1.0 : 0.4
+                        Text { id: noFillLblH; anchors.centerIn: parent
+                               text: App.uiText(App.language, "PdfEditNoHighlight"); color: App.themeTextPrimary; font.pixelSize: 11 }
+                        HoverHandler { id: noFillHoverH }
+                        TapHandler { onTapped: panel.ctl.setAnnFill(panel.targetId, "transparent") }
+                    }
+                }
+
+                Rectangle {
+                    visible: panel.hasSel
+                    anchors.verticalCenter: parent.verticalCenter
+                    width: 30; height: 28; radius: 6
+                    color: copyHoverH.hovered ? Qt.rgba(App.themeTextPrimary.r, App.themeTextPrimary.g, App.themeTextPrimary.b, 0.16)
+                                              : Qt.rgba(App.themeTextPrimary.r, App.themeTextPrimary.g, App.themeTextPrimary.b, 0.07)
+                    border.color: App.themeBorder; border.width: 1
+                    DrawnIcon { anchors.centerIn: parent; name: "copy"; size: 16 }
+                    HoverHandler { id: copyHoverH }
+                    TapHandler { onTapped: { if (panel.surface) panel.surface.commitEditing(); panel.ctl.copySelected() } }
+                    ToolTip.text: App.uiText(App.language, "ImageEditCopyBtn"); ToolTip.visible: copyHoverH.hovered
+                }
+                Rectangle {
+                    visible: panel.ctl.hasClipboard
+                    anchors.verticalCenter: parent.verticalCenter
+                    width: pasteLblH.implicitWidth + 16; height: 28; radius: 6
+                    color: pasteHoverH.hovered ? Qt.rgba(App.themeTextPrimary.r, App.themeTextPrimary.g, App.themeTextPrimary.b, 0.16)
+                                               : Qt.rgba(App.themeTextPrimary.r, App.themeTextPrimary.g, App.themeTextPrimary.b, 0.07)
+                    border.color: App.themeBorder; border.width: 1
+                    Text { id: pasteLblH; anchors.centerIn: parent; text: App.uiText(App.language, "ImageEditPasteBtn")
+                           color: App.themeTextPrimary; font.pixelSize: 12 }
+                    HoverHandler { id: pasteHoverH }
+                    TapHandler { onTapped: { if (panel.surface) panel.surface.commitEditing(); panel.ctl.paste() } }
+                }
+                Rectangle {
+                    visible: panel.hasSel
+                    anchors.verticalCenter: parent.verticalCenter
+                    width: 30; height: 28; radius: 6
+                    color: delHoverH.hovered ? Qt.rgba(0.88, 0.35, 0.35, 0.22) : Qt.rgba(0.88, 0.35, 0.35, 0.10)
+                    border.color: "#c25a5a"; border.width: 1
+                    DrawnIcon { anchors.centerIn: parent; name: "trash"; size: 16; color: "#e08080" }
+                    HoverHandler { id: delHoverH }
+                    TapHandler { onTapped: { if (panel.surface) panel.surface.commitEditing(); panel.ctl.removeAnn(panel.ctl.selectedId) } }
+                    ToolTip.text: App.uiText(App.language, "PdfEditDeleteBtn"); ToolTip.visible: delHoverH.hovered
+                }
+
+                Rectangle { width: 1; height: 34; color: App.themeBorder; anchors.verticalCenter: parent.verticalCenter }
+
+                Rectangle {
+                    anchors.verticalCenter: parent.verticalCenter
+                    width: 92; height: 30; radius: 6
+                    opacity: panel.ctl.dirty ? 1.0 : 0.4
+                    color: saveHoverH.hovered && panel.ctl.dirty ? Qt.rgba(App.themeAccent.r, App.themeAccent.g, App.themeAccent.b, 0.35)
+                                                                 : Qt.rgba(App.themeAccent.r, App.themeAccent.g, App.themeAccent.b, 0.20)
+                    border.color: App.themeAccent; border.width: 1
+                    Text { anchors.centerIn: parent; text: App.uiText(App.language, "PdfEditSaveBtn")
+                           color: App.themeTextPrimary; font.pixelSize: 12 }
+                    HoverHandler { id: saveHoverH }
+                    TapHandler { enabled: panel.ctl.dirty
+                                 onTapped: { if (panel.surface) panel.surface.commitEditing(); panel.ctl.saveOverlay() } }
+                }
+                Rectangle {
+                    readonly property bool usable: !panel.ctl.busy && panel.ctl.annCount > 0
+                    anchors.verticalCenter: parent.verticalCenter
+                    width: 92; height: 30; radius: 6
+                    opacity: usable ? 1.0 : 0.4
+                    color: expHoverH.hovered && usable ? Qt.rgba(App.themeAccent.r, App.themeAccent.g, App.themeAccent.b, 0.35)
+                                                       : Qt.rgba(App.themeAccent.r, App.themeAccent.g, App.themeAccent.b, 0.20)
+                    border.color: App.themeAccent; border.width: 1
+                    Text { anchors.centerIn: parent; text: App.uiText(App.language, "PdfEditExportBtn")
+                           color: App.themeTextPrimary; font.pixelSize: 12 }
+                    HoverHandler { id: expHoverH }
+                    TapHandler { enabled: parent.usable; onTapped: if (panel.surface) panel.surface.startImageExport() }
+                    // Erst beim Zeigen rechnen: der Zielname prueft das Dateisystem.
+                    ToolTip.text: expHoverH.hovered ? String(panel.ctl.exportTargetPath()).split("/").pop() : ""
+                    ToolTip.visible: expHoverH.hovered
                 }
             }
         }
+
         Rectangle {
-            anchors.right: parent.right; anchors.rightMargin: 8; anchors.verticalCenter: parent.verticalCenter
-            width: 26; height: 26; radius: 5
+            id: closeBtnH
+            anchors { right: parent.right; rightMargin: 10; verticalCenter: parent.verticalCenter }
+            width: 26; height: 26; radius: 13
             color: xhHover.hovered ? Qt.rgba(App.themeTextPrimary.r, App.themeTextPrimary.g, App.themeTextPrimary.b, 0.16) : "transparent"
-            Text { anchors.centerIn: parent; text: "\u2715"; color: App.themeTextPrimary; font.pixelSize: 13 }
+            DrawnIcon { anchors.centerIn: parent; name: "close"; size: 12 }
             HoverHandler { id: xhHover }
             TapHandler { onTapped: panel.closeRequested() }
         }

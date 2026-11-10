@@ -166,8 +166,9 @@ public:
     Q_INVOKABLE QColor documentTint(int docId) const;
 
     // Vorschauen verwerfen und neu erzeugen, wenn sich der Inhalt hinter demselben Pfad geändert hat. Liefert eine
-    // NEUE docId, damit die QML-Quellen neu anfragen statt die alten Kacheln weiterzuzeigen.
-    Q_INVOKABLE int refreshDocument(const QString& pathOrUrl, int startPage = 0);
+    // NEUE docId, damit die QML-Quellen neu anfragen statt die alten Kacheln weiterzuzeigen. `previousDocId` ist der bisherige
+    // Stand derselben Ansicht unter anderem Pfad: sein Lauf belegt sonst den einzigen Renderfaden bis zur letzten Seite.
+    Q_INVOKABLE int refreshDocument(const QString& pathOrUrl, int startPage = 0, int previousDocId = 0);
 
     // Großvorschau EINER Seite anfordern; `maxPx` begrenzt die längere Kante. Meldet `largePreviewReady`, sobald
     // sie abrufbar ist - liegt der identische Schlüssel schon im Slot, feuert das Signal sofort.
@@ -186,6 +187,7 @@ private:
     using CancelFlag = std::shared_ptr<std::atomic<bool>>;
 
     void touchLru(int docId);
+    void forgetDocument(int docId);
     void enforceBudget();
     int  startDocument(const QString& pathOrUrl, int startPage, bool readCache);
 

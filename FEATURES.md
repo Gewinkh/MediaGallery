@@ -15,7 +15,7 @@ feature is off.
 - **Images**: JPG, PNG, GIF, BMP, WebP, TIFF, HEIC, HEIF, AVIF, SVG, ICO, RAW (CR2, NEF, ARW, DNG)
 - **Videos**: MP4, MKV, AVI, MOV, WMV, WebM, M4V, MPEG, 3GP, OGV, TS, M2TS, VOB, RMVB, ASF, DIVX
 - **Audio**: MP3, FLAC, WAV, OGG, AAC, M4A/M4B, WMA, Opus, AIFF, APE, ALAC, MP2, AC-3, E-AC-3, DTS, MIDI and more
-- **PDF**: pages with a thumbnail sidebar, including embedded audio and video
+- **PDF**: pages with a thumbnail sidebar, including embedded audio and video; a page that is still being drawn after a moment shows a spinner
 - **Text files**: plain text, source code, configuration files, logs - all editable in the app
 - **Markdown**: `.md` and `.markdown`, shown formatted, one click away from the editable text
 - **Tables**: CSV and TSV, plus DATEV booking batches
@@ -34,7 +34,7 @@ which. Files without an extension such as `LICENSE`, `README`, `Makefile` or
 - **Tiles or list** (*Settings ▸ View*): a grid of tiles, or one row per file with small artwork, name, tag dots and file type
 - **Size**: `Ctrl` with `+`/`-` or the mouse wheel changes the tile size (1 to 25 columns) or, in the list, the row height. Changes in the settings apply immediately
 - **Previews**: images, PDFs and text files show their content on the tile; text files in the editor's syntax colours. Each kind can be switched off in *Settings ▸ View* to save memory - the tile then shows the file type
-- **Scrolling**: smooth mouse wheel, scrollbar, or keys (`Up`/`Down`, `Page Up`/`Page Down`, `Home`/`End`)
+- **Scrolling**: smooth mouse wheel, scrollbar, or keys (`Up`/`Down`, `Page Up`/`Page Down`, `Home`/`End`); animations follow the refresh rate of the screen the window is on, also on a 144 Hz monitor next to a 60 Hz laptop screen
 - **Compact mode** (`Alt+S`) and **cover mode** (`B`). The compact mode applies to one half of the window; the last choice is kept for the next start and for a newly opened half
 
 **Folders**
@@ -65,6 +65,7 @@ which. Files without an extension such as `LICENSE`, `README`, `Makefile` or
 **Viewing files**
 - **Fullscreen view** by double click; `->` / `<-` move to the next or previous file, random mode picks one at random. Two seconds after you close or leave a file, the memory it used is given back; a minute after the last file is closed, cached drawing data and unused parts of the interface go back as well (about 12 MB)
 - **True fullscreen** (`F`): hides the window frame and all bars. Moving the mouse to the top edge brings the header back
+- **Images** are decoded only as large as shown and drawn in tiles: with the graphics card they are uploaded piece by piece and no second copy stays in memory; in software mode each zoom level is drawn once, so panning stays smooth and sharp. After zooming back out, the extra memory of the sharper stage is freed within a second
 - **Document menu** in the header of an open file: date and metadata, source/preview or table/raw file, and the actions of that file type
 - The window title shows folder and file
 - **Split view**: up to four files side by side in one window. Drag the dividers to resize, drag a header to rearrange the layout, `Esc` closes one file
@@ -99,7 +100,7 @@ which. Files without an extension such as `LICENSE`, `README`, `Makefile` or
 ---
 
 ## Markdown Viewer
-- `.md` / `.markdown` open **formatted**: headings, lists (also nested and numbered), task lists, tables with column alignment, quotes, links, images, footnotes and horizontal lines; only the visible part is drawn, so even a 750 KB file needs about 60 MB of memory
+- `.md` / `.markdown` open **formatted**: headings, lists (also nested and numbered), task lists, tables with column alignment, quotes, links, images, footnotes and horizontal lines; the app draws only the text and table lines near the visible part itself, so even a 750 KB file needs about 60 MB of memory, and scrolling into a table with thousands of cells runs as smoothly as plain text
 - **Code blocks** look like a terminal window, with rounded corners, the language in the title bar and a **copy button** at the top right; the code is coloured like in the text editor, e.g. C, assembly, shell or Python; a selection can start inside a code block and continue past it
 - Hidden **hints** (`<details>`) stay folded until you click them
 - A metadata block at the top of the file (front matter between `---` lines) appears as a card; lists and single words in it are shown as labels
@@ -251,7 +252,7 @@ new copy; the original is not touched.
 pages change the PDF directly. `Ctrl+Z` undoes them while the file is open.
 
 - **Notes and drawings**: text boxes with full formatting, pen, arrow, rectangle, ellipse. Move, resize, copy, cut, delete, undo. `Alt+Q` hides them all
-- **Notes are see-through by default**, so the page shows through. *Settings > Editor > PDF editing* switches to opaque white notes; the choice also applies to notes you already have (notes with a colour you picked yourself keep it)
+- **Notes are see-through by default**, so the page shows through. The paper colour in the panel decides the rest: any colour with any opacity (for example `#ffffffff` opaque white, `#00ffffff` see-through), and the choice stays after reopening
 - **Select several notes**: drag a frame on an empty spot of the page (starting on text still selects text), or `Ctrl`+click notes one by one; `Ctrl`+drag adds to the selection. `Delete`, `Ctrl+C`, `Ctrl+X` act on all of them in one undo step
 - **Paste at the mouse pointer**: `Ctrl+V` puts the copied notes where the pointer is, keeping their size, text and spacing; with the pointer off the page they land slightly offset next to the original
 - **Text tool**: a click places a box and you type right away; clicking an existing box with the text tool opens it for typing. The small switch in the lower part of the *T* button decides what comes next: off (default) returns to the select tool after the box, on keeps the text tool for more boxes
@@ -273,7 +274,8 @@ pages change the PDF directly. `Ctrl+Z` undoes them while the file is open.
 
 ## Image Editor
 - Opens from the **Edit** button in the image viewer; the original is never changed
-- **Text notes and drawings** with the same tools and formatting as the PDF editor, including tracked changes (the export marks pending deletions in see-through red)
+- **Text notes and drawings** with the same tools and formatting as the PDF editor, including tracked changes (the export marks pending deletions in see-through red). The panel on top looks and works like the PDF editor's, with text, paper, outline and fill colours
+- Text notes work like PDF notes: see-through by default, paper colour and opacity are your choice and stay after reopening
 - Notes are saved next to the image (`<image>.mgedit`)
 - **Export** writes a new image with the notes drawn in, in the same format (JPG stays JPG, PNG stays PNG)
 
@@ -344,7 +346,7 @@ pages change the PDF directly. `Ctrl+Z` undoes them while the file is open.
   - **Repeat** button in the control bar: off, this file, or the whole folder. Each open file keeps its own and starts with repeat off
 - **Seek step** for `->` / `<-` in fullscreen video: 1 to 600 seconds (*Settings ▸ General*)
 - **Language**: English or German, switchable at runtime
-- **Graphics**: Vulkan, OpenGL or software. If a mode fails to start, the app falls back to a safer one automatically. On Linux laptops with two graphics chips it loads only the driver it actually draws with (about 70 MB less memory)
+- **Graphics**: Vulkan, OpenGL or software. If a mode does not reach its first frame, the app falls back to a safer one on the next start and Settings names the mode that failed; closing the app early never counts as a failure. In software mode the gallery skips image smoothing only while it scrolls (about a third more frames at half the CPU), at rest it looks the same. On Linux laptops with two graphics chips it loads only the driver it actually draws with (about 70 MB less memory)
 - **Keyboard shortcut overview** in *Settings ▸ General*
 - Shortcuts only act where they belong - in a split window only in the active half, and with several files open only in the one clicked last, also when the click lands in its text or page; the keyboard follows that click, so a text editor in the other half no longer keeps `Ctrl+C`
 - **The app's own file chooser**, in the app's colours, with places, path, filter and hidden files

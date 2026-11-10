@@ -545,6 +545,10 @@ as written, diagrams appear as a code block.
 **A selection that crosses a quote, a folded hint or a table takes all of it.**
 Code blocks are not affected. Starting inside a quote and dragging out of it selects the whole quote, because the text engine treats these boxes as one unit.
 
+**Selected text next to sub- or superscript keeps its colour.**
+In a paragraph that contains sub- or superscript (also footnote marks), a selection shows its background as usual, but links and code inside it keep their colour instead of switching to the selection's text colour.
+Why: the app shifts sub- and superscript itself, and the text layer it draws with would otherwise paint the selected characters a second time at the baseline.
+
 **HTML inside Markdown is only partly understood.**
 Why: formatting tags work (bold, italic, code, keys, sub- and superscript, line
 breaks, links, images and folded `<details>` hints); other tags appear as they

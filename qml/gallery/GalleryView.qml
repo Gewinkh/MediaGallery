@@ -236,6 +236,11 @@ Rectangle {
                                                : App.tileWidth
     readonly property int tileH: root.listMode ? App.listRowHeight : App.tileHeight
     readonly property int cellW: tileW + spacing
+
+    // Der Software-Rasterer filtert jede Vorschau bilinear, das ist die halbe Bildzeit beim Rollen; in Bewegung sieht
+    // man das ungefilterte Bild nicht, und nach der Ruhe zeichnet ein Bild alles wieder weich.
+    readonly property bool _roughThumbs: GraphicsInfo.api === GraphicsInfo.Software && scrollQuiet.running
+    Timer { id: scrollQuiet; interval: 150 }
     readonly property int cellH: tileH + spacing
 
     // Obergrenze = was diese Galeriefläche VOLLSTÄNDIG darstellen kann (Seitenränder, Zellen-Padding, eine Zelle
@@ -429,6 +434,7 @@ Rectangle {
             const v = root.clampContentY(contentY)
             if (Math.abs(v - contentY) > 0.5) contentY = v
         }
+        onContentYChanged:      if (GraphicsInfo.api === GraphicsInfo.Software) scrollQuiet.restart()
         onContentHeightChanged: _clampNow()
         onOriginYChanged:       _clampNow()
         onHeightChanged:        _clampNow()
@@ -621,6 +627,7 @@ Rectangle {
                         tagMode: root.tagMode
                         modeTag: root.modeTag
                         covered: root.covered
+                        roughThumb: root._roughThumbs
 
                         proxyRow: cell.d && cell.d.row !== undefined ? cell.d.row : -1
                         selected: mediaModel.selectionRevision >= 0

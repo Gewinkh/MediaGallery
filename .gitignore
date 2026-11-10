@@ -40,3 +40,13 @@ qrc_*.cpp
 .DS_Store?
 Thumbs.db
 desktop.ini
+
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+secrets/
+credentials*.json

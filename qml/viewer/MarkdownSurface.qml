@@ -79,7 +79,7 @@ Item {
     }
     function _scrollTo(pos) {
         if (pos < 0) return
-        const y = doc.y + doc.positionToRectangle(pos).y - 8
+        const y = sicht.y + doc.positionToRectangle(pos).y - 8
         flick.contentY = Math.max(0, Math.min(flick.contentHeight - flick.height, y))
     }
     function _scrollBy(dy) {
@@ -116,16 +116,16 @@ Item {
         boundsBehavior: Flickable.StopAtBounds
         interactive: false
         ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
-        onContentYChanged: view.setViewport(flick.contentY - doc.y, flick.height)
-        onHeightChanged: view.setViewport(flick.contentY - doc.y, flick.height)
+        onContentYChanged: view.setViewport(flick.contentY - sicht.y, flick.height)
+        onHeightChanged: view.setViewport(flick.contentY - sicht.y, flick.height)
 
         //  Hinter der Textflaeche: die Rahmen im Dokument sind durchsichtig und halten nur den Platz.
         Rectangle {
             id: karte
             readonly property var box: view.frontMatterBox
             visible: karte.box.width !== undefined
-            x: doc.x + (karte.visible ? karte.box.x : 0)
-            y: doc.y + (karte.visible ? karte.box.y : 0)
+            x: sicht.x + (karte.visible ? karte.box.x : 0)
+            y: sicht.y + (karte.visible ? karte.box.y : 0)
             width: karte.visible ? karte.box.width : 0
             height: karte.visible ? karte.box.height : 0
             radius: 8
@@ -151,8 +151,8 @@ Item {
                 required property real boxHeight
                 required property real boxHeader
                 required property string boxLanguage
-                x: doc.x + kasten.boxX
-                y: doc.y + kasten.boxY
+                x: sicht.x + kasten.boxX
+                y: sicht.y + kasten.boxY
                 width: kasten.boxWidth
                 height: kasten.boxHeight
                 radius: 8
@@ -187,43 +187,69 @@ Item {
             }
         }
 
-        TextEdit {
-            id: doc
-            objectName: "markdownText"
+        //  Zeichnet den Text nahe dem Fenster; die TextEdit legt nur aus und markiert. Qt baute sonst beim Betreten einer
+        //  grossen Tabelle alle ihre Zellen auf einmal.
+        MarkdownViewport {
+            id: sicht
+            objectName: "markdownViewport"
             x: Math.max(root._pad, (flick.width - width) / 2)
             y: root._pad
             width: Math.max(40, Math.min(flick.width - 2 * root._pad, root._maxWidth))
-            readOnly: true
-            selectByMouse: true
-            persistentSelection: true
-            wrapMode: TextEdit.Wrap
-            textFormat: TextEdit.RichText
-            color: Editor.text
-            selectionColor: Editor.selection
-            selectedTextColor: Editor.text
-            onLinkActivated: function (link) { root._openLink(link) }
+            height: doc.height
+            markdownView: view
+            textItem: doc
+            viewTop: flick.contentY - sicht.y
+            viewHeight: flick.height
 
-            HoverHandler {
-                cursorShape: doc.hoveredLink.length > 0 ? Qt.PointingHandCursor : Qt.IBeamCursor
-            }
+            TextEdit {
+                id: doc
+                objectName: "markdownText"
+                width: sicht.width
+                readOnly: true
+                selectByMouse: true
+                persistentSelection: true
+                wrapMode: TextEdit.Wrap
+                textFormat: TextEdit.RichText
+                color: Editor.text
+                selectionColor: Editor.selection
+                selectedTextColor: Editor.text
+                onLinkActivated: function (link) { root._openLink(link) }
 
-            // Pfeile links/rechts bleiben beim Viewer (Dateiwechsel); alles Senkrechte rollt die Ansicht.
-            Keys.onPressed: function (e) {
-                const zeile = 40
-                switch (e.key) {
-                case Qt.Key_Down:     root._scrollBy(zeile); break
-                case Qt.Key_Up:       root._scrollBy(-zeile); break
-                case Qt.Key_PageDown: root._scrollBy(flick.height * 0.9); break
-                case Qt.Key_PageUp:   root._scrollBy(-flick.height * 0.9); break
-                case Qt.Key_Space:
-                    root._scrollBy((e.modifiers & Qt.ShiftModifier ? -1 : 1) * flick.height * 0.9)
-                    break
-                case Qt.Key_Home:     flick.contentY = 0; break
-                case Qt.Key_End:      root._scrollBy(flick.contentHeight); break
-                default:              return
+                HoverHandler {
+                    cursorShape: doc.hoveredLink.length > 0 ? Qt.PointingHandCursor : Qt.IBeamCursor
                 }
-                e.accepted = true
+
+                // Pfeile links/rechts bleiben beim Viewer (Dateiwechsel); alles Senkrechte rollt die Ansicht.
+                Keys.onPressed: function (e) {
+                    const zeile = 40
+                    switch (e.key) {
+                    case Qt.Key_Down:     root._scrollBy(zeile); break
+                    case Qt.Key_Up:       root._scrollBy(-zeile); break
+                    case Qt.Key_PageDown: root._scrollBy(flick.height * 0.9); break
+                    case Qt.Key_PageUp:   root._scrollBy(-flick.height * 0.9); break
+                    case Qt.Key_Space:
+                        root._scrollBy((e.modifiers & Qt.ShiftModifier ? -1 : 1) * flick.height * 0.9)
+                        break
+                    case Qt.Key_Home:     flick.contentY = 0; break
+                    case Qt.Key_End:      root._scrollBy(flick.contentHeight); break
+                    default:              return
+                    }
+                    e.accepted = true
+                }
             }
+        }
+
+        //  Die Tabellenlinien, ueber dem Text wie Qts eigene: sonst laege die Toenung eines Zitats darueber. Qts eigene
+        //  malte bei jedem Neuaufbau alle Zellen aller Tabellen.
+        MarkdownGrid {
+            objectName: "markdownGrid"
+            x: sicht.x
+            y: sicht.y
+            width: doc.width
+            height: doc.height
+            markdownView: view
+            viewTop: flick.contentY - sicht.y
+            viewHeight: flick.height
         }
 
         //  Ueber der Textflaeche. Eine `MouseArea`, kein `TapHandler`: der liesse den Druck an die TextEdit durch,
@@ -244,8 +270,8 @@ Item {
                 function _hinweis() {
                     return App.uiText(App.language, knopf.kopiert ? "MarkdownCopied" : "MarkdownCopyCode")
                 }
-                x: doc.x + knopf.boxX + knopf.boxWidth - width - 6
-                y: doc.y + knopf.boxY + (knopf.boxHeader - height) / 2
+                x: sicht.x + knopf.boxX + knopf.boxWidth - width - 6
+                y: sicht.y + knopf.boxY + (knopf.boxHeader - height) / 2
                 width: 26; height: 22; radius: 5
                 color: knopfMaus.containsMouse ? root._termLine : "transparent"
 

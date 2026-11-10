@@ -19,8 +19,20 @@
 #include <QRunnable>
 #include <QTextBlock>
 #include <QQuickItem>
+#include <QQuickWindow>
+#include <QFontMetricsF>
+#include <QMetaMethod>
+#include <QSGImageNode>
+#include <QSGRectangleNode>
+#include <QSGTextNode>
+#include <QSGTransformNode>
+#include <QSGTexture>
+#include <QTextCursor>
+#include <QTextLayout>
+#include <QTextList>
 #include <QTextDocument>
 #include <QTextFrame>
+#include <QTextTable>
 #include <QThread>
 #include <QUrl>
 #include <algorithm>
@@ -215,6 +227,7 @@ void MarkdownView::setSource(const QString& pathOrUrl) {
         updateBoxes(true);
         if (m_ownDoc) {
             m_ownDoc->codeBoxes.clear();
+            m_ownDoc->tables.clear();
             m_ownDoc->metaFrame = nullptr;
             m_ownDoc->clear();
         }
@@ -259,6 +272,7 @@ void MarkdownView::start(bool readFile) {
     if (!m_textValid) readFile = true;
 
     md::RenderStyle st = renderStyle();
+    st.qtTableLines = false;
 
     if (kLog) qInfo("[md] start lesen=%d gen=%d %s", int(readFile), m_generation, qPrintable(m_source));
     m_abort = std::make_shared<std::atomic<bool>>(false);
@@ -393,10 +407,6 @@ void MarkdownView::adopt(md::RenderedDocument* doc, int generation, const QStrin
         //  Kind der TextEdit: sie raeumt es mit sich ab. Das eigene Dokument der TextEdit loescht Qt beim ersten
         //  Tausch selbst - geloescht wird hier nur ein zuvor uebergebenes.
         doc->setParent(m_quickDoc->parent());
-        //  Nur Bloecke im Sichtfenster zeichnen: Qt schaltet das fuer grosse Texte nur in setText ein, nicht beim
-        //  Tausch des Dokuments - sonst Knoten fuer das ganze Dokument (762 KB Markdown: Heap +190 MB).
-        if (auto* edit = qobject_cast<QQuickItem*>(m_quickDoc->parent()))
-            edit->setFlag(QQuickItem::ItemObservesViewport);
         md::RenderedDocument* alt = m_ownDoc;
         m_quickDoc->setTextDocument(doc);
         m_ownDoc = doc;
@@ -445,6 +455,446 @@ void MarkdownView::updateBoxes(bool neu) {
         for (const md::CodeBox& k : m_ownDoc->codeBoxes) boxes.append({md::codeBoxRect(*m_ownDoc, k), k.language});
     }
     m_boxes.setBoxes(std::move(boxes), neu);
+    m_grids.clear();
+    if (m_ownDoc && m_ready) {
+        m_grids.reserve(m_ownDoc->tables.size());
+        for (QTextTable* t : m_ownDoc->tables) m_grids.append(md::tableGrid(*m_ownDoc, t));
+    }
+}
+
+QColor MarkdownView::tableLineColor() const { return m_ownDoc ? m_ownDoc->tableLine : QColor(); }
+
+MarkdownGrid::MarkdownGrid(QQuickItem* parent) : QQuickItem(parent) { setFlag(ItemHasContents); }
+
+void MarkdownGrid::setView(MarkdownView* v) {
+    if (v == m_view) return;
+    disconnect(m_conn);
+    m_view = v;
+    if (v) m_conn = connect(v, &MarkdownView::decorationsChanged, this, [this] { rebuild(true); });
+    emit viewChanged();
+    rebuild(true);
+}
+
+void MarkdownGrid::setViewTop(qreal v) {
+    if (qFuzzyCompare(v, m_top)) return;
+    m_top = v;
+    emit viewportChanged();
+    rebuild(false);
+}
+
+void MarkdownGrid::setViewHeight(qreal v) {
+    if (qFuzzyCompare(v, m_height)) return;
+    m_height = v;
+    emit viewportChanged();
+    rebuild(false);
+}
+
+//  Ein Fenster Vorlauf nach oben und unten: beim Rollen entsteht der Knoten nur alle paar Bildschirme neu.
+void MarkdownGrid::rebuild(bool erzwungen) {
+    if (!erzwungen && m_top >= m_von && m_top + m_height <= m_bis) return;
+    const bool hatte = !m_lines.isEmpty();
+    m_von = m_top - m_height;
+    m_bis = m_top + 2 * m_height;
+    m_lines.clear();
+    if (m_view) {
+        md::gridLines(m_view->tableGrids(), m_von, m_bis, m_lines);
+        m_color = m_view->tableLineColor();
+    }
+    if (hatte || !m_lines.isEmpty()) {
+        update();
+        emit linesChanged();
+    }
+}
+
+//  Rechteckknoten wie Qts eigene Raender: eigene Geometrie liesse der Software-Renderer still weg.
+QSGNode* MarkdownGrid::updatePaintNode(QSGNode* old, UpdatePaintNodeData*) {
+    if (m_lines.isEmpty() || !window()) {
+        delete old;
+        return nullptr;
+    }
+    QSGNode* wurzel = old ? old : new QSGNode;
+    QSGNode* k = wurzel->firstChild();
+    for (const QRectF& r : m_lines) {
+        auto* linie = static_cast<QSGRectangleNode*>(k);
+        if (!linie) {
+            linie = window()->createRectangleNode();
+            wurzel->appendChildNode(linie);
+        }
+        linie->setRect(r);
+        linie->setColor(m_color);
+        k = linie->nextSibling();
+    }
+    while (k) {
+        QSGNode* weiter = k->nextSibling();
+        wurzel->removeChildNode(k);
+        delete k;
+        k = weiter;
+    }
+    return wurzel;
+}
+
+const md::RenderedDocument* MarkdownView::shownDocument() const { return m_ready ? m_ownDoc.data() : nullptr; }
+
+MarkdownViewport::MarkdownViewport(QQuickItem* parent) : QQuickItem(parent) { setFlag(ItemHasContents); }
+
+MarkdownViewport::~MarkdownViewport() { setTextItem(nullptr); }
+
+void MarkdownViewport::setView(MarkdownView* v) {
+    if (v == m_view) return;
+    for (const auto& c : std::as_const(m_conns)) disconnect(c);
+    m_conns.clear();
+    m_view = v;
+    if (v) {
+        //  Neues Dokument oder neue Breite: die Liste zeigte sonst auf verworfene Bloecke bzw. alte Lagen.
+        m_conns << connect(v, &MarkdownView::decorationsChanged, this, [this] { follow(true); })
+                << connect(v, &MarkdownView::stateChanged, this, [this] {
+                       if (m_view && (!m_view->shownDocument() || m_view->revision() != m_revision)) follow(true);
+                   });
+    }
+    emit viewChanged();
+    follow(true);
+}
+
+void MarkdownViewport::setTextItem(QQuickItem* t) {
+    if (t == m_text) return;
+    for (const auto& c : std::as_const(m_textConns)) disconnect(c);
+    m_textConns.clear();
+    if (m_text) m_text->setFlag(ItemHasContents, true);
+    m_text = t;
+    if (t) {
+        t->setFlag(ItemHasContents, false);
+        const QMetaObject* mo = t->metaObject();
+        const QMetaMethod ziel = metaObject()->method(metaObject()->indexOfSlot("readText()"));
+        for (const char* name : {"selectionStart", "selectionEnd", "selectionColor", "selectedTextColor", "renderType"}) {
+            const QMetaProperty p = mo->property(mo->indexOfProperty(name));
+            if (p.hasNotifySignal()) m_textConns << connect(t, p.notifySignal(), this, ziel);
+        }
+        readText();
+    }
+    emit textItemChanged();
+}
+
+void MarkdownViewport::readText() {
+    if (!m_text) return;
+    m_selVon = m_text->property("selectionStart").toInt();
+    m_selBis = m_text->property("selectionEnd").toInt();
+    const QColor farbe = m_text->property("selectionColor").value<QColor>();
+    const QColor text = m_text->property("selectedTextColor").value<QColor>();
+    const int art = m_text->property("renderType").toInt();
+    if (farbe != m_selFarbe || text != m_selText || art != m_renderType) ++m_stand;
+    m_selFarbe = farbe;
+    m_selText = text;
+    m_renderType = art;
+    update();
+}
+
+void MarkdownViewport::setViewTop(qreal v) {
+    if (qFuzzyCompare(v, m_top)) return;
+    m_top = v;
+    emit viewportChanged();
+    follow(false);
+}
+
+void MarkdownViewport::setViewHeight(qreal v) {
+    if (qFuzzyCompare(v, m_height)) return;
+    m_height = v;
+    emit viewportChanged();
+    follow(false);
+}
+
+//  Je ein Fenster Vorlauf; der Bereich rueckt schon ein halbes Fenster vor seinem Rand weiter.
+void MarkdownViewport::follow(bool erzwungen) {
+    const md::RenderedDocument* doc = m_view ? m_view->shownDocument() : nullptr;
+    if (!doc || m_height <= 0) {
+        if (!m_bloecke.isEmpty() || !m_flaechen.isEmpty()) update();
+        m_bloecke.clear();
+        m_flaechen.clear();
+        m_von = 0;
+        m_bis = -1;
+        return;
+    }
+    const qreal rand = m_height / 2;
+    if (!erzwungen && m_top - rand >= m_von && m_top + m_height + rand <= m_bis) return;
+    //  Erzwungen heisst neue Lage der Bloecke (Dokument, Breite): bestehende Teile taugen nicht mehr.
+    if (erzwungen) ++m_stand;
+    m_von = m_top - m_height;
+    m_bis = m_top + 2 * m_height;
+    sammle(*doc);
+    ++m_moves;
+    emit movesChanged();
+    update();
+}
+
+void MarkdownViewport::sammle(const md::RenderedDocument& doc) {
+    const QAbstractTextDocumentLayout* lay = doc.documentLayout();
+    if (m_revision != m_view->revision()) {
+        m_revision = m_view->revision();
+        m_rahmen.clear();
+        std::function<void(QTextFrame*)> rein = [&](QTextFrame* f) {
+            for (QTextFrame* k : f->childFrames()) {
+                if (!qobject_cast<QTextTable*>(k) && k->frameFormat().background().style() != Qt::NoBrush)
+                    m_rahmen.append(k);
+                rein(k);
+            }
+        };
+        rein(doc.rootFrame());
+    }
+    m_flaechen.clear();
+    for (QTextFrame* f : std::as_const(m_rahmen)) {
+        const QTextFrameFormat ff = f->frameFormat();
+        const QRectF r = lay->frameBoundingRect(f).adjusted(ff.leftMargin(), ff.topMargin(), -ff.rightMargin(),
+                                                             -ff.bottomMargin());
+        //  Auf ganze Pixel wie Qts Textflaeche: eine Linie bei y = 146,25 fuellt beide Zeilen statt zwei halber.
+        if (r.bottom() >= m_von && r.top() <= m_bis) m_flaechen.append({r.toAlignedRect(), ff.background().color()});
+    }
+
+    m_bloecke.clear();
+    QTextBlock b = doc.findBlock(qMax(0, lay->hitTest(QPointF(0, qMax<qreal>(0, m_von)), Qt::FuzzyHit)));
+    //  Zurueck zu Zellen weiter vorn in derselben Tabellenzeile; im Fluss endet das nach einem Block.
+    for (int n = 0; n < 1024 && b.previous().isValid() && lay->blockBoundingRect(b.previous()).bottom() > m_von; ++n)
+        b = b.previous();
+    for (; b.isValid(); b = b.next()) {
+        const QRectF r = lay->blockBoundingRect(b);
+        if (r.top() > m_bis) {
+            //  Eine Zelle mit mehreren Bloecken ragt unten hinaus, die Nachbarzellen derselben Zeile beginnen noch im Bereich.
+            const QTextTable* t = QTextCursor(b).currentTable();
+            if (!t || lay->blockBoundingRect(t->cellAt(b.position()).firstCursorPosition().block()).top() > m_bis) break;
+            continue;
+        }
+        if (r.bottom() < m_von || !b.isVisible()) continue;
+        m_bloecke.append({b, r.topLeft(), b.blockNumber()});
+    }
+}
+
+namespace {
+
+// Wurzel der eigenen Zeichnung: Flaechen unten, darueber je Block ein Teil, der bleibt, solange der Block im Bereich
+// liegt. Transformknoten statt schlichter: Qts Software-Renderer kennt nur deren Lage, neue Kinder eines schlichten
+// zeichnete er ohne die Lage der Ansicht. Die Bildtexturen bleiben bis zum naechsten Dokument.
+class Zeichnung : public QSGTransformNode {
+public:
+    Zeichnung() {
+        appendChildNode(flaechen);
+        appendChildNode(text);
+    }
+    ~Zeichnung() override { qDeleteAll(bilder); }
+    struct Teil {
+        QSGNode* knoten;
+        int von, bis, erste, anzahl;   // Markierung und Zeilenausschnitt, mit denen er gebaut ist
+    };
+    QSGTransformNode* flaechen = new QSGTransformNode;
+    QSGTransformNode* text = new QSGTransformNode;
+    QHash<int, Teil> teile;            // nach Blocknummer
+    QHash<QString, QSGTexture*> bilder;
+    int revision = -1;
+    int stand = -1;
+
+    void weg(QHash<int, Teil>::iterator it) {
+        text->removeChildNode(it->knoten);
+        delete it->knoten;
+    }
+};
+
+// Aufzaehlungszeichen bzw. Nummer vor der ersten Zeile, auf deren Grundlinie; wie Qts Textflaeche als Zeichen.
+void listenMarke(QSGTextNode* text, const QTextBlock& b, QPointF pos, const QColor& grund) {
+    const QTextList* liste = b.textList();
+    QString s;
+    switch (liste->format().style()) {
+    case QTextListFormat::ListDisc:   s = QChar(0x2022); break;
+    case QTextListFormat::ListCircle: s = QChar(0x25E6); break;
+    case QTextListFormat::ListSquare: s = QChar(0x25AA); break;
+    default:                          s = liste->itemText(b); break;
+    }
+    const QTextCharFormat cf = b.charFormat();
+    const QFont schrift = cf.font().resolve(b.document()->defaultFont());
+    QTextLayout marke(s, schrift);
+    QTextLayout::FormatRange farbe{0, int(s.size()), {}};
+    farbe.format.setForeground(cf.hasProperty(QTextFormat::ForegroundBrush) ? cf.foreground().color() : grund);
+    marke.setFormats({farbe});
+    marke.beginLayout();
+    const QTextLine z = marke.createLine();
+    marke.endLayout();
+    const QTextLine erste = b.layout()->lineAt(0);
+    const qreal abstand = QFontMetricsF(schrift).horizontalAdvance(QLatin1Char(' '));
+    const qreal x = b.textDirection() == Qt::RightToLeft ? erste.x() + erste.width() + abstand
+                                                        : erste.x() - abstand - z.naturalTextWidth();
+    text->addTextLayout(pos + QPointF(x, erste.y() + erste.ascent() - z.ascent()), &marke);
+}
+
+// Hoch- und tiefgestellte Stuecke: im Zeilenlayout durchsichtig, hier verschoben nachgezeichnet. Versatz wie Qts
+// Textflaeche, aus der ungekuerzten Schrift; die Groesse wie Qts Layout, zwei Drittel.
+void hochTief(QSGTextNode* text, QPointF pos, const QTextLayout* tl, const QTextFragment& frag, int blockPos,
+              const QTextDocument& doc) {
+    const QTextCharFormat cf = frag.charFormat();
+    const QFont voll = cf.font().resolve(doc.defaultFont());
+    const QColor grund = static_cast<const md::RenderedDocument&>(doc).text;
+    QFont klein = voll;
+    if (klein.pointSize() != -1)
+        klein.setPointSize(klein.pointSize() * 2 / 3);
+    else
+        klein.setPixelSize(klein.pixelSize() * 2 / 3);
+    const QFontMetricsF fm(voll);
+    const int hoehe = int(fm.ascent() + fm.descent());
+    const int schub = cf.verticalAlignment() == QTextCharFormat::AlignSuperScript ? -(hoehe / 2) : hoehe / 6;
+    const int rel = frag.position() - blockPos;
+    const QTextLine z = tl->lineForTextPosition(rel);
+    if (!z.isValid()) return;
+    QTextLayout stueck(frag.text(), klein);
+    QTextLayout::FormatRange farbe{0, frag.length(), {}};
+    farbe.format.setForeground(cf.hasProperty(QTextFormat::ForegroundBrush) ? cf.foreground().color() : grund);
+    stueck.setFormats({farbe});
+    stueck.beginLayout();
+    const QTextLine eine = stueck.createLine();
+    stueck.endLayout();
+    const qreal x = qMin(z.cursorToX(rel), z.cursorToX(rel + frag.length()));
+    text->addTextLayout(pos + QPointF(x, z.y() + z.ascent() + schub - eine.ascent()), &stueck);
+}
+
+// Ein eingebettetes Bild: Qt verkleinert breite Bilder beim Auslegen; die Breite steht in der Zeile, die Hoehe folgt
+// dem Seitenverhaeltnis. Die Textur bleibt bis zum naechsten Dokument.
+void bild(QQuickWindow* win, QHash<QString, QSGTexture*>& bilder, QSGNode* wurzel, QPointF pos, const QTextLayout* tl,
+          const QTextFragment& frag, int blockPos, const QTextDocument& doc) {
+    const QTextImageFormat bf = frag.charFormat().toImageFormat();
+    QSGTexture*& tex = bilder[bf.name()];
+    if (!tex) {
+        const QImage img = doc.resource(QTextDocument::ImageResource, QUrl(bf.name())).value<QImage>();
+        if (img.isNull()) return;
+        tex = win->createTextureFromImage(img);
+    }
+    for (int i = frag.position() - blockPos; i < frag.position() - blockPos + frag.length(); ++i) {
+        const QTextLine z = tl->lineForTextPosition(i);
+        if (!z.isValid()) continue;
+        const qreal a = z.cursorToX(i);
+        const qreal e = z.cursorToX(i + 1);
+        const qreal w = std::abs(e - a);
+        const qreal h = bf.width() > 0 ? bf.height() * w / bf.width() : bf.height();
+        QSGImageNode* n = win->createImageNode();
+        n->setTexture(tex);
+        n->setFiltering(QSGTexture::Linear);
+        n->setRect(QRectF(pos.x() + qMin(a, e), pos.y() + z.y() + z.ascent() - h, w, h));
+        wurzel->appendChildNode(n);
+    }
+}
+
+// Ein Block samt Markierung, Aufzaehlungszeichen, Hochgestelltem und Bildern.
+QSGNode* teil(QQuickWindow* win, QHash<QString, QSGTexture*>& bilder, const md::RenderedDocument& doc,
+              const QTextBlock& block, QPointF pos, int von, int bis, int erste, int anzahl, const QColor& selFarbe,
+              const QColor& selText, int renderType) {
+    QTextLayout* tl = block.layout();
+    auto* knoten = new QSGNode;
+    QSGTextNode* text = win->createTextNode();
+    text->setColor(doc.text);
+    text->setSelectionColor(selFarbe);
+    text->setSelectionTextColor(selText);
+    text->setRenderType(QSGTextNode::RenderType(renderType));
+    QList<QTextFragment> hochtief;
+    for (auto it = block.begin(); !it.atEnd(); ++it) {
+        const QTextFragment frag = it.fragment();
+        const QTextCharFormat cf = frag.charFormat();
+        if (cf.isImageFormat()) {
+            bild(win, bilder, knoten, pos, tl, frag, block.position(), doc);
+            continue;
+        }
+        const int lage = cf.verticalAlignment();
+        if (lage == QTextCharFormat::AlignSuperScript || lage == QTextCharFormat::AlignSubScript) hochtief << frag;
+    }
+    const bool markiert = bis > von;
+    //  Mit Hochgestelltem malte Qt die Markierung samt markiertem Text an die Grundlinie; dann nur die Flaeche selbst.
+    if (markiert && !hochtief.isEmpty()) {
+        const int ende = anzahl < 0 ? tl->lineCount() : erste + anzahl;
+        for (int i = erste; i < ende; ++i) {
+            const QTextLine z = tl->lineAt(i);
+            const int a = qMax(von, z.textStart());
+            const int e = qMin(bis, z.textStart() + z.textLength());
+            if (e <= a) continue;
+            const qreal x1 = z.cursorToX(a);
+            const qreal x2 = z.cursorToX(e);
+            QSGRectangleNode* n = win->createRectangleNode();
+            n->setRect(QRectF(pos.x() + qMin(x1, x2), pos.y() + z.y(), std::abs(x2 - x1), z.height()));
+            n->setColor(selFarbe);
+            knoten->appendChildNode(n);
+        }
+    }
+    const bool qtMarkiert = markiert && hochtief.isEmpty();
+    text->addTextLayout(pos, tl, qtMarkiert ? von : -1, qtMarkiert ? bis - von : -1, erste, anzahl);
+    if (block.textList()) listenMarke(text, block, pos, doc.text);
+    for (const QTextFragment& frag : std::as_const(hochtief)) hochTief(text, pos, tl, frag, block.position(), doc);
+    knoten->appendChildNode(text);
+    return knoten;
+}
+
+}  // namespace
+
+QSGNode* MarkdownViewport::updatePaintNode(QSGNode* old, UpdatePaintNodeData*) {
+    const md::RenderedDocument* doc = m_view ? m_view->shownDocument() : nullptr;
+    if (!doc || !window() || m_revision != m_view->revision() || (m_bloecke.isEmpty() && m_flaechen.isEmpty())) {
+        delete old;
+        return nullptr;
+    }
+    auto* w = old ? static_cast<Zeichnung*>(old) : new Zeichnung;
+    //  Neues Dokument, neue Breite oder Farben: alle Teile neu, die Texturen nur mit dem Dokument.
+    if (w->revision != m_revision || w->stand != m_stand) {
+        if (w->revision != m_revision) {
+            qDeleteAll(w->bilder);
+            w->bilder.clear();
+        }
+        for (auto it = w->teile.begin(); it != w->teile.end(); ++it) w->weg(it);
+        w->teile.clear();
+        w->revision = m_revision;
+        w->stand = m_stand;
+    }
+    while (QSGNode* k = w->flaechen->firstChild()) {
+        w->flaechen->removeChildNode(k);
+        delete k;
+    }
+    //  Rechteckknoten: eigene Geometrie liesse der Software-Renderer still weg.
+    for (const auto& [r, farbe] : std::as_const(m_flaechen)) {
+        QSGRectangleNode* n = window()->createRectangleNode();
+        n->setRect(r);
+        n->setColor(farbe);
+        w->flaechen->appendChildNode(n);
+    }
+    const qreal bereich = m_bis - m_von;
+    QSet<int> da;
+    da.reserve(m_bloecke.size());
+    for (const Stueck& s : std::as_const(m_bloecke)) {
+        QTextLayout* tl = s.block.layout();
+        if (!tl || tl->lineCount() == 0) continue;
+        const int pos = s.block.position();
+        int von = qMax(m_selVon, pos) - pos;
+        int bis = qMin(m_selBis, pos + s.block.length()) - pos;
+        if (bis <= von) von = bis = -1;
+        //  Ein riesiger Absatz zeichnet nur seine Zeilen im Bereich.
+        int erste = 0;
+        int anzahl = -1;
+        if (tl->boundingRect().height() > bereich) {
+            const int n = tl->lineCount();
+            while (erste < n && s.pos.y() + tl->lineAt(erste).rect().bottom() < m_von) ++erste;
+            int letzte = erste;
+            while (letzte < n && s.pos.y() + tl->lineAt(letzte).y() <= m_bis) ++letzte;
+            anzahl = letzte - erste;
+            if (anzahl <= 0) continue;
+        }
+        da.insert(s.nummer);
+        auto it = w->teile.find(s.nummer);
+        if (it != w->teile.end()) {
+            if (it->von == von && it->bis == bis && it->erste == erste && it->anzahl == anzahl) continue;
+            w->weg(it);
+        }
+        QSGNode* k = teil(window(), w->bilder, *doc, s.block, s.pos, von, bis, erste, anzahl, m_selFarbe, m_selText,
+                          m_renderType);
+        w->text->appendChildNode(k);
+        w->teile.insert(s.nummer, {k, von, bis, erste, anzahl});
+    }
+    for (auto it = w->teile.begin(); it != w->teile.end();) {
+        if (da.contains(it.key())) {
+            ++it;
+            continue;
+        }
+        w->weg(it);
+        it = w->teile.erase(it);
+    }
+    return w;
 }
 
 QVariantMap MarkdownView::frontMatterBox() const {

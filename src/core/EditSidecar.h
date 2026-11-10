@@ -7,6 +7,7 @@
 //  entpackten Textes (uint32, little endian) · Daten.
 #include "core/MGEditBin.h"
 
+#include <QColor>
 #include <QJsonObject>
 #include <QString>
 #include <QStringList>
@@ -63,5 +64,11 @@ bool istBeidatei(const QByteArray& roh);
 //  Der Inhalt dieser Beidatei als eingerueckter Text - damit sie sich ansehen
 //  laesst wie die Ordner-Ablage. Leer, wenn sie sich nicht lesen laesst.
 QString lesbar(const QString& beidatei);
+
+//  Das fruehere Standard-Gelb hat nie ein Nutzer gewaehlt: aeltere Beidateien laden es als "ohne Papier".
+//  Jede andere Farbe samt Deckkraft bleibt, wie sie gewaehlt wurde.
+inline QColor ohneAltesGelb(const QColor& c) {
+    return c.rgba() == qRgba(254, 243, 155, 232) ? QColor(0, 0, 0, 0) : c;
+}
 
 }  // namespace mg::editsidecar

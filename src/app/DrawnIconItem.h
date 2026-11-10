@@ -52,11 +52,14 @@ private:
     void placeLetter();
     void applyColor(const Part& part);
     QQuickItem* adopt(QObject* created);
+    void watchClip();
+    void hideShapesIfClipped();
 
     QString m_name;
     const mg::icons::Symbol* m_symbol = nullptr;
     qreal m_size = 16;
     QColor m_color = Qt::white;
     QList<Part> m_parts;
+    QMetaObject::Connection m_clipWatch;
     bool m_built = false;
 };

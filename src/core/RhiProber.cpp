@@ -69,9 +69,28 @@ QString RhiProber::sanitizeBackend(QString backend)
     return platformDefault();
 }
 
+// Der alte Prober schrieb sein Messergebnis zugleich als Wunsch; `software` auf beiden Seiten hat also nie der Nutzer
+// gewaehlt. Dann einmal der Standard, ein echter Defekt faellt ueber den Crash-Guard zurueck.
+void RhiProber::migrateLegacyProbe(QSettings& s)
+{
+    const QString gemessen = s.value(QStringLiteral("rhi/detectedBackend")).toString().trimmed().toLower();
+    const QString wunsch   = s.value(QString::fromUtf8(kKeyBackend)).toString().trimmed().toLower();
+    if (gemessen == u"software" && wunsch == u"software")
+        s.setValue(QString::fromUtf8(kKeyBackend), platformDefault());
+    for (const char* alt : { "rhi/detectedBackend", "rhi/detectedAt", "rhi/binaryMtime", "rhi/qtVersion",
+                             "rhi/softwareFallback" })
+        s.remove(QString::fromUtf8(alt));
+}
+
 void RhiProber::applyApi(const QString& backend)
 {
     QQuickWindow::setGraphicsApi(toApi(backend));
+}
+
+void RhiProber::useElapsedAnimationClock()
+{
+    if (!qEnvironmentVariableIsSet("QSG_USE_SIMPLE_ANIMATION_DRIVER"))
+        qputenv("QSG_USE_SIMPLE_ANIMATION_DRIVER", "1");
 }
 
 // Vor QGuiApplication aufrufen. Steht der Crash-Guard noch, ist der letzte Start
@@ -80,6 +99,8 @@ void RhiProber::applyApi(const QString& backend)
 QString RhiProber::applyStoredBackend()
 {
     QSettings s(QStringLiteral("MediaGallery"), QStringLiteral("MediaGallery"));
+
+    migrateLegacyProbe(s);
 
     QString guardRaw = s.value(
         QString::fromUtf8(kKeyCrashGuard)).toString().trimmed().toLower();
@@ -106,7 +127,7 @@ QString RhiProber::applyStoredBackend()
             // der Kette zurückfallen (nicht mehr pauschal Software).
             const QString fb = fallbackFor(guardRaw);
             s.setValue(QString::fromUtf8(kKeyBackend),    fb);
-            s.setValue(QString::fromUtf8(kKeyFallback),   true);
+            s.setValue(QString::fromUtf8(kKeyFallback),   guardRaw);
             // Guard auch für das Fallback setzen: crasht z. B. auch OpenGL
             // sofort, fällt der übernächste Start weiter auf Software zurück.
             s.setValue(QString::fromUtf8(kKeyCrashGuard), fb);
@@ -146,7 +167,6 @@ QString RhiProber::applyStoredBackend()
 #endif
 
     s.setValue(QString::fromUtf8(kKeyCrashGuard), backend);
-    s.remove(QString::fromUtf8(kKeyFallback));
     s.sync();
 
     applyApi(backend);
@@ -190,7 +210,9 @@ void RhiProber::markCleanShutdown()
 void RhiProber::setDesiredBackend(const QString& backend)
 {
     QSettings s(QStringLiteral("MediaGallery"), QStringLiteral("MediaGallery"));
+    migrateLegacyProbe(s);    // vorher: danach saehe die eigene Wahl `software` wie ein alter Messwert aus
     s.setValue(QString::fromUtf8(kKeyBackend), sanitizeBackend(backend));
+    s.remove(QString::fromUtf8(kKeyFallback));
     s.sync();
 }
 
@@ -204,6 +226,6 @@ void RhiProber::noteRuntimeFailure()
     if (cur == u"software")
         return;                        // letzte Stufe - nichts mehr zu degradieren
     s.setValue(QString::fromUtf8(kKeyBackend),  fallbackFor(cur));
-    s.setValue(QString::fromUtf8(kKeyFallback), true);
+    s.setValue(QString::fromUtf8(kKeyFallback), cur);
     s.sync();
 }

@@ -960,6 +960,8 @@ bool ImageEditController::ladeAus(const Obj& o) {
     for (int i = 0; i < arr.size(); ++i) {
         ImageAnnotation a = ImageAnnotation::lade(mg::mgeb::alsObjekt(arr.at(i)));
         a.id = m_nextId++;                          // IDs sind sitzungslokal
+        if (a.kind == ImageAnnKind::Text)
+            a.highlight = mg::editsidecar::ohneAltesGelb(a.highlight);
         anns.append(a);
     }
     m_model.resetAnns(anns);

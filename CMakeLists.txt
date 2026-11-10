@@ -329,6 +329,8 @@ add_library(mg_lib STATIC
     src/image/edit/ImageEditModel.cpp
     src/image/edit/ImageEditModel.h
     src/image/edit/ImageEditTypes.h
+    src/image/TiledImageItem.cpp
+    src/image/TiledImageItem.h
 
     src/media/ContentSniff.cpp
     src/media/ContentSniff.h

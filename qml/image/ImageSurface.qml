@@ -31,9 +31,9 @@ Item {
     property int  _autoEditId: -1                // frisch erzeugte Text-Notiz -> sofort editieren
     property bool editPanelVisible: false
 
-    // "Ein Bild ist DA" - nicht "gerade wird nicht geladen": beim Stufenwechsel bleibt das alte Bild dank
-    // `retainWhileLoading` sichtbar; ginge `docReady` auf false, verschwände die Leiste und der Inhalt spränge 40 px.
-    readonly property bool docReady: img.status === Image.Ready || _everReady
+    // "Ein Bild ist DA" - nicht "gerade wird nicht geladen": beim Stufenwechsel bleibt das alte Bild
+    // sichtbar; ginge `docReady` auf false, verschwände die Leiste und der Inhalt spränge 40 px.
+    readonly property bool docReady: img.status === TiledImage.Ready || _everReady
     property bool _everReady: false
     readonly property int  natW: editCtl.imageWidth  > 0 ? editCtl.imageWidth  : img.implicitWidth
     readonly property int  natH: editCtl.imageHeight > 0 ? editCtl.imageHeight : img.implicitHeight
@@ -62,7 +62,9 @@ Item {
 
     onDecodeWantChanged: {
         if (root.decodeDim <= 0) { root.decodeDim = root.decodeWant; return }
-        if (root.decodeWant > root.decodeDim) decodeGrow.restart()
+        if (root.decodeWant > root.decodeDim) { decodeShrink.stop(); decodeGrow.restart() }
+        else if (root.decodeWant < root.decodeDim) decodeShrink.restart()
+        else decodeShrink.stop()
     }
     Timer {
         id: decodeGrow
@@ -70,6 +72,21 @@ Item {
         onTriggered: if (root.decodeWant > root.decodeDim)
                          root.decodeDim = root.decodeWant
     }
+    // Zurueck auf die kleinere Stufe erst nach laengerer Ruhe: nach einem Zoom zurueck auf Einpassen hielt die volle
+    // Stufe sonst 80 MB bis zum Schliessen; kurzes Hin und Her dekodiert so nicht jedes Mal neu.
+    Timer {
+        id: decodeShrink
+        interval: 1000
+        onTriggered: if (root.decodeWant > 0 && root.decodeWant < root.decodeDim)
+                         root.decodeDim = root.decodeWant
+    }
+
+    // Der Software-Rasterer filtert jedes Bild bilinear ueber die ganze Flaeche (beim Schwenken die halbe CPU eines
+    // Kerns je Bild); in Bewegung ungefiltert, in Ruhe wieder glatt.
+    readonly property bool _rough: GraphicsInfo.api === GraphicsInfo.Software && moveQuiet.running
+    Timer { id: moveQuiet; interval: 150 }
+    function _moved() { if (GraphicsInfo.api === GraphicsInfo.Software) moveQuiet.restart() }
+    onDispScaleChanged: root._moved()
 
     function commitEditing() { root.editCommitRev++ }
     function startImageExport() { root.editCtl.exportImage() }
@@ -101,9 +118,10 @@ Item {
     onSourceChanged: {
         root.editCtl.setDocument(source)
         decodeGrow.stop()
+        decodeShrink.stop()
         root._everReady = false
         root.decodeDim = root.decodeWant
-        img.source = source ? App.fileUrl(source) : ""
+        img.source = source
         root._fitMode = true
         root.editPanelVisible = false
         Qt.callLater(root.fitToWindow)
@@ -117,12 +135,14 @@ Item {
                   top: parent.top
                   topMargin: root.topInset + (root.docReady ? 40 : 0)
                              + ((root.editCtl.editMode && root.editPanelVisible && PdfEdit.panelOnTop)
-                                ? topPanel.implicitHeight : 0)
+                                && topPanel.item ? topPanel.item.implicitHeight : 0)
                   bottom: parent.bottom; bottomMargin: root.bottomInset }
         clip: true
         contentWidth:  Math.max(width,  root.dispW)
         contentHeight: Math.max(height, root.dispH)
         boundsBehavior: Flickable.StopAtBounds
+        onContentXChanged: root._moved()
+        onContentYChanged: root._moved()
         // Ziehen schwenkt im Ansichtsmodus ODER mit dem Auswahl-Werkzeug; beim
         // Zeichnen greift die drawArea (preventStealing) statt des Flickable.
         interactive: !root.editCtl.editMode || root.editCtl.tool === 0
@@ -136,25 +156,17 @@ Item {
             x: Math.max(0, (view.contentWidth  - root.dispW) / 2)
             y: Math.max(0, (view.contentHeight - root.dispH) / 2)
 
-            Image {
+            TiledImage {
                 id: img
                 anchors.fill: parent
-                fillMode: Image.PreserveAspectFit
-                asynchronous: true
-                cache: false
-                smooth: true
+                smooth: !root._rough
                 mipmap: true
-                autoTransform: false               // gespeicherte Orientierung = Export = WYSIWYG
-                sourceSize: root.decodeDim > 0
-                            ? (root.natW >= root.natH ? Qt.size(root.decodeDim, 0)
-                                                      : Qt.size(0, root.decodeDim))
-                            : undefined
-                //  Beim Stufenwechsel das ALTE Bild stehen lassen, bis das neue
-                //  fertig ist - sonst ist die Fläche währenddessen leer, und
-                //  genau das hat der Nutzer als „Bild ist kurz weg" gesehen.
-                retainWhileLoading: true
+                decodeSize: root.decodeDim
+                viewRect: Qt.rect(view.contentX - imgWrap.x, view.contentY - imgWrap.y, view.width, view.height)
+                //  Beim Stufenwechsel bleibt das alte Bild stehen, bis das neue fertig ist - sonst ist die Flaeche
+                //  waehrenddessen leer ("Bild ist kurz weg").
                 onStatusChanged: {
-                    if (status !== Image.Ready) return
+                    if (status !== TiledImage.Ready) return
                     root._everReady = true
                     if (root.editCtl.imageWidth <= 0)
                         root.editCtl.setImageSize(implicitWidth, implicitHeight)
@@ -227,7 +239,7 @@ Item {
 
     Text {
         anchors.centerIn: parent
-        visible: img.status === Image.Error
+        visible: img.status === TiledImage.Error
         text: App.uiText(App.language, "ImageLoadError")
         color: "#ff8a80"; font.pixelSize: 14; z: 5
     }
@@ -314,28 +326,39 @@ Item {
         }
     }
 
-    // Andockbares Panel (rechts ODER oben; teilt PdfEdit.panelOnTop)
-    //  Rechte Seitenleiste
-    ImageEditPanel {
+    // Andockbares Panel (rechts ODER oben; teilt PdfEdit.panelOnTop). Erst beim ersten Bearbeiten gebaut: versteckt
+    // waren die zwei Panels die Haelfte aller Objekte der Ansicht und ein Drittel der Oeffnen-Blockade.
+    readonly property bool _panelShown: root.editCtl.editMode && root.editPanelVisible
+    Loader {
         id: sidePanel
-        visible: root.editCtl.editMode && root.editPanelVisible && !PdfEdit.panelOnTop
-        horizontal: false
-        surface: root
-        width: implicitWidth
+        active: false
+        readonly property bool _wanted: root._panelShown && !PdfEdit.panelOnTop
+        on_WantedChanged: if (_wanted) active = true
+        visible: _wanted
+        width: item ? item.implicitWidth : 0
         anchors { right: parent.right; top: parent.top; topMargin: root.topInset + toolbar.height
                   bottom: parent.bottom; bottomMargin: root.bottomInset }
         z: 11
-        onCloseRequested: root.editPanelVisible = false
+        sourceComponent: ImageEditPanel {
+            horizontal: false
+            surface: root
+            onCloseRequested: root.editPanelVisible = false
+        }
     }
-    ImageEditPanel {
+    Loader {
         id: topPanel
-        visible: root.editCtl.editMode && root.editPanelVisible && PdfEdit.panelOnTop
-        horizontal: true
-        surface: root
-        height: implicitHeight
+        active: false
+        readonly property bool _wanted: root._panelShown && PdfEdit.panelOnTop
+        on_WantedChanged: if (_wanted) active = true
+        visible: _wanted
+        height: item ? item.implicitHeight : 0
         anchors { left: parent.left; right: parent.right; top: parent.top; topMargin: root.topInset + toolbar.height }
         z: 11
-        onCloseRequested: root.editPanelVisible = false
+        sourceComponent: ImageEditPanel {
+            horizontal: true
+            surface: root
+            onCloseRequested: root.editPanelVisible = false
+        }
     }
     Connections {
         target: root.editCtl

@@ -88,5 +88,6 @@
         <file>qml/style/TextField.qml</file>
         <file>qml/style/ToolButton.qml</file>
         <file>qml/style/ToolTip.qml</file>
+        <file>qml/style/BusyIndicator.qml</file>
     </qresource>
 </RCC>

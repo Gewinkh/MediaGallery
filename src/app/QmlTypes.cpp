@@ -17,6 +17,7 @@
 #include "editor/TextProblems.h"
 #include "html/HtmlView.h"
 #include "image/edit/ImageEditController.h"
+#include "image/TiledImageItem.h"
 #include "media/GalleryRowModel.h"
 #include "tags/TagListModel.h"
 #include "pdf/PdfAudioController.h"
@@ -33,6 +34,7 @@ void registerQmlTypes() {
     qmlRegisterType<PdfAudioController>("MediaGallery", 1, 0, "PdfAudioController");
     qmlRegisterType<PdfEditController> ("MediaGallery", 1, 0, "PdfEditController");
     qmlRegisterType<ImageEditController>("MediaGallery", 1, 0, "ImageEditController");
+    qmlRegisterType<mg::image::TiledImageItem>("MediaGallery", 1, 0, "TiledImage");
     qmlRegisterType<DocxEditController>("MediaGallery", 1, 0, "DocxEditController");
     qmlRegisterType<DocxTextArea>      ("MediaGallery", 1, 0, "DocxTextArea");
     //  Seiten-Miniatur des DOCX-Editors; malt über paintPageInto, hält also kein Bild.
@@ -55,6 +57,8 @@ void registerQmlTypes() {
     //  Unterstreichung und Minimap-Punkt lesen dieselbe Liste.
     qmlRegisterType<mg::editor::TextProblems>("MediaGallery", 1, 0, "TextProblems");
     qmlRegisterType<mg::editor::MarkdownView>("MediaGallery", 1, 0, "MarkdownView");
+    qmlRegisterType<mg::editor::MarkdownGrid>("MediaGallery", 1, 0, "MarkdownGrid");
+    qmlRegisterType<mg::editor::MarkdownViewport>("MediaGallery", 1, 0, "MarkdownViewport");
     qmlRegisterType<mg::html::HtmlView>("MediaGallery", 1, 0, "HtmlView");
     //  Je Kachel eine Instanz: zwei Haelften zeigen verschiedene Dateien.
     qmlRegisterType<mg::datev::DatevController>("MediaGallery", 1, 0, "DatevController");

@@ -12,6 +12,7 @@
 #include <atomic>
 
 class QTextDocument;
+class QTextTable;
 
 // MarkdownRender - baut aus dem zerlegten Markdown ein QTextDocument; laeuft im Arbeitsfaden, ausgelegt wird spaeter.
 namespace mg::editor::md {
@@ -26,6 +27,9 @@ struct RenderStyle {
     QString hideLabel;
     int maxImageWidth = 1600;    // groessere Bilder werden beim Laden verkleinert
     qint64 imageBudget = 64LL * 1024 * 1024;   // dekodierte Bytes je Dokument, danach nur Alternativtext
+    //  Aus: die Ansicht zeichnet Text und Tabellenlinien selbst, Farben stehen dann auch in den Zeilenformaten. Das PDF
+    //  behaelt Qts Linien, weil Qt dort Tabellen umbricht und den Kopf wiederholt.
+    bool qtTableLines = true;
 };
 
 inline constexpr int kAnchorProperty = QTextFormat::UserProperty + 1;   // Anker einer Ueberschrift am Block
@@ -44,8 +48,21 @@ struct CodeBox {
 class RenderedDocument : public QTextDocument {
 public:
     QList<CodeBox> codeBoxes;     // von oben nach unten
+    QList<QTextTable*> tables;    // von oben nach unten, ohne die Karte der Kopfdaten
+    QColor tableLine;
+    QColor text;                  // Grundfarbe: Text ohne eigenen Farbbereich
     QTextFrame* metaFrame = nullptr;
 };
+
+// Linien einer Tabelle in Dokumentkoordinaten, je `kTableLine` breit: waagrecht ab `rows`, senkrecht ab `cols`, aufsteigend.
+inline constexpr qreal kTableLine = 1;
+struct TableGrid {
+    QList<qreal> rows;
+    QList<qreal> cols;
+};
+TableGrid tableGrid(const RenderedDocument& doc, QTextTable* table);
+// Die Linienrechtecke aller Tabellen, die [von, bis) beruehren; `grids` von oben nach unten.
+void gridLines(const QList<TableGrid>& grids, qreal von, qreal bis, QList<QRectF>& out);
 
 RenderedDocument* buildDocument(const Document& doc, const RenderStyle& style,
                                 const std::atomic<bool>* abort = nullptr);

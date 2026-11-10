@@ -96,6 +96,7 @@ int main(int argc, char* argv[]) {
 
     // Vor der QGuiApplication - danach ignoriert Qt die Backend-Wahl.
     RhiProber::applyStoredBackend();
+    RhiProber::useElapsedAnimationClock();
     mg::media::limitHwProbe();
 
     QGuiApplication::setHighDpiScaleFactorRoundingPolicy(
@@ -353,6 +354,9 @@ int main(int argc, char* argv[]) {
     // Ohne Slot beendet Qt bei einem Scene-Graph-Fehler hart; hier stattdessen ein
     // sichereres Backend fuer den naechsten Start merken.
     if (auto* rootWin = qobject_cast<QQuickWindow*>(engine.rootObjects().first())) {
+        // Das erste ausgelieferte Bild beweist das Backend; ein Beenden oder Absturz danach ist kein Backend-Defekt.
+        QObject::connect(rootWin, &QQuickWindow::frameSwapped, &app, [] { RhiProber::markCleanShutdown(); },
+                         static_cast<Qt::ConnectionType>(Qt::QueuedConnection | Qt::SingleShotConnection));
         QObject::connect(rootWin, &QQuickWindow::sceneGraphError, &app,
                          [](QQuickWindow::SceneGraphError, const QString& message) {
                              qWarning().noquote()
@@ -368,8 +372,6 @@ int main(int argc, char* argv[]) {
             QGuiApplication::quit();
         });
 
-    // Guard frueh loeschen: ein spaeterer Crash (WebEngine-Teardown) ist kein Backend-Defekt.
-    QTimer::singleShot(4000, &app, [] { RhiProber::markCleanShutdown(); });
     QObject::connect(&app, &QGuiApplication::aboutToQuit,
                      &app, [] { RhiProber::markCleanShutdown(); });
 

@@ -158,14 +158,16 @@ $env:MG_HTML_EIGEN=1; .\build\Release\MediaGallery.exe
 ## Changelog
 
 ### Latest
-- **Fix**: **PDF and image editor**: Fully transparent note backgrounds now retain their assigned colour.
-- **Improvement**: **PDF**: Text notes are positioned more accurately on lines, in tables and in empty areas. Notes inside table cells fill the cell while keeping its lines visible.
-- **New**: **PDF**: Multiple notes can be selected, copied, cut and deleted together. Pasted notes appear at the mouse position.
-- **Change**: **PDF**: Notes are transparent by default, with an option for opaque white backgrounds.
-- **Fix**: **PDF**: Notes can now be dragged across multiple pages without disappearing, including while scrolling.
-- **Improvement**: **PDF**: `Ctrl+A` now selects and copies text from all pages.
-- **Fix**: **Audio**: Unreadable files no longer get stuck playing or trigger repeated error messages.
-- **Fix**: **Word editor**: Closing a document while typing no longer crashes the app.
+- **Improvement**: **Images**: Panning and zooming large photos is smoother, faster and uses less memory.
+- **Fix**: **PDF**: Fixed drawing issues with the edit ribbon and page rendering during zooming and resizing.
+- **Fix**: **PDF**: The page sidebar now updates immediately after page changes, even in large documents.
+- **Improvement**: **PDF**: Slow-loading pages display a loading indicator instead of a blank sheet.
+- **Fix**: **App**: Open PDFs no longer cause unnecessary background redraws. Idle CPU usage is reduced.
+- **Fix**: **App**: Improved graphics backend recovery and selection. High-refresh monitors now run smoothly alongside 60 Hz displays.
+- **Improvement**: **App**: Gallery scrolling is smoother and uses less CPU in software mode.
+- **Improvement**: **Markdown**: Large tables now scroll more smoothly and use less memory.
+- **Change**: **PDF and image editor**: Notes are transparent by default. Paper colour and opacity can be configured per note and are preserved after reopening.
+- **Improvement**: **Image editor**: The toolbar now includes text, paper, outline and fill colours and matches the PDF editor layout.
 
 ---
 

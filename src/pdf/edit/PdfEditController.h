@@ -59,8 +59,6 @@ private:
     // Mehrfachauswahl: selectedId bleibt die fuehrende Box (Toolbar, Griffe), die Menge steht in isSelected().
     Q_PROPERTY(int selectedCount READ selectedCount NOTIFY selectionSetChanged)
     Q_PROPERTY(int selectionSetRev READ selectionSetRev NOTIFY selectionSetChanged)
-    // false = Notizen ohne Papier (Standard), true = deckend weiss.
-    Q_PROPERTY(bool notesOpaque READ notesOpaque WRITE setNotesOpaque NOTIFY notesOpaqueChanged)
     Q_PROPERTY(bool panelOnTop READ panelOnTop WRITE setPanelOnTop NOTIFY panelOnTopChanged)
     Q_PROPERTY(bool textToolSticky READ textToolSticky WRITE setTextToolSticky NOTIFY textToolStickyChanged)
 
@@ -156,8 +154,6 @@ public:
     bool hasClipboard() const { return m_hasClip; }
     int  selectedCount() const { return int(m_selIds.size()); }
     int  selectionSetRev() const { return m_selSetRev; }
-    bool notesOpaque() const;
-    void setNotesOpaque(bool v);
     bool panelOnTop() const;
     void setPanelOnTop(bool v);
     bool textToolSticky() const;
@@ -286,8 +282,6 @@ public:
     Q_INVOKABLE void updateBand(int page, qreal xPt, qreal yPt, qreal wPt, qreal hPt);
     Q_INVOKABLE void endBand();
 
-    // Bestehende Notizen mit Standardpapier (ohne, weiss, das fruehere Gelb) folgen der Einstellung.
-    Q_INVOKABLE void applyNotePaper();
 
     // Notizfang aus Glyphen und Linien der Seite. prepare liest asynchron; ohne fertiges Layout liefert
     // addSnappedTextBox -1 und QML faellt auf den Zeilenfang zurueck.
@@ -417,7 +411,6 @@ signals:
     void textEditingChanged();
     void clipboardChanged();
     void selectionSetChanged();
-    void notesOpaqueChanged();
     void panelOnTopChanged();
     void textToolStickyChanged();
     void exportLosslessChanged();
@@ -606,8 +599,6 @@ private:
     QVector<int> m_bandBase;            // Auswahl beim Start eines additiven Aufziehens
     int        m_selSetRev = 0;
     void setSelection(const QVector<int>& ids, int primary);
-    QColor standardPaper() const;
-    static bool isStandardPaper(const QColor& c);
     void removeBoxes(const QVector<int>& ids);
     void pasteBoxes(int page, const QPointF* at, qreal pageWPt, qreal pageHPt);
 

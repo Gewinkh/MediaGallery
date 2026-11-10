@@ -266,6 +266,24 @@ Item {
         }
     }
 
+    //  Index der aktuellen Seite, die weder Bild noch Vorschau hat (-1: keine); daran haengt EIN Kreisel fuer die Ansicht.
+    property int  _wartendeSeite: -1
+    property bool _kreiselFaellig: false
+    function _seiteWartet(i, w) {
+        if (w) _wartendeSeite = i
+        else if (_wartendeSeite === i) _wartendeSeite = -1
+    }
+    on_WartendeSeiteChanged: {
+        if (_wartendeSeite < 0) { _kreiselFaellig = false; kreiselVerzug.stop() }
+        else if (!_kreiselFaellig && !kreiselVerzug.running) kreiselVerzug.start()
+    }
+    //  Eine gewoehnliche Seite rechnet schneller; der Kreisel blitzte sonst bei jedem Blaettern auf.
+    Timer {
+        id: kreiselVerzug
+        interval: 300
+        onTriggered: root._kreiselFaellig = root._wartendeSeite >= 0
+    }
+
     //  Grundton des Dokuments: eine noch nicht gerechnete Seite traegt ihn statt Weiss (dunkle PDFs).
     property color _seitenTon: "white"
     Connections {
@@ -504,7 +522,7 @@ Item {
         function onPageStructureChanged() {
             if (root._warm && root.source.length > 0)
                 root._thumbDocId = PdfThumbs.refreshDocument(root._thumbSource(),
-                                                             root.currentPage)
+                                                             root.currentPage, root._thumbDocId)
         }
         function onEditModeChanged() {
             if (root.editCtl.editMode) {
@@ -808,10 +826,6 @@ Item {
         }
     }
 
-    Connections {
-        target: PdfEdit
-        function onNotesOpaqueChanged() { root.editCtl.applyNotePaper() }
-    }
     // Der erste Klick soll schon einrasten: die sichtbare Seite liest ihren Fang, sobald das Text-Werkzeug kommt.
     Connections {
         target: root.editCtl
@@ -1616,6 +1630,13 @@ Item {
             bottomMargin: root.fitMode === "page" ? 0 : root.bottomInset
         }
 
+        BusyIndicator {
+            objectName: "pdfSeitenKreisel"
+            anchors.centerIn: pages
+            z: 5
+            running: root._kreiselFaellig
+        }
+
         ListView {
             id: pages
             objectName: "pdfPages"       // Griff fuer tests/bench
@@ -1672,7 +1693,7 @@ Item {
                 readonly property string _linkKey: root.docReady ? root.source + "#" + index : ""
                 function _requestLinks() { if (_linkKey.length > 0) Viewer.requestPdfPageLinks(root.source, index) }
                 on_LinkKeyChanged: _requestLinks()
-                Component.onCompleted: _requestLinks()
+                Component.onCompleted: { _requestLinks(); if (wartet) root._seiteWartet(index, true) }
                 width: pages.width
                 // Waehrend eines Notiz-Drags ueber die Geschwister-Delegates heben.
                 z: index === root.editDragPage ? 1 : 0
@@ -1695,15 +1716,21 @@ Item {
                 readonly property bool showAddLine: root.editCtl.editMode
                 height: pageH + 4 + (showAddLine ? 26 : 0)
 
+                //  Grosser Scan beim Oeffnen: die aktuelle Seite rechnet ohne Vorschau, sonst stuende eine stumme Flaeche da.
+                readonly property bool wartet: index === root.currentPage && !pageImg.gerechnet
+                                               && grobeSeite.status !== Image.Ready
+                onWartetChanged: root._seiteWartet(index, wartet)
+                Component.onDestruction: if (wartet) root._seiteWartet(index, false)
+
                 Rectangle {
                     id: pageBg
                     // Mittig; reichte sie unter die Leiste, nur so weit nach rechts wie noetig. Ueberlauf mittig, um panX verschiebbar.
                     x: Math.round(Math.max((pages.width - width) / 2,
                                            Math.min(root._thumbInset + 12, pages.width - 12 - width)) + root.panX)
                     width: pageCell.pageW; height: pageCell.pageH
-                    //  Fertig gerechnete Seiten deckt das Bild ohnehin ab; der Ton
-                    //  zaehlt nur fuer die, die noch rechnen.
-                    color: pageImg.status === Image.Ready ? "white" : root._seitenTon
+                    //  Der Ton nur bis zum ersten Bild: PDFium rechnet mit durchsichtigem Grund, beim Neurechnen nach
+                    //  einem Zoom schien er sonst durch das gehaltene Bild (rosa Seite beim Strg+Rad).
+                    color: pageImg.gerechnet ? "white" : root._seitenTon
 
                     //  Solange die grosse Seite rechnet, steht hier die Vorschau aus dem RAM statt einer weissen Flaeche.
                     Image {

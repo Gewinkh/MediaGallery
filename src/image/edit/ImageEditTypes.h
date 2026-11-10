@@ -62,9 +62,8 @@ struct ImageAnnotation {
     bool    italic     = false;
     bool    underline  = false;
     QColor  color      = QColor(0, 0, 0);        // Textfarbe (deckend)
-    // Notiz-Hintergrund („Post-it-Papier"): füllt das ganze Box-Rechteck; Alpha 0
-    // = kein Papier (reiner Text). Standard = klassisches Haftnotiz-Gelb.
-    QColor  highlight  = QColor(254, 243, 155, 232);
+    // Notiz-Hintergrund: füllt das ganze Box-Rechteck; Alpha 0 = kein Papier (Standard).
+    QColor  highlight  = QColor(0, 0, 0, 0);
     int     alignment  = 0;                       // 0=links, 1=zentriert, 2=rechts
     int     vAlign     = 0;                        // 0=oben (Word-Stil), 1=zentriert
 
@@ -164,7 +163,7 @@ struct ImageAnnotation {
         a.italic     = o.value(mg::mgeb::k_italic).toBool(false);
         a.underline  = o.value(mg::mgeb::k_under).toBool(false);
         a.color      = QColor(o.value(mg::mgeb::k_color).toString(QStringLiteral("#000000")));
-        a.highlight  = QColor(o.value(mg::mgeb::k_hilite).toString(QStringLiteral("#fefb9b")));
+        a.highlight  = QColor(o.value(mg::mgeb::k_hilite).toString(QStringLiteral("#00000000")));
         a.alignment  = o.value(mg::mgeb::k_align).toInt(0);
         a.vAlign     = o.value(mg::mgeb::k_valign).toInt(0);
 

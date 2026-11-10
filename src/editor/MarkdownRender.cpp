@@ -15,6 +15,8 @@
 #include <QTextList>
 #include <QTextTable>
 #include <QUrl>
+#include <algorithm>
+#include <cmath>
 
 namespace mg::editor::md {
 namespace {
@@ -93,6 +95,7 @@ private:
     };
     Box box(const Ctx& c, const QColor& bg, qreal pad);
     void closeBox(const Box& b, qreal gap);
+    void farbbereiche();
 };
 
 Builder::Builder(RenderedDocument* d, const Document& md, const RenderStyle& st, const std::atomic<bool>* abort)
@@ -509,9 +512,10 @@ void Builder::table(const Block& b, const Ctx& c) {
     // Ohne zusammenfallende Raender, dafuer Zellabstand -1: dieselbe Einzellinie, aber Qt spart die Randberechnung
     // je Zelle (gemessen an 527 Tabellenzeilen: Layout 187 -> 90 ms, erstes Bild 87 -> 70 ms).
     tf.setBorderCollapse(false);
-    tf.setBorder(1);
+    tf.setBorder(kTableLine);
     tf.setBorderBrush(m_border);
-    tf.setBorderStyle(QTextFrameFormat::BorderStyle_Solid);
+    //  Der Rand bleibt im Layout; ohne Stil malt ihn nur Qts Textflaeche nicht mehr.
+    tf.setBorderStyle(m_st.qtTableLines ? QTextFrameFormat::BorderStyle_Solid : QTextFrameFormat::BorderStyle_None);
     tf.setCellSpacing(-1);
     tf.setCellPadding(m_px * 0.4);
     tf.setHeaderRowCount(1);
@@ -519,6 +523,8 @@ void Builder::table(const Block& b, const Ctx& c) {
     tf.setLeftMargin(c.indent * m_indentPx);
     beforeFrame();
     QTextTable* t = m_cur.insertTable(rows, cols, tf);
+    m_doc->tables.append(t);
+    m_doc->tableLine = m_border;
 
     Ctx inner = c;
     inner.indent = 0;
@@ -536,7 +542,8 @@ void Builder::table(const Block& b, const Ctx& c) {
             QTextCharFormat cf = charFormat(inner);
             if (r == 0) cf.setFontWeight(QFont::Bold);
             m_cur.setBlockFormat(bf);
-            m_cur.setBlockCharFormat(cf);
+            //  Kein Blockzeichenformat: es landete in der Zellmarke, und Qt kopiert die bei jeder Lagefrage einer Zelle,
+            //  beim Rollen fuer jede Zelle oberhalb des Sichtfensters. Leere Zellen nehmen die Grundschrift, gleich hoch.
             inlines(parseInlines(b.rows[r][col], m_md.refs, m_md.footnotes), cf);
         }
     }
@@ -697,7 +704,44 @@ void Builder::run() {
     klammer.beginEditBlock();
     blocks(m_md.blocks, Ctx{});
     footnotes();
+    m_doc->text = m_text;
+    if (!m_st.qtTableLines) farbbereiche();
     klammer.endEditBlock();
+}
+
+//  Die Ansicht zeichnet den Text selbst, und Qts Textknoten kennt Farben nur aus den Zusatzformaten der Zeilen. Gesetzt
+//  vor dem Auslegen: danach liefe jede Zeile neu. Text in der Grundfarbe bekommt keinen Bereich.
+void Builder::farbbereiche() {
+    QHash<quint64, QTextCharFormat> geteilt;   // ein Format je Farbpaar, damit alle Bereiche dieselben Daten teilen
+    QList<QTextLayout::FormatRange> r;
+    for (QTextBlock b = m_doc->begin(); b.isValid(); b = b.next()) {
+        r.clear();
+        for (auto it = b.begin(); !it.atEnd(); ++it) {
+            const QTextFragment frag = it.fragment();
+            const QTextCharFormat cf = frag.charFormat();
+            QRgb vorne = cf.hasProperty(QTextFormat::ForegroundBrush) ? cf.foreground().color().rgba()
+                                                                           : m_text.rgba();
+            const QRgb hinten = cf.hasProperty(QTextFormat::BackgroundBrush) ? cf.background().color().rgba() : 0;
+            const auto lage = cf.verticalAlignment();
+            //  Hoch- und Tiefgestelltes verschiebt die Ansicht selbst; an der Grundlinie bleibt es unsichtbar.
+            if (lage == QTextCharFormat::AlignSuperScript || lage == QTextCharFormat::AlignSubScript) vorne = 0;
+            if (vorne == m_text.rgba() && qAlpha(hinten) == 0) continue;
+            const quint64 key = (quint64(vorne) << 32) | hinten;
+            auto f = geteilt.find(key);
+            if (f == geteilt.end()) {
+                QTextCharFormat neu;
+                neu.setForeground(QColor::fromRgba(vorne));
+                if (qAlpha(hinten)) neu.setBackground(QColor::fromRgba(hinten));
+                f = geteilt.insert(key, neu);
+            }
+            const int start = frag.position() - b.position();
+            if (!r.isEmpty() && r.last().start + r.last().length == start && r.last().format == *f)
+                r.last().length += frag.length();
+            else
+                r.append({start, frag.length(), *f});
+        }
+        if (!r.isEmpty()) b.layout()->setFormats(r);
+    }
 }
 
 }  // namespace
@@ -776,6 +820,58 @@ QRectF codeBoxRect(const RenderedDocument& doc, const CodeBox& box) {
     //  Die linke Kante des Blocks kennt den eigenen Rand nicht, seine Breite schon.
     const qreal links = oben.left() + box.first.blockFormat().leftMargin() - box.padding;
     return QRectF(links, top, oben.width() + 2 * box.padding, unten.bottom() + box.padding - top);
+}
+
+//  Nur oeffentliche Lagen: eine Zelle ist ihr erster Block plus Innenabstand, die Zeile darunter beginnt eine Linie
+//  tiefer (Zellabstand -1). Spalten aus beiden Kanten jeder Zelle: so stimmt es auch, wenn Qt die Spalten spiegelt.
+TableGrid tableGrid(const RenderedDocument& doc, QTextTable* table) {
+    TableGrid g;
+    const int rows = table->rows();
+    const int cols = table->columns();
+    if (rows == 0 || cols == 0) return g;
+    QAbstractTextDocumentLayout* lay = doc.documentLayout();
+    const qreal pad = table->format().cellPadding();
+    auto feld = [&](int r, int c, bool letzter) {
+        const QTextTableCell z = table->cellAt(r, c);
+        return lay->blockBoundingRect((letzter ? z.lastCursorPosition() : z.firstCursorPosition()).block());
+    };
+    g.rows.reserve(rows + 1);
+    for (int r = 0; r < rows; ++r) g.rows.append(feld(r, 0, false).top() - pad - kTableLine);
+    qreal unten = feld(rows - 1, 0, true).bottom();
+    for (int c = 1; c < cols; ++c) unten = qMax(unten, feld(rows - 1, c, true).bottom());
+    g.rows.append(unten + pad);
+    g.cols.reserve(2 * cols);
+    for (int c = 0; c < cols; ++c) {
+        const QRectF z = feld(0, c, false);
+        g.cols << z.left() - pad - kTableLine << z.right() + pad;
+    }
+    std::sort(g.cols.begin(), g.cols.end());
+    g.cols.erase(std::unique(g.cols.begin(), g.cols.end(), [](qreal a, qreal b) { return b - a < 0.01; }),
+                 g.cols.end());
+    return g;
+}
+
+void gridLines(const QList<TableGrid>& grids, qreal von, qreal bis, QList<QRectF>& out) {
+    //  Die Pixelzeile, deren Mitte die Linie trifft - wie die Grafikkarte. Halbe Lagen zeichnete der Software-Renderer
+    //  sonst verwaschen ueber zwei Zeilen.
+    const auto pixel = [](qreal v) { return std::ceil(v - 0.5); };
+    const auto anfang = std::partition_point(grids.cbegin(), grids.cend(), [&](const TableGrid& g) {
+        return !g.rows.isEmpty() && g.rows.last() + kTableLine <= von;
+    });
+    for (auto it = anfang; it != grids.cend(); ++it) {
+        const TableGrid& g = *it;
+        if (g.rows.size() < 2 || g.cols.size() < 2) continue;
+        if (g.rows.first() >= bis) break;
+        const qreal links = pixel(g.cols.first());
+        const qreal breite = pixel(g.cols.last()) + kTableLine - links;
+        const auto r0 = std::lower_bound(g.rows.cbegin(), g.rows.cend(), von - kTableLine);
+        const auto r1 = std::lower_bound(r0, g.rows.cend(), bis);
+        for (auto r = r0; r != r1; ++r) out.append(QRectF(links, pixel(*r), breite, kTableLine));
+        //  Senkrechte nur ueber den beruehrten Teil: eine lange Tabelle reicht weit ueber das Fenster hinaus.
+        const qreal oben = qMax(pixel(g.rows.first()), von);
+        const qreal ende = qMin(pixel(g.rows.last()) + kTableLine, bis);
+        for (const qreal x : g.cols) out.append(QRectF(pixel(x), oben, kTableLine, ende - oben));
+    }
 }
 
 QString codeBoxText(const CodeBox& box) {

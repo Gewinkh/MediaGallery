@@ -6,16 +6,17 @@
 class AppSettings : public QObject, public ISettings {
     Q_OBJECT
 
-    // Schreibgeschützte Eigenschaft: aktives RHI-Backend (z. B. „vulkan").
-    // Wird von SettingsGeneralTab.qml nur zur Anzeige verwendet.
+    // Nur zur Anzeige in SettingsGeneralTab.qml; beides gilt ab Start, eine neue Wahl erst beim nächsten.
     Q_PROPERTY(QString rhiBackend READ rhiBackend CONSTANT)
+    Q_PROPERTY(QString rhiFallbackFrom READ rhiFallbackFrom CONSTANT)
 
 public:
     static AppSettings& instance();
 
-    // Gibt das vom RhiProber erkannte und in QSettings gespeicherte
-    // RHI-Backend zurück. Leer, wenn noch kein Probe gelaufen ist.
+    // Gewünschtes Backend aus `rhi/backend`, nach einem Rückfall die gesenkte Stufe; ohne Eintrag OpenGL.
     QString rhiBackend() const;
+    // Backend, das ausgefallen ist und den Rückfall ausgelöst hat; leer ohne Rückfall oder nach einer neuen Wahl.
+    QString rhiFallbackFrom() const;
 
     QSize  windowSize() const override;
     void   setWindowSize(const QSize& s) override;
@@ -134,8 +135,6 @@ public:
     void setPdfEditPanelTop(bool v) override;
     bool pdfEditTextSticky() const override;
     void setPdfEditTextSticky(bool v) override;
-    bool pdfNotesOpaque() const override;
-    void setPdfNotesOpaque(bool v) override;
     bool pdfExportLossless() const override;
     void setPdfExportLossless(bool v) override;
     bool pdfExportAsAnnotations() const override;

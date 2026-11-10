@@ -44,7 +44,8 @@ Rectangle {
     // die Cover-Farbe ist frei, bleibt aber immer deckend (Controller erzwingt).
     readonly property bool showCover:   selIsReplace || (!hasSel && panel.ctl.tool === 6)
 
-    readonly property color defaultPaper: "#FEF39B"
+    // Notiz ohne Papier: die Farbwahl zeigt durchsichtiges Weiss, der Deckkraft-Regler fuellt also weiss.
+    readonly property color defaultPaper: "#00ffffff"
 
     color: App.themeSidebarBg
     Rectangle { anchors.left: parent.left; width: 1; height: parent.height

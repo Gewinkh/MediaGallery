@@ -2,7 +2,6 @@ pragma ComponentBehavior: Bound
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
-import QtQuick.Shapes
 import MediaGallery 1.0
 import "../common"
 
@@ -241,21 +240,19 @@ Item {
                                     spacing: 2
                                     Repeater {
                                         model: [card.modelData.background, card.modelData.card, card.modelData.accent]
-                                        delegate: Shape {
+                                        delegate: Item {
                                             id: slash
                                             required property var modelData
+                                            //  Geschert statt Shape: der Software-Renderer beschneidet Shapes ganz ausserhalb der Liste nicht.
                                             readonly property real neig: height * 0.3
                                             height: slashes.height
                                             width: 9 + neig
-                                            preferredRendererType: Shape.CurveRenderer
-                                            ShapePath {
-                                                fillColor: slash.modelData
-                                                strokeColor: "transparent"
-                                                startX: slash.neig; startY: 0
-                                                PathLine { x: slash.width;     y: 0 }
-                                                PathLine { x: 9;               y: slash.height }
-                                                PathLine { x: 0;               y: slash.height }
-                                                PathLine { x: slash.neig;      y: 0 }
+                                            Rectangle {
+                                                width: 9
+                                                height: parent.height
+                                                color: slash.modelData
+                                                antialiasing: true
+                                                transform: Matrix4x4 { matrix: Qt.matrix4x4(1, -0.3, 0, slash.neig, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1) }
                                             }
                                         }
                                     }
@@ -525,21 +522,18 @@ Item {
                                     spacing: 2
                                     Repeater {
                                         model: Editor.profileSwatches(eCard.index)
-                                        delegate: Shape {
+                                        delegate: Item {
                                             id: eslash
                                             required property var modelData
                                             readonly property real neig: height * 0.3
                                             height: eslashes.height
                                             width: 9 + neig
-                                            preferredRendererType: Shape.CurveRenderer
-                                            ShapePath {
-                                                fillColor: eslash.modelData
-                                                strokeColor: "transparent"
-                                                startX: eslash.neig; startY: 0
-                                                PathLine { x: eslash.width;     y: 0 }
-                                                PathLine { x: 9;               y: eslash.height }
-                                                PathLine { x: 0;               y: eslash.height }
-                                                PathLine { x: eslash.neig;      y: 0 }
+                                            Rectangle {
+                                                width: 9
+                                                height: parent.height
+                                                color: eslash.modelData
+                                                antialiasing: true
+                                                transform: Matrix4x4 { matrix: Qt.matrix4x4(1, -0.3, 0, eslash.neig, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1) }
                                             }
                                         }
                                     }

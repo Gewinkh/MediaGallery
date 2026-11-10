@@ -9,6 +9,7 @@
 #include <QQmlComponent>
 #include <QQmlEngine>
 #include <QQuickWindow>
+#include <QSGRendererInterface>
 
 #include <algorithm>
 #include <cmath>
@@ -77,6 +78,16 @@ QObject* firstChildWith(const QObject* parent, const char* property) {
     return it == kinder.cend() ? nullptr : *it;
 }
 
+bool outsideClip(const QQuickItem* item) {
+    QRectF sichtbar = item->mapRectToScene(item->boundingRect());
+    for (const QQuickItem* a = item->parentItem(); a; a = a->parentItem()) {
+        if (!a->clip()) continue;
+        sichtbar &= a->mapRectToScene(a->clipRect());
+        if (sichtbar.isEmpty()) return true;
+    }
+    return false;
+}
+
 }  // namespace
 
 DrawnIconItem::DrawnIconItem(QQuickItem* parent) : QQuickItem(parent) {
@@ -116,7 +127,10 @@ void DrawnIconItem::itemChange(ItemChange change, const ItemChangeData& data) {
     QQuickItem::itemChange(change, data);
     switch (change) {
     case ItemVisibleHasChanged:
+        buildIfShown();
+        break;
     case ItemSceneChange:
+        if (m_built) watchClip();
         buildIfShown();
         break;
     case ItemDevicePixelRatioHasChanged:
@@ -206,9 +220,11 @@ void DrawnIconItem::buildIfShown() {
     }
     for (const Part& part : std::as_const(m_parts)) applyColor(part);
     arrange();
+    watchClip();
 }
 
 void DrawnIconItem::clearParts() {
+    disconnect(m_clipWatch);
     for (const Part& part : std::as_const(m_parts)) delete part.item;
     m_parts.clear();
     m_built = false;
@@ -312,6 +328,24 @@ void DrawnIconItem::arrange() {
     }
     if (m_symbol->curve)
         if (const Part* p = take(Kind::Curve)) p->item->setScale(u);
+}
+
+//  Qts Software-Renderer beschneidet einen Shape-Knoten nicht, der ganz ausserhalb seiner clip-Flaeche liegt (teilweise
+//  schon): Symbole einer abgeschnittenen Leiste lagen ueber den Nachbarn. Eine Ebene verschob sie bei Skalierung != 1.
+void DrawnIconItem::watchClip() {
+    disconnect(m_clipWatch);
+    const QQuickWindow* w = window();
+    const bool form = std::any_of(m_parts.cbegin(), m_parts.cend(), [](const Part& p) { return p.kind >= Kind::Stroke; });
+    if (!w || !form || w->rendererInterface()->graphicsApi() != QSGRendererInterface::Software) return;
+    m_clipWatch = connect(w, &QQuickWindow::afterAnimating, this, &DrawnIconItem::hideShapesIfClipped);
+    hideShapesIfClipped();
+}
+
+void DrawnIconItem::hideShapesIfClipped() {
+    if (!isVisible()) return;
+    const bool zeigen = !outsideClip(this);
+    for (const Part& p : std::as_const(m_parts))
+        if (p.kind >= Kind::Stroke) p.item->setVisible(zeigen);
 }
 
 void DrawnIconItem::placeLetter() {

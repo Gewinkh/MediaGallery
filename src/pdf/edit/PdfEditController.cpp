@@ -1069,7 +1069,6 @@ PdfEditController::PdfEditController(ISettings& settings, QObject* parent)
     connect(&m_model, &QAbstractItemModel::rowsInserted, this, dropVanishedSelection);
     connect(&m_model, &QAbstractItemModel::modelReset,   this, dropVanishedSelection);
 
-    m_textTpl.highlight = standardPaper();
     // Jeder Neubau und jede Planaenderung verschiebt Glyphen - der Fang wird neu gelesen.
     connect(this, &PdfEditController::documentRewritten, this, [this] { clearNoteSnap(); });
     connect(this, &PdfEditController::planChanged,       this, [this] { clearNoteSnap(); });
@@ -1198,48 +1197,6 @@ void PdfEditController::setPanelOnTop(bool v) {
         return;
     m_settings.setPdfEditPanelTop(v);
     emit panelOnTopChanged();
-}
-
-bool PdfEditController::notesOpaque() const {
-    return m_settings.pdfNotesOpaque();
-}
-
-void PdfEditController::setNotesOpaque(bool v) {
-    if (m_settings.pdfNotesOpaque() == v)
-        return;
-    m_settings.setPdfNotesOpaque(v);
-    emit notesOpaqueChanged();
-}
-
-QColor PdfEditController::standardPaper() const {
-    return notesOpaque() ? QColor(255, 255, 255, 255) : QColor(0, 0, 0, 0);
-}
-
-// Das fruehere Gelb zaehlt mit: Notizen aus aelteren Sitzungen sollen der Einstellung ebenso folgen.
-bool PdfEditController::isStandardPaper(const QColor& c) {
-    return c.rgba() == 0 || c.rgba() == qRgba(255, 255, 255, 255) || c.rgba() == qRgba(254, 243, 155, 232);
-}
-
-void PdfEditController::applyNotePaper() {
-    const QColor paper = standardPaper();
-    if (isStandardPaper(m_textTpl.highlight) && m_textTpl.highlight.rgba() != paper.rgba()) {
-        m_textTpl.highlight = paper;
-        ++m_defaultRev;
-        emit defaultRevChanged();
-    }
-    // Uebernommene Annotationen behalten ihre Farbe aus der Datei, sonst gaelten sie als geaendert.
-    QVector<QPair<int, QColor>> todo;
-    for (const PdfEditBox& b : m_model.boxes())
-        if (b.kind == PdfAnnKind::Text && b.srcObjNum == 0 && isStandardPaper(b.highlight)
-            && b.highlight.rgba() != paper.rgba())
-            todo.push_back({ b.id, b.highlight });
-    if (todo.isEmpty())
-        return;
-    finishOpenSessions();
-    m_stack.beginMacro(QStringLiteral("notePaper"));
-    for (const auto& [id, old] : std::as_const(todo))
-        pushCommand(new PdfEditFieldCommand(&m_model, id, PdfEditField::Highlight, old, paper));
-    m_stack.endMacro();
 }
 
 bool PdfEditController::textToolSticky() const {
@@ -3789,8 +3746,8 @@ bool PdfEditController::ladeAus(const Obj& o) {
             continue;
         PdfEditBox b = PdfEditBox::lade(alsObjekt(arr.at(i)));
         b.id = m_nextId++;                          // IDs sind sitzungslokal
-        if (b.kind == PdfAnnKind::Text && b.srcObjNum == 0 && isStandardPaper(b.highlight))
-            b.highlight = standardPaper();
+        if (b.kind == PdfAnnKind::Text && b.srcObjNum == 0)
+            b.highlight = mg::editsidecar::ohneAltesGelb(b.highlight);
         boxes.append(b);
     }
     const auto chains = o.value(k_chains).toArray();
