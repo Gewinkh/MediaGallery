@@ -1592,6 +1592,11 @@ Item {
             pane.statusRequested(App.uiText(App.language, "DateNotWrittenToFile")
                                  .arg(fileName))
         }
+        // Strg+Z hat "Wiederhergestellt" schon gemeldet; nur ein Rückweg, der beim Kopieren scheitert, meldet sich nach.
+        function onUndoFinished(filePath, ok) {
+            if (!ok) pane.statusRequested(App.uiText(App.language, "DropFailed")
+                                          + filePath.substring(filePath.lastIndexOf("/") + 1))
+        }
     }
 
     // LAZY, wie der Lesezeichen-Dialog darunter: der Ordnerwähler entstand beim Bau JEDER Galerie-Hälfte, gebraucht

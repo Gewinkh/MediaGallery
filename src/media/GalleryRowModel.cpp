@@ -231,18 +231,50 @@ void GalleryRowModel::applyRows(const QVector<Row>& next) {
 
     const int oldMid = m_rows.size() - p - suffix;
     const int newMid = next.size()   - p - suffix;
-
-    if (oldMid > 0) {
-        beginRemoveRows(QModelIndex(), p, p + oldMid - 1);
-        m_rows.remove(p, oldMid);
-        endRemoveRows();
+    // Die Mitte wird nach Platz umgeschrieben, entfernt und eingefügt wird nur der Überhang: so behält die Ansicht
+    // ihre Delegates. Ein Spaltenwechsel ersetzte sonst jede Zeile und baute alle sichtbaren Zellen neu.
+    // Der Überhang vor der Ankerzeile geht an den Anfang der Mitte, damit sie nach dem Umschreiben am alten Platz steht.
+    const auto rowOf = [this](const QVector<Row>& rows, int from, int n) {
+        for (int r = from; r < from + n; ++r)
+            if (rows.at(r).kind == 0 && m_keepRow >= rows.at(r).first
+                && m_keepRow < rows.at(r).first + rows.at(r).count)
+                return r;
+        return -1;
+    };
+    int lead = 0;
+    if (m_keepRow >= 0) {
+        const int was = rowOf(m_rows, p, oldMid), wird = rowOf(next, p, newMid);
+        if (was >= 0 && wird >= 0) lead = wird - was;
     }
-    if (newMid > 0) {
-        beginInsertRows(QModelIndex(), p, p + newMid - 1);
-        for (int k = 0; k < newMid; ++k)
+    if (lead < 0) {
+        beginRemoveRows(QModelIndex(), p, p - lead - 1);
+        m_rows.remove(p, -lead);
+        endRemoveRows();
+    } else if (lead > 0) {
+        beginInsertRows(QModelIndex(), p, p + lead - 1);
+        for (int k = 0; k < lead; ++k)
             m_rows.insert(p + k, next.at(p + k));
         endInsertRows();
     }
+    const int q = p + qMax(0, lead);
+    const int oldRest = oldMid - qMax(0, -lead), newRest = newMid - qMax(0, lead);
+    const int common = qMin(oldRest, newRest);
+    for (int k = 0; k < common; ++k)
+        m_rows[q + k] = next.at(q + k);
+
+    if (oldRest > common) {
+        beginRemoveRows(QModelIndex(), q + common, q + oldRest - 1);
+        m_rows.remove(q + common, oldRest - common);
+        endRemoveRows();
+    }
+    if (newRest > common) {
+        beginInsertRows(QModelIndex(), q + common, q + newRest - 1);
+        for (int k = common; k < newRest; ++k)
+            m_rows.insert(q + k, next.at(q + k));
+        endInsertRows();
+    }
+    if (common > 0 && !m_sourceReset)
+        emit dataChanged(index(q), index(q + common - 1));
 
     bool tailMoved = false;
     for (int k = 0; k < suffix; ++k) {

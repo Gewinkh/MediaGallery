@@ -659,6 +659,7 @@ Rectangle {
             }
             TextField {
                 id: searchInput
+                objectName: "gallerySearch"
                 anchors.left: searchIcon.right; anchors.leftMargin: 6
                 anchors.right: clearSearch.left; anchors.rightMargin: 4
                 anchors.verticalCenter: parent.verticalCenter
@@ -669,7 +670,15 @@ Rectangle {
                 placeholderText: App.uiText(App.language, "FilterSearchPlaceholder")
                 background: null
                 verticalAlignment: TextInput.AlignVCenter
-                onTextChanged: { translitHaken.pruefe(); galleryModel.searchText = text }
+                // Erst nach 150 ms Ruhe filtern: jede Taste filterte alle Zeilen neu. Auch nicht die erste Taste sofort - ihr
+                // Lauf liess die Unterordner-Suche mitten im Tippen für einen Buchstaben anspringen. Leeren gilt sofort.
+                onTextChanged: {
+                    translitHaken.pruefe()
+                    if (text.length > 0) { suchRuhe.restart(); return }
+                    suchRuhe.stop()
+                    galleryModel.searchText = text
+                }
+                Timer { id: suchRuhe; interval: 150; onTriggered: galleryModel.searchText = searchInput.text }
                 TranslitInput { id: translitHaken; feld: searchInput }
                 Keys.onEscapePressed: function(event) {
                     searchInput.text = ""

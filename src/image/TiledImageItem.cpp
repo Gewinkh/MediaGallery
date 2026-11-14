@@ -1,6 +1,7 @@
 #include "image/TiledImageItem.h"
 
 #include "core/PathUtils.h"
+#include "media/ThumbnailLoader.h"
 #include "simd/Bilinear.h"
 
 #include <QCoreApplication>
@@ -257,6 +258,7 @@ public:
     }
     void run() override {
         if (m_sh->levelGen.load() != m_gen) return;
+        const ThumbnailLoader::Vorrang vorrang;
         const QSize size(std::max(1, m_stage.width() >> m_steps), std::max(1, m_stage.height() >> m_steps));
         QImage level = m_stage.scaled(size, Qt::IgnoreAspectRatio, Qt::SmoothTransformation);
         m_stage = QImage();
@@ -275,6 +277,7 @@ private:
 
 void DecodeTask::run() {
     if (m_sh->decodeGen.load() != m_gen) return;
+    const ThumbnailLoader::Vorrang vorrang;
     auto d = std::make_shared<TiledImageItem::Decoded>();
     d->gen = m_gen;
     d->srcGen = m_srcGen;

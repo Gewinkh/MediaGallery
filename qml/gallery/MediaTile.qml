@@ -18,7 +18,7 @@ Rectangle {
     property var    dateTime
     property string thumbUrl: ""
     property int    thumbState: 0     // 0 pending,1 ready,2 failed
-    readonly property int thumbStatus: thumb.status
+    readonly property int thumbStatus: rasterTeil.item ? rasterTeil.item.thumbStatus : 0
 
     property int    tagMode: 0        // 0 none,1 group,2 addToTag
     property string modeTag: ""
@@ -84,183 +84,234 @@ Rectangle {
                    || (tile.isFolder && tile.expanded))
                   ? App.themeAccent : App.themeBorder
 
-    //  Zustand 3 heisst „Vorschau bewusst aus" - dort steht der Dateityp, kein
-    //  Warnzeichen und kein Wartepunkt.
-    Text {
-        anchors.centerIn: parent
-        visible: !tile.listMode && !tile.isFolder && !tile.covered
-                 && tile.thumbState !== 1 && tile.thumbState !== 3
-        text: tile.thumbState === 2 ? "\u26A0" : "\u2026"
-        color: App.themeTextMuted
-        font.pixelSize: 22
-    }
-    Text {
-        anchors.centerIn: parent
-        visible: !tile.listMode && !tile.isFolder && !tile.covered
-                 && tile.thumbState === 3 && tile.typeLabel.length > 0
-        text: tile.typeLabel
-        color: App.themeTextMuted
-        font.bold: true
-        font.pixelSize: Math.max(11, Math.min(28, tile.width * 0.22))
-    }
-
-    Image {
-        id: thumb
+    // Nur der Teil des eigenen Modus wird gebaut; verborgen kostete der andere jeden Kachelaufbau mit.
+    Loader {
+        id: rasterTeil
         anchors.fill: parent
-        anchors.margins: 1
-        visible: !tile.listMode && !tile.isFolder && tile.thumbState === 1
-                 && status === Image.Ready && !tile.covered
-        source: tile.thumbUrl
-        asynchronous: true
-        cache: true
-        fillMode: Image.PreserveAspectFit
-        sourceSize.width: App.tileWidth
-        sourceSize.height: App.tileHeight
-        mipmap: true
-        smooth: !tile.roughThumb
-    }
+        active: !tile.listMode
+        asynchronous: tile._gebaut
+        sourceComponent: Item {
+            readonly property int thumbStatus: thumb.status
 
-    Column {
-        visible: tile.isFolder && !tile.listMode
-        anchors.centerIn: parent
-        width: parent.width - 16
-        spacing: Math.max(4, tile.height * 0.04)
+            //  Zustand 3 heisst „Vorschau bewusst aus" - dort steht der Dateityp, kein
+            //  Warnzeichen und kein Wartepunkt.
+            Text {
+                anchors.centerIn: parent
+                visible: !tile.listMode && !tile.isFolder && !tile.covered
+                         && tile.thumbState !== 1 && tile.thumbState !== 3
+                text: tile.thumbState === 2 ? "\u26A0" : "\u2026"
+                color: App.themeTextMuted
+                font.pixelSize: 22
+            }
+            Text {
+                anchors.centerIn: parent
+                visible: !tile.listMode && !tile.isFolder && !tile.covered
+                         && tile.thumbState === 3 && tile.typeLabel.length > 0
+                text: tile.typeLabel
+                color: App.themeTextMuted
+                font.bold: true
+                font.pixelSize: Math.max(11, Math.min(28, tile.width * 0.22))
+            }
 
-        DrawnIcon {
-            anchors.horizontalCenter: parent.horizontalCenter
-            name: tile.expanded ? "folder-open" : "folder"
-            size: Math.max(28, Math.min(tile.width, tile.height) * 0.56)
-            color: App.themeAccent
-        }
+            Image {
+                id: thumb
+                anchors.fill: parent
+                anchors.margins: 1
+                visible: !tile.listMode && !tile.isFolder && tile.thumbState === 1
+                         && status === Image.Ready && !tile.covered
+                // Nur im eigenen Modus laden: ein verstecktes Image dekodiert trotzdem (Liste: 94,7 % der Pixel unsichtbar).
+                source: (tile.listMode || tile.isFolder) ? "" : tile.thumbUrl
+                asynchronous: true
+                cache: true
+                fillMode: Image.PreserveAspectFit
+                sourceSize.width: App.tileWidth
+                sourceSize.height: App.tileHeight
+                mipmap: true
+                smooth: !tile.roughThumb
+            }
 
-        Text {
-            width: parent.width
-            horizontalAlignment: Text.AlignHCenter
-            text: tile.displayName
-            color: App.themeTextPrimary
-            font.pixelSize: Math.max(11, Math.min(16, tile.height * 0.09))
-            elide: Text.ElideMiddle
-            maximumLineCount: 2
-            wrapMode: Text.WrapAtWordBoundaryOrAnywhere
-        }
+            Column {
+                visible: tile.isFolder && !tile.listMode
+                anchors.centerIn: parent
+                width: parent.width - 16
+                spacing: Math.max(4, tile.height * 0.04)
 
-        Text {
-            width: parent.width
-            horizontalAlignment: Text.AlignHCenter
-            visible: tile.childCount >= 0
-            text: tile.childCount === 0
-                  ? App.uiText(App.language, "FolderEmpty")
-                  : App.uiText(App.language, "FolderMediaCount").arg(tile.childCount)
-            color: App.themeTextMuted
-            font.pixelSize: Math.max(9, Math.min(13, tile.height * 0.07))
-            elide: Text.ElideRight
+                DrawnIcon {
+                    anchors.horizontalCenter: parent.horizontalCenter
+                    name: tile.expanded ? "folder-open" : "folder"
+                    size: Math.max(28, Math.min(tile.width, tile.height) * 0.56)
+                    color: App.themeAccent
+                }
+
+                Text {
+                    width: parent.width
+                    horizontalAlignment: Text.AlignHCenter
+                    text: tile.displayName
+                    color: App.themeTextPrimary
+                    font.pixelSize: Math.max(11, Math.min(16, tile.height * 0.09))
+                    elide: Text.ElideMiddle
+                    maximumLineCount: 2
+                    wrapMode: Text.WrapAtWordBoundaryOrAnywhere
+                }
+
+                Text {
+                    width: parent.width
+                    horizontalAlignment: Text.AlignHCenter
+                    visible: tile.childCount >= 0
+                    text: tile.childCount === 0
+                          ? App.uiText(App.language, "FolderEmpty")
+                          : App.uiText(App.language, "FolderMediaCount").arg(tile.childCount)
+                    color: App.themeTextMuted
+                    font.pixelSize: Math.max(9, Math.min(13, tile.height * 0.07))
+                    elide: Text.ElideRight
+                }
+            }
+
+            //  Bilder tragen ihr Kuerzel erst, wenn feststeht, dass keine Miniatur mehr
+            //  kommt - waehrend des Ladens waere das Abzeichen ein kurzes Aufblitzen.
+            Rectangle {
+                visible: !tile.listMode && !tile.isFolder && !tile.covered
+                         && tile.thumbState !== 1 && tile.typeLabel.length > 0
+                         && !(tile.mediaType === 0 && tile.thumbState === 0)
+                anchors.right: parent.right
+                anchors.top: parent.top
+                anchors.margins: 6
+                width: badgeText.implicitWidth + 10
+                height: badgeText.implicitHeight + 4
+                radius: 4
+                color: Qt.rgba(App.themeAccent.r, App.themeAccent.g, App.themeAccent.b, 0.85)
+                Text {
+                    id: badgeText
+                    anchors.centerIn: parent
+                    text: tile.typeLabel
+                    color: "#0b0f10"
+                    font.pixelSize: 10
+                    font.bold: true
+                }
+            }
+
+            Rectangle {
+                visible: !tile.listMode && tile.mediaType === 1 && !tile.covered
+                anchors.centerIn: parent
+                width: 40; height: 40; radius: 20
+                color: Qt.rgba(0, 0, 0, 0.45)
+                DrawnIcon {
+                    anchors.centerIn: parent
+                    name: "play"
+                    size: 18
+                    color: "white"
+                }
+            }
         }
     }
 
     readonly property real listScale: tile.height / 46
-    Item {
-        visible: tile.listMode
+    Loader {
+        id: listenTeil
         anchors.fill: parent
         anchors.leftMargin: 8
         anchors.rightMargin: 10
+        active: tile.listMode
+        asynchronous: tile._gebaut
+        sourceComponent: Item {
+            Item {
+                id: listArt
+                anchors { left: parent.left; verticalCenter: parent.verticalCenter }
+                width: Math.max(24, tile.height - 12)
+                height: width
 
-        Item {
-            id: listArt
-            anchors { left: parent.left; verticalCenter: parent.verticalCenter }
-            width: Math.max(24, tile.height - 12)
-            height: width
+                // Text, PDF und DOCX zeigen hier immer ihren Typ, nie den Inhalt: bei rund 30 px ist von fünf Zeilen oder
+                // einer Seite nichts zu erkennen, der Typ dagegen sofort - und eine leere DOCX fiel sonst auf die
+                // allgemeine Dokumentkarte zurück. Zustand 3 heisst „Vorschau bewusst aus" (die Bilder).
+                readonly property bool zeigeTyp: !tile.isFolder && !tile.covered
+                                                 && tile.typeLabel.length > 0
+                                                 && (tile.mediaType === 4 || tile.mediaType === 3
+                                                     || tile.mediaType === 5
+                                                     || tile.thumbState === 3)
 
-            // Text, PDF und DOCX zeigen hier immer ihren Typ, nie den Inhalt: bei rund 30 px ist von fünf Zeilen oder
-            // einer Seite nichts zu erkennen, der Typ dagegen sofort - und eine leere DOCX fiel sonst auf die
-            // allgemeine Dokumentkarte zurück. Zustand 3 heisst „Vorschau bewusst aus" (die Bilder).
-            readonly property bool zeigeTyp: !tile.isFolder && !tile.covered
-                                             && tile.typeLabel.length > 0
-                                             && (tile.mediaType === 4 || tile.mediaType === 3
-                                                 || tile.mediaType === 5
-                                                 || tile.thumbState === 3)
-
-            Image {
-                anchors.fill: parent
-                visible: !tile.isFolder && !listArt.zeigeTyp && tile.thumbState === 1
-                         && status === Image.Ready && !tile.covered
-                source: tile.thumbUrl
-                asynchronous: true
-                cache: true
-                fillMode: Image.PreserveAspectCrop
-                sourceSize.width: 96
-                sourceSize.height: 96
-                mipmap: true
-                clip: true
-            }
-            Text {
-                anchors.centerIn: parent
-                visible: listArt.zeigeTyp
-                text: tile.typeLabel
-                color: App.themeTextMuted
-                font.bold: true
-                font.pixelSize: Math.max(7, Math.min(parent.width * 0.42,
-                                                     parent.width / (0.75 * Math.max(2, tile.typeLabel.length))))
-                elide: Text.ElideRight
-                width: parent.width
-                horizontalAlignment: Text.AlignHCenter
-            }
-            DrawnIcon {
-                anchors.centerIn: parent
-                visible: !listArt.zeigeTyp
-                         && (tile.isFolder || tile.covered || tile.thumbState !== 1)
-                name: tile.isFolder ? (tile.expanded ? "folder-open" : "folder")
-                    : tile.mediaType === 2 ? "audio"
-                    : tile.mediaType === 1 ? "play" : "file"
-                size: Math.max(14, parent.width * 0.6)
-                color: tile.isFolder ? App.themeAccent : App.themeTextMuted
-            }
-        }
-
-        Text {
-            id: listName
-            anchors { left: listArt.right; leftMargin: 10
-                      right: listTags.left; rightMargin: 10
-                      verticalCenter: parent.verticalCenter }
-            text: tile.displayName
-            color: tile.playing ? App.themeAccent : App.themeTextPrimary
-            font.pixelSize: Math.round(Math.max(10, Math.min(24, 13 * tile.listScale)))
-            font.bold: tile.playing
-            elide: Text.ElideMiddle
-        }
-
-        Row {
-            id: listTags
-            visible: tile.optionsVisible
-            anchors { right: listInfo.left; rightMargin: 10
-                      verticalCenter: parent.verticalCenter }
-            spacing: 4
-            Repeater {
-                model: tile.tags
-                delegate: Rectangle {
-                    required property var modelData
-                    width: Math.round(Math.max(7, Math.min(16, 9 * tile.listScale)))
-                    height: width
-                    radius: width / 2
-                    color: Tags.tagColor(modelData)
-                    border.width: 1
-                    border.color: Qt.rgba(1, 1, 1, 0.35)
-                    ToolTip.visible: listDotHover.hovered
-                    ToolTip.text: modelData
-                    HoverHandler { id: listDotHover }
+                Image {
+                    anchors.fill: parent
+                    visible: !tile.isFolder && !listArt.zeigeTyp && tile.thumbState === 1
+                             && status === Image.Ready && !tile.covered
+                    source: (!tile.listMode || tile.isFolder || listArt.zeigeTyp) ? "" : tile.thumbUrl
+                    asynchronous: true
+                    cache: true
+                    fillMode: Image.PreserveAspectCrop
+                    sourceSize.width: 96
+                    sourceSize.height: 96
+                    mipmap: true
+                    clip: true
+                }
+                Text {
+                    anchors.centerIn: parent
+                    visible: listArt.zeigeTyp
+                    text: tile.typeLabel
+                    color: App.themeTextMuted
+                    font.bold: true
+                    font.pixelSize: Math.max(7, Math.min(parent.width * 0.42,
+                                                         parent.width / (0.75 * Math.max(2, tile.typeLabel.length))))
+                    elide: Text.ElideRight
+                    width: parent.width
+                    horizontalAlignment: Text.AlignHCenter
+                }
+                DrawnIcon {
+                    anchors.centerIn: parent
+                    visible: !listArt.zeigeTyp
+                             && (tile.isFolder || tile.covered || tile.thumbState !== 1)
+                    name: tile.isFolder ? (tile.expanded ? "folder-open" : "folder")
+                        : tile.mediaType === 2 ? "audio"
+                        : tile.mediaType === 1 ? "play" : "file"
+                    size: Math.max(14, parent.width * 0.6)
+                    color: tile.isFolder ? App.themeAccent : App.themeTextMuted
                 }
             }
-        }
 
-        Text {
-            id: listInfo
-            anchors { right: parent.right; verticalCenter: parent.verticalCenter }
-            text: tile.isFolder
-                  ? (tile.childCount < 0 ? ""
-                     : (tile.childCount === 0 ? App.uiText(App.language, "FolderEmpty")
-                        : App.uiText(App.language, "FolderMediaCount").arg(tile.childCount)))
-                  : tile.typeLabel
-            color: App.themeTextMuted
-            font.pixelSize: Math.round(Math.max(9, Math.min(18, 11 * tile.listScale)))
+            Text {
+                id: listName
+                anchors { left: listArt.right; leftMargin: 10
+                          right: listTags.left; rightMargin: 10
+                          verticalCenter: parent.verticalCenter }
+                text: tile.displayName
+                color: tile.playing ? App.themeAccent : App.themeTextPrimary
+                font.pixelSize: Math.round(Math.max(10, Math.min(24, 13 * tile.listScale)))
+                font.bold: tile.playing
+                elide: Text.ElideMiddle
+            }
+
+            Row {
+                id: listTags
+                visible: tile.optionsVisible
+                anchors { right: listInfo.left; rightMargin: 10
+                          verticalCenter: parent.verticalCenter }
+                spacing: 4
+                Repeater {
+                    model: tile.tags
+                    delegate: Rectangle {
+                        required property var modelData
+                        width: Math.round(Math.max(7, Math.min(16, 9 * tile.listScale)))
+                        height: width
+                        radius: width / 2
+                        color: Tags.tagColor(modelData)
+                        border.width: 1
+                        border.color: Qt.rgba(1, 1, 1, 0.35)
+                        ToolTip.visible: listDotHover.hovered
+                        ToolTip.text: modelData
+                        HoverHandler { id: listDotHover }
+                    }
+                }
+            }
+
+            Text {
+                id: listInfo
+                anchors { right: parent.right; verticalCenter: parent.verticalCenter }
+                text: tile.isFolder
+                      ? (tile.childCount < 0 ? ""
+                         : (tile.childCount === 0 ? App.uiText(App.language, "FolderEmpty")
+                            : App.uiText(App.language, "FolderMediaCount").arg(tile.childCount)))
+                      : tile.typeLabel
+                color: App.themeTextMuted
+                font.pixelSize: Math.round(Math.max(9, Math.min(18, 11 * tile.listScale)))
+            }
         }
     }
 
@@ -273,43 +324,13 @@ Rectangle {
     }
     onFilePathChanged:     tile._wantFolderCount()
     onMediaTypeChanged:    tile._wantFolderCount()
-    Component.onCompleted: tile._wantFolderCount()
+    Component.onCompleted: { tile._wantFolderCount(); tile._gebaut = true }
+    // Der Kontext stirbt beim Freigeben, das Objekt erst später: ein laufendes Nachladen bräche sonst mit Fehler ab.
+    Component.onDestruction: { leiste.active = false; rasterTeil.active = false; listenTeil.active = false }
 
-    //  Bilder tragen ihr Kuerzel erst, wenn feststeht, dass keine Miniatur mehr
-    //  kommt - waehrend des Ladens waere das Abzeichen ein kurzes Aufblitzen.
-    Rectangle {
-        visible: !tile.listMode && !tile.isFolder && !tile.covered
-                 && tile.thumbState !== 1 && tile.typeLabel.length > 0
-                 && !(tile.mediaType === 0 && tile.thumbState === 0)
-        anchors.right: parent.right
-        anchors.top: parent.top
-        anchors.margins: 6
-        width: badgeText.implicitWidth + 10
-        height: badgeText.implicitHeight + 4
-        radius: 4
-        color: Qt.rgba(App.themeAccent.r, App.themeAccent.g, App.themeAccent.b, 0.85)
-        Text {
-            id: badgeText
-            anchors.centerIn: parent
-            text: tile.typeLabel
-            color: "#0b0f10"
-            font.pixelSize: 10
-            font.bold: true
-        }
-    }
-
-    Rectangle {
-        visible: !tile.listMode && tile.mediaType === 1 && !tile.covered
-        anchors.centerIn: parent
-        width: 40; height: 40; radius: 20
-        color: Qt.rgba(0, 0, 0, 0.45)
-        DrawnIcon {
-            anchors.centerIn: parent
-            name: "play"
-            size: 18
-            color: "white"
-        }
-    }
+    // Kippt der Modus an einer fertigen Kachel, ist das fast immer ein Wechsel, nach dem die Zelle gleich stirbt:
+    // dort lädt ein Teil nebenläufig und entfällt mit ihr. Neue Kacheln bauen ihn sofort.
+    property bool _gebaut: false
 
     Rectangle {
         anchors.fill: parent
@@ -638,15 +659,20 @@ Rectangle {
         }
     }
 
-    MediaOverlay {
-        visible: !tile.isFolder && !tile.listMode
+    // Verborgen wurde die Leiste trotzdem je Kachel gebaut, in der Liste und bei Ordnern umsonst.
+    Loader {
+        id: leiste
+        active: !tile.isFolder && !tile.listMode
+        asynchronous: tile._gebaut
         anchors.left: parent.left
         anchors.right: parent.right
         anchors.bottom: parent.bottom
-        filePath: tile.filePath
-        displayName: tile.displayName
-        tags: tile.tags
-        dateTime: tile.dateTime
-        compact: !tile.optionsVisible
+        sourceComponent: MediaOverlay {
+            filePath: tile.filePath
+            displayName: tile.displayName
+            tags: tile.tags
+            dateTime: tile.dateTime
+            compact: !tile.optionsVisible
+        }
     }
 }

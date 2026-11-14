@@ -1,12 +1,15 @@
 #include "media/ThumbnailLoader.h"
 #include "core/MediaLogs.h"
+#include "core/MemoryUtils.h"
 
 #include "media/ContentSniff.h"
+#include "media/VideoFrameRgb.h"
 #include "docx/DocxDocument.h"
 #include "media/MediaItem.h"
 #include "audio/AudioTags.h"
 
 #include <QPdfDocument>
+#include <atomic>
 #include <QPainter>
 #include <QLinearGradient>
 #include <QImage>
@@ -20,6 +23,7 @@
 #include <QCryptographicHash>
 #include <QMutexLocker>
 #include <QWaitCondition>
+#include <QDeadlineTimer>
 #include <QThread>
 #include <QVideoFrame>
 #include <QMediaPlayer>
@@ -36,6 +40,10 @@
 #include "editor/SyntaxScanner.h"
 
 namespace {
+
+//  Jeder Player hinterlaesst ~40 MB freien Heap in den Arenen der Pool-Faeden; zurueckgegeben wird, wenn die
+//  letzte gleichzeitig laufende Videovorschau fertig ist, nicht je Video.
+std::atomic<int> g_laufendeVideos{0};
 
 const QString& cacheDir() {
     static const QString dir = []() {
@@ -58,12 +66,49 @@ QString cacheKeyFor(const QString& path, int dim, const QString& stilTag = QStri
          + QString::number(mtime) + QChar('|')
          + QString::number(kCacheVersion) + QChar('|')
          + stilTag).toUtf8();
+    // Ein lebendes Objekt je Faden: ohne baut libcrypto die MD5 bei jedem statischen hash() neu auf (107 gegen 1,8 us).
+    thread_local QCryptographicHash md5(QCryptographicHash::Md5);
+    md5.reset();
+    md5.addData(raw);
     return cacheDir() + QStringLiteral("/")
-           + QString::fromLatin1(QCryptographicHash::hash(raw, QCryptographicHash::Md5).toHex())
+           + QString::fromLatin1(md5.result().toHex())
            + QStringLiteral(".jpg");
 }
 
+struct VorrangZustand {
+    QMutex m;
+    QWaitCondition frei;
+    int aktiv = 0;
+};
+VorrangZustand& vorrangZustand() {
+    static VorrangZustand z;
+    return z;
+}
+// Deckel je Auftrag: dekodiert der Betrachter ohne Pause (schneller Zoom), kommen die Kacheln trotzdem voran.
+constexpr qint64 kVorrangMs = 2000;
+
 } // namespace
+
+ThumbnailLoader::Vorrang::Vorrang() {
+    VorrangZustand& z = vorrangZustand();
+    QMutexLocker lk(&z.m);
+    ++z.aktiv;
+}
+
+ThumbnailLoader::Vorrang::~Vorrang() {
+    VorrangZustand& z = vorrangZustand();
+    QMutexLocker lk(&z.m);
+    if (--z.aktiv == 0) z.frei.wakeAll();
+}
+
+void ThumbnailTask::warteAufVorrang() const {
+    VorrangZustand& z = vorrangZustand();
+    QMutexLocker lk(&z.m);
+    const QDeadlineTimer frist(kVorrangMs);
+    // In Scheiben, damit ein Abbruch (weggescrollt, Ordnerwechsel) nicht bis zur Frist den Faden hält.
+    while (z.aktiv > 0 && !cancelled() && !frist.hasExpired())
+        z.frei.wait(&z.m, 20);
+}
 
 ThumbnailLoader::ThumbnailLoader(QObject* parent)
     : QObject(parent)
@@ -252,6 +297,7 @@ void ThumbnailTask::run() {
         return;
     }
 
+    warteAufVorrang();
     if (cancelled()) {
         emit done(m_path, QString(), false, m_generation);
         return;
@@ -379,6 +425,7 @@ QImage ThumbnailTask::generateImageThumbnail(const QString& path, const QSize& s
 
 QImage ThumbnailTask::generateVideoThumbnail(const QString& path, const QSize& size) {
     QImage result;
+    g_laufendeVideos.fetch_add(1);
 
     QThread thread;
     QObject context;
@@ -401,9 +448,11 @@ QImage ThumbnailTask::generateVideoThumbnail(const QString& path, const QSize& s
             QMutexLocker lk(&mutex);
             if (done || !frame.isValid()) return;
             done = true;
-            QImage img = frame.toImage();
-            if (!img.isNull())
-                result = img.scaled(size, Qt::KeepAspectRatio, Qt::SmoothTransformation);
+            result = mg::media::videoBildVerkleinert(frame, size);
+            if (result.isNull()) {
+                const QImage img = frame.toImage();
+                if (!img.isNull()) result = img.scaled(size, Qt::KeepAspectRatio, Qt::SmoothTransformation);
+            }
             cond.wakeAll();
         }, Qt::DirectConnection);
         // Unlesbare/defekte Videodateien liefern NIE einen Frame. Ohne diesen
@@ -444,6 +493,7 @@ QImage ThumbnailTask::generateVideoThumbnail(const QString& path, const QSize& s
         // sicheren Absturz durch "QThread: Destroyed while thread is still running".
         thread.wait();
     }
+    if (g_laufendeVideos.fetch_sub(1) == 1) mg::trimHeap();
     return result;
 }
 

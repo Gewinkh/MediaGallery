@@ -12,6 +12,7 @@
 #include <QDateTime>
 #include <QFileInfo>
 #include <QSet>
+#include <functional>
 #include <memory>
 #include <atomic>
 #include "media/MediaItem.h"
@@ -251,11 +252,20 @@ public:
 
     // Gelöscht wird in den Papierkorb - das macht den Rückweg möglich; der Stapel lebt nur für die Sitzung.
     // `collision`: 0 fragen, 1 ersetzen, 2 umbenennen. Beim Verschieben wandern Tags, Kategorie und Datum mit.
+    // Rückgabe 0 fertig, 1 Name belegt, 2 gescheitert, 3 Kopie läuft: das Ergebnis kommt als `transferFinished`.
     Q_INVOKABLE int     transferToFolder(const QString& filePath, const QString& destFolder,
                                          bool move, int collision = 0);
     Q_INVOKABLE QString transferTargetName(const QString& filePath,
                                            const QString& destFolder) const;
+    // Dateien von aussen in `folder` kopieren, ohne den GUI-Faden; `done(kopiert, übersprungen)` läuft dort.
+    void importFiles(const QStringList& sources, const QString& folder,
+                     std::function<void(int, int)> done);
+    // Den offenen Ordner im Arbeitsfaden nachlesen und nur die Unterschiede übernehmen.
+    void rescanChanges();
+    // Eine eben entstandene Datei sofort als Zeile, ohne auf den Nachleser zu warten.
+    void adoptFile(const QString& filePath);
 
+    // true auch, wenn eine Rücknahme über eine Dateisystemgrenze noch kopiert; deren Ende meldet `undoFinished`.
     Q_INVOKABLE bool    undoFileOp();
     Q_INVOKABLE bool    redoFileOp();
     Q_INVOKABLE QString undoFileOpName() const;
@@ -276,6 +286,8 @@ signals:
     void folderContentsChanged();   // externe Änderung (für Statusmeldung)
     void thumbnailsInvalidated();   // Zielgröße gewechselt -> Delegates fordern neu an
     void fileHistoryChanged();      // Undo-/Redo-Stapel der Datei-Vorgänge
+    void transferFinished(const QString& filePath, const QString& target, bool move, int result);
+    void undoFinished(const QString& filePath, bool ok);
     void expansionChanged();        // ein Unterordner wurde auf-/zugeklappt
     // Datum liess sich nicht an die Datei schreiben, steht nur im Sidecar.
     void fileDateNotWritten(const QString& fileName);
@@ -309,7 +321,7 @@ private:
     static constexpr int kMaxFileOps = 50;
 
     bool trashFile(const QString& filePath, FileOp* op);  // Datei + Metadaten weg
-    bool restoreFile(const FileOp& op);                   // Papierkorb -> Ordner
+    int  restoreFile(const FileOp& op);                   // Papierkorb -> Ordner; 0 fertig, 2 gescheitert, 3 läuft
     bool restoreFolder(const FileOp& op, bool reloadNow = true);  // Papierkorb -> Ordner (Verzeichnis)
     void collectMeta(const QString& fileName, FileOp* op) const;
     void dropMeta(const QString& fileName);
@@ -322,7 +334,14 @@ private:
     void remapExpanded(const QString& oldPath, const QString& newPath);
     bool isVisibleFolder(const QString& folderPath) const;
     bool pushUndo(const FileOp& op);                      // Stapel + Signal
-    bool undoMove(const FileOp& op);                      // Verschiebung zurücknehmen
+    int  undoMove(const FileOp& op);                      // Verschiebung zurücknehmen; Rückgabe wie restoreFile
+    // Rücknahme über eine Dateisystemgrenze: kopiert im Arbeitsfaden von `from` nach op.path.
+    void startUndoCopy(const FileOp& op, const QString& from);
+    void bookUndo(const FileOp& op);                      // Metadaten und Zaehler nach dem Rueckweg
+    void finishUndo(const FileOp& op, const QString& openFolder, bool ok);
+    void bookTransfer(const FileOp& op, bool move, const QString& destFolder);
+    void finishTransfer(const QString& target, bool ok);
+    void ensureTransferPool();
     void appendRowFor(const QString& filePath);           // Zeile ans Ende (Proxy sortiert)
     bool dropRowFor(const QString& filePath);             // Zeile gezielt entfernen
     // O(n), aber nur bei Strukturaenderungen - die kosten ohnehin rebuildPathIndex.
@@ -474,10 +493,30 @@ private:
     QStringList                 m_memoryOrder;   // aeltester vorn (Deckel)
     void rememberExpansion(const QString& folderPath);
 
+    //  Stand des offenen Ordners, im Arbeitsfaden gelesen: der Durchgang kostet einen `stat` je Datei.
+    struct FolderListing {
+        QVector<VorabEintrag> entries;   // alles, was `ordnerFingerabdruck` mitzaehlt
+        quint64 finger = 0;
+    };
+    static FolderListing scanFolder(const QString& folder, bool showAll, QDir::Filters hidden,
+                                    const std::atomic<bool>& cancel);
+    void applyListing(const FolderListing& stand);
+    std::shared_ptr<std::atomic<bool>> m_watchCancel;
+
     QString             m_folder;
     QFileSystemWatcher* m_watcher;
     QTimer              m_watchDebounce;
     int                 m_suppressWatch = 0;  // >0 -> Watcher-Reload ignorieren
+
+    // Ein Faden: Kopien laufen nacheinander, sonst bremsen sie sich auf derselben Platte gegenseitig.
+    QThreadPool*        m_transferPool = nullptr;
+    std::shared_ptr<std::atomic<bool>> m_transferCancel;
+    // Je Ziel einer laufenden Kopie ihr Vorgang; das Ziel gilt solange als belegt. Der Vorgang bleibt im
+    // GUI-Faden, in den Arbeitsfaden gehen nur die beiden Pfade.
+    // `undo`: eine Rücknahme; `destFolder` ist dann der Ordner, der beim Start offen war.
+    struct PendingTransfer { FileOp op; bool move = false; QString destFolder; bool undo = false; };
+    QHash<QString, PendingTransfer> m_transferTargets;
+    QList<std::function<void(int, int)>> m_importDone;
 
     QVector<FileOp>     m_undoOps;        // zuletzt gelöscht = hinten
     QVector<FileOp>     m_redoOps;        // zurückgeholt, kann erneut gelöscht werden

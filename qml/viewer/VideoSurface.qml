@@ -72,7 +72,7 @@ Item {
 
     MediaPlayer {
         id: player
-        videoOutput: videoOut
+        videoOutput: softwareBild.item ? softwareBild.item : videoOut
         audioOutput: AudioOutput { id: audioOut; volume: 0.85 }
         onErrorOccurred: function(err, str) { errorLabel.text = str }
         // Mono-Play: JEDEN Übergang nach Playing melden (auch Resume nach
@@ -89,6 +89,14 @@ Item {
         id: videoOut
         anchors.fill: parent
         fillMode: VideoOutput.PreserveAspectFit
+        visible: !softwareBild.active
+    }
+    //  VideoOutput zeichnet nur ueber die Grafikkarte; beim Software-Backend bliebe das Bild schwarz.
+    Loader {
+        id: softwareBild
+        anchors.fill: parent
+        active: root.GraphicsInfo.api === GraphicsInfo.Software
+        sourceComponent: SoftwareVideo {}
     }
 
     Text {

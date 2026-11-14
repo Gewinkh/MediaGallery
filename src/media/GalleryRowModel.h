@@ -60,6 +60,9 @@ public:
     // Alles über eine Zeile in EINEM Zugriff - die Ansicht braucht das beim Ablegen, um aus einem Punkt den
     // Zielordner zu bestimmen. Schlüssel: kind, first, count, depth, openMask, closeMask, ownerFolder.
     Q_INVOKABLE QVariantMap rowInfo(int row) const;
+    // Die Zeile dieser Datei bleibt beim nächsten Neuaufbau an ihrem Platz: der Zeilenüberhang wird darüber
+    // eingefügt oder entfernt, die Ansicht verschiebt nur ihren Ursprung. -1 hebt den Anker auf.
+    Q_INVOKABLE void keepInPlace(int proxyRow) { m_keepRow = proxyRow; }
 
 signals:
     void sourceChanged();
@@ -103,4 +106,5 @@ private:
     //  Entfernen)? Alles ab dort traegt danach andere Kacheln - auch wenn die
     //  Zeilenliste gleich AUSSIEHT. `INT_MAX` = nichts offen.
     int  m_dirtyFrom = std::numeric_limits<int>::max();
+    int  m_keepRow = -1;
 };

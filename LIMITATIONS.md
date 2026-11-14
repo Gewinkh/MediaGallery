@@ -32,6 +32,13 @@ processor core, a Full HD video about a tenth.
 Workaround: set `QT_FFMPEG_DECODING_HW_DEVICE_TYPES=vaapi` (or `vdpau`, `cuda`)
 before starting the app to use the graphics card again.
 
+**In software graphics mode a video costs more processor time.**
+Why: Qt's video output draws only through the graphics card and stays black in
+software mode, so the app converts and scales every frame itself: a Full HD video
+takes about 20 % of one core more than in OpenGL mode `[VID-19]`. If
+the conversion falls behind, frames are skipped, the sound keeps its pace.
+Workaround: choose OpenGL or Vulkan in *Settings ▸ General*.
+
 **Only Linux is fully tested; macOS has been built once, Windows never.**
 Why: development happens on Arch Linux. On a Mac (Apple Silicon, Qt from
 Homebrew) the app builds, shows its icon and starts, but its features have not

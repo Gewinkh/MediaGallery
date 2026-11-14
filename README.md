@@ -158,9 +158,12 @@ $env:MG_HTML_EIGEN=1; .\build\Release\MediaGallery.exe
 ## Changelog
 
 ### Latest
-- **Improvement**: **Images**: Large photos open, pan and zoom faster, with sharper rendering and lower CPU and memory usage.
-- **Fix**: **Images**: Switching pictures and returning to fit view no longer causes blurry intermediate images or distortion.
-- **Improvement**: **Image editor**: The text tool can now automatically return to Select mode after placing a note or remain active for multiple notes.
+- **Improvement**: **Videos**: Full HD playback in software mode uses less CPU, and thumbnail generation requires significantly less memory across all graphics modes.
+- **Fix**: **Videos**: Playback now displays correctly in software graphics mode.
+- **Improvement**: **Gallery**: List mode and grid/list switching use less memory and are faster. Thumbnail loading, scrolling and searching are smoother.
+- **Improvement**: **Gallery**: Resizing the window preserves the current scroll position, and external file changes update only affected items without disrupting the view.
+- **Improvement**: **Gallery**: Copying, moving, importing and undoing file operations now run in the background without freezing the interface.
+- **Improvement**: **Text editor**: Search results now appear near the top of the view for easier reading.
 
 ---
 

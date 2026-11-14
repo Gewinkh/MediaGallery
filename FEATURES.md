@@ -31,9 +31,9 @@ which. Files without an extension such as `LICENSE`, `README`, `Makefile` or
 ## Gallery & View
 
 **Layout**
-- **Tiles or list** (*Settings ▸ View*): a grid of tiles, or one row per file with small artwork, name, tag dots and file type
-- **Size**: `Ctrl` with `+`/`-` or the mouse wheel changes the tile size (1 to 25 columns) or, in the list, the row height. Changes in the settings apply immediately
-- **Previews**: images, PDFs and text files show their content on the tile; text files in the editor's syntax colours. Each kind can be switched off in *Settings ▸ View* to save memory - the tile then shows the file type
+- **Tiles or list** (*Settings ▸ View*): a grid of tiles, or one row per file with small artwork, name, tag dots and file type; each tile builds only what the chosen view shows, so switching takes a fraction of a second even in large folders
+- **Size**: `Ctrl` with `+`/`-` or the mouse wheel changes the tile size (1 to 25 columns) or, in the list, the row height. Changes in the settings apply immediately; when the window or split width changes the number of columns, the file at the top stays in place
+- **Previews**: images, PDFs and text files show their content on the tile; videos show their first frame, converted by the app itself without loading the graphics driver (about 300 MB less memory with the first video); text files in the editor's syntax colours. Each kind can be switched off in *Settings ▸ View* to save memory - the tile then shows the file type
 - **Scrolling**: smooth mouse wheel, scrollbar, or keys (`Up`/`Down`, `Page Up`/`Page Down`, `Home`/`End`); animations follow the refresh rate of the screen the window is on, also on a 144 Hz monitor next to a 60 Hz laptop screen
 - **Compact mode** (`Alt+S`) and **cover mode** (`B`). The compact mode applies to one half of the window; the last choice is kept for the next start and for a newly opened half
 
@@ -42,7 +42,7 @@ which. Files without an extension such as `LICENSE`, `README`, `Makefile` or
 - An opened folder has a lighter background, indented contents and its own header with *Open folder*, *Create*, *New folder* and *Extract*
 - Each folder tile shows how many media are inside
 - **Search and filters include subfolders** below the open folder; folders with hits open by themselves and close again when you clear the search
-- **Live folder watch**: new or deleted files appear automatically
+- **Live folder watch**: files added, replaced or deleted by other programs appear automatically; only their tiles change, your selection and scroll position stay
 - **Bookmarks** (*Folder* menu, *Settings ▸ Bookmarks*): save folders under a name, sorted into groups and subgroups. Groups fold open and closed in the menu, and can be rearranged by drag and drop in the settings
   - **A group can be bound to a folder**: clicking the group in the menu opens that folder, and you tick which of its subfolders - at any depth - appear in the menu. A ticked folder inside another ticked folder is listed one level below it. The others stay reachable through the folder itself. A bound group can still hold other bookmarks and subgroups
   - Renaming or deleting a folder in the app updates its bookmark; undoing the deletion brings the bookmark back
@@ -52,7 +52,7 @@ which. Files without an extension such as `LICENSE`, `README`, `Makefile` or
 - **Select like in a file manager**: `Ctrl`+click, `Shift`+click, drag a rectangle over empty space, `Ctrl+A` for everything the filter shows, `Esc` to clear
 - Everything then works on the whole selection: dragging, tagging from the right-click menu, and deleting - which is one undo step
 - **Copy and paste** with `Ctrl+C` / `Ctrl+V`, also between the app and your file manager
-- **Drag files onto a folder tile, a bookmark or the other half of the window** to move them there (or copy - *Settings ▸ General*). Tags, category and date move along. Name collisions ask: replace, rename or cancel. `Ctrl+Z` undoes it
+- **Drag files onto a folder tile, a bookmark or the other half of the window** to move them there (or copy - *Settings ▸ General*). Tags, category and date move along. Name collisions ask: replace, rename or cancel. `Ctrl+Z` undoes it. A copy, a move to another drive and undoing such a move run in the background, the window stays usable
 - While you drag, a bar with your bookmarks and the folders currently in the gallery appears at the bottom, and the pointer at the top or bottom edge scrolls
 - **Drag files out** into other programs - always as a copy
 - **Drop files from outside** into the folder under the pointer
@@ -65,7 +65,7 @@ which. Files without an extension such as `LICENSE`, `README`, `Makefile` or
 **Viewing files**
 - **Fullscreen view** by double click; `->` / `<-` move to the next or previous file, random mode picks one at random. Two seconds after you close or leave a file, the memory it used is given back; a minute after the last file is closed, cached drawing data and unused parts of the interface go back as well (about 12 MB)
 - **True fullscreen** (`F`): hides the window frame and all bars. Moving the mouse to the top edge brings the header back
-- **Images** are decoded only as large as shown. A picture that fits the window is decoded at exactly its size on screen and shown pixel for pixel, as sharp as a direct downscale of the full file, in one step on every graphics backend. Zoomed in, it is drawn in tiles: with the graphics card they are uploaded piece by piece and no second copy stays in memory; in software mode each zoom level is drawn once, so panning stays smooth and sharp. In software mode the zoomed picture is computed by the app's own vectorised filter, about a fifth of the CPU of the renderer's. A fast zoom skips the work of stages already overtaken. Zooming back to fit shows the sharp fitted picture at once and keeps using it, without reading the file again, and the extra memory of the zoomed stage is freed within a second. Switching to the next picture keeps the current one unchanged until the new one is ready, then shows it fitted
+- **Images** are decoded only as large as shown. A picture that fits the window is decoded at exactly its size on screen and shown pixel for pixel, as sharp as a direct downscale of the full file, in one step on every graphics backend. Zoomed in, it is drawn in tiles: with the graphics card they are uploaded piece by piece and no second copy stays in memory; in software mode each zoom level is drawn once, so panning stays smooth and sharp. In software mode the zoomed picture is computed by the app's own vectorised filter, about a fifth of the CPU of the renderer's. A fast zoom skips the work of stages already overtaken. While the viewer decodes, the gallery waits with new thumbnails (at most two seconds per thumbnail), so a picture opens and zooms at full speed even while a large folder is still being previewed. Zooming back to fit shows the sharp fitted picture at once and keeps using it, without reading the file again, and the extra memory of the zoomed stage is freed within a second. Switching to the next picture keeps the current one unchanged until the new one is ready, then shows it fitted
 - **Document menu** in the header of an open file: date and metadata, source/preview or table/raw file, and the actions of that file type
 - The window title shows folder and file
 - **Split view**: up to four files side by side in one window. Drag the dividers to resize, drag a header to rearrange the layout, `Esc` closes one file
@@ -78,7 +78,7 @@ which. Files without an extension such as `LICENSE`, `README`, `Makefile` or
 - **Saves by itself**: when you leave the file, switch to another, and at an adjustable interval. `Ctrl+S` works too; a dot in the status bar shows unsaved changes
 - **Syntax colouring for 28 languages**, including C/C++, Python, Java, JavaScript/TypeScript, C#, Go, Rust, PHP, Swift, Kotlin, shell, Ruby, Lua, CMake, YAML, SQL, HTML/XML, CSS, JSON, INI/TOML, QML, assembly (`.s`, `.asm`, `.inc`) and Markdown. HTML also colours the CSS and JavaScript inside it
 - **Folding**: collapse functions, blocks, sections or headings from a bar next to the line numbers; in C-style code also each branch of an `#if`. The file itself is not changed
-- **Find and replace** (`Ctrl+F`): hit counter, match case, whole words, all hits highlighted; *Replace all* is one undo step
+- **Find and replace** (`Ctrl+F`): hit counter, match case, whole words, all hits highlighted; each match is shown near the top of the view, three lines below the edge; *Replace all* is one undo step
 - **Line numbers, current-line highlight, indent guides, bracket matching** (an unmatched bracket turns red)
 - **Structural errors are underlined** (*Settings ▸ Editor*, on by default): a bracket that never closes, a comment or text that runs to the end of the file, broken JSON or XML, a section heading without its closing bracket, a tab after spaces in Python or YAML indentation. Each finding also gets a red dot in the overview column, and the status bar names it
   - Only things that can be proven wrong **from the file alone** are reported - never a guess. Whether a function or an include exists is something the editor cannot tell you; that would need a compiler (see [LIMITATIONS.md](LIMITATIONS.md))
@@ -216,7 +216,7 @@ of times · `{4}` exactly four times · `^` line start · `$` line end · `a|b` 
 - **Tags** per folder, freely named, with colours
 - **Categories** in a tree, holding tags; colours can be passed down
 - **Side panel** with all tags as chips and the category tree, each with its own search field
-- **Gallery search** next to the *Filter* button: filters by name, file name and tags as you type
+- **Gallery search** next to the *Filter* button: filters by name, file name and tags as you type, once you pause for a moment (clearing is instant)
 - **Filter modes**: OR, AND, ONLY, INCLUSIVE, combined with the media type
 - **Sorting** (inside the *Filter* button): date, name, tags or file size
 - **Assign tags** from a file's right-click menu, with *+ New…* to create one on the spot
@@ -339,7 +339,7 @@ pages change the PDF directly. `Ctrl+Z` undoes them while the file is open.
 ---
 
 ## Playback & Interface
-- **Video**: built-in player or an external one. A video jumps when you let go of the progress bar. On Linux the processor decodes videos, so a faulty graphics driver cannot freeze the app
+- **Video**: built-in player or an external one. A video jumps when you let go of the progress bar. On Linux the processor decodes videos, so a faulty graphics driver cannot freeze the app. In software graphics mode the app draws the picture itself (Qt's video output shows only black there), at about 20 % of one processor core more than OpenGL for a Full HD video
 - **Mono play** (on by default): starting playback in one half pauses the other
 - **Continuous play** in fullscreen (on by default, *Settings ▸ General*): when a video ends, the next video from the same folder starts; audio follows audio. Subfolders are not included
   - Gallery order by default; with the dice on, files are shuffled and each plays once per round

@@ -19,6 +19,7 @@
 #include "image/edit/ImageEditController.h"
 #include "image/TiledImageItem.h"
 #include "media/GalleryRowModel.h"
+#include "media/SoftwareVideoItem.h"
 #include "tags/TagListModel.h"
 #include "pdf/PdfAudioController.h"
 #include "pdf/PdfTextController.h"
@@ -35,6 +36,7 @@ void registerQmlTypes() {
     qmlRegisterType<PdfEditController> ("MediaGallery", 1, 0, "PdfEditController");
     qmlRegisterType<ImageEditController>("MediaGallery", 1, 0, "ImageEditController");
     qmlRegisterType<mg::image::TiledImageItem>("MediaGallery", 1, 0, "TiledImage");
+    qmlRegisterType<mg::media::SoftwareVideoItem>("MediaGallery", 1, 0, "SoftwareVideo");
     qmlRegisterType<DocxEditController>("MediaGallery", 1, 0, "DocxEditController");
     qmlRegisterType<DocxTextArea>      ("MediaGallery", 1, 0, "DocxTextArea");
     //  Seiten-Miniatur des DOCX-Editors; malt über paintPageInto, hält also kein Bild.

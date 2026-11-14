@@ -194,7 +194,8 @@ bool PaneController::adoptSiblingFile(const QString& sourcePath,
     if (mg::normalizedFolder(folder) != mg::normalizedFolder(m_folders.currentFolder()))
         return false;
 
-    m_media.reload();
+    // Die Zeile muss sofort stehen: die Tags darunter hängen an ihr.
+    m_media.adoptFile(dst);
     emit folderContentsChanged();
     if (!inheritTags) return true;
 
@@ -215,5 +216,5 @@ void PaneController::notifyContentsChanged(const QString& folder) {
         && mg::normalizedFolder(folder) != mg::normalizedFolder(m_folders.currentFolder()))
         return;
     emit folderContentsChanged();
-    m_media.reload();
+    m_media.rescanChanges();
 }

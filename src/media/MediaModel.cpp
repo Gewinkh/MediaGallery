@@ -16,6 +16,7 @@
 #include <QDir>
 #include "core/PathUtils.h"
 
+#include <QBitArray>
 #include <QDirIterator>
 #include <QTimeZone>
 #include <QFileInfo>
@@ -23,6 +24,8 @@
 #include <QUuid>
 #include <functional>
 #include <algorithm>
+#include <filesystem>
+#include <system_error>
 #include <QPointer>
 #include <QRunnable>
 #include <QElapsedTimer>
@@ -375,9 +378,15 @@ MediaModel::MediaModel(JsonStorage& storage,
 // sterben nach dem Rumpf, ein laufender Auftrag saehe einen halben Besitzer.
 MediaModel::~MediaModel() {
     if (m_deepCancel) m_deepCancel->store(true);
+    if (m_watchCancel) m_watchCancel->store(true);
+    if (m_transferCancel) m_transferCancel->store(true);
     if (m_countPool) {
         m_countPool->clear();
         m_countPool->waitForDone();
+    }
+    if (m_transferPool) {
+        m_transferPool->clear();
+        m_transferPool->waitForDone();
     }
     if (m_deepPool) {
         m_deepPool->clear();
@@ -393,6 +402,8 @@ void MediaModel::rebuild(const QString& folderPath) {
     m_cancelTimer.stop();
     m_cancelPending.clear();
     m_thumbWanted.clear();
+    //  Ein laufender Abgleich saehe den Stand vor diesem Neuaufbau.
+    if (m_watchCancel) m_watchCancel->store(true);
 
     // Leeres Modell sofort publizieren, damit die UI ohne Verzoegerung rendert.
     beginResetModel();
@@ -1517,21 +1528,19 @@ bool MediaModel::trashFile(const QString& filePath, FileOp* op) {
     return ok;
 }
 
-bool MediaModel::restoreFile(const FileOp& op) {
+int MediaModel::restoreFile(const FileOp& op) {
     if (op.trashPath.isEmpty() || !QFile::exists(op.trashPath))
-        return false;
+        return 2;
     // Steht dort inzwischen wieder etwas, wird nichts ueberschrieben.
-    if (QFileInfo::exists(op.path))
-        return false;
+    if (QFileInfo::exists(op.path) || m_transferTargets.contains(op.path))
+        return 2;
 
     ++m_suppressWatch;
-    bool ok = QFile::rename(op.trashPath, op.path);
-    if (!ok) {
-        // Papierkorb auf einem anderen Dateisystem: kopieren und aufraeumen.
-        ok = QFile::copy(op.trashPath, op.path);
-        if (ok) QFile::remove(op.trashPath);
-    }
-    if (ok) {
+    // Nicht QFile::rename: liegt der Papierkorb auf einem anderen Dateisystem, kopierte das in diesem Faden.
+    std::error_code ec;
+    std::filesystem::rename(QFileInfo(op.trashPath).filesystemFilePath(),
+                            QFileInfo(op.path).filesystemFilePath(), ec);
+    if (!ec) {
         if (!op.sidecarTrashPath.isEmpty() && QFile::exists(op.sidecarTrashPath)
             && !QFileInfo::exists(op.sidecarPath)) {
             if (!QFile::rename(op.sidecarTrashPath, op.sidecarPath))
@@ -1542,12 +1551,11 @@ bool MediaModel::restoreFile(const FileOp& op) {
             if (!QFile::rename(op.bakTrashPath, op.bakPath))
                 QFile::copy(op.bakTrashPath, op.bakPath);
         }
-        restoreMetaAt(QFileInfo(op.path).absolutePath(),
-                      QFileInfo(op.path).fileName(), op);
-        invalidateFolderCount(QFileInfo(op.path).absolutePath());
     }
     --m_suppressWatch;
-    return ok;
+    if (ec) { startUndoCopy(op, op.trashPath); return 3; }
+    bookUndo(op);
+    return 0;
 }
 
 // Ans Ende haengen - die Reihenfolge macht der Proxy.
@@ -1993,13 +2001,15 @@ bool MediaModel::pushUndo(const FileOp& op) {
     return true;
 }
 
-static QString freeTargetPath(const QString& destFolder, const QString& fileName) {
+template <typename Menge>
+static QString freeTargetPath(const QString& destFolder, const QString& fileName,
+                              const Menge& unterwegs) {
     const QFileInfo fi(fileName);
     const QString base = fi.completeBaseName();
     const QString suffix = fi.suffix().isEmpty() ? QString()
                                                  : QStringLiteral(".") + fi.suffix();
     QString candidate = QDir(destFolder).filePath(fileName);
-    for (int n = 2; QFileInfo::exists(candidate) && n < 10000; ++n)
+    for (int n = 2; (QFileInfo::exists(candidate) || unterwegs.contains(candidate)) && n < 10000; ++n)
         candidate = QDir(destFolder).filePath(base + QStringLiteral(" (")
                                               + QString::number(n) + QStringLiteral(")") + suffix);
     return candidate;
@@ -2009,7 +2019,7 @@ QString MediaModel::transferTargetName(const QString& filePath,
                                        const QString& destFolder) const {
     const QString name = QFileInfo(filePath).fileName();
     if (name.isEmpty() || destFolder.isEmpty()) return {};
-    return QFileInfo(freeTargetPath(destFolder, name)).fileName();
+    return QFileInfo(freeTargetPath(destFolder, name, m_transferTargets)).fileName();
 }
 
 int MediaModel::transferToFolder(const QString& filePath, const QString& destFolder,
@@ -2023,10 +2033,11 @@ int MediaModel::transferToFolder(const QString& filePath, const QString& destFol
 
     const QString name = src.fileName();
     QString target = QDir(destFolder).filePath(name);
-    if (QFileInfo::exists(target)) {
+    const bool unterwegs = m_transferTargets.contains(target);
+    if (unterwegs || QFileInfo::exists(target)) {
         if (collision == 0) return 1;                 // Aufrufer fragt nach
-        if (collision == 2) target = freeTargetPath(destFolder, name);
-        else if (!QFile::remove(target)) return 2;    // ersetzen
+        if (collision == 2) target = freeTargetPath(destFolder, name, m_transferTargets);
+        else if (unterwegs || !QFile::remove(target)) return 2;    // ersetzen
     }
 
     FileOp op;
@@ -2039,33 +2050,112 @@ int MediaModel::transferToFolder(const QString& filePath, const QString& destFol
     if (srcFolder == m_folder)
         op.categoryNames = m_tagManager.categoriesForFile(name);
 
-    ++m_suppressWatch;
-    bool ok = false;
+    const QString ziel = mg::normalizedFolder(destFolder);
     if (move) {
-        ok = QFile::rename(filePath, target);
-        if (!ok) {                                    // anderes Dateisystem
-            ok = QFile::copy(filePath, target);
-            if (ok && !QFile::remove(filePath)) { QFile::remove(target); ok = false; }
-        }
-    } else {
-        ok = QFile::copy(filePath, target);
+        ++m_suppressWatch;
+        // Nicht QFile::rename: das kopiert über eine Dateisystemgrenze selbst, und zwar in diesem Faden.
+        std::error_code ec;
+        std::filesystem::rename(QFileInfo(filePath).filesystemFilePath(),
+                                QFileInfo(target).filesystemFilePath(), ec);
+        --m_suppressWatch;
+        if (!ec) { bookTransfer(op, true, ziel); return 0; }
     }
-    if (ok && move) {
-        dropMetaAt(srcFolder, name);
-        //  Offenes Ziel: ins Gedaechtnis, sonst verwirft sein naechstes Speichern die Kategorien.
-        restoreMetaAt(QFileInfo(target).absolutePath(), QFileInfo(target).fileName(), op);
-    }
-    --m_suppressWatch;
-    if (!ok) return 2;
+    // Kopie oder anderes Dateisystem: das dauert so lange, wie die Platte braucht (500 MB auf einen Stick
+    // rund 17 s), und stand vorher im GUI-Faden.
+    ensureTransferPool();
+    m_transferTargets.insert(target, PendingTransfer{ op, move, ziel });
+    m_transferPool->start(QRunnable::create(
+        [owner = QPointer<MediaModel>(this), cancel = m_transferCancel, filePath, target, move]() {
+            bool ok = QFile::copy(filePath, target);
+            // Abbruch beim Beenden: eine halbe Verschiebung bliebe ohne Tags doppelt liegen.
+            if (ok && move && cancel->load(std::memory_order_relaxed)) {
+                QFile::remove(target);
+                ok = false;
+            }
+            MediaModel* o = owner.data();
+            if (!o || cancel->load(std::memory_order_relaxed)) return;
+            QMetaObject::invokeMethod(o, [o, target, ok]() {
+                o->finishTransfer(target, ok);
+            }, Qt::QueuedConnection);
+        }));
+    return 3;
+}
 
+void MediaModel::ensureTransferPool() {
+    if (m_transferPool) return;
+    m_transferPool = new QThreadPool(this);
+    m_transferPool->setMaxThreadCount(1);
+    m_transferCancel = std::make_shared<std::atomic<bool>>(false);
+}
+
+void MediaModel::bookTransfer(const FileOp& op, bool move, const QString& destFolder) {
     if (move) {
-        dropRowFor(filePath);
-        pushUndo(op);
-        invalidateFolderCount(srcFolder);
+        const QFileInfo src(op.path);
+        const QFileInfo dst(op.movedTo);
+        ++m_suppressWatch;
+        dropMetaAt(src.absolutePath(), src.fileName());
+        //  Offenes Ziel: ins Gedaechtnis, sonst verwirft sein naechstes Speichern die Kategorien.
+        restoreMetaAt(dst.absolutePath(), dst.fileName(), op);
+        --m_suppressWatch;
+        // Ohne Zeile ist der Ordner inzwischen verlassen, und der Rückweg gehört zum offenen Ordner.
+        if (dropRowFor(op.path)) pushUndo(op);
+        invalidateFolderCount(src.absolutePath());
     }
     // Auch beim Kopieren waechst der Zielordner.
-    invalidateFolderCount(mg::normalizedFolder(destFolder));
-    return 0;
+    invalidateFolderCount(destFolder);
+}
+
+void MediaModel::finishTransfer(const QString& target, bool ok) {
+    PendingTransfer lauf = m_transferTargets.take(target);
+    if (lauf.undo) { finishUndo(lauf.op, lauf.destFolder, ok); return; }
+    FileOp& op = lauf.op;
+    const bool move = lauf.move;
+    if (ok && move) {
+        ++m_suppressWatch;
+        if (!QFile::remove(op.path)) { QFile::remove(op.movedTo); ok = false; }
+        --m_suppressWatch;
+    }
+    if (ok) {
+        // Während der Kopie vergebene Tags sollen mitwandern, solange der Quellordner noch offen ist.
+        const QFileInfo src(op.path);
+        if (move && storageForFolder(src.absolutePath())) {
+            collectMetaAt(src.absolutePath(), src.fileName(), &op);
+            if (src.absolutePath() == m_folder)
+                op.categoryNames = m_tagManager.categoriesForFile(src.fileName());
+        }
+        bookTransfer(op, move, lauf.destFolder);
+    }
+    emit transferFinished(op.path, op.movedTo, move, ok ? 0 : 2);
+}
+
+void MediaModel::importFiles(const QStringList& sources, const QString& folder,
+                             std::function<void(int, int)> done) {
+    ensureTransferPool();
+    m_importDone.append(std::move(done));
+    m_transferPool->start(QRunnable::create(
+        [owner = QPointer<MediaModel>(this), cancel = m_transferCancel, sources, folder]() {
+            int copied = 0, skipped = 0;
+            for (const QString& src : sources) {
+                if (cancel->load(std::memory_order_relaxed)) break;
+                const QFileInfo fi(src);
+                if (!fi.exists() || fi.isDir()) continue;
+                if (MediaItem::detectType(src) == MediaType::Unknown) continue;
+                const QString dest = QDir(folder).filePath(fi.fileName());
+                if (QFileInfo::exists(dest)) { ++skipped; continue; }
+                if (QFile::copy(src, dest)) ++copied;
+            }
+            MediaModel* o = owner.data();
+            if (!o || cancel->load(std::memory_order_relaxed)) return;
+            // Der eine Faden arbeitet der Reihe nach, also gehört der vorderste Rückruf zu diesem Auftrag.
+            QMetaObject::invokeMethod(o, [o, copied, skipped]() {
+                const auto done = o->m_importDone.takeFirst();
+                if (done) done(copied, skipped);
+            }, Qt::QueuedConnection);
+        }));
+}
+
+void MediaModel::adoptFile(const QString& filePath) {
+    if (rowForPath(filePath) < 0) appendRowFor(filePath);
 }
 
 // Wahrheitsquelle ist m_selected, ein Byte je Zeile parallel zu m_items.
@@ -2273,25 +2363,82 @@ bool MediaModel::deleteItem(const QString& filePath) {
 }
 
 // Scheitert der Rueckweg, bleibt alles wie es ist.
-bool MediaModel::undoMove(const FileOp& op) {
-    if (op.movedTo.isEmpty() || !QFileInfo::exists(op.movedTo)) return false;
-    if (QFileInfo::exists(op.path)) return false;
+int MediaModel::undoMove(const FileOp& op) {
+    if (op.movedTo.isEmpty() || !QFileInfo::exists(op.movedTo)) return 2;
+    if (QFileInfo::exists(op.path) || m_transferTargets.contains(op.path)) return 2;
 
     ++m_suppressWatch;
-    bool ok = QFile::rename(op.movedTo, op.path);
-    if (!ok) {
-        ok = QFile::copy(op.movedTo, op.path);
-        if (ok && !QFile::remove(op.movedTo)) { QFile::remove(op.path); ok = false; }
-    }
-    if (ok) {
-        dropMetaAt(QFileInfo(op.movedTo).absolutePath(), QFileInfo(op.movedTo).fileName());
-        restoreMetaAt(QFileInfo(op.path).absolutePath(),
-                      QFileInfo(op.path).fileName(), op);
-        invalidateFolderCount(QFileInfo(op.movedTo).absolutePath());
-        invalidateFolderCount(QFileInfo(op.path).absolutePath());
-    }
+    std::error_code ec;
+    std::filesystem::rename(QFileInfo(op.movedTo).filesystemFilePath(),
+                            QFileInfo(op.path).filesystemFilePath(), ec);
     --m_suppressWatch;
-    return ok;
+    if (ec) { startUndoCopy(op, op.movedTo); return 3; }
+    bookUndo(op);
+    return 0;
+}
+
+void MediaModel::bookUndo(const FileOp& op) {
+    const QFileInfo ziel(op.path);
+    ++m_suppressWatch;
+    if (op.kind == FileOp::Kind::Move)
+        dropMetaAt(QFileInfo(op.movedTo).absolutePath(), QFileInfo(op.movedTo).fileName());
+    restoreMetaAt(ziel.absolutePath(), ziel.fileName(), op);
+    --m_suppressWatch;
+    if (op.kind == FileOp::Kind::Move) invalidateFolderCount(QFileInfo(op.movedTo).absolutePath());
+    invalidateFolderCount(ziel.absolutePath());
+}
+
+namespace {
+// Das erste Paar ist die Datei selbst: scheitert es, bleibt die Quelle liegen. Begleitdateien ohne Gewaehr.
+bool moveAcross(const QList<std::pair<QString, QString>>& paare, const std::atomic<bool>& cancel) {
+    for (qsizetype i = 0; i < paare.size(); ++i) {
+        const auto& [von, nach] = paare.at(i);
+        if (i > 0 && (von.isEmpty() || !QFile::exists(von) || QFileInfo::exists(nach))) continue;
+        if (!QFile::copy(von, nach)) {
+            if (i == 0) return false;
+            continue;
+        }
+        // Abbruch beim Beenden: lieber die Datei weiter im Papierkorb als halb zurueck.
+        const bool abbruch = i == 0 && cancel.load(std::memory_order_relaxed);
+        if (abbruch || !QFile::remove(von)) {
+            QFile::remove(nach);
+            if (i == 0) return false;
+        }
+    }
+    return true;
+}
+}  // namespace
+
+void MediaModel::startUndoCopy(const FileOp& op, const QString& from) {
+    QList<std::pair<QString, QString>> paare{ { from, op.path } };
+    if (op.kind != FileOp::Kind::Move) {
+        paare.append({ op.sidecarTrashPath, op.sidecarPath });
+        paare.append({ op.bakTrashPath, op.bakPath });
+    }
+    ensureTransferPool();
+    m_transferTargets.insert(op.path, PendingTransfer{ op, true, m_folder, true });
+    m_transferPool->start(QRunnable::create(
+        [owner = QPointer<MediaModel>(this), cancel = m_transferCancel, paare, target = op.path]() {
+            const bool ok = moveAcross(paare, *cancel);
+            MediaModel* o = owner.data();
+            if (!o || cancel->load(std::memory_order_relaxed)) return;
+            QMetaObject::invokeMethod(o, [o, target, ok]() {
+                o->finishTransfer(target, ok);
+            }, Qt::QueuedConnection);
+        }));
+}
+
+void MediaModel::finishUndo(const FileOp& op, const QString& openFolder, bool ok) {
+    if (ok) {
+        bookUndo(op);
+        // Der Nachleser kann die Datei schon gebracht haben, ein laufendes Fuellen liest sie selbst.
+        if (rowForPath(op.path) < 0 && !m_fillTimer.isActive() && !hasMoreToFill())
+            appendRowFor(op.path);
+        // Der Stapel gehoert zum Ordner, der beim Start offen war.
+        if (m_folder == openFolder) m_redoOps.push_back(op);
+    }
+    emit undoFinished(op.path, ok);
+    emit fileHistoryChanged();
 }
 
 namespace {
@@ -2383,11 +2530,13 @@ bool MediaModel::undoFileOp() {
             for (const FileOp& op : std::as_const(batch)) {
                 const bool isFolder = (op.kind == FileOp::Kind::Folder);
                 if (isFolder != (pass == 1)) continue;
-                const bool ok = (op.kind == FileOp::Kind::Move) ? undoMove(op)
-                              : isFolder ? restoreFolder(op, /*reloadNow=*/false)
-                              : restoreFile(op);   // Companion nutzt denselben Rückweg
+                const int r = (op.kind == FileOp::Kind::Move) ? undoMove(op)
+                            : isFolder ? (restoreFolder(op, /*reloadNow=*/false) ? 0 : 2)
+                            : restoreFile(op);   // Companion nutzt denselben Rückweg
                 // Nicht zurueckholbar: Eintrag verwerfen und weitermachen statt haengen bleiben.
-                if (!ok) continue;
+                if (r == 2) continue;
+                // Eine laufende Kopie kommt erst mit ihrem Ende auf den Redo-Stapel.
+                if (r == 3) { ++back; continue; }
                 // Eine Datei kommt gezielt als Zeile zurueck, ein Ordner braucht Neu-Einlesen.
                 if (isFolder) hadFolder = true;
                 else          appendRowFor(op.path);
@@ -2454,7 +2603,8 @@ bool MediaModel::redoFileOp() {
         if (op.kind == FileOp::Kind::Move) {
             // Ueber denselben Weg wie beim ersten Mal, damit die Metadaten mitwandern.
             const QString destFolder = QFileInfo(op.movedTo).absolutePath();
-            ok = (transferToFolder(op.path, destFolder, /*move=*/true, /*collision=*/2) == 0);
+            const int r = transferToFolder(op.path, destFolder, /*move=*/true, /*collision=*/2);
+            ok = (r == 0 || r == 3);                              // 3: die Kopie läuft und verbucht sich selbst
             if (ok) { emit fileHistoryChanged(); return true; }   // legt selbst ab
         } else {
             ok = trashFile(op.path, &op);
@@ -2733,13 +2883,178 @@ quint64 MediaModel::ordnerFingerabdruck() const {
     return h;
 }
 
+MediaModel::FolderListing MediaModel::scanFolder(const QString& folder, bool showAll,
+                                                 QDir::Filters hidden,
+                                                 const std::atomic<bool>& cancel) {
+    FolderListing l;
+    l.finger = kFingerBasis;
+    const QString sidecar = mg::folderSidecarName(folder);
+    QDirIterator it(folder, QDir::Files | QDir::Dirs | QDir::NoDotAndDotDot | hidden);
+    while (it.hasNext() && !cancel.load(std::memory_order_relaxed)) {
+        it.next();
+        const QFileInfo fi = it.fileInfo();
+        VorabEintrag e;
+        e.ordner  = fi.isDir();
+        e.pfad    = fi.filePath();
+        e.name    = anzeigeName(fi, e.ordner);
+        e.msecs   = fi.lastModified(QTimeZone::UTC).toMSecsSinceEpoch();
+        e.groesse = fi.size();
+        const QString name = fi.fileName();
+        if (imFingerabdruck(e.ordner, name, sidecar))
+            l.finger += eintragsFinger(name, e.groesse, e.msecs);
+        else if (showAll)
+            l.finger += eintragsFinger(name, 0, 0);
+        else
+            continue;
+        l.entries.append(std::move(e));
+    }
+    return l;
+}
+
+//  Zeilen anfuegen, entfernen und auffrischen statt neu aufzubauen: Auswahl, Miniaturen und Rollstand bleiben.
+void MediaModel::applyListing(const FolderListing& stand) {
+    if (stand.finger == m_dirFinger) return;
+    //  Mitten im Fuellen fehlen Zeilen, die nur noch nicht gelesen sind; dort bleibt der Neuaufbau.
+    if (m_fingerValid || m_fillTimer.isActive() || hasMoreToFill()) {
+        reload();
+        emit folderContentsChanged();
+        return;
+    }
+    m_dirFinger = stand.finger;
+
+    const QString sidecar = sidecarOfScope(0);
+    QBitArray gesehen(m_items.size());
+    QVector<MediaItem> neu;
+    QStringList neuLesen;      // aufgeklappte Unterordner mit geaendertem Inhalt
+    for (const VorabEintrag& e : stand.entries) {
+        const int row = m_pathToRow.value(e.pfad, -1);
+        //  Der Stand kann aelter sein als eine eigene Dateiaktion, deshalb zaehlt bei jeder Abweichung die Platte.
+        if (row < 0 || m_items.at(row).isFolder() != e.ordner) {
+            MediaItem item;
+            item.filePath    = e.pfad;
+            item.displayName = e.name;
+            item.dateTime    = QDateTime::fromMSecsSinceEpoch(e.msecs, QTimeZone::UTC);
+            item.scope       = 0;
+            if (e.ordner) {
+                item.type = MediaType::Folder;
+            } else {
+                if (!m_showAllFiles && mg::isCompanionFile(mg::baseNameView(e.pfad).toString(), sidecar))
+                    continue;
+                item.type = mg::refineType(e.pfad, MediaItem::detectType(e.pfad));
+                if (item.type == MediaType::Unknown && !m_showAllFiles) continue;
+                item.fileSize = e.groesse;
+            }
+            if (QFileInfo::exists(e.pfad)) neu.append(std::move(item));
+            continue;
+        }
+        gesehen.setBit(row);
+        MediaItem& it = m_items[row];
+        const qint64 groesse = e.ordner ? 0 : e.groesse;
+        if (it.fileSize == groesse && it.dateTime.toMSecsSinceEpoch() == e.msecs) continue;
+        it.fileSize = groesse;
+        it.dateTime = QDateTime::fromMSecsSinceEpoch(e.msecs, QTimeZone::UTC);
+        emitRow(row, {});
+        if (e.ordner) {
+            invalidateFolderCount(e.pfad);
+            const int s = m_scopeOfPath.value(e.pfad, -1);
+            if (s > 0 && m_scopes.at(s).active) neuLesen.append(e.pfad);
+        } else if (m_thumbState.at(row) == 1 || m_thumbState.at(row) == 2) {
+            //  Das alte Bild bleibt stehen, bis das neue geliefert ist.
+            m_loader.requestThumbnail(e.pfad);
+        }
+    }
+
+    //  Verschwundene Zeilen des offenen Ordners; ein aufgeklappter Unterordner nimmt seinen Unterbaum mit.
+    QSet<int> bereiche;
+    QVector<int> weg;
+    for (int r = 0; r < gesehen.size(); ++r) {
+        const MediaItem& it = m_items.at(r);
+        if (it.scope != 0 || gesehen.testBit(r)) continue;
+        const bool ordner = it.isFolder();
+        if (QFileInfo::exists(it.filePath) && QFileInfo(it.filePath).isDir() == ordner) continue;
+        weg.append(r);
+        const int s = ordner ? m_scopeOfPath.value(it.filePath, -1) : -1;
+        if (s > 0 && m_scopes.at(s).active) { bereiche.insert(s); collectDescendantScopes(s, bereiche); }
+    }
+    for (const QString& pfad : std::as_const(neuLesen)) {
+        const int s = m_scopeOfPath.value(pfad);
+        bereiche.insert(s);
+        collectDescendantScopes(s, bereiche);
+    }
+    if (!bereiche.isEmpty()) {
+        //  Die Zeilennummern in `weg` gelten nach dem Wegraeumen der Unterbaeume nicht mehr.
+        QStringList pfade;
+        for (int r : std::as_const(weg)) pfade.append(m_items.at(r).filePath);
+        removeRowsOfScopes(bereiche);
+        weg.clear();
+        for (const QString& p : std::as_const(pfade)) weg.append(m_pathToRow.value(p));
+        std::sort(weg.begin(), weg.end());
+    }
+    for (int i = weg.size() - 1; i >= 0; ) {
+        const int last = weg.at(i);
+        while (i > 0 && weg.at(i - 1) == weg.at(i) - 1) --i;
+        const int first = weg.at(i--);
+        const int n = last - first + 1;
+        beginRemoveRows(QModelIndex(), first, last);
+        for (int r = first; r <= last; ++r) m_loader.cancelThumbnail(m_items.at(r).filePath);
+        m_items.remove(first, n);
+        m_thumbUrls.remove(first, n);
+        m_thumbState.remove(first, n);
+        m_selected.remove(first, n);
+        endRemoveRows();
+    }
+    if (!weg.isEmpty()) {
+        rebuildPathIndex();
+        recountSelection();
+    }
+
+    if (!neu.isEmpty()) {
+        if (JsonStorage* st = storageForScope(0)) st->applyToItems(neu);
+        const int first = m_items.size();
+        beginInsertRows(QModelIndex(), first, first + neu.size() - 1);
+        for (auto& item : neu) {
+            m_pathToRow.insert(item.filePath, m_items.size());
+            m_items.append(std::move(item));
+            m_thumbUrls.append(QString());
+            m_thumbState.append(0);
+            m_selected.append(0);
+        }
+        endInsertRows();
+    }
+    if (!weg.isEmpty() || !neu.isEmpty()) emit countChanged();
+
+    //  Geaenderte und neue aufgeklappte Unterordner lesen sich ueber den gewohnten Fuellweg wieder ein.
+    queueExpandedFolders(0);
+    if (hasMoreToFill()) {
+        for (int s : std::as_const(m_scanQueue))
+            if (!m_watcher->directories().contains(m_scopes.at(s).path)) m_watcher->addPath(m_scopes.at(s).path);
+        m_fillTimer.start();
+    }
+    emit folderContentsChanged();
+}
+
 void MediaModel::onDirectoryChanged() {
     if (m_suppressWatch > 0) return;     // interne Mutation, kein Reload
+    rescanChanges();
+}
+
+void MediaModel::rescanChanges() {
     if (m_folder.isEmpty()) return;
-    //  Nichts Angezeigtes geaendert: es war unser Sidecar, ein Neubau waere Flackern ohne Anlass.
-    const quint64 jetzt = ordnerFingerabdruck();
-    if (jetzt == m_dirFinger) return;
-    m_dirFinger = jetzt;
-    reload();
-    emit folderContentsChanged();
+    if (!m_countPool) {
+        m_countPool = new QThreadPool(this);
+        m_countPool->setMaxThreadCount(1);
+    }
+    if (m_watchCancel) m_watchCancel->store(true);
+    m_watchCancel = std::make_shared<std::atomic<bool>>(false);
+    //  Der Durchgang liest Groesse und Datum jeder Datei; im GUI-Faden war das der laengste Block der Galerie.
+    m_countPool->start(QRunnable::create(
+        [owner = QPointer<MediaModel>(this), cancel = m_watchCancel, folder = m_folder,
+         showAll = m_showAllFiles, hidden = hiddenFlag()]() {
+            FolderListing stand = scanFolder(folder, showAll, hidden, *cancel);
+            MediaModel* o = owner.data();
+            if (!o || cancel->load(std::memory_order_relaxed)) return;
+            QMetaObject::invokeMethod(o, [o, cancel, stand = std::move(stand)]() {
+                if (!cancel->load(std::memory_order_relaxed)) o->applyListing(stand);
+            }, Qt::QueuedConnection);
+        }), 1);
 }

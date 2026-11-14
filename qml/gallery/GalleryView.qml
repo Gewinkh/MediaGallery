@@ -242,6 +242,12 @@ Rectangle {
     readonly property bool _roughThumbs: GraphicsInfo.api === GraphicsInfo.Software && scrollQuiet.running
     Timer { id: scrollQuiet; interval: 150 }
     readonly property int cellH: tileH + spacing
+    //  Werden die Zeilen hoeher (Liste -> Raster, Zoom), parkt die ListView die ueberzaehligen Delegaten samt
+    //  Kacheln und Bildern im Vorrat und gibt sie nie frei; nach kurzer Ruhe leert ein Aus-und-An den Vorrat.
+    onCellHChanged: vorratRuhe.restart()
+    Timer { id: vorratRuhe; interval: 400; onTriggered: { grid.reuseItems = false; grid.reuseItems = true } }
+    //  Ein Moduswechsel ersetzt alle Zellen; geparkt bauten sie die Teile des neuen Modus noch zu Ende.
+    onListModeChanged: { grid.reuseItems = false; vorratRuhe.restart() }
 
     // Obergrenze = was diese Galeriefläche VOLLSTÄNDIG darstellen kann (Seitenränder, Zellen-Padding, eine Zelle
     // muss in die Höhe passen). `App.setTileSize` klemmt dagegen, Dialoge binden an `App.maxTileWidth/-Height`.
@@ -249,12 +255,19 @@ Rectangle {
         if (width > 0 && height > 0)
             App.setTileSizeLimit(width - 2 * margin - spacing, height - spacing)
     }
-    //  Ein Spaltensprung baut jede sichtbare Kachel neu (die Zeilen-Repeater zaehlen um): beim Ziehen am Teiler folgt
+    //  Ein Spaltensprung schreibt jede sichtbare Zeile um und baut oder entfernt Zellen: beim Ziehen am Teiler folgt
     //  die Spaltenzahl dem ersten Schritt sofort, danach erst nach 150 ms Ruhe.
     property real _spaltenBreite: width
-    Timer { id: breiteRuhe; interval: 150; onTriggered: root._spaltenBreite = root.width }
+    Timer { id: breiteRuhe; interval: 150; onTriggered: root._breiteUebergeben() }
+    //  Die Zeilen werden nach Platz umgeschrieben: ohne Anker zeigte dieselbe Höhe danach andere Dateien.
+    function _breiteUebergeben() {
+        const r = grid.indexAt(1, grid.contentY + 1)
+        rowModel.keepInPlace(r >= 0 ? rowModel.rowInfo(r).first : -1)
+        root._spaltenBreite = root.width
+        rowModel.keepInPlace(-1)
+    }
     onWidthChanged: {
-        if (!breiteRuhe.running) root._spaltenBreite = width
+        if (!breiteRuhe.running) root._breiteUebergeben()
         breiteRuhe.restart()
         _reportTileLimit()
     }
@@ -505,40 +518,56 @@ Rectangle {
                 }
             }
 
-            Row {
-                visible: rowItem.kind === 1
+            Loader {
+                active: rowItem.kind === 1
                 x: rowItem.depth * root.levelInset + 4
                 y: rowItem.padTop
                 height: root.headerHeight
-                spacing: 8
+                sourceComponent: Row {
+                    height: root.headerHeight
+                    spacing: 8
 
-                Text {
-                    anchors.verticalCenter: parent.verticalCenter
-                    text: rowItem.ownerName
-                    color: App.themeTextPrimary
-                    font.pixelSize: 13
-                    font.bold: true
-                }
-                HeaderAction {
-                    label: App.uiText(App.language, "CtxFolderOpen")
-                    onTriggered: root.folderOpenRequested(rowItem.ownerFolder)
-                }
-                HeaderAction {
-                    label: "+ " + App.uiText(App.language, "CreateFileBtn")
-                    onTriggered: root.createFileRequested(rowItem.ownerFolder)
-                }
-                HeaderAction {
-                    label: App.uiText(App.language, "FolderNew")
-                    onTriggered: newFolderDialog.openFor(rowItem.ownerFolder)
-                }
-                HeaderAction {
-                    label: App.uiText(App.language, "FilterExtractBtn")
-                    onTriggered: root.extractPagesRequested(rowItem.ownerFolder)
+                    Text {
+                        anchors.verticalCenter: parent.verticalCenter
+                        text: rowItem.ownerName
+                        color: App.themeTextPrimary
+                        font.pixelSize: 13
+                        font.bold: true
+                    }
+                    HeaderAction {
+                        label: App.uiText(App.language, "CtxFolderOpen")
+                        onTriggered: root.folderOpenRequested(rowItem.ownerFolder)
+                    }
+                    HeaderAction {
+                        label: "+ " + App.uiText(App.language, "CreateFileBtn")
+                        onTriggered: root.createFileRequested(rowItem.ownerFolder)
+                    }
+                    HeaderAction {
+                        label: App.uiText(App.language, "FolderNew")
+                        onTriggered: newFolderDialog.openFor(rowItem.ownerFolder)
+                    }
+                    HeaderAction {
+                        label: App.uiText(App.language, "FilterExtractBtn")
+                        onTriggered: root.extractPagesRequested(rowItem.ownerFolder)
+                    }
                 }
             }
 
+            //  Ein Repeater auf einer Zahl baut bei jeder Änderung ALLE Zellen neu (Spaltenwechsel, wiederverwendete
+            //  Zeile mit anderer Kachelzahl); das ListModel nimmt nur die Differenz weg oder fügt sie an.
+            ListModel { id: zellPlaetze }
+            function _zellenAbgleichen() {
+                const n = rowItem.tileCount
+                if (zellPlaetze.count > n) zellPlaetze.remove(n, zellPlaetze.count - n)
+                const neu = []
+                for (let i = zellPlaetze.count; i < n; ++i) neu.push({})
+                if (neu.length > 0) zellPlaetze.append(neu)
+            }
+            onTileCountChanged: _zellenAbgleichen()
+            Component.onCompleted: _zellenAbgleichen()
+
             Repeater {
-                model: rowItem.tileCount
+                model: zellPlaetze
 
                 delegate: Item {
                     id: cell

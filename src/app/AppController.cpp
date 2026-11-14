@@ -423,33 +423,30 @@ void AppController::handleDroppedUrls(const QList<QUrl>& urls,
         return;
     }
 
-    int copied = 0, skipped = 0;
-    for (const QUrl& url : urls) {
-        const QString src = url.toLocalFile();
-        if (src.isEmpty()) continue;
-        const QFileInfo fi(src);
-        if (!fi.exists() || fi.isDir()) continue;
-        if (MediaItem::detectType(src) == MediaType::Unknown) continue;
+    QStringList quellen;
+    for (const QUrl& url : urls)
+        if (const QString src = url.toLocalFile(); !src.isEmpty()) quellen.append(src);
+    if (quellen.isEmpty() || !m_pane) return;
 
-        const QString dest = QDir(folder).filePath(fi.fileName());
-        if (QFileInfo::exists(dest)) { ++skipped; continue; }
-        if (QFile::copy(src, dest)) ++copied;
-    }
-
-    if (copied > 0) {
-        // NUR für den offenen Ordner: `m_storage` IST dessen Sidecar - es auf einen Unterordner umzuschalten hängte
-        // Modell, Tag-Panel und Filter an die falsche Datei. Der Unterordner liest beim Reload selbst neu.
-        if (folder == open)
-            if (m_pane) m_pane->storage().loadFolder(folder);   // Metadaten für neuen Bestand
-        if (m_pane) m_pane->notifyContentsChanged(folder);   // Galerie lädt neu
-    }
-
-    if (copied > 0)
-        emit statusMessage(de ? QStringLiteral("%1 Datei(en) hinzugefügt.").arg(copied)
-                              : QStringLiteral("%1 file(s) added.").arg(copied));
-    else if (skipped > 0)
-        emit statusMessage(de ? QStringLiteral("%1 Datei(en) übersprungen (bereits vorhanden).").arg(skipped)
-                              : QStringLiteral("%1 file(s) skipped (already present).").arg(skipped));
+    // Kopiert wird im Arbeitsfaden des Modells; die Hälfte kann bis zum Ende gewechselt oder geschlossen sein.
+    m_pane->mediaModel().importFiles(quellen, folder,
+        [self = QPointer<AppController>(this), pane = QPointer<PaneController>(m_pane), folder, de]
+        (int copied, int skipped) {
+            if (!self) return;
+            if (copied > 0 && pane) {
+                // NUR für den offenen Ordner: `m_storage` IST dessen Sidecar - es auf einen Unterordner
+                // umzuschalten hängte Modell, Tag-Panel und Filter an die falsche Datei.
+                if (folder == pane->currentFolder())
+                    pane->storage().loadFolder(folder);   // Metadaten für neuen Bestand
+                pane->notifyContentsChanged(folder);
+            }
+            if (copied > 0)
+                emit self->statusMessage(de ? QStringLiteral("%1 Datei(en) hinzugefügt.").arg(copied)
+                                            : QStringLiteral("%1 file(s) added.").arg(copied));
+            else if (skipped > 0)
+                emit self->statusMessage(de ? QStringLiteral("%1 Datei(en) übersprungen (bereits vorhanden).").arg(skipped)
+                                            : QStringLiteral("%1 file(s) skipped (already present).").arg(skipped));
+        });
 }
 
 // Mausrad waehrend eines Zuges: unter Wayland gehoert der Zeiger dem Compositor

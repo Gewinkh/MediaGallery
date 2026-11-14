@@ -651,6 +651,26 @@ ApplicationWindow {
     // ANGEHALTEN und gefragt - eine Sammelantwort gibt es bewusst nicht, jede Kollision ist eine eigene Entscheidung.
     property var    _dropQueue: []
     property string _dropDest: ""
+    // Eine Kopie läuft im Arbeitsfaden des Modells: die Warteschlange ruht bis zu ihrem Ergebnis, damit die
+    // nächste Datei den fertigen Stand des Zielordners sieht. Was inzwischen abgelegt wird, reiht sich ein.
+    // Als Objekt-Eigenschaft, weil sie von selbst leer wird, wenn die Hälfte mitten in der Kopie schließt.
+    property QtObject _dropOwner: null
+    Connections {
+        target: shell._dropOwner
+        function onTransferFinished(pfad, ziel, verschoben, ergebnis) {
+            if (pfad !== shell._dropPath) return      // ein Wiederholen-Schritt desselben Modells
+            shell._dropOwner = null
+            shell._noteTransfer(ergebnis, pfad)
+            shell._dropNext()
+        }
+    }
+    property string _dropPath: ""
+    function _transferLaeuft(owner, result, path) {
+        if (result !== 3) return false
+        shell._dropPath = path
+        shell._dropOwner = owner
+        return true
+    }
     property int    _dropOk: 0
     property int    _dropFail: 0
     property string _dropLast: ""
@@ -660,8 +680,9 @@ ApplicationWindow {
     }
     function _dropPathsIntoFolder(paths, destFolder) {
         if (!paths || paths.length === 0 || destFolder.length === 0) return
-        shell._dropQueue = paths.slice()
-        shell._dropDest  = destFolder
+        const neu = paths.map(p => ({ p: p, d: destFolder }))
+        if (shell._dropOwner) { shell._dropQueue = shell._dropQueue.concat(neu); return }
+        shell._dropQueue = neu
         shell._dropOk    = 0
         shell._dropFail  = 0
         shell._dropLast  = ""
@@ -670,7 +691,9 @@ ApplicationWindow {
     function _dropNext() {
         const move = App.fileDropMove
         while (shell._dropQueue.length > 0) {
-            const path = shell._dropQueue.shift()
+            const eintrag = shell._dropQueue.shift()
+            const path = eintrag.p
+            shell._dropDest = eintrag.d
             if (!path || path.length === 0) continue
             const owner = shell._modelOwning(path)
             if (!owner) { shell._dropFail++; continue }
@@ -683,6 +706,7 @@ ApplicationWindow {
                 collisionDialog.open()
                 return                       // der Dialog macht weiter
             }
+            if (shell._transferLaeuft(owner, r, path)) return
             shell._noteTransfer(r, path)
         }
         shell._reportDropBatch(move)
@@ -768,6 +792,7 @@ ApplicationWindow {
                                                       collisionDialog.destFolder,
                                                       collisionDialog.moveMode,
                                                       colBtn.modelData.mode)
+                                        if (shell._transferLaeuft(owner, r, collisionDialog.srcPath)) return
                                         shell._noteTransfer(r, collisionDialog.srcPath)
                                     }
                                 }

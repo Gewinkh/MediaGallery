@@ -89,217 +89,244 @@ Item {
             }
         }
 
-        Text {
-            visible: !overlay.compact
+        // Datum, Tag-Punkte und Optionsleiste nur im Optionen-Modus bauen: verborgen kosteten sie jede Kachel gut ein Dutzend Items.
+        Loader {
             width: parent.width
-            text: overlay.dateTime ? Qt.formatDateTime(overlay.dateTime, "yyyy-MM-dd hh:mm") : ""
-            color: Qt.rgba(1, 1, 1, 0.75)
-            font.pixelSize: 10
-            elide: Text.ElideRight
-        }
-
-        Row {
-            visible: !overlay.compact && overlay.tags.length > 0
-            spacing: 4
-            Repeater {
-                model: overlay.tags
-                delegate: Rectangle {
-                    required property var modelData
-                    width: 10; height: 10; radius: 5
-                    color: Tags.tagColor(modelData)
-                    border.width: 1
-                    border.color: Qt.rgba(1, 1, 1, 0.4)
-
-                    ToolTip.visible: dotHover.hovered
-                    ToolTip.text: modelData
-                    HoverHandler { id: dotHover }
-                }
-            }
-        }
-
-        // Zwei Knöpfe je Kachel im Optionen-Modus; der Klick zeigt die Tags bzw. Kategorien DIESES Mediums, beides
-        // frisch aus der Persistenz.
-        Row {
-            id: optRow
-            visible: !overlay.compact
-            spacing: 4
-
-            readonly property string fileName: overlay.filePath.substring(
-                Math.max(overlay.filePath.lastIndexOf("/"),
-                         overlay.filePath.lastIndexOf("\\")) + 1)
-
-            // „+"-Button (S-Modus): neuen Tag erstellen - LINKS vom Tags-Button
-            //  Bindet an die bestehende Daten-Logik an: mediaModel.addTag registriert
-            //  den Tag (falls neu) und weist ihn diesem Medium zu.
-            Rectangle {
-                width: 18; height: 18; radius: 9
-                color: addTagHover.hovered ? Qt.rgba(1, 1, 1, 0.28) : Qt.rgba(1, 1, 1, 0.12)
-                border.color: Qt.rgba(1, 1, 1, 0.35); border.width: 1
+            active: !overlay.compact
+            visible: active
+            sourceComponent: Column {
+                spacing: 3
                 Text {
-                    anchors.centerIn: parent
-                    text: "+"; color: "white"; font.pixelSize: 11; font.bold: true
+                    width: parent.width
+                    text: overlay.dateTime ? Qt.formatDateTime(overlay.dateTime, "yyyy-MM-dd hh:mm") : ""
+                    color: Qt.rgba(1, 1, 1, 0.75)
+                    font.pixelSize: 10
+                    elide: Text.ElideRight
                 }
-                HoverHandler { id: addTagHover }
-                TapHandler { onTapped: addPopup.openFor("tag") }
-                ToolTip.text: App.uiText(App.language, "PanelAddTagTip")
-                ToolTip.visible: addTagHover.hovered
-            }
-            Rectangle {
-                width: tagsBtnLbl.implicitWidth + 12; height: 18; radius: 9
-                color: tagsBtnHover.hovered ? Qt.rgba(1, 1, 1, 0.22) : Qt.rgba(1, 1, 1, 0.12)
-                border.color: Qt.rgba(1, 1, 1, 0.35); border.width: 1
-                Text {
-                    id: tagsBtnLbl
-                    anchors.centerIn: parent
-                    text: App.uiText(App.language, "OverlayShowTags")
-                    color: "white"; font.pixelSize: 9
-                }
-                HoverHandler { id: tagsBtnHover }
-                TapHandler {
-                    onTapped: {
-                        valuesPopup.title  = App.uiText(App.language, "OverlayShowTags")
-                        valuesPopup.values = mediaModel.tagsOfFile(overlay.filePath)
-                        valuesPopup.open()
+
+                Row {
+                    visible: overlay.tags.length > 0
+                    spacing: 4
+                    Repeater {
+                        model: overlay.tags
+                        delegate: Rectangle {
+                            required property var modelData
+                            width: 10; height: 10; radius: 5
+                            color: Tags.tagColor(modelData)
+                            border.width: 1
+                            border.color: Qt.rgba(1, 1, 1, 0.4)
+
+                            ToolTip.visible: dotHover.hovered
+                            ToolTip.text: modelData
+                            HoverHandler { id: dotHover }
+                        }
                     }
                 }
-            }
-            // "+" legt eine neue Wurzelkategorie an und ordnet das Medium ihr sofort zu (`addRootCategory` liefert die ID).
-            Rectangle {
-                width: 18; height: 18; radius: 9
-                color: addCatHover.hovered ? Qt.rgba(1, 1, 1, 0.28) : Qt.rgba(1, 1, 1, 0.12)
-                border.color: Qt.rgba(1, 1, 1, 0.35); border.width: 1
-                Text {
-                    anchors.centerIn: parent
-                    text: "+"; color: App.themeAccent; font.pixelSize: 11; font.bold: true
-                }
-                HoverHandler { id: addCatHover }
-                TapHandler { onTapped: addPopup.openFor("category") }
-                ToolTip.text: App.uiText(App.language, "PanelAddCategoryTip")
-                ToolTip.visible: addCatHover.hovered
-            }
-            Rectangle {
-                width: catsBtnLbl.implicitWidth + 12; height: 18; radius: 9
-                color: catsBtnHover.hovered ? Qt.rgba(1, 1, 1, 0.22) : Qt.rgba(1, 1, 1, 0.12)
-                border.color: Qt.rgba(1, 1, 1, 0.35); border.width: 1
-                Text {
-                    id: catsBtnLbl
-                    anchors.centerIn: parent
-                    text: App.uiText(App.language, "OverlayShowCategories")
-                    color: "white"; font.pixelSize: 9
-                }
-                HoverHandler { id: catsBtnHover }
-                TapHandler {
-                    onTapped: {
-                        valuesPopup.title  = App.uiText(App.language, "OverlayShowCategories")
-                        valuesPopup.values = Tags.categoriesForFile(optRow.fileName)
-                        valuesPopup.open()
+
+                // Zwei Knöpfe je Kachel im Optionen-Modus; der Klick zeigt die Tags bzw. Kategorien DIESES Mediums, beides
+                // frisch aus der Persistenz.
+                Row {
+                    id: optRow
+                    spacing: 4
+
+                    readonly property string fileName: overlay.filePath.substring(
+                        Math.max(overlay.filePath.lastIndexOf("/"),
+                                 overlay.filePath.lastIndexOf("\\")) + 1)
+
+                    // „+"-Button (S-Modus): neuen Tag erstellen - LINKS vom Tags-Button
+                    //  Bindet an die bestehende Daten-Logik an: mediaModel.addTag registriert
+                    //  den Tag (falls neu) und weist ihn diesem Medium zu.
+                    Rectangle {
+                        width: 18; height: 18; radius: 9
+                        color: addTagHover.hovered ? Qt.rgba(1, 1, 1, 0.28) : Qt.rgba(1, 1, 1, 0.12)
+                        border.color: Qt.rgba(1, 1, 1, 0.35); border.width: 1
+                        Text {
+                            anchors.centerIn: parent
+                            text: "+"; color: "white"; font.pixelSize: 11; font.bold: true
+                        }
+                        HoverHandler { id: addTagHover }
+                        TapHandler { onTapped: overlay.openAdd("tag") }
+                        ToolTip.text: App.uiText(App.language, "PanelAddTagTip")
+                        ToolTip.visible: addTagHover.hovered
+                    }
+                    Rectangle {
+                        width: tagsBtnLbl.implicitWidth + 12; height: 18; radius: 9
+                        color: tagsBtnHover.hovered ? Qt.rgba(1, 1, 1, 0.22) : Qt.rgba(1, 1, 1, 0.12)
+                        border.color: Qt.rgba(1, 1, 1, 0.35); border.width: 1
+                        Text {
+                            id: tagsBtnLbl
+                            anchors.centerIn: parent
+                            text: App.uiText(App.language, "OverlayShowTags")
+                            color: "white"; font.pixelSize: 9
+                        }
+                        HoverHandler { id: tagsBtnHover }
+                        TapHandler {
+                            onTapped: {
+                                overlay.showValues(App.uiText(App.language, "OverlayShowTags"),
+                                                   mediaModel.tagsOfFile(overlay.filePath))
+                            }
+                        }
+                    }
+                    // "+" legt eine neue Wurzelkategorie an und ordnet das Medium ihr sofort zu (`addRootCategory` liefert die ID).
+                    Rectangle {
+                        width: 18; height: 18; radius: 9
+                        color: addCatHover.hovered ? Qt.rgba(1, 1, 1, 0.28) : Qt.rgba(1, 1, 1, 0.12)
+                        border.color: Qt.rgba(1, 1, 1, 0.35); border.width: 1
+                        Text {
+                            anchors.centerIn: parent
+                            text: "+"; color: App.themeAccent; font.pixelSize: 11; font.bold: true
+                        }
+                        HoverHandler { id: addCatHover }
+                        TapHandler { onTapped: overlay.openAdd("category") }
+                        ToolTip.text: App.uiText(App.language, "PanelAddCategoryTip")
+                        ToolTip.visible: addCatHover.hovered
+                    }
+                    Rectangle {
+                        width: catsBtnLbl.implicitWidth + 12; height: 18; radius: 9
+                        color: catsBtnHover.hovered ? Qt.rgba(1, 1, 1, 0.22) : Qt.rgba(1, 1, 1, 0.12)
+                        border.color: Qt.rgba(1, 1, 1, 0.35); border.width: 1
+                        Text {
+                            id: catsBtnLbl
+                            anchors.centerIn: parent
+                            text: App.uiText(App.language, "OverlayShowCategories")
+                            color: "white"; font.pixelSize: 9
+                        }
+                        HoverHandler { id: catsBtnHover }
+                        TapHandler {
+                            onTapped: {
+                                overlay.showValues(App.uiText(App.language, "OverlayShowCategories"),
+                                                   Tags.categoriesForFile(optRow.fileName))
+                            }
+                        }
                     }
                 }
             }
         }
     }
 
+    // Erst beim ersten Öffnen bauen: zwei Popups mit TextField und Button je Kachel kosteten jeden Kachelaufbau mit.
+    function openAdd(m) {
+        addLoader.active = true
+        addLoader.item.openFor(m)
+    }
+    function showValues(title, values) {
+        valuesLoader.active = true
+        valuesLoader.item.title = title
+        valuesLoader.item.values = values
+        valuesLoader.item.open()
+    }
+    Loader { id: addLoader; active: false; sourceComponent: addComponent }
+    Loader { id: valuesLoader; active: false; sourceComponent: valuesComponent }
+
     // Eingabe-Popup: neuen Tag / neue Kategorie erstellen (S-Modus)
-    Popup {
-        id: addPopup
-        property string mode: "tag"          // "tag" | "category"
-        x: 6
-        y: overlay.height - height - 6
-        padding: 10
-        modal: false
-        focus: true
-        closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
-        background: Rectangle {
-            color: App.themeMenuBarBg
-            border.color: App.themeBorder; border.width: 1
-            radius: 6
-        }
-
-        function openFor(m) { mode = m; open() }
-        onOpened: { addField.text = ""; addField.forceActiveFocus() }
-
-        function commit() {
-            var v = addField.text.trim()
-            if (v.length > 0) {
-                var fn = overlay.filePath.substring(
-                    Math.max(overlay.filePath.lastIndexOf("/"),
-                             overlay.filePath.lastIndexOf("\\")) + 1)
-                if (addPopup.mode === "tag") {
-                    mediaModel.addTag(overlay.filePath, v)
-                } else {
-                    var newId = Tags.addRootCategory(v, Qt.rgba(0, 0.7, 0.63, 1), false)
-                    if (newId && newId.length > 0)
-                        Tags.toggleFileInCategory(newId, fn)
-                }
+    Component {
+        id: addComponent
+        Popup {
+            id: addPopup
+            parent: overlay
+            property string mode: "tag"          // "tag" | "category"
+            x: 6
+            y: overlay.height - height - 6
+            padding: 10
+            modal: false
+            focus: true
+            closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
+            background: Rectangle {
+                color: App.themeMenuBarBg
+                border.color: App.themeBorder; border.width: 1
+                radius: 6
             }
-            close()
-        }
 
-        contentItem: Column {
-            spacing: 6
-            Text {
-                text: addPopup.mode === "tag"
-                      ? App.uiText(App.language, "CatPanelNewTag")
-                      : App.uiText(App.language, "CatPanelAddCategory")
-                color: App.themeAccent; font.pixelSize: 12; font.bold: true
-            }
-            Row {
-                spacing: 4
-                TextField {
-                    id: addField
-                    width: 120
-                    font.pixelSize: 11
-                    color: App.themeTextPrimary
-                    background: Rectangle {
-                        color: App.themeCard; radius: 4
-                        border.color: addField.activeFocus ? App.themeAccent : App.themeBorder
-                        border.width: 1
+            function openFor(m) { mode = m; open() }
+            onOpened: { addField.text = ""; addField.forceActiveFocus() }
+
+            function commit() {
+                var v = addField.text.trim()
+                if (v.length > 0) {
+                    var fn = overlay.filePath.substring(
+                        Math.max(overlay.filePath.lastIndexOf("/"),
+                                 overlay.filePath.lastIndexOf("\\")) + 1)
+                    if (addPopup.mode === "tag") {
+                        mediaModel.addTag(overlay.filePath, v)
+                    } else {
+                        var newId = Tags.addRootCategory(v, Qt.rgba(0, 0.7, 0.63, 1), false)
+                        if (newId && newId.length > 0)
+                            Tags.toggleFileInCategory(newId, fn)
                     }
-                    onAccepted: addPopup.commit()
                 }
-                Button {
-                    height: addField.height
-                    text: App.uiText(App.language, "SettingsOk")
-                    font.pixelSize: 10
-                    onClicked: addPopup.commit()
+                close()
+            }
+
+            contentItem: Column {
+                spacing: 6
+                Text {
+                    text: addPopup.mode === "tag"
+                          ? App.uiText(App.language, "CatPanelNewTag")
+                          : App.uiText(App.language, "CatPanelAddCategory")
+                    color: App.themeAccent; font.pixelSize: 12; font.bold: true
+                }
+                Row {
+                    spacing: 4
+                    TextField {
+                        id: addField
+                        width: 120
+                        font.pixelSize: 11
+                        color: App.themeTextPrimary
+                        background: Rectangle {
+                            color: App.themeCard; radius: 4
+                            border.color: addField.activeFocus ? App.themeAccent : App.themeBorder
+                            border.width: 1
+                        }
+                        onAccepted: addPopup.commit()
+                    }
+                    Button {
+                        height: addField.height
+                        text: App.uiText(App.language, "SettingsOk")
+                        font.pixelSize: 10
+                        onClicked: addPopup.commit()
+                    }
                 }
             }
         }
     }
 
     // Werte-Popup (Tags bzw. Kategorien des Mediums)
-    Popup {
-        id: valuesPopup
-        property string title: ""
-        property var values: []
-        x: 6
-        y: overlay.height - height - 6
-        padding: 10
-        modal: false
-        focus: true
-        closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
-        background: Rectangle {
-            color: App.themeMenuBarBg
-            border.color: App.themeBorder; border.width: 1
-            radius: 6
-        }
-        contentItem: Column {
-            spacing: 4
-            Text {
-                text: valuesPopup.title
-                color: App.themeAccent; font.pixelSize: 12; font.bold: true
+    Component {
+        id: valuesComponent
+        Popup {
+            id: valuesPopup
+            parent: overlay
+            property string title: ""
+            property var values: []
+            x: 6
+            y: overlay.height - height - 6
+            padding: 10
+            modal: false
+            focus: true
+            closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
+            background: Rectangle {
+                color: App.themeMenuBarBg
+                border.color: App.themeBorder; border.width: 1
+                radius: 6
             }
-            Text {
-                visible: valuesPopup.values.length === 0
-                text: App.uiText(App.language, "OverlayNoValues")
-                color: App.themeTextMuted; font.pixelSize: 11
-            }
-            Repeater {
-                model: valuesPopup.values
-                delegate: Text {
-                    required property var modelData
-                    text: "\u2022 " + modelData
-                    color: App.themeTextPrimary; font.pixelSize: 11
+            contentItem: Column {
+                spacing: 4
+                Text {
+                    text: valuesPopup.title
+                    color: App.themeAccent; font.pixelSize: 12; font.bold: true
+                }
+                Text {
+                    visible: valuesPopup.values.length === 0
+                    text: App.uiText(App.language, "OverlayNoValues")
+                    color: App.themeTextMuted; font.pixelSize: 11
+                }
+                Repeater {
+                    model: valuesPopup.values
+                    delegate: Text {
+                        required property var modelData
+                        text: "\u2022 " + modelData
+                        color: App.themeTextPrimary; font.pixelSize: 11
+                    }
                 }
             }
         }

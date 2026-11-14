@@ -345,6 +345,10 @@ add_library(mg_lib STATIC
     src/media/MediaProxyModel.h
     src/media/ThumbnailLoader.cpp
     src/media/ThumbnailLoader.h
+    src/media/SoftwareVideoItem.cpp
+    src/media/SoftwareVideoItem.h
+    src/media/VideoFrameRgb.cpp
+    src/media/VideoFrameRgb.h
 
     src/pdf/OcrEngine.cpp
     src/pdf/OcrEngine.h

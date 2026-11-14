@@ -89,8 +89,21 @@ Item {
         // Treffer an, also will man ihn sehen. Die übrigen bleiben verborgen, ihre Faltmarke wird hervorgehoben.
         foldBar.ensureVisible(r.start)
         editor.select(r.start, r.start + r.length)
+        root._trefferNachOben()
         root._findStatus = App.uiText(App.language, "EditorFindCounter")
                               .arg(r.index).arg(r.total)
+    }
+    // Der Treffer kommt nach oben, damit das Folgende darunter zu lesen ist; `_cursorInsSichtfeld` ließe ihn auf
+    // der letzten sichtbaren Zeile stehen. Drei Zeilen Luft darüber, sonst klebt er an der Kopfleiste; unter der
+    // Suchleiste zählt deren Unterkante plus zwei Zeilen.
+    function _trefferNachOben() {
+        const a = editor.positionToRectangle(editor.selectionStart)
+        if (a.height <= 0) return
+        const e = editor.positionToRectangle(editor.selectionEnd)
+        const verdeckt = Math.max(a.x, e.x) - flick.contentX > findBar.x - flick.x
+        const frei = Math.max(3 * a.height, verdeckt ? findBar.y + findBar.height - flick.y + 2 * a.height : 0)
+        scrollAnim.stop()
+        flick.contentY = Math.max(0, Math.min(flick.contentHeight - flick.height, a.y - frei))
     }
     function _findNext(rueckwaerts) {
         root._findFrom(rueckwaerts ? editor.selectionStart : editor.selectionEnd,
@@ -108,6 +121,7 @@ Item {
                                         root._findCase, root._findWords)
         if (r.found) {
             editor.select(r.start, r.start + r.length)
+            root._trefferNachOben()
             root._findStatus = App.uiText(App.language, "EditorFindCounter")
                                   .arg(r.index).arg(r.total)
         } else {

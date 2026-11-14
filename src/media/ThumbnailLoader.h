@@ -49,6 +49,16 @@ public:
 
     void cancelAll();
 
+    // Solange ein Objekt lebt, warten neu startende Aufträge (gedeckelt): der Bildbetrachter dekodiert im selben
+    // Prozess und bekommt die Kerne. Prozessweit, aus jedem Faden; Leerlauf-Priorität verhungerte unter Fremdlast.
+    class Vorrang {
+    public:
+        Vorrang();
+        ~Vorrang();
+        Vorrang(const Vorrang&) = delete;
+        Vorrang& operator=(const Vorrang&) = delete;
+    };
+
 signals:
     void thumbnailReady(const QString& filePath, const QString& thumbUrl);
     void thumbnailFailed(const QString& filePath);
@@ -104,6 +114,7 @@ private:
     bool cancelled() const {
         return m_cancel && m_cancel->load(std::memory_order_relaxed);
     }
+    void warteAufVorrang() const;
 
     // Alle Erzeuger arbeiten auf QImage, NICHT auf QPixmap: QPixmap ist an den GUI-Thread gebunden, diese
     // Funktionen laufen aber ausnahmslos in Pool-Workern. QImage spart zusätzlich eine Vollbild-Konvertierung.
