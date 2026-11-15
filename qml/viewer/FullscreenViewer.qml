@@ -120,18 +120,24 @@ FocusScope {
     on_DatevTableChanged: {
         const tabelle = surface.item && surface.item.controller !== undefined
                         ? surface.item.controller : null
+        //  Markdown: dieselbe Quellzeile oben in beiden Ansichten, sonst stand man nach jedem Wechsel am Anfang.
+        const gerendert = root._isMarkdown && surface.item && surface.item.topSourceLine ? surface.item : null
         if (!root._datevTable) {
+            const zeile = gerendert ? gerendert.topSourceLine() : -1
             if (root._isTable && surface.item && surface.item.uebernehme) surface.item.uebernehme()
             const geschrieben = root._isTable && tabelle !== null && tabelle.modified === true
             if (geschrieben) tabelle.flush()
             if (geschrieben && rohtext.item) rohtext.item.reloadFromDisk()
             root._rohtextGesehen = true
+            if (zeile >= 0 && rohtext.item) Qt.callLater(rohtext.item.showSourceLine, zeile)
         } else if (rohtext.item) {
+            const zeileRoh = gerendert ? rohtext.item.topSourceLine() : -1
             const geaendert = rohtext.item.dirty === true || root._rohtextGeaendert
             rohtext.item.save()
             root._rohtextGeaendert = false
             if (geaendert && tabelle) tabelle.reload()
-            if (geaendert && root._isMarkdown && surface.item && surface.item.reload) surface.item.reload()
+            if (geaendert && gerendert && gerendert.reload) gerendert.reload(zeileRoh)
+            else if (gerendert) gerendert.showSourceLine(zeileRoh)
         }
     }
     readonly property bool _rohtextAktiv: root._hatRohtext && !root._datevTable

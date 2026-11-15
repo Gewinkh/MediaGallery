@@ -187,6 +187,18 @@ int TextFoldBar::foldedStartFor(int position) const {
     return aeusserster;
 }
 
+int TextFoldBar::lineOfPosition(int position) const {
+    QTextDocument* d = doc();
+    return d ? d->findBlock(position).blockNumber() : -1;
+}
+
+int TextFoldBar::positionOfLine(int line) const {
+    QTextDocument* d = doc();
+    if (!d) return -1;
+    const QTextBlock b = d->findBlockByNumber(qBound(0, line, d->blockCount() - 1));
+    return b.isValid() ? b.position() : -1;
+}
+
 bool TextFoldBar::ensureVisible(int position) {
     QTextDocument* d = doc();
     if (!d || m_gefaltet.isEmpty()) return false;

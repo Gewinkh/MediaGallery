@@ -23,6 +23,7 @@ struct Block {
     int  task = -1;                  // Item: -1 keine Aufgabe, 0 offen, 1 erledigt
     bool open = false;               // Details: per `<details open>` aufgeklappt
     int  id = -1;                    // Details: laufende Nummer im Dokument
+    int  line = -1;                  // erste Quellzeile ab 0; Tabellenzeile r > 0 steht auf line + r + 1
     QList<Align> aligns;             // Table
     QList<QStringList> rows;         // Table: rows[0] ist der Kopf
     QList<QPair<QString, QString>> pairs;   // FrontMatter

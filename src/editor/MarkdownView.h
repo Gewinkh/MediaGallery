@@ -95,6 +95,9 @@ public:
     //  { kind: details|anchor|file|url|none, id, position, path, url }; relativ gilt ab dem Ordner der Datei.
     Q_INVOKABLE QVariantMap resolveLink(const QString& href) const;
     Q_INVOKABLE bool copyCode(int index) const;
+    //  Quellzeile an einer Dokumentstelle und zurueck, je -1 ohne Dokument: der Wechsel zum Rohtext haelt die Stelle.
+    Q_INVOKABLE int sourceLineAt(int position) const;
+    Q_INVOKABLE int positionOfSourceLine(int line) const;
 
     //  Als PDF, so wie die Ansicht gerade steht (aufgeklappte Hinweise eingeschlossen). `print` = Schwarz/Weiss.
     bool exporting() const { return m_exporting; }

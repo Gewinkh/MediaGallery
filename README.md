@@ -158,12 +158,8 @@ $env:MG_HTML_EIGEN=1; .\build\Release\MediaGallery.exe
 ## Changelog
 
 ### Latest
-- **Improvement**: **Videos**: Full HD playback in software mode uses less CPU, and thumbnail generation requires significantly less memory across all graphics modes.
-- **Fix**: **Videos**: Playback now displays correctly in software graphics mode.
-- **Improvement**: **Gallery**: List mode and grid/list switching use less memory and are faster. Thumbnail loading, scrolling and searching are smoother.
-- **Improvement**: **Gallery**: Resizing the window preserves the current scroll position, and external file changes update only affected items without disrupting the view.
-- **Improvement**: **Gallery**: Copying, moving, importing and undoing file operations now run in the background without freezing the interface.
-- **Improvement**: **Text editor**: Search results now appear near the top of the view for easier reading.
+- **Improvement**: **Markdown**: Scrolling through large tables is smooth again in software graphics mode.
+- **Fix**: **Markdown**: Switching between formatted and editable views now preserves the current scroll position.
 
 ---
 

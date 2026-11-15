@@ -3,6 +3,7 @@
 #include "editor/LanguageTable.h"
 #include "editor/SyntaxScanner.h"
 
+#include <algorithm>
 #include <QAbstractTextDocumentLayout>
 #include <QTextLayout>
 #include <QDir>
@@ -67,6 +68,7 @@ private:
     QHash<QString, int> m_slugs;
     qint64 m_imageBytes = 0;
     int m_imageNo = 0;
+    int m_zeile = -1;   // Quellzeile, die der naechste Block bekommt
 
     bool aborted() const { return m_abort && m_abort->load(std::memory_order_relaxed); }
     QTextCharFormat charFormat(const Ctx& c) const;
@@ -75,6 +77,7 @@ private:
     void beforeFrame();
     void spacer(qreal height);
     void setLastBottom(qreal px);
+    void merkeZeile();
 
     void blocks(const QList<Block>& bl, const Ctx& c);
     void paragraph(const QString& text, const Ctx& c, QTextBlockFormat bf);
@@ -147,6 +150,14 @@ void Builder::beginBlock(const QTextBlockFormat& bf, const QTextCharFormat& cf) 
         m_cur.insertBlock(bf, cf);
     }
     m_fresh = false;
+    merkeZeile();
+}
+
+void Builder::merkeZeile() {
+    if (m_zeile < 0) return;
+    if (m_doc->sourceLines.isEmpty() || m_doc->sourceLines.last().second < m_zeile)
+        m_doc->sourceLines.append({m_cur.block().position(), m_zeile});
+    m_zeile = -1;
 }
 
 void Builder::afterFrame(QTextFrame* f, qreal gap) {
@@ -481,6 +492,7 @@ void Builder::list(const Block& b, const Ctx& c) {
 
     for (const Block& item : b.children) {
         if (aborted()) return;
+        if (item.line >= 0) m_zeile = item.line;
         QTextBlockFormat bf;
         bf.setBottomMargin(b.tight ? m_px * 0.2 : m_px * 0.6);
         if (item.task >= 0)
@@ -533,6 +545,10 @@ void Builder::table(const Block& b, const Ctx& c) {
         for (int col = 0; col < cols; ++col) {
             // Keine Zellhintergruende: die QML-Textflaeche malt sie nur hinter die Buchstaben.
             m_cur = t->cellAt(r, col).firstCursorPosition();
+            if (col == 0 && b.line >= 0) {
+                m_zeile = r == 0 ? b.line : b.line + r + 1;
+                merkeZeile();
+            }
             QTextBlockFormat bf;
             switch (b.aligns[col]) {
             case Align::Center: bf.setAlignment(Qt::AlignHCenter); break;
@@ -676,6 +692,7 @@ void Builder::footnotes() {
 void Builder::blocks(const QList<Block>& bl, const Ctx& c) {
     for (const Block& b : bl) {
         if (aborted()) return;
+        if (b.line >= 0) m_zeile = b.line;
         switch (b.kind) {
         case Block::Paragraph:   paragraph(b.text, c, QTextBlockFormat()); break;
         case Block::Heading:     heading(b, c); break;
@@ -810,6 +827,21 @@ void layoutDocument(RenderedDocument& doc, const LayoutVorgabe& vorgabe, const s
         QTextLayout* tl = b.layout();
         tl->setFont(tl->font());
     }
+}
+
+int sourceLineAt(const RenderedDocument& doc, int position) {
+    const auto& z = doc.sourceLines;
+    auto it = std::upper_bound(z.cbegin(), z.cend(), position,
+                               [](int p, const QPair<int, int>& e) { return p < e.first; });
+    return it == z.cbegin() ? (z.isEmpty() ? -1 : z.first().second) : std::prev(it)->second;
+}
+
+int positionOfSourceLine(const RenderedDocument& doc, int line) {
+    const auto& z = doc.sourceLines;
+    if (z.isEmpty()) return -1;
+    auto it = std::upper_bound(z.cbegin(), z.cend(), line,
+                               [](int l, const QPair<int, int>& e) { return l < e.second; });
+    return it == z.cbegin() ? z.first().first : std::prev(it)->first;
 }
 
 QRectF codeBoxRect(const RenderedDocument& doc, const CodeBox& box) {

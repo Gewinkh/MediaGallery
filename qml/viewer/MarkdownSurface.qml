@@ -59,9 +59,22 @@ Item {
         function onPdfPreviewReady(pfad, n) { root.pdfPreviewPath = pfad; root.pdfPages = n }
         function onPdfExportFinished(ok, target, error) { root.pdfFinished(ok, target, error) }
     }
-    function reload() {
+    //  `line` = Quellzeile, die danach oben stehen soll; vor dem Laden gesetzt, weil die neue Fassung sofort kommen kann.
+    function reload(line) {
         root._keepY = flick.contentY
+        root._keepLine = line === undefined ? -1 : line
         view.reload()
+    }
+    //  Leseposition als Quellzeile fuer den Wechsel zum Rohtext und zurueck.
+    property int _keepLine: -1
+    function topSourceLine() {
+        if (!view.ready) return -1
+        return view.sourceLineAt(doc.positionAt(0, Math.max(0, flick.contentY - sicht.y + 12)))
+    }
+    function showSourceLine(line) {
+        if (line < 0) return
+        if (!view.ready) root._keepLine = line
+        else root._scrollTo(view.positionOfSourceLine(line))
     }
 
     function _openLink(link) {
@@ -99,9 +112,12 @@ Item {
             const gleich = root._shownSource === view.source
             root._shownSource = view.source
             const ziel = gleich ? (root._keepY >= 0 ? root._keepY : flick.contentY) : 0
+            const zeile = gleich ? root._keepLine : -1
             root._keepY = -1
+            root._keepLine = -1
             Qt.callLater(function () {
-                flick.contentY = Math.max(0, Math.min(Math.max(0, flick.contentHeight - flick.height), ziel))
+                if (zeile >= 0) root._scrollTo(view.positionOfSourceLine(zeile))
+                else flick.contentY = Math.max(0, Math.min(Math.max(0, flick.contentHeight - flick.height), ziel))
             })
         }
     }
@@ -118,6 +134,9 @@ Item {
         ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
         onContentYChanged: view.setViewport(flick.contentY - sicht.y, flick.height)
         onHeightChanged: view.setViewport(flick.contentY - sicht.y, flick.height)
+        //  Rollt mit und deckt das Fenster: der Software-Zeichner meldet dem Compositor dann ein Rechteck statt eines je
+        //  Tabellenzelle; an bis zu 1250 Rechtecken je Bild wartete KWin bis zu 100 ms mit dem naechsten.
+        Rectangle { width: flick.width; height: flick.contentHeight; color: Editor.background }
 
         //  Hinter der Textflaeche: die Rahmen im Dokument sind durchsichtig und halten nur den Platz.
         Rectangle {

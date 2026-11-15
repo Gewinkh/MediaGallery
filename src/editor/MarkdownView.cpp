@@ -921,6 +921,16 @@ int MarkdownView::anchorPosition(const QString& name) const {
     return -1;
 }
 
+int MarkdownView::sourceLineAt(int position) const {
+    const md::RenderedDocument* d = shownDocument();
+    return d ? md::sourceLineAt(*d, position) : -1;
+}
+
+int MarkdownView::positionOfSourceLine(int line) const {
+    const md::RenderedDocument* d = shownDocument();
+    return d ? md::positionOfSourceLine(*d, line) : -1;
+}
+
 QVariantMap MarkdownView::resolveLink(const QString& href) const {
     QVariantMap m;
     m.insert(QStringLiteral("kind"), QStringLiteral("none"));

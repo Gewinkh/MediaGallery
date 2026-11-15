@@ -79,6 +79,9 @@ public:
     Q_INVOKABLE bool isFolded(int blockNumber) const { return m_gefaltet.contains(blockNumber); }
     Q_INVOKABLE int  regionCount() const { return int(m_bereiche.size()); }
     Q_INVOKABLE void rescanNow() { neuErfassen(); }
+    //  Zeile = Block der Textdatei; die gerenderte Markdown-Ansicht rollt danach an dieselbe Stelle.
+    Q_INVOKABLE int lineOfPosition(int position) const;
+    Q_INVOKABLE int positionOfLine(int line) const;
 
     const QList<FoldRegion>& regions() const { return m_bereiche; }
     const QSet<int>&         foldedStarts() const { return m_gefaltet; }

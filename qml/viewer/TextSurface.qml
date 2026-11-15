@@ -168,6 +168,29 @@ Item {
         root._loading = false
     }
 
+    //  Leseposition als Zeile fuer die gerenderte Markdown-Ansicht derselben Datei und zurueck.
+    function topSourceLine() {
+        return foldBar.lineOfPosition(editor.positionAt(editor.leftPadding + 1, flick.contentY + editor.topPadding + 8))
+    }
+    //  Ein frisch gebauter Rohtext bricht kurz danach noch einmal um (Randspalte); bis dahin bleibt die Zeile das Ziel.
+    property int _haltZeile: -1
+    Timer { id: zeileHalten; interval: 600; onTriggered: root._haltZeile = -1 }
+    function showSourceLine(line) {
+        root._haltZeile = line
+        zeileHalten.restart()
+        root._zeigeZeile(line)
+    }
+    function _zeigeZeile(line) {
+        const pos = line >= 0 ? foldBar.positionOfLine(line) : -1
+        if (pos < 0) return
+        foldBar.ensureVisible(pos)
+        const r = editor.positionToRectangle(pos)
+        flick.contentY = Math.max(0, Math.min(Math.max(0, flick.contentHeight - flick.height), r.y - editor.topPadding))
+        //  Ein Cursor ausserhalb holte die Ansicht beim ersten Tastendruck zurueck an seine alte Stelle.
+        const c = editor.positionToRectangle(editor.cursorPosition)
+        if (c.y < flick.contentY || c.y + c.height > flick.contentY + flick.height) editor.cursorPosition = pos
+    }
+
     //  Beide Sichten kommen frisch von der Platte, keine aus der anderen.
     function _ablageText() {
         if (root.source.length === 0) return ""
@@ -435,6 +458,7 @@ Item {
         // `paintedHeight` blieb bei 85017), und sie dazu zu bewegen kostete einen Sprung an den Dateianfang.
         contentHeight: editor.height
         onContentHeightChanged: {
+            if (root._haltZeile >= 0) { root._zeigeZeile(root._haltZeile); return }
             const max = Math.max(0, contentHeight - height)
             if (contentY > max) contentY = max
         }

@@ -341,6 +341,14 @@ bool footnoteDef(QStringView l, QString& label, QString& text) {
 
 // ---------- Blockzerleger ----------
 
+// Verschachtelte Bloecke zaehlen ihre Zeilen ab dem Anfang ihres Ausschnitts; die Quellzeile braucht der Ansichtswechsel.
+void verschiebe(QList<Block>& bl, int um) {
+    for (Block& b : bl) {
+        if (b.line >= 0) b.line += um;
+        verschiebe(b.children, um);
+    }
+}
+
 class BlockParser {
 public:
     explicit BlockParser(Document& doc) : m_doc(doc) {}
@@ -408,9 +416,11 @@ QList<Block> BlockParser::parse(const QStringList& lines, int depth, bool* blank
     const int n = lines.size();
     const bool nest = depth < kMaxDepth;
     bool pendingBlank = false;
+    int anfang = 0;
     auto push = [&](Block&& b) {
         if (pendingBlank && !out.isEmpty() && blankBetween) *blankBetween = true;
         pendingBlank = false;
+        if (b.line < 0) b.line = anfang;
         out.append(std::move(b));
     };
 
@@ -422,6 +432,7 @@ QList<Block> BlockParser::parse(const QStringList& lines, int depth, bool* blank
             ++i;
             continue;
         }
+        anfang = i;
 
         Fence f;
         if (fenceOpen(l, f)) {
@@ -486,6 +497,7 @@ QList<Block> BlockParser::parse(const QStringList& lines, int depth, bool* blank
             Block b;
             b.kind = Block::Quote;
             b.children = parse(q, depth + 1, nullptr);
+            verschiebe(b.children, anfang);
             push(std::move(b));
             continue;
         }
@@ -500,6 +512,7 @@ QList<Block> BlockParser::parse(const QStringList& lines, int depth, bool* blank
             bool loose = false;
             int trailing = 0;
             for (;;) {
+                const int eintrag = i;
                 QStringList itemLines;
                 itemLines << (m.empty ? QString() : lines[i].mid(m.width));
                 ++i;
@@ -536,6 +549,8 @@ QList<Block> BlockParser::parse(const QStringList& lines, int depth, bool* blank
                 Block item;
                 item.kind = Block::Item;
                 item.children = parse(itemLines, depth + 1, &innerBlank);
+                item.line = eintrag;
+                verschiebe(item.children, eintrag);
                 if (innerBlank) loose = true;
                 if (!item.children.isEmpty() && item.children.first().kind == Block::Paragraph) {
                     QString& t = item.children.first().text;
@@ -629,6 +644,8 @@ QList<Block> BlockParser::parse(const QStringList& lines, int depth, bool* blank
             }
             if (content.size() && content.first().isEmpty()) content.removeFirst();
             b.children = parse(content, depth + 1, nullptr);
+            //  Der Inhalt beginnt meist hinter der Summary-Zeile; genauer muss es fuer die Rollstelle nicht sein.
+            verschiebe(b.children, anfang + 1);
             push(std::move(b));
             continue;
         }
@@ -1478,21 +1495,26 @@ Document parse(QStringView source) {
     // Der Umbruch am Dateiende beendet die letzte Zeile, er beginnt keine neue.
     if (!lines.isEmpty() && lines.last().isEmpty()) lines.removeLast();
 
+    int vorspann = 0;
     if (!lines.isEmpty() && lines.first().trimmed() == u"---") {
         for (int j = 1; j < lines.size(); ++j) {
             const QString t = lines[j].trimmed();
             if (t != u"---" && t != u"...") continue;
             Block fm;
             fm.kind = Block::FrontMatter;
+            fm.line = 0;
             fm.pairs = frontMatterPairs(lines.mid(1, j - 1));
             if (!fm.pairs.isEmpty()) doc.blocks << fm;
             lines = lines.mid(j + 1);
+            vorspann = j + 1;
             break;
         }
     }
 
     BlockParser bp(doc);
-    doc.blocks += bp.parse(lines, 0, nullptr);
+    QList<Block> rumpf = bp.parse(lines, 0, nullptr);
+    verschiebe(rumpf, vorspann);
+    doc.blocks += rumpf;
     return doc;
 }
 

@@ -52,7 +52,12 @@ public:
     QColor tableLine;
     QColor text;                  // Grundfarbe: Text ohne eigenen Farbbereich
     QTextFrame* metaFrame = nullptr;
+    // (Position im Dokument, Quellzeile), beide aufsteigend: haelt beim Wechsel zum Rohtext dieselbe Stelle.
+    QList<QPair<int, int>> sourceLines;
 };
+// Quellzeile des Blocks an `position` und umgekehrt der Anfang des Blocks einer Quellzeile; -1 ohne Eintrag.
+int sourceLineAt(const RenderedDocument& doc, int position);
+int positionOfSourceLine(const RenderedDocument& doc, int line);
 
 // Linien einer Tabelle in Dokumentkoordinaten, je `kTableLine` breit: waagrecht ab `rows`, senkrecht ab `cols`, aufsteigend.
 inline constexpr qreal kTableLine = 1;

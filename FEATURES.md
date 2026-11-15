@@ -100,11 +100,11 @@ which. Files without an extension such as `LICENSE`, `README`, `Makefile` or
 ---
 
 ## Markdown Viewer
-- `.md` / `.markdown` open **formatted**: headings, lists (also nested and numbered), task lists, tables with column alignment, quotes, links, images, footnotes and horizontal lines; the app draws only the text and table lines near the visible part itself, so even a 750 KB file needs about 60 MB of memory, and scrolling into a table with thousands of cells runs as smoothly as plain text
+- `.md` / `.markdown` open **formatted**: headings, lists (also nested and numbered), task lists, tables with column alignment, quotes, links, images, footnotes and horizontal lines; the app draws only the text and table lines near the visible part itself, so even a 750 KB file needs about 60 MB of memory, and scrolling into a table with thousands of cells runs as smoothly as plain text, also in software graphics mode
 - **Code blocks** look like a terminal window, with rounded corners, the language in the title bar and a **copy button** at the top right; the code is coloured like in the text editor, e.g. C, assembly, shell or Python; a selection can start inside a code block and continue past it
 - Hidden **hints** (`<details>`) stay folded until you click them
 - A metadata block at the top of the file (front matter between `---` lines) appears as a card; lists and single words in it are shown as labels
-- The button at the top right, or the **Document** menu, switches to the **editable text** and back; changes appear as soon as you switch back, and undo keeps working in the text
+- The button at the top right, or the **Document** menu, switches to the **editable text** and back; both stay at the same place in the file, changes appear as soon as you switch back, and undo keeps working in the text
 - Links jump to headings in the same file, open other files, or open web addresses in the browser
 - Text can be selected and copied; colours follow the text editor's colour profile
 - **Save as PDF** (*Document ▸ Save as PDF*), the same window as for text:
