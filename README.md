@@ -158,8 +158,7 @@ $env:MG_HTML_EIGEN=1; .\build\Release\MediaGallery.exe
 ## Changelog
 
 ### Latest
-- **Improvement**: **Markdown**: Scrolling through large tables is smooth again in software graphics mode.
-- **Fix**: **Markdown**: Switching between formatted and editable views now preserves the current scroll position.
+- **Fix**: **PDF**: Selecting tools in the edit ribbon no longer changes the current page, and page thumbnails now start below the ribbon.
 
 ---
 

@@ -1068,10 +1068,10 @@ Item {
             root._stableFrac = Math.max(0, Math.min(1,
                 (pages.contentY - it.y) / it.height))
     }
-    // MG_LOG_PDFJUMP: wer setzt die Ansicht an den Anfang? Ein Stapel nur mit diesem Handler heisst: die ListView selbst.
+    // MG_LOG_PDFJUMP: wer versetzt die Ansicht um mehr als eine halbe Hoehe? Ein Stapel nur mit diesem Handler heisst: die ListView selbst.
     property real _lastY: 0
     function _traceJump() {
-        if (root._lastY > pages.height && pages.contentY < pages.height * 0.5) {
+        if (Math.abs(pages.contentY - root._lastY) > pages.height * 0.5) {
             console.warn("[MG_LOG_PDFJUMP]", Math.round(root._lastY), "->", Math.round(pages.contentY),
                          "Werkzeug", root.editCtl.tool, "Box", root.editCtl.selectedId,
                          "Fokus", root.Window.activeFocusItem)
@@ -2458,7 +2458,8 @@ Item {
         // Thumbnail-Leiste als Overlay links - kein Seiten-Reflow.
         Rectangle {
             id: thumbPanel
-            anchors { left: parent.left; top: parent.top; bottom: parent.bottom }
+            // Unter der Ribbon-Leiste beginnen: sonst traf ein Klick auf deren Werkzeugknopf die Vorschau darunter mit.
+            anchors { left: parent.left; top: parent.top; topMargin: root.ribbonInset; bottom: parent.bottom }
             width: 152
             visible: root.thumbsVisible && root.pageCount > 0
             z: 3
