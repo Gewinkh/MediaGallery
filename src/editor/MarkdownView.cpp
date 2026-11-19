@@ -21,7 +21,12 @@
 #include <QQuickItem>
 #include <QQuickWindow>
 #include <QFontMetricsF>
+#include <QGlyphRun>
+#include <QRawFont>
 #include <QMetaMethod>
+#include <QMouseEvent>
+#include <limits>
+#include <QStyleHints>
 #include <QSGImageNode>
 #include <QSGRectangleNode>
 #include <QSGTextNode>
@@ -535,7 +540,69 @@ QSGNode* MarkdownGrid::updatePaintNode(QSGNode* old, UpdatePaintNodeData*) {
 
 const md::RenderedDocument* MarkdownView::shownDocument() const { return m_ready ? m_ownDoc.data() : nullptr; }
 
-MarkdownViewport::MarkdownViewport(QQuickItem* parent) : QQuickItem(parent) { setFlag(ItemHasContents); }
+MarkdownViewport::MarkdownViewport(QQuickItem* parent) : QQuickItem(parent) {
+    setFlag(ItemHasContents);
+    setFiltersChildMouseEvents(true);
+}
+
+//  Qts Treffer im Abstand zwischen Absaetzen oder im Kopf eines Code-Kastens springt an Anfang bzw. Ende eines Blocks,
+//  bis zu eine Zeilenbreite neben die Maus. Hier zaehlt die naechste Zeile in den Bloecken um diesen Treffer.
+int MarkdownViewport::naechsteStelle(QPointF p) const {
+    const md::RenderedDocument* doc = m_view ? m_view->shownDocument() : nullptr;
+    if (!doc || m_revision != m_view->revision()) return -1;
+    const QAbstractTextDocumentLayout* lay = doc->documentLayout();
+    const QTextBlock mitte = doc->findBlock(qMax(0, lay->hitTest(p, Qt::FuzzyHit)));
+    int beste = -1;
+    qreal abstand = std::numeric_limits<qreal>::max();
+    for (const QTextBlock& b : {mitte.previous(), mitte, mitte.next()}) {
+        const QTextLayout* tl = b.isValid() && b.isVisible() ? b.layout() : nullptr;
+        if (!tl) continue;
+        const QRectF r = lay->blockBoundingRect(b);
+        //  Waagrecht nur fuer Tabellenzellen nebeneinander; im Fluss sind alle Bloecke gleich breit.
+        const qreal dx = p.x() < r.left() ? r.left() - p.x() : p.x() > r.right() ? p.x() - r.right() : 0;
+        for (int i = 0; i < tl->lineCount(); ++i) {
+            const QTextLine z = tl->lineAt(i);
+            const qreal oben = r.top() + z.y();
+            const qreal d = dx + (p.y() < oben ? oben - p.y() : qMax<qreal>(0, p.y() - oben - z.height()));
+            if (d < abstand) {
+                abstand = d;
+                beste = b.position() + z.xToCursor(p.x() - r.left());
+            }
+        }
+    }
+    return beste;
+}
+
+bool MarkdownViewport::childMouseEventFilter(QQuickItem* item, QEvent* e) {
+    if (item != m_text) return false;
+    switch (e->type()) {
+    case QEvent::MouseButtonPress: {
+        const auto* me = static_cast<QMouseEvent*>(e);
+        //  Dritter Klick: Qt zieht dann absatzweise.
+        const bool dreifach = m_doppel.isValid()
+            && m_doppel.elapsed() < QGuiApplication::styleHints()->mouseDoubleClickInterval();
+        m_zug = me->button() == Qt::LeftButton && !dreifach;
+        return false;
+    }
+    case QEvent::MouseButtonDblClick:
+        m_zug = false;
+        m_doppel.start();
+        return false;
+    case QEvent::MouseButtonRelease:
+        m_zug = false;
+        return false;
+    case QEvent::MouseMove: {
+        const auto* me = static_cast<QMouseEvent*>(e);
+        if (!m_zug || !(me->buttons() & Qt::LeftButton)) return false;
+        const int pos = naechsteStelle(m_text->mapFromScene(me->scenePosition()));
+        if (pos < 0) return false;
+        QMetaObject::invokeMethod(m_text, "moveCursorSelection", Q_ARG(int, pos));
+        return true;
+    }
+    default:
+        return false;
+    }
+}
 
 MarkdownViewport::~MarkdownViewport() { setTextItem(nullptr); }
 
@@ -565,7 +632,7 @@ void MarkdownViewport::setTextItem(QQuickItem* t) {
         t->setFlag(ItemHasContents, false);
         const QMetaObject* mo = t->metaObject();
         const QMetaMethod ziel = metaObject()->method(metaObject()->indexOfSlot("readText()"));
-        for (const char* name : {"selectionStart", "selectionEnd", "selectionColor", "selectedTextColor", "renderType"}) {
+        for (const char* name : {"selectionStart", "selectionEnd", "selectionColor", "renderType"}) {
             const QMetaProperty p = mo->property(mo->indexOfProperty(name));
             if (p.hasNotifySignal()) m_textConns << connect(t, p.notifySignal(), this, ziel);
         }
@@ -579,11 +646,9 @@ void MarkdownViewport::readText() {
     m_selVon = m_text->property("selectionStart").toInt();
     m_selBis = m_text->property("selectionEnd").toInt();
     const QColor farbe = m_text->property("selectionColor").value<QColor>();
-    const QColor text = m_text->property("selectedTextColor").value<QColor>();
     const int art = m_text->property("renderType").toInt();
-    if (farbe != m_selFarbe || text != m_selText || art != m_renderType) ++m_stand;
+    if (farbe != m_selFarbe || art != m_renderType) ++m_stand;
     m_selFarbe = farbe;
-    m_selText = text;
     m_renderType = art;
     update();
 }
@@ -779,13 +844,11 @@ void bild(QQuickWindow* win, QHash<QString, QSGTexture*>& bilder, QSGNode* wurze
 // Ein Block samt Markierung, Aufzaehlungszeichen, Hochgestelltem und Bildern.
 QSGNode* teil(QQuickWindow* win, QHash<QString, QSGTexture*>& bilder, const md::RenderedDocument& doc,
               const QTextBlock& block, QPointF pos, int von, int bis, int erste, int anzahl, const QColor& selFarbe,
-              const QColor& selText, int renderType) {
+              int renderType) {
     QTextLayout* tl = block.layout();
     auto* knoten = new QSGNode;
     QSGTextNode* text = win->createTextNode();
     text->setColor(doc.text);
-    text->setSelectionColor(selFarbe);
-    text->setSelectionTextColor(selText);
     text->setRenderType(QSGTextNode::RenderType(renderType));
     QList<QTextFragment> hochtief;
     for (auto it = block.begin(); !it.atEnd(); ++it) {
@@ -798,25 +861,32 @@ QSGNode* teil(QQuickWindow* win, QHash<QString, QSGTexture*>& bilder, const md::
         const int lage = cf.verticalAlignment();
         if (lage == QTextCharFormat::AlignSuperScript || lage == QTextCharFormat::AlignSubScript) hochtief << frag;
     }
-    const bool markiert = bis > von;
-    //  Mit Hochgestelltem malte Qt die Markierung samt markiertem Text an die Grundlinie; dann nur die Flaeche selbst.
-    if (markiert && !hochtief.isEmpty()) {
+    //  Die Markierung immer selbst, unter dem Text: Qt 6.12 liest den Zaehler von addTextLayout als Ende und zeichnete
+    //  ab Zeilenmitte nichts oder zu kurz. Je Glyphenlauf eine Flaeche, damit gemischte Laufrichtungen stimmen.
+    if (bis > von) {
         const int ende = anzahl < 0 ? tl->lineCount() : erste + anzahl;
         for (int i = erste; i < ende; ++i) {
             const QTextLine z = tl->lineAt(i);
             const int a = qMax(von, z.textStart());
             const int e = qMin(bis, z.textStart() + z.textLength());
             if (e <= a) continue;
-            const qreal x1 = z.cursorToX(a);
-            const qreal x2 = z.cursorToX(e);
-            QSGRectangleNode* n = win->createRectangleNode();
-            n->setRect(QRectF(pos.x() + qMin(x1, x2), pos.y() + z.y(), std::abs(x2 - x1), z.height()));
-            n->setColor(selFarbe);
-            knoten->appendChildNode(n);
+            for (const QGlyphRun& lauf : z.glyphRuns(a, e - a)) {
+                const QList<QPointF> lage = lauf.positions();
+                const QList<QPointF> vor = lauf.rawFont().advancesForGlyphIndexes(lauf.glyphIndexes());
+                if (lage.isEmpty() || vor.size() != lage.size()) continue;
+                qreal links = lage[0].x(), rechts = lage[0].x() + vor[0].x();
+                for (qsizetype g = 1; g < lage.size(); ++g) {
+                    links = qMin(links, lage[g].x());
+                    rechts = qMax(rechts, lage[g].x() + vor[g].x());
+                }
+                QSGRectangleNode* n = win->createRectangleNode();
+                n->setRect(QRectF(pos.x() + links, pos.y() + z.y(), rechts - links, z.height()));
+                n->setColor(selFarbe);
+                knoten->appendChildNode(n);
+            }
         }
     }
-    const bool qtMarkiert = markiert && hochtief.isEmpty();
-    text->addTextLayout(pos, tl, qtMarkiert ? von : -1, qtMarkiert ? bis - von : -1, erste, anzahl);
+    text->addTextLayout(pos, tl, -1, -1, erste, anzahl);
     if (block.textList()) listenMarke(text, block, pos, doc.text);
     for (const QTextFragment& frag : std::as_const(hochtief)) hochTief(text, pos, tl, frag, block.position(), doc);
     knoten->appendChildNode(text);
@@ -881,7 +951,7 @@ QSGNode* MarkdownViewport::updatePaintNode(QSGNode* old, UpdatePaintNodeData*) {
             if (it->von == von && it->bis == bis && it->erste == erste && it->anzahl == anzahl) continue;
             w->weg(it);
         }
-        QSGNode* k = teil(window(), w->bilder, *doc, s.block, s.pos, von, bis, erste, anzahl, m_selFarbe, m_selText,
+        QSGNode* k = teil(window(), w->bilder, *doc, s.block, s.pos, von, bis, erste, anzahl, m_selFarbe,
                           m_renderType);
         w->text->appendChildNode(k);
         w->teile.insert(s.nummer, {k, von, bis, erste, anzahl});

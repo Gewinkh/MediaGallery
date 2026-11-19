@@ -158,7 +158,8 @@ $env:MG_HTML_EIGEN=1; .\build\Release\MediaGallery.exe
 ## Changelog
 
 ### Latest
-- **Fix**: **PDF**: Selecting tools in the edit ribbon no longer changes the current page, and page thumbnails now start below the ribbon.
+- **Fix**: **PDF editor**: Notes, arrows and shapes now stay directly under the mouse while dragging, including with display scaling in software mode.
+- **Fix**: **Markdown**: Text selections now display correctly, with their endpoints following the mouse accurately across paragraphs and code blocks.
 
 ---
 

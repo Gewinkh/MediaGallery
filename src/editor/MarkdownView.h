@@ -11,6 +11,7 @@
 #include <atomic>
 #include <memory>
 #include <QColor>
+#include <QElapsedTimer>
 #include <QQuickItem>
 // Vollstaendig einbinden: ein Zeiger in einem Q_PROPERTY verlangt den fertigen Typ.
 #include <QQuickTextDocument>
@@ -235,6 +236,7 @@ signals:
 
 protected:
     QSGNode* updatePaintNode(QSGNode* old, UpdatePaintNodeData*) override;
+    bool childMouseEventFilter(QQuickItem* item, QEvent* e) override;
 
 private slots:
     void readText();
@@ -262,9 +264,12 @@ private:
     int m_selVon = 0;
     int m_selBis = 0;
     QColor m_selFarbe;
-    QColor m_selText;
     int m_renderType = 0;
+    //  Zug nach einfachem Druck: nur dann waehlt die Ansicht die Stelle selbst; Wort- und Absatzzug bleiben bei Qt.
+    bool m_zug = false;
+    QElapsedTimer m_doppel;
 
+    int naechsteStelle(QPointF p) const;
     void follow(bool erzwungen);
     void sammle(const md::RenderedDocument& doc);
 };

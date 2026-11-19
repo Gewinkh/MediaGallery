@@ -231,7 +231,6 @@ Item {
                 textFormat: TextEdit.RichText
                 color: Editor.text
                 selectionColor: Editor.selection
-                selectedTextColor: Editor.text
                 onLinkActivated: function (link) { root._openLink(link) }
 
                 HoverHandler {

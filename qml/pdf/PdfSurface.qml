@@ -113,10 +113,17 @@ Item {
     // Hebt das Seiten-Delegate per z ueber seine Nachbarn, damit eine gezogene Notiz
     // sichtbar ueber die Luecke gleitet statt von der Nachbarseite zugemalt zu werden.
     property int  editDragPage: -1
-    // Gezogene Notiz: ihr Seiten-Delegate zeichnet Qt ausserhalb des Puffers nicht mehr, ein Abbild ueber der Liste
-    // haelt sie sichtbar. `dragScrolled` laesst sie beim Rollen unter dem Zeiger mitwandern.
+    // Gezogene Notiz: ihr Seiten-Delegate zeichnet Qt ausserhalb des Puffers nicht mehr. Sie zieht deshalb in einen
+    // Traeger ueber der Liste, deckungsgleich mit ihrer Seite; ein Texturabbild lag in Software bei Skalierung daneben.
+    // `dragScrolled` laesst sie beim Rollen unter dem Zeiger mitwandern.
     property Item _dragBox: null
-    on_DragBoxChanged: _placeDragGhost()
+    property Item _dragHome: null
+    on_DragBoxChanged: {
+        if (!_dragBox) return
+        _dragHome = _dragBox.parent
+        _placeDragCarrier()
+        _dragBox.parent = dragCarrier
+    }
     signal dragScrolled()
     // Dann gehoeren Tasten - auch + und - - dem Text und nicht den Ansichts-Kuerzeln.
     readonly property bool caretActive: editCtl.editMode && editCtl.tool === 7
@@ -153,20 +160,26 @@ Item {
     }
     // Erst nach dem Loslass-Handler: die Quellseite haengt am currentIndex und darf nicht in ihm verschwinden.
     function endNoteDrag() {
+        if (root._dragBox && root._dragHome) root._dragBox.parent = root._dragHome
         root._dragBox = null
+        root._dragHome = null
         Qt.callLater(function() { root.editDragPage = -1 })
     }
-    function _placeDragGhost() {
-        const b = root._dragBox
-        if (!b) return
-        const p = b.mapToItem(dragGhost.parent, -dragGhost.m, -dragGhost.m)
-        dragGhost.x = Math.round(p.x)
-        dragGhost.y = Math.round(p.y)
+    function _placeDragCarrier() {
+        const h = root._dragHome
+        if (!h) return
+        const p = h.mapToItem(dragCarrier.parent, 0, 0)
+        dragCarrier.x = p.x
+        dragCarrier.y = p.y
+        dragCarrier.width = h.width
+        dragCarrier.height = h.height
     }
+    // Zoom und Leisten verschieben oder vergroessern die Seite auch ohne Rollen.
     Connections {
-        target: root._dragBox
-        function onXChanged() { root._placeDragGhost() }
-        function onYChanged() { root._placeDragGhost() }
+        target: root._dragHome ? root._dragHome.parent : null
+        function onXChanged() { root._placeDragCarrier() }
+        function onWidthChanged() { root._placeDragCarrier() }
+        function onHeightChanged() { root._placeDragCarrier() }
     }
 
     // Toleranz: max aus 7 pt und 75 % der Zeilenhoehe. Ohne Textebene unveraendert.
@@ -1661,8 +1674,8 @@ Item {
             highlightFollowsCurrentItem: false
             onContentYChanged: {
                 if (root._dragBox) {
+                    root._placeDragCarrier()
                     root.dragScrolled()
-                    root._placeDragGhost()
                 }
                 root.updateCurrentPage()
                 if (App.pdfJumpLogging) root._traceJump()
@@ -2435,24 +2448,12 @@ Item {
             onWheel: (wheel) => root.wheelPages(wheel)
         }
 
-        // Die Ebene liest die Box auch aus einem nicht mehr gezeichneten Delegate; ohne sie verschwand die Notiz mitten im Zug.
+        // Traeger der gezogenen Notiz; ohne ihn verschwand sie mitten im Zug mit ihrem nicht mehr gezeichneten Delegate.
         Item {
             anchors.fill: pages
             clip: true
             z: 2
-            visible: root._dragBox !== null
-            ShaderEffectSource {
-                id: dragGhost
-                // Rand fuer Griffe und Post-it-Schatten, die ueber die Box hinausragen.
-                readonly property real m: root._dragBox ? Math.ceil(Math.max(6, 4 * root._dragBox.pageScale)) : 0
-                sourceItem: root._dragBox
-                hideSource: root._dragBox !== null
-                sourceRect: root._dragBox ? Qt.rect(-m, -m, root._dragBox.width + 2 * m, root._dragBox.height + 2 * m)
-                                          : Qt.rect(0, 0, 0, 0)
-                width: sourceRect.width
-                height: sourceRect.height
-                opacity: root._dragBox ? root._dragBox.opacity : 1
-            }
+            Item { id: dragCarrier }
         }
 
         // Thumbnail-Leiste als Overlay links - kein Seiten-Reflow.
