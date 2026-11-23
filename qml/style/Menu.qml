@@ -2,9 +2,10 @@ import QtQuick
 import QtQuick.Window
 import QtQuick.Templates as T
 import MediaGallery 1.0
+import "../common"
 
 // Gethemtes Menü-Popup als STIL-Datei: `ThemedMenu.qml` greift nur bei Menüs der App, die von QT geöffneten blieben eckig.
-// `topPadding`/`bottomPadding` halten die Rundung frei, die Markierung füllte sie sonst aus.
+// `padding` haelt die Rundung frei; `PopupPanel` bringt die implizite Breite mit, sonst kollabiert das Popup.
 T.Menu {
     id: control
 
@@ -14,8 +15,7 @@ T.Menu {
                              contentHeight + topPadding + bottomPadding)
 
     margins: 0
-    topPadding: 6
-    bottomPadding: 6
+    padding: 6
     overlap: 1
 
     delegate: MenuItem { }
@@ -31,16 +31,8 @@ T.Menu {
         currentIndex: control.currentIndex
         keyNavigationEnabled: true
         keyNavigationWraps: true
-        // BEWUSST ohne `ScrollIndicator`: eine Stil-Datei darf `QtQuick.Controls` nicht importieren (Ringschluss), und
-        // ohne den Import ist der Typ unbekannt - das Menü ließe sich gar nicht mehr erzeugen.
+        // Ohne `ScrollIndicator`: der Typ braucht `QtQuick.Controls`, das eine Stil-Datei nicht importieren darf (Ringschluss).
     }
 
-    background: Rectangle {
-        //  Ohne implizite Breite kollabiert ein Popup mit eigenem Hintergrund zum senkrechten „Strich".
-        implicitWidth: 200
-        color: App.themeMenuBarBg
-        border.color: App.themeBorder
-        border.width: 1
-        radius: 6
-    }
+    background: PopupPanel { }
 }

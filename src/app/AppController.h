@@ -113,10 +113,6 @@ class AppController : public QObject {
     Q_PROPERTY(QString menuRefreshText        READ menuRefreshText        NOTIFY languageChanged)
     Q_PROPERTY(QString menuQuitText           READ menuQuitText           NOTIFY languageChanged)
     Q_PROPERTY(QString menuToggleOptionsText  READ menuToggleOptionsText  NOTIFY languageChanged)
-    Q_PROPERTY(QString menuLanguageText       READ menuLanguageText       NOTIFY languageChanged)
-    Q_PROPERTY(QString menuVideoPlaybackText  READ menuVideoPlaybackText  NOTIFY languageChanged)
-    Q_PROPERTY(QString menuVideoNativeText    READ menuVideoNativeText    NOTIFY languageChanged)
-    Q_PROPERTY(QString menuVideoExternalText  READ menuVideoExternalText  NOTIFY languageChanged)
     Q_PROPERTY(QString menuBookmarksText      READ menuBookmarksText      NOTIFY languageChanged)
     Q_PROPERTY(QString menuBookmarksEmptyText READ menuBookmarksEmptyText NOTIFY languageChanged)
     Q_PROPERTY(QString bookmarkAddText        READ bookmarkAddText        NOTIFY languageChanged)
@@ -232,7 +228,9 @@ public:
     int  designProfile() const;                    // == DesignProfile
     Q_INVOKABLE void setDesignProfile(int profile);
     Q_INVOKABLE QVariantList designProfiles() const;
-    Q_INVOKABLE QVariantMap customThemeMap() const;
+    //  Alle Werte eines Profils (Custom = die gespeicherten); der Design-Reiter zeigt so auch mitgelieferte Profile.
+    Q_INVOKABLE QVariantMap themeMap(int profile) const;
+    QVariantMap customThemeMap() const { return themeMap(static_cast<int>(DesignProfile::Custom)); }
     Q_INVOKABLE void setCustomThemeFromMap(const QVariantMap& m);  // Live-Vorschau, wenn Custom aktiv
     Q_INVOKABLE bool exportCustomTheme(const QUrl& fileUrl);
     Q_INVOKABLE bool importCustomTheme(const QUrl& fileUrl);
@@ -325,10 +323,6 @@ public:
     QString menuRefreshText()        const;
     QString menuQuitText()           const;
     QString menuToggleOptionsText()  const;
-    QString menuLanguageText()       const;
-    QString menuVideoPlaybackText()  const;
-    QString menuVideoNativeText()    const;
-    QString menuVideoExternalText()  const;
     bool tileDragActive() const { return m_tileDragActive; }
     bool dragLogging() const { return qEnvironmentVariableIsSet("MG_DRAGLOG"); }
     bool pdfJumpLogging() const { return qEnvironmentVariableIsSet("MG_LOG_PDFJUMP"); }

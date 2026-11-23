@@ -346,9 +346,11 @@ Item {
 
         ThemedMenu {
             id: fileMenu
+            objectName: "fileMenu"
             MenuItem { text: App.menuOpenFolderText; onTriggered: pane.openFolderDialog() }
             MenuItem {
                 text: App.menuRefreshText
+                shortcut: "R"
                 enabled: PaneCtl.currentFolder.length > 0
                 onTriggered: PaneCtl.refreshCurrentFolder()
             }

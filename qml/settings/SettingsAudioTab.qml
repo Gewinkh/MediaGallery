@@ -240,5 +240,5 @@ Item {
     //  Weiches, schnelles Mausrad-Scrollen (Galerie-Muster) statt der festen
     //  60 px je Rastung von `Flickable`. Fehlte hier als einzigem Reiter -
     //  dadurch lief der Audio-Reiter spürbar zäher als die übrigen acht.
-    SmoothWheelArea { flickable: audioScroll.contentItem }
+    SmoothWheelArea { flickable: audioScroll.contentItem; backdrop: App.themeBackground }
 }

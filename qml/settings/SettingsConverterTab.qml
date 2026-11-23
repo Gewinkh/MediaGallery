@@ -3,12 +3,12 @@ import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
 import MediaGallery 1.0
-import "../common"
 
 // Universeller Konverter zwischen Tag, Unterkategorie und Kategorie in jeder Richtung; die Richtung wählt ein
 // Dropdown, die UI darunter passt sich an. Kategorie -> Tag nutzt dieselbe Logik wie Unterkategorie -> Tag.
 Item {
     id: root
+    implicitHeight: convCol.implicitHeight
 
     property var tagModel:  []     // [{text,value}] - alle globalen Tags
     property var catModel:  []     // alle Kategorien (für Ziel-/Parent-Auswahl)
@@ -106,98 +106,78 @@ Item {
         nameField.text = ""
     }
 
-    ScrollView {
-        id: convScroll
-        anchors.fill: parent
-        contentWidth: availableWidth
-        clip: true
+    ColumnLayout {
+        id: convCol
+        width: parent.width
+        spacing: 10
 
-        ColumnLayout {
-            width: root.width
-            spacing: 14
+        GridLayout {
+            Layout.fillWidth: true
+            columns: 2; columnSpacing: 12; rowSpacing: 8
 
-            SettingsGroup {
-                // NICHT klappbar: diese eine Gruppe IST der ganze Reiter - ein Pfeil böte hier nur an, die Seite leer zu
-                // machen. Ohne Klappen auch nichts zu merken, also kein `key`.
-                collapsible: false
-                title: App.uiText(App.language, "SettingsTabConverter")
+            Label { text: App.uiText(App.language, "SettingsConvModeLabel"); color: App.themeTextPrimary }
+            ComboBox {
+                id: modeBox
                 Layout.fillWidth: true
+                model: root.modes
+                textRole: "label"
+                //  Beschriftung und Aufklappliste zeigen den Pfeil
+                //  GEZEICHNET - `textRole` bleibt gesetzt, damit die
+                //  Suche/Tastaturauswahl weiter am Text hängt.
+            }
+        }
 
-                GridLayout {
-                    Layout.fillWidth: true
-                    columns: 2; columnSpacing: 12; rowSpacing: 8
+        // Hinweistext der gewählten Richtung.
+        Text {
+            Layout.fillWidth: true; wrapMode: Text.WordWrap
+            text: root.mode.hint
+            color: App.themeTextMuted; font.pixelSize: 11
+        }
 
-                    Label { text: App.uiText(App.language, "SettingsConvModeLabel"); color: App.themeTextPrimary }
-                    ComboBox {
-                        id: modeBox
-                        Layout.fillWidth: true
-                        model: root.modes
-                        textRole: "label"
-                        //  Beschriftung und Aufklappliste zeigen den Pfeil
-                        //  GEZEICHNET - `textRole` bleibt gesetzt, damit die
-                        //  Suche/Tastaturauswahl weiter am Text hängt.
-                    }
-                }
+        GridLayout {
+            Layout.fillWidth: true
+            columns: 2; columnSpacing: 12; rowSpacing: 8
 
-                // Hinweistext der gewählten Richtung.
-                Text {
-                    Layout.fillWidth: true; wrapMode: Text.WordWrap
-                    text: root.mode.hint
-                    color: App.themeTextMuted; font.pixelSize: 11
-                }
-
-                GridLayout {
-                    Layout.fillWidth: true
-                    columns: 2; columnSpacing: 12; rowSpacing: 8
-
-                    Label { text: root.sourceLabel; color: App.themeTextPrimary }
-                    ComboBox {
-                        id: sourceBox
-                        Layout.fillWidth: true
-                        model: root.sourceModel
-                        textRole: "text"; valueRole: "value"
-                    }
-
-                    Label {
-                        visible: root.mode.needsParent
-                        text: App.uiText(App.language, "SettingsConvTargetCat"); color: App.themeTextPrimary
-                    }
-                    ComboBox {
-                        id: parentBox
-                        visible: root.mode.needsParent
-                        Layout.fillWidth: true
-                        model: root.parentModel
-                        textRole: "text"; valueRole: "value"
-                    }
-
-                    Label {
-                        visible: root.mode.needsName
-                        text: App.uiText(App.language, "FilterCatNewName"); color: App.themeTextPrimary
-                    }
-                    TextField {
-                        id: nameField
-                        visible: root.mode.needsName
-                        Layout.fillWidth: true
-                        color: App.themeTextPrimary
-                        placeholderText: sourceBox.currentText
-                    }
-                }
-
-                Button {
-                    Layout.alignment: Qt.AlignRight
-                    text: App.uiText(App.language, "SettingsConvConvertBtn")
-                    highlighted: true
-                    enabled: root.sourceModel.length > 0
-                             && (!root.mode.needsParent || root.parentModel.length > 0)
-                    onClicked: root.convert()
-                }
+            Label { text: root.sourceLabel; color: App.themeTextPrimary }
+            ComboBox {
+                id: sourceBox
+                Layout.fillWidth: true
+                model: root.sourceModel
+                textRole: "text"; valueRole: "value"
             }
 
-            Item { Layout.fillHeight: true }
+            Label {
+                visible: root.mode.needsParent
+                text: App.uiText(App.language, "SettingsConvTargetCat"); color: App.themeTextPrimary
+            }
+            ComboBox {
+                id: parentBox
+                visible: root.mode.needsParent
+                Layout.fillWidth: true
+                model: root.parentModel
+                textRole: "text"; valueRole: "value"
+            }
+
+            Label {
+                visible: root.mode.needsName
+                text: App.uiText(App.language, "FilterCatNewName"); color: App.themeTextPrimary
+            }
+            TextField {
+                id: nameField
+                visible: root.mode.needsName
+                Layout.fillWidth: true
+                color: App.themeTextPrimary
+                placeholderText: sourceBox.currentText
+            }
+        }
+
+        Button {
+            Layout.alignment: Qt.AlignRight
+            text: App.uiText(App.language, "SettingsConvConvertBtn")
+            highlighted: true
+            enabled: root.sourceModel.length > 0
+                     && (!root.mode.needsParent || root.parentModel.length > 0)
+            onClicked: root.convert()
         }
     }
-
-    //  Weiches, schnelles Mausrad-Scrollen (Galerie-Muster) statt der festen
-    //  60 px je Rastung von `Flickable`.
-    SmoothWheelArea { flickable: convScroll.contentItem }
 }

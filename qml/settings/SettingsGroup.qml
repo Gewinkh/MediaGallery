@@ -6,7 +6,8 @@ import "../common"
 // Einheitlicher Titel-Container; Kinder kommen in die innere ColumnLayout. Der Klappzustand überlebt den
 // Neustart, sofern die Gruppe einen `key` trägt - einen STABILEN Bezeichner ("view.tiles"), nicht die
 // übersetzte Überschrift. Die HÖHE muss mitgehen, sonst behielte die Gruppe zugeklappt ihre volle Höhe.
-Rectangle {
+// Ohne eigene Fläche: die kleine Versal-Überschrift gliedert, Platten in Platten lasen sich als Fenster im Fenster.
+Item {
     id: group
     property string title: ""
     property int contentSpacing: 10
@@ -29,45 +30,39 @@ Rectangle {
     }
     function toggle() { if (group.collapsible) group.collapsed = !group.collapsed }
 
-    readonly property int padH:      14
-    readonly property int padTop:    title.length > 0 ? 28 : 14
-    readonly property int padBottom: 14
+    readonly property int padTop: title.length > 0 ? 26 : 0
+    //  Ohne Platten trennt nur der Abstand die Gruppen voneinander.
+    readonly property int padBottom: 12
 
-    color: Qt.rgba(1, 1, 1, 0.02)
-    border.color: App.themeBorder
-    radius: 8
-
-    implicitWidth:  inner.implicitWidth + padH * 2
-    //  Zugeklappt bleibt nur die Kopfzeile stehen.
-    implicitHeight: group.collapsed ? group.padTop + 2
+    implicitWidth:  inner.implicitWidth
+    implicitHeight: group.collapsed ? group.padTop
                                     : inner.implicitHeight + padTop + padBottom
 
-    //  Kopfzeile: Pfeil + Überschrift, beides ein Anfasser. Sie reicht über die
-    //  ganze Breite, damit man nicht auf den Pfeil zielen muss.
+    //  Kopfzeile über die ganze Breite, damit man nicht auf den Pfeil zielen muss.
     Item {
         id: head
         anchors { left: parent.left; right: parent.right; top: parent.top }
         height: group.padTop
         visible: group.title.length > 0
 
-        DrawnIcon {
-            id: chevron
-            anchors { left: parent.left; leftMargin: 11; verticalCenter: parent.verticalCenter }
-            visible: group.collapsible
-            name: group.collapsed ? "chevron-right" : "chevron-down"
-            size: 11
-            color: headHover.hovered ? App.themeTextPrimary : App.themeTextMuted
-        }
         Text {
-            anchors { left: group.collapsible ? chevron.right : parent.left
-                      leftMargin: group.collapsible ? 5 : 12
-                      right: parent.right; rightMargin: 12
-                      verticalCenter: parent.verticalCenter }
+            id: caption
+            anchors { left: parent.left; top: parent.top }
+            width: Math.min(implicitWidth, head.width - 16)
             text: group.title
             elide: Text.ElideRight
             color: headHover.hovered ? App.themeTextPrimary : App.themeTextMuted
             font.pixelSize: 11
-            font.bold: true
+            font.capitalization: Font.AllUppercase
+            font.letterSpacing: 1.2
+        }
+        //  Der Pfeil steht HINTER der Versalzeile, damit alle Überschriften bündig mit dem Inhalt beginnen.
+        DrawnIcon {
+            anchors { left: caption.right; leftMargin: 5; verticalCenter: caption.verticalCenter }
+            visible: group.collapsible && (group.collapsed || headHover.hovered)
+            name: group.collapsed ? "chevron-right" : "chevron-down"
+            size: 10
+            color: App.themeTextMuted
         }
         HoverHandler { id: headHover; enabled: group.collapsible }
         TapHandler  { enabled: group.collapsible; onTapped: group.toggle() }
@@ -75,9 +70,8 @@ Rectangle {
 
     ColumnLayout {
         id: inner
-        x: group.padH
         y: group.padTop
-        width: group.width - group.padH * 2
+        width: group.width
         spacing: group.contentSpacing
         visible: !group.collapsed
     }

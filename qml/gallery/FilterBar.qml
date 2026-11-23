@@ -118,40 +118,91 @@ Rectangle {
     readonly property int filterBadge:
         (mediaActiveCount < mediaTypes.length ? 1 : 0) + activeTags.length
 
-    component SortRow: Rectangle {
-        id: sortRow
+    //  Zeile der Filteroptionen wie im Entwurf: Kreis (eine Wahl) oder Kaestchen (an/aus) statt umrahmter Kachel;
+    //  `tint` faerbt Kreis und Kaestchen, `dot` setzt den Farbpunkt eines Tags davor.
+    component OptionRow: Item {
+        id: opt
         property string label: ""
-        property bool   selected: false
+        property string sub: ""
+        property bool on: false
+        property bool radio: true
+        property color tint: App.themeAccent
+        property color dot: "transparent"
         signal picked()
 
-        width: 236; height: 34; radius: 6
-        color: selected ? Qt.rgba(App.themeAccent.r, App.themeAccent.g, App.themeAccent.b, 0.18)
-                        : (srHover.hovered ? Qt.rgba(1, 1, 1, 0.06) : "transparent")
-        border.width: 1
-        border.color: selected ? App.themeAccent : App.themeBorder
+        implicitHeight: Math.max(30, optText.implicitHeight + 12)
+        Rectangle {
+            anchors.fill: parent
+            radius: 5
+            color: optHover.hovered ? Qt.rgba(App.themeTextPrimary.r, App.themeTextPrimary.g, App.themeTextPrimary.b, 0.05)
+                                    : "transparent"
+        }
+        Rectangle {
+            id: optMark
+            x: 6
+            y: opt.sub.length > 0 ? 8 : (opt.height - height) / 2
+            width: 14; height: 14
+            radius: opt.radio ? 7 : 3.5
+            color: !opt.radio && opt.on ? opt.tint : "transparent"
+            border.width: opt.radio || !opt.on ? 1.5 : 0
+            border.color: opt.on ? opt.tint
+                                 : Qt.rgba(App.themeTextMuted.r, App.themeTextMuted.g, App.themeTextMuted.b, 0.8)
+            Rectangle {
+                visible: opt.radio && opt.on
+                anchors.centerIn: parent
+                width: 6; height: 6; radius: 3
+                color: opt.tint
+            }
+            DrawnIcon {
+                visible: !opt.radio && opt.on
+                anchors.centerIn: parent
+                name: "check"; size: 10
+                color: App.themeBackground
+            }
+        }
+        Rectangle {
+            id: optDot
+            visible: opt.dot.a > 0
+            x: optMark.x + optMark.width + 9
+            anchors.verticalCenter: optMark.verticalCenter
+            width: visible ? 8 : 0; height: 8; radius: 4
+            color: opt.dot
+        }
+        Column {
+            id: optText
+            x: optMark.x + optMark.width + 9 + (optDot.visible ? optDot.width + 7 : 0)
+            width: opt.width - x - 6
+            y: opt.sub.length > 0 ? 6 : (opt.height - height) / 2
+            spacing: 1
+            Text {
+                width: parent.width
+                text: opt.label
+                color: App.themeTextPrimary
+                font.pixelSize: 13
+                elide: Text.ElideRight
+            }
+            Text {
+                visible: opt.sub.length > 0
+                width: parent.width
+                text: opt.sub
+                color: App.themeTextMuted
+                font.pixelSize: 11
+                wrapMode: Text.WordWrap
+            }
+        }
+        HoverHandler { id: optHover }
+        TapHandler { onTapped: opt.picked() }
+    }
 
-        Text {
-            id: srDot
-            anchors.left: parent.left; anchors.leftMargin: 10
-            anchors.verticalCenter: parent.verticalCenter
-            width: 14
-            text: sortRow.selected ? "\u25CF" : "\u25CB"   // wie die Modus-Zeilen
-            color: sortRow.selected ? App.themeAccent : App.themeTextMuted
-            font.pixelSize: 15
-            horizontalAlignment: Text.AlignHCenter
-        }
-        Text {
-            anchors.left: srDot.right; anchors.leftMargin: 9
-            anchors.right: parent.right; anchors.rightMargin: 10
-            anchors.verticalCenter: parent.verticalCenter
-            text: sortRow.label
-            color: sortRow.selected ? App.themeAccent : App.themeTextPrimary
-            font.pixelSize: 14
-            font.weight: sortRow.selected ? Font.Bold : Font.Normal
-            elide: Text.ElideRight
-        }
-        HoverHandler { id: srHover }
-        TapHandler { onTapped: sortRow.picked() }
+    component Heading: Text {
+        color: App.themeTextMuted
+        font.pixelSize: 11
+        font.weight: Font.DemiBold
+        font.letterSpacing: 1.2
+        font.capitalization: Font.AllUppercase
+        leftPadding: 6
+        topPadding: 10
+        bottomPadding: 4
     }
 
     function toggleTag(tag) {
@@ -180,20 +231,22 @@ Rectangle {
         // daneben in der Leiste.
         Button {
             id: filterBtn
+            objectName: "filterBtn"
             anchors.verticalCenter: parent.verticalCenter
             height: 30
             padding: 0
             onClicked: filterPopup.opened ? filterPopup.close() : filterPopup.open()
 
+            //  Akzentrahmen, solange der Aufklapper offen oder ein Filter aktiv ist; offen zusaetzlich leicht getoent.
             background: Rectangle {
                 implicitWidth: filterRow.implicitWidth + 20
-                color: filterBtn.down ? App.themeCard
-                     : (filterBtn.hovered ? Qt.rgba(App.themeTextPrimary.r, App.themeTextPrimary.g,
-                                                    App.themeTextPrimary.b, 0.08)
-                                          : App.themeMenuBarBg)
-                border.color: bar.anyFilterActive ? App.themeAccent : App.themeBorder
+                color: filterPopup.opened ? Qt.rgba(App.themeAccent.r, App.themeAccent.g, App.themeAccent.b, 0.10)
+                     : (filterBtn.hovered || filterBtn.down
+                        ? Qt.rgba(App.themeTextPrimary.r, App.themeTextPrimary.g, App.themeTextPrimary.b, 0.08)
+                        : App.themeCard)
+                border.color: bar.anyFilterActive || filterPopup.opened ? App.themeAccent : App.themeBorder
                 border.width: 1
-                radius: 4
+                radius: 5
             }
             contentItem: Row {
                 id: filterRow
@@ -212,18 +265,20 @@ Rectangle {
                     anchors.verticalCenter: parent.verticalCenter
                     name: "chevron-down"
                     size: 12
-                    color: bar.anyFilterActive ? App.themeAccent : App.themeTextMuted
+                    color: bar.anyFilterActive || filterPopup.opened ? App.themeAccent : App.themeTextMuted
                 }
             }
 
             Popup {
                 id: filterPopup
-                y: filterBtn.height + 4
+                objectName: "filterPopup"
+                y: filterBtn.height + 6
                 padding: 0
                 modal: false
                 focus: true
 
                 property int selectedCat: 0
+                readonly property real detailW: 210
                 property var popupTags: []
                 onAboutToShow: popupTags = mediaModel.visibleTags()
 
@@ -237,11 +292,7 @@ Rectangle {
                       hint: bar.activeTags.length > 0 ? bar.activeTags.length + App.uiText(App.language, "FilterActiveSuffix") : "-" }
                 ]
 
-                background: Rectangle {
-                    color: App.themeMenuBarBg
-                    border.color: App.themeBorder; border.width: 1
-                    radius: 6
-                }
+                background: PopupPanel { }
 
                 contentItem: Row {
                     id: popupRow
@@ -249,20 +300,20 @@ Rectangle {
 
                     readonly property int maxBodyH: 400
                     readonly property real navH:
-                        filterPopup.cats.length * 44 + (filterPopup.cats.length - 1) * 4 + 16
+                        filterPopup.cats.length * 44 + (filterPopup.cats.length - 1) * 4 + 12
                     readonly property real detailH:
                         detailLoader.item ? detailLoader.item.implicitHeight + 20 : 0
                     readonly property real bodyH: Math.min(maxBodyH, Math.max(navH, detailH))
 
-                    // 200 statt 184: der Hinweis der Sortier-Rubrik trägt Feld UND Richtung ("Dateigröße · Absteigend") - schmaler
-                    // schnitt er ihn ab.
+                    // 184 statt 180 des Entwurfs: der Hinweis der Sortier-Rubrik trägt Feld UND Richtung
+                    // ("Dateigröße · Absteigend") - schmaler schnitt er ihn ab.
                     Item {
-                        width: 200
+                        width: 184
                         height: popupRow.bodyH
                         Column {
                             id: masterCol
                             anchors.fill: parent
-                            anchors.margins: 8
+                            anchors.margins: 6
                             spacing: 4
                             Repeater {
                                 model: filterPopup.cats
@@ -273,36 +324,29 @@ Rectangle {
                                     readonly property bool sel: filterPopup.selectedCat === index
                                     width: masterCol.width
                                     height: 44; radius: 6
-                                    color: sel ? Qt.rgba(App.themeAccent.r, App.themeAccent.g, App.themeAccent.b, 0.18)
-                                               : (catHover.hovered ? Qt.rgba(1,1,1,0.06) : "transparent")
-                                    border.width: 1
-                                    border.color: sel ? App.themeAccent : "transparent"
-                                    Row {
-                                        anchors.fill: parent
-                                        anchors.leftMargin: 10; anchors.rightMargin: 10
-                                        spacing: 8
-                                        Column {
-                                            anchors.verticalCenter: parent.verticalCenter
-                                            spacing: 1
-                                            Text {
-                                                text: catBtn.modelData.label
-                                                color: catBtn.sel ? App.themeAccent : App.themeTextPrimary
-                                                font.pixelSize: 14
-                                                font.weight: catBtn.sel ? Font.DemiBold : Font.Normal
-                                            }
-                                            Text {
-                                                text: catBtn.modelData.hint
-                                                color: App.themeTextMuted; font.pixelSize: 12
-                                                width: masterCol.width - 34; elide: Text.ElideRight
-                                            }
+                                    color: Qt.rgba(App.themeTextPrimary.r, App.themeTextPrimary.g, App.themeTextPrimary.b,
+                                                   sel ? 0.07 : (catHover.hovered ? 0.04 : 0))
+                                    Column {
+                                        anchors.left: parent.left; anchors.leftMargin: 12
+                                        anchors.verticalCenter: parent.verticalCenter
+                                        spacing: 1
+                                        Text {
+                                            text: catBtn.modelData.label
+                                            color: App.themeTextPrimary
+                                            font.pixelSize: 13
+                                        }
+                                        Text {
+                                            text: catBtn.modelData.hint
+                                            color: App.themeTextMuted; font.pixelSize: 11
+                                            width: masterCol.width - 40; elide: Text.ElideRight
                                         }
                                     }
-                                    Text {
-                                        anchors.right: parent.right; anchors.rightMargin: 8
+                                    DrawnIcon {
+                                        anchors.right: parent.right; anchors.rightMargin: 10
                                         anchors.verticalCenter: parent.verticalCenter
-                                        text: "\u25B8"
-                                        color: catBtn.sel ? App.themeAccent : App.themeTextMuted
-                                        font.pixelSize: 13
+                                        name: "chevron-right"
+                                        size: 12
+                                        color: App.themeTextMuted
                                     }
                                     HoverHandler { id: catHover }
                                     TapHandler { onTapped: filterPopup.selectedCat = catBtn.index }
@@ -314,17 +358,17 @@ Rectangle {
                     Rectangle { width: 1; height: popupRow.bodyH; color: App.themeBorder }
 
                     Item {
-                        width: 260
+                        width: filterPopup.detailW + 20
                         height: popupRow.bodyH
                         ScrollView {
                             anchors.fill: parent
                             clip: true
                             leftPadding: 10; rightPadding: 10
-                            topPadding: 10; bottomPadding: 10
+                            topPadding: 4; bottomPadding: 10
                             ScrollBar.horizontal.policy: ScrollBar.AlwaysOff
                             Loader {
                                 id: detailLoader
-                                width: 236
+                                width: filterPopup.detailW
                                 sourceComponent: filterPopup.selectedCat === 0 ? sortComp
                                                : filterPopup.selectedCat === 1 ? medienComp
                                                : filterPopup.selectedCat === 2 ? modeComp
@@ -338,35 +382,29 @@ Rectangle {
                 Component {
                     id: sortComp
                     Column {
-                        spacing: 4
-                        Text {
-                            text: App.uiText(App.language, "FilterSortField"); color: App.themeAccent
-                            font.pixelSize: 13; font.bold: true; bottomPadding: 4
-                        }
+                        Heading { text: App.uiText(App.language, "FilterSortField") }
                         Repeater {
                             model: bar.sortFields
-                            delegate: SortRow {
+                            delegate: OptionRow {
                                 required property int index
                                 required property var modelData
+                                width: filterPopup.detailW
                                 label: modelData
-                                selected: galleryModel.sortRole === index
+                                on: galleryModel.sortRole === index
                                 onPicked: galleryModel.sortRole = index
                             }
                         }
-                        Text {
-                            text: App.uiText(App.language, "FilterSortDirection"); color: App.themeAccent
-                            font.pixelSize: 13; font.bold: true
-                            topPadding: 8; bottomPadding: 4
-                        }
+                        Heading { text: App.uiText(App.language, "FilterSortDirection") }
                         Repeater {
                             model: [
                                 { key: "FilterSortAsc",  desc: false },
                                 { key: "FilterSortDesc", desc: true }
                             ]
-                            delegate: SortRow {
+                            delegate: OptionRow {
                                 required property var modelData
+                                width: filterPopup.detailW
                                 label: App.uiText(App.language, modelData.key)
-                                selected: galleryModel.sortDescending === modelData.desc
+                                on: galleryModel.sortDescending === modelData.desc
                                 onPicked: galleryModel.sortDescending = modelData.desc
                             }
                         }
@@ -376,44 +414,16 @@ Rectangle {
                 Component {
                     id: medienComp
                     Column {
-                        spacing: 4
-                        Text {
-                            text: App.uiText(App.language, "FilterShowMediaTypes"); color: App.themeAccent
-                            font.pixelSize: 13; font.bold: true; bottomPadding: 4
-                        }
+                        Heading { text: App.uiText(App.language, "FilterShowMediaTypes") }
                         Repeater {
                             model: bar.mediaTypes
-                            delegate: Rectangle {
-                                id: mediaRow
+                            delegate: OptionRow {
                                 required property var modelData
-                                readonly property bool on: bar.mediaShown(modelData.key)
-                                width: 236; height: 34; radius: 6
-                                color: on ? Qt.rgba(App.themeAccent.r, App.themeAccent.g, App.themeAccent.b, 0.22)
-                                          : (mHover.hovered ? Qt.rgba(1,1,1,0.06) : "transparent")
-                                border.width: 1
-                                border.color: on ? Qt.rgba(App.themeAccent.r, App.themeAccent.g, App.themeAccent.b, 0.55) : App.themeBorder
-                                Row {
-                                    anchors.fill: parent
-                                    anchors.leftMargin: 10; anchors.rightMargin: 10
-                                    spacing: 8
-                                    Text {
-                                        anchors.verticalCenter: parent.verticalCenter
-                                        width: 14
-                                        text: mediaRow.on ? "\u2713" : "\u2715"
-                                        color: mediaRow.on ? App.themeAccent : App.themeTextMuted
-                                        font.pixelSize: 14; font.bold: true
-                                        horizontalAlignment: Text.AlignHCenter
-                                    }
-                                    Text {
-                                        anchors.verticalCenter: parent.verticalCenter
-                                        text: mediaRow.modelData.label
-                                        color: mediaRow.on ? App.themeTextPrimary : App.themeTextMuted
-                                        font.pixelSize: 14
-                                        font.weight: mediaRow.on ? Font.DemiBold : Font.Normal
-                                    }
-                                }
-                                HoverHandler { id: mHover }
-                                TapHandler { onTapped: bar.setMediaShown(mediaRow.modelData.key, !mediaRow.on) }
+                                width: filterPopup.detailW
+                                radio: false
+                                label: modelData.label
+                                on: bar.mediaShown(modelData.key)
+                                onPicked: bar.setMediaShown(modelData.key, !on)
                             }
                         }
                     }
@@ -422,56 +432,17 @@ Rectangle {
                 Component {
                     id: modeComp
                     Column {
-                        spacing: 4
-                        Text {
-                            text: App.uiText(App.language, "FilterTagModeLabel"); color: App.themeAccent
-                            font.pixelSize: 13; font.bold: true; bottomPadding: 4
-                        }
+                        Heading { text: App.uiText(App.language, "FilterTagModeLabel") }
                         Repeater {
                             model: bar.modeNames
-                            delegate: Rectangle {
-                                id: modeRow
+                            delegate: OptionRow {
                                 required property int index
                                 required property var modelData
-                                readonly property bool selm: galleryModel.tagFilterMode === index
-                                width: 236
-                                height: modeCol.implicitHeight + 16
-                                radius: 6
-                                color: selm ? Qt.rgba(App.themeAccent.r, App.themeAccent.g, App.themeAccent.b, 0.18)
-                                            : (mdHover.hovered ? Qt.rgba(1,1,1,0.06) : "transparent")
-                                border.width: 1
-                                border.color: selm ? App.themeAccent : App.themeBorder
-                                Text {
-                                    id: modeDot
-                                    anchors.left: parent.left; anchors.leftMargin: 10
-                                    anchors.verticalCenter: parent.verticalCenter
-                                    width: 14
-                                    text: modeRow.selm ? "\u25CF" : "\u25CB"
-                                    color: modeRow.selm ? App.themeAccent : App.themeTextMuted
-                                    font.pixelSize: 15
-                                    horizontalAlignment: Text.AlignHCenter
-                                }
-                                Column {
-                                    id: modeCol
-                                    anchors.left: modeDot.right; anchors.leftMargin: 9
-                                    anchors.right: parent.right; anchors.rightMargin: 10
-                                    anchors.verticalCenter: parent.verticalCenter
-                                    spacing: 1
-                                    Text {
-                                        text: modeRow.modelData
-                                        color: modeRow.selm ? App.themeAccent : App.themeTextPrimary
-                                        font.pixelSize: 14
-                                        font.weight: modeRow.selm ? Font.Bold : Font.DemiBold
-                                    }
-                                    Text {
-                                        width: parent.width
-                                        text: bar.modeTips[modeRow.index]
-                                        color: App.themeTextMuted; font.pixelSize: 12
-                                        wrapMode: Text.WordWrap
-                                    }
-                                }
-                                HoverHandler { id: mdHover }
-                                TapHandler { onTapped: galleryModel.tagFilterMode = modeRow.index }
+                                width: filterPopup.detailW
+                                label: modelData
+                                sub: bar.modeTips[index]
+                                on: galleryModel.tagFilterMode === index
+                                onPicked: galleryModel.tagFilterMode = index
                             }
                         }
                     }
@@ -480,76 +451,44 @@ Rectangle {
                 Component {
                     id: tagsCatsComp
                     Column {
-                        spacing: 4
+                        spacing: 0
 
-                        Text {
-                            text: App.uiText(App.language, "FilterPanelHeader"); color: App.themeAccent
-                            font.pixelSize: 13; font.bold: true; bottomPadding: 4
-                        }
+                        Heading { text: App.uiText(App.language, "FilterPanelHeader") }
                         Repeater {
                             model: [
                                 { label: App.uiText(App.language, "FilterTagPanelRow"), tag: true },
                                 { label: App.uiText(App.language, "FilterCatPanelRow"), tag: false }
                             ]
-                            delegate: Rectangle {
-                                id: panelRow
+                            delegate: OptionRow {
                                 required property var modelData
-                                readonly property bool on: modelData.tag ? bar.tagPanelVisible
-                                                                         : bar.categoryPanelVisible
-                                width: 236; height: 34; radius: 6
-                                color: on ? Qt.rgba(App.themeAccent.r, App.themeAccent.g, App.themeAccent.b, 0.22)
-                                          : (pHover.hovered ? Qt.rgba(1,1,1,0.06) : "transparent")
-                                border.width: 1
-                                border.color: on ? Qt.rgba(App.themeAccent.r, App.themeAccent.g, App.themeAccent.b, 0.55) : App.themeBorder
-                                Row {
-                                    anchors.fill: parent
-                                    anchors.leftMargin: 10; anchors.rightMargin: 10
-                                    spacing: 8
-                                    Text {
-                                        anchors.verticalCenter: parent.verticalCenter
-                                        width: 14
-                                        text: panelRow.on ? "\u2713" : "\u2715"
-                                        color: panelRow.on ? App.themeAccent : App.themeTextMuted
-                                        font.pixelSize: 14; font.bold: true
-                                        horizontalAlignment: Text.AlignHCenter
-                                    }
-                                    Text {
-                                        anchors.verticalCenter: parent.verticalCenter
-                                        text: panelRow.modelData.label
-                                        color: panelRow.on ? App.themeTextPrimary : App.themeTextMuted
-                                        font.pixelSize: 14
-                                        font.weight: panelRow.on ? Font.DemiBold : Font.Normal
-                                    }
-                                }
-                                HoverHandler { id: pHover }
-                                TapHandler {
-                                    onTapped: panelRow.modelData.tag ? bar.tagPanelToggled()
-                                                                     : bar.categoryPanelToggled()
-                                }
+                                width: filterPopup.detailW
+                                radio: false
+                                label: modelData.label
+                                on: modelData.tag ? bar.tagPanelVisible : bar.categoryPanelVisible
+                                onPicked: modelData.tag ? bar.tagPanelToggled() : bar.categoryPanelToggled()
                             }
                         }
 
-                        Item { width: 1; height: 6 }   // Abstand Panel-Block ⇄ Tag-Schnellfilter
-
                         Item {
-                            width: 236; height: tagsHdr.implicitHeight + 4
-                            Text {
+                            width: filterPopup.detailW; height: tagsHdr.implicitHeight
+                            Heading {
                                 id: tagsHdr
                                 anchors.left: parent.left
-                                anchors.verticalCenter: parent.verticalCenter
-                                text: App.uiText(App.language, "FilterTagsToFilter"); color: App.themeAccent
-                                font.pixelSize: 13; font.bold: true
+                                anchors.bottom: parent.bottom
+                                text: App.uiText(App.language, "FilterTagsToFilter")
                             }
                             Text {
-                                anchors.right: parent.right
-                                anchors.verticalCenter: parent.verticalCenter
+                                anchors.right: parent.right; anchors.rightMargin: 6
+                                anchors.baseline: tagsHdr.baseline
                                 visible: bar.activeTags.length > 0
-                                text: "Leeren"; color: App.themeAccent; font.pixelSize: 12
+                                text: App.uiText(App.language, "TableFilterClear")
+                                color: App.themeAccent; font.pixelSize: 11
                                 TapHandler { onTapped: bar.clearTags() }
                             }
                         }
                         Row {
-                            spacing: 4
+                            spacing: 6
+                            bottomPadding: 4
                             function addTypedTag() {
                                 var t = addTagInput.text.trim()
                                 if (t.length === 0) return
@@ -559,13 +498,13 @@ Rectangle {
                             }
                             TextField {
                                 id: addTagInput
-                                width: 236 - addTagBtn.width - 4
-                                height: 30
+                                width: filterPopup.detailW - addTagBtn.width - 6
+                                height: 28
                                 font.pixelSize: 12
                                 color: App.themeTextPrimary
                                 placeholderText: App.uiText(App.language, "FilterAddTagPlaceholder")
                                 background: Rectangle {
-                                    color: App.themeCard; radius: 6
+                                    color: App.themeBackground; radius: 5
                                     border.color: addTagInput.activeFocus ? App.themeAccent : App.themeBorder
                                     border.width: 1
                                 }
@@ -573,15 +512,17 @@ Rectangle {
                             }
                             Rectangle {
                                 id: addTagBtn
-                                width: addTagLbl.implicitWidth + 18; height: 30; radius: 6
-                                color: addHover.hovered ? Qt.rgba(App.themeAccent.r, App.themeAccent.g, App.themeAccent.b, 0.30)
-                                                        : Qt.rgba(App.themeAccent.r, App.themeAccent.g, App.themeAccent.b, 0.18)
+                                // Ganze Pixel: der Zeichner rastet die Lage ein, ein Bruchteil schob den rechten
+                                // Rand hinter die Kante des Bildlaufbereichs.
+                                width: Math.ceil(addTagLbl.implicitWidth) + 18; height: 28; radius: 5
+                                color: Qt.rgba(App.themeAccent.r, App.themeAccent.g, App.themeAccent.b,
+                                               addHover.hovered ? 0.30 : 0.16)
                                 border.color: App.themeAccent; border.width: 1
                                 Text {
                                     id: addTagLbl
                                     anchors.centerIn: parent
                                     text: App.uiText(App.language, "FilterAddTagBtn")
-                                    color: App.themeAccent; font.pixelSize: 12; font.bold: true
+                                    color: App.themeAccent; font.pixelSize: 12
                                 }
                                 HoverHandler { id: addHover }
                                 TapHandler { onTapped: addTagBtn.parent.addTypedTag() }
@@ -589,48 +530,21 @@ Rectangle {
                         }
                         Text {
                             visible: filterPopup.popupTags.length === 0
+                            leftPadding: 6
                             text: App.uiText(App.language, "FilterNoTagsShort")
-                            color: App.themeTextMuted; font.pixelSize: 13
+                            color: App.themeTextMuted; font.pixelSize: 12
                         }
                         Repeater {
                             model: filterPopup.popupTags
-                            delegate: Rectangle {
-                                id: tagRow
+                            delegate: OptionRow {
                                 required property var modelData
-                                readonly property bool on: bar.activeTags.indexOf(modelData) >= 0
-                                readonly property color tagCol: bar.tagColorOf(modelData)
-                                width: 236; height: 30; radius: 6
-                                color: on ? Qt.rgba(tagCol.r, tagCol.g, tagCol.b, 0.22)
-                                          : (tHover.hovered ? Qt.rgba(1,1,1,0.06) : "transparent")
-                                border.width: 1
-                                border.color: on ? tagCol : App.themeBorder
-                                Row {
-                                    anchors.fill: parent
-                                    anchors.leftMargin: 10; anchors.rightMargin: 10
-                                    spacing: 8
-                                    Text {
-                                        anchors.verticalCenter: parent.verticalCenter
-                                        width: 14
-                                        text: tagRow.on ? "\u2713" : "\u2715"
-                                        color: tagRow.on ? tagRow.tagCol : App.themeTextMuted
-                                        font.pixelSize: 14; font.bold: true
-                                        horizontalAlignment: Text.AlignHCenter
-                                    }
-                                    Rectangle {
-                                        anchors.verticalCenter: parent.verticalCenter
-                                        width: 9; height: 9; radius: 4.5
-                                        color: tagRow.tagCol
-                                    }
-                                    Text {
-                                        anchors.verticalCenter: parent.verticalCenter
-                                        text: tagRow.modelData
-                                        color: tagRow.on ? App.themeTextPrimary : App.themeTextMuted
-                                        font.pixelSize: 14
-                                        font.weight: tagRow.on ? Font.DemiBold : Font.Normal
-                                    }
-                                }
-                                HoverHandler { id: tHover }
-                                TapHandler { onTapped: bar.toggleTag(tagRow.modelData) }
+                                width: filterPopup.detailW
+                                radio: false
+                                label: modelData
+                                tint: bar.tagColorOf(modelData)
+                                dot: bar.tagColorOf(modelData)
+                                on: bar.activeTags.indexOf(modelData) >= 0
+                                onPicked: bar.toggleTag(modelData)
                             }
                         }
                     }
@@ -644,14 +558,14 @@ Rectangle {
         Rectangle {
             id: searchBox
             anchors.verticalCenter: parent.verticalCenter
-            width: 220; height: 30; radius: 6
+            width: 250; height: 28; radius: 5
             color: App.themeCard
             border.color: searchInput.activeFocus ? App.themeAccent : App.themeBorder
             border.width: 1
 
             DrawnIcon {
                 id: searchIcon
-                anchors.left: parent.left; anchors.leftMargin: 8
+                anchors.left: parent.left; anchors.leftMargin: 10
                 anchors.verticalCenter: parent.verticalCenter
                 name: "search"
                 size: 14
@@ -660,12 +574,12 @@ Rectangle {
             TextField {
                 id: searchInput
                 objectName: "gallerySearch"
-                anchors.left: searchIcon.right; anchors.leftMargin: 6
+                anchors.left: searchIcon.right; anchors.leftMargin: 8
                 anchors.right: clearSearch.left; anchors.rightMargin: 4
                 anchors.verticalCenter: parent.verticalCenter
                 height: parent.height - 2
                 padding: 0
-                font.pixelSize: 12
+                font.pixelSize: 13
                 color: App.themeTextPrimary
                 placeholderText: App.uiText(App.language, "FilterSearchPlaceholder")
                 background: null
@@ -722,10 +636,11 @@ Rectangle {
 
         Button {
             id: plusBtn
+            objectName: "plusBtn"
             anchors.verticalCenter: parent.verticalCenter
             visible: !bar.audioOnly
             width: visible ? implicitWidth : 0
-            height: 30
+            height: 28
             padding: 0
             enabled: App.currentFolder.length > 0
             onClicked: {
@@ -739,14 +654,13 @@ Rectangle {
             }
 
             background: Rectangle {
-                implicitWidth: 34
-                color: plusBtn.down ? App.themeCard
-                     : (plusBtn.hovered ? Qt.rgba(App.themeTextPrimary.r, App.themeTextPrimary.g,
-                                                  App.themeTextPrimary.b, 0.08)
-                                        : App.themeMenuBarBg)
+                implicitWidth: 28
+                color: plusBtn.hovered || plusBtn.down
+                       ? Qt.rgba(App.themeTextPrimary.r, App.themeTextPrimary.g, App.themeTextPrimary.b, 0.08)
+                       : App.themeCard
                 border.color: (plusMenu.opened || createPopup.opened) ? App.themeAccent : App.themeBorder
                 border.width: 1
-                radius: 4
+                radius: 5
             }
             contentItem: Item {
                 DrawnIcon {
@@ -763,15 +677,12 @@ Rectangle {
 
             Popup {
                 id: plusMenu
-                y: plusBtn.height + 4
-                width: 210
+                objectName: "plusMenu"
+                y: plusBtn.height + 6
+                width: 170
                 padding: 6
 
-                background: Rectangle {
-                    color: App.themeMenuBarBg
-                    border.color: App.themeBorder; border.width: 1
-                    radius: 6
-                }
+                background: PopupPanel { }
 
                 contentItem: Column {
                     spacing: 2
@@ -781,7 +692,7 @@ Rectangle {
                         delegate: Rectangle {
                             id: actRow
                             required property var modelData
-                            width: parent.width; height: 30; radius: 5
+                            width: parent.width; height: 28; radius: 5
                             color: acHover.hovered
                                    ? Qt.rgba(App.themeTextPrimary.r, App.themeTextPrimary.g,
                                              App.themeTextPrimary.b, 0.10)
@@ -799,7 +710,7 @@ Rectangle {
                                 Text {
                                     anchors.verticalCenter: parent.verticalCenter
                                     text: App.uiText(App.language, actRow.modelData.key)
-                                    color: App.themeTextPrimary; font.pixelSize: 12
+                                    color: App.themeTextPrimary; font.pixelSize: 13
                                 }
                             }
                             HoverHandler { id: acHover }
@@ -833,11 +744,7 @@ Rectangle {
                     createPopup.close()
                 }
 
-                background: Rectangle {
-                    color: App.themeMenuBarBg
-                    border.color: App.themeBorder; border.width: 1
-                    radius: 6
-                }
+                background: PopupPanel { }
 
                 contentItem: Column {
                     spacing: 8
@@ -938,7 +845,7 @@ Rectangle {
             anchors.verticalCenter: parent.verticalCenter
             visible: !bar.audioOnly
             width: visible ? implicitWidth : 0
-            height: 30
+            height: 28
             font.pixelSize: 13
             enabled: App.currentFolder.length > 0
             text: App.uiText(App.language, "FilterExtractBtn")

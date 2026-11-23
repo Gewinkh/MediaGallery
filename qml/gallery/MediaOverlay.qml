@@ -1,6 +1,7 @@
 import QtQuick
 import QtQuick.Controls
 import MediaGallery 1.0
+import "../common"
 
 // Leichtgewichtige Info-/Interaktionsschicht über einer Kachel - reine QML-Items, kein QObject je Tag. Im
 // Compact-Modus nur eine schmale Namenszeile; Umbenennen und Tag-Toggle delegieren an `mediaModel`.
@@ -231,11 +232,7 @@ Item {
             modal: false
             focus: true
             closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
-            background: Rectangle {
-                color: App.themeMenuBarBg
-                border.color: App.themeBorder; border.width: 1
-                radius: 6
-            }
+            background: PopupPanel { }
 
             function openFor(m) { mode = m; open() }
             onOpened: { addField.text = ""; addField.forceActiveFocus() }
@@ -304,11 +301,7 @@ Item {
             modal: false
             focus: true
             closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
-            background: Rectangle {
-                color: App.themeMenuBarBg
-                border.color: App.themeBorder; border.width: 1
-                radius: 6
-            }
+            background: PopupPanel { }
             contentItem: Column {
                 spacing: 4
                 Text {

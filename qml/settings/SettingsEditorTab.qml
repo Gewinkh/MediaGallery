@@ -612,5 +612,5 @@ Item {
         }
     }
 
-    SmoothWheelArea { flickable: edScroll.contentItem }
+    SmoothWheelArea { flickable: edScroll.contentItem; backdrop: App.themeBackground }
 }

@@ -78,13 +78,10 @@ QObject* firstChildWith(const QObject* parent, const char* property) {
     return it == kinder.cend() ? nullptr : *it;
 }
 
-bool outsideClip(const QQuickItem* item) {
-    QRectF sichtbar = item->mapRectToScene(item->boundingRect());
-    for (const QQuickItem* a = item->parentItem(); a; a = a->parentItem()) {
-        if (!a->clip()) continue;
-        sichtbar &= a->mapRectToScene(a->clipRect());
-        if (sichtbar.isEmpty()) return true;
-    }
+bool touchesClipEdge(const QQuickItem* item) {
+    const QRectF symbol = item->mapRectToScene(item->boundingRect()).adjusted(0.01, 0.01, -0.01, -0.01);
+    for (const QQuickItem* a = item->parentItem(); a; a = a->parentItem())
+        if (a->clip() && !a->mapRectToScene(a->clipRect()).contains(symbol)) return true;
     return false;
 }
 
@@ -330,8 +327,8 @@ void DrawnIconItem::arrange() {
         if (const Part* p = take(Kind::Curve)) p->item->setScale(u);
 }
 
-//  Qts Software-Renderer beschneidet einen Shape-Knoten nicht, der ganz ausserhalb seiner clip-Flaeche liegt (teilweise
-//  schon): Symbole einer abgeschnittenen Leiste lagen ueber den Nachbarn. Eine Ebene verschob sie bei Skalierung != 1.
+//  Qts Software-Renderer beschneidet Shape-Knoten nicht sicher: ganz draussen gar nicht, an der Kante blieben beim Rollen
+//  Reste ausserhalb liegen (nur das Innere wird nachgezeichnet). Deshalb weg, sobald das Symbol die Kante beruehrt.
 void DrawnIconItem::watchClip() {
     disconnect(m_clipWatch);
     const QQuickWindow* w = window();
@@ -343,7 +340,7 @@ void DrawnIconItem::watchClip() {
 
 void DrawnIconItem::hideShapesIfClipped() {
     if (!isVisible()) return;
-    const bool zeigen = !outsideClip(this);
+    const bool zeigen = !touchesClipEdge(this);
     for (const Part& p : std::as_const(m_parts))
         if (p.kind >= Kind::Stroke) p.item->setVisible(zeigen);
 }

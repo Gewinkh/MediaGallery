@@ -328,11 +328,7 @@ Rectangle {
         height: eqContent.implicitHeight + 2 * padding
         y: -height - 8
         x: Math.max(6, bar.width - width - 12)
-        background: Rectangle {
-            color: App.themeMenuBarBg
-            border.color: App.themeBorder; border.width: 1
-            radius: 8
-        }
+        background: PopupPanel { }
         contentItem: AudioEqPanel { id: eqContent }
     }
 }

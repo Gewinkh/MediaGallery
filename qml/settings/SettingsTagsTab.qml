@@ -7,9 +7,19 @@ import "../common"
 
 Item {
     id: root
+    implicitHeight: tagsCol.implicitHeight
 
     property var tagList: []
-    function refresh() { tagList = Tags.allTags() }
+    function refresh() {
+        tagList = Tags.allTags()
+        zeilen.fill(tagList, tagList.join("\n"), t => ({ name: t }))
+        farbStand++
+    }
+    //  Eine Farbaenderung meldet sich als tagsChanged; die stehenden Zeilen lesen ihre Farbe darum neu.
+    property int farbStand: 0
+    function farbe(t) { return farbStand >= 0 ? Tags.tagColor(t) : "" }
+    //  Zeilen in Haeppchen: alle 403 am Stueck hielten das erste Oeffnen des Reiters auf.
+    LazyRows { id: zeilen; viewHeight: root.Window.height; rowHeight: 42 }
 
     Component.onCompleted: refresh()
     Connections {
@@ -18,7 +28,8 @@ Item {
     }
 
     ColumnLayout {
-        anchors.fill: parent
+        id: tagsCol
+        width: parent.width
         spacing: 8
 
         RowLayout {
@@ -60,79 +71,72 @@ Item {
             wrapMode: Text.WordWrap
         }
 
-        ScrollView {
-            id: tagsScroll
+        //  Keine eigene Rollfläche: gerollt wird der ganze Reiter.
+        ColumnLayout {
             Layout.fillWidth: true
-            Layout.fillHeight: true
-            contentWidth: availableWidth
-            clip: true
+            spacing: 4
 
-            ColumnLayout {
-                width: root.width
-                spacing: 4
+            Repeater {
+                model: zeilen.model
+                delegate: Rectangle {
+                    id: tagRow
+                    required property string name
+                    Layout.fillWidth: true
+                    implicitHeight: 38
+                    radius: 6
+                    color: rowHover.hovered ? Qt.rgba(1, 1, 1, 0.05) : Qt.rgba(1, 1, 1, 0.02)
 
-                Repeater {
-                    model: root.tagList
-                    delegate: Rectangle {
-                        id: tagRow
-                        required property var modelData
-                        Layout.fillWidth: true
-                        implicitHeight: 38
-                        radius: 6
-                        color: rowHover.hovered ? Qt.rgba(1, 1, 1, 0.05) : Qt.rgba(1, 1, 1, 0.02)
+                    HoverHandler { id: rowHover }
 
-                        HoverHandler { id: rowHover }
+                    RowLayout {
+                        anchors.fill: parent
+                        anchors.leftMargin: 10
+                        anchors.rightMargin: 8
+                        spacing: 8
 
-                        RowLayout {
-                            anchors.fill: parent
-                            anchors.leftMargin: 10
-                            anchors.rightMargin: 8
-                            spacing: 8
+                        Rectangle {
+                            width: 10; height: 10; radius: 5
+                            color: root.farbe(tagRow.name)
+                        }
+                        Text {
+                            Layout.fillWidth: true
+                            text: tagRow.name
+                            color: root.farbe(tagRow.name)
+                            font.pixelSize: 13
+                            font.bold: true
+                            elide: Text.ElideRight
+                        }
 
-                            Rectangle {
-                                width: 10; height: 10; radius: 5
-                                color: Tags.tagColor(tagRow.modelData)
-                            }
-                            Text {
-                                Layout.fillWidth: true
-                                text: tagRow.modelData
-                                color: Tags.tagColor(tagRow.modelData)
-                                font.pixelSize: 13
-                                font.bold: true
-                                elide: Text.ElideRight
-                            }
-
-                            ColorPicker {
-                                width: 30; height: 22
-                                title: App.uiText(App.language, "SettingsTagColorTitle")
-                                showAlpha: false
-                                selectedColor: Tags.tagColor(tagRow.modelData)
-                                onColorPicked: (c) => Tags.setTagColor(tagRow.modelData, c)
-                            }
-                            ToolButton {
-                                text: "\u270E"   // Stift
-                                ToolTip.text: App.uiText(App.language, "CatPanelRename")
-                                ToolTip.visible: hovered
-                                onClicked: { root.renameTarget = tagRow.modelData; renameField.text = tagRow.modelData; renameDialog.open() }
-                            }
-                            ToolButton {
-                                text: "\u2715"   // ✕
-                                ToolTip.text: App.uiText(App.language, "BookmarkDelete")
-                                ToolTip.visible: hovered
-                                onClicked: { root.deleteTarget = tagRow.modelData; deleteDialog.open() }
-                            }
+                        ColorPicker {
+                            width: 30; height: 22
+                            title: App.uiText(App.language, "SettingsTagColorTitle")
+                            showAlpha: false
+                            selectedColor: root.farbe(tagRow.name)
+                            onColorPicked: (c) => Tags.setTagColor(tagRow.name, c)
+                        }
+                        ToolButton {
+                            text: "\u270E"   // Stift
+                            ToolTip.text: App.uiText(App.language, "CatPanelRename")
+                            ToolTip.visible: hovered
+                            onClicked: { root.renameTarget = tagRow.name; renameField.text = tagRow.name; renameDialog.open() }
+                        }
+                        ToolButton {
+                            text: "\u2715"   // ✕
+                            ToolTip.text: App.uiText(App.language, "BookmarkDelete")
+                            ToolTip.visible: hovered
+                            onClicked: { root.deleteTarget = tagRow.name; deleteDialog.open() }
                         }
                     }
                 }
+            }
 
-                Text {
-                    visible: root.tagList.length === 0
-                    Layout.fillWidth: true
-                    horizontalAlignment: Text.AlignHCenter
-                    text: App.uiText(App.language, "SettingsTagsEmpty")
-                    color: App.themeTextMuted
-                    padding: 16
-                }
+            Text {
+                visible: root.tagList.length === 0
+                Layout.fillWidth: true
+                horizontalAlignment: Text.AlignHCenter
+                text: App.uiText(App.language, "SettingsTagsEmpty")
+                color: App.themeTextMuted
+                padding: 16
             }
         }
     }
@@ -208,8 +212,4 @@ Item {
             }
         }
     }
-
-    //  Weiches, schnelles Mausrad-Scrollen (Galerie-Muster) statt der festen
-    //  60 px je Rastung von `Flickable`.
-    SmoothWheelArea { flickable: tagsScroll.contentItem }
 }

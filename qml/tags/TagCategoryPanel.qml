@@ -443,40 +443,113 @@ Rectangle {
         }
     }
 
-    component SectionHeader: Rectangle {
+    readonly property int headH: 44
+
+    //  Kopf wie in den Einstellungen: Strich, Titel, Linie darunter, runder Knopf wie das X der Dialoge.
+    component SectionHeader: Item {
         id: hdr
         property string title: ""
         property string addTip: ""
         signal addClicked()
 
-        height: 34
-        color: App.themeToolbarBg
+        height: panel.headH
 
+        AccentSlash {
+            id: hdrSlash
+            anchors { left: parent.left; leftMargin: 14; verticalCenter: parent.verticalCenter }
+        }
         Text {
-            anchors.left: parent.left; anchors.leftMargin: 10
-            anchors.verticalCenter: parent.verticalCenter
+            anchors { left: hdrSlash.right; leftMargin: 8; right: addBtn.left; rightMargin: 8
+                      verticalCenter: parent.verticalCenter }
             text: hdr.title
             color: App.themeTextPrimary
-            font.pixelSize: 13; font.bold: true
+            font.pixelSize: 15
+            elide: Text.ElideRight
         }
         Rectangle {
             id: addBtn
-            anchors.right: parent.right; anchors.rightMargin: 8
-            anchors.verticalCenter: parent.verticalCenter
-            width: 22; height: 22; radius: 11
-            color: addHover.hovered ? Qt.rgba(App.themeAccent.r, App.themeAccent.g, App.themeAccent.b, 0.32)
-                                    : Qt.rgba(App.themeAccent.r, App.themeAccent.g, App.themeAccent.b, 0.18)
-            border.color: App.themeAccent; border.width: 1
-            Text {
-                anchors.centerIn: parent
-                text: "+"
-                color: App.themeAccent
-                font.pixelSize: 14; font.bold: true
+            anchors { right: parent.right; rightMargin: 10; verticalCenter: parent.verticalCenter }
+            width: 26; height: 26; radius: 13
+            color: Qt.rgba(App.themeTextPrimary.r, App.themeTextPrimary.g, App.themeTextPrimary.b,
+                           addHover.hovered ? 0.14 : 0.0)
+            border.color: App.themeBorder
+            Repeater {
+                model: [0, 90]
+                delegate: Rectangle {
+                    required property int modelData
+                    x: (addBtn.width - width) / 2
+                    y: (addBtn.height - height) / 2
+                    width: 12; height: 1.6; radius: 0.8
+                    rotation: modelData
+                    antialiasing: true
+                    color: addHover.hovered ? App.themeAccent : App.themeTextMuted
+                }
             }
-            HoverHandler { id: addHover }
+            HoverHandler { id: addHover; cursorShape: Qt.PointingHandCursor }
             TapHandler { onTapped: hdr.addClicked() }
             ToolTip.text: hdr.addTip
             ToolTip.visible: addHover.hovered && hdr.addTip.length > 0
+            ToolTip.delay: 500
+        }
+        Rectangle {
+            anchors { left: parent.left; right: parent.right; bottom: parent.bottom
+                      leftMargin: 10; rightMargin: 10 }
+            height: 1
+            color: App.themeBorder
+        }
+    }
+
+    //  Rahmen der Fenster des Panels, wie der Namensdialog der Extraktion: Kopf mit Strich, Titel und X, darunter der Inhalt.
+    component PanelDialog: Popup {
+        id: pd
+        property string title: ""
+        property int bodyW: 300
+        //  Eingabetaste bestätigt dort, wo kein Feld sie selbst nimmt (Löschfragen).
+        property bool enterConfirms: false
+        signal confirmed()
+        default property alias body: bodyCol.data
+
+        modal: true; focus: true; anchors.centerIn: Overlay.overlay
+        padding: 0
+        closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
+        background: Rectangle { color: App.themeBackground; border.color: App.themeBorder; radius: 10 }
+
+        contentItem: Column {
+            focus: true
+            Keys.onReturnPressed: (e) => { if (pd.enterConfirms) { pd.confirmed(); e.accepted = true } }
+            Keys.onEnterPressed:  (e) => { if (pd.enterConfirms) { pd.confirmed(); e.accepted = true } }
+            Item {
+                width: pd.bodyW + 44
+                height: 56
+                AccentSlash {
+                    id: pdSlash
+                    anchors { left: parent.left; leftMargin: 22; verticalCenter: parent.verticalCenter }
+                }
+                Text {
+                    anchors { left: pdSlash.right; leftMargin: 10; right: pdClose.left; rightMargin: 12
+                              verticalCenter: parent.verticalCenter }
+                    text: pd.title
+                    color: App.themeTextPrimary
+                    font.pixelSize: 16
+                    elide: Text.ElideRight
+                }
+                CloseButton {
+                    id: pdClose
+                    anchors { right: parent.right; rightMargin: 14; verticalCenter: parent.verticalCenter }
+                    onClicked: pd.close()
+                }
+                Rectangle {
+                    anchors { left: parent.left; right: parent.right; bottom: parent.bottom }
+                    height: 1
+                    color: App.themeBorder
+                }
+            }
+            Column {
+                id: bodyCol
+                padding: 22
+                topPadding: 16
+                spacing: 10
+            }
         }
     }
 
@@ -498,7 +571,7 @@ Rectangle {
             width: parent.width
             height: Math.min(tagsCol.implicitHeight,
                              panel.showCategoriesSection ? Math.floor(panel.height * 0.35)
-                                                         : panel.height - 34 - panel.undoBarHeight)
+                                                         : panel.height - panel.headH - panel.undoBarHeight)
             clip: true
             ScrollBar.horizontal.policy: ScrollBar.AlwaysOff
 
@@ -575,11 +648,6 @@ Rectangle {
             }
         }
 
-        Rectangle {
-            visible: panel.showTagsSection && panel.showCategoriesSection
-            width: parent.width; height: 1; color: App.themeBorder
-        }
-
         SectionHeader {
             visible: panel.showCategoriesSection
             width: parent.width
@@ -594,9 +662,8 @@ Rectangle {
             visible: panel.showCategoriesSection
             width: parent.width
             height: panel.height
-                    - (panel.showTagsSection ? 34 + tagsArea.height : 0)
-                    - (panel.showTagsSection && panel.showCategoriesSection ? 1 : 0)
-                    - 34 - panel.undoBarHeight
+                    - (panel.showTagsSection ? panel.headH + tagsArea.height : 0)
+                    - panel.headH - panel.undoBarHeight
             clip: true
 
             Column {
@@ -698,27 +765,27 @@ Rectangle {
         }
     }
 
-    Popup {
+    PanelDialog {
         id: namePrompt
-        modal: true; focus: true; anchors.centerIn: Overlay.overlay; padding: 16
-        property string title: ""
         property string value: ""
         property var onAcceptFn: (function(v){})
-        background: Rectangle { color: App.themeCard; radius: 10; border.color: App.themeBorder }
-        contentItem: Column {
-            spacing: 12
-            Text { text: namePrompt.title; color: App.themeTextPrimary; font.pixelSize: 14; font.bold: true }
-            TextField {
-                id: promptField
-                width: 260
-                text: namePrompt.value
-                color: App.themeTextPrimary
-                onAccepted: namePrompt.commit()
-            }
-            Row {
-                spacing: 8
-                Button { text: App.uiText(App.language, "SettingsOk"); onClicked: namePrompt.commit() }
-                Button { text: App.uiText(App.language, "SettingsCancel"); onClicked: namePrompt.close() }
+        TextField {
+            id: promptField
+            width: namePrompt.bodyW
+            text: namePrompt.value
+            color: App.themeTextPrimary
+            onAccepted: namePrompt.commit()
+        }
+        Item {
+            width: namePrompt.bodyW
+            height: promptOk.height + 6
+            Button {
+                id: promptOk
+                anchors { right: parent.right; bottom: parent.bottom }
+                highlighted: true
+                enabled: promptField.text.trim().length > 0
+                text: App.uiText(App.language, "SettingsOk")
+                onClicked: namePrompt.commit()
             }
         }
         onOpened: { promptField.text = value; promptField.forceActiveFocus(); promptField.selectAll() }
@@ -731,10 +798,10 @@ Rectangle {
 
     // Zwei Wege in einem Fenster: oben ein Feld, dessen Eingabe anlegt UND zuweist; unten die Tags des Ordners,
     // die dieser Kategorie fehlen. Das Feld filtert die Liste zugleich - tippen und klicken statt abschreiben.
-    Popup {
+    PanelDialog {
         id: tagPick
         objectName: "tagPickPopup"
-        modal: true; focus: true; anchors.centerIn: Overlay.overlay; padding: 14
+        title: App.uiText(App.language, "TagBarDropdownHeader")
         property string targetCat: ""
 
         function candidates() {
@@ -753,37 +820,36 @@ Rectangle {
             tagPick.close()
         }
 
-        background: Rectangle { color: App.themeCard; radius: 10; border.color: App.themeBorder }
         onOpened: { pickField.text = ""; pickField.forceActiveFocus() }
 
-        contentItem: Column {
-            spacing: 10
-            Text {
-                text: App.uiText(App.language, "TagBarDropdownHeader")
-                color: App.themeTextPrimary; font.pixelSize: 14; font.bold: true
-            }
             TextField {
                 id: pickField
-                width: 280
+                width: tagPick.bodyW
                 color: App.themeTextPrimary
                 placeholderText: App.uiText(App.language, "CatPanelNewTag")
                 onAccepted: tagPick.assign(pickField.text)
             }
-            Button {
-                enabled: pickField.text.trim().length > 0
-                height: 26; font.pixelSize: 11
-                text: App.uiText(App.language, "TagPickCreate")
-                onClicked: tagPick.assign(pickField.text)
+            Item {
+                width: tagPick.bodyW
+                height: pickCreate.height
+                Button {
+                    id: pickCreate
+                    anchors.right: parent.right
+                    highlighted: true
+                    enabled: pickField.text.trim().length > 0
+                    text: App.uiText(App.language, "TagPickCreate")
+                    onClicked: tagPick.assign(pickField.text)
+                }
             }
-
-            Rectangle { width: 280; height: 1; color: App.themeBorder }
 
             Text {
+                topPadding: 6
                 text: App.uiText(App.language, "TagPickExisting")
-                color: App.themeTextMuted; font.pixelSize: 11
+                color: App.themeTextMuted
+                font.pixelSize: 11; font.capitalization: Font.AllUppercase; font.letterSpacing: 1.2
             }
             ScrollView {
-                width: 280
+                width: tagPick.bodyW
                 height: Math.min(180, Math.max(28, pickList.count * 28))
                 clip: true
                 ScrollBar.horizontal.policy: ScrollBar.AlwaysOff
@@ -794,7 +860,7 @@ Rectangle {
                     spacing: 2
                     delegate: Rectangle {
                         required property var modelData
-                        width: 264; height: 26; radius: 5
+                        width: tagPick.bodyW - 16; height: 26; radius: 5
                         color: rowHover.hovered
                                ? Qt.rgba(App.themeTextPrimary.r, App.themeTextPrimary.g,
                                          App.themeTextPrimary.b, 0.10)
@@ -821,18 +887,10 @@ Rectangle {
             }
             Text {
                 visible: pickList.count === 0
-                width: 280
+                width: tagPick.bodyW
                 text: App.uiText(App.language, "TagPickNone")
                 color: App.themeTextMuted; font.pixelSize: 11; wrapMode: Text.WordWrap
             }
-
-            Row {
-                anchors.right: parent.right
-                Button { text: App.uiText(App.language, "SettingsCancel")
-                         height: 26; font.pixelSize: 11
-                         onClicked: tagPick.close() }
-            }
-        }
     }
 
     ColorDialog {
@@ -849,57 +907,49 @@ Rectangle {
         visible: height > 0
     }
 
-    Popup {
+    // Eingabetaste bestätigt - ein `Popup` bringt das anders als ein `Dialog` nicht mit; `PanelDialog` hört am `contentItem`.
+    PanelDialog {
         id: confirmDeleteTag
-        modal: true; focus: true; anchors.centerIn: Overlay.overlay; padding: 16
-        // Eingabetaste bestätigt - ein `Popup` bringt das anders als ein `Dialog` nicht mit. Der Handler gehört ans
-        // `contentItem`, am Popup selbst feuert er nicht (gemessen).
+        title: App.uiText(App.language, "SettingsTagDelete") + ": " + panel.deleteTagName
+        bodyW: 280
+        enterConfirms: true
+        onConfirmed: confirmDeleteTag.confirm()
         function confirm() {
             panel.tagsCtl.deleteTag(panel.deleteTagName)
             confirmDeleteTag.close()
         }
-
-        background: Rectangle { color: App.themeCard; radius: 10; border.color: App.themeBorder }
-        contentItem: Column {
-            focus: true
-            Keys.onReturnPressed: function(e) { confirmDeleteTag.confirm(); e.accepted = true }
-            Keys.onEnterPressed:  function(e) { confirmDeleteTag.confirm(); e.accepted = true }
-            spacing: 12
-            Text {
-                text: App.uiText(App.language, "SettingsTagDelete") + ": " + panel.deleteTagName
-                color: App.themeTextPrimary; font.pixelSize: 14; font.bold: true
-            }
-            Row {
-                spacing: 8
-                Button {
-                    text: App.uiText(App.language, "BookmarkDelete")
-                    onClicked: confirmDeleteTag.confirm()
-                }
-                Button { text: App.uiText(App.language, "SettingsCancel")
-                         onClicked: confirmDeleteTag.close() }
+        Item {
+            width: confirmDeleteTag.bodyW
+            height: delTagBtn.height
+            Button {
+                id: delTagBtn
+                anchors.right: parent.right
+                highlighted: true
+                text: App.uiText(App.language, "BookmarkDelete")
+                onClicked: confirmDeleteTag.confirm()
             }
         }
     }
 
-    Popup {
+    PanelDialog {
         id: confirmDelete
-        modal: true; focus: true; anchors.centerIn: Overlay.overlay; padding: 16
+        title: App.uiText(App.language, "TagPanelDeleteTitle")
+        bodyW: 280
+        enterConfirms: true
+        onConfirmed: confirmDelete.confirm()
         function confirm() {
             panel.tagsCtl.deleteCategory(panel.deleteCatId)
             confirmDelete.close()
         }
-
-        background: Rectangle { color: App.themeCard; radius: 10; border.color: App.themeBorder }
-        contentItem: Column {
-            focus: true
-            Keys.onReturnPressed: function(e) { confirmDelete.confirm(); e.accepted = true }
-            Keys.onEnterPressed:  function(e) { confirmDelete.confirm(); e.accepted = true }
-            spacing: 12
-            Text { text: App.uiText(App.language, "TagPanelDeleteTitle"); color: App.themeTextPrimary; font.pixelSize: 14; font.bold: true }
-            Row {
-                spacing: 8
-                Button { text: App.uiText(App.language, "BookmarkDelete"); onClicked: confirmDelete.confirm() }
-                Button { text: App.uiText(App.language, "SettingsCancel"); onClicked: confirmDelete.close() }
+        Item {
+            width: confirmDelete.bodyW
+            height: delCatBtn.height
+            Button {
+                id: delCatBtn
+                anchors.right: parent.right
+                highlighted: true
+                text: App.uiText(App.language, "BookmarkDelete")
+                onClicked: confirmDelete.confirm()
             }
         }
     }

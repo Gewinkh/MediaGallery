@@ -11,15 +11,15 @@ Item {
     component ViewSubHead: ColumnLayout {
         property alias text: subLabel.text
         Layout.fillWidth: true
-        Layout.topMargin: 6
-        spacing: 6
-        Rectangle { Layout.fillWidth: true; height: 1; color: App.themeBorder }
+        Layout.topMargin: 14
+        spacing: 0
         Text {
             id: subLabel
             Layout.fillWidth: true
             color: App.themeTextMuted
             font.pixelSize: 11
-            font.bold: true
+            font.capitalization: Font.AllUppercase
+            font.letterSpacing: 1.2
         }
     }
 
@@ -604,5 +604,5 @@ Item {
         }
     }
 
-    SmoothWheelArea { flickable: viewScroll.contentItem }
+    SmoothWheelArea { flickable: viewScroll.contentItem; backdrop: App.themeBackground }
 }

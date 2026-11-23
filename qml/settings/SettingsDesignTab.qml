@@ -52,7 +52,7 @@ Item {
     property color twStatusBarBg: "#080e12"
 
     function loadTheme() {
-        var m = App.customThemeMap()
+        var m = App.themeMap(App.designProfile)
         twName = m.name;                 twBackground = m.background;     twCard = m.card
         twTextPrimary = m.textPrimary;   twTextMuted = m.textMuted;       twBorder = m.border
         twAccentType = m.accentType;     twAccent = m.accent;             twAccentGradEnd = m.accentGradEnd
@@ -88,8 +88,17 @@ Item {
         }
     }
 
-    function applyLive() {
-        if (root.customActive) App.setCustomThemeFromMap(buildMap())
+    //  Erste Aenderung in einem mitgelieferten Profil: es wird samt Aenderung zu Custom, das Profil selbst bleibt.
+    function applyLive(eigenerName) {
+        if (!root.customActive) {
+            if (!eigenerName)
+                for (var i = 0; i < profiles.length; ++i)
+                    if (profiles[i].index === root.customIndex) twName = profiles[i].name
+            App.setCustomThemeFromMap(buildMap())
+            App.setDesignProfile(root.customIndex)
+            return
+        }
+        App.setCustomThemeFromMap(buildMap())
     }
 
     Component.onCompleted: { refreshProfiles(); loadTheme() }
@@ -98,92 +107,226 @@ Item {
         function onThemeChanged() { root.refreshProfiles() }
     }
 
-    // Der große Block muss ANDERS aussehen als die 'SettingsGroup's darin, sonst liest sich die Verschachtelung als
-    // "Fenster im Fenster" - dieselbe Lehre, an der die zweite Reiterleiste gescheitert ist.
-    component BigGroup: Rectangle {
-        id: big
-        default property alias content: innerCol.data
-        property string title: ""
-        property string groupKey: ""
-        property bool collapsed: false
+    //  Zwei Spalten ab dieser Breite; darunter steht alles untereinander.
+    readonly property bool twoCols: designScroll.availableWidth >= 600
+    readonly property real contentW: designScroll.availableWidth - 14
+    readonly property real colW: twoCols ? (contentW - 38) / 2 : contentW
 
+    function previewLines() {
+        void Editor.profile
+        function f(k, s) { return "<font color='" + Editor.colorFor(k) + "'>" + s + "</font>" }
+        return [
+            f("preproc", "#include") + " " + f("string", "&lt;QString&gt;"),
+            f("type", "int") + " " + f("function", "berechne") + f("operator", "(") + f("type", "int")
+                + " wert" + f("operator", ") {"),
+            "&nbsp;&nbsp;" + f("keyword", "return") + " wert " + f("operator", "*") + " " + f("number", "42")
+                + f("operator", ";") + "  " + f("comment", "// Kommentar"),
+            f("heading", "<b>## Ueberschrift</b>") + "  " + f("emphasis", "<i>*kursiv*</i>"),
+            f("link", "[Verweis](ziel)") + "  " + f("code", "`code`")
+        ]
+    }
+
+    //  Zeile mit Linie darunter: Beschriftung links, Bedienelement rechts.
+    component SettingRow: Item {
+        id: sr
+        property string label: ""
+        //  Nur mit `stretch` reicht der Platz rechts bis an die Beschriftung (Schieber); sonst so schmal wie nötig.
+        property bool stretch: false
+        //  Rechtsbündig: das ERSTE Kind steht ganz rechts.
+        default property alias control: slot.data
         Layout.fillWidth: true
-        color: Qt.rgba(0, 0, 0, 0.22)
-        border.color: App.themeBorder
-        border.width: 1
-        radius: 10
-        implicitHeight: big.collapsed ? (head.height + 16)
-                                      : (head.height + innerCol.implicitHeight + 26)
-
-        Component.onCompleted:
-            if (big.groupKey.length > 0)
-                big.collapsed = App.settingsGroupCollapsed(big.groupKey)
-        onCollapsedChanged:
-            if (big.groupKey.length > 0)
-                App.setSettingsGroupCollapsed(big.groupKey, big.collapsed)
-
-        Item {
-            id: head
-            anchors { left: parent.left; right: parent.right; top: parent.top
-                      margins: 12 }
-            height: 30
-
-            DrawnIcon {
-                id: chev
-                anchors { left: parent.left; verticalCenter: titleText.verticalCenter }
-                name: big.collapsed ? "chevron-right" : "chevron-down"
-                size: 14
-                color: App.themeTextMuted
-            }
-            Text {
-                id: titleText
-                anchors { left: chev.right; leftMargin: 8; top: parent.top }
-                text: big.title
-                color: App.themeTextPrimary
-                font.pixelSize: 15
-                font.bold: true
-            }
-            Rectangle {
-                anchors { left: parent.left; right: parent.right; bottom: parent.bottom }
-                height: 1
-                color: App.themeBorder
-            }
-            MouseArea {
-                anchors.fill: parent
-                cursorShape: Qt.PointingHandCursor
-                onClicked: big.collapsed = !big.collapsed
-            }
+        implicitHeight: 44
+        Label {
+            id: srLabel
+            anchors { left: parent.left; verticalCenter: parent.verticalCenter }
+            width: Math.min(implicitWidth, sr.width * 0.5)
+            text: sr.label
+            color: App.themeTextPrimary
+            elide: Text.ElideRight
         }
-
-        ColumnLayout {
-            id: innerCol
-            anchors { left: parent.left; right: parent.right; top: head.bottom
-                      leftMargin: 12; rightMargin: 12; topMargin: 10 }
-            spacing: 14
-            visible: !big.collapsed
+        RowLayout {
+            id: slot
+            anchors { right: parent.right; verticalCenter: parent.verticalCenter }
+            width: sr.stretch ? sr.width - srLabel.width - 12 : implicitWidth
+            layoutDirection: Qt.RightToLeft
+            spacing: 8
+        }
+        Rectangle {
+            anchors { left: parent.left; right: parent.right; bottom: parent.bottom }
+            height: 1
+            color: App.themeBorder
+            opacity: 0.6
         }
     }
 
-    component ColorRow: RowLayout {
+    component ColorRow: SettingRow {
         id: cr
-        property string label: ""
         property color value: "#000000"
         signal picked(color c)
-        spacing: 8
-        Layout.fillWidth: true
-        Label {
-            text: cr.label; color: App.themeTextPrimary
-            Layout.fillWidth: true
-            Layout.minimumWidth: 60
-            elide: Text.ElideRight
-            maximumLineCount: 1
-        }
         ColorPicker {
-            width: 36; height: 22; showAlpha: false
-            Layout.preferredWidth: 36; Layout.preferredHeight: 22
+            id: sw
+            Layout.preferredWidth: 26; Layout.preferredHeight: 26
+            showAlpha: false
             title: cr.label
             selectedColor: cr.value
-            onColorPicked: (c) => cr.picked(c)
+            //  Der Wähler setzt `selectedColor` selbst und bricht damit die Bindung; ohne sie folgte das Feld keinem
+            //  späteren Profilwechsel mehr.
+            onColorPicked: (c) => {
+                cr.picked(c)
+                sw.selectedColor = Qt.binding(() => cr.value)
+            }
+        }
+        Text {
+            text: cr.value.toString().toUpperCase()
+            color: App.themeTextMuted
+            font: App.fallbackFont("monospace", 12)
+        }
+    }
+
+    component EdColorRow: ColorRow {
+        id: ecr
+        property string colorKey: ""
+        label: Editor.colorLabel(ecr.colorKey)
+        value: root.edColor(ecr.colorKey)
+        onPicked: (c) => Editor.setColorFor(ecr.colorKey, c)
+    }
+
+    //  Verbundene Wahlknöpfe für kurze, gleichrangige Arten (Einfarbig/Verlauf/...).
+    component Segmented: Rectangle {
+        id: seg
+        property var labels: []
+        property int current: 0
+        signal picked(int index)
+        implicitWidth: segRow.implicitWidth + 2
+        implicitHeight: 32
+        radius: 6
+        color: "transparent"
+        border.color: App.themeBorder
+        Row {
+            id: segRow
+            anchors { fill: parent; margins: 1 }
+            Repeater {
+                model: seg.labels
+                delegate: Rectangle {
+                    id: segItem
+                    required property int index
+                    required property string modelData
+                    readonly property bool on: seg.current === segItem.index
+                    width: segText.implicitWidth + 28
+                    height: segRow.height
+                    radius: 5
+                    color: segItem.on ? Qt.rgba(App.themeAccent.r, App.themeAccent.g, App.themeAccent.b, 0.22)
+                                      : (segHover.hovered ? Qt.rgba(App.themeTextPrimary.r, App.themeTextPrimary.g,
+                                                                    App.themeTextPrimary.b, 0.05)
+                                                          : "transparent")
+                    Text {
+                        id: segText
+                        anchors.centerIn: parent
+                        text: segItem.modelData
+                        color: segItem.on ? App.themeTextPrimary : App.themeTextMuted
+                    }
+                    HoverHandler { id: segHover; cursorShape: Qt.PointingHandCursor }
+                    TapHandler { onTapped: seg.picked(segItem.index) }
+                }
+            }
+        }
+    }
+
+    component SliderRow: SettingRow {
+        id: sl
+        property real from: 0
+        property real to: 1
+        property real value: 0
+        property int decimals: 0
+        signal moved(real v)
+        stretch: true
+        Label {
+            Layout.preferredWidth: 34
+            horizontalAlignment: Text.AlignRight
+            text: sl.value.toFixed(sl.decimals)
+            color: App.themeTextMuted
+        }
+        Slider {
+            Layout.fillWidth: true
+            from: sl.from; to: sl.to
+            value: sl.value
+            onMoved: sl.moved(value)
+        }
+    }
+
+    component AngleRow: SettingRow {
+        id: ar
+        property int value: 0
+        signal modified(int v)
+        SpinBox {
+            from: 0; to: 360; stepSize: 5
+            value: ar.value
+            onValueModified: ar.modified(value)
+        }
+    }
+
+    component SwitchRow: SettingRow {
+        id: swr
+        property bool checked: false
+        signal toggled(bool on)
+        Switch {
+            checked: swr.checked
+            onToggled: swr.toggled(checked)
+        }
+    }
+
+    //  Profilkarte mit drei schrägen Farbstreifen; gemeinsam für Oberfläche und Editor.
+    component ProfileCard: Rectangle {
+        id: card
+        property string name: ""
+        property var swatches: []
+        property bool sel: false
+        signal chosen()
+        Layout.fillWidth: true
+        Layout.preferredHeight: 54
+        radius: 8
+        //  Heller als der Grund: die dunklen Profilfarben (bis Schwarz) muessen sich abheben.
+        color: card.sel ? Qt.rgba(App.themeAccent.r, App.themeAccent.g, App.themeAccent.b, 0.20)
+                        : (cardHover.hovered ? Qt.rgba(1, 1, 1, 0.09) : Qt.rgba(1, 1, 1, 0.06))
+        border.color: card.sel ? App.themeAccent : App.themeBorder
+        border.width: 1
+
+        HoverHandler { id: cardHover; cursorShape: Qt.PointingHandCursor }
+        TapHandler { onTapped: card.chosen() }
+
+        Row {
+            id: slashes
+            //  Von Rahmen zu Rahmen: oben und unten nur die Rahmenbreite frei.
+            anchors { left: parent.left; leftMargin: 14; top: parent.top; bottom: parent.bottom
+                      topMargin: card.border.width; bottomMargin: card.border.width }
+            spacing: 2
+            Repeater {
+                model: card.swatches
+                delegate: Item {
+                    id: slash
+                    required property var modelData
+                    //  Geschert statt Shape: der Software-Renderer beschneidet Shapes ganz ausserhalb der Liste nicht.
+                    readonly property real neig: height * 0.3
+                    height: slashes.height
+                    width: 9 + neig
+                    Rectangle {
+                        width: 9
+                        height: parent.height
+                        color: slash.modelData
+                        antialiasing: true
+                        transform: Matrix4x4 { matrix: Qt.matrix4x4(1, -0.3, 0, slash.neig, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1) }
+                    }
+                }
+            }
+        }
+        Text {
+            anchors { left: slashes.right; leftMargin: 12; right: parent.right; rightMargin: 10
+                      verticalCenter: parent.verticalCenter }
+            text: card.name
+            color: App.themeTextPrimary
+            font.pixelSize: 13
+            wrapMode: Text.WordWrap; maximumLineCount: 2
+            elide: Text.ElideRight
         }
     }
 
@@ -194,77 +337,32 @@ Item {
         clip: true
 
         ColumnLayout {
-            width: root.width
-            spacing: 14
-            BigGroup {
+            width: root.contentW
+            spacing: 30
+
+            SettingsBlock {
                 title: App.uiText(App.language, "SettingsDesignBlockUi")
                 groupKey: "design.block.ui"
+
                 SettingsGroup {
                     key: "design.profile"
                     title: App.uiText(App.language, "SettingsDesignProfileLabel")
                     Layout.fillWidth: true
                     GridLayout {
                         Layout.fillWidth: true
-                        columns: 4
+                        columns: root.twoCols ? 4 : 2
                         rowSpacing: 8; columnSpacing: 8
 
                         Repeater {
                             model: root.profiles
-                            delegate: Rectangle {
-                                id: card
+                            delegate: ProfileCard {
                                 required property var modelData
-                                Layout.fillWidth: true
-                                Layout.preferredHeight: 52
-                                radius: 8
-                                readonly property bool sel: App.designProfile === card.modelData.index
-                                //  Heller als die Gruppe: die dunklen Profilfarben (bis Schwarz) muessen sich abheben.
-                                color: sel ? Qt.rgba(App.themeAccent.r, App.themeAccent.g, App.themeAccent.b, 0.22)
-                                           : Qt.rgba(1, 1, 1, 0.12)
-                                border.color: sel ? App.themeAccent : App.themeBorder
-                                border.width: 1
-
-                                MouseArea {
-                                    anchors.fill: parent
-                                    cursorShape: Qt.PointingHandCursor
-                                    onClicked: {
-                                        App.setDesignProfile(card.modelData.index)
-                                        if (card.modelData.index === root.customIndex) root.loadTheme()
-                                    }
-                                }
-
-                                Row {
-                                    id: slashes
-                                    //  Von Rahmen zu Rahmen: oben und unten nur die Rahmenbreite frei.
-                                    anchors { left: parent.left; leftMargin: 14; top: parent.top; bottom: parent.bottom
-                                              topMargin: card.border.width; bottomMargin: card.border.width }
-                                    spacing: 2
-                                    Repeater {
-                                        model: [card.modelData.background, card.modelData.card, card.modelData.accent]
-                                        delegate: Item {
-                                            id: slash
-                                            required property var modelData
-                                            //  Geschert statt Shape: der Software-Renderer beschneidet Shapes ganz ausserhalb der Liste nicht.
-                                            readonly property real neig: height * 0.3
-                                            height: slashes.height
-                                            width: 9 + neig
-                                            Rectangle {
-                                                width: 9
-                                                height: parent.height
-                                                color: slash.modelData
-                                                antialiasing: true
-                                                transform: Matrix4x4 { matrix: Qt.matrix4x4(1, -0.3, 0, slash.neig, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1) }
-                                            }
-                                        }
-                                    }
-                                }
-                                Text {
-                                    anchors { left: slashes.right; leftMargin: 14; right: parent.right; rightMargin: 10
-                                              verticalCenter: parent.verticalCenter }
-                                    text: card.modelData.name
-                                    color: App.themeTextPrimary
-                                    font.pixelSize: 13; font.bold: true
-                                    wrapMode: Text.WordWrap; maximumLineCount: 2
-                                    elide: Text.ElideRight
+                                name: modelData.name
+                                swatches: [modelData.background, modelData.card, modelData.accent]
+                                sel: App.designProfile === modelData.index
+                                onChosen: {
+                                    App.setDesignProfile(modelData.index)
+                                    root.loadTheme()
                                 }
                             }
                         }
@@ -272,182 +370,170 @@ Item {
                 }
 
                 ColumnLayout {
-                    Layout.bottomMargin: 8
                     Layout.fillWidth: true
-                    spacing: 14
-                    enabled: root.customActive
-                    opacity: root.customActive ? 1.0 : 0.45
+                    spacing: 22
 
-                    SettingsGroup {
-                        key: "design.base-colors"
-                        title: App.uiText(App.language, "SettingsDesignBaseColors")
+                    GridLayout {
                         Layout.fillWidth: true
-                        ColorRow { label: App.uiText(App.language, "SettingsDesignBackground");      value: root.twBackground;  onPicked: (c) => { root.twBackground = c;  root.applyLive() } }
-                        ColorRow { label: App.uiText(App.language, "SettingsDesignCardTile");   value: root.twCard;        onPicked: (c) => { root.twCard = c;        root.applyLive() } }
-                        ColorRow { label: App.uiText(App.language, "SettingsDesignTextPrimary");      value: root.twTextPrimary; onPicked: (c) => { root.twTextPrimary = c; root.applyLive() } }
-                        ColorRow { label: App.uiText(App.language, "SettingsDesignTextMuted");    value: root.twTextMuted;   onPicked: (c) => { root.twTextMuted = c;   root.applyLive() } }
-                        ColorRow { label: App.uiText(App.language, "SettingsDesignFrame");           value: root.twBorder;      onPicked: (c) => { root.twBorder = c;      root.applyLive() } }
-                    }
+                        columns: root.twoCols ? 2 : 1
+                        columnSpacing: 38
+                        rowSpacing: 22
 
-                    SettingsGroup {
-                        key: "design.accent"
-                        title: App.uiText(App.language, "SettingsDesignAccent")
-                        Layout.fillWidth: true
-                        RowLayout {
-                            Layout.fillWidth: true; spacing: 8
-                            Label { text: App.uiText(App.language, "SettingsDesignAccentType"); color: App.themeTextPrimary
-                                    Layout.fillWidth: true; elide: Text.ElideRight }
-                            ComboBox {
-                                Layout.preferredWidth: 200
-                                model: [App.uiText(App.language, "SettingsDesignAccentSolid"), App.uiText(App.language, "SettingsDesignAccentGradient"), App.uiText(App.language, "SettingsDesignGlow")]
-                                currentIndex: root.twAccentType
-                                onActivated: { root.twAccentType = currentIndex; root.applyLive() }
-                            }
-                        }
-                        ColorRow { label: App.uiText(App.language, "SettingsDesignAccentColorLabel"); value: root.twAccent; onPicked: (c) => { root.twAccent = c; root.applyLive() } }
-                        ColorRow {
-                            label: App.uiText(App.language, "SettingsDesignAccentGradEnd"); value: root.twAccentGradEnd
-                            visible: root.twAccentType !== 0
-                            onPicked: (c) => { root.twAccentGradEnd = c; root.applyLive() }
-                        }
-                        RowLayout {
-                            Layout.fillWidth: true; spacing: 8
-                            visible: root.twAccentType === 2
-                            Label { text: App.uiText(App.language, "SettingsDesignGlowRadiusLabel"); color: App.themeTextPrimary; Layout.preferredWidth: 160 }
-                            Slider {
-                                Layout.fillWidth: true; from: 0; to: 40
-                                value: root.twGlowRadius
-                                onMoved: { root.twGlowRadius = value; root.applyLive() }
-                            }
-                            Label { text: Math.round(root.twGlowRadius); color: App.themeTextMuted }
-                        }
-                        RowLayout {
-                            Layout.fillWidth: true; spacing: 8
-                            visible: root.twAccentType === 2
-                            Label { text: App.uiText(App.language, "SettingsDesignGlowIntensityLabel"); color: App.themeTextPrimary; Layout.preferredWidth: 160 }
-                            Slider {
-                                Layout.fillWidth: true; from: 0; to: 1
-                                value: root.twGlowIntensity
-                                onMoved: { root.twGlowIntensity = value; root.applyLive() }
-                            }
-                            Label { text: root.twGlowIntensity.toFixed(2); color: App.themeTextMuted }
-                        }
-                    }
+                        ColumnLayout {
+                            Layout.preferredWidth: root.colW
+                            Layout.alignment: Qt.AlignTop
+                            spacing: 22
 
-                    SettingsGroup {
-                        key: "design.bg-gradient"
-                        title: App.uiText(App.language, "SettingsDesignBgGradient")
-                        Layout.fillWidth: true
-                        CheckBox {
-                            text: App.uiText(App.language, "SettingsDesignGradInsteadSolid")
-                            checked: root.twBgIsGradient
-                            onToggled: { root.twBgIsGradient = checked; root.applyLive() }
-                            contentItem: Text {
-                                text: parent.text; color: App.themeTextPrimary
-                                leftPadding: parent.indicator.width + 6; verticalAlignment: Text.AlignVCenter
+                            SettingsGroup {
+                                key: "design.base-colors"
+                                title: App.uiText(App.language, "SettingsDesignBaseColors")
+                                Layout.fillWidth: true
+                                contentSpacing: 0
+                                ColorRow { label: App.uiText(App.language, "SettingsDesignBackground");  value: root.twBackground;  onPicked: (c) => { root.twBackground = c;  root.applyLive() } }
+                                ColorRow { label: App.uiText(App.language, "SettingsDesignCardTile");    value: root.twCard;        onPicked: (c) => { root.twCard = c;        root.applyLive() } }
+                                ColorRow { label: App.uiText(App.language, "SettingsDesignTextPrimary"); value: root.twTextPrimary; onPicked: (c) => { root.twTextPrimary = c; root.applyLive() } }
+                                ColorRow { label: App.uiText(App.language, "SettingsDesignTextMuted");   value: root.twTextMuted;   onPicked: (c) => { root.twTextMuted = c;   root.applyLive() } }
+                                ColorRow { label: App.uiText(App.language, "SettingsDesignFrame");       value: root.twBorder;      onPicked: (c) => { root.twBorder = c;      root.applyLive() } }
                             }
-                        }
-                        ColorRow { label: App.uiText(App.language, "SettingsDesignGradStartLabel"); value: root.twBgGradStart; visible: root.twBgIsGradient; onPicked: (c) => { root.twBgGradStart = c; root.applyLive() } }
-                        ColorRow { label: App.uiText(App.language, "SettingsDesignGradEndLabel");  value: root.twBgGradEnd;   visible: root.twBgIsGradient; onPicked: (c) => { root.twBgGradEnd = c;   root.applyLive() } }
-                        RowLayout {
-                            Layout.fillWidth: true; spacing: 8
-                            visible: root.twBgIsGradient
-                            Label { text: App.uiText(App.language, "SettingsDesignAngleLabel"); color: App.themeTextPrimary
-                                    Layout.fillWidth: true; elide: Text.ElideRight }
-                            SpinBox {
-                                from: 0; to: 360; stepSize: 5
-                                value: root.twBgGradAngle
-                                onValueModified: { root.twBgGradAngle = value; root.applyLive() }
-                            }
-                        }
-                    }
 
-                    SettingsGroup {
-                        key: "design.tile-bg"
-                        title: App.uiText(App.language, "SettingsDesignTileBgLabel")
-                        Layout.fillWidth: true
-                        RowLayout {
-                            Layout.fillWidth: true; spacing: 8
-                            Label { text: App.uiText(App.language, "SettingsDesignTypeLabel"); color: App.themeTextPrimary
-                                    Layout.fillWidth: true; elide: Text.ElideRight }
-                            ComboBox {
-                                Layout.preferredWidth: 200
-                                model: [App.uiText(App.language, "SettingsDesignAccentSolid"), App.uiText(App.language, "SettingsDesignAccentGradient"), App.uiText(App.language, "SettingsDesignTileTransparent")]
-                                currentIndex: root.twTileBgType
-                                onActivated: { root.twTileBgType = currentIndex; root.applyLive() }
+                            SettingsGroup {
+                                key: "design.bars"
+                                title: App.uiText(App.language, "SettingsDesignBars")
+                                Layout.fillWidth: true
+                                contentSpacing: 0
+                                ColorRow { label: App.uiText(App.language, "SettingsDesignMenuBar");      value: root.twMenuBarBg;    onPicked: (c) => { root.twMenuBarBg = c;    root.applyLive() } }
+                                ColorRow { label: App.uiText(App.language, "SettingsDesignToolbar");      value: root.twToolbarBg;    onPicked: (c) => { root.twToolbarBg = c;    root.applyLive() } }
+                                ColorRow { label: App.uiText(App.language, "SettingsDesignFilterBar");    value: root.twFilterBarBg;  onPicked: (c) => { root.twFilterBarBg = c;  root.applyLive() } }
+                                ColorRow { label: App.uiText(App.language, "SettingsDesignStatusBar");    value: root.twStatusBarBg;  onPicked: (c) => { root.twStatusBarBg = c;  root.applyLive() } }
+                                ColorRow { label: App.uiText(App.language, "SettingsDesignSidebar");      value: root.twSidebarBg;    onPicked: (c) => { root.twSidebarBg = c;    root.applyLive() } }
+                                ColorRow { label: App.uiText(App.language, "SettingsDesignEditorBgText"); value: root.twEditorBgText; onPicked: (c) => { root.twEditorBgText = c; root.applyLive() } }
+                                ColorRow { label: App.uiText(App.language, "SettingsDesignEditorBgHtml"); value: root.twEditorBgHtml; onPicked: (c) => { root.twEditorBgHtml = c; root.applyLive() } }
                             }
                         }
-                        ColorRow { label: App.uiText(App.language, "SettingsDesignTileColorLabel");  value: root.twTileBgColor;  visible: root.twTileBgType !== 2; onPicked: (c) => { root.twTileBgColor = c;  root.applyLive() } }
-                        ColorRow { label: App.uiText(App.language, "SettingsDesignTileGradEndLabel"); value: root.twTileBgGradEnd; visible: root.twTileBgType === 1; onPicked: (c) => { root.twTileBgGradEnd = c; root.applyLive() } }
-                        RowLayout {
-                            Layout.fillWidth: true; spacing: 8
-                            visible: root.twTileBgType === 1
-                            Label { text: App.uiText(App.language, "SettingsDesignGradAngle"); color: App.themeTextPrimary
-                                    Layout.fillWidth: true; elide: Text.ElideRight }
-                            SpinBox {
-                                from: 0; to: 360; stepSize: 5
-                                value: root.twTileBgGradAngle
-                                onValueModified: { root.twTileBgGradAngle = value; root.applyLive() }
-                            }
-                        }
-                        CheckBox {
-                            text: App.uiText(App.language, "SettingsDesignGlowHover")
-                            checked: root.twTileGlowOnHover
-                            onToggled: { root.twTileGlowOnHover = checked; root.applyLive() }
-                            contentItem: Text {
-                                text: parent.text; color: App.themeTextPrimary
-                                leftPadding: parent.indicator.width + 6; verticalAlignment: Text.AlignVCenter
-                            }
-                        }
-                        RowLayout {
-                            Layout.fillWidth: true; spacing: 8
-                            visible: root.twTileGlowOnHover
-                            Label { text: App.uiText(App.language, "SettingsDesignGlowRadiusLabel"); color: App.themeTextPrimary; Layout.preferredWidth: 160 }
-                            Slider {
-                                Layout.fillWidth: true; from: 0; to: 40
-                                value: root.twTileGlowRadius
-                                onMoved: { root.twTileGlowRadius = value; root.applyLive() }
-                            }
-                            Label { text: Math.round(root.twTileGlowRadius); color: App.themeTextMuted }
-                        }
-                    }
 
-                    SettingsGroup {
-                        key: "design.bars"
-                        title: App.uiText(App.language, "SettingsDesignBars")
-                        Layout.fillWidth: true
-                        ColorRow { label: App.uiText(App.language, "SettingsDesignMenuBar");   value: root.twMenuBarBg;   onPicked: (c) => { root.twMenuBarBg = c;   root.applyLive() } }
-                        ColorRow { label: App.uiText(App.language, "SettingsDesignToolbar"); value: root.twToolbarBg; onPicked: (c) => { root.twToolbarBg = c;   root.applyLive() } }
-                        ColorRow { label: App.uiText(App.language, "SettingsDesignFilterBar");  value: root.twFilterBarBg; onPicked: (c) => { root.twFilterBarBg = c; root.applyLive() } }
-                        ColorRow { label: App.uiText(App.language, "SettingsDesignStatusBar");  value: root.twStatusBarBg; onPicked: (c) => { root.twStatusBarBg = c; root.applyLive() } }
-                        ColorRow { label: App.uiText(App.language, "SettingsDesignSidebar");  value: root.twSidebarBg;   onPicked: (c) => { root.twSidebarBg = c;   root.applyLive() } }
-                        ColorRow { label: App.uiText(App.language, "SettingsDesignEditorBgText"); value: root.twEditorBgText; onPicked: (c) => { root.twEditorBgText = c; root.applyLive() } }
-                        ColorRow { label: App.uiText(App.language, "SettingsDesignEditorBgHtml"); value: root.twEditorBgHtml; onPicked: (c) => { root.twEditorBgHtml = c; root.applyLive() } }
-                    }
+                        ColumnLayout {
+                            Layout.preferredWidth: root.colW
+                            Layout.alignment: Qt.AlignTop
+                            spacing: 22
 
-                    SettingsGroup {
-                        key: "design.pdf-viewer"
-                        title: App.uiText(App.language, "SettingsDesignPdfViewer")
-                        Layout.fillWidth: true
-                        ColorRow { label: App.uiText(App.language, "SettingsDesignViewerBg"); value: root.twPdfViewerBg;    onPicked: (c) => { root.twPdfViewerBg = c;    root.applyLive() } }
-                        ColorRow { label: App.uiText(App.language, "SettingsDesignThumbBg");  value: root.twPdfThumbBg;     onPicked: (c) => { root.twPdfThumbBg = c;     root.applyLive() } }
-                        ColorRow { label: App.uiText(App.language, "SettingsDesignSidebar");           value: root.twPdfSidebarBg;   onPicked: (c) => { root.twPdfSidebarBg = c;   root.applyLive() } }
-                        ColorRow { label: App.uiText(App.language, "SettingsDesignToolbar");         value: root.twPdfToolbarBg;   onPicked: (c) => { root.twPdfToolbarBg = c;   root.applyLive() } }
-                        ColorRow { label: App.uiText(App.language, "SettingsDesignScrollbar");           value: root.twPdfScrollbarBg; onPicked: (c) => { root.twPdfScrollbarBg = c; root.applyLive() } }
+                            SettingsGroup {
+                                key: "design.accent"
+                                title: App.uiText(App.language, "SettingsDesignAccent")
+                                Layout.fillWidth: true
+                                contentSpacing: 0
+                                SettingRow {
+                                    label: App.uiText(App.language, "SettingsDesignAccentType")
+                                    Segmented {
+                                        labels: [App.uiText(App.language, "SettingsDesignAccentSolid"),
+                                                 App.uiText(App.language, "SettingsDesignAccentGradient"),
+                                                 App.uiText(App.language, "SettingsDesignGlow")]
+                                        current: root.twAccentType
+                                        onPicked: (i) => { root.twAccentType = i; root.applyLive() }
+                                    }
+                                }
+                                ColorRow { label: App.uiText(App.language, "SettingsDesignAccentColorLabel"); value: root.twAccent; onPicked: (c) => { root.twAccent = c; root.applyLive() } }
+                                ColorRow {
+                                    label: App.uiText(App.language, "SettingsDesignAccentGradEnd"); value: root.twAccentGradEnd
+                                    visible: root.twAccentType !== 0
+                                    onPicked: (c) => { root.twAccentGradEnd = c; root.applyLive() }
+                                }
+                                SliderRow {
+                                    label: App.uiText(App.language, "SettingsDesignGlowRadiusLabel")
+                                    visible: root.twAccentType === 2
+                                    from: 0; to: 40; value: root.twGlowRadius
+                                    onMoved: (v) => { root.twGlowRadius = v; root.applyLive() }
+                                }
+                                SliderRow {
+                                    label: App.uiText(App.language, "SettingsDesignGlowIntensityLabel")
+                                    visible: root.twAccentType === 2
+                                    from: 0; to: 1; decimals: 2; value: root.twGlowIntensity
+                                    onMoved: (v) => { root.twGlowIntensity = v; root.applyLive() }
+                                }
+                            }
+
+                            SettingsGroup {
+                                key: "design.bg-gradient"
+                                title: App.uiText(App.language, "SettingsDesignBgGradient")
+                                Layout.fillWidth: true
+                                contentSpacing: 0
+                                SwitchRow {
+                                    label: App.uiText(App.language, "SettingsDesignGradInsteadSolid")
+                                    checked: root.twBgIsGradient
+                                    onToggled: (on) => { root.twBgIsGradient = on; root.applyLive() }
+                                }
+                                ColorRow { label: App.uiText(App.language, "SettingsDesignGradStartLabel"); value: root.twBgGradStart; visible: root.twBgIsGradient; onPicked: (c) => { root.twBgGradStart = c; root.applyLive() } }
+                                ColorRow { label: App.uiText(App.language, "SettingsDesignGradEndLabel");   value: root.twBgGradEnd;   visible: root.twBgIsGradient; onPicked: (c) => { root.twBgGradEnd = c;   root.applyLive() } }
+                                AngleRow {
+                                    label: App.uiText(App.language, "SettingsDesignAngleLabel")
+                                    visible: root.twBgIsGradient
+                                    value: root.twBgGradAngle
+                                    onModified: (v) => { root.twBgGradAngle = v; root.applyLive() }
+                                }
+                            }
+
+                            SettingsGroup {
+                                key: "design.tile-bg"
+                                title: App.uiText(App.language, "SettingsDesignTileBgLabel")
+                                Layout.fillWidth: true
+                                contentSpacing: 0
+                                SettingRow {
+                                    label: App.uiText(App.language, "SettingsDesignTypeLabel")
+                                    Segmented {
+                                        labels: [App.uiText(App.language, "SettingsDesignAccentSolid"),
+                                                 App.uiText(App.language, "SettingsDesignAccentGradient"),
+                                                 App.uiText(App.language, "SettingsDesignTileTransparent")]
+                                        current: root.twTileBgType
+                                        onPicked: (i) => { root.twTileBgType = i; root.applyLive() }
+                                    }
+                                }
+                                ColorRow { label: App.uiText(App.language, "SettingsDesignTileColorLabel");   value: root.twTileBgColor;   visible: root.twTileBgType !== 2; onPicked: (c) => { root.twTileBgColor = c;   root.applyLive() } }
+                                ColorRow { label: App.uiText(App.language, "SettingsDesignTileGradEndLabel"); value: root.twTileBgGradEnd; visible: root.twTileBgType === 1; onPicked: (c) => { root.twTileBgGradEnd = c; root.applyLive() } }
+                                AngleRow {
+                                    label: App.uiText(App.language, "SettingsDesignGradAngle")
+                                    visible: root.twTileBgType === 1
+                                    value: root.twTileBgGradAngle
+                                    onModified: (v) => { root.twTileBgGradAngle = v; root.applyLive() }
+                                }
+                                SwitchRow {
+                                    label: App.uiText(App.language, "SettingsDesignGlowHover")
+                                    checked: root.twTileGlowOnHover
+                                    onToggled: (on) => { root.twTileGlowOnHover = on; root.applyLive() }
+                                }
+                                SliderRow {
+                                    label: App.uiText(App.language, "SettingsDesignGlowRadiusLabel")
+                                    visible: root.twTileGlowOnHover
+                                    from: 0; to: 40; value: root.twTileGlowRadius
+                                    onMoved: (v) => { root.twTileGlowRadius = v; root.applyLive() }
+                                }
+                            }
+
+                            SettingsGroup {
+                                key: "design.pdf-viewer"
+                                title: App.uiText(App.language, "SettingsDesignPdfViewer")
+                                Layout.fillWidth: true
+                                contentSpacing: 0
+                                ColorRow { label: App.uiText(App.language, "SettingsDesignViewerBg");  value: root.twPdfViewerBg;    onPicked: (c) => { root.twPdfViewerBg = c;    root.applyLive() } }
+                                ColorRow { label: App.uiText(App.language, "SettingsDesignThumbBg");   value: root.twPdfThumbBg;     onPicked: (c) => { root.twPdfThumbBg = c;     root.applyLive() } }
+                                ColorRow { label: App.uiText(App.language, "SettingsDesignSidebar");   value: root.twPdfSidebarBg;   onPicked: (c) => { root.twPdfSidebarBg = c;   root.applyLive() } }
+                                ColorRow { label: App.uiText(App.language, "SettingsDesignToolbar");   value: root.twPdfToolbarBg;   onPicked: (c) => { root.twPdfToolbarBg = c;   root.applyLive() } }
+                                ColorRow { label: App.uiText(App.language, "SettingsDesignScrollbar"); value: root.twPdfScrollbarBg; onPicked: (c) => { root.twPdfScrollbarBg = c; root.applyLive() } }
+                            }
+                        }
                     }
 
                     SettingsGroup {
                         key: "design.theme-name-export"
                         title: App.uiText(App.language, "SettingsDesignThemeNameExport")
                         Layout.fillWidth: true
+                        contentSpacing: 12
                         RowLayout {
-                            Layout.fillWidth: true; spacing: 8
-                            Label { text: App.uiText(App.language, "FilterName"); color: App.themeTextPrimary; Layout.preferredWidth: 160 }
+                            Layout.fillWidth: true; spacing: 12
+                            Label { text: App.uiText(App.language, "FilterName"); color: App.themeTextPrimary; Layout.preferredWidth: 90 }
                             TextField {
                                 Layout.fillWidth: true
                                 text: root.twName
                                 color: App.themeTextPrimary
-                                onEditingFinished: { root.twName = text; root.applyLive() }
+                                onEditingFinished: if (text !== root.twName) { root.twName = text; root.applyLive(true) }
                             }
                         }
                         RowLayout {
@@ -455,12 +541,12 @@ Item {
                             Button {
                                 text: App.uiText(App.language, "SettingsDesignApplyBtn")
                                 highlighted: true
-                                onClicked: { App.setDesignProfile(root.customIndex); App.setCustomThemeFromMap(root.buildMap()) }
+                                onClicked: root.applyLive()
                             }
                             Item { Layout.fillWidth: true }
                             Button {
                                 text: App.uiText(App.language, "SettingsDesignExportBtn")
-                                onClicked: { App.setCustomThemeFromMap(root.buildMap()); exportDialog.open() }
+                                onClicked: { if (root.customActive) App.setCustomThemeFromMap(root.buildMap()); exportDialog.open() }
                             }
                             Button {
                                 text: App.uiText(App.language, "SettingsDesignImportBtn")
@@ -481,7 +567,7 @@ Item {
                 }
             }
 
-            BigGroup {
+            SettingsBlock {
                 title: App.uiText(App.language, "SettingsDesignBlockEditor")
                 groupKey: "design.block.editor"
 
@@ -492,158 +578,121 @@ Item {
 
                     GridLayout {
                         Layout.fillWidth: true
-                        columns: 4
+                        columns: root.twoCols ? 4 : 2
                         rowSpacing: 8; columnSpacing: 8
 
                         Repeater {
                             model: 4
-                            delegate: Rectangle {
-                                id: eCard
+                            delegate: ProfileCard {
                                 required property int index
-                                Layout.fillWidth: true
-                                Layout.preferredHeight: 52
-                                radius: 8
-                                readonly property bool sel: Editor.profile === eCard.index
-                                color: sel ? Qt.rgba(App.themeAccent.r, App.themeAccent.g, App.themeAccent.b, 0.22)
-                                           : Qt.rgba(1, 1, 1, 0.12)
-                                border.color: sel ? App.themeAccent : App.themeBorder
-                                border.width: 1
-
-                                MouseArea {
-                                    anchors.fill: parent
-                                    cursorShape: Qt.PointingHandCursor
-                                    onClicked: Editor.profile = eCard.index
-                                }
-
-                                Row {
-                                    id: eslashes
-                                    anchors { left: parent.left; leftMargin: 14; top: parent.top; bottom: parent.bottom
-                                              topMargin: eCard.border.width; bottomMargin: eCard.border.width }
-                                    spacing: 2
-                                    Repeater {
-                                        model: Editor.profileSwatches(eCard.index)
-                                        delegate: Item {
-                                            id: eslash
-                                            required property var modelData
-                                            readonly property real neig: height * 0.3
-                                            height: eslashes.height
-                                            width: 9 + neig
-                                            Rectangle {
-                                                width: 9
-                                                height: parent.height
-                                                color: eslash.modelData
-                                                antialiasing: true
-                                                transform: Matrix4x4 { matrix: Qt.matrix4x4(1, -0.3, 0, eslash.neig, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1) }
-                                            }
-                                        }
-                                    }
-                                }
-
-                                Text {
-                                    anchors { left: eslashes.right; leftMargin: 14; right: parent.right; rightMargin: 10
-                                              verticalCenter: parent.verticalCenter }
-                                    text: Editor.profileLabel(eCard.index)
-                                    color: App.themeTextPrimary
-                                    font.pixelSize: 13; font.bold: true
-                                    elide: Text.ElideRight
-                                }
+                                name: Editor.profileLabel(index)
+                                swatches: Editor.profileSwatches(index)
+                                sel: Editor.profile === index
+                                onChosen: Editor.profile = index
                             }
                         }
                     }
                 }
 
-                component EdColorRow: RowLayout {
-                    id: ecr
-                    property string colorKey: ""
+                GridLayout {
                     Layout.fillWidth: true
-                    spacing: 10
-                    Label {
-                        text: Editor.colorLabel(ecr.colorKey)
-                        color: App.themeTextPrimary
-                        Layout.preferredWidth: 180
-                    }
-                    Item { Layout.fillWidth: true }
-                    ColorPicker {
-                        implicitWidth: 44; implicitHeight: 24
-                        showAlpha: false
-                        title: Editor.colorLabel(ecr.colorKey)
-                        selectedColor: { void Editor.profile; return Editor.colorFor(ecr.colorKey) }
-                        onColorPicked: function (c) {
-                            Editor.setColorFor(ecr.colorKey, c)
-                            selectedColor = Qt.binding(function () {
-                                void Editor.profile
-                                return Editor.colorFor(ecr.colorKey)
-                            })
-                        }
-                    }
-                }
+                    columns: root.twoCols ? 2 : 1
+                    columnSpacing: 38
+                    rowSpacing: 22
 
-                SettingsGroup {
-                    key: "design.editor.surface"
-                    title: App.uiText(App.language, "SettingsEditorSurfaceGroup")
-                    Layout.fillWidth: true
-                    enabled: Editor.customActive
-                    opacity: Editor.customActive ? 1.0 : 0.45
+                    ColumnLayout {
+                        Layout.preferredWidth: root.colW
+                        Layout.alignment: Qt.AlignTop
+                        spacing: 22
 
-                    EdColorRow { colorKey: "background" }
-                    EdColorRow { colorKey: "text" }
-                    EdColorRow { colorKey: "currentLine" }
-                    EdColorRow { colorKey: "selection" }
-                    EdColorRow { colorKey: "gutterBackground" }
-                    EdColorRow { colorKey: "gutterText" }
-                    EdColorRow { colorKey: "gutterTextActive" }
-                }
-
-                SettingsGroup {
-                    key: "design.editor.syntax"
-                    title: App.uiText(App.language, "SettingsEditorSyntaxGroup")
-                    Layout.fillWidth: true
-                    enabled: Editor.customActive
-                    opacity: Editor.customActive ? 1.0 : 0.45
-
-                    EdColorRow { colorKey: "keyword" }
-                    EdColorRow { colorKey: "type" }
-                    EdColorRow { colorKey: "string" }
-                    EdColorRow { colorKey: "number" }
-                    EdColorRow { colorKey: "comment" }
-                    EdColorRow { colorKey: "preproc" }
-                    EdColorRow { colorKey: "function" }
-                    EdColorRow { colorKey: "operator" }
-                    EdColorRow { colorKey: "heading" }
-                    EdColorRow { colorKey: "emphasis" }
-                    EdColorRow { colorKey: "link" }
-                    EdColorRow { colorKey: "code" }
-
-                    RowLayout {
-                        Layout.fillWidth: true
-                        spacing: 8
-                        Label {
+                        SettingsGroup {
+                            key: "design.editor.surface"
+                            title: App.uiText(App.language, "SettingsEditorSurfaceGroup")
                             Layout.fillWidth: true
-                            visible: !Editor.customActive
-                            text: App.uiText(App.language, "SettingsEditorCustomHint")
-                            color: App.themeTextMuted
-                            font.pixelSize: 11
-                            wrapMode: Text.WordWrap
+                            contentSpacing: 0
+                            EdColorRow { colorKey: "background" }
+                            EdColorRow { colorKey: "text" }
                         }
-                        Item { Layout.fillWidth: true; visible: Editor.customActive }
-                        Button {
-                            text: App.uiText(App.language, "SettingsEditorSeedCustom")
-                            visible: !Editor.customActive
-                            onClicked: Editor.seedCustomFrom(Editor.profile)
+                        SettingsGroup {
+                            key: "design.editor.gutter"
+                            title: App.uiText(App.language, "SettingsEditorGutterGroup")
+                            Layout.fillWidth: true
+                            contentSpacing: 0
+                            EdColorRow { colorKey: "gutterBackground" }
+                            EdColorRow { colorKey: "gutterText" }
+                            EdColorRow { colorKey: "gutterTextActive" }
                         }
-                        Button {
-                            text: App.uiText(App.language, "SettingsEditorResetColors")
-                            visible: Editor.customActive
-                            onClicked: Editor.resetCustom()
+                        SettingsGroup {
+                            key: "design.editor.markdown"
+                            title: App.uiText(App.language, "SettingsEditorMarkdownGroup")
+                            Layout.fillWidth: true
+                            contentSpacing: 0
+                            EdColorRow { colorKey: "heading" }
+                            EdColorRow { colorKey: "emphasis" }
+                            EdColorRow { colorKey: "link" }
+                            EdColorRow { colorKey: "code" }
                         }
-                        Button {
-                            text: App.uiText(App.language, "SettingsDesignExportBtn")
-                            onClicked: edExportDialog.open()
+                    }
+
+                    ColumnLayout {
+                        Layout.preferredWidth: root.colW
+                        Layout.alignment: Qt.AlignTop
+                        spacing: 22
+
+                        SettingsGroup {
+                            key: "design.editor.highlight"
+                            title: App.uiText(App.language, "SettingsEditorHighlightGroup")
+                            Layout.fillWidth: true
+                            contentSpacing: 0
+                            EdColorRow { colorKey: "currentLine" }
+                            EdColorRow { colorKey: "selection" }
                         }
-                        Button {
-                            text: App.uiText(App.language, "SettingsDesignImportBtn")
-                            onClicked: edImportDialog.open()
+                        SettingsGroup {
+                            key: "design.editor.syntax"
+                            title: App.uiText(App.language, "SettingsEditorSyntaxGroup")
+                            Layout.fillWidth: true
+                            contentSpacing: 0
+                            EdColorRow { colorKey: "keyword" }
+                            EdColorRow { colorKey: "type" }
+                            EdColorRow { colorKey: "string" }
+                            EdColorRow { colorKey: "number" }
+                            EdColorRow { colorKey: "comment" }
+                            EdColorRow { colorKey: "preproc" }
+                            EdColorRow { colorKey: "function" }
+                            EdColorRow { colorKey: "operator" }
                         }
+                    }
+                }
+
+                RowLayout {
+                    Layout.fillWidth: true
+                    spacing: 8
+                    Label {
+                        Layout.fillWidth: true
+                        visible: !Editor.customActive
+                        text: App.uiText(App.language, "SettingsEditorCustomHint")
+                        color: App.themeTextMuted
+                        font.pixelSize: 11
+                        wrapMode: Text.WordWrap
+                    }
+                    Item { Layout.fillWidth: true; visible: Editor.customActive }
+                    Button {
+                        text: App.uiText(App.language, "SettingsEditorSeedCustom")
+                        visible: !Editor.customActive
+                        onClicked: Editor.seedCustomFrom(Editor.profile)
+                    }
+                    Button {
+                        text: App.uiText(App.language, "SettingsEditorResetColors")
+                        visible: Editor.customActive
+                        onClicked: Editor.resetCustom()
+                    }
+                    Button {
+                        text: App.uiText(App.language, "SettingsDesignExportBtn")
+                        onClicked: edExportDialog.open()
+                    }
+                    Button {
+                        text: App.uiText(App.language, "SettingsDesignImportBtn")
+                        onClicked: edImportDialog.open()
                     }
                 }
 
@@ -653,76 +702,52 @@ Item {
                     Layout.fillWidth: true
                     Layout.bottomMargin: 8
 
+                    //  Wie ein kleines Editorfenster: Randspalte, aktuelle Zeile (2) und Text je Zeile auf einer Höhe.
                     Rectangle {
                         Layout.fillWidth: true
                         Layout.preferredHeight: vorschau.implicitHeight + 20
-                        radius: 6
+                        radius: 8
                         color: Editor.background
                         border.color: App.themeBorder
 
-                        Row {
-                            anchors.fill: parent
-                            anchors.margins: 1
+                        Rectangle {
+                            x: 1; y: 1
+                            width: 40; height: parent.height - 2
+                            topLeftRadius: 7; bottomLeftRadius: 7
+                            color: Editor.gutterBackground
+                        }
 
-                            Rectangle {
-                                width: 34; height: parent.height
-                                color: Editor.gutterBackground
-                                Column {
-                                    anchors { top: parent.top; topMargin: 10
-                                              right: parent.right; rightMargin: 8 }
-                                    spacing: 2
-                                    Repeater {
-                                        model: 5
-                                        delegate: Text {
-                                            required property int index
-                                            text: (index + 1)
-                                            color: index === 1 ? Editor.gutterTextActive
-                                                               : Editor.gutterText
-                                            font: App.fallbackFont("monospace", 12)
-                                        }
+                        Column {
+                            id: vorschau
+                            x: 1; y: 10
+                            width: parent.width - 2
+                            Repeater {
+                                model: root.previewLines()
+                                delegate: Item {
+                                    id: zeile
+                                    required property int index
+                                    required property string modelData
+                                    width: vorschau.width
+                                    height: 21
+                                    Rectangle {
+                                        x: 40; width: parent.width - 40; height: parent.height
+                                        visible: zeile.index === 1
+                                        color: root.edColor("currentLine")
                                     }
-                                }
-                            }
-
-                            Column {
-                                id: vorschau
-                                padding: 10
-                                spacing: 2
-                                Text {
-                                    font: App.fallbackFont("monospace", 12)
-                                    textFormat: Text.StyledText
-                                    text: "<font color='" + root.edColor("preproc") + "'>#include</font>"
-                                        + " <font color='" + root.edColor("string") + "'>&lt;QString&gt;</font>"
-                                }
-                                Text {
-                                    font: App.fallbackFont("monospace", 12)
-                                    textFormat: Text.StyledText
-                                    text: "<font color='" + root.edColor("type") + "'>int</font>"
-                                        + " <font color='" + root.edColor("function") + "'>berechne</font>"
-                                        + "<font color='" + root.edColor("operator") + "'>(</font>"
-                                        + "<font color='" + root.edColor("type") + "'>int</font> wert"
-                                        + "<font color='" + root.edColor("operator") + "'>) {</font>"
-                                }
-                                Text {
-                                    font: App.fallbackFont("monospace", 12)
-                                    textFormat: Text.StyledText
-                                    text: "&nbsp;&nbsp;<font color='" + root.edColor("keyword") + "'>return</font>"
-                                        + " wert <font color='" + root.edColor("operator") + "'>*</font> "
-                                        + "<font color='" + root.edColor("number") + "'>42</font>"
-                                        + "<font color='" + root.edColor("operator") + "'>;</font>"
-                                        + "  <font color='" + root.edColor("comment") + "'>// Kommentar</font>"
-                                }
-                                Text {
-                                    font: App.fallbackFont("monospace", 12)
-                                    textFormat: Text.StyledText
-                                    text: "<font color='" + root.edColor("heading") + "'><b>## Ueberschrift</b></font>"
-                                        + "  <font color='" + root.edColor("emphasis") + "'><i>*kursiv*</i></font>"
-                                }
-                                Text {
-                                    font: App.fallbackFont("monospace", 12)
-                                    textFormat: Text.StyledText
-                                    text: "<font color='" + root.edColor("link") + "'>[Verweis](ziel)</font>"
-                                        + "  <font color='" + root.edColor("code") + "'>`code`</font>"
+                                    Text {
+                                        anchors { right: parent.left; rightMargin: -32; verticalCenter: parent.verticalCenter }
+                                        text: zeile.index + 1
+                                        color: zeile.index === 1 ? Editor.gutterTextActive : Editor.gutterText
+                                        font: App.fallbackFont("monospace", 12)
+                                    }
+                                    Text {
+                                        x: 52
+                                        anchors.verticalCenter: parent.verticalCenter
+                                        textFormat: Text.StyledText
+                                        text: zeile.modelData
+                                        color: root.edColor("text")
+                                        font: App.fallbackFont("monospace", 12)
+                                    }
                                 }
                             }
                         }
@@ -778,5 +803,5 @@ Item {
         }
     }
 
-    SmoothWheelArea { flickable: designScroll.contentItem }
+    SmoothWheelArea { flickable: designScroll.contentItem; backdrop: App.themeBackground }
 }

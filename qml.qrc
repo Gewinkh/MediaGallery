@@ -45,6 +45,8 @@
         <file>qml/tags/CategoryNode.qml</file>
         <file>qml/settings/SettingsDialog.qml</file>
         <file>qml/settings/SettingsGroup.qml</file>
+        <file>qml/settings/SettingsBlock.qml</file>
+        <file>qml/settings/SettingsLabelingTab.qml</file>
         <file>qml/settings/SettingsGeneralTab.qml</file>
         <file>qml/settings/SettingsViewTab.qml</file>
         <file>qml/settings/SettingsEditorTab.qml</file>
@@ -59,6 +61,8 @@
         <file>qml/settings/BookmarkEditDialog.qml</file>
         <file>qml/settings/BookmarkSubfolderDialog.qml</file>
         <file>qml/common/AppLogo.qml</file>
+        <file>qml/common/AccentSlash.qml</file>
+        <file>qml/common/CloseButton.qml</file>
         <file>qml/common/ChoiceChips.qml</file>
         <file>qml/common/ColorPicker.qml</file>
         <file>qml/common/PdfExportOptions.qml</file>
@@ -67,6 +71,8 @@
         <file>qml/common/PatternTable.qml</file>
         <file>qml/common/SyntaxHint.qml</file>
         <file>qml/common/ThemedMenu.qml</file>
+        <file>qml/common/LazyRows.qml</file>
+        <file>qml/common/PopupPanel.qml</file>
         <file>qml/common/FileChooser.qml</file>
         <file>qml/common/FolderImagePicker.qml</file>
         <file>qml/common/SmoothWheelArea.qml</file>
@@ -81,6 +87,7 @@
         <file>qml/style/DialogButtonBox.qml</file>
         <file>qml/style/Menu.qml</file>
         <file>qml/style/MenuItem.qml</file>
+        <file>qml/style/MenuSeparator.qml</file>
         <file>qml/style/RadioButton.qml</file>
         <file>qml/style/ScrollBar.qml</file>
         <file>qml/style/Slider.qml</file>

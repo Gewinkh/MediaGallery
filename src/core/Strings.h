@@ -101,11 +101,8 @@ enum class StringKey {
     AudioLayoutHint,
 
     MenuToggleOptions,
-    MenuSettingsItem,
     MenuLanguage,
     MenuVideoPlayback,
-    MenuVideoNative,
-    MenuVideoExternal,
 
     FilterAudio,
     FilterMedia,
@@ -398,6 +395,7 @@ enum class StringKey {
     SettingsViewListSizeHint,
     SettingsTabEditorShort,
     SettingsTabConverter,
+    SettingsTabLabeling,
     SettingsTabBookmarks,
     SettingsClose,
     SettingsEditorAutoSaveGroup,
@@ -773,12 +771,10 @@ enum class StringKey {
     CtxExtractPage,            // Kontextmenü: „Seite extrahieren"
     CtxExtractPages,           // Kontextmenü: „Mehrere Seiten extrahieren…"
     ExtractNameTitle,          // Namensdialog: Titel
-    ExtractNameLabel,          // Namensdialog: Feldbeschriftung
     ExtractCreateBtn,          // Namens-/Auswahldialog: „Extrahieren"
     ExtractDialogTitle,        // Auswahldialog (in-PDF): Titel
     ExtractGlobalTitle,        // Auswahldialog (global): Titel
     ExtractHintCtrl,           // Auswahldialog: Klick-/Strg-Hover-Hinweis
-    ExtractSelectedCount,      // Auswahldialog: „%1 Seiten ausgewählt"
     ExtractNoPdfs,             // Global: keine PDFs im Ordner
     FilterExtractBtn,          // FilterBar-Button: „Extrahieren"
     ExtractOkToast,            // Erfolgsmeldung: „PDF erstellt: %1"
@@ -848,7 +844,6 @@ enum class StringKey {
     ExtractLayoutCompact,          // Radio: Kompakt (minimalistisch)
     ExtractWorkPdfs,               // Panel links: „PDFs"
     ExtractWorkPages,              // Panel rechts: „Seiten"
-    ExtractWorkOrder,              // Auswahlleiste: „Auswahl · Reihenfolge = Ausgabe"
     ExtractWorkHint,               // Werkbank: Bedien-Hinweis (Klick/Drag&Drop)
     ExtractWorkDropHint,           // Leere Auswahlleiste: „Seiten hierher ziehen"
     //  Texteditor: Datei groesser als der Lesedeckel (nur lesen)
@@ -917,6 +912,9 @@ enum class StringKey {
     SettingsEditorProfileLabel,
     SettingsEditorSurfaceGroup,
     SettingsEditorSyntaxGroup,
+    SettingsEditorHighlightGroup,
+    SettingsEditorGutterGroup,
+    SettingsEditorMarkdownGroup,
     SettingsEditorPreviewGroup,
     SettingsEditorCustomHint,
     SettingsEditorSeedCustom,

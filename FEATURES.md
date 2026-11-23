@@ -215,15 +215,15 @@ of times · `{4}` exactly four times · `^` line start · `$` line end · `a|b` 
 ## Tags & Categories
 - **Tags** per folder, freely named, with colours
 - **Categories** in a tree, holding tags; colours can be passed down
-- **Side panel** with all tags as chips and the category tree, each with its own search field
+- **Side panel** with all tags as chips and the category tree, each with its own search field; headings and its small windows (new tag, rename, add tag, delete) look like the Settings window
 - **Gallery search** next to the *Filter* button: filters by name, file name and tags as you type, once you pause for a moment (clearing is instant)
 - **Filter modes**: OR, AND, ONLY, INCLUSIVE, combined with the media type
 - **Sorting** (inside the *Filter* button): date, name, tags or file size
 - **Assign tags** from a file's right-click menu, with *+ New…* to create one on the spot
 - **Drag and drop**: drop files on a tag or category to assign them; drag tags between categories; in compact mode (`Alt+S`) drag categories into each other
 - **Group mode and Add-to-tag mode** (right-click a tag): tag many files quickly with a click each, then *Done*
-- **Converter** (*Settings ▸ Converter*): turn tags into categories and back - the files come along
-- **Deleting a tag** also removes it in all subfolders (switchable in *Settings ▸ Tags*)
+- **Converter** (*Settings ▸ Labeling*, next to tags and categories in one tab with three foldable blocks): turn tags into categories and back - the files come along
+- **Deleting a tag** also removes it in all subfolders (switchable in *Settings ▸ Labeling ▸ Tags*)
 - **Undo and redo** in a bar at the bottom of the panel, covering every tag and category change (up to 20 steps). Each side shows a short mark of what the button would do, for example `T:holiday` for a tag or `+3 T:holiday` for an assignment to three files, coloured green (added), red (deleted), blue (moved) or yellow (renamed). Hover for the full text
 - Each half of a split window shows the tags of its own folder
 
@@ -239,7 +239,7 @@ of times · `{4}` exactly four times · `^` line start · `$` line end · `a|b` 
 ## PDF Page Extraction
 - **From an open PDF**: right-click a page ▸ *Extract page* or *Extract multiple pages…*
 - **From the whole folder**: the *Extract* button collects all PDFs, and you pick pages from several files into one new PDF
-- **Workbench**: PDF list on the left, pages on the right, and a bar at the bottom whose order is the order of the new file - drag to reorder, drag out to remove. `Ctrl` + hover shows a large preview
+- **Workbench**: PDF list on the left, pages on the right, and a slim bar at the bottom (as high as the *Extract* button) whose chips - mini page, position, page number - give the order of the new file; drag to reorder, drag out to remove; the *Extract* button sits at the right end of that bar, and `Enter` does the same (also in the name popup). `Ctrl` + hover shows a large preview. The dialog looks like the Settings window, with a round X at the top right
 - **Lossless**: pages are copied as they are - text, fonts and vector graphics stay intact, also from modern PDFs with a damaged cross-reference stream. Only files that cannot be copied (for example encrypted ones) become image pages
 - The suggested file name is in the app's language (*Report - Page 2*, *Bericht - Seite 2*); existing files are never overwritten
 
@@ -356,10 +356,12 @@ pages change the PDF directly. `Ctrl+Z` undoes them while the file is open.
 - **macOS app icon**: the same drawn logo appears in the Dock, in Finder and on the window
 - Bars that do not fit a narrow window **scroll sideways** with the mouse wheel
 - **Settings groups fold away**, and stay folded after a restart
+- **Menus and popups in one style**: rounded panels with a soft shadow, keyboard shortcuts right-aligned, drawn checkboxes and arrows; the filter popup lists its options as plain choice rows under small headings. The shadow is drawn once in advance, so opening a menu costs well under 2 ms extra in software mode
 
 ## Colours & Themes (*Settings ▸ Design*)
 - **8 interface themes** (Nordic Green, Nordic Dark Green, Dark OLED, Simple in the first row; Ocean Depth, Midnight Rose, Elegant, Custom below) and **4 editor themes** - independent of each other. Each interface theme card shows its name next to three slanted stripes in the theme's main colours, on a lighter card so even black stays visible
-- **Custom theme editor** with live preview: backgrounds (solid or gradient), text, borders, accent and glow, tiles, PDF viewer, editor and syntax colours
+- **Custom theme editor** with live preview: backgrounds (solid or gradient), text, borders, accent and glow, tiles, PDF viewer, editor and syntax colours - two columns, each colour with its hex code next to the swatch
+  - **Start from any theme**: on a built-in theme the fields show its colours; the first change copies that theme with your change into *Custom* and switches there, the built-in theme stays as it is (this replaces the previous Custom colours). The same for the editor colours
 - **Export and import** themes as JSON; a file that is not a theme is refused and your current theme stays
 - All icons and controls are drawn by the app itself, so they follow the theme and stay sharp at any display scaling
 

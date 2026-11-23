@@ -109,12 +109,23 @@ QString EditorController::colorLabel(const QString& key) const {
 }
 
 void EditorController::setColorFor(const QString& key, const QColor& c) {
-    //  Nur im Custom-Profil: in einem mitgelieferten Profil waere die Aenderung
-    //  beim naechsten Profilwechsel still weg. Die Oberflaeche graut den
-    //  Konfigurator dort ohnehin aus (`customActive`).
-    if (!customActive() || !c.isValid()) return;
+    if (!c.isValid()) return;
+    const bool fest = key == QLatin1String("background") || key == QLatin1String("text")
+                      || key == QLatin1String("currentLine") || key == QLatin1String("selection")
+                      || key == QLatin1String("gutterBackground") || key == QLatin1String("gutterText")
+                      || key == QLatin1String("gutterTextActive");
+    const Tok t = fest ? Tok::Count : tokenFromKey(key);
+    if (!fest && (t == Tok::Count || t == Tok::Normal)) return;
 
-    bool getroffen = true;
+    //  In einem mitgelieferten Profil beginnt die erste Aenderung ein eigenes Thema: dessen Farben nach Custom, dann
+    //  dort aendern - so geht im Profil selbst nichts verloren.
+    if (!customActive()) {
+        m_palette = paletteForProfile(toProfile(m_profile));
+        m_palette.name = profileName(EditorProfile::Custom);
+        m_profile = int(EditorProfile::Custom);
+        m_settings.setEditorProfile(m_profile);
+    }
+
     if      (key == QLatin1String("background"))       m_palette.background = c;
     else if (key == QLatin1String("text"))           { m_palette.text = c;
                                                        m_palette.tok[int(Tok::Normal)] = c; }
@@ -123,12 +134,7 @@ void EditorController::setColorFor(const QString& key, const QColor& c) {
     else if (key == QLatin1String("gutterBackground")) m_palette.gutterBackground = c;
     else if (key == QLatin1String("gutterText"))       m_palette.gutterText = c;
     else if (key == QLatin1String("gutterTextActive")) m_palette.gutterTextActive = c;
-    else {
-        const Tok t = tokenFromKey(key);
-        if (t == Tok::Count || t == Tok::Normal) getroffen = false;
-        else m_palette.tok[int(t)] = c;
-    }
-    if (!getroffen) return;
+    else                                               m_palette.tok[int(t)] = c;
 
     m_settings.setEditorCustomPalette(
         QString::fromUtf8(QJsonDocument(m_palette.toJson()).toJson(QJsonDocument::Compact)));

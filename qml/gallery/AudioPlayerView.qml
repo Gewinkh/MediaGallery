@@ -161,11 +161,7 @@ Item {
         height: viewEqContent.implicitHeight + 2 * padding
         x: Math.max(12, view.width - width - 12)
         y: head.height + 4
-        background: Rectangle {
-            color: App.themeMenuBarBg
-            border.color: App.themeBorder; border.width: 1
-            radius: 8
-        }
+        background: PopupPanel { }
         contentItem: AudioEqPanel { id: viewEqContent }
     }
 

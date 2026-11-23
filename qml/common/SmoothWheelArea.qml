@@ -15,6 +15,24 @@ MouseArea {
     // Ist ein Modifikator gesetzt, laufen Radereignisse OHNE ihn unverändert nach unten durch.
     property int requiredModifier: Qt.NoModifier
 
+    //  Deckende Flaeche, die mit dem Inhalt rollt: der Software-Zeichner meldet KWin dann ein Rechteck je Bild statt
+    //  eines je bewegtem Element (Einstellungen: ~300, KWin verzoegerte die Bilder). Durchsichtig = keine.
+    //  Neben dem Inhalt statt darin: ein zweites Kind im Inhalt nimmt `ScrollView` die eigene Inhaltshoehe.
+    property color backdrop: "transparent"
+    Loader {
+        active: wheelArea.backdrop.a > 0 && wheelArea.flickable !== null
+        parent: wheelArea.flickable ? wheelArea.flickable : wheelArea
+        z: -1
+        sourceComponent: Rectangle {
+            readonly property Flickable fl: wheelArea.flickable
+            x: -fl.contentX
+            y: -fl.contentY
+            width: Math.max(fl.contentWidth, fl.width)
+            height: Math.max(fl.contentHeight, fl.height)
+            color: wheelArea.backdrop
+        }
+    }
+
     //  Direktes Kind des Flickable, nicht von `contentItem`: bleibt beim Scrollen stehen.
     parent: flickable
     anchors.fill: parent

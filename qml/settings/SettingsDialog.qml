@@ -5,7 +5,7 @@ import QtQuick.Layouts
 import MediaGallery 1.0
 import "../common"
 
-// Acht Reiter; alle Werte laufen über die Singletons `App` und `Tags`, AppSettings bleibt unverändertes Backend.
+// Sieben Seiten; alle Werte laufen über die Singletons `App` und `Tags`, AppSettings bleibt unverändertes Backend.
 // Im Shell Loader-gated gehalten (RAM): erst beim Öffnen instanziiert, beim Schließen wieder freigegeben.
 Dialog {
     id: dlg
@@ -18,164 +18,210 @@ Dialog {
     modal: true
     //  Kein Schließen per Klick daneben: der zweite Klick eines Doppelklicks traf sonst die Kachel dahinter und öffnete sie.
     closePolicy: Popup.CloseOnEscape
-    //  Nie breiter/höher als das Fenster: sonst stehen Reiter und Inhalt unerreichbar über den Rand hinaus.
-    width: Math.min(940, (Overlay.overlay ? Overlay.overlay.width : 940) - 24)
-    height: Math.min(580, (Overlay.overlay ? Overlay.overlay.height : 580) - 24)
+    //  Nie breiter/höher als das Fenster: sonst stehen Seitenleiste und Inhalt unerreichbar über den Rand hinaus.
+    width: Math.min(1040, (Overlay.overlay ? Overlay.overlay.width : 1040) - 24)
+    height: Math.min(740, (Overlay.overlay ? Overlay.overlay.height : 740) - 24)
     anchors.centerIn: Overlay.overlay
     standardButtons: Dialog.NoButton
     padding: 0
+    header: null
+
+    readonly property var pageKeys: ["SettingsTabGeneral", "SettingsTabEditorShort", "SettingsTabViewLayout",
+                                     "SettingsTabLabeling", "SettingsTabAudio", "SettingsTabDesign",
+                                     "SettingsTabBookmarks"]
 
     background: Rectangle {
         color: App.themeBackground
         border.color: App.themeBorder
-        radius: 8
+        radius: 10
     }
 
-    contentItem: ColumnLayout {
+    contentItem: RowLayout {
         spacing: 0
 
-        // Tags, Kategorien und der Konverter arbeiten am SIDECAR eines Ordners; mit zwei Galerien nebeneinander muss
-        // man sagen können, welcher gemeint ist. Ohne Teilung bleibt die Zeile weg.
-        RowLayout {
-            id: paneChooser
-            //  Nur Tags (3), Kategorien (4), Konverter (5) gelten je Ordner; alles andere ist appweit.
-            readonly property bool folderScoped: tabBar.currentIndex >= 3
-                                                 && tabBar.currentIndex <= 5
-            visible: App.paneCount > 1 && folderScoped
-            Layout.fillWidth: true
-            Layout.leftMargin: 12
-            Layout.rightMargin: 12
-            Layout.topMargin: visible ? 10 : 0
-            spacing: 8
+        Item {
+            id: side
+            Layout.fillHeight: true
+            Layout.preferredWidth: Math.min(222, dlg.width * 0.26)
 
+            AccentSlash {
+                id: titleSlash
+                anchors { left: parent.left; leftMargin: 26; verticalCenter: titleText.verticalCenter }
+            }
             Text {
-                text: App.uiText(App.language, "SettingsPaneLabel")
-                color: App.themeTextMuted
-                font.pixelSize: 12
+                id: titleText
+                anchors { left: titleSlash.right; leftMargin: 8; right: parent.right; rightMargin: 12
+                          top: parent.top; topMargin: 26 }
+                text: dlg.title
+                color: App.themeTextPrimary
+                font.pixelSize: 16
+                elide: Text.ElideRight
             }
-            Repeater {
-                model: App.panes
-                delegate: Rectangle {
-                    id: paneChip
-                    required property int index
-                    required property var modelData
-                    readonly property bool on: App.settingsPaneIndex === paneChip.index
-                    height: 24
-                    width: chipText.implicitWidth + 22
-                    radius: 12
-                    color: paneChip.on
-                           ? Qt.rgba(App.themeAccent.r, App.themeAccent.g, App.themeAccent.b, 0.22)
-                           : (chipHover.hovered ? App.themeCard : "transparent")
-                    border.color: paneChip.on ? App.themeAccent : App.themeBorder
-                    Text {
-                        id: chipText
-                        anchors.centerIn: parent
-                        text: {
-                            var p = paneChip.modelData ? paneChip.modelData.currentFolder : ""
-                            if (!p) return (paneChip.index === 0 ? "1" : "2")
-                            var cut = Math.max(p.lastIndexOf("/"), p.lastIndexOf("\\"))
-                            return (paneChip.index === 0 ? "1 · " : "2 · ")
-                                   + (cut >= 0 ? p.slice(cut + 1) : p)
+
+            //  Name und Methode bleiben die der früheren Reiterleiste: `bench_shell de` schaltet darüber die Seite.
+            Column {
+                id: nav
+                objectName: "settingsTabBar"
+                property int currentIndex: 0
+                function setCurrentIndex(i: int) { nav.currentIndex = i }
+                anchors { left: parent.left; right: parent.right; top: titleText.bottom
+                          leftMargin: 14; rightMargin: 14; topMargin: 26 }
+                spacing: 3
+
+                Repeater {
+                    model: dlg.pageKeys
+                    delegate: Rectangle {
+                        id: navItem
+                        required property int index
+                        required property string modelData
+                        readonly property bool on: nav.currentIndex === navItem.index
+                        width: nav.width
+                        height: 40
+                        radius: 7
+                        color: navItem.on ? Qt.rgba(App.themeTextPrimary.r, App.themeTextPrimary.g,
+                                                    App.themeTextPrimary.b, 0.07)
+                                          : (navHover.hovered ? Qt.rgba(App.themeTextPrimary.r, App.themeTextPrimary.g,
+                                                                        App.themeTextPrimary.b, 0.035)
+                                                              : "transparent")
+                        AccentSlash {
+                            anchors { left: parent.left; leftMargin: 12; verticalCenter: parent.verticalCenter }
+                            visible: navItem.on
                         }
-                        color: App.themeTextPrimary
-                        font.pixelSize: 12
+                        Text {
+                            anchors { left: parent.left; leftMargin: 31; right: parent.right; rightMargin: 8
+                                      verticalCenter: parent.verticalCenter }
+                            text: App.uiText(App.language, navItem.modelData)
+                            color: navItem.on || navHover.hovered ? App.themeTextPrimary : App.themeTextMuted
+                            font.pixelSize: 14
+                            elide: Text.ElideRight
+                        }
+                        HoverHandler { id: navHover; cursorShape: Qt.PointingHandCursor }
+                        TapHandler { onTapped: nav.currentIndex = navItem.index }
                     }
-                    HoverHandler { id: chipHover }
-                    TapHandler { onTapped: App.setSettingsPaneIndex(paneChip.index) }
                 }
             }
         }
 
-        TabBar {
-            id: tabBar
-            objectName: "settingsTabBar"
-            Layout.fillWidth: true
-            Layout.margins: 12
-            Layout.bottomMargin: 0
-
-            // BESCHNEIDEN, sonst laufen die Reiter aus dem Dialog: die TabBar blättert intern über eine ListView, die ohne
-            // `clip` auch links und rechts außerhalb malt. Beides setzen - an der Leiste und am `contentItem`.
-            clip: true
-            Component.onCompleted: if (tabBar.contentItem) tabBar.contentItem.clip = true
-
-            background: Rectangle { color: "transparent" }
-
-            // Die `TabBar` blättert intern über eine `ListView`, hört aber von sich aus nicht aufs Rad. Dieselbe
-            // Komponente wie in den übrigen Leisten holt das nach.
-            SmoothWheelArea {
-                flickable: tabBar.contentItem
-                horizontal: true
-            }
-
-            component SettingsTab: TabButton {
-                // Mindestbreite je Reiter: sonst quetscht die `TabBar` alle auf dieselbe Breite und aus "Kategorien" wird
-                // "Kate...". Passen sie zusammen nicht mehr hinein, blättert sie stattdessen.
-                width: Math.max(tabLbl.implicitWidth + 26, 90)
-                contentItem: Text {
-                    id: tabLbl
-                    text: parent.text
-                    color: parent.checked ? App.themeAccent : App.themeTextMuted
-                    font.pixelSize: 13
-                    font.bold: parent.checked
-                    horizontalAlignment: Text.AlignHCenter
-                    verticalAlignment: Text.AlignVCenter
-                    elide: Text.ElideRight
-                }
-                background: Rectangle {
-                    color: parent.checked ? Qt.rgba(App.themeAccent.r, App.themeAccent.g, App.themeAccent.b, 0.15)
-                                          : Qt.rgba(1, 1, 1, 0.04)
-                    border.color: parent.checked ? Qt.rgba(App.themeAccent.r, App.themeAccent.g, App.themeAccent.b, 0.4)
-                                                 : App.themeBorder
-                    radius: 4
-                }
-            }
-
-            SettingsTab { text: App.uiText(App.language, "SettingsTabGeneral") }
-            SettingsTab { text: App.uiText(App.language, "SettingsTabEditorShort") }
-            SettingsTab { text: App.uiText(App.language, "SettingsTabViewLayout") }
-            SettingsTab { text: App.uiText(App.language, "FilterTags") }
-            SettingsTab { text: App.uiText(App.language, "SettingsTabCategories") }
-            SettingsTab { text: App.uiText(App.language, "SettingsTabConverter") }
-            SettingsTab { text: App.uiText(App.language, "SettingsTabAudio") }
-            SettingsTab { text: App.uiText(App.language, "SettingsTabDesign") }
-            SettingsTab { text: App.uiText(App.language, "SettingsTabBookmarks") }
+        Rectangle {
+            Layout.fillHeight: true
+            Layout.preferredWidth: 1
+            color: App.themeBorder
         }
 
-        StackLayout {
-            id: stack
-            objectName: "settingsStack"
+        ColumnLayout {
             Layout.fillWidth: true
             Layout.fillHeight: true
-            Layout.margins: 12
-            currentIndex: tabBar.currentIndex
+            spacing: 0
 
-            SettingsGeneralTab    {
-                id: generalTab
-                onRhiSwitchSucceeded: dlg.accept()
+            Item {
+                Layout.fillWidth: true
+                Layout.preferredHeight: 68
+
+                Text {
+                    id: pageTitle
+                    anchors { left: parent.left; leftMargin: 34; verticalCenter: parent.verticalCenter }
+                    width: Math.min(implicitWidth, parent.width - 34 - closeBtn.width - 30
+                                    - (paneChooser.visible ? paneChooser.width + 16 : 0))
+                    text: App.uiText(App.language, dlg.pageKeys[nav.currentIndex])
+                    color: App.themeTextPrimary
+                    font.pixelSize: 22
+                    elide: Text.ElideRight
+                }
+
+                // Tags, Kategorien und der Konverter arbeiten am SIDECAR eines Ordners; mit zwei Galerien nebeneinander
+                // muss man sagen können, welcher gemeint ist. Ohne Teilung bleibt die Wahl weg.
+                Row {
+                    id: paneChooser
+                    //  Nur die Verschlagwortung (3) gilt je Ordner; alles andere ist appweit.
+                    visible: App.paneCount > 1 && nav.currentIndex === 3
+                    anchors { right: closeBtn.left; rightMargin: 16; verticalCenter: parent.verticalCenter }
+                    spacing: 8
+
+                    Text {
+                        anchors.verticalCenter: parent.verticalCenter
+                        text: App.uiText(App.language, "SettingsPaneLabel")
+                        color: App.themeTextMuted
+                        font.pixelSize: 12
+                    }
+                    Repeater {
+                        model: App.panes
+                        delegate: Rectangle {
+                            id: paneChip
+                            required property int index
+                            required property var modelData
+                            readonly property bool on: App.settingsPaneIndex === paneChip.index
+                            height: 26
+                            width: Math.min(chipText.implicitWidth, 160) + 22
+                            radius: 13
+                            color: paneChip.on
+                                   ? Qt.rgba(App.themeAccent.r, App.themeAccent.g, App.themeAccent.b, 0.22)
+                                   : (chipHover.hovered ? App.themeCard : "transparent")
+                            border.color: paneChip.on ? App.themeAccent : App.themeBorder
+                            Text {
+                                id: chipText
+                                anchors.centerIn: parent
+                                width: Math.min(implicitWidth, 160)
+                                text: {
+                                    var p = paneChip.modelData ? paneChip.modelData.currentFolder : ""
+                                    if (!p) return (paneChip.index === 0 ? "1" : "2")
+                                    var cut = Math.max(p.lastIndexOf("/"), p.lastIndexOf("\\"))
+                                    return (paneChip.index === 0 ? "1 · " : "2 · ")
+                                           + (cut >= 0 ? p.slice(cut + 1) : p)
+                                }
+                                color: App.themeTextPrimary
+                                font.pixelSize: 12
+                                elide: Text.ElideMiddle
+                            }
+                            HoverHandler { id: chipHover }
+                            TapHandler { onTapped: App.setSettingsPaneIndex(paneChip.index) }
+                        }
+                    }
+                }
+
+                CloseButton {
+                    id: closeBtn
+                    objectName: "settingsCloseButton"
+                    anchors { right: parent.right; rightMargin: 22; verticalCenter: parent.verticalCenter }
+                    onClicked: dlg.accept()
+                }
+
+                Rectangle {
+                    anchors { left: parent.left; right: parent.right; bottom: parent.bottom }
+                    height: 1
+                    color: App.themeBorder
+                }
             }
-            SettingsEditorTab     {}
-            SettingsViewTab       {}
-            SettingsTagsTab       {}
-            SettingsCategoriesTab {}
-            SettingsConverterTab  {}
-            SettingsAudioTab      {}
-            SettingsDesignTab     {}
-            SettingsBookmarksTab  {}
-        }
 
-        RowLayout {
-            Layout.fillWidth: true
-            Layout.margins: 12
-            Layout.topMargin: 0
+            StackLayout {
+                id: stack
+                objectName: "settingsStack"
+                Layout.fillWidth: true
+                Layout.fillHeight: true
+                Layout.leftMargin: 34
+                Layout.rightMargin: 20
+                Layout.topMargin: 20
+                Layout.bottomMargin: 12
+                currentIndex: nav.currentIndex
 
-            Item { Layout.fillWidth: true }
-            Button {
-                text: App.uiText(App.language, "SettingsClose")
-                highlighted: true
-                onClicked: dlg.accept()
+                //  Seiten erst beim ersten Besuch bauen, danach behalten: alle sieben auf einmal hielten das Oeffnen
+                //  mit 403 Tags rund 4 s auf.
+                component Seite: Loader {
+                    active: false
+                    readonly property bool jetzt: StackLayout.isCurrentItem
+                    onJetztChanged: if (jetzt) active = true
+                    Component.onCompleted: if (jetzt) active = true
+                }
+
+                Seite {
+                    sourceComponent: SettingsGeneralTab { onRhiSwitchSucceeded: dlg.accept() }
+                }
+                Seite { sourceComponent: SettingsEditorTab {} }
+                Seite { sourceComponent: SettingsViewTab {} }
+                Seite { sourceComponent: SettingsLabelingTab {} }
+                Seite { sourceComponent: SettingsAudioTab {} }
+                Seite { sourceComponent: SettingsDesignTab {} }
+                Seite { sourceComponent: SettingsBookmarksTab {} }
             }
         }
     }
-
 }
-

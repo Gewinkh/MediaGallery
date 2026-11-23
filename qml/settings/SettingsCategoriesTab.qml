@@ -7,6 +7,7 @@ import "../common"
 
 Item {
     id: tab
+    implicitHeight: catCol.implicitHeight
 
     property var treeModel: []
     function refresh() { treeModel = Tags.categoriesTree() }
@@ -28,7 +29,8 @@ Item {
     function promptUniform(id, color)   { pId = id;  uColor.selectedColor = color; uInherit.checked = false; uniformDialog.open() }
 
     ColumnLayout {
-        anchors.fill: parent
+        id: catCol
+        width: parent.width
         spacing: 8
 
         RowLayout {
@@ -49,39 +51,34 @@ Item {
 
         Rectangle { Layout.fillWidth: true; height: 1; color: App.themeBorder }
 
-        ScrollView {
-            id: catScroll
+        //  Keine eigene Rollfläche: gerollt wird der ganze Reiter.
+        Column {
             Layout.fillWidth: true
-            Layout.fillHeight: true
-            contentWidth: availableWidth
-            clip: true
+            spacing: 4
 
-            Column {
-                width: tab.width
-                spacing: 4
-
-                Repeater {
-                    model: tab.treeModel
-                    // `setSource` statt `source:`: SettingsCategoryNode benutzt `required property`, die sich ausschließlich bei der
-                    // Erzeugung belegen lassen - mit `source:` bricht Qt ab, `onLoaded` feuert nie und der Baum blieb leer.
-                    delegate: Loader {
-                        id: rootLoader
-                        required property var modelData
-                        width: parent ? parent.width : 0
-                        Component.onCompleted: setSource(
-                            Qt.resolvedUrl("SettingsCategoryNode.qml"),
-                            { node: rootLoader.modelData, depth: 0, tab: tab })
-                    }
+            Repeater {
+                model: tab.treeModel
+                // `setSource` statt `source:`: SettingsCategoryNode benutzt `required property`, die sich ausschließlich bei der
+                // Erzeugung belegen lassen - mit `source:` bricht Qt ab, `onLoaded` feuert nie und der Baum blieb leer.
+                delegate: Loader {
+                    id: rootLoader
+                    required property var modelData
+                    //  Knoten ueber mehrere Bilder verteilt bauen: 120 Kategorien am Stueck hielten den Reiter auf.
+                    asynchronous: true
+                    width: parent ? parent.width : 0
+                    Component.onCompleted: setSource(
+                        Qt.resolvedUrl("SettingsCategoryNode.qml"),
+                        { node: rootLoader.modelData, depth: 0, tab: tab })
                 }
+            }
 
-                Text {
-                    visible: tab.treeModel.length === 0
-                    width: parent.width
-                    horizontalAlignment: Text.AlignHCenter
-                    text: App.uiText(App.language, "SettingsCatEmptyNew")
-                    color: App.themeTextMuted
-                    padding: 16
-                }
+            Text {
+                visible: tab.treeModel.length === 0
+                width: parent.width
+                horizontalAlignment: Text.AlignHCenter
+                text: App.uiText(App.language, "SettingsCatEmptyNew")
+                color: App.themeTextMuted
+                padding: 16
             }
         }
     }
@@ -184,8 +181,4 @@ Item {
             }
         }
     }
-
-    //  Weiches, schnelles Mausrad-Scrollen (Galerie-Muster) statt der festen
-    //  60 px je Rastung von `Flickable`.
-    SmoothWheelArea { flickable: catScroll.contentItem }
 }

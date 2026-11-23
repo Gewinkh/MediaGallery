@@ -67,8 +67,7 @@ public:
     // Der übersetzte Anzeigename kommt aus C++, nicht aus QML: ein dort zusammengesetzter Schlüssel ist für den
     // Katalog-Treiber ein Torso - der prüft, dass jeder benutzte Schlüssel wirklich existiert.
     Q_INVOKABLE QString colorLabel(const QString& key) const;
-    //  Setzt eine Farbe. Wirkt NUR im Custom-Profil; in einem mitgelieferten
-    //  Profil waere es ein stiller Verlust beim naechsten Profilwechsel.
+    //  Setzt eine Farbe im Custom-Profil; in einem mitgelieferten Profil kopiert sie es vorher dorthin und schaltet um.
     Q_INVOKABLE void   setColorFor(const QString& key, const QColor& c);
     //  Setzt das Custom-Profil auf die Vorgabe zurueck.
     Q_INVOKABLE void   resetCustom();

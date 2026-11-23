@@ -165,6 +165,7 @@ add_library(mg_lib STATIC
     src/app/PaneController.h
     src/app/DrawnIconData.cpp
     src/app/DrawnIconItem.cpp
+    src/app/ShadowItem.cpp
     src/app/PaneHost.cpp
     src/app/PaneHost.h
     src/app/PaneListModel.cpp

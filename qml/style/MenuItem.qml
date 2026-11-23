@@ -3,7 +3,7 @@ import QtQuick.Templates as T
 import MediaGallery 1.0
 
 // Gethemter Menüeintrag mit abgerundeter Akzent-Markierung und selbst gezeichnetem Untermenü-Pfeil.
-// `background.implicitWidth: 200` ist Pflicht - ThemedMenu rechnet die Menübreite daraus, sonst kollabiert das Popup.
+// `background.implicitWidth` ist Pflicht - ThemedMenu rechnet die Menübreite daraus, sonst kollabiert das Popup.
 T.MenuItem {
     id: control
 
@@ -16,8 +16,11 @@ T.MenuItem {
     padding: 6
     leftPadding: 10
     rightPadding: 10
-    spacing: 8
+    spacing: 9
     font.pixelSize: 13
+
+    //  Tastenkuerzel rechtsbuendig in Festbreite; steht nicht mehr im Text, damit die Spalten fluchten.
+    property string shortcut: ""
 
     // Qt setzt `Menu.currentIndex` beim Überfahren und lässt ihn stehen - fährt man aus dem Menü hinaus, bleibt der
     // Eintrag markiert. Verzögert aufräumen und nur, wenn er dann noch markiert ist: der Nachbar setzt den Index zuerst.
@@ -33,87 +36,76 @@ T.MenuItem {
     indicator: Rectangle {
         x: control.mirrored ? control.width - width - control.rightPadding : control.leftPadding
         y: control.topPadding + (control.availableHeight - height) / 2
-        implicitWidth:  control.checkable ? 15 : 0
-        implicitHeight: control.checkable ? 15 : 0
+        implicitWidth:  control.checkable ? 14 : 0
+        implicitHeight: control.checkable ? 14 : 0
         visible: control.checkable
-        radius: 4
+        radius: 3.5
 
         color: control.checked ? App.themeAccent : "transparent"
-        border.width: 1
-        border.color: control.checked ? App.themeAccent : App.themeBorder
+        border.width: control.checked ? 0 : 1
+        border.color: Qt.rgba(App.themeTextMuted.r, App.themeTextMuted.g, App.themeTextMuted.b, 0.8)
         opacity: control.enabled ? 1.0 : 0.5
 
         Behavior on color { ColorAnimation { duration: 110 } }
 
-        Item {
+        DrawnIconItem {
             anchors.centerIn: parent
-            width: 11; height: 11
             visible: control.checked
-            Rectangle {
-                x: 1; y: 6; width: 4.5; height: 1.8; radius: 0.9
-                color: App.themeBackground
-                transformOrigin: Item.Left
-                rotation: 45
-            }
-            Rectangle {
-                x: 3.3; y: 7.8; width: 7.8; height: 1.8; radius: 0.9
-                color: App.themeBackground
-                transformOrigin: Item.Left
-                rotation: -50
-            }
+            name: "check"
+            size: 10
+            color: App.themeBackground
         }
     }
 
-    //  Untermenü-Pfeil (Dreieck nach rechts bzw. links bei RTL).
-    arrow: Item {
-        x: control.mirrored ? control.padding : control.width - width - control.padding
+    //  Untermenü-Pfeil, gezeichnet wie alle Symbole (bei RTL nach links).
+    arrow: DrawnIconItem {
+        x: control.mirrored ? control.padding : control.width - width - control.rightPadding + 2
         y: control.topPadding + (control.availableHeight - height) / 2
-        implicitWidth:  control.subMenu ? 12 : 0
-        implicitHeight: control.subMenu ? 12 : 0
         visible: control.subMenu
-
-        Canvas {
-            anchors.centerIn: parent
-            width: 6; height: 9
-            readonly property color arrowColor: control.enabled ? App.themeTextMuted
-                                                                : App.themeBorder
-            readonly property bool flip: control.mirrored
-            onArrowColorChanged: requestPaint()
-            onFlipChanged: requestPaint()
-            onPaint: {
-                var ctx = getContext("2d")
-                ctx.reset()
-                ctx.fillStyle = arrowColor
-                ctx.beginPath()
-                if (flip) { ctx.moveTo(width, 0); ctx.lineTo(width, height); ctx.lineTo(0, height / 2) }
-                else      { ctx.moveTo(0, 0);     ctx.lineTo(0, height);     ctx.lineTo(width, height / 2) }
-                ctx.closePath(); ctx.fill()
-            }
-        }
+        name: control.mirrored ? "chevron-left" : "chevron-right"
+        size: control.subMenu ? 12 : 0
+        color: control.enabled ? App.themeTextMuted : App.themeBorder
     }
 
-    contentItem: Text {
+    contentItem: Item {
         //  Platz für Markierung bzw. Pfeil freihalten (wie Fusion), damit die
         //  Beschriftungen eines Menüs untereinander fluchten.
         readonly property real indicatorPad: control.checkable && control.indicator
                                              ? control.indicator.width + control.spacing : 0
         readonly property real arrowPad: control.subMenu && control.arrow
                                          ? control.arrow.width + control.spacing : 0
-        leftPadding:  !control.mirrored ? indicatorPad : arrowPad
-        rightPadding:  control.mirrored ? indicatorPad : arrowPad
+        readonly property real hintPad: control.shortcut.length > 0 ? hint.implicitWidth + 24 : 0
+        implicitWidth: beschriftung.implicitWidth + indicatorPad + arrowPad + hintPad
+        implicitHeight: beschriftung.implicitHeight
 
-        text: control.text
-        font: control.font
-        elide: Text.ElideRight
-        verticalAlignment: Text.AlignVCenter
-        color: control.enabled ? App.themeTextPrimary : App.themeTextMuted
+        Text {
+            id: beschriftung
+            anchors.fill: parent
+            leftPadding:  !control.mirrored ? parent.indicatorPad : parent.arrowPad + parent.hintPad
+            rightPadding:  control.mirrored ? parent.indicatorPad : parent.arrowPad + parent.hintPad
+            text: control.text
+            font: control.font
+            elide: Text.ElideRight
+            verticalAlignment: Text.AlignVCenter
+            color: control.enabled ? App.themeTextPrimary : App.themeTextMuted
+        }
+        Text {
+            id: hint
+            visible: control.shortcut.length > 0
+            anchors.verticalCenter: parent.verticalCenter
+            x: control.mirrored ? parent.arrowPad : parent.width - width - parent.arrowPad
+            text: control.shortcut
+            font: App.fallbackFont("monospace", 11)
+            color: App.themeTextMuted
+            opacity: control.enabled ? 1.0 : 0.6
+        }
     }
 
     background: Rectangle {
         //  s. Kopfkommentar - Mindestbreite für ThemedMenu.
-        implicitWidth: 200
-        implicitHeight: 26
-        radius: 4
+        implicitWidth: 160
+        implicitHeight: 28
+        radius: 5
         color: control.highlighted || control.down
                ? Qt.rgba(App.themeAccent.r, App.themeAccent.g, App.themeAccent.b, 0.20)
                : "transparent"

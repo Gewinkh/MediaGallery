@@ -84,24 +84,32 @@ Column {
                 anchors.verticalCenter: parent.verticalCenter
                 width: 24; height: 24
                 text: "\u22EE"
-                onClicked: ctxMenu.open()
-                ThemedMenu {
-                    id: ctxMenu
-                    MenuItem { text: App.uiText(App.language, "SettingsCatNodeAddSub"); onTriggered: nodeRoot.tab.promptAddSub(nodeRoot.node.id) }
-                    MenuItem { text: App.uiText(App.language, "SettingsCatNodeRename");     onTriggered: nodeRoot.tab.promptRename(nodeRoot.node.id, nodeRoot.node.name) }
-                    MenuSeparator {}
-                    MenuItem {
-                        text: App.uiText(App.language, "SettingsCatNodeSetUniform")
-                        enabled: !nodeRoot.node.uniform
-                        onTriggered: nodeRoot.tab.promptUniform(nodeRoot.node.id, nodeRoot.node.color)
+                onClicked: { menuLader.active = true; menuLader.item.menu.open() }
+                //  Menue erst beim ersten Klick: 120 fertige Menues mit je sieben Eintraegen bremsten den Reiter.
+                Loader {
+                    id: menuLader
+                    active: false
+                    sourceComponent: Item {
+                        property alias menu: ctxMenu
+                        ThemedMenu {
+                            id: ctxMenu
+                            MenuItem { text: App.uiText(App.language, "SettingsCatNodeAddSub"); onTriggered: nodeRoot.tab.promptAddSub(nodeRoot.node.id) }
+                            MenuItem { text: App.uiText(App.language, "SettingsCatNodeRename");     onTriggered: nodeRoot.tab.promptRename(nodeRoot.node.id, nodeRoot.node.name) }
+                            MenuSeparator {}
+                            MenuItem {
+                                text: App.uiText(App.language, "SettingsCatNodeSetUniform")
+                                enabled: !nodeRoot.node.uniform
+                                onTriggered: nodeRoot.tab.promptUniform(nodeRoot.node.id, nodeRoot.node.color)
+                            }
+                            MenuItem {
+                                text: App.uiText(App.language, "SettingsCatNodeClearUniform")
+                                enabled: nodeRoot.node.uniform
+                                onTriggered: Tags.setCategoryUniformColor(nodeRoot.node.id, false, nodeRoot.node.color, false)
+                            }
+                            MenuSeparator {}
+                            MenuItem { text: App.uiText(App.language, "BookmarkDelete"); onTriggered: nodeRoot.tab.promptDelete(nodeRoot.node.id, nodeRoot.node.name) }
+                        }
                     }
-                    MenuItem {
-                        text: App.uiText(App.language, "SettingsCatNodeClearUniform")
-                        enabled: nodeRoot.node.uniform
-                        onTriggered: Tags.setCategoryUniformColor(nodeRoot.node.id, false, nodeRoot.node.color, false)
-                    }
-                    MenuSeparator {}
-                    MenuItem { text: App.uiText(App.language, "BookmarkDelete"); onTriggered: nodeRoot.tab.promptDelete(nodeRoot.node.id, nodeRoot.node.name) }
                 }
             }
         }
@@ -159,6 +167,7 @@ Column {
             delegate: Loader {
                 id: childLoader
                 required property var modelData
+                asynchronous: true
                 width: parent ? parent.width : 0
                 Component.onCompleted: setSource(
                     Qt.resolvedUrl("SettingsCategoryNode.qml"),

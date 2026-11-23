@@ -191,9 +191,11 @@ ApplicationWindow {
             }
         }
 
+        //  Ohne `menu` ein schlichter Knopf (Einstellungen oeffnet das Fenster direkt).
         component MenuBtn: Rectangle {
             property string label: ""
             property var menu: null
+            signal clicked()
             width: mbLbl.implicitWidth + 22; height: 24; radius: 5
             anchors.verticalCenter: parent.verticalCenter
             color: (mbHover.hovered || (menu && menu.opened)) ? App.themeCard : "transparent"
@@ -202,7 +204,8 @@ ApplicationWindow {
             HoverHandler { id: mbHover }
             TapHandler {
                 onTapped: {
-                    if (menu.opened) menu.close()
+                    if (!menu) parent.clicked()
+                    else if (menu.opened) menu.close()
                     else menu.popup(parent, 0, parent.height + 3)
                 }
             }
@@ -214,21 +217,23 @@ ApplicationWindow {
                       verticalCenter: parent.verticalCenter }
             height: parent.height
             spacing: 2
-            PaneMenuBtn { label: App.menuFileText;  folder: false; visible: !paneArea.split }
-            MenuBtn { label: App.menuViewText;      menu: viewMenu }
-            MenuBtn { label: App.menuSettingsText;  menu: settingsMenu }
-            PaneMenuBtn { label: App.menuBookmarksText; folder: true; visible: !paneArea.split }
+            //  Namen sind Griffe fuer `bench_shell tb`.
+            PaneMenuBtn { objectName: "menuBtnFile"; label: App.menuFileText;  folder: false; visible: !paneArea.split }
+            MenuBtn { objectName: "menuBtnView"; label: App.menuViewText;      menu: viewMenu }
+            MenuBtn { objectName: "menuBtnSettings"; label: App.menuSettingsText;  onClicked: shell.openSettings() }
+            PaneMenuBtn { objectName: "menuBtnFolders"; label: App.menuBookmarksText; folder: true; visible: !paneArea.split }
         }
 
         ThemedMenu {
             id: viewMenu
+            objectName: "viewMenu"
             MenuItem {
                 text: App.menuToggleOptionsText
+                shortcut: "Alt+S"
                 checkable: true
                 checked: App.optionsVisible
                 onTriggered: App.toggleOptions()
             }
-            MenuSeparator {}
             MenuItem {
                 text: App.uiText(App.language, "MenuTileSize")
                 onTriggered: {
@@ -239,6 +244,7 @@ ApplicationWindow {
             MenuSeparator {}
             MenuItem {
                 text: App.uiText(App.language, "ViewMenuImmersive")
+                shortcut: "F"
                 checkable: true
                 checked: shell.immersiveFullscreen
                 onTriggered: shell.toggleImmersive()
@@ -256,25 +262,6 @@ ApplicationWindow {
                 text: App.uiText(App.language, "MenuSwapPanes")
                 enabled: App.paneCount > 1
                 onTriggered: App.swapPanes()
-            }
-        }
-
-        ThemedMenu {
-            id: settingsMenu
-            MenuItem {
-                text: App.uiText(App.language, "MenuSettingsItem")
-                onTriggered: shell.openSettings()
-            }
-            MenuSeparator {}
-            ThemedMenu {
-                title: App.menuLanguageText
-                MenuItem { text: "Deutsch"; checkable: true; checked: App.language === "de"; onTriggered: App.setLanguage("de") }
-                MenuItem { text: "English"; checkable: true; checked: App.language === "en"; onTriggered: App.setLanguage("en") }
-            }
-            ThemedMenu {
-                title: App.menuVideoPlaybackText
-                MenuItem { text: App.menuVideoNativeText;   checkable: true; checked: App.videoPlayback === "native";   onTriggered: App.setVideoPlayback("native") }
-                MenuItem { text: App.menuVideoExternalText; checkable: true; checked: App.videoPlayback === "external"; onTriggered: App.setVideoPlayback("external") }
             }
         }
 

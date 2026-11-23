@@ -158,8 +158,15 @@ $env:MG_HTML_EIGEN=1; .\build\Release\MediaGallery.exe
 ## Changelog
 
 ### Latest
-- **Fix**: **PDF editor**: Notes, arrows and shapes now stay directly under the mouse while dragging, including with display scaling in software mode.
-- **Fix**: **Markdown**: Text selections now display correctly, with their endpoints following the mouse accurately across paragraphs and code blocks.
+- **Change**: **Settings**: Redesigned layout with a left sidebar, cleaner page structure and reorganized colour settings. Tags, Categories and Converter are now grouped under *Labeling*.
+- **New**: **Design**: Built-in themes can now be customized directly. The first change automatically creates a *Custom* theme.
+- **Improvement**: **Settings**: The window opens much faster, even with many tags and categories. Pages load on first visit, while larger lists fill in the background.
+- **Improvement**: **Main window**: Menus, filters and toolbars now share a cleaner design with rounded panels, subtle shadows and aligned shortcuts. Settings opens directly from the menu bar.
+- **Fix**: **Menus**: Hidden entries no longer leave empty space or unnecessary width in context menus.
+- **Improvement**: **Gallery**: File context menus open much faster, even with hundreds of tags. Tag and category lists appear immediately while remaining entries load in the background.
+- **Improvement**: **PDF extraction**: Page selection and naming dialogs now follow the redesigned settings layout, with a more compact page bar and Enter-key support.
+- **Improvement**: **Tags & Categories**: The panel and its dialogs are redesigned.
+- **Change**: **Settings**: Language and video playback options are now located under *General*.
 
 ---
 

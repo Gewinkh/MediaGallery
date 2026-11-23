@@ -1788,10 +1788,6 @@ QString AppController::menuOpenFolderText()     const { return Strings::get(Stri
 QString AppController::menuRefreshText()        const { return Strings::get(StringKey::MenuRefresh); }
 QString AppController::menuQuitText()           const { return Strings::get(StringKey::MenuQuit); }
 QString AppController::menuToggleOptionsText()  const { return Strings::get(StringKey::MenuToggleOptions); }
-QString AppController::menuLanguageText()       const { return Strings::get(StringKey::MenuLanguage); }
-QString AppController::menuVideoPlaybackText()  const { return Strings::get(StringKey::MenuVideoPlayback); }
-QString AppController::menuVideoNativeText()    const { return Strings::get(StringKey::MenuVideoNative); }
-QString AppController::menuVideoExternalText()  const { return Strings::get(StringKey::MenuVideoExternal); }
 QString AppController::menuBookmarksText()      const { return Strings::get(StringKey::MenuBookmarks); }
 QString AppController::menuBookmarksEmptyText() const { return Strings::get(StringKey::MenuBookmarksEmpty); }
 QString AppController::bookmarkAddText()        const { return Strings::get(StringKey::BookmarkAdd); }
@@ -1860,8 +1856,9 @@ QVariantList AppController::designProfiles() const {
     return out;
 }
 
-QVariantMap AppController::customThemeMap() const {
-    const ThemeColors t = m_settings.customTheme();
+QVariantMap AppController::themeMap(int profile) const {
+    const auto p = static_cast<DesignProfile>(qBound(0, profile, static_cast<int>(DesignProfile::Custom)));
+    const ThemeColors t = p == DesignProfile::Custom ? m_settings.customTheme() : AppSettings::themeForProfile(p);
     QVariantMap m;
     m.insert("name",            t.name);
     m.insert("background",      t.background);

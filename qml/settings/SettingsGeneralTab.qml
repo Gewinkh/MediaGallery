@@ -13,15 +13,15 @@ Item {
     component GenSubHead: ColumnLayout {
         property alias text: subLabel.text
         Layout.fillWidth: true
-        Layout.topMargin: 6
-        spacing: 6
-        Rectangle { Layout.fillWidth: true; height: 1; color: App.themeBorder }
+        Layout.topMargin: 14
+        spacing: 0
         Text {
             id: subLabel
             Layout.fillWidth: true
             color: App.themeTextMuted
             font.pixelSize: 11
-            font.bold: true
+            font.capitalization: Font.AllUppercase
+            font.letterSpacing: 1.2
         }
     }
 
@@ -460,5 +460,5 @@ Item {
 
     //  Weiches, schnelles Mausrad-Scrollen (Galerie-Muster) statt der festen
     //  60 px je Rastung von `Flickable`.
-    SmoothWheelArea { flickable: genScroll.contentItem }
+    SmoothWheelArea { flickable: genScroll.contentItem; backdrop: App.themeBackground }
 }

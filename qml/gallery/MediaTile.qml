@@ -541,8 +541,16 @@ Rectangle {
                              : Tags.categoryIdsForFile(tile.fileName)
             }
 
+            // Zeilen erst beim Aufklappen bauen und behalten, solange die Liste gleich bleibt: 403 Tags kosteten
+            // den Rechtsklick sonst rund 0,3 s je Oeffnen.
             ThemedMenu {
+                id: tagMenu
                 title: App.uiText(App.language, "CtxAddTag")
+                property LazyRows rows: LazyRows { viewHeight: tile.Window.height }
+                onAboutToShow: {
+                    if (rows.fill(ctxMenu.ctxTags, ctxMenu.ctxTags.join("\n"), t => ({ name: t })))
+                        _measure()
+                }
                 MenuItem {
                     text: "+  " + App.uiText(App.language, "CatPanelNewTag")
                     onTriggered: tile.newTagRequested(tile.filePath)
@@ -554,25 +562,35 @@ Rectangle {
                     enabled: false
                     text: App.uiText(App.language, "FilterNoTagsShort")
                 }
-                Repeater {
-                    model: ctxMenu.ctxTags
+                // Instantiator statt Repeater: nachgereichte Zeilen landen per insertItem an ihrem Platz.
+                Instantiator {
+                    model: tagMenu.rows.model
+                    onObjectAdded: (i, o) => tagMenu.insertItem(3 + i, o)
+                    onObjectRemoved: (i, o) => tagMenu.removeItem(o)
                     delegate: MenuItem {
-                        required property var modelData
-                        text: modelData
+                        required property string name
+                        text: name
                         checkable: true
-                        checked: ctxMenu.fileTags.indexOf(modelData) >= 0
+                        checked: ctxMenu.fileTags.indexOf(name) >= 0
                         onTriggered: {
                             if (tile.multi)
                                 mediaModel.setTagOnSelection(
-                                    modelData, ctxMenu.fileTags.indexOf(modelData) < 0)
+                                    name, ctxMenu.fileTags.indexOf(name) < 0)
                             else
-                                mediaModel.toggleTag(tile.filePath, modelData)
+                                mediaModel.toggleTag(tile.filePath, name)
                         }
                     }
                 }
             }
             ThemedMenu {
+                id: catMenu
                 title: App.uiText(App.language, "CtxAddCategory")
+                property LazyRows rows: LazyRows { viewHeight: tile.Window.height }
+                onAboutToShow: {
+                    if (rows.fill(ctxMenu.ctxCats, JSON.stringify(ctxMenu.ctxCats),
+                                  c => ({ name: c.name, catId: c.id })))
+                        _measure()
+                }
                 MenuItem {
                     text: "+  " + App.uiText(App.language, "CatPanelAddCategory")
                     onTriggered: tile.newCategoryRequested(tile.filePath)
@@ -584,20 +602,23 @@ Rectangle {
                     enabled: false
                     text: App.uiText(App.language, "CtxNoCategories")
                 }
-                Repeater {
-                    model: ctxMenu.ctxCats
+                Instantiator {
+                    model: catMenu.rows.model
+                    onObjectAdded: (i, o) => catMenu.insertItem(3 + i, o)
+                    onObjectRemoved: (i, o) => catMenu.removeItem(o)
                     delegate: MenuItem {
-                        required property var modelData
-                        text: modelData.name
+                        required property string name
+                        required property var catId
+                        text: name
                         checkable: true
-                        checked: ctxMenu.fileCatIds.indexOf(modelData.id) >= 0
+                        checked: ctxMenu.fileCatIds.indexOf(catId) >= 0
                         onTriggered: {
                             if (tile.multi)
                                 Tags.setFilesInCategory(
-                                    modelData.id, mediaModel.selectedFileNames(),
-                                    ctxMenu.fileCatIds.indexOf(modelData.id) < 0)
+                                    catId, mediaModel.selectedFileNames(),
+                                    ctxMenu.fileCatIds.indexOf(catId) < 0)
                             else
-                                Tags.toggleFileInCategory(modelData.id, tile.fileName)
+                                Tags.toggleFileInCategory(catId, tile.fileName)
                         }
                     }
                 }

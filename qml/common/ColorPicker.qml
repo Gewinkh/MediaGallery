@@ -46,18 +46,22 @@ Item {
         border.color: swatchHover.hovered ? Qt.rgba(1, 1, 1, 0.7)
                                           : Qt.rgba(1, 1, 1, 0.3)
 
-        Canvas {
+        //  Schachbrett nur, wenn es durch eine durchsichtige Farbe zu sehen ist.
+        Loader {
             anchors.fill: parent
             anchors.margins: 2
-            onPaint: {
-                var ctx = getContext("2d")
-                var s = 5
-                for (var y = 0; y < height; y += s)
-                    for (var x = 0; x < width; x += s) {
-                        var even = ((x / s) + (y / s)) % 2 === 0
-                        ctx.fillStyle = even ? "#3a3a3a" : "#555555"
-                        ctx.fillRect(x, y, s, s)
-                    }
+            active: root.selectedColor.a < 1
+            sourceComponent: Canvas {
+                onPaint: {
+                    var ctx = getContext("2d")
+                    var s = 5
+                    for (var y = 0; y < height; y += s)
+                        for (var x = 0; x < width; x += s) {
+                            var even = ((x / s) + (y / s)) % 2 === 0
+                            ctx.fillStyle = even ? "#3a3a3a" : "#555555"
+                            ctx.fillRect(x, y, s, s)
+                        }
+                }
             }
         }
         Rectangle {
@@ -71,214 +75,224 @@ Item {
         TapHandler {
             onTapped: {
                 root._loadFrom(root.selectedColor)
-                popup.open()
+                popupLader.active = true
+                popupLader.item.popup.open()
             }
         }
     }
 
-    Popup {
-        id: popup
-        // Größe aus dem Inhalt statt fester Höhenformel: die alte Rechnung (250 + 26 für Alpha) war zu knapp, die
-        // Knöpfe ragten aus dem Rahmen. Automatisch ist zudem robust gegen Schriftgröße und Plattform.
-        padding: 16
-        modal: true
-        focus: true
-        closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
-        parent: Overlay.overlay
-        anchors.centerIn: Overlay.overlay
+    //  Fenster erst beim ersten Klick bauen: jede Tag-Zeile der Einstellungen traegt einen Waehler, 403 fertige
+    //  Fenster mit je vier Canvas kosteten den Labeling-Reiter rund 1 s.
+    Loader {
+        id: popupLader
+        active: false
+        sourceComponent: Item {
+            property alias popup: popup
+            Popup {
+                id: popup
+                // Größe aus dem Inhalt statt fester Höhenformel: die alte Rechnung (250 + 26 für Alpha) war zu knapp, die
+                // Knöpfe ragten aus dem Rahmen. Automatisch ist zudem robust gegen Schriftgröße und Plattform.
+                padding: 16
+                modal: true
+                focus: true
+                closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
+                parent: Overlay.overlay
+                anchors.centerIn: Overlay.overlay
 
-        background: Rectangle {
-            color: App.themeCard
-            border.color: App.themeBorder
-            radius: 8
-        }
+                background: Rectangle {
+                    color: App.themeCard
+                    border.color: App.themeBorder
+                    radius: 8
+                }
 
-        contentItem: Column {
-            spacing: 10
+                contentItem: Column {
+                    spacing: 10
 
-            Text {
-                text: root.title
-                color: App.themeTextPrimary
-                font.pixelSize: 13
-                font.bold: true
-            }
-
-            Item {
-                id: svArea
-                width: 240
-                height: 150
-
-                Canvas {
-                    id: svCanvas
-                    anchors.fill: parent
-                    property real hue: root._wh
-                    onHueChanged: requestPaint()
-                    onPaint: {
-                        var ctx = getContext("2d")
-                        ctx.clearRect(0, 0, width, height)
-                        ctx.fillStyle = Qt.hsva(hue < 0 ? 0 : hue, 1, 1, 1)
-                        ctx.fillRect(0, 0, width, height)
-                        // Weiß (links) -> transparent (rechts) = Sättigung
-                        var gx = ctx.createLinearGradient(0, 0, width, 0)
-                        gx.addColorStop(0, "rgba(255,255,255,1)")
-                        gx.addColorStop(1, "rgba(255,255,255,0)")
-                        ctx.fillStyle = gx
-                        ctx.fillRect(0, 0, width, height)
-                        // Transparent (oben) -> schwarz (unten) = Helligkeit
-                        var gy = ctx.createLinearGradient(0, 0, 0, height)
-                        gy.addColorStop(0, "rgba(0,0,0,0)")
-                        gy.addColorStop(1, "rgba(0,0,0,1)")
-                        ctx.fillStyle = gy
-                        ctx.fillRect(0, 0, width, height)
+                    Text {
+                        text: root.title
+                        color: App.themeTextPrimary
+                        font.pixelSize: 13
+                        font.bold: true
                     }
-                }
 
-                Rectangle {
-                    id: svCursor
-                    width: 12; height: 12; radius: 6
-                    border.width: 2; border.color: "white"
-                    color: "transparent"
-                    x: root._ws * svArea.width - width / 2
-                    y: (1 - root._wv) * svArea.height - height / 2
-                    Rectangle {
-                        anchors.centerIn: parent
-                        width: 10; height: 10; radius: 5
-                        border.width: 1; border.color: "black"
-                        color: "transparent"
-                    }
-                }
+                    Item {
+                        id: svArea
+                        width: 240
+                        height: 150
 
-                MouseArea {
-                    anchors.fill: parent
-                    onPressed: (m) => update(m.x, m.y)
-                    onPositionChanged: (m) => update(m.x, m.y)
-                    function update(px, py) {
-                        root._ws = Math.max(0, Math.min(1, px / svArea.width))
-                        root._wv = Math.max(0, Math.min(1, 1 - py / svArea.height))
-                    }
-                }
-            }
-
-            Item {
-                width: 240; height: 16
-                Canvas {
-                    anchors.fill: parent
-                    onPaint: {
-                        var ctx = getContext("2d")
-                        var g = ctx.createLinearGradient(0, 0, width, 0)
-                        for (var i = 0; i <= 6; ++i)
-                            g.addColorStop(i / 6, Qt.hsva(i / 6, 1, 1, 1))
-                        ctx.fillStyle = g
-                        ctx.fillRect(0, 0, width, height)
-                    }
-                }
-                Rectangle {
-                    width: 6; height: parent.height + 4
-                    y: -2
-                    x: root._wh * parent.width - width / 2
-                    color: "transparent"
-                    border.width: 2; border.color: "white"
-                    radius: 2
-                }
-                MouseArea {
-                    anchors.fill: parent
-                    onPressed: (m) => set(m.x)
-                    onPositionChanged: (m) => set(m.x)
-                    function set(px) {
-                        root._wh = Math.max(0, Math.min(1, px / width))
-                    }
-                }
-            }
-
-            Item {
-                width: 240; height: 16
-                visible: root.showAlpha
-                Canvas {
-                    anchors.fill: parent
-                    onPaint: {
-                        var ctx = getContext("2d")
-                        var s = 4
-                        for (var y = 0; y < height; y += s)
-                            for (var x = 0; x < width; x += s) {
-                                var even = ((x / s) + (y / s)) % 2 === 0
-                                ctx.fillStyle = even ? "#3a3a3a" : "#555555"
-                                ctx.fillRect(x, y, s, s)
+                        Canvas {
+                            id: svCanvas
+                            anchors.fill: parent
+                            property real hue: root._wh
+                            onHueChanged: requestPaint()
+                            onPaint: {
+                                var ctx = getContext("2d")
+                                ctx.clearRect(0, 0, width, height)
+                                ctx.fillStyle = Qt.hsva(hue < 0 ? 0 : hue, 1, 1, 1)
+                                ctx.fillRect(0, 0, width, height)
+                                // Weiß (links) -> transparent (rechts) = Sättigung
+                                var gx = ctx.createLinearGradient(0, 0, width, 0)
+                                gx.addColorStop(0, "rgba(255,255,255,1)")
+                                gx.addColorStop(1, "rgba(255,255,255,0)")
+                                ctx.fillStyle = gx
+                                ctx.fillRect(0, 0, width, height)
+                                // Transparent (oben) -> schwarz (unten) = Helligkeit
+                                var gy = ctx.createLinearGradient(0, 0, 0, height)
+                                gy.addColorStop(0, "rgba(0,0,0,0)")
+                                gy.addColorStop(1, "rgba(0,0,0,1)")
+                                ctx.fillStyle = gy
+                                ctx.fillRect(0, 0, width, height)
                             }
-                    }
-                }
-                Rectangle {
-                    anchors.fill: parent
-                    gradient: Gradient {
-                        orientation: Gradient.Horizontal
-                        GradientStop { position: 0.0; color: Qt.hsva(root._wh < 0 ? 0 : root._wh, root._ws, root._wv, 0) }
-                        GradientStop { position: 1.0; color: Qt.hsva(root._wh < 0 ? 0 : root._wh, root._ws, root._wv, 1) }
-                    }
-                }
-                Rectangle {
-                    width: 6; height: parent.height + 4
-                    y: -2
-                    x: root._wa * parent.width - width / 2
-                    color: "transparent"
-                    border.width: 2; border.color: "white"
-                    radius: 2
-                }
-                MouseArea {
-                    anchors.fill: parent
-                    onPressed: (m) => set(m.x)
-                    onPositionChanged: (m) => set(m.x)
-                    function set(px) {
-                        root._wa = Math.max(0, Math.min(1, px / width))
-                    }
-                }
-            }
+                        }
 
-            Row {
-                spacing: 8
-                Rectangle {
-                    width: 32; height: 28; radius: 4
-                    border.width: 1; border.color: App.themeBorder
-                    color: root._working()
-                }
-                TextField {
-                    id: hexField
-                    width: 200
-                    text: root._hex(root._working(), root.showAlpha)
-                    color: App.themeTextPrimary
-                    selectByMouse: true
-                    font.family: "monospace"
-                    background: Rectangle {
-                        color: Qt.rgba(1, 1, 1, 0.06)
-                        border.color: App.themeBorder
-                        radius: 4
-                    }
-                    onActiveFocusChanged: root._editingHex = activeFocus
-                    onEditingFinished: {
-                        var t = text.trim()
-                        if (!t.startsWith("#")) t = "#" + t
-                        if (/^#([0-9a-fA-F]{6}|[0-9a-fA-F]{8})$/.test(t)) {
-                            root._loadFrom(Qt.color(t))
-                        } else {
-                            text = root._hex(root._working(), root.showAlpha)
+                        Rectangle {
+                            id: svCursor
+                            width: 12; height: 12; radius: 6
+                            border.width: 2; border.color: "white"
+                            color: "transparent"
+                            x: root._ws * svArea.width - width / 2
+                            y: (1 - root._wv) * svArea.height - height / 2
+                            Rectangle {
+                                anchors.centerIn: parent
+                                width: 10; height: 10; radius: 5
+                                border.width: 1; border.color: "black"
+                                color: "transparent"
+                            }
+                        }
+
+                        MouseArea {
+                            anchors.fill: parent
+                            onPressed: (m) => update(m.x, m.y)
+                            onPositionChanged: (m) => update(m.x, m.y)
+                            function update(px, py) {
+                                root._ws = Math.max(0, Math.min(1, px / svArea.width))
+                                root._wv = Math.max(0, Math.min(1, 1 - py / svArea.height))
+                            }
                         }
                     }
-                }
-            }
 
-            Row {
-                spacing: 8
-                anchors.right: parent.right
-                Button {
-                    text: App.uiText(App.language, "SettingsCancel")
-                    onClicked: popup.close()
-                }
-                Button {
-                    text: App.uiText(App.language, "SettingsOk")
-                    highlighted: true
-                    onClicked: {
-                        var c = root._working()
-                        root.selectedColor = c
-                        root.colorPicked(c)
-                        popup.close()
+                    Item {
+                        width: 240; height: 16
+                        Canvas {
+                            anchors.fill: parent
+                            onPaint: {
+                                var ctx = getContext("2d")
+                                var g = ctx.createLinearGradient(0, 0, width, 0)
+                                for (var i = 0; i <= 6; ++i)
+                                    g.addColorStop(i / 6, Qt.hsva(i / 6, 1, 1, 1))
+                                ctx.fillStyle = g
+                                ctx.fillRect(0, 0, width, height)
+                            }
+                        }
+                        Rectangle {
+                            width: 6; height: parent.height + 4
+                            y: -2
+                            x: root._wh * parent.width - width / 2
+                            color: "transparent"
+                            border.width: 2; border.color: "white"
+                            radius: 2
+                        }
+                        MouseArea {
+                            anchors.fill: parent
+                            onPressed: (m) => set(m.x)
+                            onPositionChanged: (m) => set(m.x)
+                            function set(px) {
+                                root._wh = Math.max(0, Math.min(1, px / width))
+                            }
+                        }
+                    }
+
+                    Item {
+                        width: 240; height: 16
+                        visible: root.showAlpha
+                        Canvas {
+                            anchors.fill: parent
+                            onPaint: {
+                                var ctx = getContext("2d")
+                                var s = 4
+                                for (var y = 0; y < height; y += s)
+                                    for (var x = 0; x < width; x += s) {
+                                        var even = ((x / s) + (y / s)) % 2 === 0
+                                        ctx.fillStyle = even ? "#3a3a3a" : "#555555"
+                                        ctx.fillRect(x, y, s, s)
+                                    }
+                            }
+                        }
+                        Rectangle {
+                            anchors.fill: parent
+                            gradient: Gradient {
+                                orientation: Gradient.Horizontal
+                                GradientStop { position: 0.0; color: Qt.hsva(root._wh < 0 ? 0 : root._wh, root._ws, root._wv, 0) }
+                                GradientStop { position: 1.0; color: Qt.hsva(root._wh < 0 ? 0 : root._wh, root._ws, root._wv, 1) }
+                            }
+                        }
+                        Rectangle {
+                            width: 6; height: parent.height + 4
+                            y: -2
+                            x: root._wa * parent.width - width / 2
+                            color: "transparent"
+                            border.width: 2; border.color: "white"
+                            radius: 2
+                        }
+                        MouseArea {
+                            anchors.fill: parent
+                            onPressed: (m) => set(m.x)
+                            onPositionChanged: (m) => set(m.x)
+                            function set(px) {
+                                root._wa = Math.max(0, Math.min(1, px / width))
+                            }
+                        }
+                    }
+
+                    Row {
+                        spacing: 8
+                        Rectangle {
+                            width: 32; height: 28; radius: 4
+                            border.width: 1; border.color: App.themeBorder
+                            color: root._working()
+                        }
+                        TextField {
+                            id: hexField
+                            width: 200
+                            text: root._hex(root._working(), root.showAlpha)
+                            color: App.themeTextPrimary
+                            selectByMouse: true
+                            font.family: "monospace"
+                            background: Rectangle {
+                                color: Qt.rgba(1, 1, 1, 0.06)
+                                border.color: App.themeBorder
+                                radius: 4
+                            }
+                            onActiveFocusChanged: root._editingHex = activeFocus
+                            onEditingFinished: {
+                                var t = text.trim()
+                                if (!t.startsWith("#")) t = "#" + t
+                                if (/^#([0-9a-fA-F]{6}|[0-9a-fA-F]{8})$/.test(t)) {
+                                    root._loadFrom(Qt.color(t))
+                                } else {
+                                    text = root._hex(root._working(), root.showAlpha)
+                                }
+                            }
+                        }
+                    }
+
+                    Row {
+                        spacing: 8
+                        anchors.right: parent.right
+                        Button {
+                            text: App.uiText(App.language, "SettingsCancel")
+                            onClicked: popup.close()
+                        }
+                        Button {
+                            text: App.uiText(App.language, "SettingsOk")
+                            highlighted: true
+                            onClicked: {
+                                var c = root._working()
+                                root.selectedColor = c
+                                root.colorPicked(c)
+                                popup.close()
+                            }
+                        }
                     }
                 }
             }

@@ -2,6 +2,7 @@ import QtQuick
 import QtQuick.Window
 import QtQuick.Controls
 import MediaGallery 1.0
+import "../common"
 
 // Seitenauswahl der Extraktion - EINE Komponente für beide Aufrufwege (in-PDF und global) und zwei Layouts:
 // Werkbank (Reihenfolge der unteren Leiste = Ausgabereihenfolge) oder kompaktes Einzelraster in
@@ -186,21 +187,38 @@ Item {
         }
     }
 
+    function _confirm() {
+        if (root.askName) nameDlg.openFor(root.defaultName, root.requireName)
+        else              root._submit("")
+    }
+    function _confirmPerTaste() {
+        if (barModel.count > 0 && (!root.askName || !PdfExtract.busy)) root._confirm()
+    }
+
+    //  Werkbank: rechts in der Auswahlleiste; kompakt (keine Leiste): im Kopf neben dem Schliessknopf.
+    component ConfirmButton: Button {
+        enabled: barModel.count > 0 && (!root.askName || !PdfExtract.busy)
+        highlighted: true
+        text: root.confirmText.length > 0 ? root.confirmText
+                                          : App.uiText(App.language, "ExtractCreateBtn")
+        onClicked: root._confirm()
+    }
+
     Popup {
         id: dlg
         modal: true
         focus: true
         anchors.centerIn: Overlay.overlay
-        width:  Math.min(root.width  - 40, Math.max(640, root.width  * 0.94))
-        height: Math.min(root.height - 40, Math.max(460, root.height * 0.94))
-        padding: 14
+        width:  Math.round(Math.min(root.width  - 40, Math.max(640, root.width  * 0.94)))
+        height: Math.round(Math.min(root.height - 40, Math.max(460, root.height * 0.94)))
+        padding: 0
         closePolicy: Popup.CloseOnEscape
         onClosed: { root._ctrlDown = false; root._clearHover(); root.dismissed() }
 
         background: Rectangle {
-            color: App.themeMenuBarBg
-            border.color: App.themeBorder; border.width: 1
-            radius: 6
+            color: App.themeBackground
+            border.color: App.themeBorder
+            radius: 10
         }
 
         contentItem: FocusScope {
@@ -212,59 +230,57 @@ Item {
             Keys.onReleased: (e) => {
                 if (e.key === Qt.Key_Control && !e.isAutoRepeat) root._ctrlDown = false
             }
+            Keys.onReturnPressed: (e) => { root._confirmPerTaste(); e.accepted = true }
+            Keys.onEnterPressed:  (e) => { root._confirmPerTaste(); e.accepted = true }
 
-            Column {
-                anchors.fill: parent
-                spacing: 10
+            Item {
+                id: head
+                anchors { left: parent.left; right: parent.right; top: parent.top }
+                height: 68
 
+                AccentSlash {
+                    id: headSlash
+                    anchors { left: parent.left; leftMargin: 26; verticalCenter: parent.verticalCenter }
+                }
                 Text {
+                    anchors { left: headSlash.right; leftMargin: 10; verticalCenter: parent.verticalCenter
+                              right: headConfirm.visible ? headConfirm.left : closeBtn.left; rightMargin: 16 }
                     text: root.titleText
-                    color: App.themeTextPrimary; font.pixelSize: 14; font.bold: true
+                    color: App.themeTextPrimary
+                    font.pixelSize: 20
+                    elide: Text.ElideRight
                 }
-                Text {
-                    width: parent.width
-                    text: App.uiText(App.language, root._workbench ? "ExtractWorkHint" : "ExtractHintCtrl")
-                    color: App.themeTextMuted; font.pixelSize: 11
-                    wrapMode: Text.WordWrap
+                ConfirmButton {
+                    id: headConfirm
+                    visible: !root._workbench
+                    anchors { right: closeBtn.left; rightMargin: 14; verticalCenter: parent.verticalCenter }
                 }
+                CloseButton {
+                    id: closeBtn
+                    anchors { right: parent.right; rightMargin: 22; verticalCenter: parent.verticalCenter }
+                    onClicked: dlg.close()
+                }
+                Rectangle {
+                    anchors { left: parent.left; right: parent.right; bottom: parent.bottom }
+                    height: 1
+                    color: App.themeBorder
+                }
+            }
 
-                Loader {
-                    id: bodyLoader
-                    width: parent.width
-                    height: parent.height - y - footer.height - 10
-                    sourceComponent: root._workbench ? workbenchComp : compactComp
-                }
+            Text {
+                id: hint
+                anchors { left: parent.left; right: parent.right; top: head.bottom
+                          leftMargin: 26; rightMargin: 22; topMargin: 14 }
+                text: App.uiText(App.language, root._workbench ? "ExtractWorkHint" : "ExtractHintCtrl")
+                color: App.themeTextMuted; font.pixelSize: 12
+                wrapMode: Text.WordWrap
+            }
 
-                Item {
-                    id: footer
-                    width: parent.width
-                    height: 32
-                    Text {
-                        anchors.verticalCenter: parent.verticalCenter
-                        text: App.uiText(App.language, "ExtractSelectedCount").arg(barModel.count)
-                        color: App.themeTextPrimary; font.pixelSize: 12
-                    }
-                    Row {
-                        anchors { right: parent.right; verticalCenter: parent.verticalCenter }
-                        spacing: 8
-                        Button {
-                            height: 28; font.pixelSize: 12
-                            text: App.uiText(App.language, "SettingsCancel")
-                            onClicked: dlg.close()
-                        }
-                        Button {
-                            height: 28; font.pixelSize: 12
-                            enabled: barModel.count > 0 && (!root.askName || !PdfExtract.busy)
-                            text: root.confirmText.length > 0
-                                  ? root.confirmText
-                                  : App.uiText(App.language, "ExtractCreateBtn")
-                            palette.buttonText: enabled ? App.themeAccent : App.themeTextMuted
-                            onClicked: root.askName ? nameDlg.openFor(root.defaultName,
-                                                                      root.requireName)
-                                                    : root._submit("")
-                        }
-                    }
-                }
+            Loader {
+                id: bodyLoader
+                anchors { left: parent.left; right: parent.right; top: hint.bottom; bottom: parent.bottom
+                          leftMargin: 26; rightMargin: 22; topMargin: 12; bottomMargin: 22 }
+                sourceComponent: root._workbench ? workbenchComp : compactComp
             }
 
             Rectangle {
@@ -290,9 +306,9 @@ Item {
         Item {
             anchors.fill: parent
 
-            readonly property int barH: 108
             readonly property bool barHasItems: barModel.count > 0
-            readonly property int barZoneH: barHasItems ? barH : 46
+            //  Ein Rand für alles in der Leiste: der Knopf sitzt oben, unten und rechts gleich weit vom Rahmen.
+            readonly property int barPad: 8
 
             Item {
                 id: topZone
@@ -303,7 +319,7 @@ Item {
                 Rectangle {
                     id: leftPane
                     anchors { left: parent.left; top: parent.top; bottom: parent.bottom }
-                    width: Math.max(190, parent.width * 0.26)
+                    width: Math.round(Math.max(190, parent.width * 0.26))
                     color: Qt.rgba(1, 1, 1, 0.02)
                     border.color: App.themeBorder; radius: 6
                     clip: true
@@ -489,13 +505,16 @@ Item {
                     }
                 }
 
-                Item {
+                Rectangle {
                     id: rightPane
                     anchors { left: leftPane.right; leftMargin: 10; right: parent.right
                               top: parent.top; bottom: parent.bottom }
+                    color: leftPane.color
+                    border.color: App.themeBorder; radius: 6
+                    clip: true
 
                     Column {
-                        anchors.fill: parent; spacing: 6
+                        anchors.fill: parent; anchors.margins: 8; spacing: 6
                         Text {
                             text: root._fileName(root._activeFileIdx) + " · "
                                   + App.uiText(App.language, "ExtractWorkPages")
@@ -504,13 +523,21 @@ Item {
                         }
 
                         Item {
+                            id: pageGridWrap
                             width: parent.width
                             height: parent.height - y
+                            //  Spalten mittig, sonst sammelt sich der ganze Rest rechts.
+                            readonly property real rand: {
+                                const w = width - pageVsb.width
+                                return Math.max(0, (w - Math.max(1, Math.floor(w / pageGrid.cellWidth))
+                                                        * pageGrid.cellWidth) / 2)
+                            }
 
                             GridView {
                                 id: pageGrid
                                 anchors.fill: parent
-                                anchors.rightMargin: pageVsb.width
+                                anchors.leftMargin: pageGridWrap.rand
+                                anchors.rightMargin: pageVsb.width + pageGridWrap.rand
                                 clip: true
                                 cellWidth:  App.tileWidth + 14
                                 cellHeight: App.tileHeight + 30
@@ -675,7 +702,7 @@ Item {
             Rectangle {
                 id: barWrap
                 anchors { left: parent.left; right: parent.right; bottom: parent.bottom }
-                height: barZoneH
+                height: barConfirm.implicitHeight + 2 * barPad
                 color: externalBarDrop.containsDrag
                        ? Qt.rgba(App.themeAccent.r, App.themeAccent.g, App.themeAccent.b, 0.12)
                        : Qt.rgba(1, 1, 1, 0.03)
@@ -683,16 +710,15 @@ Item {
                 border.width: externalBarDrop.containsDrag ? 2 : 1
                 radius: 6
                 clip: true
-                Behavior on height { NumberAnimation { duration: 120; easing.type: Easing.OutCubic } }
+
+                ConfirmButton {
+                    id: barConfirm
+                    anchors { right: parent.right; rightMargin: barPad; verticalCenter: parent.verticalCenter }
+                }
 
                 Column {
-                    anchors.fill: parent; anchors.margins: 8; spacing: 4
-                    Text {
-                        visible: barHasItems
-                        text: App.uiText(App.language, "ExtractWorkOrder")
-                        color: App.themeTextMuted; font.pixelSize: 10; font.bold: true
-                    }
-
+                    anchors.fill: parent; anchors.margins: barPad; spacing: 4
+                    anchors.rightMargin: barConfirm.width + 2 * barPad
                     Item {
                         id: barContainer
                         width: parent.width
@@ -732,7 +758,7 @@ Item {
                             ScrollBar.horizontal: ScrollBar { policy: ScrollBar.AsNeeded }
                             moveDisplaced: Transition { NumberAnimation { properties: "x,y"; duration: 160 } }
 
-                            readonly property int itemW: 62
+                            readonly property int itemW: 72
 
                             delegate: MouseArea {
                                 id: barCellMA
@@ -779,8 +805,8 @@ Item {
                                     anchors.horizontalCenter: parent.horizontalCenter
                                     anchors.verticalCenter: parent.verticalCenter
                                     radius: 4
-                                    color: "white"
-                                    border.color: App.themeAccent; border.width: 1.5
+                                    color: Qt.rgba(App.themeAccent.r, App.themeAccent.g, App.themeAccent.b, 0.10)
+                                    border.color: App.themeAccent; border.width: 1
                                     scale: barCellMA.held ? 1.06 : 1.0
                                     opacity: barCellMA.held ? 0.9 : 1.0
                                     z: barCellMA.held ? 5 : 0
@@ -799,20 +825,20 @@ Item {
                                             anchors.verticalCenter: undefined }
                                     }
 
-                                    Column {
-                                        anchors.fill: parent; anchors.margins: 3; spacing: 1
-                                        PageThumb {
-                                            width: parent.width
-                                            height: parent.height - ordLbl.height - 2
-                                            path: barCellMA.path; page: barCellMA.page
+                                    //  Leiste nur so hoch wie der Knopf: Miniseite links, Reihenfolge und Seite daneben.
+                                    Row {
+                                        anchors.fill: parent; anchors.margins: 2; spacing: 3
+                                        Rectangle {
+                                            width: Math.round(height * 0.75); height: parent.height
+                                            color: "white"; radius: 2
+                                            PageThumb { anchors.fill: parent; path: barCellMA.path; page: barCellMA.page }
                                         }
                                         Text {
-                                            id: ordLbl
-                                            width: parent.width
-                                            horizontalAlignment: Text.AlignHCenter
+                                            width: parent.width - parent.height * 0.75 - parent.spacing
+                                            anchors.verticalCenter: parent.verticalCenter
                                             text: (barCellMA.index + 1) + "·"
                                                   + App.uiText(App.language, "ExtractPageShort").arg(barCellMA.page + 1)
-                                            color: App.themeTextMuted; font.pixelSize: 8
+                                            color: App.themeTextPrimary; font.pixelSize: 10
                                             elide: Text.ElideRight
                                         }
                                     }
