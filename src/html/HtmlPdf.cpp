@@ -48,7 +48,7 @@ bool inMm(std::string_view t, double bezug, double& aus) {
     return false;
 }
 
-//  @page des Druckstils: Blattgroesse und Lage stechen den Dialog wie in Chromium; Raender roh, leer = Vorgabe.
+//  @page des Druckstils: Blattgroesse und Lage stechen den Dialog; Raender roh, leer = Vorgabe.
 struct Seitenvorgabe {
     std::optional<QPageSize> groesse;
     std::optional<QPageLayout::Orientation> lage;
@@ -173,7 +173,7 @@ std::vector<float> seitenSchnitte(const Dokument& d, const Layout& l, const Kast
     const auto nachOben = [](const Spanne& a, const Spanne& b) { return a.oben < b.oben; };
     std::sort(inhalt.begin(), inhalt.end(), nachOben);
 
-    //  Wie Chromium kein Schnitt zwischen Kastenkante und erster bzw. letzter Zeile: sonst stand am Seitenende nur der
+    //  Kein Schnitt zwischen Kastenkante und erster bzw. letzter Zeile: sonst stand am Seitenende nur der
     //  obere Rand einer Karte. Ganz bleiben break-inside: avoid, Tabellenzeilen, leere Kaesten und Karten (Rahmen oder
     //  Hintergrund) bis zu einer Viertelseite - ihr avoid steht oft nur unter @media print, das Original nicht liest.
     //  Ueberschriften und Tabellenkoepfe gehen mit dem folgenden Inhalt (wie break-after: avoid).

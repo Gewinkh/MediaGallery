@@ -11,9 +11,8 @@ License. In particular:
 
 - Qt and the other direct dependencies are **not** covered by MediaGallery's MIT
   license; each stays under its own license and copyright.
-- Third-party code **contained inside** a dependency - PDFium inside Qt PDF,
-  Chromium inside Qt WebEngine, and the components Qt bundles in its base
-  modules - likewise stays under its own license. Being reached only indirectly,
+- Third-party code **contained inside** a dependency - PDFium inside Qt PDF
+  and the components Qt bundles in its base modules - likewise stays under its own license. Being reached only indirectly,
   through a dependency's public API, changes nothing about that.
 - Runtime backend dependencies used by a dependency - such as FFmpeg used by
   Qt Multimedia - likewise remain under their own licenses. Their presence,
@@ -54,8 +53,7 @@ apart matters, because only the first is visible in MediaGallery's build files:
    Tesseract's pkg-config call requests it, but MediaGallery's own code never calls
    it; it is documented as [transitive](#leptonica).
 2. **Third-party code contained inside a direct dependency.** PDFium inside
-   Qt PDF, Chromium inside Qt WebEngine, and the third-party components Qt
-   bundles in its base modules. MediaGallery's build files do not mention these
+   Qt PDF and the third-party components Qt bundles in its base modules. MediaGallery's build files do not mention these
    components directly; they arrive with the corresponding Qt libraries.
 3. **Runtime backend dependencies of a direct dependency.** For example,
    FFmpeg may be used by the Qt Multimedia backend. These components are not
@@ -74,10 +72,11 @@ consequences:
 |---|---|---|
 | Third-party **source code** in this tree | no | - |
 | **Direct dependencies** (resolved by this project's build, linked) | linked, not contained | [Qt](#qt), [zlib](#zlib), [Tesseract OCR](#tesseract-ocr), [Hunspell](#hunspell) |
-| **Transitive / embedded components** (inside a direct dependency) | not in this repository; part of the relevant dependency build | [Leptonica](#leptonica), [PDFium](#pdfium-inside-qt-pdf), [Chromium](#chromium-inside-qt-webengine), [inside Qt](#third-party-components-inside-qt) |
+| **Transitive / embedded components** (inside a direct dependency) | not in this repository; part of the relevant dependency build | [Leptonica](#leptonica), [PDFium](#pdfium-inside-qt-pdf), [inside Qt](#third-party-components-inside-qt) |
 | **Runtime backend dependencies** of direct dependencies | deployment-dependent | [FFmpeg](#ffmpeg-the-backend-of-qt-multimedia) |
 | **Externally sourced or derived data** in MediaGallery's own files | **yes** | [Externally sourced data](#externally-sourced-data) |
 | **Implementations of published algorithms** in MediaGallery's own files | **yes** | [Acknowledgements](#acknowledgements) |
+| **Removed components** (no longer linked, loaded or shipped; kept as a record) | no | [Removed components](#removed-components) |
 
 Three roles are distinguished throughout, because they carry different
 obligations:
@@ -112,9 +111,7 @@ see [Third-party components inside Qt](#third-party-components-inside-qt).
 | Qt Core, Gui, Qml, Quick, Quick Controls, Svg | direct | 6.12.0 | LGPL-3.0 or GPL-2.0 | build + run | no |
 | Qt Multimedia | direct | 6.12.0 | LGPL-3.0 or GPL-2.0 | build + run | no |
 | Qt PDF | direct | 6.11.2 | LGPL-3.0 or GPL-2.0 | build + run | no |
-| Qt WebEngine / WebEngineQuick | direct | 6.11.2 | LGPL-3.0, GPL-3.0 or GPL-2.0 (Qt-specific parts) | build + run | no |
 | PDFium (inside Qt PDF) | embedded in Qt PDF | see Qt PDF | BSD (see below) | run | no |
-| Chromium (inside Qt WebEngine) | embedded in Qt WebEngine | see Qt WebEngine | BSD-3-Clause, plus many further licenses inside Chromium | run | no |
 | FFmpeg | runtime backend dependency | build-dependent | build-dependent; see [FFmpeg](#ffmpeg-the-backend-of-qt-multimedia) | run when the FFmpeg backend is used | deployment-dependent |
 | zlib | direct | 1.3.2 | Zlib License | build + run | **yes** |
 | Tesseract OCR | direct | 5.5.3 | Apache-2.0 | build + run | **yes** |
@@ -132,14 +129,14 @@ see [Third-party components inside Qt](#third-party-components-inside-qt).
 Qt is an external dependency of MediaGallery. MediaGallery contains no Qt source
 code. It is built against **Qt 6.8 or newer** (`find_package(Qt6 6.8 REQUIRED ...)`)
 and developed against **Qt 6.12.0** (Core, Gui, Qml, Quick, Quick Controls, Svg,
-Multimedia) and **Qt 6.11.2** (Qt PDF, Qt WebEngine), the versions the reference
+Multimedia) and **Qt 6.11.2** (Qt PDF), the versions the reference
 environment's distribution packages provide; earlier development used Qt 6.11.2
 throughout.
 
 ### Qt components MediaGallery actually uses
 
 Declared in `CMakeLists.txt` (`find_package(Qt6 6.8 REQUIRED COMPONENTS Core Gui
-Qml Quick QuickControls2 Multimedia Pdf Svg WebEngineQuick)`) and linked into the
+Qml Quick QuickControls2 Multimedia Pdf Svg)`) and linked into the
 application:
 
 | Qt component | Used for | License (open source) |
@@ -152,7 +149,6 @@ application:
 | **Qt Multimedia** | Audio and video playback, audio sink for the equalizer | LGPL-3.0 or GPL-2.0 |
 | **Qt PDF** | PDF rendering, page and text access | LGPL-3.0 or GPL-2.0 |
 | **Qt SVG** | SVG image support in the gallery | LGPL-3.0 or GPL-2.0 |
-| **Qt WebEngineQuick** | HTML preview only, initialized lazily on first use | LGPL-3.0, GPL-3.0 or GPL-2.0 (Qt parts) |
 
 **Qt Widgets is NOT used.** MediaGallery uses `QGuiApplication`; there is no
 dependency on Qt Widgets anywhere in the tree.
@@ -161,8 +157,7 @@ For each of Qt Core, Gui, Qml, Quick, Quick Controls, Multimedia, PDF and SVG,
 the Qt 6.11 documentation states that the module is available under commercial
 licenses from The Qt Company and, in addition, under free software licenses: the
 GNU Lesser General Public License, version 3, or the GNU General Public License,
-version 2. Qt WebEngine is the one exception in this list: its Qt-specific parts
-are documented as available under LGPL-3.0, **or GPL-3.0**, or GPL-2.0.
+version 2.
 
 Two qualifications matter and are easy to lose:
 
@@ -237,21 +232,6 @@ Qt PDF's PDFium snapshot. The two are separate copies with separate provenance.
 - https://doc.qt.io/qt-6/qtpdf-licensing.html
 - https://doc.qt.io/qt-6/qtpdf-3rdparty-pdfium.html
 - https://doc.qt.io/qt-6/licenses-used-in-qt.html
-
-#### Chromium (inside Qt WebEngine)
-
-Qt WebEngine is built on Chromium. Qt documents Chromium itself as
-**BSD 3-Clause "New" or "Revised" License**, and states that
-*"The Chromium part contains code available under various licenses, with the most
-restrictive license being the GNU Lesser General Public License v2.1 (LGPL 2.1)."*
-Qt's attribution page lists well over a hundred distinct third-party components
-inside Chromium.
-
-MediaGallery initializes Qt WebEngine **lazily**, only when an HTML file is
-previewed. The dependency exists nonetheless: the module is linked at build time
-and its libraries are part of any distribution that keeps the HTML preview.
-
-- https://doc.qt.io/qt-6/qtwebengine-licensing.html
 
 #### FFmpeg (the backend of Qt Multimedia)
 
@@ -539,7 +519,7 @@ own logo, drawn by `tools/mg_logogen.cpp` from `qml/common/AppLogo.qml`.
 MediaGallery's own code performs no network access: `src/` and `main.cpp` contain
 no `QNetworkAccessManager`, no `QTcpSocket`/`QUdpSocket`/`QSslSocket` and no HTTP
 client, and the build downloads nothing (no `FetchContent`, no `ExternalProject`).
-Qt WebEngine is initialized only for local HTML preview. This is a statement about
+This is a statement about
 this project's code and build, not a guarantee about what the Qt libraries
 themselves may do internally.
 
@@ -575,7 +555,6 @@ suffices; see the [Note](#note) at the end.
 |---|---|---|
 | Qt libraries | direct | The applicable license for each Qt module, as documented by Qt for that module, plus the third-party attributions for the shipped modules. The LGPL's relinking and written-offer provisions are the ones usually cited here; their exact application depends on how the binary is built and linked. |
 | Qt PDF / PDFium | PDFium embedded in Qt PDF | The BSD notice and, as reproduced by Qt, the Apache-2.0 text, plus the attributions for the components inside the PDFium snapshot. |
-| Qt WebEngine / Chromium | Chromium embedded in Qt WebEngine | Chromium's BSD-3-Clause notice and the full Chromium third-party attribution set, including the LGPL-2.1 components Qt names as the most restrictive. |
 | FFmpeg | loaded by the Qt Multimedia backend | Depends on the build that is shipped or required - Qt's own pre-built libraries carry the permissive set Qt lists; a build configured with `--enable-gpl` carries the GPL instead. Establish this per distribution. Patent/royalty considerations for codecs are separate from the licenses. |
 | zlib | direct, optional | Comply with the Zlib License. In particular, the license notice must be retained in source distributions; product documentation acknowledgment is appreciated but not required. |
 | Tesseract OCR | direct, optional | The Apache-2.0 license text and retained notices. |
@@ -587,12 +566,68 @@ suffices; see the [Note](#note) at the end.
 
 zlib, Tesseract (with Leptonica) and Hunspell are optional in the build. A build
 made without one of them has that library neither linked nor shipped. Components
-embedded in a Qt module, such as PDFium in Qt PDF or Chromium in Qt WebEngine, are
+embedded in a Qt module, such as PDFium in Qt PDF, are
 part of that module's distribution when the module is shipped. Runtime backend
 dependencies such as FFmpeg remain dependent on the selected backend and the
 deployment configuration. A distribution therefore has to establish which
 concrete Qt modules, embedded components and runtime backend libraries it actually
 ships or requires, and then apply the terms applicable to those concrete builds.
+
+---
+
+## Removed components
+
+Components MediaGallery used earlier and no longer links, loads or ships. Their
+entries are kept as a record of what earlier builds carried; the terms applied to
+those builds.
+
+### Qt WebEngine / WebEngineQuick and Chromium
+
+**Removed on 2026-11-24.** HTML files have since been drawn by MediaGallery's own
+renderer (`src/html/`). `WebEngineQuick` is no longer in `find_package`, the
+loadable library `mg_webengine` and the QML view on Qt WebEngine are gone, and
+nothing in `src/`, `qml/` or `main.cpp` refers to Qt WebEngine. A build or
+distribution of MediaGallery therefore no longer carries the Qt WebEngine or
+Chromium obligations listed below.
+
+The development tree does not link Qt WebEngine either: the last test bench that
+did was deleted on 2026-11-25.
+
+Entries as they stood before the removal:
+
+| Component | Kind | Version | License | Role | Optional |
+|---|---|---|---|---|---|
+| Qt WebEngine / WebEngineQuick | direct | 6.11.2 | LGPL-3.0, GPL-3.0 or GPL-2.0 (Qt-specific parts) | build + run | no |
+| Chromium (inside Qt WebEngine) | embedded in Qt WebEngine | see Qt WebEngine | BSD-3-Clause, plus many further licenses inside Chromium | run | no |
+
+| Qt component | Used for | License (open source) |
+|---|---|---|
+| **Qt WebEngineQuick** | HTML preview only, initialized lazily on first use | LGPL-3.0, GPL-3.0 or GPL-2.0 (Qt parts) |
+
+Qt WebEngine was the one exception among the Qt modules used: its Qt-specific parts
+are documented as available under LGPL-3.0, **or GPL-3.0**, or GPL-2.0.
+
+| Shipped component | Reached how | What its terms call for |
+|---|---|---|
+| Qt WebEngine / Chromium | Chromium embedded in Qt WebEngine | Chromium's BSD-3-Clause notice and the full Chromium third-party attribution set, including the LGPL-2.1 components Qt names as the most restrictive. |
+
+Earlier builds also stated: *"Qt WebEngine is initialized only for local HTML
+preview."*
+
+### Chromium (inside Qt WebEngine)
+
+Qt WebEngine is built on Chromium. Qt documents Chromium itself as
+**BSD 3-Clause "New" or "Revised" License**, and states that
+*"The Chromium part contains code available under various licenses, with the most
+restrictive license being the GNU Lesser General Public License v2.1 (LGPL 2.1)."*
+Qt's attribution page lists well over a hundred distinct third-party components
+inside Chromium.
+
+MediaGallery initializes Qt WebEngine **lazily**, only when an HTML file is
+previewed. The dependency exists nonetheless: the module is linked at build time
+and its libraries are part of any distribution that keeps the HTML preview.
+
+- https://doc.qt.io/qt-6/qtwebengine-licensing.html
 
 ---
 

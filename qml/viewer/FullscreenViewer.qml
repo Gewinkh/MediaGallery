@@ -142,11 +142,7 @@ FocusScope {
     }
     readonly property bool _rohtextAktiv: root._hatRohtext && !root._datevTable
     readonly property bool _showTable: root._isTable && !root._isDatev && root._datevTable
-    // WebEngine ist LAZY (WebEngineController): die Vorschau existiert nur,
-    // wenn WebEngine.ready - vorher fällt HTML IMMER auf TextSurface zurück
-    // und es wird garantiert keine WebEngineView instanziiert.
     readonly property bool _showWebPreview:  root._isWebRenderable && root._htmlPreview
-                                             && (App.ownHtml || WebEngine.ready)
 
     // Lade-Gating: Die schwere Medien-/PDF-Last erst NACH dem StackView-Übergang
     // anstoßen (Status Active) -> die Öffnen-Animation läuft flüssig über einen
@@ -238,10 +234,6 @@ FocusScope {
             Viewer.openExternally(path)
         }
 
-        // Trigger der lazy WebEngine-Initialisierung; der Aufruf ist synchron und idempotent - danach ist
-        // `WebEngine.ready` und der Loader wählt die gerenderte Vorschau statt des Quelltexts.
-        if (root._isWebRenderable && !App.ownHtml)
-            WebEngine.ensureInitializedForHtml()
         root._wechselt = false
 
         // Inhalt explizit nachziehen: bei Navigation zwischen Medien GLEICHEN Typs bleibt das Loader-Item dasselbe
@@ -442,8 +434,7 @@ FocusScope {
             case 4:  return root._isDatev          ? "qrc:/qml/datev/DatevSurface.qml"
                      : root._isTable         ? "qrc:/qml/table/TableSurface.qml"
                      : root._isMarkdown      ? "qrc:/qml/viewer/MarkdownSurface.qml"
-                     : root._showWebPreview  ? (App.ownHtml ? "qrc:/qml/viewer/HtmlOwnSurface.qml"
-                                                            : "qrc:/qml/viewer/HtmlHost.qml")
+                     : root._showWebPreview  ? "qrc:/qml/viewer/HtmlOwnSurface.qml"
                                              : "qrc:/qml/viewer/TextSurface.qml"
             case 5:  return "qrc:/qml/docx/DocxSurface.qml"      // Word-Dokumente (DOCX-Editor)
             default: return "qrc:/qml/viewer/ViewerNote.qml"
@@ -522,7 +513,7 @@ FocusScope {
         when: surface.item !== null && surface.item.paneActive !== undefined
               && (root.type === 0 || root.type === 3 || root.type === 5
                                         || root._showDatevTable || root._showTable
-                                        || (root._showWebPreview && App.ownHtml))
+                                        || root._showWebPreview)
         restoreMode: Binding.RestoreNone
     }
 
@@ -609,10 +600,9 @@ FocusScope {
                     anchors.verticalCenter: parent.verticalCenter
                 }
 
-                //  Feste Reihenfolge, damit jeder Knopf in jedem Zustand an
-                //  derselben Stelle steht: erst die DATEI, dann der UMSCHALTER der
-                //  Ansicht, ganz rechts deren OPTION. Aus den beiden hinteren
-                //  Gruppen ist je Zustand hoechstens einer sichtbar.
+                //  Feste Reihenfolge: erst die DATEI, dann die Uebersichtsspalte,
+                //  ganz rechts der UMSCHALTER der Ansicht - er bleibt so in Quelle
+                //  und Vorschau am selben Platz.
                 ChromeBtn {
                     id: diceBtn
                     anchors.verticalCenter: parent.verticalCenter
@@ -635,8 +625,18 @@ FocusScope {
                 }
 
                 ChromeBtn {
+                    id: mapBtn
+                    visible: root._textCtl !== null
+                    anchors.verticalCenter: parent.verticalCenter
+                    kind: "toc"
+                    active: Editor.minimap
+                    tip: Editor.minimap ? App.uiText(App.language, "EditorMinimapClose")
+                                         : App.uiText(App.language, "EditorMinimapShow")
+                    onActivated: Editor.minimap = !Editor.minimap
+                }
+                ChromeBtn {
                     id: previewBtn
-                    visible: root._isWebRenderable && (App.ownHtml || WebEngine.ready)
+                    visible: root._isWebRenderable
                     anchors.verticalCenter: parent.verticalCenter
                     kind: "html"
                     active: root._htmlPreview
@@ -669,15 +669,6 @@ FocusScope {
                     //  Flaechen bleiben stehen. Ein Release loeschte den Text und
                     //  mit ihm die Undo-Historie.
                     onActivated: root._datevTable = !root._datevTable
-                }
-                ChromeBtn {
-                    id: mapBtn
-                    visible: root._textCtl !== null
-                    anchors.verticalCenter: parent.verticalCenter
-                    kind: "toc"
-                    active: Editor.minimap
-                    tip: App.uiText(App.language, "EditorMinimapTip")
-                    onActivated: Editor.minimap = !Editor.minimap
                 }
                 ChromeBtn {
                     id: numbersBtn
@@ -758,7 +749,7 @@ FocusScope {
                             onTriggered: dateEditor.openWith(root.dateTime)
                         }
                         MenuItem {
-                            visible: root._isWebRenderable && (App.ownHtml || WebEngine.ready)
+                            visible: root._isWebRenderable
                             height: visible ? implicitHeight : 0
                             text: root._htmlPreview
                                   ? App.uiText(App.language, "ViewerShowSource")
@@ -1681,6 +1672,20 @@ FocusScope {
         sequence: "Alt+Left"
         enabled: root.paneActive
         onActivated: root.backRequested()
+    }
+    //  Dieselbe Umschaltung wie die Vorschau-Knoepfe der Kopfleiste.
+    Shortcut {
+        sequence: "Ctrl+R"
+        enabled: root.paneActive
+                 && (root._isWebRenderable || root._isMarkdown)
+        onActivated: {
+            if (root._isMarkdown) {
+                root._datevTable = !root._datevTable
+            } else {
+                root.releaseCurrent()
+                root._htmlPreview = !root._htmlPreview
+            }
+        }
     }
     Shortcut {
         sequence: "D"

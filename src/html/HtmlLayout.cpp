@@ -34,7 +34,7 @@ constexpr uint32_t kMaxSpalten = 10000;     // Haertung: colspan-Lawinen
 bool sichtbarAscii(char16_t z) { return z > 0x20 && z < 0x7F; }
 bool asciiAlnum(char16_t z) { return (z >= u'0' && z <= u'9') || ((z | 0x20) >= u'a' && (z | 0x20) <= u'z'); }
 
-//  Zwischen zwei sichtbaren ASCII-Zeichen bricht Chromium nach eigener Tabelle statt nach UAX #14: nur nach '-' und '?'
+//  Zwischen zwei sichtbaren ASCII-Zeichen wird nach eigener Tabelle statt nach UAX #14 gebrochen: nur nach '-' und '?'
 //  sowie vor oeffnender Klammer hinter Satzzeichen. Die Fuge zwingt Qt dorthin, nur wo es anders entscheidet (gemessen).
 char16_t asciiFuge(char16_t vv, char16_t v, char16_t c) {
     const auto in = [](char16_t z, const char* m) { return std::strchr(m, char(z)) != nullptr; };
@@ -263,14 +263,14 @@ private:
         f.eigeneSkala = besteSkala({ f.groesse });
         const float k = f.eigeneSkala;
         const QFontMetricsF fm(skaliert(f, k));
-        //  Wie Chromium: Ober- und Unterlaenge und Zeilenluecke einzeln gerundet.
+        //  Ober- und Unterlaenge und Zeilenluecke einzeln gerundet.
         f.oben = std::round(float(fm.ascent()) / k);
         f.unten = std::round(float(fm.descent()) / k);
         f.luecke = std::round(float(fm.leading()) / k);
         f.xHoehe = float(fm.xHeight()) / k;
         f.mittel = float(fm.averageCharWidth()) / k;
         f.breitest = float(fm.maxWidth()) / k;
-        //  Chromium: OS/2 xAvgCharWidth und die Breite des head-Rahmens, beide gerundet; Qt nimmt den groessten Vorschub.
+        //  OS/2 xAvgCharWidth und die Breite des head-Rahmens, beide gerundet; Qt nimmt den groessten Vorschub.
         const QRawFont roh = QRawFont::fromFont(skaliert(f, k));
         f.familie = roh.familyName();
         const QByteArray os2 = roh.fontTable("OS/2"), head = roh.fontTable("head");
@@ -377,7 +377,7 @@ private:
                 iw = textBreite(f, t);
                 ih = zeile;
             } else {
-                //  Wie Chromium: size Zeichen mittlerer Breite, dazu der Ueberhang des breitesten Zeichens.
+                //  size Zeichen mittlerer Breite, dazu der Ueberhang des breitesten Zeichens.
                 iw = (da && groesse > 0 ? groesse : 20) * f.mittel + std::max(0.f, f.breitest - f.mittel);
                 ih = zeile;
             }
@@ -2358,7 +2358,7 @@ private:
             }
         }
         //  visibility collapse nimmt die Zeile samt ihrem Abstand heraus; Prozent gelten gegen die Hoehe der Tabelle
-        //  ohne die Abstaende (wie Chromium), nur wenn sie fest ist.
+        //  ohne die Abstaende, nur wenn sie fest ist.
         std::vector<uint8_t> zu(nz, 0);
         uint32_t sichtbar = 0;
         for (uint32_t z = 0; z < nz; ++z) {
@@ -2989,7 +2989,7 @@ private:
             const size_t laufVon = m_aus.laeufe.size();
             m_aus.zeilen.push_back(Zeile{ x0, y, cw, unten - oben, -oben, a, e - a, absatz });
             glyphen(z, sm, texte, x0, y - oben, uint32_t(m_aus.zeilen.size() - 1));
-            //  line-height normal: wie Chromium zaehlt jede Ersatzschrift der Zeile mit Ober-/Unterlaenge und halber Luecke
+            //  line-height normal: es zaehlt jede Ersatzschrift der Zeile mit Ober-/Unterlaenge und halber Luecke
             //  (CJK, Devanagari, Thai sonst 2 px zu flach). Erst die Laeufe kennen die Schrift, also danach nachschieben.
             float ob = oben, un = unten;
             for (size_t i = laufVon; i < m_aus.laeufe.size(); ++i) {
@@ -3001,7 +3001,7 @@ private:
                 ob = std::min(ob, v - m.oben - m.luecke / 2);
                 un = std::max(un, v + m.unten + m.luecke / 2);
             }
-            //  top/bottom haengen an der Zeile ohne sie: nur ein hoeherer Kasten streckt sie, nach unten bzw. oben (wie Chromium der Reihe nach).
+            //  top/bottom haengen an der Zeile ohne sie: nur ein hoeherer Kasten streckt sie, nach unten bzw. oben, der Reihe nach.
             for (size_t i = 0; zeilenBezug && i < sm.beitraege.size(); ++i) {
                 const Beitrag& b = sm.beitraege[i];
                 if (b.anfang >= e && !(b.anfang == e && e == n)) break;
@@ -3369,7 +3369,7 @@ QStringList SchriftWahl::familien(std::string_view r) {
         else if (!n.isEmpty() && QFontDatabase::hasFamily(n)) aus << n;
         a = e + 1;
     }
-    //  Fehlt ein Zeichen in allen Familien, versucht Chromium die Standardschrift vor dem Ersatz des Systems.
+    //  Fehlt ein Zeichen in allen Familien, kommt die Standardschrift vor dem Ersatz des Systems.
     gattung(QFont::Serif);
     //  Feste Ersatzschriften je Schriftsystem: Qts eigener Ersatz haengt am Plattformthema (Arabisch unter Wayland
     //  Kufi, offscreen Naskh). Naskh ist die Textschrift fuer Arabisch mit Harakat, CJK JP traegt die Kana.
@@ -3422,7 +3422,7 @@ void SchriftWahl::jeEm(std::string_view familien, int gewicht, bool kursiv, doub
     schluessel.append(reinterpret_cast<const char*>(&gewicht), sizeof gewicht);
     auto it = m_jeEm.find(schluessel);
     if (it == m_jeEm.end()) {
-        //  Gross und ungehintet gemessen: der Vorschub waechst linear mit der Groesse, Chromium rundet ihn nicht.
+        //  Gross und ungehintet gemessen: der Vorschub waechst linear mit der Groesse und bleibt ungerundet.
         constexpr int kGross = 1000;
         const QStringList fam = this->familien(familien);
         QFont f;

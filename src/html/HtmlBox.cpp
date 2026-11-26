@@ -52,7 +52,7 @@ std::string alphabetisch(int n, const uint32_t* zeichen, int anzahl) {
     return aus;
 }
 
-//  Symbole und Folgen wie die vordefinierten counter-styles in Chromium, Nachsatz ". " bzw. " ".
+//  Symbole und Folgen der vordefinierten counter-styles, Nachsatz ". " bzw. " ".
 std::string markenText(ListenArt a, int n) {
     static const uint32_t klein26[] = { 'a','b','c','d','e','f','g','h','i','j','k','l','m','n','o','p','q','r','s','t',
                                         'u','v','w','x','y','z' };

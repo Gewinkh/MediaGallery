@@ -1031,7 +1031,7 @@ private:
     bool getrennt(uint32_t t) const {
         return t != kKein && !stil(t).rahmenZusammen && (stil(t).rahmenAbstand[0] > 0 || stil(t).rahmenAbstand[1] > 0);
     }
-    //  empty-cells hide: eine leere Zelle malt weder Hintergrund noch Rahmen; den ihrer Zeile malt sie wie Chromium.
+    //  empty-cells hide: eine leere Zelle malt weder Hintergrund noch Rahmen; den ihrer Zeile malt sie.
     bool versteckt(uint32_t z, uint32_t t) const {
         return t != kKein && !stil(t).rahmenZusammen && stil(z).leereZellen && (kasten(z).flags & KLeer);
     }

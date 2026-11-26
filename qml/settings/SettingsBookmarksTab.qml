@@ -76,20 +76,7 @@ Item {
         RowLayout {
             Layout.fillWidth: true
             spacing: 8
-            ColumnLayout {
-                Layout.fillWidth: true
-                spacing: 1
-                Text {
-                    Layout.fillWidth: true; wrapMode: Text.WordWrap
-                    text: App.uiText(App.language, "SettingsBookHint")
-                    color: App.themeTextMuted; font.pixelSize: 11
-                }
-                Text {
-                    Layout.fillWidth: true; wrapMode: Text.WordWrap
-                    text: App.uiText(App.language, "BookmarkDragHint")
-                    color: App.themeTextMuted; font.pixelSize: 11
-                }
-            }
+            Item { Layout.fillWidth: true }
             Button {
                 text: App.uiText(App.language, "BookmarkGroupAdd")
                 onClicked: groupDialog.openAdd("")
@@ -112,7 +99,7 @@ Item {
 
             ColumnLayout {
                 width: root.width
-                spacing: 4
+                spacing: 0
 
                 // „Ohne Gruppe" - die oberste Ebene als Ablegeziel
                 //  Ohne diese Zeile käme nichts mehr aus einer Gruppe heraus.
@@ -206,14 +193,23 @@ Item {
                             id: rowBox
                             Layout.fillWidth: true
                             Layout.leftMargin: line.depth * 18
-                            implicitHeight: (line.isGroup && !line.gebunden) ? 34 : 52
+                            //  Flache Zeile mit Trennlinie wie im Design-Reiter; die Einrückung trägt die Linie mit,
+                            //  so zeigt sie die Verschachtelung ohne Kasten im Kasten.
+                            implicitHeight: (line.isGroup && !line.gebunden) ? 40 : 50
                             radius: 6
                             color: rowDrop.containsDrag
                                    ? Qt.rgba(App.themeAccent.r, App.themeAccent.g, App.themeAccent.b, 0.22)
-                                   : (line.isGroup ? Qt.rgba(1, 1, 1, 0.05)
-                                                   : Qt.rgba(1, 1, 1, 0.03))
-                            border.color: App.themeBorder
-                            border.width: 1
+                                   : (rowHover.hovered ? Qt.rgba(App.themeTextPrimary.r, App.themeTextPrimary.g,
+                                                                 App.themeTextPrimary.b, 0.035)
+                                                       : "transparent")
+
+                            HoverHandler { id: rowHover }
+                            Rectangle {
+                                anchors { left: parent.left; right: parent.right; bottom: parent.bottom }
+                                height: 1
+                                color: App.themeBorder
+                                opacity: 0.6
+                            }
 
                             DropArea {
                                 id: rowDrop
@@ -328,7 +324,7 @@ Item {
                                     Text {
                                         text: line.modelData.name
                                         color: App.themeTextPrimary
-                                        font.pixelSize: 13; font.bold: true
+                                        font.pixelSize: 13
                                         elide: Text.ElideRight
                                         Layout.fillWidth: true
                                     }

@@ -5,7 +5,7 @@ import MediaGallery 1.0
 import "../common"
 import "../table"
 
-// HTML ueber den eigenen Renderer, ohne Chromium und ohne Skripte. Die Flickable traegt nur das Rollen,
+// HTML ueber den eigenen Renderer, ohne Skripte. Die Flickable traegt nur das Rollen,
 // gezeichnet und markiert wird in der HtmlView darunter.
 Item {
     id: root

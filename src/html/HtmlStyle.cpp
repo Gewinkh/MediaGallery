@@ -1352,7 +1352,7 @@ bool setze(uint16_t e, std::string_view wert, Stil& s, const Umfeld& u, RohPool*
 
 namespace {
 
-//  Vorgaben des Browsers nach dem HTML-Standard; Formularfelder und Tabellen so, wie Chromium sie berechnet.
+//  Vorgaben des Browsers nach dem HTML-Standard; Formularfelder und Tabellen nach gemessenen Browserwerten.
 constexpr std::string_view kVorgaben = R"css(
 html,address,blockquote,body,center,dialog,div,figure,figcaption,footer,form,header,hr,legend,listing,main,p,
 plaintext,pre,search,xmp,article,aside,h1,h2,h3,h4,h5,h6,hgroup,nav,section,dir,dd,dl,dt,menu,ol,ul,details,summary,

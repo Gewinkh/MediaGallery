@@ -51,7 +51,6 @@
 #include "docx/edit/DocxEditController.h"
 #include "docx/edit/DocxTextArea.h"
 #include "app/TransliterationController.h"
-#include "app/WebEngineController.h"
 #include "core/MediaLogs.h"
 #include "editor/EditorController.h"
 #include "editor/CodeHighlighter.h"
@@ -114,11 +113,6 @@ int main(int argc, char* argv[]) {
 
     // Eigener Dateidialog statt des nativen.
     QCoreApplication::setAttribute(Qt::AA_DontUseNativeDialogs);
-
-    // Muss vor der QGuiApplication stehen; laedt hier noch kein Chromium.
-    // WebEngine selbst wird erst beim ersten HTML gestartet.
-    QCoreApplication::setAttribute(Qt::AA_ShareOpenGLContexts);
-
 
     QGuiApplication app(argc, argv);
     startMark("QGuiApplication steht");
@@ -193,7 +187,6 @@ int main(int argc, char* argv[]) {
     // Eine Wiedergabe fuer die ganze App.
     AudioController      audio(settings);
     TransliterationController translit;   // Live-Transliteration (Latein -> Arabisch/Kana)
-    WebEngineController  webEngine;       // lazy WebEngine-Init (nur bei HTML-Bedarf)
 
     MediaModel&      mediaModel   = pane0->mediaModel();
     MediaProxyModel& galleryModel = pane0->galleryModel();
@@ -278,7 +271,6 @@ int main(int argc, char* argv[]) {
     mg::registerQmlTypes();
     qmlRegisterSingletonInstance("MediaGallery", 1, 0, "Audio",     &audio);
     qmlRegisterSingletonInstance("MediaGallery", 1, 0, "Translit",  &translit);
-    qmlRegisterSingletonInstance("MediaGallery", 1, 0, "WebEngine", &webEngine);
 
     startMark("Controller/Modelle stehen");
 

@@ -32,8 +32,7 @@ static bool vulkanLoaderAvailable()
 #endif
 
 //  platformDefault - sicherer Ausgangspunkt je Plattform
-//  OpenGL: auf allen drei Zielplattformen vorhanden und zugleich das
-//  robusteste Backend für die WebEngine-Vorschau (s. Projektüberblick).
+//  OpenGL: auf allen drei Zielplattformen vorhanden.
 QString RhiProber::platformDefault()
 {
     return QStringLiteral("opengl");

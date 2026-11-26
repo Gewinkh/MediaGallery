@@ -267,17 +267,18 @@ Item {
                 title: App.uiText(App.language, "SettingsGenSpell")
                 Layout.fillWidth: true
 
-                RowLayout {
-                    Layout.fillWidth: true
-                    spacing: 12
-                    Switch {
-                        id: spellSwitch
-                        checked: App.spellCheck
-                        enabled: App.spellLanguages().length > 0
-                        text: App.uiText(App.language, "SettingsGenSpellLabel")
-                        onToggled: App.setSpellCheck(checked)
+                CheckBox {
+                    id: spellSwitch
+                    checked: App.spellCheck
+                    enabled: App.spellLanguages().length > 0
+                    text: App.uiText(App.language, "SettingsGenSpellLabel")
+                    onToggled: App.setSpellCheck(checked)
+                    contentItem: Text {
+                        text: parent.text; color: App.themeTextPrimary
+                        opacity: parent.enabled ? 1 : 0.5
+                        leftPadding: parent.indicator.width + 6
+                        verticalAlignment: Text.AlignVCenter
                     }
-                    Item { Layout.fillWidth: true }
                 }
                 RowLayout {
                     Layout.fillWidth: true

@@ -211,76 +211,38 @@ Item {
 
         // Liste statt Auswahlfeld: nur so sieht man, was es gibt, welche gilt und welche mitgelieferte verändert wurde.
         // Diskette sichert die Regler auf die Zeile, Rückgängig holt die Vorlage zurück - der Klang bleibt stehen.
+        // In den Einstellungen in deren Form: Versalzeile und flache Zeilen mit Trennlinie wie im Design-Reiter;
+        // ohne Höhengrenze, gerollt wird dort der ganze Reiter.
         Text {
             text: App.uiText(App.language, "AudioEqPreset")
             color: App.themeTextMuted
             font.pixelSize: 11
+            topPadding: panel.manageable ? 14 : 0
+            font.capitalization: panel.manageable ? Font.AllUppercase : Font.MixedCase
+            font.letterSpacing: panel.manageable ? 1.2 : 0
         }
 
         Rectangle {
             width: parent.width
-            height: Math.min(146, Math.max(24, presetList.contentHeight + 2))
-            color: Qt.rgba(App.themeTextPrimary.r, App.themeTextPrimary.g,
-                           App.themeTextPrimary.b, 0.05)
+            height: panel.manageable ? presetList.contentHeight
+                                     : Math.min(146, Math.max(24, presetList.contentHeight + 2))
+            color: panel.manageable ? "transparent"
+                                    : Qt.rgba(App.themeTextPrimary.r, App.themeTextPrimary.g,
+                                              App.themeTextPrimary.b, 0.05)
             radius: 6
             border.color: App.themeBorder
-            border.width: 1
+            border.width: panel.manageable ? 0 : 1
             clip: true
 
             ListView {
                 id: presetList
                 objectName: "eqPresetList"      // Griff für den Prüfstand
                 anchors.fill: parent
-                anchors.margins: 1
+                anchors.margins: panel.manageable ? 0 : 1
+                interactive: !panel.manageable
                 model: Audio.presetNames
                 boundsBehavior: Flickable.StopAtBounds
                 ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
-
-                // Nur in den Einstellungen: die letzte Zeile mit "+" legt aus den aktuellen Reglern eine neue Voreinstellung
-                // an. Am Player führt der Weg über "Sichern".
-                footer: Item {
-                    width: presetList.width
-                    height: panel.manageable ? 26 : 0
-                    visible: panel.manageable
-
-                    Rectangle {
-                        anchors.fill: parent
-                        anchors.margins: 2
-                        radius: 4
-                        color: addHover.hovered
-                               ? Qt.rgba(App.themeAccent.r, App.themeAccent.g,
-                                         App.themeAccent.b, 0.18)
-                               : "transparent"
-                        border.color: addHover.hovered ? App.themeAccent
-                                                       : App.themeBorder
-                        border.width: 1
-
-                        DrawnIcon {
-                            id: addIcon
-                            anchors.left: parent.left
-                            anchors.leftMargin: 6
-                            anchors.verticalCenter: parent.verticalCenter
-                            name: "plus"
-                            size: 12
-                            color: addHover.hovered ? App.themeAccent
-                                                    : App.themeTextMuted
-                        }
-                        Text {
-                            anchors.left: addIcon.right
-                            anchors.leftMargin: 6
-                            anchors.verticalCenter: parent.verticalCenter
-                            text: App.uiText(App.language, "AudioEqPresetNewTitle")
-                            color: addHover.hovered ? App.themeAccent
-                                                    : App.themeTextMuted
-                            font.pixelSize: 11
-                        }
-                        HoverHandler { id: addHover }
-                        TapHandler {
-                            gesturePolicy: TapHandler.ReleaseWithinBounds
-                            onTapped: savePop.open()
-                        }
-                    }
-                }
 
                 delegate: Item {
                     id: prow
@@ -296,17 +258,29 @@ Item {
                         && Audio.presetIsModified(prow.modelData)
 
                     width: presetList.width
-                    height: 24
+                    height: panel.manageable ? 40 : 24
 
+                    // Einstellungen: die geltende trägt den Akzentstrich der Reiterliste statt einer Akzentfläche.
                     Rectangle {
                         anchors.fill: parent
-                        color: prow.isActive
+                        color: prow.isActive && !panel.manageable
                                ? Qt.rgba(App.themeAccent.r, App.themeAccent.g,
                                          App.themeAccent.b, 0.20)
                                : (rowHover.hovered
                                   ? Qt.rgba(App.themeTextPrimary.r, App.themeTextPrimary.g,
-                                            App.themeTextPrimary.b, 0.08)
+                                            App.themeTextPrimary.b, panel.manageable ? 0.035 : 0.08)
                                   : "transparent")
+                    }
+                    Rectangle {
+                        visible: panel.manageable
+                        anchors { left: parent.left; right: parent.right; bottom: parent.bottom }
+                        height: 1
+                        color: App.themeBorder
+                        opacity: 0.6
+                    }
+                    AccentSlash {
+                        visible: panel.manageable && prow.isActive
+                        anchors { left: parent.left; leftMargin: 4; verticalCenter: parent.verticalCenter }
                     }
                     HoverHandler { id: rowHover }
                     TapHandler {
@@ -316,32 +290,36 @@ Item {
 
                     Text {
                         anchors.left: parent.left
-                        anchors.leftMargin: 8
-                        anchors.right: rowBtns.left
+                        anchors.leftMargin: panel.manageable ? 26 : 8
+                        anchors.right: panel.manageable ? rowBtns.left : parent.right
                         anchors.rightMargin: 6
                         anchors.verticalCenter: parent.verticalCenter
                         text: prow.modelData
                         elide: Text.ElideRight
                         color: prow.isActive ? App.themeAccent : App.themeTextPrimary
-                        font.pixelSize: 12
-                        font.bold: prow.isActive
+                        font.pixelSize: panel.manageable ? 13 : 12
+                        font.bold: prow.isActive && !panel.manageable
                     }
 
                     // EIGENE `id` statt `parent`: auf der Ebene der angehängten Eigenschaften meint `parent` den VISUELLEN
                     // Elternteil - also die `Row`, nicht den Knopf; der Hilfetext blieb sonst undefined.
+                    // Ein gesperrter Knopf hält seinen Platz, damit die Symbole aller Zeilen untereinander stehen.
                     component RowBtn: Rectangle {
                         id: rb
                         property string icon: ""
                         property string tip: ""
                         signal triggered()
-                        width: 20; height: 20; radius: 4
+                        width: 28; height: 26; radius: 5
+                        opacity: rb.enabled ? 1 : 0
                         anchors.verticalCenter: parent ? parent.verticalCenter : undefined
-                        color: rbHover.hovered ? App.themeAccent : "transparent"
+                        color: rbHover.hovered ? Qt.lighter(App.themeCard, 1.35) : "transparent"
+                        border.width: 1
+                        border.color: rbHover.hovered ? App.themeBorder : "transparent"
                         DrawnIcon {
                             anchors.centerIn: parent
                             name: rb.icon
-                            size: 13
-                            color: rbHover.hovered ? "#ffffff" : App.themeTextMuted
+                            size: 14
+                            color: rbHover.hovered ? App.themeTextPrimary : App.themeTextMuted
                         }
                         HoverHandler { id: rbHover }
                         TapHandler {
@@ -355,32 +333,31 @@ Item {
 
                     Row {
                         id: rowBtns
+                        visible: panel.manageable
                         anchors.right: parent.right
                         anchors.rightMargin: 4
                         anchors.verticalCenter: parent.verticalCenter
                         spacing: 2
 
                         RowBtn {
-                            visible: panel.manageable && prow.index > 0
+                            enabled: prow.index > 0
                             icon: "arrow-up"
                             tip: App.uiText(App.language, "AudioEqPresetUpTip")
                             onTriggered: Audio.movePreset(prow.index, prow.index - 1)
                         }
                         RowBtn {
-                            visible: panel.manageable
-                                     && prow.index < Audio.presetNames.length - 1
+                            enabled: prow.index < Audio.presetNames.length - 1
                             icon: "arrow-down"
                             tip: App.uiText(App.language, "AudioEqPresetDownTip")
                             onTriggered: Audio.movePreset(prow.index, prow.index + 1)
                         }
                         RowBtn {
-                            visible: panel.manageable && prow.canReset
+                            enabled: prow.canReset
                             icon: "undo"
                             tip: App.uiText(App.language, "AudioEqPresetResetTip")
                             onTriggered: Audio.resetPreset(prow.modelData)
                         }
                         RowBtn {
-                            visible: panel.manageable
                             icon: "close"
                             tip: App.uiText(App.language, "AudioEqPresetDeleteTip")
                             onTriggered: Audio.deletePreset(prow.modelData)
@@ -390,10 +367,64 @@ Item {
             }
         }
 
+        // Einstellungen: beide Aktionen flach in EINER Zeile unter der Trennlinie der letzten Voreinstellung - gerahmte
+        // Knöpfe unter der Linienliste lasen sich als zweiter Rand. "Neu" öffnet dasselbe Fenster wie am Player "Sichern".
+        component FlatAction: Item {
+            id: fa
+            property string icon: ""
+            property string label: ""
+            signal triggered()
+            implicitWidth: faText.x + faText.implicitWidth + 8
+            height: parent ? parent.height : 40
+            DrawnIcon {
+                anchors.horizontalCenter: parent.left
+                anchors.horizontalCenterOffset: 10
+                anchors.verticalCenter: parent.verticalCenter
+                name: fa.icon
+                size: 12
+                color: faHover.hovered ? App.themeAccent : App.themeTextMuted
+            }
+            Text {
+                id: faText
+                x: 26
+                anchors.verticalCenter: parent.verticalCenter
+                text: fa.label
+                color: faHover.hovered ? App.themeAccent : App.themeTextMuted
+                font.pixelSize: 13
+            }
+            HoverHandler { id: faHover; cursorShape: Qt.PointingHandCursor }
+            TapHandler {
+                gesturePolicy: TapHandler.ReleaseWithinBounds
+                onTapped: fa.triggered()
+            }
+        }
+
+        Item {
+            id: addRow
+            visible: panel.manageable
+            width: parent.width
+            height: panel.manageable ? 40 : 0
+
+            FlatAction {
+                anchors.left: parent.left
+                icon: "plus"
+                label: App.uiText(App.language, "AudioEqPresetNewTitle")
+                onTriggered: savePop.open()
+            }
+            FlatAction {
+                anchors.right: parent.right
+                visible: Audio.presetsModified
+                icon: "undo"
+                label: App.uiText(App.language, "AudioEqPresetResetAll")
+                onTriggered: Audio.resetAllPresets()
+            }
+        }
+
         // Am Player steht hier nur das Sichern; es öffnet ein Fenster für einen neuen Namen oder das Überschreiben
-        // einer vorhandenen Voreinstellung. In den Einstellungen kommt "Mitgelieferte zurücksetzen" dazu.
+        // einer vorhandenen Voreinstellung.
         Flow {
             id: presetRow
+            visible: !panel.manageable
             width: parent.width
             spacing: 8
 
@@ -406,7 +437,9 @@ Item {
                 Popup {
                     id: savePop
                     objectName: "eqSavePopup"       // Griff fuer den Pruefstand
-                    y: -implicitHeight - 6
+                    //  In den Einstellungen ist der Knopf ausgeblendet; das Fenster hängt dann an der Aktionszeile.
+                    parent: panel.manageable ? addRow : saveBtn
+                    y: panel.manageable ? addRow.height + 4 : -implicitHeight - 6
                     width: Math.min(280, Math.max(200, panel.width - 40))
                     padding: 10
                     modal: false
@@ -512,11 +545,6 @@ Item {
                         }
                     }
                 }
-            }
-            Button {
-                visible: panel.manageable && Audio.presetsModified
-                text: App.uiText(App.language, "AudioEqPresetResetAll")
-                onClicked: Audio.resetAllPresets()
             }
         }
     }

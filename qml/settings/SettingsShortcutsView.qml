@@ -42,7 +42,9 @@ Item {
               en: "Seek video forward / back (fullscreen)",                           keys: ["->", "<-"] },
             { de: "Zurück zur Galerie",            en: "Back to gallery",             keys: ["Esc", "Alt+<-"] },
             { de: "Optionen-Modus umschalten",     en: "Toggle options mode",         keys: ["Alt+S"] },
-            { de: "Datum bearbeiten",              en: "Edit date",                   keys: ["D"] }
+            { de: "Datum bearbeiten",              en: "Edit date",                   keys: ["D"] },
+            { de: "Vorschau / Quelltext (HTML, Markdown)",
+              en: "Preview / source (HTML, Markdown)",                                keys: ["Ctrl+R"] }
         ] },
         { headerKey: "ShortcutCtxPdf", rows: [
             { de: "Herein- / herauszoomen",        en: "Zoom in / out",               keys: ["+", "-"] },
@@ -94,8 +96,7 @@ Item {
             { de: "Suchen",                        en: "Find",                        keys: ["Ctrl+F"] },
             { de: "Markierung aufheben",           en: "Remove the mark",             keys: ["Esc"] }
         ] },
-        //  nurEigen: nur mit dem eigenen HTML-Renderer; die Chromium-Vorschau hat keine Suche.
-        { headerKey: "ShortcutCtxHtml", nurEigen: true, rows: [
+        { headerKey: "ShortcutCtxHtml", rows: [
             { de: "Im Dokument suchen",            en: "Search the document",         keys: ["Ctrl+F"] },
             { de: "Suche schließen",               en: "Close search",                keys: ["Esc"] },
             { de: "Wort / Absatz markieren",       en: "Select word / paragraph",     keys: ["Doppelklick", "Dreifachklick"] },
@@ -149,7 +150,7 @@ Item {
         spacing: 14
 
         Repeater {
-            model: rootCol.sections.filter(s => !s.nurEigen || App.ownHtml)
+            model: rootCol.sections
             delegate: Column {
                 required property var modelData
                 width: col.width

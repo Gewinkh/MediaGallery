@@ -31,7 +31,7 @@ stores its data are in **[FEATURES.md](FEATURES.md)**.
 
 ### Requirements
 - Qt 6.8 or newer (developed with Qt 6.11 and 6.12) with modules:
-  `Core`, `Gui`, `Qml`, `Quick`, `QuickControls2`, `Multimedia`, `Pdf`, `Svg`, `WebEngineQuick`
+  `Core`, `Gui`, `Qml`, `Quick`, `QuickControls2`, `Multimedia`, `Pdf`, `Svg`
 - **Optional**: ZLIB, to enable the **DOCX editor**. If absent, the app builds and runs normally, falls back to Qt's own `qCompress`/`qUncompress`, and only DOCX is disabled - every PDF feature (viewing, editing, page extraction, embedded media) stays fully available. DOCX files still appear in the gallery, but their tiles are greyed out and explain on hover why they cannot be opened
 - **Optional**: Tesseract + Leptonica (via pkg-config) to enable **OCR for scanned PDFs**. If absent, the app builds and runs normally with OCR disabled
 - **Optional**: Hunspell (via pkg-config) plus a dictionary, to enable **spell checking** in the DOCX editor. If either is missing, the feature stays off and the settings page says why
@@ -134,39 +134,12 @@ open build/MediaGallery.app
 
 ---
 
-### Own HTML renderer (preview)
-
-HTML files open in the built-in web engine by default. To try the app's own
-renderer instead (faster), start it with `MG_HTML_EIGEN=1`:
-
-```bash
-# Linux
-MG_HTML_EIGEN=1 ./build/MediaGallery
-```
-```bash
-# macOS
-MG_HTML_EIGEN=1 build/MediaGallery.app/Contents/MacOS/MediaGallery
-```
-
-```powershell
-# Windows (PowerShell)
-$env:MG_HTML_EIGEN=1; .\build\Release\MediaGallery.exe
-```
-
----
-
 ## Changelog
 
 ### Latest
-- **Change**: **Settings**: Redesigned layout with a left sidebar, cleaner page structure and reorganized colour settings. Tags, Categories and Converter are now grouped under *Labeling*.
-- **New**: **Design**: Built-in themes can now be customized directly. The first change automatically creates a *Custom* theme.
-- **Improvement**: **Settings**: The window opens much faster, even with many tags and categories. Pages load on first visit, while larger lists fill in the background.
-- **Improvement**: **Main window**: Menus, filters and toolbars now share a cleaner design with rounded panels, subtle shadows and aligned shortcuts. Settings opens directly from the menu bar.
-- **Fix**: **Menus**: Hidden entries no longer leave empty space or unnecessary width in context menus.
-- **Improvement**: **Gallery**: File context menus open much faster, even with hundreds of tags. Tag and category lists appear immediately while remaining entries load in the background.
-- **Improvement**: **PDF extraction**: Page selection and naming dialogs now follow the redesigned settings layout, with a more compact page bar and Enter-key support.
-- **Improvement**: **Tags & Categories**: The panel and its dialogs are redesigned.
-- **Change**: **Settings**: Language and video playback options are now located under *General*.
+- **Change**: **Settings**: Audio presets, saved folders and spell-check options now follow the redesigned settings layout.
+- **Change**: **HTML**: HTML files now always use the built-in renderer, opening about five times faster. Qt WebEngine and its helper processes are no longer required.
+- **New**: **Text editor**: `Ctrl+R` switches HTML and Markdown files between source and rendered views. The overview button now has clearer labels and a new position.
 
 ---
 
